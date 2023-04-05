@@ -1,0 +1,155 @@
+#
+# NOTE: this workflow is for testing the extension template itself, feel free to delete this file in your own repo.
+#
+
+name: Extension Template
+on: [push, pull_request,repository_dispatch]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux Extensions
+    if: ${{ vars.RUN_RENAME_TEST == 'true' }}
+    runs-on: ubuntu-latest
+    container: ubuntu:16.04
+    strategy:
+      matrix:
+        # Add commits/tags to build against other DuckDB versions
+        duckdb_version: [ '<submodule_version>' ]
+    env:
+      GEN: ninja
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install required ubuntu packages
+        run: |
+          apt-get update -y -qq
+          apt-get install -y -qq software-properties-common
+          add-apt-repository ppa:git-core/ppa
+          apt-get update -y -qq
+          apt-get install -y -qq ninja-build make gcc-multilib g++-multilib libssl-dev wget openjdk-8-jdk zip maven unixodbc-dev libc6-dev-i386 lib32readline6-dev libssl-dev libcurl4-gnutls-dev libexpat1-dev gettext unzip build-essential checkinstall libffi-dev curl libz-dev openssh-client
+
+      - name: Install Git 2.18.5
+        run: |
+          wget https://github.com/git/git/archive/refs/tags/v2.18.5.tar.gz
+          tar xvf v2.18.5.tar.gz
+          cd git-2.18.5
+          make
+          make prefix=/usr install
+          git --version
+
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: 'true'
+
+      - name: Checkout DuckDB to version
+        if: ${{ matrix.duckdb_version != '<submodule_version>'}}
+        run: |
+          cd duckdb
+          git checkout ${{ matrix.duckdb_version }}
+
+      - uses: ./duckdb/.github/actions/ubuntu_16_setup
+
+      - name: Rename extension
+        run: |
+          python3 scripts/set_extension_name.py testext
+
+      - name: Build
+        run: |
+          make
+
+      - name: Test
+        run: |
+          make test
+
+  macos:
+    name: MacOS
+    if: ${{ vars.RUN_RENAME_TEST == 'true' }}
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        # Add commits/tags to build against other DuckDB versions
+        duckdb_version: [ '<submodule_version>']
+    env:
+      OSX_BUILD_UNIVERSAL: 1
+      GEN: ninja
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: 'true'
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.7'
+
+      - name: Checkout DuckDB to version
+        if: ${{ matrix.duckdb_version != '<submodule_version>'}}
+        run: |
+          cd duckdb
+          git checkout ${{ matrix.duckdb_version }}
+
+      - name: Rename extension
+        run: |
+          python scripts/set_extension_name.py testext
+
+      - name: Build
+        run: |
+          make
+
+      - name: Test
+        run: |
+          make test
+
+  windows:
+    name: Windows Extensions (x64)
+    if: ${{ vars.RUN_RENAME_TEST == 'true' }}
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        # Add commits/tags to build against other DuckDB versions
+        duckdb_version: [ '<submodule_version>' ]
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: 'true'
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.7'
+
+      - name: Checkout DuckDB to version
+        # Add commits/tags to build against other DuckDB versions
+        if: ${{ matrix.duckdb_version != '<submodule_version>'}}
+        run: |
+          cd duckdb
+          git checkout ${{ matrix.duckdb_version }}
+
+      - name: Rename extension
+        run: |
+          python scripts/set_extension_name.py testext
+
+      - name: Build
+        run: |
+          make
+
+      - name: Build extension
+        run: |
+          build/release/test/Release/unittest.exe
