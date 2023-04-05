@@ -1,0 +1,73 @@
+name: MacOS
+on: [push, pull_request,repository_dispatch]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  macos:
+    name: MacOS Release (Universal)
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        # Add commits/tags to build against other DuckDB versions
+        duckdb_version: [ '<submodule_version>' ]
+
+    env:
+      OSX_BUILD_UNIVERSAL: 1
+      GEN: ninja
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: 'true'
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.7'
+
+      - name: Checkout DuckDB to version
+        if: ${{ matrix.duckdb_version != '<submodule_version>'}}
+        run: |
+          cd duckdb
+          git checkout ${{ matrix.duckdb_version }}
+
+         # Build extension
+      - name: Build extension
+        shell: bash
+        run: |
+          make release
+          make test
+
+      - name: Deploy
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_DEPLOY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_DEPLOY_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.S3_REGION }}
+          BUCKET_NAME: ${{ secrets.S3_BUCKET }}
+        run: |
+          cd duckdb
+          git fetch --tags
+          export DUCKDB_VERSION=`git tag --points-at HEAD`
+          echo $DUCKDB_VERSION
+          export DUCKDB_VERSION=${DUCKDB_VERSION:=`git log -1 --format=%h`}
+          echo $DUCKDB_VERSION
+          cd ..
+          if [[ "$AWS_ACCESS_KEY_ID" == "" ]] ; then
+            echo 'No key set, skipping'
+          elif [[ "$GITHUB_REF" =~ ^(refs/tags/v.+)$ ]] ; then
+            python -m pip install awscli
+            ./scripts/extension-upload.sh quack ${{ github.ref_name }} $DUCKDB_VERSION osx_amd64 $BUCKET_NAME true
+            ./scripts/extension-upload.sh quack ${{ github.ref_name }} $DUCKDB_VERSION osx_arm64 $BUCKET_NAME true
+          elif [[ "$GITHUB_REF" =~ ^(refs/heads/main)$ ]] ; then
+            python -m pip install awscli
+            ./scripts/extension-upload.sh quack `git log -1 --format=%h` $DUCKDB_VERSION osx_amd64 $BUCKET_NAME false
+            ./scripts/extension-upload.sh quack `git log -1 --format=%h` $DUCKDB_VERSION osx_arm64 $BUCKET_NAME false
+          fi

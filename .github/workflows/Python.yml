@@ -1,0 +1,44 @@
+#
+# NOTE: if python tests are unused, deleting this file or disabling the workflow on GitHub will speed up CI
+#
+
+name: Python
+on: [push, pull_request,repository_dispatch]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    env:
+      GEN: ninja
+
+    steps:
+      - name: Install Ninja
+        run: |
+          sudo apt-get update -y -qq
+          sudo apt-get install -y -qq ninja-build
+
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          submodules: 'true'
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      - name: Build DuckDB Python client
+        run: make debug_python
+
+      - name: Install Python test dependencies
+        run: python -m pip install --upgrade pytest
+
+      - name: Run Python client tests
+        run: |
+          make test_debug_python
