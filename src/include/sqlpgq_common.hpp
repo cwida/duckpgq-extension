@@ -20,15 +20,14 @@ public:
 	explicit SQLPGQContext() {
 	}
 
-#if 0
-	CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name) {
-		auto pg_table_entry = registered_property_graphs.find(pg_name);
-		if (pg_table_entry == registered_property_graphs.end()) {
-			throw BinderException("Property graph %s does not exist", pg_name);
-		}
-		return reinterpret_cast<CreatePropertyGraphInfo *>(pg_table_entry->second.get());
-	}
-#endif
+//	CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name) {
+//		auto pg_table_entry = registered_property_graphs.find(pg_name);
+//		if (pg_table_entry == registered_property_graphs.end()) {
+//			throw BinderException("Property graph %s does not exist", pg_name);
+//		}
+//		return reinterpret_cast<CreatePropertyGraphInfo *>(pg_table_entry->second.get());
+//	}
+
 	CSR *GetCSR(int32_t id) {
 		auto csr_entry = csr_list.find(id);
 		if (csr_entry == csr_list.end()) {

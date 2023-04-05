@@ -18,6 +18,7 @@ set(EXTENSION_SOURCES
         src/sqlpgq_functions/sqlpgq_iterativelength2.cpp
         src/sqlpgq_functions/sqlpgq_bidirectional_iterativelength.cpp
         src/sqlpgq_functions/sqlpgq_iterativelength_bidirectional.cpp
+        src/sqlpgq_functions/sqlpgq_csr_deletion.cpp
         )
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 
