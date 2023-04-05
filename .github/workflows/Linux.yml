@@ -87,7 +87,7 @@ jobs:
       with:
         name: ${{matrix.arch}}-extensions
         path: |
-          build/release/extension/quack/quack.duckdb_extension
+          build/release/extension/sqlpgq/sqlpgq.duckdb_extension
 
     - name: Deploy
       env:
@@ -106,8 +106,8 @@ jobs:
           echo 'No key set, skipping'
         elif [[ "$GITHUB_REF" =~ ^(refs/tags/v.+)$ ]] ; then
           python3 -m pip install pip awscli
-          ./scripts/extension-upload.sh quack ${{ github.ref_name }} $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME true
+          ./scripts/extension-upload.sh sqlpgq ${{ github.ref_name }} $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME true
         elif [[ "$GITHUB_REF" =~ ^(refs/heads/main)$ ]] ; then
           python3 -m pip install pip awscli
-          ./scripts/extension-upload.sh quack `git log -1 --format=%h` $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME false
+          ./scripts/extension-upload.sh sqlpgq `git log -1 --format=%h` $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME false
         fi
