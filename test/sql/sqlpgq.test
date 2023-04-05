@@ -1,0 +1,18 @@
+# name: test/sql/sqlpgq.test
+# description: test sqlpgq extension
+# group: [sqlpgq]
+
+# Before we load the extension, this will fail
+statement error
+SELECT sqlpgq('Sam');
+----
+Catalog Error: Scalar Function with name sqlpgq does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require sqlpgq
+
+# Confirm the extension works
+query I
+SELECT sqlpgq('Sam');
+----
+Sqlpgq Sam 🐥
