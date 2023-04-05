@@ -90,7 +90,7 @@ CheapestPathLengthFunctionData::CheapestPathLengthBind(ClientContext &context, S
 	auto sqlpgq_state_entry = context.registered_state.find("sqlpgq");
 	if (sqlpgq_state_entry == context.registered_state.end()) {
 		//! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
-		throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
+		throw Exception("The SQL/PGQ extension has not been loaded");
 	}
 	auto sqlpgq_state = reinterpret_cast<SQLPGQContext *>(sqlpgq_state_entry->second.get());
 
