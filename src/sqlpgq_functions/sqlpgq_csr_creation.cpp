@@ -1,11 +1,11 @@
-#include "duckdb/common/vector_operations/quaternary_executor.hpp"
+#include "sqlpgq/common/vector_operations/quaternary_executor.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "sqlpgq_common.hpp"
 #include "sqlpgq_functions.hpp"
 
-#include <math.h>
+#include <cmath>
 #include <mutex>
 
 namespace duckdb {

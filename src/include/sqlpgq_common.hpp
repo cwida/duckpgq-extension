@@ -11,6 +11,7 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "sqlpgq/common/compressed_sparse_row.hpp"
 
 namespace duckdb {
 
@@ -19,6 +20,7 @@ public:
 	explicit SQLPGQContext() {
 	}
 
+#if 0
 	CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name) {
 		auto pg_table_entry = registered_property_graphs.find(pg_name);
 		if (pg_table_entry == registered_property_graphs.end()) {
@@ -26,7 +28,7 @@ public:
 		}
 		return reinterpret_cast<CreatePropertyGraphInfo *>(pg_table_entry->second.get());
 	}
-
+#endif
 	CSR *GetCSR(int32_t id) {
 		auto csr_entry = csr_list.find(id);
 		if (csr_entry == csr_list.end()) {
