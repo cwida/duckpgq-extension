@@ -33,7 +33,7 @@ struct SQLPGQExtensionData : public ParserExtensionParseData {
     idx_t number_of_elements;
 
     unique_ptr<ParserExtensionParseData> Copy() const override {
-        return make_unique<SQLPGQExtensionData>(number_of_elements);
+        return make_uniq<SQLPGQExtensionData>(number_of_elements);
     }
 };
 
