@@ -29,8 +29,7 @@ unique_ptr<FunctionData> CSRFunctionData::CSRVertexBind(ClientContext &context, 
 	Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
 	if (arguments.size() == 4) {
 		auto logical_type = LogicalType::SQLNULL;
-		return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), logical_type);
-	} else {
+		return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), logical_type);} else {
 		return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), arguments[3]->return_type);
 	}
 }
