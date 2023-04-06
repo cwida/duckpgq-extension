@@ -37,6 +37,7 @@ static void LoadInternal(DatabaseInstance &instance) {
     // add a parser extension
     auto &config = DBConfig::GetConfig(instance);
     config.parser_extensions.push_back(SQLPGQParserExtension());
+
 }
 
 void SqlpgqExtension::Load(DuckDB &db) {
