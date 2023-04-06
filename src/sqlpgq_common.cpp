@@ -12,7 +12,7 @@ CSRFunctionData::CSRFunctionData(ClientContext &context, int32_t id, LogicalType
 }
 
 unique_ptr<FunctionData> CSRFunctionData::Copy() const {
-	return make_unique<CSRFunctionData>(context, id, weight_type);
+	return make_uniq<CSRFunctionData>(context, id, weight_type);
 }
 
 bool CSRFunctionData::Equals(const FunctionData &other_p) const {
@@ -29,9 +29,9 @@ unique_ptr<FunctionData> CSRFunctionData::CSRVertexBind(ClientContext &context, 
 	Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
 	if (arguments.size() == 4) {
 		auto logical_type = LogicalType::SQLNULL;
-		return make_unique<CSRFunctionData>(context, id.GetValue<int32_t>(), logical_type);
+		return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), logical_type);
 	} else {
-		return make_unique<CSRFunctionData>(context, id.GetValue<int32_t>(), arguments[3]->return_type);
+		return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), arguments[3]->return_type);
 	}
 }
 
@@ -42,10 +42,10 @@ unique_ptr<FunctionData> CSRFunctionData::CSREdgeBind(ClientContext &context, Sc
 	}
 	Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
 	if (arguments.size() == 7) {
-		return make_unique<CSRFunctionData>(context, id.GetValue<int32_t>(), arguments[6]->return_type);
+		return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), arguments[6]->return_type);
 	} else {
 		auto logical_type = LogicalType::SQLNULL;
-		return make_unique<CSRFunctionData>(context, id.GetValue<int32_t>(), logical_type);
+		return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), logical_type);
 	}
 }
 
@@ -55,11 +55,11 @@ unique_ptr<FunctionData> CSRFunctionData::CSRBind(ClientContext &context, Scalar
 		throw InvalidInputException("Id must be constant.");
 	}
 	Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
-	return make_unique<CSRFunctionData>(context, id.GetValue<int32_t>(), LogicalType::BOOLEAN);
+	return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), LogicalType::BOOLEAN);
 }
 
 unique_ptr<FunctionData> IterativeLengthFunctionData::Copy() const {
-	return make_unique<IterativeLengthFunctionData>(context, csr_id);
+	return make_uniq<IterativeLengthFunctionData>(context, csr_id);
 }
 
 bool IterativeLengthFunctionData::Equals(const FunctionData &other_p) const {
@@ -76,7 +76,7 @@ unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(Client
 
 	int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]).GetValue<int32_t>();
 
-	return make_unique<IterativeLengthFunctionData>(context, csr_id);
+	return make_uniq<IterativeLengthFunctionData>(context, csr_id);
 }
 
 unique_ptr<FunctionData>
@@ -90,7 +90,7 @@ CheapestPathLengthFunctionData::CheapestPathLengthBind(ClientContext &context, S
 	auto sqlpgq_state_entry = context.registered_state.find("sqlpgq");
 	if (sqlpgq_state_entry == context.registered_state.end()) {
 		//! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
-		throw Exception("The SQL/PGQ extension has not been loaded");
+		throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
 	}
 	auto sqlpgq_state = reinterpret_cast<SQLPGQContext *>(sqlpgq_state_entry->second.get());
 
@@ -107,11 +107,11 @@ CheapestPathLengthFunctionData::CheapestPathLengthBind(ClientContext &context, S
 		bound_function.return_type = LogicalType::BIGINT;
 	}
 
-	return make_unique<CheapestPathLengthFunctionData>(context, csr_id);
+	return make_uniq<CheapestPathLengthFunctionData>(context, csr_id);
 }
 
 unique_ptr<FunctionData> CheapestPathLengthFunctionData::Copy() const {
-	return make_unique<CheapestPathLengthFunctionData>(context, csr_id);
+	return make_uniq<CheapestPathLengthFunctionData>(context, csr_id);
 }
 
 bool CheapestPathLengthFunctionData::Equals(const FunctionData &other_p) const {
