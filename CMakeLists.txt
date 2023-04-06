@@ -10,6 +10,7 @@ include_directories(src/include)
 set(EXTENSION_SOURCES
         src/sqlpgq_extension.cpp
         src/sqlpgq_common.cpp
+        src/sqlpgq_parser.cpp
         src/sqlpgq_functions/sqlpgq_csr_creation.cpp
         src/sqlpgq_functions/sqlpgq_cheapest_path_length.cpp
         src/sqlpgq_functions/sqlpgq_shortest_path.cpp
