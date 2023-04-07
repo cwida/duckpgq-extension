@@ -1,7 +1,7 @@
 #include "duckdb.hpp"
 #include "duckdb/parser/parser_extension.hpp"
 #include "sqlpgq_parser.hpp"
-
+#include "postgres_parser.hpp"
 
 namespace duckdb {
 
@@ -39,6 +39,8 @@ void SQLPGQFunction::SQLPGQFunc(ClientContext &context, TableFunctionInput &data
         data.offset++;
         count++;
     }
+
+
     output.SetCardinality(count);
 }
 
