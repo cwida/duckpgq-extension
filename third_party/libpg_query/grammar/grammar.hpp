@@ -53,7 +53,7 @@
 #include "parser/parser.hpp"
 #include "utils/datetime.hpp"
 
-namespace duckdb_libpgquery {
+namespace duckpgq_libpgquery {
 #define DEFAULT_SCHEMA "main"
 
 /*

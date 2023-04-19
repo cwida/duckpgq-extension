@@ -6,11 +6,6 @@ set(TARGET_NAME sqlpgq)
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 project(${TARGET_NAME})
 include_directories(src/include)
-add_subdirectory(third_party)
-
-#set(DUCKPGQ_LINK_LIBS
-#    ${DUCKPGQ_SYSTEM_LIBS}
-#    duckpgq_pg_query)
 
 include_directories(third_party/libpg_query/include)
 include_directories(third_party/libpg_query)

@@ -21,7 +21,7 @@
 
 #include <cstdint>
 
-namespace duckdb_libpgquery {
+namespace duckpgq_libpgquery {
 
 /*
  * Forward decl to save including pg_list.h

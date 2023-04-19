@@ -37,7 +37,7 @@
 #include "nodes/makefuncs.hpp"
 #include "nodes/nodeFuncs.hpp"
 
-namespace duckdb_libpgquery {
+namespace duckpgq_libpgquery {
 
 /*
  * makeAExpr -

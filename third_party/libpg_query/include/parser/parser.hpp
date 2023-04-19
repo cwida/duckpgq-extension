@@ -18,7 +18,7 @@
 #include "pg_simplified_token.hpp"
 #include <vector>
 
-namespace duckdb_libpgquery {
+namespace duckpgq_libpgquery {
 
 typedef enum PGBackslashQuoteType {
 	PG_BACKSLASH_QUOTE_OFF,

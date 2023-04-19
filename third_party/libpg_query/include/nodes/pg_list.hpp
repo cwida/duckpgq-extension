@@ -17,11 +17,11 @@
  *
  * We support three types of lists:
  *
- *	duckdb_libpgquery::T_PGList: lists of pointers
+ *	duckpgq_libpgquery::T_PGList: lists of pointers
  *		(in practice usually pointers to Nodes, but not always;
  *		declared as "void *" to minimize casting annoyances)
- *	duckdb_libpgquery::T_PGIntList: lists of integers
- *	duckdb_libpgquery::T_PGOidList: lists of Oids
+ *	duckpgq_libpgquery::T_PGIntList: lists of integers
+ *	duckpgq_libpgquery::T_PGOidList: lists of Oids
  *
  * (At the moment, ints and Oids are the same size, but they may not
  * always be so; try to be careful to maintain the distinction.)
@@ -38,12 +38,12 @@
 
 #include "nodes/nodes.hpp"
 
-namespace duckdb_libpgquery {
+namespace duckpgq_libpgquery {
 
 typedef struct PGListCell ListCell;
 
 typedef struct PGList {
-	PGNodeTag		type;			/* duckdb_libpgquery::T_PGList, duckdb_libpgquery::T_PGIntList, or duckdb_libpgquery::T_PGOidList */
+	PGNodeTag		type;			/* duckpgq_libpgquery::T_PGList, duckpgq_libpgquery::T_PGIntList, or duckpgq_libpgquery::T_PGOidList */
 	int			length;
 	PGListCell   *head;
 	PGListCell   *tail;

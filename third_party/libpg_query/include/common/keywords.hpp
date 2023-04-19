@@ -22,7 +22,7 @@
 #define RESERVED_KEYWORD		3
 #define PGQ_UNRESERVED_KEYWORD 	4
 
-namespace duckdb_libpgquery {
+namespace duckpgq_libpgquery {
 
 typedef struct PGScanKeyword {
 	const char *name; /* in lower case */

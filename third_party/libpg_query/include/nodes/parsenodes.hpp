@@ -26,7 +26,7 @@
 #include "nodes/primnodes.hpp"
 #include "nodes/value.hpp"
 
-namespace duckdb_libpgquery {
+namespace duckpgq_libpgquery {
 
 typedef enum PGOverridingKind {
 	PG_OVERRIDING_NOT_SET = 0,
@@ -2016,10 +2016,10 @@ typedef struct PGImportStmt {
  */
 typedef struct PGIntervalConstant {
 	PGNodeTag type;
-	int val_type;         /* interval constant type, either duckdb_libpgquery::T_PGString, duckdb_libpgquery::T_PGInteger or duckdb_libpgquery::T_PGAExpr */
-	char *sval;           /* duckdb_libpgquery::T_PGString */
-	int ival;             /* duckdb_libpgquery::T_PGString */
-	PGNode *eval;         /* duckdb_libpgquery::T_PGAExpr */
+	int val_type;         /* interval constant type, either duckpgq_libpgquery::T_PGString, duckpgq_libpgquery::T_PGInteger or duckpgq_libpgquery::T_PGAExpr */
+	char *sval;           /* duckpgq_libpgquery::T_PGString */
+	int ival;             /* duckpgq_libpgquery::T_PGString */
+	PGNode *eval;         /* duckpgq_libpgquery::T_PGAExpr */
 	PGList *typmods;      /* how to interpret the interval constant (year, month, day, etc)  */
 	int location;         /* token location, or -1 if unknown */
 } PGIntervalConstant;
