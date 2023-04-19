@@ -130,7 +130,7 @@
 #include "parser/parser.hpp"
 #include "utils/datetime.hpp"
 
-namespace duckdb_libpgquery {
+namespace duckpgq_libpgquery {
 #define DEFAULT_SCHEMA "main"
 
 /*
@@ -32647,4 +32647,4 @@ parser_init(base_yy_extra_type *yyext)
 #undef yynerrs
 #undef yylloc
 
-} // namespace duckdb_libpgquery
+} // namespace duckpgq_libpgquery

@@ -39,8 +39,6 @@ void SQLPGQFunction::SQLPGQFunc(ClientContext &context, TableFunctionInput &data
         data.offset++;
         count++;
     }
-
-
     output.SetCardinality(count);
 }
 
@@ -51,7 +49,19 @@ SQLPGQParserExtension::SQLPGQParserExtension() {
 }
 
 ParserExtensionParseResult SQLPGQParserExtension::SQLPGQParseFunction(ParserExtensionInfo *info, const string &query) {
-    return ParserExtensionParseResult(make_uniq<SQLPGQExtensionData>(0));
+    duckpgq::PostgresParser parser;
+    parser.Parse(query);
+    if (parser.success) {
+        if (!parser.parse_tree) {
+            // empty statement
+            return {parser.error_message};
+        }
+        // successful and non-empty so handle the query result here
+        return {make_uniq<SQLPGQExtensionData>(0)};
+    } else {
+        return { parser.error_message};
+    }
+
 }
 
 ParserExtensionPlanResult SQLPGQParserExtension::SQLPGQPlanFunction(ParserExtensionInfo *info, ClientContext &context,

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-namespace duckdb_libpgquery {
+namespace duckpgq_libpgquery {
 
 enum class PGSimplifiedTokenType : uint8_t {
 	PG_SIMPLIFIED_TOKEN_IDENTIFIER,

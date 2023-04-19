@@ -24,7 +24,7 @@ target_include_directories(
 set_target_properties(duckpgq_pg_query PROPERTIES EXPORT_NAME duckpgq_duckpgq_pg_query)
 
 install(TARGETS duckpgq_pg_query
-        EXPORT "${DUCKDB_EXPORT_SET}"
+        EXPORT "${DUCKPGQ_EXPORT_SET}"
         LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
         ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
 

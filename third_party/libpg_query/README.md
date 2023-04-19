@@ -4,7 +4,7 @@ This directory holds the core parser that is used by DuckDB. It is based on the 
 
 The most important changes made are listed here:
 * The output format has been changed to C++
-* The parser and all its auxiliary structures are wrapped in the `duckdb_libpgquery` namespace.
+* The parser and all its auxiliary structures are wrapped in the `duckpgq_libpgquery` namespace.
 * The parser has been split up into multiple different files instead of living in one big file.
 * Duplication is reduced and code is simplified by e.g. not requiring the same keyword or statement to be declared in multiple different places. 
 
