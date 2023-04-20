@@ -1,16 +1,13 @@
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.24)
+
+include(CMakePrintHelpers)
 
 # Set extension name here
 set(TARGET_NAME sqlpgq)
+project(${TARGET_NAME})
 
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
-project(${TARGET_NAME})
 include_directories(src/include)
-
-include_directories(third_party/libpg_query/include)
-include_directories(third_party/libpg_query)
-
-
 
 set(EXTENSION_SOURCES
     src/sqlpgq_extension.cpp
@@ -28,15 +25,6 @@ set(EXTENSION_SOURCES
     )
 
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
-
-#add_library(duckpgq SHARED ${ALL_OBJECT_FILES})
-#target_link_libraries(duckpgq ${DUCKPGQ_LINK_LIBS})
-#link_threads(duckpgq)
-#
-#add_library(duckpgq_static STATIC ${ALL_OBJECT_FILES})
-#target_link_libraries(duckpgq_static ${DUCKPGQ_LINK_LIBS})
-#link_threads(duckpgq_static)
-
 
 set(PARAMETERS "-warnings")
 build_loadable_extension(${TARGET_NAME} ${PARAMETERS} ${EXTENSION_SOURCES})
