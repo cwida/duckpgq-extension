@@ -36,7 +36,7 @@ static void LoadInternal(DatabaseInstance &instance) {
     con.Commit();
     // add a parser extension
     auto &config = DBConfig::GetConfig(instance);
-    config.parser_extensions.push_back(SQLPGQParserExtension());
+//    config.parser_extensions.push_back(SQLPGQParserExtension());
 
 }
 
