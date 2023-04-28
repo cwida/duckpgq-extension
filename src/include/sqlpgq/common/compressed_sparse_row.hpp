@@ -5,8 +5,6 @@
 #include "duckdb/common/atomic.hpp"
 #include "duckdb/execution/executor.hpp"
 
-#include <math.h>
-
 namespace duckdb {
 
 using namespace std;
@@ -15,13 +13,12 @@ class ClientContext;
 
 class CSR {
 public:
-	CSR() {
-	}
+	CSR() = default;
 	~CSR() {
 		delete[] v;
 	}
 
-	atomic<int64_t> *v;
+	atomic<int64_t> *v{};
 
 	vector<int64_t> e;
 	vector<int64_t> edge_ids;
