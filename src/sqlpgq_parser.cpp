@@ -1,7 +1,6 @@
 #include "duckdb.hpp"
 #include "duckdb/parser/parser_extension.hpp"
 #include "sqlpgq_parser.hpp"
-#include "../duckdb/third_party/libpg_query/include/postgres_parser.hpp"
 
 namespace duckdb {
 
@@ -49,18 +48,18 @@ SQLPGQParserExtension::SQLPGQParserExtension() {
 }
 
 ParserExtensionParseResult SQLPGQParserExtension::SQLPGQParseFunction(ParserExtensionInfo *info, const string &query) {
-    PostgresParser parser;
-    parser.Parse(query);
-    if (parser.success) {
-        if (!parser.parse_tree) {
-            // empty statement
-            return {parser.error_message};
-        }
-        // successful and non-empty so handle the query result here
-        return {make_uniq<SQLPGQExtensionData>(0)};
-    } else {
-        return { parser.error_message};
-    }
+//    PostgresParser parser;
+//    parser.Parse(query);
+//    if (parser.success) {
+//        if (!parser.parse_tree) {
+//            // empty statement
+//            return {parser.error_message};
+//        }
+//        // successful and non-empty so handle the query result here
+//        return {make_uniq<SQLPGQExtensionData>(0)};
+//    } else {
+//        return { parser.error_message};
+//    }
 
 }
 
