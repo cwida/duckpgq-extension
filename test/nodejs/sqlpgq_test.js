@@ -1,4 +1,4 @@
-var duckdb = require('../../duckdb/tools/nodejs');
+var duckdb = require('../../duckdb-pgq/tools/nodejs');
 var assert = require('assert');
 
 describe(`sqlpgq extension`, () => {
