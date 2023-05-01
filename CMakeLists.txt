@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 2.8.12)
 
 # Set extension name here
 set(TARGET_NAME sqlpgq)
