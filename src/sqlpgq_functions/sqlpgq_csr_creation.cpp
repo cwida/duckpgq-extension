@@ -20,7 +20,7 @@ static void CsrInitializeVertex(SQLPGQContext &context, int32_t id, int64_t v_si
 		}
 	}
 	try {
-		auto csr = make_uniq<CSR>();
+		auto csr = make_unique<CSR>();
 		// extra 2 spaces required for CSR padding
 		// data contains a vector of elements so will need an anonymous function to apply the
 		// first element id is repeated across, can I access the value directly?
@@ -88,7 +88,7 @@ static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state, Vec
 	auto sqlpgq_state_entry = info.context.registered_state.find("sqlpgq");
 	if (sqlpgq_state_entry == info.context.registered_state.end()) {
 		//! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
-		throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
+		throw Exception("The SQL/PGQ extension has not been loaded");
 	}
 	auto sqlpgq_state = reinterpret_cast<SQLPGQContext *>(sqlpgq_state_entry->second.get());
 
@@ -122,7 +122,7 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vecto
 	auto sqlpgq_state_entry = info.context.registered_state.find("sqlpgq");
 	if (sqlpgq_state_entry == info.context.registered_state.end()) {
 		//! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
-		throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
+		throw Exception("The SQL/PGQ extension has not been loaded");
 	}
 	auto sqlpgq_state = reinterpret_cast<SQLPGQContext *>(sqlpgq_state_entry->second.get());
 

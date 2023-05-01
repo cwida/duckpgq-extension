@@ -16,11 +16,11 @@ unique_ptr<FunctionData> SQLPGQFunction::SQLPGQBind(ClientContext &context, Tabl
                                           vector<LogicalType> &return_types, vector<string> &names) {
     names.emplace_back("duckpgq");
     return_types.emplace_back(LogicalType::VARCHAR);
-    return make_uniq<SQLPGQBindData>(BigIntValue::Get(input.inputs[0]));
+    return make_unique<SQLPGQBindData>(BigIntValue::Get(input.inputs[0]));
 }
 
 unique_ptr<GlobalTableFunctionState> SQLPGQFunction::SQLPGQInit(ClientContext &context, TableFunctionInitInput &input) {
-    return make_uniq<SQLPGQGlobalData>();
+    return make_unique<SQLPGQGlobalData>();
 }
 
 void SQLPGQFunction::SQLPGQFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
