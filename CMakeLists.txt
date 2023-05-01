@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
 
-include(CMakePrintHelpers)
-
 # Set extension name here
 set(TARGET_NAME sqlpgq)
 project(${TARGET_NAME})
