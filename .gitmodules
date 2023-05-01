@@ -1,4 +1,4 @@
-[submodule "duckdb"]
-	path = duckdb
-	url = https://github.com/duckdb/duckdb
+[submodule "duckdb-pgq"]
+	path = duckdb-pgq
+	url = git@github.com:cwida/duckdb-pgq.git
 	branch = master

@@ -36,7 +36,7 @@ jobs:
       - name: Checkout DuckDB to version
         if: ${{ matrix.duckdb_version != '<submodule_version>'}}
         run: |
-          cd duckdb
+          cd duckdb-pgq
           git checkout ${{ matrix.duckdb_version }}
 
          # Build extension
@@ -53,7 +53,7 @@ jobs:
           AWS_DEFAULT_REGION: ${{ secrets.S3_REGION }}
           BUCKET_NAME: ${{ secrets.S3_BUCKET }}
         run: |
-          cd duckdb
+          cd duckdb-pgq
           git fetch --tags
           export DUCKDB_VERSION=`git tag --points-at HEAD`
           echo $DUCKDB_VERSION

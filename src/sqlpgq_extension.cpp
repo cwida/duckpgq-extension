@@ -4,6 +4,7 @@
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "sqlpgq_functions.hpp"
+#include "sqlpgq_parser.hpp"
 
 
 #include <duckdb/parser/parsed_data/create_scalar_function_info.hpp>
@@ -33,11 +34,16 @@ static void LoadInternal(DatabaseInstance &instance) {
         catalog.CreateFunction(*con.context, &fun);
     }
     con.Commit();
+    // add a parser extension
+    auto &config = DBConfig::GetConfig(instance);
+//    config.parser_extensions.push_back(SQLPGQParserExtension());
+
 }
 
 void SqlpgqExtension::Load(DuckDB &db) {
 	LoadInternal(*db.instance);
 }
+
 std::string SqlpgqExtension::Name() {
 	return "sqlpgq";
 }
