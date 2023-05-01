@@ -8,6 +8,8 @@ SELECT sqlpgq('Sam');
 ----
 Catalog Error: Scalar Function with name sqlpgq does not exist!
 
+require parquet
+
 # Require statement will ensure this test is run with this extension loaded
 require sqlpgq
 

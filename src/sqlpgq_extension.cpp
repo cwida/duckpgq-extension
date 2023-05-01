@@ -42,9 +42,8 @@ static void LoadInternal(DatabaseInstance &instance) {
 
 void SqlpgqExtension::Load(DuckDB &db) {
 	LoadInternal(*db.instance);
-
-
 }
+
 std::string SqlpgqExtension::Name() {
 	return "sqlpgq";
 }
