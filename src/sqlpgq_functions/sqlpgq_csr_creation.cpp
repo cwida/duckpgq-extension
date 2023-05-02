@@ -20,7 +20,7 @@ static void CsrInitializeVertex(SQLPGQContext &context, int32_t id, int64_t v_si
 		}
 	}
 	try {
-		auto csr = make_unique<CSR>();
+		auto csr = make_uniq<CSR>();
 		// extra 2 spaces required for CSR padding
 		// data contains a vector of elements so will need an anonymous function to apply the
 		// first element id is repeated across, can I access the value directly?
