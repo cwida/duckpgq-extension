@@ -28,10 +28,10 @@ static void LoadInternal(DatabaseInstance &instance) {
     CreateScalarFunctionInfo sqlpgq_fun_info(
             ScalarFunction("sqlpgq", {LogicalType::VARCHAR}, LogicalType::VARCHAR, SqlpgqScalarFun));
     sqlpgq_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-    catalog.CreateFunction(*con.context, &sqlpgq_fun_info);
+    catalog.CreateFunction(*con.context, sqlpgq_fun_info);
 
     for (auto &fun : SQLPGQFunctions::GetFunctions()) {
-        catalog.CreateFunction(*con.context, &fun);
+        catalog.CreateFunction(*con.context, fun);
     }
     con.Commit();
     // add a parser extension

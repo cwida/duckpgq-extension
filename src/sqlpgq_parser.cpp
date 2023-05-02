@@ -16,11 +16,11 @@ unique_ptr<FunctionData> SQLPGQFunction::SQLPGQBind(ClientContext &context, Tabl
                                           vector<LogicalType> &return_types, vector<string> &names) {
     names.emplace_back("duckpgq");
     return_types.emplace_back(LogicalType::VARCHAR);
-    return make_unique<SQLPGQBindData>(BigIntValue::Get(input.inputs[0]));
+    return make_uniq<SQLPGQBindData>(BigIntValue::Get(input.inputs[0]));
 }
 
 unique_ptr<GlobalTableFunctionState> SQLPGQFunction::SQLPGQInit(ClientContext &context, TableFunctionInitInput &input) {
-    return make_unique<SQLPGQGlobalData>();
+    return make_uniq<SQLPGQGlobalData>();
 }
 
 void SQLPGQFunction::SQLPGQFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
@@ -48,7 +48,7 @@ SQLPGQParserExtension::SQLPGQParserExtension() {
 }
 
 ParserExtensionParseResult SQLPGQParserExtension::SQLPGQParseFunction(ParserExtensionInfo *info, const string &query) {
-    return {make_unique<SQLPGQExtensionData>(0)};
+    return {make_uniq<SQLPGQExtensionData>(0)};
 //
 //
 //    PostgresParser parser;
@@ -59,7 +59,7 @@ ParserExtensionParseResult SQLPGQParserExtension::SQLPGQParseFunction(ParserExte
 //            return {parser.error_message};
 //        }
 //        // successful and non-empty so handle the query result here
-//        return {make_unique<SQLPGQExtensionData>(0)};
+//        return {make_uniq<SQLPGQExtensionData>(0)};
 //    } else {
 //        return { parser.error_message};
 //    }

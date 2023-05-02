@@ -158,7 +158,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 			int64_t src_pos = vdata_src.sel->get_index(search_num);
 			int64_t dst_pos = vdata_dst.sel->get_index(search_num);
 			if (src_data[src_pos] == dst_data[dst_pos]) { // Source == destination
-				unique_ptr<Vector> output = make_unique<Vector>(LogicalType::LIST(LogicalType::BIGINT));
+				unique_ptr<Vector> output = make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
 				ListVector::PushBack(*output, src_data[src_pos]);
 				ListVector::Append(result, ListVector::GetEntry(*output), ListVector::GetListSize(*output));
 				result_data[search_num].length = ListVector::GetListSize(*output);
@@ -192,7 +192,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 			}
 			output_vector.push_back(source_v);
 			std::reverse(output_vector.begin(), output_vector.end());
-			auto output = make_unique<Vector>(LogicalType::LIST(LogicalType::BIGINT));
+			auto output = make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
 			for (auto val : output_vector) {
 				Value value_to_insert = val;
 				ListVector::PushBack(*output, value_to_insert);
