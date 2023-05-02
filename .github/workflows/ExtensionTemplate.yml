@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ 'main' ]
+        duckdb_version: [ 'master' ]
     env:
       GEN: ninja
     defaults:
