@@ -55,16 +55,16 @@ jobs:
     - name: Checkout DuckDB to version
       if: ${{ matrix.duckdb_version != '<submodule_version>'}}
       run: |
-        cd duckdb
+        cd duckdb-pgq
         git checkout ${{ matrix.duckdb_version }}
 
     - if: ${{ matrix.arch == 'linux_amd64_gcc4' }}
-      uses: ./duckdb/.github/actions/centos_7_setup
+      uses: ./duckdb-pgq/.github/actions/centos_7_setup
       with:
         openssl: 0
 
     - if: ${{ matrix.arch == 'linux_amd64' || matrix.arch == 'linux_arm64' }}
-      uses: ./duckdb/.github/actions/ubuntu_16_setup
+      uses: ./duckdb-pgq/.github/actions/ubuntu_16_setup
       with:
         aarch64_cross_compile: ${{ matrix.arch == 'linux_arm64' && 1 }}
 
@@ -87,7 +87,7 @@ jobs:
       with:
         name: ${{matrix.arch}}-extensions
         path: |
-          build/release/extension/quack/quack.duckdb_extension
+          build/release/extension/duckpgq/duckpgq.duckdb_extension
 
     - name: Deploy
       env:
@@ -97,7 +97,7 @@ jobs:
         BUCKET_NAME: ${{ secrets.S3_BUCKET }}
       run: |
         git config --global --add safe.directory '*'
-        cd duckdb
+        cd duckdb-pgq
         git fetch --tags
         export DUCKDB_VERSION=`git tag --points-at HEAD`
         export DUCKDB_VERSION=${DUCKDB_VERSION:=`git log -1 --format=%h`}
@@ -106,8 +106,8 @@ jobs:
           echo 'No key set, skipping'
         elif [[ "$GITHUB_REF" =~ ^(refs/tags/v.+)$ ]] ; then
           python3 -m pip install pip awscli
-          ./scripts/extension-upload.sh quack ${{ github.ref_name }} $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME true
+          ./scripts/extension-upload.sh duckpgq ${{ github.ref_name }} $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME true
         elif [[ "$GITHUB_REF" =~ ^(refs/heads/main)$ ]] ; then
           python3 -m pip install pip awscli
-          ./scripts/extension-upload.sh quack `git log -1 --format=%h` $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME false
+          ./scripts/extension-upload.sh duckpgq `git log -1 --format=%h` $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME false
         fi
