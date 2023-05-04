@@ -31,7 +31,6 @@ static void LoadInternal(DatabaseInstance &instance) {
     duckpgq_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
     catalog.CreateFunction(*con.context, duckpgq_fun_info);
     con.Commit();
-
 }
 
 void DuckpgqExtension::Load(DuckDB &db) {
