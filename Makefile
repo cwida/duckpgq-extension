@@ -23,7 +23,7 @@ BUILD_FLAGS=-DEXTENSION_STATIC_BUILD=1 -DBUILD_TPCH_EXTENSION=1 -DBUILD_PARQUET_
 CLIENT_FLAGS :=
 
 # These flags will make DuckDB build the extension
-EXTENSION_FLAGS=-DDUCKDB_OOT_EXTENSION_NAMES="quack" -DDUCKDB_OOT_EXTENSION_QUACK_PATH="$(PROJ_DIR)" -DDUCKDB_OOT_EXTENSION_QUACK_SHOULD_LINK="TRUE" -DDUCKDB_OOT_EXTENSION_QUACK_INCLUDE_PATH="$(PROJ_DIR)src/include"
+EXTENSION_FLAGS=-DDUCKDB_OOT_EXTENSION_NAMES="duckpgq" -DDUCKDB_OOT_EXTENSION_DUCKPGQ_PATH="$(PROJ_DIR)" -DDUCKDB_OOT_EXTENSION_DUCKPGQ_SHOULD_LINK="TRUE" -DDUCKDB_OOT_EXTENSION_DUCKPGQ_INCLUDE_PATH="$(PROJ_DIR)src/include"
 
 pull:
 	git submodule init
@@ -37,12 +37,12 @@ clean:
 # Main build
 debug:
 	mkdir -p  build/debug && \
-	cmake $(GENERATOR) $(FORCE_COLOR) $(EXTENSION_FLAGS) ${CLIENT_FLAGS} -DEXTENSION_STATIC_BUILD=1 -DCMAKE_BUILD_TYPE=Debug ${BUILD_FLAGS} -S ./duckdb/ -B build/debug && \
+	cmake $(GENERATOR) $(FORCE_COLOR) $(EXTENSION_FLAGS) ${CLIENT_FLAGS} -DEXTENSION_STATIC_BUILD=1 -DCMAKE_BUILD_TYPE=Debug ${BUILD_FLAGS} -S ./duckdb-pgq/ -B build/debug && \
 	cmake --build build/debug --config Debug
 
 release:
 	mkdir -p build/release && \
-	cmake $(GENERATOR) $(FORCE_COLOR) $(EXTENSION_FLAGS) ${CLIENT_FLAGS} -DEXTENSION_STATIC_BUILD=1 -DCMAKE_BUILD_TYPE=Release ${BUILD_FLAGS} -S ./duckdb/ -B build/release && \
+	cmake $(GENERATOR) $(FORCE_COLOR) $(EXTENSION_FLAGS) ${CLIENT_FLAGS} -DEXTENSION_STATIC_BUILD=1 -DCMAKE_BUILD_TYPE=Release ${BUILD_FLAGS} -S ./duckdb-pgq/ -B build/release && \
 	cmake --build build/release --config Release
 
 # Client build
@@ -76,10 +76,10 @@ test_debug: debug
 # Client tests
 test_js: test_debug_js
 test_debug_js: debug_js
-	cd duckdb/tools/nodejs && npm run test-path -- "../../../test/nodejs/**/*.js"
+	cd duckdb-pgq/tools/nodejs && npm run test-path -- "../../../test/nodejs/**/*.js"
 
 test_release_js: release_js
-	cd duckdb/tools/nodejs && npm run test-path -- "../../../test/nodejs/**/*.js"
+	cd duckdb-pgq/tools/nodejs && npm run test-path -- "../../../test/nodejs/**/*.js"
 
 test_python: test_debug_python
 test_debug_python: debug_python
