@@ -36,7 +36,7 @@ jobs:
       - name: Checkout DuckDB to version
         if: ${{ matrix.duckdb_version != '<submodule_version>'}}
         run: |
-          cd duckdb
+          cd duckdb-pgq
           git checkout ${{ matrix.duckdb_version }}
 
          # Build extension
