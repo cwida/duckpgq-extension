@@ -120,7 +120,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ '<submodule_version>' ]
+        duckdb_version: [ 'v0.7.1' ]
     defaults:
       run:
         shell: bash
