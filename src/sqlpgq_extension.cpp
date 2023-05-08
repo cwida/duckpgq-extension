@@ -6,7 +6,6 @@
 #include "sqlpgq_functions.hpp"
 #include "sqlpgq_parser.hpp"
 
-
 #include <duckdb/parser/parsed_data/create_scalar_function_info.hpp>
 
 namespace duckdb {
