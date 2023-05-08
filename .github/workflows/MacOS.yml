@@ -61,6 +61,7 @@ jobs:
           echo $DUCKDB_VERSION
           cd ..
           echo $GITHUB_REF $DUCKDB_VERSION $BUCKET_NAME ${{ github.ref_name }}
+          echo $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY $AWS_DEFAULT_REGION $BUCKET_NAME
           if [[ "$AWS_ACCESS_KEY_ID" == "" ]] ; then
             echo 'No key set, skipping'
           elif [[ "$GITHUB_REF" =~ ^(refs/tags/v.+)$ ]] ; then
