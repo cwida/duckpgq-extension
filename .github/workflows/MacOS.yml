@@ -60,14 +60,18 @@ jobs:
           export DUCKDB_VERSION=${DUCKDB_VERSION:=`git log -1 --format=%h`}
           echo $DUCKDB_VERSION
           cd ..
+          echo $GITHUB_REF $DUCKDB_VERSION $BUCKET_NAME ${{ github.ref_name }}
           if [[ "$AWS_ACCESS_KEY_ID" == "" ]] ; then
             echo 'No key set, skipping'
           elif [[ "$GITHUB_REF" =~ ^(refs/tags/v.+)$ ]] ; then
             python -m pip install awscli
+            echo $GITHUB_REF
+            echo 'got in first if statement'
             ./scripts/extension-upload.sh duckpgq ${{ github.ref_name }} $DUCKDB_VERSION osx_amd64 $BUCKET_NAME true
             ./scripts/extension-upload.sh duckpgq ${{ github.ref_name }} $DUCKDB_VERSION osx_arm64 $BUCKET_NAME true
           elif [[ "$GITHUB_REF" =~ ^(refs/heads/main)$ ]] ; then
             python -m pip install awscli
+            echo 'got in second if statement'
             ./scripts/extension-upload.sh duckpgq `git log -1 --format=%h` $DUCKDB_VERSION osx_amd64 $BUCKET_NAME false
             ./scripts/extension-upload.sh duckpgq `git log -1 --format=%h` $DUCKDB_VERSION osx_arm64 $BUCKET_NAME false
           fi
