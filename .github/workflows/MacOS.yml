@@ -70,7 +70,7 @@ jobs:
             echo 'got in first if statement'
             ./scripts/extension-upload.sh duckpgq ${{ github.ref_name }} $DUCKDB_VERSION osx_amd64 $BUCKET_NAME true
             ./scripts/extension-upload.sh duckpgq ${{ github.ref_name }} $DUCKDB_VERSION osx_arm64 $BUCKET_NAME true
-          elif [[ "$GITHUB_REF" =~ ^(refs/heads/clean_extension)$ ]] ; then
+          elif [[ "$GITHUB_REF" =~ ^(refs/heads/main)$ ]] ; then
             python -m pip install awscli
             echo 'got in second if statement'
             ./scripts/extension-upload.sh duckpgq `git log -1 --format=%h` $DUCKDB_VERSION osx_amd64 $BUCKET_NAME false
