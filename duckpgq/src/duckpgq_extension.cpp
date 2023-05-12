@@ -1,5 +1,6 @@
 #define DUCKDB_EXTENSION_MAIN
 
+#include <postgres_parser.hpp>
 #include "duckpgq_extension.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
@@ -23,7 +24,7 @@ inline void DuckpgqScalarFun(DataChunk &args, ExpressionState &state, Vector &re
 static void LoadInternal(DatabaseInstance &instance) {
     auto &config = duckdb::DBConfig::GetConfig(instance);
 
-    DuckPGQParser pgq_parser(instance);
+    DuckPGQParserExtension pgq_parser;
     config.parser_extensions.push_back(pgq_parser);
 
 	Connection con(instance);
@@ -42,6 +43,22 @@ static void LoadInternal(DatabaseInstance &instance) {
 void DuckpgqExtension::Load(DuckDB &db) {
 	LoadInternal(*db.instance);
 }
+
+ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *,
+                                         const std::string &query) {
+    duckpgq::DuckPGQParser parser;
+
+    parser.Parse(query);
+}
+
+ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
+                                       unique_ptr<ParserExtensionParseData> parse_data) {
+    auto duckpgq_state = make_shared<DuckPGQState>(std::move(parse_data));
+    context.registered_state["duckpgq"] = duckpgq_state;
+    throw BinderException("use duckpgq_bind instead");
+}
+
+
 std::string DuckpgqExtension::Name() {
 	return "duckpgq";
 }
