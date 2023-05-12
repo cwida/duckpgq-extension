@@ -7,7 +7,7 @@
 #include "duckdb/function/scalar_function.hpp"
 
 
-#include <duckdb/parser/parsed_data/create_scalar_function_info.hpp>
+#include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 
 namespace duckdb {
 
@@ -21,6 +21,11 @@ inline void DuckpgqScalarFun(DataChunk &args, ExpressionState &state, Vector &re
 }
 
 static void LoadInternal(DatabaseInstance &instance) {
+    auto &config = duckdb::DBConfig::GetConfig(instance);
+
+    DuckPGQParser pgq_parser(instance);
+    config.parser_extensions.push_back(pgq_parser);
+
 	Connection con(instance);
     con.BeginTransaction();
 
@@ -29,7 +34,7 @@ static void LoadInternal(DatabaseInstance &instance) {
     CreateScalarFunctionInfo duckpgq_fun_info(
             ScalarFunction("duckpgq", {LogicalType::VARCHAR}, LogicalType::VARCHAR, DuckpgqScalarFun));
     duckpgq_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-    catalog.CreateFunction(*con.context, duckpgq_fun_info);
+    catalog.CreateFunction(*con.context, &duckpgq_fun_info);
     con.Commit();
 }
 
