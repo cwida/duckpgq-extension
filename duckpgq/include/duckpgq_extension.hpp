@@ -11,6 +11,7 @@ public:
 };
 
 struct DuckPGQParserExtensionInfo : public ParserExtensionInfo {
+    DuckPGQParserExtensionInfo() : ParserExtensionInfo() {};
     vector<unique_ptr<SQLStatement>> statements;
 };
 

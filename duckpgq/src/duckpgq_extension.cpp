@@ -46,6 +46,7 @@ void DuckpgqExtension::Load(DuckDB &db) {
 ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                          const std::string &query) {
 //    Transformer transformer(1000);
+    auto parse_info = (DuckPGQParserExtensionInfo &)(info);
     duckpgq::DuckPGQParser parser;
     string parser_error;
     parser.Parse(query);
@@ -57,7 +58,7 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
 
         // if it succeeded, we transform the Postgres parse tree into a list of
         // SQLStatements
-        transformer.TransformParseTree(parser.parse_tree, info.statements);
+//        transformer.TransformParseTree(parser.parse_tree, parse_info.statements);
     } else {
         parser_error = QueryErrorContext::Format(query, parser.error_message, parser.error_location - 1);
         return {std::move(parser_error)};
