@@ -10,16 +10,21 @@ public:
 	std::string Name() override;
 };
 
-ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *,
+struct DuckPGQParserExtensionInfo : public ParserExtensionInfo {
+    vector<unique_ptr<SQLStatement>> statements;
+};
+
+ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                          const std::string &query);
 
-ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *, ClientContext &,
+ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext &,
                                        unique_ptr<ParserExtensionParseData>);
 
 struct DuckPGQParserExtension : public ParserExtension {
     DuckPGQParserExtension() : ParserExtension() {
         parse_function = duckpgq_parse;
         plan_function = duckpgq_plan;
+        parser_info = make_shared<DuckPGQParserExtensionInfo>();
     }
 };
 
