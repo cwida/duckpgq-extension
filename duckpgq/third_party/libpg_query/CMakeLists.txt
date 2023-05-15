@@ -11,3 +11,6 @@ set(EXTENSION_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/src_backend_parser_scansup.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src_common_keywords.cpp
         PARENT_SCOPE)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w" PARENT_SCOPE)
+
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-writable-strings" PARENT_SCOPE)

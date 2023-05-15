@@ -1,5 +1,7 @@
-# name: test/sql/sqlpgq/create_property_graph.test
-# group: [sqlpgq]
+# name: test/sql/create_property_graph.test
+# group: [duckpgq]
+
+require duckpgq
 
 statement ok
 pragma enable_verification

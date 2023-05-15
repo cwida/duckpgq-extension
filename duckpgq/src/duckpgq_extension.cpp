@@ -7,7 +7,6 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/scalar_function.hpp"
 
-
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 
 namespace duckdb {
@@ -36,7 +35,7 @@ static void LoadInternal(DatabaseInstance &instance) {
     CreateScalarFunctionInfo duckpgq_fun_info(
             ScalarFunction("duckpgq", {LogicalType::VARCHAR}, LogicalType::VARCHAR, DuckpgqScalarFun));
     duckpgq_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-    catalog.CreateFunction(*con.context, &duckpgq_fun_info);
+    catalog.CreateFunction(*con.context, duckpgq_fun_info);
     con.Commit();
 }
 
@@ -44,14 +43,29 @@ void DuckpgqExtension::Load(DuckDB &db) {
 	LoadInternal(*db.instance);
 }
 
-ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *,
+ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                          const std::string &query) {
+//    Transformer transformer(1000);
     duckpgq::DuckPGQParser parser;
-
+    string parser_error;
     parser.Parse(query);
+    if (parser.success) {
+        if (!parser.parse_tree) {
+            // empty statement
+            return {"Empty statement"};
+        }
+
+        // if it succeeded, we transform the Postgres parse tree into a list of
+        // SQLStatements
+        transformer.TransformParseTree(parser.parse_tree, info.statements);
+    } else {
+        parser_error = QueryErrorContext::Format(query, parser.error_message, parser.error_location - 1);
+        return {std::move(parser_error)};
+    }
+
 }
 
-ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
+ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext &context,
                                        unique_ptr<ParserExtensionParseData> parse_data) {
     auto duckpgq_state = make_shared<DuckPGQState>(std::move(parse_data));
     context.registered_state["duckpgq"] = duckpgq_state;
