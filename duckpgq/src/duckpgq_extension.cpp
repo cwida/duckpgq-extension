@@ -22,7 +22,6 @@ inline void DuckpgqScalarFun(DataChunk &args, ExpressionState &state, Vector &re
 
 static void LoadInternal(DatabaseInstance &instance) {
     auto &config = duckdb::DBConfig::GetConfig(instance);
-
     DuckPGQParserExtension pgq_parser;
     config.parser_extensions.push_back(pgq_parser);
 
@@ -30,7 +29,6 @@ static void LoadInternal(DatabaseInstance &instance) {
     con.BeginTransaction();
 
     auto &catalog = Catalog::GetSystemCatalog(*con.context);
-
 
     CreateScalarFunctionInfo duckpgq_fun_info(
             ScalarFunction("duckpgq", {LogicalType::VARCHAR}, LogicalType::VARCHAR, DuckpgqScalarFun));
