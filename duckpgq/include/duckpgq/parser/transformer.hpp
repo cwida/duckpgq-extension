@@ -1,9 +1,8 @@
 #pragma once
 
+#include "duckpgq/common.hpp"
 #include "duckdb/parser/parser_options.hpp"
 #include "duckdb/parser/sql_statement.hpp"
-
-using namespace duckdb;
 
 namespace duckpgq {
     class PGQTransformer {
