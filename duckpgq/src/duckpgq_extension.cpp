@@ -1,7 +1,6 @@
 #define DUCKDB_EXTENSION_MAIN
 
 #include "duckpgq_extension.hpp"
-#include "duckdb/common/common.hpp"
 #include "postgres_parser.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -47,6 +46,7 @@ void DuckpgqExtension::Load(DuckDB &db) {
 ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                          const std::string &query) {
     duckpgq::PGQTransformer transformer;
+    vector<unique_ptr<SQLStatement>> statements;
     auto parse_info = (DuckPGQParserExtensionInfo &)(info);
     duckpgq::DuckPGQParser parser;
     string parser_error;
@@ -59,7 +59,7 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
 
         // if it succeeded, we transform the Postgres parse tree into a list of
         // SQLStatements
-        transformer.TransformParseTree(parser.parse_tree, parse_info.statements);
+        transformer.TransformParseTree(parser.parse_tree, statements);
     } else {
         parser_error = QueryErrorContext::Format(query, parser.error_message, parser.error_location - 1);
         return {std::move(parser_error)};

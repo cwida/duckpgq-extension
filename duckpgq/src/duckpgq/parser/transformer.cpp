@@ -5,14 +5,11 @@
 using namespace duckdb;
 
 namespace duckpgq {
-    PGQTransformer::PGQTransformer() {
+    PGQTransformer::PGQTransformer() = default;
 
-    }
+    PGQTransformer::~PGQTransformer() = default;
 
-    PGQTransformer::~PGQTransformer() {
-    }
-
-    bool PGQTransformer::TransformParseTree(duckpgq_libpgquery::PGList *tree, vector<unique_ptr<duckdb::SQLStatement>> &statements) {
+    bool PGQTransformer::TransformParseTree(duckpgq_libpgquery::PGList *tree, vector<unique_ptr<SQLStatement>> &statements) {
         return false;
     }
 
