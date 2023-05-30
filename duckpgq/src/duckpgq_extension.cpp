@@ -5,6 +5,7 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/scalar_function.hpp"
+#include "duckpgq/duckpgq_functions.hpp"
 
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckpgq/parser/transformer.hpp"
@@ -30,10 +31,14 @@ static void LoadInternal(DatabaseInstance &instance) {
 
     auto &catalog = Catalog::GetSystemCatalog(*con.context);
 
+    for (auto &fun : DuckPGQFunctions::GetFunctions()) {
+        catalog.CreateFunction(*con.context, &fun);
+    }
+
     CreateScalarFunctionInfo duckpgq_fun_info(
             ScalarFunction("duckpgq", {LogicalType::VARCHAR}, LogicalType::VARCHAR, DuckpgqScalarFun));
     duckpgq_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-    catalog.CreateFunction(*con.context, duckpgq_fun_info);
+    catalog.CreateFunction(*con.context, &duckpgq_fun_info);
     con.Commit();
 }
 
