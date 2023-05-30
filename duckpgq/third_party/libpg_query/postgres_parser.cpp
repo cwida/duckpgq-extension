@@ -25,27 +25,27 @@ void DuckPGQParser::Parse(const string &query) {
 	}
 }
 
-vector<duckpgq_libpgquery::PGSimplifiedToken> DuckPGQParser::Tokenize(const std::string &query) {
-	duckpgq_libpgquery::pg_parser_init();
-	auto tokens = duckpgq_libpgquery::tokenize(query.c_str());
-	duckpgq_libpgquery::pg_parser_cleanup();
+vector<duckdb_libpgquery::PGSimplifiedToken> DuckPGQParser::Tokenize(const std::string &query) {
+	duckdb_libpgquery::pg_parser_init();
+	auto tokens = duckdb_libpgquery::tokenize(query.c_str());
+	duckdb_libpgquery::pg_parser_cleanup();
 	return tokens;
 }
 
 DuckPGQParser::~DuckPGQParser()  {
-    duckpgq_libpgquery::pg_parser_cleanup();
+    duckdb_libpgquery::pg_parser_cleanup();
 }
 
 bool DuckPGQParser::IsKeyword(const std::string &text) {
-	return duckpgq_libpgquery::is_keyword(text.c_str());
+	return duckdb_libpgquery::is_keyword(text.c_str());
 }
 
-vector<duckpgq_libpgquery::PGKeyword> DuckPGQParser::KeywordList() {
-	return duckpgq_libpgquery::keyword_list();
+vector<duckdb_libpgquery::PGKeyword> DuckPGQParser::KeywordList() {
+	return duckdb_libpgquery::keyword_list();
 }
 
 void DuckPGQParser::SetPreserveIdentifierCase(bool preserve) {
-	duckpgq_libpgquery::set_preserve_identifier_case(preserve);
+	duckdb_libpgquery::set_preserve_identifier_case(preserve);
 }
 
 }
