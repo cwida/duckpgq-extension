@@ -18,7 +18,7 @@
 #include "nodes/primnodes.hpp"
 
 
-namespace duckpgq {
+namespace duckdb {
 class PGQTransformer {
 
     struct CreatePivotEntry {

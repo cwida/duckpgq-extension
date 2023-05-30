@@ -13,7 +13,7 @@
 #include "nodes/pg_list.hpp"
 #include "pg_simplified_token.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 class DuckPGQParser {
 public:
     DuckPGQParser();

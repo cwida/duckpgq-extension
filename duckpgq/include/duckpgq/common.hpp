@@ -8,6 +8,9 @@
 
 #pragma once
 
+#include "duckdb.hpp"
+#include "duckdb/common/helper.hpp"
+
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"

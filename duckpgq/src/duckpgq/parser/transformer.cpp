@@ -4,7 +4,7 @@
 
 using namespace duckdb;
 
-namespace duckpgq {
+namespace duckdb {
 PGQTransformer::PGQTransformer() = default;
 
 PGQTransformer::~PGQTransformer() = default;

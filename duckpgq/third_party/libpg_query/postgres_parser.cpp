@@ -7,7 +7,7 @@
 
 using namespace std;
 
-namespace duckpgq {
+namespace duckdb {
 
 DuckPGQParser::DuckPGQParser() : success(false), parse_tree(nullptr), error_message(""), error_location(0) {}
 
