@@ -13,8 +13,8 @@ namespace duckdb {
               property_graph_name(std::move(name_p)) {
     }
 
-    CreatePropertyGraphInfo::CreatePropertyGraphInfo(SchemaCatalogEntry *schema, string pg_name)
-            : CreatePropertyGraphInfo(schema->catalog.GetName(), schema->name, std::move(pg_name)) {
+    CreatePropertyGraphInfo::CreatePropertyGraphInfo(CatalogEntry *schema, string pg_name)
+            : CreatePropertyGraphInfo(schema->catalog->GetName(), schema->name, std::move(pg_name)) {
     }
 
     void CreatePropertyGraphInfo::SerializeInternal(Serializer &serializer) const {
@@ -34,7 +34,7 @@ namespace duckdb {
     }
 
     unique_ptr<CreateInfo> CreatePropertyGraphInfo::Copy() const {
-        auto result = make_uniq<CreatePropertyGraphInfo>(catalog, schema, property_graph_name);
+        auto result = make_unique<CreatePropertyGraphInfo>(catalog, schema, property_graph_name);
         CopyProperties(*result);
 
         for (auto &vertex_table : vertex_tables) {

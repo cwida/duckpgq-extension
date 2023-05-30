@@ -16,6 +16,7 @@
 #include "duckdb/parser/parsed_data/create_info.hpp"
 #include "duckpgq/parser/property_graph_table.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
+#include "duckdb/catalog/catalog_entry.hpp"
 
 namespace duckdb {
 
@@ -24,7 +25,7 @@ namespace duckdb {
         CreatePropertyGraphInfo(string catalog, string schema, string name);
         //	explicit CreatePropertyGraphInfo(string property_graph_name);
 
-        CreatePropertyGraphInfo(SchemaCatalogEntry *schema, string pg_name);
+        CreatePropertyGraphInfo(CatalogEntry *schema, string pg_name);
 
         //! Property graph name
         string property_graph_name;
