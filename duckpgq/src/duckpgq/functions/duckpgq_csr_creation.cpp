@@ -12,7 +12,7 @@
 
 namespace duckdb {
 
-    static void CsrInitializeVertex(SQLPGQContext &context, int32_t id, int64_t v_size) {
+    static void CsrInitializeVertex(DuckPGQContext &context, int32_t id, int64_t v_size) {
         lock_guard<mutex> csr_init_lock(context.csr_lock);
 
         auto csr_entry = context.csr_list.find(id);
@@ -22,7 +22,7 @@ namespace duckdb {
             }
         }
         try {
-            auto csr = make_uniq<CSR>();
+            auto csr = make_unique<CSR>();
             // extra 2 spaces required for CSR padding
             // data contains a vector of elements so will need an anonymous function to apply the
             // first element id is repeated across, can I access the value directly?
