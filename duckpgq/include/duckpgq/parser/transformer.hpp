@@ -33,14 +33,14 @@ public:
 //        explicit PGQTransformer(PGQTransformer &parent);
         ~PGQTransformer();
 
-    bool TransformParseTree(duckpgq_libpgquery::PGList *tree, vector<unique_ptr<SQLStatement>> &statements);
+    bool TransformParseTree(duckdb_libpgquery::PGList *tree, vector<unique_ptr<SQLStatement>> &statements);
 
     void Clear();
 
     PGQTransformer &RootTransformer();
     const PGQTransformer &RootTransformer() const;
     void SetParamCount(idx_t new_count);
-    optional_ptr<PGQTransformer> parent;
+//    optional_ptr<PGQTransformer> parent;
     vector<unique_ptr<CreatePivotEntry>> pivot_entries;
     idx_t prepared_statement_parameter_index = 0;
 
