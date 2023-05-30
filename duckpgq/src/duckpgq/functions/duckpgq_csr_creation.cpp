@@ -87,22 +87,22 @@ namespace duckdb {
         auto &func_expr = (BoundFunctionExpression &)state.expr;
         auto &info = (CSRFunctionData &)*func_expr.bind_info;
 
-        auto sqlpgq_state_entry = info.context.registered_state.find("sqlpgq");
-        if (sqlpgq_state_entry == info.context.registered_state.end()) {
+        auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
+        if (duckpgq_state_entry == info.context.registered_state.end()) {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto sqlpgq_state = reinterpret_cast<DuckPGQContext *>(sqlpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQContext *>(duckpgq_state_entry->second.get());
 
         int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
-        auto csr_entry = sqlpgq_state->csr_list.find(info.id);
+        auto csr_entry = duckpgq_state->csr_list.find(info.id);
 
-        if (csr_entry == sqlpgq_state->csr_list.end()) {
-            CsrInitializeVertex(*sqlpgq_state, info.id, input_size);
-            csr_entry = sqlpgq_state->csr_list.find(info.id);
+        if (csr_entry == duckpgq_state->csr_list.end()) {
+            CsrInitializeVertex(*duckpgq_state, info.id, input_size);
+            csr_entry = duckpgq_state->csr_list.find(info.id);
         } else {
             if (!csr_entry->second->initialized_v) {
-                CsrInitializeVertex(*sqlpgq_state, info.id, input_size);
+                CsrInitializeVertex(*duckpgq_state, info.id, input_size);
             }
         }
 
@@ -121,19 +121,19 @@ namespace duckdb {
         auto &func_expr = (BoundFunctionExpression &)state.expr;
         auto &info = (CSRFunctionData &)*func_expr.bind_info;
 
-        auto sqlpgq_state_entry = info.context.registered_state.find("sqlpgq");
-        if (sqlpgq_state_entry == info.context.registered_state.end()) {
+        auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
+        if (duckpgq_state_entry == info.context.registered_state.end()) {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto sqlpgq_state = reinterpret_cast<DuckPGQContext *>(sqlpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQContext *>(duckpgq_state_entry->second.get());
 
         int64_t vertex_size = args.data[1].GetValue(0).GetValue<int64_t>();
         int64_t edge_size = args.data[2].GetValue(0).GetValue<int64_t>();
 
-        auto csr_entry = sqlpgq_state->csr_list.find(info.id);
+        auto csr_entry = duckpgq_state->csr_list.find(info.id);
         if (!csr_entry->second->initialized_e) {
-            CsrInitializeEdge(*sqlpgq_state, info.id, vertex_size, edge_size);
+            CsrInitializeEdge(*duckpgq_state, info.id, vertex_size, edge_size);
         }
         if (info.weight_type == LogicalType::SQLNULL) {
             TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
@@ -148,7 +148,7 @@ namespace duckdb {
         }
         auto weight_type = args.data[6].GetType().InternalType();
         if (!csr_entry->second->initialized_w) {
-            CsrInitializeWeight(*sqlpgq_state, info.id, edge_size, weight_type);
+            CsrInitializeWeight(*duckpgq_state, info.id, edge_size, weight_type);
         }
         if (weight_type == PhysicalType::INT64) {
             QuaternaryExecutor::Execute<int64_t, int64_t, int64_t, int64_t, int32_t>(
