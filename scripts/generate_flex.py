@@ -39,11 +39,11 @@ text = text.replace('''
 ''', '''
 #ifndef FLEXINT_H
 #define FLEXINT_H
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 ''')
 text = text.replace('register ', '')
 
-text = text + "\n} /* duckpgq_libpgquery */\n"
+text = text + "\n} /* duckdb_libpgquery */\n"
 
 text = re.sub('(?:[(]void[)][ ]*)?fprintf', '//', text)
 text = re.sub('exit[(]', 'throw std::runtime_error(msg); //', text)

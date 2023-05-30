@@ -33,7 +33,7 @@
 #include "parser/parser.hpp"
 #include "parser/kwlist.hpp"
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 /*
  * raw_parser

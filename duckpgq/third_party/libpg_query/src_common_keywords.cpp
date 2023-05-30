@@ -30,7 +30,7 @@
 
 #include "parser/kwlist.hpp"
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 /*
  * ScanKeywordLookup - see if a given word is a keyword

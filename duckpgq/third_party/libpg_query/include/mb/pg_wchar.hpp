@@ -23,6 +23,6 @@
 /*
  * The pg_wchar type
  */
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 typedef unsigned int pg_wchar;
 }

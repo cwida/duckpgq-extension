@@ -30,7 +30,7 @@
 #include "parser/scansup.hpp"
 #include "mb/pg_wchar.hpp"
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 /* ----------------
  *		scanstr

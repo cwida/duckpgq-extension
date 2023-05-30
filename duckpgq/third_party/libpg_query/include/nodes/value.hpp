@@ -15,7 +15,7 @@
 
 #include "nodes/nodes.hpp"
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 /*----------------------
  *		PGValue node

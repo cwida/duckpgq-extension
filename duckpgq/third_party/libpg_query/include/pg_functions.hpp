@@ -10,7 +10,7 @@
 #include "nodes/pg_list.hpp"
 #include "nodes/parsenodes.hpp"
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 typedef struct parse_result_str parse_result;
 struct parse_result_str {

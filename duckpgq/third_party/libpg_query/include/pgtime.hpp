@@ -20,7 +20,7 @@
  * 64 bits wide, and which is most definitely signed not unsigned.
  */
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
     typedef int64_t pg_time_t;
 

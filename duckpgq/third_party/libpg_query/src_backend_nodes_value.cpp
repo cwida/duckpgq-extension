@@ -26,7 +26,7 @@
 #include <string>
 #include <cstring>
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 /*
  *	makeInteger

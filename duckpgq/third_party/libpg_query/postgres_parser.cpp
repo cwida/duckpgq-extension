@@ -12,8 +12,8 @@ namespace duckpgq {
 DuckPGQParser::DuckPGQParser() : success(false), parse_tree(nullptr), error_message(""), error_location(0) {}
 
 void DuckPGQParser::Parse(const string &query) {
-	duckpgq_libpgquery::pg_parser_init();
-	duckpgq_libpgquery::parse_result res;
+	duckdb_libpgquery::pg_parser_init();
+	duckdb_libpgquery::parse_result res;
 	pg_parser_parse(query.c_str(), &res);
 	success = res.success;
 

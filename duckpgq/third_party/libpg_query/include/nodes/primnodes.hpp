@@ -20,7 +20,7 @@
 #include "nodes/bitmapset.hpp"
 #include "nodes/pg_list.hpp"
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 /* ----------------------------------------------------------------
  *						node definitions

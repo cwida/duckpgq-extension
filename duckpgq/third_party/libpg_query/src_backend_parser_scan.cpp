@@ -302,7 +302,7 @@
 
 #ifndef FLEXINT_H
 #define FLEXINT_H
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 /* C99 systems have <inttypes.h>. Non-C99 systems may or may not. */
 
