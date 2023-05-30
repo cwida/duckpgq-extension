@@ -20,15 +20,15 @@ public:
 	~DuckPGQParser();
 
 	bool success;
-	duckpgq_libpgquery::PGList *parse_tree;
+	duckdb_libpgquery::PGList *parse_tree;
 	std::string error_message;
 	int error_location;
 public:
 	void Parse(const std::string &query);
-	static std::vector<duckpgq_libpgquery::PGSimplifiedToken> Tokenize(const std::string &query);
+	static std::vector<duckdb_libpgquery::PGSimplifiedToken> Tokenize(const std::string &query);
 
 	static bool IsKeyword(const std::string &text);
-	static std::vector<duckpgq_libpgquery::PGKeyword> KeywordList();
+	static std::vector<duckdb_libpgquery::PGKeyword> KeywordList();
 
 	static void SetPreserveIdentifierCase(bool downcase);
 };

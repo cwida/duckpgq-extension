@@ -68,7 +68,7 @@ typedef struct pg_varlena bytea;
 
 typedef int PGMemoryContext;
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 typedef enum PGPostgresParserErrors {
 	PG_ERRCODE_SYNTAX_ERROR,

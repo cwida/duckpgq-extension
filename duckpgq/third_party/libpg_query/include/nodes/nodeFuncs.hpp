@@ -14,7 +14,7 @@
 
 #include "nodes/parsenodes.hpp"
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 /* flags bits for query_tree_walker and query_tree_mutator */
 #define QTW_IGNORE_RT_SUBQUERIES 0x01 /* subqueries in rtable */

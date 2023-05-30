@@ -12,7 +12,7 @@
 // max parse tree size approx 100 MB, should be enough
 #define PG_MALLOC_SIZE 10240
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 typedef struct pg_parser_state_str parser_state;
 struct pg_parser_state_str {
@@ -86,7 +86,7 @@ void pg_parser_init() {
 void pg_parser_parse(const char *query, parse_result *res) {
 	res->parse_tree = nullptr;
 	try {
-		res->parse_tree = duckpgq_libpgquery::raw_parser(query);
+		res->parse_tree = duckdb_libpgquery::raw_parser(query);
 		res->success = pg_parser_state.pg_err_code == PGUNDEFINED;
 	} catch (std::exception &ex) {
 		res->success = false;

@@ -26,7 +26,7 @@
 #include "nodes/primnodes.hpp"
 #include "nodes/value.hpp"
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 typedef enum PGOverridingKind {
 	PG_OVERRIDING_NOT_SET = 0,

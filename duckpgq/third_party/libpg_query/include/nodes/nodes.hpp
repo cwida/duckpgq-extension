@@ -15,7 +15,7 @@
 
 #include "pg_definitions.hpp"
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 /*
  * The first field of every node is NodeTag. Each node created (with makeNode)

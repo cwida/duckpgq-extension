@@ -38,7 +38,7 @@
 
 #include "nodes/nodes.hpp"
 
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 typedef struct PGListCell ListCell;
 

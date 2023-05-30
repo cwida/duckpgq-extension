@@ -35,7 +35,7 @@
  * Also, pg_fsec_t is only meant for *fractional* seconds; beware of overflow
  * if the value you need to store could be many seconds.
  */
-namespace duckpgq_libpgquery {
+namespace duckdb_libpgquery {
 
 typedef int64_t PGTimestamp;
 typedef int64_t PGTimestampTz;
