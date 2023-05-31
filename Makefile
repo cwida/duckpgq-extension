@@ -32,7 +32,7 @@ pull:
 clean:
 	rm -rf build
 	rm -rf testext
-	cd duckdb && make clean
+	cd duckdb-pgq && make clean
 
 # Main build
 debug:
