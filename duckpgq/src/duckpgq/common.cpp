@@ -13,7 +13,7 @@ namespace duckdb {
     }
 
     unique_ptr<FunctionData> CSRFunctionData::Copy() const {
-        return make_unique<CSRFunctionData>(context, id, weight_type);
+        return make_uniq<CSRFunctionData>(context, id, weight_type);
     }
 
     bool CSRFunctionData::Equals(const FunctionData &other_p) const {
@@ -30,9 +30,9 @@ namespace duckdb {
         Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
         if (arguments.size() == 4) {
             auto logical_type = LogicalType::SQLNULL;
-            return make_unique<CSRFunctionData>(context, id.GetValue<int32_t>(), logical_type);
+            return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), logical_type);
         } else {
-            return make_unique<CSRFunctionData>(context, id.GetValue<int32_t>(), arguments[3]->return_type);
+            return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), arguments[3]->return_type);
         }
     }
 
@@ -43,10 +43,10 @@ namespace duckdb {
         }
         Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
         if (arguments.size() == 7) {
-            return make_unique<CSRFunctionData>(context, id.GetValue<int32_t>(), arguments[6]->return_type);
+            return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), arguments[6]->return_type);
         } else {
             auto logical_type = LogicalType::SQLNULL;
-            return make_unique<CSRFunctionData>(context, id.GetValue<int32_t>(), logical_type);
+            return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), logical_type);
         }
     }
 
@@ -56,11 +56,11 @@ namespace duckdb {
             throw InvalidInputException("Id must be constant.");
         }
         Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
-        return make_unique<CSRFunctionData>(context, id.GetValue<int32_t>(), LogicalType::BOOLEAN);
+        return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(), LogicalType::BOOLEAN);
     }
 
     unique_ptr<FunctionData> IterativeLengthFunctionData::Copy() const {
-        return make_unique<IterativeLengthFunctionData>(context, csr_id);
+        return make_uniq<IterativeLengthFunctionData>(context, csr_id);
     }
 
     bool IterativeLengthFunctionData::Equals(const FunctionData &other_p) const {
@@ -77,7 +77,7 @@ namespace duckdb {
 
         int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]).GetValue<int32_t>();
 
-        return make_unique<IterativeLengthFunctionData>(context, csr_id);
+        return make_uniq<IterativeLengthFunctionData>(context, csr_id);
     }
 
     unique_ptr<FunctionData>
@@ -108,11 +108,11 @@ namespace duckdb {
             bound_function.return_type = LogicalType::BIGINT;
         }
 
-        return make_unique<CheapestPathLengthFunctionData>(context, csr_id);
+        return make_uniq<CheapestPathLengthFunctionData>(context, csr_id);
     }
 
     unique_ptr<FunctionData> CheapestPathLengthFunctionData::Copy() const {
-        return make_unique<CheapestPathLengthFunctionData>(context, csr_id);
+        return make_uniq<CheapestPathLengthFunctionData>(context, csr_id);
     }
 
     bool CheapestPathLengthFunctionData::Equals(const FunctionData &other_p) const {
