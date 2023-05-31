@@ -10,8 +10,8 @@ set(CMAKE_CXX_STANDARD 11)
 include_directories(duckpgq/include)
 add_subdirectory(duckpgq/src)
 
-include_directories(duckpgq/third_party/libpg_query/include)
-add_subdirectory(duckpgq/third_party/libpg_query)
+include_directories(../duckdb-pgq/third_party/libpg_query/include)
+#add_subdirectory(../duckdb-pgq/third_party/libpg_query)
 
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 

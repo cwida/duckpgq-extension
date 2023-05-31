@@ -5,7 +5,6 @@
 #include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
 #include "duckpgq/compressed_sparse_row.hpp"
-#include "duckpgq/parser/parsed_data/create_property_graph_info.hpp"
 
 #include <math.h>
 #include <mutex>

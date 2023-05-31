@@ -1,8 +1,12 @@
 #define DUCKDB_EXTENSION_MAIN
 
-#include <duckpgq/parser/transformer.hpp>
-#include "duckpgq_extension.hpp"
+
+#include "duckdb/parser/transformer.hpp"
 #include "postgres_parser.hpp"
+#include "duckdb/parser/query_error_context.hpp"
+#include "duckdb/parser/parser_extension.hpp"
+
+#include "duckpgq_extension.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
@@ -47,12 +51,12 @@ void DuckpgqExtension::Load(DuckDB &db) {
 
 ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                          const std::string &query) {
-    duckdb::PGQTransformer transformer;
+    Transformer transformer(1000);
     vector<unique_ptr<SQLStatement>> statements;
     auto parse_info = (DuckPGQParserExtensionInfo &)(info);
-    duckdb::DuckPGQParser parser;
+    PostgresParser parser;
     string parser_error;
-    parser.Parse(query);
+    parser.Parse((query[0] == '-') ? query.substr(1, query.length()) : query);
     if (parser.success) {
         if (!parser.parse_tree) {
             // empty statement
