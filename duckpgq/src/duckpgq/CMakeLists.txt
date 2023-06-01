@@ -1,4 +1,3 @@
-add_subdirectory(parser)
 add_subdirectory(functions)
 
 set(EXTENSION_SOURCES
