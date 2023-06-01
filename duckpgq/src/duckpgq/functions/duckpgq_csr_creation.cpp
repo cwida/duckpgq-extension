@@ -1,17 +1,17 @@
 #include "duckdb/common/vector_operations/quaternary_executor.hpp"
-#include "duckdb/main/client_context.hpp"
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
 #include "duckdb/common/compressed_sparse_row.hpp"
 
-#include <math.h>
+#include <cmath>
 #include <mutex>
+#include <duckpgq_extension.hpp>
 
 namespace duckdb {
 
-    static void CsrInitializeVertex(DuckPGQContext &context, int32_t id, int64_t v_size) {
+    static void CsrInitializeVertex(DuckPGQState &context, int32_t id, int64_t v_size) {
         lock_guard<mutex> csr_init_lock(context.csr_lock);
 
         auto csr_entry = context.csr_list.find(id);
@@ -39,7 +39,7 @@ namespace duckdb {
         return;
     }
 
-    static void CsrInitializeEdge(DuckPGQContext &context, int32_t id, int64_t v_size, int64_t e_size) {
+    static void CsrInitializeEdge(DuckPGQState &context, int32_t id, int64_t v_size, int64_t e_size) {
         const lock_guard<mutex> csr_init_lock(context.csr_lock);
 
         auto csr_entry = context.csr_list.find(id);
@@ -59,7 +59,7 @@ namespace duckdb {
         return;
     }
 
-    static void CsrInitializeWeight(DuckPGQContext &context, int32_t id, int64_t e_size, PhysicalType weight_type) {
+    static void CsrInitializeWeight(DuckPGQState &context, int32_t id, int64_t e_size, PhysicalType weight_type) {
         const lock_guard<mutex> csr_init_lock(context.csr_lock);
         auto csr_entry = context.csr_list.find(id);
 
@@ -91,7 +91,7 @@ namespace duckdb {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto duckpgq_state = reinterpret_cast<DuckPGQContext *>(duckpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 
         int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
         auto csr_entry = duckpgq_state->csr_list.find(info.id);
@@ -125,7 +125,7 @@ namespace duckdb {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto duckpgq_state = reinterpret_cast<DuckPGQContext *>(duckpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 
         int64_t vertex_size = args.data[1].GetValue(0).GetValue<int64_t>();
         int64_t edge_size = args.data[2].GetValue(0).GetValue<int64_t>();

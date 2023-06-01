@@ -5,6 +5,7 @@
 #include "duckdb/common/compressed_sparse_row.hpp"
 
 #include <utility>
+#include <duckpgq_extension.hpp>
 
 namespace duckdb {
 
@@ -93,7 +94,7 @@ namespace duckdb {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto sqlpgq_state = reinterpret_cast<DuckPGQContext *>(sqlpgq_state_entry->second.get());
+        auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
 
         int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]).GetValue<int32_t>();
         CSR *csr = sqlpgq_state->GetCSR(csr_id);

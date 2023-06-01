@@ -79,7 +79,6 @@ public:
             csr_list.erase(csr_id);
         }
     }
-    unique_ptr<ParserExtensionParseData> parse_data;
 
     CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name) {
         auto pg_table_entry = registered_property_graphs.find(pg_name);
@@ -97,6 +96,8 @@ public:
         return csr_entry->second.get();
     }
 public:
+    unique_ptr<ParserExtensionParseData> parse_data;
+
     //! Property graphs that are registered
     std::unordered_map<string, unique_ptr<CreateInfo>> registered_property_graphs;
 
