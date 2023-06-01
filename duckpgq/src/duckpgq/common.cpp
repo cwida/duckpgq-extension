@@ -2,7 +2,7 @@
 
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/main/client_data.hpp"
-#include "duckpgq/compressed_sparse_row.hpp"
+#include "duckdb/common/compressed_sparse_row.hpp"
 
 #include <utility>
 
