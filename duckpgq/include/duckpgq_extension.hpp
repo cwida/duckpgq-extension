@@ -23,6 +23,24 @@ public:
     ~DuckPGQParserExtensionInfo() override = default;
 };
 
+BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
+                     OperatorExtensionInfo *info, SQLStatement &statement);
+
+struct DuckPGQOperatorExtension : public OperatorExtension {
+    DuckPGQOperatorExtension() : OperatorExtension() {
+        Bind = duckpgq_bind;
+    }
+
+    std::string GetName() override {
+        return "duckpgq";
+    }
+
+    unique_ptr<LogicalExtensionOperator> Deserialize(LogicalDeserializationState &state,
+                                                     FieldReader &reader) override {
+        throw InternalException("DuckPGQ operator should not be serialized");
+    }
+};
+
 ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                          const std::string &query);
 
@@ -35,6 +53,19 @@ struct DuckPGQParserExtension : public ParserExtension {
         plan_function = duckpgq_plan;
         parser_info = make_shared<DuckPGQParserExtensionInfo>();
     }
+};
+
+struct DuckPGQParseData : ParserExtensionParseData {
+    unique_ptr<SQLStatement> statement;
+
+    unique_ptr<ParserExtensionParseData> Copy() const override {
+        return make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
+                statement->Copy());
+    }
+
+    explicit DuckPGQParseData(unique_ptr<SQLStatement> statement)
+    : statement(std::move(statement)) {}
+
 };
 
 class DuckPGQState : public ClientContextState {
