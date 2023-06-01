@@ -6,8 +6,8 @@
 #include "duckdb/parser/query_node.hpp"
 #include "duckdb/parser/column_list.hpp"
 #include "duckdb/parser/simplified_token.hpp"
-#include "duckpgq/compressed_sparse_row.hpp"
-#include "duckpgq/parser/parsed_data/create_property_graph_info.hpp"
+#include "duckdb/common/compressed_sparse_row.hpp"
+#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 
 namespace duckdb {
 
