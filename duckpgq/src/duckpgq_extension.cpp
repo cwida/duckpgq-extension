@@ -14,6 +14,7 @@
 
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/statement/extension_statement.hpp"
+#include "duckdb/parser/parser.hpp"
 
 
 namespace duckdb {
@@ -55,27 +56,13 @@ void DuckpgqExtension::Load(DuckDB &db) {
 
 ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                          const std::string &query) {
-    ParserOptions options;
-    Transformer transformer(options);
-    vector<unique_ptr<SQLStatement>> statements;
     auto parse_info = (DuckPGQParserExtensionInfo &)(info);
-    PostgresParser parser;
-    string parser_error;
-    parser.Parse((query[0] == '-') ? query.substr(1, query.length()) : query);
-    if (parser.success) {
-        if (!parser.parse_tree) {
-            // empty statement
-            return {"Empty statement"};
-        }
-
-        // if it succeeded, we transform the Postgres parse tree into a list of
-        // SQLStatements
-        transformer.TransformParseTree(parser.parse_tree, statements);
-        return {make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(std::move(statements[0]))};
-    } else {
-        parser_error = QueryErrorContext::Format(query, parser.error_message, parser.error_location - 1);
-        return {std::move(parser_error)};
+    Parser parser;
+    parser.ParseQuery((query[0] == '-') ? query.substr(1, query.length()) : query);
+    if (parser.statements.size() != 1) {
+        throw ParserException("More than 1 statement detected, please only give one.");
     }
+    return {make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(std::move(parser.statements[0]))};
 
 }
 
