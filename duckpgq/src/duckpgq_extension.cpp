@@ -92,7 +92,6 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
 ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext &context,
                                        unique_ptr<ParserExtensionParseData> parse_data) {
     auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-    shared_ptr<DuckPGQState> duckpgq_state;
     if (duckpgq_state_entry == context.registered_state.end()) {
         context.registered_state["duckpgq"] = make_shared<DuckPGQState>(std::move(parse_data));
     } else {
