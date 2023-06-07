@@ -15,6 +15,9 @@
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/statement/extension_statement.hpp"
 #include "duckdb/parser/parser.hpp"
+#include "duckdb/parser/parsed_data/create_table_function_info.hpp"
+
+#include "duckdb/parser/tableref/subqueryref.hpp"
 
 
 namespace duckdb {
@@ -23,10 +26,45 @@ inline void DuckpgqScalarFun(DataChunk &args, ExpressionState &state, Vector &re
     auto &name_vector = args.data[0];
     UnaryExecutor::Execute<string_t, string_t>(
 	    name_vector, result, args.size(),
-	    [&](string_t name) { 
+	    [&](string_t name) {
 			return StringVector::AddString(result, "Duckpgq "+name.GetString()+" 🐥");;
         });
 }
+
+struct BindReplaceDuckPGQFun {
+    struct DuckPGQFunctionData : public TableFunctionData {
+        bool done = false;
+    };
+
+    static duckdb::unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
+                                                 duckdb::vector<LogicalType> &return_types,
+                                                 duckdb::vector<string> &names) {
+        auto result = make_uniq<BindReplaceDuckPGQFun::DuckPGQFunctionData>();
+
+        return std::move(result);
+    }
+
+    static unique_ptr<TableRef> BindReplace(ClientContext &context, TableFunctionBindInput &input) {
+        auto data = make_uniq<BindReplaceDuckPGQFun::DuckPGQFunctionData>();
+
+        auto select_statement = make_uniq<SelectStatement>();
+        auto result = make_uniq<SubqueryRef>(std::move(select_statement));
+
+        return result;
+    }
+
+    static void Function(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
+        auto &state = (BindReplaceDuckPGQFun::DuckPGQFunctionData &)*data.bind_data;
+
+        if (!state.done) {
+            state.done = true;
+            output.SetCardinality(1);
+        } else {
+            output.SetCardinality(0);
+        }
+    }
+};
+
 
 static void LoadInternal(DatabaseInstance &instance) {
     auto &config = DBConfig::GetConfig(instance);
@@ -38,6 +76,12 @@ static void LoadInternal(DatabaseInstance &instance) {
     con.BeginTransaction();
 
     auto &catalog = Catalog::GetSystemCatalog(*con.context);
+
+    TableFunction bind_replace_duckpgq("bind_replace_duckpgq", {},
+                                       BindReplaceDuckPGQFun::Function, BindReplaceDuckPGQFun::Bind);
+    bind_replace_duckpgq.bind_replace = BindReplaceDuckPGQFun::BindReplace;
+    CreateTableFunctionInfo bind_replace_duckpgq_info(bind_replace_duckpgq);
+    catalog.CreateTableFunction(*con.context, bind_replace_duckpgq_info);
 
     for (auto &fun : DuckPGQFunctions::GetFunctions()) {
         catalog.CreateFunction(*con.context, fun);
