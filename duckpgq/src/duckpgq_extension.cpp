@@ -77,7 +77,7 @@ static void LoadInternal(DatabaseInstance &instance) {
 
     auto &catalog = Catalog::GetSystemCatalog(*con.context);
 
-    TableFunction bind_replace_duckpgq("bind_replace_duckpgq", {},
+    TableFunction bind_replace_duckpgq("graph_table", {},
                                        BindReplaceDuckPGQFun::Function, BindReplaceDuckPGQFun::Bind);
     bind_replace_duckpgq.bind_replace = BindReplaceDuckPGQFun::BindReplace;
     CreateTableFunctionInfo bind_replace_duckpgq_info(bind_replace_duckpgq);
