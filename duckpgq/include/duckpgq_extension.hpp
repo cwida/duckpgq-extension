@@ -70,8 +70,8 @@ struct DuckPGQParseData : ParserExtensionParseData {
 
 class DuckPGQState : public ClientContextState {
 public:
-    explicit DuckPGQState(unique_ptr<ParserExtensionParseData> parse_data)
-        : parse_data(std::move(parse_data)) {}
+    explicit DuckPGQState(unique_ptr<ParserExtensionParseData> parse_data, unique_ptr<ParsedExpression> transform_expression)
+        : parse_data(std::move(parse_data)), transform_expression(std::move(transform_expression)) {}
 
     void QueryEnd() override {
         parse_data.reset();
@@ -97,6 +97,8 @@ public:
     }
 public:
     unique_ptr<ParserExtensionParseData> parse_data;
+
+    unique_ptr<ParsedExpression> transform_expression;
 
     //! Property graphs that are registered
     std::unordered_map<string, unique_ptr<CreateInfo>> registered_property_graphs;
