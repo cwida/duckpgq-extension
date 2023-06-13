@@ -3,7 +3,6 @@
 
 #include "duckdb/parser/transformer.hpp"
 #include "postgres_parser.hpp"
-#include "duckdb/parser/query_error_context.hpp"
 #include "duckdb/parser/parser_extension.hpp"
 
 #include "duckpgq_extension.hpp"
@@ -26,8 +25,6 @@
 #include "duckdb/parser/expression/subquery_expression.hpp"
 #include "duckdb/parser/tableref/matchref.hpp"
 #include "duckdb/common/enums/joinref_type.hpp"
-#include "duckdb/parser/expression/subquery_expression.hpp"
-#include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/cast_expression.hpp"
 #include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/parser/expression/between_expression.hpp"
@@ -37,6 +34,7 @@
 #include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/conjunction_expression.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 
 
 namespace duckdb {
@@ -71,7 +69,7 @@ struct BindReplaceDuckPGQFun {
             return;
         }
         auto constant_expression_two = make_uniq<ConstantExpression>(Value::INTEGER((int32_t)2));
-        std::vector<string>::iterator itr =
+       auto itr =
                 std::find(tableref->sub_labels.begin(), tableref->sub_labels.end(), element->label);
 
         auto idx_of_element = std::distance(tableref->sub_labels.begin(), itr);
@@ -321,7 +319,7 @@ struct BindReplaceDuckPGQFun {
                 CheckInheritance(next_vertex_table, next_vertex_element, conditions);
                 if (next_vertex_table->main_label != next_vertex_element->label) {
                     auto constant_expression_two = make_uniq<ConstantExpression>(Value::INTEGER((int32_t)2));
-                    std::vector<string>::iterator itr =
+                    auto itr =
                             std::find(next_vertex_table->sub_labels.begin(), next_vertex_table->sub_labels.end(),
                                       next_vertex_element->label);
 
@@ -341,7 +339,7 @@ struct BindReplaceDuckPGQFun {
                     conditions.push_back(std::move(subset_compare));
                 }
                 if (path_list->path_elements[idx_j]->path_reference_type == PGQPathReferenceType::SUBPATH) {
-                    SubPath *subpath = reinterpret_cast<SubPath *>(path_list->path_elements[idx_j].get());
+                    auto *subpath = reinterpret_cast<SubPath *>(path_list->path_elements[idx_j].get());
                     if (subpath->upper > 1) {
                         path_finding = true;
                         auto csr_edge_id_constant = make_uniq<ConstantExpression>(Value::INTEGER((int32_t)0));
@@ -677,17 +675,41 @@ struct BindReplaceDuckPGQFun {
 
         return result;
     }
+};
 
-//    static void Function(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
-//        auto &state = (BindReplaceDuckPGQFun::DuckPGQFunctionData &)*data.bind_data;
-//
-//        if (!state.done) {
-//            state.done = true;
-//            output.SetCardinality(1);
-//        } else {
-//            output.SetCardinality(0);
-//        }
-//    }
+class CreatePropertyGraphFunction : public TableFunction {
+public:
+    CreatePropertyGraphFunction() {
+        name = "create_property_graph";
+        bind = CreatePropertyGraphBind;
+        init_global = CreatePropertyGraphInit;
+        function = CreatePropertyGraphFunc;
+    }
+
+    struct CreatePropertyGraphBindData : public TableFunctionData {
+        CreatePropertyGraphBindData() = default;
+    };
+
+    struct CreatePropertyGraphGlobalData : public GlobalTableFunctionState {
+        CreatePropertyGraphGlobalData() = default;
+    };
+
+    static duckdb::unique_ptr<FunctionData> CreatePropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
+                                                                    vector<LogicalType> &return_types, vector<string> &names) {
+        names.emplace_back("success");
+        return_types.emplace_back(LogicalType::VARCHAR);
+        return make_uniq<CreatePropertyGraphBindData>();
+    }
+
+    static duckdb::unique_ptr<GlobalTableFunctionState> CreatePropertyGraphInit(ClientContext &context,
+                                                                                TableFunctionInitInput &input) {
+        return make_uniq<CreatePropertyGraphGlobalData>();
+    }
+
+    static void CreatePropertyGraphFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+        auto &bind_data = data_p.bind_data->Cast<CreatePropertyGraphBindData>();
+        auto &data = (CreatePropertyGraphGlobalData &)*data_p.global_state;
+    }
 };
 
 
@@ -707,6 +729,10 @@ static void LoadInternal(DatabaseInstance &instance) {
     bind_replace_duckpgq.bind_replace = BindReplaceDuckPGQFun::BindReplace;
     CreateTableFunctionInfo bind_replace_duckpgq_info(bind_replace_duckpgq);
     catalog.CreateTableFunction(*con.context, bind_replace_duckpgq_info);
+
+    CreatePropertyGraphFunction create_pg_function;
+    CreateTableFunctionInfo create_pg_info(create_pg_function);
+    catalog.CreateTableFunction(*con.context, create_pg_info);
 
     for (auto &fun : DuckPGQFunctions::GetFunctions()) {
         catalog.CreateFunction(*con.context, fun);
@@ -732,8 +758,119 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
         throw ParserException("More than 1 statement detected, please only give one.");
     }
     return {make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(std::move(parser.statements[0]))};
-
 }
+
+static void CheckPropertyGraphTableLabels(unique_ptr<PropertyGraphTable> &pg_table, TableCatalogEntry &table) {
+    if (!pg_table->discriminator.empty()) {
+        if (!table.ColumnExists(pg_table->discriminator)) {
+            throw BinderException("Column %s not found in table %s", pg_table->discriminator, pg_table->table_name);
+        }
+        auto &column = table.GetColumn(pg_table->discriminator);
+        if (!(column.GetType() == LogicalType::BIGINT || column.GetType() == LogicalType::INTEGER)) {
+            throw BinderException("The discriminator column %s for table %s should be of type BIGINT or INTEGER",
+                                  pg_table->discriminator, pg_table->table_name);
+        }
+    }
+}
+
+static void CheckPropertyGraphTableColumns(unique_ptr<PropertyGraphTable> &pg_table, TableCatalogEntry &table) {
+    if (pg_table->no_columns) {
+        return;
+    }
+
+    if (pg_table->all_columns) {
+        for (auto &except_column : pg_table->except_columns) {
+            if (!table.ColumnExists(except_column)) {
+                throw BinderException("Except column %s not found in table %s", except_column, pg_table->table_name);
+            }
+        }
+
+        auto columns_of_table = table.GetColumns().GetColumnNames();
+
+        std::sort(std::begin(columns_of_table), std::end(columns_of_table));
+        std::sort(std::begin(pg_table->except_columns), std::end(pg_table->except_columns));
+        std::set_difference(columns_of_table.begin(), columns_of_table.end(), pg_table->except_columns.begin(),
+                            pg_table->except_columns.end(),
+                            std::inserter(pg_table->column_names, pg_table->column_names.begin()));
+        pg_table->column_aliases = pg_table->column_names;
+        return;
+    }
+
+    for (auto &column : pg_table->column_names) {
+        if (!table.ColumnExists(column)) {
+            throw BinderException("Column %s not found in table %s", column, pg_table->table_name);
+        }
+    }
+}
+//
+//void Binder::BindCreatePropertyGraphInfo(CreatePropertyGraphInfo &info) {
+//    auto lookup = context.registered_state.find("duckpgq");
+//    if (lookup == context.registered_state.end()) {
+//        throw BinderException("Registered DuckPGQ state not found");
+//    }
+//    auto duckpgq_state = (DuckPGQState *)lookup->second.get();
+//    auto pg_table = duckpgq_state->registered_property_graphs.find(info.property_graph_name);
+//
+//    if (pg_table != duckpgq_state->registered_property_graphs.end()) {
+//        throw BinderException("Property graph table with name %s already exists", info.property_graph_name);
+//    }
+//
+//    auto &catalog = Catalog::GetCatalog(context, info.catalog);
+//
+//    case_insensitive_set_t v_table_names;
+//    for (auto &vertex_table : info.vertex_tables) {
+//        auto &table = catalog.GetEntry<TableCatalogEntry>(context, info.schema, vertex_table->table_name);
+//
+//        CheckPropertyGraphTableColumns(vertex_table, table);
+//        CheckPropertyGraphTableLabels(vertex_table, table);
+//
+//        v_table_names.insert(vertex_table->table_name);
+//    }
+//
+//    for (auto &edge_table : info.edge_tables) {
+//        auto &table = catalog.GetEntry<TableCatalogEntry>(context, info.schema, edge_table->table_name);
+//
+//        CheckPropertyGraphTableColumns(edge_table, table);
+//        CheckPropertyGraphTableLabels(edge_table, table);
+//
+//        if (v_table_names.find(edge_table->source_reference) == v_table_names.end()) {
+//            throw BinderException("Referenced vertex table %s does not exist.", edge_table->source_reference);
+//        }
+//
+//        auto &pk_source_table = catalog.GetEntry<TableCatalogEntry>(context, info.schema, edge_table->source_reference);
+//        for (auto &pk : edge_table->source_pk) {
+//            if (!pk_source_table.ColumnExists(pk)) {
+//                throw BinderException("Primary key %s does not exist in table %s", pk, edge_table->source_reference);
+//            }
+//        }
+//
+//        if (v_table_names.find(edge_table->source_reference) == v_table_names.end()) {
+//            throw BinderException("Referenced vertex table %s does not exist.", edge_table->source_reference);
+//        }
+//
+//        auto &pk_destination_table =
+//                catalog.GetEntry<TableCatalogEntry>(context, info.schema, edge_table->destination_reference);
+//
+//        for (auto &pk : edge_table->destination_pk) {
+//            if (!pk_destination_table.ColumnExists(pk)) {
+//                throw BinderException("Primary key %s does not exist in table %s", pk,
+//                                      edge_table->destination_reference);
+//            }
+//        }
+//
+//        for (auto &fk : edge_table->source_fk) {
+//            if (!table.ColumnExists(fk)) {
+//                throw BinderException("Foreign key %s does not exist in table %s", fk, edge_table->table_name);
+//            }
+//        }
+//
+//        for (auto &fk : edge_table->destination_fk) {
+//            if (!table.ColumnExists(fk)) {
+//                throw BinderException("Foreign key %s does not exist in table %s", fk, edge_table->table_name);
+//            }
+//        }
+//    }
+//}
 
 BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
                             OperatorExtensionInfo *info, SQLStatement &statement) {
@@ -758,37 +895,54 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
     }
 }
 
-ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext &context,
-                                       unique_ptr<ParserExtensionParseData> parse_data) {
-    auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-    auto duckpgq_parse_data = dynamic_cast<DuckPGQParseData*>(parse_data.get());
-    unique_ptr<ParsedExpression> transform_expression;
 
-    if (duckpgq_parse_data) {
-        auto statement = dynamic_cast<SQLStatement*>(duckpgq_parse_data->statement.get());
-        if (statement->type == StatementType::SELECT_STATEMENT) {
-            auto select_statement = dynamic_cast<SelectStatement*>(statement);
-            auto select_node = dynamic_cast<SelectNode*>(select_statement->node.get());
-            auto from_table_function = dynamic_cast<TableFunctionRef*>(select_node->from_table.get());
-            auto function = dynamic_cast<FunctionExpression*>(from_table_function->function.get());
-            if (function->function_name == "duckpgq_match_bind") {
-                transform_expression = std::move(function->children[0]);
-                function->children.pop_back();
-            }
-        }
-    }
+
+
+
+
+
+ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext &context,
+                                           unique_ptr<ParserExtensionParseData> parse_data) {
+    auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+    DuckPGQState* duckpgq_state;
     if (duckpgq_state_entry == context.registered_state.end()) {
-        context.registered_state["duckpgq"] = make_shared<DuckPGQState>(std::move(parse_data), std::move(transform_expression));
+        auto state = make_shared<DuckPGQState>(std::move(parse_data));
+        context.registered_state["duckpgq"] = state;
+        duckpgq_state = state.get();
     } else {
-        auto duckpgq_state = (DuckPGQState *)duckpgq_state_entry->second.get();
-        duckpgq_state->parse_data = std::move(parse_data);
-        duckpgq_state->transform_expression = std::move(transform_expression);
+        duckpgq_state = (DuckPGQState *)duckpgq_state_entry->second.get();
     }
-    throw BinderException("use duckpgq_bind instead");
+    auto duckpgq_parse_data = dynamic_cast<DuckPGQParseData*>(duckpgq_state->parse_data.get());
+
+    if (!duckpgq_parse_data) {
+        return {};
+    }
+    auto statement = dynamic_cast<SQLStatement*>(duckpgq_parse_data->statement.get());
+    if (statement->type == StatementType::SELECT_STATEMENT) {
+        auto select_statement = dynamic_cast<SelectStatement*>(statement);
+        auto select_node = dynamic_cast<SelectNode*>(select_statement->node.get());
+        auto from_table_function = dynamic_cast<TableFunctionRef*>(select_node->from_table.get());
+        auto function = dynamic_cast<FunctionExpression*>(from_table_function->function.get());
+        if (function->function_name == "duckpgq_match_bind") {
+            duckpgq_state->transform_expression = std::move(std::move(function->children[0]));
+            function->children.pop_back();
+        }
+        return {};
+
+
+    } else if (statement->type == StatementType::CREATE_STATEMENT) {
+        ParserExtensionPlanResult result;
+        result.function = CreatePropertyGraphFunction();
+        result.requires_valid_transaction = true;
+        result.return_type = StatementReturnType::QUERY_RESULT;
+        return result;
+    }
+
+    return {};
 }
 
 
-std::string DuckpgqExtension::Name() {
+    std::string DuckpgqExtension::Name() {
 	return "duckpgq";
 }
 
