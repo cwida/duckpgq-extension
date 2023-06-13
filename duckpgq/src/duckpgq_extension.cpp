@@ -841,7 +841,7 @@ public:
             throw BinderException("Registered DuckPGQ state not found");
         }
         auto duckpgq_state = (DuckPGQState *)lookup->second.get();
-        duckpgq_state->registered_property_graphs[pg_info->property_graph_name] = pg_info;
+        duckpgq_state->registered_property_graphs[pg_info->property_graph_name] = pg_info->Copy();
 
 
     }
@@ -920,11 +920,6 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
 }
 
 
-
-
-
-
-
 ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext &context,
                                            unique_ptr<ParserExtensionParseData> parse_data) {
     auto duckpgq_state_entry = context.registered_state.find("duckpgq");
@@ -935,11 +930,12 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext 
         duckpgq_state = state.get();
     } else {
         duckpgq_state = (DuckPGQState *)duckpgq_state_entry->second.get();
+        duckpgq_state->parse_data = std::move(parse_data);
     }
     auto duckpgq_parse_data = dynamic_cast<DuckPGQParseData*>(duckpgq_state->parse_data.get());
 
     if (!duckpgq_parse_data) {
-        return {};
+        throw BinderException("Not DuckPGQ parse data");
     }
     auto statement = dynamic_cast<SQLStatement*>(duckpgq_parse_data->statement.get());
     if (statement->type == StatementType::SELECT_STATEMENT) {
@@ -951,9 +947,6 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext 
             duckpgq_state->transform_expression = std::move(std::move(function->children[0]));
             function->children.pop_back();
         }
-        return {};
-
-
     } else if (statement->type == StatementType::CREATE_STATEMENT) {
         ParserExtensionPlanResult result;
         result.function = CreatePropertyGraphFunction();
@@ -961,8 +954,7 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext 
         result.return_type = StatementReturnType::QUERY_RESULT;
         return result;
     }
-
-    return {};
+    throw BinderException("Use duckpgq_bind instead");
 }
 
 
