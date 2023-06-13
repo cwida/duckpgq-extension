@@ -85,7 +85,7 @@ public:
         if (pg_table_entry == registered_property_graphs.end()) {
             throw BinderException("Property graph %s does not exist", pg_name);
         }
-        return reinterpret_cast<CreatePropertyGraphInfo *>(pg_table_entry->second.get());
+        return reinterpret_cast<CreatePropertyGraphInfo *>(pg_table_entry->second);
     }
 
     CSR *GetCSR(int32_t id) {
@@ -101,7 +101,7 @@ public:
     unique_ptr<ParsedExpression> transform_expression;
 
     //! Property graphs that are registered
-    std::unordered_map<string, unique_ptr<CreateInfo>> registered_property_graphs;
+    std::unordered_map<string, CreateInfo*> registered_property_graphs;
 
     //! Used to build the CSR data structures required for path-finding queries
     std::unordered_map<int32_t, unique_ptr<CSR>> csr_list;
