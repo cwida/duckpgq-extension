@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ 'master' ]
+        duckdb_version: [ 'v0.8.0' ]
     env:
       GEN: ninja
     defaults:
@@ -52,9 +52,7 @@ jobs:
         run: |
           cd duckdb-pgq
           git checkout ${{ matrix.duckdb_version }}
-
-      - uses: ./duckdb/.github/actions/ubuntu_16_setup
-
+      - uses: ./duckdb-pgq/.github/actions/ubuntu_16_setup
       - name: Rename extension
         run: |
           python3 scripts/set_extension_name.py testext
@@ -74,7 +72,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ '<submodule_version>']
+        duckdb_version: [ 'v0.8.0']
     env:
       OSX_BUILD_UNIVERSAL: 1
       GEN: ninja
@@ -120,7 +118,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ '<submodule_version>' ]
+        duckdb_version: [ 'v0.8.0' ]
     defaults:
       run:
         shell: bash
