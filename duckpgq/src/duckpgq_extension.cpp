@@ -36,6 +36,7 @@
 #include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/parser/statement/create_statement.hpp"
+#include "duckdb/parser/statement/drop_statement.hpp"
 
 
 namespace duckdb {
@@ -678,6 +679,66 @@ struct BindReplaceDuckPGQFun {
     }
 };
 
+class DropPropertyGraphFunction : public TableFunction {
+public:
+    DropPropertyGraphFunction() {
+        name = "drop_property_graph";
+        bind = DropPropertyGraphBind;
+        init_global = DropPropertyGraphInit;
+        function = DropPropertyGraphFunc;
+    }
+
+    struct DropPropertyGraphBindData : public TableFunctionData {
+        explicit DropPropertyGraphBindData(DropInfo* pg_info) : drop_pg_info(pg_info) {
+        }
+
+        DropInfo* drop_pg_info;
+    };
+
+    struct DropPropertyGraphGlobalData : public GlobalTableFunctionState {
+        DropPropertyGraphGlobalData() = default;
+    };
+
+    static duckdb::unique_ptr<FunctionData> DropPropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
+                                                                    vector<LogicalType> &return_types, vector<string> &names) {
+        names.emplace_back("success");
+        return_types.emplace_back(LogicalType::VARCHAR);
+        auto lookup = context.registered_state.find("duckpgq");
+        if (lookup == context.registered_state.end()) {
+            throw BinderException("Registered DuckPGQ state not found");
+        }
+        auto duckpgq_state = (DuckPGQState *) lookup->second.get();
+        auto duckpgq_parse_data = dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
+
+        if (!duckpgq_parse_data) {
+            return {};
+        }
+        auto statement = dynamic_cast<DropStatement *>(duckpgq_parse_data->statement.get());
+        auto info = dynamic_cast<DropInfo *>(statement->info.get());
+//        auto pg_table = duckpgq_state->registered_property_graphs.find(info->property_graph_name);
+
+        return make_uniq<DropPropertyGraphBindData>(info);
+    }
+
+    static duckdb::unique_ptr<GlobalTableFunctionState> DropPropertyGraphInit(ClientContext &context,
+                                                                                TableFunctionInitInput &input) {
+        return make_uniq<DropPropertyGraphGlobalData>();
+    }
+
+    static void DropPropertyGraphFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+        auto &bind_data = data_p.bind_data->Cast<DropPropertyGraphBindData>();
+        auto &data = (DropPropertyGraphGlobalData &)*data_p.global_state;
+
+        auto pg_info = bind_data.drop_pg_info;
+        auto lookup = context.registered_state.find("duckpgq");
+        if (lookup == context.registered_state.end()) {
+            throw BinderException("Registered DuckPGQ state not found");
+        }
+        auto duckpgq_state = (DuckPGQState *)lookup->second.get();
+        duckpgq_state->registered_property_graphs.erase(pg_info->name);
+    }
+};
+
 class CreatePropertyGraphFunction : public TableFunction {
 public:
     CreatePropertyGraphFunction() {
@@ -698,7 +759,6 @@ public:
     struct CreatePropertyGraphGlobalData : public GlobalTableFunctionState {
         CreatePropertyGraphGlobalData() = default;
     };
-
 
     static void CheckPropertyGraphTableLabels(unique_ptr<PropertyGraphTable> &pg_table, TableCatalogEntry &table) {
         if (!pg_table->discriminator.empty()) {
@@ -869,6 +929,10 @@ static void LoadInternal(DatabaseInstance &instance) {
     CreateTableFunctionInfo create_pg_info(create_pg_function);
     catalog.CreateTableFunction(*con.context, create_pg_info);
 
+    DropPropertyGraphFunction drop_pg_function;
+    CreateTableFunctionInfo drop_pg_info(drop_pg_function);
+    catalog.CreateTableFunction(*con.context, drop_pg_info);
+
     for (auto &fun : DuckPGQFunctions::GetFunctions()) {
         catalog.CreateFunction(*con.context, fun);
     }
@@ -950,6 +1014,12 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext 
     } else if (statement->type == StatementType::CREATE_STATEMENT) {
         ParserExtensionPlanResult result;
         result.function = CreatePropertyGraphFunction();
+        result.requires_valid_transaction = true;
+        result.return_type = StatementReturnType::QUERY_RESULT;
+        return result;
+    } else if (statement->type == StatementType::DROP_STATEMENT) {
+        ParserExtensionPlanResult result;
+        result.function = DropPropertyGraphFunction();
         result.requires_valid_transaction = true;
         result.return_type = StatementReturnType::QUERY_RESULT;
         return result;
