@@ -5,9 +5,14 @@ set(TARGET_NAME duckpgq)
 
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 project(${TARGET_NAME})
-include_directories(src/include)
+set(CMAKE_CXX_STANDARD 11)
 
-set(EXTENSION_SOURCES src/duckpgq_extension.cpp)
+include_directories(duckpgq/include)
+add_subdirectory(duckpgq/src)
+
+include_directories(../duckdb-pgq/third_party/libpg_query/include)
+#add_subdirectory(../duckdb-pgq/third_party/libpg_query)
+
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 
 set(PARAMETERS "-warnings")
