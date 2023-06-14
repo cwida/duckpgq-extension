@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ 'master' ]
+        duckdb_version: [ 'v0.8.0' ]
 
     env:
       OSX_BUILD_UNIVERSAL: 1
@@ -64,10 +64,10 @@ jobs:
             echo 'No key set, skipping'
           elif [[ "$GITHUB_REF" =~ ^(refs/tags/v.+)$ ]] ; then
             python -m pip install awscli
-            ./scripts/extension-upload.sh sqlpgq ${{ github.ref_name }} $DUCKDB_VERSION osx_amd64 $BUCKET_NAME true
-            ./scripts/extension-upload.sh sqlpgq ${{ github.ref_name }} $DUCKDB_VERSION osx_arm64 $BUCKET_NAME true
+            ./scripts/extension-upload.sh duckpgq ${{ github.ref_name }} $DUCKDB_VERSION osx_amd64 $BUCKET_NAME true
+            ./scripts/extension-upload.sh duckpgq ${{ github.ref_name }} $DUCKDB_VERSION osx_arm64 $BUCKET_NAME true
           elif [[ "$GITHUB_REF" =~ ^(refs/heads/main)$ ]] ; then
             python -m pip install awscli
-            ./scripts/extension-upload.sh sqlpgq `git log -1 --format=%h` $DUCKDB_VERSION osx_amd64 $BUCKET_NAME false
-            ./scripts/extension-upload.sh sqlpgq `git log -1 --format=%h` $DUCKDB_VERSION osx_arm64 $BUCKET_NAME false
+            ./scripts/extension-upload.sh duckpgq `git log -1 --format=%h` $DUCKDB_VERSION osx_amd64 $BUCKET_NAME false
+            ./scripts/extension-upload.sh duckpgq `git log -1 --format=%h` $DUCKDB_VERSION osx_arm64 $BUCKET_NAME false
           fi

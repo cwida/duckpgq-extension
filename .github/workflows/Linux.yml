@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ 'master' ]
+        duckdb_version: [ 'v0.8.0' ]
         arch: ['linux_amd64', 'linux_arm64', 'linux_amd64_gcc4']
         include:
           - arch: 'linux_amd64'
@@ -87,8 +87,7 @@ jobs:
       with:
         name: ${{matrix.arch}}-extensions
         path: |
-          build/release/extension/sqlpgq/sqlpgq.duckdb_extension
-
+          build/release/extension/duckpgq/duckpgq.duckdb_extension
     - name: Deploy
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.S3_DEPLOY_ID }}
@@ -106,8 +105,8 @@ jobs:
           echo 'No key set, skipping'
         elif [[ "$GITHUB_REF" =~ ^(refs/tags/v.+)$ ]] ; then
           python3 -m pip install pip awscli
-          ./scripts/extension-upload.sh sqlpgq ${{ github.ref_name }} $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME true
+          ./scripts/extension-upload.sh duckpgq ${{ github.ref_name }} $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME true
         elif [[ "$GITHUB_REF" =~ ^(refs/heads/main)$ ]] ; then
           python3 -m pip install pip awscli
-          ./scripts/extension-upload.sh sqlpgq `git log -1 --format=%h` $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME false
+          ./scripts/extension-upload.sh duckpgq `git log -1 --format=%h` $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME false
         fi

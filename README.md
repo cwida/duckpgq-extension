@@ -29,9 +29,9 @@ The main binaries that will be built are:
 ## Running the extension
 To run the extension code, simply start the shell with `./build/release/duckdb`.
 
-Now we can use the features from the extension directly in DuckDB. The template contains a single scalar function `sqlpgq()` that takes a string arguments and returns a string:
+Now we can use the features from the extension directly in DuckDB. The template contains a single scalar function `duckpgq()` that takes a string arguments and returns a string:
 ```
-D select sqlpgq('Jane') as result;
+D select duckpgq('Jane') as result;
 ┌───────────────┐
 │    result     │
 │    varchar    │
