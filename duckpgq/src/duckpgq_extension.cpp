@@ -715,8 +715,6 @@ public:
         }
         auto statement = dynamic_cast<DropStatement *>(duckpgq_parse_data->statement.get());
         auto info = dynamic_cast<DropInfo *>(statement->info.get());
-//        auto pg_table = duckpgq_state->registered_property_graphs.find(info->property_graph_name);
-
         return make_uniq<DropPropertyGraphBindData>(info);
     }
 
@@ -727,7 +725,7 @@ public:
 
     static void DropPropertyGraphFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
         auto &bind_data = data_p.bind_data->Cast<DropPropertyGraphBindData>();
-        auto &data = (DropPropertyGraphGlobalData &)*data_p.global_state;
+//        auto &data = (DropPropertyGraphGlobalData &)*data_p.global_state;
 
         auto pg_info = bind_data.drop_pg_info;
         auto lookup = context.registered_state.find("duckpgq");
@@ -749,7 +747,7 @@ public:
     }
 
     struct CreatePropertyGraphBindData : public TableFunctionData {
-        CreatePropertyGraphBindData(CreatePropertyGraphInfo* pg_info) : create_pg_info(pg_info) {
+        explicit CreatePropertyGraphBindData(CreatePropertyGraphInfo* pg_info) : create_pg_info(pg_info) {
 
         }
 
@@ -882,7 +880,6 @@ public:
                 }
             }
         }
-
         return make_uniq<CreatePropertyGraphBindData>(info);
     }
 
@@ -893,7 +890,7 @@ public:
 
     static void CreatePropertyGraphFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
         auto &bind_data = data_p.bind_data->Cast<CreatePropertyGraphBindData>();
-        auto &data = (CreatePropertyGraphGlobalData &)*data_p.global_state;
+//        auto &data = (CreatePropertyGraphGlobalData &)*data_p.global_state;
 
         auto pg_info = bind_data.create_pg_info;
         auto lookup = context.registered_state.find("duckpgq");
@@ -902,8 +899,6 @@ public:
         }
         auto duckpgq_state = (DuckPGQState *)lookup->second.get();
         duckpgq_state->registered_property_graphs[pg_info->property_graph_name] = pg_info->Copy();
-
-
     }
 };
 
@@ -1024,11 +1019,11 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext 
         result.return_type = StatementReturnType::QUERY_RESULT;
         return result;
     }
-    throw BinderException("Use duckpgq_bind instead");
+    return {};
 }
 
 
-    std::string DuckpgqExtension::Name() {
+std::string DuckpgqExtension::Name() {
 	return "duckpgq";
 }
 
