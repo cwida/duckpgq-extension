@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ 'v0.8.0' ]
+        duckdb_version: [ 'v0.8.1' ]
 
     env:
       OSX_BUILD_UNIVERSAL: 1
