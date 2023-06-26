@@ -17,6 +17,7 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 
 #include "duckdb/parser/tableref/subqueryref.hpp"
+#include "duckdb/parser/tableref/emptytableref.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 
@@ -50,8 +51,13 @@ inline void DuckpgqScalarFun(DataChunk &args, ExpressionState &state, Vector &re
         });
 }
 
-struct BindReplaceDuckPGQFun {
-    struct DuckPGQFunctionData : public TableFunctionData {
+struct MatchFunction : public TableFunction {
+public:
+    MatchFunction() {
+        name = "duckpgq_match";
+        bind_replace = MatchBindReplace;
+    }
+    struct MatchBindData : public TableFunctionData {
         bool done = false;
     };
 
@@ -280,8 +286,8 @@ struct BindReplaceDuckPGQFun {
         return src_dst_pairs_subquery;
     }
 
-    static unique_ptr<TableRef> BindReplace(ClientContext &context, TableFunctionBindInput &input) {
-        auto data = make_uniq<BindReplaceDuckPGQFun::DuckPGQFunctionData>();
+    static unique_ptr<TableRef> MatchBindReplace(ClientContext &context, TableFunctionBindInput &input) {
+        auto data = make_uniq<MatchFunction::MatchBindData>();
         auto duckpgq_state_entry = context.registered_state.find("duckpgq");
         auto duckpgq_state = (DuckPGQState *)duckpgq_state_entry->second.get();
 
@@ -725,7 +731,6 @@ public:
 
     static void DropPropertyGraphFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
         auto &bind_data = data_p.bind_data->Cast<DropPropertyGraphBindData>();
-//        auto &data = (DropPropertyGraphGlobalData &)*data_p.global_state;
 
         auto pg_info = bind_data.drop_pg_info;
         auto lookup = context.registered_state.find("duckpgq");
@@ -890,7 +895,6 @@ public:
 
     static void CreatePropertyGraphFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
         auto &bind_data = data_p.bind_data->Cast<CreatePropertyGraphBindData>();
-//        auto &data = (CreatePropertyGraphGlobalData &)*data_p.global_state;
 
         auto pg_info = bind_data.create_pg_info;
         auto lookup = context.registered_state.find("duckpgq");
@@ -914,11 +918,15 @@ static void LoadInternal(DatabaseInstance &instance) {
 
     auto &catalog = Catalog::GetSystemCatalog(*con.context);
 
-    TableFunction bind_replace_duckpgq("duckpgq_match_bind", {},
-                                       nullptr, nullptr);
-    bind_replace_duckpgq.bind_replace = BindReplaceDuckPGQFun::BindReplace;
-    CreateTableFunctionInfo bind_replace_duckpgq_info(bind_replace_duckpgq);
-    catalog.CreateTableFunction(*con.context, bind_replace_duckpgq_info);
+    MatchFunction match_pg_function;
+    CreateTableFunctionInfo match_pg_info(match_pg_function);
+    catalog.CreateTableFunction(*con.context, match_pg_info);
+
+//    TableFunction bind_replace_duckpgq("duckpgq_match_bind", {},
+//                                       nullptr, nullptr);
+//    bind_replace_duckpgq.bind_replace = BindReplaceDuckPGQFun::BindReplace;
+//    CreateTableFunctionInfo bind_replace_duckpgq_info(bind_replace_duckpgq);
+//    catalog.CreateTableFunction(*con.context, bind_replace_duckpgq_info);
 
     CreatePropertyGraphFunction create_pg_function;
     CreateTableFunctionInfo create_pg_info(create_pg_function);
@@ -957,55 +965,46 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
 
 BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
                             OperatorExtensionInfo *info, SQLStatement &statement) {
-    switch (statement.type) {
-        case StatementType::EXTENSION_STATEMENT: {
-            auto &extension_statement = dynamic_cast<ExtensionStatement &>(statement);
-            if (extension_statement.extension.parse_function == duckpgq_parse) {
-                auto lookup = context.registered_state.find("duckpgq");
-                if (lookup != context.registered_state.end()) {
-                    auto duckpgq_state = (DuckPGQState *)lookup->second.get();
-                    auto duckpgq_binder = Binder::CreateBinder(context);
-                    auto duckpgq_parse_data =
-                            dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
-                    return duckpgq_binder->Bind(*(duckpgq_parse_data->statement));
-                }
-                throw BinderException("Registered state not found");
-            }
-        }
-        default:
-            // No-op empty
-            return {};
+    auto lookup = context.registered_state.find("duckpgq");
+    if (lookup != context.registered_state.end()) {
+        auto duckpgq_state = (DuckPGQState *)lookup->second.get();
+        auto duckpgq_binder = Binder::CreateBinder(context);
+        auto duckpgq_parse_data =
+                dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
+        return duckpgq_binder->Bind(*(duckpgq_parse_data->statement));
     }
+    throw BinderException("Registered state not found");
 }
 
 
 ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext &context,
                                            unique_ptr<ParserExtensionParseData> parse_data) {
     auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-    DuckPGQState* duckpgq_state;
+    DuckPGQState *duckpgq_state;
     if (duckpgq_state_entry == context.registered_state.end()) {
         auto state = make_shared<DuckPGQState>(std::move(parse_data));
         context.registered_state["duckpgq"] = state;
         duckpgq_state = state.get();
     } else {
-        duckpgq_state = (DuckPGQState *)duckpgq_state_entry->second.get();
+        duckpgq_state = (DuckPGQState *) duckpgq_state_entry->second.get();
         duckpgq_state->parse_data = std::move(parse_data);
     }
-    auto duckpgq_parse_data = dynamic_cast<DuckPGQParseData*>(duckpgq_state->parse_data.get());
+    auto duckpgq_parse_data = dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
 
     if (!duckpgq_parse_data) {
         throw BinderException("Not DuckPGQ parse data");
     }
-    auto statement = dynamic_cast<SQLStatement*>(duckpgq_parse_data->statement.get());
+    auto statement = dynamic_cast<SQLStatement *>(duckpgq_parse_data->statement.get());
     if (statement->type == StatementType::SELECT_STATEMENT) {
         auto select_statement = dynamic_cast<SelectStatement*>(statement);
         auto select_node = dynamic_cast<SelectNode*>(select_statement->node.get());
         auto from_table_function = dynamic_cast<TableFunctionRef*>(select_node->from_table.get());
         auto function = dynamic_cast<FunctionExpression*>(from_table_function->function.get());
-        if (function->function_name == "duckpgq_match_bind") {
+        if (function->function_name == "duckpgq_match") {
             duckpgq_state->transform_expression = std::move(std::move(function->children[0]));
             function->children.pop_back();
         }
+        throw BinderException("use duckpgq_bind instead");
     } else if (statement->type == StatementType::CREATE_STATEMENT) {
         ParserExtensionPlanResult result;
         result.function = CreatePropertyGraphFunction();
@@ -1019,7 +1018,7 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext 
         result.return_type = StatementReturnType::QUERY_RESULT;
         return result;
     }
-    return {};
+    throw BinderException("Unknown DuckPGQ query encountered");
 }
 
 
