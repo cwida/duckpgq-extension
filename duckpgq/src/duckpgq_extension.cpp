@@ -1,43 +1,42 @@
 #define DUCKDB_EXTENSION_MAIN
 
 
-#include "duckdb/parser/transformer.hpp"
-#include "postgres_parser.hpp"
-#include "duckdb/parser/parser_extension.hpp"
-
 #include "duckpgq_extension.hpp"
-#include "duckdb/common/exception.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
-#include "duckdb/parser/parser_options.hpp"
+
+#include "duckdb/parser/parser_extension.hpp"
+#include "duckdb/parser/parser.hpp"
+#include "duckdb/parser/result_modifier.hpp"
 
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
-#include "duckdb/parser/statement/extension_statement.hpp"
-#include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 
-#include "duckdb/parser/tableref/subqueryref.hpp"
-#include "duckdb/parser/tableref/emptytableref.hpp"
-#include "duckdb/parser/tableref/table_function_ref.hpp"
-#include "duckdb/parser/expression/function_expression.hpp"
-
-#include "duckdb/parser/query_node/select_node.hpp"
-#include "duckdb/common/enums/subquery_type.hpp"
-#include "duckdb/parser/expression/subquery_expression.hpp"
 #include "duckdb/parser/tableref/matchref.hpp"
-#include "duckdb/common/enums/joinref_type.hpp"
+#include "duckdb/parser/tableref/subqueryref.hpp"
+#include "duckdb/parser/tableref/table_function_ref.hpp"
+#include "duckdb/parser/tableref/joinref.hpp"
+#include "duckdb/parser/tableref/basetableref.hpp"
+
+#include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/expression/subquery_expression.hpp"
 #include "duckdb/parser/expression/cast_expression.hpp"
 #include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/parser/expression/between_expression.hpp"
-#include "duckdb/parser/result_modifier.hpp"
-#include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/conjunction_expression.hpp"
-#include "duckdb/parser/tableref/basetableref.hpp"
-#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+
 #include "duckdb/parser/statement/create_statement.hpp"
+#include "duckdb/parser/statement/extension_statement.hpp"
 #include "duckdb/parser/statement/drop_statement.hpp"
+
+#include "duckdb/parser/query_node/select_node.hpp"
+
+#include "duckdb/common/enums/subquery_type.hpp"
+#include "duckdb/common/enums/joinref_type.hpp"
+
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 
 
 namespace duckdb {
