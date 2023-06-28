@@ -901,7 +901,12 @@ public:
             throw BinderException("Registered DuckPGQ state not found");
         }
         auto duckpgq_state = (DuckPGQState *)lookup->second.get();
-        duckpgq_state->registered_property_graphs[pg_info->property_graph_name] = pg_info->Copy();
+        auto pg_lookup = duckpgq_state->registered_property_graphs.find(pg_info->property_graph_name);
+        if (pg_lookup == duckpgq_state->registered_property_graphs.end()) {
+            duckpgq_state->registered_property_graphs[pg_info->property_graph_name] = pg_info->Copy();
+        } else {
+            throw BinderException("A property graph with name %s already exists.", pg_info->property_graph_name);
+        }
     }
 };
 
@@ -920,12 +925,6 @@ static void LoadInternal(DatabaseInstance &instance) {
     MatchFunction match_pg_function;
     CreateTableFunctionInfo match_pg_info(match_pg_function);
     catalog.CreateTableFunction(*con.context, match_pg_info);
-
-//    TableFunction bind_replace_duckpgq("duckpgq_match_bind", {},
-//                                       nullptr, nullptr);
-//    bind_replace_duckpgq.bind_replace = BindReplaceDuckPGQFun::BindReplace;
-//    CreateTableFunctionInfo bind_replace_duckpgq_info(bind_replace_duckpgq);
-//    catalog.CreateTableFunction(*con.context, bind_replace_duckpgq_info);
 
     CreatePropertyGraphFunction create_pg_function;
     CreateTableFunctionInfo create_pg_info(create_pg_function);
@@ -1003,7 +1002,7 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext 
             duckpgq_state->transform_expression = std::move(std::move(function->children[0]));
             function->children.pop_back();
         }
-        throw BinderException("use duckpgq_bind instead");
+        throw Exception("use duckpgq_bind instead");
     } else if (statement->type == StatementType::CREATE_STATEMENT) {
         ParserExtensionPlanResult result;
         result.function = CreatePropertyGraphFunction();
