@@ -87,7 +87,9 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
         auto duckpgq_binder = Binder::CreateBinder(context);
         auto duckpgq_parse_data =
                 dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
-        return duckpgq_binder->Bind(*(duckpgq_parse_data->statement));
+        if (duckpgq_parse_data) {
+            return duckpgq_binder->Bind(*(duckpgq_parse_data->statement));
+        }
     }
     throw BinderException("Registered state not found");
 }

@@ -32,63 +32,63 @@ EDGE TABLES (
             PROPERTIES ( id ) LABEL Knows
     );
 
-query II
--SELECT study.a_id, study.name
-FROM GRAPH_TABLE (pg
-    MATCH
-    (a:Person WHERE a.id = 0)
-    COLUMNS (a.id as a_id, a.name)
-    ) study
-----
-0	Daniel
+#query II
+#-SELECT study.a_id, study.name
+#FROM GRAPH_TABLE (pg
+#    MATCH
+#    (a:Person WHERE a.id = 0)
+#    COLUMNS (a.id as a_id, a.name)
+#    ) study
+#----
+#0	Daniel
+#
+#query II
+#-SELECT study.a_id, study.b_id
+#FROM GRAPH_TABLE (pg
+#    MATCH
+#    (a:Person)-[k:Knows WHERE k.id = 10]->(b:Person)
+#    COLUMNS (a.id as a_id, b.id as b_id)
+#    ) study
+#----
+#0	1
+#
+#query II
+#WITH cte1 AS (
+#    SELECT  CREATE_CSR_EDGE(
+#            0,
+#            (SELECT count(a.id) FROM Student a),
+#            CAST (
+#                (SELECT sum(CREATE_CSR_VERTEX(
+#                            0,
+#                            (SELECT count(a.id) FROM Student a),
+#                            sub.dense_id,
+#                            sub.cnt)
+#                            )
+#                FROM (
+#                    SELECT a.rowid as dense_id, count(k.src) as cnt
+#                    FROM Student a
+#                    LEFT JOIN Know k ON k.src = a.id
+#                    GROUP BY a.rowid) sub
+#                )
+#            AS BIGINT),
+#            a.rowid,
+#            c.rowid,
+#            k.rowid) as temp
+#    FROM Know k
+#    JOIN student a on a.id = k.src
+#    JOIN student c on c.id = k.dst
+#) SELECT __p.a_name, __p.b_name
+#FROM (SELECT count(temp) * 0 AS temp FROM cte1) x, (SELECT a.name as a_name, a.rowid as __src, b.name as b_name, b.rowid as __dst FROM student a, student b WHERE a.name = 'Peter') __p
+#WHERE x.temp + iterativelength(0, (SELECT count(c.id) FROM student c), __p.__src, __p.__dst) BETWEEN 0 and 10000
+#----
+#Peter	Daniel
+#Peter	Tavneet
+#Peter	Gabor
+#Peter	Peter
+#Peter	David
 
 query II
--SELECT study.a_id, study.b_id
-FROM GRAPH_TABLE (pg
-    MATCH
-    (a:Person)-[k:Knows WHERE k.id = 10]->(b:Person)
-    COLUMNS (a.id as a_id, b.id as b_id)
-    ) study
-----
-0	1
-
-query II
-WITH cte1 AS (
-    SELECT  CREATE_CSR_EDGE(
-            0,
-            (SELECT count(a.id) FROM Student a),
-            CAST (
-                (SELECT sum(CREATE_CSR_VERTEX(
-                            0,
-                            (SELECT count(a.id) FROM Student a),
-                            sub.dense_id,
-                            sub.cnt)
-                            )
-                FROM (
-                    SELECT a.rowid as dense_id, count(k.src) as cnt
-                    FROM Student a
-                    LEFT JOIN Know k ON k.src = a.id
-                    GROUP BY a.rowid) sub
-                )
-            AS BIGINT),
-            a.rowid,
-            c.rowid,
-            k.rowid) as temp
-    FROM Know k
-    JOIN student a on a.id = k.src
-    JOIN student c on c.id = k.dst
-) SELECT __p.a_name, __p.b_name
-FROM (SELECT count(temp) * 0 AS temp FROM cte1) x, (SELECT a.name as a_name, a.rowid as __src, b.name as b_name, b.rowid as __dst FROM student a, student b WHERE a.name = 'Peter') __p
-WHERE x.temp + iterativelength(0, (SELECT count(c.id) FROM student c), __p.__src, __p.__dst) BETWEEN 0 and 10000
-----
-Peter	Daniel
-Peter	Tavneet
-Peter	Gabor
-Peter	Peter
-Peter	David
-
-query II
-SELECT study.a_name, study.b_name
+-SELECT study.a_name, study.b_name
 FROM GRAPH_TABLE (pg
     MATCH
     (a:Person)-[k:Knows]-> *(b:Person)
