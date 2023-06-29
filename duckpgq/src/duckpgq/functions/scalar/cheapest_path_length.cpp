@@ -136,12 +136,12 @@ static void CheapestPathLengthFunction(DataChunk &args, ExpressionState &state, 
 	auto &func_expr = (BoundFunctionExpression &)state.expr;
 	auto &info = (CheapestPathLengthFunctionData &)*func_expr.bind_info;
 	int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
-	auto sqlpgq_state_entry = info.context.registered_state.find("sqlpgq");
-	if (sqlpgq_state_entry == info.context.registered_state.end()) {
+	auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
+	if (duckpgq_state_entry == info.context.registered_state.end()) {
 		//! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
 		throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
 	}
-	auto duckpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+	auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 
 	CSR *csr = duckpgq_state->GetCSR(info.csr_id);
 	auto &src = args.data[2];

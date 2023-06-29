@@ -45,20 +45,20 @@ static bool IterativeLength(int64_t v_size, int64_t *V, vector<int64_t> &E, vect
 static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = (BoundFunctionExpression &)state.expr;
 	auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
-	auto sqlpgq_state_entry = info.context.registered_state.find("sqlpgq");
-	if (sqlpgq_state_entry == info.context.registered_state.end()) {
+	auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
+	if (duckpgq_state_entry == info.context.registered_state.end()) {
 		//! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
 		throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
 	}
-	auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+	auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 
-	D_ASSERT(sqlpgq_state->csr_list[info.csr_id]);
+	D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
 	int32_t id = args.data[0].GetValue(0).GetValue<int32_t>();
 	int64_t v_size = args.data[1].GetValue(0).GetValue<int64_t>();
 
-	int64_t *v = (int64_t *)sqlpgq_state->csr_list[id]->v;
-	vector<int64_t> &e = sqlpgq_state->csr_list[id]->e;
-	vector<int64_t> &edge_ids = sqlpgq_state->csr_list[id]->edge_ids;
+	int64_t *v = (int64_t *)duckpgq_state->csr_list[id]->v;
+	vector<int64_t> &e = duckpgq_state->csr_list[id]->e;
+	vector<int64_t> &edge_ids = duckpgq_state->csr_list[id]->edge_ids;
 
 	auto &src = args.data[2];
 	auto &target = args.data[3];
@@ -202,7 +202,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 			total_len += result_data[search_num].length;
 		}
 	}
-	sqlpgq_state->csr_to_delete.insert(info.csr_id);
+	duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
 CreateScalarFunctionInfo DuckPGQFunctions::GetShortestPathFunction() {

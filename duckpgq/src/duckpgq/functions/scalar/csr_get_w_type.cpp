@@ -17,15 +17,15 @@ static void GetCsrWTypeFunction(DataChunk &args, ExpressionState &state, Vector 
 	auto &func_expr = (BoundFunctionExpression &)state.expr;
 	auto &info = (CSRFunctionData &)*func_expr.bind_info;
 
-	auto sqlpgq_state_entry = info.context.registered_state.find("sqlpgq");
-	if (sqlpgq_state_entry == info.context.registered_state.end()) {
+	auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
+	if (duckpgq_state_entry == info.context.registered_state.end()) {
 		//! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
 		throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
 	}
-	auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+	auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 	result.SetVectorType(VectorType::CONSTANT_VECTOR);
 	auto result_data = ConstantVector::GetData<int32_t>(result);
-	auto csr = sqlpgq_state->GetCSR(info.id);
+	auto csr = duckpgq_state->GetCSR(info.id);
 	int32_t flag;
 	if (!csr->initialized_w) {
 		flag = (int32_t)CSRWType::UNWEIGHTED;
@@ -40,9 +40,9 @@ static void GetCsrWTypeFunction(DataChunk &args, ExpressionState &state, Vector 
 }
 
 CreateScalarFunctionInfo DuckPGQFunctions::GetGetCsrWTypeFunction() {
-	ScalarFunctionSet set("sqlpgq_csr_get_w_type");
+	ScalarFunctionSet set("csr_get_w_type");
 
-	set.AddFunction(ScalarFunction("sqlpgq_csr_get_w_type", {LogicalType::INTEGER}, LogicalType::INTEGER,
+	set.AddFunction(ScalarFunction("csr_get_w_type", {LogicalType::INTEGER}, LogicalType::INTEGER,
 	                               GetCsrWTypeFunction, CSRFunctionData::CSRBind));
 
 	return CreateScalarFunctionInfo(set);
