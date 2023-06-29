@@ -55,6 +55,7 @@ query II
 ----
 Daniel	VU
 
+# Returns erroreous results https://github.com/cwida/duckpgq-extension/issues/9
 query II
 -FROM GRAPH_TABLE (pg
     MATCH
