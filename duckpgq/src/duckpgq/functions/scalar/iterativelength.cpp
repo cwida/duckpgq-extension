@@ -32,20 +32,20 @@ static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e, vect
 static void IterativeLengthFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = (BoundFunctionExpression &)state.expr;
 	auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
-	auto sqlpgq_state_entry = info.context.registered_state.find("sqlpgq");
-	if (sqlpgq_state_entry == info.context.registered_state.end()) {
+	auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
+	if (duckpgq_state_entry == info.context.registered_state.end()) {
 		//! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
 		throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
 	}
-	auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+	auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 
-	D_ASSERT(sqlpgq_state->csr_list[info.csr_id]);
+	D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
 
-	if ((uint64_t)info.csr_id + 1 > sqlpgq_state->csr_list.size()) {
+	if ((uint64_t)info.csr_id + 1 > duckpgq_state->csr_list.size()) {
 		throw ConstraintException("Invalid ID");
 	}
-	auto csr_entry = sqlpgq_state->csr_list.find((uint64_t)info.csr_id);
-	if (csr_entry == sqlpgq_state->csr_list.end()) {
+	auto csr_entry = duckpgq_state->csr_list.find((uint64_t)info.csr_id);
+	if (csr_entry == duckpgq_state->csr_list.end()) {
 		throw ConstraintException("Need to initialize CSR before doing shortest path");
 	}
 
@@ -53,8 +53,8 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state, Vec
 		throw ConstraintException("Need to initialize CSR before doing shortest path");
 	}
 	int64_t v_size = args.data[1].GetValue(0).GetValue<int64_t>();
-	int64_t *v = (int64_t *)sqlpgq_state->csr_list[info.csr_id]->v;
-	vector<int64_t> &e = sqlpgq_state->csr_list[info.csr_id]->e;
+	int64_t *v = (int64_t *)duckpgq_state->csr_list[info.csr_id]->v;
+	vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
 
 	// get src and dst vectors for searches
 	auto &src = args.data[2];
@@ -143,7 +143,7 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state, Vec
 			}
 		}
 	}
-	sqlpgq_state->csr_to_delete.insert(info.csr_id);
+	duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
 CreateScalarFunctionInfo DuckPGQFunctions::GetIterativeLengthFunction() {

@@ -183,14 +183,14 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state, Vector
 	result.SetVectorType(VectorType::FLAT_VECTOR);
 
 	auto result_data = FlatVector::GetData<bool>(result);
-	auto sqlpgq_state_entry = info.context.registered_state.find("sqlpgq");
-	if (sqlpgq_state_entry == info.context.registered_state.end()) {
+	auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
+	if (duckpgq_state_entry == info.context.registered_state.end()) {
 		//! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
 		throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
 	}
-	auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+	auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 
-	CSR *csr = sqlpgq_state->GetCSR(info.csr_id);
+	CSR *csr = duckpgq_state->GetCSR(info.csr_id);
 
 	while (result_size < args.size()) {
 		vector<std::bitset<LANE_LIMIT>> seen(input_size);
@@ -250,7 +250,7 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state, Vector
 		}
 		result_size = result_size + curr_batch_size;
 	}
-	sqlpgq_state->csr_to_delete.insert(info.csr_id);
+	duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
 CreateScalarFunctionInfo DuckPGQFunctions::GetReachabilityFunction() {
