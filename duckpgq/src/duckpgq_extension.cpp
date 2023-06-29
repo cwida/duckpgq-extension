@@ -29,7 +29,6 @@
 
 #include "duckdb/parser/statement/create_statement.hpp"
 #include "duckdb/parser/statement/extension_statement.hpp"
-#include "duckdb/parser/statement/drop_statement.hpp"
 
 #include "duckdb/parser/query_node/select_node.hpp"
 
@@ -37,6 +36,8 @@
 #include "duckdb/common/enums/joinref_type.hpp"
 
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+
+#include "duckpgq/functions/tablefunctions/drop_property_graph.hpp"
 
 
 namespace duckdb {
@@ -684,62 +685,6 @@ public:
     }
 };
 
-class DropPropertyGraphFunction : public TableFunction {
-public:
-    DropPropertyGraphFunction() {
-        name = "drop_property_graph";
-        bind = DropPropertyGraphBind;
-        init_global = DropPropertyGraphInit;
-        function = DropPropertyGraphFunc;
-    }
-
-    struct DropPropertyGraphBindData : public TableFunctionData {
-        explicit DropPropertyGraphBindData(DropInfo* pg_info) : drop_pg_info(pg_info) {
-        }
-
-        DropInfo* drop_pg_info;
-    };
-
-    struct DropPropertyGraphGlobalData : public GlobalTableFunctionState {
-        DropPropertyGraphGlobalData() = default;
-    };
-
-    static duckdb::unique_ptr<FunctionData> DropPropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
-                                                                    vector<LogicalType> &return_types, vector<string> &names) {
-        names.emplace_back("success");
-        return_types.emplace_back(LogicalType::VARCHAR);
-        auto lookup = context.registered_state.find("duckpgq");
-        if (lookup == context.registered_state.end()) {
-            throw BinderException("Registered DuckPGQ state not found");
-        }
-        auto duckpgq_state = (DuckPGQState *) lookup->second.get();
-        auto duckpgq_parse_data = dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
-
-        if (!duckpgq_parse_data) {
-            return {};
-        }
-        auto statement = dynamic_cast<DropStatement *>(duckpgq_parse_data->statement.get());
-        auto info = dynamic_cast<DropInfo *>(statement->info.get());
-        return make_uniq<DropPropertyGraphBindData>(info);
-    }
-
-    static duckdb::unique_ptr<GlobalTableFunctionState> DropPropertyGraphInit(ClientContext &context,
-                                                                                TableFunctionInitInput &input) {
-        return make_uniq<DropPropertyGraphGlobalData>();
-    }
-
-    static void DropPropertyGraphFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-        auto &bind_data = data_p.bind_data->Cast<DropPropertyGraphBindData>();
-
-        auto pg_info = bind_data.drop_pg_info;
-        auto lookup = context.registered_state.find("duckpgq");
-        if (lookup == context.registered_state.end()) {
-            throw BinderException("Registered DuckPGQ state not found");
-        }
-        auto duckpgq_state = (DuckPGQState *)lookup->second.get();
-        duckpgq_state->registered_property_graphs.erase(pg_info->name);
-    }
-};
 
 class CreatePropertyGraphFunction : public TableFunction {
 public:
