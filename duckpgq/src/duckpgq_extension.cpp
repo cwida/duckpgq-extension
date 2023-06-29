@@ -637,7 +637,7 @@ public:
 
         if (path_finding) {
             auto result = make_uniq<SubqueryRef>(std::move(cte_select_statement), ref->alias);
-            return result;
+            return std::move(result);
         }
 
         unique_ptr<TableRef> from_clause;
@@ -680,7 +680,7 @@ public:
 
         auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
 
-        return result;
+        return std::move(result);
     }
 };
 
