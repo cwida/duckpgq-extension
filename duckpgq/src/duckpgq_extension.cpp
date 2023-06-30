@@ -56,6 +56,10 @@ static void LoadInternal(DatabaseInstance &instance) {
         catalog.CreateFunction(*con.context, fun);
     }
 
+    for (auto &fun : DuckPGQFunctions::GetTableFunctions()) {
+        catalog.CreateFunction(*con.context, fun);
+    }
+
     CreateScalarFunctionInfo duckpgq_fun_info(
             ScalarFunction("duckpgq", {LogicalType::VARCHAR}, LogicalType::VARCHAR, DuckpgqScalarFun));
     duckpgq_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
