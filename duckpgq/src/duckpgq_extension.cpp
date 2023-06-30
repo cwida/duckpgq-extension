@@ -95,7 +95,7 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
 }
 
 
-ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext &context,
+ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
                                            unique_ptr<ParserExtensionParseData> parse_data) {
     auto duckpgq_state_entry = context.registered_state.find("duckpgq");
     DuckPGQState *duckpgq_state;
