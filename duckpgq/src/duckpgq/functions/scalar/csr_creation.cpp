@@ -26,6 +26,7 @@ namespace duckdb {
             // data contains a vector of elements so will need an anonymous function to apply the
             // first element id is repeated across, can I access the value directly?
             csr->v = new std::atomic<int64_t>[v_size + 2];
+            csr->vsize = v_size + 2;
 
             for (idx_t i = 0; i < (idx_t)v_size + 1; i++) {
                 csr->v[i] = 0;
