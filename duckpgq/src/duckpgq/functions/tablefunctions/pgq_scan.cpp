@@ -21,14 +21,14 @@ namespace duckdb {
 
         gstate = true;
 
-        auto sqlpgq_state_entry = context.registered_state.find("sqlpgq");
-        if (sqlpgq_state_entry == context.registered_state.end()) {
+        auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+        if (duckpgq_state_entry == context.registered_state.end()) {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The DuckPGQ extension has not been loaded");
         }
-        auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
         auto csr_id = data_p.bind_data->Cast<CSRScanEData>().csr_id;
-        CSR *csr = sqlpgq_state->GetCSR(csr_id);
+        CSR *csr = duckpgq_state->GetCSR(csr_id);
         output.SetCardinality(csr->e.size());
         output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
         FlatVector::SetData(output.data[0], (data_ptr_t)csr->e.data());
@@ -44,14 +44,14 @@ namespace duckdb {
 
         gstate = true;
 
-        auto sqlpgq_state_entry = context.registered_state.find("sqlpgq");
-        if (sqlpgq_state_entry == context.registered_state.end()) {
+        auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+        if (duckpgq_state_entry == context.registered_state.end()) {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
         auto csr_id = data_p.bind_data->Cast<CSRScanVData>().csr_id;
-        CSR *csr = sqlpgq_state->GetCSR(csr_id);
+        CSR *csr = duckpgq_state->GetCSR(csr_id);
         output.SetCardinality(csr->vsize);
         output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
         FlatVector::SetData(output.data[0], (data_ptr_t)(reinterpret_cast<int64_t *>(csr->v)));
@@ -67,15 +67,15 @@ namespace duckdb {
 
         gstate = true;
 
-        auto sqlpgq_state_entry = context.registered_state.find("sqlpgq");
-        if (sqlpgq_state_entry == context.registered_state.end()) {
+        auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+        if (duckpgq_state_entry == context.registered_state.end()) {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
         auto csr_scanw_data = data_p.bind_data->Cast<CSRScanWData>();
         auto csr_id = csr_scanw_data.csr_id;
-        CSR *csr = sqlpgq_state->GetCSR(csr_id);
+        CSR *csr = duckpgq_state->GetCSR(csr_id);
         output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
         if (csr_scanw_data.is_double) {
             output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
@@ -96,14 +96,14 @@ namespace duckdb {
 
         gstate = true;
 
-        auto sqlpgq_state_entry = context.registered_state.find("sqlpgq");
-        if (sqlpgq_state_entry == context.registered_state.end()) {
+        auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+        if (duckpgq_state_entry == context.registered_state.end()) {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
         auto pg_name = data_p.bind_data->Cast<PGScanVTableData>().pg_name;
-        auto pg = sqlpgq_state->GetPropertyGraph(pg_name);
+        auto pg = duckpgq_state->GetPropertyGraph(pg_name);
 
         output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
         auto vtables = FlatVector::GetData<string_t>(output.data[0]);
@@ -125,14 +125,14 @@ namespace duckdb {
 
         gstate = true;
 
-        auto sqlpgq_state_entry = context.registered_state.find("sqlpgq");
-        if (sqlpgq_state_entry == context.registered_state.end()) {
+        auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+        if (duckpgq_state_entry == context.registered_state.end()) {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
         auto pg_name = data_p.bind_data->Cast<PGScanETableData>().pg_name;
-        auto pg = sqlpgq_state->GetPropertyGraph(pg_name);
+        auto pg = duckpgq_state->GetPropertyGraph(pg_name);
 
         output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
         auto etables = FlatVector::GetData<string_t>(output.data[0]);
@@ -164,16 +164,16 @@ namespace duckdb {
 
         gstate = true;
 
-        auto sqlpgq_state_entry = context.registered_state.find("sqlpgq");
-        if (sqlpgq_state_entry == context.registered_state.end()) {
+        auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+        if (duckpgq_state_entry == context.registered_state.end()) {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
         auto scan_v_col_data = data_p.bind_data->Cast<PGScanVColData>();
         auto pg_name = scan_v_col_data.pg_name;
         auto table_name = scan_v_col_data.table_name;
-        auto pg = sqlpgq_state->GetPropertyGraph(pg_name);
+        auto pg = duckpgq_state->GetPropertyGraph(pg_name);
 
         auto table_entry = find_table_entry(pg->vertex_tables, table_name);
 
@@ -197,17 +197,17 @@ namespace duckdb {
 
         gstate = true;
 
-        auto sqlpgq_state_entry = context.registered_state.find("sqlpgq");
-        if (sqlpgq_state_entry == context.registered_state.end()) {
+        auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+        if (duckpgq_state_entry == context.registered_state.end()) {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
         auto pg_scan_col_e_data = data_p.bind_data->Cast<PGScanETableData>();
         auto pg_scan_e_col_data = data_p.bind_data->Cast<PGScanEColData>();
         auto pg_name = pg_scan_e_col_data.pg_name;
         auto table_name = pg_scan_e_col_data.table_name;
-        auto pg = sqlpgq_state->GetPropertyGraph(pg_name);
+        auto pg = duckpgq_state->GetPropertyGraph(pg_name);
 
         auto table_entry = find_table_entry(pg->edge_tables, table_name);
 
@@ -231,14 +231,14 @@ namespace duckdb {
 
         gstate = true;
 
-        auto sqlpgq_state_entry = context.registered_state.find("sqlpgq");
-        if (sqlpgq_state_entry == context.registered_state.end()) {
+        auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+        if (duckpgq_state_entry == context.registered_state.end()) {
             //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
-        auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+        auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
         auto csr_id = data_p.bind_data->Cast<CSRScanEData>().csr_id;
-        CSR *csr = sqlpgq_state->GetCSR(csr_id);
+        CSR *csr = duckpgq_state->GetCSR(csr_id);
         output.SetCardinality(csr->w_double.size());
         output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
         FlatVector::SetData(output.data[0], (data_ptr_t)csr->w_double.data());

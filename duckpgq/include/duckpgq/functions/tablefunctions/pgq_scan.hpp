@@ -50,14 +50,14 @@ namespace duckdb {
             auto result = make_uniq<CSRScanWData>();
             result->csr_id = input.inputs[0].GetValue<int32_t>();
 
-            auto sqlpgq_state_entry = context.registered_state.find("sqlpgq");
-            if (sqlpgq_state_entry == context.registered_state.end()) {
+            auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+            if (duckpgq_state_entry == context.registered_state.end()) {
                 //! Wondering how you can get here if the extension wasn't loaded, but leaving this check in anyways
                 throw InternalException("The SQL/PGQ extension has not been loaded");
             }
-            auto sqlpgq_state = reinterpret_cast<DuckPGQState *>(sqlpgq_state_entry->second.get());
+            auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 
-            CSR *csr = sqlpgq_state->GetCSR(result->csr_id);
+            CSR *csr = duckpgq_state->GetCSR(result->csr_id);
 
             if (!csr->w.empty()) {
                 result->is_double = false;

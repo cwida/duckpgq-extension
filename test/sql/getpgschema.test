@@ -79,47 +79,47 @@ SELECT  CREATE_CSR_EDGE(
     JOIN student a on a.id = k.src
     JOIN student c on c.id = k.dst;
 
-query I
--SELECT * from sqlpgq_get_csr_e(0);
-----
-1
-2
-3
-2
-3
-3
-4
-0
-3
+#query I
+#SELECT * from get_csr_e(0);
+#----
+#1
+#2
+#3
+#2
+#3
+#3
+#4
+#0
+#3
+#
+#query I
+#SELECT * from get_csr_v(0);
+#----
+#0
+#3
+#5
+#7
+#8
+#9
+#9
+#
+#query I
+#SELECT * from get_pg_vtablenames('pg');
+#----
+#Student
+#
+#query I
+#SELECT * from get_pg_etablenames('pg');
+#----
+#know
+#
+#query I
+#SELECT * from get_pg_vcolnames('pg', 'Student');
+#----
+#id
+#name
 
 query I
--SELECT * from sqlpgq_get_csr_v(0);
-----
-0
-3
-5
-7
-8
-9
-9
-
-query I
--SELECT * from sqlpgq_get_pg_vtablenames('pg');
-----
-Student
-
-query I
--SELECT * from sqlpgq_get_pg_etablenames('pg');
-----
-know
-
-query I
--SELECT * from sqlpgq_get_pg_vcolnames('pg', 'Student');
-----
-id
-name
-
-query I
--SELECT * from sqlpgq_get_pg_ecolnames('pg', 'know');
+SELECT * from get_pg_ecolnames('pg', 'know');
 ----
 id
