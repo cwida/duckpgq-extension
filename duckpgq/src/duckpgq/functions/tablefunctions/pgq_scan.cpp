@@ -203,7 +203,6 @@ namespace duckdb {
             throw MissingExtensionException("The SQL/PGQ extension has not been loaded");
         }
         auto duckpgq_state = reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
-        auto pg_scan_col_e_data = data_p.bind_data->Cast<PGScanETableData>();
         auto pg_scan_e_col_data = data_p.bind_data->Cast<PGScanEColData>();
         auto pg_name = pg_scan_e_col_data.pg_name;
         auto table_name = pg_scan_e_col_data.table_name;
