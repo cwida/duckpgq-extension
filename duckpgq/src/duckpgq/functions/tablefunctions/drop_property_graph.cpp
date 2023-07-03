@@ -8,7 +8,7 @@ namespace duckdb {
                                                                                       TableFunctionBindInput &,
                                                                                       vector<LogicalType> &return_types,
                                                                                       vector<string> &names) {
-        names.emplace_back("success");
+        names.emplace_back("status");
         return_types.emplace_back(LogicalType::VARCHAR);
         auto lookup = context.registered_state.find("duckpgq");
         if (lookup == context.registered_state.end()) {
@@ -39,7 +39,11 @@ namespace duckdb {
             throw BinderException("Registered DuckPGQ state not found");
         }
         auto duckpgq_state = (DuckPGQState *)lookup->second.get();
-        duckpgq_state->registered_property_graphs.erase(pg_info->name);
+        auto registered_pg = duckpgq_state->registered_property_graphs.find(pg_info->name);
+        if (registered_pg == duckpgq_state->registered_property_graphs.end()) {
+            throw BinderException("Property graph %s does not exist.", pg_info->name);
+        }
+        duckpgq_state->registered_property_graphs.erase(registered_pg);
     }
 }
 
