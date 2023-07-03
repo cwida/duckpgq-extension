@@ -181,12 +181,12 @@ FROM GRAPH_TABLE (pg
     COLUMNS (a.name as a_name, b.name as b_name, c.name as c_name)
     ) study;
 ----
+Peter	Daniel	Tavneet
+Peter	Daniel	Gabor
 Daniel	Tavneet	Peter
+Gabor	Peter	Daniel
 Daniel	Gabor	Peter
 Tavneet	Peter	Daniel
-Gabor	Peter	Daniel
-Peter	Daniel	Gabor
-Peter	Daniel	Tavneet
 
 statement error
 -SELECT study.a_name, study.b_name, study.c_name
