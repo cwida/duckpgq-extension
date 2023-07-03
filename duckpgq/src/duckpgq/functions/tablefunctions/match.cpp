@@ -496,31 +496,31 @@ namespace duckdb {
                         auto upper_limit = make_uniq<ConstantExpression>(Value::INTEGER(subpath->upper));
                         auto between_expression = make_uniq<BetweenExpression>(
                                 std::move(addition_function), std::move(lower_limit), std::move(upper_limit));
-                        conditions.push_back(std::move(between_expression));
+                conditions.push_back(std::move(between_expression));
 
-                        unique_ptr<ParsedExpression> cte_and_expression;
-                        for (auto &condition: conditions) {
-                            if (cte_and_expression) {
-                                cte_and_expression = make_uniq<ConjunctionExpression>(
-                                        ExpressionType::CONJUNCTION_AND, std::move(cte_and_expression),
-                                        std::move(condition));
-                            } else {
-                                cte_and_expression = std::move(condition);
-                            }
-                        }
-                        cte_select_node->where_clause = std::move(cte_and_expression);
-                        cte_select_statement->node = std::move(cte_select_node);
-
-                        //                    auto result = make_uniq<SubqueryRef>(std::move(cte_select_statement),
-                        //                    ref.alias); return Bind(*result);
+                unique_ptr<ParsedExpression> cte_and_expression;
+                for (auto &condition: conditions) {
+                    if (cte_and_expression) {
+                        cte_and_expression = make_uniq<ConjunctionExpression>(
+                                ExpressionType::CONJUNCTION_AND, std::move(cte_and_expression),
+                                std::move(condition));
+                    } else {
+                        cte_and_expression = std::move(condition);
                     }
                 }
+                cte_select_node->where_clause = std::move(cte_and_expression);
+                cte_select_statement->node = std::move(cte_select_node);
 
-                // check aliases
-                alias_map[next_vertex_element->variable_binding] = next_vertex_table->table_name;
-                alias_map[edge_element->variable_binding] = edge_table->table_name;
+                //                    auto result = make_uniq<SubqueryRef>(std::move(cte_select_statement),
+                //                    ref.alias); return Bind(*result);
+            }
+        }
 
-                switch (edge_element->match_type) {
+        // check aliases
+        alias_map[next_vertex_element->variable_binding] = next_vertex_table->table_name;
+        alias_map[edge_element->variable_binding] = edge_table->table_name;
+
+        switch (edge_element->match_type) {
                     case PGQMatchType::MATCH_EDGE_ANY: {
                         select_node->modifiers.push_back(make_uniq<DistinctModifier>());
 
