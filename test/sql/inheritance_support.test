@@ -36,12 +36,6 @@ INSERT INTO Company VALUES ('EY', 2, 2), ('CWI', 3, 2);
 statement ok
 INSERT INTO Organisation (SELECT * from university union select * from company);
 
-#statement ok
-#ALTER TABLE Organisation ADD COLUMN subcategory BIGINT;
-#
-#statement ok
-#UPDATE organisation set subcategory=case when id in (select id from university) then 2**0 when id in (select id from company) then 2**1 end;
-
 statement ok
 -CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
