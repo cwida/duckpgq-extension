@@ -21,7 +21,7 @@ namespace duckdb {
             result->csr_id = input.inputs[0].GetValue<int32_t>();
             return_types.emplace_back(LogicalType::BIGINT);
             names.emplace_back("csrv");
-            return result;
+            return std::move(result);
         }
 
     public:
@@ -36,7 +36,7 @@ namespace duckdb {
             result->csr_id = input.inputs[0].GetValue<int32_t>();
             return_types.emplace_back(LogicalType::BIGINT);
             names.emplace_back("csre");
-            return result;
+            return std::move(result);
         }
 
     public:
@@ -67,7 +67,7 @@ namespace duckdb {
                 return_types.emplace_back(LogicalType::DOUBLE);
             }
             names.emplace_back("csrw");
-            return result;
+            return std::move(result);
         }
 
     public:
@@ -83,7 +83,7 @@ namespace duckdb {
             result->csr_id = input.inputs[0].GetValue<int32_t>();
             return_types.emplace_back(LogicalType::DOUBLE);
             names.emplace_back("csrw");
-            return result;
+            return std::move(result);
         }
 
     public:
@@ -98,7 +98,7 @@ namespace duckdb {
             result->pg_name = StringValue::Get(input.inputs[0]);
             return_types.emplace_back(LogicalType::VARCHAR);
             names.emplace_back("vtables");
-            return result;
+            return std::move(result);
         }
 
     public:
@@ -114,7 +114,7 @@ namespace duckdb {
             result->table_name = StringValue::Get(input.inputs[1]);
             return_types.emplace_back(LogicalType::VARCHAR);
             names.emplace_back("colnames");
-            return result;
+            return std::move(result);
         }
 
     public:
@@ -130,7 +130,7 @@ namespace duckdb {
             result->pg_name = StringValue::Get(input.inputs[0]);
             return_types.emplace_back(LogicalType::VARCHAR);
             names.emplace_back("etables");
-            return result;
+            return std::move(result);
         }
 
     public:
@@ -146,7 +146,7 @@ namespace duckdb {
             result->table_name = StringValue::Get(input.inputs[1]);
             return_types.emplace_back(LogicalType::VARCHAR);
             names.emplace_back("colnames");
-            return result;
+            return std::move(result);
         }
 
     public:
@@ -158,7 +158,7 @@ namespace duckdb {
     public:
         static unique_ptr<GlobalTableFunctionState> Init(ClientContext &context, TableFunctionInitInput &input) {
             auto result = make_uniq<CSRScanState>();
-            return result;
+            return std::move(result);
         }
 
     public:
