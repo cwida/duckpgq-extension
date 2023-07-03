@@ -155,7 +155,7 @@ static void CheapestPathLengthFunction(DataChunk &args, ExpressionState &state, 
 	target.ToUnifiedFormat(args.size(), vdata_target);
 	auto target_data = (int64_t *)vdata_target.data;
 	if (csr->w.empty()) {
-		TemplatedBellmanFord<double_t>(csr, args, input_size, result, vdata_src, src_data, vdata_target, target_data,
+		TemplatedBellmanFord<double>(csr, args, input_size, result, vdata_src, src_data, vdata_target, target_data,
 		                               csr->w_double);
 	} else {
 		TemplatedBellmanFord<int64_t>(csr, args, input_size, result, vdata_src, src_data, vdata_target, target_data,
