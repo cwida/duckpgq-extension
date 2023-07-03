@@ -53,7 +53,7 @@ namespace duckdb {
     duckdb::unique_ptr<FunctionData>
     CreatePropertyGraphFunction::CreatePropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
                                                          vector<LogicalType> &return_types, vector<string> &names) {
-        names.emplace_back("success");
+        names.emplace_back("status");
         return_types.emplace_back(LogicalType::VARCHAR);
         auto lookup = context.registered_state.find("duckpgq");
         if (lookup == context.registered_state.end()) {
