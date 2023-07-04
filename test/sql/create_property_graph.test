@@ -120,8 +120,7 @@ EDGE TABLES (
 Binder Error: Referenced vertex table Student does not exist.
 
 
-## Currently fails due to the internal query throwing a path keyword
-# Should fail since the edge table references vertex tables that do not exist
+## Should fail since the edge table references vertex tables that do not exist
 #statement error
 #-CREATE PROPERTY GRAPH pg3
 #VERTEX TABLES (
