@@ -179,13 +179,14 @@ FROM GRAPH_TABLE (pg
     MATCH
     (a:Person)-[k:Knows]->(b:Person)-[k2:Knows]->(c:Person)-[k3:Knows]->(a:Person)
     COLUMNS (a.name as a_name, b.name as b_name, c.name as c_name)
-    ) study;
+    ) study
+ORDER BY study.a_name, study.b_name, study.c_name;
 ----
-Peter	Daniel	Tavneet
-Peter	Daniel	Gabor
+Daniel	Gabor	Peter
 Daniel	Tavneet	Peter
 Gabor	Peter	Daniel
-Daniel	Gabor	Peter
+Peter	Daniel	Gabor
+Peter	Daniel	Tavneet
 Tavneet	Peter	Daniel
 
 statement error
@@ -201,7 +202,7 @@ statement error
 FROM GRAPH_TABLE (pg
     MATCH
     (a)-[k:Knows]->(b:Person)
-    COLUMNS (a.name as a_name, b.name as b_name)
+    COLUMNS (a.ncame as a_name, b.name as b_name)
     ) study;
 
 statement error

@@ -49,6 +49,16 @@ statement ok
 -DROP PROPERTY GRAPH pg;
 
 statement error
+-DROP PROPERTY GRAPH pg;
+----
+Binder Error: Property graph pg does not exist
+
+statement error
+-DROP PROPERTY GRAPH pgdoesntexist;
+----
+Binder Error: Property graph pgdoesntexist does not exist
+
+statement error
 -SELECT study.id
 FROM GRAPH_TABLE (pg
     MATCH
