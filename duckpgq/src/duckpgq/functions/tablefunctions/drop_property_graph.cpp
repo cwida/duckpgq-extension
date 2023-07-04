@@ -44,6 +44,7 @@ namespace duckdb {
             throw BinderException("Property graph %s does not exist.", pg_info->name);
         }
         duckpgq_state->registered_property_graphs.erase(registered_pg);
+
     }
 }
 
