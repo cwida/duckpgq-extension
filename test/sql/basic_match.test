@@ -202,7 +202,7 @@ statement error
 FROM GRAPH_TABLE (pg
     MATCH
     (a)-[k:Knows]->(b:Person)
-    COLUMNS (a.name as a_name, b.name as b_name)
+    COLUMNS (a.ncame as a_name, b.name as b_name)
     ) study;
 
 statement error
