@@ -13,71 +13,71 @@
 
 namespace duckdb {
 
-#define LANE_LIMIT         512
+#define LANE_LIMIT 512
 #define VISIT_SIZE_DIVISOR 2
 
 class DuckPGQFunctions {
 public:
-    static vector<CreateScalarFunctionInfo> GetFunctions() {
-        vector<CreateScalarFunctionInfo> functions;
+  static vector<CreateScalarFunctionInfo> GetFunctions() {
+    vector<CreateScalarFunctionInfo> functions;
 
-        // Create functions
-        functions.push_back(GetCsrVertexFunction());
-        functions.push_back(GetCsrEdgeFunction());
-        functions.push_back(GetCheapestPathLengthFunction());
-        functions.push_back(GetShortestPathFunction());
-        functions.push_back(GetReachabilityFunction());
-        functions.push_back(GetIterativeLengthFunction());
-        functions.push_back(GetIterativeLengthBidirectionalFunction());
-        functions.push_back(GetIterativeLength2Function());
-        functions.push_back(GetDeleteCsrFunction());
-        functions.push_back(GetGetCsrWTypeFunction());
+    // Create functions
+    functions.push_back(GetCsrVertexFunction());
+    functions.push_back(GetCsrEdgeFunction());
+    functions.push_back(GetCheapestPathLengthFunction());
+    functions.push_back(GetShortestPathFunction());
+    functions.push_back(GetReachabilityFunction());
+    functions.push_back(GetIterativeLengthFunction());
+    functions.push_back(GetIterativeLengthBidirectionalFunction());
+    functions.push_back(GetIterativeLength2Function());
+    functions.push_back(GetDeleteCsrFunction());
+    functions.push_back(GetGetCsrWTypeFunction());
 
-        return functions;
-    }
+    return functions;
+  }
 
-    static vector<CreateTableFunctionInfo> GetTableFunctions() {
-        vector<CreateTableFunctionInfo> functions;
+  static vector<CreateTableFunctionInfo> GetTableFunctions() {
+    vector<CreateTableFunctionInfo> functions;
 
-        functions.push_back(GetScanCSREFunction());
-        functions.push_back(GetScanCSRWFunction());
-        functions.push_back(GetScanCSRVFunction());
-        functions.push_back(GetScanPGVTableFunction());
-        functions.push_back(GetScanPGVColFunction());
-        functions.push_back(GetScanPGETableFunction());
-        functions.push_back(GetScanPGEColFunction());
+    functions.push_back(GetScanCSREFunction());
+    functions.push_back(GetScanCSRWFunction());
+    functions.push_back(GetScanCSRVFunction());
+    functions.push_back(GetScanPGVTableFunction());
+    functions.push_back(GetScanPGVColFunction());
+    functions.push_back(GetScanPGETableFunction());
+    functions.push_back(GetScanPGEColFunction());
 
-        return functions;
-    }
+    return functions;
+  }
 
 private:
-    static CreateScalarFunctionInfo GetCsrVertexFunction();
-    static CreateScalarFunctionInfo GetCsrEdgeFunction();
-    static CreateScalarFunctionInfo GetCheapestPathLengthFunction();
-    static CreateScalarFunctionInfo GetShortestPathFunction();
-    static CreateScalarFunctionInfo GetReachabilityFunction();
-    static CreateScalarFunctionInfo GetIterativeLengthFunction();
-    static CreateScalarFunctionInfo GetIterativeLengthBidirectionalFunction();
-    static CreateScalarFunctionInfo GetIterativeLength2Function();
-    static CreateScalarFunctionInfo GetDeleteCsrFunction();
-    static CreateScalarFunctionInfo GetGetCsrWTypeFunction();
+  static CreateScalarFunctionInfo GetCsrVertexFunction();
+  static CreateScalarFunctionInfo GetCsrEdgeFunction();
+  static CreateScalarFunctionInfo GetCheapestPathLengthFunction();
+  static CreateScalarFunctionInfo GetShortestPathFunction();
+  static CreateScalarFunctionInfo GetReachabilityFunction();
+  static CreateScalarFunctionInfo GetIterativeLengthFunction();
+  static CreateScalarFunctionInfo GetIterativeLengthBidirectionalFunction();
+  static CreateScalarFunctionInfo GetIterativeLength2Function();
+  static CreateScalarFunctionInfo GetDeleteCsrFunction();
+  static CreateScalarFunctionInfo GetGetCsrWTypeFunction();
 
-    static void AddAliases(vector<string> names, CreateScalarFunctionInfo fun,
-                           vector<CreateScalarFunctionInfo> &functions) {
-        for (auto &name : names) {
-            fun.name = name;
-            functions.push_back(fun);
-        }
+  static void AddAliases(vector<string> names, CreateScalarFunctionInfo fun,
+                         vector<CreateScalarFunctionInfo> &functions) {
+    for (auto &name : names) {
+      fun.name = name;
+      functions.push_back(fun);
     }
+  }
 
-    // table functions
-    static CreateTableFunctionInfo GetScanCSRVFunction();
-    static CreateTableFunctionInfo GetScanCSREFunction();
-    static CreateTableFunctionInfo GetScanCSRWFunction();
-    static CreateTableFunctionInfo GetScanPGVTableFunction();
-    static CreateTableFunctionInfo GetScanPGVColFunction();
-    static CreateTableFunctionInfo GetScanPGETableFunction();
-    static CreateTableFunctionInfo GetScanPGEColFunction();
+  // table functions
+  static CreateTableFunctionInfo GetScanCSRVFunction();
+  static CreateTableFunctionInfo GetScanCSREFunction();
+  static CreateTableFunctionInfo GetScanCSRWFunction();
+  static CreateTableFunctionInfo GetScanPGVTableFunction();
+  static CreateTableFunctionInfo GetScanPGVColFunction();
+  static CreateTableFunctionInfo GetScanPGETableFunction();
+  static CreateTableFunctionInfo GetScanPGEColFunction();
 };
 
 } // namespace duckdb

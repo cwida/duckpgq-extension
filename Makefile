@@ -89,7 +89,7 @@ test_release_python: release_python
 	cd test/python && python3 -m pytest
 
 format:
-	find src/ -iname *.hpp -o -iname *.cpp | xargs clang-format --sort-includes=0 -style=file -i
+	find duckpgq/ -iname *.hpp -o -iname *.cpp | xargs clang-format --sort-includes=0 -style=file -i
 	cmake-format -i CMakeLists.txt
 
 update:
