@@ -697,8 +697,8 @@ MatchFunction::MatchBindReplace(ClientContext &context,
       // If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
       // If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
       // If (a)-[b]-(c)  	-> 	(b.src = a.id AND b.dst = c.id) OR
-      // 						(b.dst = a.id AND b.src =
-      // c.id) If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
+      // 						(b.dst = a.id AND b.src
+      // = c.id) If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
       //						(b.dst = a.id AND b.src
       //= c.id)
     }
