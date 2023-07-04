@@ -180,10 +180,10 @@ FROM GRAPH_TABLE (pg
     (a:Person)-[k:Knows]->(b:Person)-[k2:Knows]->(c:Person)-[k3:Knows]->(a:Person)
     COLUMNS (a.name as a_name, b.name as b_name, c.name as c_name)
     ) study
-ORDER BY study.a_name;
+ORDER BY study.a_name, study.b_name, study.c_name;
 ----
-Daniel	Tavneet	Peter
 Daniel	Gabor	Peter
+Daniel	Tavneet	Peter
 Gabor	Peter	Daniel
 Peter	Daniel	Gabor
 Peter	Daniel	Tavneet
