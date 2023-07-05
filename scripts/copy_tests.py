@@ -1,7 +1,6 @@
 from os import listdir, mkdir
 from os.path import isfile, join, exists
 
-from pathlib import Path
 import shutil
 from textwrap import dedent
 import sys
@@ -24,8 +23,8 @@ def main(argv):
     abspath = os.path.abspath(__file__)
     dname = os.path.dirname(abspath)
     os.chdir(dname)
-    test_path_duckpgq = Path("../test/sql")
-    test_path_duckdb = Path("../duckdb/test/extension/duckpgq")
+    test_path_duckpgq = "../test/sql"
+    test_path_duckdb = "../duckdb/test/extension/duckpgq"
 
     onlyfiles = [str(f) for f in listdir(test_path_duckpgq) if isfile(join(test_path_duckpgq, f))]
 
@@ -36,7 +35,7 @@ def main(argv):
         mkdir(test_path_duckdb)
 
     for file in onlyfiles:
-        f = open(test_path_duckpgq / file, "r")
+        f = open(test_path_duckpgq + "/" + file, "r")
         content = f.read()
         content = content.replace("require duckpgq\n",
                                   dedent("statement ok\n"
@@ -45,7 +44,7 @@ def main(argv):
                                          "statement ok\n"
                                          "load 'duckpgq';\n"))
 
-        new_file = open(test_path_duckdb / file, "w")
+        new_file = open(test_path_duckdb + "/" + file, "w")
         new_file.write(content)
         new_file.close()
 
