@@ -18,6 +18,10 @@ ifeq ($(GEN),ninja)
 	FORCE_COLOR=-DFORCE_COLORED_OUTPUT=1
 endif
 
+ifndef ($(DUCKDB_VERSION))
+	DUCKDB_VERSION_FLAG=$(DUCKDB_VERSION)
+endif
+
 BUILD_FLAGS=-DEXTENSION_STATIC_BUILD=1 -DBUILD_TPCH_EXTENSION=1 -DBUILD_PARQUET_EXTENSION=1 ${OSX_BUILD_UNIVERSAL_FLAG} ${STATIC_LIBCPP}
 
 CLIENT_FLAGS :=
@@ -94,3 +98,9 @@ format:
 
 update:
 	git submodule update --remote --merge
+
+test_stock_duckdb:
+	rm -rf duckdb
+	git clone git@github.com:duckdb/duckdb.git
+	cd duckdb; git checkout $(DUCKDB_VERSION_FLAG); make release GEN=ninja; \
+	./build/release/duckdb -unsigned
