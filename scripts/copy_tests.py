@@ -18,7 +18,9 @@ def main(argv):
             sys.exit()
         elif opt in ("-m", "--mode"):
             mode = arg
-    if mode != "release" or mode != "debug":
+
+    if mode != "release" and mode != "debug":
+        print(mode)
         raise Exception("Invalid parameter, --mode should be release or debug")
     abspath = os.path.abspath(__file__)
     dname = os.path.dirname(abspath)
