@@ -68,17 +68,26 @@ jobs:
       with:
         aarch64_cross_compile: ${{ matrix.arch == 'linux_arm64' && 1 }}
 
-    - name: Build extension
+#    - name: Build extension
+#      env:
+#        GEN: ninja
+#        STATIC_LIBCPP: 1
+#        CC: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
+#        CXX: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
+#      run: |
+#        make release
+
+    - name: Stock DuckDB test
       env:
         GEN: ninja
         STATIC_LIBCPP: 1
         CC: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
         CXX: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
+      if: ${{ matrix.duckdb_version != '<submodule_version>'}}
       run: |
-        make test_release_stock_duckdb
+        make test_release_stock_duckdb DUCKDB_VERSION=${{ matrix.duckdb_version }}
 
     - name: Build extension
       if: ${{ matrix.arch != 'linux_arm64'}}
       run: |
         make test
-        make test_release_stock_duckdb
