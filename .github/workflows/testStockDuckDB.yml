@@ -55,8 +55,5 @@ jobs:
       - name: Load extension stock DuckDB
         if: ${{ matrix.arch != 'linux_arm64'}}
         run: |
-          git clone git@github.com:duckdb/duckdb.git
-          cd duckdb 
-          git pull --tags
-          git checkout ${{ matrix.duckdb_version }}
           make release
+          make test_release_stock_duckdb
