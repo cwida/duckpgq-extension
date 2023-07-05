@@ -110,5 +110,5 @@ test_debug_stock_duckdb:
 	rm -rf duckdb
 	git clone -b $(DUCKDB_VERSION_FLAG) --single-branch --depth 1 https://github.com/duckdb/duckdb.git
 	cd duckdb; make debug;
-	python scripts/copy_tests.py --mode debug
+	python3 scripts/copy_tests.py --mode debug
 	cd duckdb; ./build/debug/test/unittest "test/extension/duckpgq/*"
