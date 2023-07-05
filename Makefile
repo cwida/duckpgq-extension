@@ -102,13 +102,13 @@ update:
 test_release_stock_duckdb:
 	rm -rf duckdb
 	git clone -b $(DUCKDB_VERSION_FLAG) --single-branch --depth 1 https://github.com/duckdb/duckdb.git
-#	cd duckdb; make release;
+	cd duckdb; make release;
 	python scripts/copy_tests.py --mode release
 	cd duckdb; ./build/release/test/unittest "test/extension/duckpgq/*"
 
 test_debug_stock_duckdb:
 	rm -rf duckdb
 	git clone -b $(DUCKDB_VERSION_FLAG) --single-branch --depth 1 https://github.com/duckdb/duckdb.git
-	#cd duckdb; make debug;
+	cd duckdb; make debug;
 	python3.10 scripts/copy_tests.py --mode debug
 	cd duckdb; ./build/debug/test/unittest "test/extension/duckpgq/*"
