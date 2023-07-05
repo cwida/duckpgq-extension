@@ -17,7 +17,7 @@ def main(argv):
             print('copy_tests.py -m <release/debug>')
             sys.exit()
         elif opt in ("-m", "--mode"):
-            inputfile = arg
+            mode = arg
     if mode != "release" or mode != "debug":
         raise Exception("Invalid parameter, --mode should be release or debug")
     abspath = os.path.abspath(__file__)
