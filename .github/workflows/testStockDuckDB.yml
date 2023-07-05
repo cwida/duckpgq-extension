@@ -53,7 +53,17 @@ jobs:
           submodules: 'true'
 
       - name: Load extension stock DuckDB
-        if: ${{ matrix.arch != 'linux_arm64'}}
+        env:
+          GEN: ninja
+          STATIC_LIBCPP: 1
+          CC: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
+          CXX: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
         run: |
           make release
+          make test_release_stock_duckdb
+
+      - name: Build extension
+        if: ${{ matrix.arch != 'linux_arm64'}}
+        run: |
+          make test
           make test_release_stock_duckdb
