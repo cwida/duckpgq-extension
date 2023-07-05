@@ -75,7 +75,7 @@ jobs:
         CC: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
         CXX: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
       run: |
-        make release
+#        make release
         make test_release_stock_duckdb
 
     - name: Build extension
