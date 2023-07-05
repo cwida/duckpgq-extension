@@ -1,5 +1,5 @@
 name: Stock DuckDB
-on: [push, pull_request,repository_dispatch]
+on: [push, pull_request, repository_dispatch]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
   cancel-in-progress: false
@@ -68,14 +68,14 @@ jobs:
       with:
         aarch64_cross_compile: ${{ matrix.arch == 'linux_arm64' && 1 }}
 
-    - name: Build extension
-      env:
-        GEN: ninja
-        STATIC_LIBCPP: 1
-        CC: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
-        CXX: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
-      run: |
-        make release
+#    - name: Build extension
+#      env:
+#        GEN: ninja
+#        STATIC_LIBCPP: 1
+#        CC: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
+#        CXX: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
+#      run: |
+#        make release
 
     - name: Stock DuckDB test
       env:
