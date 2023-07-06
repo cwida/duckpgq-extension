@@ -120,14 +120,16 @@ EDGE TABLES (
 Binder Error: Referenced vertex table Student does not exist.
 
 
-## Should fail since the edge table references vertex tables that do not exist
-#statement error
-#-CREATE PROPERTY GRAPH pg3
-#VERTEX TABLES (
-#    School  LABEL School IN School_kind (Hogeschool, University)
-#    )
-#EDGE TABLES (
-#    Students    SOURCE KEY ( src ) REFERENCES School ( id )
-#            DESTINATION KEY ( dst ) REFERENCES Student ( id )
-#            PROPERTIES ( createDate ) LABEL Knows
-#    )
+# Should fail since the edge table references vertex tables that do not exist
+statement error
+-CREATE PROPERTY GRAPH pg3
+VERTEX TABLES (
+    School  LABEL School IN School_kind (Hogeschool, University)
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student__ ( id )
+            PROPERTIES ( createDate ) LABEL Knows
+    );
+----
+Binder Error: Referenced vertex table Student does not exist.
