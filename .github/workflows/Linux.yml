@@ -83,6 +83,16 @@ jobs:
       run: |
         make test
 
+    - name: Stock DuckDB test
+      env:
+        GEN: ninja
+        STATIC_LIBCPP: 1
+        CC: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
+        CXX: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
+      if: ${{ matrix.duckdb_version != '<submodule_version>'}}
+      run: |
+        make test_release_stock_duckdb DUCKDB_VERSION=${{ matrix.duckdb_version }}
+
     - uses: actions/upload-artifact@v2
       with:
         name: ${{matrix.arch}}-extensions
