@@ -39,7 +39,7 @@ def main(argv):
         content = f.read()
         content = content.replace("require duckpgq\n",
                                   dedent("statement ok\n"
-                                         "install '__BUILD_DIRECTORY__/../../../build/"+mode+"/extension/duckpgq/duckpgq.duckdb_extension';\n"
+                                         "force install '__BUILD_DIRECTORY__/../../../build/"+mode+"/extension/duckpgq/duckpgq.duckdb_extension';\n"
                                          "\n"
                                          "statement ok\n"
                                          "load 'duckpgq';\n"))
