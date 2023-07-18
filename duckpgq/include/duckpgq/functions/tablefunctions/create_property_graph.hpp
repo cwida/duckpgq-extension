@@ -35,11 +35,11 @@ public:
   };
 
   static void
-  CheckPropertyGraphTableLabels(unique_ptr<PropertyGraphTable> &pg_table,
+  CheckPropertyGraphTableLabels(shared_ptr<PropertyGraphTable> &pg_table,
                                 TableCatalogEntry &table);
 
   static void
-  CheckPropertyGraphTableColumns(unique_ptr<PropertyGraphTable> &pg_table,
+  CheckPropertyGraphTableColumns(shared_ptr<PropertyGraphTable> &pg_table,
                                  TableCatalogEntry &table);
 
   static duckdb::unique_ptr<FunctionData>
