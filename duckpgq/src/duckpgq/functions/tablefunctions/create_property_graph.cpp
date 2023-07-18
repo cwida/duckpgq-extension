@@ -3,7 +3,7 @@
 
 namespace duckdb {
 
-    void CreatePropertyGraphFunction::CheckPropertyGraphTableLabels(unique_ptr<PropertyGraphTable> &pg_table,
+    void CreatePropertyGraphFunction::CheckPropertyGraphTableLabels(shared_ptr<PropertyGraphTable> &pg_table,
                                                                     TableCatalogEntry &table) {
         if (!pg_table->discriminator.empty()) {
             if (!table.ColumnExists(pg_table->discriminator)) {
@@ -17,7 +17,7 @@ namespace duckdb {
         }
     }
 
-    void CreatePropertyGraphFunction::CheckPropertyGraphTableColumns(unique_ptr<PropertyGraphTable> &pg_table,
+    void CreatePropertyGraphFunction::CheckPropertyGraphTableColumns(shared_ptr<PropertyGraphTable> &pg_table,
                                                                      TableCatalogEntry &table) {
         if (pg_table->no_columns) {
             return;
