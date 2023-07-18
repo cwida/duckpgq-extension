@@ -124,16 +124,23 @@ unique_ptr<ParsedExpression> MatchFunction::CreateMatchJoinExpression(
 PathElement *MatchFunction::GetPathElement(
     unique_ptr<PathReference> &path_reference,
     vector<unique_ptr<ParsedExpression>> &conditions) {
-  if (path_reference->path_reference_type ==
-      PGQPathReferenceType::PATH_ELEMENT) {
+  if (path_reference->path_reference_type == PGQPathReferenceType::PATH_ELEMENT) {
     return reinterpret_cast<PathElement *>(path_reference.get());
-  } else if (path_reference->path_reference_type ==
-             PGQPathReferenceType::SUBPATH) {
+  } else if (path_reference->path_reference_type == PGQPathReferenceType::SUBPATH) {
     auto subpath = reinterpret_cast<SubPath *>(path_reference.get());
+
+		if (!subpath->path_variable.empty()) {
+			// dealing with a named subpath
+
+		}
     if (subpath->where_clause) {
       conditions.push_back(std::move(subpath->where_clause));
     }
-    return reinterpret_cast<PathElement *>(subpath->path_list[0].get());
+    if (subpath->path_list.size() == 1) {
+			return reinterpret_cast<PathElement *>(subpath->path_list[0].get());
+		} else {
+			return nullptr;
+		}
   } else {
     throw InternalException("Unknown path reference type detected");
   }
@@ -309,10 +316,14 @@ MatchFunction::MatchBindReplace(ClientContext &context,
   bool path_finding = false;
   for (idx_t idx_i = 0; idx_i < ref->path_list.size(); idx_i++) {
     auto &path_list = ref->path_list[idx_i];
+    // Check if the element is PathElement or a Subpath with potentially many items
 
-    PathElement *previous_vertex_element =
+		PathElement *previous_vertex_element =
         GetPathElement(path_list->path_elements[0], conditions);
+//		if (!previous_vertex_element) {
 
+//			HandleNamedSubPath(path_list->path_elements[0]);
+//		}
     auto previous_vertex_table =
         FindGraphTable(previous_vertex_element->label, *pg_table);
     CheckInheritance(previous_vertex_table, previous_vertex_element,
@@ -336,34 +347,8 @@ MatchFunction::MatchBindReplace(ClientContext &context,
       auto next_vertex_table =
           FindGraphTable(next_vertex_element->label, *pg_table);
       CheckInheritance(next_vertex_table, next_vertex_element, conditions);
-      if (next_vertex_table->main_label != next_vertex_element->label) {
-        auto constant_expression_two =
-            make_uniq<ConstantExpression>(Value::INTEGER((int32_t)2));
-        auto itr = std::find(next_vertex_table->sub_labels.begin(),
-                             next_vertex_table->sub_labels.end(),
-                             next_vertex_element->label);
 
-        auto idx_of_element =
-            std::distance(next_vertex_table->sub_labels.begin(), itr);
-        auto constant_expression_idx_label = make_uniq<ConstantExpression>(
-            Value::INTEGER((int32_t)idx_of_element));
-
-        vector<unique_ptr<ParsedExpression>> power_of_children;
-        power_of_children.push_back(std::move(constant_expression_two));
-        power_of_children.push_back(std::move(constant_expression_idx_label));
-        auto power_of_term = make_uniq<FunctionExpression>(
-            "power", std::move(power_of_children));
-
-        auto subcategory_colref = make_uniq<ColumnRefExpression>(
-            next_vertex_table->discriminator,
-            next_vertex_element->variable_binding);
-        auto subset_compare = make_uniq<ComparisonExpression>(
-            ExpressionType::COMPARE_EQUAL, std::move(subcategory_colref),
-            std::move(power_of_term));
-        conditions.push_back(std::move(subset_compare));
-      }
-      if (path_list->path_elements[idx_j]->path_reference_type ==
-          PGQPathReferenceType::SUBPATH) {
+      if (path_list->path_elements[idx_j]->path_reference_type == PGQPathReferenceType::SUBPATH) {
         auto *subpath =
             reinterpret_cast<SubPath *>(path_list->path_elements[idx_j].get());
         if (subpath->upper > 1) {
@@ -548,7 +533,7 @@ MatchFunction::MatchBindReplace(ClientContext &context,
           reachability_children.push_back(std::move(cte_where_dst_row));
 
           auto reachability_function = make_uniq<FunctionExpression>(
-              "iterativelength", std::move(reachability_children));
+              "shortestpath", std::move(reachability_children));
           auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
 
           vector<unique_ptr<ParsedExpression>> addition_children;
