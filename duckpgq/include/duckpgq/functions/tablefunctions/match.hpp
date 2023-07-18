@@ -59,7 +59,10 @@ public:
 														const shared_ptr<PropertyGraphTable> &edge_table,
                             unique_ptr<ParsedExpression> &where_clause);
 
-	unique_ptr<CommonTableExpressionInfo> CreateCSRCTE();
+	static unique_ptr<CommonTableExpressionInfo> CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
+																			 const string &edge_binding,
+																			 const string &prev_binding,
+																			 const string &next_binding);
 
   static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
                                                TableFunctionBindInput &input);
