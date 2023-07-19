@@ -24,15 +24,17 @@ public:
     bool done = false;
   };
 
-  static shared_ptr<PropertyGraphTable> FindGraphTable(const string &label,
-                                            CreatePropertyGraphInfo &pg_table);
+  static shared_ptr<PropertyGraphTable>
+  FindGraphTable(const string &label, CreatePropertyGraphInfo &pg_table);
   static void
-  CheckInheritance(shared_ptr<PropertyGraphTable> &tableref, PathElement *element,
+  CheckInheritance(shared_ptr<PropertyGraphTable> &tableref,
+                   PathElement *element,
                    vector<unique_ptr<ParsedExpression>> &conditions);
 
-  static void CheckEdgeTableConstraints(const string &src_reference,
-                                        const string &dst_reference,
-																				const shared_ptr<PropertyGraphTable> &edge_table);
+  static void
+  CheckEdgeTableConstraints(const string &src_reference,
+                            const string &dst_reference,
+                            const shared_ptr<PropertyGraphTable> &edge_table);
 
   static unique_ptr<ParsedExpression> CreateMatchJoinExpression(
       vector<string> vertex_keys, vector<string> edge_keys,
@@ -43,12 +45,13 @@ public:
                  vector<unique_ptr<ParsedExpression>> &conditions);
 
   static unique_ptr<SelectStatement>
-  GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table, const string &prev_binding);
+  GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table,
+                const string &prev_binding);
 
-  static unique_ptr<JoinRef> GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,
-                                        const string &edge_binding,
-                                        const string &prev_binding,
-                                        const string &next_binding);
+  static unique_ptr<JoinRef>
+  GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,
+             const string &edge_binding, const string &prev_binding,
+             const string &next_binding);
 
   static unique_ptr<SubqueryRef> CreateCountCTESubquery();
 
@@ -56,13 +59,13 @@ public:
   CreateSrcDstPairsSubquery(vector<unique_ptr<ParsedExpression>> &column_list,
                             const string &prev_binding,
                             const string &next_binding,
-														const shared_ptr<PropertyGraphTable> &edge_table,
+                            const shared_ptr<PropertyGraphTable> &edge_table,
                             unique_ptr<ParsedExpression> &where_clause);
 
-	static unique_ptr<CommonTableExpressionInfo> CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
-																			 const string &edge_binding,
-																			 const string &prev_binding,
-																			 const string &next_binding);
+  static unique_ptr<CommonTableExpressionInfo>
+  CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
+               const string &edge_binding, const string &prev_binding,
+               const string &next_binding);
 
   static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
                                                TableFunctionBindInput &input);
