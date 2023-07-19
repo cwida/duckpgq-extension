@@ -597,6 +597,8 @@ namespace duckdb {
 						if (subpath->upper > 1) {
 							path_finding = true;
 
+							//! START
+							//! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x, src a, dst b
 							auto cte_select_node = make_uniq<SelectNode>();
 
 							cte_select_node->cte_map.map["cte1"] = CreateCSRCTE(
@@ -604,53 +606,53 @@ namespace duckdb {
 											edge_element->variable_binding,
 											next_vertex_element->variable_binding);
 
-							for (auto &col: ref->column_list) {
-								auto col_ref = reinterpret_cast<ColumnRefExpression *>(col.get());
-								auto new_col_ref =
-												make_uniq<ColumnRefExpression>(col_ref->alias, "__p");
-								cte_select_node->select_list.push_back(std::move(new_col_ref));
-							}
-
 							//! (SELECT count(cte1.temp) * 0 as temp from cte1) __x
-
 							auto temp_cte_select_subquery = CreateCountCTESubquery();
 
-							//! (SELECT src.rowid as __src, b.rowid as __dst, <...> FROM src_table
-							//! src, dst_table dst <where
-							//! ...>) __p
-							auto source_destination_pairs_subquery = CreateSrcDstPairsSubquery(
-											ref->column_list, previous_vertex_element->variable_binding,
-											next_vertex_element->variable_binding, edge_table,
-											ref->where_clause);
 							auto cross_join_src_dst = make_uniq<JoinRef>(JoinRefType::CROSS);
 
-							cross_join_src_dst->left = std::move(temp_cte_select_subquery);
-							cross_join_src_dst->right =
-											std::move(source_destination_pairs_subquery);
+							//! src alias (FROM src a)
+							auto src_vertex_ref = make_uniq<BaseTableRef>();
+							src_vertex_ref->table_name = edge_table->source_reference;
+							src_vertex_ref->alias = previous_vertex_element->variable_binding;
 
-							cte_select_node->from_table = std::move(cross_join_src_dst);
+							cross_join_src_dst->left = std::move(src_vertex_ref);
 
-							vector<unique_ptr<ParsedExpression>> reachability_children;
-							auto cte_where_src_row =
-											make_uniq<ColumnRefExpression>("__src", "__p");
-							auto cte_where_dst_row =
-											make_uniq<ColumnRefExpression>("__dst", "__p");
-							auto reachability_subquery_expr = make_uniq<SubqueryExpression>();
-							reachability_subquery_expr->subquery = GetCountTable(
-											edge_table, previous_vertex_element->variable_binding);
-							reachability_subquery_expr->subquery_type = SubqueryType::SCALAR;
+							//! dst alias (FROM dst b)
+							auto dst_vertex_ref = make_uniq<BaseTableRef>();
+							dst_vertex_ref->table_name = edge_table->destination_reference;
+							dst_vertex_ref->alias = next_vertex_element->variable_binding;
 
-							auto reachability_id_constant =
-											make_uniq<ConstantExpression>(Value::INTEGER((int32_t) 0));
+							cross_join_src_dst->right = std::move(dst_vertex_ref);
 
-							reachability_children.push_back(std::move(reachability_id_constant));
-							reachability_children.push_back(
-											std::move(reachability_subquery_expr));
-							reachability_children.push_back(std::move(cte_where_src_row));
-							reachability_children.push_back(std::move(cte_where_dst_row));
+							auto cross_join_with_cte = make_uniq<JoinRef>(JoinRefType::CROSS);
+							cross_join_with_cte->left = std::move(temp_cte_select_subquery);
+							cross_join_with_cte->right = std::move(cross_join_src_dst);
+
+							cte_select_node->from_table = std::move(cross_join_with_cte);
+
+							//! END
+							//! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x, src a, dst b
+
+							//! START
+							//! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id) from dst c, a.rowid, b.rowid) between lower and upper
+							vector<unique_ptr<ParsedExpression>> pathfinding_children;
+
+							auto src_row_id = make_uniq<ColumnRefExpression>("rowid", previous_vertex_element->variable_binding);
+							auto dst_row_id = make_uniq<ColumnRefExpression>("rowid", next_vertex_element->variable_binding);
+							auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER((int32_t) 0));
+
+							auto pathfinding_subquery_expr = make_uniq<SubqueryExpression>();
+							pathfinding_subquery_expr->subquery = GetCountTable(edge_table, previous_vertex_element->variable_binding);
+
+							pathfinding_children.push_back(std::move(csr_id));
+							pathfinding_children.push_back(std::move(pathfinding_subquery_expr));
+							pathfinding_children.push_back(std::move(src_row_id));
+							pathfinding_children.push_back(std::move(dst_row_id));
 
 							auto reachability_function = make_uniq<FunctionExpression>(
-											"iterativelength", std::move(reachability_children));
+											"iterativelength", std::move(pathfinding_children));
+
 							auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
 
 							vector<unique_ptr<ParsedExpression>> addition_children;
@@ -668,18 +670,85 @@ namespace duckdb {
 											std::move(upper_limit));
 							conditions.push_back(std::move(between_expression));
 
-							unique_ptr<ParsedExpression> cte_and_expression;
-							for (auto &condition: conditions) {
-								if (cte_and_expression) {
-									cte_and_expression = make_uniq<ConjunctionExpression>(
-													ExpressionType::CONJUNCTION_AND,
-													std::move(cte_and_expression), std::move(condition));
-								} else {
-									cte_and_expression = std::move(condition);
-								}
-							}
-							cte_select_node->where_clause = std::move(cte_and_expression);
-							cte_select_statement->node = std::move(cte_select_node);
+							//! END
+							//! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id) from dst c, a.rowid, b.rowid) between lower and upper
+
+
+//
+//
+//							for (auto &col: ref->column_list) {
+//								auto col_ref = reinterpret_cast<ColumnRefExpression *>(col.get());
+//								auto new_col_ref =
+//												make_uniq<ColumnRefExpression>(col_ref->alias, "__p");
+//								cte_select_node->select_list.push_back(std::move(new_col_ref));
+//							}
+
+
+							//! (SELECT src.rowid as __src, b.rowid as __dst, <...> FROM src_table
+							//! src, dst_table dst <where
+							//! ...>) __p
+//							auto source_destination_pairs_subquery = CreateSrcDstPairsSubquery(
+//											ref->column_list, previous_vertex_element->variable_binding,
+//											next_vertex_element->variable_binding, edge_table,
+//											ref->where_clause);
+//							auto cross_join_src_dst = make_uniq<JoinRef>(JoinRefType::CROSS);
+//
+//							cross_join_src_dst->left = std::move(temp_cte_select_subquery);
+//							cross_join_src_dst->right =
+//											std::move(source_destination_pairs_subquery);
+//
+//							cte_select_node->from_table = std::move(cross_join_src_dst);
+//
+//							vector<unique_ptr<ParsedExpression>> reachability_children;
+//							auto cte_where_src_row =
+//											make_uniq<ColumnRefExpression>("__src", "__p");
+//							auto cte_where_dst_row =
+//											make_uniq<ColumnRefExpression>("__dst", "__p");
+//							auto reachability_subquery_expr = make_uniq<SubqueryExpression>();
+//							reachability_subquery_expr->subquery = GetCountTable(
+//											edge_table, previous_vertex_element->variable_binding);
+//							reachability_subquery_expr->subquery_type = SubqueryType::SCALAR;
+//
+//							auto reachability_id_constant =
+//											make_uniq<ConstantExpression>(Value::INTEGER((int32_t) 0));
+//
+//							reachability_children.push_back(std::move(reachability_id_constant));
+//							reachability_children.push_back(
+//											std::move(reachability_subquery_expr));
+//							reachability_children.push_back(std::move(cte_where_src_row));
+//							reachability_children.push_back(std::move(cte_where_dst_row));
+//
+//							auto reachability_function = make_uniq<FunctionExpression>(
+//											"iterativelength", std::move(reachability_children));
+//							auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
+//
+//							vector<unique_ptr<ParsedExpression>> addition_children;
+//							addition_children.push_back(std::move(cte_col_ref));
+//							addition_children.push_back(std::move(reachability_function));
+//
+//							auto addition_function = make_uniq<FunctionExpression>(
+//											"add", std::move(addition_children));
+//							auto lower_limit =
+//											make_uniq<ConstantExpression>(Value::INTEGER(subpath->lower));
+//							auto upper_limit =
+//											make_uniq<ConstantExpression>(Value::INTEGER(subpath->upper));
+//							auto between_expression = make_uniq<BetweenExpression>(
+//											std::move(addition_function), std::move(lower_limit),
+//											std::move(upper_limit));
+//							conditions.push_back(std::move(between_expression));
+//
+//							unique_ptr<ParsedExpression> cte_and_expression;
+//							for (auto &condition: conditions) {
+//								if (cte_and_expression) {
+//									cte_and_expression = make_uniq<ConjunctionExpression>(
+//													ExpressionType::CONJUNCTION_AND,
+//													std::move(cte_and_expression), std::move(condition));
+//								} else {
+//									cte_and_expression = std::move(condition);
+//								}
+//							}
+//							cte_select_node->where_clause = std::move(cte_and_expression);
+//							cte_select_statement->node = std::move(cte_select_node);
 
 							//                    auto result =
 							//                    make_uniq<SubqueryRef>(std::move(cte_select_statement),
