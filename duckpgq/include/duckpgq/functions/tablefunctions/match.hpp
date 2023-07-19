@@ -67,6 +67,35 @@ public:
                const string &edge_binding, const string &prev_binding,
                const string &next_binding);
 
+	static void EdgeTypeAny(
+					shared_ptr<PropertyGraphTable> &edge_table,
+					const string &edge_binding,
+					const string &prev_binding,
+					const string &next_binding,
+					vector<unique_ptr<ParsedExpression>> &conditions);
+
+	static void EdgeTypeLeft(shared_ptr<PropertyGraphTable> &edge_table,
+													 const string &next_table_name, const string &prev_table_name,
+													 const string &edge_binding,
+													 const string &prev_binding,
+													 const string &next_binding,
+													 vector<unique_ptr<ParsedExpression>> &conditions);
+
+	static void EdgeTypeRight(shared_ptr<PropertyGraphTable> &edge_table,
+																			const string &next_table_name, const string &prev_table_name,
+																			const string &edge_binding,
+																			const string &prev_binding,
+																			const string &next_binding,
+																			vector<unique_ptr<ParsedExpression>> &conditions);
+
+	static void EdgeTypeLeftRight(shared_ptr<PropertyGraphTable> &edge_table,
+																							 const string &edge_binding,
+																							 const string &prev_binding,
+																							 const string &next_binding,
+																							 vector<unique_ptr<ParsedExpression>> &conditions,
+																							 unordered_map<string, string> &alias_map,
+																							 int32_t &extra_alias_counter);
+
   static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
                                                TableFunctionBindInput &input);
 };
