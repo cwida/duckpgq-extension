@@ -167,7 +167,8 @@ static void ScanPGETableFunction(ClientContext &context,
   output.SetCardinality(size);
 }
 
-shared_ptr<PropertyGraphTable> find_table_entry(const vector<shared_ptr<PropertyGraphTable>> &vec,
+shared_ptr<PropertyGraphTable>
+find_table_entry(const vector<shared_ptr<PropertyGraphTable>> &vec,
                  string &table_name) {
   for (auto &&entry : vec) {
     if (entry->table_name == table_name) {
