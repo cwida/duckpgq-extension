@@ -244,56 +244,56 @@ namespace duckdb {
 			return temp_cte_select_subquery;
 		}
 
-		unique_ptr<SubqueryRef> MatchFunction::CreateSrcDstPairsSubquery(
-						vector<unique_ptr<ParsedExpression>> &column_list,
-						const string &prev_binding, const string &next_binding,
-						const shared_ptr<PropertyGraphTable> &edge_table,
-						unique_ptr<ParsedExpression> &where_clause) {
-			auto src_dst_pairs_node = make_uniq<SelectNode>();
-			//! src.rowid
-			auto src_rowid = make_uniq<ColumnRefExpression>("rowid", prev_binding);
-			src_rowid->alias = "__src";
-			src_dst_pairs_node->select_list.push_back(std::move(src_rowid));
-			//! dst.rowid
-			auto dst_rowid = make_uniq<ColumnRefExpression>("rowid", next_binding);
-			dst_rowid->alias = "__dst";
-			src_dst_pairs_node->select_list.push_back(std::move(dst_rowid));
-
-			//! Select all columns that we need
-			//! (Needs to be reworked in the future since we maybe don't want to select
-			//! _all_ columns in this subquery)
-			for (auto &column: column_list) {
-				src_dst_pairs_node->select_list.push_back(std::move(column));
-			}
-
-			//! src alias
-			auto src_vertex_ref = make_uniq<BaseTableRef>();
-			src_vertex_ref->table_name = edge_table->source_reference;
-			src_vertex_ref->alias = prev_binding;
-
-			//! dst alias
-			auto dst_vertex_ref = make_uniq<BaseTableRef>();
-			dst_vertex_ref->table_name = edge_table->destination_reference;
-			dst_vertex_ref->alias = next_binding;
-
-			//! FROM src alias, dst alias (represented as a cross join between the two)
-			auto cross_join_src_dst = make_uniq<JoinRef>(JoinRefType::CROSS);
-			cross_join_src_dst->left = std::move(src_vertex_ref);
-			cross_join_src_dst->right = std::move(dst_vertex_ref);
-
-			//! Adding to the from clause
-			src_dst_pairs_node->from_table = std::move(cross_join_src_dst);
-
-			//! Adding the where clause that we filter on
-			src_dst_pairs_node->where_clause = std::move(where_clause);
-
-			auto src_dst_pairs_statement = make_uniq<SelectStatement>();
-			src_dst_pairs_statement->node = std::move(src_dst_pairs_node);
-
-			auto src_dst_pairs_subquery =
-							make_uniq<SubqueryRef>(std::move(src_dst_pairs_statement), "__p");
-			return src_dst_pairs_subquery;
-		}
+//		unique_ptr<SubqueryRef> MatchFunction::CreateSrcDstPairsSubquery(
+//						vector<unique_ptr<ParsedExpression>> &column_list,
+//						const string &prev_binding, const string &next_binding,
+//						const shared_ptr<PropertyGraphTable> &edge_table,
+//						unique_ptr<ParsedExpression> &where_clause) {
+//			auto src_dst_pairs_node = make_uniq<SelectNode>();
+//			//! src.rowid
+//			auto src_rowid = make_uniq<ColumnRefExpression>("rowid", prev_binding);
+//			src_rowid->alias = "__src";
+//			src_dst_pairs_node->select_list.push_back(std::move(src_rowid));
+//			//! dst.rowid
+//			auto dst_rowid = make_uniq<ColumnRefExpression>("rowid", next_binding);
+//			dst_rowid->alias = "__dst";
+//			src_dst_pairs_node->select_list.push_back(std::move(dst_rowid));
+//
+//			//! Select all columns that we need
+//			//! (Needs to be reworked in the future since we maybe don't want to select
+//			//! _all_ columns in this subquery)
+//			for (auto &column: column_list) {
+//				src_dst_pairs_node->select_list.push_back(std::move(column));
+//			}
+//
+//			//! src alias
+//			auto src_vertex_ref = make_uniq<BaseTableRef>();
+//			src_vertex_ref->table_name = edge_table->source_reference;
+//			src_vertex_ref->alias = prev_binding;
+//
+//			//! dst alias
+//			auto dst_vertex_ref = make_uniq<BaseTableRef>();
+//			dst_vertex_ref->table_name = edge_table->destination_reference;
+//			dst_vertex_ref->alias = next_binding;
+//
+//			//! FROM src alias, dst alias (represented as a cross join between the two)
+//			auto cross_join_src_dst = make_uniq<JoinRef>(JoinRefType::CROSS);
+//			cross_join_src_dst->left = std::move(src_vertex_ref);
+//			cross_join_src_dst->right = std::move(dst_vertex_ref);
+//
+//			//! Adding to the from clause
+//			src_dst_pairs_node->from_table = std::move(cross_join_src_dst);
+//
+//			//! Adding the where clause that we filter on
+//			src_dst_pairs_node->where_clause = std::move(where_clause);
+//
+//			auto src_dst_pairs_statement = make_uniq<SelectStatement>();
+//			src_dst_pairs_statement->node = std::move(src_dst_pairs_node);
+//
+//			auto src_dst_pairs_subquery =
+//							make_uniq<SubqueryRef>(std::move(src_dst_pairs_statement), "__p");
+//			return src_dst_pairs_subquery;
+//		}
 
 		unique_ptr<CommonTableExpressionInfo>
 		MatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
@@ -601,7 +601,7 @@ namespace duckdb {
 							//! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x, src a, dst b
 							auto cte_select_node = make_uniq<SelectNode>();
 
-							cte_select_node->cte_map.map["cte1"] = CreateCSRCTE(
+							select_node->cte_map.map["cte1"] = CreateCSRCTE(
 											edge_table, previous_vertex_element->variable_binding,
 											edge_element->variable_binding,
 											next_vertex_element->variable_binding);
@@ -629,8 +629,15 @@ namespace duckdb {
 							cross_join_with_cte->left = std::move(temp_cte_select_subquery);
 							cross_join_with_cte->right = std::move(cross_join_src_dst);
 
-							cte_select_node->from_table = std::move(cross_join_with_cte);
-
+							if (select_node->from_table) {
+								// create a cross join since there is already something in from clause
+								auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
+								from_join->left = std::move(select_node->from_table);
+								from_join->right = std::move(cross_join_with_cte);
+								select_node->from_table = std::move(from_join);
+							} else {
+								select_node->from_table = std::move(cross_join_with_cte);
+							}
 							//! END
 							//! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x, src a, dst b
 
@@ -672,87 +679,6 @@ namespace duckdb {
 
 							//! END
 							//! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id) from dst c, a.rowid, b.rowid) between lower and upper
-
-
-//
-//
-//							for (auto &col: ref->column_list) {
-//								auto col_ref = reinterpret_cast<ColumnRefExpression *>(col.get());
-//								auto new_col_ref =
-//												make_uniq<ColumnRefExpression>(col_ref->alias, "__p");
-//								cte_select_node->select_list.push_back(std::move(new_col_ref));
-//							}
-
-
-							//! (SELECT src.rowid as __src, b.rowid as __dst, <...> FROM src_table
-							//! src, dst_table dst <where
-							//! ...>) __p
-//							auto source_destination_pairs_subquery = CreateSrcDstPairsSubquery(
-//											ref->column_list, previous_vertex_element->variable_binding,
-//											next_vertex_element->variable_binding, edge_table,
-//											ref->where_clause);
-//							auto cross_join_src_dst = make_uniq<JoinRef>(JoinRefType::CROSS);
-//
-//							cross_join_src_dst->left = std::move(temp_cte_select_subquery);
-//							cross_join_src_dst->right =
-//											std::move(source_destination_pairs_subquery);
-//
-//							cte_select_node->from_table = std::move(cross_join_src_dst);
-//
-//							vector<unique_ptr<ParsedExpression>> reachability_children;
-//							auto cte_where_src_row =
-//											make_uniq<ColumnRefExpression>("__src", "__p");
-//							auto cte_where_dst_row =
-//											make_uniq<ColumnRefExpression>("__dst", "__p");
-//							auto reachability_subquery_expr = make_uniq<SubqueryExpression>();
-//							reachability_subquery_expr->subquery = GetCountTable(
-//											edge_table, previous_vertex_element->variable_binding);
-//							reachability_subquery_expr->subquery_type = SubqueryType::SCALAR;
-//
-//							auto reachability_id_constant =
-//											make_uniq<ConstantExpression>(Value::INTEGER((int32_t) 0));
-//
-//							reachability_children.push_back(std::move(reachability_id_constant));
-//							reachability_children.push_back(
-//											std::move(reachability_subquery_expr));
-//							reachability_children.push_back(std::move(cte_where_src_row));
-//							reachability_children.push_back(std::move(cte_where_dst_row));
-//
-//							auto reachability_function = make_uniq<FunctionExpression>(
-//											"iterativelength", std::move(reachability_children));
-//							auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
-//
-//							vector<unique_ptr<ParsedExpression>> addition_children;
-//							addition_children.push_back(std::move(cte_col_ref));
-//							addition_children.push_back(std::move(reachability_function));
-//
-//							auto addition_function = make_uniq<FunctionExpression>(
-//											"add", std::move(addition_children));
-//							auto lower_limit =
-//											make_uniq<ConstantExpression>(Value::INTEGER(subpath->lower));
-//							auto upper_limit =
-//											make_uniq<ConstantExpression>(Value::INTEGER(subpath->upper));
-//							auto between_expression = make_uniq<BetweenExpression>(
-//											std::move(addition_function), std::move(lower_limit),
-//											std::move(upper_limit));
-//							conditions.push_back(std::move(between_expression));
-//
-//							unique_ptr<ParsedExpression> cte_and_expression;
-//							for (auto &condition: conditions) {
-//								if (cte_and_expression) {
-//									cte_and_expression = make_uniq<ConjunctionExpression>(
-//													ExpressionType::CONJUNCTION_AND,
-//													std::move(cte_and_expression), std::move(condition));
-//								} else {
-//									cte_and_expression = std::move(condition);
-//								}
-//							}
-//							cte_select_node->where_clause = std::move(cte_and_expression);
-//							cte_select_statement->node = std::move(cte_select_node);
-
-							//                    auto result =
-							//                    make_uniq<SubqueryRef>(std::move(cte_select_statement),
-							//                    ref.alias); return Bind(*result);
 						}
 					}
 
@@ -805,34 +731,41 @@ namespace duckdb {
 				}
 			}
 
-			if (path_finding) {
-				auto result =
-								make_uniq<SubqueryRef>(std::move(cte_select_statement), ref->alias);
-				return std::move(result);
-			}
-
 			unique_ptr<TableRef> from_clause;
 
-			for (auto &table_alias_entry: alias_map) {
-				auto table_ref = make_uniq<BaseTableRef>();
-				table_ref->table_name = table_alias_entry.second;
-				table_ref->alias = table_alias_entry.first;
+			if (!path_finding) {
+				// Go through all aliases encountered
+				for (auto &table_alias_entry: alias_map) {
+					auto table_ref = make_uniq<BaseTableRef>();
+					table_ref->table_name = table_alias_entry.second;
+					table_ref->alias = table_alias_entry.first;
 
-				if (from_clause) {
-					auto new_root = make_uniq<JoinRef>(JoinRefType::CROSS);
-					new_root->left = std::move(from_clause);
-					new_root->right = std::move(table_ref);
-					from_clause = std::move(new_root);
-				} else {
-					from_clause = std::move(table_ref);
+					if (from_clause) {
+						auto new_root = make_uniq<JoinRef>(JoinRefType::CROSS);
+						new_root->left = std::move(from_clause);
+						new_root->right = std::move(table_ref);
+						from_clause = std::move(new_root);
+					} else {
+						from_clause = std::move(table_ref);
+					}
 				}
-			}
-			select_node->from_table = std::move(from_clause);
+				select_node->from_table = std::move(from_clause);
 
-			unique_ptr<ParsedExpression> where_clause;
+			}
+
+
+//			if (path_finding) {
+//				auto result =
+//								make_uniq<SubqueryRef>(std::move(cte_select_statement), ref->alias);
+//				return std::move(result);
+//			}
+
 			if (ref->where_clause) {
 				conditions.push_back(std::move(ref->where_clause));
 			}
+
+			unique_ptr<ParsedExpression> where_clause;
+
 
 			for (auto &condition: conditions) {
 				if (where_clause) {
@@ -843,6 +776,7 @@ namespace duckdb {
 					where_clause = std::move(condition);
 				}
 			}
+
 			select_node->where_clause = std::move(where_clause);
 
 			select_node->select_list = std::move(ref->column_list);
@@ -854,4 +788,4 @@ namespace duckdb {
 
 			return std::move(result);
 		}
-}; // namespace duckdb
+} // namespace duckdb
