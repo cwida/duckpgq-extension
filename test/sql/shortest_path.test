@@ -54,5 +54,5 @@ query II
 ----
 
 statement ok
-SELECT shortestpath(p), a.name, b.anme as school
+SELECT shortestpath(p), a.name, b.name as school
 FROM
