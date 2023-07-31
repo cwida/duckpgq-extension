@@ -147,9 +147,10 @@ namespace duckdb {
 			}
 		}
 
-		unique_ptr<SelectStatement>
+		unique_ptr<SubqueryExpression>
 		MatchFunction::GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table,
 																 const string &prev_binding) {
+			// SELECT count(s.id) FROM src s
 			auto select_count = make_uniq<SelectStatement>();
 			auto select_inner = make_uniq<SelectNode>();
 			auto ref = make_uniq<BaseTableRef>();
@@ -165,7 +166,10 @@ namespace duckdb {
 							make_uniq<FunctionExpression>("count", std::move(children));
 			select_inner->select_list.push_back(std::move(count_function));
 			select_count->node = std::move(select_inner);
-			return select_count;
+			auto result = make_uniq<SubqueryExpression>();
+			result->subquery = std::move(select_count);
+			result->subquery_type = SubqueryType::SCALAR;
+			return result;
 		}
 
 		unique_ptr<JoinRef>
@@ -244,57 +248,6 @@ namespace duckdb {
 			return temp_cte_select_subquery;
 		}
 
-//		unique_ptr<SubqueryRef> MatchFunction::CreateSrcDstPairsSubquery(
-//						vector<unique_ptr<ParsedExpression>> &column_list,
-//						const string &prev_binding, const string &next_binding,
-//						const shared_ptr<PropertyGraphTable> &edge_table,
-//						unique_ptr<ParsedExpression> &where_clause) {
-//			auto src_dst_pairs_node = make_uniq<SelectNode>();
-//			//! src.rowid
-//			auto src_rowid = make_uniq<ColumnRefExpression>("rowid", prev_binding);
-//			src_rowid->alias = "__src";
-//			src_dst_pairs_node->select_list.push_back(std::move(src_rowid));
-//			//! dst.rowid
-//			auto dst_rowid = make_uniq<ColumnRefExpression>("rowid", next_binding);
-//			dst_rowid->alias = "__dst";
-//			src_dst_pairs_node->select_list.push_back(std::move(dst_rowid));
-//
-//			//! Select all columns that we need
-//			//! (Needs to be reworked in the future since we maybe don't want to select
-//			//! _all_ columns in this subquery)
-//			for (auto &column: column_list) {
-//				src_dst_pairs_node->select_list.push_back(std::move(column));
-//			}
-//
-//			//! src alias
-//			auto src_vertex_ref = make_uniq<BaseTableRef>();
-//			src_vertex_ref->table_name = edge_table->source_reference;
-//			src_vertex_ref->alias = prev_binding;
-//
-//			//! dst alias
-//			auto dst_vertex_ref = make_uniq<BaseTableRef>();
-//			dst_vertex_ref->table_name = edge_table->destination_reference;
-//			dst_vertex_ref->alias = next_binding;
-//
-//			//! FROM src alias, dst alias (represented as a cross join between the two)
-//			auto cross_join_src_dst = make_uniq<JoinRef>(JoinRefType::CROSS);
-//			cross_join_src_dst->left = std::move(src_vertex_ref);
-//			cross_join_src_dst->right = std::move(dst_vertex_ref);
-//
-//			//! Adding to the from clause
-//			src_dst_pairs_node->from_table = std::move(cross_join_src_dst);
-//
-//			//! Adding the where clause that we filter on
-//			src_dst_pairs_node->where_clause = std::move(where_clause);
-//
-//			auto src_dst_pairs_statement = make_uniq<SelectStatement>();
-//			src_dst_pairs_statement->node = std::move(src_dst_pairs_node);
-//
-//			auto src_dst_pairs_subquery =
-//							make_uniq<SubqueryRef>(std::move(src_dst_pairs_statement), "__p");
-//			return src_dst_pairs_subquery;
-//		}
-
 		unique_ptr<CommonTableExpressionInfo>
 		MatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
 																const string &edge_binding,
@@ -302,10 +255,7 @@ namespace duckdb {
 																const string &next_binding) {
 			auto csr_edge_id_constant =
 							make_uniq<ConstantExpression>(Value::INTEGER((int32_t) 0));
-			auto count_create_edge_select = make_uniq<SubqueryExpression>();
-
-			count_create_edge_select->subquery = GetCountTable(edge_table, prev_binding);
-			count_create_edge_select->subquery_type = SubqueryType::SCALAR;
+			auto count_create_edge_select = GetCountTable(edge_table, prev_binding);
 
 			auto cast_subquery_expr = make_uniq<SubqueryExpression>();
 			auto cast_select_node = make_uniq<SelectNode>();
@@ -314,9 +264,8 @@ namespace duckdb {
 			csr_vertex_children.push_back(
 							make_uniq<ConstantExpression>(Value::INTEGER((int32_t) 0)));
 
-			auto count_create_vertex_expr = make_uniq<SubqueryExpression>();
-			count_create_vertex_expr->subquery = GetCountTable(edge_table, prev_binding);
-			count_create_vertex_expr->subquery_type = SubqueryType::SCALAR;
+			auto count_create_vertex_expr = GetCountTable(edge_table, prev_binding);
+
 			csr_vertex_children.push_back(std::move(count_create_vertex_expr));
 
 			csr_vertex_children.push_back(
@@ -539,9 +488,12 @@ namespace duckdb {
 			conditions.push_back(std::move(combined_expr));
 		}
 
+		void MatchFunction::HandleRecursiveSubPath(unique_ptr<PathReference> path_reference, vector<unique_ptr<ParsedExpression>> &conditions) {
+
+		}
 		unique_ptr<TableRef>
 		MatchFunction::MatchBindReplace(ClientContext &context,
-																		TableFunctionBindInput &input) {
+																		TableFunctionBindInput &) {
 			auto data = make_uniq<MatchFunction::MatchBindData>();
 			auto duckpgq_state_entry = context.registered_state.find("duckpgq");
 			auto duckpgq_state = (DuckPGQState *) duckpgq_state_entry->second.get();
@@ -566,6 +518,9 @@ namespace duckdb {
 
 				PathElement *previous_vertex_element =
 								GetPathElement(path_list->path_elements[0], conditions);
+				if (!previous_vertex_element) {
+					HandleRecursiveSubPath(path_list->path_elements[0], conditions);
+				}
 				auto previous_vertex_table =
 								FindGraphTable(previous_vertex_element->label, *pg_table);
 				CheckInheritance(previous_vertex_table, previous_vertex_element,
@@ -590,8 +545,7 @@ namespace duckdb {
 									FindGraphTable(next_vertex_element->label, *pg_table);
 					CheckInheritance(next_vertex_table, next_vertex_element, conditions);
 
-					if (path_list->path_elements[idx_j]->path_reference_type ==
-							PGQPathReferenceType::SUBPATH) {
+					if (path_list->path_elements[idx_j]->path_reference_type == PGQPathReferenceType::SUBPATH) {
 						auto *subpath =
 										reinterpret_cast<SubPath *>(path_list->path_elements[idx_j].get());
 						if (subpath->upper > 1) {
@@ -630,7 +584,7 @@ namespace duckdb {
 							cross_join_with_cte->right = std::move(cross_join_src_dst);
 
 							if (select_node->from_table) {
-								// create a cross join since there is already something in from clause
+								// create a cross join since there is already something in the from clause
 								auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
 								from_join->left = std::move(select_node->from_table);
 								from_join->right = std::move(cross_join_with_cte);
@@ -643,17 +597,14 @@ namespace duckdb {
 
 							//! START
 							//! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id) from dst c, a.rowid, b.rowid) between lower and upper
-							vector<unique_ptr<ParsedExpression>> pathfinding_children;
 
 							auto src_row_id = make_uniq<ColumnRefExpression>("rowid", previous_vertex_element->variable_binding);
 							auto dst_row_id = make_uniq<ColumnRefExpression>("rowid", next_vertex_element->variable_binding);
 							auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER((int32_t) 0));
 
-							auto pathfinding_subquery_expr = make_uniq<SubqueryExpression>();
-							pathfinding_subquery_expr->subquery = GetCountTable(edge_table, previous_vertex_element->variable_binding);
-
+							vector<unique_ptr<ParsedExpression>> pathfinding_children;
 							pathfinding_children.push_back(std::move(csr_id));
-							pathfinding_children.push_back(std::move(pathfinding_subquery_expr));
+							pathfinding_children.push_back(std::move(GetCountTable(edge_table, previous_vertex_element->variable_binding)));
 							pathfinding_children.push_back(std::move(src_row_id));
 							pathfinding_children.push_back(std::move(dst_row_id));
 
@@ -678,7 +629,7 @@ namespace duckdb {
 							conditions.push_back(std::move(between_expression));
 
 							//! END
-							//! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id) from dst c, a.rowid, b.rowid) between lower and upper
+							//! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(s.id) from src s, a.rowid, b.rowid) between lower and upper
 						}
 					}
 
@@ -686,36 +637,38 @@ namespace duckdb {
 					alias_map[next_vertex_element->variable_binding] =
 									next_vertex_table->table_name;
 					alias_map[edge_element->variable_binding] = edge_table->table_name;
+					if (!path_finding) {
+						switch (edge_element->match_type) {
+							case PGQMatchType::MATCH_EDGE_ANY: {
+								select_node->modifiers.push_back(make_uniq<DistinctModifier>());
+								EdgeTypeAny(edge_table,
+														edge_element->variable_binding,
+														previous_vertex_element->variable_binding,
+														next_vertex_element->variable_binding,
+														conditions);
+								break;
+							}
+							case PGQMatchType::MATCH_EDGE_LEFT:
+								EdgeTypeLeft(edge_table, next_vertex_table->table_name, previous_vertex_table->table_name,
+														 edge_element->variable_binding, previous_vertex_element->variable_binding,
+														 next_vertex_element->variable_binding, conditions);
+								break;
+							case PGQMatchType::MATCH_EDGE_RIGHT:
+								EdgeTypeRight(edge_table, next_vertex_table->table_name, previous_vertex_table->table_name,
+															edge_element->variable_binding, previous_vertex_element->variable_binding,
+															next_vertex_element->variable_binding, conditions);
+								break;
+							case PGQMatchType::MATCH_EDGE_LEFT_RIGHT: {
+								EdgeTypeLeftRight(edge_table, edge_element->variable_binding, previous_vertex_element->variable_binding,
+																	next_vertex_element->variable_binding, conditions, alias_map, extra_alias_counter);
+								break;
+							}
 
-					switch (edge_element->match_type) {
-						case PGQMatchType::MATCH_EDGE_ANY: {
-							select_node->modifiers.push_back(make_uniq<DistinctModifier>());
-							EdgeTypeAny(edge_table,
-													edge_element->variable_binding,
-													previous_vertex_element->variable_binding,
-													next_vertex_element->variable_binding,
-													conditions);
-							break;
+							default:
+								throw InternalException("Unknown match type found");
 						}
-						case PGQMatchType::MATCH_EDGE_LEFT:
-							EdgeTypeLeft(edge_table, next_vertex_table->table_name, previous_vertex_table->table_name,
-													 edge_element->variable_binding, previous_vertex_element->variable_binding,
-													 next_vertex_element->variable_binding, conditions);
-							break;
-						case PGQMatchType::MATCH_EDGE_RIGHT:
-							EdgeTypeRight(edge_table, next_vertex_table->table_name, previous_vertex_table->table_name,
-														edge_element->variable_binding, previous_vertex_element->variable_binding,
-														next_vertex_element->variable_binding, conditions);
-							break;
-						case PGQMatchType::MATCH_EDGE_LEFT_RIGHT: {
-							EdgeTypeLeftRight(edge_table, edge_element->variable_binding, previous_vertex_element->variable_binding,
-																next_vertex_element->variable_binding, conditions, alias_map, extra_alias_counter);
-							break;
-						}
-
-						default:
-							throw InternalException("Unknown match type found");
 					}
+
 
 					previous_vertex_element = next_vertex_element;
 					previous_vertex_table = next_vertex_table;
@@ -750,7 +703,6 @@ namespace duckdb {
 					}
 				}
 				select_node->from_table = std::move(from_clause);
-
 			}
 
 
@@ -765,7 +717,6 @@ namespace duckdb {
 			}
 
 			unique_ptr<ParsedExpression> where_clause;
-
 
 			for (auto &condition: conditions) {
 				if (where_clause) {

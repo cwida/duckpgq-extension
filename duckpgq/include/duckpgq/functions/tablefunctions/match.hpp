@@ -44,7 +44,7 @@ public:
   GetPathElement(unique_ptr<PathReference> &path_reference,
                  vector<unique_ptr<ParsedExpression>> &conditions);
 
-  static unique_ptr<SelectStatement>
+  static unique_ptr<SubqueryExpression>
   GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table,
                 const string &prev_binding);
 
@@ -54,13 +54,6 @@ public:
              const string &next_binding);
 
   static unique_ptr<SubqueryRef> CreateCountCTESubquery();
-
-  static unique_ptr<SubqueryRef>
-  CreateSrcDstPairsSubquery(vector<unique_ptr<ParsedExpression>> &column_list,
-                            const string &prev_binding,
-                            const string &next_binding,
-                            const shared_ptr<PropertyGraphTable> &edge_table,
-                            unique_ptr<ParsedExpression> &where_clause);
 
   static unique_ptr<CommonTableExpressionInfo>
   CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
@@ -96,7 +89,9 @@ public:
 																							 unordered_map<string, string> &alias_map,
 																							 int32_t &extra_alias_counter);
 
-  static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
+	static void HandleRecursiveSubPath(unique_ptr<PathReference> path_reference,vector<unique_ptr<ParsedExpression>> &conditions);
+
+	static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
                                                TableFunctionBindInput &input);
 };
 } // namespace duckdb
