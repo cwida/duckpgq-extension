@@ -131,12 +131,11 @@ namespace duckdb {
 								 PGQPathReferenceType::SUBPATH) {
 				auto subpath = reinterpret_cast<SubPath *>(path_reference.get());
 
-				if (!subpath->path_variable.empty()) {
-					// dealing with a named subpath
-				}
 				if (subpath->where_clause) {
 					conditions.push_back(std::move(subpath->where_clause));
 				}
+				// If the subpath has only one element (the case when there is a WHERE in the element)
+				// we unpack the subpath into a PathElement.
 				if (subpath->path_list.size() == 1) {
 					return reinterpret_cast<PathElement *>(subpath->path_list[0].get());
 				} else {
@@ -488,8 +487,9 @@ namespace duckdb {
 			conditions.push_back(std::move(combined_expr));
 		}
 
-		void MatchFunction::HandleRecursiveSubPath(unique_ptr<PathReference> path_reference, vector<unique_ptr<ParsedExpression>> &conditions) {
-
+		PathElement* MatchFunction::HandleNestedSubPath(unique_ptr<PathReference> &path_reference, vector<unique_ptr<ParsedExpression>> &conditions, idx_t element_idx) {
+			auto subpath = reinterpret_cast<SubPath*>(path_reference.get());
+			return GetPathElement(subpath->path_list[element_idx], conditions);
 		}
 		unique_ptr<TableRef>
 		MatchFunction::MatchBindReplace(ClientContext &context,
@@ -511,6 +511,7 @@ namespace duckdb {
 
 			int32_t extra_alias_counter = 0;
 			bool path_finding = false;
+			string named_subpath;
 			for (idx_t idx_i = 0; idx_i < ref->path_list.size(); idx_i++) {
 				auto &path_list = ref->path_list[idx_i];
 				// Check if the element is PathElement or a Subpath with potentially many
@@ -519,7 +520,13 @@ namespace duckdb {
 				PathElement *previous_vertex_element =
 								GetPathElement(path_list->path_elements[0], conditions);
 				if (!previous_vertex_element) {
-					HandleRecursiveSubPath(path_list->path_elements[0], conditions);
+					auto subpath = reinterpret_cast<SubPath*>(path_list->path_elements[0].get());
+					previous_vertex_element = GetPathElement(subpath->path_list[0], conditions);
+					if (!subpath->path_variable.empty()) {
+						// TODO Generalize named subpath
+						//  Needs to be generalized (what if there are two named subpaths?)
+						named_subpath = subpath->path_variable;
+					}
 				}
 				auto previous_vertex_table =
 								FindGraphTable(previous_vertex_element->label, *pg_table);
@@ -532,8 +539,16 @@ namespace duckdb {
 						 idx_j = idx_j + 2) {
 					PathElement *edge_element =
 									GetPathElement(path_list->path_elements[idx_j], conditions);
+					if (!edge_element) {
+						auto subpath = reinterpret_cast<SubPath*>(path_list->path_elements[0].get());
+						edge_element = GetPathElement(subpath->path_list[idx_j], conditions);
+					}
 					PathElement *next_vertex_element =
 									GetPathElement(path_list->path_elements[idx_j + 1], conditions);
+					if (!next_vertex_element) {
+						auto subpath = reinterpret_cast<SubPath*>(path_list->path_elements[0].get());
+						next_vertex_element = GetPathElement(subpath->path_list[idx_j + 1], conditions);
+					}
 					if (next_vertex_element->match_type != PGQMatchType::MATCH_VERTEX ||
 							previous_vertex_element->match_type != PGQMatchType::MATCH_VERTEX) {
 						throw BinderException("Vertex and edge patterns must be alternated.");

@@ -89,7 +89,9 @@ public:
 																							 unordered_map<string, string> &alias_map,
 																							 int32_t &extra_alias_counter);
 
-	static void HandleRecursiveSubPath(unique_ptr<PathReference> path_reference,vector<unique_ptr<ParsedExpression>> &conditions);
+	static PathElement* HandleNestedSubPath(unique_ptr<PathReference> &path_reference,
+																						 vector<unique_ptr<ParsedExpression>> &conditions,
+																						 idx_t element_idx);
 
 	static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
                                                TableFunctionBindInput &input);
