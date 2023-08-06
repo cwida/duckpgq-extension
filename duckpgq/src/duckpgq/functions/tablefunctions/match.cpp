@@ -502,7 +502,6 @@ namespace duckdb {
 							duckpgq_state->transform_expression.get());
 			auto pg_table = duckpgq_state->GetPropertyGraph(ref->pg_name);
 
-			auto cte_select_statement = make_uniq<SelectStatement>();
 
 			vector<unique_ptr<ParsedExpression>> conditions;
 
@@ -516,7 +515,6 @@ namespace duckdb {
 				auto &path_list = ref->path_list[idx_i];
 				// Check if the element is PathElement or a Subpath with potentially many
 				// items
-
 				PathElement *previous_vertex_element =
 								GetPathElement(path_list->path_elements[0], conditions);
 				if (!previous_vertex_element) {
@@ -719,13 +717,6 @@ namespace duckdb {
 				}
 				select_node->from_table = std::move(from_clause);
 			}
-
-
-//			if (path_finding) {
-//				auto result =
-//								make_uniq<SubqueryRef>(std::move(cte_select_statement), ref->alias);
-//				return std::move(result);
-//			}
 
 			if (ref->where_clause) {
 				conditions.push_back(std::move(ref->where_clause));
