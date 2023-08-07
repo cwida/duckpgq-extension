@@ -520,13 +520,7 @@ namespace duckdb {
 				if (!previous_vertex_element) {
 					auto subpath = reinterpret_cast<SubPath*>(path_list->path_elements[0].get());
 					previous_vertex_element = GetPathElement(subpath->path_list[0], conditions);
-					GenerateSubpath(subpath, previous_vertex_element, pg_table);
-
-					if (!subpath->path_variable.empty()) {
-						// TODO Generalize named subpath
-						//  Needs to be generalized (what if there are two named subpaths?)
-						named_subpath = subpath->path_variable;
-					}
+					auto subpath_subquery = GenerateSubpathSubquery(subpath, previous_vertex_element, pg_table);
 				}
 				auto previous_vertex_table =
 								FindGraphTable(previous_vertex_element->label, *pg_table);
@@ -646,12 +640,6 @@ namespace duckdb {
 
 						}
 					}
-
-					if (!named_subpath.empty()) {
-						// Add to select a UDF to compute shortest path if the named subpath is equal to one of the elements in select list
-						for (auto const &element : ref->column_list) {
-						}
-					}
 					// check aliases
 					alias_map[next_vertex_element->variable_binding] =
 									next_vertex_table->table_name;
@@ -752,7 +740,7 @@ namespace duckdb {
 			return std::move(result);
 		}
 
-		void MatchFunction::GenerateSubpath(SubPath *pPath, PathElement *pElement, CreatePropertyGraphInfo* pg_table) {
+		unique_ptr<SubqueryRef> MatchFunction::GenerateSubpathSubquery(SubPath *pPath, PathElement *pElement, CreatePropertyGraphInfo* pg_table) {
 			vector<unique_ptr<ParsedExpression>> conditions;
 
 			auto select_node = make_uniq<SelectNode>();
@@ -867,5 +855,10 @@ namespace duckdb {
 					}
 				}
 			}
+			auto subquery = make_uniq<SelectStatement>();
+			subquery->node = std::move(select_node);
+
+			auto result = make_uniq<SubqueryRef>(std::move(subquery), named_subpath);
+			return std::move(result);
 		}
 } // namespace duckdb
