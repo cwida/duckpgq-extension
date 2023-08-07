@@ -520,6 +520,8 @@ namespace duckdb {
 				if (!previous_vertex_element) {
 					auto subpath = reinterpret_cast<SubPath*>(path_list->path_elements[0].get());
 					previous_vertex_element = GetPathElement(subpath->path_list[0], conditions);
+					GenerateSubpath(subpath, previous_vertex_element, pg_table);
+
 					if (!subpath->path_variable.empty()) {
 						// TODO Generalize named subpath
 						//  Needs to be generalized (what if there are two named subpaths?)
@@ -643,9 +645,15 @@ namespace duckdb {
 
 							//! END
 							//! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(s.id) from src s, a.rowid, b.rowid) between lower and upper
+
 						}
 					}
 
+					if (!named_subpath.empty()) {
+						// Add to select a UDF to compute shortest path if the named subpath is equal to one of the elements in select list
+						for (auto const &element : ref->column_list) {
+						}
+					}
 					// check aliases
 					alias_map[next_vertex_element->variable_binding] =
 									next_vertex_table->table_name;
@@ -744,5 +752,33 @@ namespace duckdb {
 			auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
 
 			return std::move(result);
+		}
+
+		void MatchFunction::GenerateSubpath(SubPath *pPath, PathElement *pElement, CreatePropertyGraphInfo* pg_table) {
+			vector<unique_ptr<ParsedExpression>> conditions;
+
+			auto select_node = make_uniq<SelectNode>();
+			unordered_map<string, string> alias_map;
+			string named_subpath = pPath->path_variable;
+
+			auto previous_vertex_table =
+							FindGraphTable(pElement->label, *pg_table);
+			CheckInheritance(previous_vertex_table, pElement,
+											 conditions);
+			alias_map[pElement->variable_binding] =
+							previous_vertex_table->table_name;
+			for (idx_t idx_j = 1; idx_j < pPath->path_list.size();
+					 idx_j = idx_j + 2) {
+				PathElement *edge_element =
+								GetPathElement(pPath->path_list[idx_j], conditions);
+				PathElement *next_vertex_element =
+								GetPathElement(pPath->path_list[idx_j + 1], conditions);
+				if (next_vertex_element->match_type != PGQMatchType::MATCH_VERTEX ||
+						pElement->match_type != PGQMatchType::MATCH_VERTEX) {
+					throw BinderException("Vertex and edge patterns must be alternated.");
+				}
+			}
+
+
 		}
 } // namespace duckdb

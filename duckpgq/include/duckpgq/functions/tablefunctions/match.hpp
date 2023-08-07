@@ -95,5 +95,7 @@ public:
 
 	static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
                                                TableFunctionBindInput &input);
+
+		static void GenerateSubpath(SubPath *pPath, PathElement *pElement, CreatePropertyGraphInfo* pg_table);
 };
 } // namespace duckdb
