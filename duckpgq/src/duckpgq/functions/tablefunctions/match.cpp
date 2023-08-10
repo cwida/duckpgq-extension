@@ -506,6 +506,24 @@ namespace duckdb {
 			return where_clause;
 		}
 
+
+		unique_ptr<FunctionExpression> MatchFunction::CreatePathFindingFunction(const string &prev_binding, const string &next_binding,
+																	 shared_ptr<PropertyGraphTable> &edge_table, const string &path_finding_udf) {
+			auto src_row_id = make_uniq<ColumnRefExpression>("rowid", prev_binding);
+			auto dst_row_id = make_uniq<ColumnRefExpression>("rowid", next_binding);
+			auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER((int32_t) 0));
+
+			vector<unique_ptr<ParsedExpression>> pathfinding_children;
+			pathfinding_children.push_back(std::move(csr_id));
+			pathfinding_children.push_back(
+							std::move(GetCountTable(edge_table, prev_binding)));
+			pathfinding_children.push_back(std::move(src_row_id));
+			pathfinding_children.push_back(std::move(dst_row_id));
+
+			return make_uniq<FunctionExpression>(
+							path_finding_udf, std::move(pathfinding_children));
+		}
+
 		unique_ptr<TableRef>
 		MatchFunction::MatchBindReplace(ClientContext &context,
 																		TableFunctionBindInput &) {
@@ -790,6 +808,13 @@ namespace duckdb {
 					auto *subpath = reinterpret_cast<SubPath *>(pPath->path_list[idx_j].get());
 					if (subpath->upper > 1) {
 						path_finding = true;
+						if (!named_subpath.empty()) {
+							auto shortest_path_function = CreatePathFindingFunction(previous_vertex_element->variable_binding,
+																																			next_vertex_element->variable_binding,
+																																			edge_table, "shortestpath");
+							shortest_path_function->alias = "path";
+							select_node->select_list.push_back(std::move(shortest_path_function));
+						}
 						select_node->cte_map.map["cte1"] = CreateCSRCTE(
 										edge_table, previous_vertex_element->variable_binding,
 										edge_element->variable_binding,
@@ -832,20 +857,7 @@ namespace duckdb {
 
 						//! START
 						//! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id) from dst c, a.rowid, b.rowid) between lower and upper
-
-						auto src_row_id = make_uniq<ColumnRefExpression>("rowid", previous_vertex_element->variable_binding);
-						auto dst_row_id = make_uniq<ColumnRefExpression>("rowid", next_vertex_element->variable_binding);
-						auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER((int32_t) 0));
-
-						vector<unique_ptr<ParsedExpression>> pathfinding_children;
-						pathfinding_children.push_back(std::move(csr_id));
-						pathfinding_children.push_back(
-										std::move(GetCountTable(edge_table, previous_vertex_element->variable_binding)));
-						pathfinding_children.push_back(std::move(src_row_id));
-						pathfinding_children.push_back(std::move(dst_row_id));
-
-						auto reachability_function = make_uniq<FunctionExpression>(
-										"iterativelength", std::move(pathfinding_children));
+						auto reachability_function = CreatePathFindingFunction(previous_vertex_element->variable_binding, next_vertex_element->variable_binding, edge_table, "iterativelength");
 
 						auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
 
@@ -873,6 +885,7 @@ namespace duckdb {
 									next_vertex_table->table_name;
 					alias_map[edge_element->variable_binding] = edge_table->table_name;
 					if (!path_finding) {
+
 						switch (edge_element->match_type) {
 							case PGQMatchType::MATCH_EDGE_ANY: {
 								select_node->modifiers.push_back(make_uniq<DistinctModifier>());
@@ -912,7 +925,6 @@ namespace duckdb {
 
 			auto subquery = make_uniq<SelectStatement>();
 			subquery->node = std::move(select_node);
-
 
 			return make_uniq<SubqueryRef>(std::move(subquery), named_subpath);
 		}
