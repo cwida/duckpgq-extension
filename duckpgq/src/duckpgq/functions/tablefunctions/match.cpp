@@ -521,6 +521,16 @@ namespace duckdb {
 					auto subpath = reinterpret_cast<SubPath*>(path_list->path_elements[0].get());
 					previous_vertex_element = GetPathElement(subpath->path_list[0], conditions);
 					auto subpath_subquery = GenerateSubpathSubquery(subpath, previous_vertex_element, pg_table);
+					if (select_node->from_table) {
+						// The from clause already contains TableRefs, so we need to make a join with the subquery
+						auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
+						from_join->left = std::move(select_node->from_table);
+						from_join->right = std::move(subpath_subquery);
+						select_node->from_table = std::move(from_join);
+					} else {
+						// The from clause was still empty, so we can just place the subquery there
+						select_node->from_table = std::move(subpath_subquery);
+					}
 				}
 				auto previous_vertex_table =
 								FindGraphTable(previous_vertex_element->label, *pg_table);
