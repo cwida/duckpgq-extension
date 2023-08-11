@@ -543,8 +543,8 @@ namespace duckdb {
 			int32_t extra_alias_counter = 0;
 			bool path_finding = false;
 			string named_subpath;
-			for (idx_t idx_i = 0; idx_i < ref->path_list.size(); idx_i++) {
-				auto &path_list = ref->path_list[idx_i];
+			for (idx_t idx_i = 0; idx_i < ref->path_patterns.size(); idx_i++) {
+				auto &path_list = ref->path_patterns[idx_i];
 				// Check if the element is PathElement or a Subpath with potentially many
 				// items
 				PathElement *previous_vertex_element =
@@ -570,7 +570,7 @@ namespace duckdb {
 					alias_map[previous_vertex_element->variable_binding] =
 									previous_vertex_table->table_name;
 
-					for (idx_t idx_j = 1; idx_j < ref->path_list[idx_i]->path_elements.size();
+					for (idx_t idx_j = 1; idx_j < ref->path_patterns[idx_i]->path_elements.size();
 							 idx_j = idx_j + 2) {
 						PathElement *edge_element =
 										GetPathElement(path_list->path_elements[idx_j], conditions);
@@ -809,6 +809,8 @@ namespace duckdb {
 					if (subpath->upper > 1) {
 						path_finding = true;
 						if (!named_subpath.empty()) {
+							// todo(dtenwolde) does not necessarily have to be a shortest path query if it is a named subpath.
+							// It can also be a basic pattern matching that is named.
 							auto shortest_path_function = CreatePathFindingFunction(previous_vertex_element->variable_binding,
 																																			next_vertex_element->variable_binding,
 																																			edge_table, "shortestpath");
