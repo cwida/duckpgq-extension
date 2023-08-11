@@ -11,6 +11,7 @@
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/parser/path_element.hpp"
 #include "duckdb/parser/subpath_element.hpp"
+#include "duckdb/parser/path_pattern.hpp"
 
 namespace duckdb {
 
@@ -96,7 +97,7 @@ public:
 	static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
                                                TableFunctionBindInput &input);
 
-	static unique_ptr<SubqueryRef> GenerateSubpathSubquery(SubPath *pPath, CreatePropertyGraphInfo* pg_table);
+	static unique_ptr<SubqueryRef> GenerateSubpathPatternSubquery(unique_ptr<PathPattern> &path_pattern, CreatePropertyGraphInfo* pg_table);
 
 	static unique_ptr<FunctionExpression> CreatePathFindingFunction(const string &prev_binding, const string &next_binding,
 																						 shared_ptr<PropertyGraphTable> &edge_table, const string &path_finding_udf);
