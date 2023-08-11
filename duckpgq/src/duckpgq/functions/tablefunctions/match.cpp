@@ -544,23 +544,23 @@ namespace duckdb {
 			bool path_finding = false;
 			string named_subpath;
 			for (idx_t idx_i = 0; idx_i < ref->path_patterns.size(); idx_i++) {
-				auto &path_list = ref->path_patterns[idx_i];
+				auto &path_pattern = ref->path_patterns[idx_i];
 				// Check if the element is PathElement or a Subpath with potentially many
 				// items
 				PathElement *previous_vertex_element =
-								GetPathElement(path_list->path_elements[0], conditions);
+								GetPathElement(path_pattern->path_elements[0], conditions);
 				if (!previous_vertex_element) {
-					auto subpath = reinterpret_cast<SubPath*>(path_list->path_elements[0].get());
-					auto subpath_subquery = GenerateSubpathSubquery(subpath, pg_table);
+//					auto subpath = reinterpret_cast<SubPath*>(path_pattern->path_elements[0].get());
+					auto subpath_pattern_subquery = GenerateSubpathPatternSubquery(path_pattern, pg_table);
 					if (select_node->from_table) {
 						// The from clause already contains TableRefs, so we need to make a join with the subquery
 						auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
 						from_join->left = std::move(select_node->from_table);
-						from_join->right = std::move(subpath_subquery);
+						from_join->right = std::move(subpath_pattern_subquery);
 						select_node->from_table = std::move(from_join);
 					} else {
 						// The from clause was still empty, so we can just place the subquery there
-						select_node->from_table = std::move(subpath_subquery);
+						select_node->from_table = std::move(subpath_pattern_subquery);
 					}
 				} else {
 					auto previous_vertex_table =
@@ -573,15 +573,15 @@ namespace duckdb {
 					for (idx_t idx_j = 1; idx_j < ref->path_patterns[idx_i]->path_elements.size();
 							 idx_j = idx_j + 2) {
 						PathElement *edge_element =
-										GetPathElement(path_list->path_elements[idx_j], conditions);
+										GetPathElement(path_pattern->path_elements[idx_j], conditions);
 						if (!edge_element) {
-							auto subpath = reinterpret_cast<SubPath *>(path_list->path_elements[0].get());
+							auto subpath = reinterpret_cast<SubPath *>(path_pattern->path_elements[0].get());
 							edge_element = GetPathElement(subpath->path_list[idx_j], conditions);
 						}
 						PathElement *next_vertex_element =
-										GetPathElement(path_list->path_elements[idx_j + 1], conditions);
+										GetPathElement(path_pattern->path_elements[idx_j + 1], conditions);
 						if (!next_vertex_element) {
-							auto subpath = reinterpret_cast<SubPath *>(path_list->path_elements[0].get());
+							auto subpath = reinterpret_cast<SubPath *>(path_pattern->path_elements[0].get());
 							next_vertex_element = GetPathElement(subpath->path_list[idx_j + 1], conditions);
 						}
 						if (next_vertex_element->match_type != PGQMatchType::MATCH_VERTEX ||
@@ -595,9 +595,9 @@ namespace duckdb {
 										FindGraphTable(next_vertex_element->label, *pg_table);
 						CheckInheritance(next_vertex_table, next_vertex_element, conditions);
 
-						if (path_list->path_elements[idx_j]->path_reference_type == PGQPathReferenceType::SUBPATH) {
+						if (path_pattern->path_elements[idx_j]->path_reference_type == PGQPathReferenceType::SUBPATH) {
 							auto *subpath =
-											reinterpret_cast<SubPath *>(path_list->path_elements[idx_j].get());
+											reinterpret_cast<SubPath *>(path_pattern->path_elements[idx_j].get());
 							if (subpath->upper > 1) {
 								path_finding = true;
 
@@ -772,27 +772,27 @@ namespace duckdb {
 			return std::move(result);
 		}
 
-		unique_ptr<SubqueryRef> MatchFunction::GenerateSubpathSubquery(SubPath *pPath, CreatePropertyGraphInfo* pg_table) {
+		unique_ptr<SubqueryRef> MatchFunction::GenerateSubpathPatternSubquery(unique_ptr<PathPattern> &path_pattern, CreatePropertyGraphInfo* pg_table) {
 			vector<unique_ptr<ParsedExpression>> conditions;
-
+			auto path_element = reinterpret_cast<SubPath*>(path_pattern->path_elements[0].get());
 			auto select_node = make_uniq<SelectNode>();
 			unordered_map<string, string> alias_map;
-			string named_subpath = pPath->path_variable;
+			string named_subpath = path_element->path_variable;
 			int32_t extra_alias_counter = 0;
 			bool path_finding = false;
-			auto previous_vertex_element = GetPathElement(pPath->path_list[0], conditions);
+			auto previous_vertex_element = GetPathElement(path_element->path_list[0], conditions);
 			auto previous_vertex_table =
 							FindGraphTable(previous_vertex_element->label, *pg_table);
 			CheckInheritance(previous_vertex_table, previous_vertex_element,
 											 conditions);
 			alias_map[previous_vertex_element->variable_binding] =
 							previous_vertex_table->table_name;
-			for (idx_t idx_j = 1; idx_j < pPath->path_list.size();
+			for (idx_t idx_j = 1; idx_j < path_element->path_list.size();
 					 idx_j = idx_j + 2) {
 				PathElement *edge_element =
-								GetPathElement(pPath->path_list[idx_j], conditions);
+								GetPathElement(path_element->path_list[idx_j], conditions);
 				PathElement *next_vertex_element =
-								GetPathElement(pPath->path_list[idx_j + 1], conditions);
+								GetPathElement(path_element->path_list[idx_j + 1], conditions);
 				if (next_vertex_element->match_type != PGQMatchType::MATCH_VERTEX ||
 						previous_vertex_element->match_type != PGQMatchType::MATCH_VERTEX) {
 					throw BinderException("Vertex and edge patterns must be alternated.");
@@ -804,11 +804,11 @@ namespace duckdb {
 								FindGraphTable(next_vertex_element->label, *pg_table);
 				CheckInheritance(next_vertex_table, next_vertex_element, conditions);
 
-				if (pPath->path_list[idx_j]->path_reference_type == PGQPathReferenceType::SUBPATH) {
-					auto *subpath = reinterpret_cast<SubPath *>(pPath->path_list[idx_j].get());
+				if (path_element->path_list[idx_j]->path_reference_type == PGQPathReferenceType::SUBPATH) {
+					auto *subpath = reinterpret_cast<SubPath *>(path_element->path_list[idx_j].get());
 					if (subpath->upper > 1) {
 						path_finding = true;
-						if (!named_subpath.empty()) {
+						if (!named_subpath.empty() && path_pattern->shortest) {
 							// todo(dtenwolde) does not necessarily have to be a shortest path query if it is a named subpath.
 							// It can also be a basic pattern matching that is named.
 							auto shortest_path_function = CreatePathFindingFunction(previous_vertex_element->variable_binding,
