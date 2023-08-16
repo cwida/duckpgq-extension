@@ -551,7 +551,8 @@ namespace duckdb {
 								GetPathElement(path_pattern->path_elements[0], conditions);
 				if (!previous_vertex_element) {
 //					auto subpath = reinterpret_cast<SubPath*>(path_pattern->path_elements[0].get());
-					auto subpath_pattern_subquery = GenerateSubpathPatternSubquery(path_pattern, pg_table);
+					auto subpath_pattern_subquery = GenerateSubpathPatternSubquery(path_pattern, pg_table,
+																																				 ref->column_list);
 					if (select_node->from_table) {
 						// The from clause already contains TableRefs, so we need to make a join with the subquery
 						auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
@@ -772,7 +773,9 @@ namespace duckdb {
 			return std::move(result);
 		}
 
-		unique_ptr<SubqueryRef> MatchFunction::GenerateSubpathPatternSubquery(unique_ptr<PathPattern> &path_pattern, CreatePropertyGraphInfo* pg_table) {
+		unique_ptr<SubqueryRef> MatchFunction::GenerateSubpathPatternSubquery(unique_ptr<PathPattern> &path_pattern,
+																																					CreatePropertyGraphInfo* pg_table,
+																																					vector<unique_ptr<ParsedExpression>> &column_list) {
 			vector<unique_ptr<ParsedExpression>> conditions;
 			auto path_element = reinterpret_cast<SubPath*>(path_pattern->path_elements[0].get());
 			auto select_node = make_uniq<SelectNode>();
@@ -859,7 +862,9 @@ namespace duckdb {
 
 						//! START
 						//! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id) from dst c, a.rowid, b.rowid) between lower and upper
-						auto reachability_function = CreatePathFindingFunction(previous_vertex_element->variable_binding, next_vertex_element->variable_binding, edge_table, "iterativelength");
+						auto reachability_function = CreatePathFindingFunction(previous_vertex_element->variable_binding,
+																																	 next_vertex_element->variable_binding,
+																																	 edge_table, "iterativelength");
 
 						auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
 
@@ -870,9 +875,9 @@ namespace duckdb {
 						auto addition_function = make_uniq<FunctionExpression>(
 										"add", std::move(addition_children));
 						auto lower_limit =
-										make_uniq<ConstantExpression>(Value::INTEGER(subpath->lower));
+										make_uniq<ConstantExpression>(Value::BIGINT(subpath->lower));
 						auto upper_limit =
-										make_uniq<ConstantExpression>(Value::INTEGER(subpath->upper));
+										make_uniq<ConstantExpression>(Value::BIGINT(subpath->upper));
 						auto between_expression = make_uniq<BetweenExpression>(
 										std::move(addition_function), std::move(lower_limit),
 										std::move(upper_limit));
@@ -887,7 +892,6 @@ namespace duckdb {
 									next_vertex_table->table_name;
 					alias_map[edge_element->variable_binding] = edge_table->table_name;
 					if (!path_finding) {
-
 						switch (edge_element->match_type) {
 							case PGQMatchType::MATCH_EDGE_ANY: {
 								select_node->modifiers.push_back(make_uniq<DistinctModifier>());
@@ -924,7 +928,17 @@ namespace duckdb {
 			}
 
 			select_node->where_clause = CreateWhereClause(conditions);
-
+			vector<unique_ptr<ParsedExpression>> tmp_column_list;
+			for (auto &expression : column_list) {
+				const auto &column_ref = reinterpret_cast<ColumnRefExpression*>(expression.get());
+				if (alias_map.count(column_ref->column_names[0])) {
+					select_node->select_list.push_back(std::move(expression));
+					tmp_column_list.push_back(make_uniq<ColumnRefExpression>(column_ref->column_names[1], named_subpath));
+				}
+			}
+			for (auto &expression : tmp_column_list) {
+				column_list.push_back(std::move(expression));
+			}
 			auto subquery = make_uniq<SelectStatement>();
 			subquery->node = std::move(select_node);
 

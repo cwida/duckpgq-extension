@@ -97,7 +97,9 @@ public:
 	static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
                                                TableFunctionBindInput &input);
 
-	static unique_ptr<SubqueryRef> GenerateSubpathPatternSubquery(unique_ptr<PathPattern> &path_pattern, CreatePropertyGraphInfo* pg_table);
+	static unique_ptr<SubqueryRef> GenerateSubpathPatternSubquery(unique_ptr<PathPattern> &path_pattern,
+																																CreatePropertyGraphInfo* pg_table,
+																																vector<unique_ptr<ParsedExpression>> &column_list);
 
 	static unique_ptr<FunctionExpression> CreatePathFindingFunction(const string &prev_binding, const string &next_binding,
 																						 shared_ptr<PropertyGraphTable> &edge_table, const string &path_finding_udf);
