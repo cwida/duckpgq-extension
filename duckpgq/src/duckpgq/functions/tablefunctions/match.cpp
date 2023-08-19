@@ -539,10 +539,11 @@ namespace duckdb {
 
 			auto select_node = make_uniq<SelectNode>();
 			unordered_map<string, string> alias_map;
+			unordered_set<string> named_subpaths;
+			unique_ptr<TableRef> from_clause;
 
 			int32_t extra_alias_counter = 0;
 			bool path_finding = false;
-			string named_subpath;
 			for (idx_t idx_i = 0; idx_i < ref->path_patterns.size(); idx_i++) {
 				auto &path_pattern = ref->path_patterns[idx_i];
 				// Check if the element is PathElement or a Subpath with potentially many
@@ -550,18 +551,17 @@ namespace duckdb {
 				PathElement *previous_vertex_element =
 								GetPathElement(path_pattern->path_elements[0], conditions);
 				if (!previous_vertex_element) {
-//					auto subpath = reinterpret_cast<SubPath*>(path_pattern->path_elements[0].get());
 					auto subpath_pattern_subquery = GenerateSubpathPatternSubquery(path_pattern, pg_table,
-																																				 ref->column_list);
-					if (select_node->from_table) {
+																																				 ref->column_list,named_subpaths);
+					if (from_clause) {
 						// The from clause already contains TableRefs, so we need to make a join with the subquery
 						auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
-						from_join->left = std::move(select_node->from_table);
+						from_join->left = std::move(from_clause);
 						from_join->right = std::move(subpath_pattern_subquery);
-						select_node->from_table = std::move(from_join);
+						from_clause = std::move(from_join);
 					} else {
 						// The from clause was still empty, so we can just place the subquery there
-						select_node->from_table = std::move(subpath_pattern_subquery);
+						from_clause = std::move(subpath_pattern_subquery);
 					}
 				} else {
 					auto previous_vertex_table =
@@ -632,14 +632,14 @@ namespace duckdb {
 								cross_join_with_cte->left = std::move(temp_cte_select_subquery);
 								cross_join_with_cte->right = std::move(cross_join_src_dst);
 
-								if (select_node->from_table) {
+								if (from_clause) {
 									// create a cross join since there is already something in the from clause
 									auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
-									from_join->left = std::move(select_node->from_table);
+									from_join->left = std::move(from_clause);
 									from_join->right = std::move(cross_join_with_cte);
-									select_node->from_table = std::move(from_join);
+									from_clause = std::move(from_join);
 								} else {
-									select_node->from_table = std::move(cross_join_with_cte);
+									from_clause = std::move(cross_join_with_cte);
 								}
 								//! END
 								//! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x, src a, dst b
@@ -736,7 +736,6 @@ namespace duckdb {
 				}
 			}
 
-			unique_ptr<TableRef> from_clause;
 
 			if (!path_finding) {
 				// Go through all aliases encountered
@@ -760,10 +759,19 @@ namespace duckdb {
 			if (ref->where_clause) {
 				conditions.push_back(std::move(ref->where_clause));
 			}
+			std::vector<unique_ptr<ParsedExpression>> final_column_list;
+
+			for (auto &expression : ref->column_list) {
+				auto column_ref = reinterpret_cast<ColumnRefExpression*>(expression.get());
+				if (named_subpaths.count(column_ref->column_names[0]) && column_ref->column_names.size() == 1) {
+					final_column_list.emplace_back(make_uniq<ColumnRefExpression>("path", column_ref->column_names[0]));
+				} else {
+					final_column_list.push_back(std::move(expression));
+				}
+			}
 
 			select_node->where_clause = CreateWhereClause(conditions);
-
-			select_node->select_list = std::move(ref->column_list);
+			select_node->select_list = std::move(final_column_list);
 
 			auto subquery = make_uniq<SelectStatement>();
 			subquery->node = std::move(select_node);
@@ -775,12 +783,14 @@ namespace duckdb {
 
 		unique_ptr<SubqueryRef> MatchFunction::GenerateSubpathPatternSubquery(unique_ptr<PathPattern> &path_pattern,
 																																					CreatePropertyGraphInfo* pg_table,
-																																					vector<unique_ptr<ParsedExpression>> &column_list) {
+																																					vector<unique_ptr<ParsedExpression>> &column_list,
+																																					unordered_set<string> &named_subpaths) {
 			vector<unique_ptr<ParsedExpression>> conditions;
 			auto path_element = reinterpret_cast<SubPath*>(path_pattern->path_elements[0].get());
 			auto select_node = make_uniq<SelectNode>();
 			unordered_map<string, string> alias_map;
 			string named_subpath = path_element->path_variable;
+			named_subpaths.insert(named_subpath);
 			int32_t extra_alias_counter = 0;
 			bool path_finding = false;
 			auto previous_vertex_element = GetPathElement(path_element->path_list[0], conditions);
@@ -932,10 +942,20 @@ namespace duckdb {
 			for (auto &expression : column_list) {
 				const auto &column_ref = reinterpret_cast<ColumnRefExpression*>(expression.get());
 				if (alias_map.count(column_ref->column_names[0])) {
+					expression->alias = column_ref->column_names[0] + "_" + column_ref->column_names[1];
 					select_node->select_list.push_back(std::move(expression));
-					tmp_column_list.push_back(make_uniq<ColumnRefExpression>(column_ref->column_names[1], named_subpath));
+					tmp_column_list.push_back(make_uniq<ColumnRefExpression>(column_ref->column_names[0] + "_" + column_ref->column_names[1], named_subpath));
 				}
 			}
+			// Remove the elements from the original column_list that are now NULL
+			for (auto it=column_list.begin(); it!=column_list.end();) {
+				if(!*it) {
+					it = column_list.erase(it);
+				} else {
+					++it;
+				}
+			}
+			// Add the ColumnRefs that were previously moved to the subquery with the subquery name as table_name
 			for (auto &expression : tmp_column_list) {
 				column_list.push_back(std::move(expression));
 			}
