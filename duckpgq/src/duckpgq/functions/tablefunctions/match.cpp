@@ -938,13 +938,21 @@ namespace duckdb {
 			}
 
 			select_node->where_clause = CreateWhereClause(conditions);
-			vector<unique_ptr<ParsedExpression>> tmp_column_list;
+			vector<unique_ptr<ParsedExpression>> substitute_column_list;
 			for (auto &expression : column_list) {
 				const auto &column_ref = reinterpret_cast<ColumnRefExpression*>(expression.get());
+				// If the table is referenced in this subquery (count() > 0)
 				if (alias_map.count(column_ref->column_names[0])) {
-					expression->alias = column_ref->column_names[0] + "_" + column_ref->column_names[1];
 					select_node->select_list.push_back(std::move(expression));
-					tmp_column_list.push_back(make_uniq<ColumnRefExpression>(column_ref->column_names[0] + "_" + column_ref->column_names[1], named_subpath));
+					// Create a substitute
+					unique_ptr<ColumnRefExpression> new_upper_column_ref;
+					if (column_ref->alias.empty()) {
+						new_upper_column_ref = make_uniq<ColumnRefExpression>(column_ref->column_names[1], named_subpath);
+					} else {
+						new_upper_column_ref = make_uniq<ColumnRefExpression>(column_ref->alias, named_subpath);
+					}
+					new_upper_column_ref->alias = column_ref->alias;
+					substitute_column_list.push_back(std::move(new_upper_column_ref));
 				}
 			}
 			// Remove the elements from the original column_list that are now NULL
@@ -956,7 +964,7 @@ namespace duckdb {
 				}
 			}
 			// Add the ColumnRefs that were previously moved to the subquery with the subquery name as table_name
-			for (auto &expression : tmp_column_list) {
+			for (auto &expression : substitute_column_list) {
 				column_list.push_back(std::move(expression));
 			}
 			auto subquery = make_uniq<SelectStatement>();
