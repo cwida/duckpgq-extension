@@ -753,8 +753,8 @@ namespace duckdb {
 						from_clause = std::move(table_ref);
 					}
 				}
-				select_node->from_table = std::move(from_clause);
 			}
+			select_node->from_table = std::move(from_clause);
 
 			if (ref->where_clause) {
 				conditions.push_back(std::move(ref->where_clause));
@@ -762,7 +762,11 @@ namespace duckdb {
 			std::vector<unique_ptr<ParsedExpression>> final_column_list;
 
 			for (auto &expression : ref->column_list) {
-				auto column_ref = reinterpret_cast<ColumnRefExpression*>(expression.get());
+				auto column_ref = dynamic_cast<ColumnRefExpression*>(expression.get());
+				if (column_ref == nullptr) {
+					final_column_list.push_back(std::move(expression));
+					continue;
+				}
 				if (named_subpaths.count(column_ref->column_names[0]) && column_ref->column_names.size() == 1) {
 					final_column_list.emplace_back(make_uniq<ColumnRefExpression>("path", column_ref->column_names[0]));
 				} else {
@@ -940,7 +944,10 @@ namespace duckdb {
 			select_node->where_clause = CreateWhereClause(conditions);
 			vector<unique_ptr<ParsedExpression>> substitute_column_list;
 			for (auto &expression : column_list) {
-				const auto &column_ref = reinterpret_cast<ColumnRefExpression*>(expression.get());
+				const auto &column_ref = dynamic_cast<ColumnRefExpression*>(expression.get());
+				if (column_ref == nullptr) {
+					continue;
+				}
 				// If the table is referenced in this subquery (count() > 0)
 				if (alias_map.count(column_ref->column_names[0])) {
 					select_node->select_list.push_back(std::move(expression));
