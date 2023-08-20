@@ -763,15 +763,44 @@ namespace duckdb {
 
 			for (auto &expression : ref->column_list) {
 				auto column_ref = dynamic_cast<ColumnRefExpression*>(expression.get());
-				if (column_ref == nullptr) {
-					final_column_list.push_back(std::move(expression));
+				if (column_ref != nullptr) {
+					if (named_subpaths.count(column_ref->column_names[0]) && column_ref->column_names.size() == 1) {
+						final_column_list.emplace_back(make_uniq<ColumnRefExpression>("path", column_ref->column_names[0]));
+					} else {
+						final_column_list.push_back(std::move(expression));
+					}
 					continue;
 				}
-				if (named_subpaths.count(column_ref->column_names[0]) && column_ref->column_names.size() == 1) {
-					final_column_list.emplace_back(make_uniq<ColumnRefExpression>("path", column_ref->column_names[0]));
-				} else {
-					final_column_list.push_back(std::move(expression));
+				auto function_ref = dynamic_cast<FunctionExpression*>(expression.get());
+				if (function_ref != nullptr) {
+					if (function_ref->function_name == "path_length") {
+						column_ref = dynamic_cast<ColumnRefExpression*>(function_ref->children[0].get());
+						if (column_ref == nullptr) {
+							continue;
+						}
+						if (named_subpaths.count(column_ref->column_names[0]) && column_ref->column_names.size() == 1) {
+							auto path_ref = make_uniq<ColumnRefExpression>("path", column_ref->column_names[0]);
+							vector<unique_ptr<ParsedExpression>> path_children;
+							path_children.push_back(std::move(path_ref));
+							auto path_len = make_uniq<FunctionExpression>("len", std::move(path_children));
+							auto constant_two = make_uniq<ConstantExpression>(Value::INTEGER(2));
+							vector<unique_ptr<ParsedExpression>> div_children;
+							div_children.push_back(std::move(path_len));
+							div_children.push_back(std::move(constant_two));
+							auto div_expression = make_uniq<FunctionExpression>("//", std::move(div_children));
+							div_expression->alias = "path_length(" + column_ref->column_names[0] + ")";
+							final_column_list.emplace_back(std::move(div_expression));
+						}
+					} else {
+						final_column_list.push_back(std::move(expression));
+					}
+
+					continue;
 				}
+
+				final_column_list.push_back(std::move(expression));
+
+
 			}
 
 			select_node->where_clause = CreateWhereClause(conditions);
