@@ -61,48 +61,51 @@ public:
                const string &edge_binding, const string &prev_binding,
                const string &next_binding);
 
-	static void EdgeTypeAny(
-					shared_ptr<PropertyGraphTable> &edge_table,
-					const string &edge_binding,
-					const string &prev_binding,
-					const string &next_binding,
-					vector<unique_ptr<ParsedExpression>> &conditions);
+  static void EdgeTypeAny(shared_ptr<PropertyGraphTable> &edge_table,
+                          const string &edge_binding,
+                          const string &prev_binding,
+                          const string &next_binding,
+                          vector<unique_ptr<ParsedExpression>> &conditions);
 
-	static void EdgeTypeLeft(shared_ptr<PropertyGraphTable> &edge_table,
-													 const string &next_table_name, const string &prev_table_name,
-													 const string &edge_binding,
-													 const string &prev_binding,
-													 const string &next_binding,
-													 vector<unique_ptr<ParsedExpression>> &conditions);
+  static void EdgeTypeLeft(shared_ptr<PropertyGraphTable> &edge_table,
+                           const string &next_table_name,
+                           const string &prev_table_name,
+                           const string &edge_binding,
+                           const string &prev_binding,
+                           const string &next_binding,
+                           vector<unique_ptr<ParsedExpression>> &conditions);
 
-	static void EdgeTypeRight(shared_ptr<PropertyGraphTable> &edge_table,
-																			const string &next_table_name, const string &prev_table_name,
-																			const string &edge_binding,
-																			const string &prev_binding,
-																			const string &next_binding,
-																			vector<unique_ptr<ParsedExpression>> &conditions);
+  static void EdgeTypeRight(shared_ptr<PropertyGraphTable> &edge_table,
+                            const string &next_table_name,
+                            const string &prev_table_name,
+                            const string &edge_binding,
+                            const string &prev_binding,
+                            const string &next_binding,
+                            vector<unique_ptr<ParsedExpression>> &conditions);
 
-	static void EdgeTypeLeftRight(shared_ptr<PropertyGraphTable> &edge_table,
-																							 const string &edge_binding,
-																							 const string &prev_binding,
-																							 const string &next_binding,
-																							 vector<unique_ptr<ParsedExpression>> &conditions,
-																							 unordered_map<string, string> &alias_map,
-																							 int32_t &extra_alias_counter);
+  static void EdgeTypeLeftRight(
+      shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
+      const string &prev_binding, const string &next_binding,
+      vector<unique_ptr<ParsedExpression>> &conditions,
+      unordered_map<string, string> &alias_map, int32_t &extra_alias_counter);
 
-	static PathElement* HandleNestedSubPath(unique_ptr<PathReference> &path_reference,
-																						 vector<unique_ptr<ParsedExpression>> &conditions,
-																						 idx_t element_idx);
+  static PathElement *
+  HandleNestedSubPath(unique_ptr<PathReference> &path_reference,
+                      vector<unique_ptr<ParsedExpression>> &conditions,
+                      idx_t element_idx);
 
-	static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
+  static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
                                                TableFunctionBindInput &input);
 
-	static unique_ptr<SubqueryRef> GenerateSubpathPatternSubquery(unique_ptr<PathPattern> &path_pattern,
-																																CreatePropertyGraphInfo* pg_table,
-																																vector<unique_ptr<ParsedExpression>> &column_list,
-																																unordered_set<string> &named_subpaths);
+  static unique_ptr<SubqueryRef> GenerateSubpathPatternSubquery(
+      unique_ptr<PathPattern> &path_pattern, CreatePropertyGraphInfo *pg_table,
+      vector<unique_ptr<ParsedExpression>> &column_list,
+      unordered_set<string> &named_subpaths);
 
-	static unique_ptr<FunctionExpression> CreatePathFindingFunction(const string &prev_binding, const string &next_binding,
-																						 shared_ptr<PropertyGraphTable> &edge_table, const string &path_finding_udf);
+  static unique_ptr<FunctionExpression>
+  CreatePathFindingFunction(const string &prev_binding,
+                            const string &next_binding,
+                            shared_ptr<PropertyGraphTable> &edge_table,
+                            const string &path_finding_udf);
 };
 } // namespace duckdb
