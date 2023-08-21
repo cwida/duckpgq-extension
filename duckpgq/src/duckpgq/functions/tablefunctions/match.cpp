@@ -1,5 +1,5 @@
-#include "duckpgq/functions/tablefunctions/match.hpp"
 #include <duckpgq_extension.hpp>
+#include "duckpgq/functions/tablefunctions/match.hpp"
 
 #include "duckdb/parser/tableref/matchref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
@@ -22,7 +22,6 @@
 #include "duckdb/common/enums/joinref_type.hpp"
 
 #include "duckdb/parser/property_graph_table.hpp"
-#include "duckdb/parser/tableref/matchref.hpp"
 #include "duckdb/parser/subpath_element.hpp"
 
 
