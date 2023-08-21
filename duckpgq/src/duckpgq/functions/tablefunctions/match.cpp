@@ -21,6 +21,11 @@
 #include "duckdb/common/enums/subquery_type.hpp"
 #include "duckdb/common/enums/joinref_type.hpp"
 
+#include "duckdb/parser/property_graph_table.hpp"
+#include "duckdb/parser/tableref/matchref.hpp"
+#include "duckdb/parser/subpath_element.hpp"
+
+
 namespace duckdb {
 
 shared_ptr<PropertyGraphTable>
