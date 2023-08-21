@@ -4,7 +4,7 @@
 namespace duckdb {
 
 void CreatePropertyGraphFunction::CheckPropertyGraphTableLabels(
-    shared_ptr<PropertyGraphTable> &pg_table, TableCatalogEntry &table) {
+    const shared_ptr<PropertyGraphTable> &pg_table, TableCatalogEntry &table) {
   if (!pg_table->discriminator.empty()) {
     if (!table.ColumnExists(pg_table->discriminator)) {
       throw BinderException("Column %s not found in table %s",
@@ -21,7 +21,7 @@ void CreatePropertyGraphFunction::CheckPropertyGraphTableLabels(
 }
 
 void CreatePropertyGraphFunction::CheckPropertyGraphTableColumns(
-    shared_ptr<PropertyGraphTable> &pg_table, TableCatalogEntry &table) {
+    const shared_ptr<PropertyGraphTable> &pg_table, TableCatalogEntry &table) {
   if (pg_table->no_columns) {
     return;
   }
