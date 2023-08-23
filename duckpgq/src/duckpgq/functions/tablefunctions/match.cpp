@@ -797,7 +797,7 @@ unique_ptr<TableRef> MatchFunction::MatchBindReplace(ClientContext &context,
           auto div_expression =
               make_uniq<FunctionExpression>("//", std::move(div_children));
           div_expression->alias =
-              "path_length(" + column_ref->column_names[0] + ")";
+              "path_length_" + column_ref->column_names[0];
           final_column_list.emplace_back(std::move(div_expression));
         }
       } else {
