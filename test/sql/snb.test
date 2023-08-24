@@ -58,7 +58,7 @@ EDGE TABLES (
 query IIIIII
 -FROM GRAPH_TABLE (snb
     MATCH (a:Person WHERE a.id = 17592186044461)-[k:knows]-(b:Person)<-[au:hasAuthor]-(m:message WHERE m.creationDate < '2010-10-16')
-    COLUMNS (a.id personId, a.firstName, a.lastName, m.id as messageId, coalesce(m.imageFile, m.content), m.creationDate)
+    COLUMNS (a.id, a.firstName, a.lastName, m.id as messageId, coalesce(m.imageFile, m.content), m.creationDate)
     ) tmp
     ORDER BY creationDate DESC, Messageid ASC
     LIMIT 20
