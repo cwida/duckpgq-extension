@@ -91,8 +91,7 @@ query II
 -SELECT study.a_name, study.b_name
 FROM GRAPH_TABLE (pg
     MATCH
-    (a:Person)-[k:Knows]-> *(b:Person)
-    WHERE a.name = 'Peter'
+    (a:Person WHERE a.name = 'Peter')-[k:Knows]-> *(b:Person)
     COLUMNS (a.name as a_name, b.name as b_name)
     ) study
 ----

@@ -7,28 +7,16 @@ pragma enable_verification
 require duckpgq
 
 statement ok
-CREATE TABLE Student(id BIGINT, name VARCHAR);
+CREATE TABLE Student(id BIGINT, name VARCHAR); INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
 
 statement ok
-CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
+CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT); INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17);
 
 statement ok
-CREATE TABLE School(name VARCHAR, Id BIGINT, Kind VARCHAR);
+CREATE TABLE School(name VARCHAR, Id BIGINT, Kind VARCHAR); INSERT INTO School VALUES ('VU', 0, 'University'), ('UVA', 1, 'University');
 
 statement ok
-CREATE TABLE StudyAt(personId BIGINT, schoolId BIGINT);
-
-statement ok
-INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
-
-statement ok
-INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17);
-
-statement ok
-INSERT INTO School VALUES ('VU', 0, 'University'), ('UVA', 1, 'University');
-
-statement ok
-INSERT INTO StudyAt VALUES (0, 0), (1, 0), (2, 1), (3, 1), (4, 1);
+CREATE TABLE StudyAt(personId BIGINT, schoolId BIGINT); INSERT INTO StudyAt VALUES (0, 0), (1, 0), (2, 1), (3, 1), (4, 1);
 
 statement ok
 -CREATE PROPERTY GRAPH pg
@@ -55,12 +43,81 @@ query II
 ----
 Daniel	VU
 
-# Returns erroneous results https://github.com/cwida/duckpgq-extension/issues/9
-#query II
-#-FROM GRAPH_TABLE (pg
-#    MATCH
-#    ANY SHORTEST (a:Person)-[k:knows]->{0,0}(b:Person)
-#    WHERE a.name = 'Daniel'
-#    COLUMNS (a.name as name, b.name as school)
-#    ) study;
-#----
+query III
+-FROM GRAPH_TABLE (pg
+    MATCH
+    p = ANY SHORTEST (a:Person WHERE a.name = 'Daniel')-[k:knows]->{1,3}(b:Person)
+    COLUMNS (p, a.name as name, b.name as b_name)
+    ) study;
+----
+[0, 0, 1]	Daniel	Tavneet
+[0, 1, 2]	Daniel	Gabor
+[0, 2, 3]	Daniel	Peter
+
+query IIII
+-FROM GRAPH_TABLE (pg
+    MATCH
+    p = ANY SHORTEST (a:Person)-[k:knows]->{1,3}(b:Person)
+    COLUMNS (path_length(p), p, a.name as name, b.name as b_name)
+    ) study;
+----
+1	[0, 0, 1]	Daniel	Tavneet
+1	[0, 1, 2]	Daniel	Gabor
+1	[0, 2, 3]	Daniel	Peter
+2	[1, 5, 3, 3, 0]	Tavneet	Daniel
+1	[1, 4, 2]	Tavneet	Gabor
+1	[1, 5, 3]	Tavneet	Peter
+2	[2, 6, 3, 3, 0]	Gabor	Daniel
+3	[2, 6, 3, 3, 0, 0, 1]	Gabor	Tavneet
+1	[2, 6, 3]	Gabor	Peter
+1	[3, 3, 0]	Peter	Daniel
+2	[3, 3, 0, 0, 1]	Peter	Tavneet
+2	[3, 3, 0, 1, 2]	Peter	Gabor
+2	[4, 7, 3, 3, 0]	David	Daniel
+3	[4, 7, 3, 3, 0, 0, 1]	David	Tavneet
+3	[4, 7, 3, 3, 0, 1, 2]	David	Gabor
+1	[4, 7, 3]	David	Peter
+
+
+statement error
+-FROM GRAPH_TABLE (pg
+    MATCH
+    p = ANY SHORTEST (a:Person)-[k:knows]->{1,3}(b:Person)
+    WHERE a.name = 'Daniel'
+    COLUMNS (p, a.name as name, b.name as b_name)
+    ) study;
+
+
+query III
+WITH cte1 AS (
+    SELECT  CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Student a),
+            CAST (
+                (SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Student a),
+                            sub.dense_id,
+                            sub.cnt)
+                            )
+                FROM (
+                    SELECT a.rowid as dense_id, count(k.src) as cnt
+                    FROM Student a
+                    LEFT JOIN Know k ON k.src = a.id
+                    GROUP BY a.rowid) sub
+                )
+            AS BIGINT),
+            a.rowid,
+            c.rowid,
+            k.rowid) as temp
+    FROM Know k
+    JOIN student a on a.id = k.src
+    JOIN student c on c.id = k.dst
+) SELECT named_subpath.path as path, named_subpath.a_name as a_name, named_subpath.b_name as b_name
+FROM (SELECT shortestpath(0, (select count(*) from student), a.rowid, b.rowid) as path, a.name as a_name, b.name as b_name
+        FROM student a, student b, (select count(cte1.temp) * 0 as temp from cte1) __x
+        WHERE a.name = 'Daniel' and __x.temp * 0 + iterativelength(0, (select count(*) from student), a.rowid, b.rowid) between 1 and 3) named_subpath
+----
+[0, 0, 1]	Daniel	Tavneet
+[0, 1, 2]	Daniel	Gabor
+[0, 2, 3]	Daniel	Peter

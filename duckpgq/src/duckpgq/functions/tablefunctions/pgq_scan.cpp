@@ -167,16 +167,15 @@ static void ScanPGETableFunction(ClientContext &context,
   output.SetCardinality(size);
 }
 
-PropertyGraphTable *
-find_table_entry(const vector<unique_ptr<PropertyGraphTable>> &vec,
+shared_ptr<PropertyGraphTable>
+find_table_entry(const vector<shared_ptr<PropertyGraphTable>> &vec,
                  string &table_name) {
   for (auto &&entry : vec) {
     if (entry->table_name == table_name) {
-      return entry.get();
+      return entry;
     }
   }
   throw BinderException("Table name %s does not exist", table_name);
-  return nullptr;
 }
 
 static void ScanPGVColFunction(ClientContext &context,
