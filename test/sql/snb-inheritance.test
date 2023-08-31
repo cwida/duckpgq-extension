@@ -1,0 +1,129 @@
+# name: test/sql/sqlpgq/snb.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+import database '/Users/dljtw/git/duckpgq-demo/scratch/SNB0.003-inheritance'
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person LABEL Person,
+    Organisation LABEL Organisation IN typemask(company, university)
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows,
+    person_workAt_Organisation SOURCE KEY (PersonId) REFERENCES Person (id)
+                               DESTINATION KEY (OrganisationId) REFERENCES Organisation (id)
+                               LABEL workAt_Organisation
+   );
+
+query II
+-FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[w:workAt_Organisation]->(u:University)
+    COLUMNS (p.id, u.id, u.type)
+    ) tmp;
+----
+
+##IC 2
+#query IIIIII
+#-FROM GRAPH_TABLE (snb
+#    MATCH (a:Person WHERE a.id = 17592186044461)-[k:knows]-(b:Person)<-[au:hasAuthor]-(m:message WHERE m.creationDate < '2010-10-16')
+#    COLUMNS (a.id, a.firstName, a.lastName, m.id as messageId, coalesce(m.imageFile, m.content), m.creationDate)
+#    ) tmp
+#    ORDER BY creationDate DESC, Messageid ASC
+#    LIMIT 20
+#----
+#17592186044461	Ali	Abouba	274877907945	photo274877907945.jpg	2010-09-25 12:41:53.571+00
+#17592186044461	Ali	Abouba	274877907944	photo274877907944.jpg	2010-09-25 12:41:52.571+00
+#17592186044461	Ali	Abouba	274877907943	photo274877907943.jpg	2010-09-25 12:41:51.571+00
+#17592186044461	Ali	Abouba	274877907942	photo274877907942.jpg	2010-09-25 12:41:50.571+00
+#17592186044461	Ali	Abouba	274877908063	photo274877908063.jpg	2010-09-23 03:50:32.62+00
+#17592186044461	Ali	Abouba	274877908062	photo274877908062.jpg	2010-09-23 03:50:31.62+00
+#17592186044461	Ali	Abouba	274877908061	photo274877908061.jpg	2010-09-23 03:50:30.62+00
+#17592186044461	Ali	Abouba	274877908060	photo274877908060.jpg	2010-09-23 03:50:29.62+00
+#17592186044461	Ali	Abouba	274877908059	photo274877908059.jpg	2010-09-23 03:50:28.62+00
+#17592186044461	Ali	Abouba	274877908058	photo274877908058.jpg	2010-09-23 03:50:27.62+00
+#17592186044461	Ali	Abouba	274877908057	photo274877908057.jpg	2010-09-23 03:50:26.62+00
+#17592186044461	Ali	Abouba	274877908056	photo274877908056.jpg	2010-09-23 03:50:25.62+00
+#17592186044461	Ali	Abouba	274877908055	photo274877908055.jpg	2010-09-23 03:50:24.62+00
+#17592186044461	Ali	Abouba	274877908054	photo274877908054.jpg	2010-09-23 03:50:23.62+00
+#17592186044461	Ali	Abouba	274877908053	photo274877908053.jpg	2010-09-23 03:50:22.62+00
+#17592186044461	Ali	Abouba	274877908052	photo274877908052.jpg	2010-09-23 03:50:21.62+00
+#17592186044461	Ali	Abouba	274877908051	photo274877908051.jpg	2010-09-23 03:50:20.62+00
+#17592186044461	Ali	Abouba	274877908050	photo274877908050.jpg	2010-09-23 03:50:19.62+00
+#17592186044461	Ali	Abouba	274877908049	photo274877908049.jpg	2010-09-23 03:50:18.62+00
+#17592186044461	Ali	Abouba	274877908048	photo274877908048.jpg	2010-09-23 03:50:17.62+00
+#
+#
+## IC 13 todo(dtenwolde) currently directed edge but should be undirected
+## person1Id 17592186044461
+## person2Id 35184372088856
+#query III
+#-FROM GRAPH_TABLE (snb
+#    MATCH p = ANY SHORTEST (a:Person WHERE a.id = 17592186044461)-[k:knows]-> *(b:Person where b.id = 35184372088856)
+#    COLUMNS (path_length(p), a.id as a_id, b.id as b_id)
+#    ) tmp LIMIT 20
+#----
+#2	17592186044461	35184372088856
+#
+## IS 1
+## personId 17592186044461
+#query IIIIIIII
+#-FROM GRAPH_TABLE (snb
+#    MATCH (a:person where a.id = 17592186044461)
+#    COLUMNS(firstName, lastName, birthday, locationIP, browserUsed, LocationCityId, gender, creationDate)
+#    ) tmp;
+#----
+#Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595+00
+#
+## IS3. Friends of a Person
+## set personId 17592186044461
+#query IIII
+#-FROM GRAPH_TABLE (snb
+#    MATCH (a:person WHERE a.id = 17592186044461)-[k:knows]-(b:person)
+#    COLUMNS (b.id, b.firstname, b.lastname, k.creationDate)
+#    ) tmp
+#    ORDER BY creationDate DESC, id ASC;
+#----
+#32	Miguel	Gonzalez	2012-11-12 10:57:04.309+00
+#26388279066658	Roberto	Diaz	2012-10-17 21:32:52.428+00
+#2199023255594	Ali	Achiou	2012-07-08 23:38:19.049+00
+#
+## IS4. Content of a message
+## set messageId 824633720985
+#query II
+#-FROM GRAPH_TABLE (snb
+#    MATCH (m:message WHERE m.id = 824633720985)
+#    COLUMNS ( coalesce(imageFile, content, ''), creationDate)
+#    ) tmp;
+#----
+#photo824633720985.jpg	2012-01-12 00:17:04.151+00
+#
+## IS5. Creator of a message
+## messageId 824633720985
+#query III
+#-FROM GRAPH_TABLE (snb
+#    MATCH (m:message where m.id = 824633720985)-[au:hasAuthor]->(p:person)
+#    COLUMNS (p.id, p.firstName, p.lastName)
+#    ) tmp;
+#----
+#14	Hossein	Forouhar
+#
+#
+## IS7. Replies of a message
+##set messageId 618475290624
+#query IIIIII
+#-FROM GRAPH_TABLE (snb
+#    MATCH (replyAuthor:person)<-[au2:hasAuthor]-(c:message where c.ParentMessageId is not null)-[r:replyOf]->(m:message where m.id = 618475290624)-[au:hasAuthor]->(messageAuthor:person),
+#    (replyAuthor:person)-[k:knows]-(messageAuthor:person)
+#    COLUMNS (c.id,c.content,c.creationDate, replyAuthor.id, replyAuthor.firstName, replyAuthor.lastName)
+#    ) tmp;
+#----
+#962072674306	thanks	2012-07-08 20:32:03.239+00	24189255811081	Alim	Guliyev
+#962072674305	yes	2012-07-08 23:48:41.63+00	24189255811081	Alim	Guliyev
+#
+#
