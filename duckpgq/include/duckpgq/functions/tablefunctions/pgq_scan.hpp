@@ -57,7 +57,7 @@ public:
     if (duckpgq_state_entry == context.registered_state.end()) {
       //! Wondering how you can get here if the extension wasn't loaded, but
       //! leaving this check in anyways
-      throw InternalException("The SQL/PGQ extension has not been loaded");
+      throw InternalException("The DuckPGQ extension has not been loaded");
     }
     auto duckpgq_state =
         reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
