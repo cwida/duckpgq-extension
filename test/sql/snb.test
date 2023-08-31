@@ -4,7 +4,7 @@
 require duckpgq
 
 statement ok
-import database '/Users/dljtw/git/duckpgq-demo/scratch/SNB0.003-inheritance'
+import database 'duckdb-pgq/data/SNB0.003-inheritance';
 
 statement ok
 -CREATE PROPERTY GRAPH snb
@@ -51,7 +51,7 @@ EDGE TABLES (
 
 query III
 -FROM GRAPH_TABLE (snb
-    MATCH (p:Person)-[w:workAt_Organisation]->(u:Company)
+    MATCH (p:Person)-[w:workAt_Organisation]->(u:University)
     COLUMNS (p.id, u.id, u.type)
     ) tmp
     limit 10;
@@ -74,7 +74,7 @@ query IIIIII
     COLUMNS (a.id, a.firstName, a.lastName, m.id as messageId, coalesce(m.imageFile, m.content), m.creationDate)
     ) tmp
     ORDER BY creationDate DESC, Messageid ASC
-    LIMIT 20
+    LIMIT 20;
 ----
 17592186044461	Ali	Abouba	274877907945	photo274877907945.jpg	2010-09-25 12:41:53.571+00
 17592186044461	Ali	Abouba	274877907944	photo274877907944.jpg	2010-09-25 12:41:52.571+00
