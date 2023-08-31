@@ -54,7 +54,7 @@ static void ScanCSRVFunction(ClientContext &context, TableFunctionInput &data_p,
     //! Wondering how you can get here if the extension wasn't loaded, but
     //! leaving this check in anyways
     throw MissingExtensionException(
-        "The SQL/PGQ extension has not been loaded");
+        "The DuckPGQ extension has not been loaded");
   }
   auto duckpgq_state =
       reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
@@ -82,7 +82,7 @@ static void ScanCSRWFunction(ClientContext &context, TableFunctionInput &data_p,
     //! Wondering how you can get here if the extension wasn't loaded, but
     //! leaving this check in anyways
     throw MissingExtensionException(
-        "The SQL/PGQ extension has not been loaded");
+        "The DuckPGQ extension has not been loaded");
   }
   auto duckpgq_state =
       reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
@@ -116,7 +116,7 @@ static void ScanPGVTableFunction(ClientContext &context,
     //! Wondering how you can get here if the extension wasn't loaded, but
     //! leaving this check in anyways
     throw MissingExtensionException(
-        "The SQL/PGQ extension has not been loaded");
+        "The DuckPGQ extension has not been loaded");
   }
   auto duckpgq_state =
       reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
@@ -150,7 +150,7 @@ static void ScanPGETableFunction(ClientContext &context,
     //! Wondering how you can get here if the extension wasn't loaded, but
     //! leaving this check in anyways
     throw MissingExtensionException(
-        "The SQL/PGQ extension has not been loaded");
+        "The DuckPGQ extension has not been loaded");
   }
   auto duckpgq_state =
       reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
@@ -194,7 +194,7 @@ static void ScanPGVColFunction(ClientContext &context,
     //! Wondering how you can get here if the extension wasn't loaded, but
     //! leaving this check in anyways
     throw MissingExtensionException(
-        "The SQL/PGQ extension has not been loaded");
+        "The DuckPGQ extension has not been loaded");
   }
   auto duckpgq_state =
       reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
@@ -231,7 +231,7 @@ static void ScanPGEColFunction(ClientContext &context,
     //! Wondering how you can get here if the extension wasn't loaded, but
     //! leaving this check in anyways
     throw MissingExtensionException(
-        "The SQL/PGQ extension has not been loaded");
+        "The DuckPGQ extension has not been loaded");
   }
   auto duckpgq_state =
       reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
@@ -269,7 +269,7 @@ static void ScanCSRWDoubleFunction(ClientContext &context,
     //! Wondering how you can get here if the extension wasn't loaded, but
     //! leaving this check in anyways
     throw MissingExtensionException(
-        "The SQL/PGQ extension has not been loaded");
+        "The DuckPGQ extension has not been loaded");
   }
   auto duckpgq_state =
       reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
