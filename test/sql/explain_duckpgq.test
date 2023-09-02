@@ -4,7 +4,7 @@
 require duckpgq
 
 statement ok
-import database '/Users/dljtw/git/duckpgq-demo/scratch/SNB0.003'
+import database 'duckdb-pgq/data/SNB0.003'
 
 #IC 2
 statement ok

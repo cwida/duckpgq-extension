@@ -49,6 +49,7 @@ EDGE TABLES (
 ----
 Binder Error: Property graph table with name pg already exists
 
+# Alias for the vertex table
 statement ok
 -CREATE PROPERTY GRAPH pg1
 VERTEX TABLES (
@@ -56,6 +57,18 @@ VERTEX TABLES (
     )
 EDGE TABLES (
     know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            PROPERTIES ( createDate ) LABEL Knows
+    )
+
+# Alias for the vertex table
+statement ok
+-CREATE PROPERTY GRAPH pg2
+VERTEX TABLES (
+    Student as Student_alias PROPERTIES ( id as id_alias, name ) LABEL Person
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student_alias ( id )
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
             PROPERTIES ( createDate ) LABEL Knows
     )
