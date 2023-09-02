@@ -87,7 +87,7 @@ EDGE TABLES (
 #Peter	Peter
 #Peter	David
 
-query II
+statement error
 -SELECT study.a_name, study.b_name
 FROM GRAPH_TABLE (pg
     MATCH
@@ -95,11 +95,8 @@ FROM GRAPH_TABLE (pg
     COLUMNS (a.name as a_name, b.name as b_name)
     ) study
 ----
-Peter	Daniel
-Peter	Tavneet
-Peter	Gabor
-Peter	Peter
-Peter	David
+Not implemented Error: ALL unbounded is currently not implemented.
+
 
 query II
 -SELECT study.a_name, study.b_name
@@ -114,7 +111,7 @@ Peter	Daniel
 Peter	Tavneet
 Peter	Gabor
 
-query II
+statement error
 -SELECT study.a_name, study.b_name
 FROM GRAPH_TABLE (pg
     MATCH
@@ -123,7 +120,4 @@ FROM GRAPH_TABLE (pg
     COLUMNS (a.name as a_name, b.name as b_name)
     ) study
 ----
-Peter	Daniel
-Peter	Tavneet
-Peter	Gabor
-Peter	David
+Not implemented Error: ALL unbounded is currently not implemented.
