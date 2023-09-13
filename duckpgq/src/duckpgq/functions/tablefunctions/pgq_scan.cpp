@@ -8,6 +8,7 @@
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/parser/property_graph_table.hpp"
+#include <cstdint>
 
 namespace duckdb {
 
@@ -36,6 +37,47 @@ static void ScanCSREFunction(ClientContext &context, TableFunctionInput &data_p,
   output.SetCardinality(csr->e.size());
   output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
   FlatVector::SetData(output.data[0], (data_ptr_t)csr->e.data());
+}
+
+static void ScanCSRPtrFunction(ClientContext &context, TableFunctionInput &data_p,
+                             DataChunk &output) {
+  bool &gstate = ((CSRScanState &)*data_p.global_state).finished;
+
+  if (gstate) {
+    output.SetCardinality(0);
+    return;
+  }
+
+  gstate = true;
+
+  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+  if (duckpgq_state_entry == context.registered_state.end()) {
+    //! Wondering how you can get here if the extension wasn't loaded, but
+    //! leaving this check in anyways
+    throw MissingExtensionException(
+        "The DuckPGQ extension has not been loaded");
+  }
+  auto duckpgq_state =
+      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto csr_id = data_p.bind_data->Cast<CSRScanEData>().csr_id;
+  CSR *csr = duckpgq_state->GetCSR(csr_id);
+  output.SetCardinality(5);
+  output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
+  //output.data[0].SetVectorType(VectorType::CONSTANT_VECTOR);
+  auto result_data = FlatVector::GetData<uint64_t>(output.data[0]);
+  result_data[0] = (uint64_t)(csr->v);
+  result_data[1] = (uint64_t)(&(csr->e));
+  if(csr->w.size()) {
+    result_data[2] = (uint64_t)(&(csr->w));
+    result_data[4] = (uint64_t)(0);
+  } else if (csr->w_double.size()) {
+    result_data[2] = (uint64_t)(&(csr->w_double));
+    result_data[4] = (uint64_t)(1);
+  } else {
+    result_data[2] = (uint64_t)(0);
+    result_data[4] = (uint64_t)(2);
+  }
+  result_data[3] = (uint64_t)(csr->vsize);
 }
 
 static void ScanCSRVFunction(ClientContext &context, TableFunctionInput &data_p,
@@ -322,6 +364,15 @@ CreateTableFunctionInfo DuckPGQFunctions::GetScanPGVColFunction() {
   function_set.AddFunction(TableFunction(
       {LogicalType::VARCHAR, LogicalType::VARCHAR}, ScanPGVColFunction,
       PGScanVColData::ScanPGVColBind, CSRScanState::Init));
+  return CreateTableFunctionInfo(function_set);
+}
+
+CreateTableFunctionInfo DuckPGQFunctions::GetScanCSRPtrFunction() {
+  TableFunctionSet function_set("get_csr_ptr");
+
+  function_set.AddFunction(
+      TableFunction({LogicalType::INTEGER}, ScanCSRPtrFunction,
+                    CSRScanPtrData::ScanCSRPtrBind, CSRScanState::Init));
   return CreateTableFunctionInfo(function_set);
 }
 
