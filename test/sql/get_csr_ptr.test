@@ -60,4 +60,4 @@ SELECT * FROM get_csr_ptr(0);
 statement error
 SELECT * FROM get_csr_ptr(10);
 ----
-Error: Constraint Error: CSR not found with ID 10
+Constraint Error: CSR not found with ID 10
