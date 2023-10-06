@@ -40,12 +40,12 @@ To run the extension code, simply start the shell with `./build/release/duckdb`.
 
 Now we can use the features from the extension directly in DuckDB. To verify that the extension works correctly you can run the following query: 
 ```
-D select duckpgq('Daniel');
+D select duckpgq('Jan');
 ┌───────────────────┐
-│ duckpgq('Jane')   │
+│ duckpgq('Jan')    │
 │      varchar      │
 ├───────────────────┤
-│ Duckpgq Jane 🐥   │
+│ Duckpgq Jan 🐥    │
 └───────────────────┘
 ```
 
