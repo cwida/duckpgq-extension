@@ -20,6 +20,11 @@ To build the extension:
 ```sh
 make
 ```
+Or if you have ninja installed: 
+```sh
+make GEN=ninja
+```
+
 The main binaries that will be built are:
 ```sh
 ./build/release/duckdb
