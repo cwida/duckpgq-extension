@@ -1,8 +1,8 @@
-# WIP Disclaimer
-This repository is currently a research project and a work in progress. Feel free to play around with it and give us feedback. NOTE: Currently any query containing SQL/PGQ syntax requires a `-` at the start of the query (else you will get a segmentation fault). 
-
 # DuckPGQ
 A DuckDB extension for graph workloads that supports the SQL/PGQ standard. 
+
+# WIP Disclaimer
+This repository is currently a research project and a work in progress. Feel free to play around with it and give us feedback. NOTE: Currently any query containing SQL/PGQ syntax requires a `-` at the start of the query (else you will get a segmentation fault). 
 
 ## Getting started
 To get started, first clone this repository:
