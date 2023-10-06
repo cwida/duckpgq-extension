@@ -47,7 +47,7 @@ D select duckpgq('Daniel');
 ## SQL/PGQ
 SQL/PGQ is a graph query language built on top of SQL, bringing graph pattern matching capabilities to existing SQL users as well as to new users who are interested in graph technology but who do not have an SQL background.
 
-SQL/PGQ is standardized by the International Organization for Standardization (ISO) and is supported by the Oracle Database. It provides a declarative language for querying property graphs, which are a type of graph data model that stores nodes, edges, and properties on both nodes and edges.
+SQL/PGQ is standardized by the International Organization for Standardization (ISO). It provides a declarative language for querying property graphs, which are a type of graph data model that stores nodes, edges, and properties on both nodes and edges.
 
 SQL/PGQ queries use a visual graph syntax that is similar to that of Cypher, another popular graph query language. However, SQL/PGQ also supports traditional SQL syntax, which makes it easy for SQL users to get started with graph querying.
 
