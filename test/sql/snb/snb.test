@@ -165,4 +165,14 @@ query IIIIII
 962072674306	thanks	2012-07-08 20:32:03.239+00	24189255811081	Alim	Guliyev
 962072674305	yes	2012-07-08 23:48:41.63+00	24189255811081	Alim	Guliyev
 
-
+# IS7. Replies of a message
+#set messageId 618475290624
+query IIIII
+-FROM GRAPH_TABLE (snb
+    MATCH (replyAuthor:person)<-[au2:hasAuthor]-(c:message where c.ParentMessageId is not null)-[r:replyOf]->(m:message where m.id = 618475290624)-[au:hasAuthor]->(messageAuthor:person),
+    (replyAuthor:person)-[k:knows]-(messageAuthor:person)
+    COLUMNS (c.id,c.content,c.creationDate, replyAuthor.id % 10, replyAuthor.firstName || replyAuthor.lastName)
+    ) tmp;
+----
+962072674306	thanks	2012-07-08 20:32:03.239+00	24189255811081	AlimGuliyev
+962072674305	yes	2012-07-08 23:48:41.63+00	24189255811081	AlimGuliyev
