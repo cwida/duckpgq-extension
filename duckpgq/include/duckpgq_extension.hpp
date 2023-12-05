@@ -33,8 +33,7 @@ struct DuckPGQOperatorExtension : public OperatorExtension {
   std::string GetName() override { return "duckpgq_bind"; }
 
   unique_ptr<LogicalExtensionOperator>
-  Deserialize(LogicalDeserializationState &state,
-              FieldReader &reader) override {
+  Deserialize(Deserializer &deserializer) override {
     throw InternalException("DuckPGQ operator should not be serialized");
   }
 };

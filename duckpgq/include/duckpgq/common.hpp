@@ -10,6 +10,7 @@
 
 #include "duckdb.hpp"
 #include "duckdb/common/helper.hpp"
+#include "duckdb/main/extension_util.hpp"
 
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/main/client_context.hpp"
