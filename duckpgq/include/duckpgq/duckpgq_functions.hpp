@@ -43,6 +43,7 @@ public:
     functions.push_back(GetScanCSREFunction());
     functions.push_back(GetScanCSRWFunction());
     functions.push_back(GetScanCSRVFunction());
+    functions.push_back(GetScanCSRPtrFunction());
     functions.push_back(GetScanPGVTableFunction());
     functions.push_back(GetScanPGVColFunction());
     functions.push_back(GetScanPGETableFunction());
@@ -73,6 +74,7 @@ private:
 
   // table functions
   static CreateTableFunctionInfo GetScanCSRVFunction();
+  static CreateTableFunctionInfo GetScanCSRPtrFunction();
   static CreateTableFunctionInfo GetScanCSREFunction();
   static CreateTableFunctionInfo GetScanCSRWFunction();
   static CreateTableFunctionInfo GetScanPGVTableFunction();
