@@ -5,7 +5,7 @@
 #include "duckdb/common/compressed_sparse_row.hpp"
 
 #include <utility>
-#include <duckpgq_extension.hpp>
+#include "duckpgq_extension.hpp"
 
 namespace duckdb {
 

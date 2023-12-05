@@ -16,3 +16,8 @@ query I
 SELECT duckpgq('Sam');
 ----
 Duckpgq Sam 🐥
+
+query I
+SELECT duckpgq_openssl_version('Michael');
+----
+<REGEX>:Duckpgq Michael, my linked OpenSSL version is OpenSSL.*
