@@ -29,6 +29,22 @@ public:
   int32_t csr_id;
 };
 
+struct CSRScanPtrData : public TableFunctionData {
+public:
+  static unique_ptr<FunctionData>
+  ScanCSRPtrBind(ClientContext &context, TableFunctionBindInput &input,
+               vector<LogicalType> &return_types, vector<string> &names) {
+    auto result = make_uniq<CSRScanPtrData>();
+    result->csr_id = input.inputs[0].GetValue<int32_t>();
+    return_types.emplace_back(LogicalType::UBIGINT);
+    names.emplace_back("ptr");
+    return std::move(result);
+  } 
+
+public:
+  int32_t csr_id;
+};
+
 struct CSRScanEData : public TableFunctionData {
 public:
   static unique_ptr<FunctionData>
