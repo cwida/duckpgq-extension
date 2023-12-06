@@ -15,9 +15,9 @@
 
 namespace duckdb {
 
-struct MatchFunction : public TableFunction {
+struct PGQMatchFunction : public TableFunction {
 public:
-  MatchFunction() {
+		PGQMatchFunction() {
     name = "duckpgq_match";
     bind_replace = MatchBindReplace;
   }

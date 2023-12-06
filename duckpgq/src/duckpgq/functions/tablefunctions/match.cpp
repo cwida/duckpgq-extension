@@ -28,7 +28,7 @@
 namespace duckdb {
 
 shared_ptr<PropertyGraphTable>
-MatchFunction::FindGraphTable(const string &label,
+PGQMatchFunction::FindGraphTable(const string &label,
                               CreatePropertyGraphInfo &pg_table) {
   auto graph_table_entry = pg_table.label_map.find(label);
   if (graph_table_entry == pg_table.label_map.end()) {
@@ -39,7 +39,7 @@ MatchFunction::FindGraphTable(const string &label,
   return graph_table_entry->second;
 }
 
-void MatchFunction::CheckInheritance(
+void PGQMatchFunction::CheckInheritance(
     shared_ptr<PropertyGraphTable> &tableref, PathElement *element,
     vector<unique_ptr<ParsedExpression>> &conditions) {
   if (tableref->main_label == element->label) {
@@ -79,7 +79,7 @@ void MatchFunction::CheckInheritance(
   conditions.push_back(std::move(subset_compare));
 }
 
-void MatchFunction::CheckEdgeTableConstraints(
+void PGQMatchFunction::CheckEdgeTableConstraints(
     const string &src_reference, const string &dst_reference,
     const shared_ptr<PropertyGraphTable> &edge_table) {
   if (src_reference != edge_table->source_reference) {
@@ -94,7 +94,7 @@ void MatchFunction::CheckEdgeTableConstraints(
   }
 }
 
-unique_ptr<ParsedExpression> MatchFunction::CreateMatchJoinExpression(
+unique_ptr<ParsedExpression> PGQMatchFunction::CreateMatchJoinExpression(
     vector<string> vertex_keys, vector<string> edge_keys,
     const string &vertex_alias, const string &edge_alias) {
   vector<unique_ptr<ParsedExpression>> conditions;
@@ -125,7 +125,7 @@ unique_ptr<ParsedExpression> MatchFunction::CreateMatchJoinExpression(
   return where_clause;
 }
 
-PathElement *MatchFunction::GetPathElement(
+PathElement *PGQMatchFunction::GetPathElement(
     unique_ptr<PathReference> &path_reference,
     vector<unique_ptr<ParsedExpression>> &conditions) {
   if (path_reference->path_reference_type ==
@@ -151,7 +151,7 @@ PathElement *MatchFunction::GetPathElement(
 }
 
 unique_ptr<SubqueryExpression>
-MatchFunction::GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table,
+PGQMatchFunction::GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table,
                              const string &prev_binding) {
   // SELECT count(s.id) FROM src s
   auto select_count = make_uniq<SelectStatement>();
@@ -176,7 +176,7 @@ MatchFunction::GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table,
 }
 
 unique_ptr<JoinRef>
-MatchFunction::GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,
+PGQMatchFunction::GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,
                           const string &edge_binding,
                           const string &prev_binding,
                           const string &next_binding) {
@@ -217,7 +217,7 @@ MatchFunction::GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,
   return first_join_ref;
 }
 
-unique_ptr<SubqueryRef> MatchFunction::CreateCountCTESubquery() {
+unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
   //! BEGIN OF (SELECT count(cte1.temp) as temp * 0 from cte1) __x
 
   auto temp_cte_select_node = make_uniq<SelectNode>();
@@ -252,7 +252,7 @@ unique_ptr<SubqueryRef> MatchFunction::CreateCountCTESubquery() {
 }
 
 unique_ptr<CommonTableExpressionInfo>
-MatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
+PGQMatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
                             const string &edge_binding,
                             const string &prev_binding,
                             const string &next_binding) {
@@ -375,7 +375,7 @@ MatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
   return info;
 }
 
-void MatchFunction::EdgeTypeAny(
+void PGQMatchFunction::EdgeTypeAny(
     shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions) {
@@ -405,7 +405,7 @@ void MatchFunction::EdgeTypeAny(
   conditions.push_back(std::move(combined_expr));
 }
 
-void MatchFunction::EdgeTypeLeft(
+void PGQMatchFunction::EdgeTypeLeft(
     shared_ptr<PropertyGraphTable> &edge_table, const string &next_table_name,
     const string &prev_table_name, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
@@ -419,7 +419,7 @@ void MatchFunction::EdgeTypeLeft(
                                                  prev_binding, edge_binding));
 }
 
-void MatchFunction::EdgeTypeRight(
+void PGQMatchFunction::EdgeTypeRight(
     shared_ptr<PropertyGraphTable> &edge_table, const string &next_table_name,
     const string &prev_table_name, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
@@ -433,7 +433,7 @@ void MatchFunction::EdgeTypeRight(
                                                  next_binding, edge_binding));
 }
 
-void MatchFunction::EdgeTypeLeftRight(
+void PGQMatchFunction::EdgeTypeLeftRight(
     shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
@@ -470,7 +470,7 @@ void MatchFunction::EdgeTypeLeftRight(
   conditions.push_back(std::move(combined_expr));
 }
 
-PathElement *MatchFunction::HandleNestedSubPath(
+PathElement *PGQMatchFunction::HandleNestedSubPath(
     unique_ptr<PathReference> &path_reference,
     vector<unique_ptr<ParsedExpression>> &conditions, idx_t element_idx) {
   auto subpath = reinterpret_cast<SubPath *>(path_reference.get());
@@ -492,7 +492,7 @@ CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions) {
   return where_clause;
 }
 
-unique_ptr<FunctionExpression> MatchFunction::CreatePathFindingFunction(
+unique_ptr<FunctionExpression> PGQMatchFunction::CreatePathFindingFunction(
     const string &prev_binding, const string &next_binding,
     shared_ptr<PropertyGraphTable> &edge_table,
     const string &path_finding_udf) {
@@ -511,9 +511,9 @@ unique_ptr<FunctionExpression> MatchFunction::CreatePathFindingFunction(
                                        std::move(pathfinding_children));
 }
 
-unique_ptr<TableRef> MatchFunction::MatchBindReplace(ClientContext &context,
+unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
                                                      TableFunctionBindInput &) {
-  auto data = make_uniq<MatchFunction::MatchBindData>();
+  auto data = make_uniq<PGQMatchFunction::MatchBindData>();
   auto duckpgq_state_entry = context.registered_state.find("duckpgq");
   auto duckpgq_state = (DuckPGQState *)duckpgq_state_entry->second.get();
 
@@ -821,7 +821,7 @@ unique_ptr<TableRef> MatchFunction::MatchBindReplace(ClientContext &context,
   return std::move(result);
 }
 
-unique_ptr<SubqueryRef> MatchFunction::GenerateSubpathPatternSubquery(
+unique_ptr<SubqueryRef> PGQMatchFunction::GenerateSubpathPatternSubquery(
     unique_ptr<PathPattern> &path_pattern, CreatePropertyGraphInfo *pg_table,
     vector<unique_ptr<ParsedExpression>> &column_list,
     unordered_set<string> &named_subpaths) {
