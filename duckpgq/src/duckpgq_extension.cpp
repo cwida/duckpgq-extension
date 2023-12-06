@@ -27,7 +27,6 @@ inline void DuckpgqScalarFun(DataChunk &args, ExpressionState &state,
       name_vector, result, args.size(), [&](string_t name) {
         return StringVector::AddString(result,
                                        "Duckpgq " + name.GetString() + " 🐥");
-        ;
       });
 }
 
@@ -42,7 +41,7 @@ static void LoadInternal(DatabaseInstance &instance) {
 
   auto &catalog = Catalog::GetSystemCatalog(*con.context);
 
-  MatchFunction match_pg_function;
+  PGQMatchFunction match_pg_function;
   CreateTableFunctionInfo match_pg_info(match_pg_function);
   catalog.CreateTableFunction(*con.context, match_pg_info);
 
