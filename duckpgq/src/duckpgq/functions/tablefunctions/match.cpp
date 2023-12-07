@@ -379,26 +379,31 @@ void PGQMatchFunction::EdgeTypeAny(
     shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions) {
+  // (a) src.key = edge.src
   auto src_left_expr = CreateMatchJoinExpression(
-      edge_table->source_pk, edge_table->source_fk, prev_binding, edge_binding);
-  auto dst_left_expr = CreateMatchJoinExpression(edge_table->destination_pk,
-                                                 edge_table->destination_fk,
-                                                 next_binding, edge_binding);
-
+      edge_table->source_pk, edge_table->source_fk,
+      prev_binding, edge_binding);
+  // (b) dst.key = edge.dst
+  auto dst_left_expr = CreateMatchJoinExpression(
+      edge_table->destination_pk,edge_table->destination_fk,
+      next_binding, edge_binding);
+  // (a) AND (b)
   auto combined_left_expr = make_uniq<ConjunctionExpression>(
       ExpressionType::CONJUNCTION_AND, std::move(src_left_expr),
       std::move(dst_left_expr));
-
+  // (c) src.key = edge.dst
   auto src_right_expr = CreateMatchJoinExpression(edge_table->source_pk,
                                                   edge_table->destination_fk,
                                                   prev_binding, edge_binding);
+  // (d) dst.key = edge.src
   auto dst_right_expr = CreateMatchJoinExpression(edge_table->destination_pk,
                                                   edge_table->source_fk,
                                                   next_binding, edge_binding);
+  // (c) AND (d)
   auto combined_right_expr = make_uniq<ConjunctionExpression>(
       ExpressionType::CONJUNCTION_AND, std::move(src_right_expr),
       std::move(dst_right_expr));
-
+  // ((a) AND (b)) OR ((c) AND (d))
   auto combined_expr = make_uniq<ConjunctionExpression>(
       ExpressionType::CONJUNCTION_OR, std::move(combined_left_expr),
       std::move(combined_right_expr));
