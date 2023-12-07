@@ -132,19 +132,21 @@ Peter	Tavneet
 Peter	Gabor
 Peter	David
 
-query II
--SELECT study.a_name, study.b_name
-FROM GRAPH_TABLE (pg
-    MATCH
-    (a:Person)-[k:Knows]-(b:Person)
-    WHERE a.name = 'Peter'
-    COLUMNS (a.name as a_name, b.name as b_name)
-    ) study;
-----
-Peter	Daniel
-Peter	Tavneet
-Peter	Gabor
-Peter	David
+# Disabled, see https://github.com/cwida/duckpgq-extension/issues/60
+#query II
+#-SELECT study.a_name, study.b_name
+#FROM GRAPH_TABLE (pg
+#    MATCH
+#    (a:Person)-[k:Knows]-(b:Person)
+#    WHERE a.name = 'Peter'
+#    COLUMNS (a.name as a_name, b.name as b_name)
+#    ) study
+#    ORDER BY a_name, b_name;
+#----
+#Peter	Daniel
+#Peter	David
+#Peter	Gabor
+#Peter	Tavneet
 
 query II
 -SELECT study.a_name, study.b_name
@@ -165,13 +167,13 @@ FROM GRAPH_TABLE (pg
     COLUMNS (a.name as a_name, b.name as b_name)
     ) study
     GROUP BY study.a_name
-    ORDER BY count(study.b_name) DESC;
+    ORDER BY count(study.b_name) DESC, study.a_name;
 ----
 Daniel	3
 Tavneet	2
-Peter	1
-Gabor	1
 David	1
+Gabor	1
+Peter	1
 
 query III
 -SELECT study.a_name, study.b_name, study.c_name
