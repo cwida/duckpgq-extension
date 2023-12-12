@@ -14,7 +14,6 @@ Note that `--recurse-submodules` will ensure the correct version of DuckDB is pu
 This repository uses a modified version of DuckDB (currently a modified v0.8.1) and is not yet easily installed from a standard DuckDB (e.g. `pip install duckdb`) installation. 
 If you want to use the SQL/PGQ syntax, you will have to build this repository from the source. 
 In the future, we aim to have an easily installed and loaded DuckDB extension. 
->>>>>>> refs/remotes/origin/main
 
 ## Building
 ### Managing dependencies
