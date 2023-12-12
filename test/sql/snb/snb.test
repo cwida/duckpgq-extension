@@ -174,5 +174,5 @@ query IIIII
     COLUMNS (c.id,c.content,c.creationDate, replyAuthor.id % 10, replyAuthor.firstName || replyAuthor.lastName)
     ) tmp;
 ----
-962072674306	thanks	2012-07-08 20:32:03.239+00	24189255811081	AlimGuliyev
-962072674305	yes	2012-07-08 23:48:41.63+00	24189255811081	AlimGuliyev
+962072674305	yes	2012-07-08 23:48:41.63+00	1	AlimGuliyev
+962072674306	thanks	2012-07-08 20:32:03.239+00	1	AlimGuliyev
