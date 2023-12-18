@@ -41,15 +41,15 @@ static void LoadInternal(DatabaseInstance &instance) {
 
   auto &catalog = Catalog::GetSystemCatalog(*con.context);
 
-  PGQMatchFunction match_pg_function;
+  const PGQMatchFunction match_pg_function;
   CreateTableFunctionInfo match_pg_info(match_pg_function);
   catalog.CreateTableFunction(*con.context, match_pg_info);
 
-  CreatePropertyGraphFunction create_pg_function;
+  const CreatePropertyGraphFunction create_pg_function;
   CreateTableFunctionInfo create_pg_info(create_pg_function);
   catalog.CreateTableFunction(*con.context, create_pg_info);
 
-  DropPropertyGraphFunction drop_pg_function;
+  const DropPropertyGraphFunction drop_pg_function;
   CreateTableFunctionInfo drop_pg_info(drop_pg_function);
   catalog.CreateTableFunction(*con.context, drop_pg_info);
 
@@ -73,7 +73,7 @@ void DuckpgqExtension::Load(DuckDB &db) { LoadInternal(*db.instance); }
 
 ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                          const std::string &query) {
-  auto parse_info = (DuckPGQParserExtensionInfo &)(info);
+  auto parse_info = reinterpret_cast<DuckPGQParserExtensionInfo &>(info);
   Parser parser;
   parser.ParseQuery((query[0] == '-') ? query.substr(1, query.length())
                                       : query);
@@ -127,6 +127,9 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
     auto select_node = dynamic_cast<SelectNode *>(select_statement->node.get());
     auto from_table_function =
         dynamic_cast<TableFunctionRef *>(select_node->from_table.get());
+    if (!from_table_function) {
+      throw Exception("Use duckpgq_bind instead");
+    }
     auto function =
         dynamic_cast<FunctionExpression *>(from_table_function->function.get());
     if (function->function_name == "duckpgq_match") {
