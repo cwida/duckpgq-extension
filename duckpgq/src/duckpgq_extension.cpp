@@ -1,6 +1,9 @@
 #define DUCKDB_EXTENSION_MAIN
 
 #include "duckpgq_extension.hpp"
+
+#include <duckpgq/operators/path_finding_operator.hpp>
+
 #include "duckdb/function/scalar_function.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
 
