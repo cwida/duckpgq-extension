@@ -20,10 +20,7 @@ namespace duckdb {
 		std::string GetName() const override {
 			return "PATH_FINDING";
 		}
-
-
-
-
 	};
+
 
 }
