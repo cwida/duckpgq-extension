@@ -1,25 +1,23 @@
 //===----------------------------------------------------------------------===//
 //                         DuckDB
 //
-// duckdb/execution/operator/join/physical_piecewise_merge_join.hpp
+// duckdb/execution/operator/join/physical_path_finding.hpp
 //
 //
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
-#include "duckdb/execution/operator/join/physical_range_join.hpp"
-#include "duckdb/planner/bound_result_modifier.hpp"
+#include <duckdb/planner/operator/logical_extension_operator.hpp>
+
+#include "duckdb/execution/physical_operator.hpp"
 
 namespace duckdb {
-
-//! PhysicalIEJoin represents a two inequality range join between
-//! two tables
 		class PhysicalPathFinding : public CachingPhysicalOperator {
 		public:
-				static constexpr const PhysicalOperatorType TYPE = PhysicalOperatorType::PATH_FINDING;
+				static constexpr const PhysicalOperatorType TYPE = PhysicalOperatorType::EXTENSION;
 		public:
-				PhysicalPathFinding(LogicalComparisonJoin &op, unique_ptr<PhysicalOperator> left,
+				PhysicalPathFinding(LogicalExtensionOperator &op, unique_ptr<PhysicalOperator> left,
 														unique_ptr<PhysicalOperator> right);
 
 				// vector<LogicalType> join_key_types;
@@ -61,12 +59,7 @@ namespace duckdb {
 					return true;
 				}
 
-		public:
 				void BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) override;
-
-		private:
-				// resolve joins that can potentially output N*M elements (INNER, LEFT, FULL)
-				// void ResolveComplexJoin(ExecutionContext &context, DataChunk &result, LocalSourceState &state) const;
 		};
 
 } // namespace duckdb

@@ -5,16 +5,20 @@
 #include "duckdb/parallel/event.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
+#include "duckdb/execution/physical_operator.hpp"
 
 #include <thread>
+#include <duckdb/execution/operator/join/physical_range_join.hpp>
 #include <duckdb/planner/operator/logical_comparison_join.hpp>
 
 
 namespace duckdb {
 
-		PhysicalPathFinding::PhysicalPathFinding(LogicalComparisonJoin &op, unique_ptr<PhysicalOperator> left,
+		PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op, unique_ptr<PhysicalOperator> left,
 																	 unique_ptr<PhysicalOperator> right)
-						 : CachingPhysicalOperator(type, op.types, estimated_cardinality) {
+				: CachingPhysicalOperator(TYPE, op.types, 0) {
+			children.push_back(std::move(left));
+			children.push_back(std::move(right));
 		}
 
 //===--------------------------------------------------------------------===//
