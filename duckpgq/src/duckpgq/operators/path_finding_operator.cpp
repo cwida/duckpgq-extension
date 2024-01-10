@@ -11,7 +11,6 @@ namespace duckdb {
 		auto right = generator.CreatePlan(std::move(children[1]));
 
 		auto result = duckdb::make_uniq_base<duckdb::PhysicalOperator, PhysicalPathFinding>(*this, std::move(left), std::move(right));
-		// auto plan = generator.CreatePlan(std::move(children[0]));
 		result->children.emplace_back(std::move(result));
 		return result;
 	}
