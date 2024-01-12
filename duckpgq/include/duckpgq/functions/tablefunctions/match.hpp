@@ -42,8 +42,7 @@ public:
       const string &vertex_alias, const string &edge_alias);
 
   static PathElement *
-  GetPathElement(unique_ptr<PathReference> &path_reference,
-                 vector<unique_ptr<ParsedExpression>> &conditions);
+  GetPathElement(unique_ptr<PathReference> &path_reference);
 
   static unique_ptr<SubqueryExpression>
   GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table,
@@ -89,10 +88,10 @@ public:
       vector<unique_ptr<ParsedExpression>> &conditions,
       unordered_map<string, string> &alias_map, int32_t &extra_alias_counter);
 
-  static PathElement *
-  HandleNestedSubPath(unique_ptr<PathReference> &path_reference,
-                      vector<unique_ptr<ParsedExpression>> &conditions,
-                      idx_t element_idx);
+//  static PathElement *
+//  HandleNestedSubPath(unique_ptr<PathReference> &path_reference,
+//                      vector<unique_ptr<ParsedExpression>> &conditions,
+//                      idx_t element_idx);
 
   static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
                                                TableFunctionBindInput &input);
