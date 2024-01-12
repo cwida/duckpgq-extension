@@ -25,6 +25,8 @@ public:
     bool done = false;
   };
 
+
+
   static shared_ptr<PropertyGraphTable>
   FindGraphTable(const string &label, CreatePropertyGraphInfo &pg_table);
   static void
@@ -106,5 +108,13 @@ public:
                             const string &next_binding,
                             shared_ptr<PropertyGraphTable> &edge_table,
                             const string &path_finding_udf);
+
+
+	static void AddPathFinding(unique_ptr<SelectNode> &select_node,
+											unique_ptr<TableRef> &from_clause,
+											vector<unique_ptr<ParsedExpression>> conditions,
+											const string &prev_binding, const string &edge_binding, const string &next_binding,
+											shared_ptr<PropertyGraphTable> &edge_table,
+											SubPath* subpath);
 };
 } // namespace duckdb

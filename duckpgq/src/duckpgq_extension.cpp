@@ -120,7 +120,7 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
       dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
 
   if (!duckpgq_parse_data) {
-    throw BinderException("Not DuckPGQ parse data");
+    throw BinderException("No DuckPGQ parse data found");
   }
   auto statement =
       dynamic_cast<SQLStatement *>(duckpgq_parse_data->statement.get());
