@@ -596,9 +596,9 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 	auto addition_function = make_uniq<FunctionExpression>(
 					"add", std::move(addition_children));
 	auto lower_limit =
-					make_uniq<ConstantExpression>(Value::INTEGER(subpath.lower));
+					make_uniq<ConstantExpression>(Value::INTEGER(subpath->lower));
 	auto upper_limit =
-					make_uniq<ConstantExpression>(Value::INTEGER(subpath.upper));
+					make_uniq<ConstantExpression>(Value::INTEGER(subpath->upper));
 	auto between_expression = make_uniq<BetweenExpression>(
 					std::move(addition_function), std::move(lower_limit),
 					std::move(upper_limit));
