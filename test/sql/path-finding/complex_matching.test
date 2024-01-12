@@ -49,6 +49,102 @@ EDGE TABLES (
                             LABEL replyOf
     );
 
+query IIIII
+WITH CTE1 AS (SELECT  CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Person a),
+            CAST (
+                (SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Person a),
+                            sub.dense_id,
+                            sub.cnt)
+                            )
+                FROM (
+                    SELECT a.rowid as dense_id, count(k.person1id) as cnt
+                    FROM Person a
+                    LEFT JOIN Person_knows_Person k ON k.person1id = a.id
+                    GROUP BY a.rowid) sub
+                )
+            AS BIGINT),
+            a.rowid,
+            b.rowid,
+            k.rowid) as temp
+    FROM Person_knows_Person k
+    JOIN Person a on a.id = k.person1id
+    JOIN Person b on b.id = k.person2id)
+SELECT  shortestpath(0, (select count(*) from Person), a.rowid, b.rowid) as path,
+        a.firstname as a_name,
+        b.rowid as b_rowid,
+        b.id as b_id,
+        t.id as t_id
+FROM    Person a,
+        Person b,
+        person_hasInterest_Tag i,
+        Tag t,
+        (select count(cte1.temp) as temp from cte1) __x
+WHERE a.id = 28587302322180
+    and b.id = i.PersonId
+    and t.id = i.TagId
+    and __x.temp * 0 + iterativelength(0, (select count(*) from Person), a.rowid, b.rowid) between 1 and 3
+ORDER BY b_id, t_id
+----
+[33, 77, 36]	Bryn	36	28587302322204	6
+[33, 77, 36]	Bryn	36	28587302322204	588
+[33, 77, 36]	Bryn	36	28587302322204	1021
+[33, 77, 36]	Bryn	36	28587302322204	1767
+[33, 77, 36]	Bryn	36	28587302322204	1940
+[33, 77, 36]	Bryn	36	28587302322204	1995
+[33, 77, 36]	Bryn	36	28587302322204	2018
+[33, 77, 36]	Bryn	36	28587302322204	5174
+[33, 77, 36]	Bryn	36	28587302322204	6413
+[33, 77, 36]	Bryn	36	28587302322204	7328
+[33, 77, 36]	Bryn	36	28587302322204	9170
+[33, 77, 36]	Bryn	36	28587302322204	11695
+[33, 77, 36]	Bryn	36	28587302322204	12002
+[33, 78, 38]	Bryn	38	28587302322223	775
+[33, 78, 38]	Bryn	38	28587302322223	1938
+[33, 79, 39]	Bryn	39	30786325577731	196
+[33, 79, 39]	Bryn	39	30786325577731	1031
+[33, 80, 43]	Bryn	43	32985348833329	3
+[33, 80, 43]	Bryn	43	32985348833329	139
+[33, 80, 43]	Bryn	43	32985348833329	470
+[33, 80, 43]	Bryn	43	32985348833329	580
+[33, 80, 43]	Bryn	43	32985348833329	1985
+[33, 80, 43]	Bryn	43	32985348833329	2058
+[33, 80, 43]	Bryn	43	32985348833329	2777
+[33, 80, 43]	Bryn	43	32985348833329	2836
+[33, 80, 43]	Bryn	43	32985348833329	5114
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	804
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	973
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	1170
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	1185
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	1206
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	1749
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	1908
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	1954
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	2003
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	2786
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	2816
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	2969
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	2985
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	4865
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	6399
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	6815
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	7025
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	7142
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	7689
+[33, 77, 36, 82, 45]	Bryn	45	35184372088850	9929
+
+query II
+-FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[w:knows]-> {1,3}(p2:Person)-[i:hasInterest]->(t:Tag)
+    COLUMNS (p.id as p_id, p2.id as p2_id, t.id)
+    ) tmp
+    limit 10;
+----
+
+
 query II
 -FROM GRAPH_TABLE (snb
     MATCH o = ANY SHORTEST (p:Person)-[w:knows]-> {1,3}(p2:Person)-[i:hasInterest]->(t:Tag)
@@ -56,6 +152,8 @@ query II
     ) tmp
     limit 10;
 ----
+
+
 
 
 statement ok
