@@ -115,6 +115,7 @@ public:
 											vector<unique_ptr<ParsedExpression>> conditions,
 											const string &prev_binding, const string &edge_binding, const string &next_binding,
 											const shared_ptr<PropertyGraphTable> &edge_table,
-											const SubPath* subpath);
+											const SubPath* subpath,
+											unordered_map<string, string> &alias_map);
 };
 } // namespace duckdb
