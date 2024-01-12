@@ -3,14 +3,12 @@
 
 #include "duckdb/parser/tableref/matchref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
-#include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"
 
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/subquery_expression.hpp"
 #include "duckdb/parser/expression/cast_expression.hpp"
-#include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/parser/expression/between_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/comparison_expression.hpp"
@@ -32,7 +30,7 @@ namespace duckdb {
 shared_ptr<PropertyGraphTable>
 PGQMatchFunction::FindGraphTable(const string &label,
                               CreatePropertyGraphInfo &pg_table) {
-  auto graph_table_entry = pg_table.label_map.find(label);
+  const auto graph_table_entry = pg_table.label_map.find(label);
   if (graph_table_entry == pg_table.label_map.end()) {
     throw BinderException("The label %s is not registered in property graph %s",
                           label, pg_table.property_graph_name);
@@ -42,19 +40,19 @@ PGQMatchFunction::FindGraphTable(const string &label,
 }
 
 void PGQMatchFunction::CheckInheritance(
-    shared_ptr<PropertyGraphTable> &tableref, PathElement *element,
+    const shared_ptr<PropertyGraphTable> &tableref, PathElement *element,
     vector<unique_ptr<ParsedExpression>> &conditions) {
   if (tableref->main_label == element->label) {
     return;
   }
   auto constant_expression_two =
       make_uniq<ConstantExpression>(Value::INTEGER((int32_t)2));
-  auto itr = std::find(tableref->sub_labels.begin(), tableref->sub_labels.end(),
+  const auto itr = std::find(tableref->sub_labels.begin(), tableref->sub_labels.end(),
                        element->label);
 
-  auto idx_of_element = std::distance(tableref->sub_labels.begin(), itr);
+  const auto idx_of_element = std::distance(tableref->sub_labels.begin(), itr);
   auto constant_expression_idx_label =
-      make_uniq<ConstantExpression>(Value::INTEGER((int32_t)idx_of_element));
+      make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(idx_of_element)));
 
   vector<unique_ptr<ParsedExpression>> power_of_children;
   power_of_children.push_back(std::move(constant_expression_two));
@@ -73,7 +71,7 @@ void PGQMatchFunction::CheckInheritance(
       make_uniq<FunctionExpression>("&", std::move(and_children));
 
   auto constant_expression_idx_label_comparison = make_uniq<ConstantExpression>(
-      Value::INTEGER((int32_t)idx_of_element + 1));
+      Value::INTEGER(static_cast<int32_t>(idx_of_element + 1)));
 
   auto subset_compare = make_uniq<ComparisonExpression>(
       ExpressionType::COMPARE_EQUAL, std::move(and_expression),
@@ -128,7 +126,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreateMatchJoinExpression(
 }
 
 PathElement *PGQMatchFunction::GetPathElement(
-    unique_ptr<PathReference> &path_reference) {
+    const unique_ptr<PathReference> &path_reference) {
   if (path_reference->path_reference_type ==
       PGQPathReferenceType::PATH_ELEMENT) {
     return reinterpret_cast<PathElement *>(path_reference.get());
@@ -243,11 +241,11 @@ unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
 
 unique_ptr<CommonTableExpressionInfo>
 PGQMatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
-                            const string &edge_binding,
-                            const string &prev_binding,
-                            const string &next_binding) {
+																const string &prev_binding,
+																const string &edge_binding,
+																const string &next_binding) {
   auto csr_edge_id_constant =
-      make_uniq<ConstantExpression>(Value::INTEGER((int32_t)0));
+      make_uniq<ConstantExpression>(Value::INTEGER(0));
   auto count_create_edge_select = GetCountTable(edge_table, prev_binding);
 
   auto cast_subquery_expr = make_uniq<SubqueryExpression>();
@@ -366,7 +364,7 @@ PGQMatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
 }
 
 void PGQMatchFunction::EdgeTypeAny(
-    shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
+    const shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions) {
   // (a) src.key = edge.src
@@ -401,7 +399,7 @@ void PGQMatchFunction::EdgeTypeAny(
 }
 
 void PGQMatchFunction::EdgeTypeLeft(
-    shared_ptr<PropertyGraphTable> &edge_table, const string &next_table_name,
+    const shared_ptr<PropertyGraphTable> &edge_table, const string &next_table_name,
     const string &prev_table_name, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions) {
@@ -415,7 +413,7 @@ void PGQMatchFunction::EdgeTypeLeft(
 }
 
 void PGQMatchFunction::EdgeTypeRight(
-    shared_ptr<PropertyGraphTable> &edge_table, const string &next_table_name,
+    const shared_ptr<PropertyGraphTable> &edge_table, const string &next_table_name,
     const string &prev_table_name, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions) {
@@ -429,7 +427,7 @@ void PGQMatchFunction::EdgeTypeRight(
 }
 
 void PGQMatchFunction::EdgeTypeLeftRight(
-    shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
+    const shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
     unordered_map<string, string> &alias_map, int32_t &extra_alias_counter) {
@@ -443,7 +441,7 @@ void PGQMatchFunction::EdgeTypeLeftRight(
       ExpressionType::CONJUNCTION_AND, std::move(src_left_expr),
       std::move(dst_left_expr));
 
-  auto additional_edge_alias =
+  const auto additional_edge_alias =
       edge_binding + std::to_string(extra_alias_counter);
   extra_alias_counter++;
 
@@ -489,11 +487,11 @@ CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions) {
 
 unique_ptr<FunctionExpression> PGQMatchFunction::CreatePathFindingFunction(
     const string &prev_binding, const string &next_binding,
-    shared_ptr<PropertyGraphTable> &edge_table,
+    const shared_ptr<PropertyGraphTable> &edge_table,
     const string &path_finding_udf) {
   auto src_row_id = make_uniq<ColumnRefExpression>("rowid", prev_binding);
   auto dst_row_id = make_uniq<ColumnRefExpression>("rowid", next_binding);
-  auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER((int32_t)0));
+  auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER(0));
 
   vector<unique_ptr<ParsedExpression>> pathfinding_children;
   pathfinding_children.push_back(std::move(csr_id));
@@ -506,22 +504,21 @@ unique_ptr<FunctionExpression> PGQMatchFunction::CreatePathFindingFunction(
                                        std::move(pathfinding_children));
 }
 
-void UnnestSubpath(unique_ptr<PathReference> &subpath,
+void UnnestSubpath(const unique_ptr<PathReference> &subpath,
 									 vector<unique_ptr<ParsedExpression>> &conditions,
 									 unique_ptr<TableRef> &from_clause) {
-	auto path_element =
+	const auto path_element =
 					reinterpret_cast<SubPath *>(subpath.get());
 	std::cout << path_element->path_variable;
 
 }
 
-void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
+void PGQMatchFunction::AddPathFinding(const unique_ptr<SelectNode> &select_node,
 										unique_ptr<TableRef> &from_clause,
 										vector<unique_ptr<ParsedExpression>> conditions,
 										const string &prev_binding, const string &edge_binding, const string &next_binding,
-										shared_ptr<PropertyGraphTable> &edge_table,
-										SubPath* subpath) {
-
+										const shared_ptr<PropertyGraphTable> &edge_table,
+										const SubPath* subpath) {
 	//! START
 	//! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x, src a, dst b
 	select_node->cte_map.map["cte1"] = CreateCSRCTE(
@@ -596,9 +593,9 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 	auto addition_function = make_uniq<FunctionExpression>(
 					"add", std::move(addition_children));
 	auto lower_limit =
-					make_uniq<ConstantExpression>(Value::INTEGER(subpath->lower));
+					make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(subpath->lower)));
 	auto upper_limit =
-					make_uniq<ConstantExpression>(Value::INTEGER(subpath->upper));
+					make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(subpath->upper)));
 	auto between_expression = make_uniq<BetweenExpression>(
 					std::move(addition_function), std::move(lower_limit),
 					std::move(upper_limit));
@@ -613,7 +610,7 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
                                                      TableFunctionBindInput &) {
   auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  auto duckpgq_state = (DuckPGQState *)duckpgq_state_entry->second.get();
+  auto duckpgq_state = dynamic_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 
 	auto ref = dynamic_cast<MatchExpression *>(
       duckpgq_state->transform_expression.get());
@@ -621,12 +618,10 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
 
 	auto data = make_uniq<PGQMatchFunction::MatchBindData>();
 
-
 	vector<unique_ptr<ParsedExpression>> conditions;
 
   auto select_node = make_uniq<SelectNode>();
   unordered_map<string, string> alias_map;
-  unordered_set<string> named_subpaths;
   unique_ptr<TableRef> from_clause;
 
   int32_t extra_alias_counter = 0;
@@ -794,7 +789,8 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
   std::vector<unique_ptr<ParsedExpression>> final_column_list;
 
   for (auto &expression : ref->column_list) {
-    auto column_ref = dynamic_cast<ColumnRefExpression *>(expression.get());
+	  unordered_set<string> named_subpaths;
+	  auto column_ref = dynamic_cast<ColumnRefExpression *>(expression.get());
     if (column_ref != nullptr) {
       if (named_subpaths.count(column_ref->column_names[0]) &&
           column_ref->column_names.size() == 1) {
