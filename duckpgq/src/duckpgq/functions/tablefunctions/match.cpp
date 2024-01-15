@@ -586,7 +586,7 @@ void PGQMatchFunction::AddPathFinding(const unique_ptr<SelectNode> &select_node,
 	// cross_join_with_cte->right = std::move(cross_join_src_dst);
 
 	auto temp_cte_select_subquery = CreateCountCTESubquery();
-	from_clause = std::move(temp_cte_select_subquery);
+	// from_clause = std::move(temp_cte_select_subquery);
 
 	if (from_clause) {
 		// create a cross join since there is already something in the
@@ -610,7 +610,7 @@ void PGQMatchFunction::AddPathFinding(const unique_ptr<SelectNode> &select_node,
 	auto dst_row_id = make_uniq<ColumnRefExpression>(
 					"rowid", next_binding);
 	auto csr_id =
-					make_uniq<ConstantExpression>(Value::INTEGER((int32_t)0));
+					make_uniq<ConstantExpression>(Value::INTEGER(0));
 
 	vector<unique_ptr<ParsedExpression>> pathfinding_children;
 	pathfinding_children.push_back(std::move(csr_id));
@@ -749,12 +749,11 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
 					auto edge_table = FindGraphTable(edge_element->label, *pg_table);
 					CheckInheritance(edge_table, edge_element, conditions);
 					// check aliases
-					alias_map[next_vertex_element->variable_binding] =
-							next_vertex_table->table_name;
 					alias_map[edge_element->variable_binding] = edge_table->table_name;
 					AddEdgeJoins(select_node, edge_table, previous_vertex_table,
-						next_vertex_table, edge_element->match_type,
-						edge_element->variable_binding, previous_vertex_element->variable_binding, next_vertex_element->variable_binding, conditions, alias_map, extra_alias_counter);
+						next_vertex_table, edge_element->match_type,edge_element->variable_binding,
+						previous_vertex_element->variable_binding, next_vertex_element->variable_binding,
+						conditions, alias_map, extra_alias_counter);
 					// Check the edge type
 					// If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
 					// If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
