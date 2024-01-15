@@ -711,7 +711,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
 					GetPathElement(path_pattern->path_elements[idx_j + 1]);
       if (!next_vertex_element) {
       	auto next_vertex_subpath =
-						reinterpret_cast<SubPath *>(path_pattern->path_elements[0].get());
+						reinterpret_cast<SubPath *>(path_pattern->path_elements[idx_j + 1].get());
       	//	Check the size of the subpath path list
       	//	if size == 1:
       	//		Path Element with a WHERE
@@ -723,7 +723,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
 	      	conditions.push_back(std::move(next_vertex_subpath->where_clause));
       	}
 	      next_vertex_element =
-						GetPathElement(next_vertex_subpath->path_list[idx_j + 1]);
+						GetPathElement(next_vertex_subpath->path_list[0]);
       }
       if (next_vertex_element->match_type != PGQMatchType::MATCH_VERTEX ||
 					previous_vertex_element->match_type != PGQMatchType::MATCH_VERTEX) {
