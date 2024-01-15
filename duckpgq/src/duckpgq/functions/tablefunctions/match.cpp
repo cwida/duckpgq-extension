@@ -716,6 +716,8 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
       	auto next_vertex_table =
 					FindGraphTable(next_vertex_element->label, *pg_table);
       	CheckInheritance(next_vertex_table, next_vertex_element, conditions);
+      	alias_map[next_vertex_element->variable_binding] = next_vertex_table->table_name;
+
 				PathElement *edge_element =
 								GetPathElement(path_pattern->path_elements[idx_j]);
 				if (!edge_element) {
@@ -728,8 +730,6 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
 					}
 					edge_element = GetPathElement(edge_subpath->path_list[0]);
 					auto edge_table = FindGraphTable(edge_element->label, *pg_table);
-					alias_map[edge_element->variable_binding] = edge_table->source_reference;
-					alias_map[next_vertex_element->variable_binding] = edge_table->destination_reference;
 					if (edge_subpath->upper > 1) {
 						// Add the path-finding
 						AddPathFinding(select_node, from_clause, conditions,
@@ -738,6 +738,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
 													 next_vertex_element->variable_binding,
 													 edge_table, edge_subpath);
 					} else {
+						alias_map[edge_element->variable_binding] = edge_table->source_reference;
 						AddEdgeJoins(select_node, edge_table, previous_vertex_table,
 						next_vertex_table, edge_element->match_type,
 						edge_element->variable_binding, previous_vertex_element->variable_binding,
