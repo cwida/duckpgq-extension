@@ -671,8 +671,14 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
         GetPathElement(path_pattern->path_elements[0]);
     if (!previous_vertex_element) {
     	// todo(dtenwolde) this will be hit with MATCH o = <path pattern>. Or with a WHERE.
-    	throw NotImplementedException("WHERE in the first element is not supported yet. Nor is named subpaths");
-			// UnnestSubpath(path_pattern->path_elements[0], conditions, from_clause);
+			auto previous_vertex_subpath = reinterpret_cast<SubPath *>(path_pattern->path_elements[0].get());
+    	conditions.push_back(std::move(previous_vertex_subpath->where_clause));
+    	if (previous_vertex_subpath->path_list.size() == 1) {
+				previous_vertex_element = GetPathElement(previous_vertex_subpath->path_list[0]);
+			} else {
+				throw NotImplementedException("Named subpaths are not yet supported.");
+			}
+	    // UnnestSubpath(path_pattern->path_elements[0], conditions, from_clause);
 
 //      auto subpath_pattern_subquery = GenerateSubpathPatternSubquery(
 //          path_pattern, pg_table, ref->column_list, named_subpaths);
@@ -688,84 +694,89 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
 //        // there
 //        from_clause = std::move(subpath_pattern_subquery);
 //      }
-    } else {
-    	// previous_vertex_element
-      auto previous_vertex_table =
-          FindGraphTable(previous_vertex_element->label, *pg_table);
-      CheckInheritance(previous_vertex_table, previous_vertex_element,
-                       conditions);
-      alias_map[previous_vertex_element->variable_binding] =
-          previous_vertex_table->table_name;
+    }
+    auto previous_vertex_table =
+        FindGraphTable(previous_vertex_element->label, *pg_table);
+    CheckInheritance(previous_vertex_table, previous_vertex_element,
+                     conditions);
+    alias_map[previous_vertex_element->variable_binding] =
+        previous_vertex_table->table_name;
 
-      for (idx_t idx_j = 1;
-           idx_j < ref->path_patterns[idx_i]->path_elements.size();
-           idx_j = idx_j + 2) {
+    for (idx_t idx_j = 1;
+         idx_j < ref->path_patterns[idx_i]->path_elements.size();
+         idx_j = idx_j + 2) {
+      PathElement *next_vertex_element =
+					GetPathElement(path_pattern->path_elements[idx_j + 1]);
+      if (!next_vertex_element) {
+      	auto next_vertex_subpath =
+						reinterpret_cast<SubPath *>(path_pattern->path_elements[0].get());
+      	//	Check the size of the subpath path list
+      	//	if size == 1:
+      	//		Path Element with a WHERE
+      	//		(){3} Repeated vertices are not supported
+      	//	Else:
+      	//		Unsure if this is possible to reach. Perhaps at some point with a nested pattern?
+      	//		Will be unsupported for now
 
-        PathElement *next_vertex_element =
-            GetPathElement(path_pattern->path_elements[idx_j + 1]);
-        if (!next_vertex_element) {
-          auto next_vertex_subpath =
-              reinterpret_cast<SubPath *>(path_pattern->path_elements[0].get());
-          next_vertex_element =
-              GetPathElement(next_vertex_subpath->path_list[idx_j + 1]);
-        }
-        if (next_vertex_element->match_type != PGQMatchType::MATCH_VERTEX ||
-            previous_vertex_element->match_type != PGQMatchType::MATCH_VERTEX) {
-          throw BinderException("Vertex and edge patterns must be alternated.");
-        }
-      	auto next_vertex_table =
-					FindGraphTable(next_vertex_element->label, *pg_table);
-      	CheckInheritance(next_vertex_table, next_vertex_element, conditions);
-      	alias_map[next_vertex_element->variable_binding] = next_vertex_table->table_name;
-
-				PathElement *edge_element =
-								GetPathElement(path_pattern->path_elements[idx_j]);
-				if (!edge_element) {
-					// We are dealing with a subpath
-					auto edge_subpath = reinterpret_cast<SubPath *>(path_pattern->path_elements[idx_j].get());
-					conditions.push_back(std::move(edge_subpath->where_clause));
-					if (edge_subpath->path_list.size() > 1) {
-						// todo(dtenwolde) deal with multiple elements in subpath
-						throw NotImplementedException("Subpath with multiple elements is not yet supported.");
-					}
-					edge_element = GetPathElement(edge_subpath->path_list[0]);
-					auto edge_table = FindGraphTable(edge_element->label, *pg_table);
-					if (edge_subpath->upper > 1) {
-						// Add the path-finding
-						AddPathFinding(select_node, from_clause, conditions,
-													 previous_vertex_element->variable_binding,
-													 edge_element->variable_binding,
-													 next_vertex_element->variable_binding,
-													 edge_table, edge_subpath);
-					} else {
-						alias_map[edge_element->variable_binding] = edge_table->source_reference;
-						AddEdgeJoins(select_node, edge_table, previous_vertex_table,
-						next_vertex_table, edge_element->match_type,
-						edge_element->variable_binding, previous_vertex_element->variable_binding,
-						next_vertex_element->variable_binding, conditions, alias_map, extra_alias_counter);
-					}
-				} else {
-					// The edge element is a path element without WHERE or path-finding.
-					auto edge_table = FindGraphTable(edge_element->label, *pg_table);
-					CheckInheritance(edge_table, edge_element, conditions);
-					// check aliases
-					alias_map[edge_element->variable_binding] = edge_table->table_name;
-					AddEdgeJoins(select_node, edge_table, previous_vertex_table,
-						next_vertex_table, edge_element->match_type,edge_element->variable_binding,
-						previous_vertex_element->variable_binding, next_vertex_element->variable_binding,
-						conditions, alias_map, extra_alias_counter);
-					// Check the edge type
-					// If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
-					// If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
-					// If (a)-[b]-(c)  	-> 	(b.src = a.id AND b.dst = c.id) OR
-					// 						(b.dst = a.id AND b.src
-					// = c.id) If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
-					//						(b.dst = a.id AND b.src
-					//= c.id)
-				}
-        previous_vertex_element = next_vertex_element;
-        previous_vertex_table = next_vertex_table;
+      	next_vertex_element =
+						GetPathElement(next_vertex_subpath->path_list[idx_j + 1]);
       }
+      if (next_vertex_element->match_type != PGQMatchType::MATCH_VERTEX ||
+					previous_vertex_element->match_type != PGQMatchType::MATCH_VERTEX) {
+      	throw BinderException("Vertex and edge patterns must be alternated.");
+					}
+      auto next_vertex_table =
+				FindGraphTable(next_vertex_element->label, *pg_table);
+      CheckInheritance(next_vertex_table, next_vertex_element, conditions);
+      alias_map[next_vertex_element->variable_binding] = next_vertex_table->table_name;
+
+      PathElement *edge_element =
+							GetPathElement(path_pattern->path_elements[idx_j]);
+      if (!edge_element) {
+      	// We are dealing with a subpath
+      	auto edge_subpath = reinterpret_cast<SubPath *>(path_pattern->path_elements[idx_j].get());
+      	conditions.push_back(std::move(edge_subpath->where_clause));
+      	if (edge_subpath->path_list.size() > 1) {
+      		// todo(dtenwolde) deal with multiple elements in subpath
+      		throw NotImplementedException("Subpath with multiple elements is not yet supported.");
+      	}
+      	edge_element = GetPathElement(edge_subpath->path_list[0]);
+      	auto edge_table = FindGraphTable(edge_element->label, *pg_table);
+      	if (edge_subpath->upper > 1) {
+      		// Add the path-finding
+      		AddPathFinding(select_node, from_clause, conditions,
+												 previous_vertex_element->variable_binding,
+												 edge_element->variable_binding,
+												 next_vertex_element->variable_binding,
+												 edge_table, edge_subpath);
+      	} else {
+      		alias_map[edge_element->variable_binding] = edge_table->source_reference;
+      		AddEdgeJoins(select_node, edge_table, previous_vertex_table,
+					next_vertex_table, edge_element->match_type,
+					edge_element->variable_binding, previous_vertex_element->variable_binding,
+					next_vertex_element->variable_binding, conditions, alias_map, extra_alias_counter);
+      	}
+      } else {
+      	// The edge element is a path element without WHERE or path-finding.
+      	auto edge_table = FindGraphTable(edge_element->label, *pg_table);
+      	CheckInheritance(edge_table, edge_element, conditions);
+      	// check aliases
+      	alias_map[edge_element->variable_binding] = edge_table->table_name;
+      	AddEdgeJoins(select_node, edge_table, previous_vertex_table,
+					next_vertex_table, edge_element->match_type,edge_element->variable_binding,
+					previous_vertex_element->variable_binding, next_vertex_element->variable_binding,
+					conditions, alias_map, extra_alias_counter);
+      	// Check the edge type
+      	// If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
+      	// If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
+      	// If (a)-[b]-(c)  	-> 	(b.src = a.id AND b.dst = c.id) OR
+      	// 						(b.dst = a.id AND b.src
+      	// = c.id) If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
+      	//						(b.dst = a.id AND b.src
+      	//= c.id)
+      }
+      previous_vertex_element = next_vertex_element;
+      previous_vertex_table = next_vertex_table;
     }
   }
 
