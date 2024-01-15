@@ -672,7 +672,9 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
     if (!previous_vertex_element) {
     	// todo(dtenwolde) this will be hit with MATCH o = <path pattern>. Or with a WHERE.
 			auto previous_vertex_subpath = reinterpret_cast<SubPath *>(path_pattern->path_elements[0].get());
-    	conditions.push_back(std::move(previous_vertex_subpath->where_clause));
+    	if (previous_vertex_subpath->where_clause) {
+    		conditions.push_back(std::move(previous_vertex_subpath->where_clause));
+    	}
     	if (previous_vertex_subpath->path_list.size() == 1) {
 				previous_vertex_element = GetPathElement(previous_vertex_subpath->path_list[0]);
 			} else {
@@ -717,8 +719,10 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
       	//	Else:
       	//		Unsure if this is possible to reach. Perhaps at some point with a nested pattern?
       	//		Will be unsupported for now
-
-      	next_vertex_element =
+	      if (next_vertex_subpath->where_clause) {
+	      	conditions.push_back(std::move(next_vertex_subpath->where_clause));
+      	}
+	      next_vertex_element =
 						GetPathElement(next_vertex_subpath->path_list[idx_j + 1]);
       }
       if (next_vertex_element->match_type != PGQMatchType::MATCH_VERTEX ||
@@ -735,7 +739,9 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
       if (!edge_element) {
       	// We are dealing with a subpath
       	auto edge_subpath = reinterpret_cast<SubPath *>(path_pattern->path_elements[idx_j].get());
-      	conditions.push_back(std::move(edge_subpath->where_clause));
+				if (edge_subpath->where_clause) {
+					conditions.push_back(std::move(edge_subpath->where_clause));
+				}
       	if (edge_subpath->path_list.size() > 1) {
       		// todo(dtenwolde) deal with multiple elements in subpath
       		throw NotImplementedException("Subpath with multiple elements is not yet supported.");
