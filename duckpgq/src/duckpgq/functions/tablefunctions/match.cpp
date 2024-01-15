@@ -130,12 +130,12 @@ PathElement *PGQMatchFunction::GetPathElement(
   if (path_reference->path_reference_type ==
       PGQPathReferenceType::PATH_ELEMENT) {
     return reinterpret_cast<PathElement *>(path_reference.get());
-  } else if (path_reference->path_reference_type ==
+  } if (path_reference->path_reference_type ==
 					PGQPathReferenceType::SUBPATH) {
 		return nullptr;
-	} else {
-    throw InternalException("Unknown path reference type detected");
-  }
+	}
+	throw InternalException("Unknown path reference type detected");
+
 }
 
 unique_ptr<SubqueryExpression>
@@ -253,7 +253,7 @@ PGQMatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
 
   vector<unique_ptr<ParsedExpression>> csr_vertex_children;
   csr_vertex_children.push_back(
-      make_uniq<ConstantExpression>(Value::INTEGER((int32_t)0)));
+      make_uniq<ConstantExpression>(Value::INTEGER(0)));
 
   auto count_create_vertex_expr = GetCountTable(edge_table, prev_binding);
 
@@ -504,22 +504,59 @@ unique_ptr<FunctionExpression> PGQMatchFunction::CreatePathFindingFunction(
                                        std::move(pathfinding_children));
 }
 
-void UnnestSubpath(const unique_ptr<PathReference> &subpath,
-									 vector<unique_ptr<ParsedExpression>> &conditions,
-									 unique_ptr<TableRef> &from_clause) {
-	const auto path_element =
-					reinterpret_cast<SubPath *>(subpath.get());
-	std::cout << path_element->path_variable;
+// void UnnestSubpath(const unique_ptr<PathReference> &subpath,
+// 									 vector<unique_ptr<ParsedExpression>> &conditions,
+// 									 unique_ptr<TableRef> &from_clause) {
+// 	const auto path_element =
+// 					reinterpret_cast<SubPath *>(subpath.get());
+// 	std::cout << path_element->path_variable;
+//
+// }
 
+void PGQMatchFunction::AddEdgeJoins(const unique_ptr<SelectNode> &select_node,
+	const shared_ptr<PropertyGraphTable> &edge_table,
+	const shared_ptr<PropertyGraphTable> &previous_vertex_table,
+	const shared_ptr<PropertyGraphTable> &next_vertex_table,
+	PGQMatchType edge_type,
+	const string &edge_binding,
+	const string &prev_binding,
+	const string &next_binding,
+	vector<unique_ptr<ParsedExpression>> &conditions,
+	unordered_map<string, string> &alias_map,
+	int32_t &extra_alias_counter) {
+	switch (edge_type) {
+		case PGQMatchType::MATCH_EDGE_ANY: {
+			select_node->modifiers.push_back(make_uniq<DistinctModifier>());
+			EdgeTypeAny(edge_table, edge_binding,	prev_binding, next_binding, conditions);
+			break;
+		}
+		case PGQMatchType::MATCH_EDGE_LEFT:
+			EdgeTypeLeft(edge_table, next_vertex_table->table_name,
+									 previous_vertex_table->table_name,
+									 edge_binding, prev_binding, next_binding, conditions);
+		break;
+		case PGQMatchType::MATCH_EDGE_RIGHT:
+			EdgeTypeRight(edge_table, next_vertex_table->table_name,
+										previous_vertex_table->table_name,
+										edge_binding,	prev_binding, next_binding, conditions);
+		break;
+		case PGQMatchType::MATCH_EDGE_LEFT_RIGHT: {
+			EdgeTypeLeftRight(edge_table, edge_binding,
+												prev_binding, next_binding, conditions,
+												alias_map, extra_alias_counter);
+			break;
+		}
+		default:
+			throw InternalException("Unknown match type found");
+	}
 }
 
 void PGQMatchFunction::AddPathFinding(const unique_ptr<SelectNode> &select_node,
 										unique_ptr<TableRef> &from_clause,
-										vector<unique_ptr<ParsedExpression>> conditions,
+										vector<unique_ptr<ParsedExpression>> &conditions,
 										const string &prev_binding, const string &edge_binding, const string &next_binding,
 										const shared_ptr<PropertyGraphTable> &edge_table,
-										const SubPath* subpath,
-										unordered_map<string, string> &alias_map) {
+										const SubPath* subpath) {
 	//! START
 	//! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
 	select_node->cte_map.map["cte1"] = CreateCSRCTE(
@@ -532,8 +569,7 @@ void PGQMatchFunction::AddPathFinding(const unique_ptr<SelectNode> &select_node,
 	// auto src_vertex_ref = make_uniq<BaseTableRef>();
 	// src_vertex_ref->table_name = edge_table->source_reference;
 	// src_vertex_ref->alias = prev_binding;
-	alias_map[prev_binding] = edge_table->source_reference;
-	alias_map[next_binding] = edge_table->destination_reference;
+
 
 	// cross_join_src_dst->left = std::move(src_vertex_ref);
 
@@ -635,7 +671,8 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
         GetPathElement(path_pattern->path_elements[0]);
     if (!previous_vertex_element) {
     	// todo(dtenwolde) this will be hit with MATCH o = <path pattern>. Or with a WHERE.
-			UnnestSubpath(path_pattern->path_elements[0], conditions, from_clause);
+    	throw NotImplementedException("WHERE in the first element is not supported yet. Nor is named subpaths");
+			// UnnestSubpath(path_pattern->path_elements[0], conditions, from_clause);
 
 //      auto subpath_pattern_subquery = GenerateSubpathPatternSubquery(
 //          path_pattern, pg_table, ref->column_list, named_subpaths);
@@ -676,8 +713,9 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
             previous_vertex_element->match_type != PGQMatchType::MATCH_VERTEX) {
           throw BinderException("Vertex and edge patterns must be alternated.");
         }
-
-
+      	auto next_vertex_table =
+					FindGraphTable(next_vertex_element->label, *pg_table);
+      	CheckInheritance(next_vertex_table, next_vertex_element, conditions);
 				PathElement *edge_element =
 								GetPathElement(path_pattern->path_elements[idx_j]);
 				if (!edge_element) {
@@ -690,101 +728,68 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
 					}
 					edge_element = GetPathElement(edge_subpath->path_list[0]);
 					auto edge_table = FindGraphTable(edge_element->label, *pg_table);
-					if (edge_subpath->lower == 1 && edge_subpath->upper == 1) {
-						// No need to do path-finding
-					} else {
-						// Create CSR, add shortestpath to select, add iterativelength to where.
+					alias_map[previous_vertex_element->variable_binding] = edge_table->source_reference;
+					alias_map[next_vertex_element->variable_binding] = edge_table->destination_reference;
+					if (edge_subpath->upper > 1) {
+						// Add the path-finding
 						AddPathFinding(select_node, from_clause, conditions,
 													 previous_vertex_element->variable_binding,
 													 edge_element->variable_binding,
 													 next_vertex_element->variable_binding,
-													 edge_table,
-													 edge_subpath,
-													 alias_map);
+													 edge_table, edge_subpath);
+					} else {
+						AddEdgeJoins(select_node, edge_table, previous_vertex_table,
+						next_vertex_table, edge_element->match_type,
+						edge_element->variable_binding, previous_vertex_element->variable_binding,
+						next_vertex_element->variable_binding, conditions, alias_map, extra_alias_counter);
 					}
 				} else {
 					// The edge element is a path element without WHERE or path-finding.
+					auto edge_table = FindGraphTable(edge_element->label, *pg_table);
+					CheckInheritance(edge_table, edge_element, conditions);
+					// check aliases
+					alias_map[next_vertex_element->variable_binding] =
+							next_vertex_table->table_name;
+					alias_map[edge_element->variable_binding] = edge_table->table_name;
+					AddEdgeJoins(select_node, edge_table, previous_vertex_table,
+						next_vertex_table, edge_element->match_type,
+						edge_element->variable_binding, previous_vertex_element->variable_binding, next_vertex_element->variable_binding, conditions, alias_map, extra_alias_counter);
+					// Check the edge type
+					// If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
+					// If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
+					// If (a)-[b]-(c)  	-> 	(b.src = a.id AND b.dst = c.id) OR
+					// 						(b.dst = a.id AND b.src
+					// = c.id) If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
+					//						(b.dst = a.id AND b.src
+					//= c.id)
+
 				}
-				auto edge_table = FindGraphTable(edge_element->label, *pg_table);
-				CheckInheritance(edge_table, edge_element, conditions);
-				auto next_vertex_table =
-            FindGraphTable(next_vertex_element->label, *pg_table);
-        CheckInheritance(next_vertex_table, next_vertex_element, conditions);
-
-
-        // check aliases
-        alias_map[next_vertex_element->variable_binding] =
-            next_vertex_table->table_name;
-        alias_map[edge_element->variable_binding] = edge_table->table_name;
-
-//				if (!path_finding) {
-          switch (edge_element->match_type) {
-          case PGQMatchType::MATCH_EDGE_ANY: {
-            select_node->modifiers.push_back(make_uniq<DistinctModifier>());
-            EdgeTypeAny(edge_table, edge_element->variable_binding,
-                        previous_vertex_element->variable_binding,
-                        next_vertex_element->variable_binding, conditions);
-            break;
-          }
-          case PGQMatchType::MATCH_EDGE_LEFT:
-            EdgeTypeLeft(edge_table, next_vertex_table->table_name,
-                         previous_vertex_table->table_name,
-                         edge_element->variable_binding,
-                         previous_vertex_element->variable_binding,
-                         next_vertex_element->variable_binding, conditions);
-            break;
-          case PGQMatchType::MATCH_EDGE_RIGHT:
-            EdgeTypeRight(edge_table, next_vertex_table->table_name,
-                          previous_vertex_table->table_name,
-                          edge_element->variable_binding,
-                          previous_vertex_element->variable_binding,
-                          next_vertex_element->variable_binding, conditions);
-            break;
-          case PGQMatchType::MATCH_EDGE_LEFT_RIGHT: {
-            EdgeTypeLeftRight(edge_table, edge_element->variable_binding,
-                              previous_vertex_element->variable_binding,
-                              next_vertex_element->variable_binding, conditions,
-                              alias_map, extra_alias_counter);
-            break;
-          }
-          default:
-            throw InternalException("Unknown match type found");
-          }
-//        }
 
         previous_vertex_element = next_vertex_element;
         previous_vertex_table = next_vertex_table;
 
-        // Check the edge type
-        // If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
-        // If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
-        // If (a)-[b]-(c)  	-> 	(b.src = a.id AND b.dst = c.id) OR
-        // 						(b.dst = a.id AND b.src
-        // = c.id) If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
-        //						(b.dst = a.id AND b.src
-        //= c.id)
+
       }
     }
   }
 
-//  if (!path_finding) {
-    // Go through all aliases encountered
-		for (auto &table_alias_entry : alias_map) {
-			auto table_ref = make_uniq<BaseTableRef>();
-			table_ref->table_name = table_alias_entry.second;
-			table_ref->alias = table_alias_entry.first;
+  // Go through all aliases encountered
+	for (auto &table_alias_entry : alias_map) {
+		auto table_ref = make_uniq<BaseTableRef>();
+		table_ref->table_name = table_alias_entry.second;
+		table_ref->alias = table_alias_entry.first;
 
-			if (from_clause) {
-				auto new_root = make_uniq<JoinRef>(JoinRefType::CROSS);
-				new_root->left = std::move(from_clause);
-				new_root->right = std::move(table_ref);
-				from_clause = std::move(new_root);
-			} else {
-				from_clause = std::move(table_ref);
-			}
+		if (from_clause) {
+			auto new_root = make_uniq<JoinRef>(JoinRefType::CROSS);
+			new_root->left = std::move(from_clause);
+			new_root->right = std::move(table_ref);
+			from_clause = std::move(new_root);
+		} else {
+			from_clause = std::move(table_ref);
 		}
-//  }
-  select_node->from_table = std::move(from_clause);
+	}
+
+	select_node->from_table = std::move(from_clause);
 
   if (ref->where_clause) {
     conditions.push_back(std::move(ref->where_clause));
