@@ -254,6 +254,13 @@ ORDER BY b_id, t_id
 ----
 Bryn	36	28587302322204	6
 
+statement error
+-FROM GRAPH_TABLE (snb
+    MATCH (a:Person WHERE a.id = 28587302322180){3})
+    COLUMNS (a.firstname as a_name)
+    ) tmp
+----
+Parser Error: syntax error at or near "{"
 
 query II
 -FROM GRAPH_TABLE (snb

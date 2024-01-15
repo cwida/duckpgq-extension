@@ -712,6 +712,10 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
       if (!next_vertex_element) {
       	auto next_vertex_subpath =
 						reinterpret_cast<SubPath *>(path_pattern->path_elements[idx_j + 1].get());
+				if (next_vertex_subpath->path_list.size() > 1) {
+					throw NotImplementedException("Recursive patterns are not yet supported.");
+				}
+
       	//	Check the size of the subpath path list
       	//	if size == 1:
       	//		Path Element with a WHERE
