@@ -112,10 +112,21 @@ public:
 
 	static void AddPathFinding(const unique_ptr<SelectNode> &select_node,
 											unique_ptr<TableRef> &from_clause,
-											vector<unique_ptr<ParsedExpression>> conditions,
+											vector<unique_ptr<ParsedExpression>> &conditions,
 											const string &prev_binding, const string &edge_binding, const string &next_binding,
 											const shared_ptr<PropertyGraphTable> &edge_table,
-											const SubPath* subpath,
-											unordered_map<string, string> &alias_map);
+											const SubPath* subpath);
+
+		static void AddEdgeJoins(const unique_ptr<SelectNode> &select_node,
+		                         const shared_ptr<PropertyGraphTable> &edge_table,
+		                         const shared_ptr<PropertyGraphTable> &previous_vertex_table,
+		                         const shared_ptr<PropertyGraphTable> &next_vertex_table,
+															PGQMatchType edge_type,
+		                         const string &edge_binding,
+		                         const string &prev_binding,
+		                         const string &next_binding,
+		                         vector<unique_ptr<ParsedExpression>> &conditions,
+		                         unordered_map<string, string> &alias_map,
+		                         int32_t &extra_alias_counter);
 };
 } // namespace duckdb
