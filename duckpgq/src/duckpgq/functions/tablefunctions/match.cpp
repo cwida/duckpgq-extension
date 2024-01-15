@@ -463,12 +463,12 @@ void PGQMatchFunction::EdgeTypeLeftRight(
   conditions.push_back(std::move(combined_expr));
 }
 
-//PathElement *PGQMatchFunction::HandleNestedSubPath(
-//    unique_ptr<PathReference> &path_reference,
-//    vector<unique_ptr<ParsedExpression>> &conditions, idx_t element_idx) {
-//  auto subpath = reinterpret_cast<SubPath *>(path_reference.get());
-//  return GetPathElement(subpath->path_list[element_idx], conditions);
-//}
+PathElement *PGQMatchFunction::HandleNestedSubPath(
+    unique_ptr<PathReference> &path_reference,
+    vector<unique_ptr<ParsedExpression>> &conditions, idx_t element_idx) {
+  auto subpath = reinterpret_cast<SubPath *>(path_reference.get());
+  return GetPathElement(subpath->path_list[element_idx]);
+}
 
 unique_ptr<ParsedExpression>
 CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions) {
@@ -728,7 +728,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
 					}
 					edge_element = GetPathElement(edge_subpath->path_list[0]);
 					auto edge_table = FindGraphTable(edge_element->label, *pg_table);
-					alias_map[previous_vertex_element->variable_binding] = edge_table->source_reference;
+					alias_map[edge_element->variable_binding] = edge_table->source_reference;
 					alias_map[next_vertex_element->variable_binding] = edge_table->destination_reference;
 					if (edge_subpath->upper > 1) {
 						// Add the path-finding
@@ -762,13 +762,9 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context,
 					// = c.id) If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
 					//						(b.dst = a.id AND b.src
 					//= c.id)
-
 				}
-
         previous_vertex_element = next_vertex_element;
         previous_vertex_table = next_vertex_table;
-
-
       }
     }
   }
