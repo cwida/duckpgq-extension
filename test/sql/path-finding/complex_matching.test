@@ -335,8 +335,6 @@ statement error
 ----
 Parser Error: syntax error at or near "{"
 
-
-
 statement ok
 -FROM GRAPH_TABLE (snb
     MATCH p = ANY SHORTEST (a:Person where a.id = 28587302322180)-[k:knows]->{1,3}(b:Person)
