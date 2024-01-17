@@ -7,6 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
+#include <duckdb/parser/parsed_data/create_pragma_function_info.hpp>
+
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/parser/path_element.hpp"
@@ -104,7 +106,7 @@ namespace duckdb {
 			unordered_set<string>& named_subpaths);
 
 		static unique_ptr<ParsedExpression>
-		CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list);
+		CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list, CreatePropertyGraphInfo &pg_table);
 
 
 		static void AddPathFinding(const unique_ptr<SelectNode>& select_node,
@@ -133,6 +135,7 @@ namespace duckdb {
 		                            CreatePropertyGraphInfo& pg_table, int32_t& extra_alias_counter,
 		                            vector<unique_ptr<ParsedExpression>>& column_list);
 
-		static bool CheckNamedSubpath(string subpath_name, vector<unique_ptr<ParsedExpression>>& column_list);
+		static bool CheckNamedSubpath(SubPath &subpath, vector<unique_ptr<ParsedExpression>>& column_list,
+		CreatePropertyGraphInfo &pg_table);
 	};
 } // namespace duckdb
