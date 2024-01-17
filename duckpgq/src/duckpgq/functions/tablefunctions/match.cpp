@@ -715,17 +715,21 @@ namespace duckdb {
 			if (parsed_ref == nullptr) {
 				continue;
 			}
-			if (parsed_ref->function_name == "element_id" && parsed_ref->alias == subpath.path_variable) {
+			if (parsed_ref->function_name == "element_id") {
 				// Check subpath name matches the function name
-				idx_named_subpath = idx_i;
-				found = true;
-				break;
+				auto column_ref = dynamic_cast<ColumnRefExpression*>(parsed_ref->children[0].get());
+				if (column_ref->column_names[0] == subpath.path_variable) {
+					idx_named_subpath = idx_i;
+					found = true;
+					break;
+				}
 			}
 		}
 		if (found) {
 			column_list.erase(column_list.begin() + idx_named_subpath);
-			column_list.insert(column_list.begin() + idx_named_subpath,
-			                   CreatePathFindingFunction(subpath.path_list, pg_table));
+			auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
+			shortest_path_function->alias = subpath.path_variable;
+			column_list.insert(column_list.begin() + idx_named_subpath, std::move(shortest_path_function));
 		}
 		return found;
 	}
