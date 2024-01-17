@@ -485,7 +485,7 @@ namespace duckdb {
 	}
 
 	unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
-		vector<unique_ptr<PathReference>>& path_list) {
+		vector<unique_ptr<PathReference>>& path_list, CreatePropertyGraphInfo &pg_table) {
 		// This method will return a SubqueryRef of a list of rowids
 		// For every vertex and edge element, we add the rowid to the list using list_append, or list_prepend
 		// The difficulty is that there may be a (un)bounded path pattern at some point in the query
@@ -502,25 +502,54 @@ namespace duckdb {
 		}
 
 		for (idx_t idx_i = 1; idx_i < path_list.size(); idx_i = idx_i + 2) {
-			auto edge_element = GetPathElement(path_list[idx_i]);
-			if (!edge_element) {
-				auto edge_subpath = reinterpret_cast<SubPath *>(path_list[idx_i].get());
-				if (edge_subpath->upper > 1) {
-					throw NotImplementedException("Returning the path list for (un)bounded paths has not yet been implemented.");
-					// (un)bounded shortest path
-					// Add the shortest path UDF
-
-					// Set next vertex to be previous
-					continue;
-				}
-				edge_element = GetPathElement(edge_subpath->path_list[0]);
-			}
-
 			auto next_vertex_element = GetPathElement(path_list[idx_i + 1]);
 			if (!next_vertex_element) {
 				auto next_vertex_subpath = reinterpret_cast<SubPath *>(path_list[idx_i + 1].get());
 				next_vertex_element = GetPathElement(next_vertex_subpath->path_list[0]);
 			}
+
+			auto edge_element = GetPathElement(path_list[idx_i]);
+			if (!edge_element) {
+				auto edge_subpath = reinterpret_cast<SubPath *>(path_list[idx_i].get());
+				if (edge_subpath->upper > 1) {
+					// (un)bounded shortest path
+					// Add the shortest path UDF
+					edge_element = GetPathElement(edge_subpath->path_list[0]);
+					auto edge_table = FindGraphTable(edge_element->label, pg_table);
+					auto src_row_id = make_uniq<ColumnRefExpression>("rowid", previous_vertex_element->variable_binding);
+					auto dst_row_id = make_uniq<ColumnRefExpression>("rowid", next_vertex_element->variable_binding);
+					auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER(0));
+
+					vector<unique_ptr<ParsedExpression>> pathfinding_children;
+					pathfinding_children.push_back(std::move(csr_id));
+					pathfinding_children.push_back(
+						std::move(GetCountTable(edge_table, previous_vertex_element->variable_binding)));
+					pathfinding_children.push_back(std::move(src_row_id));
+					pathfinding_children.push_back(std::move(dst_row_id));
+
+					auto shortest_path_function = make_uniq<FunctionExpression>("shortestpath",
+					                                     std::move(pathfinding_children));
+
+					if (!final_list) {
+						final_list = std::move(shortest_path_function);
+					} else {
+						auto pop_front_shortest_path_children = vector<unique_ptr<ParsedExpression>>();
+						pop_front_shortest_path_children.push_back(std::move(shortest_path_function));
+						auto pop_front = make_uniq<FunctionExpression>("array_pop_front", std::move(pop_front_shortest_path_children));
+
+						auto final_list_children = vector<unique_ptr<ParsedExpression>>();
+						final_list_children.push_back(std::move(final_list));
+						final_list_children.push_back(std::move(pop_front));
+						final_list = make_uniq<FunctionExpression>("list_concat", std::move(final_list_children));
+					}
+					// Set next vertex to be previous
+					previous_vertex_element = next_vertex_element;
+					continue;
+				}
+				edge_element = GetPathElement(edge_subpath->path_list[0]);
+			}
+
+
 			auto previous_rowid = make_uniq<ColumnRefExpression>("rowid", previous_vertex_element->variable_binding);
 			auto edge_rowid = make_uniq<ColumnRefExpression>("rowid", edge_element->variable_binding);
 			auto next_rowid = make_uniq<ColumnRefExpression>("rowid", next_vertex_element->variable_binding);
@@ -540,25 +569,12 @@ namespace duckdb {
 				final_list_children.push_back(std::move(next_elements_list));
 				final_list = make_uniq<FunctionExpression>("list_concat", std::move(final_list_children));
 			}
+			previous_vertex_element = next_vertex_element;
 		}
-
-
 
 		return final_list;
 
-		// auto src_row_id = make_uniq<ColumnRefExpression>("rowid", prev_binding);
-		// auto dst_row_id = make_uniq<ColumnRefExpression>("rowid", next_binding);
-		// auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER(0));
-		//
-		// vector<unique_ptr<ParsedExpression>> pathfinding_children;
-		// pathfinding_children.push_back(std::move(csr_id));
-		// pathfinding_children.push_back(
-		// 	std::move(GetCountTable(edge_table, prev_binding)));
-		// pathfinding_children.push_back(std::move(src_row_id));
-		// pathfinding_children.push_back(std::move(dst_row_id));
-		//
-		// return make_uniq<FunctionExpression>(path_finding_udf,
-		//                                      std::move(pathfinding_children));
+
 	}
 
 	void PGQMatchFunction::AddEdgeJoins(const unique_ptr<SelectNode>& select_node,
@@ -693,15 +709,18 @@ namespace duckdb {
 		//! from src s, a.rowid, b.rowid) between lower and upper
 	}
 
-	bool PGQMatchFunction::CheckNamedSubpath(string subpath_name, vector<unique_ptr<ParsedExpression>>& column_list) {
+	bool PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, vector<unique_ptr<ParsedExpression>>& column_list,
+		CreatePropertyGraphInfo &pg_table) {
 		bool found = false;
 		idx_t idx_named_subpath = 0;
 		for (idx_t idx_i = 0; idx_i < column_list.size(); idx_i++) {
-			ColumnRefExpression* column_ref = dynamic_cast<ColumnRefExpression *>(column_list[idx_i].get());
-			if (column_ref == nullptr) {
+			const FunctionExpression* parsed_ref = dynamic_cast<FunctionExpression *>(column_list[idx_i].get());
+			if (parsed_ref == nullptr) {
 				continue;
 			}
-			if (column_ref->column_names[0] == subpath_name) {
+			if (parsed_ref->function_name == "element_id") {
+				// Check subpath name matches the function name
+
 				idx_named_subpath = idx_i;
 				found = true;
 				break;
@@ -709,6 +728,7 @@ namespace duckdb {
 		}
 		if (found) {
 			column_list.erase(column_list.begin() + idx_named_subpath);
+			column_list.push_back(CreatePathFindingFunction(subpath.path_list, pg_table));
 		}
 		return found;
 	}
@@ -731,12 +751,7 @@ namespace duckdb {
 				previous_vertex_element = GetPathElement(previous_vertex_subpath->path_list[0]);
 			} else {
 				// Add the shortest path if the name is found in the column_list
-				if (CheckNamedSubpath(previous_vertex_subpath->path_variable, column_list)) {
-					auto path_finding_list_column = CreatePathFindingFunction(previous_vertex_subpath->path_list);
-					// TODO uncomment next line to get the column alias
-					// path_finding_list_column->alias = previous_vertex_subpath->path_variable;
-					column_list.push_back(std::move(path_finding_list_column));
-				}
+				CheckNamedSubpath(*previous_vertex_subpath, column_list, pg_table);
 				ProcessPathList(previous_vertex_subpath->path_list, conditions, from_clause, select_node,
 				                alias_map, pg_table, extra_alias_counter, column_list);
 				return;
