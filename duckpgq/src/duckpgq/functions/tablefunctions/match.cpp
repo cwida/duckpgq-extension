@@ -716,7 +716,7 @@ namespace duckdb {
 				continue;
 			}
 			if (parsed_ref->function_name == "element_id") {
-				// Check subpath name matches the function name
+				// Check subpath name matches the column referenced in the function --> element_id(named_subpath)
 				auto column_ref = dynamic_cast<ColumnRefExpression*>(parsed_ref->children[0].get());
 				if (column_ref->column_names[0] == subpath.path_variable) {
 					idx_named_subpath = idx_i;
