@@ -122,8 +122,7 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
   if (!duckpgq_parse_data) {
     throw BinderException("No DuckPGQ parse data found");
   }
-  auto statement =
-      dynamic_cast<SQLStatement *>(duckpgq_parse_data->statement.get());
+  auto statement = duckpgq_parse_data->statement.get();
   if (statement->type == StatementType::SELECT_STATEMENT) {
     auto select_statement = dynamic_cast<SelectStatement *>(statement);
     auto select_node = dynamic_cast<SelectNode *>(select_statement->node.get());
@@ -137,13 +136,13 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
       function->children.pop_back();
     }
     throw Exception("use duckpgq_bind instead");
-  } else if (statement->type == StatementType::CREATE_STATEMENT) {
+  } if (statement->type == StatementType::CREATE_STATEMENT) {
     ParserExtensionPlanResult result;
     result.function = CreatePropertyGraphFunction();
     result.requires_valid_transaction = true;
     result.return_type = StatementReturnType::QUERY_RESULT;
     return result;
-  } else if (statement->type == StatementType::DROP_STATEMENT) {
+  } if (statement->type == StatementType::DROP_STATEMENT) {
     ParserExtensionPlanResult result;
     result.function = DropPropertyGraphFunction();
     result.requires_valid_transaction = true;
