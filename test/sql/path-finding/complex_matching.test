@@ -51,7 +51,7 @@ EDGE TABLES (
 
 query III
 -FROM GRAPH_TABLE (snb
-    MATCH o = ANY SHORTEST (p:Person)-[w:knows]->(p2:Person)
+    MATCH o = ANY SHORTEST (p:Person)-[w:knows]->(p2:Person)-[w2:knows]->(p3:Person)
     COLUMNS (o)
     ) tmp
     limit 10;
