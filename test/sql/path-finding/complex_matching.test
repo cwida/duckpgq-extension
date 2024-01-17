@@ -49,6 +49,33 @@ EDGE TABLES (
                             LABEL replyOf
     );
 
+query III
+-FROM GRAPH_TABLE (snb
+    MATCH o = ANY SHORTEST (p:Person)-[w:knows]->(p2:Person)
+    COLUMNS (o)
+    ) tmp
+    limit 10;
+----
+
+
+query III
+-FROM GRAPH_TABLE (snb
+    MATCH o = ANY SHORTEST (p:Person)-[w:knows]-> {1,3}(p2:Person)-[i:hasInterest]->(t:Tag)
+    COLUMNS (p.id as p_id, p2.id as p2_id, t.id)
+    ) tmp
+    limit 10;
+----
+14	32985348833329	3
+14	32985348833329	139
+14	30786325577731	196
+14	28587302322196	280
+14	28587302322180	294
+14	24189255811081	295
+14	28587302322196	448
+14	32985348833329	470
+14	28587302322196	540
+14	24189255811109	543
+
 query IIIII
 WITH CTE1 AS (SELECT  CREATE_CSR_EDGE(
             0,
@@ -262,13 +289,7 @@ statement error
 ----
 Parser Error: syntax error at or near "{"
 
-query II
--FROM GRAPH_TABLE (snb
-    MATCH o = ANY SHORTEST (p:Person)-[w:knows]-> {1,3}(p2:Person)-[i:hasInterest]->(t:Tag)
-    COLUMNS (p.id as p_id, p2.id as p2_id, t.id)
-    ) tmp
-    limit 10;
-----
+
 
 statement ok
 -FROM GRAPH_TABLE (snb
