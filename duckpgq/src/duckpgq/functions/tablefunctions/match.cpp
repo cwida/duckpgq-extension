@@ -513,6 +513,7 @@ namespace duckdb {
 					// Set next vertex to be previous
 					continue;
 				}
+				edge_element = GetPathElement(edge_subpath->path_list[0]);
 			}
 
 			auto next_vertex_element = GetPathElement(path_list[idx_i+1]);
