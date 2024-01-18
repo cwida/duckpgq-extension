@@ -162,8 +162,8 @@ query IIIIII
     COLUMNS (c.id,c.content,c.creationDate, replyAuthor.id, replyAuthor.firstName, replyAuthor.lastName)
     ) tmp;
 ----
-962072674306	thanks	2012-07-08 20:32:03.239+00	24189255811081	Alim	Guliyev
 962072674305	yes	2012-07-08 23:48:41.63+00	24189255811081	Alim	Guliyev
+962072674306	thanks	2012-07-08 20:32:03.239+00	24189255811081	Alim	Guliyev
 
 # IS7. Replies of a message
 #set messageId 618475290624
