@@ -703,7 +703,6 @@ namespace duckdb {
 			}
 			if (parsed_ref->function_name == "element_id") {
 				// Check subpath name matches the column referenced in the function --> element_id(named_subpath)
-				column_list.erase(column_list.begin() + idx_i);
 				auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
 
 				if (column_alias.empty()) {
@@ -711,10 +710,9 @@ namespace duckdb {
 				} else {
 					shortest_path_function->alias = column_alias;
 				}
-				// shortest_path_function->alias = parsed_ref->alias == "" ? "element_id(" + subpath.path_variable + ")" : parsed_ref->alias;
+				column_list.erase(column_list.begin() + idx_i);
 				column_list.insert(column_list.begin() + idx_i, std::move(shortest_path_function));
 			} else if (parsed_ref->function_name == "path_length") {
-				column_list.erase(column_list.begin() + idx_i);
 				auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
 				auto path_len_children = vector<unique_ptr<ParsedExpression>>();
 				path_len_children.push_back(std::move(shortest_path_function));
@@ -727,23 +725,31 @@ namespace duckdb {
 				auto path_length_function =
 						make_uniq<FunctionExpression>("//", std::move(div_children));
 				path_length_function->alias = column_alias.empty() ? "path_length(" + subpath.path_variable + ")" : column_alias;
-
-				column_list.insert(column_list.begin() + idx_i, std::move(path_length_function));
-			} else if (parsed_ref->function_name == "vertices") {
 				column_list.erase(column_list.begin() + idx_i);
+				column_list.insert(column_list.begin() + idx_i, std::move(path_length_function));
+			} else if (parsed_ref->function_name == "vertices" || parsed_ref->function_name == "edges") {
 				auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
 				auto list_slice_children = vector<unique_ptr<ParsedExpression>>();
-				auto slice_begin = make_uniq<ConstantExpression>(Value::INTEGER(2));
+				list_slice_children.push_back(std::move(shortest_path_function));
+
+				if (parsed_ref->function_name == "vertices") {
+					list_slice_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(1)));
+				} else {
+					list_slice_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(2)));
+				}
 				auto slice_end = make_uniq<ConstantExpression>(Value::INTEGER(-1));
 				auto slice_step = make_uniq<ConstantExpression>(Value::INTEGER(2));
 
-				list_slice_children.push_back(std::move(shortest_path_function));
-				list_slice_children.push_back(std::move(slice_begin));
 				list_slice_children.push_back(std::move(slice_end));
 				list_slice_children.push_back(std::move(slice_step));
 				auto list_slice =
 						make_uniq<FunctionExpression>("list_slice", std::move(list_slice_children));
+				if (parsed_ref->function_name == "vertices") {
 				list_slice->alias = column_alias.empty() ? "vertices(" + subpath.path_variable + ")" : column_alias;
+				} else {
+				list_slice->alias = column_alias.empty() ? "edges(" + subpath.path_variable + ")" : column_alias;
+				}
+				column_list.erase(column_list.begin() + idx_i);
 				column_list.insert(column_list.begin() + idx_i, std::move(list_slice));
 			}
 		}
