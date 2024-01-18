@@ -709,7 +709,6 @@ namespace duckdb {
 	bool PGQMatchFunction::CheckNamedSubpath(SubPath& subpath, vector<unique_ptr<ParsedExpression>>& column_list,
 	                                         CreatePropertyGraphInfo& pg_table) {
 		bool found = false;
-		idx_t idx_named_subpath = 0;
 		for (idx_t idx_i = 0; idx_i < column_list.size(); idx_i++) {
 			const FunctionExpression* parsed_ref = dynamic_cast<FunctionExpression *>(column_list[idx_i].get());
 			if (parsed_ref == nullptr) {
@@ -719,18 +718,20 @@ namespace duckdb {
 				// Check subpath name matches the column referenced in the function --> element_id(named_subpath)
 				auto column_ref = dynamic_cast<ColumnRefExpression*>(parsed_ref->children[0].get());
 				if (column_ref->column_names[0] == subpath.path_variable) {
-					idx_named_subpath = idx_i;
-					found = true;
+					column_list.erase(column_list.begin() + idx_i);
+					auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
+					shortest_path_function->alias = subpath.path_variable;
+					column_list.insert(column_list.begin() + idx_i, std::move(shortest_path_function));
 					break;
 				}
 			}
 		}
-		if (found) {
-			column_list.erase(column_list.begin() + idx_named_subpath);
-			auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
-			shortest_path_function->alias = subpath.path_variable;
-			column_list.insert(column_list.begin() + idx_named_subpath, std::move(shortest_path_function));
-		}
+		// if (found) {
+		// 	column_list.erase(column_list.begin() + idx_named_subpath);
+		// 	auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
+		// 	shortest_path_function->alias = subpath.path_variable;
+		// 	column_list.insert(column_list.begin() + idx_named_subpath, std::move(shortest_path_function));
+		// }
 		return found;
 	}
 
