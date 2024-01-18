@@ -1,0 +1,57 @@
+# name: test/sql/sqlpgq/copy_to_duckpgq.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+import database 'duckdb-pgq/data/SNB0.003'
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person LABEL Person,
+    Forum LABEL Forum,
+    Organisation LABEL Organisation IN typemask(company, university),
+    Place LABEL Place,
+    Tag LABEL Tag,
+    TagClass LABEL TagClass,
+    Country LABEL Country,
+    City LABEL City,
+    Message LABEL Message
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows,
+    Forum_hasMember_Person  SOURCE KEY (ForumId) REFERENCES Forum (id)
+                            DESTINATION KEY (PersonId) REFERENCES Person (id)
+                            LABEL hasMember,
+    Forum_hasTag_Tag        SOURCE KEY (ForumId) REFERENCES Forum (id)
+                            DESTINATION KEY (TagId) REFERENCES Tag (id)
+                            LABEL Forum_hasTag,
+    Person_hasInterest_Tag  SOURCE KEY (PersonId) REFERENCES Person (id)
+                            DESTINATION KEY (TagId) REFERENCES Tag (id)
+                            LABEL hasInterest,
+    person_workAt_Organisation SOURCE KEY (PersonId) REFERENCES Person (id)
+                               DESTINATION KEY (OrganisationId) REFERENCES Organisation (id)
+                               LABEL workAt_Organisation,
+    Person_likes_Message    SOURCE KEY (PersonId) REFERENCES Person (id)
+                            DESTINATION KEY (id) REFERENCES Message (id)
+                            LABEL likes_Message,
+    Message_hasTag_Tag      SOURCE KEY (id) REFERENCES Message (id)
+                            DESTINATION KEY (TagId) REFERENCES Tag (id)
+                            LABEL message_hasTag,
+    Message_hasAuthor_Person    SOURCE KEY (messageId) REFERENCES Message (id)
+                                DESTINATION KEY (PersonId) REFERENCES Person (id)
+                                LABEL hasAuthor,
+    Message_replyOf_Message SOURCE KEY (messageId) REFERENCES Message (id)
+                            DESTINATION KEY (ParentMessageId) REFERENCES Message (id)
+                            LABEL replyOf
+    );
+
+# IS1
+statement ok
+-COPY (FROM GRAPH_TABLE (snb
+    MATCH (a is person where a.id = 17592186044461)
+    COLUMNS(a.firstName, a.lastName, a.birthday, a.locationIP, a.browserUsed, a.LocationCityId, a.gender, a.creationDate)
+) tmp) TO '__TEST_DIR__/is1.csv' (HEADER FALSE);

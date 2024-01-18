@@ -138,7 +138,8 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
     duckpgq_handle_statement(select_statement, duckpgq_state);
   }
 
-  throw BinderException("Unknown DuckPGQ query encountered");
+  // Preferably throw NotImplementedExpection here, but only BinderExceptions are caught properly on MacOS right now
+  throw BinderException("%s has not been implemented yet for DuckPGQ queries", StatementTypeToString(statement->type));
 }
 
 ParserExtensionPlanResult
