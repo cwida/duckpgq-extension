@@ -135,7 +135,7 @@ namespace duckdb {
 		                            CreatePropertyGraphInfo& pg_table, int32_t& extra_alias_counter,
 		                            vector<unique_ptr<ParsedExpression>>& column_list);
 
-		static bool CheckNamedSubpath(SubPath &subpath, vector<unique_ptr<ParsedExpression>>& column_list,
+		static void CheckNamedSubpath(SubPath &subpath, vector<unique_ptr<ParsedExpression>>& column_list,
 		CreatePropertyGraphInfo &pg_table);
 	};
 } // namespace duckdb

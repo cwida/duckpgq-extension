@@ -625,30 +625,8 @@ namespace duckdb {
 			edge_table, prev_binding,
 			edge_binding,
 			next_binding);
-		// auto cross_join_src_dst = make_uniq<JoinRef>(JoinRefType::CROSS);
-
-		//! src alias (FROM src a)
-		// auto src_vertex_ref = make_uniq<BaseTableRef>();
-		// src_vertex_ref->table_name = edge_table->source_reference;
-		// src_vertex_ref->alias = prev_binding;
-
-
-		// cross_join_src_dst->left = std::move(src_vertex_ref);
-
-		//! dst alias (FROM dst b)
-		// auto dst_vertex_ref = make_uniq<BaseTableRef>();
-		// dst_vertex_ref->table_name = edge_table->destination_reference;
-		// dst_vertex_ref->alias = next_binding;
-
-		// cross_join_src_dst->right = std::move(dst_vertex_ref);
-
-		//! (SELECT count(cte1.temp) * 0 as temp from cte1) __x
-		// auto cross_join_with_cte = make_uniq<JoinRef>(JoinRefType::CROSS);
-		// cross_join_with_cte->left = std::move(temp_cte_select_subquery);
-		// cross_join_with_cte->right = std::move(cross_join_src_dst);
 
 		auto temp_cte_select_subquery = CreateCountCTESubquery();
-		// from_clause = std::move(temp_cte_select_subquery);
 
 		if (from_clause) {
 			// create a cross join since there is already something in the
@@ -706,33 +684,53 @@ namespace duckdb {
 		//! from src s, a.rowid, b.rowid) between lower and upper
 	}
 
-	bool PGQMatchFunction::CheckNamedSubpath(SubPath& subpath, vector<unique_ptr<ParsedExpression>>& column_list,
+	void PGQMatchFunction::CheckNamedSubpath(SubPath& subpath, vector<unique_ptr<ParsedExpression>>& column_list,
 	                                         CreatePropertyGraphInfo& pg_table) {
-		bool found = false;
 		for (idx_t idx_i = 0; idx_i < column_list.size(); idx_i++) {
-			const FunctionExpression* parsed_ref = dynamic_cast<FunctionExpression *>(column_list[idx_i].get());
+			FunctionExpression* parsed_ref = dynamic_cast<FunctionExpression *>(column_list[idx_i].get());
 			if (parsed_ref == nullptr) {
+				continue;
+			}
+			auto column_ref = dynamic_cast<ColumnRefExpression *>(parsed_ref->children[0].get());
+			if (column_ref == nullptr) {
+				continue;
+			}
+			// Trying to check parsed_ref->alias directly leads to a segfault
+			string column_alias = parsed_ref->alias;
+
+			if (column_ref->column_names[0] != subpath.path_variable) {
 				continue;
 			}
 			if (parsed_ref->function_name == "element_id") {
 				// Check subpath name matches the column referenced in the function --> element_id(named_subpath)
-				auto column_ref = dynamic_cast<ColumnRefExpression*>(parsed_ref->children[0].get());
-				if (column_ref->column_names[0] == subpath.path_variable) {
-					column_list.erase(column_list.begin() + idx_i);
-					auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
-					shortest_path_function->alias = subpath.path_variable;
-					column_list.insert(column_list.begin() + idx_i, std::move(shortest_path_function));
-					break;
+				column_list.erase(column_list.begin() + idx_i);
+				auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
+
+				if (column_alias.empty()) {
+					shortest_path_function->alias = "element_id(" + subpath.path_variable + ")";
+				} else {
+					shortest_path_function->alias = column_alias;
 				}
-			}
+				// shortest_path_function->alias = parsed_ref->alias == "" ? "element_id(" + subpath.path_variable + ")" : parsed_ref->alias;
+				column_list.insert(column_list.begin() + idx_i, std::move(shortest_path_function));
+			} else if (parsed_ref->function_name == "path_length") {
+				column_list.erase(column_list.begin() + idx_i);
+				auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
+				auto path_len_children = vector<unique_ptr<ParsedExpression>>();
+				path_len_children.push_back(std::move(shortest_path_function));
+				auto path_len =
+						make_uniq<FunctionExpression>("len", std::move(path_len_children));
+				auto constant_two = make_uniq<ConstantExpression>(Value::INTEGER(2));
+				vector<unique_ptr<ParsedExpression>> div_children;
+				div_children.push_back(std::move(path_len));
+				div_children.push_back(std::move(constant_two));
+				auto path_length_function =
+						make_uniq<FunctionExpression>("//", std::move(div_children));
+				path_length_function->alias = column_alias == "" ? "path_length(" + subpath.path_variable + ")" : column_alias;
+
+				column_list.insert(column_list.begin() + idx_i, std::move(path_length_function));
+			} else if (parsed_ref->function_name == "vertices") {}
 		}
-		// if (found) {
-		// 	column_list.erase(column_list.begin() + idx_named_subpath);
-		// 	auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
-		// 	shortest_path_function->alias = subpath.path_variable;
-		// 	column_list.insert(column_list.begin() + idx_named_subpath, std::move(shortest_path_function));
-		// }
-		return found;
 	}
 
 	void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>>& path_list,
@@ -745,6 +743,7 @@ namespace duckdb {
 				GetPathElement(path_list[0]);
 		if (!previous_vertex_element) {
 			const auto previous_vertex_subpath = reinterpret_cast<SubPath *>(path_list[0].get());
+			CheckNamedSubpath(*previous_vertex_subpath, column_list, pg_table);
 			if (previous_vertex_subpath->where_clause) {
 				conditions.push_back(std::move(previous_vertex_subpath->where_clause));
 			}
@@ -752,7 +751,6 @@ namespace duckdb {
 				previous_vertex_element = GetPathElement(previous_vertex_subpath->path_list[0]);
 			} else {
 				// Add the shortest path if the name is found in the column_list
-				CheckNamedSubpath(*previous_vertex_subpath, column_list, pg_table);
 				ProcessPathList(previous_vertex_subpath->path_list, conditions, from_clause, select_node,
 				                alias_map, pg_table, extra_alias_counter, column_list);
 				return;
@@ -776,14 +774,6 @@ namespace duckdb {
 				if (next_vertex_subpath->path_list.size() > 1) {
 					throw NotImplementedException("Recursive patterns are not yet supported.");
 				}
-
-				//	Check the size of the subpath path list
-				//	if size == 1:
-				//		Path Element with a WHERE
-				//		(){3} Repeated vertices are not supported
-				//	Else:
-				//		Unsure if this is possible to reach. Perhaps at some point with a nested pattern?
-				//		Will be unsupported for now
 				if (next_vertex_subpath->where_clause) {
 					conditions.push_back(std::move(next_vertex_subpath->where_clause));
 				}
