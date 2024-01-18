@@ -98,7 +98,7 @@ test_release_python: release_python
 
 #### Misc
 format:
-	find src/ -iname *.hpp -o -iname *.cpp | xargs clang-format --sort-includes=0 -style=file -i
+	find duckpgq/ -iname *.hpp -o -iname *.cpp | xargs clang-format --sort-includes=0 -style=file -i
 	cmake-format -i CMakeLists.txt
 update:
 	git submodule update --remote --merge

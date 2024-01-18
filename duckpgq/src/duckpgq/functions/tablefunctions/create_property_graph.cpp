@@ -94,9 +94,9 @@ CreatePropertyGraphFunction::CreatePropertyGraphBind(
     CheckPropertyGraphTableLabels(vertex_table, table);
 
     v_table_names.insert(vertex_table->table_name);
-		if (vertex_table->hasTableNameAlias()) {
-			v_table_names.insert(vertex_table->table_name_alias);
-		}
+    if (vertex_table->hasTableNameAlias()) {
+      v_table_names.insert(vertex_table->table_name_alias);
+    }
   }
 
   for (auto &edge_table : info->edge_tables) {
