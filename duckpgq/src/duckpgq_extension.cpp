@@ -12,6 +12,7 @@
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
+#include "duckdb/parser/statement/copy_statement.hpp"
 #include "duckdb/parser/statement/extension_statement.hpp"
 
 #include "duckpgq/functions/tablefunctions/drop_property_graph.hpp"
@@ -136,6 +137,20 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
     auto &explain_statement = statement->Cast<ExplainStatement>();
     auto select_statement = dynamic_cast<SelectStatement*>(explain_statement.stmt.get());
     duckpgq_handle_statement(select_statement, duckpgq_state);
+  }
+  if (statement->type == StatementType::COPY_STATEMENT) {
+    auto &copy_statement = statement->Cast<CopyStatement>();
+    auto select_node = dynamic_cast<SelectNode *>(copy_statement.select_statement.get());
+    auto from_table_function =
+        dynamic_cast<TableFunctionRef *>(select_node->from_table.get());
+    auto function =
+        dynamic_cast<FunctionExpression *>(from_table_function->function.get());
+    if (function->function_name == "duckpgq_match") {
+      duckpgq_state.transform_expression =
+          std::move(std::move(function->children[0]));
+      function->children.pop_back();
+    }
+    throw Exception("use duckpgq_bind instead");
   }
 
   // Preferably throw NotImplementedExpection here, but only BinderExceptions are caught properly on MacOS right now
