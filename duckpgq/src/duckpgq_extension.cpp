@@ -89,16 +89,18 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
                             OperatorExtensionInfo *info,
                             SQLStatement &statement) {
   auto lookup = context.registered_state.find("duckpgq");
-  if (lookup != context.registered_state.end()) {
-    auto duckpgq_state = (DuckPGQState *)lookup->second.get();
-    auto duckpgq_binder = Binder::CreateBinder(context);
-    auto duckpgq_parse_data =
-        dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
-    if (duckpgq_parse_data) {
-      return duckpgq_binder->Bind(*(duckpgq_parse_data->statement));
-    }
+  if (lookup == context.registered_state.end()) {
+    throw BinderException("Registered state not found");
   }
-  throw BinderException("Registered state not found");
+
+  auto duckpgq_state = (DuckPGQState *)lookup->second.get();
+  auto duckpgq_binder = Binder::CreateBinder(context);
+  auto duckpgq_parse_data =
+      dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
+  if (duckpgq_parse_data) {
+    return duckpgq_binder->Bind(*(duckpgq_parse_data->statement));
+  }
+  throw BinderException("Unable to find DuckPGQ Parse Data");
 }
 
 ParserExtensionPlanResult
@@ -118,10 +120,9 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
       dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
 
   if (!duckpgq_parse_data) {
-    throw BinderException("Not DuckPGQ parse data");
+    throw BinderException("No DuckPGQ parse data found");
   }
-  auto statement =
-      dynamic_cast<SQLStatement *>(duckpgq_parse_data->statement.get());
+  auto statement = duckpgq_parse_data->statement.get();
   if (statement->type == StatementType::SELECT_STATEMENT) {
     auto select_statement = dynamic_cast<SelectStatement *>(statement);
     auto select_node = dynamic_cast<SelectNode *>(select_statement->node.get());
@@ -135,13 +136,15 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
       function->children.pop_back();
     }
     throw Exception("use duckpgq_bind instead");
-  } else if (statement->type == StatementType::CREATE_STATEMENT) {
+  }
+  if (statement->type == StatementType::CREATE_STATEMENT) {
     ParserExtensionPlanResult result;
     result.function = CreatePropertyGraphFunction();
     result.requires_valid_transaction = true;
     result.return_type = StatementReturnType::QUERY_RESULT;
     return result;
-  } else if (statement->type == StatementType::DROP_STATEMENT) {
+  }
+  if (statement->type == StatementType::DROP_STATEMENT) {
     ParserExtensionPlanResult result;
     result.function = DropPropertyGraphFunction();
     result.requires_valid_transaction = true;
