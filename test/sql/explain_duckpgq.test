@@ -50,13 +50,10 @@ EDGE TABLES (
     );
 
 #IC 2
-# EXPLAIN queries are not yet supported (https://github.com/cwida/duckpgq-extension/issues/61)
-statement error
+statement ok
 -EXPLAIN FROM GRAPH_TABLE (snb
     MATCH (a:Person WHERE a.id = 17592186044461)-[k:knows]-(b:Person)<-[au:hasAuthor]-(m:message WHERE m.creationDate < '2010-10-16')
     COLUMNS (a.id, a.firstName, a.lastName, m.id as messageId, coalesce(m.imageFile, m.content), m.creationDate)
     ) tmp
     ORDER BY creationDate DESC, Messageid ASC
-    LIMIT 20
-----
-Binder Error: Unknown DuckPGQ query encountered
+    LIMIT 20;

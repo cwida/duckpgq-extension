@@ -103,26 +103,7 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
   throw BinderException("Unable to find DuckPGQ Parse Data");
 }
 
-ParserExtensionPlanResult
-duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
-             unique_ptr<ParserExtensionParseData> parse_data) {
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  DuckPGQState *duckpgq_state;
-  if (duckpgq_state_entry == context.registered_state.end()) {
-    auto state = make_shared<DuckPGQState>(std::move(parse_data));
-    context.registered_state["duckpgq"] = state;
-    duckpgq_state = state.get();
-  } else {
-    duckpgq_state = (DuckPGQState *)duckpgq_state_entry->second.get();
-    duckpgq_state->parse_data = std::move(parse_data);
-  }
-  auto duckpgq_parse_data =
-      dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
-
-  if (!duckpgq_parse_data) {
-    throw BinderException("No DuckPGQ parse data found");
-  }
-  auto statement = duckpgq_parse_data->statement.get();
+ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
   if (statement->type == StatementType::SELECT_STATEMENT) {
     auto select_statement = dynamic_cast<SelectStatement *>(statement);
     auto select_node = dynamic_cast<SelectNode *>(select_statement->node.get());
@@ -131,7 +112,7 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
     auto function =
         dynamic_cast<FunctionExpression *>(from_table_function->function.get());
     if (function->function_name == "duckpgq_match") {
-      duckpgq_state->transform_expression =
+      duckpgq_state.transform_expression =
           std::move(std::move(function->children[0]));
       function->children.pop_back();
     }
@@ -151,7 +132,39 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
     result.return_type = StatementReturnType::QUERY_RESULT;
     return result;
   }
+  if (statement->type == StatementType::EXPLAIN_STATEMENT) {
+    auto &explain_statement = statement->Cast<ExplainStatement>();
+    auto select_statement = dynamic_cast<SelectStatement*>(explain_statement.stmt.get());
+    duckpgq_handle_statement(select_statement, duckpgq_state);
+  }
+
   throw BinderException("Unknown DuckPGQ query encountered");
+}
+
+ParserExtensionPlanResult
+duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
+             unique_ptr<ParserExtensionParseData> parse_data) {
+  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
+  DuckPGQState *duckpgq_state;
+  if (duckpgq_state_entry == context.registered_state.end()) {
+    auto state = make_shared<DuckPGQState>(std::move(parse_data));
+    context.registered_state["duckpgq"] = state;
+    duckpgq_state = state.get();
+  } else {
+    duckpgq_state = (DuckPGQState *)duckpgq_state_entry->second.get();
+    duckpgq_state->parse_data = std::move(parse_data);
+  }
+  auto duckpgq_parse_data =
+      dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
+
+  if (!duckpgq_parse_data) {
+    throw BinderException("No DuckPGQ parse data found");
+  }
+
+  auto statement = duckpgq_parse_data->statement.get();
+  return duckpgq_handle_statement(statement, *duckpgq_state);
+
+
 }
 
 std::string DuckpgqExtension::Name() { return "duckpgq"; }
