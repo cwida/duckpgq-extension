@@ -52,7 +52,7 @@ EDGE TABLES (
 query IIII
 -FROM GRAPH_TABLE (snb
     MATCH o = ANY SHORTEST (p4:Person where p4.rowid = 0)-[w3:knows]->(p:Person)-[w:knows]->{1,3}(p2:Person)-[w2:knows]->(p3:Person)
-    COLUMNS (p3.id, element_id(o), path_length(o), p4.id, p.id)
+    COLUMNS (p3.id, element_id(o), path_length(o), vertices(o), p4.id, p.id)
     ) tmp;
 ----
 28587302322180	[0, 0, 13, 42, 29, 68, 33]	3	14	10995116277782

@@ -726,10 +726,26 @@ namespace duckdb {
 				div_children.push_back(std::move(constant_two));
 				auto path_length_function =
 						make_uniq<FunctionExpression>("//", std::move(div_children));
-				path_length_function->alias = column_alias == "" ? "path_length(" + subpath.path_variable + ")" : column_alias;
+				path_length_function->alias = column_alias.empty() ? "path_length(" + subpath.path_variable + ")" : column_alias;
 
 				column_list.insert(column_list.begin() + idx_i, std::move(path_length_function));
-			} else if (parsed_ref->function_name == "vertices") {}
+			} else if (parsed_ref->function_name == "vertices") {
+				column_list.erase(column_list.begin() + idx_i);
+				auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table);
+				auto list_slice_children = vector<unique_ptr<ParsedExpression>>();
+				auto slice_begin = make_uniq<ConstantExpression>(Value::INTEGER(2));
+				auto slice_end = make_uniq<ConstantExpression>(Value::INTEGER(-1));
+				auto slice_step = make_uniq<ConstantExpression>(Value::INTEGER(2));
+
+				list_slice_children.push_back(std::move(shortest_path_function));
+				list_slice_children.push_back(std::move(slice_begin));
+				list_slice_children.push_back(std::move(slice_end));
+				list_slice_children.push_back(std::move(slice_step));
+				auto list_slice =
+						make_uniq<FunctionExpression>("list_slice", std::move(list_slice_children));
+				list_slice->alias = column_alias.empty() ? "vertices(" + subpath.path_variable + ")" : column_alias;
+				column_list.insert(column_list.begin() + idx_i, std::move(list_slice));
+			}
 		}
 	}
 
