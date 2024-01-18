@@ -59,7 +59,7 @@ static void ScanCSRPtrFunction(ClientContext &context, TableFunctionInput &data_
   }
   auto duckpgq_state =
       reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
-  auto csr_id = data_p.bind_data->Cast<CSRScanEData>().csr_id;
+  auto csr_id = data_p.bind_data->Cast<CSRScanPtrData>().csr_id;
   CSR *csr = duckpgq_state->GetCSR(csr_id);
   output.SetCardinality(5);
   output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
