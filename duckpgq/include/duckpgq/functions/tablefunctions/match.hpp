@@ -7,6 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
+#include <duckdb/parser/parsed_data/create_pragma_function_info.hpp>
+
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/parser/path_element.hpp"
@@ -14,21 +16,22 @@
 #include "duckdb/parser/path_pattern.hpp"
 
 namespace duckdb {
-
 struct PGQMatchFunction : public TableFunction {
 public:
-		PGQMatchFunction() {
+  PGQMatchFunction() {
     name = "duckpgq_match";
     bind_replace = MatchBindReplace;
   }
+
   struct MatchBindData : public TableFunctionData {
     bool done = false;
   };
 
   static shared_ptr<PropertyGraphTable>
   FindGraphTable(const string &label, CreatePropertyGraphInfo &pg_table);
+
   static void
-  CheckInheritance(shared_ptr<PropertyGraphTable> &tableref,
+  CheckInheritance(const shared_ptr<PropertyGraphTable> &tableref,
                    PathElement *element,
                    vector<unique_ptr<ParsedExpression>> &conditions);
 
@@ -42,8 +45,7 @@ public:
       const string &vertex_alias, const string &edge_alias);
 
   static PathElement *
-  GetPathElement(unique_ptr<PathReference> &path_reference,
-                 vector<unique_ptr<ParsedExpression>> &conditions);
+  GetPathElement(const unique_ptr<PathReference> &path_reference);
 
   static unique_ptr<SubqueryExpression>
   GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table,
@@ -61,13 +63,13 @@ public:
                const string &edge_binding, const string &prev_binding,
                const string &next_binding);
 
-  static void EdgeTypeAny(shared_ptr<PropertyGraphTable> &edge_table,
+  static void EdgeTypeAny(const shared_ptr<PropertyGraphTable> &edge_table,
                           const string &edge_binding,
                           const string &prev_binding,
                           const string &next_binding,
                           vector<unique_ptr<ParsedExpression>> &conditions);
 
-  static void EdgeTypeLeft(shared_ptr<PropertyGraphTable> &edge_table,
+  static void EdgeTypeLeft(const shared_ptr<PropertyGraphTable> &edge_table,
                            const string &next_table_name,
                            const string &prev_table_name,
                            const string &edge_binding,
@@ -75,7 +77,7 @@ public:
                            const string &next_binding,
                            vector<unique_ptr<ParsedExpression>> &conditions);
 
-  static void EdgeTypeRight(shared_ptr<PropertyGraphTable> &edge_table,
+  static void EdgeTypeRight(const shared_ptr<PropertyGraphTable> &edge_table,
                             const string &next_table_name,
                             const string &prev_table_name,
                             const string &edge_binding,
@@ -83,11 +85,13 @@ public:
                             const string &next_binding,
                             vector<unique_ptr<ParsedExpression>> &conditions);
 
-  static void EdgeTypeLeftRight(
-      shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
-      const string &prev_binding, const string &next_binding,
-      vector<unique_ptr<ParsedExpression>> &conditions,
-      unordered_map<string, string> &alias_map, int32_t &extra_alias_counter);
+  static void
+  EdgeTypeLeftRight(const shared_ptr<PropertyGraphTable> &edge_table,
+                    const string &edge_binding, const string &prev_binding,
+                    const string &next_binding,
+                    vector<unique_ptr<ParsedExpression>> &conditions,
+                    unordered_map<string, string> &alias_map,
+                    int32_t &extra_alias_counter);
 
   static PathElement *
   HandleNestedSubPath(unique_ptr<PathReference> &path_reference,
@@ -102,10 +106,41 @@ public:
       vector<unique_ptr<ParsedExpression>> &column_list,
       unordered_set<string> &named_subpaths);
 
-  static unique_ptr<FunctionExpression>
-  CreatePathFindingFunction(const string &prev_binding,
-                            const string &next_binding,
-                            shared_ptr<PropertyGraphTable> &edge_table,
-                            const string &path_finding_udf);
+  static unique_ptr<ParsedExpression>
+  CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list,
+                            CreatePropertyGraphInfo &pg_table);
+
+  static void AddPathFinding(const unique_ptr<SelectNode> &select_node,
+                             unique_ptr<TableRef> &from_clause,
+                             vector<unique_ptr<ParsedExpression>> &conditions,
+                             const string &prev_binding,
+                             const string &edge_binding,
+                             const string &next_binding,
+                             const shared_ptr<PropertyGraphTable> &edge_table,
+                             const SubPath *subpath);
+
+  static void
+  AddEdgeJoins(const unique_ptr<SelectNode> &select_node,
+               const shared_ptr<PropertyGraphTable> &edge_table,
+               const shared_ptr<PropertyGraphTable> &previous_vertex_table,
+               const shared_ptr<PropertyGraphTable> &next_vertex_table,
+               PGQMatchType edge_type, const string &edge_binding,
+               const string &prev_binding, const string &next_binding,
+               vector<unique_ptr<ParsedExpression>> &conditions,
+               unordered_map<string, string> &alias_map,
+               int32_t &extra_alias_counter);
+
+  static void ProcessPathList(
+      vector<unique_ptr<PathReference>> &path_pattern,
+      vector<unique_ptr<ParsedExpression>> &conditions,
+      unique_ptr<TableRef> &from_clause, unique_ptr<SelectNode> &select_node,
+      unordered_map<string, string> &alias_map,
+      CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
+      vector<unique_ptr<ParsedExpression>> &column_list);
+
+  static void
+  CheckNamedSubpath(SubPath &subpath,
+                    vector<unique_ptr<ParsedExpression>> &column_list,
+                    CreatePropertyGraphInfo &pg_table);
 };
 } // namespace duckdb

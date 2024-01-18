@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ 'v0.8.1' ]
+        duckdb_version: [ 'latest' ]
 
     env:
       OSX_BUILD_UNIVERSAL: 1
@@ -39,7 +39,7 @@ jobs:
           cd duckdb-pgq
           git checkout ${{ matrix.duckdb_version }}
 
-         # Build extension
+       # Build extension
       - name: Build extension
         shell: bash
         run: |
