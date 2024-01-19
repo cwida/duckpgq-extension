@@ -173,7 +173,8 @@ query IIIII
     MATCH (replyAuthor:person)<-[au2:hasAuthor]-(c:message where c.ParentMessageId is not null)-[r:replyOf]->(m:message where m.id = 618475290624)-[au:hasAuthor]->(messageAuthor:person),
     (replyAuthor:person)-[k:knows]-(messageAuthor:person)
     COLUMNS (c.id,c.content,c.creationDate, replyAuthor.id % 10, replyAuthor.firstName || replyAuthor.lastName)
-    ) tmp;
+    ) tmp
+    ORDER BY tmp.content;
 ----
-962072674305	yes	2012-07-08 23:48:41.63+00	1	AlimGuliyev
 962072674306	thanks	2012-07-08 20:32:03.239+00	1	AlimGuliyev
+962072674305	yes	2012-07-08 23:48:41.63+00	1	AlimGuliyev
