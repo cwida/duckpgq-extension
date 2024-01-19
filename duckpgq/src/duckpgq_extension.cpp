@@ -1,6 +1,9 @@
 #define DUCKDB_EXTENSION_MAIN
 
 #include "duckpgq_extension.hpp"
+
+#include <duckdb/parser/statement/insert_statement.hpp>
+
 #include "duckdb/function/scalar_function.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
 
@@ -12,6 +15,9 @@
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
+#include "duckdb/parser/statement/copy_statement.hpp"
+#include "duckdb/parser/parsed_data/create_table_info.hpp"
+
 #include "duckdb/parser/statement/extension_statement.hpp"
 
 #include "duckpgq/functions/tablefunctions/drop_property_graph.hpp"
@@ -103,6 +109,69 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
   throw BinderException("Unable to find DuckPGQ Parse Data");
 }
 
+ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
+  if (statement->type == StatementType::SELECT_STATEMENT) {
+    auto select_statement = dynamic_cast<SelectStatement *>(statement);
+    auto select_node = dynamic_cast<SelectNode *>(select_statement->node.get());
+    auto from_table_function =
+        dynamic_cast<TableFunctionRef *>(select_node->from_table.get());
+    auto function =
+        dynamic_cast<FunctionExpression *>(from_table_function->function.get());
+    if (function->function_name == "duckpgq_match") {
+      duckpgq_state.transform_expression =
+          std::move(std::move(function->children[0]));
+      function->children.pop_back();
+    }
+    throw Exception("use duckpgq_bind instead");
+  }
+  if (statement->type == StatementType::CREATE_STATEMENT) {
+    auto &create_statement = statement->Cast<CreateStatement>();
+    auto create_property_graph = dynamic_cast<CreatePropertyGraphInfo*>(create_statement.info.get());
+    if (create_property_graph) {
+      ParserExtensionPlanResult result;
+      result.function = CreatePropertyGraphFunction();
+      result.requires_valid_transaction = true;
+      result.return_type = StatementReturnType::QUERY_RESULT;
+      return result;
+    }
+    auto create_table = reinterpret_cast<CreateTableInfo*>(create_statement.info.get());
+    duckpgq_handle_statement(create_table->query.get(), duckpgq_state);
+  }
+  if (statement->type == StatementType::DROP_STATEMENT) {
+    ParserExtensionPlanResult result;
+    result.function = DropPropertyGraphFunction();
+    result.requires_valid_transaction = true;
+    result.return_type = StatementReturnType::QUERY_RESULT;
+    return result;
+  }
+  if (statement->type == StatementType::EXPLAIN_STATEMENT) {
+    auto &explain_statement = statement->Cast<ExplainStatement>();
+    auto select_statement = dynamic_cast<SelectStatement*>(explain_statement.stmt.get());
+    duckpgq_handle_statement(select_statement, duckpgq_state);
+  }
+  if (statement->type == StatementType::COPY_STATEMENT) {
+    auto &copy_statement = statement->Cast<CopyStatement>();
+    auto select_node = dynamic_cast<SelectNode *>(copy_statement.select_statement.get());
+    auto from_table_function =
+        dynamic_cast<TableFunctionRef *>(select_node->from_table.get());
+    auto function =
+        dynamic_cast<FunctionExpression *>(from_table_function->function.get());
+    if (function->function_name == "duckpgq_match") {
+      duckpgq_state.transform_expression =
+          std::move(std::move(function->children[0]));
+      function->children.pop_back();
+    }
+    throw Exception("use duckpgq_bind instead");
+  }
+  if (statement->type == StatementType::INSERT_STATEMENT) {
+    auto &insert_statement = statement->Cast<InsertStatement>();
+    duckpgq_handle_statement(insert_statement.select_statement.get(), duckpgq_state);
+  }
+
+  // Preferably throw NotImplementedExpection here, but only BinderExceptions are caught properly on MacOS right now
+  throw BinderException("%s has not been implemented yet for DuckPGQ queries", StatementTypeToString(statement->type));
+}
+
 ParserExtensionPlanResult
 duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
              unique_ptr<ParserExtensionParseData> parse_data) {
@@ -122,36 +191,11 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
   if (!duckpgq_parse_data) {
     throw BinderException("No DuckPGQ parse data found");
   }
+
   auto statement = duckpgq_parse_data->statement.get();
-  if (statement->type == StatementType::SELECT_STATEMENT) {
-    auto select_statement = dynamic_cast<SelectStatement *>(statement);
-    auto select_node = dynamic_cast<SelectNode *>(select_statement->node.get());
-    auto from_table_function =
-        dynamic_cast<TableFunctionRef *>(select_node->from_table.get());
-    auto function =
-        dynamic_cast<FunctionExpression *>(from_table_function->function.get());
-    if (function->function_name == "duckpgq_match") {
-      duckpgq_state->transform_expression =
-          std::move(std::move(function->children[0]));
-      function->children.pop_back();
-    }
-    throw Exception("use duckpgq_bind instead");
-  }
-  if (statement->type == StatementType::CREATE_STATEMENT) {
-    ParserExtensionPlanResult result;
-    result.function = CreatePropertyGraphFunction();
-    result.requires_valid_transaction = true;
-    result.return_type = StatementReturnType::QUERY_RESULT;
-    return result;
-  }
-  if (statement->type == StatementType::DROP_STATEMENT) {
-    ParserExtensionPlanResult result;
-    result.function = DropPropertyGraphFunction();
-    result.requires_valid_transaction = true;
-    result.return_type = StatementReturnType::QUERY_RESULT;
-    return result;
-  }
-  throw BinderException("Unknown DuckPGQ query encountered");
+  return duckpgq_handle_statement(statement, *duckpgq_state);
+
+
 }
 
 std::string DuckpgqExtension::Name() { return "duckpgq"; }
