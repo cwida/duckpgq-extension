@@ -13,6 +13,8 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/statement/copy_statement.hpp"
+#include "duckdb/parser/parsed_data/create_table_info.hpp"
+
 #include "duckdb/parser/statement/extension_statement.hpp"
 
 #include "duckpgq/functions/tablefunctions/drop_property_graph.hpp"
@@ -120,11 +122,17 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
     throw Exception("use duckpgq_bind instead");
   }
   if (statement->type == StatementType::CREATE_STATEMENT) {
-    ParserExtensionPlanResult result;
-    result.function = CreatePropertyGraphFunction();
-    result.requires_valid_transaction = true;
-    result.return_type = StatementReturnType::QUERY_RESULT;
-    return result;
+    auto &create_statement = statement->Cast<CreateStatement>();
+    auto create_property_graph = dynamic_cast<CreatePropertyGraphInfo*>(create_statement.info.get());
+    if (create_property_graph) {
+      ParserExtensionPlanResult result;
+      result.function = CreatePropertyGraphFunction();
+      result.requires_valid_transaction = true;
+      result.return_type = StatementReturnType::QUERY_RESULT;
+      return result;
+    }
+    auto create_table = reinterpret_cast<CreateTableInfo*>(create_statement.info.get());
+    duckpgq_handle_statement(create_table->query.get(), duckpgq_state);
   }
   if (statement->type == StatementType::DROP_STATEMENT) {
     ParserExtensionPlanResult result;
