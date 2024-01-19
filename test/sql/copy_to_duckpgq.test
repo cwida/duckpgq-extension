@@ -71,3 +71,15 @@ query IIIIIIII
 SELECT * FROM result;
 ----
 Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595+00
+
+statement ok
+-INSERT INTO result (FROM GRAPH_TABLE (snb
+                        MATCH (a is person where a.id = 17592186044461)
+                        COLUMNS(a.firstName, a.lastName, a.birthday, a.locationIP, a.browserUsed, a.LocationCityId, a.gender, a.creationDate)
+                        ) tmp)
+
+query IIIIIIII
+SELECT * FROM result;
+----
+Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595+00
+Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595+00
