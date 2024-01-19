@@ -1,6 +1,9 @@
 #define DUCKDB_EXTENSION_MAIN
 
 #include "duckpgq_extension.hpp"
+
+#include <duckdb/parser/statement/insert_statement.hpp>
+
 #include "duckdb/function/scalar_function.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
 
@@ -159,6 +162,10 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
       function->children.pop_back();
     }
     throw Exception("use duckpgq_bind instead");
+  }
+  if (statement->type == StatementType::INSERT_STATEMENT) {
+    auto &insert_statement = statement->Cast<InsertStatement>();
+    duckpgq_handle_statement(insert_statement.select_statement.get(), duckpgq_state);
   }
 
   // Preferably throw NotImplementedExpection here, but only BinderExceptions are caught properly on MacOS right now
