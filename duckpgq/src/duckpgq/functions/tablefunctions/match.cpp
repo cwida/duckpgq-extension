@@ -44,7 +44,7 @@ void PGQMatchFunction::CheckInheritance(
     return;
   }
   auto constant_expression_two =
-      make_uniq<ConstantExpression>(Value::INTEGER((int32_t)2));
+      make_uniq<ConstantExpression>(Value::INTEGER(2));
   const auto itr = std::find(tableref->sub_labels.begin(),
                              tableref->sub_labels.end(), element->label);
 
