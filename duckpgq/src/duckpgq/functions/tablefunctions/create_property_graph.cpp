@@ -59,8 +59,8 @@ duckdb::unique_ptr<FunctionData>
 CreatePropertyGraphFunction::CreatePropertyGraphBind(
     ClientContext &context, TableFunctionBindInput &input,
     vector<LogicalType> &return_types, vector<string> &names) {
-  names.emplace_back("success");
-  return_types.emplace_back(LogicalType::VARCHAR);
+  names.emplace_back("Success");
+  return_types.emplace_back(LogicalType::BOOLEAN);
   auto lookup = context.registered_state.find("duckpgq");
   if (lookup == context.registered_state.end()) {
     throw BinderException("Registered DuckPGQ state not found");
