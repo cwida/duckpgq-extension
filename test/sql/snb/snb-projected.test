@@ -4,9 +4,6 @@ statement ok
 import database 'duckdb-pgq/data/SNB1-projected|';
 
 statement ok
-.read 'duckdb-pgq/data/SNB1-projected/schema.sql';
-
-statement ok
 -CREATE PROPERTY GRAPH snb_projected
 VERTEX TABLES (
     Forum LABEL Forum,
