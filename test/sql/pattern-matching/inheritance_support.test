@@ -25,13 +25,13 @@ statement ok
 INSERT INTO Person VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
 
 statement ok
-INSERT INTO worksAt VALUES (0,1), (0,2), (0,3), (3,0), (1,2), (1,3), (2,3), (4,3);
+INSERT INTO worksAt VALUES (0,1), (0,2), (0,3), (1,2), (1,3), (2,3), (3,0), (4,3);
 
 statement ok
-INSERT INTO University VALUES ('VU', 0, 2), ('UvA', 1, 2);
+INSERT INTO University VALUES ('VU', 0, 1), ('UvA', 1, 1);
 
 statement ok
-INSERT INTO Company VALUES ('EY', 2, 4), ('CWI', 3, 4);
+INSERT INTO Company VALUES ('EY', 2, 2), ('CWI', 3, 2);
 
 statement ok
 INSERT INTO Organisation (SELECT * from university union select * from company);
@@ -58,10 +58,10 @@ FROM GRAPH_TABLE(pg
 0	Daniel	1	UvA
 0	Daniel	2	EY
 0	Daniel	3	CWI
-3	Peter	0	VU
 1	Tavneet	2	EY
 1	Tavneet	3	CWI
 2	Gabor	3	CWI
+3	Peter	0	VU
 4	David	3	CWI
 
 query IIIII
@@ -71,39 +71,37 @@ FROM GRAPH_TABLE(pg
     COLUMNS (p.id, p.name, u.id, u.name, u.mask)
     ) result
 ----
-0	Daniel	1	UvA	2
-0	Daniel	2	EY	4
-0	Daniel	3	CWI	4
-3	Peter	0	VU	2
-1	Tavneet	2	EY	4
-1	Tavneet	3	CWI	4
-2	Gabor	3	CWI	4
-4	David	3	CWI	4
+0	Daniel	1	UvA	1
+0	Daniel	2	EY	2
+0	Daniel	3	CWI	2
+1	Tavneet	2	EY	2
+1	Tavneet	3	CWI	2
+2	Gabor	3	CWI	2
+3	Peter	0	VU	1
+4	David	3	CWI	2
 
-
-query IIII
--SELECT *
-FROM GRAPH_TABLE(pg
+query IIIII
+-FROM GRAPH_TABLE(pg
     MATCH (p:Person)-[w:worksAt]->(u:university)
     COLUMNS (p.id, p.name, u.id, u.name, u.mask)
     ) result
 ----
-0	Daniel	1	UvA
-3	Peter	0	VU
+0	Daniel	1	UvA	1
+3	Peter	0	VU	1
 
-query IIII
+query IIIII
 -SELECT *
 FROM GRAPH_TABLE(pg
     MATCH (p:Person)-[w:worksAt]->(u:company)
     COLUMNS (p.id, p.name, u.id, u.name, u.mask)
     ) result
 ----
-0	Daniel	3	CWI
-1	Tavneet	3	CWI
-2	Gabor	3	CWI
-4	David	3	CWI
-0	Daniel	2	EY
-1	Tavneet	2	EY
+0	Daniel	3	CWI	2
+1	Tavneet	3	CWI	2
+2	Gabor	3	CWI	2
+4	David	3	CWI	2
+0	Daniel	2	EY	2
+1	Tavneet	2	EY	2
 
 # Should work with different capitalization
 query IIII
@@ -130,21 +128,21 @@ FROM GRAPH_TABLE(pg
 1	UvA	0	Daniel
 2	EY	0	Daniel
 3	CWI	0	Daniel
-0	VU	3	Peter
 2	EY	1	Tavneet
 3	CWI	1	Tavneet
 3	CWI	2	Gabor
+0	VU	3	Peter
 3	CWI	4	David
 
 query IIII
 -SELECT *
 FROM GRAPH_TABLE(pg
-    MATCH (p:university)<-[w:worksAt]-(u:person)
-    COLUMNS (p.id, p.name, u.id, u.mask)
+    MATCH (u:university)<-[w:worksAt]-(p:person)
+    COLUMNS (p.id, p.name, u.name, u.mask)
     ) result
 ----
-1	UvA	0	Daniel
-0	VU	3	Peter
+0	Daniel	UvA	1
+3	Peter	VU	1
 
 statement ok
 -drop property graph pg;

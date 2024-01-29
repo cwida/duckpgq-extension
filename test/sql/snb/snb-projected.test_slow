@@ -102,3 +102,4 @@ query IIIIIIII
      COLUMNS(a.firstName, a.lastName, a.birthday, a.locationIP, a.browserUsed, c.id, a.gender, a.creationDate)
      ) tmp;
 ----
+Ivan	Dobrunov	1988-10-21	31.28.20.134	Firefox	865	female	2010-02-09 17:26:35.413

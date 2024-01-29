@@ -48,9 +48,9 @@ void PGQMatchFunction::CheckInheritance(
   const auto itr = std::find(tableref->sub_labels.begin(),
                              tableref->sub_labels.end(), element->label);
 
-  const auto idx_of_element = std::distance(tableref->sub_labels.begin(), itr);
+  const auto idx_of_label = std::distance(tableref->sub_labels.begin(), itr);
   auto constant_expression_idx_label = make_uniq<ConstantExpression>(
-      Value::INTEGER(static_cast<int32_t>(idx_of_element)));
+      Value::INTEGER(static_cast<int32_t>(idx_of_label)));
 
   vector<unique_ptr<ParsedExpression>> power_of_children;
   power_of_children.push_back(std::move(constant_expression_two));
@@ -58,7 +58,7 @@ void PGQMatchFunction::CheckInheritance(
   auto power_of_term =
       make_uniq<FunctionExpression>("power", std::move(power_of_children));
   auto bigint_cast =
-      make_uniq<CastExpression>(LogicalType::BIGINT, std::move(power_of_term));
+      make_uniq<CastExpression>(LogicalType::INTEGER, std::move(power_of_term));
   auto subcategory_colref = make_uniq<ColumnRefExpression>(
       tableref->discriminator, element->variable_binding);
   vector<unique_ptr<ParsedExpression>> and_children;
@@ -69,7 +69,7 @@ void PGQMatchFunction::CheckInheritance(
       make_uniq<FunctionExpression>("&", std::move(and_children));
 
   auto constant_expression_idx_label_comparison = make_uniq<ConstantExpression>(
-      Value::INTEGER(static_cast<int32_t>(idx_of_element + 1)));
+      Value::INTEGER(static_cast<int32_t>(pow(2, idx_of_label))));
 
   auto subset_compare = make_uniq<ComparisonExpression>(
       ExpressionType::COMPARE_EQUAL, std::move(and_expression),
