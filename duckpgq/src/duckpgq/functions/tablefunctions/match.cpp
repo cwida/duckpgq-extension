@@ -23,6 +23,7 @@
 #include "duckdb/parser/subpath_element.hpp"
 
 #include <iostream>
+#include <cmath>
 
 namespace duckdb {
 shared_ptr<PropertyGraphTable>
@@ -69,7 +70,7 @@ void PGQMatchFunction::CheckInheritance(
       make_uniq<FunctionExpression>("&", std::move(and_children));
 
   auto constant_expression_idx_label_comparison = make_uniq<ConstantExpression>(
-      Value::INTEGER(static_cast<int32_t>(pow(2, idx_of_label))));
+      Value::INTEGER(static_cast<int32_t>(std::pow(2, idx_of_label))));
 
   auto subset_compare = make_uniq<ComparisonExpression>(
       ExpressionType::COMPARE_EQUAL, std::move(and_expression),
