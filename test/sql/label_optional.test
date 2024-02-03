@@ -9,18 +9,40 @@ import database 'duckdb-pgq/data/SNB0.003';
 statement ok
 -CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
-    Person
+    Person,
+    Organisation IN typemask(company, university)
     )
 EDGE TABLES (
     Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
                             DESTINATION KEY (Person2Id) REFERENCES Person (id)
-                            LABEL Knows
-    );
+                            LABEL Knows,
+    person_workAt_Organisation SOURCE KEY (PersonId) REFERENCES Person (id)
+                               DESTINATION KEY (OrganisationId) REFERENCES Organisation (id)
+                               LABEL workAt_Organisation
+   );
+
+query III
+-FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[w:workAt_Organisation]->(u:University)
+    COLUMNS (p.id, u.id, u.type)
+    ) tmp
+    limit 10;
+----
+26388279066632	1580	University
+13194139533352	1856	University
+2199023255557	1953	University
+28587302322209	1596	University
+2199023255594	1597	University
+35184372088856	2208	University
+21990232555526	2209	University
+32985348833291	2211	University
+30786325577740	2435	University
+26388279066655	2832	University
 
 
 query II
 -FROM GRAPH_TABLE (snb
-    MATCH (p:Person)-[k:Knows]->(p2:Person)
+    MATCH (p:Person)-[k:knows]->(p2:Person)
     COLUMNS (p.id, p2.id)
     ) tmp
     limit 10;
