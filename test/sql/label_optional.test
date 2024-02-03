@@ -16,3 +16,22 @@ EDGE TABLES (
                             DESTINATION KEY (Person2Id) REFERENCES Person (id)
                             LABEL Knows
     );
+
+
+query II
+-FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[k:Knows]->(p2:Person)
+    COLUMNS (p.id, p2.id)
+    ) tmp
+    limit 10;
+----
+14	10995116277782
+14	24189255811081
+14	26388279066668
+16	2199023255594
+16	26388279066655
+16	28587302322180
+16	28587302322204
+32	2199023255594
+32	13194139533352
+32	17592186044461
