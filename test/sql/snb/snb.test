@@ -184,4 +184,3 @@ statement ok
 MATCH p = ANY SHORTEST (a:Person WHERE a.id = 19791209309999)-[k:knows]-> *(b:Person where b.id = 30786325579519)
 COLUMNS (path_length(p), a.id as a_id, b.id as b_id)
 ) tmp LIMIT 20) TO '__TEST_DIR__/ic13-ea.txt';
-
