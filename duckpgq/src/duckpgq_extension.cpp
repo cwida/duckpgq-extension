@@ -146,8 +146,8 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
   }
   if (statement->type == StatementType::EXPLAIN_STATEMENT) {
     auto &explain_statement = statement->Cast<ExplainStatement>();
-    auto select_statement = dynamic_cast<SelectStatement*>(explain_statement.stmt.get());
-    duckpgq_handle_statement(select_statement, duckpgq_state);
+    // auto select_statement = dynamic_cast<SelectStatement*>(explain_statement.stmt.get());
+    duckpgq_handle_statement(explain_statement.stmt.get(), duckpgq_state);
   }
   if (statement->type == StatementType::COPY_STATEMENT) {
     auto &copy_statement = statement->Cast<CopyStatement>();
