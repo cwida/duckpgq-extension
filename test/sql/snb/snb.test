@@ -178,3 +178,9 @@ query IIIII
 ----
 962072674306	thanks	2012-07-08 20:32:03.239+00	1	AlimGuliyev
 962072674305	yes	2012-07-08 23:48:41.63+00	1	AlimGuliyev
+
+statement ok
+-EXPLAIN ANALYZE COPY (FROM GRAPH_TABLE (snb
+MATCH p = ANY SHORTEST (a:Person WHERE a.id = 19791209309999)-[k:knows]-> *(b:Person where b.id = 30786325579519)
+COLUMNS (path_length(p), a.id as a_id, b.id as b_id)
+) tmp LIMIT 20) TO '__TEST_DIR__/ic13-ea.txt';
