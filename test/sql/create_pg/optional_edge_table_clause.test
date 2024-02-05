@@ -1,0 +1,13 @@
+# name: test/sql/sqlpgq/snb.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+import database 'duckdb-pgq/data/SNB0.003';
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (Message);
+
+statement ok
