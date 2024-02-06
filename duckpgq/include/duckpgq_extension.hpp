@@ -45,8 +45,8 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info,
                                        ClientContext &,
                                        unique_ptr<ParserExtensionParseData>);
 
-ParserExtensionPlanResult duckpgq_handle_statement(unique_ptr<SQLStatement> &statement);
-
+ParserExtensionPlanResult
+duckpgq_handle_statement(unique_ptr<SQLStatement> &statement);
 
 struct DuckPGQParserExtension : public ParserExtension {
   DuckPGQParserExtension() : ParserExtension() {
