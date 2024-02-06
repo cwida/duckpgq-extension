@@ -17,6 +17,7 @@
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/statement/copy_statement.hpp"
 #include "duckdb/parser/parsed_data/create_table_info.hpp"
+#include "duckdb/parser/tableref/joinref.hpp"
 
 #include "duckdb/parser/statement/extension_statement.hpp"
 
@@ -109,24 +110,32 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
   throw BinderException("Unable to find DuckPGQ Parse Data");
 }
 
-ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
-  if (statement->type == StatementType::SELECT_STATEMENT) {
-    auto select_statement = dynamic_cast<SelectStatement *>(statement);
-    auto select_node = dynamic_cast<SelectNode *>(select_statement->node.get());
-    auto from_table_function =
-        dynamic_cast<TableFunctionRef *>(select_node->from_table.get());
-    auto function =
-        dynamic_cast<FunctionExpression *>(from_table_function->function.get());
+void duckpgq_find_match_function(TableRef* table_ref, DuckPGQState &duckpgq_state) {
+  if (auto table_function_ref = dynamic_cast<TableFunctionRef *>(table_ref)) {
+    // Handle TableFunctionRef case
+    auto function = dynamic_cast<FunctionExpression *>(table_function_ref->function.get());
     if (function->function_name == "duckpgq_match") {
       duckpgq_state.transform_expression =
           std::move(std::move(function->children[0]));
       function->children.pop_back();
     }
+  } else if (auto join_ref = dynamic_cast<JoinRef *>(table_ref)) {
+    // Handle JoinRef case
+    duckpgq_find_match_function(join_ref->left.get(), duckpgq_state);
+    duckpgq_find_match_function(join_ref->right.get(), duckpgq_state);
+  }
+}
+
+ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
+  if (statement->type == StatementType::SELECT_STATEMENT) {
+    auto select_statement = dynamic_cast<SelectStatement *>(statement);
+    auto select_node = dynamic_cast<SelectNode *>(select_statement->node.get());
+    duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
     throw Exception("use duckpgq_bind instead");
   }
   if (statement->type == StatementType::CREATE_STATEMENT) {
-    auto &create_statement = statement->Cast<CreateStatement>();
-    auto create_property_graph = dynamic_cast<CreatePropertyGraphInfo*>(create_statement.info.get());
+    const auto &create_statement = statement->Cast<CreateStatement>();
+    const auto create_property_graph = dynamic_cast<CreatePropertyGraphInfo*>(create_statement.info.get());
     if (create_property_graph) {
       ParserExtensionPlanResult result;
       result.function = CreatePropertyGraphFunction();
@@ -134,7 +143,7 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
       result.return_type = StatementReturnType::QUERY_RESULT;
       return result;
     }
-    auto create_table = reinterpret_cast<CreateTableInfo*>(create_statement.info.get());
+    const auto create_table = reinterpret_cast<CreateTableInfo*>(create_statement.info.get());
     duckpgq_handle_statement(create_table->query.get(), duckpgq_state);
   }
   if (statement->type == StatementType::DROP_STATEMENT) {
@@ -152,15 +161,7 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
   if (statement->type == StatementType::COPY_STATEMENT) {
     auto &copy_statement = statement->Cast<CopyStatement>();
     auto select_node = dynamic_cast<SelectNode *>(copy_statement.select_statement.get());
-    auto from_table_function =
-        dynamic_cast<TableFunctionRef *>(select_node->from_table.get());
-    auto function =
-        dynamic_cast<FunctionExpression *>(from_table_function->function.get());
-    if (function->function_name == "duckpgq_match") {
-      duckpgq_state.transform_expression =
-          std::move(std::move(function->children[0]));
-      function->children.pop_back();
-    }
+    duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
     throw Exception("use duckpgq_bind instead");
   }
   if (statement->type == StatementType::INSERT_STATEMENT) {
