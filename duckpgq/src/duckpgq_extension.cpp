@@ -128,8 +128,8 @@ void duckpgq_find_match_function(TableRef* table_ref, DuckPGQState &duckpgq_stat
 
 ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
   if (statement->type == StatementType::SELECT_STATEMENT) {
-    auto select_statement = dynamic_cast<SelectStatement *>(statement);
-    auto select_node = dynamic_cast<SelectNode *>(select_statement->node.get());
+    const auto select_statement = dynamic_cast<SelectStatement *>(statement);
+    const auto select_node = dynamic_cast<SelectNode *>(select_statement->node.get());
     duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
     throw Exception("use duckpgq_bind instead");
   }
@@ -159,13 +159,13 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
     duckpgq_handle_statement(explain_statement.stmt.get(), duckpgq_state);
   }
   if (statement->type == StatementType::COPY_STATEMENT) {
-    auto &copy_statement = statement->Cast<CopyStatement>();
-    auto select_node = dynamic_cast<SelectNode *>(copy_statement.select_statement.get());
+    const auto &copy_statement = statement->Cast<CopyStatement>();
+    const auto select_node = dynamic_cast<SelectNode *>(copy_statement.select_statement.get());
     duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
     throw Exception("use duckpgq_bind instead");
   }
   if (statement->type == StatementType::INSERT_STATEMENT) {
-    auto &insert_statement = statement->Cast<InsertStatement>();
+    const auto &insert_statement = statement->Cast<InsertStatement>();
     duckpgq_handle_statement(insert_statement.select_statement.get(), duckpgq_state);
   }
 
