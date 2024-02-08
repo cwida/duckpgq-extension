@@ -74,6 +74,16 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
   auto src_data = (int64_t *)vdata_src.data;
   auto dst_data = (int64_t *)vdata_dst.data;
 
+  // get lowerbound and upperbound
+  auto &lower_bound = args.data[4];
+  auto &upper_bound = args.data[5];
+  UnifiedVectorFormat vdata_lower_bound;
+  UnifiedVectorFormat vdata_upper_bound;
+  lower_bound.ToUnifiedFormat(args.size(), vdata_lower_bound);
+  upper_bound.ToUnifiedFormat(args.size(), vdata_upper_bound);
+  auto lower_bound_data = (int64_t *)vdata_lower_bound.data;
+  auto upper_bound_data = (int64_t *)vdata_upper_bound.data;
+
   ValidityMask &result_validity = FlatVector::Validity(result);
 
   // create result vector
@@ -115,6 +125,7 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
           result_data[search_num] =
               (uint64_t)0; // path of length 0 does not require a search
         } else {
+          seen[src_data[src_pos]][lane] = true;
           visit1[src_data[src_pos]][lane] = true;
           lane_to_num[lane] = search_num; // active lane
           active++;
@@ -134,9 +145,25 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
         int64_t search_num = lane_to_num[lane];
         if (search_num >= 0) { // active lane
           int64_t dst_pos = vdata_dst.sel->get_index(search_num);
-          if (seen[dst_data[dst_pos]][lane]) {
-            result_data[search_num] =
-                iter;               /* found at iter => iter = path length */
+          if (seen[dst_data[dst_pos]][lane]){
+
+            // check if the path length is within bounds
+            // bound vector is either a constant or a flat vector
+            if (lower_bound.GetVectorType() == VectorType::CONSTANT_VECTOR ? 
+                iter < lower_bound_data[0] : iter < lower_bound_data[dst_pos]) {
+              // when reach the destination too early, treat destination as null
+              // looks like the graph does not have that vertex
+              seen[dst_data[dst_pos]][lane] = false;
+              (iter & 1) ? visit2[dst_data[dst_pos]][lane] = false
+                         : visit1[dst_data[dst_pos]][lane] = false;
+              continue;
+            } else if (upper_bound.GetVectorType() == VectorType::CONSTANT_VECTOR ? 
+                iter > upper_bound_data[0] : iter > upper_bound_data[dst_pos]) {
+              result_data[search_num] = (int64_t)-1; /* no path */
+            } else {
+              result_data[search_num] =
+                  iter;               /* found at iter => iter = path length */
+            }
             lane_to_num[lane] = -1; // mark inactive
             active--;
           }
@@ -160,6 +187,7 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
 CreateScalarFunctionInfo DuckPGQFunctions::GetIterativeLengthFunction() {
   auto fun = ScalarFunction("iterativelength",
                             {LogicalType::INTEGER, LogicalType::BIGINT,
+                             LogicalType::BIGINT, LogicalType::BIGINT,
                              LogicalType::BIGINT, LogicalType::BIGINT},
                             LogicalType::BIGINT, IterativeLengthFunction,
                             IterativeLengthFunctionData::IterativeLengthBind);
