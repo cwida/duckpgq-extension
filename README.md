@@ -7,7 +7,7 @@ This repository is currently a research project and a work in progress. Feel fre
 ## Getting started
 To get started, first clone this repository:
 ```sh
-git clone --recurse-submodules https://github.com/cwida/duckpgq-extension.git
+git clone --recurse-submodules git@github.com:cwida/duckpgq-extension.git
 ```
 Note that `--recurse-submodules` will ensure the correct version of DuckDB is pulled allowing you to get started right away.
 
