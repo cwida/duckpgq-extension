@@ -31,8 +31,8 @@ PGQMatchFunction::FindGraphTable(const string &label,
                                  CreatePropertyGraphInfo &pg_table) {
   const auto graph_table_entry = pg_table.label_map.find(label);
   if (graph_table_entry == pg_table.label_map.end()) {
-    throw BinderException("The label %s is not registered in property graph %s",
-                          label, pg_table.property_graph_name);
+    throw Exception(ExceptionType::BINDER, "The label " + label +
+      " is not registered in property graph " + pg_table.property_graph_name);
   }
 
   return graph_table_entry->second;

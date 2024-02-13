@@ -21,3 +21,5 @@ statement error
     MATCH (p:Person)-[k:Knows]->(p2:Person)
     COLUMNS (*)
     ) tmp
+----
+Binder Error: The label knows is not registered in property graph snb

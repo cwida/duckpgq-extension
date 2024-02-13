@@ -36,7 +36,7 @@ static void CsrInitializeVertex(DuckPGQState &context, int32_t id,
     csr->initialized_v = true;
     context.csr_list[id] = std::move(csr);
   } catch (std::bad_alloc const &) {
-    throw Exception("Unable to initialize vector of size for csr vertex table "
+    throw Exception(ExceptionType::INTERNAL, "Unable to initialize vector of size for csr vertex table "
                     "representation");
   }
 
@@ -55,7 +55,7 @@ static void CsrInitializeEdge(DuckPGQState &context, int32_t id, int64_t v_size,
     csr_entry->second->e.resize(e_size, 0);
     csr_entry->second->edge_ids.resize(e_size, 0);
   } catch (std::bad_alloc const &) {
-    throw Exception("Unable to initialize vector of size for csr edge table "
+    throw Exception(ExceptionType::INTERNAL, "Unable to initialize vector of size for csr edge table "
                     "representation");
   }
   for (auto i = 1; i < v_size + 2; i++) {
@@ -82,7 +82,7 @@ static void CsrInitializeWeight(DuckPGQState &context, int32_t id,
       throw NotImplementedException("Unrecognized weight type detected.");
     }
   } catch (std::bad_alloc const &) {
-    throw Exception("Unable to initialize vector of size for csr weight table "
+    throw Exception(ExceptionType::INTERNAL, "Unable to initialize vector of size for csr weight table "
                     "representation");
   }
 
