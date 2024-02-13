@@ -85,7 +85,7 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
   parser.ParseQuery((query[0] == '-') ? query.substr(1, query.length())
                                       : query);
   if (parser.statements.size() != 1) {
-    throw ParserException(
+    throw Exception(ExceptionType::PARSER,
         "More than 1 statement detected, please only give one.");
   }
   return {make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
@@ -97,7 +97,7 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
                             SQLStatement &statement) {
   auto lookup = context.registered_state.find("duckpgq");
   if (lookup == context.registered_state.end()) {
-    throw BinderException("Registered state not found");
+    throw Exception(ExceptionType::BINDER, "Registered state not found");
   }
 
   auto duckpgq_state = (DuckPGQState *)lookup->second.get();
@@ -107,7 +107,7 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
   if (duckpgq_parse_data) {
     return duckpgq_binder->Bind(*(duckpgq_parse_data->statement));
   }
-  throw BinderException("Unable to find DuckPGQ Parse Data");
+  throw Exception(ExceptionType::BINDER, "Unable to find DuckPGQ Parse Data");
 }
 
 void duckpgq_find_match_function(TableRef *table_ref,
@@ -135,7 +135,7 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
     const auto select_node =
         dynamic_cast<SelectNode *>(select_statement->node.get());
     duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
-    throw Exception("use duckpgq_bind instead");
+    throw Exception(ExceptionType::BINDER, "use duckpgq_bind instead");
   }
   if (statement->type == StatementType::CREATE_STATEMENT) {
     const auto &create_statement = statement->Cast<CreateStatement>();
@@ -170,7 +170,7 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
     const auto select_node =
         dynamic_cast<SelectNode *>(copy_statement.select_statement.get());
     duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
-    throw Exception("use duckpgq_bind instead");
+    throw Exception(ExceptionType::BINDER, "use duckpgq_bind instead");
   }
   if (statement->type == StatementType::INSERT_STATEMENT) {
     const auto &insert_statement = statement->Cast<InsertStatement>();
@@ -180,8 +180,8 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
 
   // Preferably throw NotImplementedExpection here, but only BinderExceptions
   // are caught properly on MacOS right now
-  throw BinderException("%s has not been implemented yet for DuckPGQ queries",
-                        StatementTypeToString(statement->type));
+  throw Exception(ExceptionType::NOT_IMPLEMENTED,
+    StatementTypeToString(statement->type) + "has not been implemented yet for DuckPGQ queries");
 }
 
 ParserExtensionPlanResult
@@ -201,7 +201,7 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
       dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
 
   if (!duckpgq_parse_data) {
-    throw BinderException("No DuckPGQ parse data found");
+    throw Exception(ExceptionType::BINDER, "No DuckPGQ parse data found");
   }
 
   auto statement = duckpgq_parse_data->statement.get();

@@ -64,3 +64,4 @@ statement error
     WHERE a.name = 'Daniel'
     COLUMNS (a.jd)
     ) study;
+----

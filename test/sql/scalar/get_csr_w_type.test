@@ -146,4 +146,5 @@ SELECT csr_get_w_type(2);
 
 statement error
 SELECT csr_get_w_type(3);
+----
 
