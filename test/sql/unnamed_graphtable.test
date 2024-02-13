@@ -17,20 +17,79 @@ EDGE TABLES (
    );
 
 
-query III
+query II
 -FROM GRAPH_TABLE (snb
-    MATCH (p:Person)-[w:workAt_Organisation]->(u:University)
-    COLUMNS (p.id, u.id, u.type)
+    MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
+    COLUMNS (p.firstname, p2.firstname)
     )
     limit 10;
 ----
-26388279066632	1580	University
-13194139533352	1856	University
-2199023255557	1953	University
-28587302322209	1596	University
-2199023255594	1597	University
-35184372088856	2208	University
-21990232555526	2209	University
-32985348833291	2211	University
-30786325577740	2435	University
-26388279066655	2832	University
+Hossein	Ken
+Hossein	Alim
+Hossein	Alexei
+Jan	Ali
+Jan	Otto
+Jan	Bryn
+Jan	Hans
+Miguel	Ali
+Miguel	Celso
+Miguel	Ali
+
+query II
+-FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
+    COLUMNS (p.firstname, p2.firstname)
+    ) tmp
+    limit 10;
+----
+Hossein	Ken
+Hossein	Alim
+Hossein	Alexei
+Jan	Ali
+Jan	Otto
+Jan	Bryn
+Jan	Hans
+Miguel	Ali
+Miguel	Celso
+Miguel	Ali
+
+# Be a bit more explicit
+query II
+-SELECT tmp.p_firstname, tmp.p2_firstname
+FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
+    COLUMNS (p.firstname as p_firstname, p2.firstname as p2_firstname)
+    ) tmp
+    limit 10;
+----
+Hossein	Ken
+Hossein	Alim
+Hossein	Alexei
+Jan	Ali
+Jan	Otto
+Jan	Bryn
+Jan	Hans
+Miguel	Ali
+Miguel	Celso
+Miguel	Ali
+
+
+# Be a bit more explicit
+query II
+-SELECT unnamed_graphtable.p_firstname, unnamed_graphtable.p2_firstname
+FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
+    COLUMNS (p.firstname as p_firstname, p2.firstname as p2_firstname)
+    )
+    limit 10;
+----
+Hossein	Ken
+Hossein	Alim
+Hossein	Alexei
+Jan	Ali
+Jan	Otto
+Jan	Bryn
+Jan	Hans
+Miguel	Ali
+Miguel	Celso
+Miguel	Ali
