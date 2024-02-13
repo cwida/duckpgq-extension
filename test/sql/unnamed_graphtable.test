@@ -1,0 +1,95 @@
+# name: test/sql/sqlpgq/snb.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+import database 'duckdb-pgq/data/SNB0.003';
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+   );
+
+
+query II
+-FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
+    COLUMNS (p.firstname, p2.firstname)
+    )
+    limit 10;
+----
+Hossein	Ken
+Hossein	Alim
+Hossein	Alexei
+Jan	Ali
+Jan	Otto
+Jan	Bryn
+Jan	Hans
+Miguel	Ali
+Miguel	Celso
+Miguel	Ali
+
+query II
+-FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
+    COLUMNS (p.firstname, p2.firstname)
+    ) tmp
+    limit 10;
+----
+Hossein	Ken
+Hossein	Alim
+Hossein	Alexei
+Jan	Ali
+Jan	Otto
+Jan	Bryn
+Jan	Hans
+Miguel	Ali
+Miguel	Celso
+Miguel	Ali
+
+# Be a bit more explicit
+query II
+-SELECT tmp.p_firstname, tmp.p2_firstname
+FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
+    COLUMNS (p.firstname as p_firstname, p2.firstname as p2_firstname)
+    ) tmp
+    limit 10;
+----
+Hossein	Ken
+Hossein	Alim
+Hossein	Alexei
+Jan	Ali
+Jan	Otto
+Jan	Bryn
+Jan	Hans
+Miguel	Ali
+Miguel	Celso
+Miguel	Ali
+
+
+# Be a bit more explicit
+query II
+-SELECT unnamed_graphtable.p_firstname, unnamed_graphtable.p2_firstname
+FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
+    COLUMNS (p.firstname as p_firstname, p2.firstname as p2_firstname)
+    )
+    limit 10;
+----
+Hossein	Ken
+Hossein	Alim
+Hossein	Alexei
+Jan	Ali
+Jan	Otto
+Jan	Bryn
+Jan	Hans
+Miguel	Ali
+Miguel	Celso
+Miguel	Ali
