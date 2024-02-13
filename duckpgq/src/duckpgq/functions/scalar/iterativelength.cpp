@@ -30,19 +30,19 @@ static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
     // change |= next[i].any();
   }
 
-  vector<std::bitset<LANE_LIMIT>> next_next = vector<std::bitset<LANE_LIMIT>>(v_size, 0);
-  // If a vertex in next is a successor of other vertices in next, set it as unvisited
-  for (auto i = 0; i < v_size; i++) {
-    if (next[i].any()) {
-      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-        auto n = e[offset];
-        next_next[n] = next_next[n] | next[i];
-      }
-    }
-  }
-  for (auto i = 0; i < v_size; i++) {
-    next[i] = next[i] & ~next_next[i];
-  }
+  // vector<std::bitset<LANE_LIMIT>> next_next = vector<std::bitset<LANE_LIMIT>>(v_size, 0);
+  // // If a vertex in next is a successor of other vertices in next, set it as unvisited
+  // for (auto i = 0; i < v_size; i++) {
+  //   if (next[i].any()) {
+  //     for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+  //       auto n = e[offset];
+  //       next_next[n] = next_next[n] | next[i];
+  //     }
+  //   }
+  // }
+  // for (auto i = 0; i < v_size; i++) {
+  //   next[i] = next[i] & ~next_next[i];
+  // }
 
   for (auto i = 0; i < v_size; i++) {
     change |= next[i].any();
