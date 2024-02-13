@@ -24,10 +24,30 @@ static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
     }
   }
   for (auto i = 0; i < v_size; i++) {
-    next[i] = next[i] & ~seen[i];
+    // next[i] = next[i] & ~seen[i];
     seen[i] = seen[i] | next[i];
+
+    // change |= next[i].any();
+  }
+
+  vector<std::bitset<LANE_LIMIT>> next_next = vector<std::bitset<LANE_LIMIT>>(v_size, 0);
+  // If a vertex in next is a successor of other vertices in next, set it as unvisited
+  for (auto i = 0; i < v_size; i++) {
+    if (next[i].any()) {
+      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        auto n = e[offset];
+        next_next[n] = next_next[n] | next[i];
+      }
+    }
+  }
+  for (auto i = 0; i < v_size; i++) {
+    next[i] = next[i] & ~next_next[i];
+  }
+
+  for (auto i = 0; i < v_size; i++) {
     change |= next[i].any();
   }
+  
   return change;
 }
 
@@ -136,10 +156,12 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
 
     // make passes while a lane is still active
     for (int64_t iter = 1; active; iter++) {
-      if (!IterativeLength(v_size, v, e, seen, (iter & 1) ? visit1 : visit2,
-                           (iter & 1) ? visit2 : visit1)) {
-        break;
-      }
+      // if (!IterativeLength(v_size, v, e, seen, (iter & 1) ? visit1 : visit2,
+      //                      (iter & 1) ? visit2 : visit1)) {
+      //   break;
+      // }
+      bool stop = !IterativeLength(v_size, v, e, seen, (iter & 1) ? visit1 : visit2,
+                                   (iter & 1) ? visit2 : visit1);
       // detect lanes that finished
       for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
         int64_t search_num = lane_to_num[lane];
@@ -168,6 +190,9 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
             active--;
           }
         }
+      }
+      if (stop) {
+        break;
       }
     }
 
