@@ -140,11 +140,12 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
         int64_t dst_pos = vdata_dst.sel->get_index(search_num);
         if (!vdata_src.validity.RowIsValid(src_pos)) {
           result_validity.SetInvalid(search_num);
-          result_data[search_num] = (uint64_t)-1; /* no path */
+          result_data[search_num] = (int64_t)-1; /* no path */
         } else if (src_data[src_pos] == dst_data[dst_pos]) {
           result_data[search_num] =
-              (uint64_t)0; // path of length 0 does not require a search
+              (int64_t)0; // path of length 0 does not require a search
         } else {
+          result_data[search_num] = (int64_t)-1; /* initialize to no path */
           seen[src_data[src_pos]][lane] = true;
           visit1[src_data[src_pos]][lane] = true;
           lane_to_num[lane] = search_num; // active lane
@@ -181,6 +182,7 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
               continue;
             } else if (upper_bound.GetVectorType() == VectorType::CONSTANT_VECTOR ? 
                 iter > upper_bound_data[0] : iter > upper_bound_data[dst_pos]) {
+              result_validity.SetInvalid(search_num);
               result_data[search_num] = (int64_t)-1; /* no path */
             } else {
               result_data[search_num] =
