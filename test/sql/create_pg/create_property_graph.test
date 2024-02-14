@@ -47,7 +47,7 @@ EDGE TABLES (
             PROPERTIES ( createDate ) LABEL Knows
     )
 ----
-Binder Error: Property graph table with name pg already exists
+Invalid Error: Property graph table with name pg already exists
 
 # Alias for the vertex table
 statement ok
@@ -130,7 +130,7 @@ EDGE TABLES (
             PROPERTIES ( createDate ) LABEL Knows
     )
 ----
-Binder Error: Referenced vertex table Student does not exist.
+Invalid Error: Referenced vertex table Student does not exist.
 
 
 # Should fail since the edge table references vertex tables that do not exist
@@ -145,4 +145,4 @@ EDGE TABLES (
             PROPERTIES ( createDate ) LABEL Knows
     );
 ----
-Binder Error: Referenced vertex table Student does not exist.
+Invalid Error: Referenced vertex table Student does not exist.

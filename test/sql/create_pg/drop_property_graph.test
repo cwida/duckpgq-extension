@@ -65,6 +65,8 @@ FROM GRAPH_TABLE (pg
     (a:Person)
     COLUMNS (a.id)
     ) study;
+----
+Binder Error: Property graph pg does not exist
 
 statement ok
 -CREATE PROPERTY GRAPH pg

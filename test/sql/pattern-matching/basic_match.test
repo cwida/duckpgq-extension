@@ -198,6 +198,7 @@ FROM GRAPH_TABLE (pg
     (:Person)-[k:Knows]->(b:Person)
     COLUMNS (a.name as a_name, b.name as b_name)
     ) study;
+----
 
 statement error
 -SELECT study.a_name, study.b_name, study.c_name
@@ -206,6 +207,7 @@ FROM GRAPH_TABLE (pg
     (a)-[k:Knows]->(b:Person)
     COLUMNS (a.ncame as a_name, b.name as b_name)
     ) study;
+----
 
 statement error
 -SELECT study.a_name, study.b_name, study.c_name
@@ -214,6 +216,7 @@ FROM GRAPH_TABLE (pg
     ()-[k:Knows]->(b:Person)
     COLUMNS (a.name as a_name, b.name as b_name)
     ) study;
+----
 
 
 query II

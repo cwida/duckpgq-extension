@@ -87,6 +87,8 @@ statement error
     WHERE a.name = 'Daniel'
     COLUMNS (p, a.name as name, b.name as b_name)
     ) study;
+----
+Binder Error: Referenced column "p" not found in FROM clause!
 
 
 query III
