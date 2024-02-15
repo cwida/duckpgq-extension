@@ -8,10 +8,7 @@
 
 #pragma once
 
-#include <duckdb/planner/operator/logical_extension_operator.hpp>
-
 #include "duckdb/execution/physical_operator.hpp"
-
 #include <duckdb/execution/operator/join/physical_range_join.hpp>
 
 namespace duckdb {

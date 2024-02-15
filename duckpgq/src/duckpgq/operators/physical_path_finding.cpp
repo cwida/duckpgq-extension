@@ -7,7 +7,7 @@
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 
-#include <duckdb/execution/operator/join/physical_range_join.hpp>
+#include <duckdb/execution/operator/join/physical_comparison_join.hpp>
 #include <duckdb/planner/operator/logical_comparison_join.hpp>
 #include <thread>
 
