@@ -237,7 +237,7 @@ unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
   return temp_cte_select_subquery;
 }
 
-unique_ptr<SubqueryRef>
+unique_ptr<SubqueryExpression>
 PGQMatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
                                const string &prev_binding,
                                const string &edge_binding,
@@ -355,7 +355,7 @@ PGQMatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
   auto outer_select_statement = make_uniq<SelectStatement>();
 
   outer_select_statement->node = std::move(outer_select_node);
-  auto csr_subquery = make_uniq<SubqueryRef>();
+  auto csr_subquery = make_uniq<SubqueryExpression>();
   csr_subquery->subquery = std::move(outer_select_statement);
   return csr_subquery;
 }

@@ -58,7 +58,7 @@ public:
 
   static unique_ptr<SubqueryRef> CreateCountCTESubquery();
 
-  static unique_ptr<SubqueryRef>
+  static unique_ptr<SubqueryExpression>
   CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
                const string &edge_binding, const string &prev_binding,
                const string &next_binding);
