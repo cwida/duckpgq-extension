@@ -237,7 +237,7 @@ unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
   return temp_cte_select_subquery;
 }
 
-unique_ptr<CommonTableExpressionInfo>
+unique_ptr<SubqueryRef>
 PGQMatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
                                const string &prev_binding,
                                const string &edge_binding,
@@ -355,9 +355,9 @@ PGQMatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
   auto outer_select_statement = make_uniq<SelectStatement>();
 
   outer_select_statement->node = std::move(outer_select_node);
-  auto info = make_uniq<CommonTableExpressionInfo>();
-  info->query = std::move(outer_select_statement);
-  return info;
+  auto csr_subquery = make_uniq<SubqueryRef>();
+  csr_subquery->subquery = std::move(outer_select_statement);
+  return csr_subquery;
 }
 
 void PGQMatchFunction::EdgeTypeAny(
@@ -635,23 +635,40 @@ void PGQMatchFunction::AddPathFinding(
     const string &prev_binding, const string &edge_binding,
     const string &next_binding,
     const shared_ptr<PropertyGraphTable> &edge_table, const SubPath *subpath) {
+  /* TODO Idea is to create a path-finding operator wih two sinks. This acts similar
+  to the IEJoin. We insert that in this function, instead of the iterativelength() UDF.
+  For this binding phase, we generate a logical query plan, so there cannot be a physical
+  path-finding operator inserted quite yet. We need to create the two sinks here.
+  One side being the src,dst pairs (tasks) and the other side being the CSR. Importantly
+  Without the CREATE_CSR_EDGE() UDF because that will be done in one of the sinks
+  of the new operator.
+   */
+
+  auto csr = CreateCSRCTE(edge_table, prev_binding, edge_binding, next_binding);
+  auto src_tasks = make_uniq<ColumnRefExpression>("rowid", prev_binding);
+  auto dst_tasks = make_uniq<ColumnRefExpression>("rowid", next_binding);
+  auto between_expression = make_uniq<BetweenExpression>(
+    std::move(src_tasks), std::move(csr), std::move(dst_tasks));
+
+  conditions.push_back(std::move(between_expression));
+
   //! START
   //! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
-  select_node->cte_map.map["cte1"] =
-      CreateCSRCTE(edge_table, prev_binding, edge_binding, next_binding);
+  // select_node->cte_map.map["cte1"] =
+  //     CreateCSRCTE(edge_table, prev_binding, edge_binding, next_binding);
 
-  auto temp_cte_select_subquery = CreateCountCTESubquery();
+  // auto temp_cte_select_subquery = CreateCountCTESubquery();
 
-  if (from_clause) {
-    // create a cross join since there is already something in the
-    // from clause
-    auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
-    from_join->left = std::move(from_clause);
-    from_join->right = std::move(temp_cte_select_subquery);
-    from_clause = std::move(from_join);
-  } else {
-    from_clause = std::move(temp_cte_select_subquery);
-  }
+  // if (from_clause) {
+  //   // create a cross join since there is already something in the
+  //   // from clause
+  //   auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
+  //   from_join->left = std::move(from_clause);
+  //   from_join->right = std::move(temp_cte_select_subquery);
+  //   from_clause = std::move(from_join);
+  // } else {
+  //   from_clause = std::move(temp_cte_select_subquery);
+  // }
   //! END
   //! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
 
@@ -659,36 +676,36 @@ void PGQMatchFunction::AddPathFinding(
   //! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id)
   //! from dst c, a.rowid, b.rowid) between lower and upper
 
-  auto src_row_id = make_uniq<ColumnRefExpression>("rowid", prev_binding);
-  auto dst_row_id = make_uniq<ColumnRefExpression>("rowid", next_binding);
-  auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER(0));
+  // auto src_row_id = make_uniq<ColumnRefExpression>("rowid", prev_binding);
+  // auto dst_row_id = make_uniq<ColumnRefExpression>("rowid", next_binding);
+  // auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER(0));
+  //
+  // vector<unique_ptr<ParsedExpression>> pathfinding_children;
+  // pathfinding_children.push_back(std::move(csr_id));
+  // pathfinding_children.push_back(
+  //     std::move(GetCountTable(edge_table, prev_binding)));
+  // pathfinding_children.push_back(std::move(src_row_id));
+  // pathfinding_children.push_back(std::move(dst_row_id));
 
-  vector<unique_ptr<ParsedExpression>> pathfinding_children;
-  pathfinding_children.push_back(std::move(csr_id));
-  pathfinding_children.push_back(
-      std::move(GetCountTable(edge_table, prev_binding)));
-  pathfinding_children.push_back(std::move(src_row_id));
-  pathfinding_children.push_back(std::move(dst_row_id));
+  // auto reachability_function = make_uniq<FunctionExpression>(
+  //     "iterativelength", std::move(pathfinding_children));
 
-  auto reachability_function = make_uniq<FunctionExpression>(
-      "iterativelength", std::move(pathfinding_children));
+  // auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
 
-  auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
+  // vector<unique_ptr<ParsedExpression>> addition_children;
+  // addition_children.push_back(std::move(cte_col_ref));
+  // addition_children.push_back(std::move(reachability_function));
 
-  vector<unique_ptr<ParsedExpression>> addition_children;
-  addition_children.push_back(std::move(cte_col_ref));
-  addition_children.push_back(std::move(reachability_function));
-
-  auto addition_function =
-      make_uniq<FunctionExpression>("add", std::move(addition_children));
-  auto lower_limit = make_uniq<ConstantExpression>(
-      Value::INTEGER(static_cast<int32_t>(subpath->lower)));
-  auto upper_limit = make_uniq<ConstantExpression>(
-      Value::INTEGER(static_cast<int32_t>(subpath->upper)));
-  auto between_expression = make_uniq<BetweenExpression>(
-      std::move(addition_function), std::move(lower_limit),
-      std::move(upper_limit));
-  conditions.push_back(std::move(between_expression));
+  // auto addition_function =
+  //     make_uniq<FunctionExpression>("add", std::move(addition_children));
+  // auto lower_limit = make_uniq<ConstantExpression>(
+  //     Value::INTEGER(static_cast<int32_t>(subpath->lower)));
+  // auto upper_limit = make_uniq<ConstantExpression>(
+  //     Value::INTEGER(static_cast<int32_t>(subpath->upper)));
+  // auto between_expression = make_uniq<BetweenExpression>(
+  //     std::move(addition_function), std::move(lower_limit),
+  //     std::move(upper_limit));
+  // conditions.push_back(std::move(between_expression));
 
   //! END
   //! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(s.id)
