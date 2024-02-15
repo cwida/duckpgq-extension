@@ -6,9 +6,6 @@
 #include "duckdb/parallel/event.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
-
-#include <duckdb/execution/operator/join/physical_comparison_join.hpp>
-#include <duckdb/planner/operator/logical_comparison_join.hpp>
 #include <thread>
 
 namespace duckdb {
@@ -78,13 +75,11 @@ SinkResultType PhysicalPathFinding::Sink(ExecutionContext &context,
 SinkCombineResultType
 PhysicalPathFinding::Combine(ExecutionContext &context,
                              OperatorSinkCombineInput &input) const {
-  // auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
-  // auto &lstate = input.local_state.Cast<PathFindingLocalState>();
+  auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
+  auto &lstate = input.local_state.Cast<PathFindingLocalState>();
   // gstate.tables[gstate.child]->Combine(lstate.table);
   auto &client_profiler = QueryProfiler::Get(context.client);
 
-  // context.thread.profiler.Flush(*this, lstate.table.executor, gstate.child ?
-  // "rhs_executor" : "lhs_executor", 1);
   client_profiler.Flush(context.thread.profiler);
 
   return SinkCombineResultType::FINISHED;
@@ -98,25 +93,6 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
                               ClientContext &context,
                               OperatorSinkFinalizeInput &input) const {
   auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
-  // auto &table = *gstate.tables[gstate.child];
-  // auto &global_sort_state = table.global_sort_state;
-
-  // if ((gstate.child == 1 && IsRightOuterJoin(join_type)) || (gstate.child ==
-  // 0 && IsLeftOuterJoin(join_type))) {
-  // 	// for FULL/LEFT/RIGHT OUTER JOIN, initialize found_match to false for
-  // every tuple 	table.IntializeMatches();
-  // }
-  // if (gstate.child == 1 && global_sort_state.sorted_blocks.empty() &&
-  // EmptyResultIfRHSIsEmpty()) {
-  // 	// Empty input!
-  // 	return SinkFinalizeType::NO_OUTPUT_POSSIBLE;
-  // }
-
-  // Sort the current input child
-  // table.Finalize(pipeline, event);
-
-  // Move to the next input child
-  // ++gstate.child;
 
   return SinkFinalizeType::READY;
 }
