@@ -15,8 +15,11 @@ namespace duckdb {
 
 PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
                                          unique_ptr<PhysicalOperator> left,
-                                         unique_ptr<PhysicalOperator> right)
-    : CachingPhysicalOperator(TYPE, op.types, 0) {
+                                         unique_ptr<PhysicalOperator> right,
+                                         vector<JoinCondition> cond,
+                                         JoinType join_type,
+                                         idx_t estimated_cardinality)
+    : PhysicalComparisonJoin(op, TYPE,  std::move(cond), join_type, estimated_cardinality) {
   children.push_back(std::move(left));
   children.push_back(std::move(right));
 }
@@ -1038,8 +1041,8 @@ void PhysicalPathFinding::BuildPipelines(Pipeline &current,
   children[0]->BuildPipelines(*lhs_pipeline, child_meta_pipeline);
 
   // Build out RHS
-  auto &rhs_pipeline = child_meta_pipeline.CreatePipeline();
-  children[1]->BuildPipelines(rhs_pipeline, child_meta_pipeline);
+  auto rhs_pipeline = child_meta_pipeline.CreatePipeline();
+  children[1]->BuildPipelines(*rhs_pipeline, child_meta_pipeline);
 
   // Despite having the same sink, RHS and everything created after it need
   // their own (same) PipelineFinishEvent

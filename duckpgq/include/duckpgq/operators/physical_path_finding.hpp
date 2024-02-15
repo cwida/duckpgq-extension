@@ -12,8 +12,10 @@
 
 #include "duckdb/execution/physical_operator.hpp"
 
+#include <duckdb/execution/operator/join/physical_range_join.hpp>
+
 namespace duckdb {
-class PhysicalPathFinding : public CachingPhysicalOperator {
+class PhysicalPathFinding : public PhysicalComparisonJoin {
 public:
   static constexpr const PhysicalOperatorType TYPE =
       PhysicalOperatorType::EXTENSION;
@@ -21,7 +23,9 @@ public:
 public:
   PhysicalPathFinding(LogicalExtensionOperator &op,
                       unique_ptr<PhysicalOperator> left,
-                      unique_ptr<PhysicalOperator> right);
+                      unique_ptr<PhysicalOperator> right,
+                      vector<JoinCondition> cond, JoinType join_type,
+                      idx_t estimated_cardinality);
 
   // vector<LogicalType> join_key_types;
   // vector<vector<BoundOrderByNode>> lhs_orders;
