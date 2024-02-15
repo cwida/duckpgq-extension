@@ -11,7 +11,7 @@ git clone --recurse-submodules git@github.com:cwida/duckpgq-extension.git
 ```
 Note that `--recurse-submodules` will ensure the correct version of DuckDB is pulled allowing you to get started right away.
 
-This repository uses a modified version of DuckDB (currently a modified v0.8.1) and is not yet easily installed from a standard DuckDB (e.g. `pip install duckdb`) installation. 
+This repository uses a modified version of DuckDB (Currently up-to-date with v0.10.0) and is not yet easily installed from a standard DuckDB (e.g. `pip install duckdb`) installation. 
 If you want to use the SQL/PGQ syntax, you will have to build this repository from the source. 
 In the future, we aim to have an easily installed and loaded DuckDB extension. 
 
