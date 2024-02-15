@@ -9,10 +9,10 @@
 #pragma once
 
 #include "duckdb/execution/physical_operator.hpp"
-#include <duckdb/execution/operator/join/physical_range_join.hpp>
+#include "duckdb/planner/operator/logical_extension_operator.hpp"
 
 namespace duckdb {
-class PhysicalPathFinding : public PhysicalComparisonJoin {
+class PhysicalPathFinding : public CachingPhysicalOperator {
 public:
   static constexpr const PhysicalOperatorType TYPE =
       PhysicalOperatorType::EXTENSION;
@@ -20,9 +20,7 @@ public:
 public:
   PhysicalPathFinding(LogicalExtensionOperator &op,
                       unique_ptr<PhysicalOperator> left,
-                      unique_ptr<PhysicalOperator> right,
-                      vector<JoinCondition> cond, JoinType join_type,
-                      idx_t estimated_cardinality);
+                      unique_ptr<PhysicalOperator> right);
 
   // vector<LogicalType> join_key_types;
   // vector<vector<BoundOrderByNode>> lhs_orders;

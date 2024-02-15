@@ -15,11 +15,8 @@ namespace duckdb {
 
 PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
                                          unique_ptr<PhysicalOperator> left,
-                                         unique_ptr<PhysicalOperator> right,
-                                         vector<JoinCondition> cond,
-                                         JoinType join_type,
-                                         idx_t estimated_cardinality)
-    : PhysicalComparisonJoin(op, TYPE,  std::move(cond), join_type, estimated_cardinality) {
+                                         unique_ptr<PhysicalOperator> right)
+    : CachingPhysicalOperator(TYPE,  op.types, 0) {
   children.push_back(std::move(left));
   children.push_back(std::move(right));
 }
@@ -29,61 +26,26 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
 //===--------------------------------------------------------------------===//
 class PathFindingLocalState : public LocalSinkState {
 public:
-  // TODO Add something to the local sink state
-  // using LocalSortedTable = PhysicalRangeJoin::LocalSortedTable;
-
   PathFindingLocalState(ClientContext &context, const PhysicalPathFinding &op,
                         const idx_t child)
       : context(context), op(op), child(child) {}
   ClientContext &context;
   const PhysicalPathFinding &op;
   const idx_t child;
-  //! The local sort state
-  // LocalSortedTable table;
 };
 
 class PathFindingGlobalState : public GlobalSinkState {
-public:
-  using GlobalSortedTable = PhysicalRangeJoin::GlobalSortedTable;
 
 public:
   PathFindingGlobalState(ClientContext &context,
                          const PhysicalPathFinding &op) {
-    // tables.resize(2);
-    // RowLayout lhs_layout;
-    // lhs_layout.Initialize(op.children[0]->types);
-    // vector<BoundOrderByNode> lhs_order;
-    // lhs_order.emplace_back(op.lhs_orders[0][0].Copy());
-    // tables[0] = make_uniq<GlobalSortedTable>(context, lhs_order, lhs_layout);
-    //
-    // RowLayout rhs_layout;
-    // rhs_layout.Initialize(op.children[1]->types);
-    // vector<BoundOrderByNode> rhs_order;
-    // rhs_order.emplace_back(op.rhs_orders[0][0].Copy());
-    // tables[1] = make_uniq<GlobalSortedTable>(context, rhs_order, rhs_layout);
-  }
+    }
 
   PathFindingGlobalState(PathFindingGlobalState &prev)
-      : GlobalSinkState(
-            prev) { //, tables(std::move(prev.tables)), child(prev.child + 1) {
-  }
+      : GlobalSinkState(prev) {}
 
-  void Sink(DataChunk &input, PathFindingLocalState &lstate) {
-    // auto &table = *tables[child];
-    // auto &global_sort_state = table.global_sort_state;
-    // auto &local_sort_state = lstate.table.local_sort_state;
-    //
-    // // Sink the data into the local sort state
-    // lstate.table.Sink(input, global_sort_state);
-    //
-    // // When sorting data reaches a certain size, we sort it
-    // if (local_sort_state.SizeInBytes() >= table.memory_per_thread) {
-    // 	local_sort_state.Sort(global_sort_state, true);
-    // }
-  }
+  void Sink(DataChunk &input, PathFindingLocalState &lstate) {}
 
-  vector<unique_ptr<GlobalSortedTable>> tables;
-  // size_t child;
 };
 
 unique_ptr<GlobalSinkState>
