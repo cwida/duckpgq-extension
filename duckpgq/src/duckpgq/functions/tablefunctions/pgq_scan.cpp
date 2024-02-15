@@ -39,8 +39,8 @@ static void ScanCSREFunction(ClientContext &context, TableFunctionInput &data_p,
   FlatVector::SetData(output.data[0], (data_ptr_t)csr->e.data());
 }
 
-static void ScanCSRPtrFunction(ClientContext &context, TableFunctionInput &data_p,
-                             DataChunk &output) {
+static void ScanCSRPtrFunction(ClientContext &context,
+                               TableFunctionInput &data_p, DataChunk &output) {
   bool &gstate = ((CSRScanState &)*data_p.global_state).finished;
 
   if (gstate) {
@@ -59,7 +59,7 @@ static void ScanCSRPtrFunction(ClientContext &context, TableFunctionInput &data_
   }
   auto duckpgq_state =
       reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
-  auto csr_id = data_p.bind_data->Cast<CSRScanEData>().csr_id;
+  auto csr_id = data_p.bind_data->Cast<CSRScanPtrData>().csr_id;
   CSR *csr = duckpgq_state->GetCSR(csr_id);
   output.SetCardinality(5);
   output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
@@ -74,7 +74,7 @@ static void ScanCSRPtrFunction(ClientContext &context, TableFunctionInput &data_
   // the third element is the address of the weight array
   // the fifth element is the type of the weight array
   // 0 if the weights are integres, 1 if they are doubles, and 2 for unweighted
-  if(csr->w.size()) {
+  if (csr->w.size()) {
     result_data[2] = (uint64_t)(&(csr->w));
     result_data[4] = (uint64_t)(0);
   } else if (csr->w_double.size()) {
@@ -84,7 +84,8 @@ static void ScanCSRPtrFunction(ClientContext &context, TableFunctionInput &data_
     result_data[2] = (uint64_t)(0);
     result_data[4] = (uint64_t)(2);
   }
-  // we also need the number of elements in the vertex array, since its C-array not a vector.
+  // we also need the number of elements in the vertex array, since its C-array
+  // not a vector.
   result_data[3] = (uint64_t)(csr->vsize);
 }
 

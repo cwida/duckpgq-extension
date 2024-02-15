@@ -1,4 +1,4 @@
-# name: test/sql/sqlpgq/snb.test
+# name: test/sql/sqlpgq/copy_to_duckpgq.test
 # group: [duckpgq]
 
 require duckpgq
@@ -49,20 +49,37 @@ EDGE TABLES (
                             LABEL replyOf
     );
 
-#IC 2
+# IS1
 statement ok
--EXPLAIN FROM GRAPH_TABLE (snb
-    MATCH (a:Person WHERE a.id = 17592186044461)-[k:knows]-(b:Person)<-[au:hasAuthor]-(m:message WHERE m.creationDate < '2010-10-16')
-    COLUMNS (a.id, a.firstName, a.lastName, m.id as messageId, coalesce(m.imageFile, m.content), m.creationDate)
-    ) tmp
-    ORDER BY creationDate DESC, Messageid ASC
-    LIMIT 20;
+-COPY (FROM GRAPH_TABLE (snb
+    MATCH (a is person where a.id = 17592186044461)
+    COLUMNS(a.firstName, a.lastName, a.birthday, a.locationIP, a.browserUsed, a.LocationCityId, a.gender, a.creationDate)
+) tmp) TO '__TEST_DIR__/is1.csv' (HEADER FALSE);
 
-#IC 2
+query IIIIIIII
+SELECT * FROM '__TEST_DIR__/is1.csv';
+----
+Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595
+
 statement ok
--EXPLAIN ANALYZE FROM GRAPH_TABLE (snb
-    MATCH (a:Person WHERE a.id = 17592186044461)-[k:knows]-(b:Person)<-[au:hasAuthor]-(m:message WHERE m.creationDate < '2010-10-16')
-    COLUMNS (a.id, a.firstName, a.lastName, m.id as messageId, coalesce(m.imageFile, m.content), m.creationDate)
-    ) tmp
-    ORDER BY creationDate DESC, Messageid ASC
-    LIMIT 20;
+-CREATE TABLE result as (FROM GRAPH_TABLE (snb
+                            MATCH (a is person where a.id = 17592186044461)
+                            COLUMNS(a.firstName, a.lastName, a.birthday, a.locationIP, a.browserUsed, a.LocationCityId, a.gender, a.creationDate)
+                        ) tmp);
+
+query IIIIIIII
+SELECT * FROM result;
+----
+Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595+00
+
+statement ok
+-INSERT INTO result (FROM GRAPH_TABLE (snb
+                        MATCH (a is person where a.id = 17592186044461)
+                        COLUMNS(a.firstName, a.lastName, a.birthday, a.locationIP, a.browserUsed, a.LocationCityId, a.gender, a.creationDate)
+                        ) tmp)
+
+query IIIIIIII
+SELECT * FROM result;
+----
+Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595+00
+Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595+00

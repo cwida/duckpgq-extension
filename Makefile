@@ -43,7 +43,7 @@ EXTENSION_FLAGS=\
 -DDUCKDB_EXTENSION_${EXTENSION_NAME}_TEST_PATH="$(PROJ_DIR)test/sql"
 
 #### Add more of the DuckDB in-tree extensions here that you need (also feel free to remove them when not needed)
-EXTRA_EXTENSIONS_FLAG=-DBUILD_EXTENSIONS="tpch;visualizer"
+EXTRA_EXTENSIONS_FLAG=-DBUILD_EXTENSIONS="tpch"
 
 BUILD_FLAGS=-DEXTENSION_STATIC_BUILD=1 $(EXTENSION_FLAGS) ${EXTRA_EXTENSIONS_FLAG} $(OSX_BUILD_FLAG) $(TOOLCHAIN_FLAGS)
 CLIENT_FLAGS:=
@@ -98,7 +98,7 @@ test_release_python: release_python
 
 #### Misc
 format:
-	find src/ -iname *.hpp -o -iname *.cpp | xargs clang-format --sort-includes=0 -style=file -i
+	find duckpgq/ -iname *.hpp -o -iname *.cpp | xargs clang-format --sort-includes=0 -style=file -i
 	cmake-format -i CMakeLists.txt
 update:
 	git submodule update --remote --merge

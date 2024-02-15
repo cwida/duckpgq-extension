@@ -1,0 +1,25 @@
+# name: test/sql/sqlpgq/snb.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+import database 'duckdb-pgq/data/SNB0.003';
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (Message, person);
+
+statement ok
+-FROM GRAPH_TABLE (snb
+    MATCH (m:Message)
+    COLUMNS (*)
+    ) tmp
+
+statement error
+-FROM GRAPH_TABLE (snb
+    MATCH (p:Person)-[k:Knows]->(p2:Person)
+    COLUMNS (*)
+    ) tmp
+----
+Binder Error: The label knows is not registered in property graph snb

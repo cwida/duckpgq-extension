@@ -1,0 +1,73 @@
+# name: test/sql/sqlpgq/snb.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+import database 'duckdb-pgq/data/SNB0.003';
+
+statement ok
+-CREATE PROPERTY GRAPH snb_projected
+VERTEX TABLES (Message);
+
+query IIIIIII
+-WITH message_count AS (
+    SELECT count(*) as m_count
+    FROM Message m
+    WHERE m.creationDate < '2010-05-27 11:16:36.013'
+)
+SELECT year, isComment,
+    CASE    WHEN m_length < 40 THEN 0
+            WHEN m_length < 80 THEN 1
+            WHEN m_length < 160 THEN 2
+            ELSE 3 END as lengthCategory,
+    count(*) as messageCount,
+    avg(m_length) as averageMessageLength,
+    sum(m_length) as sumMessageLength,
+    count(*) / mc.m_count as percentageOfMessages
+FROM GRAPH_TABLE(snb_projected
+    MATCH (message:Message where message.creationDate < '2010-05-27 11:16:36.013')
+    COLUMNS (date_part('year', message.creationDate::TIMESTAMP) as year, message.ImageFile is NULL as isComment, message.length as m_length, message.id)
+    ) tmp, message_count mc
+GROUP BY year, isComment, lengthCategory, m_count
+ORDER BY year DESC, isComment ASC, lengthCategory ASC;
+----
+2010	false	0	63	0.0	0	0.9692307692307692
+2010	true	2	2	109.0	218	0.03076923076923077
+
+
+query II
+-FROM GRAPH_TABLE (snb_projected
+    MATCH (m:message)
+    COLUMNS (m.id)
+    ) tmp, (SELECT id from message limit 1)
+LIMIT 10;
+----
+618475290624	618475290624
+343597383683	618475290624
+343597383684	618475290624
+962072674309	618475290624
+962072674310	618475290624
+962072674311	618475290624
+962072674312	618475290624
+962072674313	618475290624
+962072674314	618475290624
+962072674315	618475290624
+
+query II
+-FROM (SELECT id from message limit 1), GRAPH_TABLE (snb_projected
+    MATCH (m:message)
+    COLUMNS (m.id)
+    ) tmp
+LIMIT 10;
+----
+618475290624	618475290624
+618475290624	343597383683
+618475290624	343597383684
+618475290624	962072674309
+618475290624	962072674310
+618475290624	962072674311
+618475290624	962072674312
+618475290624	962072674313
+618475290624	962072674314
+618475290624	962072674315
