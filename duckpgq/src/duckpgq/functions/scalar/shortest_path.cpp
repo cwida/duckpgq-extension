@@ -182,9 +182,10 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
       while (started_searches < args.size()) {
         int64_t search_num = started_searches++;
         int64_t src_pos = vdata_src.sel->get_index(search_num);
+        int64_t dst_pos = vdata_dst.sel->get_index(search_num);
         if (!vdata_src.validity.RowIsValid(src_pos)) {
           result_validity.SetInvalid(search_num);
-        } else if (src_data[src_pos] == dst_data[src_pos]) {
+        } else if (src_data[src_pos] == dst_data[dst_pos]) {
           unique_ptr<Vector> output =
             make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
           ListVector::PushBack(*output, src_data[src_pos]);
