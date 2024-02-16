@@ -106,8 +106,11 @@ public:
       vector<unique_ptr<ParsedExpression>> &column_list,
       unordered_set<string> &named_subpaths);
 
+  // static unique_ptr<ParsedExpression>
+  // CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list,
+  //                           CreatePropertyGraphInfo &pg_table);
   static unique_ptr<ParsedExpression>
-  CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list,
+  CreatePathFindingFunction(SubPath &subpath,
                             CreatePropertyGraphInfo &pg_table);
 
   static void AddPathFinding(const unique_ptr<SelectNode> &select_node,

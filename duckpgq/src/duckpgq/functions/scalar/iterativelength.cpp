@@ -8,7 +8,7 @@
 namespace duckdb {
 
 static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
-                            vector<vector<set<int64_t>>> &parents_v,
+                            vector<vector<unordered_set<int64_t>>> &parents_v,
                             vector<std::bitset<LANE_LIMIT>> &seen,
                             vector<std::bitset<LANE_LIMIT>> &visit,
                             vector<std::bitset<LANE_LIMIT>> &next) {
@@ -22,8 +22,9 @@ static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
       if (visit[i][lane]) {
         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
           auto n = e[offset];
-          if (parents_v[i][lane].find(n) == parents_v[i][lane].end()) {
-            parents_v[i][lane].insert(n);
+          if (seen[n][lane] == false || parents_v[i][lane].find(n) == parents_v[i][lane].end()) {
+            parents_v[n][lane] = parents_v[i][lane];
+            parents_v[n][lane].insert(i);
             next[n][lane] = true;
           }
         }
@@ -31,37 +32,11 @@ static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
     }
   }
 
-  // for (auto i = 0; i < v_size; i++) {
-  //   if (visit[i].any()) {
-  //     for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-  //       auto n = e[offset];
-  //       next[n] = next[n] | visit[i];
-  //     }
-  //   }
-  // }
   for (auto i = 0; i < v_size; i++) {
     // next[i] = next[i] & ~seen[i];
     seen[i] = seen[i] | next[i];
     change |= next[i].any();
   }
-
-  // vector<std::bitset<LANE_LIMIT>> next_next = vector<std::bitset<LANE_LIMIT>>(v_size, 0);
-  // // If a vertex in next is a successor of other vertices in next, set it as unvisited
-  // for (auto i = 0; i < v_size; i++) {
-  //   if (next[i].any()) {
-  //     for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-  //       auto n = e[offset];
-  //       next_next[n] = next_next[n] | next[i];
-  //     }
-  //   }
-  // }
-  // for (auto i = 0; i < v_size; i++) {
-  //   next[i] = next[i] & ~next_next[i];
-  // }
-
-  // for (auto i = 0; i < v_size; i++) {
-  //   change |= next[i].any();
-  // }
   
   return change;
 }
@@ -129,8 +104,7 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
   vector<std::bitset<LANE_LIMIT>> seen(v_size);
   vector<std::bitset<LANE_LIMIT>> visit1(v_size);
   vector<std::bitset<LANE_LIMIT>> visit2(v_size);
-  // vector<vector<int64_t>> level(v_size, std::vector<int64_t>(LANE_LIMIT, INT64_MAX));
-  vector<vector<set<int64_t>>> parents_v(v_size, std::vector<set<int64_t>>(LANE_LIMIT));
+  vector<vector<unordered_set<int64_t>>> parents_v(v_size, std::vector<unordered_set<int64_t>>(LANE_LIMIT));
 
   // maps lane to search number
   short lane_to_num[LANE_LIMIT];
