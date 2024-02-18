@@ -661,7 +661,6 @@ void PGQMatchFunction::AddPathFinding(
 
   //! START
   //! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id)
-  //! from dst c, a.rowid, b.rowid) between lower and upper
   //! from dst c, a.rowid, b.rowid, lower, upper)
 
   auto src_row_id = make_uniq<ColumnRefExpression>("rowid", prev_binding);
@@ -690,18 +689,11 @@ void PGQMatchFunction::AddPathFinding(
 
   auto addition_function =
       make_uniq<FunctionExpression>("add", std::move(addition_children));
-  // auto lower_limit = make_uniq<ConstantExpression>(
-  //     Value::INTEGER(static_cast<int32_t>(subpath->lower)));
-  // auto upper_limit = make_uniq<ConstantExpression>(
-  //     Value::INTEGER(static_cast<int32_t>(subpath->upper)));
-  // auto between_expression = make_uniq<BetweenExpression>(
-  //     std::move(addition_function), std::move(lower_limit),
-  //     std::move(upper_limit));
   conditions.push_back(std::move(addition_function));
 
   //! END
   //! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(s.id)
-  //! from src s, a.rowid, b.rowid) between lower and upper
+  //! from src s, a.rowid, b.rowid, lower, upper) 
 }
 
 void PGQMatchFunction::CheckNamedSubpath(
