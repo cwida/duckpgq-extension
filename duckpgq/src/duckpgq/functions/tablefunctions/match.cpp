@@ -486,8 +486,7 @@ CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions) {
 }
 
 unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
-    // vector<unique_ptr<PathReference>> &path_list,
-    SubPath &subpath,
+    vector<unique_ptr<PathReference>> &path_list,
     CreatePropertyGraphInfo &pg_table) {
   // This method will return a SubqueryRef of a list of rowids
   // For every vertex and edge element, we add the rowid to the list using
@@ -497,7 +496,6 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
   // full list of element rowids, using list_concat. For now we will only
   // support returning rowids
   unique_ptr<ParsedExpression> final_list;
-  auto &path_list = subpath.path_list;
 
   auto previous_vertex_element = GetPathElement(path_list[0]);
   if (!previous_vertex_element) {
@@ -538,9 +536,9 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
         pathfinding_children.push_back(std::move(src_row_id));
         pathfinding_children.push_back(std::move(dst_row_id));
         pathfinding_children.push_back(
-            make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(subpath.lower))));
+            make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(edge_subpath->lower))));
         pathfinding_children.push_back(
-            make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(subpath.upper))));
+            make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(edge_subpath->upper))));
 
         auto shortest_path_function = make_uniq<FunctionExpression>(
             "shortestpath", std::move(pathfinding_children));
@@ -729,10 +727,8 @@ void PGQMatchFunction::CheckNamedSubpath(
     if (parsed_ref->function_name == "element_id") {
       // Check subpath name matches the column referenced in the function -->
       // element_id(named_subpath)
-      // auto shortest_path_function =
-      //     CreatePathFindingFunction(subpath.path_list, pg_table);
       auto shortest_path_function =
-          CreatePathFindingFunction(subpath, pg_table);
+          CreatePathFindingFunction(subpath.path_list, pg_table);
 
       if (column_alias.empty()) {
         shortest_path_function->alias =
@@ -744,10 +740,8 @@ void PGQMatchFunction::CheckNamedSubpath(
       column_list.insert(column_list.begin() + idx_i,
                          std::move(shortest_path_function));
     } else if (parsed_ref->function_name == "path_length") {
-      // auto shortest_path_function =
-      //     CreatePathFindingFunction(subpath.path_list, pg_table);
       auto shortest_path_function =
-          CreatePathFindingFunction(subpath, pg_table);
+          CreatePathFindingFunction(subpath.path_list, pg_table);
       auto path_len_children = vector<unique_ptr<ParsedExpression>>();
       path_len_children.push_back(std::move(shortest_path_function));
       auto path_len =
@@ -766,10 +760,8 @@ void PGQMatchFunction::CheckNamedSubpath(
                          std::move(path_length_function));
     } else if (parsed_ref->function_name == "vertices" ||
                parsed_ref->function_name == "edges") {
-      // auto shortest_path_function =
-      //     CreatePathFindingFunction(subpath.path_list, pg_table);
       auto shortest_path_function =
-          CreatePathFindingFunction(subpath, pg_table);
+          CreatePathFindingFunction(subpath.path_list, pg_table);
       auto list_slice_children = vector<unique_ptr<ParsedExpression>>();
       list_slice_children.push_back(std::move(shortest_path_function));
 

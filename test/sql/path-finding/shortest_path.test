@@ -61,22 +61,18 @@ query IIII
     ) study
     order by study.name, study.b_name;
 ----
-1	[0, 1, 2]	Daniel	Gabor
-1	[0, 2, 3]	Daniel	Peter
-1	[0, 0, 1]	Daniel	Tavneet
+2	[0, 0, 1, 4, 2]	Daniel	Gabor
+2	[0, 1, 2, 6, 3]	Daniel	Peter
 2	[4, 7, 3, 3, 0]	David	Daniel
 3	[4, 7, 3, 3, 0, 1, 2]	David	Gabor
-1	[4, 7, 3]	David	Peter
 3	[4, 7, 3, 3, 0, 0, 1]	David	Tavneet
 2	[2, 6, 3, 3, 0]	Gabor	Daniel
-1	[2, 6, 3]	Gabor	Peter
 3	[2, 6, 3, 3, 0, 0, 1]	Gabor	Tavneet
-1	[3, 3, 0]	Peter	Daniel
 2	[3, 3, 0, 1, 2]	Peter	Gabor
 2	[3, 3, 0, 0, 1]	Peter	Tavneet
 2	[1, 5, 3, 3, 0]	Tavneet	Daniel
-1	[1, 4, 2]	Tavneet	Gabor
-1	[1, 5, 3]	Tavneet	Peter
+3	[1, 5, 3, 3, 0, 1, 2]	Tavneet	Gabor
+2	[1, 4, 2, 6, 3]	Tavneet	Peter
 
 
 statement error
@@ -117,7 +113,17 @@ WITH cte1 AS (
     JOIN student c on c.id = k.dst
 ) SELECT shortestpath(0, (select count(*) from student), a.rowid, b.rowid, 2, 3) as path, a.name as a_name, b.name as b_name
         FROM student a, student b, (select count(cte1.temp) * 0 as temp from cte1) __x
-        WHERE a.name = 'Daniel' and __x.temp * 0 + iterativelength(0, (select count(*) from student), a.rowid, b.rowid, 2, 3);
+        WHERE __x.temp * 0 + iterativelength(0, (select count(*) from student), a.rowid, b.rowid, 2, 3);
 ----
 [0, 0, 1, 4, 2]	Daniel	Gabor
 [0, 1, 2, 6, 3]	Daniel	Peter
+[1, 5, 3, 3, 0]	Tavneet	Daniel
+[1, 5, 3, 3, 0, 1, 2]	Tavneet	Gabor
+[1, 4, 2, 6, 3]	Tavneet	Peter
+[2, 6, 3, 3, 0]	Gabor	Daniel
+[2, 6, 3, 3, 0, 0, 1]	Gabor	Tavneet
+[3, 3, 0, 0, 1]	Peter	Tavneet
+[3, 3, 0, 1, 2]	Peter	Gabor
+[4, 7, 3, 3, 0]	David	Daniel
+[4, 7, 3, 3, 0, 0, 1]	David	Tavneet
+[4, 7, 3, 3, 0, 1, 2]	David	Gabor

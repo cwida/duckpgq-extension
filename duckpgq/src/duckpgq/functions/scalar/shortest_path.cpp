@@ -179,7 +179,6 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
       }
     }
 
-    bool stop[LANE_LIMIT] = {false};
     //! make passes while a lane is still active
     for (int64_t iter = 1; active; iter++) {
       //! Perform one step of bfs exploration
@@ -188,9 +187,8 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
                            (iter & 1) ? visit2 : visit1)) {
         break;
       }
-      int64_t finished_searches = 0;
       // detect lanes that finished
-      for (int64_t lane = 0; lane < LANE_LIMIT && (stop[lane] == false); lane++) {
+      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
         int64_t search_num = lane_to_num[lane];
         if (search_num >= 0) { // active lane
           //! Check if dst for a source has been seen
@@ -233,13 +231,9 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
                                 ListVector::GetListSize(*output));
               total_len += result_data[search_num].length;
             }
-            stop[lane] = true;
-            finished_searches++;
+            lane_to_num[lane] = -1; // mark inactive
           }
         }
-      }
-      if (finished_searches == LANE_LIMIT) {
-        break;
       }
     }
   }
