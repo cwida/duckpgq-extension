@@ -97,7 +97,7 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
                             SQLStatement &statement) {
   auto lookup = context.registered_state.find("duckpgq");
   if (lookup == context.registered_state.end()) {
-    throw Exception(ExceptionType::BINDER, "Registered state not found");
+    throw;
   }
 
   auto duckpgq_state = (DuckPGQState *)lookup->second.get();
@@ -107,7 +107,7 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
   if (duckpgq_parse_data) {
     return duckpgq_binder->Bind(*(duckpgq_parse_data->statement));
   }
-  throw Exception(ExceptionType::BINDER, "Unable to find DuckPGQ Parse Data");
+  throw;
 }
 
 void duckpgq_find_match_function(TableRef *table_ref,
