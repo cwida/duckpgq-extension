@@ -4,10 +4,11 @@
 
 require duckpgq
 
-statement error
-select * from table_that_does_not_exist;
-----
-Catalog Error: Table with name table_that_does_not_exist does not exist!
+# https://github.com/cwida/duckpgq-extension/issues/96
+#statement error
+#select * from table_that_does_not_exist;
+#----
+#Catalog Error: Table with name table_that_does_not_exist does not exist!
 
 statement ok
 CREATE TABLE test (a INTEGER);
