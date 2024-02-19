@@ -1,0 +1,52 @@
+# https://github.com/cwida/duckpgq-extension/issues/95
+# name: test/sql/sqlpgq/non_existing_table.test
+# group: [sqlpgq]
+
+require duckpgq
+
+statement error
+select * from table_that_does_not_exist;
+----
+Catalog Error: Table with name table_that_does_not_exist does not exist!
+
+statement ok
+CREATE TABLE test (a INTEGER);
+
+statement error
+SELECT b from test;
+----
+Binder Error: Referenced column "b" not found in FROM clause!
+
+statement ok
+import database 'duckdb-pgq/data/SNB0.003';
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person,
+    Organisation IN typemask(company, university)
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows,
+    person_workAt_Organisation SOURCE KEY (PersonId) REFERENCES Person (id)
+                               DESTINATION KEY (OrganisationId) REFERENCES Organisation (id)
+                               LABEL workAt_Organisation
+   );
+
+statement error
+-FROM GRAPH_TABLE (snb
+    MATCH (a:Kind)
+    COLUMNS (*)
+    );
+----
+Binder Error: The label kind is not registered in property graph snb
+
+statement error
+-FROM GRAPH_TABLE (abc
+    MATCH (a:Kind)
+    COLUMNS (*)
+    );
+----
+Binder Error: Property graph abc does not exist
