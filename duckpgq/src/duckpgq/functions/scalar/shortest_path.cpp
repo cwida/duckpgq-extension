@@ -161,14 +161,18 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
         if (!vdata_src.validity.RowIsValid(src_pos)) {
           result_validity.SetInvalid(search_num);
         } else if (src_data[src_pos] == dst_data[dst_pos]) {
-          unique_ptr<Vector> output =
-            make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
-          ListVector::PushBack(*output, src_data[src_pos]);
-          ListVector::Append(result, ListVector::GetEntry(*output),
-                            ListVector::GetListSize(*output));
-          result_data[search_num].length = ListVector::GetListSize(*output);
-          result_data[search_num].offset = total_len;
-          total_len += result_data[search_num].length;
+          // unique_ptr<Vector> output =
+          //   make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
+          // ListVector::PushBack(*output, src_data[src_pos]);
+          // ListVector::Append(result, ListVector::GetEntry(*output),
+          //                   ListVector::GetListSize(*output));
+          // result_data[search_num].length = ListVector::GetListSize(*output);
+          // result_data[search_num].offset = total_len;
+          // total_len += result_data[search_num].length;
+          visit1[src_data[src_pos]][lane] = true;
+          lane_to_num[lane] = search_num; // active lane
+          active++;
+          break;
         } else {
           visit1[src_data[src_pos]][lane] = true;
           seen[src_data[src_pos]][lane] = true;

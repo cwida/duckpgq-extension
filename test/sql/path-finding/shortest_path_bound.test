@@ -196,6 +196,7 @@ WITH cte1 AS (
         FROM Point3 a, Point3 b, (select count(cte1.temp) * 0 as temp from cte1) __x
         WHERE a.id = 0 and __x.temp * 0 + iterativelength(0, (select count(*) from Point3), a.rowid, b.rowid, 2, 3);
 ----
+0	0	2
 
 # Graph to test shortest path bound with a cycle
 # (1) <- (0) <-> (2)
@@ -225,7 +226,9 @@ query III
     COLUMNS (a.id, b.id, vertices(p))
     ) tmp;
 ----
+0	0	[0, 2, 0]
 2	1	[2, 0, 1]
+2	2	[2, 0, 2]
 
 
 # Description: Test algorithm's capability to ignore isolated nodes.
@@ -256,6 +259,8 @@ query III
     COLUMNS (a.id, b.id, vertices(p))
 ) tmp;
 ----
+0	0	[0, 2, 0]
+2	2	[2, 0, 2]
 
 # Description: Test shortest paths in a graph with cycles.
 # Graph Structure: 
@@ -288,13 +293,17 @@ query III
 	) tmp
 	order by tmp.id1, tmp.id2;
 ----
+0	0	[0, 2, 0]
 0	1	[0, 2, 3, 1]
 0	3	[0, 2, 3]
+1	1	[1, 0, 2, 3, 1]
 1	2	[1, 0, 2]
 1	3	[1, 0, 2, 3]
 2	0	[2, 3, 1, 0]
 2	1	[2, 3, 1]
+2	2	[2, 3, 2]
 3	0	[3, 2, 0]
 3	2	[3, 1, 0, 2]
+3	3	[3, 2, 3]
 
 

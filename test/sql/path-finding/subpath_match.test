@@ -110,6 +110,7 @@ FROM GRAPH_TABLE (pg
 Peter	Daniel
 Peter	Tavneet
 Peter	Gabor
+Peter	Peter
 
 statement error
 -SELECT study.a_name, study.b_name

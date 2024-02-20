@@ -133,8 +133,13 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
           result_validity.SetInvalid(search_num);
           result_data[search_num] = (int64_t)-1; /* no path */
         } else if (src_data[src_pos] == dst_data[dst_pos]) {
-          result_data[search_num] =
-              (int64_t)0; // path of length 0 does not require a search
+          // result_data[search_num] =
+          //     (int64_t)0; // path of length 0 does not require a search
+          result_data[search_num] = (int64_t)-1; /* no path */
+          visit1[src_data[src_pos]][lane] = true;
+          lane_to_num[lane] = search_num; // active lane
+          active++;
+          break;
         } else {
           result_data[search_num] = (int64_t)-1; /* initialize to no path */
           seen[src_data[src_pos]][lane] = true;
