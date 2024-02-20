@@ -97,7 +97,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
   vector<std::vector<int64_t>> parents_v(v_size,
                                          std::vector<int64_t>(LANE_LIMIT, -1));
   vector<std::vector<int64_t>> parents_e(v_size,
-                                         std::vector<int64_t>(LANE_LIMIT, -1)); 
+                                         std::vector<int64_t>(LANE_LIMIT, -1));
 
   // maps lane to search number
   int16_t lane_to_num[LANE_LIMIT];
@@ -113,6 +113,10 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
     for (auto i = 0; i < v_size; i++) {
       seen[i] = 0;
       visit1[i] = 0;
+      for (auto j = 0; j < LANE_LIMIT; j++) {
+        parents_v[i][j] = -1;
+        parents_e[i][j] = -1;
+      }
     }
 
     // add search jobs to free lanes

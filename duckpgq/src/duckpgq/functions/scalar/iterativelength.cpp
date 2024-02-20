@@ -137,7 +137,7 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
         int64_t search_num = lane_to_num[lane];
         if (search_num >= 0) { // active lane
           int64_t dst_pos = vdata_dst.sel->get_index(search_num);
-          if (seen[dst_data[dst_pos]][lane]){
+          if (seen[dst_data[dst_pos]][lane]) {
             result_data[search_num] =
                 iter;               /* found at iter => iter = path length */
             lane_to_num[lane] = -1; // mark inactive
