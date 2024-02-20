@@ -541,7 +541,8 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
             make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(edge_subpath->upper))));
 
         auto shortest_path_function = make_uniq<FunctionExpression>(
-            "shortestpath", std::move(pathfinding_children));
+            edge_subpath->lower > 1 ? "shortestpath_lowerbound": "shortestpath",
+            std::move(pathfinding_children));
 
         if (!final_list) {
           final_list = std::move(shortest_path_function);
@@ -679,7 +680,8 @@ void PGQMatchFunction::AddPathFinding(
       make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(subpath->upper))));
 
   auto reachability_function = make_uniq<FunctionExpression>(
-      "iterativelength", std::move(pathfinding_children));
+      subpath->lower > 1 ? "iterativelength_lowerbound": "iterativelength",
+      std::move(pathfinding_children));
 
   auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
 

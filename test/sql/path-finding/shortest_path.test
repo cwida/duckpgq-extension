@@ -116,9 +116,9 @@ WITH cte1 AS (
     FROM Know k
     JOIN student a on a.id = k.src
     JOIN student c on c.id = k.dst
-) SELECT shortestpath(0, (select count(*) from student), a.rowid, b.rowid, 2, 3) as path, a.name as a_name, b.name as b_name
+) SELECT shortestpath_lowerbound(0, (select count(*) from student), a.rowid, b.rowid, 2, 3) as path, a.name as a_name, b.name as b_name
         FROM student a, student b, (select count(cte1.temp) * 0 as temp from cte1) __x
-        WHERE __x.temp * 0 + iterativelength(0, (select count(*) from student), a.rowid, b.rowid, 2, 3)
+        WHERE __x.temp * 0 + iterativelength_lowerbound(0, (select count(*) from student), a.rowid, b.rowid, 2, 3)
 		ORDER BY a.name, b.name;
 ----
 [0, 2, 3, 3, 0]	Daniel	Daniel

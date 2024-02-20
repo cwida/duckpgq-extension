@@ -53,9 +53,9 @@ WITH cte1 AS (
     FROM Know k
     JOIN Point a on a.id = k.src
     JOIN Point c on c.id = k.dst
-) SELECT a.id as srd_id, b.id as dst_id, iterativelength(0, (select count(*) from Point), a.rowid, b.rowid, 2, 3) as path_length
+) SELECT a.id as srd_id, b.id as dst_id, iterativelength_lowerbound(0, (select count(*) from Point), a.rowid, b.rowid, 2, 3) as path_length
         FROM Point a, Point b, (select count(cte1.temp) * 0 as temp from cte1) __x
-        WHERE a.id = 0 and __x.temp * 0 + iterativelength(0, (select count(*) from Point), a.rowid, b.rowid, 2, 3);
+        WHERE a.id = 0 and __x.temp * 0 + iterativelength_lowerbound(0, (select count(*) from Point), a.rowid, b.rowid, 2, 3);
 ----
 0	1	3
 0	3	2
@@ -139,9 +139,9 @@ WITH cte1 AS (
     FROM know2 k
     JOIN Point2 a on a.id = k.src
     JOIN Point2 c on c.id = k.dst
-) SELECT a.id, b.id, iterativelength(0, (select count(*) from Point2), a.rowid, b.rowid, 2, 30) as path_length
+) SELECT a.id, b.id, iterativelength_lowerbound(0, (select count(*) from Point2), a.rowid, b.rowid, 2, 30) as path_length
         FROM Point2 a, Point2 b, (select count(cte1.temp) * 0 as temp from cte1) __x
-        WHERE a.id = 0 and __x.temp * 0 + iterativelength(0, (select count(*) from Point2), a.rowid, b.rowid, 2, 30);
+        WHERE a.id = 0 and __x.temp * 0 + iterativelength_lowerbound(0, (select count(*) from Point2), a.rowid, b.rowid, 2, 30);
 ----
 0	2	2
 
@@ -192,9 +192,9 @@ WITH cte1 AS (
     FROM know3 k
     JOIN Point3 a on a.id = k.src
     JOIN Point3 c on c.id = k.dst
-) SELECT a.id, b.id, iterativelength(0, (select count(*) from Point3), a.rowid, b.rowid, 2, 3) as path_length
+) SELECT a.id, b.id, iterativelength_lowerbound(0, (select count(*) from Point3), a.rowid, b.rowid, 2, 3) as path_length
         FROM Point3 a, Point3 b, (select count(cte1.temp) * 0 as temp from cte1) __x
-        WHERE a.id = 0 and __x.temp * 0 + iterativelength(0, (select count(*) from Point3), a.rowid, b.rowid, 2, 3);
+        WHERE a.id = 0 and __x.temp * 0 + iterativelength_lowerbound(0, (select count(*) from Point3), a.rowid, b.rowid, 2, 3);
 ----
 0	0	2
 

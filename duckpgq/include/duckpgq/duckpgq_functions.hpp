@@ -27,8 +27,10 @@ public:
     functions.push_back(GetCsrEdgeFunction());
     functions.push_back(GetCheapestPathLengthFunction());
     functions.push_back(GetShortestPathFunction());
+    functions.push_back(GetShortestPathLowerBoundFunction());
     functions.push_back(GetReachabilityFunction());
     functions.push_back(GetIterativeLengthFunction());
+    functions.push_back(GetIterativeLengthLowerBoundFunction());
     functions.push_back(GetIterativeLengthBidirectionalFunction());
     functions.push_back(GetIterativeLength2Function());
     functions.push_back(GetDeleteCsrFunction());
@@ -57,8 +59,10 @@ private:
   static CreateScalarFunctionInfo GetCsrEdgeFunction();
   static CreateScalarFunctionInfo GetCheapestPathLengthFunction();
   static CreateScalarFunctionInfo GetShortestPathFunction();
+  static CreateScalarFunctionInfo GetShortestPathLowerBoundFunction();
   static CreateScalarFunctionInfo GetReachabilityFunction();
   static CreateScalarFunctionInfo GetIterativeLengthFunction();
+  static CreateScalarFunctionInfo GetIterativeLengthLowerBoundFunction();
   static CreateScalarFunctionInfo GetIterativeLengthBidirectionalFunction();
   static CreateScalarFunctionInfo GetIterativeLength2Function();
   static CreateScalarFunctionInfo GetDeleteCsrFunction();
