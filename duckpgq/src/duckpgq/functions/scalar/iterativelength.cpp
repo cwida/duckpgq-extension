@@ -74,7 +74,7 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
   auto src_data = (int64_t *)vdata_src.data;
   auto dst_data = (int64_t *)vdata_dst.data;
 
-  // get lowerbound and upperbound
+  // get upperbound (lower bound always zero in this function)
   auto &upper = args.data[5];
   UnifiedVectorFormat vdata_upper_bound;
   upper.ToUnifiedFormat(args.size(), vdata_upper_bound);
