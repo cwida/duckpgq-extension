@@ -86,7 +86,7 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                       : query);
   if (parser.statements.size() != 1) {
     throw Exception(ExceptionType::PARSER,
-        "More than 1 statement detected, please only give one.");
+                    "More than 1 statement detected, please only give one.");
   }
   return {make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
       std::move(parser.statements[0]))};
@@ -181,7 +181,8 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
   // Preferably throw NotImplementedExpection here, but only BinderExceptions
   // are caught properly on MacOS right now
   throw Exception(ExceptionType::NOT_IMPLEMENTED,
-    StatementTypeToString(statement->type) + "has not been implemented yet for DuckPGQ queries");
+                  StatementTypeToString(statement->type) +
+                      "has not been implemented yet for DuckPGQ queries");
 }
 
 ParserExtensionPlanResult
