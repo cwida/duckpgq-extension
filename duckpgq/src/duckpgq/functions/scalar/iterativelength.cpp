@@ -113,9 +113,12 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
       while (started_searches < args.size()) {
         int64_t search_num = started_searches++;
         int64_t src_pos = vdata_src.sel->get_index(search_num);
+        int64_t dst_pos = vdata_dst.sel->get_index(search_num);
         if (!vdata_src.validity.RowIsValid(src_pos)) {
           result_validity.SetInvalid(search_num);
           result_data[search_num] = (int64_t)-1; /* no path */
+        } else if (src_data[src_pos] == dst_data[dst_pos]) {
+          result_data[search_num] = (int64_t)0; /* source == destination, length is 0 */
         } else {
           result_data[search_num] = (int64_t)-1; /* initialize to no path */
           visit1[src_data[src_pos]][lane] = true;
