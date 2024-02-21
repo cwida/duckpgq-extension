@@ -264,7 +264,7 @@ query III
 
 # Description: Test shortest paths in a graph with cycles.
 # Graph Structure: 
-# (0) <-> (2) <-> (3) -> (1)
+# (0) <-> (2) <-> (3) -> (1) (selfloop)
 #  ↑                      |
 #  └----------------------┘
 
@@ -272,7 +272,7 @@ statement ok
 CREATE TABLE Point6(id BIGINT); INSERT INTO Point6 VALUES (0), (1), (2), (3);
 
 statement ok
-CREATE TABLE know6(src BIGINT, dst BIGINT); INSERT INTO know6 VALUES (0, 2), (2, 0), (2, 3), (3, 2), (3, 1), (1, 0);
+CREATE TABLE know6(src BIGINT, dst BIGINT); INSERT INTO know6 VALUES (0, 2), (2, 0), (2, 3), (3, 2), (3, 1), (1, 0), (1, 1);
 
 statement ok
 -CREATE PROPERTY GRAPH pg6
@@ -296,6 +296,7 @@ query III
 0	0	[0, 2, 0]
 0	1	[0, 2, 3, 1]
 0	3	[0, 2, 3]
+1	0	[1, 1, 0]
 1	1	[1, 0, 2, 3, 1]
 1	2	[1, 0, 2]
 1	3	[1, 0, 2, 3]
@@ -306,6 +307,7 @@ query III
 3	2	[3, 1, 0, 2]
 3	3	[3, 2, 3]
 
+
 query IIII
 -FROM GRAPH_TABLE (pg6
     MATCH
@@ -315,3 +317,13 @@ query IIII
 	order by tmp.id1, tmp.id2;
 ----
 0	0	[0, 2, 0]	2
+
+query IIII
+-FROM GRAPH_TABLE (pg6
+    MATCH
+    p = ANY SHORTEST (a:Point6 where a.id = 1)-[k:know6]->{1,3}(b:Point6 where b.id = 1)
+    COLUMNS (a.id as id1, b.id as id2, vertices(p), path_length(p))
+	) tmp
+	order by tmp.id1, tmp.id2;
+----
+1	1	[1, 1]	1
