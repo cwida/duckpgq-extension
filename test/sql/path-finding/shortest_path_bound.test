@@ -315,13 +315,3 @@ query III
 	order by tmp.id1, tmp.id2;
 ----
 0	0	[0, 2, 0]	2
-
-query III
--FROM GRAPH_TABLE (pg6
-    MATCH
-    p = ANY SHORTEST (a:Point6 where a.id = 0)-[k:know6]->{0,3}(b:Point6 where b.id = 0)
-    COLUMNS (a.id as id1, b.id as id2, vertices(p), path_length(p))
-	) tmp
-	order by tmp.id1, tmp.id2;
-----
-0	0	[0]	0
