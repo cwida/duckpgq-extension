@@ -543,7 +543,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
             Value::INTEGER(static_cast<int32_t>(edge_subpath->upper))));
 
         auto shortest_path_function = make_uniq<FunctionExpression>(
-            edge_subpath->lower > 0 ? "shortestpath_lowerbound"
+            edge_subpath->lower > 1 ? "shortestpath_lowerbound"
                                     : "shortestpath",
             std::move(pathfinding_children));
 
@@ -683,7 +683,7 @@ void PGQMatchFunction::AddPathFinding(
       Value::INTEGER(static_cast<int32_t>(subpath->upper))));
 
   auto reachability_function = make_uniq<FunctionExpression>(
-      subpath->lower > 0 ? "iterativelength_lowerbound" : "iterativelength",
+      subpath->lower > 1 ? "iterativelength_lowerbound" : "iterativelength",
       std::move(pathfinding_children));
 
   auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
