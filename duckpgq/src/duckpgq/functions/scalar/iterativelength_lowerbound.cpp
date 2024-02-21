@@ -131,7 +131,6 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args,
       while (started_searches < args.size()) {
         int64_t search_num = started_searches++;
         int64_t src_pos = vdata_src.sel->get_index(search_num);
-        int64_t dst_pos = vdata_dst.sel->get_index(search_num);
         if (!vdata_src.validity.RowIsValid(src_pos)) { // NULL value
           result_validity.SetInvalid(search_num);
           result_data[search_num] = (int64_t)-1; /* no path */
