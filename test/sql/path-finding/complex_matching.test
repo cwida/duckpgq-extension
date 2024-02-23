@@ -481,7 +481,7 @@ Parser Error: syntax error at or near "{"
 
 query IIII
 -FROM GRAPH_TABLE (snb
-    MATCH p = (a:Person where a.id = 16)-[k:knows]->{1,3}(b:Person where)
+    MATCH p = (a:Person where a.id = 16)-[k:knows]->{1,3}(b:Person)
     COLUMNS (element_id(p), a.id, b.id, path_length(p))
     ) tmp;
 ----
