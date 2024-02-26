@@ -979,8 +979,8 @@ void PhysicalPathFinding::BuildPipelines(Pipeline &current,
   children[0]->BuildPipelines(*lhs_pipeline, child_meta_pipeline);
 
   // Build out RHS
-  auto rhs_pipeline = child_meta_pipeline.CreatePipeline();
-  children[1]->BuildPipelines(*rhs_pipeline, child_meta_pipeline);
+  auto &rhs_pipeline = child_meta_pipeline.CreatePipeline();
+  children[1]->BuildPipelines(rhs_pipeline, child_meta_pipeline);
 
   // Despite having the same sink, RHS and everything created after it need
   // their own (same) PipelineFinishEvent
