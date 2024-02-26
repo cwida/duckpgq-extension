@@ -1,0 +1,102 @@
+# name: test/sql/join/pathfinding/test_path_finding.test
+# description: Prototype the path finding operator
+# group: [path-finding]
+
+statement ok
+PRAGMA enable_verification
+
+require duckpgq
+
+statement ok
+CREATE TABLE pairs(src INT, dst INT);
+
+statement ok
+INSERT INTO pairs(src, dst) VALUES (1, 2), (2, 3), (3,1), (3, 2), (6, 1), (4,2);
+
+statement ok
+create table student(id INT);
+
+statement ok
+INSERT INTO student(id) VALUES (1), (2), (3);
+
+statement ok
+create table knows(src INT, dst INT);
+
+statement ok
+INSERT INTO knows(src, dst) VALUES (1,3), (1,1), (2,1), (2,3), (3,1), (NULL, NULL), (NULL, NULL)
+
+statement ok
+create table foo(i bigint);
+
+#query II
+#SELECT *
+#FROM knows AS a, pairs AS b
+#WHERE (cos(a.src) BETWEEN cos(b.dst) AND cos(b.src));
+#----
+
+statement ok
+-CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+foo
+)
+EDGE TABLES (
+knows   SOURCE KEY (src) REFERENCES foo (i)
+        DESTINATION KEY (dst) references foo (i)
+)
+
+statement ok
+-FROM GRAPH_TABLE(pg
+    MATCH (f:foo)-[k:knows]->{0,3}(f2:foo)
+    COLUMNS (*)
+    );
+
+query II
+SELECT *
+FROM pairs AS p
+WHERE p.src BETWEEN (select csr_id from (SELECT
+            0 as csr_id,
+            (SELECT count(a.id) FROM Student a),
+            CAST (
+                (SELECT sum(CREATE_CSR_VERTEX(0,
+                    (SELECT count(a.id) FROM Student a),
+                      sub.dense_id,
+                      sub.cnt)
+                )
+                FROM (
+                    SELECT a.rowid as dense_id, count(k.src) as cnt
+                    FROM Student a
+                    LEFT JOIN Knows k ON k.src = a.id
+                    GROUP BY a.rowid) sub
+            ) AS BIGINT),
+            a.rowid,
+            c.rowid,
+            k.rowid    FROM Knows k
+                        JOIN student a on a.id = k.src
+                        JOIN student c on c.id = k.dst)) AND p.dst;
+----
+
+# LHS of IEJOIN
+
+
+
+
+# RHS of IEJoin
+# 0,
+  #            (SELECT count(a.id) FROM Student a),
+  #            CAST (
+  #                (SELECT sum(CREATE_CSR_VERTEX(
+  #                            0,
+  #                            (SELECT count(a.id) FROM Student a),
+  #                            sub.dense_id,
+  #                            sub.cnt)
+  #                            )
+  #                FROM (
+  #                    SELECT a.rowid as dense_id, count(k.src) as cnt
+  #                    FROM Student a
+  #                    LEFT JOIN Know k ON k.src = a.id
+  #                    GROUP BY a.rowid) sub
+  #                )
+  #            AS BIGINT),
+  #            a.rowid,
+  #            c.rowid,
+  #            k.rowid

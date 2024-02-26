@@ -113,7 +113,7 @@ OperatorResultType PhysicalPathFinding::ExecuteInternal(
 // 		using SortedTable = PhysicalRangeJoin::GlobalSortedTable;
 //
 // 		static idx_t AppendKey(SortedTable &table, ExpressionExecutor
-// &executor, SortedTable &marked, int64_t increment, 													 int64_t base, const idx_t
+// &executor, SortedTable &marked, int64_t increment, int64_t base, const idx_t
 // block_idx);
 //
 // 		static void Sort(SortedTable &table) {
