@@ -6,11 +6,13 @@ set(EXTENSION_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/csr_get_w_type.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength_lowerbound.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength_two_phase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength_bidirectional.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/reachability.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path_lowerbound.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path_two_phase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/csr_creation.cpp
         PARENT_SCOPE
     )

@@ -7,39 +7,100 @@
 
 namespace duckdb {
 
-static bool IterativeLengthLowerBound(int64_t v_size, int64_t *v, vector<int64_t> &e,
-                            // vector<vector<unordered_set<int64_t>>> &parents_v,
+static bool IterativeLengthPhaseOne(int64_t v_size, int64_t *v, vector<int64_t> &e,
+                            vector<std::bitset<LANE_LIMIT>> &visit,
+                            vector<std::bitset<LANE_LIMIT>> &next) {
+  bool change = false;
+  for (auto i = 0; i < v_size; i++) {
+    next[i] = 0;
+  }
+
+  for (auto i = 0; i < v_size; i++) {
+    if (visit[i].any()) {
+      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        auto n = e[offset];
+        next[n] = next[n] | visit[i];
+      }
+    }
+  }
+
+  for (auto i = 0; i < v_size; i++) {
+    change |= next[i].any();
+  }
+  
+  return change;
+}
+
+static bool IterativeLengthPhaseTwo(int64_t v_size, int64_t *v, vector<int64_t> &e,
                             vector<std::bitset<LANE_LIMIT>> &seen,
                             vector<std::bitset<LANE_LIMIT>> &visit,
                             vector<std::bitset<LANE_LIMIT>> &next) {
   bool change = false;
   for (auto i = 0; i < v_size; i++) {
     next[i] = 0;
-    seen[i] = 0;
   }
 
-  for (auto lane = 0; lane < LANE_LIMIT; lane++) {
-    for (auto i = 0; i < v_size; i++) {
-      if (visit[i][lane]) {
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          // if (seen[n][lane] == false || parents_v[i][lane].find(n) == parents_v[i][lane].end()) {
-          //   parents_v[n][lane] = parents_v[i][lane];
-          //   parents_v[n][lane].insert(i);
-          //   next[n][lane] = true;
-          // }
-          next[n][lane] = true;
-        }
+  for (auto i = 0; i < v_size; i++) {
+    if (visit[i].any()) {
+      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        auto n = e[offset];
+        next[n] = next[n] | visit[i];
       }
     }
   }
 
   for (auto i = 0; i < v_size; i++) {
+    next[i] = next[i] & ~seen[i];
     seen[i] = seen[i] | next[i];
     change |= next[i].any();
   }
   
   return change;
+
+} 
+
+static int64_t IterativeLengthInternal(int64_t lane, int64_t v_size, int64_t destination, 
+                                       int64_t bound, 
+                                       int64_t *v, vector<int64_t> &e, 
+                                       vector<std::bitset<LANE_LIMIT>> &visit) {
+  vector<int64_t> src;
+  for (int64_t v = 0; v < v_size; v++) {
+    if (visit[v][lane]) {
+      src.push_back(v);
+    }
+  }
+  vector<std::bitset<LANE_LIMIT>> seen(v_size);
+  vector<std::bitset<LANE_LIMIT>> visit1(v_size);
+  vector<std::bitset<LANE_LIMIT>> visit2(v_size);
+
+  idx_t started_searches = 0;
+  while (started_searches < src.size()) {
+    for (auto i = 0; i < v_size; i++) {
+      seen[i] = 0;
+      visit1[i] = 0;
+    }
+    // add search jobs to free lanes
+    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+      while (started_searches < src.size()) {
+        int64_t search_num = started_searches++;
+        visit1[src[search_num]][lane] = true;
+      }
+    }
+
+    for (int64_t iter = 1; iter <= bound; iter++) {
+      if (!IterativeLengthPhaseTwo(v_size, v, e, seen, (iter & 1) ? visit1 : visit2,
+                                   (iter & 1) ? visit2 : visit1)) {
+        break;
+      }
+      // detect lanes that found the destination
+      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+        if (seen[destination][lane]) {
+          return iter;
+        }
+      }
+    }
+  }
+  return -1;
 }
 
 static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &state,
@@ -105,7 +166,6 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &
   vector<std::bitset<LANE_LIMIT>> seen(v_size);
   vector<std::bitset<LANE_LIMIT>> visit1(v_size);
   vector<std::bitset<LANE_LIMIT>> visit2(v_size);
-  vector<vector<unordered_set<int64_t>>> parents_v(v_size, std::vector<unordered_set<int64_t>>(LANE_LIMIT));
 
   // maps lane to search number
   short lane_to_num[LANE_LIMIT];
@@ -142,36 +202,23 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &
       }
     }
 
-    // make passes while a lane is still active
-    for (int64_t iter = 1; active && iter <= upper_bound; iter++) {
-      if (!IterativeLengthLowerBound(v_size, v, e, seen, (iter & 1) ? visit1 : visit2,
-                                   (iter & 1) ? visit2 : visit1)) {
-        break;
-      }
-      // detect lanes that finished
-      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-        int64_t search_num = lane_to_num[lane];
-        if (search_num >= 0) { // active lane
-          int64_t dst_pos = vdata_dst.sel->get_index(search_num);
-          if (seen[dst_data[dst_pos]][lane]){
+    int64_t iter = 1;
+    // phase one: search without seen until lower bound - 1
+    for (; iter < lower_bound; iter++) {
+      IterativeLengthPhaseOne(v_size, v, e, (iter & 1) ? visit1 : visit2,
+                              (iter & 1) ? visit2 : visit1);
+    }
 
-            // check if the path length is within bounds
-            // bound vector is either a constant or a flat vector
-            if (iter < lower_bound) {
-              // when reach the destination too early, treat destination as null
-              // looks like the graph does not have that vertex
-              // seen[dst_data[dst_pos]][lane] = false;
-              // (iter & 1) ? visit2[dst_data[dst_pos]][lane] = false
-              //            : visit1[dst_data[dst_pos]][lane] = false;
-              continue;
-            } else {
-              result_data[search_num] =
-                  iter;               /* found at iter => iter = path length */
-              lane_to_num[lane] = -1; // mark inactive
-              active--;
-            }
-
-          }
+    // phase two: search with seen until upper bound
+    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+      auto search_num = lane_to_num[lane];
+      if (search_num >= 0) {
+        int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+        auto length = IterativeLengthInternal(lane, v_size, 
+          dst_data[dst_pos], upper_bound - lower_bound + 1, v, e, (iter & 1) ? visit1 : visit2);
+        if (length >= 0) {
+          result_data[search_num] = length + lower_bound - 1;
+          lane_to_num[lane] = -1; // mark inactive
         }
       }
     }
@@ -189,14 +236,14 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
-CreateScalarFunctionInfo DuckPGQFunctions::GetIterativeLengthLowerBoundFunction() {
-  auto fun = ScalarFunction("iterativelength_lowerbound",
-                            {LogicalType::INTEGER, LogicalType::BIGINT,
-                             LogicalType::BIGINT, LogicalType::BIGINT,
-                             LogicalType::BIGINT, LogicalType::BIGINT},
-                            LogicalType::BIGINT, IterativeLengthLowerBoundFunction,
-                            IterativeLengthFunctionData::IterativeLengthBind);
-  return CreateScalarFunctionInfo(fun);
-}
+// CreateScalarFunctionInfo DuckPGQFunctions::GetIterativeLengthLowerBoundFunction() {
+//   auto fun = ScalarFunction("iterativelength_lowerbound",
+//                             {LogicalType::INTEGER, LogicalType::BIGINT,
+//                              LogicalType::BIGINT, LogicalType::BIGINT,
+//                              LogicalType::BIGINT, LogicalType::BIGINT},
+//                             LogicalType::BIGINT, IterativeLengthLowerBoundFunction,
+//                             IterativeLengthFunctionData::IterativeLengthBind);
+//   return CreateScalarFunctionInfo(fun);
+// }
 
 } // namespace duckdb

@@ -1,0 +1,196 @@
+# name: test/sql/path-finding/iterativelength.test
+# group: [iterative]
+
+statement ok
+pragma enable_verification
+
+require duckpgq
+
+# Graph to test shortest path bound with a cycle
+# (0) --> (1) <-> (2)
+
+statement ok
+CREATE TABLE Point3(id BIGINT); INSERT INTO Point3 VALUES (0), (1), (2);
+
+statement ok
+CREATE TABLE know3(src BIGINT, dst BIGINT); INSERT INTO know3 VALUES (0, 1), (1, 2), (2, 1);
+
+statement ok
+-CREATE PROPERTY GRAPH pg3
+VERTEX TABLES (
+    Point3 PROPERTIES ( id ) LABEL Pnt
+    )
+EDGE TABLES (
+    know3    SOURCE KEY ( src ) REFERENCES Point3 ( id )
+            DESTINATION KEY ( dst ) REFERENCES Point3 ( id )
+            LABEL Knows
+    );
+
+query III
+WITH cte1 AS (
+    SELECT  CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Point3 a),
+            CAST (
+                (SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Point3 a),
+                            sub.dense_id,
+                            sub.cnt)
+                            )
+                FROM (
+                    SELECT a.rowid as dense_id, count(k.src) as cnt
+                    FROM Point3 a
+                    LEFT JOIN know3 k ON k.src = a.id
+                    GROUP BY a.rowid) sub
+                )
+            AS BIGINT),
+            a.rowid,
+            c.rowid,
+            k.rowid) as temp
+    FROM know3 k
+    JOIN Point3 a on a.id = k.src
+    JOIN Point3 c on c.id = k.dst
+) SELECT a.id, b.id, iterativelength_lowerbound(0, (select count(*) from Point3), a.rowid, b.rowid, 2, 3) as path_length
+        FROM Point3 a, Point3 b, (select count(cte1.temp) * 0 as temp from cte1) __x
+        WHERE __x.temp * 0 + iterativelength_lowerbound(0, (select count(*) from Point3), a.rowid, b.rowid, 2, 3);
+----
+0	1	3
+0	2	2
+1	1	2
+1	2	3
+2	1	3
+2	2	2
+
+# (0) --> (1) --> (4)
+#        ↗   ↘
+#     (3) <-- (2)
+
+statement ok
+CREATE TABLE Point4(id BIGINT); INSERT INTO Point4 VALUES (0), (1), (2), (3), (4);
+
+statement ok
+CREATE TABLE know4(src BIGINT, dst BIGINT); INSERT INTO know4 VALUES (0, 1), (1, 4), (1, 2), (2, 3), (3, 1);
+
+statement ok
+-CREATE PROPERTY GRAPH pg4
+VERTEX TABLES (
+	Point4 PROPERTIES ( id ) LABEL Pnt
+	)
+EDGE TABLES (
+	know4	SOURCE KEY ( src ) REFERENCES Point4 ( id )
+			DESTINATION KEY ( dst ) REFERENCES Point4 ( id )
+			LABEL Knows
+	);
+
+query III
+WITH cte1 AS (
+	SELECT  CREATE_CSR_EDGE(
+			0,
+			(SELECT count(a.id) FROM Point4 a),
+			CAST (
+				(SELECT sum(CREATE_CSR_VERTEX(
+							0,
+							(SELECT count(a.id) FROM Point4 a),
+							sub.dense_id,
+							sub.cnt)
+							)
+				FROM (
+					SELECT a.rowid as dense_id, count(k.src) as cnt
+					FROM Point4 a
+					LEFT JOIN know4 k ON k.src = a.id
+					GROUP BY a.rowid) sub
+				)
+			AS BIGINT),
+			a.rowid,
+			c.rowid,
+			k.rowid) as temp
+	FROM know4 k
+	JOIN Point4 a on a.id = k.src
+	JOIN Point4 c on c.id = k.dst
+) SELECT a.id, b.id, iterativelength_lowerbound(0, (select count(*) from Point4), a.rowid, b.rowid, 3, 10) as path_length
+		FROM Point4 a, Point4 b, (select count(cte1.temp) * 0 as temp from cte1) __x
+		WHERE __x.temp * 0 + iterativelength_lowerbound(0, (select count(*) from Point4), a.rowid, b.rowid, 3, 10);
+----
+0	1	4
+0	2	5
+0	3	3
+0	4	5
+1	1	3
+1	2	4
+1	3	5
+1	4	4
+2	1	5
+2	2	3
+2	3	4
+2	4	3
+3	1	4
+3	2	5
+3	3	3
+3	4	5
+
+# 		  (0) --> (1) --> (4)
+#        ↗   ↘
+#     (3) <-- (2)
+
+statement ok
+CREATE TABLE Point5(id BIGINT); INSERT INTO Point5 VALUES (0), (1), (2), (3), (4);
+
+statement ok
+CREATE TABLE know5(src BIGINT, dst BIGINT); INSERT INTO know5 VALUES (0, 1), (1, 4), (0, 2), (2, 3), (3, 0);
+
+statement ok
+-CREATE PROPERTY GRAPH pg5
+VERTEX TABLES (
+	Point5 PROPERTIES ( id ) LABEL Pnt
+	)
+EDGE TABLES (
+	know5	SOURCE KEY ( src ) REFERENCES Point5 ( id )
+			DESTINATION KEY ( dst ) REFERENCES Point5 ( id )
+			LABEL Knows
+	);
+
+query III
+WITH cte1 AS (
+	SELECT  CREATE_CSR_EDGE(
+			0,
+			(SELECT count(a.id) FROM Point5 a),
+			CAST (
+				(SELECT sum(CREATE_CSR_VERTEX(
+							0,
+							(SELECT count(a.id) FROM Point5 a),
+							sub.dense_id,
+							sub.cnt)
+							)
+				FROM (
+					SELECT a.rowid as dense_id, count(k.src) as cnt
+					FROM Point5 a
+					LEFT JOIN know5 k ON k.src = a.id
+					GROUP BY a.rowid) sub
+				)
+			AS BIGINT),
+			a.rowid,
+			c.rowid,
+			k.rowid) as temp
+	FROM know5 k
+	JOIN Point5 a on a.id = k.src
+	JOIN Point5 c on c.id = k.dst
+) SELECT a.id, b.id, iterativelength_lowerbound(0, (select count(*) from Point5), a.rowid, b.rowid, 3, 10) as path_length
+		FROM Point5 a, Point5 b, (select count(cte1.temp) * 0 as temp from cte1) __x
+		WHERE __x.temp * 0 + iterativelength_lowerbound(0, (select count(*) from Point5), a.rowid, b.rowid, 3, 10);
+----
+0	0	3
+0	1	4
+0	2	4
+0	3	5
+0	4	5
+2	0	5
+2	1	3
+2	2	3
+2	3	4
+2	4	4
+3	0	4
+3	1	5
+3	2	5
+3	3	3
+3	4	3
