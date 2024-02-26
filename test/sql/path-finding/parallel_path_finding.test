@@ -8,25 +8,13 @@ PRAGMA enable_verification
 require duckpgq
 
 statement ok
-CREATE TABLE pairs(src INT, dst INT);
+CREATE TABLE pairs(src INT, dst INT); INSERT INTO pairs(src, dst) VALUES (1, 2), (2, 3), (3,1), (3, 2), (6, 1), (4,2);
 
 statement ok
-INSERT INTO pairs(src, dst) VALUES (1, 2), (2, 3), (3,1), (3, 2), (6, 1), (4,2);
+create table student(id INT); INSERT INTO student(id) VALUES (1), (2), (3);
 
 statement ok
-create table student(id INT);
-
-statement ok
-INSERT INTO student(id) VALUES (1), (2), (3);
-
-statement ok
-create table knows(src INT, dst INT);
-
-statement ok
-INSERT INTO knows(src, dst) VALUES (1,3), (1,1), (2,1), (2,3), (3,1), (NULL, NULL), (NULL, NULL)
-
-statement ok
-create table foo(i bigint);
+create table knows(src INT, dst INT); INSERT INTO knows(src, dst) VALUES (1,3), (1,1), (2,1), (2,3), (3,1), (NULL, NULL), (NULL, NULL);
 
 #query II
 #SELECT *
@@ -37,18 +25,19 @@ create table foo(i bigint);
 statement ok
 -CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
-foo
+student
 )
 EDGE TABLES (
-knows   SOURCE KEY (src) REFERENCES foo (i)
-        DESTINATION KEY (dst) references foo (i)
-)
+knows   SOURCE KEY (src) REFERENCES student (id)
+        DESTINATION KEY (dst) references student (id)
+);
 
-statement ok
--FROM GRAPH_TABLE(pg
-    MATCH (f:foo)-[k:knows]->{0,3}(f2:foo)
+query II
+-EXPLAIN FROM GRAPH_TABLE(pg
+    MATCH (f:student)-[k:knows]->{0,3}(f2:student)
     COLUMNS (*)
     );
+----
 
 query II
 SELECT *

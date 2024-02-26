@@ -1,14 +1,15 @@
 #pragma once
 
-#include "duckpgq/common.hpp"
-#include "duckdb/parser/sql_statement.hpp"
+#include "duckdb/common/compressed_sparse_row.hpp"
+#include "duckdb/parser/column_list.hpp"
+#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/parser/query_node.hpp"
-#include "duckdb/parser/column_list.hpp"
 #include "duckdb/parser/simplified_token.hpp"
-#include "duckdb/common/compressed_sparse_row.hpp"
-#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
+#include "duckdb/parser/sql_statement.hpp"
 #include "duckdb/planner/operator/logical_comparison_join.hpp"
+#include "duckpgq/common.hpp"
+#include "duckpgq/operators/path_finding_operator.hpp"
 
 namespace duckdb {
 
@@ -47,6 +48,8 @@ public:
       return;
     }
     std::cout << "Between expression found";
+
+    plan = make_uniq<PathFindingOperator>(plan->children);
 
   }
 };
