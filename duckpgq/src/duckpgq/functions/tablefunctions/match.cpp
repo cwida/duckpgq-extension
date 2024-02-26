@@ -357,8 +357,7 @@ PGQMatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
   outer_select_statement->node = std::move(outer_select_node);
   auto csr_subquery = make_uniq<SubqueryExpression>();
   csr_subquery->subquery = std::move(outer_select_statement);
-  csr_subquery->subquery_type = SubqueryType::ANY;
-  csr_subquery->comparison_type = ExpressionType::COMPARE_EQUAL;
+  csr_subquery->subquery_type = SubqueryType::SCALAR;
   return csr_subquery;
 }
 
