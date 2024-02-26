@@ -44,6 +44,7 @@ static void LoadInternal(DatabaseInstance &instance) {
   DuckPGQParserExtension pgq_parser;
   config.parser_extensions.push_back(pgq_parser);
   config.operator_extensions.push_back(make_uniq<DuckPGQOperatorExtension>());
+  config.optimizer_extensions.push_back(DuckpgqOptimizerExtension());
 
   Connection con(instance);
   con.BeginTransaction();

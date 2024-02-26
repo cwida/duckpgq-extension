@@ -8,6 +8,7 @@
 #include "duckdb/parser/simplified_token.hpp"
 #include "duckdb/common/compressed_sparse_row.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
+#include "duckdb/planner/operator/logical_comparison_join.hpp"
 
 namespace duckdb {
 
@@ -23,8 +24,29 @@ public:
     optimize_function = DuckpgqOptimizeFunction;
   }
 
+  static bool HasBetweenExpression(LogicalOperator &op) {
+    if (op.type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN) {
+      auto &get = op.Cast<LogicalComparisonJoin>();
+      for (auto &expression : get.expressions) {
+        if (expression->expression_class == ExpressionClass::BOUND_BETWEEN) {
+          return true;
+        }
+      }
+    }
+    for (auto &child : op.children) {
+      if (HasBetweenExpression(*child)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   static void DuckpgqOptimizeFunction(ClientContext &context, OptimizerExtensionInfo *info,
                                      duckdb::unique_ptr<LogicalOperator> &plan) {
+    if (!HasBetweenExpression(*plan)) {
+      return;
+    }
+    std::cout << "Between expression found";
 
   }
 };
