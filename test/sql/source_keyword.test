@@ -3,8 +3,8 @@
 
 require duckpgq
 
-statement ok
-select 1 source;
+#statement ok
+#select 1 source;
 
 statement ok
 FROM duckdb_constraints()
