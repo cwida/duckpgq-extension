@@ -1,0 +1,16 @@
+# name: test/sql/sqlpgq/snb.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+from duckdb_columns;
+
+statement ok
+from duckdb_constraints();
+
+statement ok
+select * from information_schema.columns;
+
+statement ok
+select * from information_schema.tables;
