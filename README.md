@@ -1,5 +1,5 @@
 # DuckPGQ
-A DuckDB extension for graph workloads that supports the SQL/PGQ standard. 
+A DuckDB extension for graph workloads that supports the SQL/PGQ standard. For more information, please see the [documentation page](https://duckpgq.notion.site/duckpgq/b8ac652667964f958bfada1c3e53f1bb?v=3b47a8d44bdf4e0c8b503bf23f1b76f2).
 
 # WIP Disclaimer
 This repository is currently a research project and a work in progress. Feel free to play around with it and give us feedback. NOTE: Currently any query containing SQL/PGQ syntax requires a `-` at the start of the query (else you will get a segmentation fault). 
@@ -11,7 +11,7 @@ git clone --recurse-submodules git@github.com:cwida/duckpgq-extension.git
 ```
 Note that `--recurse-submodules` will ensure the correct version of DuckDB is pulled allowing you to get started right away.
 
-This repository uses a modified version of DuckDB (currently a modified v0.8.1) and is not yet easily installed from a standard DuckDB (e.g. `pip install duckdb`) installation. 
+This repository uses a modified version of DuckDB (Currently up-to-date with v0.10.0) and is not yet easily installed from a standard DuckDB (e.g. `pip install duckdb`) installation. 
 If you want to use the SQL/PGQ syntax, you will have to build this repository from the source. 
 In the future, we aim to have an easily installed and loaded DuckDB extension. 
 
