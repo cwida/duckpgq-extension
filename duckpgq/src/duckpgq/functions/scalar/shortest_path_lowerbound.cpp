@@ -12,13 +12,12 @@
 namespace duckdb {
 
 static bool IterativeLengthLowerBound(int64_t v_size, int64_t *V, vector<int64_t> &E,
-                            vector<int64_t> &edge_ids,
-                            // vector<vector<unordered_set<int64_t>>> &parents_v,
-                            vector<vector<vector<int64_t>>> &paths_v,
-                            vector<vector<vector<int64_t>>> &paths_e,
-                            vector<std::bitset<LANE_LIMIT>> &seen,
-                            vector<std::bitset<LANE_LIMIT>> &visit,
-                            vector<std::bitset<LANE_LIMIT>> &next) {
+                                      vector<int64_t> &edge_ids,
+                                      vector<vector<vector<int64_t>>> &paths_v,
+                                      vector<vector<vector<int64_t>>> &paths_e,
+                                      vector<std::bitset<LANE_LIMIT>> &seen,
+                                      vector<std::bitset<LANE_LIMIT>> &visit,
+                                      vector<std::bitset<LANE_LIMIT>> &next) {
   bool change = false;
   // map<pair<int64_t, int64_t>, unordered_set<int64_t>> parents_v_cache;
   map<pair<int64_t, int64_t>, vector<int64_t>> paths_v_cache;
@@ -36,7 +35,8 @@ static bool IterativeLengthLowerBound(int64_t v_size, int64_t *V, vector<int64_t
 
         for (auto lane = 0; lane < LANE_LIMIT; lane++) {
           if (visit[v][lane]) {
-            //! If the node has not been visited, then update the parent and edge
+            //! If the node has not been visited, then update the parent and 
+            //! edge
             if (seen[n][lane] == false) {
               if (visit[n][lane]) {
                 // parents_v_cache[make_pair(n, lane)] = parents_v[v][lane];
@@ -54,20 +54,17 @@ static bool IterativeLengthLowerBound(int64_t v_size, int64_t *V, vector<int64_t
                 paths_e[n][lane].push_back(edge_id);
               }
               next[n][lane] = true;
-            } 
+            }
           }
         }
       }
     }
   }
 
-  // for (auto const& cache: parents_v_cache) {
-  //   parents_v[cache.first.first][cache.first.second] = cache.second;
-  // }
-  for (auto const& cache: paths_v_cache) {
+  for (auto const &cache : paths_v_cache) {
     paths_v[cache.first.first][cache.first.second] = cache.second;
   }
-  for (auto const& cache: paths_e_cache) {
+  for (auto const &cache : paths_e_cache) {
     paths_e[cache.first.first][cache.first.second] = cache.second;
   }
 
@@ -78,8 +75,9 @@ static bool IterativeLengthLowerBound(int64_t v_size, int64_t *V, vector<int64_t
   return change;
 }
 
-static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &state,
-                                 Vector &result) {
+static void ShortestPathLowerBoundFunction(DataChunk &args,
+                                           ExpressionState &state,
+                                           Vector &result) {
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
   auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
@@ -129,10 +127,10 @@ static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &sta
   vector<std::bitset<LANE_LIMIT>> visit1(v_size);
   vector<std::bitset<LANE_LIMIT>> visit2(v_size);
 
-  // vector<vector<unordered_set<int64_t>>> parents_v(v_size, std::vector<unordered_set<int64_t>>(LANE_LIMIT));
-  vector<vector<vector<int64_t>>> paths_v(v_size, std::vector<vector<int64_t>>(LANE_LIMIT));
-  vector<vector<vector<int64_t>>> paths_e(v_size, std::vector<vector<int64_t>>(LANE_LIMIT)); 
-  
+  vector<vector<vector<int64_t>>> paths_v(
+      v_size, std::vector<vector<int64_t>>(LANE_LIMIT));
+  vector<vector<vector<int64_t>>> paths_e(
+      v_size, std::vector<vector<int64_t>>(LANE_LIMIT));
 
   // maps lane to search number
   int16_t lane_to_num[LANE_LIMIT];
@@ -171,9 +169,9 @@ static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &sta
     //! make passes while a lane is still active
     for (int64_t iter = 1; active && iter <= upper_bound; iter++) {
       //! Perform one step of bfs exploration
-      if (!IterativeLengthLowerBound(v_size, v, e, edge_ids, paths_v, paths_e, seen,
-                           (iter & 1) ? visit1 : visit2,
-                           (iter & 1) ? visit2 : visit1)) {
+      if (!IterativeLengthLowerBound(
+              v_size, v, e, edge_ids, paths_v, paths_e, seen,
+              (iter & 1) ? visit1 : visit2, (iter & 1) ? visit2 : visit1)) {
         break;
       }
       // detect lanes that finished
@@ -192,7 +190,7 @@ static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &sta
               auto it_v = paths_v[dst_data[dst_pos]][lane].begin(),
                    end_v = paths_v[dst_data[dst_pos]][lane].end();
               auto it_e = paths_e[dst_data[dst_pos]][lane].begin(),
-                  end_e = paths_e[dst_data[dst_pos]][lane].end();
+                   end_e = paths_e[dst_data[dst_pos]][lane].end();
               while (it_v != end_v && it_e != end_e) {
                 output_vector.push_back(*it_v);
                 output_vector.push_back(*it_e);
@@ -200,7 +198,8 @@ static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &sta
                 it_e++;
               }
               output_vector.push_back(dst_data[dst_pos]);
-              auto output = make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
+              auto output =
+                  make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
               for (auto val : output_vector) {
                 Value value_to_insert = val;
                 ListVector::PushBack(*output, value_to_insert);
@@ -208,7 +207,7 @@ static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &sta
               result_data[search_num].length = ListVector::GetListSize(*output);
               result_data[search_num].offset = total_len;
               ListVector::Append(result, ListVector::GetEntry(*output),
-                                ListVector::GetListSize(*output));
+                                 ListVector::GetListSize(*output));
               total_len += result_data[search_num].length;
               lane_to_num[lane] = -1; // mark inactive
             }
@@ -222,7 +221,7 @@ static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &sta
       int64_t search_num = lane_to_num[lane];
       if (search_num >= 0) { // active lane
         result_validity.SetInvalid(search_num);
-        lane_to_num[lane] = -1;                // mark inactive
+        lane_to_num[lane] = -1; // mark inactive
       }
     }
   }
@@ -230,13 +229,12 @@ static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &sta
 }
 
 // CreateScalarFunctionInfo DuckPGQFunctions::GetShortestPathLowerBoundFunction() {
-//   auto fun = ScalarFunction("shortestpath_lowerbound",
-//                             {LogicalType::INTEGER, LogicalType::BIGINT,
-//                              LogicalType::BIGINT, LogicalType::BIGINT,
-//                              LogicalType::BIGINT, LogicalType::BIGINT},
-//                             LogicalType::LIST(LogicalType::BIGINT),
-//                             ShortestPathLowerBoundFunction,
-//                             IterativeLengthFunctionData::IterativeLengthBind);
+//   auto fun = ScalarFunction(
+//        "shortestpath_lowerbound",
+//        {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
+//         LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+//        LogicalType::LIST(LogicalType::BIGINT), ShortestPathLowerBoundFunction,
+//        IterativeLengthFunctionData::IterativeLengthBind);
 //   return CreateScalarFunctionInfo(fun);
 // }
 
