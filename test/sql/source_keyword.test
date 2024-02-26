@@ -1,0 +1,65 @@
+# name: test/sql/sqlpgq/snb.test
+# group: [duckpgq]
+
+require duckpgq
+
+#statement ok
+#select 1 source;
+
+statement ok
+FROM duckdb_constraints()
+
+statement ok
+SELECT
+      *,
+      regexp_extract(constraint_text, 'FOREIGN KEY \\(([a-zA-Z_0-9]+)\\) REFERENCES ([a-zA-Z_0-9]+)\\(([a-zA-Z_0-9]+)\\)', ['source', 'target', 'target_column']) AS name_extract
+    FROM duckdb_constraints()
+    WHERE constraint_type = 'FOREIGN KEY'
+
+statement ok
+SELECT
+    *,
+    name_extract['source'] AS source,
+    name_extract['target'] AS target,
+    name_extract['target_column'] AS target_column
+FROM (
+    SELECT
+      *,
+      regexp_extract(constraint_text, 'FOREIGN KEY \\(([a-zA-Z_0-9]+)\\) REFERENCES ([a-zA-Z_0-9]+)\\(([a-zA-Z_0-9]+)\\)', ['source', 'target', 'target_column']) AS name_extract
+    FROM duckdb_constraints()
+    WHERE constraint_type = 'FOREIGN KEY'
+);
+
+
+statement ok
+SELECT
+  f.database_name AS constraint_catalog,
+  f.schema_name AS constraint_schema,
+  CONCAT(f.source, '_', f.target, '_', f.target_column, '_fkey') AS constraint_name,
+  current_database() AS unique_constraint_catalog,
+  c.schema_name AS unique_constraint_schema,
+  CONCAT(c.table_name, '_', f.target_column, '_',
+        CASE WHEN c.constraint_type = 'UNIQUE' THEN 'key' ELSE 'pkey' END) AS unique_constraint_name,
+  'NONE' AS match_option,
+  'NO ACTION' AS update_rule,
+  'NO ACTION' AS delete_rule
+FROM duckdb_constraints() c
+JOIN (
+  SELECT
+    *,
+    name_extract['source'] AS source,
+    name_extract['target'] AS target,
+    name_extract['target_column'] AS target_column
+  FROM (
+    SELECT
+      *,
+      regexp_extract(constraint_text, 'FOREIGN KEY \\(([a-zA-Z_0-9]+)\\) REFERENCES ([a-zA-Z_0-9]+)\\(([a-zA-Z_0-9]+)\\)', ['source', 'target', 'target_column']) AS name_extract
+    FROM duckdb_constraints()
+    WHERE constraint_type = 'FOREIGN KEY'
+  )
+) f ON name_extract['target'] = c.table_name
+AND (c.constraint_type = 'UNIQUE' OR c.constraint_type = 'PRIMARY KEY');
+
+
+statement ok
+FROM information_schema.tables;
