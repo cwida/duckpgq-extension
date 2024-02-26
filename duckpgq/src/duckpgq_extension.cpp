@@ -9,6 +9,7 @@
 #include "duckpgq/duckpgq_functions.hpp"
 
 #include "duckdb/parser/parser_extension.hpp"
+#include "duckdb/optimizer/optimizer_extension.hpp"
 #include "duckdb/parser/parser.hpp"
 
 #include "duckdb/parser/tableref/table_function_ref.hpp"

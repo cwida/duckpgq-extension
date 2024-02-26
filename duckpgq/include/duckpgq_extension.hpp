@@ -17,6 +17,18 @@ public:
   std::string Name() override;
 };
 
+class DuckpgqOptimizerExtension : public OptimizerExtension {
+public:
+  DuckpgqOptimizerExtension() {
+    optimize_function = DuckpgqOptimizeFunction;
+  }
+
+  static void DuckpgqOptimizeFunction(ClientContext &context, OptimizerExtensionInfo *info,
+                                     duckdb::unique_ptr<LogicalOperator> &plan) {
+
+  }
+};
+
 struct DuckPGQParserExtensionInfo : public ParserExtensionInfo {
 public:
   DuckPGQParserExtensionInfo() : ParserExtensionInfo(){};
