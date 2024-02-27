@@ -163,7 +163,6 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &
   auto result_data = FlatVector::GetData<int64_t>(result);
 
   // create temp SIMD arrays
-  vector<std::bitset<LANE_LIMIT>> seen(v_size);
   vector<std::bitset<LANE_LIMIT>> visit1(v_size);
   vector<std::bitset<LANE_LIMIT>> visit2(v_size);
 
@@ -178,7 +177,6 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &
 
     // empty visit vectors
     for (auto i = 0; i < v_size; i++) {
-      seen[i] = 0;
       visit1[i] = 0;
     }
 
@@ -236,14 +234,15 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
-// CreateScalarFunctionInfo DuckPGQFunctions::GetIterativeLengthLowerBoundFunction() {
-//   auto fun = ScalarFunction("iterativelength_lowerbound",
-//                             {LogicalType::INTEGER, LogicalType::BIGINT,
-//                              LogicalType::BIGINT, LogicalType::BIGINT,
-//                              LogicalType::BIGINT, LogicalType::BIGINT},
-//                             LogicalType::BIGINT, IterativeLengthLowerBoundFunction,
-//                             IterativeLengthFunctionData::IterativeLengthBind);
-//   return CreateScalarFunctionInfo(fun);
-// }
+CreateScalarFunctionInfo 
+DuckPGQFunctions::GetIterativeLengthLowerBoundFunction() {
+  auto fun = ScalarFunction(
+      "iterativelength_lowerbound",
+      {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
+        LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+      LogicalType::BIGINT, IterativeLengthLowerBoundFunction,
+      IterativeLengthFunctionData::IterativeLengthBind);
+  return CreateScalarFunctionInfo(fun);
+}
 
 } // namespace duckdb
