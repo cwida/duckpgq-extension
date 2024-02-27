@@ -26,12 +26,24 @@ public:
   }
 
   static bool HasBetweenExpression(LogicalOperator &op) {
-    if (op.type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN) {
-      auto &get = op.Cast<LogicalComparisonJoin>();
-      for (auto &condition : get.conditions) {
-        if (condition.comparison == ExpressionType::COMPARE_GREATERTHANOREQUALTO) {
-          return true;
-        }
+//    if (op.type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN) {
+//      auto &get = op.Cast<LogicalComparisonJoin>();
+//      for (auto &condition : get.conditions) {
+//        if (condition.comparison == ExpressionType::COMPARE_GREATERTHANOREQUALTO) {
+//          unique_ptr<LogicalPathFindingOperator> path_finding_operator = make_uniq<LogicalPathFindingOperator>(op.children);
+//          op.children.push_back(path_finding_operator);
+//          return true;
+//        }
+//      }
+//    }
+    for (auto &child : op.children) {
+      if (child->type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN) {
+        auto &get = child->Cast<LogicalComparisonJoin>();
+        auto path_finding_operator =
+            make_uniq<LogicalPathFindingOperator>(get.children);
+        op.children.clear();
+        op.children.push_back(std::move(path_finding_operator));
+        return true;
       }
     }
     for (auto &child : op.children) {
@@ -48,7 +60,7 @@ public:
       return;
     }
     std::cout << "Between expression found";
-    plan = make_uniq<LogicalPathFindingOperator>(plan->children);
+//    plan = make_uniq<LogicalPathFindingOperator>(plan->children);
 
   }
 };
