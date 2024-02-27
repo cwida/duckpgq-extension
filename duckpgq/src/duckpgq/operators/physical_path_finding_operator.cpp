@@ -13,7 +13,7 @@ namespace duckdb {
 PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
                                          unique_ptr<PhysicalOperator> left,
                                          unique_ptr<PhysicalOperator> right)
-    : CachingPhysicalOperator(TYPE,  op.types, 0) {
+    : PhysicalComparisonJoin(op, TYPE, {}, JoinType::INNER, 0) {
   children.push_back(std::move(left));
   children.push_back(std::move(right));
 }

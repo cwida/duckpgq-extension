@@ -8,11 +8,12 @@
 
 #pragma once
 
+#include "duckdb/execution/operator/join/physical_comparison_join.hpp"
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 
 namespace duckdb {
-class PhysicalPathFinding : public CachingPhysicalOperator {
+class PhysicalPathFinding : public PhysicalComparisonJoin {
 public:
   static constexpr const PhysicalOperatorType TYPE =
       PhysicalOperatorType::EXTENSION;
