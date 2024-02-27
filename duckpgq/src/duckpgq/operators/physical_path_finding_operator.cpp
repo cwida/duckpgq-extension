@@ -114,13 +114,17 @@ class PathFindingLocalSourceState : public LocalSourceState {
 public:
   explicit PathFindingLocalSourceState(ClientContext &context,
                                        const PhysicalPathFinding &op)
-      : op(op), true_sel(STANDARD_VECTOR_SIZE) {
+      : op(op), true_sel(STANDARD_VECTOR_SIZE), left_executor(context), right_executor(context){
   }
 
   const PhysicalPathFinding &op;
 
   // Trailing predicates
   SelectionVector true_sel;
+
+  ExpressionExecutor left_executor;
+  ExpressionExecutor right_executor;
+
 };
 
 class PathFindingGlobalSourceState : public GlobalSourceState {
