@@ -18,4 +18,10 @@ vector<ColumnBinding> LogicalPathFindingOperator::GetColumnBindings() {
   left_bindings.insert(left_bindings.end(), right_bindings.begin(), right_bindings.end());
   return left_bindings;
 }
+
+void LogicalPathFindingOperator::ResolveTypes() {
+  types = children[0]->types;
+  auto right_types = children[1]->types;
+  types.insert(types.end(), right_types.begin(), right_types.end());
+}
 } // namespace duckdb

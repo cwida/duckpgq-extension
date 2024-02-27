@@ -20,7 +20,7 @@ public:
 
   std::string GetName() const override { return "PATH_FINDING"; }
 
-  void ResolveTypes() override {};
+  void ResolveTypes() override;
 };
 
 } // namespace duckdb
