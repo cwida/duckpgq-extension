@@ -33,7 +33,7 @@ knows   SOURCE KEY (src) REFERENCES student (id)
 );
 
 query II
--EXPLAIN FROM GRAPH_TABLE(pg
+-FROM GRAPH_TABLE(pg
     MATCH (f:student)-[k:knows]->{0,3}(f2:student)
     COLUMNS (*)
     );
