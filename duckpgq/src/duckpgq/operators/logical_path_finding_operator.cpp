@@ -13,6 +13,6 @@ unique_ptr<PhysicalOperator> LogicalPathFindingOperator::CreatePlan(
                                         std::move(right));
 }
 vector<ColumnBinding> LogicalPathFindingOperator::GetColumnBindings() {
-  return LogicalOperator::GetColumnBindings();
+  throw NotImplementedException("Column binding for path finding operator is not yet implemented.");
 }
 } // namespace duckdb
