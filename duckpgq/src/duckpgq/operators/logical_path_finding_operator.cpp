@@ -1,6 +1,6 @@
 
-#include "duckpgq/operators/path_finding_operator.hpp"
-#include <duckpgq/operators/physical_path_finding.hpp>
+#include "duckpgq/operators/logical_path_finding_operator.hpp"
+#include <duckpgq/operators/physical_path_finding_operator.hpp>
 #include <duckpgq_extension.hpp>
 
 namespace duckdb {
