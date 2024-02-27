@@ -25,7 +25,7 @@ public:
     optimize_function = DuckpgqOptimizeFunction;
   }
 
-  static bool HasBetweenExpression(LogicalOperator &op) {
+  static bool InsertPathFindingOperator(LogicalOperator &op) {
 //    if (op.type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN) {
 //      auto &get = op.Cast<LogicalComparisonJoin>();
 //      for (auto &condition : get.conditions) {
@@ -47,7 +47,7 @@ public:
       }
     }
     for (auto &child : op.children) {
-      if (HasBetweenExpression(*child)) {
+      if (InsertPathFindingOperator(*child)) {
         return true;
       }
     }
@@ -56,12 +56,9 @@ public:
 
   static void DuckpgqOptimizeFunction(ClientContext &context, OptimizerExtensionInfo *info,
                                      duckdb::unique_ptr<LogicalOperator> &plan) {
-    if (!HasBetweenExpression(*plan)) {
+    if (!InsertPathFindingOperator(*plan)) {
       return;
     }
-    std::cout << "Between expression found";
-//    plan = make_uniq<LogicalPathFindingOperator>(plan->children);
-
   }
 };
 
