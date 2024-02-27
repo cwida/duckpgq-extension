@@ -2,8 +2,8 @@
 
 #include "duckpgq_extension.hpp"
 
-#include <duckpgq/operators/path_finding_operator.hpp>
 #include <duckdb/parser/statement/insert_statement.hpp>
+#include <duckpgq/operators/logical_path_finding_operator.hpp>
 
 #include "duckdb/function/scalar_function.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
