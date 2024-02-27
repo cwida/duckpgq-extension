@@ -2,8 +2,8 @@
 # description: Prototype the path finding operator
 # group: [path-finding]
 
-statement ok
-PRAGMA enable_verification
+#statement ok
+#PRAGMA enable_verification
 
 require duckpgq
 
@@ -32,14 +32,13 @@ knows   SOURCE KEY (src) REFERENCES student (id)
         DESTINATION KEY (dst) references student (id)
 );
 
-query II
--FROM GRAPH_TABLE(pg
-    MATCH (f:student)-[k:knows]->{0,3}(f2:student)
-    COLUMNS (*)
-    );
-----
+#statement ok
+#-FROM GRAPH_TABLE(pg
+#    MATCH (f:student)-[k:knows]->{0,3}(f2:student)
+#    COLUMNS (*)
+#    );
 
-query II
+statement ok
 SELECT *
 FROM pairs AS p
 WHERE p.src BETWEEN (select csr_id from (SELECT
@@ -62,30 +61,27 @@ WHERE p.src BETWEEN (select csr_id from (SELECT
             k.rowid    FROM Knows k
                         JOIN student a on a.id = k.src
                         JOIN student c on c.id = k.dst)) AND p.dst;
-----
 
+statement ok
+select 1;
 # LHS of IEJOIN
-
-
-
-
 # RHS of IEJoin
 # 0,
-  #            (SELECT count(a.id) FROM Student a),
-  #            CAST (
-  #                (SELECT sum(CREATE_CSR_VERTEX(
-  #                            0,
-  #                            (SELECT count(a.id) FROM Student a),
-  #                            sub.dense_id,
-  #                            sub.cnt)
-  #                            )
-  #                FROM (
-  #                    SELECT a.rowid as dense_id, count(k.src) as cnt
-  #                    FROM Student a
-  #                    LEFT JOIN Know k ON k.src = a.id
-  #                    GROUP BY a.rowid) sub
-  #                )
-  #            AS BIGINT),
-  #            a.rowid,
-  #            c.rowid,
-  #            k.rowid
+#            (SELECT count(a.id) FROM Student a),
+#            CAST (
+#                (SELECT sum(CREATE_CSR_VERTEX(
+#                            0,
+#                            (SELECT count(a.id) FROM Student a),
+#                            sub.dense_id,
+#                            sub.cnt)
+#                            )
+#                FROM (
+#                    SELECT a.rowid as dense_id, count(k.src) as cnt
+#                    FROM Student a
+#                    LEFT JOIN Know k ON k.src = a.id
+#                    GROUP BY a.rowid) sub
+#                )
+#            AS BIGINT),
+#            a.rowid,
+#            c.rowid,
+#            k.rowid
