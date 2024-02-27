@@ -3,9 +3,9 @@
 
 namespace duckdb {
 
-	class PathFindingOperator : public LogicalExtensionOperator {
+	class LogicalPathFindingOperator : public LogicalExtensionOperator {
 	public:
-		explicit PathFindingOperator(unique_ptr<LogicalOperator> plan) {
+		explicit LogicalPathFindingOperator(unique_ptr<LogicalOperator> plan) {
 			children.emplace_back(std::move(plan));
 		}
 
