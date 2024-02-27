@@ -3,24 +3,22 @@
 
 namespace duckdb {
 
-	class LogicalPathFindingOperator : public LogicalExtensionOperator {
-	public:
-		explicit LogicalPathFindingOperator(unique_ptr<LogicalOperator> plan) {
-			children.emplace_back(std::move(plan));
-		}
+class LogicalPathFindingOperator : public LogicalExtensionOperator {
+public:
+  explicit LogicalPathFindingOperator(unique_ptr<LogicalOperator> plan) {
+    children.emplace_back(std::move(plan));
+  }
 
-		void Serialize(Serializer &serializer) const override {
-			throw InternalException("Path Finding Operator should not be serialized");
-		}
+  void Serialize(Serializer &serializer) const override {
+    throw InternalException("Path Finding Operator should not be serialized");
+  }
 
-		unique_ptr<PhysicalOperator> CreatePlan(ClientContext &context, PhysicalPlanGenerator &generator) override;
+  unique_ptr<PhysicalOperator>
+  CreatePlan(ClientContext &context, PhysicalPlanGenerator &generator) override;
 
-		vector<ColumnBinding> GetColumnBindings() override;
+  vector<ColumnBinding> GetColumnBindings() override;
 
-		std::string GetName() const override {
-			return "PATH_FINDING";
-		}
-	};
+  std::string GetName() const override { return "PATH_FINDING"; }
+};
 
-
-}
+} // namespace duckdb
