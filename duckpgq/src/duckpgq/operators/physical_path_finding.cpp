@@ -1,4 +1,4 @@
-#include "duckpgq/operators/physical_path_finding.hpp"
+#include "duckpgq/operators/physical_path_finding_operator.hpp"
 
 #include "duckdb/common/sort/sort.hpp"
 #include "duckdb/execution/physical_operator.hpp"

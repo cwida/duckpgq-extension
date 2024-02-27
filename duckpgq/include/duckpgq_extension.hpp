@@ -9,7 +9,7 @@
 #include "duckdb/parser/sql_statement.hpp"
 #include "duckdb/planner/operator/logical_comparison_join.hpp"
 #include "duckpgq/common.hpp"
-#include "duckpgq/operators/path_finding_operator.hpp"
+#include "duckpgq/operators/logical_path_finding_operator.hpp"
 
 namespace duckdb {
 
@@ -28,8 +28,8 @@ public:
   static bool HasBetweenExpression(LogicalOperator &op) {
     if (op.type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN) {
       auto &get = op.Cast<LogicalComparisonJoin>();
-      for (auto &expression : get.expressions) {
-        if (expression->expression_class == ExpressionClass::BOUND_BETWEEN) {
+      for (auto &condition : get.conditions) {
+        if (condition.comparison == ExpressionType::COMPARE_GREATERTHANOREQUALTO) {
           return true;
         }
       }
@@ -48,8 +48,7 @@ public:
       return;
     }
     std::cout << "Between expression found";
-
-    plan = make_uniq<PathFindingOperator>(plan->children);
+    plan = make_uniq<LogicalPathFindingOperator>(plan->children);
 
   }
 };
