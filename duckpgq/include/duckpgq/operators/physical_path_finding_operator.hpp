@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckDB
 //
-// duckdb/execution/operator/join/physical_path_finding.hpp
+// duckpgq/operators/physical_path_finding_operator.hpp
 //
 //
 //===----------------------------------------------------------------------===//
