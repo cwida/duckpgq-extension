@@ -13,6 +13,23 @@
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 
 namespace duckdb {
+
+class CompressedSparseRow {
+  CompressedSparseRow() {};
+  ~CompressedSparseRow() {
+    delete[] v;
+  }
+  atomic<int64_t> *v;
+  vector<int64_t> e;
+  vector<int64_t> edge_ids;
+  vector<int64_t> w;
+  vector<double> w_double;
+  bool initialized_v = false;
+  bool initialized_e = false;
+  bool initialized_w = false;
+  size_t vsize;
+};
+
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 public:
   static constexpr const PhysicalOperatorType TYPE =
