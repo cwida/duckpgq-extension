@@ -18,17 +18,20 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
   children.push_back(std::move(right));
 }
 
+PhysicalPathFinding::LocalCompressedSparseRow::LocalCompressedSparseRow(
+    duckdb::ClientContext &context, const duckdb::PhysicalPathFinding &op) :
+      op(op), executor(context) {}
+
 //===--------------------------------------------------------------------===//
 // Sink
 //===--------------------------------------------------------------------===//
 class PathFindingLocalState : public LocalSinkState {
 public:
+  using LocalCompressedSparseRow = PhysicalPathFinding::LocalCompressedSparseRow;
   PathFindingLocalState(ClientContext &context, const PhysicalPathFinding &op,
                         const idx_t child)
-      : context(context), op(op), child(child) {}
-  ClientContext &context;
-  const PhysicalPathFinding &op;
-  const idx_t child;
+      : local_csr(context, op) {}
+  LocalCompressedSparseRow local_csr;
 };
 
 class PathFindingGlobalState : public GlobalSinkState {
@@ -36,6 +39,9 @@ class PathFindingGlobalState : public GlobalSinkState {
 public:
   PathFindingGlobalState(ClientContext &context,
                          const PhysicalPathFinding &op) {
+    RowLayout rhs_layout;
+    rhs_layout.Initialize(op.children[1]->types);
+    csr = make_uniq<GlobalCompressedSparseRow>(context, rhs_layout);
     }
 
   PathFindingGlobalState(PathFindingGlobalState &prev)
@@ -43,7 +49,7 @@ public:
 
   void Sink(DataChunk &input, PathFindingLocalState &lstate) {}
 
-  unique_ptr<CompressedSparseRow> csr;
+  unique_ptr<GlobalCompressedSparseRow> csr;
 
 };
 

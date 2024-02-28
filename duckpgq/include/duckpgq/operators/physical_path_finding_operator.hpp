@@ -8,29 +8,53 @@
 
 #pragma once
 
+#include "duckdb/common/types/row/row_layout.hpp"
 #include "duckdb/execution/operator/join/physical_comparison_join.hpp"
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 
 namespace duckdb {
 
-class CompressedSparseRow {
-  CompressedSparseRow() {};
-  ~CompressedSparseRow() {
-    delete[] v;
-  }
-  atomic<int64_t> *v;
-  vector<int64_t> e;
-  vector<int64_t> edge_ids;
-  vector<int64_t> w;
-  vector<double> w_double;
-  bool initialized_v = false;
-  bool initialized_e = false;
-  bool initialized_w = false;
-  size_t vsize;
-};
+struct GlobalCompressedSparseRow;
 
 class PhysicalPathFinding : public PhysicalComparisonJoin {
+public:
+  class LocalCompressedSparseRow {
+  public:
+    LocalCompressedSparseRow(ClientContext &context,
+                             const PhysicalPathFinding &op);
+
+    void Sink(DataChunk &input, GlobalCompressedSparseRow &global_csr);
+
+
+    //! The hosting operator
+    const PhysicalPathFinding &op;
+    //! Holds a vector of incoming columns
+    DataChunk keys;
+    //! Local copy of the expression executor
+    ExpressionExecutor executor
+
+  };
+
+  class GlobalCompressedSparseRow {
+  public:
+    GlobalCompressedSparseRow(ClientContext &context,
+                              RowLayout &payload_layout){
+
+    };
+    ~GlobalCompressedSparseRow() { delete[] v; }
+
+    atomic<int64_t> *v;
+    vector<int64_t> e;
+    vector<int64_t> edge_ids;
+    vector<int64_t> w;
+    vector<double> w_double;
+    bool initialized_v = false;
+    bool initialized_e = false;
+    bool initialized_w = false;
+    size_t vsize;
+  };
+
 public:
   static constexpr const PhysicalOperatorType TYPE =
       PhysicalOperatorType::EXTENSION;
@@ -39,10 +63,6 @@ public:
   PhysicalPathFinding(LogicalExtensionOperator &op,
                       unique_ptr<PhysicalOperator> left,
                       unique_ptr<PhysicalOperator> right);
-
-  // vector<LogicalType> join_key_types;
-  // vector<vector<BoundOrderByNode>> lhs_orders;
-  // vector<vector<BoundOrderByNode>> rhs_orders;
 
 public:
   // CachingOperator Interface
