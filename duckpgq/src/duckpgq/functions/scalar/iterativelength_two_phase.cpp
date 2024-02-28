@@ -181,7 +181,6 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &
     }
 
     // add search jobs to free lanes
-    uint64_t active = 0;
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
       lane_to_num[lane] = -1;
       while (started_searches < args.size()) {
@@ -194,7 +193,6 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &
           result_data[search_num] = (int64_t)-1; /* initialize to no path */
           visit1[src_data[src_pos]][lane] = true;
           lane_to_num[lane] = search_num; // active lane
-          active++;
           break;
         }
       }
@@ -234,15 +232,15 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
-CreateScalarFunctionInfo 
-DuckPGQFunctions::GetIterativeLengthLowerBoundFunction() {
-  auto fun = ScalarFunction(
-      "iterativelength_lowerbound",
-      {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
-        LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-      LogicalType::BIGINT, IterativeLengthLowerBoundFunction,
-      IterativeLengthFunctionData::IterativeLengthBind);
-  return CreateScalarFunctionInfo(fun);
-}
+// CreateScalarFunctionInfo 
+// DuckPGQFunctions::GetIterativeLengthLowerBoundFunction() {
+//   auto fun = ScalarFunction(
+//       "iterativelength_lowerbound",
+//       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
+//         LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+//       LogicalType::BIGINT, IterativeLengthLowerBoundFunction,
+//       IterativeLengthFunctionData::IterativeLengthBind);
+//   return CreateScalarFunctionInfo(fun);
+// }
 
 } // namespace duckdb

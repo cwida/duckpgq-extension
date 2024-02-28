@@ -16,18 +16,14 @@ static bool IterativeLengthLowerBound(int64_t v_size, int64_t *v, vector<int64_t
     next[i] = 0;
     seen[i] = 0;
   }
-
-  for (auto lane = 0; lane < LANE_LIMIT; lane++) {
-    for (auto i = 0; i < v_size; i++) {
-      if (visit[i][lane]) {
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          next[n][lane] = true;
-        }
+  for (auto i = 0; i < v_size; i++) {
+    if (visit[i].any()) {
+      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        auto n = e[offset];
+        next[n] = next[n] | visit[i];
       }
     }
   }
-
   for (auto i = 0; i < v_size; i++) {
     seen[i] = seen[i] | next[i];
     change |= next[i].any();
@@ -100,8 +96,6 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args,
   vector<std::bitset<LANE_LIMIT>> seen(v_size);
   vector<std::bitset<LANE_LIMIT>> visit1(v_size);
   vector<std::bitset<LANE_LIMIT>> visit2(v_size);
-  vector<vector<unordered_set<int64_t>>> parents_v(
-      v_size, std::vector<unordered_set<int64_t>>(LANE_LIMIT));
 
   // maps lane to search number
   short lane_to_num[LANE_LIMIT];
@@ -119,7 +113,6 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args,
     }
 
     // add search jobs to free lanes
-    uint64_t active = 0;
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
       lane_to_num[lane] = -1;
       while (started_searches < args.size()) {
@@ -132,18 +125,20 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args,
           result_data[search_num] = (int64_t)-1; /* initialize to no path */
           visit1[src_data[src_pos]][lane] = true;
           lane_to_num[lane] = search_num; // active lane
-          active++;
           break;
         }
       }
     }
 
     // make passes while a lane is still active
-    for (int64_t iter = 1; active && iter <= upper_bound; iter++) {
+    for (int64_t iter = 1; iter <= upper_bound; iter++) {
       if (!IterativeLengthLowerBound(v_size, v, e, seen, 
                                      (iter & 1) ? visit1 : visit2,
                                      (iter & 1) ? visit2 : visit1)) {
         break;
+      }
+      if (iter < lower_bound) {
+        continue;
       }
       // detect lanes that finished
       for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
@@ -151,22 +146,9 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args,
         if (search_num >= 0) { // active lane
           int64_t dst_pos = vdata_dst.sel->get_index(search_num);
           if (seen[dst_data[dst_pos]][lane]) {
-
-            // check if the path length is within bounds
-            // bound vector is either a constant or a flat vector
-            if (iter < lower_bound) {
-              // when reach the destination too early, treat destination as null
-              // looks like the graph does not have that vertex
-              // seen[dst_data[dst_pos]][lane] = false;
-              // (iter & 1) ? visit2[dst_data[dst_pos]][lane] = false
-              //            : visit1[dst_data[dst_pos]][lane] = false;
-              continue;
-            } else {
-              result_data[search_num] =
-                  iter;               /* found at iter => iter = path length */
-              lane_to_num[lane] = -1; // mark inactive
-              active--;
-            }
+            result_data[search_num] =
+                iter;               /* found at iter => iter = path length */
+            lane_to_num[lane] = -1; // mark inactive
           }
         }
       }
@@ -185,15 +167,15 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args,
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
-// CreateScalarFunctionInfo
-// DuckPGQFunctions::GetIterativeLengthLowerBoundFunction() {
-//   auto fun = ScalarFunction(
-//       "iterativelength_lowerbound",
-//       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT,
-//        LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-//       LogicalType::BIGINT, IterativeLengthLowerBoundFunction,
-//       IterativeLengthFunctionData::IterativeLengthBind);
-//   return CreateScalarFunctionInfo(fun);
-// }
+CreateScalarFunctionInfo
+DuckPGQFunctions::GetIterativeLengthLowerBoundFunction() {
+  auto fun = ScalarFunction(
+      "iterativelength_lowerbound",
+      {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT,
+       LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+      LogicalType::BIGINT, IterativeLengthLowerBoundFunction,
+      IterativeLengthFunctionData::IterativeLengthBind);
+  return CreateScalarFunctionInfo(fun);
+}
 
 } // namespace duckdb

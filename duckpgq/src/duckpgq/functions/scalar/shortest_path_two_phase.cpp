@@ -12,11 +12,11 @@
 namespace duckdb {
 
 static bool IterativeLengthPhaseOne(int64_t v_size, int64_t *V, vector<int64_t> &E,
-                            int64_t iter, vector<int64_t> &edge_ids,
-                            vector<vector<unordered_map<int64_t, int64_t>>> &paths_v,
-                            vector<vector<unordered_map<int64_t, int64_t>>> &paths_e,
-                            vector<std::bitset<LANE_LIMIT>> &visit,
-                            vector<std::bitset<LANE_LIMIT>> &next) {
+                                    int64_t iter, vector<int64_t> &edge_ids,
+                                    vector<vector<unordered_map<int64_t, int64_t>>> &paths_v,
+                                    vector<vector<unordered_map<int64_t, int64_t>>> &paths_e,
+                                    vector<std::bitset<LANE_LIMIT>> &visit,
+                                    vector<std::bitset<LANE_LIMIT>> &next) {
   bool change = false;
   for (auto v = 0; v < v_size; v++) {
     next[v] = 0;
@@ -45,12 +45,12 @@ static bool IterativeLengthPhaseOne(int64_t v_size, int64_t *V, vector<int64_t> 
 }
 
 static bool IterativeLengthPhaseTwo(int64_t v_size, int64_t *V, vector<int64_t> &E,
-                            vector<int64_t> &edge_ids,
-                            vector<std::vector<int64_t>> &parents_v,
-                            vector<std::vector<int64_t>> &parents_e,
-                            vector<std::bitset<LANE_LIMIT>> &seen,
-                            vector<std::bitset<LANE_LIMIT>> &visit,
-                            vector<std::bitset<LANE_LIMIT>> &next) {
+                                    vector<int64_t> &edge_ids,
+                                    vector<std::vector<int64_t>> &parents_v,
+                                    vector<std::vector<int64_t>> &parents_e,
+                                    vector<std::bitset<LANE_LIMIT>> &seen,
+                                    vector<std::bitset<LANE_LIMIT>> &visit,
+                                    vector<std::bitset<LANE_LIMIT>> &next) {
   bool change = false;
   for (auto v = 0; v < v_size; v++) {
     next[v] = 0;
@@ -227,6 +227,10 @@ static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &sta
     // empty visit vectors
     for (auto i = 0; i < v_size; i++) {
       visit1[i] = 0;
+      for (auto j = 0; j < LANE_LIMIT; j++) {
+        paths_v[i][j].clear();
+        paths_v[i][j].clear();
+      }
     }
 
     // add search jobs to free lanes
@@ -314,16 +318,16 @@ static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &sta
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
-CreateScalarFunctionInfo 
-DuckPGQFunctions::GetShortestPathLowerBoundFunction() {
-  auto fun = ScalarFunction(
-      "shortestpath_lowerbound",
-      {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
-       LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-      LogicalType::LIST(LogicalType::BIGINT),
-      ShortestPathLowerBoundFunction,
-      IterativeLengthFunctionData::IterativeLengthBind);
-  return CreateScalarFunctionInfo(fun);
-}
+// CreateScalarFunctionInfo 
+// DuckPGQFunctions::GetShortestPathLowerBoundFunction() {
+//   auto fun = ScalarFunction(
+//       "shortestpath_lowerbound",
+//       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
+//        LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+//       LogicalType::LIST(LogicalType::BIGINT),
+//       ShortestPathLowerBoundFunction,
+//       IterativeLengthFunctionData::IterativeLengthBind);
+//   return CreateScalarFunctionInfo(fun);
+// }
 
 } // namespace duckdb
