@@ -43,6 +43,8 @@ public:
 
   void Sink(DataChunk &input, PathFindingLocalState &lstate) {}
 
+  unique_ptr<CompressedSparseRow> csr;
+
 };
 
 unique_ptr<GlobalSinkState>
