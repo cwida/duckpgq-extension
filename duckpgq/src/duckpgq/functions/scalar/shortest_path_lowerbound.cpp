@@ -12,7 +12,8 @@
 namespace duckdb {
 
 static bool IterativeLengthLowerBound(int64_t v_size, int64_t *V, vector<int64_t> &E,
-                                      int64_t iter, vector<int64_t> &edge_ids,
+                                      int64_t iter, int16_t lane_to_num[LANE_LIMIT], 
+                                      vector<int64_t> &edge_ids,
                                       vector<vector<unordered_map<int64_t, int64_t>>> &paths_v,
                                       vector<vector<unordered_map<int64_t, int64_t>>> &paths_e,
                                       vector<std::bitset<LANE_LIMIT>> &seen,
@@ -31,7 +32,7 @@ static bool IterativeLengthLowerBound(int64_t v_size, int64_t *V, vector<int64_t
         auto edge_id = edge_ids[e];
         next[n] = next[n] | visit[v];
         for (auto lane = 0; lane < LANE_LIMIT; lane++) {
-          if (visit[v][lane]) {
+          if (lane_to_num[lane] >= 0 && visit[v][lane]) {
             paths_v[n][lane][iter] = v;
             paths_e[n][lane][iter] = edge_id;
           }
@@ -146,7 +147,7 @@ static void ShortestPathLowerBoundFunction(DataChunk &args,
     for (int64_t iter = 1; active && iter <= upper_bound; iter++) {
       //! Perform one step of bfs exploration
       if (!IterativeLengthLowerBound(
-              v_size, v, e, iter, edge_ids, paths_v, paths_e, seen,
+              v_size, v, e, iter, lane_to_num, edge_ids, paths_v, paths_e, seen,
               (iter & 1) ? visit1 : visit2, (iter & 1) ? visit2 : visit1)) {
         break;
       }

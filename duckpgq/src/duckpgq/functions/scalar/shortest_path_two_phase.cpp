@@ -113,6 +113,10 @@ static std::tuple<int64_t, vector<int64_t>> ShortestPathInternal(int64_t lane, i
     for (auto i = 0; i < v_size; i++) {
       seen[i] = 0;
       visit1[i] = 0;
+      for (auto j = 0; j < LANE_LIMIT; j++) {
+        parents_v[i][j] = -1;
+        parents_e[i][j] = -1;
+      }
     }
     // add search jobs to free lanes
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
@@ -252,61 +256,63 @@ static void ShortestPathTwoPhaseFunction(DataChunk &args, ExpressionState &state
 
     int64_t iter = 1;
     for (; iter < lower_bound; iter++) {
-      IterativeLengthPhaseOne(v_size, v, e, iter, edge_ids, paths_v, paths_e,
+      if (!IterativeLengthPhaseOne(v_size, v, e, iter, edge_ids, paths_v, paths_e,
                            (iter & 1) ? visit1 : visit2,
-                           (iter & 1) ? visit2 : visit1);
+                           (iter & 1) ? visit2 : visit1)) {
+        break;
+      }
     }
+    if (iter == lower_bound) {
+      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+        auto search_num = lane_to_num[lane];
+        if (search_num >= 0) {
+          int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+          auto phase_two_result = ShortestPathInternal(lane, v_size, dst_data[dst_pos], 
+            upper_bound - lower_bound + 1, v, e, edge_ids, (iter & 1) ? visit1 : visit2);
+          auto phase_two_src = std::get<0>(phase_two_result);
+          auto phase_two_path = std::get<1>(phase_two_result);
+          if (phase_two_src >= 0) {
+            vector<int64_t> output_vector;
+            // construct the path of phase one
+            if (paths_v[phase_two_src][lane].size() > 0) {
+              auto iterations = lower_bound - 1;
+              auto parent_vertex = paths_v[phase_two_src][lane][iterations];
+              auto parent_edge = paths_e[phase_two_src][lane][iterations];
 
-    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-      auto search_num = lane_to_num[lane];
-      if (search_num >= 0) {
-        int64_t dst_pos = vdata_dst.sel->get_index(search_num);
-        auto phase_two_result = ShortestPathInternal(lane, v_size, dst_data[dst_pos], 
-          upper_bound - lower_bound + 1, v, e, edge_ids, (iter & 1) ? visit1 : visit2);
-        auto phase_two_src = std::get<0>(phase_two_result);
-        auto phase_two_path = std::get<1>(phase_two_result);
-        if (phase_two_src >= 0) {
-          vector<int64_t> output_vector;
-          // construct the path of phase one
-          if (paths_v[phase_two_src][lane].size() > 0) {
-            auto iterations = lower_bound - 1;
-            auto parent_vertex = paths_v[phase_two_src][lane][iterations];
-            auto parent_edge = paths_e[phase_two_src][lane][iterations];
-
-            while (iterations > 0) {
-              output_vector.push_back(parent_edge);
-              output_vector.push_back(parent_vertex);
-              iterations--;
-              parent_edge = paths_e[parent_vertex][lane][iterations];
-              parent_vertex = paths_v[parent_vertex][lane][iterations];
+              while (iterations > 0) {
+                output_vector.push_back(parent_edge);
+                output_vector.push_back(parent_vertex);
+                iterations--;
+                parent_edge = paths_e[parent_vertex][lane][iterations];
+                parent_vertex = paths_v[parent_vertex][lane][iterations];
+              }
+              std::reverse(output_vector.begin(), output_vector.end());
             }
-            std::reverse(output_vector.begin(), output_vector.end());
-          }
 
-          // construct the path of phase two
-          for (auto val : phase_two_path) {
-            output_vector.push_back(val);
-          }
+            // construct the path of phase two
+            for (auto val : phase_two_path) {
+              output_vector.push_back(val);
+            }
 
-          // construct the output
-          auto output = make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
-          for (auto val : output_vector) {
-            Value value_to_insert = val;
-            ListVector::PushBack(*output, value_to_insert);
+            // construct the output
+            auto output = make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
+            for (auto val : output_vector) {
+              Value value_to_insert = val;
+              ListVector::PushBack(*output, value_to_insert);
+            }
+            result_data[search_num].length = ListVector::GetListSize(*output);
+            result_data[search_num].offset = total_len;
+            ListVector::Append(result, ListVector::GetEntry(*output),
+                              ListVector::GetListSize(*output));
+            total_len += result_data[search_num].length;
+            lane_to_num[lane] = -1; // mark inactive
+          } else {
+            result_validity.SetInvalid(search_num);
+            lane_to_num[lane] = -1; // mark inactive
           }
-          result_data[search_num].length = ListVector::GetListSize(*output);
-          result_data[search_num].offset = total_len;
-          ListVector::Append(result, ListVector::GetEntry(*output),
-                            ListVector::GetListSize(*output));
-          total_len += result_data[search_num].length;
-          lane_to_num[lane] = -1; // mark inactive
-        } else {
-          result_validity.SetInvalid(search_num);
-          lane_to_num[lane] = -1; // mark inactive
         }
       }
     }
-
     // no changes anymore: any still active searches have no path
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
       int64_t search_num = lane_to_num[lane];
