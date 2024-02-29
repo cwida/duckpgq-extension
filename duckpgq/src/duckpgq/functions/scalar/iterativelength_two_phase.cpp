@@ -232,15 +232,15 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
-// CreateScalarFunctionInfo 
-// DuckPGQFunctions::GetIterativeLengthLowerBoundFunction() {
-//   auto fun = ScalarFunction(
-//       "iterativelength_lowerbound",
-//       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
-//         LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-//       LogicalType::BIGINT, IterativeLengthLowerBoundFunction,
-//       IterativeLengthFunctionData::IterativeLengthBind);
-//   return CreateScalarFunctionInfo(fun);
-// }
+CreateScalarFunctionInfo 
+DuckPGQFunctions::GetIterativeLengthLowerBoundFunction() {
+  auto fun = ScalarFunction(
+      "iterativelength_two_phase",
+      {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
+        LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+      LogicalType::BIGINT, IterativeLengthLowerBoundFunction,
+      IterativeLengthFunctionData::IterativeLengthBind);
+  return CreateScalarFunctionInfo(fun);
+}
 
 } // namespace duckdb

@@ -143,6 +143,7 @@ static std::tuple<int64_t, vector<int64_t>> ShortestPathInternal(int64_t lane, i
           result.push_back(destination);
           result.push_back(parent_edge);
           while (parent_vertex != src[search_num]) {
+            
             result.push_back(parent_vertex);
             parent_edge = parents_e[parent_vertex][lane];
             parent_vertex = parents_v[parent_vertex][lane];
@@ -318,16 +319,16 @@ static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &sta
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
-// CreateScalarFunctionInfo 
-// DuckPGQFunctions::GetShortestPathLowerBoundFunction() {
-//   auto fun = ScalarFunction(
-//       "shortestpath_lowerbound",
-//       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
-//        LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-//       LogicalType::LIST(LogicalType::BIGINT),
-//       ShortestPathLowerBoundFunction,
-//       IterativeLengthFunctionData::IterativeLengthBind);
-//   return CreateScalarFunctionInfo(fun);
-// }
+CreateScalarFunctionInfo 
+DuckPGQFunctions::GetShortestPathLowerBoundFunction() {
+  auto fun = ScalarFunction(
+      "shortestpath_two_phase",
+      {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
+       LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+      LogicalType::LIST(LogicalType::BIGINT),
+      ShortestPathLowerBoundFunction,
+      IterativeLengthFunctionData::IterativeLengthBind);
+  return CreateScalarFunctionInfo(fun);
+}
 
 } // namespace duckdb
