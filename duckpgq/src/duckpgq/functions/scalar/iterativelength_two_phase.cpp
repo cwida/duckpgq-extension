@@ -103,7 +103,7 @@ static int64_t IterativeLengthInternal(int64_t lane, int64_t v_size, int64_t des
   return -1;
 }
 
-static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &state,
+static void IterativeLengthTwoPhaseFunction(DataChunk &args, ExpressionState &state,
                                     Vector &result) {
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
@@ -233,12 +233,12 @@ static void IterativeLengthLowerBoundFunction(DataChunk &args, ExpressionState &
 }
 
 CreateScalarFunctionInfo 
-DuckPGQFunctions::GetIterativeLengthLowerBoundFunction() {
+DuckPGQFunctions::GetIterativeLengthTwoPhaseFunction() {
   auto fun = ScalarFunction(
       "iterativelength_two_phase",
       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
         LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-      LogicalType::BIGINT, IterativeLengthLowerBoundFunction,
+      LogicalType::BIGINT, IterativeLengthTwoPhaseFunction,
       IterativeLengthFunctionData::IterativeLengthBind);
   return CreateScalarFunctionInfo(fun);
 }

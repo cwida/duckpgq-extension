@@ -159,7 +159,7 @@ static std::tuple<int64_t, vector<int64_t>> ShortestPathInternal(int64_t lane, i
   return std::make_tuple(-1, result);
 }
 
-static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &state,
+static void ShortestPathTwoPhaseFunction(DataChunk &args, ExpressionState &state,
                                  Vector &result) {
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
@@ -320,13 +320,13 @@ static void ShortestPathLowerBoundFunction(DataChunk &args, ExpressionState &sta
 }
 
 CreateScalarFunctionInfo 
-DuckPGQFunctions::GetShortestPathLowerBoundFunction() {
+DuckPGQFunctions::GetShortestPathTwoPhaseFunction() {
   auto fun = ScalarFunction(
       "shortestpath_two_phase",
       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
        LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
       LogicalType::LIST(LogicalType::BIGINT),
-      ShortestPathLowerBoundFunction,
+      ShortestPathTwoPhaseFunction,
       IterativeLengthFunctionData::IterativeLengthBind);
   return CreateScalarFunctionInfo(fun);
 }
