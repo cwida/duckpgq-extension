@@ -41,7 +41,7 @@ query I
 8796093022237
 
 query I
--FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id)) limit 10;
+-SELECT p_id FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id)) limit 10;
 ----
 14
 16
