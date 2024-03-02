@@ -32,16 +32,16 @@ EDGE TABLES (
             PROPERTIES ( id ) LABEL Knows
     );
 
-#query II
-#-SELECT study.a_id, study.name
-#FROM GRAPH_TABLE (pg
-#    MATCH
-#    (a:Person WHERE a.id = 0)
-#    COLUMNS (a.id as a_id, a.name)
-#    ) study
-#----
-#0	Daniel
-#
+query II
+-SELECT study.a_id, study.name
+FROM GRAPH_TABLE (pg
+    MATCH
+    (a:Person WHERE a.id = 0)
+    COLUMNS (a.id as a_id, a.name)
+    ) study
+----
+0	Daniel
+
 #query II
 #-SELECT study.a_id, study.b_id
 #FROM GRAPH_TABLE (pg
