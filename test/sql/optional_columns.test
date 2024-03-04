@@ -1,0 +1,88 @@
+# name: test/sql/sqlpgq/snb.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+import database 'duckdb-pgq/data/SNB0.003'
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person LABEL Person,
+    Organisation LABEL Organisation IN typemask(company, university)
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows,
+    person_workAt_Organisation SOURCE KEY (PersonId) REFERENCES Person (id)
+                               DESTINATION KEY (OrganisationId) REFERENCES Organisation (id)
+                               LABEL workAt_Organisation
+   );
+
+query IIIIIIIIIII
+-FROM GRAPH_TABLE (snb MATCH (p:Person)) limit 1;
+----
+2010-01-03 23:10:31.499+00	14	Hossein	Forouhar	male	1984-03-11	77.245.239.11	Firefox	1166	fa;ku;en	Hossein14@hotmail.com
+
+query I
+-FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id)) limit 10;
+----
+14
+16
+32
+2199023255557
+2199023255573
+2199023255594
+4398046511139
+6597069766702
+8796093022234
+8796093022237
+
+query I
+-SELECT p_id FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id,)) limit 10;
+----
+14
+16
+32
+2199023255557
+2199023255573
+2199023255594
+4398046511139
+6597069766702
+8796093022234
+8796093022237
+
+query I
+-FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id)) limit 10;
+----
+14
+16
+32
+2199023255557
+2199023255573
+2199023255594
+4398046511139
+6597069766702
+8796093022234
+8796093022237
+
+query II
+-FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id, p.firstname as first_name)) limit 10;
+----
+14	Hossein
+16	Jan
+32	Miguel
+2199023255557	Eric
+2199023255573	Arbaaz
+2199023255594	Ali
+4398046511139	Ayesha
+6597069766702	Alejandro
+8796093022234	Rahul
+8796093022237	Lei
+
+query I
+-SELECT count(*) FROM GRAPH_TABLE (snb MATCH (p:Person)) GROUP BY ALL limit 10;
+----
+50
