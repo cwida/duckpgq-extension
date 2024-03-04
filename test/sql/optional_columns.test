@@ -41,7 +41,7 @@ query I
 8796093022237
 
 query I
--SELECT p_id FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id)) limit 10;
+-SELECT p_id FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id,)) limit 10;
 ----
 14
 16
@@ -81,3 +81,8 @@ query II
 6597069766702	Alejandro
 8796093022234	Rahul
 8796093022237	Lei
+
+query I
+-SELECT count(*) FROM GRAPH_TABLE (snb MATCH (p:Person)) GROUP BY ALL limit 10;
+----
+50
