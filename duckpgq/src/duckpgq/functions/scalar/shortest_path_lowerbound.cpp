@@ -11,8 +11,9 @@
 
 namespace duckdb {
 
-static bool IterativeLengthLowerBound(int64_t v_size, int64_t *V, vector<int64_t> &E,
-                                      int64_t iter, int16_t lane_to_num[LANE_LIMIT], 
+static bool IterativeLengthLowerBound(int64_t v_size, int64_t iter, bool seen_check,
+                                      int64_t *V, vector<int64_t> &E,
+                                      int16_t lane_to_num[LANE_LIMIT], 
                                       vector<int64_t> &edge_ids,
                                       vector<vector<unordered_map<int64_t, int64_t>>> &paths_v,
                                       vector<vector<unordered_map<int64_t, int64_t>>> &paths_e,
@@ -22,7 +23,6 @@ static bool IterativeLengthLowerBound(int64_t v_size, int64_t *V, vector<int64_t
   bool change = false;
   for (auto v = 0; v < v_size; v++) {
     next[v] = 0;
-    seen[v] = 0;
   }
   //! Keep track of edge id through which the node was reached
   for (auto v = 0; v < v_size; v++) {
@@ -42,7 +42,10 @@ static bool IterativeLengthLowerBound(int64_t v_size, int64_t *V, vector<int64_t
   }
 
   for (auto v = 0; v < v_size; v++) {
-    seen[v] = seen[v] | next[v];
+    if (seen_check) {
+      next[v] = next[v] & ~seen[v];
+      seen[v] = seen[v] | next[v];
+    }
     change |= next[v].any();
   }
   return change;
@@ -95,6 +98,8 @@ static void ShortestPathLowerBoundFunction(DataChunk &args,
   auto result_data = FlatVector::GetData<list_entry_t>(result);
   ValidityMask &result_validity = FlatVector::Validity(result);
 
+  bool seen_check = false;
+
   // create temp SIMD arrays
   vector<std::bitset<LANE_LIMIT>> seen(v_size);
   vector<std::bitset<LANE_LIMIT>> visit1(v_size);
@@ -114,6 +119,7 @@ static void ShortestPathLowerBoundFunction(DataChunk &args,
 
   idx_t started_searches = 0;
   while (started_searches < args.size()) {
+    seen_check = false;
 
     // empty visit vectors
     for (auto i = 0; i < v_size; i++) {
@@ -145,9 +151,12 @@ static void ShortestPathLowerBoundFunction(DataChunk &args,
 
     //! make passes while a lane is still active
     for (int64_t iter = 1; active && iter <= upper_bound; iter++) {
+      if (iter >= lower_bound) {
+        seen_check = true;
+      }
       //! Perform one step of bfs exploration
       if (!IterativeLengthLowerBound(
-              v_size, v, e, iter, lane_to_num, edge_ids, paths_v, paths_e, seen,
+              v_size, iter, seen_check, v, e, lane_to_num, edge_ids, paths_v, paths_e, seen,
               (iter & 1) ? visit1 : visit2, (iter & 1) ? visit2 : visit1)) {
         break;
       }

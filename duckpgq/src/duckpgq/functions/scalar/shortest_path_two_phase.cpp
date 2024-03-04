@@ -81,26 +81,22 @@ static bool IterativeLengthPhaseTwo(int64_t v_size, int64_t *V, vector<int64_t> 
   return change;
 }
 
-static std::tuple<int64_t, vector<int64_t>> ShortestPathInternal(int64_t lane, int64_t v_size, int64_t destination, 
+static vector<int64_t> ShortestPathInternal(int64_t lane, int64_t v_size, int64_t destination, 
                                             int64_t bound, 
                                             int64_t *v, vector<int64_t> &e, vector<int64_t> &edge_ids,
-                                            vector<std::bitset<LANE_LIMIT>> &visit) {
+                                            vector<std::bitset<LANE_LIMIT>> &visit,
+                                            vector<std::bitset<LANE_LIMIT>> &seen,
+                                            vector<std::bitset<LANE_LIMIT>> &visit1,
+                                            vector<std::bitset<LANE_LIMIT>> &visit2,
+                                            vector<std::vector<int64_t>> &parents_v,
+                                            vector<std::vector<int64_t>> &parents_e) {
   vector<int64_t> src;
-  vector<int64_t> result;
+  vector<vector<int64_t>> results;
   for (int64_t v = 0; v < v_size; v++) {
     if (visit[v][lane]) {
       src.push_back(v);
     }
   }
-  vector<std::bitset<LANE_LIMIT>> seen(v_size);
-  vector<std::bitset<LANE_LIMIT>> visit1(v_size);
-  vector<std::bitset<LANE_LIMIT>> visit2(v_size);
-
-  vector<std::vector<int64_t>> parents_v(v_size,
-                                         std::vector<int64_t>(LANE_LIMIT, -1));
-  vector<std::vector<int64_t>> parents_e(v_size,
-                                         std::vector<int64_t>(LANE_LIMIT, -1));
-
 
   // maps lane to search number
   int16_t lane_to_num[LANE_LIMIT];
@@ -139,6 +135,7 @@ static std::tuple<int64_t, vector<int64_t>> ShortestPathInternal(int64_t lane, i
       for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
         if (seen[destination][lane]) {
           auto search_num = lane_to_num[lane];
+          vector<int64_t> result;
 
           // found the destination, reconstruct the path
           auto parent_vertex = parents_v[destination][lane];
@@ -155,12 +152,24 @@ static std::tuple<int64_t, vector<int64_t>> ShortestPathInternal(int64_t lane, i
           }
           result.push_back(src[search_num]);
           std::reverse(result.begin(), result.end());
-          return std::make_tuple(src[search_num], result);
+          results.push_back(result);
+          break;
         }
       }
     }
   }
-  return std::make_tuple(-1, result);
+  size_t min_size = INT64_MAX;
+  size_t min_index = -1;
+  for (size_t i = 0; i < results.size(); i++) {
+    if (results[i].size() < min_size) {
+      min_size = results[i].size();
+      min_index = i;
+    }
+  }
+  if (min_index >= 0) {
+    return results[min_index];
+  }
+  return {};
 }
 
 static void ShortestPathTwoPhaseFunction(DataChunk &args, ExpressionState &state,
@@ -263,16 +272,26 @@ static void ShortestPathTwoPhaseFunction(DataChunk &args, ExpressionState &state
       }
     }
     if (iter == lower_bound) {
+      // resource reuse
+      vector<std::bitset<LANE_LIMIT>> seen_in(v_size);
+      vector<std::bitset<LANE_LIMIT>> visit1_in(v_size);
+      vector<std::bitset<LANE_LIMIT>> visit2_in(v_size);
+
+      vector<std::vector<int64_t>> parents_v_in(v_size,
+                                            std::vector<int64_t>(LANE_LIMIT, -1));
+      vector<std::vector<int64_t>> parents_e_in(v_size,
+                                            std::vector<int64_t>(LANE_LIMIT, -1));
+
       for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
         auto search_num = lane_to_num[lane];
         if (search_num >= 0) {
           int64_t dst_pos = vdata_dst.sel->get_index(search_num);
           auto phase_two_result = ShortestPathInternal(lane, v_size, dst_data[dst_pos], 
-            upper_bound - lower_bound + 1, v, e, edge_ids, (iter & 1) ? visit1 : visit2);
-          auto phase_two_src = std::get<0>(phase_two_result);
-          auto phase_two_path = std::get<1>(phase_two_result);
-          if (phase_two_src >= 0) {
+            upper_bound - lower_bound + 1, v, e, edge_ids, (iter & 1) ? visit1 : visit2,
+            seen_in, visit1_in, visit2_in, parents_v_in, parents_e_in);
+          if (phase_two_result.size() > 0) {
             vector<int64_t> output_vector;
+            auto phase_two_src = phase_two_result[0];
             // construct the path of phase one
             if (paths_v[phase_two_src][lane].size() > 0) {
               auto iterations = lower_bound - 1;
@@ -290,7 +309,7 @@ static void ShortestPathTwoPhaseFunction(DataChunk &args, ExpressionState &state
             }
 
             // construct the path of phase two
-            for (auto val : phase_two_path) {
+            for (auto val : phase_two_result) {
               output_vector.push_back(val);
             }
 
