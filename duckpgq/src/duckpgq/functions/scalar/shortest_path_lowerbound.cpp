@@ -213,7 +213,7 @@ static void ShortestPathLowerBoundFunction(DataChunk &args,
 
 CreateScalarFunctionInfo DuckPGQFunctions::GetShortestPathLowerBoundFunction() {
   auto fun = ScalarFunction(
-       "shortestpath_lowerbound",
+       "shortestpath_two_phase",
        {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, 
         LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
        LogicalType::LIST(LogicalType::BIGINT), ShortestPathLowerBoundFunction,
