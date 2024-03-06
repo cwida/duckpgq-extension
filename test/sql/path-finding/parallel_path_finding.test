@@ -8,13 +8,13 @@
 require duckpgq
 
 statement ok
-CREATE TABLE pairs(src INT, dst INT); INSERT INTO pairs(src, dst) VALUES (1, 2), (2, 3), (3,1), (3, 2), (6, 1), (4,2);
+CREATE TABLE pairs(src INT, dst INT); INSERT INTO pairs(src, dst) VALUES (10, 20), (20, 30), (30,10);
 
 statement ok
-create table student(id INT); INSERT INTO student(id) VALUES (1), (2), (3);
+create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (40);
 
 statement ok
-create table knows(src INT, dst INT); INSERT INTO knows(src, dst) VALUES (1,3), (1,1), (2,1), (2,3), (3,1), (NULL, NULL), (NULL, NULL);
+create table knows(src INT, dst INT); INSERT INTO knows(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (20,30), (30,10);
 
 #query II
 #SELECT *
@@ -41,29 +41,63 @@ knows   SOURCE KEY (src) REFERENCES student (id)
 statement ok
 SELECT *
 FROM pairs AS p
-WHERE p.src BETWEEN (select csr_id from (SELECT
-            0 as csr_id,
-            (SELECT count(a.id) FROM Student a),
-            CAST (
-                (SELECT sum(CREATE_CSR_VERTEX(0,
-                    (SELECT count(a.id) FROM Student a),
-                      sub.dense_id,
-                      sub.cnt)
-                )
-                FROM (
-                    SELECT a.rowid as dense_id, count(k.src) as cnt
-                    FROM Student a
-                    LEFT JOIN Knows k ON k.src = a.id
-                    GROUP BY a.rowid) sub
-            ) AS BIGINT),
+WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
+            (SELECT count(a.id) as v_size FROM Student a),
+            (SELECT count(k.src) as e_size from knows k),
             a.rowid,
             c.rowid,
-            k.rowid    FROM Knows k
+            k.rowid,
+            t.cnt)    FROM Knows k
                         JOIN student a on a.id = k.src
-                        JOIN student c on c.id = k.dst)) AND p.dst;
+                        JOIN student c on c.id = k.dst
+                        JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
+                                FROM student a
+                                LEFT JOIN knows k ON k.src = a.id
+                                GROUP BY a.rowid) t
+                            ON t.a_rowid = a.rowid) AND p.dst;
 
-statement ok
-select 1;
+
+#            CAST (
+#                (SELECT sum(CREATE_CSR_VERTEX(0,
+#                    (SELECT count(a.id) FROM Student a),
+#                      sub.dense_id,
+#                      sub.cnt)
+#                )
+#                FROM (
+#                    SELECT a.rowid as dense_id, count(k.src) as cnt
+#                    FROM Student a
+#                    LEFT JOIN Knows k ON k.src = a.id
+#                    GROUP BY a.rowid) sub
+#            ) AS BIGINT),
+
+
+#statement ok
+#SELECT *
+#FROM pairs AS p
+#WHERE (p.src, p.dst) BETWEEN (
+#            SELECT (csr_id, 0) FROM (SELECT 0 as csr_id,
+#            (SELECT count(a.id) FROM Student a),
+#            0,
+#            a.rowid,
+#            c.rowid,
+#            k.rowid    FROM Knows k
+#                        JOIN student a on a.id = k.src
+#                        JOIN student c on c.id = k.dst)) AND (0, 3);
+
+#CAST (
+#                (SELECT sum(CREATE_CSR_VERTEX(0,
+#                    (SELECT count(a.id) FROM Student a),
+#                      sub.dense_id,
+#                      sub.cnt)
+#                )
+#                FROM (
+#                    SELECT a.rowid as dense_id, count(k.src) as cnt
+#                    FROM Student a
+#                    LEFT JOIN Knows k ON k.src = a.id
+#                    GROUP BY a.rowid) sub
+#            ) AS BIGINT),
+#statement ok
+#select 1;
 # LHS of IEJOIN
 # RHS of IEJoin
 # 0,
