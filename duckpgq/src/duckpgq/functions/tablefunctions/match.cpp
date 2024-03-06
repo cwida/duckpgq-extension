@@ -31,8 +31,10 @@ PGQMatchFunction::FindGraphTable(const string &label,
                                  CreatePropertyGraphInfo &pg_table) {
   const auto graph_table_entry = pg_table.label_map.find(label);
   if (graph_table_entry == pg_table.label_map.end()) {
-    throw Exception(ExceptionType::BINDER, "The label " + label +
-      " is not registered in property graph " + pg_table.property_graph_name);
+    throw Exception(ExceptionType::BINDER,
+                    "The label " + label +
+                        " is not registered in property graph " +
+                        pg_table.property_graph_name);
   }
 
   return graph_table_entry->second;
@@ -535,9 +537,15 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
             edge_table, previous_vertex_element->variable_binding)));
         pathfinding_children.push_back(std::move(src_row_id));
         pathfinding_children.push_back(std::move(dst_row_id));
+        pathfinding_children.push_back(make_uniq<ConstantExpression>(
+            Value::INTEGER(static_cast<int32_t>(edge_subpath->lower))));
+        pathfinding_children.push_back(make_uniq<ConstantExpression>(
+            Value::INTEGER(static_cast<int32_t>(edge_subpath->upper))));
 
         auto shortest_path_function = make_uniq<FunctionExpression>(
-            "shortestpath", std::move(pathfinding_children));
+            edge_subpath->lower > 0 ? "shortestpath_lowerbound"
+                                    : "shortestpath",
+            std::move(pathfinding_children));
 
         if (!final_list) {
           final_list = std::move(shortest_path_function);
@@ -657,7 +665,7 @@ void PGQMatchFunction::AddPathFinding(
 
   //! START
   //! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id)
-  //! from dst c, a.rowid, b.rowid) between lower and upper
+  //! from dst c, a.rowid, b.rowid, lower, upper)
 
   auto src_row_id = make_uniq<ColumnRefExpression>("rowid", prev_binding);
   auto dst_row_id = make_uniq<ColumnRefExpression>("rowid", next_binding);
@@ -669,9 +677,14 @@ void PGQMatchFunction::AddPathFinding(
       std::move(GetCountTable(edge_table, prev_binding)));
   pathfinding_children.push_back(std::move(src_row_id));
   pathfinding_children.push_back(std::move(dst_row_id));
+  pathfinding_children.push_back(make_uniq<ConstantExpression>(
+      Value::INTEGER(static_cast<int32_t>(subpath->lower))));
+  pathfinding_children.push_back(make_uniq<ConstantExpression>(
+      Value::INTEGER(static_cast<int32_t>(subpath->upper))));
 
   auto reachability_function = make_uniq<FunctionExpression>(
-      "iterativelength", std::move(pathfinding_children));
+      subpath->lower > 0 ? "iterativelength_lowerbound" : "iterativelength",
+      std::move(pathfinding_children));
 
   auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
 
@@ -681,18 +694,11 @@ void PGQMatchFunction::AddPathFinding(
 
   auto addition_function =
       make_uniq<FunctionExpression>("add", std::move(addition_children));
-  auto lower_limit = make_uniq<ConstantExpression>(
-      Value::INTEGER(static_cast<int32_t>(subpath->lower)));
-  auto upper_limit = make_uniq<ConstantExpression>(
-      Value::INTEGER(static_cast<int32_t>(subpath->upper)));
-  auto between_expression = make_uniq<BetweenExpression>(
-      std::move(addition_function), std::move(lower_limit),
-      std::move(upper_limit));
-  conditions.push_back(std::move(between_expression));
+  conditions.push_back(std::move(addition_function));
 
   //! END
   //! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(s.id)
-  //! from src s, a.rowid, b.rowid) between lower and upper
+  //! from src s, a.rowid, b.rowid, lower, upper)
 }
 
 void PGQMatchFunction::CheckNamedSubpath(

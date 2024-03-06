@@ -80,6 +80,12 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
   auto src_data = (int64_t *)vdata_src.data;
   auto dst_data = (int64_t *)vdata_dst.data;
 
+  // get lowerbound and upperbound
+  auto &upper = args.data[5];
+  UnifiedVectorFormat vdata_upper_bound;
+  upper.ToUnifiedFormat(args.size(), vdata_upper_bound);
+  auto upper_bound = ((int64_t *)vdata_upper_bound.data)[0];
+
   result.SetVectorType(VectorType::FLAT_VECTOR);
   auto result_data = FlatVector::GetData<list_entry_t>(result);
   ValidityMask &result_validity = FlatVector::Validity(result);
@@ -137,7 +143,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
     }
 
     //! make passes while a lane is still active
-    for (int64_t iter = 1; active; iter++) {
+    for (int64_t iter = 1; active && iter <= upper_bound; iter++) {
       //! Perform one step of bfs exploration
       if (!IterativeLength(v_size, v, e, edge_ids, parents_v, parents_e, seen,
                            (iter & 1) ? visit1 : visit2,
@@ -230,13 +236,13 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
 }
 
 CreateScalarFunctionInfo DuckPGQFunctions::GetShortestPathFunction() {
-  auto fun = ScalarFunction("shortestpath",
-                            {LogicalType::INTEGER, LogicalType::BIGINT,
-                             LogicalType::BIGINT, LogicalType::BIGINT},
-                            LogicalType::LIST(LogicalType::BIGINT),
-                            ShortestPathFunction,
-                            IterativeLengthFunctionData::IterativeLengthBind);
+  auto fun = ScalarFunction(
+      "shortestpath",
+      {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT,
+       LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+      LogicalType::LIST(LogicalType::BIGINT), ShortestPathFunction,
+      IterativeLengthFunctionData::IterativeLengthBind);
   return CreateScalarFunctionInfo(fun);
 }
 
-}; // namespace duckdb
+} // namespace duckdb
