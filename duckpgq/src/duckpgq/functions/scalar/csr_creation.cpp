@@ -208,6 +208,13 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetCsrVertexFunction() {
 
 CreateScalarFunctionInfo DuckPGQFunctions::GetCsrEdgeFunction() {
   ScalarFunctionSet set("create_csr_edge");
+
+  set.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT,
+                                  LogicalType::BIGINT, LogicalType::BIGINT,
+                                  LogicalType::BIGINT, LogicalType::BIGINT},
+                                 LogicalType::INTEGER, CreateCsrEdgeFunction,
+                                 CSRFunctionData::CSREdgeBind));
+
   //! No edge weight
   set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
                                   LogicalType::BIGINT, LogicalType::BIGINT,

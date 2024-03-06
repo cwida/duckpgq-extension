@@ -45,18 +45,19 @@ unique_ptr<FunctionData>
 CSRFunctionData::CSREdgeBind(ClientContext &context,
                              ScalarFunction &bound_function,
                              vector<unique_ptr<Expression>> &arguments) {
-  if (!arguments[0]->IsFoldable()) {
-    throw InvalidInputException("Id must be constant.");
-  }
-  Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
-  if (arguments.size() == 7) {
-    return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                      arguments[6]->return_type);
-  } else {
-    auto logical_type = LogicalType::SQLNULL;
-    return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                      logical_type);
-  }
+//  if (!arguments[0]->IsFoldable()) {
+//    throw InvalidInputException("Id must be constant.");
+//  }
+//  Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
+//  if (arguments.size() == 7) {
+//    return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
+//                                      arguments[6]->return_type);
+//  } else {
+//    auto logical_type = LogicalType::SQLNULL;
+//    return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
+//                                      logical_type);
+//  }
+    return make_uniq<CSRFunctionData>(context, 0, LogicalType::SQLNULL);
 }
 
 unique_ptr<FunctionData>
