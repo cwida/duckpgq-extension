@@ -14,35 +14,15 @@
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 
 namespace duckdb {
-
-struct GlobalCompressedSparseRow;
-
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 public:
-  class LocalCompressedSparseRow {
-  public:
-    LocalCompressedSparseRow(ClientContext &context,
-                             const PhysicalPathFinding &op);
-
-    void Sink(DataChunk &input, GlobalCompressedSparseRow &global_csr);
-
-
-    //! The hosting operator
-    const PhysicalPathFinding &op;
-    //! Holds a vector of incoming columns
-    DataChunk keys;
-    //! Local copy of the expression executor
-    ExpressionExecutor executor
-
-  };
-
   class GlobalCompressedSparseRow {
   public:
     GlobalCompressedSparseRow(ClientContext &context,
                               RowLayout &payload_layout){
 
     };
-    ~GlobalCompressedSparseRow() { delete[] v; }
+//    ~GlobalCompressedSparseRow() { delete[] v; }
 
     atomic<int64_t> *v;
     vector<int64_t> e;
@@ -55,6 +35,24 @@ public:
     size_t vsize;
   };
 
+  class LocalCompressedSparseRow {
+  public:
+    LocalCompressedSparseRow(ClientContext &context,
+                             const PhysicalPathFinding &op);
+
+    void Sink(DataChunk &input, GlobalCompressedSparseRow &global_csr);
+
+    //! The hosting operator
+    const PhysicalPathFinding &op;
+    //! Holds a vector of incoming columns
+    DataChunk keys;
+    //! Local copy of the expression executor
+    ExpressionExecutor executor;
+
+  };
+
+
+
 public:
   static constexpr const PhysicalOperatorType TYPE =
       PhysicalOperatorType::EXTENSION;
@@ -63,6 +61,8 @@ public:
   PhysicalPathFinding(LogicalExtensionOperator &op,
                       unique_ptr<PhysicalOperator> left,
                       unique_ptr<PhysicalOperator> right);
+public:
+  vector<unique_ptr<Expression>> expressions;
 
 public:
   // CachingOperator Interface
@@ -102,6 +102,8 @@ public:
   bool ParallelSink() const override { return true; }
 
   void BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) override;
+
+
 };
 
 } // namespace duckdb

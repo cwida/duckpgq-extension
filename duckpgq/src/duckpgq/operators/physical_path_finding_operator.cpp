@@ -8,6 +8,7 @@
 #include "duckdb/parallel/thread_context.hpp"
 #include <thread>
 
+#include <iostream>
 namespace duckdb {
 
 PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
@@ -16,11 +17,19 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
     : PhysicalComparisonJoin(op, TYPE, {}, JoinType::INNER, 0) {
   children.push_back(std::move(left));
   children.push_back(std::move(right));
+  expressions = std::move(op.expressions);
 }
 
 PhysicalPathFinding::LocalCompressedSparseRow::LocalCompressedSparseRow(
     duckdb::ClientContext &context, const duckdb::PhysicalPathFinding &op) :
       op(op), executor(context) {}
+
+void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
+    DataChunk &input,
+    PhysicalPathFinding::GlobalCompressedSparseRow &global_csr) {
+  input.Print();
+  return;
+}
 
 //===--------------------------------------------------------------------===//
 // Sink
@@ -30,26 +39,36 @@ public:
   using LocalCompressedSparseRow = PhysicalPathFinding::LocalCompressedSparseRow;
   PathFindingLocalState(ClientContext &context, const PhysicalPathFinding &op,
                         const idx_t child)
-      : local_csr(context, op) {}
+      : local_csr(context, op) {
+  }
+
+  //! local csr
   LocalCompressedSparseRow local_csr;
 };
 
 class PathFindingGlobalState : public GlobalSinkState {
-
 public:
+  using GlobalCompressedSparseRow = PhysicalPathFinding::GlobalCompressedSparseRow;
   PathFindingGlobalState(ClientContext &context,
                          const PhysicalPathFinding &op) {
+    RowLayout lhs_layout;
+    lhs_layout.Initialize(op.children[0]->types);
     RowLayout rhs_layout;
     rhs_layout.Initialize(op.children[1]->types);
-    csr = make_uniq<GlobalCompressedSparseRow>(context, rhs_layout);
+    global_csr = make_uniq<GlobalCompressedSparseRow>(context, rhs_layout);
     }
 
   PathFindingGlobalState(PathFindingGlobalState &prev)
-      : GlobalSinkState(prev) {}
+      : GlobalSinkState(prev), global_csr(std::move(prev.global_csr)), child(prev.child+1) {}
 
-  void Sink(DataChunk &input, PathFindingLocalState &lstate) {}
+  void Sink(DataChunk &input, PathFindingLocalState &lstate) {
 
-  unique_ptr<GlobalCompressedSparseRow> csr;
+    input.Print();
+    lstate.local_csr.Sink(input, *global_csr);
+  }
+
+  unique_ptr<GlobalCompressedSparseRow> global_csr;
+  size_t child;
 
 };
 
@@ -63,8 +82,8 @@ unique_ptr<LocalSinkState>
 PhysicalPathFinding::GetLocalSinkState(ExecutionContext &context) const {
   idx_t sink_child = 0;
   if (sink_state) {
-    // const auto &ie_sink = sink_state->Cast<PathFindingGlobalState>();
-    // sink_child = ie_sink.child;
+     const auto &pathfinding_sink = sink_state->Cast<PathFindingGlobalState>();
+     sink_child = pathfinding_sink.child;
   }
   return make_uniq<PathFindingLocalState>(context.client, *this, sink_child);
 }
@@ -74,7 +93,7 @@ SinkResultType PhysicalPathFinding::Sink(ExecutionContext &context,
                                          OperatorSinkInput &input) const {
   auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
   auto &lstate = input.local_state.Cast<PathFindingLocalState>();
-
+  chunk.Print();
   gstate.Sink(chunk, lstate);
 
   return SinkResultType::NEED_MORE_INPUT;
@@ -111,6 +130,8 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 OperatorResultType PhysicalPathFinding::ExecuteInternal(
     ExecutionContext &context, DataChunk &input, DataChunk &chunk,
     GlobalOperatorState &gstate, OperatorState &state) const {
+  input.Print();
+  chunk.Print();
   return OperatorResultType::FINISHED;
 }
 
@@ -183,8 +204,9 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   auto &pf_sink = sink_state->Cast<PathFindingGlobalState>();
   auto &pf_gstate = input.global_state.Cast<PathFindingGlobalSourceState>();
   auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
-
+  result.Print();
   pf_gstate.Initialize(pf_sink);
+
 
   return result.size() == 0 ? SourceResultType::FINISHED
                             : SourceResultType::HAVE_MORE_OUTPUT;
@@ -210,11 +232,11 @@ void PhysicalPathFinding::BuildPipelines(Pipeline &current,
 
   // Build out LHS
   auto lhs_pipeline = child_meta_pipeline.GetBasePipeline();
-  children[0]->BuildPipelines(*lhs_pipeline, child_meta_pipeline);
+  children[1]->BuildPipelines(*lhs_pipeline, child_meta_pipeline);
 
   // Build out RHS
   auto &rhs_pipeline = child_meta_pipeline.CreatePipeline();
-  children[1]->BuildPipelines(rhs_pipeline, child_meta_pipeline);
+  children[0]->BuildPipelines(rhs_pipeline, child_meta_pipeline);
 
   // Despite having the same sink, RHS and everything created after it need
   // their own (same) PipelineFinishEvent
