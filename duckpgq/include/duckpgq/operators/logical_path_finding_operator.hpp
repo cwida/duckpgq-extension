@@ -5,7 +5,8 @@ namespace duckdb {
 
 class LogicalPathFindingOperator : public LogicalExtensionOperator {
 public:
-  explicit LogicalPathFindingOperator(vector<unique_ptr<LogicalOperator>> &children_) : LogicalExtensionOperator() {
+  explicit LogicalPathFindingOperator(vector<unique_ptr<LogicalOperator>> &children_, vector<unique_ptr<Expression>> &expressions_)
+      : LogicalExtensionOperator(std::move(expressions_)) {
     children = std::move(children_);
   }
 
@@ -21,6 +22,8 @@ public:
   std::string GetName() const override { return "PATH_FINDING"; }
 
   void ResolveTypes() override;
+
+  string ParamsToString() const override;
 };
 
 } // namespace duckdb

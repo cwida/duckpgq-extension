@@ -24,4 +24,14 @@ void LogicalPathFindingOperator::ResolveTypes() {
   auto right_types = children[1]->types;
   types.insert(types.end(), right_types.begin(), right_types.end());
 }
+
+string LogicalPathFindingOperator::ParamsToString() const {
+  string extra_info;
+  for (auto &expr : expressions) {
+    extra_info += "\n";
+    extra_info += expr->ToString();
+  }
+  return extra_info;
+
+}
 } // namespace duckdb
