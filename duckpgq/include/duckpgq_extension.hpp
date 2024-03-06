@@ -7,7 +7,13 @@
 #include "duckdb/parser/query_node.hpp"
 #include "duckdb/parser/simplified_token.hpp"
 #include "duckdb/parser/sql_statement.hpp"
+#include "duckdb/planner/logical_operator.hpp"
 #include "duckdb/planner/operator/logical_comparison_join.hpp"
+#include "duckdb/planner/operator/logical_filter.hpp"
+#include "duckdb/planner/operator/logical_aggregate.hpp"
+#include "duckdb/planner/operator/logical_projection.hpp"
+#include "duckdb/planner/operator/logical_limit.hpp"
+#include "duckdb/planner/operator/logical_get.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/operators/logical_path_finding_operator.hpp"
 
@@ -26,24 +32,38 @@ public:
   }
 
   static bool InsertPathFindingOperator(LogicalOperator &op) {
-//    if (op.type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN) {
-//      auto &get = op.Cast<LogicalComparisonJoin>();
-//      for (auto &condition : get.conditions) {
-//        if (condition.comparison == ExpressionType::COMPARE_GREATERTHANOREQUALTO) {
-//          unique_ptr<LogicalPathFindingOperator> path_finding_operator = make_uniq<LogicalPathFindingOperator>(op.children);
-//          op.children.push_back(path_finding_operator);
-//          return true;
-//        }
-//      }
-//    }
+    vector<unique_ptr<LogicalOperator>> path_finding_children;
+    vector<unique_ptr<Expression>> path_finding_expressions;
     for (auto &child : op.children) {
       if (child->type == LogicalOperatorType::LOGICAL_COMPARISON_JOIN) {
-        auto &get = child->Cast<LogicalComparisonJoin>();
-        auto path_finding_operator =
-            make_uniq<LogicalPathFindingOperator>(get.children);
-        op.children.clear();
-        op.children.push_back(std::move(path_finding_operator));
-        return true;
+        auto &get_join = child->Cast<LogicalComparisonJoin>();
+        //! For now we assume this is enough to detect we have found a path-finding query
+        //! Should be improved in the future
+        if (get_join.children[0]->type == LogicalOperatorType::LOGICAL_FILTER &&
+            get_join.children[1]->type == LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
+          //! Structure is Aggregate --> Limit --> Projection(create_csr_edge(...))
+          //! First check if we find the create_csr_edge function on the right side.
+          auto &get_aggregate = get_join.children[1]->Cast<LogicalAggregate>();
+          auto &get_limit = get_aggregate.children[0]->Cast<LogicalLimit>();
+          auto &get_projection = get_limit.children[0]->Cast<LogicalProjection>();
+          auto &get_function_expression = get_projection.expressions[0]->Cast<BoundFunctionExpression>();
+          if (get_function_expression.function.name != "create_csr_edge") {
+            continue;
+          }
+          auto &get_filter = get_join.children[0]->Cast<LogicalFilter>();
+          if (get_filter.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
+            path_finding_children.push_back(std::move(get_filter.children[0]));
+          }
+
+          path_finding_children.push_back(std::move(get_projection.children[0]));
+          path_finding_expressions = std::move(get_function_expression.children);
+
+          auto path_finding_operator =
+              make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions);
+          op.children.clear();
+          op.children.push_back(std::move(path_finding_operator));
+          return true;
+        }
       }
     }
     for (auto &child : op.children) {
