@@ -13,6 +13,7 @@ namespace duckdb {
 
 static bool IterativeLengthPhaseOne(int64_t v_size, int64_t iter, int64_t *V,
                                     vector<int64_t> &E, vector<int64_t> &edge_ids,
+                                    int16_t lane_to_num[LANE_LIMIT],
                                     vector<pair<int64_t, int64_t>> &paths_ve,
                                     vector<std::bitset<LANE_LIMIT>> &visit,
                                     vector<std::bitset<LANE_LIMIT>> &next) {
@@ -28,9 +29,9 @@ static bool IterativeLengthPhaseOne(int64_t v_size, int64_t iter, int64_t *V,
         auto edge_id = edge_ids[e];
         next[n] = next[n] | visit[v];
         for (auto lane = 0; lane < LANE_LIMIT; lane++) {
-          if (visit[v][lane]) {
-           // paths_ve[iter][n][lane] = {v, edge_id};
-           paths_ve[((iter - 1) * v_size + n) * LANE_LIMIT + lane] = {v, edge_id};
+          if (lane_to_num[lane] >= 0 && visit[v][lane]) {
+            // paths_ve[iter][n][lane] = {v, edge_id};
+            paths_ve[((iter - 1) * v_size + n) * LANE_LIMIT + lane] = {v, edge_id};
           }
         }
       }
@@ -63,8 +64,9 @@ static bool IterativeLengthPhaseTwo(int64_t v_size, int64_t *V, vector<int64_t> 
         next[n] = next[n] | visit[v];
         for (auto lane = 0; lane < LANE_LIMIT; lane++) {
           // paths_ve[n][lane] = {v, edge_id};
-          if (lane_to_num[lane] >= 0 && visit[v][lane])
-            paths_ve[(n * LANE_LIMIT + lane)] = {v, edge_id};
+          if (lane_to_num[lane] >= 0 && visit[v][lane] && paths_ve[n * LANE_LIMIT + lane].first == -1) {
+            paths_ve[n * LANE_LIMIT + lane] = {v, edge_id};
+          }
         }
       }
     }
@@ -166,7 +168,8 @@ static void ShortestPathTwoPhaseFunction(DataChunk &args, ExpressionState &state
 
     int64_t iter = 1;
     for (; iter < lower_bound; iter++) {
-      if (!IterativeLengthPhaseOne(v_size, iter, v, e, edge_ids, paths_ve_one,
+      if (!IterativeLengthPhaseOne(v_size, iter, v, e, edge_ids, 
+                           lane_to_num, paths_ve_one,
                            (iter & 1) ? visit1 : visit2,
                            (iter & 1) ? visit2 : visit1)) {
         break;
@@ -193,17 +196,20 @@ static void ShortestPathTwoPhaseFunction(DataChunk &args, ExpressionState &state
               //! construct the phase two path
               auto iteration = iter;
               auto parent_vertex = dst_data[dst_pos];
+              auto parent_idx = parent_vertex * LANE_LIMIT + lane;
               while (iteration >= lower_bound) {
-                output_vector[2 * iteration - 1] = paths_ve_two[(parent_vertex * LANE_LIMIT + lane)].second;
-                output_vector[2 * iteration - 2] = paths_ve_two[(parent_vertex * LANE_LIMIT + lane)].first;
+                parent_idx = parent_vertex * LANE_LIMIT + lane;
+                output_vector[2 * iteration - 1] = paths_ve_two[parent_idx].second;
+                output_vector[2 * iteration - 2] = paths_ve_two[parent_idx].first;
                 parent_vertex = output_vector[2 * iteration - 2];
                 iteration--;
               }
 
               //! construct the phase one path
               while (iteration > 0) {
-                output_vector[2 * iteration - 1] = paths_ve_one[((iteration - 1) * v_size + parent_vertex) * LANE_LIMIT + lane].second;
-                output_vector[2 * iteration - 2] = paths_ve_one[((iteration - 1) * v_size + parent_vertex) * LANE_LIMIT + lane].first;
+                parent_idx = ((iteration - 1) * v_size + parent_vertex) * LANE_LIMIT + lane;
+                output_vector[2 * iteration - 1] = paths_ve_one[parent_idx].second;
+                output_vector[2 * iteration - 2] = paths_ve_one[parent_idx].first;
                 parent_vertex = output_vector[2 * iteration - 2];
                 iteration--;
               }
