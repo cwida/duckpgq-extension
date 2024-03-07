@@ -50,9 +50,9 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
     PhysicalPathFinding::GlobalCompressedSparseRow &global_csr) {
   input.Print();
   const auto e_size = ConstantVector::GetData(input.data[7]);
-  const auto v_size = ConstantVector::GetData(input.data[8]);
+  const auto v_size = input.data[8].GetValue(0).GetValue<int64_t>();
   if (!global_csr.initialized_v) {
-
+    global_csr.InitializeVertex(v_size);
   }
   return;
 }
