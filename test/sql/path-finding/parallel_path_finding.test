@@ -8,7 +8,7 @@
 require duckpgq
 
 statement ok
-CREATE TABLE pairs(src INT, dst INT); INSERT INTO pairs(src, dst) VALUES (10, 20), (20, 30), (30,10);
+CREATE TABLE pairs(src INT, dst INT); INSERT INTO pairs(src, dst) VALUES (0, 1), (1, 2), (2,0);
 
 statement ok
 create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (40);
