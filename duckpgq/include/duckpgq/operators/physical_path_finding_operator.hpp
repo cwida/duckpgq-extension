@@ -33,6 +33,7 @@ public:
     bool initialized_e = false;
     bool initialized_w = false;
     size_t v_size;
+    bool is_ready = false;
 
     std::mutex csr_lock;
   public:
@@ -75,6 +76,7 @@ public:
 
     void Sink(DataChunk &input, GlobalCompressedSparseRow &global_csr);
 
+    static void CreateCSR(DataChunk &input, GlobalCompressedSparseRow &global_csr);
     //! The hosting operator
     const PhysicalPathFinding &op;
     //! Holds a vector of incoming columns

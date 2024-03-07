@@ -58,12 +58,8 @@ PhysicalPathFinding::LocalCompressedSparseRow::LocalCompressedSparseRow(
     duckdb::ClientContext &context, const duckdb::PhysicalPathFinding &op) :
       op(op), executor(context) {}
 
-
-
-void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
-    DataChunk &input,
-    PhysicalPathFinding::GlobalCompressedSparseRow &global_csr) {
-  input.Print();
+void PhysicalPathFinding::LocalCompressedSparseRow::CreateCSR(DataChunk &input,
+                                                              PhysicalPathFinding::GlobalCompressedSparseRow &global_csr) {
   if (!global_csr.initialized_v) {
     const auto v_size = input.data[8].GetValue(0).GetValue<int64_t>();
     global_csr.InitializeVertex(v_size);
@@ -82,7 +78,27 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
     const auto e_size = input.data[7].GetValue(0).GetValue<int64_t>();
     global_csr.InitializeEdge(e_size);
   }
+  TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
+      input.data[6], input.data[4], input.data[2], result, input.size(),
+      [&](int64_t src, int64_t dst, int64_t edge_id) {
+        auto pos = ++global_csr.v[src + 1];
+        global_csr.e[(int64_t)pos - 1] = dst;
+        global_csr.edge_ids[(int64_t)pos - 1] = edge_id;
+        return 1;
+      });
   global_csr.Print();
+}
+
+void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
+    DataChunk &input,
+    PhysicalPathFinding::GlobalCompressedSparseRow &global_csr) {
+  if (global_csr.is_ready) {
+    // Go to path-finding --> CSR is ready
+    //! return for now
+    input.Print();
+    return;
+  }
+  CreateCSR(input, global_csr);
 }
 
 //===--------------------------------------------------------------------===//
@@ -146,7 +162,7 @@ SinkResultType PhysicalPathFinding::Sink(ExecutionContext &context,
   auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
   auto &lstate = input.local_state.Cast<PathFindingLocalState>();
   gstate.Sink(chunk, lstate);
-
+  gstate.global_csr->is_ready = true;
   return SinkResultType::NEED_MORE_INPUT;
 }
 
