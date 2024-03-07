@@ -55,6 +55,7 @@ public:
       } else {
         result += "E not initialized";
       }
+      result += "\nW: ";
       if (initialized_w) {
         for (auto i : w) {
           result += std::to_string(i) + " ";
