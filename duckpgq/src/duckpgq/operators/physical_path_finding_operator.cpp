@@ -36,8 +36,22 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(int64_t v_
   for (idx_t i = 0; i < v_size; ++i) {
     v[i].store(0);
   }
-  Print();
   initialized_v = true;
+}
+void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeEdge(
+    int64_t e_size) {
+  const lock_guard<mutex> csr_init_lock(csr_lock);
+  try {
+    e.resize(e_size, 0);
+    edge_ids.resize(e_size, 0);
+  } catch (std::bad_alloc const &) {
+    throw InternalException("Unable to initialize vector of size for csr "
+                            "edge table representation");
+  }
+  for (idx_t i = 1; i < v_size; i++) {
+    v[i] += v[i-1];
+  }
+  initialized_e = true;
 }
 
 PhysicalPathFinding::LocalCompressedSparseRow::LocalCompressedSparseRow(
@@ -50,9 +64,8 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
     DataChunk &input,
     PhysicalPathFinding::GlobalCompressedSparseRow &global_csr) {
   input.Print();
-  const auto e_size = ConstantVector::GetData(input.data[7]);
-  const auto v_size = input.data[8].GetValue(0).GetValue<int64_t>();
   if (!global_csr.initialized_v) {
+    const auto v_size = input.data[8].GetValue(0).GetValue<int64_t>();
     global_csr.InitializeVertex(v_size);
   }
   Vector result = Vector(LogicalTypeId::BIGINT);
@@ -64,6 +77,11 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
         edge_count = edge_count + cnt;
         return edge_count;
       });
+
+  if (!global_csr.initialized_e) {
+    const auto e_size = input.data[7].GetValue(0).GetValue<int64_t>();
+    global_csr.InitializeEdge(e_size);
+  }
   global_csr.Print();
 }
 

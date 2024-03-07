@@ -37,6 +37,7 @@ public:
     std::mutex csr_lock;
   public:
     void InitializeVertex(int64_t v_size);
+    void InitializeEdge(int64_t e_size);
     void Print() {
       string result;
       result += "CSR:\nV: ";
@@ -63,9 +64,7 @@ public:
       } else {
         result += "W not initialized";
       }
-
       Printer::Print(result);
-
     };
   };
 
