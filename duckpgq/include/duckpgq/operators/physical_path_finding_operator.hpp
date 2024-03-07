@@ -37,6 +37,35 @@ public:
     std::mutex csr_lock;
   public:
     void InitializeVertex(int64_t v_size);
+    void Print() {
+      string result;
+      result += "CSR:\nV: ";
+      if (initialized_v) {
+        for (idx_t i = 0; i < v_size; ++i) {
+          result += std::to_string(v[i]) + ' ';
+        }
+      } else {
+        result += "V not initialized";
+      }
+      result += "\nE: ";
+      if (initialized_e) {
+        for (auto i : e) {
+          result += std::to_string(i) + " ";
+        }
+      } else {
+        result += "E not initialized";
+      }
+      if (initialized_w) {
+        for (auto i : w) {
+          result += std::to_string(i) + " ";
+        }
+      } else {
+        result += "W not initialized";
+      }
+
+      Printer::Print(result);
+
+    };
   };
 
   class LocalCompressedSparseRow {

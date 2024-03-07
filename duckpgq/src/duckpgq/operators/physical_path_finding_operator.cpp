@@ -36,6 +36,7 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(int64_t v_
   for (idx_t i = 0; i < v_size; ++i) {
     v[i].store(0);
   }
+  Print();
   initialized_v = true;
 }
 
@@ -54,7 +55,16 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
   if (!global_csr.initialized_v) {
     global_csr.InitializeVertex(v_size);
   }
-  return;
+  Vector result = Vector(LogicalTypeId::BIGINT);
+  BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
+      input.data[6], input.data[5], result, input.size(),
+      [&](int64_t src, int64_t cnt) {
+        int64_t edge_count = 0;
+        global_csr.v[src + 2] = cnt;
+        edge_count = edge_count + cnt;
+        return edge_count;
+      });
+  global_csr.Print();
 }
 
 //===--------------------------------------------------------------------===//
