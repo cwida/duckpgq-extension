@@ -125,6 +125,7 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
     auto &src = input.data[0];
     auto &dst = input.data[1];
 
+
     auto v_size = global_csr.v_size;
     auto *v = (int64_t *)global_csr.v;
     vector<int64_t> &e = global_csr.e;
@@ -133,9 +134,9 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
     UnifiedVectorFormat vdata_dst;
     src.ToUnifiedFormat(input.size(), vdata_src);
     dst.ToUnifiedFormat(input.size(), vdata_dst);
-    auto src_data = vdata_src.data;
-    auto dst_data = vdata_dst.data;
-    Vector result = Vector(LogicalTypeId::BIGINT);
+    auto src_data = (int32_t*)vdata_src.data;
+    auto dst_data = (int32_t*)vdata_dst.data;
+    Vector result = Vector(src.GetType());
     ValidityMask &result_validity = FlatVector::Validity(result);
     result.SetVectorType(VectorType::FLAT_VECTOR);
     auto result_data = FlatVector::GetData<int64_t>(result);
