@@ -79,8 +79,6 @@ public:
     static void CreateCSR(DataChunk &input, GlobalCompressedSparseRow &global_csr);
     //! The hosting operator
     const PhysicalPathFinding &op;
-    //! Holds a vector of incoming columns
-    DataChunk keys;
     //! Local copy of the expression executor
     ExpressionExecutor executor;
 
