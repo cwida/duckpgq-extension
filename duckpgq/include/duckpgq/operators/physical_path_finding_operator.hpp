@@ -32,7 +32,11 @@ public:
     bool initialized_v = false;
     bool initialized_e = false;
     bool initialized_w = false;
-    size_t vsize;
+    size_t v_size;
+
+    std::mutex csr_lock;
+  public:
+    void InitializeVertex(int64_t v_size);
   };
 
   class LocalCompressedSparseRow {
@@ -50,8 +54,6 @@ public:
     ExpressionExecutor executor;
 
   };
-
-
 
 public:
   static constexpr const PhysicalOperatorType TYPE =

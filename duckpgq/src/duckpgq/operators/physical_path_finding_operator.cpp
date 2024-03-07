@@ -20,14 +20,40 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
   expressions = std::move(op.expressions);
 }
 
+void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(int64_t v_size_) {
+  lock_guard<mutex> csr_init_lock(csr_lock);
+
+  if (initialized_v) {
+    return;
+  }
+  v_size = v_size_ + 2;
+  try {
+    v = new std::atomic<int64_t>[v_size];
+  } catch (std::bad_alloc const &) {
+    throw InternalException("Unable to initialize vector of size for csr vertex table "
+                                             "representation");
+  }
+  for (idx_t i = 0; i < v_size; ++i) {
+    v[i].store(0);
+  }
+  initialized_v = true;
+}
+
 PhysicalPathFinding::LocalCompressedSparseRow::LocalCompressedSparseRow(
     duckdb::ClientContext &context, const duckdb::PhysicalPathFinding &op) :
       op(op), executor(context) {}
+
+
 
 void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
     DataChunk &input,
     PhysicalPathFinding::GlobalCompressedSparseRow &global_csr) {
   input.Print();
+  const auto e_size = ConstantVector::GetData(input.data[7]);
+  const auto v_size = ConstantVector::GetData(input.data[8]);
+  if (!global_csr.initialized_v) {
+
+  }
   return;
 }
 
@@ -62,8 +88,6 @@ public:
       : GlobalSinkState(prev), global_csr(std::move(prev.global_csr)), child(prev.child+1) {}
 
   void Sink(DataChunk &input, PathFindingLocalState &lstate) {
-
-    input.Print();
     lstate.local_csr.Sink(input, *global_csr);
   }
 
@@ -93,7 +117,6 @@ SinkResultType PhysicalPathFinding::Sink(ExecutionContext &context,
                                          OperatorSinkInput &input) const {
   auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
   auto &lstate = input.local_state.Cast<PathFindingLocalState>();
-  chunk.Print();
   gstate.Sink(chunk, lstate);
 
   return SinkResultType::NEED_MORE_INPUT;
@@ -130,8 +153,6 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 OperatorResultType PhysicalPathFinding::ExecuteInternal(
     ExecutionContext &context, DataChunk &input, DataChunk &chunk,
     GlobalOperatorState &gstate, OperatorState &state) const {
-  input.Print();
-  chunk.Print();
   return OperatorResultType::FINISHED;
 }
 
