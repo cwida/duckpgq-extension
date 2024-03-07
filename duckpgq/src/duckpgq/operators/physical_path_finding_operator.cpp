@@ -133,8 +133,8 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
     UnifiedVectorFormat vdata_dst;
     src.ToUnifiedFormat(input.size(), vdata_src);
     dst.ToUnifiedFormat(input.size(), vdata_dst);
-    auto src_data = (int64_t *)vdata_src.data;
-    auto dst_data = (int64_t *)vdata_dst.data;
+    auto src_data = vdata_src.data;
+    auto dst_data = vdata_dst.data;
     Vector result = Vector(LogicalTypeId::BIGINT);
     ValidityMask &result_validity = FlatVector::Validity(result);
     result.SetVectorType(VectorType::FLAT_VECTOR);
@@ -144,12 +144,11 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
     vector<std::bitset<LANE_LIMIT>> visit1(v_size);
     vector<std::bitset<LANE_LIMIT>> visit2(v_size);
     short lane_to_num[LANE_LIMIT];
-    for (short & lane : lane_to_num) {
-      lane = -1; // inactive
+    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+      lane_to_num[lane] = -1; // inactive
     }
     idx_t started_searches = 0;
     while (started_searches < input.size()) {
-
       // empty visit vectors
       for (auto i = 0; i < v_size; i++) {
         seen[i] = 0;
@@ -200,7 +199,6 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
         }
       }
 
-
       // no changes anymore: any still active searches have no path
       for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
         int64_t search_num = lane_to_num[lane];
@@ -211,6 +209,7 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
         }
       }
     }
+    result.Print();
     return;
   }
   CreateCSR(input, global_csr);

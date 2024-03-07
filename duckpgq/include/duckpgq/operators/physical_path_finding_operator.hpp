@@ -81,7 +81,7 @@ public:
 
     static void CreateCSR(DataChunk &input, GlobalCompressedSparseRow &global_csr);
 
-    bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
+    static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
                     vector<std::bitset<LANE_LIMIT>> &seen,
                     vector<std::bitset<LANE_LIMIT>> &visit,
                     vector<std::bitset<LANE_LIMIT>> &next);
