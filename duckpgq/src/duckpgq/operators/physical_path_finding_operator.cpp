@@ -11,6 +11,7 @@
 #include <iostream>
 namespace duckdb {
 
+
 PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
                                          unique_ptr<PhysicalOperator> left,
                                          unique_ptr<PhysicalOperator> right)
@@ -89,13 +90,127 @@ void PhysicalPathFinding::LocalCompressedSparseRow::CreateCSR(DataChunk &input,
   global_csr.Print();
 }
 
+bool PhysicalPathFinding::LocalCompressedSparseRow::IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
+                            vector<std::bitset<LANE_LIMIT>> &seen,
+                            vector<std::bitset<LANE_LIMIT>> &visit,
+                            vector<std::bitset<LANE_LIMIT>> &next) {
+  bool change = false;
+  for (auto i = 0; i < v_size; i++) {
+    next[i] = 0;
+  }
+  for (auto i = 0; i < v_size; i++) {
+    if (visit[i].any()) {
+      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        auto n = e[offset];
+        next[n] = next[n] | visit[i];
+      }
+    }
+  }
+  for (auto i = 0; i < v_size; i++) {
+    next[i] = next[i] & ~seen[i];
+    seen[i] = seen[i] | next[i];
+    change |= next[i].any();
+  }
+  return change;
+}
+
+
 void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
     DataChunk &input,
     PhysicalPathFinding::GlobalCompressedSparseRow &global_csr) {
   if (global_csr.is_ready) {
     // Go to path-finding --> CSR is ready
-    //! return for now
     input.Print();
+    global_csr.Print();
+    auto &src = input.data[0];
+    auto &dst = input.data[1];
+
+    auto v_size = global_csr.v_size;
+    auto *v = (int64_t *)global_csr.v;
+    vector<int64_t> &e = global_csr.e;
+
+    UnifiedVectorFormat vdata_src;
+    UnifiedVectorFormat vdata_dst;
+    src.ToUnifiedFormat(input.size(), vdata_src);
+    dst.ToUnifiedFormat(input.size(), vdata_dst);
+    auto src_data = (int64_t *)vdata_src.data;
+    auto dst_data = (int64_t *)vdata_dst.data;
+    Vector result = Vector(LogicalTypeId::BIGINT);
+    ValidityMask &result_validity = FlatVector::Validity(result);
+    result.SetVectorType(VectorType::FLAT_VECTOR);
+    auto result_data = FlatVector::GetData<int64_t>(result);
+
+    vector<std::bitset<LANE_LIMIT>> seen(v_size);
+    vector<std::bitset<LANE_LIMIT>> visit1(v_size);
+    vector<std::bitset<LANE_LIMIT>> visit2(v_size);
+    short lane_to_num[LANE_LIMIT];
+    for (short & lane : lane_to_num) {
+      lane = -1; // inactive
+    }
+    idx_t started_searches = 0;
+    while (started_searches < input.size()) {
+
+      // empty visit vectors
+      for (auto i = 0; i < v_size; i++) {
+        seen[i] = 0;
+        visit1[i] = 0;
+      }
+
+      // add search jobs to free lanes
+      uint64_t active = 0;
+      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+        lane_to_num[lane] = -1;
+        while (started_searches < input.size()) {
+          int64_t search_num = started_searches++;
+          int64_t src_pos = vdata_src.sel->get_index(search_num);
+          int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+          if (!vdata_src.validity.RowIsValid(src_pos)) {
+            result_validity.SetInvalid(search_num);
+            result_data[search_num] = (uint64_t)-1; /* no path */
+          } else if (src_data[src_pos] == dst_data[dst_pos]) {
+            result_data[search_num] =
+                (uint64_t)0; // path of length 0 does not require a search
+          } else {
+            visit1[src_data[src_pos]][lane] = true;
+            lane_to_num[lane] = search_num; // active lane
+            active++;
+            break;
+          }
+        }
+      }
+
+      // make passes while a lane is still active
+      for (int64_t iter = 1; active; iter++) {
+        if (!IterativeLength(v_size, v, e, seen, (iter & 1) ? visit1 : visit2,
+                             (iter & 1) ? visit2 : visit1)) {
+          break;
+        }
+        // detect lanes that finished
+        for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+          int64_t search_num = lane_to_num[lane];
+          if (search_num >= 0) { // active lane
+            int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+            if (seen[dst_data[dst_pos]][lane]) {
+              result_data[search_num] =
+                  iter;               /* found at iter => iter = path length */
+              lane_to_num[lane] = -1; // mark inactive
+              active--;
+            }
+          }
+        }
+      }
+
+
+      // no changes anymore: any still active searches have no path
+      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+        int64_t search_num = lane_to_num[lane];
+        if (search_num >= 0) { // active lane
+          result_validity.SetInvalid(search_num);
+          result_data[search_num] = (int64_t)-1; /* no path */
+          lane_to_num[lane] = -1;                // mark inactive
+        }
+      }
+    }
     return;
   }
   CreateCSR(input, global_csr);
@@ -126,7 +241,7 @@ public:
     RowLayout rhs_layout;
     rhs_layout.Initialize(op.children[1]->types);
     global_csr = make_uniq<GlobalCompressedSparseRow>(context, rhs_layout);
-    }
+  }
 
   PathFindingGlobalState(PathFindingGlobalState &prev)
       : GlobalSinkState(prev), global_csr(std::move(prev.global_csr)), child(prev.child+1) {}
@@ -171,7 +286,6 @@ PhysicalPathFinding::Combine(ExecutionContext &context,
                              OperatorSinkCombineInput &input) const {
   auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
   auto &lstate = input.local_state.Cast<PathFindingLocalState>();
-  // gstate.tables[gstate.child]->Combine(lstate.table);
   auto &client_profiler = QueryProfiler::Get(context.client);
 
   client_profiler.Flush(context.thread.profiler);
@@ -208,17 +322,12 @@ class PathFindingLocalSourceState : public LocalSourceState {
 public:
   explicit PathFindingLocalSourceState(ClientContext &context,
                                        const PhysicalPathFinding &op)
-      : op(op), true_sel(STANDARD_VECTOR_SIZE), left_executor(context), right_executor(context){
+      : op(op){
   }
 
   const PhysicalPathFinding &op;
 
-  // Trailing predicates
-  SelectionVector true_sel;
-
-  ExpressionExecutor left_executor;
-  ExpressionExecutor right_executor;
-
+  DataChunk pf_results;
 };
 
 class PathFindingGlobalSourceState : public GlobalSourceState {
@@ -269,6 +378,7 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   auto &pf_sink = sink_state->Cast<PathFindingGlobalState>();
   auto &pf_gstate = input.global_state.Cast<PathFindingGlobalSourceState>();
   auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
+
   result.Print();
   pf_gstate.Initialize(pf_sink);
 

@@ -14,7 +14,10 @@
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 
 namespace duckdb {
+
 class PhysicalPathFinding : public PhysicalComparisonJoin {
+#define LANE_LIMIT 512
+
 public:
   class GlobalCompressedSparseRow {
   public:
@@ -47,7 +50,7 @@ public:
           result += std::to_string(v[i]) + ' ';
         }
       } else {
-        result += "V not initialized";
+        result += "not initialized";
       }
       result += "\nE: ";
       if (initialized_e) {
@@ -55,7 +58,7 @@ public:
           result += std::to_string(i) + " ";
         }
       } else {
-        result += "E not initialized";
+        result += "not initialized";
       }
       result += "\nW: ";
       if (initialized_w) {
@@ -63,7 +66,7 @@ public:
           result += std::to_string(i) + " ";
         }
       } else {
-        result += "W not initialized";
+        result += "not initialized";
       }
       Printer::Print(result);
     };
@@ -77,6 +80,12 @@ public:
     void Sink(DataChunk &input, GlobalCompressedSparseRow &global_csr);
 
     static void CreateCSR(DataChunk &input, GlobalCompressedSparseRow &global_csr);
+
+    bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
+                    vector<std::bitset<LANE_LIMIT>> &seen,
+                    vector<std::bitset<LANE_LIMIT>> &visit,
+                    vector<std::bitset<LANE_LIMIT>> &next);
+
     //! The hosting operator
     const PhysicalPathFinding &op;
     //! Local copy of the expression executor
