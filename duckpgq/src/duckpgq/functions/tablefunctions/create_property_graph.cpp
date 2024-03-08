@@ -79,7 +79,8 @@ CreatePropertyGraphFunction::CreatePropertyGraphBind(
   auto pg_table =
       duckpgq_state->registered_property_graphs.find(info->property_graph_name);
 
-  if (pg_table != duckpgq_state->registered_property_graphs.end()) {
+  if (pg_table != duckpgq_state->registered_property_graphs.end() &&
+      info->on_conflict == OnCreateConflict::ERROR_ON_CONFLICT) {
     throw Exception(ExceptionType::INVALID, "Property graph table with name " + info->property_graph_name + " already exists");
   }
 
@@ -163,13 +164,7 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
     throw Exception(ExceptionType::INVALID,"Registered DuckPGQ state not found");
   }
   auto duckpgq_state = (DuckPGQState *)lookup->second.get();
-  auto pg_lookup = duckpgq_state->registered_property_graphs.find(
-      pg_info->property_graph_name);
-  if (pg_lookup == duckpgq_state->registered_property_graphs.end()) {
-    duckpgq_state->registered_property_graphs[pg_info->property_graph_name] =
-        pg_info->Copy();
-  } else {
-    throw Exception(ExceptionType::INVALID,"A property graph with name " + pg_info->property_graph_name + " already exists.");
-  }
+  duckpgq_state->registered_property_graphs[pg_info->property_graph_name] =
+    pg_info->Copy();
 }
 }; // namespace duckdb
