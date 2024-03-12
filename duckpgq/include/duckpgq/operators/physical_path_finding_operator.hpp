@@ -91,6 +91,9 @@ public:
     //! Local copy of the expression executor
     ExpressionExecutor executor;
 
+    //! Final result for the path-finding pairs
+    DataChunk local_results;
+
   };
 
 public:

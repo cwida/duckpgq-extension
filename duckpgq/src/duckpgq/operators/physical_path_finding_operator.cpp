@@ -139,7 +139,7 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
     Vector result = Vector(src.GetType());
     ValidityMask &result_validity = FlatVector::Validity(result);
     result.SetVectorType(VectorType::FLAT_VECTOR);
-    auto result_data = FlatVector::GetData<int64_t>(result);
+    auto result_data = FlatVector::GetData<int32_t>(result);
 
     vector<std::bitset<LANE_LIMIT>> seen(v_size);
     vector<std::bitset<LANE_LIMIT>> visit1(v_size);
@@ -210,7 +210,9 @@ void PhysicalPathFinding::LocalCompressedSparseRow::Sink(
         }
       }
     }
-    result.Print();
+    local_results.data.emplace_back(result);
+    local_results.SetCardinality(input);
+    local_results.Print();
     return;
   }
   CreateCSR(input, global_csr);
@@ -253,6 +255,8 @@ public:
   unique_ptr<GlobalCompressedSparseRow> global_csr;
   size_t child;
 
+  DataChunk result;
+
 };
 
 unique_ptr<GlobalSinkState>
@@ -288,6 +292,7 @@ PhysicalPathFinding::Combine(ExecutionContext &context,
   auto &lstate = input.local_state.Cast<PathFindingLocalState>();
   auto &client_profiler = QueryProfiler::Get(context.client);
 
+  gstate.result.Move(lstate.local_csr.local_results);
   client_profiler.Flush(context.thread.profiler);
 
   return SinkCombineResultType::FINISHED;
@@ -326,8 +331,6 @@ public:
   }
 
   const PhysicalPathFinding &op;
-
-  DataChunk pf_results;
 };
 
 class PathFindingGlobalSourceState : public GlobalSourceState {
@@ -345,10 +348,8 @@ public:
 
 public:
   idx_t MaxThreads() override {
-    // We can't leverage any more threads than block pairs.
     const auto &sink_state = (op.sink_state->Cast<PathFindingGlobalState>());
     return 1;
-
   }
 
   void GetNextPair(ClientContext &client, PathFindingGlobalState &gstate,
@@ -378,10 +379,9 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   auto &pf_sink = sink_state->Cast<PathFindingGlobalState>();
   auto &pf_gstate = input.global_state.Cast<PathFindingGlobalSourceState>();
   auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
-
+  result.Move(pf_sink.result);
   result.Print();
   pf_gstate.Initialize(pf_sink);
-
 
   return result.size() == 0 ? SourceResultType::FINISHED
                             : SourceResultType::HAVE_MORE_OUTPUT;
