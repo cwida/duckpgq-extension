@@ -3,12 +3,19 @@
 
 require duckpgq
 
+statement error
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (tabledoesnotexist);
+----
+
+
 statement ok
 import database 'duckdb-pgq/data/SNB0.003';
 
 statement ok
 -CREATE PROPERTY GRAPH snb
 VERTEX TABLES (Message, person);
+
 
 statement ok
 -FROM GRAPH_TABLE (snb
