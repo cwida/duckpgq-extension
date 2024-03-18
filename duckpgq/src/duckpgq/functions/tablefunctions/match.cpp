@@ -369,19 +369,39 @@ void PGQMatchFunction::EdgeTypeAny(
   // START SELECT src, dst, * from edge_table
   auto src_dst_select_node = make_uniq<SelectNode>();
 
-  auto edge_ref = make_uniq<BaseTableRef>();
-  edge_ref->table_name = edge_table->table_name;
-  src_dst_select_node->from_table = std::move(edge_ref);
-  auto src_dst_select_statement = make_uniq<SelectStatement>();
-  auto src_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk, edge_table->table_name);
-  auto dst_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk, edge_table->table_name);
-  auto star_expr = make_uniq<StarExpression>();
+  auto edge_left_ref = make_uniq<BaseTableRef>();
+  edge_left_ref->table_name = edge_table->table_name;
+  src_dst_select_node->from_table = std::move(edge_left_ref);
+  auto src_left_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk, edge_table->table_name);
+  auto dst_left_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk, edge_table->table_name);
+  auto star_left_expr = make_uniq<StarExpression>();
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
-  src_dst_children.push_back(std::move(src_ref));
-  src_dst_children.push_back(std::move(dst_ref));
-  src_dst_children.push_back(std::move(star_expr));
-
+  src_dst_children.push_back(std::move(src_left_ref));
+  src_dst_children.push_back(std::move(dst_left_ref));
+  src_dst_children.push_back(std::move(star_left_expr));
+  src_dst_select_node->select_list = std::move(src_dst_children);
+  auto src_dst_select_statement = make_uniq<SelectStatement>();
+  src_dst_select_statement->node = std::move(src_dst_select_node);
   // END SELECT src, dst, * from edge_table
+
+  // START SELECT dst, src, * from edge_table
+  auto dst_src_select_node = make_uniq<SelectNode>();
+
+  auto edge_right_ref = make_uniq<BaseTableRef>();
+  edge_right_ref->table_name = edge_table->table_name;
+  dst_src_select_node->from_table = std::move(edge_right_ref);
+  auto src_right_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk, edge_table->table_name);
+  auto dst_right_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk, edge_table->table_name);
+  auto star_right_expr = make_uniq<StarExpression>();
+  auto dst_src_children = vector<unique_ptr<ParsedExpression>>();
+  dst_src_children.push_back(std::move(src_right_ref));
+  dst_src_children.push_back(std::move(dst_right_ref));
+  dst_src_children.push_back(std::move(star_right_expr));
+  dst_src_select_node->select_list = std::move(dst_src_children);
+  auto dst_src_select_statement = make_uniq<SelectStatement>();
+  src_dst_select_statement->node = std::move(src_dst_select_node);
+  // END SELECT dst, src, * from edge_table
+
 
   // (a) src.key = edge.src
   auto src_left_expr = CreateMatchJoinExpression(
