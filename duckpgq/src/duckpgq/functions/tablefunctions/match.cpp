@@ -15,6 +15,8 @@
 #include "duckdb/parser/expression/conjunction_expression.hpp"
 #include "duckdb/parser/expression/star_expression.hpp"
 
+#include "duckdb/parser/query_node/set_operation_node.hpp"
+
 #include "duckdb/parser/query_node/select_node.hpp"
 
 #include "duckdb/common/enums/subquery_type.hpp"
@@ -23,6 +25,7 @@
 #include "duckdb/parser/property_graph_table.hpp"
 #include "duckdb/parser/subpath_element.hpp"
 #include <cmath>
+#include <duckdb/common/enums/set_operation_type.hpp>
 
 namespace duckdb {
 shared_ptr<PropertyGraphTable>
@@ -390,17 +393,27 @@ void PGQMatchFunction::EdgeTypeAny(
   auto edge_right_ref = make_uniq<BaseTableRef>();
   edge_right_ref->table_name = edge_table->table_name;
   dst_src_select_node->from_table = std::move(edge_right_ref);
+  auto dst_right_ref = make_uniq<ColumnRefExpression>(
+      edge_table->destination_fk, edge_table->table_name);
   auto src_right_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk, edge_table->table_name);
-  auto dst_right_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk, edge_table->table_name);
   auto star_right_expr = make_uniq<StarExpression>();
   auto dst_src_children = vector<unique_ptr<ParsedExpression>>();
-  dst_src_children.push_back(std::move(src_right_ref));
   dst_src_children.push_back(std::move(dst_right_ref));
+  dst_src_children.push_back(std::move(src_right_ref));
   dst_src_children.push_back(std::move(star_right_expr));
   dst_src_select_node->select_list = std::move(dst_src_children);
   auto dst_src_select_statement = make_uniq<SelectStatement>();
-  src_dst_select_statement->node = std::move(src_dst_select_node);
+  dst_src_select_statement->node = std::move(dst_src_select_node);
   // END SELECT dst, src, * from edge_table
+
+  auto union_node = make_uniq<SetOperationNode>();
+  union_node->setop_type = SetOperationType::UNION;
+  union_node->setop_all = true;
+  union_node->left = std::move(src_dst_select_node);
+  union_node->right = std::move(dst_src_select_node);
+
+  auto union_subquery = make_uniq<SubqueryRef>();
+  union_subquery->subquery = std::move(union_node);
 
 
   // (a) src.key = edge.src
