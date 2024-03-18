@@ -411,11 +411,20 @@ void PGQMatchFunction::EdgeTypeAny(
   union_node->setop_all = true;
   union_node->left = std::move(src_dst_select_node);
   union_node->right = std::move(dst_src_select_node);
+  auto union_select = make_uniq<SelectStatement>();
+  union_select->node = std::move(union_node);
 
   auto union_subquery = make_uniq<SubqueryRef>();
-  union_subquery->subquery = std::move(union_node);
+  union_subquery->subquery = std::move(union_select);
 
-
+  if (from_clause) {
+    auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
+    from_join->left = std::move(from_clause);
+    from_join->right = std::move(union_subquery);
+    from_clause = std::move(from_join);
+  } else {
+    from_clause = std::move(union_subquery);
+  }
   // (a) src.key = edge.src
   auto src_left_expr = CreateMatchJoinExpression(
       edge_table->source_pk, edge_table->source_fk, prev_binding, edge_binding);
@@ -428,58 +437,7 @@ void PGQMatchFunction::EdgeTypeAny(
       ExpressionType::CONJUNCTION_AND, std::move(src_left_expr),
       std::move(dst_left_expr));
 
-
-  // unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
-  //   //! BEGIN OF (SELECT count(cte1.temp) as temp * 0 from cte1) __x
-  //
-  //   auto temp_cte_select_node = make_uniq<SelectNode>();
-  //
-  //   auto cte_table_ref = make_uniq<BaseTableRef>();
-  //
-  //   cte_table_ref->table_name = "cte1";
-  //   temp_cte_select_node->from_table = std::move(cte_table_ref);
-  //   vector<unique_ptr<ParsedExpression>> children;
-  //   children.push_back(make_uniq<ColumnRefExpression>("temp", "cte1"));
-  //
-  //   auto count_function =
-  //       make_uniq<FunctionExpression>("count", std::move(children));
-  //
-  //   auto zero = make_uniq<ConstantExpression>(Value::INTEGER((int32_t)0));
-  //
-  //   vector<unique_ptr<ParsedExpression>> multiply_children;
-  //
-  //   multiply_children.push_back(std::move(zero));
-  //   multiply_children.push_back(std::move(count_function));
-  //   auto multiply_function =
-  //       make_uniq<FunctionExpression>("multiply", std::move(multiply_children));
-  //   multiply_function->alias = "temp";
-  //   temp_cte_select_node->select_list.push_back(std::move(multiply_function));
-  //   auto temp_cte_select_statement = make_uniq<SelectStatement>();
-  //   temp_cte_select_statement->node = std::move(temp_cte_select_node);
-  //
-  //   auto temp_cte_select_subquery =
-  //       make_uniq<SubqueryRef>(std::move(temp_cte_select_statement), "__x");
-  //   //! END OF (SELECT count(cte1.temp) * 0 as temp from cte1) __x
-  //   return temp_cte_select_subquery;
-  // }
-
-  // // (c) src.key = edge.dst
-  // auto src_right_expr = CreateMatchJoinExpression(edge_table->source_pk,
-  //                                                 edge_table->destination_fk,
-  //                                                 prev_binding, edge_binding);
-  // // (d) dst.key = edge.src
-  // auto dst_right_expr = CreateMatchJoinExpression(edge_table->destination_pk,
-  //                                                 edge_table->source_fk,
-  //                                                 next_binding, edge_binding);
-  // // (c) AND (d)
-  // auto combined_right_expr = make_uniq<ConjunctionExpression>(
-  //     ExpressionType::CONJUNCTION_AND, std::move(src_right_expr),
-  //     std::move(dst_right_expr));
-  // // ((a) AND (b)) OR ((c) AND (d))
-  auto combined_expr = make_uniq<ConjunctionExpression>(
-      ExpressionType::CONJUNCTION_OR, std::move(combined_left_expr),
-      std::move(combined_left_expr));
-  conditions.push_back(std::move(combined_expr));
+  conditions.push_back(std::move(combined_left_expr));
 }
 
 void PGQMatchFunction::EdgeTypeLeft(
