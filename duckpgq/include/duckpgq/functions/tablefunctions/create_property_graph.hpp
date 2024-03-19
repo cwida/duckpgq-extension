@@ -22,14 +22,14 @@ public:
     function = CreatePropertyGraphFunc;
   }
 
-  struct CreatePropertyGraphBindData : TableFunctionData {
+  struct CreatePropertyGraphBindData : public TableFunctionData {
     explicit CreatePropertyGraphBindData(CreatePropertyGraphInfo *pg_info)
         : create_pg_info(pg_info) {}
 
     CreatePropertyGraphInfo *create_pg_info;
   };
 
-  struct CreatePropertyGraphGlobalData : GlobalTableFunctionState {
+  struct CreatePropertyGraphGlobalData : public GlobalTableFunctionState {
     CreatePropertyGraphGlobalData() = default;
   };
 

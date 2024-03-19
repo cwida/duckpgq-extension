@@ -1,4 +1,5 @@
 #include "duckpgq/functions/tablefunctions/create_property_graph.hpp"
+#include "duckdb/parser/statement/create_statement.hpp"
 #include <duckpgq_extension.hpp>
 
 namespace duckdb {
