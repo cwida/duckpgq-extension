@@ -20,6 +20,7 @@ EDGE TABLES (
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
     );
 
+# Daniel has 3 outgoing edges and 2 incoming edges, so there should be 5 tuples
 query II
 -FROM GRAPH_TABLE (pg
     MATCH
@@ -29,6 +30,7 @@ query II
     );
 ----
 Daniel	Tavneet
+Daniel	Gabor
 Daniel	Peter
 Daniel	David
-Daniel	Gabor
+Daniel	Peter
