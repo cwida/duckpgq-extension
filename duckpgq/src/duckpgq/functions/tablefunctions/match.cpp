@@ -375,13 +375,18 @@ void PGQMatchFunction::EdgeTypeAny(
   auto edge_left_ref = make_uniq<BaseTableRef>();
   edge_left_ref->table_name = edge_table->table_name;
   src_dst_select_node->from_table = std::move(edge_left_ref);
-  auto src_left_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name);
-  auto dst_left_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk[0], edge_table->table_name);
-  // auto star_left_expr = make_uniq<StarExpression>();
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
-  src_dst_children.push_back(std::move(src_left_ref));
-  src_dst_children.push_back(std::move(dst_left_ref));
-  // src_dst_children.push_back(std::move(star_left_expr));
+  src_dst_children.push_back(make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name));
+  src_dst_children.push_back(make_uniq<ColumnRefExpression>(edge_table->destination_fk[0], edge_table->table_name));
+  unordered_set<string> added_columns;
+  added_columns.insert(edge_table->source_fk[0]);
+  added_columns.insert(edge_table->destination_fk[0]);
+  for (const auto& col : edge_table->column_names) {
+    if (added_columns.find(col) == added_columns.end()) {
+      src_dst_children.push_back(make_uniq<ColumnRefExpression>(col, edge_table->table_name));
+      added_columns.insert(col);
+    }
+  }
   src_dst_select_node->select_list = std::move(src_dst_children);
   // END SELECT src, dst, * from edge_table
 
@@ -390,15 +395,23 @@ void PGQMatchFunction::EdgeTypeAny(
 
   auto edge_right_ref = make_uniq<BaseTableRef>();
   edge_right_ref->table_name = edge_table->table_name;
-  dst_src_select_node->from_table = std::move(edge_right_ref);
-  auto dst_right_ref = make_uniq<ColumnRefExpression>(
-      edge_table->destination_fk[0], edge_table->table_name);
-  auto src_right_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name);
-  // auto star_right_expr = make_uniq<StarExpression>();
   auto dst_src_children = vector<unique_ptr<ParsedExpression>>();
-  dst_src_children.push_back(std::move(dst_right_ref));
-  dst_src_children.push_back(std::move(src_right_ref));
-  // dst_src_children.push_back(std::move(star_right_expr));
+  dst_src_select_node->from_table = std::move(edge_right_ref);
+
+  dst_src_children.push_back(make_uniq<ColumnRefExpression>(
+      edge_table->destination_fk[0], edge_table->table_name));
+  dst_src_children.push_back(make_uniq<ColumnRefExpression>(edge_table->source_fk[0],
+                                                      edge_table->table_name));
+  added_columns.clear();
+  added_columns.insert(edge_table->destination_fk[0]);
+  added_columns.insert(edge_table->source_fk[0]);
+  for (const auto& col : edge_table->column_names) {
+    if (added_columns.find(col) == added_columns.end()) {
+      dst_src_children.push_back(make_uniq<ColumnRefExpression>(col, edge_table->table_name));
+      added_columns.insert(col);
+    }
+  }
+
   dst_src_select_node->select_list = std::move(dst_src_children);
   // END SELECT dst, src, * from edge_table
 
@@ -647,7 +660,6 @@ void PGQMatchFunction::AddEdgeJoins(
   }
   switch (edge_type) {
   case PGQMatchType::MATCH_EDGE_ANY: {
-    select_node->modifiers.push_back(make_uniq<DistinctModifier>());
     EdgeTypeAny(edge_table, edge_binding, prev_binding, next_binding,
                 conditions, from_clause);
     break;
@@ -942,7 +954,7 @@ void PGQMatchFunction::ProcessPathList(
 
 unique_ptr<TableRef>
 PGQMatchFunction::MatchBindReplace(ClientContext &context,
-                                   TableFunctionBindInput &) {
+                                   TableFunctionBindInput &bind_input) {
   auto duckpgq_state_entry = context.registered_state.find("duckpgq");
   auto duckpgq_state =
       dynamic_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
