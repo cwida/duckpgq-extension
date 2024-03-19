@@ -377,11 +377,11 @@ void PGQMatchFunction::EdgeTypeAny(
   src_dst_select_node->from_table = std::move(edge_left_ref);
   auto src_left_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name);
   auto dst_left_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk[0], edge_table->table_name);
-  auto star_left_expr = make_uniq<StarExpression>();
+  // auto star_left_expr = make_uniq<StarExpression>();
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
   src_dst_children.push_back(std::move(src_left_ref));
   src_dst_children.push_back(std::move(dst_left_ref));
-  src_dst_children.push_back(std::move(star_left_expr));
+  // src_dst_children.push_back(std::move(star_left_expr));
   src_dst_select_node->select_list = std::move(src_dst_children);
   // END SELECT src, dst, * from edge_table
 
@@ -394,11 +394,11 @@ void PGQMatchFunction::EdgeTypeAny(
   auto dst_right_ref = make_uniq<ColumnRefExpression>(
       edge_table->destination_fk[0], edge_table->table_name);
   auto src_right_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name);
-  auto star_right_expr = make_uniq<StarExpression>();
+  // auto star_right_expr = make_uniq<StarExpression>();
   auto dst_src_children = vector<unique_ptr<ParsedExpression>>();
   dst_src_children.push_back(std::move(dst_right_ref));
   dst_src_children.push_back(std::move(src_right_ref));
-  dst_src_children.push_back(std::move(star_right_expr));
+  // dst_src_children.push_back(std::move(star_right_expr));
   dst_src_select_node->select_list = std::move(dst_src_children);
   // END SELECT dst, src, * from edge_table
 
@@ -1047,7 +1047,7 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
   subquery->node = std::move(select_node);
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
-
+  result->Print();
   return std::move(result);
 }
 } // namespace duckdb
