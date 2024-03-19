@@ -8,7 +8,6 @@
 
 #pragma once
 #include "duckdb/function/table_function.hpp"
-#include "duckdb/parser/statement/create_statement.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 
@@ -23,14 +22,14 @@ public:
     function = CreatePropertyGraphFunc;
   }
 
-  struct CreatePropertyGraphBindData : public TableFunctionData {
+  struct CreatePropertyGraphBindData : TableFunctionData {
     explicit CreatePropertyGraphBindData(CreatePropertyGraphInfo *pg_info)
         : create_pg_info(pg_info) {}
 
     CreatePropertyGraphInfo *create_pg_info;
   };
 
-  struct CreatePropertyGraphGlobalData : public GlobalTableFunctionState {
+  struct CreatePropertyGraphGlobalData : GlobalTableFunctionState {
     CreatePropertyGraphGlobalData() = default;
   };
 
@@ -42,12 +41,12 @@ public:
   CheckPropertyGraphTableColumns(const shared_ptr<PropertyGraphTable> &pg_table,
                                  TableCatalogEntry &table);
 
-  static duckdb::unique_ptr<FunctionData>
+  static unique_ptr<FunctionData>
   CreatePropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
                           vector<LogicalType> &return_types,
                           vector<string> &names);
 
-  static duckdb::unique_ptr<GlobalTableFunctionState>
+  static unique_ptr<GlobalTableFunctionState>
   CreatePropertyGraphInit(ClientContext &context,
                           TableFunctionInitInput &input);
 
