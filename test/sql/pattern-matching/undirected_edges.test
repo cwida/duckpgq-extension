@@ -20,6 +20,17 @@ EDGE TABLES (
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
     );
 
+query II
+SELECT a."name" AS person, b."name" AS friend
+    FROM ((SELECT know.src, know.dst, know.createDate FROM know) UNION ALL (SELECT know.dst, know.src, know.createDate FROM know)) AS k , Student AS b , Student AS a
+    WHERE ((a.id = k.src) AND (b.id = k.dst) AND (a."name" = 'Daniel'));
+----
+Daniel	Tavneet
+Daniel	Gabor
+Daniel	Peter
+Daniel	David
+Daniel	Peter
+
 # Daniel has 3 outgoing edges and 2 incoming edges, so there should be 5 tuples
 query II
 -FROM GRAPH_TABLE (pg
