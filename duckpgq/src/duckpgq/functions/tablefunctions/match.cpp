@@ -422,7 +422,7 @@ void PGQMatchFunction::EdgeTypeAny(
   union_node->right = std::move(dst_src_select_node);
   auto union_select = make_uniq<SelectStatement>();
   union_select->node = std::move(union_node);
-  // (SELECT src, dst, * from edge_table UNION ALL SELECT dst, src, * from edge_table UNION ALL)
+  // (SELECT src, dst, * from edge_table UNION ALL SELECT dst, src, * from edge_table)
   auto union_subquery = make_uniq<SubqueryRef>(std::move(union_select));
   union_subquery->alias = edge_binding;
   if (from_clause) {
