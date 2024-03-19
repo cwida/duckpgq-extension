@@ -21,10 +21,9 @@ EDGE TABLES (
     );
 
 statement ok
--SELECT study.name, study.school
-FROM GRAPH_TABLE (pg
+-FROM GRAPH_TABLE (pg
     MATCH
-    (a:Person)-[k:knows]-(b:Person)
+    (a:Student)-[k:know]-(b:Student)
     WHERE a.name = 'Daniel'
     COLUMNS (a.name as person, b.name as friend)
-    ) study;
+    );

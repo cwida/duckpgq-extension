@@ -375,16 +375,14 @@ void PGQMatchFunction::EdgeTypeAny(
   auto edge_left_ref = make_uniq<BaseTableRef>();
   edge_left_ref->table_name = edge_table->table_name;
   src_dst_select_node->from_table = std::move(edge_left_ref);
-  auto src_left_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk, edge_table->table_name);
-  auto dst_left_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk, edge_table->table_name);
+  auto src_left_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name);
+  auto dst_left_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk[0], edge_table->table_name);
   auto star_left_expr = make_uniq<StarExpression>();
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
   src_dst_children.push_back(std::move(src_left_ref));
   src_dst_children.push_back(std::move(dst_left_ref));
   src_dst_children.push_back(std::move(star_left_expr));
   src_dst_select_node->select_list = std::move(src_dst_children);
-  auto src_dst_select_statement = make_uniq<SelectStatement>();
-  src_dst_select_statement->node = std::move(src_dst_select_node);
   // END SELECT src, dst, * from edge_table
 
   // START SELECT dst, src, * from edge_table
@@ -394,16 +392,14 @@ void PGQMatchFunction::EdgeTypeAny(
   edge_right_ref->table_name = edge_table->table_name;
   dst_src_select_node->from_table = std::move(edge_right_ref);
   auto dst_right_ref = make_uniq<ColumnRefExpression>(
-      edge_table->destination_fk, edge_table->table_name);
-  auto src_right_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk, edge_table->table_name);
+      edge_table->destination_fk[0], edge_table->table_name);
+  auto src_right_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name);
   auto star_right_expr = make_uniq<StarExpression>();
   auto dst_src_children = vector<unique_ptr<ParsedExpression>>();
   dst_src_children.push_back(std::move(dst_right_ref));
   dst_src_children.push_back(std::move(src_right_ref));
   dst_src_children.push_back(std::move(star_right_expr));
   dst_src_select_node->select_list = std::move(dst_src_children);
-  auto dst_src_select_statement = make_uniq<SelectStatement>();
-  dst_src_select_statement->node = std::move(dst_src_select_node);
   // END SELECT dst, src, * from edge_table
 
   auto union_node = make_uniq<SetOperationNode>();
@@ -413,10 +409,9 @@ void PGQMatchFunction::EdgeTypeAny(
   union_node->right = std::move(dst_src_select_node);
   auto union_select = make_uniq<SelectStatement>();
   union_select->node = std::move(union_node);
-
-  auto union_subquery = make_uniq<SubqueryRef>();
-  union_subquery->subquery = std::move(union_select);
-
+  // (SELECT src, dst, * from edge_table UNION ALL SELECT dst, src, * from edge_table UNION ALL)
+  auto union_subquery = make_uniq<SubqueryRef>(std::move(union_select));
+  union_subquery->alias = edge_binding;
   if (from_clause) {
     auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
     from_join->left = std::move(from_clause);
@@ -647,6 +642,9 @@ void PGQMatchFunction::AddEdgeJoins(
     vector<unique_ptr<ParsedExpression>> &conditions,
     unordered_map<string, string> &alias_map, int32_t &extra_alias_counter,
     unique_ptr<TableRef> &from_clause) {
+  if (edge_type != PGQMatchType::MATCH_EDGE_ANY) {
+    alias_map[edge_binding] = edge_table->table_name;
+  }
   switch (edge_type) {
   case PGQMatchType::MATCH_EDGE_ANY: {
     select_node->modifiers.push_back(make_uniq<DistinctModifier>());
@@ -923,21 +921,19 @@ void PGQMatchFunction::ProcessPathList(
       auto edge_table = FindGraphTable(edge_element->label, pg_table);
       CheckInheritance(edge_table, edge_element, conditions);
       // check aliases
-      alias_map[edge_element->variable_binding] = edge_table->table_name;
       AddEdgeJoins(select_node, edge_table, previous_vertex_table,
                    next_vertex_table, edge_element->match_type,
                    edge_element->variable_binding,
                    previous_vertex_element->variable_binding,
-                   next_vertex_element->variable_binding, conditions, alias_map,
-                   extra_alias_counter, from_clause);
+                   next_vertex_element->variable_binding, conditions,
+                   alias_map, extra_alias_counter, from_clause);
       // Check the edge type
       // If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
       // If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
-      // If (a)-[b]-(c)  	-> 	(b.src = a.id AND b.dst = c.id) OR
-      // 						(b.dst = a.id AND b.src
-      // = c.id) If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
-      //						(b.dst = a.id AND b.src
-      //= c.id)
+      // If (a)-[b]-(c)  	-> 	(b.src = a.id AND b.dst = c.id)
+      //              FROM (src, dst, * from b UNION ALL dst, src, * from b)
+      // If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
+      //						(b.dst = a.id AND b.src = c.id)
     }
     previous_vertex_element = next_vertex_element;
     previous_vertex_table = next_vertex_table;
