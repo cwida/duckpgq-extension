@@ -1,0 +1,42 @@
+# name: test/sql/sqlpgq/snb.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+import database 'duckdb-pgq/data/SNB0.003';
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person LABEL Person
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows
+    );
+
+# Fails because University is not registered
+statement error
+-FROM GRAPH_TABLE(snb MATCH (a:Person)-[w:workAt_Organisation]->(u:University)) limit 10;
+----
+Binder Error: The label university is not registered in property graph snb
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person LABEL Person,
+    Organisation LABEL Organisation IN typemask(company, university)
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows,
+    person_workAt_Organisation SOURCE KEY (PersonId) REFERENCES Person (id)
+                               DESTINATION KEY (OrganisationId) REFERENCES Organisation (id)
+                            LABEL workAt_Organisation
+    );
+
+statement ok
+-FROM GRAPH_TABLE(snb MATCH (a:Person)-[w:workAt_Organisation]->(u:University)) limit 10;
