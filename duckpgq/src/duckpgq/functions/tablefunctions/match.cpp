@@ -367,8 +367,18 @@ void PGQMatchFunction::EdgeTypeAny(
     const string &edge_binding, const string &prev_binding,
     const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
-    unique_ptr<TableRef> &from_clause) {
-
+    unique_ptr<TableRef> &from_clause,
+    const vector<unique_ptr<ParsedExpression>> &column_list) {
+  vector<unique_ptr<ParsedExpression>> edge_columns;
+  for (const auto& expr : column_list) {
+    const auto column_expr = expr->Cast<ColumnRefExpression>;
+    if (column_expr == nullptr) {
+      continue;
+    }
+    if (column_expr->column_names[0] == edge_binding) {
+      edge_columns.push_back(make_uniq<ColumnRefExpression>(column_expr->column_names[1], edge_table->table_name));
+    }
+  }
   // START SELECT src, dst, * from edge_table
   auto src_dst_select_node = make_uniq<SelectNode>();
 
@@ -378,15 +388,19 @@ void PGQMatchFunction::EdgeTypeAny(
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
   src_dst_children.push_back(make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name));
   src_dst_children.push_back(make_uniq<ColumnRefExpression>(edge_table->destination_fk[0], edge_table->table_name));
-  unordered_set<string> added_columns;
-  added_columns.insert(edge_table->source_fk[0]);
-  added_columns.insert(edge_table->destination_fk[0]);
-  for (const auto& col : edge_table->column_names) {
-    if (added_columns.find(col) == added_columns.end()) {
-      src_dst_children.push_back(make_uniq<ColumnRefExpression>(col, edge_table->table_name));
-      added_columns.insert(col);
-    }
+  for (const auto& expr : edge_columns) {
+    src_dst_children.push_back(expr->Copy());
   }
+
+  // unordered_set<string> added_columns;
+  // added_columns.insert(edge_table->source_fk[0]);
+  // added_columns.insert(edge_table->destination_fk[0]);
+  // for (const auto& col : edge_table->column_names) {
+  //   if (added_columns.find(col) == added_columns.end()) {
+  //     src_dst_children.push_back(make_uniq<ColumnRefExpression>(col, edge_table->table_name));
+  //     added_columns.insert(col);
+  //   }
+  // }
   src_dst_select_node->select_list = std::move(src_dst_children);
   // END SELECT src, dst, * from edge_table
 
@@ -402,15 +416,18 @@ void PGQMatchFunction::EdgeTypeAny(
       edge_table->destination_fk[0], edge_table->table_name));
   dst_src_children.push_back(make_uniq<ColumnRefExpression>(edge_table->source_fk[0],
                                                       edge_table->table_name));
-  added_columns.clear();
-  added_columns.insert(edge_table->destination_fk[0]);
-  added_columns.insert(edge_table->source_fk[0]);
-  for (const auto& col : edge_table->column_names) {
-    if (added_columns.find(col) == added_columns.end()) {
-      dst_src_children.push_back(make_uniq<ColumnRefExpression>(col, edge_table->table_name));
-      added_columns.insert(col);
-    }
+  for (const auto& expr : edge_columns) {
+    dst_src_children.push_back(expr->Copy());
   }
+  // added_columns.clear();
+  // added_columns.insert(edge_table->destination_fk[0]);
+  // added_columns.insert(edge_table->source_fk[0]);
+  // for (const auto& col : edge_table->column_names) {
+  //   if (added_columns.find(col) == added_columns.end()) {
+  //     dst_src_children.push_back(make_uniq<ColumnRefExpression>(col, edge_table->table_name));
+  //     added_columns.insert(col);
+  //   }
+  // }
 
   dst_src_select_node->select_list = std::move(dst_src_children);
   // END SELECT dst, src, * from edge_table
@@ -645,23 +662,21 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
   return final_list;
 }
 
-void PGQMatchFunction::AddEdgeJoins(
-    const unique_ptr<SelectNode> &select_node,
-    const shared_ptr<PropertyGraphTable> &edge_table,
+void PGQMatchFunction::AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
     const shared_ptr<PropertyGraphTable> &previous_vertex_table,
     const shared_ptr<PropertyGraphTable> &next_vertex_table,
     PGQMatchType edge_type, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
     unordered_map<string, string> &alias_map, int32_t &extra_alias_counter,
-    unique_ptr<TableRef> &from_clause) {
+    unique_ptr<TableRef> &from_clause, vector<unique_ptr<ParsedExpression>> &column_list) {
   if (edge_type != PGQMatchType::MATCH_EDGE_ANY) {
     alias_map[edge_binding] = edge_table->table_name;
   }
   switch (edge_type) {
   case PGQMatchType::MATCH_EDGE_ANY: {
     EdgeTypeAny(edge_table, edge_binding, prev_binding, next_binding,
-                conditions, from_clause);
+                conditions, from_clause, column_list);
     break;
   }
   case PGQMatchType::MATCH_EDGE_LEFT:
@@ -921,24 +936,24 @@ void PGQMatchFunction::ProcessPathList(
       } else {
         alias_map[edge_element->variable_binding] =
             edge_table->source_reference;
-        AddEdgeJoins(select_node, edge_table, previous_vertex_table,
+        AddEdgeJoins(edge_table, previous_vertex_table,
                      next_vertex_table, edge_element->match_type,
                      edge_element->variable_binding,
                      previous_vertex_element->variable_binding,
                      next_vertex_element->variable_binding, conditions,
-                     alias_map, extra_alias_counter, from_clause);
+                     alias_map, extra_alias_counter, from_clause, column_list);
       }
     } else {
       // The edge element is a path element without WHERE or path-finding.
       auto edge_table = FindGraphTable(edge_element->label, pg_table);
       CheckInheritance(edge_table, edge_element, conditions);
       // check aliases
-      AddEdgeJoins(select_node, edge_table, previous_vertex_table,
+      AddEdgeJoins(edge_table, previous_vertex_table,
                    next_vertex_table, edge_element->match_type,
                    edge_element->variable_binding,
                    previous_vertex_element->variable_binding,
                    next_vertex_element->variable_binding, conditions,
-                   alias_map, extra_alias_counter, from_clause);
+                   alias_map, extra_alias_counter, from_clause, column_list);
       // Check the edge type
       // If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
       // If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
