@@ -77,9 +77,7 @@ public:
     LocalCompressedSparseRow(ClientContext &context,
                              const PhysicalPathFinding &op);
 
-    void Sink(DataChunk &input, GlobalCompressedSparseRow &global_csr);
 
-    static void CreateCSR(DataChunk &input, GlobalCompressedSparseRow &global_csr);
 
     static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
                     vector<std::bitset<LANE_LIMIT>> &seen,
