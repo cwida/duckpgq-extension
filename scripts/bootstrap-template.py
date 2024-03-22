@@ -4,6 +4,8 @@ import sys, os, shutil, re
 from pathlib import Path
 
 shutil.copyfile(f'docs/NEXT_README.md', f'README.md')
+os.remove(f'docs/NEXT_README.md')
+os.remove(f'docs/README.md')
 
 if (len(sys.argv) != 2):
     raise Exception('usage: python3 bootstrap-template.py <name_for_extension_in_snake_case>')
@@ -38,9 +40,7 @@ def replace(file_name, to_find, to_replace):
 
 files_to_search = []
 files_to_search.extend(Path('./.github').rglob('./**/*.yml'))
-files_to_search.extend(Path('./test').rglob('./**/*.py'))
 files_to_search.extend(Path('./test').rglob('./**/*.test'))
-files_to_search.extend(Path('./test').rglob('./**/*.js'))
 files_to_search.extend(Path('./src').rglob('./**/*.hpp'))
 files_to_search.extend(Path('./src').rglob('./**/*.cpp'))
 files_to_search.extend(Path('./src').rglob('./**/*.txt'))
@@ -57,19 +57,22 @@ def replace_everywhere(to_find, to_replace):
     replace("./Makefile", to_find.capitalize(), to_camel_case(to_replace))
     replace("./Makefile", to_find.upper(), to_replace.upper())
     replace("./README.md", to_find, to_replace)
+    replace("./extension_config.cmake", to_find, to_replace)
 
 replace_everywhere("quack", name_extension)
+replace_everywhere("Quack", name_extension.capitalize())
 replace_everywhere("<extension_name>", name_extension)
 
 string_to_replace = name_extension
 string_to_find = "quack"
 
 # rename files
-os.rename(f'test/python/{string_to_find}_test.py', f'test/python/{string_to_replace}_test.py')
 os.rename(f'test/sql/{string_to_find}.test', f'test/sql/{string_to_replace}.test')
 os.rename(f'src/{string_to_find}_extension.cpp', f'src/{string_to_replace}_extension.cpp')
 os.rename(f'src/include/{string_to_find}_extension.hpp', f'src/include/{string_to_replace}_extension.hpp')
-os.rename(f'test/nodejs/{string_to_find}_test.js', f'test/nodejs/{string_to_replace}_test.js')
 
 # remove template-specific files
 os.remove('.github/workflows/ExtensionTemplate.yml')
+
+# finally, remove this bootstrap file
+os.remove(__file__)
