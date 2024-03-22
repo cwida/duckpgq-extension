@@ -16,6 +16,7 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/statement/copy_statement.hpp"
+#include "duckdb/parser/statement/create_statement.hpp"
 #include "duckdb/parser/parsed_data/create_table_info.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 
@@ -101,7 +102,7 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
   }
 
   auto duckpgq_state = (DuckPGQState *)lookup->second.get();
-  auto duckpgq_binder = Binder::CreateBinder(context);
+  auto duckpgq_binder = Binder::CreateBinder(context, &binder);
   auto duckpgq_parse_data =
       dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
   if (duckpgq_parse_data) {

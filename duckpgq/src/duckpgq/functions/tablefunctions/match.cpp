@@ -13,6 +13,9 @@
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/conjunction_expression.hpp"
+#include "duckdb/parser/expression/star_expression.hpp"
+
+#include "duckdb/parser/query_node/set_operation_node.hpp"
 
 #include "duckdb/parser/query_node/select_node.hpp"
 
@@ -21,9 +24,8 @@
 
 #include "duckdb/parser/property_graph_table.hpp"
 #include "duckdb/parser/subpath_element.hpp"
-
-#include <iostream>
 #include <cmath>
+#include <duckdb/common/enums/set_operation_type.hpp>
 
 namespace duckdb {
 shared_ptr<PropertyGraphTable>
@@ -364,7 +366,58 @@ void PGQMatchFunction::EdgeTypeAny(
     const shared_ptr<PropertyGraphTable> &edge_table,
     const string &edge_binding, const string &prev_binding,
     const string &next_binding,
-    vector<unique_ptr<ParsedExpression>> &conditions) {
+    vector<unique_ptr<ParsedExpression>> &conditions,
+    unique_ptr<TableRef> &from_clause) {
+
+  // START SELECT src, dst, * from edge_table
+  auto src_dst_select_node = make_uniq<SelectNode>();
+
+  auto edge_left_ref = make_uniq<BaseTableRef>();
+  edge_left_ref->table_name = edge_table->table_name;
+  src_dst_select_node->from_table = std::move(edge_left_ref);
+  auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
+  src_dst_children.push_back(make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name));
+  src_dst_children.push_back(make_uniq<ColumnRefExpression>(edge_table->destination_fk[0], edge_table->table_name));
+  src_dst_children.push_back(make_uniq<StarExpression>());
+
+  src_dst_select_node->select_list = std::move(src_dst_children);
+  // END SELECT src, dst, * from edge_table
+
+  // START SELECT dst, src, * from edge_table
+  auto dst_src_select_node = make_uniq<SelectNode>();
+
+  auto edge_right_ref = make_uniq<BaseTableRef>();
+  edge_right_ref->table_name = edge_table->table_name;
+  auto dst_src_children = vector<unique_ptr<ParsedExpression>>();
+  dst_src_select_node->from_table = std::move(edge_right_ref);
+
+  dst_src_children.push_back(make_uniq<ColumnRefExpression>(
+      edge_table->destination_fk[0], edge_table->table_name));
+  dst_src_children.push_back(make_uniq<ColumnRefExpression>(edge_table->source_fk[0],
+                                                      edge_table->table_name));
+  dst_src_children.push_back(make_uniq<StarExpression>());
+
+  dst_src_select_node->select_list = std::move(dst_src_children);
+  // END SELECT dst, src, * from edge_table
+
+  auto union_node = make_uniq<SetOperationNode>();
+  union_node->setop_type = SetOperationType::UNION;
+  union_node->setop_all = true;
+  union_node->left = std::move(src_dst_select_node);
+  union_node->right = std::move(dst_src_select_node);
+  auto union_select = make_uniq<SelectStatement>();
+  union_select->node = std::move(union_node);
+  // (SELECT src, dst, * from edge_table UNION ALL SELECT dst, src, * from edge_table)
+  auto union_subquery = make_uniq<SubqueryRef>(std::move(union_select));
+  union_subquery->alias = edge_binding;
+  if (from_clause) {
+    auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
+    from_join->left = std::move(from_clause);
+    from_join->right = std::move(union_subquery);
+    from_clause = std::move(from_join);
+  } else {
+    from_clause = std::move(union_subquery);
+  }
   // (a) src.key = edge.src
   auto src_left_expr = CreateMatchJoinExpression(
       edge_table->source_pk, edge_table->source_fk, prev_binding, edge_binding);
@@ -376,23 +429,8 @@ void PGQMatchFunction::EdgeTypeAny(
   auto combined_left_expr = make_uniq<ConjunctionExpression>(
       ExpressionType::CONJUNCTION_AND, std::move(src_left_expr),
       std::move(dst_left_expr));
-  // (c) src.key = edge.dst
-  auto src_right_expr = CreateMatchJoinExpression(edge_table->source_pk,
-                                                  edge_table->destination_fk,
-                                                  prev_binding, edge_binding);
-  // (d) dst.key = edge.src
-  auto dst_right_expr = CreateMatchJoinExpression(edge_table->destination_pk,
-                                                  edge_table->source_fk,
-                                                  next_binding, edge_binding);
-  // (c) AND (d)
-  auto combined_right_expr = make_uniq<ConjunctionExpression>(
-      ExpressionType::CONJUNCTION_AND, std::move(src_right_expr),
-      std::move(dst_right_expr));
-  // ((a) AND (b)) OR ((c) AND (d))
-  auto combined_expr = make_uniq<ConjunctionExpression>(
-      ExpressionType::CONJUNCTION_OR, std::move(combined_left_expr),
-      std::move(combined_right_expr));
-  conditions.push_back(std::move(combined_expr));
+
+  conditions.push_back(std::move(combined_left_expr));
 }
 
 void PGQMatchFunction::EdgeTypeLeft(
@@ -592,20 +630,21 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
   return final_list;
 }
 
-void PGQMatchFunction::AddEdgeJoins(
-    const unique_ptr<SelectNode> &select_node,
-    const shared_ptr<PropertyGraphTable> &edge_table,
+void PGQMatchFunction::AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
     const shared_ptr<PropertyGraphTable> &previous_vertex_table,
     const shared_ptr<PropertyGraphTable> &next_vertex_table,
     PGQMatchType edge_type, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
-    unordered_map<string, string> &alias_map, int32_t &extra_alias_counter) {
+    unordered_map<string, string> &alias_map, int32_t &extra_alias_counter,
+    unique_ptr<TableRef> &from_clause) {
+  if (edge_type != PGQMatchType::MATCH_EDGE_ANY) {
+    alias_map[edge_binding] = edge_table->table_name;
+  }
   switch (edge_type) {
   case PGQMatchType::MATCH_EDGE_ANY: {
-    select_node->modifiers.push_back(make_uniq<DistinctModifier>());
     EdgeTypeAny(edge_table, edge_binding, prev_binding, next_binding,
-                conditions);
+                conditions, from_clause);
     break;
   }
   case PGQMatchType::MATCH_EDGE_LEFT:
@@ -865,33 +904,31 @@ void PGQMatchFunction::ProcessPathList(
       } else {
         alias_map[edge_element->variable_binding] =
             edge_table->source_reference;
-        AddEdgeJoins(select_node, edge_table, previous_vertex_table,
+        AddEdgeJoins(edge_table, previous_vertex_table,
                      next_vertex_table, edge_element->match_type,
                      edge_element->variable_binding,
                      previous_vertex_element->variable_binding,
                      next_vertex_element->variable_binding, conditions,
-                     alias_map, extra_alias_counter);
+                     alias_map, extra_alias_counter, from_clause);
       }
     } else {
       // The edge element is a path element without WHERE or path-finding.
       auto edge_table = FindGraphTable(edge_element->label, pg_table);
       CheckInheritance(edge_table, edge_element, conditions);
       // check aliases
-      alias_map[edge_element->variable_binding] = edge_table->table_name;
-      AddEdgeJoins(select_node, edge_table, previous_vertex_table,
+      AddEdgeJoins(edge_table, previous_vertex_table,
                    next_vertex_table, edge_element->match_type,
                    edge_element->variable_binding,
                    previous_vertex_element->variable_binding,
-                   next_vertex_element->variable_binding, conditions, alias_map,
-                   extra_alias_counter);
+                   next_vertex_element->variable_binding, conditions,
+                   alias_map, extra_alias_counter, from_clause);
       // Check the edge type
       // If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
       // If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
-      // If (a)-[b]-(c)  	-> 	(b.src = a.id AND b.dst = c.id) OR
-      // 						(b.dst = a.id AND b.src
-      // = c.id) If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
-      //						(b.dst = a.id AND b.src
-      //= c.id)
+      // If (a)-[b]-(c)  	-> 	(b.src = a.id AND b.dst = c.id)
+      //              FROM (src, dst, * from b UNION ALL dst, src, * from b)
+      // If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
+      //						(b.dst = a.id AND b.src = c.id)
     }
     previous_vertex_element = next_vertex_element;
     previous_vertex_table = next_vertex_table;
@@ -900,7 +937,7 @@ void PGQMatchFunction::ProcessPathList(
 
 unique_ptr<TableRef>
 PGQMatchFunction::MatchBindReplace(ClientContext &context,
-                                   TableFunctionBindInput &) {
+                                   TableFunctionBindInput &bind_input) {
   auto duckpgq_state_entry = context.registered_state.find("duckpgq");
   auto duckpgq_state =
       dynamic_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
@@ -1005,7 +1042,6 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
   subquery->node = std::move(select_node);
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
-
   return std::move(result);
 }
 } // namespace duckdb
