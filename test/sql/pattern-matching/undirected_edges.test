@@ -1,0 +1,66 @@
+# name: test/sql/sqlpgq/undirected_edges.test
+# group: [duckpgq]
+
+statement ok
+pragma enable_verification
+
+require duckpgq
+
+statement ok
+CREATE TABLE Student(id BIGINT, name VARCHAR);INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17), (4, 0, 18);
+
+statement ok
+-CREATE PROPERTY GRAPH pg
+VERTEX TABLES (Student)
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+    );
+
+query II
+SELECT a.name AS person, b.name AS friend
+    FROM ((SELECT know.src, know.dst FROM know) UNION ALL (SELECT know.dst, know.src FROM know)) AS k , Student AS b , Student AS a
+    WHERE ((a.id = k.src) AND (b.id = k.dst) AND (a.name = 'Daniel'));
+----
+Daniel	Tavneet
+Daniel	Gabor
+Daniel	Peter
+Daniel	David
+Daniel	Peter
+
+# Daniel has 3 outgoing edges and 2 incoming edges, so there should be 5 tuples
+query II
+-SELECT person, friend
+FROM GRAPH_TABLE (pg
+    MATCH
+    (a:Student)-[k:know]-(b:Student)
+    WHERE a.name = 'Daniel'
+    COLUMNS (a.name as person, b.name as friend)
+    )
+ORDER BY person, friend;
+----
+Daniel	David
+Daniel	Gabor
+Daniel	Peter
+Daniel	Peter
+Daniel	Tavneet
+
+# Daniel has 3 outgoing edges and 2 incoming edges, so there should be 5 tuples
+query III
+-FROM GRAPH_TABLE (pg
+    MATCH
+    (a:Student)-[k:know]-(b:Student)
+    WHERE a.name = 'Daniel'
+    COLUMNS (a.name as person, b.name as friend, k.createDate as date)
+    )
+ORDER BY person, friend, date;
+----
+Daniel	David	18
+Daniel	Gabor	11
+Daniel	Peter	12
+Daniel	Peter	13
+Daniel	Tavneet	10
+
