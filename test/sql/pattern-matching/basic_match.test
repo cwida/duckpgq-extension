@@ -132,7 +132,6 @@ Peter	Tavneet
 Peter	Gabor
 Peter	David
 
-# Disabled, see https://github.com/cwida/duckpgq-extension/issues/60
 query II
 -SELECT study.a_name, study.b_name
 FROM GRAPH_TABLE (pg
@@ -143,6 +142,7 @@ FROM GRAPH_TABLE (pg
     ) study
     ORDER BY a_name, b_name;
 ----
+Peter	Daniel
 Peter	Daniel
 Peter	David
 Peter	Gabor
