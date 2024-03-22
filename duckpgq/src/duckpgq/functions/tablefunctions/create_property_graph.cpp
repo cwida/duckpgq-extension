@@ -3,8 +3,6 @@
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include <duckpgq_extension.hpp>
 
-#include <iostream>
-
 namespace duckdb {
 
 void CreatePropertyGraphFunction::CheckPropertyGraphTableLabels(
