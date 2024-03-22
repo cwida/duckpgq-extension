@@ -1,13 +1,7 @@
-# name: test/sql/sqlpgq/snb.test
+# name: test/sql/create_pg/optional_edge_table_clause.test
 # group: [duckpgq]
 
 require duckpgq
-
-statement error
--CREATE PROPERTY GRAPH snb
-VERTEX TABLES (tabledoesnotexist);
-----
-
 
 statement ok
 import database 'duckdb-pgq/data/SNB0.003';
