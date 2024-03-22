@@ -32,6 +32,23 @@ Daniel	David
 Daniel	Peter
 
 # Daniel has 3 outgoing edges and 2 incoming edges, so there should be 5 tuples
+query II
+-SELECT person, friend
+FROM GRAPH_TABLE (pg
+    MATCH
+    (a:Student)-[k:know]-(b:Student)
+    WHERE a.name = 'Daniel'
+    COLUMNS (a.name as person, b.name as friend)
+    )
+ORDER BY person, friend;
+----
+Daniel	David
+Daniel	Gabor
+Daniel	Peter
+Daniel	Peter
+Daniel	Tavneet
+
+# Daniel has 3 outgoing edges and 2 incoming edges, so there should be 5 tuples
 query III
 -FROM GRAPH_TABLE (pg
     MATCH
@@ -47,19 +64,3 @@ Daniel	Peter	12
 Daniel	Peter	13
 Daniel	Tavneet	10
 
-# Daniel has 3 outgoing edges and 2 incoming edges, so there should be 5 tuples
-query II
--SELECT person, friend, date
-FROM GRAPH_TABLE (pg
-    MATCH
-    (a:Student)-[k:know]-(b:Student)
-    WHERE a.name = 'Daniel'
-    COLUMNS (a.name as person, b.name as friend, k.createDate as date)
-    )
-ORDER BY person, friend;
-----
-Daniel	David
-Daniel	Gabor
-Daniel	Peter
-Daniel	Peter
-Daniel	Tavneet
