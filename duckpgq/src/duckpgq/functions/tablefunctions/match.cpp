@@ -371,7 +371,7 @@ void PGQMatchFunction::EdgeTypeAny(
     const vector<unique_ptr<ParsedExpression>> &column_list) {
   vector<unique_ptr<ParsedExpression>> edge_columns;
   for (const auto& expr : column_list) {
-    const auto column_expr = expr->Cast<ColumnRefExpression>;
+    const auto column_expr = dynamic_cast<ColumnRefExpression*>(expr.get());
     if (column_expr == nullptr) {
       continue;
     }
