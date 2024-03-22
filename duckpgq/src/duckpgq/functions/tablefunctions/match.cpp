@@ -388,19 +388,8 @@ void PGQMatchFunction::EdgeTypeAny(
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
   src_dst_children.push_back(make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name));
   src_dst_children.push_back(make_uniq<ColumnRefExpression>(edge_table->destination_fk[0], edge_table->table_name));
-  for (const auto& expr : edge_columns) {
-    src_dst_children.push_back(expr->Copy());
-  }
+  src_dst_children.push_back(make_uniq<StarExpression>());
 
-  // unordered_set<string> added_columns;
-  // added_columns.insert(edge_table->source_fk[0]);
-  // added_columns.insert(edge_table->destination_fk[0]);
-  // for (const auto& col : edge_table->column_names) {
-  //   if (added_columns.find(col) == added_columns.end()) {
-  //     src_dst_children.push_back(make_uniq<ColumnRefExpression>(col, edge_table->table_name));
-  //     added_columns.insert(col);
-  //   }
-  // }
   src_dst_select_node->select_list = std::move(src_dst_children);
   // END SELECT src, dst, * from edge_table
 
@@ -416,18 +405,7 @@ void PGQMatchFunction::EdgeTypeAny(
       edge_table->destination_fk[0], edge_table->table_name));
   dst_src_children.push_back(make_uniq<ColumnRefExpression>(edge_table->source_fk[0],
                                                       edge_table->table_name));
-  for (const auto& expr : edge_columns) {
-    dst_src_children.push_back(expr->Copy());
-  }
-  // added_columns.clear();
-  // added_columns.insert(edge_table->destination_fk[0]);
-  // added_columns.insert(edge_table->source_fk[0]);
-  // for (const auto& col : edge_table->column_names) {
-  //   if (added_columns.find(col) == added_columns.end()) {
-  //     dst_src_children.push_back(make_uniq<ColumnRefExpression>(col, edge_table->table_name));
-  //     added_columns.insert(col);
-  //   }
-  // }
+  dst_src_children.push_back(make_uniq<StarExpression>());
 
   dst_src_select_node->select_list = std::move(dst_src_children);
   // END SELECT dst, src, * from edge_table
