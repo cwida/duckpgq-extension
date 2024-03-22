@@ -6,7 +6,7 @@ from pathlib import Path
 if (len(sys.argv) != 2):
     raise Exception('usage: python3 set_extension_name.py <name_for_extension>')
 
-string_to_find = "duckpgq"
+string_to_find = "quack"
 string_to_replace = sys.argv[1]
 
 def replace(file_name, to_find, to_replace):
