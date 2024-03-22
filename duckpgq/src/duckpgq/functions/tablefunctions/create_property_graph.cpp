@@ -1,6 +1,9 @@
 #include "duckpgq/functions/tablefunctions/create_property_graph.hpp"
 #include "duckdb/parser/statement/create_statement.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include <duckpgq_extension.hpp>
+
+#include <iostream>
 
 namespace duckdb {
 
@@ -88,11 +91,15 @@ CreatePropertyGraphFunction::CreatePropertyGraphBind(
   auto &catalog = Catalog::GetCatalog(context, info->catalog);
   case_insensitive_set_t v_table_names;
   for (auto &vertex_table : info->vertex_tables) {
-    auto &table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
-                                                      vertex_table->table_name);
+    try {
+        auto &table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
+                                                        vertex_table->table_name);
 
-    CheckPropertyGraphTableColumns(vertex_table, table);
-    CheckPropertyGraphTableLabels(vertex_table, table);
+        CheckPropertyGraphTableColumns(vertex_table, table);
+        CheckPropertyGraphTableLabels(vertex_table, table);
+      } catch (Exception &) {
+        throw Exception(ExceptionType::INVALID, vertex_table->table_name + " does not exist");
+      }
 
     v_table_names.insert(vertex_table->table_name);
     if (vertex_table->hasTableNameAlias()) {
@@ -101,11 +108,27 @@ CreatePropertyGraphFunction::CreatePropertyGraphBind(
   }
 
   for (auto &edge_table : info->edge_tables) {
-    auto &table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
+    try {
+      auto &table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
                                                       edge_table->table_name);
 
-    CheckPropertyGraphTableColumns(edge_table, table);
-    CheckPropertyGraphTableLabels(edge_table, table);
+      CheckPropertyGraphTableColumns(edge_table, table);
+      CheckPropertyGraphTableLabels(edge_table, table);
+
+      for (auto &fk : edge_table->source_fk) {
+        if (!table.ColumnExists(fk)) {
+          throw Exception(ExceptionType::INVALID,"Foreign key " + fk + " does not exist in table " + edge_table->table_name);
+        }
+      }
+
+      for (auto &fk : edge_table->destination_fk) {
+        if (!table.ColumnExists(fk)) {
+          throw Exception(ExceptionType::INVALID,"Foreign key " + fk + " does not exist in table " + edge_table->table_name);
+        }
+      }
+    } catch(const Exception &) {
+      throw Exception(ExceptionType::INVALID, edge_table->table_name + " does not exist");
+    }
 
     if (v_table_names.find(edge_table->source_reference) ==
         v_table_names.end()) {
@@ -134,17 +157,7 @@ CreatePropertyGraphFunction::CreatePropertyGraphBind(
       }
     }
 
-    for (auto &fk : edge_table->source_fk) {
-      if (!table.ColumnExists(fk)) {
-        throw Exception(ExceptionType::INVALID,"Foreign key " + fk + " does not exist in table " + edge_table->table_name);
-      }
-    }
 
-    for (auto &fk : edge_table->destination_fk) {
-      if (!table.ColumnExists(fk)) {
-        throw Exception(ExceptionType::INVALID,"Foreign key " + fk + " does not exist in table " + edge_table->table_name);
-      }
-    }
   }
   return make_uniq<CreatePropertyGraphBindData>(info);
 }

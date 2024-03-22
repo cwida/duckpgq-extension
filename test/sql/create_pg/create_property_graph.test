@@ -6,8 +6,24 @@ require duckpgq
 statement ok
 pragma enable_verification
 
+statement error
+-CREATE PROPERTY GRAPH pg4
+VERTEX TABLES (tabledoesnotexist);
+----
+Invalid Error: tabledoesnotexist does not exist
+
+
 statement ok
 CREATE TABLE Student(id BIGINT, name VARCHAR);
+
+statement error
+-CREATE PROPERTY GRAPH pg4
+VERTEX TABLES (Student)
+EDGE TABLES (edgetabledoesnotexist SOURCE KEY (id) REFERENCES Student (id)
+                                    DESTINATION KEY (id) REFERENCES Student (id)
+            );
+----
+Invalid Error: edgetabledoesnotexist does not exist
 
 statement ok
 CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
@@ -146,3 +162,4 @@ EDGE TABLES (
     );
 ----
 Invalid Error: Referenced vertex table Student does not exist.
+
