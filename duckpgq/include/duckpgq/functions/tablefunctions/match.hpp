@@ -68,8 +68,7 @@ public:
                           const string &prev_binding,
                           const string &next_binding,
                           vector<unique_ptr<ParsedExpression>> &conditions,
-                          unique_ptr<TableRef> &from_clause,
-              const vector<unique_ptr<ParsedExpression>> &column_list);
+                          unique_ptr<TableRef> &from_clause);
 
   static void EdgeTypeLeft(const shared_ptr<PropertyGraphTable> &edge_table,
                            const string &next_table_name,
@@ -130,8 +129,7 @@ public:
                vector<unique_ptr<ParsedExpression>> &conditions,
                unordered_map<string, string> &alias_map,
                int32_t &extra_alias_counter,
-               unique_ptr<TableRef> &from_clause,
-               vector<unique_ptr<ParsedExpression>> &column_list);
+               unique_ptr<TableRef> &from_clause);
 
   static void ProcessPathList(
       vector<unique_ptr<PathReference>> &path_pattern,

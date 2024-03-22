@@ -367,18 +367,8 @@ void PGQMatchFunction::EdgeTypeAny(
     const string &edge_binding, const string &prev_binding,
     const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
-    unique_ptr<TableRef> &from_clause,
-    const vector<unique_ptr<ParsedExpression>> &column_list) {
-  vector<unique_ptr<ParsedExpression>> edge_columns;
-  for (const auto& expr : column_list) {
-    const auto column_expr = dynamic_cast<ColumnRefExpression*>(expr.get());
-    if (column_expr == nullptr) {
-      continue;
-    }
-    if (column_expr->column_names[0] == edge_binding) {
-      edge_columns.push_back(make_uniq<ColumnRefExpression>(column_expr->column_names[1], edge_table->table_name));
-    }
-  }
+    unique_ptr<TableRef> &from_clause) {
+
   // START SELECT src, dst, * from edge_table
   auto src_dst_select_node = make_uniq<SelectNode>();
 
@@ -647,14 +637,14 @@ void PGQMatchFunction::AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_t
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
     unordered_map<string, string> &alias_map, int32_t &extra_alias_counter,
-    unique_ptr<TableRef> &from_clause, vector<unique_ptr<ParsedExpression>> &column_list) {
+    unique_ptr<TableRef> &from_clause) {
   if (edge_type != PGQMatchType::MATCH_EDGE_ANY) {
     alias_map[edge_binding] = edge_table->table_name;
   }
   switch (edge_type) {
   case PGQMatchType::MATCH_EDGE_ANY: {
     EdgeTypeAny(edge_table, edge_binding, prev_binding, next_binding,
-                conditions, from_clause, column_list);
+                conditions, from_clause);
     break;
   }
   case PGQMatchType::MATCH_EDGE_LEFT:
@@ -919,7 +909,7 @@ void PGQMatchFunction::ProcessPathList(
                      edge_element->variable_binding,
                      previous_vertex_element->variable_binding,
                      next_vertex_element->variable_binding, conditions,
-                     alias_map, extra_alias_counter, from_clause, column_list);
+                     alias_map, extra_alias_counter, from_clause);
       }
     } else {
       // The edge element is a path element without WHERE or path-finding.
@@ -931,7 +921,7 @@ void PGQMatchFunction::ProcessPathList(
                    edge_element->variable_binding,
                    previous_vertex_element->variable_binding,
                    next_vertex_element->variable_binding, conditions,
-                   alias_map, extra_alias_counter, from_clause, column_list);
+                   alias_map, extra_alias_counter, from_clause);
       // Check the edge type
       // If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
       // If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
