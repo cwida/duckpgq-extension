@@ -1074,7 +1074,6 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
   subquery->node = std::move(select_node);
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
-  result->Print();
   return std::move(result);
 }
 } // namespace duckdb
