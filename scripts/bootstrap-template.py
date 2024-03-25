@@ -3,9 +3,9 @@
 import sys, os, shutil, re
 from pathlib import Path
 
-shutil.copyfile(f'docs/NEXT_README.md', f'README.md')
-os.remove(f'docs/NEXT_README.md')
-os.remove(f'docs/README.md')
+# shutil.copyfile(f'docs/NEXT_README.md', f'README.md')
+# os.remove(f'docs/NEXT_README.md')
+# os.remove(f'docs/README.md')
 
 if (len(sys.argv) != 2):
     raise Exception('usage: python3 bootstrap-template.py <name_for_extension_in_snake_case>')
@@ -68,7 +68,7 @@ string_to_find = "quack"
 
 # rename files
 os.rename(f'test/sql/{string_to_find}.test', f'test/sql/{string_to_replace}.test')
-os.rename(f'src/{string_to_find}_extension.cpp', f'src/{string_to_replace}_extension.cpp')
+# os.rename(f'src/{string_to_find}_extension.cpp', f'src/{string_to_replace}_extension.cpp')
 os.rename(f'src/include/{string_to_find}_extension.hpp', f'src/include/{string_to_replace}_extension.hpp')
 
 # remove template-specific files
