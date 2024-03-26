@@ -15,7 +15,7 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckdb/common/compressed_sparse_row.hpp"
+#include "duckpgq/compressed_sparse_row.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 
 namespace duckdb {
