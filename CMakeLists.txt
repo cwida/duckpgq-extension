@@ -26,8 +26,8 @@ set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 
 project(${TARGET_NAME})
-include_directories(duckpgq/include)
-add_subdirectory(duckpgq/src)
+include_directories(src/include)
+add_subdirectory(src)
 include_directories(../duckdb-pgq/third_party/libpg_query/include)
 
 # set(EXTENSION_SOURCES duckpgq/src/duckpgq_extension.cpp)
