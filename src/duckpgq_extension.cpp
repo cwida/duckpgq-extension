@@ -19,11 +19,13 @@
 #include "duckdb/parser/statement/create_statement.hpp"
 #include "duckdb/parser/parsed_data/create_table_info.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
+#include "duckdb/parser/tableref/showref.hpp"
 
 #include "duckdb/parser/statement/extension_statement.hpp"
 
 #include "duckpgq/functions/tablefunctions/drop_property_graph.hpp"
 #include "duckpgq/functions/tablefunctions/create_property_graph.hpp"
+#include "duckpgq/functions/tablefunctions/describe_property_graph.hpp"
 #include "duckpgq/functions/tablefunctions/match.hpp"
 
 namespace duckdb {
@@ -135,6 +137,14 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
     const auto select_statement = dynamic_cast<SelectStatement *>(statement);
     const auto select_node =
         dynamic_cast<SelectNode *>(select_statement->node.get());
+    const auto describe_node = dynamic_cast<ShowRef *>(select_node->from_table.get());
+    if (describe_node) {
+      ParserExtensionPlanResult result;
+      result.function = DescribePropertyGraphFunction();
+      result.requires_valid_transaction = true;
+      result.return_type = StatementReturnType::QUERY_RESULT;
+      return result;
+    }
     duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
     throw Exception(ExceptionType::BINDER, "use duckpgq_bind instead");
   }
@@ -179,8 +189,6 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
                              duckpgq_state);
   }
 
-  // Preferably throw NotImplementedExpection here, but only BinderExceptions
-  // are caught properly on MacOS right now
   throw Exception(ExceptionType::NOT_IMPLEMENTED,
     StatementTypeToString(statement->type) + "has not been implemented yet for DuckPGQ queries");
 }
