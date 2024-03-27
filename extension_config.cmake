@@ -2,8 +2,8 @@
 
 # Extension from this repo
 duckdb_extension_load(duckpgq
+    LOAD_TESTS
     SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}
-    TEST_DIR test/sql/
 )
 
 # Any extra extensions that should be built
