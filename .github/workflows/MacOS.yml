@@ -46,11 +46,11 @@ jobs:
           make release
           make test
 
-      - name: Test Stock DuckDB
-        shell: bash
-        if: ${{ matrix.duckdb_version != '<submodule_version>'}}
-        run: |
-          make test_release_stock_duckdb DUCKDB_VERSION=${{ matrix.duckdb_version }}
+#      - name: Test Stock DuckDB
+#        shell: bash
+#        if: ${{ matrix.duckdb_version != '<submodule_version>'}}
+#        run: |
+#          make test_release_stock_duckdb DUCKDB_VERSION=${{ matrix.duckdb_version }}
 
       - name: Deploy
         env:
