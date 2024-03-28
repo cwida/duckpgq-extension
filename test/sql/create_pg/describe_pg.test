@@ -17,7 +17,8 @@ EDGE TABLES (
                             LABEL Knows
     );
 
-query I
+query IIIIIIIIIII
 -DESCRIBE PROPERTY GRAPH snb;
 ----
-Person
+Person	person	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Person_knows_person	knows	false	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL
