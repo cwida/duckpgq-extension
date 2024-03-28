@@ -43,8 +43,16 @@ DescribePropertyGraphFunction::DescribePropertyGraphBind(
   return_types.emplace_back(LogicalType::BOOLEAN);
   names.emplace_back("source_table");
   return_types.emplace_back(LogicalType::VARCHAR);
+  names.emplace_back("source_pk");
+  return_types.emplace_back(LogicalType::LIST(LogicalType::VARCHAR));
+  names.emplace_back("source_fk");
+  return_types.emplace_back(LogicalType::LIST(LogicalType::VARCHAR));
   names.emplace_back("destination_table");
   return_types.emplace_back(LogicalType::VARCHAR);
+  names.emplace_back("destination_pk");
+  return_types.emplace_back(LogicalType::LIST(LogicalType::VARCHAR));
+  names.emplace_back("destination_fk");
+  return_types.emplace_back(LogicalType::LIST(LogicalType::VARCHAR));
   return make_uniq<DescribePropertyGraphBindData>(property_graph);
 }
 
@@ -69,6 +77,10 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
     output.SetValue(2, vector_idx, Value(vertex_table->is_vertex_table));
     output.SetValue(3, vector_idx, Value());
     output.SetValue(4, vector_idx, Value());
+    output.SetValue(5, vector_idx, Value());
+    output.SetValue(6, vector_idx, Value());
+    output.SetValue(7, vector_idx, Value());
+    output.SetValue(8, vector_idx, Value());
     vector_idx++;
   }
   for (const auto& edge_table : pg_info->edge_tables) {
@@ -76,7 +88,27 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
     output.SetValue(1, vector_idx, Value(edge_table->main_label));
     output.SetValue(2, vector_idx, Value(edge_table->is_vertex_table));
     output.SetValue(3, vector_idx, Value(edge_table->source_reference));
-    output.SetValue(4, vector_idx, Value(edge_table->destination_reference));
+    vector<Value> source_pk_list;
+    for (const auto& col : edge_table->source_pk) {
+      source_pk_list.push_back(Value(col));
+    }
+    output.SetValue(4, vector_idx, Value::LIST(LogicalType::VARCHAR,source_pk_list));
+    vector<Value> source_fk_list;
+    for (const auto& col : edge_table->source_fk) {
+      source_fk_list.push_back(Value(col));
+    }
+    output.SetValue(5, vector_idx, Value::LIST(LogicalType::VARCHAR,source_fk_list));
+    output.SetValue(6, vector_idx, Value(edge_table->destination_reference));
+    vector<Value> destination_pk_list;
+    for (const auto& col : edge_table->destination_pk) {
+      destination_pk_list.push_back(Value(col));
+    }
+    output.SetValue(7, vector_idx, Value::LIST(LogicalType::VARCHAR,destination_pk_list));
+    vector<Value> destination_fk_list;
+    for (const auto& col : edge_table->destination_fk) {
+      destination_fk_list.push_back(Value(col));
+    }
+    output.SetValue(8, vector_idx, Value::LIST(LogicalType::VARCHAR,destination_fk_list));
     vector_idx++;
   }
   output.SetCardinality(vector_idx);
