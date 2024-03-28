@@ -61,7 +61,6 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
   if (data.done) {
     return;
   }
-  auto result_vector = Vector(LogicalType::VARCHAR);
   auto pg_info = bind_data.describe_pg_info;
   idx_t vector_idx = 0;
   for (const auto& vertex_table : pg_info->vertex_tables) {
