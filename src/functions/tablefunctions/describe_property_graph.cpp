@@ -52,6 +52,12 @@ DescribePropertyGraphFunction::DescribePropertyGraphBind(
   return_types.emplace_back(LogicalType::LIST(LogicalType::VARCHAR));
   names.emplace_back("destination_fk");
   return_types.emplace_back(LogicalType::LIST(LogicalType::VARCHAR));
+  names.emplace_back("discriminator");
+  return_types.emplace_back(LogicalType::VARCHAR);
+  names.emplace_back("sub_labels");
+  return_types.emplace_back(LogicalType::LIST(LogicalType::VARCHAR));
+
+
   return make_uniq<DescribePropertyGraphBindData>(property_graph);
 }
 
@@ -80,6 +86,17 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
     output.SetValue(6, vector_idx, Value());
     output.SetValue(7, vector_idx, Value());
     output.SetValue(8, vector_idx, Value());
+    if (!vertex_table->discriminator.empty()) {
+      output.SetValue(9, vector_idx, Value(vertex_table->discriminator));
+      vector<Value> sub_labels;
+      for (const auto& label : vertex_table->sub_labels) {
+        sub_labels.push_back(Value(label));
+      }
+      output.SetValue(10, vector_idx, Value::LIST(LogicalType::VARCHAR, sub_labels));
+    } else {
+      output.SetValue(9, vector_idx, Value());
+      output.SetValue(10, vector_idx, Value());
+    }
     vector_idx++;
   }
   for (const auto& edge_table : pg_info->edge_tables) {
@@ -108,6 +125,17 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
       destination_fk_list.push_back(Value(col));
     }
     output.SetValue(8, vector_idx, Value::LIST(LogicalType::VARCHAR,destination_fk_list));
+    if (!edge_table->discriminator.empty()) {
+      output.SetValue(9, vector_idx, Value(edge_table->discriminator));
+      vector<Value> sub_labels;
+      for (const auto& label : edge_table->sub_labels) {
+        sub_labels.push_back(Value(label));
+      }
+      output.SetValue(10, vector_idx, Value::LIST(LogicalType::VARCHAR, sub_labels));
+    } else {
+      output.SetValue(9, vector_idx, Value());
+      output.SetValue(10, vector_idx, Value());
+    }
     vector_idx++;
   }
   output.SetCardinality(vector_idx);
