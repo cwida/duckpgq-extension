@@ -87,3 +87,8 @@ Person_hasInterest_Tag	hasinterest	false	Person	[id]	[PersonId]	Tag	[id]	[TagId]
 Forum_hasTag_Tag	forum_hastag	false	Forum	[id]	[ForumId]	Tag	[id]	[TagId]	NULL	NULL
 Forum_hasMember_Person	hasmember	false	Forum	[id]	[ForumId]	Person	[id]	[PersonId]	NULL	NULL
 Person_knows_person	knows	false	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL
+
+statement error
+-DESCRIBE PROPERTY GRAPH pgdoesnotexist;
+----
+Invalid Error: Property graph pgdoesnotexist does not exist.
