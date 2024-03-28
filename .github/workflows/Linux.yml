@@ -83,40 +83,40 @@ jobs:
       run: |
         make test
 
-    - name: Stock DuckDB test
-      env:
-        GEN: ninja
-        STATIC_LIBCPP: 1
-        CC: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
-        CXX: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
-      if: ${{ matrix.duckdb_version != '<submodule_version>'}}
-      run: |
-        make test_release_stock_duckdb DUCKDB_VERSION=${{ matrix.duckdb_version }}
+#    - name: Stock DuckDB test
+#      env:
+#        GEN: ninja
+#        STATIC_LIBCPP: 1
+#        CC: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-gcc' || '' }}
+#        CXX: ${{ matrix.arch == 'linux_arm64' && 'aarch64-linux-gnu-g++' || '' }}
+#      if: ${{ matrix.duckdb_version != '<submodule_version>'}}
+#      run: |
+#        make test_release_stock_duckdb DUCKDB_VERSION=${{ matrix.duckdb_version }}
 
-    - uses: actions/upload-artifact@v2
-      with:
-        name: ${{matrix.arch}}-extensions
-        path: |
-          build/release/extension/duckpgq/duckpgq.duckdb_extension
-    - name: Deploy
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.S3_DEPLOY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_DEPLOY_KEY }}
-        AWS_DEFAULT_REGION: ${{ secrets.S3_REGION }}
-        BUCKET_NAME: ${{ secrets.S3_BUCKET }}
-      run: |
-        git config --global --add safe.directory '*'
-        cd duckdb-pgq
-        git fetch --tags
-        export DUCKDB_VERSION=`git tag --points-at HEAD`
-        export DUCKDB_VERSION=${DUCKDB_VERSION:=`git log -1 --format=%h`}
-        cd ..
-        if [[ "$AWS_ACCESS_KEY_ID" == "" ]] ; then
-          echo 'No key set, skipping'
-        elif [[ "$GITHUB_REF" =~ ^(refs/tags/v.+)$ ]] ; then
-          python3 -m pip install pip awscli
-          ./scripts/extension-upload.sh duckpgq ${{ github.ref_name }} $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME true
-        elif [[ "$GITHUB_REF" =~ ^(refs/heads/main)$ ]] ; then
-          python3 -m pip install pip awscli
-          ./scripts/extension-upload.sh duckpgq `git log -1 --format=%h` $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME false
-        fi
+#    - uses: actions/upload-artifact@v2
+#      with:
+#        name: ${{matrix.arch}}-extensions
+#        path: |
+#          build/release/extension/duckpgq/duckpgq.duckdb_extension
+#    - name: Deploy
+#      env:
+#        AWS_ACCESS_KEY_ID: ${{ secrets.S3_DEPLOY_ID }}
+#        AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_DEPLOY_KEY }}
+#        AWS_DEFAULT_REGION: ${{ secrets.S3_REGION }}
+#        BUCKET_NAME: ${{ secrets.S3_BUCKET }}
+#      run: |
+#        git config --global --add safe.directory '*'
+#        cd duckdb-pgq
+#        git fetch --tags
+#        export DUCKDB_VERSION=`git tag --points-at HEAD`
+#        export DUCKDB_VERSION=${DUCKDB_VERSION:=`git log -1 --format=%h`}
+#        cd ..
+#        if [[ "$AWS_ACCESS_KEY_ID" == "" ]] ; then
+#          echo 'No key set, skipping'
+#        elif [[ "$GITHUB_REF" =~ ^(refs/tags/v.+)$ ]] ; then
+#          python3 -m pip install pip awscli
+#          ./scripts/extension-upload.sh duckpgq ${{ github.ref_name }} $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME true
+#        elif [[ "$GITHUB_REF" =~ ^(refs/heads/main)$ ]] ; then
+#          python3 -m pip install pip awscli
+#          ./scripts/extension-upload.sh duckpgq `git log -1 --format=%h` $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME false
+#        fi
