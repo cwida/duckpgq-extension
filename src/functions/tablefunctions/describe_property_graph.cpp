@@ -1,6 +1,5 @@
 #include "duckpgq/functions/tablefunctions/describe_property_graph.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
-#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/parser/statement/create_statement.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/tableref/showref.hpp"
