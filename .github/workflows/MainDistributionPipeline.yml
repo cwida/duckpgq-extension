@@ -14,7 +14,7 @@ concurrency:
 jobs:
   duckdb-stable-build:
     name: Build extension binaries
-    uses: extension-ci-tools/.github/workflows/_extension_distribution.yml@v0.10.1
+    uses: ./extension-ci-tools/.github/workflows/_extension_distribution.yml@v0.10.1
     with:
       duckdb_version: v0.10.1
       extension_name: duckpgq
