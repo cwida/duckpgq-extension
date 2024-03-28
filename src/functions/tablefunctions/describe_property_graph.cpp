@@ -37,7 +37,14 @@ DescribePropertyGraphFunction::DescribePropertyGraphBind(
 
   names.emplace_back("table_name");
   return_types.emplace_back(LogicalType::VARCHAR);
-
+  names.emplace_back("label");
+  return_types.emplace_back(LogicalType::VARCHAR);
+  names.emplace_back("is_vertex_table");
+  return_types.emplace_back(LogicalType::BOOLEAN);
+  names.emplace_back("source_table");
+  return_types.emplace_back(LogicalType::VARCHAR);
+  names.emplace_back("destination_table");
+  return_types.emplace_back(LogicalType::VARCHAR);
   return make_uniq<DescribePropertyGraphBindData>(property_graph);
 }
 
@@ -56,10 +63,24 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
   }
   auto result_vector = Vector(LogicalType::VARCHAR);
   auto pg_info = bind_data.describe_pg_info;
+  idx_t vector_idx = 0;
   for (const auto& vertex_table : pg_info->vertex_tables) {
-    output.SetValue(0, 0, Value(vertex_table->table_name));
+    output.SetValue(0, vector_idx, Value(vertex_table->table_name));
+    output.SetValue(1, vector_idx, Value(vertex_table->main_label));
+    output.SetValue(2, vector_idx, Value(vertex_table->is_vertex_table));
+    output.SetValue(3, vector_idx, Value());
+    output.SetValue(4, vector_idx, Value());
+    vector_idx++;
   }
-  output.SetCardinality(1);
+  for (const auto& edge_table : pg_info->edge_tables) {
+    output.SetValue(0, vector_idx, Value(edge_table->table_name));
+    output.SetValue(1, vector_idx, Value(edge_table->main_label));
+    output.SetValue(2, vector_idx, Value(edge_table->is_vertex_table));
+    output.SetValue(3, vector_idx, Value(edge_table->source_reference));
+    output.SetValue(4, vector_idx, Value(edge_table->destination_reference));
+    vector_idx++;
+  }
+  output.SetCardinality(vector_idx);
   data.done = true;
 }
 }; // namespace duckdb
