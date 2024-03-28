@@ -254,22 +254,21 @@ FROM GRAPH_TABLE (pg
 
 
 query II
--SELECT study.id, study.name
-FROM GRAPH_TABLE (pg
+-FROM GRAPH_TABLE (pg
     MATCH
     (a:PERSON)-[k:knows]->(b:person)
-    COLUMNS (*)
+    COLUMNS (a.*)
     ) study
 ORDER BY study.id, study.name;
 ----
 0	Daniel
+0	Daniel
+0	Daniel
+1	Tavneet
 1	Tavneet
 2	Gabor
-2	Gabor
 3	Peter
-3	Peter
-3	Peter
-3	Peter
+4	David
 
 query II
 -SELECT *
