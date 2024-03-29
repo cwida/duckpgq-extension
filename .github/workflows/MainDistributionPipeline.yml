@@ -28,3 +28,4 @@ jobs:
       duckdb_version: v0.10.1
       extension_name: duckpgq
       deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
+
