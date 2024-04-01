@@ -23,6 +23,7 @@ void LogicalPathFindingOperator::ResolveTypes() {
   types = children[0]->types;
   auto right_types = children[1]->types;
   types.insert(types.end(), right_types.begin(), right_types.end());
+  // types = {LogicalType::BIGINT, LogicalType::BIGINT};
 }
 
 string LogicalPathFindingOperator::ParamsToString() const {

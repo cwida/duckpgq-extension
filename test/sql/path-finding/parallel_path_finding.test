@@ -8,7 +8,7 @@
 require duckpgq
 
 statement ok
-CREATE TABLE pairs(src INT, dst INT); INSERT INTO pairs(src, dst) VALUES (0, 1), (1, 2), (2,0);
+CREATE TABLE pairs(src BIGINT, dst BIGINT); INSERT INTO pairs(src, dst) VALUES (0, 1), (1, 2), (2,0);
 
 statement ok
 create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (40);
@@ -38,7 +38,7 @@ knows   SOURCE KEY (src) REFERENCES student (id)
 #    COLUMNS (*)
 #    );
 
-statement ok
+query II
 SELECT *
 FROM pairs AS p
 WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
@@ -55,6 +55,7 @@ WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
                                 LEFT JOIN knows k ON k.src = a.id
                                 GROUP BY a.rowid) t
                             ON t.a_rowid = a.rowid) AND p.dst;
+----
 
 
 #            CAST (
