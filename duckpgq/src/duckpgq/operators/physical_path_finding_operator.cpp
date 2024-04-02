@@ -129,7 +129,6 @@ public:
 
   PathFindingGlobalState(PathFindingGlobalState &prev)
       : GlobalSinkState(prev), global_tasks(prev.global_tasks),
-        scan_state(prev.scan_state), append_state(prev.append_state),
       global_csr(std::move(prev.global_csr)), child(prev.child + 1) {}
 
   void Sink(DataChunk &input, PathFindingLocalState &lstate) const {
@@ -329,11 +328,8 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     while (global_tasks.Scan(scan_state, pairs)) {
       Vector result(LogicalType::BIGINT, true, true);
       IterativeLengthFunction(csr, pairs, result);
-      // store the result
-      // gstate.global_results.InitializeAppend(gstate.append_state);
-      // gstate.global_results.Append(gstate.append_state, pairs);
-      // // debug print
-      // gstate.global_results.Print();
+      // debug print
+      Printer::Print(result.ToString(pairs.size()));
     }
   }
 
@@ -381,7 +377,7 @@ public:
 
 public:
   idx_t MaxThreads() override {
-    const auto &sink_state = (op.sink_state->Cast<PathFindingGlobalState>());
+    // const auto &sink_state = (op.sink_state->Cast<PathFindingGlobalState>());
     return 1;
   }
 
@@ -411,7 +407,7 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
                              OperatorSourceInput &input) const {
   auto &pf_sink = sink_state->Cast<PathFindingGlobalState>();
   auto &pf_gstate = input.global_state.Cast<PathFindingGlobalSourceState>();
-  auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
+  // auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
   pf_sink.global_tasks.Scan(pf_sink.scan_state, result);
   result.Print();
   pf_gstate.Initialize(pf_sink);
