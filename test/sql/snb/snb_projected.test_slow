@@ -1,105 +1,105 @@
-require duckpgq
+#require duckpgq
 
-statement ok
-import database 'duckdb-pgq/data/SNB1-projected|';
+#statement ok
+#import database 'duckdb-pgq/data/SNB1-projected|';
 
-statement ok
--CREATE PROPERTY GRAPH snb_projected
-VERTEX TABLES (
-    Forum LABEL Forum,
-    Message LABEL Message IN Subcategory(Comment, Post),
-    Organisation LABEL Organisation IN Subcategory(University, Company),
-    Person LABEL Person,
-    Place LABEL Place IN Subcategory(Continent, Country, City),
-    Tag LABEL Tag,
-    TagClass LABEL TagClass
-    )
-EDGE TABLES (
-    Comment_hasCreator_Person   SOURCE KEY (CommentId) REFERENCES Message (id)
-                            DESTINATION KEY (PersonId) REFERENCES Person (id)
-                            LABEL Comment_hasCreator,
-    Comment_hasTag_Tag      SOURCE KEY (CommentId) REFERENCES Message (id)
-                            DESTINATION KEY (TagId) REFERENCES Tag (id)
-                            LABEL Comment_hasTag,
-    Comment_isLocatedIn_Country     SOURCE KEY (CommentId) REFERENCES Message (id)
-                            DESTINATION KEY (CountryId) REFERENCES Tag (id)
-                            LABEL Comment_isLocatedIn,
-    Comment_replyOf_Comment SOURCE KEY (Comment1Id) REFERENCES Message (id)
-                            DESTINATION KEY (Comment2Id) REFERENCES Message (id)
-                            LABEL replyOf_Comment,
-    Comment_replyOf_Post    SOURCE KEY (CommentId) REFERENCES Message (id)
-                            DESTINATION KEY (PostId) REFERENCES Message (id)
-                            LABEL replyOf_Post,
-    Forum_containerOf_Post  SOURCE KEY (ForumId) REFERENCES Forum (id)
-                            DESTINATION KEY (PostId) REFERENCES Message (id)
-                            LABEL containerOf,
-    Forum_hasMember_Person  SOURCE KEY (ForumId) REFERENCES Forum (id)
-                            DESTINATION KEY (PersonId) REFERENCES Person (id)
-                            LABEL hasMember,
-    Forum_hasModerator_Person   SOURCE KEY (ForumId) REFERENCES Forum (id)
-                            DESTINATION KEY (PersonId) REFERENCES Person (id)
-                            LABEL hasModerator,
-    Forum_hasTag_Tag        SOURCE KEY (ForumId) REFERENCES Forum (id)
-                            DESTINATION KEY (TagId) REFERENCES Tag (id)
-                            LABEL Forum_hasTag,
-    Organisation_isLocatedIn_Place  SOURCE KEY (OrganisationId) REFERENCES Organisation (id)
-                            DESTINATION KEY (PlaceId) REFERENCES Place (id)
-                            LABEL Organisation_isLocatedIn,
-    Person_hasInterest_Tag  SOURCE KEY (PersonId) REFERENCES Person (id)
-                            DESTINATION KEY (interestId) REFERENCES Tag (id)
-                            LABEL hasInterest,
-    Person_isLocatedIn_City     SOURCE KEY (PersonId) REFERENCES Person (id)
-                            DESTINATION KEY (CityId) REFERENCES Place (id)
-                            LABEL Person_isLocatedIn,
-    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
-                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
-                            LABEL Knows,
-    Person_likes_Comment    SOURCE KEY (PersonId) REFERENCES Person (id)
-                            DESTINATION KEY (CommentId) REFERENCES Message (id)
-                            LABEL likes_Comment,
-    Person_likes_Post       SOURCE KEY (PersonId) REFERENCES Person (id)
-                            DESTINATION KEY (PostId) REFERENCES Message (id)
-                            LABEL likes_Post,
-    Person_studyAt_University   SOURCE KEY (PersonId) REFERENCES Person (id)
-                            DESTINATION KEY (UniversityId) REFERENCES Organisation (id)
-                            LABEL studyAt,
-    Person_workAt_Company   SOURCE KEY (PersonId) REFERENCES Person (id)
-                            DESTINATION KEY (CompanyId) REFERENCES Organisation (id)
-                            LABEL workAt,
-    Place_isPartOf_Place    SOURCE KEY (Place1Id) REFERENCES Place (id)
-                            DESTINATION KEY (Place2Id) REFERENCES Place (id)
-                            LABEL isPartOf,
-    Post_hasCreator_Person  SOURCE KEY (PostId) REFERENCES Message (id)
-                            DESTINATION KEY (PersonId) REFERENCES Person (id)
-                            LABEL Post_hasCreator,
-    Message_hasCreator_Person   SOURCE KEY (MessageId) REFERENCES Message (id)
-                            DESTINATION KEY (PersonId) REFERENCES Person (id)
-                            LABEL Message_hasCreator,
-    Message_hasTag_Tag      SOURCE KEY (MessageId) REFERENCES Message (id)
-                            DESTINATION KEY (TagId) REFERENCES Tag (id)
-                            LABEL Message_hasTag,
-    Message_isLocatedIn_Country SOURCE KEY (MessageId) REFERENCES Message (id)
-                            DESTINATION KEY (CountryId) REFERENCES Place (id)
-                            LABEL Message_isLocatedIn,
-    Post_hasTag_Tag         SOURCE KEY (PostId) REFERENCES Message (id)
-                            DESTINATION KEY (TagId) REFERENCES Tag (id)
-                            LABEL Post_hasTag,
-    Post_isLocatedIn_Country    SOURCE KEY (PostId) REFERENCES Message (id)
-                            DESTINATION KEY (CountryId) REFERENCES Place (id)
-                            LABEL Post_isLocatedIn,
-    Tag_hasType_TagClass    SOURCE KEY (TagId) REFERENCES Tag (id)
-                            DESTINATION KEY (TagClassId) REFERENCES TagClass (id)
-                            LABEL hasType,
-    TagClass_isSubClassOf_TagClass  SOURCE KEY (TagClass1Id) REFERENCES TagClass (id)
-                            DESTINATION KEY (TagClass2Id) REFERENCES TagClass (id)
-                            LABEL isSubClassOf
-    );
+#statement ok
+#-CREATE PROPERTY GRAPH snb_projected
+#VERTEX TABLES (
+#    Forum LABEL Forum,
+#    Message LABEL Message IN Subcategory(Comment, Post),
+#    Organisation LABEL Organisation IN Subcategory(University, Company),
+#    Person LABEL Person,
+#    Place LABEL Place IN Subcategory(Continent, Country, City),
+#    Tag LABEL Tag,
+#    TagClass LABEL TagClass
+#    )
+#EDGE TABLES (
+#    Comment_hasCreator_Person   SOURCE KEY (CommentId) REFERENCES Message (id)
+#                            DESTINATION KEY (PersonId) REFERENCES Person (id)
+#                            LABEL Comment_hasCreator,
+#    Comment_hasTag_Tag      SOURCE KEY (CommentId) REFERENCES Message (id)
+#                            DESTINATION KEY (TagId) REFERENCES Tag (id)
+#                            LABEL Comment_hasTag,
+#    Comment_isLocatedIn_Country     SOURCE KEY (CommentId) REFERENCES Message (id)
+#                            DESTINATION KEY (CountryId) REFERENCES Tag (id)
+#                            LABEL Comment_isLocatedIn,
+#    Comment_replyOf_Comment SOURCE KEY (Comment1Id) REFERENCES Message (id)
+#                            DESTINATION KEY (Comment2Id) REFERENCES Message (id)
+#                            LABEL replyOf_Comment,
+#    Comment_replyOf_Post    SOURCE KEY (CommentId) REFERENCES Message (id)
+#                            DESTINATION KEY (PostId) REFERENCES Message (id)
+#                            LABEL replyOf_Post,
+#    Forum_containerOf_Post  SOURCE KEY (ForumId) REFERENCES Forum (id)
+#                            DESTINATION KEY (PostId) REFERENCES Message (id)
+#                            LABEL containerOf,
+#    Forum_hasMember_Person  SOURCE KEY (ForumId) REFERENCES Forum (id)
+#                            DESTINATION KEY (PersonId) REFERENCES Person (id)
+#                            LABEL hasMember,
+#    Forum_hasModerator_Person   SOURCE KEY (ForumId) REFERENCES Forum (id)
+#                            DESTINATION KEY (PersonId) REFERENCES Person (id)
+#                            LABEL hasModerator,
+#    Forum_hasTag_Tag        SOURCE KEY (ForumId) REFERENCES Forum (id)
+#                            DESTINATION KEY (TagId) REFERENCES Tag (id)
+#                            LABEL Forum_hasTag,
+#    Organisation_isLocatedIn_Place  SOURCE KEY (OrganisationId) REFERENCES Organisation (id)
+#                            DESTINATION KEY (PlaceId) REFERENCES Place (id)
+#                            LABEL Organisation_isLocatedIn,
+#    Person_hasInterest_Tag  SOURCE KEY (PersonId) REFERENCES Person (id)
+#                            DESTINATION KEY (interestId) REFERENCES Tag (id)
+#                            LABEL hasInterest,
+#    Person_isLocatedIn_City     SOURCE KEY (PersonId) REFERENCES Person (id)
+#                            DESTINATION KEY (CityId) REFERENCES Place (id)
+#                            LABEL Person_isLocatedIn,
+#    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+#                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+#                            LABEL Knows,
+#    Person_likes_Comment    SOURCE KEY (PersonId) REFERENCES Person (id)
+#                            DESTINATION KEY (CommentId) REFERENCES Message (id)
+#                            LABEL likes_Comment,
+#    Person_likes_Post       SOURCE KEY (PersonId) REFERENCES Person (id)
+#                            DESTINATION KEY (PostId) REFERENCES Message (id)
+#                            LABEL likes_Post,
+#    Person_studyAt_University   SOURCE KEY (PersonId) REFERENCES Person (id)
+#                            DESTINATION KEY (UniversityId) REFERENCES Organisation (id)
+#                            LABEL studyAt,
+#    Person_workAt_Company   SOURCE KEY (PersonId) REFERENCES Person (id)
+#                            DESTINATION KEY (CompanyId) REFERENCES Organisation (id)
+#                            LABEL workAt,
+#    Place_isPartOf_Place    SOURCE KEY (Place1Id) REFERENCES Place (id)
+#                            DESTINATION KEY (Place2Id) REFERENCES Place (id)
+#                            LABEL isPartOf,
+#    Post_hasCreator_Person  SOURCE KEY (PostId) REFERENCES Message (id)
+#                            DESTINATION KEY (PersonId) REFERENCES Person (id)
+#                            LABEL Post_hasCreator,
+#    Message_hasCreator_Person   SOURCE KEY (MessageId) REFERENCES Message (id)
+#                            DESTINATION KEY (PersonId) REFERENCES Person (id)
+#                            LABEL Message_hasCreator,
+#    Message_hasTag_Tag      SOURCE KEY (MessageId) REFERENCES Message (id)
+#                            DESTINATION KEY (TagId) REFERENCES Tag (id)
+#                            LABEL Message_hasTag,
+#    Message_isLocatedIn_Country SOURCE KEY (MessageId) REFERENCES Message (id)
+#                            DESTINATION KEY (CountryId) REFERENCES Place (id)
+#                            LABEL Message_isLocatedIn,
+#    Post_hasTag_Tag         SOURCE KEY (PostId) REFERENCES Message (id)
+#                            DESTINATION KEY (TagId) REFERENCES Tag (id)
+#                            LABEL Post_hasTag,
+#    Post_isLocatedIn_Country    SOURCE KEY (PostId) REFERENCES Message (id)
+#                            DESTINATION KEY (CountryId) REFERENCES Place (id)
+#                            LABEL Post_isLocatedIn,
+#    Tag_hasType_TagClass    SOURCE KEY (TagId) REFERENCES Tag (id)
+#                            DESTINATION KEY (TagClassId) REFERENCES TagClass (id)
+#                            LABEL hasType,
+#    TagClass_isSubClassOf_TagClass  SOURCE KEY (TagClass1Id) REFERENCES TagClass (id)
+#                            DESTINATION KEY (TagClass2Id) REFERENCES TagClass (id)
+#                            LABEL isSubClassOf
+#    );
 
 # IS2
-query IIIIIIII
--FROM GRAPH_TABLE (snb_projected
-     MATCH (a:person where a.id = 4026)-[i:Person_isLocatedIn]->(c:City)
-     COLUMNS(a.firstName, a.lastName, a.birthday, a.locationIP, a.browserUsed, c.id, a.gender, a.creationDate)
-     ) tmp;
-----
-Ivan	Dobrunov	1988-10-21	31.28.20.134	Firefox	865	female	2010-02-09 17:26:35.413
+#query IIIIIIII
+#-FROM GRAPH_TABLE (snb_projected
+#     MATCH (a:person where a.id = 4026)-[i:Person_isLocatedIn]->(c:City)
+#     COLUMNS(a.firstName, a.lastName, a.birthday, a.locationIP, a.browserUsed, c.id, a.gender, a.creationDate)
+#     ) tmp;
+#----
+#Ivan	Dobrunov	1988-10-21	31.28.20.134	Firefox	865	female	2010-02-09 17:26:35.413
