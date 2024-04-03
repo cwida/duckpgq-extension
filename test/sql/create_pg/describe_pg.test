@@ -1,0 +1,94 @@
+# name: test/sql/sqlpgq/snb.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+import database 'duckdb-pgq/data/SNB0.003';
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person LABEL Person
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows
+    );
+
+query IIIIIIIIIII
+-DESCRIBE PROPERTY GRAPH snb;
+----
+Person	person	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Person_knows_person	knows	false	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person LABEL Person,
+    Forum LABEL Forum,
+    Organisation LABEL Organisation IN typemask(company, university),
+    Place LABEL Place,
+    Tag LABEL Tag,
+    TagClass LABEL TagClass,
+    Country LABEL Country,
+    City LABEL City,
+    Message LABEL Message
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows,
+    Forum_hasMember_Person  SOURCE KEY (ForumId) REFERENCES Forum (id)
+                            DESTINATION KEY (PersonId) REFERENCES Person (id)
+                            LABEL hasMember,
+    Forum_hasTag_Tag        SOURCE KEY (ForumId) REFERENCES Forum (id)
+                            DESTINATION KEY (TagId) REFERENCES Tag (id)
+                            LABEL Forum_hasTag,
+    Person_hasInterest_Tag  SOURCE KEY (PersonId) REFERENCES Person (id)
+                            DESTINATION KEY (TagId) REFERENCES Tag (id)
+                            LABEL hasInterest,
+    person_workAt_Organisation SOURCE KEY (PersonId) REFERENCES Person (id)
+                               DESTINATION KEY (OrganisationId) REFERENCES Organisation (id)
+                               LABEL workAt_Organisation,
+    Person_likes_Message    SOURCE KEY (PersonId) REFERENCES Person (id)
+                            DESTINATION KEY (id) REFERENCES Message (id)
+                            LABEL likes_Message,
+    Message_hasTag_Tag      SOURCE KEY (id) REFERENCES Message (id)
+                            DESTINATION KEY (TagId) REFERENCES Tag (id)
+                            LABEL message_hasTag,
+    Message_hasAuthor_Person    SOURCE KEY (messageId) REFERENCES Message (id)
+                                DESTINATION KEY (PersonId) REFERENCES Person (id)
+                                LABEL hasAuthor,
+    Message_replyOf_Message SOURCE KEY (messageId) REFERENCES Message (id)
+                            DESTINATION KEY (ParentMessageId) REFERENCES Message (id)
+                            LABEL replyOf
+    );
+
+query IIIIIIIIIII
+-DESCRIBE PROPERTY GRAPH snb;
+----
+Message	message	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+City	city	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Country	country	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+TagClass	tagclass	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Tag	tag	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Place	place	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Organisation	organisation	true	NULL	NULL	NULL	NULL	NULL	NULL	typemask	[company, university]
+Forum	forum	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Person	person	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Message_replyOf_Message	replyof	false	Message	[id]	[messageId]	Message	[id]	[ParentMessageId]	NULL	NULL
+Message_hasAuthor_Person	hasauthor	false	Message	[id]	[messageId]	Person	[id]	[PersonId]	NULL	NULL
+Message_hasTag_Tag	message_hastag	false	Message	[id]	[id]	Tag	[id]	[TagId]	NULL	NULL
+Person_likes_Message	likes_message	false	Person	[id]	[PersonId]	Message	[id]	[id]	NULL	NULL
+person_workAt_Organisation	workat_organisation	false	Person	[id]	[PersonId]	Organisation	[id]	[OrganisationId]	NULL	NULL
+Person_hasInterest_Tag	hasinterest	false	Person	[id]	[PersonId]	Tag	[id]	[TagId]	NULL	NULL
+Forum_hasTag_Tag	forum_hastag	false	Forum	[id]	[ForumId]	Tag	[id]	[TagId]	NULL	NULL
+Forum_hasMember_Person	hasmember	false	Forum	[id]	[ForumId]	Person	[id]	[PersonId]	NULL	NULL
+Person_knows_person	knows	false	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL
+
+statement error
+-DESCRIBE PROPERTY GRAPH pgdoesnotexist;
+----
+Invalid Error: Property graph pgdoesnotexist does not exist.
