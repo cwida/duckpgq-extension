@@ -1,5 +1,6 @@
 set(EXTENSION_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/create_property_graph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/describe_property_graph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/drop_property_graph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/match.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/pgq_scan.cpp
