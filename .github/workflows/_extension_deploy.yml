@@ -101,10 +101,10 @@ jobs:
       - name: Deploy
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.S3_DUCKDB_ORG_DEPLOY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_DUCKDB_ORG_DEPLOY_KEY }}
-          AWS_DEFAULT_REGION: ${{ secrets.S3_DUCKDB_ORG_REGION }}
-          BUCKET_NAME: ${{ secrets.S3_DUCKDB_ORG_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_DEPLOY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_DEPLOY_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.S3_REGION }}
+          BUCKET_NAME: ${{ secrets.S3_BUCKET }}
           DUCKDB_EXTENSION_SIGNING_PK: ${{ secrets.S3_DUCKDB_ORG_EXTENSION_SIGNING_PK }}
         run: |
           pwd
