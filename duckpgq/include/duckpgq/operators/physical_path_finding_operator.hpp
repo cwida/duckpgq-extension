@@ -144,7 +144,8 @@ public:
 
   void BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) override;
 
-
+  // //! Schedules tasks to calculate the next iteration of the path-finding
+	static void ScheduleBFSTasks(Pipeline &pipeline, Event &event, GlobalSinkState &state);
 };
 
 } // namespace duckdb
