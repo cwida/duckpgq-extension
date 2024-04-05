@@ -3,7 +3,7 @@ A DuckDB extension for graph workloads that supports the SQL/PGQ standard. For m
 
 [![Discord](https://discordapp.com/api/guilds/1225369321077866496/widget.png?style=banner3)](https://discord.gg/8X95XHhQB7)
 ## WIP Disclaimer
-This repository is currently a research project and a work in progress. Feel free to play around with it and give us feedback. NOTE: Currently any query containing SQL/PGQ syntax requires a `-` at the start of the query (else you will get a segmentation fault). 
+This repository is currently a research project and a work in progress. Feel free to play around with it and give us feedback.
 
 ---
 
