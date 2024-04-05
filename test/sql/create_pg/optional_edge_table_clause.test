@@ -1,4 +1,4 @@
-# name: test/sql/sqlpgq/snb.test
+# name: test/sql/create_pg/optional_edge_table_clause.test
 # group: [duckpgq]
 
 require duckpgq
@@ -9,6 +9,7 @@ import database 'duckdb-pgq/data/SNB0.003';
 statement ok
 -CREATE PROPERTY GRAPH snb
 VERTEX TABLES (Message, person);
+
 
 statement ok
 -FROM GRAPH_TABLE (snb

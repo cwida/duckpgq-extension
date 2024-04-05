@@ -8,7 +8,8 @@
 # <duckdb_version>      : Version (commit / version tag) of DuckDB
 # <architecture>        : Architecture target of the extension binary
 # <s3_bucket>           : S3 bucket to upload to
-# <copy_to_latest>      : Set this as a versioned version that will prevent its deletion
+# <copy_to_latest>      : Set this as the latest version ("true" / "false", default: "false")
+# <copy_to_versioned>   : Set this as a versioned version that will prevent its deletion
 
 set -e
 
@@ -57,9 +58,9 @@ cat $ext.sign >> $ext.append
 
 # compress extension binary
 if [[ $4 == wasm_* ]]; then
-  gzip < $ext.append > "$ext.compressed"
-else
   brotli < $ext.append > "$ext.compressed"
+else
+  gzip < $ext.append > "$ext.compressed"
 fi
 
 set -e
@@ -73,7 +74,7 @@ fi
 # upload versioned version
 if [[ $7 = 'true' ]]; then
   if [[ $4 == wasm* ]]; then
-    aws s3 cp $ext.compressed s3://$5/duckdb-wasm/$1/$2/duckdb-wasm/$3/$4/$1.duckdb_extension.wasm --acl public-read --content-encoding br --content-type="application/wasm"
+    aws s3 cp $ext.compressed s3://$5/$1/$2/$3/$4/$1.duckdb_extension.wasm --acl public-read --content-encoding br --content-type="application/wasm"
   else
     aws s3 cp $ext.compressed s3://$5/$1/$2/$3/$4/$1.duckdb_extension.gz --acl public-read
   fi
@@ -82,7 +83,7 @@ fi
 # upload to latest version
 if [[ $6 = 'true' ]]; then
   if [[ $4 == wasm* ]]; then
-    aws s3 cp $ext.compressed s3://$5/duckdb-wasm/$3/$4/$1.duckdb_extension.wasm --acl public-read --content-encoding br --content-type="application/wasm"
+    aws s3 cp $ext.compressed s3://$5/$3/$4/$1.duckdb_extension.wasm --acl public-read --content-encoding br --content-type="application/wasm"
   else
     aws s3 cp $ext.compressed s3://$5/$3/$4/$1.duckdb_extension.gz --acl public-read
   fi

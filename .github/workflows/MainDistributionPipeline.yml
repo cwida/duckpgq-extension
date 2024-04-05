@@ -14,10 +14,9 @@ concurrency:
 jobs:
   duckdb-stable-build:
     name: Build extension binaries
-    uses: duckdb/duckdb/.github/workflows/_extension_distribution.yml@6812703823d1d66566bc7eaac2b6e4b273c85333
+    uses: cwida/extension-ci-tools/.github/workflows/_extension_distribution.yml@v0.10.1
     with:
-      vcpkg_commit: a42af01b72c28a8e1d7b48107b33e4f286a55ef6
-      duckdb_version: v0.9.2
+      duckdb_version: v0.10.1
       extension_name: duckpgq
 
   duckdb-stable-deploy:
@@ -26,7 +25,6 @@ jobs:
     uses: ./.github/workflows/_extension_deploy.yml
     secrets: inherit
     with:
-      duckdb_version: v0.9.2
+      duckdb_version: v0.10.1
       extension_name: duckpgq
       deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
-      deploy_versioned: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
