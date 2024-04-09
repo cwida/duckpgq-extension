@@ -34,8 +34,7 @@ query II
 -SELECT study.name, study.school
 FROM GRAPH_TABLE (pg
     MATCH
-    (a:Person)-[s:StudyAt]->?(b:School)
-    WHERE a.name = 'Daniel'
+    (a:Student)-[s:StudyAt]->?(b:School)
     COLUMNS (a.name as name, b.name as school)
     ) study;
 ----
