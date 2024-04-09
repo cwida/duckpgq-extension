@@ -14,6 +14,7 @@
 #include "duckdb/parser/path_element.hpp"
 #include "duckdb/parser/subpath_element.hpp"
 #include "duckdb/parser/path_pattern.hpp"
+#include "duckdb/common/optional_ptr.hpp"
 
 namespace duckdb {
 struct PGQMatchFunction : public TableFunction {
@@ -32,7 +33,7 @@ public:
 
   static void
   CheckInheritance(const shared_ptr<PropertyGraphTable> &tableref,
-                   PathElement *element,
+                   optional_ptr<PathElement> element,
                    vector<unique_ptr<ParsedExpression>> &conditions);
 
   static void
@@ -44,7 +45,7 @@ public:
       vector<string> vertex_keys, vector<string> edge_keys,
       const string &vertex_alias, const string &edge_alias);
 
-  static PathElement *
+  static optional_ptr<PathElement>
   GetPathElement(const unique_ptr<PathReference> &path_reference);
 
   static unique_ptr<SubqueryExpression>
@@ -94,7 +95,7 @@ public:
                     unordered_map<string, string> &alias_map,
                     int32_t &extra_alias_counter);
 
-  static PathElement *
+  static optional_ptr<PathElement>
   HandleNestedSubPath(unique_ptr<PathReference> &path_reference,
                       vector<unique_ptr<ParsedExpression>> &conditions,
                       idx_t element_idx);
@@ -124,7 +125,7 @@ public:
   AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
                const shared_ptr<PropertyGraphTable> &previous_vertex_table,
                const shared_ptr<PropertyGraphTable> &next_vertex_table,
-               PGQMatchType edge_type, const string &edge_binding,
+               const PathElement &edge_element,
                const string &prev_binding, const string &next_binding,
                vector<unique_ptr<ParsedExpression>> &conditions,
                unordered_map<string, string> &alias_map,

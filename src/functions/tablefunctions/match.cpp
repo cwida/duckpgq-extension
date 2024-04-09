@@ -41,7 +41,7 @@ PGQMatchFunction::FindGraphTable(const string &label,
 }
 
 void PGQMatchFunction::CheckInheritance(
-    const shared_ptr<PropertyGraphTable> &tableref, PathElement *element,
+    const shared_ptr<PropertyGraphTable> &tableref, optional_ptr<PathElement> element,
     vector<unique_ptr<ParsedExpression>> &conditions) {
   if (tableref->main_label == element->label) {
     return;
@@ -126,18 +126,23 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreateMatchJoinExpression(
   return where_clause;
 }
 
-PathElement *PGQMatchFunction::GetPathElement(
-    const unique_ptr<PathReference> &path_reference) {
+optional_ptr<PathElement> PGQMatchFunction::GetPathElement(
+    const unique_ptr<PathReference>& path_reference) {
   if (path_reference->path_reference_type ==
       PGQPathReferenceType::PATH_ELEMENT) {
-    return reinterpret_cast<PathElement *>(path_reference.get());
+    // Check if the unique_ptr holds a PathElement (dynamic type check)
+    if (dynamic_cast<const PathElement*>(path_reference.get()) != nullptr) {
+      // Convert unique_ptr to optional_ptr using std::make_optional (copy)
+      return {dynamic_cast<PathElement*>(path_reference.get())};  // Dereference to get PathElement
+    } else {
+      // Handle the case where path_reference doesn't hold a PathElement
+      return {nullptr};  // Empty optional
+    }
+  } else {
+    // Handle the case where path_reference type is not PATH_ELEMENT
+    return {nullptr};  // Empty optional
   }
-  if (path_reference->path_reference_type == PGQPathReferenceType::SUBPATH) {
-    return nullptr;
-  }
-  throw InternalException("Unknown path reference type detected");
 }
-
 unique_ptr<SubqueryExpression> PGQMatchFunction::GetCountTable(
     const shared_ptr<PropertyGraphTable> &edge_table,
     const string &prev_binding) {
@@ -501,7 +506,7 @@ void PGQMatchFunction::EdgeTypeLeftRight(
   conditions.push_back(std::move(combined_expr));
 }
 
-PathElement *PGQMatchFunction::HandleNestedSubPath(
+optional_ptr<PathElement> PGQMatchFunction::HandleNestedSubPath(
     unique_ptr<PathReference> &path_reference,
     vector<unique_ptr<ParsedExpression>> &conditions, idx_t element_idx) {
   auto subpath = reinterpret_cast<SubPath *>(path_reference.get());
@@ -633,15 +638,17 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
 void PGQMatchFunction::AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
     const shared_ptr<PropertyGraphTable> &previous_vertex_table,
     const shared_ptr<PropertyGraphTable> &next_vertex_table,
-    PGQMatchType edge_type, const string &edge_binding,
+    const PathElement& edge_element,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
     unordered_map<string, string> &alias_map, int32_t &extra_alias_counter,
     unique_ptr<TableRef> &from_clause) {
-  if (edge_type != PGQMatchType::MATCH_EDGE_ANY) {
+  const string edge_binding = edge_element.variable_binding;
+
+  if (edge_element.match_type != PGQMatchType::MATCH_EDGE_ANY) {
     alias_map[edge_binding] = edge_table->table_name;
   }
-  switch (edge_type) {
+  switch (edge_element.match_type) {
   case PGQMatchType::MATCH_EDGE_ANY: {
     EdgeTypeAny(edge_table, edge_binding, prev_binding, next_binding,
                 conditions, from_clause);
@@ -831,7 +838,7 @@ void PGQMatchFunction::ProcessPathList(
     unordered_map<string, string> &alias_map, CreatePropertyGraphInfo &pg_table,
     int32_t &extra_alias_counter,
     vector<unique_ptr<ParsedExpression>> &column_list) {
-  PathElement *previous_vertex_element = GetPathElement(path_list[0]);
+  optional_ptr<PathElement> previous_vertex_element = GetPathElement(path_list[0]);
   if (!previous_vertex_element) {
     const auto previous_vertex_subpath =
         reinterpret_cast<SubPath *>(path_list[0].get());
@@ -857,7 +864,7 @@ void PGQMatchFunction::ProcessPathList(
       previous_vertex_table->table_name;
 
   for (idx_t idx_j = 1; idx_j < path_list.size(); idx_j = idx_j + 2) {
-    PathElement *next_vertex_element = GetPathElement(path_list[idx_j + 1]);
+    optional_ptr<PathElement> next_vertex_element = GetPathElement(path_list[idx_j + 1]);
     if (!next_vertex_element) {
       auto next_vertex_subpath =
           reinterpret_cast<SubPath *>(path_list[idx_j + 1].get());
@@ -880,7 +887,7 @@ void PGQMatchFunction::ProcessPathList(
     alias_map[next_vertex_element->variable_binding] =
         next_vertex_table->table_name;
 
-    PathElement *edge_element = GetPathElement(path_list[idx_j]);
+    optional_ptr<PathElement> edge_element = GetPathElement(path_list[idx_j]);
     if (!edge_element) {
       // We are dealing with a subpath
       auto edge_subpath = reinterpret_cast<SubPath *>(path_list[idx_j].get());
@@ -905,8 +912,7 @@ void PGQMatchFunction::ProcessPathList(
         alias_map[edge_element->variable_binding] =
             edge_table->source_reference;
         AddEdgeJoins(edge_table, previous_vertex_table,
-                     next_vertex_table, edge_element->match_type,
-                     edge_element->variable_binding,
+                     next_vertex_table, *edge_element,
                      previous_vertex_element->variable_binding,
                      next_vertex_element->variable_binding, conditions,
                      alias_map, extra_alias_counter, from_clause);
@@ -917,8 +923,7 @@ void PGQMatchFunction::ProcessPathList(
       CheckInheritance(edge_table, edge_element, conditions);
       // check aliases
       AddEdgeJoins(edge_table, previous_vertex_table,
-                   next_vertex_table, edge_element->match_type,
-                   edge_element->variable_binding,
+                   next_vertex_table, *edge_element,
                    previous_vertex_element->variable_binding,
                    next_vertex_element->variable_binding, conditions,
                    alias_map, extra_alias_counter, from_clause);
