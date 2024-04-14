@@ -121,30 +121,49 @@ void PathFindingLocalState::CreateCSR(DataChunk &input,
 class GlobalBFSState {
 public:
 
-  void init(shared_ptr<DataChunk> pairs_, int64_t v_size_) {
-    iter = 1;
-    v_size = v_size_;
-    pairs = pairs_;
+  GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_) 
+    : pairs(pairs_), iter(1), v_size(v_size_), started_searches(0), change(false),
+      seen(v_size_), visit1(v_size_), visit2(v_size_),
+      result(make_uniq<Vector>(LogicalType::BIGINT, true, true, pairs_->size())) {
+    for (auto i = 0; i < LANE_LIMIT; i++) {
+      lane_to_num[i] = -1;
+    }
     auto &src_data = pairs->data[0];
     auto &dst_data = pairs->data[1];
     src_data.ToUnifiedFormat(pairs->size(), vdata_src);
     dst_data.ToUnifiedFormat(pairs->size(), vdata_dst);
     src = FlatVector::GetData<int64_t>(src_data);
     dst = FlatVector::GetData<int64_t>(dst_data);
-    started_searches = 0;
-    for (auto i = 0; i < LANE_LIMIT; i++) {
-      lane_to_num[i] = -1;
-    }
-    seen.resize(v_size_);
-    visit1.resize(v_size_);
-    visit2.resize(v_size_);
     for (auto i = 0; i < v_size; i++) {
       seen[i] = 0;
       visit1[i] = 0;
     }
-    change = false;
-    result = make_uniq<Vector>(LogicalType::BIGINT, true, true, pairs->size());
   }
+
+  // void init(shared_ptr<DataChunk> pairs_, int64_t v_size_) {
+  //   iter = 1;
+  //   v_size = v_size_;
+  //   pairs = pairs_;
+  //   auto &src_data = pairs->data[0];
+  //   auto &dst_data = pairs->data[1];
+  //   src_data.ToUnifiedFormat(pairs->size(), vdata_src);
+  //   dst_data.ToUnifiedFormat(pairs->size(), vdata_dst);
+  //   src = FlatVector::GetData<int64_t>(src_data);
+  //   dst = FlatVector::GetData<int64_t>(dst_data);
+  //   started_searches = 0;
+  //   for (auto i = 0; i < LANE_LIMIT; i++) {
+  //     lane_to_num[i] = -1;
+  //   }
+  //   seen.resize(v_size_);
+  //   visit1.resize(v_size_);
+  //   visit2.resize(v_size_);
+  //   for (auto i = 0; i < v_size; i++) {
+  //     seen[i] = 0;
+  //     visit1[i] = 0;
+  //   }
+  //   change = false;
+  //   result = make_uniq<Vector>(LogicalType::BIGINT, true, true, pairs->size());
+  // }
 
   void clear() {
     iter = 1;
@@ -162,16 +181,16 @@ public:
   shared_ptr<DataChunk> pairs;
   int64_t iter;
   int64_t v_size;
+  idx_t started_searches;
+  bool change;
   int64_t *src;
   int64_t *dst;
   UnifiedVectorFormat vdata_src;
   UnifiedVectorFormat vdata_dst;
-  idx_t started_searches;
   int64_t lane_to_num[LANE_LIMIT];
   vector<std::bitset<LANE_LIMIT>> seen;
-  vector<std::bitset<LANE_LIMIT>> visit1;
-  vector<std::bitset<LANE_LIMIT>> visit2;
-  bool change;
+  vector<atomic<std::bitset<LANE_LIMIT>>> visit1;
+  vector<atomic<std::bitset<LANE_LIMIT>>> visit2;
   unique_ptr<Vector> result;
 };
 
@@ -206,7 +225,7 @@ public:
 
   unique_ptr<GlobalCompressedSparseRow> global_csr;
   // state for BFS
-  GlobalBFSState global_bfs_state;
+  unique_ptr<GlobalBFSState> global_bfs_state;
 
   size_t child;
 };
@@ -261,10 +280,11 @@ public:
 	}
 
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
-    auto& change = state.global_bfs_state.change;
-    auto& seen = state.global_bfs_state.seen;
-    auto& visit = state.global_bfs_state.iter & 1 ? state.global_bfs_state.visit1 : state.global_bfs_state.visit2;
-    auto& next = state.global_bfs_state.iter & 1 ? state.global_bfs_state.visit2 : state.global_bfs_state.visit1;
+    auto& bfs_state = state.global_bfs_state;
+    auto& change = bfs_state->change;
+    auto& seen = bfs_state->seen;
+    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     int64_t *v = (int64_t *)state.global_csr->v;
     vector<int64_t> &e = state.global_csr->e;
 
@@ -272,22 +292,24 @@ public:
       next[i] = 0;
     }
     for (auto i = start; i < end; i++) {
-      if (visit[i].any()) {
+      if (visit[i].load().any()) {
         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
           auto n = e[offset];
-          next[n] = next[n] | visit[i];
-
-          next[n] = next[n] & ~seen[n];
-          seen[n] = seen[n] | next[n];
-          change |= next[n].any();
+          auto oldNext = next[n].load();
+          auto newNext = oldNext | visit[i].load();
+          while (!next[n].compare_exchange_weak(oldNext, newNext)) {
+            newNext = oldNext | visit[i].load();
+          }          
         }
       }
     }
-    // for (auto i = start; i < end; i++) {
-    //   next[i] = next[i] & ~seen[i];
-    //   seen[i] = seen[i] | next[i];
-    //   change |= next[i].any();
-    // }
+    for (auto i = start; i < end; i++) {
+      if (next[i].load().any()) {
+        next[i] = next[i].load() & ~seen[i];
+        seen[i] = seen[i] | next[i].load();
+        change |= next[i].load().any();
+      }
+    }
 
 		event->FinishTask();
 		return TaskExecutionResult::TASK_FINISHED;
@@ -314,18 +336,18 @@ public:
     auto &bfs_state = gstate.global_bfs_state;
 		auto &context = pipeline->GetClientContext();
 
-    bfs_state.change = false;
+    bfs_state->change = false;
 
 		// Schedule tasks equal to the number of threads, which will each merge multiple partitions
 		auto &ts = TaskScheduler::GetScheduler(context);
 		// idx_t num_threads = ts.NumberOfThreads();
-    idx_t num_threads = std::min((int64_t)ts.NumberOfThreads(), bfs_state.v_size);
-    idx_t blocks = floor(bfs_state.v_size / (float)num_threads);
+    idx_t num_threads = std::min((int64_t)ts.NumberOfThreads(), bfs_state->v_size);
+    idx_t blocks = floor(bfs_state->v_size / (float)num_threads);
 
 		vector<shared_ptr<Task>> bfs_tasks;
 		for (idx_t tnum = 0; tnum < num_threads; tnum++) {
       bfs_tasks.push_back(make_uniq<PhysicalBFSTask>(shared_from_this(), context, gstate, 
-        tnum * blocks, std::min(tnum * blocks + blocks, (idx_t)bfs_state.v_size)));
+        tnum * blocks, std::min(tnum * blocks + blocks, (idx_t)bfs_state->v_size)));
 		}
 		SetTasks(std::move(bfs_tasks));
 	}
@@ -333,39 +355,39 @@ public:
 	void FinishEvent() override {
 		auto& bfs_state = gstate.global_bfs_state;
 
-    auto result_data = FlatVector::GetData<int64_t>(*bfs_state.result);
-    ValidityMask &result_validity = FlatVector::Validity(*bfs_state.result);
+    auto result_data = FlatVector::GetData<int64_t>(*bfs_state->result);
+    ValidityMask &result_validity = FlatVector::Validity(*bfs_state->result);
 
-		if (bfs_state.change) {
+		if (bfs_state->change) {
       // detect lanes that finished
       for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-        int64_t search_num = bfs_state.lane_to_num[lane];
+        int64_t search_num = bfs_state->lane_to_num[lane];
         if (search_num >= 0) { // active lane
-          int64_t dst_pos = bfs_state.vdata_dst.sel->get_index(search_num);
-          if (bfs_state.seen[bfs_state.dst[dst_pos]][lane]) {
+          int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
+          if (bfs_state->seen[bfs_state->dst[dst_pos]][lane]) {
             result_data[search_num] =
-                bfs_state.iter;               /* found at iter => iter = path length */
-            bfs_state.lane_to_num[lane] = -1; // mark inactive
+                bfs_state->iter;               /* found at iter => iter = path length */
+            bfs_state->lane_to_num[lane] = -1; // mark inactive
           }
         }
       }
       // into the next iteration
-      bfs_state.iter++;
+      bfs_state->iter++;
       auto bfs_event = std::make_shared<BFSIterativeEvent>(gstate, *pipeline);
       this->InsertEvent(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event));
 		} else {
       // no changes anymore: any still active searches have no path
       for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-        int64_t search_num = bfs_state.lane_to_num[lane];
+        int64_t search_num = bfs_state->lane_to_num[lane];
         if (search_num >= 0) { // active lane
           result_validity.SetInvalid(search_num);
           result_data[search_num] = (int64_t)-1; /* no path */
-          bfs_state.lane_to_num[lane] = -1;     // mark inactive
+          bfs_state->lane_to_num[lane] = -1;     // mark inactive
         }
       }
 
       // if remaining pairs, schedule the BFS for the next batch
-      if (bfs_state.started_searches < gstate.global_tasks.Count()) {
+      if (bfs_state->started_searches < gstate.global_tasks.Count()) {
         PhysicalPathFinding::ScheduleBFSTasks(*pipeline, *this, gstate);
       }
     }
@@ -392,7 +414,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     }
     // debug print
     all_pairs->Print();
-    gstate.global_bfs_state.init(all_pairs, csr->v_size);
+    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size);
 
     // Schedule the first round of BFS tasks
     if (all_pairs->size() > 0) {
@@ -413,29 +435,32 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event, Glo
   auto &bfs_state = gstate.global_bfs_state;
 
   // for every batch of pairs, schedule a BFS task
-  bfs_state.clear();
+  bfs_state->clear();
 
   // remaining pairs
-  if (bfs_state.started_searches < gstate.global_tasks.Count()) {
+  if (bfs_state->started_searches < gstate.global_tasks.Count()) {
 
-    auto result_data = FlatVector::GetData<int64_t>(*bfs_state.result);
-    auto& result_validity = FlatVector::Validity(*bfs_state.result);
+    auto result_data = FlatVector::GetData<int64_t>(*bfs_state->result);
+    auto& result_validity = FlatVector::Validity(*bfs_state->result);
 
+    bitset<LANE_LIMIT> starts(false);
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-      bfs_state.lane_to_num[lane] = -1;
-      while (bfs_state.started_searches < gstate.global_tasks.Count()) {
-        int64_t search_num = bfs_state.started_searches++;
-        int64_t src_pos = bfs_state.vdata_src.sel->get_index(search_num);
-        int64_t dst_pos = bfs_state.vdata_dst.sel->get_index(search_num);
-        if (!bfs_state.vdata_src.validity.RowIsValid(src_pos)) {
+      bfs_state->lane_to_num[lane] = -1;
+      while (bfs_state->started_searches < gstate.global_tasks.Count()) {
+        int64_t search_num = bfs_state->started_searches++;
+        int64_t src_pos = bfs_state->vdata_src.sel->get_index(search_num);
+        int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
+        if (!bfs_state->vdata_src.validity.RowIsValid(src_pos)) {
           result_validity.SetInvalid(search_num);
           result_data[search_num] = (uint64_t)-1; /* no path */
-        } else if (bfs_state.src[src_pos] == bfs_state.dst[dst_pos]) {
+        } else if (bfs_state->src[src_pos] == bfs_state->dst[dst_pos]) {
           result_data[search_num] =
               (uint64_t)0; // path of length 0 does not require a search
         } else {
-          bfs_state.visit1[bfs_state.src[src_pos]][lane] = true;
-          bfs_state.lane_to_num[lane] = search_num; // active lane
+          starts[lane] = true;
+          bfs_state->visit1[bfs_state->src[src_pos]] = bfs_state->visit1[bfs_state->src[src_pos]].load() | starts;
+          starts[lane] = false;
+          bfs_state->lane_to_num[lane] = search_num; // active lane
           break;
         }
       }
@@ -517,7 +542,7 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   auto &pf_gstate = input.global_state.Cast<PathFindingGlobalSourceState>();
   auto &pf_bfs_state = pf_sink.global_bfs_state;
   // auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
-  pf_bfs_state.result->Print(pf_bfs_state.pairs->size());
+  pf_bfs_state->result->Print(pf_bfs_state->pairs->size());
   // pf_gstate.Initialize(pf_sink);
 
   return result.size() == 0 ? SourceResultType::FINISHED
