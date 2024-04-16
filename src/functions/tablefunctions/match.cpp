@@ -909,13 +909,58 @@ void PGQMatchFunction::ProcessPathList(
                        next_vertex_element->variable_binding, edge_table,
                        edge_subpath);
       } else {
-        alias_map[edge_element->variable_binding] =
-            edge_table->source_reference;
-        AddEdgeJoins(edge_table, previous_vertex_table,
-                     next_vertex_table, *edge_element,
-                     previous_vertex_element->variable_binding,
-                     next_vertex_element->variable_binding, conditions,
-                     alias_map, extra_alias_counter, from_clause);
+        if (edge_subpath->single_bind) {
+          auto src_outerjoin_ref = make_uniq<JoinRef>();
+          src_outerjoin_ref->type = JoinType::LEFT;
+          auto left_side = make_uniq<BaseTableRef>();
+          left_side->table_name = previous_vertex_table->table_name;
+          left_side->alias = previous_vertex_element->variable_binding;
+          alias_map.erase(previous_vertex_element->variable_binding);
+          auto right_side = make_uniq<BaseTableRef>();
+          right_side->table_name = edge_table->table_name;
+          right_side->alias = edge_element->variable_binding;
+          src_outerjoin_ref->left = std::move(left_side);
+          src_outerjoin_ref->right = std::move(right_side);
+          auto left_side_condition =
+              make_uniq<ColumnRefExpression>(edge_table->source_pk[0], previous_vertex_element->variable_binding);
+          auto right_side_condition =
+              make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_element->variable_binding);
+          src_outerjoin_ref->condition = make_uniq<ComparisonExpression>(
+              ExpressionType::COMPARE_EQUAL, std::move(left_side_condition),
+              std::move(right_side_condition));
+
+          auto dst_outerjoin_ref = make_uniq<JoinRef>();
+          dst_outerjoin_ref->type = JoinType::LEFT;
+          auto dst_side = make_uniq<BaseTableRef>();
+          dst_side->table_name = next_vertex_table->table_name;
+          dst_side->alias = next_vertex_element->variable_binding;
+          dst_outerjoin_ref->left = std::move(src_outerjoin_ref);
+          dst_outerjoin_ref->right = std::move(dst_side);
+          auto edge_key_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk[0], edge_element->variable_binding);
+          auto dst_key_ref = make_uniq<ColumnRefExpression>(edge_table->destination_pk[0], next_vertex_element->variable_binding);
+          dst_outerjoin_ref->condition = make_uniq<ComparisonExpression>(
+                  ExpressionType::COMPARE_EQUAL, std::move(edge_key_ref),
+                  std::move(dst_key_ref));
+          alias_map.erase(next_vertex_element->variable_binding);
+          if (from_clause) {
+            auto new_from_clause = make_uniq<JoinRef>(JoinRefType::CROSS);
+            new_from_clause->left = std::move(from_clause);
+            new_from_clause->right = std::move(dst_outerjoin_ref);
+            from_clause = std::move(new_from_clause);
+          } else {
+            from_clause = std::move(dst_outerjoin_ref);
+          }
+
+
+        } else {
+          alias_map[edge_element->variable_binding] =
+              edge_table->source_reference;
+          AddEdgeJoins(edge_table, previous_vertex_table,
+                       next_vertex_table, *edge_element,
+                       previous_vertex_element->variable_binding,
+                       next_vertex_element->variable_binding, conditions,
+                       alias_map, extra_alias_counter, from_clause);
+        }
       }
     } else {
       // The edge element is a path element without WHERE or path-finding.
@@ -1047,6 +1092,7 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
   subquery->node = std::move(select_node);
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
+  result->Print();
   return std::move(result);
 }
 } // namespace duckdb
