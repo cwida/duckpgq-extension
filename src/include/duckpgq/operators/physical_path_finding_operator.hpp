@@ -28,7 +28,9 @@ public:
 //    ~GlobalCompressedSparseRow() { delete[] v; }
 
     atomic<int64_t> *v;
+    atomic<int64_t> *reverse_v;
     vector<int64_t> e;
+    vector<int64_t> reverse_e;
     vector<int64_t> edge_ids;
     vector<int64_t> w;
     vector<double> w_double;

@@ -33,12 +33,14 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(int64_t v_
   v_size = v_size_ + 2;
   try {
     v = new std::atomic<int64_t>[v_size];
+    reverse_v = new std::atomic<int64_t>[v_size];
   } catch (std::bad_alloc const &) {
     throw InternalException("Unable to initialize vector of size for csr vertex table "
                                              "representation");
   }
   for (idx_t i = 0; i < v_size; ++i) {
     v[i].store(0);
+    reverse_v[i].store(0);
   }
   initialized_v = true;
 }
@@ -47,6 +49,7 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeEdge(
   const lock_guard<mutex> csr_init_lock(csr_lock);
   try {
     e.resize(e_size, 0);
+    reverse_e.resize(e_size, 0);
     edge_ids.resize(e_size, 0);
   } catch (std::bad_alloc const &) {
     throw InternalException("Unable to initialize vector of size for csr "
@@ -152,7 +155,8 @@ public:
   GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_)
       : pairs(pairs_), iter(1), v_size(v_size_), change(false), started_searches(0),
         seen(v_size_), visit1(v_size_), visit2(v_size_), 
-        result(make_uniq<Vector>(LogicalType::BIGINT, true, true, pairs_->size())) {
+        result(make_uniq<Vector>(LogicalType::BIGINT, true, true, pairs_->size())),
+        frontier_size(0), unseen_size(v_size_) {
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
     }
@@ -171,6 +175,8 @@ public:
   void Clear() {
     iter = 1;
     change = false;
+    frontier_size = 0;
+    unseen_size = v_size;
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
     }
@@ -195,6 +201,12 @@ public:
   vector<std::bitset<LANE_LIMIT>> visit1;
   vector<std::bitset<LANE_LIMIT>> visit2;
   unique_ptr<Vector> result;
+
+  atomic<int64_t> frontier_size;
+  atomic<int64_t> unseen_size;
+  constexpr static int64_t alpha = 1024;
+  constexpr static int64_t beta = 64;
+  bool is_top_down = true;
 
   Barrier barrier;
 
@@ -281,9 +293,9 @@ PhysicalPathFinding::Combine(ExecutionContext &context,
 // Finalize
 //===--------------------------------------------------------------------===//
 
-class PhysicalBFSTask : public ExecutorTask {
+class PhysicalBFSTopDownTask : public ExecutorTask {
 public:
-	PhysicalBFSTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t start, idx_t end)
+	PhysicalBFSTopDownTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t start, idx_t end)
 	    : ExecutorTask(context, std::move(event_p)), context(context), state(state), start(start), end(end) {
 	}
 
@@ -294,6 +306,8 @@ public:
     auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
+    auto& frontier_size = bfs_state->frontier_size;
+    auto& unseen_size = bfs_state->unseen_size;
 
     int64_t *v = (int64_t *)state.global_csr->v;
     vector<int64_t> &e = state.global_csr->e;
@@ -301,6 +315,9 @@ public:
     for (auto i = start; i < end; i++) {
       next[i] = 0;
     }
+
+    barrier.Wait();
+
     for (auto i = start; i < end; i++) {
       if (visit[i].any()) {
         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
@@ -318,7 +335,64 @@ public:
         next[i] = next[i] & ~seen[i];
         seen[i] = seen[i] | next[i];
         change |= next[i].any();
+
+        frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+        unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
       }
+    }
+
+		event->FinishTask();
+		return TaskExecutionResult::TASK_FINISHED;
+	}
+
+private:
+	ClientContext &context;
+	PathFindingGlobalState &state;
+  // [start, end)
+  idx_t start;
+  idx_t end;
+};
+
+class PhysicalBFSBottomUpTask : public ExecutorTask {
+public:
+	PhysicalBFSBottomUpTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t start, idx_t end)
+	    : ExecutorTask(context, std::move(event_p)), context(context), state(state), start(start), end(end) {
+	}
+
+	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
+    auto& bfs_state = state.global_bfs_state;
+    auto& change = bfs_state->change;
+    auto& seen = bfs_state->seen;
+    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+    auto& barrier = bfs_state->barrier;
+    auto& frontier_size = bfs_state->frontier_size;
+    auto& unseen_size = bfs_state->unseen_size;
+
+    int64_t *v = (int64_t *)state.global_csr->v;
+    vector<int64_t> &e = state.global_csr->e;
+
+    for (auto i = start; i < end; i++) {
+      next[i] = 0;
+    }
+
+    barrier.Wait();
+
+    for (auto i = start; i < end; i++) {
+      if (seen[i].all()) {
+        unseen_size -= 1;
+        continue;
+      }
+      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        auto n = e[offset];
+        next[i] = next[i] | visit[n];
+      }
+      next[i] = next[i] & ~seen[i];
+      seen[i] = seen[i] | next[i];
+      change |= next[i].any();
+
+      frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+      unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
     }
 
 		event->FinishTask();
@@ -348,6 +422,22 @@ public:
 
     bfs_state->change = false;
 
+    // Determine the switch of algorithms
+    if (bfs_state->is_top_down) {
+      auto Ctb = bfs_state->unseen_size / bfs_state->alpha;
+      if (bfs_state->frontier_size > Ctb) {
+        bfs_state->is_top_down = false;
+      }
+    } else {
+      auto Cbt = bfs_state->v_size / bfs_state->beta;
+      if (bfs_state->frontier_size < Cbt) {
+        bfs_state->is_top_down = true;
+      }
+    }
+    // clear the counters after the switch
+    bfs_state->frontier_size = 0;
+    bfs_state->unseen_size = bfs_state->v_size;
+
 		// Schedule tasks equal to the number of threads, which will each merge multiple partitions
 		auto &ts = TaskScheduler::GetScheduler(context);
 		// idx_t num_threads = ts.NumberOfThreads();
@@ -357,10 +447,19 @@ public:
     bfs_state->barrier.Init(num_threads);
 
 		vector<shared_ptr<Task>> bfs_tasks;
-		for (idx_t tnum = 0; tnum < num_threads; tnum++) {
-      bfs_tasks.push_back(make_uniq<PhysicalBFSTask>(shared_from_this(), context, gstate, 
+    for (idx_t tnum = 0; tnum < num_threads; tnum++) {
+      bfs_tasks.push_back(make_uniq<PhysicalBFSTopDownTask>(shared_from_this(), context, gstate, 
         tnum * blocks, std::min(tnum * blocks + blocks, (idx_t)bfs_state->v_size)));
-		}
+    }
+		// for (idx_t tnum = 0; tnum < num_threads; tnum++) {
+    //   if (bfs_state->is_top_down) {
+    //     bfs_tasks.push_back(make_uniq<PhysicalBFSTopDownTask>(shared_from_this(), context, gstate, 
+    //       tnum * blocks, std::min(tnum * blocks + blocks, (idx_t)bfs_state->v_size)));
+    //   } else {
+    //     bfs_tasks.push_back(make_uniq<PhysicalBFSBottomUpTask>(shared_from_this(), context, gstate, 
+    //       tnum * blocks, std::min(tnum * blocks + blocks, (idx_t)bfs_state->v_size)));
+    //   }
+		// }
 		SetTasks(std::move(bfs_tasks));
 	}
 
@@ -385,6 +484,7 @@ public:
       }
       // into the next iteration
       bfs_state->iter++;
+
       auto bfs_event = std::make_shared<BFSIterativeEvent>(gstate, *pipeline);
       this->InsertEvent(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event));
 		} else {
@@ -426,7 +526,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     }
     // debug print
     all_pairs->Print();
-    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size);
+    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size - 2);
 
     // Schedule the first round of BFS tasks
     if (all_pairs->size() > 0) {
@@ -468,6 +568,7 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event, Glo
           result_data[search_num] =
               (uint64_t)0; // path of length 0 does not require a search
         } else {
+          bfs_state->frontier_size++;
           bfs_state->visit1[bfs_state->src[src_pos]][lane] = true;
           bfs_state->lane_to_num[lane] = search_num; // active lane
           break;
