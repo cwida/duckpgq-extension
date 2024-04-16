@@ -124,6 +124,7 @@ void PathFindingLocalState::CreateCSR(DataChunk &input,
 class Barrier {
 public:
     void Init(std::size_t iCount) {
+        std::unique_lock<std::mutex> lLock{mMutex};
         mThreshold = iCount;
         mCount = iCount;
         mGeneration = 0;
@@ -137,7 +138,19 @@ public:
             mCount = mThreshold;
             mCond.notify_all();
         } else {
-            mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
+            mCond.wait(lLock, [this, lGen] { return lGen != mGeneration || mCount == mThreshold; });
+        }
+    }
+
+    void DecreaseCount() {
+        std::unique_lock<std::mutex> lLock{mMutex};
+        mCount--;
+        mThreshold--;
+
+        if (mCount == 0) {
+            mGeneration++;
+            mCount = mThreshold;
+            mCond.notify_all();
         }
     }
 
@@ -152,11 +165,11 @@ private:
 class GlobalBFSState {
 public:
 
-  GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_)
+  GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_, idx_t num_threads_)
       : pairs(pairs_), iter(1), v_size(v_size_), change(false), started_searches(0),
         seen(v_size_), visit1(v_size_), visit2(v_size_), 
         result(make_uniq<Vector>(LogicalType::BIGINT, true, true, pairs_->size())),
-        frontier_size(0), unseen_size(v_size_) {
+        frontier_size(0), unseen_size(v_size_), num_threads(num_threads_), task_queues(num_threads_) {
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
     }
@@ -207,6 +220,12 @@ public:
   constexpr static int64_t alpha = 1024;
   constexpr static int64_t beta = 64;
   bool is_top_down = true;
+
+  idx_t num_threads;
+  // task_queues[workerId] = {curTaskIx, queuedTasks}
+  // queuedTasks[curTaskIx] = {start, end}
+  vector<pair<atomic<idx_t>, vector<pair<idx_t, idx_t>>>> task_queues;
+  constexpr static int64_t split_size = 1;
 
   Barrier barrier;
 
@@ -295,8 +314,8 @@ PhysicalPathFinding::Combine(ExecutionContext &context,
 
 class PhysicalBFSTopDownTask : public ExecutorTask {
 public:
-	PhysicalBFSTopDownTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t start, idx_t end)
-	    : ExecutorTask(context, std::move(event_p)), context(context), state(state), start(start), end(end) {
+	PhysicalBFSTopDownTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t worker_id)
+	    : ExecutorTask(context, std::move(event_p)), context(context), state(state), worker_id(worker_id) {
 	}
 
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
@@ -312,32 +331,42 @@ public:
     int64_t *v = (int64_t *)state.global_csr->v;
     vector<int64_t> &e = state.global_csr->e;
 
-    for (auto i = start; i < end; i++) {
-      next[i] = 0;
-    }
+    while (true) {
+      auto task = fetch_task();
+      if (task.first == task.second) {
+        barrier.DecreaseCount();
+        break;
+      }
+      auto start = task.first;
+      auto end = task.second;
 
-    barrier.Wait();
+      for (auto i = start; i < end; i++) {
+        next[i] = 0;
+      }
 
-    for (auto i = start; i < end; i++) {
-      if (visit[i].any()) {
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          lock_guard<mutex> lock(bfs_state->lock);
-          next[n] = next[n] | visit[i];
+      barrier.Wait();
+
+      for (auto i = start; i < end; i++) {
+        if (visit[i].any()) {
+          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+            auto n = e[offset];
+            lock_guard<mutex> lock(bfs_state->lock);
+            next[n] = next[n] | visit[i];
+          }
         }
       }
-    }
 
-    barrier.Wait();
+      barrier.Wait();
 
-    for (auto i = start; i < end; i++) {
-      if (next[i].any()) {
-        next[i] = next[i] & ~seen[i];
-        seen[i] = seen[i] | next[i];
-        change |= next[i].any();
+      for (auto i = start; i < end; i++) {
+        if (next[i].any()) {
+          next[i] = next[i] & ~seen[i];
+          seen[i] = seen[i] | next[i];
+          change |= next[i].any();
 
-        frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
-        unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+          frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+          unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+        }
       }
     }
 
@@ -346,11 +375,28 @@ public:
 	}
 
 private:
+  pair<idx_t, idx_t> fetch_task() {
+    auto& task_queue = state.global_bfs_state->task_queues;
+    idx_t offset = 0;
+    do {
+      auto worker_idx = (worker_id + offset) % task_queue.size();
+      auto cur_task_ix = task_queue[worker_idx].first.fetch_add(1);
+      if (cur_task_ix < task_queue[worker_idx].second.size()) {
+        return task_queue[worker_idx].second[cur_task_ix];
+      } else {
+        offset++;
+      }
+    } while (offset < task_queue.size());
+    return {0, 0};
+  }
+
+private:
 	ClientContext &context;
 	PathFindingGlobalState &state;
-  // [start, end)
-  idx_t start;
-  idx_t end;
+  // // [start, end)
+  // idx_t start;
+  // idx_t end;
+  idx_t worker_id;
 };
 
 class PhysicalBFSBottomUpTask : public ExecutorTask {
@@ -415,6 +461,27 @@ public:
 
 	PathFindingGlobalState &gstate;
 
+private:
+  void CreateTasks() {
+    auto &bfs_state = gstate.global_bfs_state;
+
+    // workerTasks[workerId] = [task1, task2, ...]
+    vector<vector<pair<idx_t, idx_t>>> worker_tasks(bfs_state->num_threads);
+    auto cur_worker = 0;
+
+    for (auto offset = 0; offset < bfs_state->v_size; offset += bfs_state->split_size) {
+      auto worker_id = cur_worker % bfs_state->num_threads;
+      pair<idx_t, idx_t> range = {offset, std::min(offset + bfs_state->split_size, bfs_state->v_size)};
+      worker_tasks[worker_id].push_back(range);
+      cur_worker++;
+    }
+
+    for (idx_t worker_id = 0; worker_id < bfs_state->num_threads; worker_id++) {
+      bfs_state->task_queues[worker_id].first.store(0);
+      bfs_state->task_queues[worker_id].second = worker_tasks[worker_id];
+    }
+  }
+
 public:
 	void Schedule() override {
     auto &bfs_state = gstate.global_bfs_state;
@@ -438,18 +505,18 @@ public:
     bfs_state->frontier_size = 0;
     bfs_state->unseen_size = bfs_state->v_size;
 
-		// Schedule tasks equal to the number of threads, which will each merge multiple partitions
-		auto &ts = TaskScheduler::GetScheduler(context);
+		// auto &ts = TaskScheduler::GetScheduler(context);
 		// idx_t num_threads = ts.NumberOfThreads();
-    idx_t num_threads = std::min((int64_t)ts.NumberOfThreads(), bfs_state->v_size);
-    idx_t blocks = floor(bfs_state->v_size / (float)num_threads);
+    // idx_t num_threads = std::min((int64_t)ts.NumberOfThreads(), bfs_state->v_size);
+    // idx_t blocks = floor(bfs_state->v_size / (float)num_threads);
 
-    bfs_state->barrier.Init(num_threads);
+    bfs_state->barrier.Init(bfs_state->num_threads);
+
+    CreateTasks();
 
 		vector<shared_ptr<Task>> bfs_tasks;
-    for (idx_t tnum = 0; tnum < num_threads; tnum++) {
-      bfs_tasks.push_back(make_uniq<PhysicalBFSTopDownTask>(shared_from_this(), context, gstate, 
-        tnum * blocks, std::min(tnum * blocks + blocks, (idx_t)bfs_state->v_size)));
+    for (idx_t tnum = 0; tnum < bfs_state->num_threads; tnum++) {
+      bfs_tasks.push_back(make_uniq<PhysicalBFSTopDownTask>(shared_from_this(), context, gstate, tnum));
     }
 		// for (idx_t tnum = 0; tnum < num_threads; tnum++) {
     //   if (bfs_state->is_top_down) {
@@ -526,7 +593,10 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     }
     // debug print
     all_pairs->Print();
-    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size - 2);
+
+    auto &ts = TaskScheduler::GetScheduler(context);
+		idx_t num_threads = ts.NumberOfThreads();
+    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size - 2, num_threads);
 
     // Schedule the first round of BFS tasks
     if (all_pairs->size() > 0) {
