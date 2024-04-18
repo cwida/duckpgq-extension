@@ -126,7 +126,7 @@ WITH cte1 AS (
     JOIN Person c on c.id = k.Person2Id
 ) SELECT a.rowid, b.rowid, iterativelength(0, (select count(*) from Person), a.rowid, b.rowid) as length
         FROM Person a, Person b, (select count(cte1.temp) * 0 as temp from cte1) __x
-        WHERE a.rowid = 1 AND __x.temp * 0 + iterativelength(0, (select count(*) from Person), a.rowid, b.rowid) >= 0;
+        WHERE a.rowid = 1 AND __x.temp * 0 >= 0;
 ----
 
 #            CAST (

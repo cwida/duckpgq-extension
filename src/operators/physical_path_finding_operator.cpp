@@ -597,7 +597,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
       all_pairs->Append(pairs, true);
     }
     // debug print
-    all_pairs->Print();
+    // all_pairs->Print();
 
     auto &ts = TaskScheduler::GetScheduler(context);
 		idx_t num_threads = ts.NumberOfThreads();
@@ -727,7 +727,7 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   auto &pf_gstate = input.global_state.Cast<PathFindingGlobalSourceState>();
   auto &pf_bfs_state = pf_sink.global_bfs_state;
   // auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
-  pf_bfs_state->result->Print(pf_bfs_state->pairs->size());
+  // pf_bfs_state->result->Print(pf_bfs_state->pairs->size());
   // pf_gstate.Initialize(pf_sink);
 
   return result.size() == 0 ? SourceResultType::FINISHED
