@@ -8,13 +8,13 @@
 require duckpgq
 
 statement ok
-CREATE TABLE pairs(src BIGINT, dst BIGINT); INSERT INTO pairs(src, dst) VALUES (0, 1), (1, 2), (2,0);
+CREATE TABLE pair(src BIGINT, dst BIGINT); INSERT INTO pair(src, dst) VALUES (0, 1), (1, 2), (2,0);
 
 statement ok
 create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (40);
 
 statement ok
-create table knows(src INT, dst INT); INSERT INTO knows(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (20,30), (30,10);
+create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
 
 #query II
 #SELECT *
@@ -28,35 +28,106 @@ VERTEX TABLES (
 student
 )
 EDGE TABLES (
-knows   SOURCE KEY (src) REFERENCES student (id)
+know   SOURCE KEY (src) REFERENCES student (id)
         DESTINATION KEY (dst) references student (id)
 );
 
-#statement ok
-#-FROM GRAPH_TABLE(pg
+# statement ok
+# -FROM GRAPH_TABLE(pg
 #    MATCH (f:student)-[k:knows]->{0,3}(f2:student)
 #    COLUMNS (*)
 #    );
 
+# query II
+# SELECT *
+# FROM pair AS p
+# WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
+#             (SELECT count(a.id) as v_size FROM Student a),
+#             (SELECT count(k.src) as e_size from know k),
+#             a.rowid,
+#             c.rowid,
+#             k.rowid,
+#             t.cnt)    FROM Know k
+#                         JOIN student a on a.id = k.src
+#                         JOIN student c on c.id = k.dst
+#                         JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
+#                                 FROM student a
+#                                 LEFT JOIN know k ON k.src = a.id
+#                                 GROUP BY a.rowid) t
+#                             ON t.a_rowid = a.rowid) AND p.dst;
+# ----
+
+statement ok
+import database 'duckdb-pgq/data/SNB0.003';
+
+statement ok
+CREATE TABLE pairs2(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO pairs2
+SELECT a.rowid, b.rowid
+FROM Person a CROSS JOIN Person b
+WHERE a.rowid = 1;
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person PROPERTIES (id) LABEL Person
+    )
+EDGE TABLES (
+    Person_knows_Person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows
+    );
+
 query II
 SELECT *
-FROM pairs AS p
+FROM pairs2 AS p
 WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
-            (SELECT count(a.id) as v_size FROM Student a),
-            (SELECT count(k.src) as e_size from knows k),
+            (SELECT count(a.id) as v_size FROM Person a),
+            (SELECT count(k.Person1Id) as e_size FROM Person_knows_Person k),
             a.rowid,
             c.rowid,
             k.rowid,
-            t.cnt)    FROM Knows k
-                        JOIN student a on a.id = k.src
-                        JOIN student c on c.id = k.dst
-                        JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
-                                FROM student a
-                                LEFT JOIN knows k ON k.src = a.id
+            t.cnt)    FROM Person_knows_Person k
+                        JOIN Person a on a.id = k.Person1Id
+                        JOIN Person c on c.id = k.Person2Id
+                        JOIN (SELECT count(k.Person1Id) cnt, a.rowid as a_rowid
+                                FROM Person a
+                                LEFT JOIN Person_knows_Person k ON k.Person1Id = a.id
                                 GROUP BY a.rowid) t
                             ON t.a_rowid = a.rowid) AND p.dst;
 ----
 
+query III
+WITH cte1 AS (
+    SELECT  CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Person a),
+            CAST (
+                (SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Person a),
+                            sub.dense_id,
+                            sub.cnt)
+                            )
+                FROM (
+                    SELECT a.rowid as dense_id, count(k.Person1Id) as cnt
+                    FROM Person a
+                    LEFT JOIN Person_knows_Person k ON k.Person1Id = a.id
+                    GROUP BY a.rowid) sub
+                )
+            AS BIGINT),
+            a.rowid,
+            c.rowid,
+            k.rowid) as temp
+    FROM Person_knows_Person k
+    JOIN Person a on a.id = k.Person1Id
+    JOIN Person c on c.id = k.Person2Id
+) SELECT a.rowid, b.rowid, iterativelength(0, (select count(*) from Person), a.rowid, b.rowid) as length
+        FROM Person a, Person b, (select count(cte1.temp) * 0 as temp from cte1) __x
+        WHERE a.rowid = 1 AND __x.temp * 0 + iterativelength(0, (select count(*) from Person), a.rowid, b.rowid) >= 0;
+----
 
 #            CAST (
 #                (SELECT sum(CREATE_CSR_VERTEX(0,

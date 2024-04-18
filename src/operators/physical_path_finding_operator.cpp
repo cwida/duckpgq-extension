@@ -327,24 +327,29 @@ public:
     auto& barrier = bfs_state->barrier;
     auto& frontier_size = bfs_state->frontier_size;
     auto& unseen_size = bfs_state->unseen_size;
+    auto& v_size = bfs_state->v_size;
 
     int64_t *v = (int64_t *)state.global_csr->v;
     vector<int64_t> &e = state.global_csr->e;
 
+    // clear next before each iteration
+    idx_t block_size = ceil((double)v_size / bfs_state->num_threads);
+    block_size = block_size == 0 ? 1 : block_size;
+    auto left = block_size * worker_id;
+    auto right = std::min(block_size * (worker_id + 1), (idx_t)v_size);
+    for (auto i = left; i < right; i++) {
+      next[i] = 0;
+    }
+
+    barrier.Wait();
+
     while (true) {
       auto task = fetch_task();
       if (task.first == task.second) {
-        barrier.DecreaseCount();
         break;
       }
       auto start = task.first;
       auto end = task.second;
-
-      for (auto i = start; i < end; i++) {
-        next[i] = 0;
-      }
-
-      barrier.Wait();
 
       for (auto i = start; i < end; i++) {
         if (visit[i].any()) {
@@ -355,18 +360,18 @@ public:
           }
         }
       }
+    }
 
-      barrier.Wait();
+    barrier.Wait();
 
-      for (auto i = start; i < end; i++) {
-        if (next[i].any()) {
-          next[i] = next[i] & ~seen[i];
-          seen[i] = seen[i] | next[i];
-          change |= next[i].any();
+    for (auto i = left; i < right; i++) {
+      if (next[i].any()) {
+        next[i] = next[i] & ~seen[i];
+        seen[i] = seen[i] | next[i];
+        change |= next[i].any();
 
-          frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
-          unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
-        }
+        frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+        unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
       }
     }
 
