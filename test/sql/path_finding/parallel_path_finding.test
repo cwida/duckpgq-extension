@@ -59,15 +59,25 @@ know   SOURCE KEY (src) REFERENCES student (id)
 
 statement ok
 import database 'duckdb-pgq/data/SNB0.003';
+# import database 'duckdb-pgq/data/SNB1-projected|';
+
+
+# statement ok
+# DELETE FROM Person
+# WHERE rowid NOT IN (
+#   SELECT rowid FROM Person
+#   ORDER BY rowid ASC
+#   LIMIT 500
+# );
+
 
 statement ok
-CREATE TABLE pairs2(src BIGINT, dst BIGINT);
-
-statement ok
-INSERT INTO pairs2
-SELECT a.rowid, b.rowid
-FROM Person a CROSS JOIN Person b
-WHERE a.rowid = 1;
+CREATE OR REPLACE TABLE pairs2 AS (
+    SELECT src, dst 
+    FROM (SELECT a.rowid AS src FROM Person a),
+        (SELECT b.rowid AS dst FROM Person b)
+    USING SAMPLE reservoir(64 ROWS) REPEATABLE (300)
+);
 
 statement ok
 -CREATE PROPERTY GRAPH snb
@@ -124,9 +134,9 @@ WITH cte1 AS (
     FROM Person_knows_Person k
     JOIN Person a on a.id = k.Person1Id
     JOIN Person c on c.id = k.Person2Id
-) SELECT a.rowid, b.rowid, iterativelength(0, (select count(*) from Person), a.rowid, b.rowid) as length
-        FROM Person a, Person b, (select count(cte1.temp) * 0 as temp from cte1) __x
-        WHERE a.rowid = 1 AND __x.temp * 0 >= 0;
+) SELECT p.src, p.dst, iterativelength(0, (select count(*) from Person), p.src, p.dst) as length
+        FROM pairs2 p, (select count(cte1.temp) * 0 as temp from cte1) __x
+        WHERE __x.temp * 0 >= 0;
 ----
 
 #            CAST (
