@@ -16,12 +16,6 @@ create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (
 statement ok
 create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
 
-#query II
-#SELECT *
-#FROM knows AS a, pairs AS b
-#WHERE (cos(a.src) BETWEEN cos(b.dst) AND cos(b.src));
-#----
-
 statement ok
 -CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
@@ -38,24 +32,24 @@ know   SOURCE KEY (src) REFERENCES student (id)
 #    COLUMNS (*)
 #    );
 
-# query II
-# SELECT *
-# FROM pair AS p
-# WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
-#             (SELECT count(a.id) as v_size FROM Student a),
-#             (SELECT count(k.src) as e_size from know k),
-#             a.rowid,
-#             c.rowid,
-#             k.rowid,
-#             t.cnt)    FROM Know k
-#                         JOIN student a on a.id = k.src
-#                         JOIN student c on c.id = k.dst
-#                         JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
-#                                 FROM student a
-#                                 LEFT JOIN know k ON k.src = a.id
-#                                 GROUP BY a.rowid) t
-#                             ON t.a_rowid = a.rowid) AND p.dst;
-# ----
+ query II
+ SELECT *, iterativelength(src, dst) as length
+ FROM pair AS p
+ WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
+             (SELECT count(a.id) as v_size FROM Student a),
+             (SELECT count(k.src) as e_size from know k),
+             a.rowid,
+             c.rowid,
+             k.rowid,
+             t.cnt)    FROM Know k
+                         JOIN student a on a.id = k.src
+                         JOIN student c on c.id = k.dst
+                         JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
+                                 FROM student a
+                                LEFT JOIN know k ON k.src = a.id
+                                GROUP BY a.rowid) t
+                            ON t.a_rowid = a.rowid) AND p.dst;
+----
 
 statement ok
 import database 'duckdb-pgq/data/SNB0.003';
