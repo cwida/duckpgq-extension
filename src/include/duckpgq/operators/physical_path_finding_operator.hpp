@@ -21,11 +21,8 @@ class PhysicalPathFinding : public PhysicalComparisonJoin {
 public:
   class GlobalCompressedSparseRow {
   public:
-    GlobalCompressedSparseRow(ClientContext &context,
-                              RowLayout &payload_layout){
-
+    GlobalCompressedSparseRow(ClientContext &context){
     };
-//    ~GlobalCompressedSparseRow() { delete[] v; }
 
     atomic<int64_t> *v;
     atomic<int64_t> *reverse_v;
