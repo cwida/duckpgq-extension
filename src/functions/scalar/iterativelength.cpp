@@ -158,12 +158,19 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
 }
 
 CreateScalarFunctionInfo DuckPGQFunctions::GetIterativeLengthFunction() {
-  auto fun = ScalarFunction("iterativelength",
+  ScalarFunctionSet set("iterativelength");
+
+  set.AddFunction(ScalarFunction("iterativelength",
                             {LogicalType::INTEGER, LogicalType::BIGINT,
                              LogicalType::BIGINT, LogicalType::BIGINT},
                             LogicalType::BIGINT, IterativeLengthFunction,
-                            IterativeLengthFunctionData::IterativeLengthBind);
-  return CreateScalarFunctionInfo(fun);
+                            IterativeLengthFunctionData::IterativeLengthBind));
+
+  set.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT},
+                                 LogicalType::BIGINT, IterativeLengthFunction,
+                                 IterativeLengthFunctionData::IterativeLengthBind));
+
+  return CreateScalarFunctionInfo(set);
 }
 
 } // namespace duckdb

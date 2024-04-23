@@ -83,6 +83,9 @@ bool IterativeLengthFunctionData::Equals(const FunctionData &other_p) const {
 unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
     ClientContext &context, ScalarFunction &bound_function,
     vector<unique_ptr<Expression>> &arguments) {
+  if (arguments.size() == 2) {
+    return make_uniq<IterativeLengthFunctionData>(context, 0);
+  }
   if (!arguments[0]->IsFoldable()) {
     throw InvalidInputException("Id must be constant.");
   }
