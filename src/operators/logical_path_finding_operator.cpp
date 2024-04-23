@@ -14,15 +14,15 @@ unique_ptr<PhysicalOperator> LogicalPathFindingOperator::CreatePlan(
 }
 vector<ColumnBinding> LogicalPathFindingOperator::GetColumnBindings() {
   auto left_bindings = children[0]->GetColumnBindings();
-  auto right_bindings = children[1]->GetColumnBindings();
-  left_bindings.insert(left_bindings.end(), right_bindings.begin(), right_bindings.end());
+  left_bindings.push_back(ColumnBinding(10, 0));
   return left_bindings;
 }
 
 void LogicalPathFindingOperator::ResolveTypes() {
   types = children[0]->types;
-  auto right_types = children[1]->types;
-  types.insert(types.end(), right_types.begin(), right_types.end());
+  types.push_back(LogicalType::BIGINT);
+  // auto right_types = children[1]->types;
+  // types.insert(types.end(), right_types.begin(), right_types.end());
   // types = {LogicalType::BIGINT, LogicalType::BIGINT};
 }
 
