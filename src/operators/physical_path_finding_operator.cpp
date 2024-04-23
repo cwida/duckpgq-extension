@@ -1,19 +1,17 @@
 #include "duckpgq/operators/physical_path_finding_operator.hpp"
 
 #include "duckdb/common/sort/sort.hpp"
+#include "duckdb/common/types/column/column_data_collection.hpp"
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/main/client_context.hpp"
+#include "duckdb/parallel/base_pipeline_event.hpp"
 #include "duckdb/parallel/event.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
-#include "duckdb/parallel/base_pipeline_event.hpp"
-#include "duckdb/common/types/column/column_data_collection.hpp"
-#include <thread>
 #include <cmath>
-#include <algorithm>
+#include <thread>
 
 namespace duckdb {
-
 
 PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
                                          unique_ptr<PhysicalOperator> left,
@@ -24,7 +22,8 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
   expressions = std::move(op.expressions);
 }
 
-void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(int64_t v_size_) {
+void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(
+    int64_t v_size_) {
   lock_guard<mutex> csr_init_lock(csr_lock);
 
   if (initialized_v) {
@@ -35,8 +34,9 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(int64_t v_
     v = new std::atomic<int64_t>[v_size];
     reverse_v = new std::atomic<int64_t>[v_size];
   } catch (std::bad_alloc const &) {
-    throw InternalException("Unable to initialize vector of size for csr vertex table "
-                                             "representation");
+    throw InternalException(
+        "Unable to initialize vector of size for csr vertex table "
+        "representation");
   }
   for (idx_t i = 0; i < v_size; ++i) {
     v[i].store(0);
@@ -46,10 +46,7 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(int64_t v_
 }
 void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeEdge(
     int64_t e_size) {
-  lock_guard<mutex> csr_init_lock(csr_lock);
-  if (initialized_e) {
-    return;
-  }
+  const lock_guard<mutex> csr_init_lock(csr_lock);
   try {
     e.resize(e_size, 0);
     reverse_e.resize(e_size, 0);
@@ -59,7 +56,7 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeEdge(
                             "edge table representation");
   }
   for (idx_t i = 1; i < v_size; i++) {
-    v[i] += v[i-1];
+    v[i] += v[i - 1];
   }
   initialized_e = true;
 }
@@ -112,6 +109,7 @@ void PathFindingLocalState::CreateCSR(DataChunk &input,
         return edge_count;
       });
 
+  global_csr.Print();
   if (!global_csr.initialized_e) {
     const auto e_size = input.data[7].GetValue(0).GetValue<int64_t>();
     global_csr.InitializeEdge(e_size);
@@ -172,11 +170,11 @@ private:
 class GlobalBFSState {
 public:
 
-  GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_, idx_t num_threads_)
+  GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_, idx_t num_threads_, ClientContext &context_)
       : pairs(pairs_), iter(1), v_size(v_size_), change(false), started_searches(0),
-        seen(v_size_), visit1(v_size_), visit2(v_size_), 
-        result(make_uniq<Vector>(LogicalType::BIGINT, true, true, pairs_->size())),
+        seen(v_size_), visit1(v_size_), visit2(v_size_), context(context_),
         frontier_size(0), unseen_size(v_size_), num_threads(num_threads_), task_queues(num_threads_) {
+    result.Initialize(context, {LogicalType::BIGINT}, STANDARD_VECTOR_SIZE);
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
     }
@@ -206,6 +204,7 @@ public:
       visit1[i] = 0;
     }
   }
+
 public:
   shared_ptr<DataChunk> pairs;
   int64_t iter;
@@ -220,7 +219,8 @@ public:
   vector<std::bitset<LANE_LIMIT>> seen;
   vector<std::bitset<LANE_LIMIT>> visit1;
   vector<std::bitset<LANE_LIMIT>> visit2;
-  unique_ptr<Vector> result;
+  DataChunk result;
+  ClientContext& context;
 
   atomic<int64_t> frontier_size;
   atomic<int64_t> unseen_size;
@@ -244,26 +244,24 @@ class PathFindingGlobalState : public GlobalSinkState {
 public:
   using GlobalCompressedSparseRow = PhysicalPathFinding::GlobalCompressedSparseRow;
   PathFindingGlobalState(ClientContext &context,
-                         const PhysicalPathFinding &op) : global_tasks(context, op.children[0]->GetTypes()), child(0) {
-    RowLayout lhs_layout;
-    lhs_layout.Initialize(op.children[0]->types);
-    RowLayout rhs_layout;
-    rhs_layout.Initialize(op.children[1]->types);
-    global_csr = make_uniq<GlobalCompressedSparseRow>(context, rhs_layout);
+                         const PhysicalPathFinding &op) {
+    global_tasks = make_uniq<ColumnDataCollection>(context, op.children[0]->GetTypes());
+    global_csr = make_uniq<GlobalCompressedSparseRow>(context);
+    child = 0;
   }
 
   PathFindingGlobalState(PathFindingGlobalState &prev)
-      : GlobalSinkState(prev), global_tasks(prev.global_tasks),
-      global_csr(std::move(prev.global_csr)), 
-      global_bfs_state(std::move(prev.global_bfs_state)), child(prev.child + 1) {
-  }
+      : GlobalSinkState(prev), global_tasks(std::move(prev.global_tasks)),
+        global_csr(std::move(prev.global_csr)),
+        global_bfs_state(std::move(prev.global_bfs_state)),
+        child(prev.child + 1) {}
 
   void Sink(DataChunk &input, PathFindingLocalState &lstate) const {
     lstate.Sink(input, *global_csr, child);
   }
 
   // pairs is a 2-column table with src and dst
-  ColumnDataCollection global_tasks;
+  unique_ptr<ColumnDataCollection> global_tasks;
   // pairs with path exists
   // ColumnDataCollection global_results;
   ColumnDataScanState scan_state;
@@ -286,8 +284,8 @@ unique_ptr<LocalSinkState>
 PhysicalPathFinding::GetLocalSinkState(ExecutionContext &context) const {
   idx_t sink_child = 0;
   if (sink_state) {
-     const auto &pathfinding_sink = sink_state->Cast<PathFindingGlobalState>();
-     sink_child = pathfinding_sink.child;
+    const auto &pathfinding_sink = sink_state->Cast<PathFindingGlobalState>();
+    sink_child = pathfinding_sink.child;
   }
   return make_uniq<PathFindingLocalState>(context.client, *this, sink_child);
 }
@@ -298,7 +296,6 @@ SinkResultType PhysicalPathFinding::Sink(ExecutionContext &context,
   auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
   auto &lstate = input.local_state.Cast<PathFindingLocalState>();
   gstate.Sink(chunk, lstate);
-  // gstate.global_csr->is_ready = true;
   return SinkResultType::NEED_MORE_INPUT;
 }
 
@@ -309,7 +306,7 @@ PhysicalPathFinding::Combine(ExecutionContext &context,
   auto &lstate = input.local_state.Cast<PathFindingLocalState>();
   auto &client_profiler = QueryProfiler::Get(context.client);
 
-  gstate.global_tasks.Combine(lstate.local_tasks);
+  gstate.global_tasks->Combine(lstate.local_tasks);
   client_profiler.Flush(context.thread.profiler);
   // gstate.global_tasks.Print();
   return SinkCombineResultType::FINISHED;
@@ -453,13 +450,13 @@ public:
       unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
     }
 
-		event->FinishTask();
-		return TaskExecutionResult::TASK_FINISHED;
-	}
+    event->FinishTask();
+    return TaskExecutionResult::TASK_FINISHED;
+  }
 
 private:
-	ClientContext &context;
-	PathFindingGlobalState &state;
+  ClientContext &context;
+  PathFindingGlobalState &state;
   // [start, end)
   idx_t start;
   idx_t end;
@@ -467,11 +464,10 @@ private:
 
 class BFSIterativeEvent : public BasePipelineEvent {
 public:
-	BFSIterativeEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p)
-	    : BasePipelineEvent(pipeline_p), gstate(gstate_p) {
-	}
+  BFSIterativeEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p)
+      : BasePipelineEvent(pipeline_p), gstate(gstate_p) {}
 
-	PathFindingGlobalState &gstate;
+  PathFindingGlobalState &gstate;
 
 private:
   void CreateTasks() {
@@ -495,9 +491,9 @@ private:
   }
 
 public:
-	void Schedule() override {
+  void Schedule() override {
     auto &bfs_state = gstate.global_bfs_state;
-		auto &context = pipeline->GetClientContext();
+    auto &context = pipeline->GetClientContext();
 
     bfs_state->change = false;
 
@@ -532,10 +528,10 @@ public:
     }
 		// for (idx_t tnum = 0; tnum < num_threads; tnum++) {
     //   if (bfs_state->is_top_down) {
-    //     bfs_tasks.push_back(make_uniq<PhysicalBFSTopDownTask>(shared_from_this(), context, gstate, 
+    //     bfs_tasks.push_back(make_uniq<PhysicalBFSTopDownTask>(shared_from_this(), context, gstate,
     //       tnum * blocks, std::min(tnum * blocks + blocks, (idx_t)bfs_state->v_size)));
     //   } else {
-    //     bfs_tasks.push_back(make_uniq<PhysicalBFSBottomUpTask>(shared_from_this(), context, gstate, 
+    //     bfs_tasks.push_back(make_uniq<PhysicalBFSBottomUpTask>(shared_from_this(), context, gstate,
     //       tnum * blocks, std::min(tnum * blocks + blocks, (idx_t)bfs_state->v_size)));
     //   }
 		// }
@@ -543,10 +539,10 @@ public:
 	}
 
 	void FinishEvent() override {
-		auto& bfs_state = gstate.global_bfs_state;
+		auto &bfs_state = gstate.global_bfs_state;
 
-    auto result_data = FlatVector::GetData<int64_t>(*bfs_state->result);
-    ValidityMask &result_validity = FlatVector::Validity(*bfs_state->result);
+    auto result_data = FlatVector::GetData<int64_t>(bfs_state->result.data[0]);
+    ValidityMask &result_validity = FlatVector::Validity(bfs_state->result.data[0]);
 
 		if (bfs_state->change) {
       // detect lanes that finished
@@ -578,13 +574,12 @@ public:
       }
 
       // if remaining pairs, schedule the BFS for the next batch
-      if (bfs_state->started_searches < gstate.global_tasks.Count()) {
+      if (bfs_state->started_searches < gstate.global_tasks->Count()) {
         PhysicalPathFinding::ScheduleBFSTasks(*pipeline, *this, gstate);
       }
     }
-	}
+  }
 };
-
 
 SinkFinalizeType
 PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
@@ -593,14 +588,14 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
   auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
   auto &csr = gstate.global_csr;
   auto &global_tasks = gstate.global_tasks;
-  if (global_tasks.Count() != 0) {
+  if (global_tasks->Count() != 0) {
     auto all_pairs = make_shared<DataChunk>();
     DataChunk pairs;
-    global_tasks.InitializeScanChunk(*all_pairs);
-    global_tasks.InitializeScanChunk(pairs);
+    global_tasks->InitializeScanChunk(*all_pairs);
+    global_tasks->InitializeScanChunk(pairs);
     ColumnDataScanState scan_state;
-    global_tasks.InitializeScan(scan_state);
-    while (global_tasks.Scan(scan_state, pairs)) {
+    global_tasks->InitializeScan(scan_state);
+    while (global_tasks->Scan(scan_state, pairs)) {
       all_pairs->Append(pairs, true);
     }
     // debug print
@@ -608,23 +603,22 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 
     auto &ts = TaskScheduler::GetScheduler(context);
 		idx_t num_threads = ts.NumberOfThreads();
-    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size - 2, num_threads);
+    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size - 2, num_threads, context);
 
     // Schedule the first round of BFS tasks
     if (all_pairs->size() > 0) {
       ScheduleBFSTasks(pipeline, event, gstate);
     }
-
   }
 
-
-	// Move to the next input child
-	++gstate.child;
+  // Move to the next input child
+  ++gstate.child;
 
   return SinkFinalizeType::READY;
 }
 
-void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event, GlobalSinkState &state) {
+void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
+                                           GlobalSinkState &state) {
   auto &gstate = state.Cast<PathFindingGlobalState>();
   auto &bfs_state = gstate.global_bfs_state;
 
@@ -632,14 +626,13 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event, Glo
   bfs_state->Clear();
 
   // remaining pairs
-  if (bfs_state->started_searches < gstate.global_tasks.Count()) {
-
-    auto result_data = FlatVector::GetData<int64_t>(*bfs_state->result);
-    auto& result_validity = FlatVector::Validity(*bfs_state->result);
+  if (bfs_state->started_searches < gstate.global_tasks->Count()) {
+    auto result_data = FlatVector::GetData<int64_t>(bfs_state->result.data[0]);
+    auto &result_validity = FlatVector::Validity(bfs_state->result.data[0]);
 
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
       bfs_state->lane_to_num[lane] = -1;
-      while (bfs_state->started_searches < gstate.global_tasks.Count()) {
+      while (bfs_state->started_searches < gstate.global_tasks->Count()) {
         int64_t search_num = bfs_state->started_searches++;
         int64_t src_pos = bfs_state->vdata_src.sel->get_index(search_num);
         int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
@@ -659,10 +652,10 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event, Glo
     }
 
     auto bfs_event = make_shared<BFSIterativeEvent>(gstate, pipeline);
-    event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
+    event.InsertEvent(
+        std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
   }
 }
-
 
 //===--------------------------------------------------------------------===//
 // Operator
@@ -681,8 +674,7 @@ class PathFindingLocalSourceState : public LocalSourceState {
 public:
   explicit PathFindingLocalSourceState(ClientContext &context,
                                        const PhysicalPathFinding &op)
-      : op(op){
-  }
+      : op(op) {}
 
   const PhysicalPathFinding &op;
 };
@@ -702,13 +694,11 @@ public:
 
 public:
   idx_t MaxThreads() override {
-    // const auto &sink_state = (op.sink_state->Cast<PathFindingGlobalState>());
-    return 1;
+    return 1; // TODO
   }
 
   void GetNextPair(ClientContext &client, PathFindingGlobalState &gstate,
-                   PathFindingLocalSourceState &lstate) {
-  }
+                   PathFindingLocalSourceState &lstate) {}
 
   const PhysicalPathFinding &op;
 
@@ -733,12 +723,14 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   auto &pf_sink = sink_state->Cast<PathFindingGlobalState>();
   auto &pf_gstate = input.global_state.Cast<PathFindingGlobalSourceState>();
   auto &pf_bfs_state = pf_sink.global_bfs_state;
-  // auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
-  pf_bfs_state->result->Print(pf_bfs_state->pairs->size());
-  // pf_gstate.Initialize(pf_sink);
-
-  return result.size() == 0 ? SourceResultType::FINISHED
-                            : SourceResultType::HAVE_MORE_OUTPUT;
+  pf_bfs_state->result.Print();
+  pf_bfs_state->result.SetCardinality(*pf_bfs_state->pairs);
+  result.Move(*pf_bfs_state->pairs);
+  result.Fuse(pf_bfs_state->result);
+  result.Print();
+  return result.size() == 0
+      ? SourceResultType::FINISHED
+      : SourceResultType::HAVE_MORE_OUTPUT;
 }
 
 //===--------------------------------------------------------------------===//
@@ -773,4 +765,3 @@ void PhysicalPathFinding::BuildPipelines(Pipeline &current,
 }
 
 } // namespace duckdb
-
