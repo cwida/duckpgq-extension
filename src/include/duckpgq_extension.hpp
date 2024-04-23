@@ -63,6 +63,17 @@ public:
               make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions);
           op.children.clear();
           op.children.push_back(std::move(path_finding_operator));
+
+          // Iterate in reverse to not influence the upcoming iterations when erasing an element from the list.
+          for (int64_t i = op.expressions.size() - 1; i >= 0; --i) {
+            const auto& expr = op.expressions[i];
+            if (expr->expression_class == ExpressionClass::BOUND_FUNCTION &&
+                expr->Cast<BoundFunctionExpression>().function.name == "iterativelength") {
+              op.expressions.emplace_back(make_uniq<BoundColumnRefExpression>(
+                  expr->alias, LogicalType::BIGINT, ColumnBinding(10, 0)));
+              op.expressions.erase(op.expressions.begin() + i);
+            }
+          }
           return true;
         }
       }
@@ -77,6 +88,7 @@ public:
 
   static void DuckpgqOptimizeFunction(ClientContext &context, OptimizerExtensionInfo *info,
                                      duckdb::unique_ptr<LogicalOperator> &plan) {
+
     if (!InsertPathFindingOperator(*plan)) {
       return;
     }
