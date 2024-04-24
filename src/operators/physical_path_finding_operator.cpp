@@ -99,8 +99,6 @@ public:
 
 void PathFindingLocalState::CreateCSRVertex(DataChunk &input,
                                       GlobalCompressedSparseRow &global_csr) {
-  // debug print
-  // input.Print();
   if (!global_csr.initialized_v) {
     const auto v_size = input.data[8].GetValue(0).GetValue<int64_t>();
     global_csr.InitializeVertex(v_size);
@@ -114,19 +112,6 @@ void PathFindingLocalState::CreateCSRVertex(DataChunk &input,
         edge_count = edge_count + cnt;
         return edge_count;
       });
-  // if (!global_csr.initialized_e) {
-  //   const auto e_size = input.data[7].GetValue(0).GetValue<int64_t>();
-  //   global_csr.InitializeEdge(e_size);
-  // }
-  // TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
-  //     input.data[6], input.data[4], input.data[2], result, input.size(),
-  //     [&](int64_t src, int64_t dst, int64_t edge_id) {
-  //       const auto pos = ++global_csr.v[src + 1];
-  //       global_csr.e[static_cast<int64_t>(pos) - 1] = dst;
-  //       global_csr.edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
-  //       return 1;
-  //     });
-  // global_csr.Print(); // Debug print
 }
 
 class Barrier {
@@ -188,8 +173,12 @@ public:
     src = FlatVector::GetData<int64_t>(src_data);
     dst = FlatVector::GetData<int64_t>(dst_data);
     for (auto i = 0; i < v_size; i++) {
-      seen[i] = 0;
-      visit1[i] = 0;
+      for (auto j = 0; j < 8; j++) {
+        seen[i][j] = 0;
+        visit1[i][j] = 0;
+      }
+      // seen[i] = 0;
+      // visit1[i] = 0;
     }
   }
 
@@ -203,8 +192,12 @@ public:
     }
     // empty visit vectors
     for (auto i = 0; i < v_size; i++) {
-      seen[i] = 0;
-      visit1[i] = 0;
+      for (auto j = 0; j < 8; j++) {
+        seen[i][j] = 0;
+        visit1[i][j] = 0;
+      }
+      // seen[i] = 0;
+      // visit1[i] = 0;
     }
   }
 public:
@@ -218,9 +211,12 @@ public:
   UnifiedVectorFormat vdata_src;
   UnifiedVectorFormat vdata_dst;
   int64_t lane_to_num[LANE_LIMIT];
-  vector<std::bitset<LANE_LIMIT>> seen;
-  vector<std::bitset<LANE_LIMIT>> visit1;
-  vector<std::bitset<LANE_LIMIT>> visit2;
+  // vector<std::bitset<LANE_LIMIT>> seen;
+  // vector<std::bitset<LANE_LIMIT>> visit1;
+  // vector<std::bitset<LANE_LIMIT>> visit2;
+  vector<atomic<idx_t>[8]> seen;
+  vector<atomic<idx_t>[8]> visit1;
+  vector<atomic<idx_t>[8]> visit2;
   unique_ptr<Vector> result;
 
   atomic<int64_t> frontier_size;
@@ -358,8 +354,8 @@ public:
     auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
-    auto& frontier_size = bfs_state->frontier_size;
-    auto& unseen_size = bfs_state->unseen_size;
+    // auto& frontier_size = bfs_state->frontier_size;
+    // auto& unseen_size = bfs_state->unseen_size;
     auto& v_size = bfs_state->v_size;
 
     int64_t *v = (int64_t *)state.global_csr->v;
@@ -371,7 +367,10 @@ public:
     auto left = block_size * worker_id;
     auto right = std::min(block_size * (worker_id + 1), (idx_t)v_size);
     for (auto i = left; i < right; i++) {
-      next[i] = 0;
+      for (auto j = 0; j < 8; j++) {
+        next[i][j] = 0;
+      }
+      // next[i] = 0;
     }
 
     barrier.Wait();
@@ -385,27 +384,42 @@ public:
       auto end = task.second;
 
       for (auto i = start; i < end; i++) {
-        if (visit[i].any()) {
-          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-            auto n = e[offset];
-            lock_guard<mutex> lock(bfs_state->lock);
-            next[n] = next[n] | visit[i];
+        for (auto j = 0; j < 8; j++) {
+          if (visit[i][j]) {
+            for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+              auto n = e[offset];
+              next[n][j] = next[n][j] | visit[i][j];
+            }
           }
         }
+        // if (visit[i].any()) {
+        //   for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        //     auto n = e[offset];
+        //     lock_guard<mutex> lock(bfs_state->lock);
+        //     next[n] = next[n] | visit[i];
+        //   }
+        // }
       }
     }
 
     barrier.Wait();
 
     for (auto i = left; i < right; i++) {
-      if (next[i].any()) {
-        next[i] = next[i] & ~seen[i];
-        seen[i] = seen[i] | next[i];
-        change |= next[i].any();
-
-        frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
-        unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+      for (auto j = 0; j < 8; j++) {
+        if (next[i][j]) {
+          next[i][j] = next[i][j] & ~seen[i][j];
+          seen[i][j] = seen[i][j] | next[i][j];
+          change |= next[i][j];
+        }
       }
+      // if (next[i].any()) {
+      //   next[i] = next[i] & ~seen[i];
+      //   seen[i] = seen[i] | next[i];
+      //   change |= next[i].any();
+
+      //   frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+      //   unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+      // }
     }
 
 		event->FinishTask();
@@ -437,59 +451,59 @@ private:
   idx_t worker_id;
 };
 
-class PhysicalBFSBottomUpTask : public ExecutorTask {
-public:
-	PhysicalBFSBottomUpTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t start, idx_t end)
-	    : ExecutorTask(context, std::move(event_p)), context(context), state(state), start(start), end(end) {
-	}
+// class PhysicalBFSBottomUpTask : public ExecutorTask {
+// public:
+// 	PhysicalBFSBottomUpTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t start, idx_t end)
+// 	    : ExecutorTask(context, std::move(event_p)), context(context), state(state), start(start), end(end) {
+// 	}
 
-	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
-    auto& bfs_state = state.global_bfs_state;
-    auto& change = bfs_state->change;
-    auto& seen = bfs_state->seen;
-    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
-    auto& barrier = bfs_state->barrier;
-    auto& frontier_size = bfs_state->frontier_size;
-    auto& unseen_size = bfs_state->unseen_size;
+// 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
+//     auto& bfs_state = state.global_bfs_state;
+//     auto& change = bfs_state->change;
+//     auto& seen = bfs_state->seen;
+//     auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+//     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+//     auto& barrier = bfs_state->barrier;
+//     auto& frontier_size = bfs_state->frontier_size;
+//     auto& unseen_size = bfs_state->unseen_size;
 
-    int64_t *v = (int64_t *)state.global_csr->v;
-    vector<int64_t> &e = state.global_csr->e;
+//     int64_t *v = (int64_t *)state.global_csr->v;
+//     vector<int64_t> &e = state.global_csr->e;
 
-    for (auto i = start; i < end; i++) {
-      next[i] = 0;
-    }
+//     for (auto i = start; i < end; i++) {
+//       next[i] = 0;
+//     }
 
-    barrier.Wait();
+//     barrier.Wait();
 
-    for (auto i = start; i < end; i++) {
-      if (seen[i].all()) {
-        unseen_size -= 1;
-        continue;
-      }
-      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-        auto n = e[offset];
-        next[i] = next[i] | visit[n];
-      }
-      next[i] = next[i] & ~seen[i];
-      seen[i] = seen[i] | next[i];
-      change |= next[i].any();
+//     for (auto i = start; i < end; i++) {
+//       if (seen[i].all()) {
+//         unseen_size -= 1;
+//         continue;
+//       }
+//       for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+//         auto n = e[offset];
+//         next[i] = next[i] | visit[n];
+//       }
+//       next[i] = next[i] & ~seen[i];
+//       seen[i] = seen[i] | next[i];
+//       change |= next[i].any();
 
-      frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
-      unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
-    }
+//       frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+//       unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+//     }
 
-		event->FinishTask();
-		return TaskExecutionResult::TASK_FINISHED;
-	}
+// 		event->FinishTask();
+// 		return TaskExecutionResult::TASK_FINISHED;
+// 	}
 
-private:
-	ClientContext &context;
-	PathFindingGlobalState &state;
-  // [start, end)
-  idx_t start;
-  idx_t end;
-};
+// private:
+// 	ClientContext &context;
+// 	PathFindingGlobalState &state;
+//   // [start, end)
+//   idx_t start;
+//   idx_t end;
+// };
 
 class PhysicalCSREdgeCreationTask : public ExecutorTask {
 public:
@@ -656,7 +670,7 @@ public:
         int64_t search_num = bfs_state->lane_to_num[lane];
         if (search_num >= 0) { // active lane
           int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
-          if (bfs_state->seen[bfs_state->dst[dst_pos]][lane]) {
+          if (bfs_state->seen[bfs_state->dst[dst_pos]][lane / 64] & ((idx_t)1 << (lane % 64))) {
             result_data[search_num] =
                 bfs_state->iter;               /* found at iter => iter = path length */
             bfs_state->lane_to_num[lane] = -1; // mark inactive
@@ -839,13 +853,13 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 		idx_t num_threads = ts.NumberOfThreads();
     gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size - 2, num_threads);
 
-    auto& result = *gstate.global_bfs_state->result;
-    IterativeLengthFunction(csr, *all_pairs, result);
+    // auto& result = *gstate.global_bfs_state->result;
+    // IterativeLengthFunction(csr, *all_pairs, result);
 
-    // // Schedule the first round of BFS tasks
-    // if (all_pairs->size() > 0) {
-    //   ScheduleBFSTasks(pipeline, event, gstate);
-    // }
+    // Schedule the first round of BFS tasks
+    if (all_pairs->size() > 0) {
+      ScheduleBFSTasks(pipeline, event, gstate);
+    }
   }
 
 	// Move to the next input child
@@ -881,7 +895,7 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event, Glo
               (uint64_t)0; // path of length 0 does not require a search
         } else {
           bfs_state->frontier_size++;
-          bfs_state->visit1[bfs_state->src[src_pos]][lane] = true;
+          bfs_state->visit1[bfs_state->src[src_pos]][lane / 64] |= ((idx_t)1 << (lane % 64));
           bfs_state->lane_to_num[lane] = search_num; // active lane
           break;
         }
