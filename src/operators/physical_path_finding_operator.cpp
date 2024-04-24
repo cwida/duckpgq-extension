@@ -271,7 +271,6 @@ public:
     global_inputs.InitializeScan(scan_state);
     auto result = Vector(LogicalTypeId::BIGINT);
     while (global_inputs.Scan(scan_state, input)) {
-      input.Print();
       if (!global_csr->initialized_e) {
         const auto e_size = input.data[7].GetValue(0).GetValue<int64_t>();
         global_csr->InitializeEdge(e_size);
@@ -285,8 +284,6 @@ public:
             return 1;
           });
     }
-    // debug print
-    global_csr->Print();
   }
 
   // pairs is a 2-column table with src and dst
@@ -967,7 +964,7 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   // auto &pf_gstate = input.global_state.Cast<PathFindingGlobalSourceState>();
   auto &pf_bfs_state = pf_sink.global_bfs_state;
   // auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
-  // pf_bfs_state->result->Print(pf_bfs_state->pairs->size());
+  pf_bfs_state->result->Print(pf_bfs_state->pairs->size());
   // pf_gstate.Initialize(pf_sink);
 
   return result.size() == 0 ? SourceResultType::FINISHED
