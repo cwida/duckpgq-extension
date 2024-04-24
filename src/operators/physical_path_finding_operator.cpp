@@ -180,6 +180,9 @@ public:
       // seen[i] = 0;
       // visit1[i] = 0;
     }
+
+    barrier.Init(num_threads);
+    CreateTasks();
   }
 
   void Clear() {
@@ -200,6 +203,25 @@ public:
       // visit1[i] = 0;
     }
   }
+
+  void CreateTasks() {
+    // workerTasks[workerId] = [task1, task2, ...]
+    vector<vector<pair<idx_t, idx_t>>> worker_tasks(num_threads);
+    auto cur_worker = 0;
+
+    for (auto offset = 0; offset < v_size; offset += split_size) {
+      auto worker_id = cur_worker % num_threads;
+      pair<idx_t, idx_t> range = {offset, std::min(offset + split_size, v_size)};
+      worker_tasks[worker_id].push_back(range);
+      cur_worker++;
+    }
+
+    for (idx_t worker_id = 0; worker_id < num_threads; worker_id++) {
+      task_queues[worker_id].first.store(0);
+      task_queues[worker_id].second = worker_tasks[worker_id];
+    }
+  }
+
 public:
   shared_ptr<DataChunk> pairs;
   int64_t iter;
@@ -358,14 +380,14 @@ public:
     // auto& unseen_size = bfs_state->unseen_size;
     auto& v_size = bfs_state->v_size;
 
+    InitTask();
+
     int64_t *v = (int64_t *)state.global_csr->v;
     vector<int64_t> &e = state.global_csr->e;
 
+    BoundaryCalculation();
+
     // clear next before each iteration
-    idx_t block_size = ceil((double)v_size / bfs_state->num_threads);
-    block_size = block_size == 0 ? 1 : block_size;
-    auto left = block_size * worker_id;
-    auto right = std::min(block_size * (worker_id + 1), (idx_t)v_size);
     for (auto i = left; i < right; i++) {
       for (auto j = 0; j < 8; j++) {
         next[i][j] = 0;
@@ -376,7 +398,7 @@ public:
     barrier.Wait();
 
     while (true) {
-      auto task = fetch_task();
+      auto task = FetchTask();
       if (task.first == task.second) {
         break;
       }
@@ -427,7 +449,12 @@ public:
 	}
 
 private:
-  pair<idx_t, idx_t> fetch_task() {
+  void InitTask() {
+    auto& task_queue = state.global_bfs_state->task_queues;
+    task_queue[worker_id].first.store(0);
+  }
+
+  pair<idx_t, idx_t> FetchTask() {
     auto& task_queue = state.global_bfs_state->task_queues;
     idx_t offset = 0;
     do {
@@ -442,12 +469,21 @@ private:
     return {0, 0};
   }
 
+  void BoundaryCalculation() {
+    auto& bfs_state = state.global_bfs_state;
+    auto& v_size = bfs_state->v_size;
+    idx_t block_size = ceil((double)v_size / bfs_state->num_threads);
+    block_size = block_size == 0 ? 1 : block_size;
+    left = block_size * worker_id;
+    right = std::min(block_size * (worker_id + 1), (idx_t)v_size);
+  }
+
 private:
 	ClientContext &context;
 	PathFindingGlobalState &state;
-  // // [start, end)
-  // idx_t start;
-  // idx_t end;
+  // [left, right)
+  idx_t left;
+  idx_t right;
   idx_t worker_id;
 };
 
@@ -633,28 +669,10 @@ public:
     bfs_state->frontier_size = 0;
     bfs_state->unseen_size = bfs_state->v_size;
 
-		// auto &ts = TaskScheduler::GetScheduler(context);
-		// idx_t num_threads = ts.NumberOfThreads();
-    // idx_t num_threads = std::min((int64_t)ts.NumberOfThreads(), bfs_state->v_size);
-    // idx_t blocks = floor(bfs_state->v_size / (float)num_threads);
-
-    bfs_state->barrier.Init(bfs_state->num_threads);
-
-    CreateTasks();
-
 		vector<shared_ptr<Task>> bfs_tasks;
     for (idx_t tnum = 0; tnum < bfs_state->num_threads; tnum++) {
       bfs_tasks.push_back(make_uniq<PhysicalBFSTopDownTask>(shared_from_this(), context, gstate, tnum));
     }
-		// for (idx_t tnum = 0; tnum < num_threads; tnum++) {
-    //   if (bfs_state->is_top_down) {
-    //     bfs_tasks.push_back(make_uniq<PhysicalBFSTopDownTask>(shared_from_this(), context, gstate, 
-    //       tnum * blocks, std::min(tnum * blocks + blocks, (idx_t)bfs_state->v_size)));
-    //   } else {
-    //     bfs_tasks.push_back(make_uniq<PhysicalBFSBottomUpTask>(shared_from_this(), context, gstate, 
-    //       tnum * blocks, std::min(tnum * blocks + blocks, (idx_t)bfs_state->v_size)));
-    //   }
-		// }
 		SetTasks(std::move(bfs_tasks));
 	}
 
