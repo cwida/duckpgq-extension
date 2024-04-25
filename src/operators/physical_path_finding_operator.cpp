@@ -32,14 +32,14 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(int64_t v_
   }
   v_size = v_size_ + 2;
   try {
-    v = new std::atomic<int64_t>[v_size];
+    v = new int64_t[v_size];
     reverse_v = new std::atomic<int64_t>[v_size];
   } catch (std::bad_alloc const &) {
     throw InternalException("Unable to initialize vector of size for csr vertex table "
                                              "representation");
   }
   for (idx_t i = 0; i < v_size; ++i) {
-    v[i].store(0);
+    v[i] = 0;
     reverse_v[i].store(0);
   }
   initialized_v = true;
@@ -161,7 +161,9 @@ public:
   GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_, idx_t num_threads_)
       : pairs(pairs_), iter(1), v_size(v_size_), change(false), started_searches(0),
         seen(v_size_), visit1(v_size_), visit2(v_size_), 
-        result(make_uniq<Vector>(LogicalType::BIGINT, true, true, pairs_->size())),
+        result_length(make_uniq<Vector>(LogicalType::BIGINT, true, true, pairs_->size())),
+        result_path(make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT), true, true, pairs_->size())),
+        parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)),
         frontier_size(0), unseen_size(v_size_), num_threads(num_threads_), task_queues(num_threads_) {
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
@@ -199,6 +201,10 @@ public:
         seen[i][j] = 0;
         visit1[i][j] = 0;
       }
+      for (auto j = 0; j < LANE_LIMIT; j++) {
+        parents_v[i][j] = -1;
+        parents_e[i][j] = -1;
+      }
       // seen[i] = 0;
       // visit1[i] = 0;
     }
@@ -220,6 +226,7 @@ public:
       task_queues[worker_id].first.store(0);
       task_queues[worker_id].second = worker_tasks[worker_id];
     }
+
   }
 
 public:
@@ -239,7 +246,11 @@ public:
   vector<atomic<idx_t>[8]> seen;
   vector<atomic<idx_t>[8]> visit1;
   vector<atomic<idx_t>[8]> visit2;
-  unique_ptr<Vector> result;
+  unique_ptr<Vector> result_length;
+  unique_ptr<Vector> result_path;
+
+  vector<std::vector<int64_t>> parents_v;
+  vector<std::vector<int64_t>> parents_e;
 
   atomic<int64_t> frontier_size;
   atomic<int64_t> unseen_size;
@@ -363,9 +374,9 @@ PhysicalPathFinding::Combine(ExecutionContext &context,
 // Finalize
 //===--------------------------------------------------------------------===//
 
-class PhysicalBFSTopDownTask : public ExecutorTask {
+class PhysicalIterativeTopDownTask : public ExecutorTask {
 public:
-	PhysicalBFSTopDownTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t worker_id)
+	PhysicalIterativeTopDownTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t worker_id)
 	    : ExecutorTask(context, std::move(event_p)), context(context), state(state), worker_id(worker_id) {
 	}
 
@@ -378,7 +389,6 @@ public:
     auto& barrier = bfs_state->barrier;
     // auto& frontier_size = bfs_state->frontier_size;
     // auto& unseen_size = bfs_state->unseen_size;
-    auto& v_size = bfs_state->v_size;
 
     InitTask();
 
@@ -617,34 +627,13 @@ public:
   }
 };
 
-class BFSIterativeEvent : public BasePipelineEvent {
+class ParallelIterativeEvent : public BasePipelineEvent {
 public:
-	BFSIterativeEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p)
+	ParallelIterativeEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p)
 	    : BasePipelineEvent(pipeline_p), gstate(gstate_p) {
 	}
 
 	PathFindingGlobalState &gstate;
-
-private:
-  void CreateTasks() {
-    auto &bfs_state = gstate.global_bfs_state;
-
-    // workerTasks[workerId] = [task1, task2, ...]
-    vector<vector<pair<idx_t, idx_t>>> worker_tasks(bfs_state->num_threads);
-    auto cur_worker = 0;
-
-    for (auto offset = 0; offset < bfs_state->v_size; offset += bfs_state->split_size) {
-      auto worker_id = cur_worker % bfs_state->num_threads;
-      pair<idx_t, idx_t> range = {offset, std::min(offset + bfs_state->split_size, bfs_state->v_size)};
-      worker_tasks[worker_id].push_back(range);
-      cur_worker++;
-    }
-
-    for (idx_t worker_id = 0; worker_id < bfs_state->num_threads; worker_id++) {
-      bfs_state->task_queues[worker_id].first.store(0);
-      bfs_state->task_queues[worker_id].second = worker_tasks[worker_id];
-    }
-  }
 
 public:
 	void Schedule() override {
@@ -654,24 +643,24 @@ public:
     bfs_state->change = false;
 
     // Determine the switch of algorithms
-    if (bfs_state->is_top_down) {
-      auto Ctb = bfs_state->unseen_size / bfs_state->alpha;
-      if (bfs_state->frontier_size > Ctb) {
-        bfs_state->is_top_down = false;
-      }
-    } else {
-      auto Cbt = bfs_state->v_size / bfs_state->beta;
-      if (bfs_state->frontier_size < Cbt) {
-        bfs_state->is_top_down = true;
-      }
-    }
+    // if (bfs_state->is_top_down) {
+    //   auto Ctb = bfs_state->unseen_size / bfs_state->alpha;
+    //   if (bfs_state->frontier_size > Ctb) {
+    //     bfs_state->is_top_down = false;
+    //   }
+    // } else {
+    //   auto Cbt = bfs_state->v_size / bfs_state->beta;
+    //   if (bfs_state->frontier_size < Cbt) {
+    //     bfs_state->is_top_down = true;
+    //   }
+    // }
     // clear the counters after the switch
     bfs_state->frontier_size = 0;
     bfs_state->unseen_size = bfs_state->v_size;
 
 		vector<shared_ptr<Task>> bfs_tasks;
     for (idx_t tnum = 0; tnum < bfs_state->num_threads; tnum++) {
-      bfs_tasks.push_back(make_uniq<PhysicalBFSTopDownTask>(shared_from_this(), context, gstate, tnum));
+      bfs_tasks.push_back(make_uniq<PhysicalIterativeTopDownTask>(shared_from_this(), context, gstate, tnum));
     }
 		SetTasks(std::move(bfs_tasks));
 	}
@@ -679,8 +668,8 @@ public:
 	void FinishEvent() override {
 		auto& bfs_state = gstate.global_bfs_state;
 
-    auto result_data = FlatVector::GetData<int64_t>(*bfs_state->result);
-    ValidityMask &result_validity = FlatVector::Validity(*bfs_state->result);
+    auto result_data = FlatVector::GetData<int64_t>(*bfs_state->result_length);
+    ValidityMask &result_validity = FlatVector::Validity(*bfs_state->result_length);
 
 		if (bfs_state->change) {
       // detect lanes that finished
@@ -698,7 +687,7 @@ public:
       // into the next iteration
       bfs_state->iter++;
 
-      auto bfs_event = std::make_shared<BFSIterativeEvent>(gstate, *pipeline);
+      auto bfs_event = std::make_shared<ParallelIterativeEvent>(gstate, *pipeline);
       this->InsertEvent(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event));
 		} else {
       // no changes anymore: any still active searches have no path
@@ -719,129 +708,511 @@ public:
 	}
 };
 
-static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
-                            vector<std::bitset<LANE_LIMIT>> &seen,
-                            vector<std::bitset<LANE_LIMIT>> &visit,
-                            vector<std::bitset<LANE_LIMIT>> &next) {
-  bool change = false;
-  for (auto i = 0; i < v_size; i++) {
-    next[i] = 0;
-  }
-  for (auto i = 0; i < v_size; i++) {
-    if (visit[i].any()) {
-      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-        auto n = e[offset];
-        next[n] = next[n] | visit[i];
-      }
-    }
-  }
-  for (auto i = 0; i < v_size; i++) {
-    next[i] = next[i] & ~seen[i];
-    seen[i] = seen[i] | next[i];
-    change |= next[i].any();
-  }
-  return change;
-}
-
-static void IterativeLengthFunction(const unique_ptr<PathFindingGlobalState::GlobalCompressedSparseRow> &csr, 
-                                    DataChunk &pairs, Vector &result) {
-  int64_t v_size = csr->v_size;
-  int64_t *v = (int64_t *)csr->v;
-  vector<int64_t> &e = csr->e;
-
-  // get src and dst vectors for searches
-  auto &src = pairs.data[0];
-  auto &dst = pairs.data[1];
-  UnifiedVectorFormat vdata_src;
-  UnifiedVectorFormat vdata_dst;
-  src.ToUnifiedFormat(pairs.size(), vdata_src);
-  dst.ToUnifiedFormat(pairs.size(), vdata_dst);
-
-  auto src_data = FlatVector::GetData<int64_t>(src);
-  auto dst_data = FlatVector::GetData<int64_t>(dst);
-
-  ValidityMask &result_validity = FlatVector::Validity(result);
-
-  // create result vector
-  result.SetVectorType(VectorType::FLAT_VECTOR);
-  auto result_data = FlatVector::GetData<int64_t>(result);
-
-  // create temp SIMD arrays
-  vector<std::bitset<LANE_LIMIT>> seen(v_size);
-  vector<std::bitset<LANE_LIMIT>> visit1(v_size);
-  vector<std::bitset<LANE_LIMIT>> visit2(v_size);
-
-  // maps lane to search number
-  short lane_to_num[LANE_LIMIT];
-  for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-    lane_to_num[lane] = -1; // inactive
+class SequentialIterativeEvent : public BasePipelineEvent {
+public:
+  SequentialIterativeEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p)
+      : BasePipelineEvent(pipeline_p), gstate(gstate_p) {
   }
 
-  idx_t started_searches = 0;
-  while (started_searches < pairs.size()) {
+  PathFindingGlobalState &gstate;
 
-    // empty visit vectors
+public:
+  void Schedule() override {
+    auto &bfs_state = gstate.global_bfs_state;
+
+    auto& pairs = *bfs_state->pairs;
+    auto& result = *bfs_state->result_length;
+    IterativeLengthFunction(gstate.global_csr, pairs, result);
+  }
+
+private:
+  static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
+                              vector<std::bitset<LANE_LIMIT>> &seen,
+                              vector<std::bitset<LANE_LIMIT>> &visit,
+                              vector<std::bitset<LANE_LIMIT>> &next) {
+    bool change = false;
     for (auto i = 0; i < v_size; i++) {
-      seen[i] = 0;
-      visit1[i] = 0;
+      next[i] = 0;
     }
-
-    // add search jobs to free lanes
-    uint64_t active = 0;
-    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-      lane_to_num[lane] = -1;
-      while (started_searches < pairs.size()) {
-        int64_t search_num = started_searches++;
-        int64_t src_pos = vdata_src.sel->get_index(search_num);
-        int64_t dst_pos = vdata_dst.sel->get_index(search_num);
-        if (!vdata_src.validity.RowIsValid(src_pos)) {
-          result_validity.SetInvalid(search_num);
-          result_data[search_num] = (uint64_t)-1; /* no path */
-        } else if (src_data[src_pos] == dst_data[dst_pos]) {
-          result_data[search_num] =
-              (uint64_t)0; // path of length 0 does not require a search
-        } else {
-          visit1[src_data[src_pos]][lane] = true;
-          lane_to_num[lane] = search_num; // active lane
-          active++;
-          break;
+    for (auto i = 0; i < v_size; i++) {
+      if (visit[i].any()) {
+        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+          auto n = e[offset];
+          next[n] = next[n] | visit[i];
         }
       }
     }
+    for (auto i = 0; i < v_size; i++) {
+      next[i] = next[i] & ~seen[i];
+      seen[i] = seen[i] | next[i];
+      change |= next[i].any();
+    }
+    return change;
+  }
 
-    // make passes while a lane is still active
-    for (int64_t iter = 1; active; iter++) {
-      if (!IterativeLength(v_size, v, e, seen, (iter & 1) ? visit1 : visit2,
-                           (iter & 1) ? visit2 : visit1)) {
-        break;
+  static void IterativeLengthFunction(const unique_ptr<PathFindingGlobalState::GlobalCompressedSparseRow> &csr, 
+                                      DataChunk &pairs, Vector &result) {
+    int64_t v_size = csr->v_size;
+    int64_t *v = (int64_t *)csr->v;
+    vector<int64_t> &e = csr->e;
+
+    // get src and dst vectors for searches
+    auto &src = pairs.data[0];
+    auto &dst = pairs.data[1];
+    UnifiedVectorFormat vdata_src;
+    UnifiedVectorFormat vdata_dst;
+    src.ToUnifiedFormat(pairs.size(), vdata_src);
+    dst.ToUnifiedFormat(pairs.size(), vdata_dst);
+
+    auto src_data = FlatVector::GetData<int64_t>(src);
+    auto dst_data = FlatVector::GetData<int64_t>(dst);
+
+    ValidityMask &result_validity = FlatVector::Validity(result);
+
+    // create result vector
+    result.SetVectorType(VectorType::FLAT_VECTOR);
+    auto result_data = FlatVector::GetData<int64_t>(result);
+
+    // create temp SIMD arrays
+    vector<std::bitset<LANE_LIMIT>> seen(v_size);
+    vector<std::bitset<LANE_LIMIT>> visit1(v_size);
+    vector<std::bitset<LANE_LIMIT>> visit2(v_size);
+
+    // maps lane to search number
+    short lane_to_num[LANE_LIMIT];
+    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+      lane_to_num[lane] = -1; // inactive
+    }
+
+    idx_t started_searches = 0;
+    while (started_searches < pairs.size()) {
+
+      // empty visit vectors
+      for (auto i = 0; i < v_size; i++) {
+        seen[i] = 0;
+        visit1[i] = 0;
       }
-      // detect lanes that finished
+
+      // add search jobs to free lanes
+      uint64_t active = 0;
+      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+        lane_to_num[lane] = -1;
+        while (started_searches < pairs.size()) {
+          int64_t search_num = started_searches++;
+          int64_t src_pos = vdata_src.sel->get_index(search_num);
+          int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+          if (!vdata_src.validity.RowIsValid(src_pos)) {
+            result_validity.SetInvalid(search_num);
+            result_data[search_num] = (uint64_t)-1; /* no path */
+          } else if (src_data[src_pos] == dst_data[dst_pos]) {
+            result_data[search_num] =
+                (uint64_t)0; // path of length 0 does not require a search
+          } else {
+            visit1[src_data[src_pos]][lane] = true;
+            lane_to_num[lane] = search_num; // active lane
+            active++;
+            break;
+          }
+        }
+      }
+
+      // make passes while a lane is still active
+      for (int64_t iter = 1; active; iter++) {
+        if (!IterativeLength(v_size, v, e, seen, (iter & 1) ? visit1 : visit2,
+                            (iter & 1) ? visit2 : visit1)) {
+          break;
+        }
+        // detect lanes that finished
+        for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+          int64_t search_num = lane_to_num[lane];
+          if (search_num >= 0) { // active lane
+            int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+            if (seen[dst_data[dst_pos]][lane]) {
+              result_data[search_num] =
+                  iter;               /* found at iter => iter = path length */
+              lane_to_num[lane] = -1; // mark inactive
+              active--;
+            }
+          }
+        }
+      }
+
+      // no changes anymore: any still active searches have no path
       for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
         int64_t search_num = lane_to_num[lane];
         if (search_num >= 0) { // active lane
-          int64_t dst_pos = vdata_dst.sel->get_index(search_num);
-          if (seen[dst_data[dst_pos]][lane]) {
-            result_data[search_num] =
-                iter;               /* found at iter => iter = path length */
-            lane_to_num[lane] = -1; // mark inactive
-            active--;
+          result_validity.SetInvalid(search_num);
+          result_data[search_num] = (int64_t)-1; /* no path */
+          lane_to_num[lane] = -1;                // mark inactive
+        }
+      }
+    }
+  }
+};
+
+class PhysicalShortestPathTopDownTask : public ExecutorTask {
+public:
+  PhysicalShortestPathTopDownTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t worker_id)
+      : ExecutorTask(context, std::move(event_p)), context(context), state(state), worker_id(worker_id) {
+  }
+
+  TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
+    auto& bfs_state = state.global_bfs_state;
+    auto& change = bfs_state->change;
+    auto& seen = bfs_state->seen;
+    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+    auto& barrier = bfs_state->barrier;
+    // auto& frontier_size = bfs_state->frontier_size;
+    // auto& unseen_size = bfs_state->unseen_size;
+    auto& parents_v = bfs_state->parents_v;
+    auto& parents_e = bfs_state->parents_e;
+
+    InitTask();
+
+    int64_t *v = (int64_t *)state.global_csr->v;
+    vector<int64_t> &e = state.global_csr->e;
+    vector<int64_t> &edge_ids = state.global_csr->edge_ids;
+
+    BoundaryCalculation();
+
+    // clear next before each iteration
+    for (auto i = left; i < right; i++) {
+      for (auto j = 0; j < 8; j++) {
+        next[i][j] = 0;
+      }
+      // next[i] = 0;
+    }
+
+    barrier.Wait();
+
+    while (true) {
+      auto task = FetchTask();
+      if (task.first == task.second) {
+        break;
+      }
+      auto start = task.first;
+      auto end = task.second;
+
+      for (auto i = start; i < end; i++) {
+        for (auto j = 0; j < 8; j++) {
+          if (visit[i][j]) {
+            for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+              auto n = e[offset];
+              auto edge_id = edge_ids[offset];
+              next[n][j] = next[n][j] | visit[i][j];
+              for (auto l = 0; l < LANE_LIMIT; l++) {
+                parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i][l / 64] & ((idx_t)1 << (l % 64)))
+                        ? i : parents_v[n][l];
+                parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i][l / 64] & ((idx_t)1 << (l % 64)))
+                        ? edge_id : parents_e[n][l];
+              }
+            }
           }
         }
       }
     }
 
-    // no changes anymore: any still active searches have no path
+    barrier.Wait();
+
+    for (auto i = left; i < right; i++) {
+      for (auto j = 0; j < 8; j++) {
+        if (next[i][j]) {
+          next[i][j] = next[i][j] & ~seen[i][j];
+          seen[i][j] = seen[i][j] | next[i][j];
+          change |= next[i][j];
+        }
+      }
+    }
+
+		event->FinishTask();
+		return TaskExecutionResult::TASK_FINISHED;
+  }
+
+private:
+  void InitTask() {
+    auto& task_queue = state.global_bfs_state->task_queues;
+    task_queue[worker_id].first.store(0);
+  }
+
+  pair<idx_t, idx_t> FetchTask() {
+    auto& task_queue = state.global_bfs_state->task_queues;
+    idx_t offset = 0;
+    do {
+      auto worker_idx = (worker_id + offset) % task_queue.size();
+      auto cur_task_ix = task_queue[worker_idx].first.fetch_add(1);
+      if (cur_task_ix < task_queue[worker_idx].second.size()) {
+        return task_queue[worker_idx].second[cur_task_ix];
+      } else {
+        offset++;
+      }
+    } while (offset < task_queue.size());
+    return {0, 0};
+  }
+
+  void BoundaryCalculation() {
+    auto& bfs_state = state.global_bfs_state;
+    auto& v_size = bfs_state->v_size;
+    idx_t block_size = ceil((double)v_size / bfs_state->num_threads);
+    block_size = block_size == 0 ? 1 : block_size;
+    left = block_size * worker_id;
+    right = std::min(block_size * (worker_id + 1), (idx_t)v_size);
+  }
+
+  ClientContext &context;
+	PathFindingGlobalState &state;
+  // [left, right)
+  idx_t left;
+  idx_t right;
+  idx_t worker_id;
+};
+
+class ParallelShortestPathEvent : public BasePipelineEvent {
+public:
+  ParallelShortestPathEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p)
+      : BasePipelineEvent(pipeline_p), gstate(gstate_p) {
+  }
+
+  PathFindingGlobalState &gstate;
+
+public:
+  void Schedule() override {
+    auto &bfs_state = gstate.global_bfs_state;
+		auto &context = pipeline->GetClientContext();
+
+    bfs_state->change = false;
+
+		vector<shared_ptr<Task>> bfs_tasks;
+    for (idx_t tnum = 0; tnum < bfs_state->num_threads; tnum++) {
+      bfs_tasks.push_back(make_uniq<PhysicalShortestPathTopDownTask>(shared_from_this(), context, gstate, tnum));
+    }
+		SetTasks(std::move(bfs_tasks));
+  }
+
+  void FinishEvent() override {
+
+  }
+};
+
+class SequentialShortestPathEvent : public BasePipelineEvent {
+public:
+  SequentialShortestPathEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p)
+      : BasePipelineEvent(pipeline_p), gstate(gstate_p) {
+  }
+
+  PathFindingGlobalState &gstate;
+
+public:
+  void Schedule() override {
+    auto &bfs_state = gstate.global_bfs_state;
+    auto &pairs = *bfs_state->pairs;
+    auto &result = *bfs_state->result_path;
+    ShortestPathFunction(gstate.global_csr, pairs, result);
+  }
+
+private:
+  static bool IterativeLength(int64_t v_size, int64_t *V, vector<int64_t> &E,
+                              vector<int64_t> &edge_ids,
+                              vector<std::vector<int64_t>> &parents_v,
+                              vector<std::vector<int64_t>> &parents_e,
+                              vector<std::bitset<LANE_LIMIT>> &seen,
+                              vector<std::bitset<LANE_LIMIT>> &visit,
+                              vector<std::bitset<LANE_LIMIT>> &next) {
+    bool change = false;
+    for (auto v = 0; v < v_size; v++) {
+      next[v] = 0;
+    }
+    //! Keep track of edge id through which the node was reached
+    for (auto v = 0; v < v_size; v++) {
+      if (visit[v].any()) {
+        for (auto e = V[v]; e < V[v + 1]; e++) {
+          auto n = E[e];
+          auto edge_id = edge_ids[e];
+          next[n] = next[n] | visit[v];
+          for (auto l = 0; l < LANE_LIMIT; l++) {
+            parents_v[n][l] =
+                ((parents_v[n][l] == -1) && visit[v][l]) ? v : parents_v[n][l];
+            parents_e[n][l] = ((parents_e[n][l] == -1) && visit[v][l])
+                                  ? edge_id
+                                  : parents_e[n][l];
+          }
+        }
+      }
+    }
+
+    for (auto v = 0; v < v_size; v++) {
+      next[v] = next[v] & ~seen[v];
+      seen[v] = seen[v] | next[v];
+      change |= next[v].any();
+    }
+    return change;
+  }
+
+  static void ShortestPathFunction(const unique_ptr<PathFindingGlobalState::GlobalCompressedSparseRow> &csr, 
+                                      DataChunk &pairs, Vector &result) {
+    int64_t v_size = csr->v_size;
+    int64_t *v = (int64_t *)csr->v;
+    vector<int64_t> &e = csr->e;
+    vector<int64_t> &edge_ids = csr->edge_ids;
+
+    auto &src = pairs.data[0];
+    auto &dst = pairs.data[1];
+    UnifiedVectorFormat vdata_src;
+    UnifiedVectorFormat vdata_dst;
+    src.ToUnifiedFormat(pairs.size(), vdata_src);
+    dst.ToUnifiedFormat(pairs.size(), vdata_dst);
+
+    auto src_data = (int64_t *)vdata_src.data;
+    auto dst_data = (int64_t *)vdata_dst.data;
+
+    result.SetVectorType(VectorType::FLAT_VECTOR);
+    auto result_data = FlatVector::GetData<list_entry_t>(result);
+    ValidityMask &result_validity = FlatVector::Validity(result);
+
+    // create temp SIMD arrays
+    vector<std::bitset<LANE_LIMIT>> seen(v_size);
+    vector<std::bitset<LANE_LIMIT>> visit1(v_size);
+    vector<std::bitset<LANE_LIMIT>> visit2(v_size);
+    vector<std::vector<int64_t>> parents_v(v_size,
+                                          std::vector<int64_t>(LANE_LIMIT, -1));
+    vector<std::vector<int64_t>> parents_e(v_size,
+                                          std::vector<int64_t>(LANE_LIMIT, -1));
+
+    // maps lane to search number
+    int16_t lane_to_num[LANE_LIMIT];
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-      int64_t search_num = lane_to_num[lane];
-      if (search_num >= 0) { // active lane
-        result_validity.SetInvalid(search_num);
-        result_data[search_num] = (int64_t)-1; /* no path */
-        lane_to_num[lane] = -1;                // mark inactive
+      lane_to_num[lane] = -1; // inactive
+    }
+    int64_t total_len = 0;
+
+    idx_t started_searches = 0;
+    while (started_searches < pairs.size()) {
+
+      // empty visit vectors
+      for (auto i = 0; i < v_size; i++) {
+        seen[i] = 0;
+        visit1[i] = 0;
+        for (auto j = 0; j < LANE_LIMIT; j++) {
+          parents_v[i][j] = -1;
+          parents_e[i][j] = -1;
+        }
+      }
+
+      // add search jobs to free lanes
+      uint64_t active = 0;
+      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+        lane_to_num[lane] = -1;
+        while (started_searches < pairs.size()) {
+          int64_t search_num = started_searches++;
+          int64_t src_pos = vdata_src.sel->get_index(search_num);
+          if (!vdata_src.validity.RowIsValid(src_pos)) {
+            result_validity.SetInvalid(search_num);
+          } else {
+            visit1[src_data[src_pos]][lane] = true;
+            parents_v[src_data[src_pos]][lane] =
+                src_data[src_pos]; // Mark source with source id
+            parents_e[src_data[src_pos]][lane] =
+                -2; // Mark the source with -2, there is no incoming edge for the
+                    // source.
+            lane_to_num[lane] = search_num; // active lane
+            active++;
+            break;
+          }
+        }
+      }
+
+      //! make passes while a lane is still active
+      for (int64_t iter = 1; active; iter++) {
+        //! Perform one step of bfs exploration
+        if (!IterativeLength(v_size, v, e, edge_ids, parents_v, parents_e, seen,
+                            (iter & 1) ? visit1 : visit2,
+                            (iter & 1) ? visit2 : visit1)) {
+          break;
+        }
+        int64_t finished_searches = 0;
+        // detect lanes that finished
+        for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+          int64_t search_num = lane_to_num[lane];
+          if (search_num >= 0) { // active lane
+            //! Check if dst for a source has been seen
+            int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+            if (seen[dst_data[dst_pos]][lane]) {
+              finished_searches++;
+            }
+          }
+        }
+        if (finished_searches == LANE_LIMIT) {
+          break;
+        }
+      }
+      //! Reconstruct the paths
+      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+        int64_t search_num = lane_to_num[lane];
+        if (search_num == -1) { // empty lanes
+          continue;
+        }
+
+        //! Searches that have stopped have found a path
+        int64_t src_pos = vdata_src.sel->get_index(search_num);
+        int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+        if (src_data[src_pos] == dst_data[dst_pos]) { // Source == destination
+          unique_ptr<Vector> output =
+              make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
+          ListVector::PushBack(*output, src_data[src_pos]);
+          ListVector::Append(result, ListVector::GetEntry(*output),
+                            ListVector::GetListSize(*output));
+          result_data[search_num].length = ListVector::GetListSize(*output);
+          result_data[search_num].offset = total_len;
+          total_len += result_data[search_num].length;
+          continue;
+        }
+        std::vector<int64_t> output_vector;
+        std::vector<int64_t> output_edge;
+        auto source_v = src_data[src_pos]; // Take the source
+
+        auto parent_vertex =
+            parents_v[dst_data[dst_pos]]
+                    [lane]; // Take the parent vertex of the destination vertex
+        auto parent_edge =
+            parents_e[dst_data[dst_pos]]
+                    [lane]; // Take the parent edge of the destination vertex
+
+        output_vector.push_back(dst_data[dst_pos]); // Add destination vertex
+        output_vector.push_back(parent_edge);
+        while (parent_vertex != source_v) { // Continue adding vertices until we
+                                            // have reached the source vertex
+          //! -1 is used to signify no parent
+          if (parent_vertex == -1 ||
+              parent_vertex == parents_v[parent_vertex][lane]) {
+            result_validity.SetInvalid(search_num);
+            break;
+          }
+          output_vector.push_back(parent_vertex);
+          parent_edge = parents_e[parent_vertex][lane];
+          parent_vertex = parents_v[parent_vertex][lane];
+          output_vector.push_back(parent_edge);
+        }
+
+        if (!result_validity.RowIsValid(search_num)) {
+          continue;
+        }
+        output_vector.push_back(source_v);
+        std::reverse(output_vector.begin(), output_vector.end());
+        auto output = make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
+        for (auto val : output_vector) {
+          Value value_to_insert = val;
+          ListVector::PushBack(*output, value_to_insert);
+        }
+
+        result_data[search_num].length = ListVector::GetListSize(*output);
+        result_data[search_num].offset = total_len;
+        ListVector::Append(result, ListVector::GetEntry(*output),
+                          ListVector::GetListSize(*output));
+        total_len += result_data[search_num].length;
       }
     }
   }
-}
-
+};
 
 SinkFinalizeType
 PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
@@ -871,8 +1242,8 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 		idx_t num_threads = ts.NumberOfThreads();
     gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size - 2, num_threads);
 
-    // auto& result = *gstate.global_bfs_state->result;
-    // IterativeLengthFunction(csr, *all_pairs, result);
+    // auto bfs_event = make_shared<SequentialShortestPathEvent>(gstate, pipeline);
+    // event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
 
     // Schedule the first round of BFS tasks
     if (all_pairs->size() > 0) {
@@ -896,8 +1267,8 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event, Glo
   // remaining pairs
   if (bfs_state->started_searches < gstate.global_tasks.Count()) {
 
-    auto result_data = FlatVector::GetData<int64_t>(*bfs_state->result);
-    auto& result_validity = FlatVector::Validity(*bfs_state->result);
+    auto result_data = FlatVector::GetData<int64_t>(*bfs_state->result_length);
+    auto& result_validity = FlatVector::Validity(*bfs_state->result_length);
 
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
       bfs_state->lane_to_num[lane] = -1;
@@ -920,7 +1291,7 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event, Glo
       }
     }
 
-    auto bfs_event = make_shared<BFSIterativeEvent>(gstate, pipeline);
+    auto bfs_event = make_shared<ParallelIterativeEvent>(gstate, pipeline);
     event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
   }
 }
@@ -996,7 +1367,7 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   // auto &pf_gstate = input.global_state.Cast<PathFindingGlobalSourceState>();
   auto &pf_bfs_state = pf_sink.global_bfs_state;
   // auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
-  pf_bfs_state->result->Print(pf_bfs_state->pairs->size());
+  pf_bfs_state->result_length->Print(pf_bfs_state->pairs->size());
   // pf_gstate.Initialize(pf_sink);
 
   return result.size() == 0 ? SourceResultType::FINISHED
