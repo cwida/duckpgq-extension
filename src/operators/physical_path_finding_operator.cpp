@@ -32,14 +32,14 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(int64_t v_
   }
   v_size = v_size_ + 2;
   try {
-    v = new int64_t[v_size];
+    v = new std::atomic<int64_t>[v_size];
     reverse_v = new std::atomic<int64_t>[v_size];
   } catch (std::bad_alloc const &) {
     throw InternalException("Unable to initialize vector of size for csr vertex table "
                                              "representation");
   }
   for (idx_t i = 0; i < v_size; ++i) {
-    v[i] = 0;
+    v[i].store(0);
     reverse_v[i].store(0);
   }
   initialized_v = true;
