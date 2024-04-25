@@ -400,7 +400,7 @@ public:
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
       for (auto j = 0; j < 8; j++) {
-        next[i][j] = 0;
+        next[i][j].store(0, std::memory_order_relaxed);
       }
       // next[i] = 0;
     }
@@ -417,10 +417,11 @@ public:
 
       for (auto i = start; i < end; i++) {
         for (auto j = 0; j < 8; j++) {
-          if (visit[i][j]) {
+          if (visit[i][j].load(std::memory_order_relaxed)) {
             for (auto offset = v[i]; offset < v[i + 1]; offset++) {
               auto n = e[offset];
-              next[n][j] = next[n][j] | visit[i][j];
+              next[n][j].store(next[n][j].load(std::memory_order_relaxed) | visit[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+              // next[n][j] = next[n][j] | visit[i][j];
             }
           }
         }
@@ -438,10 +439,12 @@ public:
 
     for (auto i = left; i < right; i++) {
       for (auto j = 0; j < 8; j++) {
-        if (next[i][j]) {
-          next[i][j] = next[i][j] & ~seen[i][j];
-          seen[i][j] = seen[i][j] | next[i][j];
-          change |= next[i][j];
+        if (next[i][j].load(std::memory_order_relaxed)) {
+          next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+          seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+          // next[i][j] = next[i][j] & ~seen[i][j];
+          // seen[i][j] = seen[i][j] | next[i][j];
+          change |= next[i][j].load(std::memory_order_relaxed);
         }
       }
       // if (next[i].any()) {
