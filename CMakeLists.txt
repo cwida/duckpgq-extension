@@ -40,6 +40,9 @@ target_link_libraries(${EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries(${LOADABLE_EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto)
 # >>>>>>> template/main
 
+target_compile_options(${EXTENSION_NAME} PRIVATE -march=native)
+target_link_options(${EXTENSION_NAME} PRIVATE -latomic)
+
 install(
   TARGETS ${EXTENSION_NAME}
   EXPORT "${DUCKDB_EXPORT_SET}"
