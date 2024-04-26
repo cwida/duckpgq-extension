@@ -11,6 +11,7 @@
 #include <thread>
 #include <cmath>
 #include <algorithm>
+#include <chrono>
 
 namespace duckdb {
 
@@ -265,6 +266,8 @@ public:
   constexpr static int64_t split_size = 256;
 
   Barrier barrier;
+
+  std::chrono::milliseconds time_elapsed = std::chrono::milliseconds(0);
 
   // lock for next
   mutable mutex lock;
@@ -642,6 +645,9 @@ public:
 
 	PathFindingGlobalState &gstate;
 
+private:
+  std::chrono::time_point<std::chrono::system_clock> start_time;
+
 public:
 	void Schedule() override {
     auto &bfs_state = gstate.global_bfs_state;
@@ -670,10 +676,15 @@ public:
       bfs_tasks.push_back(make_uniq<PhysicalIterativeTopDownTask>(shared_from_this(), context, gstate, tnum));
     }
 		SetTasks(std::move(bfs_tasks));
+    start_time = std::chrono::high_resolution_clock::now();
 	}
 
 	void FinishEvent() override {
 		auto& bfs_state = gstate.global_bfs_state;
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    bfs_state->time_elapsed += duration;
 
     auto result_data = FlatVector::GetData<int64_t>(*bfs_state->result_length);
     ValidityMask &result_validity = FlatVector::Validity(*bfs_state->result_length);
@@ -1379,6 +1390,8 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   auto &pf_bfs_state = pf_sink.global_bfs_state;
   // auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
   pf_bfs_state->result_length->Print(pf_bfs_state->pairs->size());
+  string message = "Algorithm running time: " + to_string(pf_bfs_state->time_elapsed.count()) + "ms";
+  Printer::Print(message);
   // pf_gstate.Initialize(pf_sink);
 
   return result.size() == 0 ? SourceResultType::FINISHED
