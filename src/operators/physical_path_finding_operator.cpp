@@ -735,13 +735,20 @@ public:
 
   PathFindingGlobalState &gstate;
 
+private:
+  std::chrono::time_point<std::chrono::system_clock> start_time;
+
 public:
   void Schedule() override {
     auto &bfs_state = gstate.global_bfs_state;
 
     auto& pairs = *bfs_state->pairs;
     auto& result = *bfs_state->result_length;
+    start_time = std::chrono::high_resolution_clock::now();
     IterativeLengthFunction(gstate.global_csr, pairs, result);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    bfs_state->time_elapsed += duration;
   }
 
 private:
