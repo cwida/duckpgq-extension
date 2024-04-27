@@ -125,23 +125,24 @@ public:
     }
 
     void Wait() {
-        std::unique_lock<std::mutex> lLock{mMutex};
-        auto lGen = mGeneration;
-        if (!--mCount) {
-            mGeneration++;
-            mCount = mThreshold;
-            mCond.notify_all();
+        int localGeneration = mGeneration.load(std::memory_order_acquire);
+        // Decrement the count atomically and check if this thread is the last to reach the barrier
+        if (mCount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            // Last thread to reach the barrier
+            mCount.store(mThreshold, std::memory_order_relaxed); // Reset the count for the next use
+            mGeneration.fetch_add(1, std::memory_order_acq_rel); // Move to the next generation
         } else {
-            mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
+            // Not the last thread; spin-wait until the generation number changes
+            while (mGeneration.load(std::memory_order_acquire) == localGeneration) {
+                // std::this_thread::yield(); // Yield to reduce the impact on CPU usage
+            }
         }
     }
 
 private:
-    std::mutex mMutex;
-    std::condition_variable mCond;
-    std::size_t mThreshold;
-    std::size_t mCount;
-    std::size_t mGeneration;
+    std::atomic<std::size_t> mCount; // Atomic counter to manage the number of waiting threads
+    std::atomic<int> mGeneration; // Atomic generation count to manage barrier reuse across cycles
+    std::size_t mThreshold; // The number of threads that must reach the barrier to proceed
 };
 
 
@@ -382,8 +383,6 @@ public:
     auto& bfs_state = state.global_bfs_state;
     auto& change = bfs_state->change;
     auto& seen = bfs_state->seen;
-    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
     auto result_data = FlatVector::GetData<int64_t>(*bfs_state->result_length);
     ValidityMask &result_validity = FlatVector::Validity(*bfs_state->result_length);
@@ -398,8 +397,13 @@ public:
     BoundaryCalculation();
 
     do {
+      barrier.Wait();
       change = false;
       InitTask();
+
+      auto& visit = iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+      auto& next = iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+
       IterativeLength(v, change, barrier, e, seen, visit, next);
       barrier.Wait();
 
