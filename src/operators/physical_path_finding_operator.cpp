@@ -12,6 +12,7 @@
 #include <cmath>
 #include <algorithm>
 #include <chrono>
+#include <pthread.h>
 
 namespace duckdb {
 
@@ -117,33 +118,35 @@ void PathFindingLocalState::CreateCSRVertex(DataChunk &input,
 
 class Barrier {
 public:
-    void Init(std::size_t iCount) {
-        std::unique_lock<std::mutex> lLock{mMutex};
-        mThreshold = iCount;
-        mCount = iCount;
-        mGeneration = 0;
+    void Init(std::size_t count) {
+        mThreshold.store(count, std::memory_order_relaxed);
+        mCount.store(count, std::memory_order_relaxed);
+        mGeneration.store(0, std::memory_order_relaxed);
     }
 
     void Wait() {
-        std::unique_lock<std::mutex> lLock{mMutex};
-        auto lGen = mGeneration;
-        if (!--mCount) {
-            mGeneration++;
-            mCount = mThreshold;
+        int currentGen = mGeneration.load(std::memory_order_acquire);
+        if (mCount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            // Last thread to reach the barrier
+            mCount.store(mThreshold.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            mGeneration.fetch_add(1, std::memory_order_acq_rel);
             mCond.notify_all();
         } else {
-            mCond.wait(lLock, [this, lGen] { return lGen != mGeneration || mCount == mThreshold; });
+            std::mutex localMutex;
+            std::unique_lock<std::mutex> lock(localMutex);
+            mCond.wait(lock, [this, currentGen]() {
+                return currentGen != mGeneration.load(std::memory_order_acquire);
+            });
         }
     }
 
     void DecreaseCount() {
-        std::unique_lock<std::mutex> lLock{mMutex};
-        mCount--;
-        mThreshold--;
+        mThreshold.fetch_sub(1, std::memory_order_acq_rel);
+        int expectedCount = mCount.fetch_sub(1, std::memory_order_acq_rel) - 1;
 
-        if (mCount == 0) {
-            mGeneration++;
-            mCount = mThreshold;
+        if (expectedCount == 0) {
+            mCount.store(mThreshold.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            mGeneration.fetch_add(1, std::memory_order_acq_rel);
             mCond.notify_all();
         }
     }
@@ -151,10 +154,13 @@ public:
 private:
     std::mutex mMutex;
     std::condition_variable mCond;
-    std::size_t mThreshold;
-    std::size_t mCount;
-    std::size_t mGeneration;
+    std::atomic<std::size_t> mThreshold;
+    std::atomic<std::size_t> mCount;
+    std::atomic<int> mGeneration;
 };
+
+
+
 
 class GlobalBFSState {
 public:
@@ -176,15 +182,16 @@ public:
     src = FlatVector::GetData<int64_t>(src_data);
     dst = FlatVector::GetData<int64_t>(dst_data);
     for (auto i = 0; i < v_size; i++) {
-      // for (auto j = 0; j < 8; j++) {
-      //   seen[i][j] = 0;
-      //   visit1[i][j] = 0;
-      // }
-      seen[i] = 0;
-      visit1[i] = 0;
+      for (auto j = 0; j < 8; j++) {
+        seen[i][j] = 0;
+        visit1[i][j] = 0;
+      }
+      // seen[i] = 0;
+      // visit1[i] = 0;
     }
 
     barrier.Init(num_threads);
+    // pthread_barrier_init(&barrier, NULL, num_threads);
     CreateTasks();
   }
 
@@ -198,16 +205,16 @@ public:
     }
     // empty visit vectors
     for (auto i = 0; i < v_size; i++) {
-      // for (auto j = 0; j < 8; j++) {
-      //   seen[i][j] = 0;
-      //   visit1[i][j] = 0;
-      // }
-      for (auto j = 0; j < LANE_LIMIT; j++) {
-        parents_v[i][j] = -1;
-        parents_e[i][j] = -1;
+      for (auto j = 0; j < 8; j++) {
+        seen[i][j] = 0;
+        visit1[i][j] = 0;
       }
-      seen[i] = 0;
-      visit1[i] = 0;
+      // for (auto j = 0; j < LANE_LIMIT; j++) {
+      //   parents_v[i][j] = -1;
+      //   parents_e[i][j] = -1;
+      // }
+      // seen[i] = 0;
+      // visit1[i] = 0;
     }
   }
 
@@ -241,12 +248,15 @@ public:
   UnifiedVectorFormat vdata_src;
   UnifiedVectorFormat vdata_dst;
   int64_t lane_to_num[LANE_LIMIT];
-  vector<atomic<std::bitset<LANE_LIMIT>>> seen;
-  vector<atomic<std::bitset<LANE_LIMIT>>> visit1;
-  vector<atomic<std::bitset<LANE_LIMIT>>> visit2;
-  // vector<atomic<idx_t>[8]> seen;
-  // vector<atomic<idx_t>[8]> visit1;
-  // vector<atomic<idx_t>[8]> visit2;
+  // vector<std::bitset<LANE_LIMIT>> seen;
+  // vector<std::bitset<LANE_LIMIT>> visit1;
+  // vector<std::bitset<LANE_LIMIT>> visit2;
+  // vector<atomic<std::bitset<LANE_LIMIT>>> seen;
+  // vector<atomic<std::bitset<LANE_LIMIT>>> visit1;
+  // vector<atomic<std::bitset<LANE_LIMIT>>> visit2;
+  vector<atomic<idx_t>[8]> seen;
+  vector<atomic<idx_t>[8]> visit1;
+  vector<atomic<idx_t>[8]> visit2;
   unique_ptr<Vector> result_length;
   unique_ptr<Vector> result_path;
 
@@ -266,8 +276,9 @@ public:
   constexpr static int64_t split_size = 256;
 
   Barrier barrier;
+  // pthread_barrier_t barrier;
 
-  std::chrono::milliseconds time_elapsed = std::chrono::milliseconds(0);
+  std::chrono::microseconds time_elapsed = std::chrono::microseconds(0);
 
   // lock for next
   mutable mutex lock;
@@ -392,7 +403,7 @@ public:
     auto& barrier = bfs_state->barrier;
     // auto& frontier_size = bfs_state->frontier_size;
     // auto& unseen_size = bfs_state->unseen_size;
-
+    
     InitTask();
 
     int64_t *v = (int64_t *)state.global_csr->v;
@@ -402,13 +413,41 @@ public:
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
-      // for (auto j = 0; j < 8; j++) {
-      //   next[i][j].store(0, std::memory_order_relaxed);
-      // }
-      next[i] = 0;
+      for (auto j = 0; j < 8; j++) {
+        next[i][j].store(0, std::memory_order_relaxed);
+      }
+      // next[i] = 0;
     }
 
     barrier.Wait();
+    // pthread_barrier_wait(&barrier);
+
+
+    // for (auto i = left; i < right; i++) {
+    //   // if (visit[i].load(std::memory_order_relaxed).any()) {
+    //   //   for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+    //   //     auto n = e[offset];
+    //   //     // lock_guard<mutex> lock(bfs_state->lock);
+    //   //     next[n].store(next[n].load(std::memory_order_relaxed) | visit[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    //   //     // next[n] = next[n] | visit[i];
+    //   //   }
+    //   // }
+    //   if (visit[i].any()) {
+    //     for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+    //       auto n = e[offset];
+    //       // lock_guard<mutex> lock(bfs_state->lock);
+    //       next[n] = next[n] | visit[i];
+    //       // next[n].store(next[n].load(std::memory_order_relaxed) | visit[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    //       // next[n] = next[n] | visit[i];
+    //     }
+    //   }
+    // }
+
+    // auto end_time = std::chrono::high_resolution_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+    // if (worker_id == 0) {
+    //   Printer::Print("Duration_2: " + std::to_string(duration.count()) + " μs");
+    // }
 
     while (true) {
       auto task = FetchTask();
@@ -419,49 +458,60 @@ public:
       auto end = task.second;
 
       for (auto i = start; i < end; i++) {
-        // for (auto j = 0; j < 8; j++) {
-        //   if (visit[i][j].load(std::memory_order_relaxed)) {
-        //     for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-        //       auto n = e[offset];
-        //       next[n][j].store(next[n][j].load(std::memory_order_relaxed) | visit[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
-        //       // next[n][j] = next[n][j] | visit[i][j];
-        //     }
-        //   }
-        // }
-        if (visit[i].load(std::memory_order_relaxed).any()) {
-          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-            auto n = e[offset];
-            // lock_guard<mutex> lock(bfs_state->lock);
-            next[n].store(next[n].load(std::memory_order_relaxed) | visit[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
-            // next[n] = next[n] | visit[i];
+        for (auto j = 0; j < 8; j++) {
+          if (visit[i][j].load(std::memory_order_relaxed)) {
+            for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+              auto n = e[offset];
+              next[n][j].store(next[n][j].load(std::memory_order_relaxed) | visit[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+              // next[n][j] = next[n][j] | visit[i][j];
+            }
           }
         }
+        // if (visit[i].load(std::memory_order_relaxed).any()) {
+        //   for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        //     auto n = e[offset];
+        //     // lock_guard<mutex> lock(bfs_state->lock);
+        //     next[n].store(next[n].load(std::memory_order_relaxed) | visit[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
+        //     // next[n] = next[n] | visit[i];
+        //   }
+        // }
+        // if (visit[i].any()) {
+        //   for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        //     auto n = e[offset];
+        //     // lock_guard<mutex> lock(bfs_state->lock);
+        //     next[n] = next[n] | visit[i];
+        //     // next[n].store(next[n].load(std::memory_order_relaxed) | visit[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
+        //     // next[n] = next[n] | visit[i];
+        //   }
+        // }
       }
     }
 
     barrier.Wait();
+    // pthread_barrier_wait(&barrier);
 
     for (auto i = left; i < right; i++) {
-      // for (auto j = 0; j < 8; j++) {
-      //   if (next[i][j].load(std::memory_order_relaxed)) {
-      //     next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
-      //     seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
-      //     // next[i][j] = next[i][j] & ~seen[i][j];
-      //     // seen[i][j] = seen[i][j] | next[i][j];
-      //     change |= next[i][j].load(std::memory_order_relaxed);
-      //   }
-      // }
-      if (next[i].load(std::memory_order_relaxed).any()) {
-        next[i].store(next[i].load(std::memory_order_relaxed) & ~seen[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
-        seen[i].store(seen[i].load(std::memory_order_relaxed) | next[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
-        change |= next[i].load(std::memory_order_relaxed).any();
-        // next[i] = next[i] & ~seen[i];
-        // seen[i] = seen[i] | next[i];
-        // change |= next[i].any();
-
-        // frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
-        // unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+      for (auto j = 0; j < 8; j++) {
+        if (next[i][j].load(std::memory_order_relaxed)) {
+          next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+          seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+          // next[i][j] = next[i][j] & ~seen[i][j];
+          // seen[i][j] = seen[i][j] | next[i][j];
+          change |= next[i][j].load(std::memory_order_relaxed);
+        }
       }
+      // if (next[i].load(std::memory_order_relaxed).any()) {
+      //   next[i].store(next[i].load(std::memory_order_relaxed) & ~seen[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
+      //   seen[i].store(seen[i].load(std::memory_order_relaxed) | next[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
+      //   change |= next[i].load(std::memory_order_relaxed).any();
+      // }
+      // if (next[i].any()) {
+      //   next[i] = next[i] & ~seen[i];
+      //   seen[i] = seen[i] | next[i];
+      //   change |= next[i].any();
+      //   // frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+      //   // unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+      // }
     }
 
 		event->FinishTask();
@@ -683,7 +733,7 @@ public:
 		auto& bfs_state = gstate.global_bfs_state;
 
     auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
     bfs_state->time_elapsed += duration;
 
     auto result_data = FlatVector::GetData<int64_t>(*bfs_state->result_length);
@@ -695,8 +745,9 @@ public:
         int64_t search_num = bfs_state->lane_to_num[lane];
         if (search_num >= 0) { // active lane
           int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
-          // if (bfs_state->seen[bfs_state->dst[dst_pos]][lane / 64] & ((idx_t)1 << (lane % 64))) {
-          if (bfs_state->seen[bfs_state->dst[dst_pos]].load(std::memory_order_relaxed)[lane]) {
+          if (bfs_state->seen[bfs_state->dst[dst_pos]][lane / 64] & ((idx_t)1 << (lane % 64))) {
+          // if (bfs_state->seen[bfs_state->dst[dst_pos]].load(std::memory_order_relaxed)[lane]) {
+          // if (bfs_state->seen[bfs_state->dst[dst_pos]][lane]) {
             result_data[search_num] =
                 bfs_state->iter;               /* found at iter => iter = path length */
             bfs_state->lane_to_num[lane] = -1; // mark inactive
@@ -1268,13 +1319,13 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 		idx_t num_threads = ts.NumberOfThreads();
     gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size - 2, num_threads);
 
-    // auto bfs_event = make_shared<SequentialShortestPathEvent>(gstate, pipeline);
-    // event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
+    auto bfs_event = make_shared<SequentialIterativeEvent>(gstate, pipeline);
+    event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
 
-    // Schedule the first round of BFS tasks
-    if (all_pairs->size() > 0) {
-      ScheduleBFSTasks(pipeline, event, gstate);
-    }
+    // // Schedule the first round of BFS tasks
+    // if (all_pairs->size() > 0) {
+    //   ScheduleBFSTasks(pipeline, event, gstate);
+    // }
   }
 
 	// Move to the next input child
@@ -1310,10 +1361,11 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event, Glo
               (uint64_t)0; // path of length 0 does not require a search
         } else {
           bfs_state->frontier_size++;
-          // bfs_state->visit1[bfs_state->src[src_pos]][lane / 64] |= ((idx_t)1 << (lane % 64));
-          auto new_visit = bfs_state->visit1[bfs_state->src[src_pos]].load();
-          new_visit[lane] = true;
-          bfs_state->visit1[bfs_state->src[src_pos]].store(new_visit);
+          bfs_state->visit1[bfs_state->src[src_pos]][lane / 64] |= ((idx_t)1 << (lane % 64));
+          // auto new_visit = bfs_state->visit1[bfs_state->src[src_pos]].load();
+          // new_visit[lane] = true;
+          // bfs_state->visit1[bfs_state->src[src_pos]].store(new_visit);
+          // bfs_state->visit1[bfs_state->src[src_pos]][lane] = true;
           bfs_state->lane_to_num[lane] = search_num; // active lane
           break;
         }
@@ -1397,7 +1449,7 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   auto &pf_bfs_state = pf_sink.global_bfs_state;
   // auto &pf_lstate = input.local_state.Cast<PathFindingLocalSourceState>();
   pf_bfs_state->result_length->Print(pf_bfs_state->pairs->size());
-  string message = "Algorithm running time: " + to_string(pf_bfs_state->time_elapsed.count()) + "ms";
+  string message = "Algorithm running time: " + to_string(pf_bfs_state->time_elapsed.count()) + " us";
   Printer::Print(message);
   // pf_gstate.Initialize(pf_sink);
 
