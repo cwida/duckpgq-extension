@@ -118,45 +118,30 @@ void PathFindingLocalState::CreateCSRVertex(DataChunk &input,
 
 class Barrier {
 public:
-    void Init(std::size_t count) {
-        mThreshold.store(count, std::memory_order_relaxed);
-        mCount.store(count, std::memory_order_relaxed);
-        mGeneration.store(0, std::memory_order_relaxed);
+    explicit Barrier(std::size_t iCount) : 
+      mThreshold(iCount), 
+      mCount(iCount), 
+      mGeneration(0) {
     }
 
     void Wait() {
-        int currentGen = mGeneration.load(std::memory_order_acquire);
-        if (mCount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-            // Last thread to reach the barrier
-            mCount.store(mThreshold.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            mGeneration.fetch_add(1, std::memory_order_acq_rel);
+        std::unique_lock<std::mutex> lLock{mMutex};
+        auto lGen = mGeneration;
+        if (!--mCount) {
+            mGeneration++;
+            mCount = mThreshold;
             mCond.notify_all();
         } else {
-            std::mutex localMutex;
-            std::unique_lock<std::mutex> lock(localMutex);
-            mCond.wait(lock, [this, currentGen]() {
-                return currentGen != mGeneration.load(std::memory_order_acquire);
-            });
-        }
-    }
-
-    void DecreaseCount() {
-        mThreshold.fetch_sub(1, std::memory_order_acq_rel);
-        int expectedCount = mCount.fetch_sub(1, std::memory_order_acq_rel) - 1;
-
-        if (expectedCount == 0) {
-            mCount.store(mThreshold.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            mGeneration.fetch_add(1, std::memory_order_acq_rel);
-            mCond.notify_all();
+            mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
         }
     }
 
 private:
     std::mutex mMutex;
     std::condition_variable mCond;
-    std::atomic<std::size_t> mThreshold;
-    std::atomic<std::size_t> mCount;
-    std::atomic<int> mGeneration;
+    std::size_t mThreshold;
+    std::size_t mCount;
+    std::size_t mGeneration;
 };
 
 
@@ -171,7 +156,7 @@ public:
         result_length(make_uniq<Vector>(LogicalType::BIGINT, true, true, pairs_->size())),
         result_path(make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT), true, true, pairs_->size())),
         parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)),
-        frontier_size(0), unseen_size(v_size_), num_threads(num_threads_), task_queues(num_threads_) {
+        frontier_size(0), unseen_size(v_size_), num_threads(num_threads_), task_queues(num_threads_), barrier(num_threads_) {
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
     }
@@ -190,7 +175,6 @@ public:
       // visit1[i] = 0;
     }
 
-    barrier.Init(num_threads);
     // pthread_barrier_init(&barrier, NULL, num_threads);
     CreateTasks();
   }
@@ -409,17 +393,17 @@ public:
     int64_t *v = (int64_t *)state.global_csr->v;
     vector<int64_t> &e = state.global_csr->e;
 
-    BoundaryCalculation();
+    // BoundaryCalculation();
 
     // clear next before each iteration
-    for (auto i = left; i < right; i++) {
-      for (auto j = 0; j < 8; j++) {
-        next[i][j].store(0, std::memory_order_relaxed);
-      }
-      // next[i] = 0;
-    }
+    // for (auto i = left; i < right; i++) {
+    //   for (auto j = 0; j < 8; j++) {
+    //     next[i][j].store(0, std::memory_order_relaxed);
+    //   }
+    //   // next[i] = 0;
+    // }
 
-    barrier.Wait();
+    // barrier.Wait();
     // pthread_barrier_wait(&barrier);
 
 
@@ -487,32 +471,32 @@ public:
       }
     }
 
-    barrier.Wait();
-    // pthread_barrier_wait(&barrier);
+    // barrier.Wait();
+    // // pthread_barrier_wait(&barrier);
 
-    for (auto i = left; i < right; i++) {
-      for (auto j = 0; j < 8; j++) {
-        if (next[i][j].load(std::memory_order_relaxed)) {
-          next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
-          seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
-          // next[i][j] = next[i][j] & ~seen[i][j];
-          // seen[i][j] = seen[i][j] | next[i][j];
-          change |= next[i][j].load(std::memory_order_relaxed);
-        }
-      }
-      // if (next[i].load(std::memory_order_relaxed).any()) {
-      //   next[i].store(next[i].load(std::memory_order_relaxed) & ~seen[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
-      //   seen[i].store(seen[i].load(std::memory_order_relaxed) | next[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
-      //   change |= next[i].load(std::memory_order_relaxed).any();
-      // }
-      // if (next[i].any()) {
-      //   next[i] = next[i] & ~seen[i];
-      //   seen[i] = seen[i] | next[i];
-      //   change |= next[i].any();
-      //   // frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
-      //   // unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
-      // }
-    }
+    // for (auto i = left; i < right; i++) {
+    //   for (auto j = 0; j < 8; j++) {
+    //     if (next[i][j].load(std::memory_order_relaxed)) {
+    //       next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    //       seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    //       // next[i][j] = next[i][j] & ~seen[i][j];
+    //       // seen[i][j] = seen[i][j] | next[i][j];
+    //       change |= next[i][j].load(std::memory_order_relaxed);
+    //     }
+    //   }
+    //   // if (next[i].load(std::memory_order_relaxed).any()) {
+    //   //   next[i].store(next[i].load(std::memory_order_relaxed) & ~seen[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    //   //   seen[i].store(seen[i].load(std::memory_order_relaxed) | next[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    //   //   change |= next[i].load(std::memory_order_relaxed).any();
+    //   // }
+    //   // if (next[i].any()) {
+    //   //   next[i] = next[i] & ~seen[i];
+    //   //   seen[i] = seen[i] | next[i];
+    //   //   change |= next[i].any();
+    //   //   // frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+    //   //   // unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+    //   // }
+    // }
 
 		event->FinishTask();
 		return TaskExecutionResult::TASK_FINISHED;
@@ -718,19 +702,41 @@ public:
     //   }
     // }
     // clear the counters after the switch
-    bfs_state->frontier_size = 0;
-    bfs_state->unseen_size = bfs_state->v_size;
+    // bfs_state->frontier_size = 0;
+    // bfs_state->unseen_size = bfs_state->v_size;
+
+    start_time = std::chrono::high_resolution_clock::now();
+
+    // clear next before each iteration
+    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+    for (auto i = 0; i < bfs_state->v_size; i++) {
+      for (auto j = 0; j < 8; j++) {
+        next[i][j].store(0, std::memory_order_relaxed);
+      }
+    }
 
 		vector<shared_ptr<Task>> bfs_tasks;
     for (idx_t tnum = 0; tnum < bfs_state->num_threads; tnum++) {
       bfs_tasks.push_back(make_uniq<PhysicalIterativeTopDownTask>(shared_from_this(), context, gstate, tnum));
     }
 		SetTasks(std::move(bfs_tasks));
-    start_time = std::chrono::high_resolution_clock::now();
 	}
 
 	void FinishEvent() override {
 		auto& bfs_state = gstate.global_bfs_state;
+
+    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+    auto& seen = bfs_state->seen;
+    auto& change = bfs_state->change;
+    for (auto i = 0; i < bfs_state->v_size; i++) {
+      for (auto j = 0; j < 8; j++) {
+        if (next[i][j].load(std::memory_order_relaxed)) {
+          next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+          seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+          change |= next[i][j].load(std::memory_order_relaxed);
+        }
+      }
+    }
 
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
@@ -1319,13 +1325,13 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 		idx_t num_threads = ts.NumberOfThreads();
     gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size - 2, num_threads);
 
-    auto bfs_event = make_shared<SequentialIterativeEvent>(gstate, pipeline);
-    event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
+    // auto bfs_event = make_shared<SequentialIterativeEvent>(gstate, pipeline);
+    // event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
 
-    // // Schedule the first round of BFS tasks
-    // if (all_pairs->size() > 0) {
-    //   ScheduleBFSTasks(pipeline, event, gstate);
-    // }
+    // Schedule the first round of BFS tasks
+    if (all_pairs->size() > 0) {
+      ScheduleBFSTasks(pipeline, event, gstate);
+    }
   }
 
 	// Move to the next input child
