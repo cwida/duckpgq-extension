@@ -12,6 +12,7 @@ unique_ptr<PhysicalOperator> LogicalPathFindingOperator::CreatePlan(
   return make_uniq<PhysicalPathFinding>(*this, std::move(left),
                                         std::move(right));
 }
+
 vector<ColumnBinding> LogicalPathFindingOperator::GetColumnBindings() {
   auto left_bindings = children[0]->GetColumnBindings();
   left_bindings.push_back(ColumnBinding(10, 0));
@@ -20,10 +21,13 @@ vector<ColumnBinding> LogicalPathFindingOperator::GetColumnBindings() {
 
 void LogicalPathFindingOperator::ResolveTypes() {
   types = children[0]->types;
-  types.push_back(LogicalType::BIGINT);
-  // auto right_types = children[1]->types;
-  // types.insert(types.end(), right_types.begin(), right_types.end());
-  // types = {LogicalType::BIGINT, LogicalType::BIGINT};
+  if (mode == "iterativelength") {
+    types.push_back(LogicalType::BIGINT);
+  } else if (mode == "shortestpath") {
+    types.push_back(LogicalType::LIST(LogicalType::BIGINT));
+  } else {
+    throw NotImplementedException("Unrecognized mode in PathFindingOperator: " + mode);
+  }
 }
 
 string LogicalPathFindingOperator::ParamsToString() const {

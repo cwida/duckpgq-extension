@@ -5,9 +5,10 @@ namespace duckdb {
 
 class LogicalPathFindingOperator : public LogicalExtensionOperator {
 public:
-  explicit LogicalPathFindingOperator(vector<unique_ptr<LogicalOperator>> &children_, vector<unique_ptr<Expression>> &expressions_)
+  explicit LogicalPathFindingOperator(vector<unique_ptr<LogicalOperator>> &children_, vector<unique_ptr<Expression>> &expressions_, const string& mode_)
       : LogicalExtensionOperator(std::move(expressions_)) {
     children = std::move(children_);
+    mode = mode_;
   }
 
   void Serialize(Serializer &serializer) const override {
@@ -24,6 +25,9 @@ public:
   void ResolveTypes() override;
 
   string ParamsToString() const override;
+
+public:
+  string mode;
 };
 
 } // namespace duckdb
