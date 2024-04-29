@@ -58,13 +58,9 @@ public:
 
           path_finding_children.push_back(std::move(get_projection.children[0]));
           path_finding_expressions = std::move(get_function_expression.children);
-
-          auto path_finding_operator =
-              make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions);
-          op.children.clear();
-          op.children.push_back(std::move(path_finding_operator));
-
+          string mode;
           // Iterate in reverse to not influence the upcoming iterations when erasing an element from the list.
+          // Does not work if both iterativelength and shortestpath are called in the same query for now. To be improved in the future.
           for (int64_t i = op.expressions.size() - 1; i >= 0; --i) {
             const auto& expr = op.expressions[i];
             if (expr->expression_class == ExpressionClass::BOUND_FUNCTION &&
@@ -72,8 +68,20 @@ public:
               op.expressions.emplace_back(make_uniq<BoundColumnRefExpression>(
                   expr->alias, LogicalType::BIGINT, ColumnBinding(10, 0)));
               op.expressions.erase(op.expressions.begin() + i);
+              mode = "iterativelength";
+            } else if (expr->expression_class == ExpressionClass::BOUND_FUNCTION &&
+              expr->Cast<BoundFunctionExpression>().function.name == "shortestpath") {
+              op.expressions.emplace_back(make_uniq<BoundColumnRefExpression>(
+                  expr->alias, LogicalType::LIST(LogicalType::BIGINT), ColumnBinding(10, 0)));
+              op.expressions.erase(op.expressions.begin() + i);
+              mode = "shortestpath";
             }
           }
+
+          auto path_finding_operator =
+              make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions, mode);
+          op.children.clear();
+          op.children.push_back(std::move(path_finding_operator));
           return true;
         }
       }
