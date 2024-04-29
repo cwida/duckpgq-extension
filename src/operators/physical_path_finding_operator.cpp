@@ -12,6 +12,7 @@
 #include <thread>
 #include <algorithm>
 #include <chrono>
+#include <pthread.h>
 
 namespace duckdb {
 
@@ -118,53 +119,40 @@ void PathFindingLocalState::CreateCSRVertex(DataChunk &input,
 
 class Barrier {
 public:
-    void Init(std::size_t iCount) {
-        std::unique_lock<std::mutex> lLock{mMutex};
-        mThreshold = iCount;
-        mCount = iCount;
-        mGeneration = 0;
+    explicit Barrier(std::size_t iCount) :
+      mThreshold(iCount),
+      mCount(iCount),
+      mGeneration(0) {
     }
 
     void Wait() {
-        std::unique_lock<std::mutex> lLock{mMutex};
-        auto lGen = mGeneration;
-        if (!--mCount) {
-            mGeneration++;
-            mCount = mThreshold;
-            mCond.notify_all();
+        int localGeneration = mGeneration.load(std::memory_order_acquire);
+        // Decrement the count atomically and check if this thread is the last to reach the barrier
+        if (mCount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            // Last thread to reach the barrier
+            mCount.store(mThreshold, std::memory_order_relaxed); // Reset the count for the next use
+            mGeneration.fetch_add(1, std::memory_order_acq_rel); // Move to the next generation
         } else {
-            mCond.wait(lLock, [this, lGen] { return lGen != mGeneration || mCount == mThreshold; });
-        }
-    }
-
-    void DecreaseCount() {
-        std::unique_lock<std::mutex> lLock{mMutex};
-        mCount--;
-        mThreshold--;
-
-        if (mCount == 0) {
-            mGeneration++;
-            mCount = mThreshold;
-            mCond.notify_all();
+            // Not the last thread; spin-wait until the generation number changes
+            while (mGeneration.load(std::memory_order_acquire) == localGeneration) {
+                // std::this_thread::yield(); // Yield to reduce the impact on CPU usage
+            }
         }
     }
 
 private:
-    std::mutex mMutex;
-    std::condition_variable mCond;
-    std::size_t mThreshold;
-    std::size_t mCount;
-    std::size_t mGeneration;
+    std::atomic<std::size_t> mCount; // Atomic counter to manage the number of waiting threads
+    std::atomic<int> mGeneration; // Atomic generation count to manage barrier reuse across cycles
+    std::size_t mThreshold; // The number of threads that must reach the barrier to proceed
 };
 
 class GlobalBFSState {
 public:
-
   GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_, idx_t num_threads_, ClientContext &context_)
       : pairs(pairs_), iter(1), v_size(v_size_), change(false), started_searches(0),
         seen(v_size_), visit1(v_size_), visit2(v_size_), context(context_),
         parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)),
-        frontier_size(0), unseen_size(v_size_), num_threads(num_threads_), task_queues(num_threads_) {
+        frontier_size(0), unseen_size(v_size_), num_threads(num_threads_), task_queues(num_threads_), barrier(num_threads_) {
     result.Initialize(context, {LogicalType::BIGINT, LogicalType(LogicalType::BIGINT)}, STANDARD_VECTOR_SIZE);
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
@@ -176,15 +164,15 @@ public:
     src = FlatVector::GetData<int64_t>(src_data);
     dst = FlatVector::GetData<int64_t>(dst_data);
     for (auto i = 0; i < v_size; i++) {
-      // for (auto j = 0; j < 8; j++) {
-      //   seen[i][j] = 0;
-      //   visit1[i][j] = 0;
-      // }
-      seen[i] = 0;
-      visit1[i] = 0;
+      for (auto j = 0; j < 8; j++) {
+        seen[i][j] = 0;
+        visit1[i][j] = 0;
+      }
+      // seen[i] = 0;
+      // visit1[i] = 0;
     }
 
-    barrier.Init(num_threads);
+    // pthread_barrier_init(&barrier, NULL, num_threads);
     CreateTasks();
   }
 
@@ -198,16 +186,16 @@ public:
     }
     // empty visit vectors
     for (auto i = 0; i < v_size; i++) {
-      // for (auto j = 0; j < 8; j++) {
-      //   seen[i][j] = 0;
-      //   visit1[i][j] = 0;
-      // }
-      for (auto j = 0; j < LANE_LIMIT; j++) {
-        parents_v[i][j] = -1;
-        parents_e[i][j] = -1;
+      for (auto j = 0; j < 8; j++) {
+        seen[i][j] = 0;
+        visit1[i][j] = 0;
       }
-      seen[i] = 0;
-      visit1[i] = 0;
+      // for (auto j = 0; j < LANE_LIMIT; j++) {
+      //   parents_v[i][j] = -1;
+      //   parents_e[i][j] = -1;
+      // }
+      // seen[i] = 0;
+      // visit1[i] = 0;
     }
   }
 
@@ -244,12 +232,24 @@ public:
   int64_t lane_to_num[LANE_LIMIT];
   DataChunk result; // 0 for length, 1 for path
   ClientContext& context;
-  vector<atomic<std::bitset<LANE_LIMIT>>> seen;
-  vector<atomic<std::bitset<LANE_LIMIT>>> visit1;
-  vector<atomic<std::bitset<LANE_LIMIT>>> visit2;
+  // vector<atomic<std::bitset<LANE_LIMIT>>> seen;
+  // vector<atomic<std::bitset<LANE_LIMIT>>> visit1;
+  // vector<atomic<std::bitset<LANE_LIMIT>>> visit2;
   // vector<atomic<idx_t>[8]> seen;
   // vector<atomic<idx_t>[8]> visit1;
   // vector<atomic<idx_t>[8]> visit2;
+  // vector<std::bitset<LANE_LIMIT>> seen;
+  // vector<std::bitset<LANE_LIMIT>> visit1;
+  // vector<std::bitset<LANE_LIMIT>> visit2;
+  // vector<atomic<std::bitset<LANE_LIMIT>>> seen;
+  // vector<atomic<std::bitset<LANE_LIMIT>>> visit1;
+  // vector<atomic<std::bitset<LANE_LIMIT>>> visit2;
+  vector<atomic<idx_t>[8]> seen;
+  vector<atomic<idx_t>[8]> visit1;
+  vector<atomic<idx_t>[8]> visit2;
+  unique_ptr<Vector> result_length;
+  unique_ptr<Vector> result_path;
+
   vector<std::vector<int64_t>> parents_v;
   vector<std::vector<int64_t>> parents_e;
 
@@ -266,8 +266,9 @@ public:
   constexpr static int64_t split_size = 256;
 
   Barrier barrier;
+  // pthread_barrier_t barrier;
 
-  std::chrono::milliseconds time_elapsed = std::chrono::milliseconds(0);
+  std::chrono::microseconds time_elapsed = std::chrono::microseconds(0);
 
   // lock for next
   mutable mutex lock;
@@ -384,81 +385,38 @@ public:
     auto& bfs_state = state.global_bfs_state;
     auto& change = bfs_state->change;
     auto& seen = bfs_state->seen;
-    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
+    auto result_data = FlatVector::GetData<int64_t>(bfs_state->result.data[0]);
+    ValidityMask &result_validity = FlatVector::Validity(bfs_state->result.data[0]);
+    auto& iter = bfs_state->iter;
+    auto& lane_to_num = bfs_state->lane_to_num;
     // auto& frontier_size = bfs_state->frontier_size;
     // auto& unseen_size = bfs_state->unseen_size;
-
-    InitTask();
 
     int64_t *v = (int64_t *)state.global_csr->v;
     vector<int64_t> &e = state.global_csr->e;
 
     BoundaryCalculation();
 
-    // clear next before each iteration
-    for (auto i = left; i < right; i++) {
-      // for (auto j = 0; j < 8; j++) {
-      //   next[i][j].store(0, std::memory_order_relaxed);
-      // }
-      next[i] = 0;
-    }
+    do {
+      barrier.Wait();
+      change = false;
+      InitTask();
 
-    barrier.Wait();
+      auto& visit = iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+      auto& next = iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
 
-    while (true) {
-      auto task = FetchTask();
-      if (task.first == task.second) {
-        break;
+      IterativeLength(v, change, barrier, e, seen, visit, next);
+      barrier.Wait();
+
+      if (worker_id == 0) {
+        ReachDetect(result_data);
       }
-      auto start = task.first;
-      auto end = task.second;
 
-      for (auto i = start; i < end; i++) {
-        // for (auto j = 0; j < 8; j++) {
-        //   if (visit[i][j].load(std::memory_order_relaxed)) {
-        //     for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-        //       auto n = e[offset];
-        //       next[n][j].store(next[n][j].load(std::memory_order_relaxed) | visit[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
-        //       // next[n][j] = next[n][j] | visit[i][j];
-        //     }
-        //   }
-        // }
-        if (visit[i].load(std::memory_order_relaxed).any()) {
-          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-            auto n = e[offset];
-            // lock_guard<mutex> lock(bfs_state->lock);
-            next[n].store(next[n].load(std::memory_order_relaxed) | visit[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
-            // next[n] = next[n] | visit[i];
-          }
-        }
-      }
-    }
+    } while (change);
 
-    barrier.Wait();
-
-    for (auto i = left; i < right; i++) {
-      // for (auto j = 0; j < 8; j++) {
-      //   if (next[i][j].load(std::memory_order_relaxed)) {
-      //     next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
-      //     seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
-      //     // next[i][j] = next[i][j] & ~seen[i][j];
-      //     // seen[i][j] = seen[i][j] | next[i][j];
-      //     change |= next[i][j].load(std::memory_order_relaxed);
-      //   }
-      // }
-      if (next[i].load(std::memory_order_relaxed).any()) {
-        next[i].store(next[i].load(std::memory_order_relaxed) & ~seen[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
-        seen[i].store(seen[i].load(std::memory_order_relaxed) | next[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
-        change |= next[i].load(std::memory_order_relaxed).any();
-        // next[i] = next[i] & ~seen[i];
-        // seen[i] = seen[i] | next[i];
-        // change |= next[i].any();
-
-        // frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
-        // unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
-      }
+    if (worker_id == 0) {
+      UnReachableSet(result_data, result_validity);
     }
 
 		event->FinishTask();
@@ -494,6 +452,86 @@ private:
     left = block_size * worker_id;
     right = std::min(block_size * (worker_id + 1), (idx_t)v_size);
   }
+
+  void IterativeLength(int64_t *v, bool& change, Barrier& barrier,
+                      vector<int64_t> &e,
+                      vector<atomic<idx_t>[8]> &seen,
+                      vector<atomic<idx_t>[8]> &visit,
+                      vector<atomic<idx_t>[8]> &next) {
+    // clear next before each iteration
+    for (auto i = left; i < right; i++) {
+      for (auto j = 0; j < 8; j++) {
+        next[i][j].store(0, std::memory_order_relaxed);
+      }
+      // next[i] = 0;
+    }
+
+    barrier.Wait();
+
+    while (true) {
+      auto task = FetchTask();
+      if (task.first == task.second) {
+        break;
+      }
+      auto start = task.first;
+      auto end = task.second;
+
+      for (auto i = start; i < end; i++) {
+        for (auto j = 0; j < 8; j++) {
+          if (visit[i][j].load(std::memory_order_relaxed)) {
+            for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+              auto n = e[offset];
+              next[n][j].store(next[n][j].load(std::memory_order_relaxed) | visit[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+            }
+          }
+        }
+      }
+    }
+
+    barrier.Wait();
+
+    for (auto i = left; i < right; i++) {
+      for (auto j = 0; j < 8; j++) {
+        if (next[i][j].load(std::memory_order_relaxed)) {
+          next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+          seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+          change |= next[i][j].load(std::memory_order_relaxed);
+        }
+      }
+    }
+  }
+
+void ReachDetect(int64_t *result_data) {
+  auto &bfs_state = state.global_bfs_state;
+  // detect lanes that finished
+  for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+    int64_t search_num = bfs_state->lane_to_num[lane];
+    if (search_num >= 0) { // active lane
+      int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
+      if (bfs_state->seen[bfs_state->dst[dst_pos]][lane / 64] & ((idx_t)1 << (lane % 64))) {
+      // if (bfs_state->seen[bfs_state->dst[dst_pos]].load(std::memory_order_relaxed)[lane]) {
+      // if (bfs_state->seen[bfs_state->dst[dst_pos]][lane]) {
+        result_data[search_num] =
+            bfs_state->iter;               /* found at iter => iter = path length */
+        bfs_state->lane_to_num[lane] = -1; // mark inactive
+      }
+    }
+  }
+  // into the next iteration
+  bfs_state->iter++;
+}
+
+void UnReachableSet(int64_t *result_data, ValidityMask &result_validity) {
+  auto &bfs_state = state.global_bfs_state;
+  for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+    int64_t search_num = bfs_state->lane_to_num[lane];
+    if (search_num >= 0) { // active lane
+      result_validity.SetInvalid(search_num);
+      result_data[search_num] = (int64_t)-1; /* no path */
+      bfs_state->lane_to_num[lane] = -1;     // mark inactive
+    }
+  }
+}
 
 private:
 	ClientContext &context;
@@ -650,7 +688,6 @@ public:
     auto &bfs_state = gstate.global_bfs_state;
 		auto &context = pipeline->GetClientContext();
 
-    bfs_state->change = false;
 
     // Determine the switch of algorithms
     // if (bfs_state->is_top_down) {
@@ -665,8 +702,8 @@ public:
     //   }
     // }
     // clear the counters after the switch
-    bfs_state->frontier_size = 0;
-    bfs_state->unseen_size = bfs_state->v_size;
+    // bfs_state->frontier_size = 0;
+    // bfs_state->unseen_size = bfs_state->v_size;
 
 		vector<shared_ptr<Task>> bfs_tasks;
     for (idx_t tnum = 0; tnum < bfs_state->num_threads; tnum++) {
@@ -680,46 +717,12 @@ public:
 		auto& bfs_state = gstate.global_bfs_state;
 
     auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
     bfs_state->time_elapsed += duration;
 
-    auto result_data = FlatVector::GetData<int64_t>(bfs_state->result.data[0]);
-    ValidityMask &result_validity = FlatVector::Validity(bfs_state->result.data[0]);
-
-		if (bfs_state->change) {
-      // detect lanes that finished
-      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-        int64_t search_num = bfs_state->lane_to_num[lane];
-        if (search_num >= 0) { // active lane
-          int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
-          // if (bfs_state->seen[bfs_state->dst[dst_pos]][lane / 64] & ((idx_t)1 << (lane % 64))) {
-          if (bfs_state->seen[bfs_state->dst[dst_pos]].load(std::memory_order_relaxed)[lane]) {
-            result_data[search_num] =
-                bfs_state->iter;               /* found at iter => iter = path length */
-            bfs_state->lane_to_num[lane] = -1; // mark inactive
-          }
-        }
-      }
-      // into the next iteration
-      bfs_state->iter++;
-
-      auto bfs_event = std::make_shared<ParallelIterativeEvent>(gstate, *pipeline);
-      this->InsertEvent(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event));
-		} else {
-      // no changes anymore: any still active searches have no path
-      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-        int64_t search_num = bfs_state->lane_to_num[lane];
-        if (search_num >= 0) { // active lane
-          result_validity.SetInvalid(search_num);
-          result_data[search_num] = (int64_t)-1; /* no path */
-          bfs_state->lane_to_num[lane] = -1;     // mark inactive
-        }
-      }
-
-      // if remaining pairs, schedule the BFS for the next batch
-      if (bfs_state->started_searches < gstate.global_tasks->Count()) {
-        PhysicalPathFinding::ScheduleBFSTasks(*pipeline, *this, gstate);
-      }
+    // if remaining pairs, schedule the BFS for the next batch
+    if (bfs_state->started_searches < gstate.global_tasks->Count()) {
+      PhysicalPathFinding::ScheduleBFSTasks(*pipeline, *this, gstate);
     }
   }
 };
@@ -1265,7 +1268,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 		idx_t num_threads = ts.NumberOfThreads();
     gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size - 2, num_threads, context);
 
-    // auto bfs_event = make_shared<SequentialShortestPathEvent>(gstate, pipeline);
+    // auto bfs_event = make_shared<SequentialIterativeEvent>(gstate, pipeline);
     // event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
 
     // Schedule the first round of BFS tasks
@@ -1308,10 +1311,11 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
               (uint64_t)0; // path of length 0 does not require a search
         } else {
           bfs_state->frontier_size++;
-          // bfs_state->visit1[bfs_state->src[src_pos]][lane / 64] |= ((idx_t)1 << (lane % 64));
-          auto new_visit = bfs_state->visit1[bfs_state->src[src_pos]].load();
-          new_visit[lane] = true;
-          bfs_state->visit1[bfs_state->src[src_pos]].store(new_visit);
+          bfs_state->visit1[bfs_state->src[src_pos]][lane / 64] |= ((idx_t)1 << (lane % 64));
+          // auto new_visit = bfs_state->visit1[bfs_state->src[src_pos]].load();
+          // new_visit[lane] = true;
+          // bfs_state->visit1[bfs_state->src[src_pos]].store(new_visit);
+          // bfs_state->visit1[bfs_state->src[src_pos]][lane] = true;
           bfs_state->lane_to_num[lane] = search_num; // active lane
           break;
         }
