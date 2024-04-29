@@ -37,8 +37,6 @@ public:
     size_t v_size;
     bool is_ready = false;
 
-    Vector result = Vector(LogicalType::BIGINT);
-
     std::mutex csr_lock;
   public:
     void InitializeVertex(int64_t v_size);
