@@ -230,13 +230,25 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
 }
 
 CreateScalarFunctionInfo DuckPGQFunctions::GetShortestPathFunction() {
-  auto fun = ScalarFunction("shortestpath",
-                            {LogicalType::INTEGER, LogicalType::BIGINT,
+
+  ScalarFunctionSet set("shortestpath");
+
+  set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
                              LogicalType::BIGINT, LogicalType::BIGINT},
                             LogicalType::LIST(LogicalType::BIGINT),
                             ShortestPathFunction,
-                            IterativeLengthFunctionData::IterativeLengthBind);
-  return CreateScalarFunctionInfo(fun);
+                            IterativeLengthFunctionData::IterativeLengthBind));
+  set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
+                           LogicalType::BIGINT, LogicalType::BIGINT},
+                          LogicalType::LIST(LogicalType::BIGINT),
+                          ShortestPathFunction,
+                          IterativeLengthFunctionData::IterativeLengthBind));
+
+  set.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT},
+                                 LogicalType::LIST(LogicalType::BIGINT), ShortestPathFunction,
+                                 IterativeLengthFunctionData::IterativeLengthBind));
+
+  return CreateScalarFunctionInfo(set);
 }
 
 }; // namespace duckdb
