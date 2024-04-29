@@ -23,7 +23,6 @@ public:
   public:
     GlobalCompressedSparseRow(ClientContext &context){
     };
-
     atomic<int64_t> *v;
     atomic<int64_t> *reverse_v;
     vector<int64_t> e;
@@ -97,12 +96,15 @@ public:
   static constexpr const PhysicalOperatorType TYPE =
       PhysicalOperatorType::EXTENSION;
 
+
 public:
   PhysicalPathFinding(LogicalExtensionOperator &op,
                       unique_ptr<PhysicalOperator> left,
                       unique_ptr<PhysicalOperator> right);
 public:
   vector<unique_ptr<Expression>> expressions;
+  string mode; // "iterativelength" or "shortestpath"
+
 
 public:
   // CachingOperator Interface

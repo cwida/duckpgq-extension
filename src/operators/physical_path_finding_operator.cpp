@@ -8,11 +8,12 @@
 #include "duckdb/parallel/event.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
-#include <cmath>
-#include <thread>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <duckpgq/operators/logical_path_finding_operator.hpp>
 #include <pthread.h>
+#include <thread>
 
 namespace duckdb {
 
@@ -23,6 +24,8 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
   children.push_back(std::move(left));
   children.push_back(std::move(right));
   expressions = std::move(op.expressions);
+  auto &path_finding_op = op.Cast<LogicalPathFindingOperator>();
+  mode = path_finding_op.mode;
 }
 
 void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(
@@ -152,7 +155,7 @@ public:
         seen(v_size_), visit1(v_size_), visit2(v_size_), context(context_),
         total_len(0), parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)),
         frontier_size(0), unseen_size(v_size_), num_threads(num_threads_), task_queues(num_threads_), barrier(num_threads_) {
-    result.Initialize(context, {LogicalType::BIGINT, LogicalType(LogicalType::BIGINT)}, STANDARD_VECTOR_SIZE);
+    result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, STANDARD_VECTOR_SIZE);
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
     }
@@ -262,20 +265,22 @@ public:
 
 class PathFindingGlobalState : public GlobalSinkState {
 public:
-  using GlobalCompressedSparseRow = PhysicalPathFinding::GlobalCompressedSparseRow;
+  using GlobalCompressedSparseRow =
+      PhysicalPathFinding::GlobalCompressedSparseRow;
   PathFindingGlobalState(ClientContext &context,
                          const PhysicalPathFinding &op) {
     global_tasks = make_uniq<ColumnDataCollection>(context, op.children[0]->GetTypes());
     global_inputs = make_uniq<ColumnDataCollection>(context, op.children[1]->GetTypes());
     global_csr = make_uniq<GlobalCompressedSparseRow>(context);
     child = 0;
+    mode = op.mode;
   }
 
   PathFindingGlobalState(PathFindingGlobalState &prev)
       : GlobalSinkState(prev), global_tasks(std::move(prev.global_tasks)),
       global_inputs(std::move(prev.global_inputs)),
       global_csr(std::move(prev.global_csr)), 
-      global_bfs_state(std::move(prev.global_bfs_state)), child(prev.child + 1) {
+      global_bfs_state(std::move(prev.global_bfs_state)), child(prev.child + 1), mode(prev.mode) {
   }
 
   void Sink(DataChunk &input, PathFindingLocalState &lstate) const {
@@ -315,7 +320,7 @@ public:
   unique_ptr<GlobalCompressedSparseRow> global_csr;
   // state for BFS
   unique_ptr<GlobalBFSState> global_bfs_state;
-
+  string mode;
   size_t child;
 };
 
@@ -1417,9 +1422,14 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
         }
       }
     }
+    if (gstate.mode == "iterativelength") {
+      auto bfs_event = make_shared<ParallelIterativeEvent>(gstate, pipeline);
+      event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
+    } else if (gstate.mode == "shortestpath") {
+      auto bfs_event = make_shared<ParallelShortestPathEvent>(gstate, pipeline);
+      event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
+    }
 
-    auto bfs_event = make_shared<ParallelIterativeEvent>(gstate, pipeline);
-    event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
   }
 }
 
@@ -1493,15 +1503,21 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
     return SourceResultType::FINISHED;
   }
   pf_bfs_state->result.SetCardinality(*pf_bfs_state->pairs);
-  pf_bfs_state->result.Print();
+  // pf_bfs_state->result.Print();
   string message = "Algorithm running time: " + to_string(pf_bfs_state->time_elapsed.count()) + " us";
   Printer::Print(message);
 
   result.Move(*pf_bfs_state->pairs);
   auto result_path = make_uniq<DataChunk>();
-  //! Split off the path from the path length, and then fuse the path length into the result DataChunk
+  //! Split off the path from the path length, and then fuse into the result
   pf_bfs_state->result.Split(*result_path, 1);
-  result.Fuse(pf_bfs_state->result);
+  if (pf_sink.mode == "iterativelength") {
+    result.Fuse(pf_bfs_state->result);
+  } else if (pf_sink.mode == "shortestpath") {
+    result.Fuse(*result_path);
+  } else {
+      throw NotImplementedException("Unrecognized mode for Path Finding");
+  }
   // result.Print();
   return result.size() == 0
       ? SourceResultType::FINISHED
