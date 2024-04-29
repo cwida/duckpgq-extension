@@ -1493,7 +1493,7 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
     return SourceResultType::FINISHED;
   }
   pf_bfs_state->result.SetCardinality(*pf_bfs_state->pairs);
-  pf_bfs_state->result_path->Print(pf_bfs_state->pairs->size());
+  pf_bfs_state->result.Print();
   string message = "Algorithm running time: " + to_string(pf_bfs_state->time_elapsed.count()) + " us";
   Printer::Print(message);
 
