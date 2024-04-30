@@ -120,32 +120,59 @@ void PathFindingLocalState::CreateCSRVertex(DataChunk &input,
       });
 }
 
+// class Barrier {
+// public:
+//   explicit Barrier(std::size_t iCount) :
+//     mThreshold(iCount),
+//     mCount(iCount),
+//     mGeneration(0) {
+//   }
+
+//   void Wait() {
+//       std::unique_lock<std::mutex> lLock{mMutex};
+//       auto lGen = mGeneration;
+//       if (!--mCount) {
+//           mGeneration++;
+//           mCount = mThreshold;
+//           mCond.notify_all();
+//       } else {
+//           mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
+//       }
+//   }
+
+// private:
+//   std::mutex mMutex;
+//   std::condition_variable mCond;
+//   std::size_t mThreshold;
+//   std::size_t mCount;
+//   std::size_t mGeneration;
+// };
+
 class Barrier {
 public:
-    explicit Barrier(std::size_t iCount) :
-      mThreshold(iCount),
-      mCount(iCount),
-      mGeneration(0) {
-    }
+  explicit Barrier(std::size_t iCount) :
+    mThreshold(iCount),
+    mCount(iCount),
+    mGeneration(0) {
+  }
 
-    void Wait() {
-        std::unique_lock<std::mutex> lLock{mMutex};
-        auto lGen = mGeneration;
-        if (!--mCount) {
-            mGeneration++;
-            mCount = mThreshold;
-            mCond.notify_all();
-        } else {
-            mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
-        }
+  void Wait() {
+    auto lGen = mGeneration.load();
+    if (!--mCount) {
+      mCount = mThreshold;
+      ++mGeneration;
+    } else {
+      while (lGen == mGeneration.load()) {
+        std::this_thread::yield();
+      }
     }
+  }
 
 private:
-    std::mutex mMutex;
-    std::condition_variable mCond;
-    std::size_t mThreshold;
-    std::size_t mCount;
-    std::size_t mGeneration;
+  std::mutex mMutex;
+  std::size_t mThreshold;
+  std::atomic<std::size_t> mCount;
+  std::atomic<std::size_t> mGeneration;
 };
 
 class GlobalBFSState {
@@ -387,8 +414,6 @@ public:
     BoundaryCalculation();
 
     do {
-      barrier.Wait();
-      change = false;
       InitTask();
 
       auto& visit = iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
@@ -400,7 +425,7 @@ public:
       if (worker_id == 0) {
         ReachDetect(result_data);
       }
-
+      barrier.Wait();
     } while (change);
 
     if (worker_id == 0) {
@@ -463,18 +488,24 @@ private:
       auto start = task.first;
       auto end = task.second;
 
+      idx_t old_next, new_next;
+
       for (auto i = start; i < end; i++) {
         for (auto j = 0; j < 8; j++) {
           if (visit[i][j].load(std::memory_order_relaxed)) {
             for (auto offset = v[i]; offset < v[i + 1]; offset++) {
               auto n = e[offset];
-              next[n][j].store(next[n][j].load(std::memory_order_relaxed) | visit[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+              do {
+                old_next = next[n][j].load();
+                new_next = old_next | visit[i][j].load();
+              } while (!next[n][j].compare_exchange_weak(old_next, new_next));
             }
           }
         }
       }
     }
 
+    change = false;
     barrier.Wait();
 
     for (auto i = left; i < right; i++) {
@@ -947,20 +978,19 @@ private:
       auto start = task.first;
       auto end = task.second;
 
+      idx_t old_next, new_next;
+
       for (auto i = start; i < end; i++) {
         for (auto j = 0; j < 8; j++) {
           if (visit[i][j].load(std::memory_order_relaxed)) {
             for (auto offset = v[i]; offset < v[i + 1]; offset++) {
               auto n = e[offset];
               auto edge_id = edge_ids[offset];
-              // lock_guard<mutex> lock(state.global_bfs_state->lock);
-              // next[n][j] = next[n][j] | visit[i][j];
-              next[n][j].store(next[n][j].load(std::memory_order_relaxed) | visit[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+              do {
+                old_next = next[n][j].load();
+                new_next = old_next | visit[i][j].load();
+              } while (!next[n][j].compare_exchange_weak(old_next, new_next));
               for (auto l = 0; l < LANE_LIMIT; l++) {
-                // parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i][l / 64] & ((idx_t)1 << (l % 64)))
-                        // ? i : parents_v[n][l];
-                // parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i][l / 64] & ((idx_t)1 << (l % 64)))
-                        // ? edge_id : parents_e[n][l];
                 parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
                         ? i : parents_v[n][l];
                 parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
