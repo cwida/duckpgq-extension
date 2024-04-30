@@ -91,8 +91,8 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
     throw Exception(ExceptionType::PARSER,
         "More than 1 statement detected, please only give one.");
   }
-  return {make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
-      std::move(parser.statements[0]))};
+  return ParserExtensionParseResult(make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
+      std::move(parser.statements[0])));
 }
 
 BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
