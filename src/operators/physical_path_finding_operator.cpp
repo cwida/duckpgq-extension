@@ -182,7 +182,7 @@ public:
         seen(v_size_), visit1(v_size_), visit2(v_size_), context(context_),
         total_len(0), parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)),
         frontier_size(0), unseen_size(v_size_), num_threads(num_threads_), task_queues(num_threads_), barrier(num_threads_) {
-    result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, STANDARD_VECTOR_SIZE);
+    result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
     }
@@ -264,8 +264,6 @@ public:
   vector<array<atomic<idx_t>, 8>> seen;
   vector<array<atomic<idx_t>, 8>> visit1;
   vector<array<atomic<idx_t>, 8>> visit2;
-  unique_ptr<Vector> result_length;
-  unique_ptr<Vector> result_path;
 
   vector<std::vector<int64_t>> parents_v;
   vector<std::vector<int64_t>> parents_e;
