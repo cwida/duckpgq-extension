@@ -8,6 +8,9 @@
 require duckpgq
 
 statement ok
+set experimental_path_finding_operator=true;
+
+statement ok
 CREATE TABLE pair(src BIGINT, dst BIGINT); INSERT INTO pair(src, dst) VALUES (0, 1), (1, 2), (2,0);
 
 statement ok
@@ -26,76 +29,62 @@ know   SOURCE KEY (src) REFERENCES student (id)
         DESTINATION KEY (dst) references student (id)
 );
 
-# statement ok
-# -FROM GRAPH_TABLE(pg
-#    MATCH (f:student)-[k:knows]->{0,3}(f2:student)
-#    COLUMNS (*)
-#    );
+query III
+SELECT *, iterativelength(src, dst) as length
+FROM pair AS p
+WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
+            (SELECT count(a.id) as v_size FROM Student a),
+            (SELECT count(k.src) as e_size from know k),
+              a.rowid,
+              c.rowid,
+              k.rowid,
+              t.cnt)    FROM Know k
+                          JOIN student a on a.id = k.src
+                          JOIN student c on c.id = k.dst
+                          JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
+                                  FROM student a
+                                 LEFT JOIN know k ON k.src = a.id
+                                 GROUP BY a.rowid) t
+                             ON t.a_rowid = a.rowid) AND p.dst;
+----
+0	1	NULL
+1	2	2
+2	0	1
 
-#  query III
-#  SELECT *, iterativelength(src, dst) as length
-#  FROM pair AS p
-#  WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
-#              (SELECT count(a.id) as v_size FROM Student a),
-#              (SELECT count(k.src) as e_size from know k),
-#              a.rowid,
-#              c.rowid,
-#              k.rowid,
-#              t.cnt)    FROM Know k
-#                          JOIN student a on a.id = k.src
-#                          JOIN student c on c.id = k.dst
-#                          JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
-#                                  FROM student a
-#                                 LEFT JOIN know k ON k.src = a.id
-#                                 GROUP BY a.rowid) t
-#                             ON t.a_rowid = a.rowid) AND p.dst;
-# ----
-# 0	1	NULL
-# 1	2	2
-# 2	0	1
-
-#  query III
-#  SELECT *, shortestpath(src, dst) as path
-#  FROM pair AS p
-#  WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
-#              (SELECT count(a.id) as v_size FROM Student a),
-#              (SELECT count(k.src) as e_size from know k),
-#              a.rowid,
-#              c.rowid,
-#              k.rowid,
-#              t.cnt)    FROM Know k
-#                          JOIN student a on a.id = k.src
-#                          JOIN student c on c.id = k.dst
-#                          JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
-#                                  FROM student a
-#                                 LEFT JOIN know k ON k.src = a.id
-#                                 GROUP BY a.rowid) t
-#                             ON t.a_rowid = a.rowid) AND p.dst;
-# ----
-# 0	1	NULL
-# 1	2	[1, 3, 0, 1, 2]
-# 2	0	[2, 4, 0]
+query III
+SELECT *, shortestpath(src, dst) as path
+FROM pair AS p
+WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
+              (SELECT count(a.id) as v_size FROM Student a),
+              (SELECT count(k.src) as e_size from know k),
+              a.rowid,
+              c.rowid,
+              k.rowid,
+              t.cnt)    FROM Know k
+                          JOIN student a on a.id = k.src
+                          JOIN student c on c.id = k.dst
+                          JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
+                                  FROM student a
+                                 LEFT JOIN know k ON k.src = a.id
+                                 GROUP BY a.rowid) t
+                             ON t.a_rowid = a.rowid) AND p.dst;
+----
+0	1	NULL
+1	2	[1, 3, 0, 1, 2]
+2	0	[2, 4, 0]
 
 statement ok
 import database 'duckdb-pgq/data/SNB0.003';
-# import database 'duckdb-pgq/data/SNB1-projected|';
 
-
-# statement ok
-# DELETE FROM Person
-# WHERE rowid NOT IN (
-#   SELECT rowid FROM Person
-#   ORDER BY rowid ASC
-#   LIMIT 500
-# );
-
+statement ok
+select setseed(0.42)
 
 statement ok
 CREATE OR REPLACE TABLE pairs2 AS (
     SELECT src, dst 
     FROM (SELECT a.rowid AS src FROM Person a),
         (SELECT b.rowid AS dst FROM Person b)
-    USING SAMPLE reservoir(1 ROWS) REPEATABLE (300)
+    USING SAMPLE reservoir(2 ROWS) REPEATABLE (300)
 );
 
 statement ok
@@ -109,10 +98,8 @@ EDGE TABLES (
                             LABEL Knows
     );
 
-#statement ok
-#set experimental_path_finding_operator = 'true';
 
-query II
+query III
 SELECT *, iterativelength(src, dst) as length
 FROM pairs2 AS p
 WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
@@ -130,6 +117,9 @@ WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
                                 GROUP BY a.rowid) t
                             ON t.a_rowid = a.rowid) AND p.dst;
 ----
+42	22	NULL
+3	33	2
+
 
 query III
 WITH cte1 AS (
@@ -160,6 +150,8 @@ WITH cte1 AS (
         FROM pairs2 p, (select count(cte1.temp) * 0 as temp from cte1) __x
         WHERE __x.temp * 0 >= 0;
 ----
+42	22	NULL
+3	33	2
 
 #            CAST (
 #                (SELECT sum(CREATE_CSR_VERTEX(0,

@@ -14,6 +14,7 @@
 #include "duckdb/planner/operator/logical_limit.hpp"
 #include "duckdb/planner/operator/logical_get.hpp"
 #include "duckpgq/common.hpp"
+#include "duckdb/main/config.hpp"
 #include "duckpgq/operators/logical_path_finding_operator.hpp"
 #include "duckpgq/compressed_sparse_row.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
@@ -96,15 +97,15 @@ public:
 
   static void DuckpgqOptimizeFunction(ClientContext &context, OptimizerExtensionInfo *info,
                                      duckdb::unique_ptr<LogicalOperator> &plan) {
-    Value path_finding_operator_enabled;
-    context.db->TryGetCurrentSetting("experimental_path_finding_operator", path_finding_operator_enabled);
-    // If the path finding operator is not enabled, we do not need to do anything
-    if (!path_finding_operator_enabled.GetValue<bool>()) {
+    auto& client_config = ClientConfig::GetConfig(context);
+    auto const path_finding_operator_option = client_config.set_variables.find("experimental_path_finding_operator");
+    if (path_finding_operator_option == client_config.set_variables.end()) {
+      return; // If the path finding operator is not enabled, we do not need to do anything
+    }
+    if (!path_finding_operator_option->second.GetValue<bool>()) {
       return;
     }
-    if (!InsertPathFindingOperator(*plan)) {
-      return;
-    }
+    InsertPathFindingOperator(*plan);
   }
 };
 
