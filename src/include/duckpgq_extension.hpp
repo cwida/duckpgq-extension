@@ -96,7 +96,12 @@ public:
 
   static void DuckpgqOptimizeFunction(ClientContext &context, OptimizerExtensionInfo *info,
                                      duckdb::unique_ptr<LogicalOperator> &plan) {
-
+    Value path_finding_operator_enabled;
+    context.db->TryGetCurrentSetting("experimental_path_finding_operator", path_finding_operator_enabled);
+    // If the path finding operator is not enabled, we do not need to do anything
+    if (!path_finding_operator_enabled.GetValue<bool>()) {
+      return;
+    }
     if (!InsertPathFindingOperator(*plan)) {
       return;
     }

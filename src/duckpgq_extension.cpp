@@ -48,7 +48,9 @@ static void LoadInternal(DatabaseInstance &instance) {
   config.parser_extensions.push_back(pgq_parser);
   config.operator_extensions.push_back(make_uniq<DuckPGQOperatorExtension>());
   config.optimizer_extensions.push_back(DuckpgqOptimizerExtension());
-
+  config.AddExtensionOption("experimental_path_finding_operator",
+    "Enables the experimental path finding operator to be triggered",
+    LogicalType::BOOLEAN, Value(false));
   Connection con(instance);
   con.BeginTransaction();
 
