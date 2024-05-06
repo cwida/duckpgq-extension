@@ -48,6 +48,9 @@ static void CsrInitializeEdge(DuckPGQState &context, int32_t id, int64_t v_size,
   const lock_guard<mutex> csr_init_lock(context.csr_lock);
 
   auto csr_entry = context.csr_list.find(id);
+  if (csr_entry == context.csr_list.end()) {
+    throw InvalidInputException("CSR has not been initialized properly");
+  }
   if (csr_entry->second->initialized_e) {
     return;
   }
@@ -69,7 +72,9 @@ static void CsrInitializeWeight(DuckPGQState &context, int32_t id,
                                 int64_t e_size, PhysicalType weight_type) {
   const lock_guard<mutex> csr_init_lock(context.csr_lock);
   auto csr_entry = context.csr_list.find(id);
-
+  if (csr_entry == context.csr_list.end()) {
+    throw InvalidInputException("CSR has not been initialized properly");
+  }
   if (csr_entry->second->initialized_w) {
     return;
   }
@@ -148,6 +153,9 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
   int64_t edge_size = args.data[2].GetValue(0).GetValue<int64_t>();
 
   auto csr_entry = duckpgq_state->csr_list.find(info.id);
+  if (csr_entry == duckpgq_state->csr_list.end()) {
+    throw InvalidInputException("CSR has not been initialized properly");
+  }
   if (!csr_entry->second->initialized_e) {
     CsrInitializeEdge(*duckpgq_state, info.id, vertex_size, edge_size);
   }

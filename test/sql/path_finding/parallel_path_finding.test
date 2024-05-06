@@ -109,6 +109,9 @@ EDGE TABLES (
                             LABEL Knows
     );
 
+#statement ok
+#set experimental_path_finding_operator = 'true';
+
 query II
 SELECT *, iterativelength(src, dst) as length
 FROM pairs2 AS p
