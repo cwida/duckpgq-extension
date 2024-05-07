@@ -37,14 +37,6 @@ public:
   }
 
   static bool InsertPathFindingOperator(LogicalOperator &op, ClientContext &context) {
-    if (op.type != LogicalOperatorType::LOGICAL_PROJECTION) { // We only care about projections
-      for (auto &child : op.children) { // But a child might have it
-        if (InsertPathFindingOperator(*child, context)) {
-          return true;
-        }
-      }
-      return false; // No child had it
-    }
     unique_ptr<Expression> function_expression;
     string mode;
     for (int64_t i = op.expressions.size() - 1; i >= 0; --i) {
@@ -56,26 +48,17 @@ public:
       if (bound_function_expression.function.name == "iterativelength") {
         op.expressions.emplace_back(make_uniq<BoundColumnRefExpression>(
     expr->alias, LogicalType::BIGINT, ColumnBinding(10, 0)));
+        function_expression = expr->Copy();
         op.expressions.erase(op.expressions.begin() + i);
         mode = "iterativelength";
-        function_expression = expr->Copy();
       } else if (bound_function_expression.function.name == "shortestpath") {
         op.expressions.emplace_back(make_uniq<BoundColumnRefExpression>(
     expr->alias, LogicalType::LIST(LogicalType::BIGINT), ColumnBinding(10, 0)));
+        function_expression = expr->Copy();
         op.expressions.erase(op.expressions.begin() + i);
         mode = "shortestpath";
-        function_expression = expr->Copy();
       }
     }
-    if (!function_expression) { // Didn't find the function expression
-      for (auto &child : op.children) { // But a child might have it
-        if (InsertPathFindingOperator(*child, context)) {
-          return true;
-        }
-      }
-      return false; // No child had it
-    }
-
     for (const auto &child : op.children) {
       vector<unique_ptr<LogicalOperator>> path_finding_children;
       if (child->type != LogicalOperatorType::LOGICAL_COMPARISON_JOIN) {
