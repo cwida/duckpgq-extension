@@ -53,9 +53,6 @@ fi
 # Signature is always there, potentially defaulting to 256 zeros
 truncate -s 256 $ext.sign
 
-# append signature to extension binary
-cat $ext.sign >> $ext.append
-
 # compress extension binary
 if [[ $4 == wasm_* ]]; then
   brotli < $ext.append > "$ext.compressed"
