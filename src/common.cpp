@@ -72,7 +72,7 @@ CSRFunctionData::CSRBind(ClientContext &context, ScalarFunction &bound_function,
 }
 
 unique_ptr<FunctionData> IterativeLengthFunctionData::Copy() const {
-  return make_uniq<IterativeLengthFunctionData>(context, csr_id);
+  return make_uniq<IterativeLengthFunctionData>(context, table_to_scan, csr_id);
 }
 
 bool IterativeLengthFunctionData::Equals(const FunctionData &other_p) const {
@@ -83,8 +83,9 @@ bool IterativeLengthFunctionData::Equals(const FunctionData &other_p) const {
 unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
     ClientContext &context, ScalarFunction &bound_function,
     vector<unique_ptr<Expression>> &arguments) {
-  if (arguments.size() == 2) {
-    return make_uniq<IterativeLengthFunctionData>(context, 0);
+  if (arguments.size() == 3) {
+    string table_to_scan = ExpressionExecutor::EvaluateScalar(context, *arguments[2]).GetValue<string>();
+    return make_uniq<IterativeLengthFunctionData>(context, table_to_scan, 0);
   }
   if (!arguments[0]->IsFoldable()) {
     throw InvalidInputException("Id must be constant.");
@@ -93,7 +94,7 @@ unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
   int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0])
                        .GetValue<int32_t>();
 
-  return make_uniq<IterativeLengthFunctionData>(context, csr_id);
+  return make_uniq<IterativeLengthFunctionData>(context, "", csr_id);
 }
 
 unique_ptr<FunctionData> CheapestPathLengthFunctionData::CheapestPathLengthBind(

@@ -166,7 +166,7 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetIterativeLengthFunction() {
                             LogicalType::BIGINT, IterativeLengthFunction,
                             IterativeLengthFunctionData::IterativeLengthBind));
 
-  set.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT},
+  set.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
                                  LogicalType::BIGINT, IterativeLengthFunction,
                                  IterativeLengthFunctionData::IterativeLengthBind));
 
