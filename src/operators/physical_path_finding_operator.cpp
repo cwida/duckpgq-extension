@@ -13,7 +13,13 @@
 #include <cmath>
 #include <duckpgq/operators/logical_path_finding_operator.hpp>
 #include <pthread.h>
+#include <numeric>
 #include <thread>
+
+#define SEGMENT_BITSET
+// #define ATOMIC_BITSET
+// #define FINE_GRAINED_LOCK
+// #define ELEMENT_LOCK
 
 namespace duckdb {
 
@@ -60,12 +66,14 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeEdge(
     e.resize(e_size, 0);
     reverse_e.resize(e_size, 0);
     edge_ids.resize(e_size, 0);
+    reverse_edge_ids.resize(e_size, 0);
   } catch (std::bad_alloc const &) {
     throw InternalException("Unable to initialize vector of size for csr "
                             "edge table representation");
   }
   for (idx_t i = 1; i < v_size; i++) {
     v[i] += v[i - 1];
+    reverse_v[i] += reverse_v[i - 1];
   }
   initialized_e = true;
 }
@@ -106,82 +114,98 @@ public:
 void PathFindingLocalState::CreateCSRVertex(DataChunk &input,
                                       GlobalCompressedSparseRow &global_csr) {
   if (!global_csr.initialized_v) {
-    const auto v_size = input.data[8].GetValue(0).GetValue<int64_t>();
+    const auto v_size = input.data[9].GetValue(0).GetValue<int64_t>();
     global_csr.InitializeVertex(v_size);
   }
   auto result = Vector(LogicalTypeId::BIGINT);
   BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
-      input.data[6], input.data[5], result, input.size(),
+      input.data[4], input.data[3], result, input.size(),
       [&](const int64_t src, const int64_t cnt) {
         int64_t edge_count = 0;
         global_csr.v[src + 2] = cnt;
         edge_count = edge_count + cnt;
         return edge_count;
       });
+  BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
+      input.data[7], input.data[6], result, input.size(),
+      [&](const int64_t dst, const int64_t cnt) {
+        int64_t edge_count = 0;
+        global_csr.reverse_v[dst + 2] = cnt;
+        edge_count = edge_count + cnt;
+        return edge_count;
+      });
 }
-
-// class Barrier {
-// public:
-//   explicit Barrier(std::size_t iCount) :
-//     mThreshold(iCount),
-//     mCount(iCount),
-//     mGeneration(0) {
-//   }
-
-//   void Wait() {
-//       std::unique_lock<std::mutex> lLock{mMutex};
-//       auto lGen = mGeneration;
-//       if (!--mCount) {
-//           mGeneration++;
-//           mCount = mThreshold;
-//           mCond.notify_all();
-//       } else {
-//           mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
-//       }
-//   }
-
-// private:
-//   std::mutex mMutex;
-//   std::condition_variable mCond;
-//   std::size_t mThreshold;
-//   std::size_t mCount;
-//   std::size_t mGeneration;
-// };
 
 class Barrier {
 public:
-  explicit Barrier(std::size_t iCount) :
+  explicit Barrier(std::size_t iType, std::size_t iCount) :
+    mType(iType),
     mThreshold(iCount),
     mCount(iCount),
     mGeneration(0) {
+    if (iType == 2) {
+      pthread_barrier_init(&mBarrier, nullptr, iCount);
+    }
   }
 
   void Wait() {
-    auto lGen = mGeneration.load();
-    if (!--mCount) {
-      mCount = mThreshold;
-      ++mGeneration;
-    } else {
-      while (lGen == mGeneration.load()) {
-        std::this_thread::yield();
+    switch (mType)
+    {
+    case 0:
+      {
+        std::unique_lock<std::mutex> lLock{mMutex};
+        auto lGen = mGeneration.load();
+        if (!--mCount) {
+            mGeneration++;
+            mCount = mThreshold;
+            mCond.notify_all();
+        } else {
+            mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
+        }
       }
+      break;
+    case 1:
+      {
+        auto lGen = mGeneration.load();
+        if (!--mCount) {
+          mCount = mThreshold;
+          ++mGeneration;
+        } else {
+          while (lGen == mGeneration.load()) {
+            std::this_thread::yield();
+          }
+        }
+      }
+      break;
+    case 2:
+      pthread_barrier_wait(&mBarrier);
+      break;
+    default:
+      break;
     }
   }
 
 private:
+  std::size_t mType;
+  pthread_barrier_t mBarrier;
   std::mutex mMutex;
+  std::condition_variable mCond;
   std::size_t mThreshold;
   std::atomic<std::size_t> mCount;
   std::atomic<std::size_t> mGeneration;
 };
 
 class GlobalBFSState {
+  using GlobalCompressedSparseRow =
+      PhysicalPathFinding::GlobalCompressedSparseRow;
 public:
-  GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_, idx_t num_threads_, ClientContext &context_)
-      : pairs(pairs_), iter(1), v_size(v_size_), change(false), started_searches(0),
-        seen(v_size_), visit1(v_size_), visit2(v_size_), context(context_),
-        total_len(0), parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)),
-        frontier_size(0), unseen_size(v_size_), num_threads(num_threads_), task_queues(num_threads_), barrier(num_threads_) {
+  GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_, shared_ptr<DataChunk> pairs_, int64_t v_size_, 
+                idx_t num_threads_, idx_t barrier_type_, ClientContext &context_)
+      : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false), started_searches(0), total_len(0), context(context_), 
+        seen(v_size_), visit1(v_size_), visit2(v_size_),
+        parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)),
+        frontier_size(0), unseen_size(v_size_ * 8), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
+        task_queues_reverse(num_threads_), barrier(barrier_type_, num_threads_) {
     result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
@@ -193,10 +217,15 @@ public:
     src = FlatVector::GetData<int64_t>(src_data);
     dst = FlatVector::GetData<int64_t>(dst_data);
     for (auto i = 0; i < v_size; i++) {
+#ifdef SEGMENT_BITSET
       for (auto j = 0; j < 8; j++) {
         seen[i][j] = 0;
         visit1[i][j] = 0;
       }
+#else
+      seen[i] = 0;
+      visit1[i] = 0;
+#endif
       for (auto j = 0; j < LANE_LIMIT; j++) {
         parents_v[i][j] = -1;
         parents_e[i][j] = -1;
@@ -210,16 +239,21 @@ public:
     iter = 1;
     change = false;
     frontier_size = 0;
-    unseen_size = v_size;
+    unseen_size = v_size * 8;
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
     }
     // empty visit vectors
     for (auto i = 0; i < v_size; i++) {
+#ifdef SEGMENT_BITSET
       for (auto j = 0; j < 8; j++) {
         seen[i][j] = 0;
         visit1[i][j] = 0;
       }
+#else
+      seen[i] = 0;
+      visit1[i] = 0;
+#endif
       for (auto j = 0; j < LANE_LIMIT; j++) {
         parents_v[i][j] = -1;
         parents_e[i][j] = -1;
@@ -230,28 +264,114 @@ public:
 
   void CreateTasks() {
     // workerTasks[workerId] = [task1, task2, ...]
-    vector<vector<pair<idx_t, idx_t>>> worker_tasks(num_threads);
-    auto cur_worker = 0;
-
-    for (auto offset = 0; offset < v_size; offset += split_size) {
-      auto worker_id = cur_worker % num_threads;
-      pair<idx_t, idx_t> range = {offset, std::min(offset + split_size, v_size)};
-      worker_tasks[worker_id].push_back(range);
-      cur_worker++;
+    auto queues = {&task_queues, &task_queues_reverse};
+    is_top_down = true;
+    for (auto& queue : queues) {
+      vector<vector<pair<idx_t, idx_t>>> worker_tasks(num_threads);
+      auto cur_worker = 0;
+      int64_t *v = is_top_down ? (int64_t*)csr->v : (int64_t*)csr->reverse_v;
+      int64_t current_task_edges = 0;
+      idx_t current_task_start = 0;
+      for (idx_t i = 0; i < (idx_t)v_size; i++) {
+        auto vertex_edges = v[i + 1] - v[i];
+        if (current_task_edges + vertex_edges > split_size && i != current_task_start) {
+          auto worker_id = cur_worker % num_threads;
+          pair<idx_t, idx_t> range = {current_task_start, i};
+          worker_tasks[worker_id].push_back(range);
+          current_task_start = i;
+          current_task_edges = 0;
+          cur_worker++;
+        }
+        current_task_edges += vertex_edges;
+      }
+      if (current_task_start < (idx_t)v_size) {
+        auto worker_id = cur_worker % num_threads;
+        pair<idx_t, idx_t> range = {current_task_start, v_size};
+        worker_tasks[worker_id].push_back(range);
+      }
+      for (idx_t worker_id = 0; worker_id < num_threads; worker_id++) {
+        queue->at(worker_id).first.store(0);
+        queue->at(worker_id).second = worker_tasks[worker_id];
+      }
+      is_top_down = false;
     }
+    is_top_down = true;
+  }
 
-    for (idx_t worker_id = 0; worker_id < num_threads; worker_id++) {
+  void InitTask(idx_t worker_id) {
+    if (is_top_down) {
       task_queues[worker_id].first.store(0);
-      task_queues[worker_id].second = worker_tasks[worker_id];
+    } else {
+      task_queues_reverse[worker_id].first.store(0);
     }
+  }
 
+  pair<idx_t, idx_t> FetchTask(idx_t worker_id) {
+    auto& task_queue = is_top_down ? task_queues : task_queues_reverse;
+    idx_t offset = 0;
+    do {
+      auto worker_idx = (worker_id + offset) % task_queue.size();
+      auto cur_task_ix = task_queue[worker_idx].first.fetch_add(1);
+      if (cur_task_ix < task_queue[worker_idx].second.size()) {
+        return task_queue[worker_idx].second[cur_task_ix];
+      } else {
+        offset++;
+      }
+    } while (offset < task_queue.size());
+    return {0, 0};
+  }
+
+  pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) {
+    idx_t block_size = ceil((double)v_size / num_threads);
+    block_size = block_size == 0 ? 1 : block_size;
+    idx_t left = block_size * worker_id;
+    idx_t right = std::min(block_size * (worker_id + 1), (idx_t)v_size);
+    return {left, right};
+  }
+
+  void DirectionSwitch() {
+    // Debug print
+    string message = "frontier size: ";
+    message += std::to_string(frontier_size);
+    message += " unseen size: ";
+    message += std::to_string(unseen_size);
+    message += " iter ";
+    message += std::to_string(iter);
+    Printer::Print(message);
+    // Determine the switch of algorithms
+    if (is_top_down) {
+      auto Ctb = unseen_size / alpha;
+      if (frontier_size > Ctb) {
+        is_top_down = false;
+      }
+    } else {
+      auto Cbt = v_size / beta;
+      if (frontier_size < Cbt) {
+        is_top_down = true;
+      }
+    }
+    // Debug print
+    message = "Switch to ";
+    message += is_top_down ? "top-down" : "bottom-up";
+    message += " at iter ";
+    message += std::to_string(iter);
+    Printer::Print(message);
+    if (frontier_size > 0) {
+      change = true;
+    } else {
+      change = false;
+    }
+    // clear the counters after the switch
+    frontier_size = 0;
+    unseen_size = v_size * 8;
   }
 
 public:
+  shared_ptr<GlobalCompressedSparseRow> csr;
   shared_ptr<DataChunk> pairs;
   int64_t iter;
   int64_t v_size;
-  bool change;
+  atomic<bool> change;
   idx_t started_searches;
   int64_t total_len;
   int64_t *src;
@@ -261,24 +381,35 @@ public:
   int64_t lane_to_num[LANE_LIMIT];
   DataChunk result; // 0 for length, 1 for path
   ClientContext& context;
+#ifdef SEGMENT_BITSET
   vector<array<atomic<idx_t>, 8>> seen;
   vector<array<atomic<idx_t>, 8>> visit1;
   vector<array<atomic<idx_t>, 8>> visit2;
+#elif defined(ATOMIC_BITSET)
+  vector<atomic<std::bitset<LANE_LIMIT>>> seen;
+  vector<atomic<std::bitset<LANE_LIMIT>>> visit1;
+  vector<atomic<std::bitset<LANE_LIMIT>>> visit2;
+#else
+  vector<std::bitset<LANE_LIMIT>> seen;
+  vector<std::bitset<LANE_LIMIT>> visit1;
+  vector<std::bitset<LANE_LIMIT>> visit2;
+#endif
 
   vector<std::vector<int64_t>> parents_v;
   vector<std::vector<int64_t>> parents_e;
 
   atomic<int64_t> frontier_size;
   atomic<int64_t> unseen_size;
-  constexpr static int64_t alpha = 1024;
-  constexpr static int64_t beta = 64;
-  bool is_top_down = true;
+  int64_t alpha = 1024;
+  int64_t beta = 64;
+  atomic<bool> is_top_down;
 
   idx_t num_threads;
   // task_queues[workerId] = {curTaskIx, queuedTasks}
   // queuedTasks[curTaskIx] = {start, end}
   vector<pair<atomic<idx_t>, vector<pair<idx_t, idx_t>>>> task_queues;
-  constexpr static int64_t split_size = 256;
+  vector<pair<atomic<idx_t>, vector<pair<idx_t, idx_t>>>> task_queues_reverse;
+  int64_t split_size = 256;
 
   Barrier barrier;
 
@@ -342,11 +473,11 @@ public:
   ColumnDataScanState scan_state;
   ColumnDataAppendState append_state;
 
-  unique_ptr<GlobalCompressedSparseRow> global_csr;
+  shared_ptr<GlobalCompressedSparseRow> global_csr;
   // state for BFS
   unique_ptr<GlobalBFSState> global_bfs_state;
-  string mode;
   size_t child;
+  string mode;
 };
 
 unique_ptr<GlobalSinkState>
@@ -391,43 +522,40 @@ PhysicalPathFinding::Combine(ExecutionContext &context,
 // Finalize
 //===--------------------------------------------------------------------===//
 
-class PhysicalIterativeTopDownTask : public ExecutorTask {
+class PhysicalIterativeTask : public ExecutorTask {
 public:
-	PhysicalIterativeTopDownTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t worker_id)
+	PhysicalIterativeTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t worker_id)
 	    : ExecutorTask(context, std::move(event_p)), context(context), state(state), worker_id(worker_id) {
 	}
 
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
     auto& bfs_state = state.global_bfs_state;
     auto& change = bfs_state->change;
-    auto& seen = bfs_state->seen;
     auto& barrier = bfs_state->barrier;
-    auto result_data = FlatVector::GetData<int64_t>(bfs_state->result.data[0]);
-    ValidityMask &result_validity = FlatVector::Validity(bfs_state->result.data[0]);
-    auto& iter = bfs_state->iter;
 
-    int64_t *v = (int64_t *)state.global_csr->v;
-    vector<int64_t> &e = state.global_csr->e;
-
-    BoundaryCalculation();
+    auto bound = bfs_state->BoundaryCalculation(worker_id);
+    left = bound.first;
+    right = bound.second;
 
     do {
-      InitTask();
+      bfs_state->InitTask(worker_id);
 
-      auto& visit = iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-      auto& next = iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
-
-      IterativeLength(v, change, barrier, e, seen, visit, next);
+      if (bfs_state->is_top_down) {
+        IterativeLengthTopDown();
+      } else {
+        IterativeLengthBottomUp();
+      }
       barrier.Wait();
 
       if (worker_id == 0) {
-        ReachDetect(result_data);
+        ReachDetect();
+        bfs_state->DirectionSwitch();
       }
       barrier.Wait();
     } while (change);
 
     if (worker_id == 0) {
-      UnReachableSet(result_data, result_validity);
+      UnReachableSet();
     }
 
 		event->FinishTask();
@@ -435,60 +563,46 @@ public:
 	}
 
 private:
-  void InitTask() {
-    auto& task_queue = state.global_bfs_state->task_queues;
-    task_queue[worker_id].first.store(0);
-  }
-
-  pair<idx_t, idx_t> FetchTask() {
-    auto& task_queue = state.global_bfs_state->task_queues;
-    idx_t offset = 0;
-    do {
-      auto worker_idx = (worker_id + offset) % task_queue.size();
-      auto cur_task_ix = task_queue[worker_idx].first.fetch_add(1);
-      if (cur_task_ix < task_queue[worker_idx].second.size()) {
-        return task_queue[worker_idx].second[cur_task_ix];
-      } else {
-        offset++;
-      }
-    } while (offset < task_queue.size());
-    return {0, 0};
-  }
-
-  void BoundaryCalculation() {
+  void IterativeLengthTopDown() {
     auto& bfs_state = state.global_bfs_state;
-    auto& v_size = bfs_state->v_size;
-    idx_t block_size = ceil((double)v_size / bfs_state->num_threads);
-    block_size = block_size == 0 ? 1 : block_size;
-    left = block_size * worker_id;
-    right = std::min(block_size * (worker_id + 1), (idx_t)v_size);
-  }
+    auto& seen = bfs_state->seen;
+    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+    auto& barrier = bfs_state->barrier;
+    int64_t *v = (int64_t *)state.global_csr->v;
+    vector<int64_t> &e = state.global_csr->e;
+    auto& frontier_size = bfs_state->frontier_size;
+    auto& unseen_size = bfs_state->unseen_size;
 
-  void IterativeLength(int64_t *v, bool& change, Barrier& barrier,
-                      vector<int64_t> &e,
-                      vector<array<atomic<idx_t>, 8>> &seen,
-                      vector<array<atomic<idx_t>, 8>> &visit,
-                      vector<array<atomic<idx_t>, 8>> &next) {
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
+#ifdef SEGMENT_BITSET
       for (auto j = 0; j < 8; j++) {
         next[i][j].store(0, std::memory_order_relaxed);
       }
+#else
+      next[i] = 0;
+#endif
     }
 
     barrier.Wait();
 
     while (true) {
-      auto task = FetchTask();
+      auto task = bfs_state->FetchTask(worker_id);
       if (task.first == task.second) {
         break;
       }
       auto start = task.first;
       auto end = task.second;
 
+#ifdef SEGMENT_BITSET
       idx_t old_next, new_next;
+#else
+      std::bitset<LANE_LIMIT> old_next, new_next;
+#endif
 
       for (auto i = start; i < end; i++) {
+#ifdef SEGMENT_BITSET
         for (auto j = 0; j < 8; j++) {
           if (visit[i][j].load(std::memory_order_relaxed)) {
             for (auto offset = v[i]; offset < v[i + 1]; offset++) {
@@ -500,53 +614,202 @@ private:
             }
           }
         }
+#elif defined(ATOMIC_BITSET)
+        if (visit[i].load(std::memory_order_relaxed).any()) {
+          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+            auto n = e[offset];
+            do {
+              old_next = next[n].load();
+              new_next = old_next | visit[i].load();
+            } while (!next[n].compare_exchange_weak(old_next, new_next));
+          }
+        }
+#else
+        if (visit[i].any()) {
+          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+            auto n = e[offset];
+#ifdef FINE_GRAINED_LOCK
+            std::lock_guard<std::mutex> lock(state.global_csr->lock);
+#elif defined(ELEMENT_LOCK)
+            std::lock_guard<std::mutex> lock(state.global_csr->element_lock[n]);
+#endif
+            next[n] |= visit[i];
+          }
+        }
+#endif
       }
     }
 
-    change = false;
     barrier.Wait();
 
     for (auto i = left; i < right; i++) {
+#ifdef SEGMENT_BITSET
       for (auto j = 0; j < 8; j++) {
         if (next[i][j].load(std::memory_order_relaxed)) {
           next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
           seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
-          change |= next[i][j].load(std::memory_order_relaxed);
+
+          frontier_size = next[i][j].load() ? frontier_size + 1 : frontier_size.load();
+          unseen_size = (~seen[i][j].load()) == 0 ? unseen_size - 1 : unseen_size.load();
+        }
+      }
+#elif defined(ATOMIC_BITSET)
+      if (next[i].load().any()) {
+        next[i].store(next[i].load() & ~seen[i].load(), std::memory_order_relaxed);
+        seen[i].store(seen[i].load() | next[i].load(), std::memory_order_relaxed);
+
+        frontier_size = next[i].load().any() ? frontier_size + 1 : frontier_size.load();
+        unseen_size = (~seen[i].load()).all() ? unseen_size - 1 : unseen_size.load();
+      }
+#else
+      if (next[i].any()) {
+        next[i] &= ~seen[i];
+        seen[i] |= next[i];
+
+        frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+        unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+      }
+#endif
+    }
+  }
+
+  void IterativeLengthBottomUp() {
+    auto& bfs_state = state.global_bfs_state;
+    auto& seen = bfs_state->seen;
+    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+    auto& barrier = bfs_state->barrier;
+    int64_t *v = (int64_t *)state.global_csr->reverse_v;
+    vector<int64_t> &e = state.global_csr->reverse_e;
+    auto& frontier_size = bfs_state->frontier_size;
+    auto& unseen_size = bfs_state->unseen_size;
+
+    // clear next before each iteration
+    for (auto i = left; i < right; i++) {
+#ifdef SEGMENT_BITSET
+      for (auto j = 0; j < 8; j++) {
+        next[i][j].store(0, std::memory_order_relaxed);
+      }
+#else
+      next[i] = 0;
+#endif
+    }
+    
+    barrier.Wait();
+
+    while (true) {
+      auto task = bfs_state->FetchTask(worker_id);
+      if (task.first == task.second) {
+        break;
+      }
+      auto start = task.first;
+      auto end = task.second;
+
+#ifdef SEGMENT_BITSET
+      idx_t old_next, new_next;
+#else
+      std::bitset<LANE_LIMIT> old_next, new_next;
+#endif
+
+      for (auto i = start; i < end; i++) {
+#ifdef SEGMENT_BITSET
+        for (auto j = 0; j < 8; j++) {
+          if (~seen[i][j] == 0) {
+            continue;
+          }
+
+          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+            auto n = e[offset];
+            do {
+              old_next = next[i][j].load();
+              new_next = old_next | visit[n][j].load();
+            } while (!next[i][j].compare_exchange_weak(old_next, new_next));
+          }
+
+          next[i][j].store(next[i][j].load() & ~seen[i][j].load());
+          seen[i][j].store(seen[i][j].load() | next[i][j].load());
+
+          frontier_size = next[i][j].load() ? frontier_size + 1 : frontier_size.load();
+          unseen_size = (~seen[i][j].load()) == 0 ? unseen_size - 1 : unseen_size.load();
+        }
+#elif defined(ATOMIC_BITSET)
+        if (seen[i].load().all()) {
+          continue;
+        }
+
+        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+          auto n = e[offset];
+          do {
+            old_next = next[i].load();
+            new_next = old_next | visit[n].load();
+          } while (!next[i].compare_exchange_weak(old_next, new_next));
+        }
+
+        next[i].store(next[i].load() & ~seen[i].load());
+        seen[i].store(seen[i].load() | next[i].load());
+
+        frontier_size = next[i].load().any() ? frontier_size + 1 : frontier_size.load();
+        unseen_size = (~seen[i].load()).all() ? unseen_size - 1 : unseen_size.load();
+#else
+        if (seen[i].all()) {
+          continue;
+        }
+
+        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+          auto n = e[offset];
+          next[i] |= visit[n];
+        }
+
+        next[i] &= ~seen[i];
+        seen[i] |= next[i];
+
+        frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+        unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+#endif
+      }
+    }
+  }
+
+  void ReachDetect() {
+    auto &bfs_state = state.global_bfs_state;
+    auto result_data = FlatVector::GetData<int64_t>(bfs_state->result.data[0]);
+
+    // detect lanes that finished
+    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+      int64_t search_num = bfs_state->lane_to_num[lane];
+      if (search_num >= 0) { // active lane
+        int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
+#ifdef SEGMENT_BITSET
+        if (bfs_state->seen[bfs_state->dst[dst_pos]][lane / 64] & ((idx_t)1 << (lane % 64))) {
+#elif defined(ATOMIC_BITSET)
+        if (bfs_state->seen[bfs_state->dst[dst_pos]].load()[lane]) {
+#else
+        if (bfs_state->seen[bfs_state->dst[dst_pos]][lane]) {
+#endif
+          result_data[search_num] =
+              bfs_state->iter;               /* found at iter => iter = path length */
+          bfs_state->lane_to_num[lane] = -1; // mark inactive
         }
       }
     }
+    // into the next iteration
+    bfs_state->iter++;
   }
 
-void ReachDetect(int64_t *result_data) {
-  auto &bfs_state = state.global_bfs_state;
-  // detect lanes that finished
-  for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-    int64_t search_num = bfs_state->lane_to_num[lane];
-    if (search_num >= 0) { // active lane
-      int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
-      if (bfs_state->seen[bfs_state->dst[dst_pos]][lane / 64] & ((idx_t)1 << (lane % 64))) {
-        result_data[search_num] =
-            bfs_state->iter;               /* found at iter => iter = path length */
-        bfs_state->lane_to_num[lane] = -1; // mark inactive
+  void UnReachableSet() {
+    auto &bfs_state = state.global_bfs_state;
+    auto result_data = FlatVector::GetData<int64_t>(bfs_state->result.data[0]);
+    auto &result_validity = FlatVector::Validity(bfs_state->result.data[0]);
+
+    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+      int64_t search_num = bfs_state->lane_to_num[lane];
+      if (search_num >= 0) { // active lane
+        result_validity.SetInvalid(search_num);
+        result_data[search_num] = (int64_t)-1; /* no path */
+        bfs_state->lane_to_num[lane] = -1;     // mark inactive
       }
     }
   }
-  // into the next iteration
-  bfs_state->iter++;
-}
-
-void UnReachableSet(int64_t *result_data, ValidityMask &result_validity) {
-  auto &bfs_state = state.global_bfs_state;
-  for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-    int64_t search_num = bfs_state->lane_to_num[lane];
-    if (search_num >= 0) { // active lane
-      result_validity.SetInvalid(search_num);
-      result_data[search_num] = (int64_t)-1; /* no path */
-      bfs_state->lane_to_num[lane] = -1;     // mark inactive
-    }
-  }
-}
-
 private:
 	ClientContext &context;
 	PathFindingGlobalState &state;
@@ -555,60 +818,6 @@ private:
   idx_t right;
   idx_t worker_id;
 };
-
-// class PhysicalBFSBottomUpTask : public ExecutorTask {
-// public:
-// 	PhysicalBFSBottomUpTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t start, idx_t end)
-// 	    : ExecutorTask(context, std::move(event_p)), context(context), state(state), start(start), end(end) {
-// 	}
-
-// 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
-//     auto& bfs_state = state.global_bfs_state;
-//     auto& change = bfs_state->change;
-//     auto& seen = bfs_state->seen;
-//     auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-//     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
-//     auto& barrier = bfs_state->barrier;
-//     auto& frontier_size = bfs_state->frontier_size;
-//     auto& unseen_size = bfs_state->unseen_size;
-
-//     int64_t *v = (int64_t *)state.global_csr->v;
-//     vector<int64_t> &e = state.global_csr->e;
-
-//     for (auto i = start; i < end; i++) {
-//       next[i] = 0;
-//     }
-
-//     barrier.Wait();
-
-//     for (auto i = start; i < end; i++) {
-//       if (seen[i].all()) {
-//         unseen_size -= 1;
-//         continue;
-//       }
-//       for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-//         auto n = e[offset];
-//         next[i] = next[i] | visit[n];
-//       }
-//       next[i] = next[i] & ~seen[i];
-//       seen[i] = seen[i] | next[i];
-//       change |= next[i].any();
-
-//       frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
-//       unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
-//     }
-
-// 		event->FinishTask();
-// 		return TaskExecutionResult::TASK_FINISHED;
-// 	}
-
-// private:
-// 	ClientContext &context;
-// 	PathFindingGlobalState &state;
-//   // [start, end)
-//   idx_t start;
-//   idx_t end;
-// };
 
 class PhysicalCSREdgeCreationTask : public ExecutorTask {
 public:
@@ -632,15 +841,23 @@ public:
         }
       }
       if (!global_csr->initialized_e) {
-        const auto e_size = input.data[7].GetValue(0).GetValue<int64_t>();
+        const auto e_size = input.data[8].GetValue(0).GetValue<int64_t>();
         global_csr->InitializeEdge(e_size);
       }
       TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
-          input.data[6], input.data[4], input.data[2], result, input.size(),
+          input.data[4], input.data[7], input.data[2], result, input.size(),
           [&](int64_t src, int64_t dst, int64_t edge_id) {
             const auto pos = ++global_csr->v[src + 1];
             global_csr->e[static_cast<int64_t>(pos) - 1] = dst;
             global_csr->edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
+            return 1;
+          });
+      TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
+          input.data[7], input.data[4], input.data[2], result, input.size(),
+          [&](int64_t dst, int64_t src, int64_t edge_id) {
+            const auto pos = ++global_csr->reverse_v[dst + 1];
+            global_csr->reverse_e[static_cast<int64_t>(pos) - 1] = src;
+            global_csr->reverse_edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
             return 1;
           });
     }
@@ -704,7 +921,7 @@ public:
 
 		vector<shared_ptr<Task>> bfs_tasks;
     for (idx_t tnum = 0; tnum < bfs_state->num_threads; tnum++) {
-      bfs_tasks.push_back(make_uniq<PhysicalIterativeTopDownTask>(shared_from_this(), context, gstate, tnum));
+      bfs_tasks.push_back(make_uniq<PhysicalIterativeTask>(shared_from_this(), context, gstate, tnum));
     }
 		SetTasks(std::move(bfs_tasks));
     start_time = std::chrono::high_resolution_clock::now();
@@ -773,7 +990,7 @@ private:
     return change;
   }
 
-  static void IterativeLengthFunction(const unique_ptr<PathFindingGlobalState::GlobalCompressedSparseRow> &csr,
+  static void IterativeLengthFunction(const shared_ptr<PathFindingGlobalState::GlobalCompressedSparseRow> &csr,
                                       DataChunk &pairs, Vector &result) {
     int64_t v_size = csr->v_size;
     int64_t *v = (int64_t *)csr->v;
@@ -873,50 +1090,41 @@ private:
   }
 };
 
-class PhysicalShortestPathTopDownTask : public ExecutorTask {
+class PhysicalShortestPathTask : public ExecutorTask {
 public:
-  PhysicalShortestPathTopDownTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t worker_id)
+  PhysicalShortestPathTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t worker_id)
       : ExecutorTask(context, std::move(event_p)), context(context), state(state), worker_id(worker_id) {
   }
 
   TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
     auto& bfs_state = state.global_bfs_state;
     auto& change = bfs_state->change;
-    auto& seen = bfs_state->seen;
-    auto& v_size = bfs_state->v_size;
     auto& barrier = bfs_state->barrier;
-    auto& parents_v = bfs_state->parents_v;
-    auto& parents_e = bfs_state->parents_e;
-    auto& result_path = bfs_state->result.data[1];
-    auto result_data = FlatVector::GetData<list_entry_t>(result_path);
-    ValidityMask &result_validity = FlatVector::Validity(result_path);
-    auto& iter = bfs_state->iter;
 
-    int64_t *v = (int64_t *)state.global_csr->v;
-    vector<int64_t> &e = state.global_csr->e;
-    vector<int64_t> &edge_ids = state.global_csr->edge_ids;
-
-    BoundaryCalculation();
+    auto bound = bfs_state->BoundaryCalculation(worker_id);
+    left = bound.first;
+    right = bound.second;
 
     do {
-      InitTask();
+      bfs_state->InitTask(worker_id);
 
-      auto& visit = iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-      auto& next = iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
-
-      IterativeLength(v_size, change, barrier, v, e, edge_ids, parents_v, parents_e, seen, visit, next);
-
+      if (bfs_state->is_top_down) {
+        IterativeLengthTopDown();
+      } else {
+        IterativeLengthBottomUp();
+      }
       barrier.Wait();
 
       if (worker_id == 0) {
-        ReachDetect(result_data, change);
+        ReachDetect();
+        bfs_state->DirectionSwitch();
       }
 
       barrier.Wait();
     } while (change);
 
     if (worker_id == 0) {
-      PathConstruction(result_path, result_data, result_validity);
+      PathConstruction();
     }
 
 		event->FinishTask();
@@ -924,61 +1132,49 @@ public:
   }
 
 private:
-  void InitTask() {
-    auto& task_queue = state.global_bfs_state->task_queues;
-    task_queue[worker_id].first.store(0);
-  }
-
-  pair<idx_t, idx_t> FetchTask() {
-    auto& task_queue = state.global_bfs_state->task_queues;
-    idx_t offset = 0;
-    do {
-      auto worker_idx = (worker_id + offset) % task_queue.size();
-      auto cur_task_ix = task_queue[worker_idx].first.fetch_add(1);
-      if (cur_task_ix < task_queue[worker_idx].second.size()) {
-        return task_queue[worker_idx].second[cur_task_ix];
-      }
-      offset++;
-    } while (offset < task_queue.size());
-    return {0, 0};
-  }
-
-  void BoundaryCalculation() {
+  void IterativeLengthTopDown() {
     auto& bfs_state = state.global_bfs_state;
-    auto& v_size = bfs_state->v_size;
-    idx_t block_size = ceil((double)v_size / bfs_state->num_threads);
-    block_size = block_size == 0 ? 1 : block_size;
-    left = block_size * worker_id;
-    right = std::min(block_size * (worker_id + 1), (idx_t)v_size);
-  }
+    auto& seen = bfs_state->seen;
+    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+    auto& barrier = bfs_state->barrier;
+    int64_t *v = (int64_t *)state.global_csr->v;
+    vector<int64_t> &e = state.global_csr->e;
+    auto& edge_ids = state.global_csr->edge_ids;
+    auto& frontier_size = bfs_state->frontier_size;
+    auto& unseen_size = bfs_state->unseen_size;
+    auto& parents_v = bfs_state->parents_v;
+    auto& parents_e = bfs_state->parents_e;
 
-  void IterativeLength(int64_t v_size, bool& change, Barrier& barrier, int64_t *v,
-                      vector<int64_t> &e, vector<int64_t> &edge_ids,
-                      vector<std::vector<int64_t>> &parents_v,
-                      vector<std::vector<int64_t>> &parents_e,
-                      vector<array<atomic<idx_t>, 8>> &seen,
-                      vector<array<atomic<idx_t>, 8>> &visit,
-                      vector<array<atomic<idx_t>, 8>> &next) {
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
+#ifdef SEGMENT_BITSET
       for (auto j = 0; j < 8; j++) {
-        next[i][j] = 0;
+        next[i][j].store(0, std::memory_order_relaxed);
       }
+#else
+      next[i] = 0;
+#endif
     }
 
     barrier.Wait();
 
     while (true) {
-      auto task = FetchTask();
+      auto task = bfs_state->FetchTask(worker_id);
       if (task.first == task.second) {
         break;
       }
       auto start = task.first;
       auto end = task.second;
 
+#ifdef SEGMENT_BITSET
       idx_t old_next, new_next;
+#else
+      std::bitset<LANE_LIMIT> old_next, new_next;
+#endif
 
       for (auto i = start; i < end; i++) {
+#ifdef SEGMENT_BITSET
         for (auto j = 0; j < 8; j++) {
           if (visit[i][j].load(std::memory_order_relaxed)) {
             for (auto offset = v[i]; offset < v[i + 1]; offset++) {
@@ -997,25 +1193,201 @@ private:
             }
           }
         }
+#elif defined(ATOMIC_BITSET)
+        if (visit[i].load(std::memory_order_relaxed).any()) {
+          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+            auto n = e[offset];
+            auto edge_id = edge_ids[offset];
+            do {
+              old_next = next[n].load();
+              new_next = old_next | visit[i].load();
+            } while (!next[n].compare_exchange_weak(old_next, new_next));
+            for (auto l = 0; l < LANE_LIMIT; l++) {
+              parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i].load()[l])
+                      ? i : parents_v[n][l];
+              parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i].load()[l])
+                      ? edge_id : parents_e[n][l];
+            }
+          }
+        }
+#else
+        if (visit[i].any()) {
+          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+            auto n = e[offset];
+#ifdef FINE_GRAINED_LOCK
+            std::lock_guard<std::mutex> lock(state.global_csr->lock);
+#elif defined(ELEMENT_LOCK)
+            std::lock_guard<std::mutex> lock(state.global_csr->element_lock[n]);
+#endif
+            next[n] |= visit[i];
+            for (auto l = 0; l < LANE_LIMIT; l++) {
+              parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i][l])
+                      ? i : parents_v[n][l];
+              parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i][l])
+                      ? edge_id : parents_e[n][l];
+            }
+          }
+        }
+#endif
       }
     }
 
-    change = false;
     barrier.Wait();
 
     for (auto i = left; i < right; i++) {
+#ifdef SEGMENT_BITSET
       for (auto j = 0; j < 8; j++) {
         if (next[i][j].load(std::memory_order_relaxed)) {
           next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
           seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
-          change |= next[i][j].load(std::memory_order_relaxed);
+
+          frontier_size = next[i][j].load() ? frontier_size + 1 : frontier_size.load();
+          unseen_size = (~seen[i][j].load()) == 0 ? unseen_size - 1 : unseen_size.load();
         }
+      }
+#elif defined(ATOMIC_BITSET)
+      if (next[i].load().any()) {
+        next[i].store(next[i].load() & ~seen[i].load(), std::memory_order_relaxed);
+        seen[i].store(seen[i].load() | next[i].load(), std::memory_order_relaxed);
+
+        frontier_size = next[i].load().any() ? frontier_size + 1 : frontier_size.load();
+        unseen_size = (~seen[i].load()).all() ? unseen_size - 1 : unseen_size.load();
+      }
+#else
+      if (next[i].any()) {
+        next[i] &= ~seen[i];
+        seen[i] |= next[i];
+
+        frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+        unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+      }
+#endif
+    }
+  }
+
+  void IterativeLengthBottomUp() {
+    auto& bfs_state = state.global_bfs_state;
+    auto& seen = bfs_state->seen;
+    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+    auto& barrier = bfs_state->barrier;
+    int64_t *v = (int64_t *)state.global_csr->reverse_v;
+    vector<int64_t> &e = state.global_csr->reverse_e;
+    auto& edge_ids = state.global_csr->reverse_edge_ids;
+    auto& frontier_size = bfs_state->frontier_size;
+    auto& unseen_size = bfs_state->unseen_size;
+    auto& parents_v = bfs_state->parents_v;
+    auto& parents_e = bfs_state->parents_e;
+
+    // clear next before each iteration
+    for (auto i = left; i < right; i++) {
+#ifdef SEGMENT_BITSET
+      for (auto j = 0; j < 8; j++) {
+        next[i][j].store(0, std::memory_order_relaxed);
+      }
+#else
+      next[i] = 0;
+#endif
+    }
+    
+    barrier.Wait();
+
+    while (true) {
+      auto task = bfs_state->FetchTask(worker_id);
+      if (task.first == task.second) {
+        break;
+      }
+      auto start = task.first;
+      auto end = task.second;
+
+#ifdef SEGMENT_BITSET
+      idx_t old_next, new_next;
+#else
+      std::bitset<LANE_LIMIT> old_next, new_next;
+#endif
+
+      for (auto i = start; i < end; i++) {
+#ifdef SEGMENT_BITSET
+        for (auto j = 0; j < 8; j++) {
+          if (~seen[i][j] == 0) {
+            continue;
+          }
+
+          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+            auto n = e[offset];
+            auto edge_id = edge_ids[offset];
+            do {
+              old_next = next[i][j].load();
+              new_next = old_next | visit[n][j].load();
+            } while (!next[i][j].compare_exchange_weak(old_next, new_next));
+            for (auto l = 0; l < LANE_LIMIT; l++) {
+              parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
+                      ? n : parents_v[i][l];
+              parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
+                      ? edge_id : parents_e[i][l];
+            }
+          }
+
+          next[i][j].store(next[i][j].load() & ~seen[i][j].load());
+          seen[i][j].store(seen[i][j].load() | next[i][j].load());
+
+          frontier_size = next[i][j].load() ? frontier_size + 1 : frontier_size.load();
+          unseen_size = (~seen[i][j].load()) == 0 ? unseen_size - 1 : unseen_size.load();
+        }
+#elif defined(ATOMIC_BITSET)
+        if (seen[i].load().all()) {
+          continue;
+        }
+
+        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+          auto n = e[offset];
+          do {
+            old_next = next[i].load();
+            new_next = old_next | visit[n].load();
+          } while (!next[i].compare_exchange_weak(old_next, new_next));
+          for (auto l = 0; l < LANE_LIMIT; l++) {
+            parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n].load()[l])
+                    ? i : parents_v[i][l];
+            parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n].load()[l])
+                    ? edge_id : parents_e[i][l];
+          }
+        }
+
+        next[i].store(next[i].load() & ~seen[i].load());
+        seen[i].store(seen[i].load() | next[i].load());
+
+        frontier_size = next[i].load().any() ? frontier_size + 1 : frontier_size.load();
+        unseen_size = (~seen[i].load()).all() ? unseen_size - 1 : unseen_size.load();
+#else
+        if (seen[i].all()) {
+          continue;
+        }
+
+        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+          auto n = e[offset];
+          next[i] |= visit[n];
+          for (auto l = 0; l < LANE_LIMIT; l++) {
+            parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l])
+                    ? i : parents_v[i][l];
+            parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l])
+                    ? edge_id : parents_e[i][l];
+          }
+        }
+
+        next[i] &= ~seen[i];
+        seen[i] |= next[i];
+
+        frontier_size = next[i].any() ? frontier_size + 1 : frontier_size.load();
+        unseen_size = seen[i].all() ? unseen_size - 1 : unseen_size.load();
+#endif
       }
     }
   }
 
-  void ReachDetect(list_entry_t *result_data, bool& change) {
+  void ReachDetect() {
     auto &bfs_state = state.global_bfs_state;
+    auto &change = bfs_state->change;
+    auto &frontier_size = bfs_state->frontier_size;
     int64_t finished_searches = 0;
     // detect lanes that finished
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
@@ -1024,20 +1396,37 @@ private:
       if (search_num >= 0) { // active lane
         //! Check if dst for a source has been seen
         int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
+#ifdef SEGMENT_BITSET
         if (bfs_state->seen[bfs_state->dst[dst_pos]][lane / 64] & ((idx_t)1 << (lane % 64))) {
+#elif defined(ATOMIC_BITSET)
+        if (bfs_state->seen[bfs_state->dst[dst_pos]].load()[lane]) {
+#else
+        if (bfs_state->seen[bfs_state->dst[dst_pos]][lane]) {
+#endif
           finished_searches++;
         }
+      } else {
+        finished_searches++;
       }
     }
     if (finished_searches == LANE_LIMIT) {
       change = false;
+    } else {
+      if (frontier_size > 0) {
+        change = true;
+      } else {
+        change = false;
+      }
     }
     // into the next iteration
     bfs_state->iter++;
   }
 
-  void PathConstruction(Vector &result, list_entry_t *result_data, ValidityMask &result_validity) {
+  void PathConstruction() {
     auto &bfs_state = state.global_bfs_state;
+    auto &result = bfs_state->result.data[1];
+    auto result_data = FlatVector::GetData<list_entry_t>(result);
+    auto &result_validity = FlatVector::Validity(result);
     //! Reconstruct the paths
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
       int64_t search_num = bfs_state->lane_to_num[lane];
@@ -1131,7 +1520,7 @@ public:
 
 		vector<shared_ptr<Task>> bfs_tasks;
     for (idx_t tnum = 0; tnum < bfs_state->num_threads; tnum++) {
-      bfs_tasks.push_back(make_uniq<PhysicalShortestPathTopDownTask>(shared_from_this(), context, gstate, tnum));
+      bfs_tasks.push_back(make_uniq<PhysicalShortestPathTask>(shared_from_this(), context, gstate, tnum));
     }
     start_time = std::chrono::high_resolution_clock::now();
 		SetTasks(std::move(bfs_tasks));
@@ -1208,7 +1597,7 @@ private:
     return change;
   }
 
-  static void ShortestPathFunction(const unique_ptr<PathFindingGlobalState::GlobalCompressedSparseRow> &csr,
+  static void ShortestPathFunction(const shared_ptr<PathFindingGlobalState::GlobalCompressedSparseRow> &csr,
                                       DataChunk &pairs, Vector &result) {
     int64_t v_size = csr->v_size;
     int64_t *v = (int64_t *)csr->v;
@@ -1399,7 +1788,17 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 
     auto &ts = TaskScheduler::GetScheduler(context);
 		idx_t num_threads = ts.NumberOfThreads();
-    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, csr->v_size - 2, num_threads, context);
+    auto& client_config = ClientConfig::GetConfig(context);
+    auto const barrier_type_idx = client_config.set_variables.find("experimental_path_finding_operator_barrier");
+    auto barrier_type = barrier_type_idx != client_config.set_variables.end() ? barrier_type_idx->second.GetValue<id_t>() : 0;
+    gstate.global_bfs_state = make_uniq<GlobalBFSState>(csr, all_pairs, csr->v_size - 2, num_threads, barrier_type, context);
+
+    auto const alpha = client_config.set_variables.find("experimental_path_finding_operator_alpha");
+    gstate.global_bfs_state->alpha = alpha != client_config.set_variables.end() ? alpha->second.GetValue<idx_t>() : 1024;
+    auto const beta = client_config.set_variables.find("experimental_path_finding_operator_beta");
+    gstate.global_bfs_state->beta = beta != client_config.set_variables.end() ? beta->second.GetValue<idx_t>() : 64;
+    auto const task_size = client_config.set_variables.find("experimental_path_finding_operator_task_size");
+    gstate.global_bfs_state->split_size = task_size != client_config.set_variables.end() ? task_size->second.GetValue<idx_t>() : 256;
 
     // auto bfs_event = make_shared<SequentialShortestPathEvent>(gstate, pipeline);
     // event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
@@ -1444,7 +1843,15 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
               (uint64_t)0; // path of length 0 does not require a search
         } else {
           bfs_state->frontier_size++;
+#ifdef SEGMENT_BITSET
           bfs_state->visit1[bfs_state->src[src_pos]][lane / 64] |= ((idx_t)1 << (lane % 64));
+#elif defined(ATOMIC_BITSET)
+          auto new_visit = bfs_state->visit1[bfs_state->src[src_pos]].load();
+          new_visit[lane] = true;
+          bfs_state->visit1[bfs_state->src[src_pos]].store(new_visit);
+#else
+          bfs_state->visit1[bfs_state->src[src_pos]][lane] = true;
+#endif
           bfs_state->lane_to_num[lane] = search_num; // active lane
           break;
         }
