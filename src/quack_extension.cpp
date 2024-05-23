@@ -51,6 +51,14 @@ std::string QuackExtension::Name() {
 	return "quack";
 }
 
+std::string QuackExtension::Version() const {
+#ifdef EXT_VERSION_QUACK
+	return EXT_VERSION_QUACK;
+#else
+	return "";
+#endif
+}
+
 } // namespace duckdb
 
 extern "C" {
