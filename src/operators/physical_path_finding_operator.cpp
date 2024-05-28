@@ -201,10 +201,10 @@ class GlobalBFSState {
 public:
   GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_, shared_ptr<DataChunk> pairs_, int64_t v_size_, 
                 idx_t num_threads_, idx_t barrier_type_, ClientContext &context_)
-      : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false), started_searches(0), total_len(0), context(context_), 
-        seen(v_size_), visit1(v_size_), visit2(v_size_),
+      : csr(csr_), pairs(pairs_), deduplicated_pairs(v_size_), pairs_mask(v_size_, false), iter(1), v_size(v_size_), change(false), 
+        started_searches(0), total_len(0), context(context_), seen(v_size_), visit1(v_size_), visit2(v_size_),
         parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)),
-        frontier_size(0), unseen_size(v_size_ * 8), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
+        top_down_cost(0), bottom_up_cost(0), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
         task_queues_reverse(num_threads_), barrier(barrier_type_, num_threads_) {
     result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
     for (auto i = 0; i < LANE_LIMIT; i++) {
@@ -216,6 +216,15 @@ public:
     dst_data.ToUnifiedFormat(pairs->size(), vdata_dst);
     src = FlatVector::GetData<int64_t>(src_data);
     dst = FlatVector::GetData<int64_t>(dst_data);
+
+    // deduplicate pairs
+    for (idx_t i = 0; i < pairs->size(); i++) {
+      int64_t src_pos = vdata_src.sel->get_index(i);
+      int64_t dst_pos = vdata_dst.sel->get_index(i);
+      deduplicated_pairs[src[src_pos]].push_back(dst[dst_pos]);
+      pairs_mask[src[src_pos]] = true;
+    }
+
     for (auto i = 0; i < v_size; i++) {
 #ifdef SEGMENT_BITSET
       for (auto j = 0; j < 8; j++) {
@@ -238,8 +247,6 @@ public:
   void Clear() {
     iter = 1;
     change = false;
-    frontier_size = 0;
-    unseen_size = v_size * 8;
     for (auto i = 0; i < LANE_LIMIT; i++) {
       lane_to_num[i] = -1;
     }
@@ -331,24 +338,16 @@ public:
 
   void DirectionSwitch() {
     // Debug print
-    string message = "frontier size: ";
-    message += std::to_string(frontier_size);
-    message += " unseen size: ";
-    message += std::to_string(unseen_size);
-    message += " iter ";
-    message += std::to_string(iter);
+    string message = "Top-down cost: ";
+    message += std::to_string(top_down_cost.load());
+    message += ", Bottom-up cost: ";
+    message += std::to_string(bottom_up_cost.load());
     Printer::Print(message);
     // Determine the switch of algorithms
-    if (is_top_down) {
-      auto Ctb = unseen_size / alpha;
-      if (frontier_size > Ctb) {
-        is_top_down = false;
-      }
+    if (top_down_cost > bottom_up_cost) {
+      is_top_down = false;
     } else {
-      auto Cbt = v_size / beta;
-      if (frontier_size < Cbt) {
-        is_top_down = true;
-      }
+      is_top_down = true;
     }
     // Debug print
     message = "Switch to ";
@@ -356,19 +355,21 @@ public:
     message += " at iter ";
     message += std::to_string(iter);
     Printer::Print(message);
-    if (frontier_size > 0) {
+    if (top_down_cost > 0) {
       change = true;
     } else {
       change = false;
     }
     // clear the counters after the switch
-    frontier_size = 0;
-    unseen_size = v_size * 8;
+    top_down_cost = 0;
+    bottom_up_cost = 0;
   }
 
 public:
   shared_ptr<GlobalCompressedSparseRow> csr;
   shared_ptr<DataChunk> pairs;
+  vector<vector<int64_t>> deduplicated_pairs;
+  vector<bool> pairs_mask;
   int64_t iter;
   int64_t v_size;
   atomic<bool> change;
@@ -398,8 +399,8 @@ public:
   vector<std::vector<int64_t>> parents_v;
   vector<std::vector<int64_t>> parents_e;
 
-  atomic<int64_t> frontier_size;
-  atomic<int64_t> unseen_size;
+  atomic<int64_t> top_down_cost;
+  atomic<int64_t> bottom_up_cost;
   int64_t alpha = 1024;
   int64_t beta = 64;
   atomic<bool> is_top_down;
@@ -570,9 +571,10 @@ private:
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
     int64_t *v = (int64_t *)state.global_csr->v;
+    int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
     vector<int64_t> &e = state.global_csr->e;
-    auto& frontier_size = bfs_state->frontier_size;
-    auto& unseen_size = bfs_state->unseen_size;
+    auto& top_down_cost = bfs_state->top_down_cost;
+    auto& bottom_up_cost = bfs_state->bottom_up_cost;
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
@@ -645,12 +647,16 @@ private:
     for (auto i = left; i < right; i++) {
 #ifdef SEGMENT_BITSET
       for (auto j = 0; j < 8; j++) {
-        if (next[i][j].load(std::memory_order_relaxed)) {
-          next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
-          seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
+        if (next[i][j].load()) {
+          next[i][j].store(next[i][j].load() & ~seen[i][j].load());
+          seen[i][j].store(seen[i][j].load() | next[i][j].load());
 
-          frontier_size = next[i][j].load() ? frontier_size + 1 : frontier_size.load();
-          unseen_size = (~seen[i][j].load()) == 0 ? unseen_size - 1 : unseen_size.load();
+          if (next[i][j].load()) {
+            top_down_cost += v[i + 1] - v[i];
+          }
+          if (~seen[i][j].load()) {
+            bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
+          }
         }
       }
 #elif defined(ATOMIC_BITSET)
@@ -680,9 +686,10 @@ private:
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
     int64_t *v = (int64_t *)state.global_csr->reverse_v;
+    int64_t *normal_v = (int64_t *)state.global_csr->v;
     vector<int64_t> &e = state.global_csr->reverse_e;
-    auto& frontier_size = bfs_state->frontier_size;
-    auto& unseen_size = bfs_state->unseen_size;
+    auto& top_down_cost = bfs_state->top_down_cost;
+    auto& bottom_up_cost = bfs_state->bottom_up_cost;
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
@@ -720,17 +727,23 @@ private:
 
           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
             auto n = e[offset];
-            do {
-              old_next = next[i][j].load();
-              new_next = old_next | visit[n][j].load();
-            } while (!next[i][j].compare_exchange_weak(old_next, new_next));
+            if (visit[n][j].load(std::memory_order_relaxed)) {
+              do {
+                old_next = next[i][j].load();
+                new_next = old_next | visit[n][j].load();
+              } while (!next[i][j].compare_exchange_weak(old_next, new_next));
+            }
           }
 
           next[i][j].store(next[i][j].load() & ~seen[i][j].load());
           seen[i][j].store(seen[i][j].load() | next[i][j].load());
 
-          frontier_size = next[i][j].load() ? frontier_size + 1 : frontier_size.load();
-          unseen_size = (~seen[i][j].load()) == 0 ? unseen_size - 1 : unseen_size.load();
+          if (next[i][j].load()) {
+            top_down_cost += normal_v[i + 1] - normal_v[i];
+          }
+          if (~seen[i][j].load()) {
+            bottom_up_cost += v[i + 1] - v[i];
+          }
         }
 #elif defined(ATOMIC_BITSET)
         if (seen[i].load().all()) {
@@ -1139,10 +1152,11 @@ private:
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
     int64_t *v = (int64_t *)state.global_csr->v;
+    int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
     vector<int64_t> &e = state.global_csr->e;
     auto& edge_ids = state.global_csr->edge_ids;
-    auto& frontier_size = bfs_state->frontier_size;
-    auto& unseen_size = bfs_state->unseen_size;
+    auto& top_down_cost = bfs_state->top_down_cost;
+    auto& bottom_up_cost = bfs_state->bottom_up_cost;
     auto& parents_v = bfs_state->parents_v;
     auto& parents_e = bfs_state->parents_e;
 
@@ -1241,8 +1255,12 @@ private:
           next[i][j].store(next[i][j].load(std::memory_order_relaxed) & ~seen[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
           seen[i][j].store(seen[i][j].load(std::memory_order_relaxed) | next[i][j].load(std::memory_order_relaxed), std::memory_order_relaxed);
 
-          frontier_size = next[i][j].load() ? frontier_size + 1 : frontier_size.load();
-          unseen_size = (~seen[i][j].load()) == 0 ? unseen_size - 1 : unseen_size.load();
+          if (next[i][j].load(std::memory_order_relaxed)) {
+            top_down_cost += v[i + 1] - v[i];
+          }
+          if (~seen[i][j].load(std::memory_order_relaxed)) {
+            bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
+          }
         }
       }
 #elif defined(ATOMIC_BITSET)
@@ -1272,10 +1290,11 @@ private:
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
     int64_t *v = (int64_t *)state.global_csr->reverse_v;
+    int64_t *normal_v = (int64_t *)state.global_csr->v;
     vector<int64_t> &e = state.global_csr->reverse_e;
     auto& edge_ids = state.global_csr->reverse_edge_ids;
-    auto& frontier_size = bfs_state->frontier_size;
-    auto& unseen_size = bfs_state->unseen_size;
+    auto& top_down_cost = bfs_state->top_down_cost;
+    auto& bottom_up_cost = bfs_state->bottom_up_cost;
     auto& parents_v = bfs_state->parents_v;
     auto& parents_e = bfs_state->parents_e;
 
@@ -1331,8 +1350,12 @@ private:
           next[i][j].store(next[i][j].load() & ~seen[i][j].load());
           seen[i][j].store(seen[i][j].load() | next[i][j].load());
 
-          frontier_size = next[i][j].load() ? frontier_size + 1 : frontier_size.load();
-          unseen_size = (~seen[i][j].load()) == 0 ? unseen_size - 1 : unseen_size.load();
+          if (next[i][j].load()) {
+            top_down_cost += normal_v[i + 1] - normal_v[i];
+          }
+          if (~seen[i][j].load()) {
+            bottom_up_cost += v[i + 1] - v[i];
+          }
         }
 #elif defined(ATOMIC_BITSET)
         if (seen[i].load().all()) {
@@ -1387,7 +1410,8 @@ private:
   void ReachDetect() {
     auto &bfs_state = state.global_bfs_state;
     auto &change = bfs_state->change;
-    auto &frontier_size = bfs_state->frontier_size;
+    auto &top_down_cost = bfs_state->top_down_cost;
+    auto &bottom_up_cost = bfs_state->bottom_up_cost;
     int64_t finished_searches = 0;
     // detect lanes that finished
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
@@ -1412,7 +1436,7 @@ private:
     if (finished_searches == LANE_LIMIT) {
       change = false;
     } else {
-      if (frontier_size > 0) {
+      if (top_down_cost > 0 || bottom_up_cost > 0) {
         change = true;
       } else {
         change = false;
@@ -1842,7 +1866,6 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
           result_data[search_num] =
               (uint64_t)0; // path of length 0 does not require a search
         } else {
-          bfs_state->frontier_size++;
 #ifdef SEGMENT_BITSET
           bfs_state->visit1[bfs_state->src[src_pos]][lane / 64] |= ((idx_t)1 << (lane % 64));
 #elif defined(ATOMIC_BITSET)
