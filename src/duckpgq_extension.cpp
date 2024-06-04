@@ -172,14 +172,12 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
   }
   if (statement->type == StatementType::EXPLAIN_STATEMENT) {
     auto &explain_statement = statement->Cast<ExplainStatement>();
-    // auto select_statement =
-    // dynamic_cast<SelectStatement*>(explain_statement.stmt.get());
     duckpgq_handle_statement(explain_statement.stmt.get(), duckpgq_state);
   }
   if (statement->type == StatementType::COPY_STATEMENT) {
     const auto &copy_statement = statement->Cast<CopyStatement>();
     const auto select_node =
-        dynamic_cast<SelectNode *>(copy_statement.select_statement.get());
+        dynamic_cast<SelectNode *>(copy_statement.info->select_statement.get());
     duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
     throw Exception(ExceptionType::BINDER, "use duckpgq_bind instead");
   }
@@ -199,7 +197,7 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
   auto duckpgq_state_entry = context.registered_state.find("duckpgq");
   DuckPGQState *duckpgq_state;
   if (duckpgq_state_entry == context.registered_state.end()) {
-    auto state = make_shared<DuckPGQState>(std::move(parse_data));
+    auto state = make_shared_ptr<DuckPGQState>(std::move(parse_data));
     context.registered_state["duckpgq"] = state;
     duckpgq_state = state.get();
   } else {

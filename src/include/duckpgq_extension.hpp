@@ -52,7 +52,7 @@ struct DuckPGQParserExtension : public ParserExtension {
   DuckPGQParserExtension() : ParserExtension() {
     parse_function = duckpgq_parse;
     plan_function = duckpgq_plan;
-    parser_info = make_shared<DuckPGQParserExtensionInfo>();
+    parser_info = make_shared_ptr<DuckPGQParserExtensionInfo>();
   }
 };
 
@@ -63,6 +63,10 @@ struct DuckPGQParseData : ParserExtensionParseData {
     return make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
         statement->Copy());
   }
+
+  string ToString() const override {
+    return statement->ToString();
+  };
 
   explicit DuckPGQParseData(unique_ptr<SQLStatement> statement)
       : statement(std::move(statement)) {}

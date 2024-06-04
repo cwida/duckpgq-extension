@@ -1,5 +1,6 @@
 #include "duckpgq/functions/tablefunctions/drop_property_graph.hpp"
 
+#include "duckdb/parser/parsed_data/drop_property_graph_info.hpp"
 #include <duckpgq_extension.hpp>
 
 namespace duckdb {
@@ -22,7 +23,7 @@ DropPropertyGraphFunction::DropPropertyGraphBind(
   }
   auto statement =
       dynamic_cast<DropStatement *>(duckpgq_parse_data->statement.get());
-  auto info = dynamic_cast<DropInfo *>(statement->info.get());
+  auto info = dynamic_cast<DropPropertyGraphInfo *>(statement->info.get());
   return make_uniq<DropPropertyGraphBindData>(info);
 }
 
@@ -43,9 +44,9 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(
   }
   auto duckpgq_state = (DuckPGQState *)lookup->second.get();
   auto registered_pg =
-      duckpgq_state->registered_property_graphs.find(pg_info->name);
+      duckpgq_state->registered_property_graphs.find(pg_info->property_graph_name);
   if (registered_pg == duckpgq_state->registered_property_graphs.end()) {
-    throw BinderException("Property graph %s does not exist.", pg_info->name);
+    throw BinderException("Property graph %s does not exist.", pg_info->property_graph_name);
   }
   duckpgq_state->registered_property_graphs.erase(registered_pg);
 }
