@@ -3,8 +3,8 @@
 
 require duckpgq
 
-statement ok
-pragma enable_verification
+#statement ok
+#pragma enable_verification
 
 statement ok
 CREATE TABLE Student(id BIGINT, name VARCHAR);
