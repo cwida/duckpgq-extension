@@ -7,6 +7,106 @@ This repository is currently a research project and a work in progress. Feel fre
 
 ---
 
+## DuckPGQ Extension Availability
+
+<details>
+<summary>Version v0.10.3</summary>
+
+### Linux
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [linux_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.3/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_gcc4        | [linux_amd64_gcc4](<https://s3.amazonaws.com/duckpgq/v0.10.3/linux_amd64_gcc4/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.3/linux_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Osx
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [osx_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.3/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.3/osx_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Wasm
+
+| Architecture | Download Link |
+|--------------|---------------|
+| eh        | [wasm_eh](<https://s3.amazonaws.com/duckpgq/v0.10.3/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://s3.amazonaws.com/duckpgq/v0.10.3/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://s3.amazonaws.com/duckpgq/v0.10.3/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+
+</details>
+
+<details>
+<summary>Version v0.10.2</summary>
+
+### Linux
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [linux_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.2/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_gcc4        | [linux_amd64_gcc4](<https://s3.amazonaws.com/duckpgq/v0.10.2/linux_amd64_gcc4/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.2/linux_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Osx
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [osx_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.2/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.2/osx_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Wasm
+
+| Architecture | Download Link |
+|--------------|---------------|
+| eh        | [wasm_eh](<https://s3.amazonaws.com/duckpgq/v0.10.2/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://s3.amazonaws.com/duckpgq/v0.10.2/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://s3.amazonaws.com/duckpgq/v0.10.2/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+
+</details>
+
+<details>
+<summary>Version v0.10.1</summary>
+
+### Linux
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [linux_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.1/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_gcc4        | [linux_amd64_gcc4](<https://s3.amazonaws.com/duckpgq/v0.10.1/linux_amd64_gcc4/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.1/linux_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Osx
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [osx_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.1/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.1/osx_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Wasm
+
+| Architecture | Download Link |
+|--------------|---------------|
+| eh        | [wasm_eh](<https://s3.amazonaws.com/duckpgq/v0.10.1/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://s3.amazonaws.com/duckpgq/v0.10.1/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://s3.amazonaws.com/duckpgq/v0.10.1/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+
+</details>
+
+<details>
+<summary>Version v0.10.0</summary>
+
+### Osx
+
+| Architecture | Download Link |
+|--------------|---------------|
+| arm64        | [osx_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.0/osx_arm64/duckpgq.duckdb_extension>) |
+| arm64        | [osx_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.0/osx_arm64/duckpgq.duckdb_extension.gz>) |
+
+</details>
+
+
+
 ## Loading DuckPGQ
 DuckPGQ is currently only compatible with DuckDB v0.10.1 on macOS & Linux and requires DuckDB to be started in the `unsigned` mode.
 
