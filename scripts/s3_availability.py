@@ -19,7 +19,7 @@ def list_extensions(bucket, prefix):
                 arch = '_'.join(parts[1:])
             else:
                 os, arch = parts
-            url = f'https://s3.amazonaws.com/{bucket}/{obj["Key"]}'
+            url = f'https://{bucket}.s3.eu-north-1.amazonaws.com/{obj["Key"]}'
 
             if version not in extensions:
                 extensions[version] = {}

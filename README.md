@@ -16,24 +16,24 @@ This repository is currently a research project and a work in progress. Feel fre
 
 | Architecture | Download Link |
 |--------------|---------------|
-| amd64        | [linux_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.3/linux_amd64/duckpgq.duckdb_extension.gz>) |
-| amd64_gcc4        | [linux_amd64_gcc4](<https://s3.amazonaws.com/duckpgq/v0.10.3/linux_amd64_gcc4/duckpgq.duckdb_extension.gz>) |
-| arm64        | [linux_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.3/linux_arm64/duckpgq.duckdb_extension.gz>) |
+| amd64        | [linux_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.3/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_gcc4        | [linux_amd64_gcc4](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.3/linux_amd64_gcc4/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.3/linux_arm64/duckpgq.duckdb_extension.gz>) |
 
 ### Osx
 
 | Architecture | Download Link |
 |--------------|---------------|
-| amd64        | [osx_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.3/osx_amd64/duckpgq.duckdb_extension.gz>) |
-| arm64        | [osx_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.3/osx_arm64/duckpgq.duckdb_extension.gz>) |
+| amd64        | [osx_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.3/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.3/osx_arm64/duckpgq.duckdb_extension.gz>) |
 
 ### Wasm
 
 | Architecture | Download Link |
 |--------------|---------------|
-| eh        | [wasm_eh](<https://s3.amazonaws.com/duckpgq/v0.10.3/wasm_eh/duckpgq.duckdb_extension.wasm>) |
-| mvp        | [wasm_mvp](<https://s3.amazonaws.com/duckpgq/v0.10.3/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
-| threads        | [wasm_threads](<https://s3.amazonaws.com/duckpgq/v0.10.3/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+| eh        | [wasm_eh](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.3/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.3/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.3/wasm_threads/duckpgq.duckdb_extension.wasm>) |
 
 </details>
 
@@ -44,24 +44,24 @@ This repository is currently a research project and a work in progress. Feel fre
 
 | Architecture | Download Link |
 |--------------|---------------|
-| amd64        | [linux_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.2/linux_amd64/duckpgq.duckdb_extension.gz>) |
-| amd64_gcc4        | [linux_amd64_gcc4](<https://s3.amazonaws.com/duckpgq/v0.10.2/linux_amd64_gcc4/duckpgq.duckdb_extension.gz>) |
-| arm64        | [linux_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.2/linux_arm64/duckpgq.duckdb_extension.gz>) |
+| amd64        | [linux_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.2/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_gcc4        | [linux_amd64_gcc4](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.2/linux_amd64_gcc4/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.2/linux_arm64/duckpgq.duckdb_extension.gz>) |
 
 ### Osx
 
 | Architecture | Download Link |
 |--------------|---------------|
-| amd64        | [osx_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.2/osx_amd64/duckpgq.duckdb_extension.gz>) |
-| arm64        | [osx_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.2/osx_arm64/duckpgq.duckdb_extension.gz>) |
+| amd64        | [osx_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.2/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.2/osx_arm64/duckpgq.duckdb_extension.gz>) |
 
 ### Wasm
 
 | Architecture | Download Link |
 |--------------|---------------|
-| eh        | [wasm_eh](<https://s3.amazonaws.com/duckpgq/v0.10.2/wasm_eh/duckpgq.duckdb_extension.wasm>) |
-| mvp        | [wasm_mvp](<https://s3.amazonaws.com/duckpgq/v0.10.2/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
-| threads        | [wasm_threads](<https://s3.amazonaws.com/duckpgq/v0.10.2/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+| eh        | [wasm_eh](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.2/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.2/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.2/wasm_threads/duckpgq.duckdb_extension.wasm>) |
 
 </details>
 
@@ -72,24 +72,24 @@ This repository is currently a research project and a work in progress. Feel fre
 
 | Architecture | Download Link |
 |--------------|---------------|
-| amd64        | [linux_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.1/linux_amd64/duckpgq.duckdb_extension.gz>) |
-| amd64_gcc4        | [linux_amd64_gcc4](<https://s3.amazonaws.com/duckpgq/v0.10.1/linux_amd64_gcc4/duckpgq.duckdb_extension.gz>) |
-| arm64        | [linux_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.1/linux_arm64/duckpgq.duckdb_extension.gz>) |
+| amd64        | [linux_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.1/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_gcc4        | [linux_amd64_gcc4](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.1/linux_amd64_gcc4/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.1/linux_arm64/duckpgq.duckdb_extension.gz>) |
 
 ### Osx
 
 | Architecture | Download Link |
 |--------------|---------------|
-| amd64        | [osx_amd64](<https://s3.amazonaws.com/duckpgq/v0.10.1/osx_amd64/duckpgq.duckdb_extension.gz>) |
-| arm64        | [osx_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.1/osx_arm64/duckpgq.duckdb_extension.gz>) |
+| amd64        | [osx_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.1/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.1/osx_arm64/duckpgq.duckdb_extension.gz>) |
 
 ### Wasm
 
 | Architecture | Download Link |
 |--------------|---------------|
-| eh        | [wasm_eh](<https://s3.amazonaws.com/duckpgq/v0.10.1/wasm_eh/duckpgq.duckdb_extension.wasm>) |
-| mvp        | [wasm_mvp](<https://s3.amazonaws.com/duckpgq/v0.10.1/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
-| threads        | [wasm_threads](<https://s3.amazonaws.com/duckpgq/v0.10.1/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+| eh        | [wasm_eh](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.1/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.1/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.1/wasm_threads/duckpgq.duckdb_extension.wasm>) |
 
 </details>
 
@@ -100,11 +100,10 @@ This repository is currently a research project and a work in progress. Feel fre
 
 | Architecture | Download Link |
 |--------------|---------------|
-| arm64        | [osx_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.0/osx_arm64/duckpgq.duckdb_extension>) |
-| arm64        | [osx_arm64](<https://s3.amazonaws.com/duckpgq/v0.10.0/osx_arm64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.0/osx_arm64/duckpgq.duckdb_extension>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.0/osx_arm64/duckpgq.duckdb_extension.gz>) |
 
 </details>
-
 
 
 ## Loading DuckPGQ
