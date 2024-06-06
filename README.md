@@ -7,7 +7,37 @@ This repository is currently a research project and a work in progress. Feel fre
 
 ---
 
+## Loading DuckPGQ 
+There are currently two ways to install the DuckPGQ extension. 
+Both ways require DuckDB to be launched in the `unsigned` mode.
+The first way is by setting the `custom_extension_repository` command (see below). The other way is by directly downloading the extension file for your OS + architecture (see the [DuckPGQ availibility section](#duckpgq-extension-availability))
+
+For CLI: 
+```bash
+duckdb -unsigned
+```
+```bash
+set custom_extension_repository = 'http://duckpgq.s3.eu-north-1.amazonaws.com';
+force install 'duckpgq'; # ensures any existing DuckPGQ version already installed is overwritten
+load 'duckpgq';
+```
+
+For Python: 
+```python
+import duckdb
+
+conn = duckdb.connect(config = {"allow_unsigned_extensions": "true"})
+conn.execute("set custom_extension_repository = 'http://duckpgq.s3.eu-north-1.amazonaws.com';")
+conn.execute("force install 'duckpgq';")
+conn.execute("load 'duckpgq';")
+```
+
 ## DuckPGQ Extension Availability
+To use the extension, check the direct download links below. To install and load the extension, launch DuckDB in unsigned mode and execute the commands:
+```sql
+force install 'path/to/duckpgq_extension';
+load 'duckpgq'; 
+```
 
 <details>
 <summary>Version v0.10.3</summary>
@@ -105,29 +135,6 @@ This repository is currently a research project and a work in progress. Feel fre
 
 </details>
 
-
-## Loading DuckPGQ
-It is currently required to launch DuckDB in the `unsigned` mode.
-
-For CLI: 
-```bash
-duckdb -unsigned
-```
-```bash
-set custom_extension_repository = 'http://duckpgq.s3.eu-north-1.amazonaws.com';
-force install 'duckpgq'; # ensures any existing DuckPGQ version already installed is overwritten
-load 'duckpgq';
-```
-
-For Python: 
-```python
-import duckdb
-
-conn = duckdb.connect(config = {"allow_unsigned_extensions": "true"})
-conn.execute("set custom_extension_repository = 'http://duckpgq.s3.eu-north-1.amazonaws.com';")
-conn.execute("force install 'duckpgq';")
-conn.execute("load 'duckpgq';")
-```
 
 ## Building
 ### Managing dependencies
