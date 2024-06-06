@@ -1,0 +1,33 @@
+# name: test/sql/sqlpgq/multiple_graph_table_error.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+CREATE TABLE cities (
+name VARCHAR,
+lat DECIMAL,
+lon DECIMAL
+);
+
+statement ok
+CREATE TABLE cities_are_adjacent (
+city1name VARCHAR,
+city2name VARCHAR
+);
+
+statement ok
+-CREATE PROPERTY GRAPH citymap
+VERTEX TABLES (
+cities PROPERTIES (name,lat,lon) LABEL city
+)
+EDGE TABLES (
+cities_are_adjacent SOURCE KEY ( city1name ) REFERENCES cities ( name )
+DESTINATION KEY ( city2name ) REFERENCES cities ( name )
+LABEL adjacent
+);
+
+statement error
+-select * from GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g1, GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g2;
+----
+Invalid Error: Multiple graph tables in a single query are not supported yet
