@@ -107,7 +107,7 @@ This repository is currently a research project and a work in progress. Feel fre
 
 
 ## Loading DuckPGQ
-DuckPGQ is currently only compatible with DuckDB v0.10.1 on macOS & Linux and requires DuckDB to be started in the `unsigned` mode.
+It is currently required to launch DuckDB in the `unsigned` mode.
 
 For CLI: 
 ```bash
