@@ -120,6 +120,10 @@ void duckpgq_find_match_function(TableRef *table_ref,
     auto function =
         dynamic_cast<FunctionExpression *>(table_function_ref->function.get());
     if (function->function_name == "duckpgq_match") {
+      if (duckpgq_state.transform_expression != nullptr) {
+        throw Exception(ExceptionType::INVALID,
+                        "Multiple graph tables in a single query are not supported yet");
+      }
       duckpgq_state.transform_expression =
           std::move(std::move(function->children[0]));
       function->children.pop_back();

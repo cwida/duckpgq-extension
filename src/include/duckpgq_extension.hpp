@@ -79,6 +79,7 @@ public:
 
   void QueryEnd() override {
     parse_data.reset();
+    transform_expression = nullptr;
     for (const auto &csr_id : csr_to_delete) {
       csr_list.erase(csr_id);
     }
