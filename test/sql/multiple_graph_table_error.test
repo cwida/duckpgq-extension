@@ -31,3 +31,15 @@ statement error
 -select * from GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g1, GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g2;
 ----
 Invalid Error: Multiple graph tables in a single query are not supported yet
+
+statement ok
+-FROM GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g1;
+
+statement ok
+-FROM GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g1;
+
+statement error
+-select * from GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g1, GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g2;
+----
+Invalid Error: Multiple graph tables in a single query are not supported yet
+
