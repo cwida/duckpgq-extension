@@ -26,7 +26,6 @@
 #include "duckdb/parser/subpath_element.hpp"
 #include <cmath>
 #include <duckdb/common/enums/set_operation_type.hpp>
-#include <fmt/format.h>
 
 namespace duckdb {
 shared_ptr<PropertyGraphTable>
