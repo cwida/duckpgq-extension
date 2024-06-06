@@ -18,7 +18,7 @@ duckdb -unsigned
 ```
 ```bash
 set custom_extension_repository = 'http://duckpgq.s3.eu-north-1.amazonaws.com';
-force install 'duckpgq'; # ensures any existing DuckPGQ version already installed is overwritten
+force install 'duckpgq';
 load 'duckpgq';
 ```
 
