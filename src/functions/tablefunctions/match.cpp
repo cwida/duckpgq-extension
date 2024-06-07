@@ -943,7 +943,8 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
       dynamic_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 
   auto ref = dynamic_cast<MatchExpression *>(
-      duckpgq_state->transform_expression[0].get());
+      duckpgq_state->transform_expression[duckpgq_state->match_index].get());
+  duckpgq_state->match_index++;
   auto pg_table = duckpgq_state->GetPropertyGraph(ref->pg_name);
 
   vector<unique_ptr<ParsedExpression>> conditions;
@@ -1047,7 +1048,6 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
   }
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
-  duckpgq_state->transform_expression.erase(duckpgq_state->transform_expression.begin());
   return std::move(result);
 }
 } // namespace duckdb

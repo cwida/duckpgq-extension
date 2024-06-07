@@ -80,6 +80,7 @@ public:
   void QueryEnd() override {
     parse_data.reset();
     transform_expression.clear();
+    match_index = 0; // Reset the index
     unnamed_graphtable_index = 1; // Reset the index
     for (const auto &csr_id : csr_to_delete) {
       csr_list.erase(csr_id);
@@ -107,7 +108,7 @@ public:
   unique_ptr<ParserExtensionParseData> parse_data;
 
   vector<unique_ptr<ParsedExpression>> transform_expression;
-
+  int32_t match_index = 0;
   int32_t unnamed_graphtable_index = 1; // Used to generate unique names for
                                         // unnamed graph tables
 
