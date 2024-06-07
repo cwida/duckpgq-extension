@@ -89,7 +89,7 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                       : query);
   if (parser.statements.size() != 1) {
     throw Exception(ExceptionType::PARSER,
-        "More than 1 statement detected, please only give one.");
+        "More than one statement detected, please only give one.");
   }
   return ParserExtensionParseResult(make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
       std::move(parser.statements[0])));
@@ -119,15 +119,11 @@ void duckpgq_find_match_function(TableRef *table_ref,
     // Handle TableFunctionRef case
     auto function =
         dynamic_cast<FunctionExpression *>(table_function_ref->function.get());
-    if (function->function_name == "duckpgq_match") {
-      if (duckpgq_state.transform_expression != nullptr) {
-        throw Exception(ExceptionType::INVALID,
-                        "Multiple graph tables in a single query are not supported yet");
-      }
-      duckpgq_state.transform_expression =
-          std::move(std::move(function->children[0]));
-      function->children.pop_back();
+    if (function->function_name != "duckpgq_match") {
+      return;
     }
+    duckpgq_state.transform_expression.push_back(std::move(function->children[0]));
+    function->children.pop_back();
   } else if (auto join_ref = dynamic_cast<JoinRef *>(table_ref)) {
     // Handle JoinRef case
     duckpgq_find_match_function(join_ref->left.get(), duckpgq_state);
