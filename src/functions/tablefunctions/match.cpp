@@ -943,10 +943,8 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
       dynamic_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 
   auto ref = dynamic_cast<MatchExpression *>(
-      duckpgq_state->transform_expression.get());
+      duckpgq_state->transform_expression[0].get());
   auto pg_table = duckpgq_state->GetPropertyGraph(ref->pg_name);
-
-  auto data = make_uniq<MatchBindData>();
 
   vector<unique_ptr<ParsedExpression>> conditions;
 
@@ -1040,8 +1038,16 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
 
   auto subquery = make_uniq<SelectStatement>();
   subquery->node = std::move(select_node);
+  if (ref->alias == "unnamed_graphtable") {
+    if (duckpgq_state->unnamed_graphtable_index > 1) {
+      ref->alias = "unnamed_graphtable" +
+                   std::to_string(duckpgq_state->unnamed_graphtable_index);
+    }
+    duckpgq_state->unnamed_graphtable_index++;
+  }
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
+  duckpgq_state->transform_expression.erase(duckpgq_state->transform_expression.begin());
   return std::move(result);
 }
 } // namespace duckdb
