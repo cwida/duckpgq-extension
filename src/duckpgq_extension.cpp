@@ -55,10 +55,8 @@ static void LoadInternal(DatabaseInstance &instance) {
     "Barrier variants selection", LogicalType::INTEGER, Value(0));
   config.AddExtensionOption("experimental_path_finding_operator_task_size",
     "Number of vertices processed per thread at a time", LogicalType::INTEGER, Value(256));
-  config.AddExtensionOption("experimental_path_finding_operator_alpha",
-    "Top-up and bottom-up search toggle parameter", LogicalType::INTEGER, Value(1024));
-  config.AddExtensionOption("experimental_path_finding_operator_beta",
-    "Top-up and bottom-up search toggle parameter", LogicalType::INTEGER, Value(64));
+  config.AddExtensionOption("experimental_path_finding_operator_sequential",
+    "Sequential path finding operator", LogicalType::BOOLEAN, Value(true));
   Connection con(instance);
   con.BeginTransaction();
 
