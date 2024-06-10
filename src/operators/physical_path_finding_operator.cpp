@@ -17,9 +17,9 @@
 #include <thread>
 
 // #define SEGMENT_BITSET
-#define ATOMIC_BITSET
+// #define ATOMIC_BITSET
 // #define FINE_GRAINED_LOCK
-// #define ELEMENT_LOCK
+#define ELEMENT_LOCK
 
 namespace duckdb {
 
@@ -351,7 +351,7 @@ public:
   shared_ptr<DataChunk> pairs;
   int64_t iter;
   int64_t v_size;
-  atomic<bool> change;
+  bool change;
   idx_t started_searches;
   int64_t total_len;
   int64_t *src;
@@ -521,16 +521,18 @@ public:
     do {
       bfs_state->InitTask(worker_id);
 
-      if (bfs_state->is_top_down) {
-        IterativeLengthTopDown();
-      } else {
-        IterativeLengthBottomUp();
-      }
+      // if (bfs_state->is_top_down) {
+      //   IterativeLengthTopDown();
+      // } else {
+      //   IterativeLengthBottomUp();
+      // }
+      IterativeLengthTopDown();
+
       barrier.Wait();
 
       if (worker_id == 0) {
         ReachDetect();
-        bfs_state->DirectionSwitch();
+        // bfs_state->DirectionSwitch();
       }
       barrier.Wait();
     } while (change);
@@ -556,6 +558,7 @@ private:
     auto& top_down_cost = bfs_state->top_down_cost;
     auto& bottom_up_cost = bfs_state->bottom_up_cost;
     auto& lane_to_num = bfs_state->lane_to_num;
+    auto& change = bfs_state->change;
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
@@ -623,6 +626,7 @@ private:
       }
     }
 
+    change = false;
     barrier.Wait();
 
     for (auto i = left; i < right; i++) {
@@ -631,33 +635,33 @@ private:
         if (next[i][j].load()) {
           next[i][j].store(next[i][j].load() & ~seen[i][j].load());
           seen[i][j].store(seen[i][j].load() | next[i][j].load());
-
-          top_down_cost += v[i + 1] - v[i];
+          change |= next[i][j].load();
+          // top_down_cost += v[i + 1] - v[i];
         }
-        if (~seen[i][j].load()) {
-          bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-        }
+        // if (~seen[i][j].load()) {
+        //   bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
+        // }
       }
 #elif defined(ATOMIC_BITSET)
       if (next[i].load().any()) {
         next[i].store(next[i].load() & ~seen[i].load());
         seen[i].store(seen[i].load() | next[i].load());
-
-        top_down_cost += v[i + 1] - v[i];
+        change |= next[i].load().any();
+        // top_down_cost += v[i + 1] - v[i];
       }
-      if (~seen[i].load().all()) {
-        bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-      }
+      // if (~seen[i].load().all()) {
+        // bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
+      // }
 #else
       if (next[i].any()) {
         next[i] &= ~seen[i];
         seen[i] |= next[i];
-
-        top_down_cost += v[i + 1] - v[i];
+        change |= next[i].any();
+        // top_down_cost += v[i + 1] - v[i];
       }
-      if (~seen[i].all()) {
-        bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-      }
+      // if (~seen[i].all()) {
+        // bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
+      // }
 #endif
     }
   }
@@ -1113,16 +1117,17 @@ public:
     do {
       bfs_state->InitTask(worker_id);
 
-      if (bfs_state->is_top_down) {
-        IterativeLengthTopDown();
-      } else {
-        IterativeLengthBottomUp();
-      }
+      // if (bfs_state->is_top_down) {
+      //   IterativeLengthTopDown();
+      // } else {
+      //   IterativeLengthBottomUp();
+      // }
+      IterativeLengthTopDown();
       barrier.Wait();
 
       if (worker_id == 0) {
         ReachDetect();
-        bfs_state->DirectionSwitch();
+        // bfs_state->DirectionSwitch();
       }
 
       barrier.Wait();
@@ -1151,6 +1156,7 @@ private:
     auto& bottom_up_cost = bfs_state->bottom_up_cost;
     auto& parents_v = bfs_state->parents_v;
     auto& parents_e = bfs_state->parents_e;
+    auto& change = bfs_state->change;
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
@@ -1239,6 +1245,7 @@ private:
       }
     }
 
+    change = false;
     barrier.Wait();
 
     for (auto i = left; i < right; i++) {
@@ -1247,33 +1254,33 @@ private:
         if (next[i][j].load()) {
           next[i][j].store(next[i][j].load() & ~seen[i][j].load());
           seen[i][j].store(seen[i][j].load() | next[i][j].load());
-
-          top_down_cost += v[i + 1] - v[i];
+          change |= next[i][j].load();
+          // top_down_cost += v[i + 1] - v[i];
         }
-        if (~seen[i][j].load()) {
-          bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-        }
+        // if (~seen[i][j].load()) {
+          // bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
+        // }
       }
 #elif defined(ATOMIC_BITSET)
       if (next[i].load().any()) {
         next[i].store(next[i].load() & ~seen[i].load());
         seen[i].store(seen[i].load() | next[i].load());
-
-        top_down_cost += v[i + 1] - v[i];
+        change |= next[i].load().any();
+        // top_down_cost += v[i + 1] - v[i];
       }
-      if (~seen[i].load().all()) {
-        bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-      }
+      // if (~seen[i].load().all()) {
+        // bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
+      // }
 #else
       if (next[i].any()) {
         next[i] &= ~seen[i];
         seen[i] |= next[i];
-
-        top_down_cost += v[i + 1] - v[i];
+        change |= next[i].any();
+        // top_down_cost += v[i + 1] - v[i];
       }
-      if (~seen[i].all()) {
-        bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-      }
+      // if (~seen[i].all()) {
+        // bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
+      // }
 #endif
     }
   }
@@ -1441,13 +1448,14 @@ private:
     }
     if (finished_searches == LANE_LIMIT) {
       change = false;
-    } else {
-      if (top_down_cost > 0 || bottom_up_cost > 0) {
-        change = true;
-      } else {
-        change = false;
-      }
-    }
+    } 
+    // else {
+    //   if (top_down_cost > 0 || bottom_up_cost > 0) {
+    //     change = true;
+    //   } else {
+    //     change = false;
+    //   }
+    // }
     // into the next iteration
     bfs_state->iter++;
   }
