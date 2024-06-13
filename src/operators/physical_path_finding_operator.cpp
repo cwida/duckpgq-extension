@@ -44,7 +44,7 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(
   v_size = v_size_ + 2;
   try {
     v = new std::atomic<int64_t>[v_size];
-    reverse_v = new std::atomic<int64_t>[v_size];
+    // reverse_v = new std::atomic<int64_t>[v_size];
   } catch (std::bad_alloc const &) {
     throw InternalException(
         "Unable to initialize vector of size for csr vertex table "
@@ -52,7 +52,7 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(
   }
   for (idx_t i = 0; i < v_size; ++i) {
     v[i].store(0);
-    reverse_v[i].store(0);
+    // reverse_v[i].store(0);
   }
   initialized_v = true;
 }
@@ -64,16 +64,16 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeEdge(
   }
   try {
     e.resize(e_size, 0);
-    reverse_e.resize(e_size, 0);
+    // reverse_e.resize(e_size, 0);
     edge_ids.resize(e_size, 0);
-    reverse_edge_ids.resize(e_size, 0);
+    // reverse_edge_ids.resize(e_size, 0);
   } catch (std::bad_alloc const &) {
     throw InternalException("Unable to initialize vector of size for csr "
                             "edge table representation");
   }
   for (idx_t i = 1; i < v_size; i++) {
     v[i] += v[i - 1];
-    reverse_v[i] += reverse_v[i - 1];
+    // reverse_v[i] += reverse_v[i - 1];
   }
   initialized_e = true;
 }
@@ -126,14 +126,14 @@ void PathFindingLocalState::CreateCSRVertex(DataChunk &input,
         edge_count = edge_count + cnt;
         return edge_count;
       });
-  BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
-      input.data[7], input.data[6], result, input.size(),
-      [&](const int64_t dst, const int64_t cnt) {
-        int64_t edge_count = 0;
-        global_csr.reverse_v[dst + 2] = cnt;
-        edge_count = edge_count + cnt;
-        return edge_count;
-      });
+  // BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
+  //     input.data[7], input.data[6], result, input.size(),
+  //     [&](const int64_t dst, const int64_t cnt) {
+  //       int64_t edge_count = 0;
+  //       global_csr.reverse_v[dst + 2] = cnt;
+  //       edge_count = edge_count + cnt;
+  //       return edge_count;
+  //     });
 }
 
 class Barrier {
@@ -268,7 +268,8 @@ public:
     for (auto& queue : queues) {
       vector<vector<pair<idx_t, idx_t>>> worker_tasks(num_threads);
       auto cur_worker = 0;
-      int64_t *v = is_top_down ? (int64_t*)csr->v : (int64_t*)csr->reverse_v;
+      // int64_t *v = is_top_down ? (int64_t*)csr->v : (int64_t*)csr->reverse_v;
+      int64_t *v = (int64_t*)csr->v;
       int64_t current_task_edges = 0;
       idx_t current_task_start = 0;
       for (idx_t i = 0; i < (idx_t)v_size; i++) {
@@ -553,7 +554,7 @@ private:
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
     int64_t *v = (int64_t *)state.global_csr->v;
-    int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
+    // int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
     vector<int64_t> &e = state.global_csr->e;
     auto& top_down_cost = bfs_state->top_down_cost;
     auto& bottom_up_cost = bfs_state->bottom_up_cost;
@@ -666,118 +667,118 @@ private:
     }
   }
 
-  void IterativeLengthBottomUp() {
-    auto& bfs_state = state.global_bfs_state;
-    auto& seen = bfs_state->seen;
-    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
-    auto& barrier = bfs_state->barrier;
-    int64_t *v = (int64_t *)state.global_csr->reverse_v;
-    int64_t *normal_v = (int64_t *)state.global_csr->v;
-    vector<int64_t> &e = state.global_csr->reverse_e;
-    auto& top_down_cost = bfs_state->top_down_cost;
-    auto& bottom_up_cost = bfs_state->bottom_up_cost;
+//   void IterativeLengthBottomUp() {
+//     auto& bfs_state = state.global_bfs_state;
+//     auto& seen = bfs_state->seen;
+//     auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+//     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+//     auto& barrier = bfs_state->barrier;
+//     int64_t *v = (int64_t *)state.global_csr->reverse_v;
+//     int64_t *normal_v = (int64_t *)state.global_csr->v;
+//     vector<int64_t> &e = state.global_csr->reverse_e;
+//     auto& top_down_cost = bfs_state->top_down_cost;
+//     auto& bottom_up_cost = bfs_state->bottom_up_cost;
 
-    // clear next before each iteration
-    for (auto i = left; i < right; i++) {
-#ifdef SEGMENT_BITSET
-      for (auto j = 0; j < 8; j++) {
-        next[i][j].store(0, std::memory_order_relaxed);
-      }
-#else
-      next[i] = 0;
-#endif
-    }
+//     // clear next before each iteration
+//     for (auto i = left; i < right; i++) {
+// #ifdef SEGMENT_BITSET
+//       for (auto j = 0; j < 8; j++) {
+//         next[i][j].store(0, std::memory_order_relaxed);
+//       }
+// #else
+//       next[i] = 0;
+// #endif
+//     }
     
-    barrier.Wait();
+//     barrier.Wait();
 
-    while (true) {
-      auto task = bfs_state->FetchTask(worker_id);
-      if (task.first == task.second) {
-        break;
-      }
-      auto start = task.first;
-      auto end = task.second;
+//     while (true) {
+//       auto task = bfs_state->FetchTask(worker_id);
+//       if (task.first == task.second) {
+//         break;
+//       }
+//       auto start = task.first;
+//       auto end = task.second;
 
-#ifdef SEGMENT_BITSET
-      idx_t old_next, new_next;
-#else
-      std::bitset<LANE_LIMIT> old_next, new_next;
-#endif
+// #ifdef SEGMENT_BITSET
+//       idx_t old_next, new_next;
+// #else
+//       std::bitset<LANE_LIMIT> old_next, new_next;
+// #endif
 
-      for (auto i = start; i < end; i++) {
-#ifdef SEGMENT_BITSET
-        for (auto j = 0; j < 8; j++) {
-          if (~seen[i][j] == 0) {
-            continue;
-          }
+//       for (auto i = start; i < end; i++) {
+// #ifdef SEGMENT_BITSET
+//         for (auto j = 0; j < 8; j++) {
+//           if (~seen[i][j] == 0) {
+//             continue;
+//           }
 
-          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-            auto n = e[offset];
-            if (visit[n][j].load(std::memory_order_relaxed)) {
-              do {
-                old_next = next[i][j].load();
-                new_next = old_next | visit[n][j].load();
-              } while (!next[i][j].compare_exchange_weak(old_next, new_next));
-            }
-          }
+//           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+//             auto n = e[offset];
+//             if (visit[n][j].load(std::memory_order_relaxed)) {
+//               do {
+//                 old_next = next[i][j].load();
+//                 new_next = old_next | visit[n][j].load();
+//               } while (!next[i][j].compare_exchange_weak(old_next, new_next));
+//             }
+//           }
 
-          if (next[i][j].load()) {
-            next[i][j].store(next[i][j].load() & ~seen[i][j].load());
-            seen[i][j].store(seen[i][j].load() | next[i][j].load());
+//           if (next[i][j].load()) {
+//             next[i][j].store(next[i][j].load() & ~seen[i][j].load());
+//             seen[i][j].store(seen[i][j].load() | next[i][j].load());
 
-            top_down_cost += normal_v[i + 1] - normal_v[i];
-          }
-          if (~seen[i][j].load()) {
-            bottom_up_cost += v[i + 1] - v[i];
-          }
-        }
-#elif defined(ATOMIC_BITSET)
-        if (seen[i].load().all()) {
-          continue;
-        }
+//             top_down_cost += normal_v[i + 1] - normal_v[i];
+//           }
+//           if (~seen[i][j].load()) {
+//             bottom_up_cost += v[i + 1] - v[i];
+//           }
+//         }
+// #elif defined(ATOMIC_BITSET)
+//         if (seen[i].load().all()) {
+//           continue;
+//         }
 
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          do {
-            old_next = next[i].load();
-            new_next = old_next | visit[n].load();
-          } while (!next[i].compare_exchange_weak(old_next, new_next));
-        }
+//         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+//           auto n = e[offset];
+//           do {
+//             old_next = next[i].load();
+//             new_next = old_next | visit[n].load();
+//           } while (!next[i].compare_exchange_weak(old_next, new_next));
+//         }
 
-        if (next[i].load().any()) {
-          next[i].store(next[i].load() & ~seen[i].load());
-          seen[i].store(seen[i].load() | next[i].load());
+//         if (next[i].load().any()) {
+//           next[i].store(next[i].load() & ~seen[i].load());
+//           seen[i].store(seen[i].load() | next[i].load());
 
-          top_down_cost += normal_v[i + 1] - normal_v[i];
-        }
-        if (~seen[i].load().all()) {
-          bottom_up_cost += v[i + 1] - v[i];
-        }
-#else
-        if (seen[i].all()) {
-          continue;
-        }
+//           top_down_cost += normal_v[i + 1] - normal_v[i];
+//         }
+//         if (~seen[i].load().all()) {
+//           bottom_up_cost += v[i + 1] - v[i];
+//         }
+// #else
+//         if (seen[i].all()) {
+//           continue;
+//         }
 
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          next[i] |= visit[n];
-        }
+//         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+//           auto n = e[offset];
+//           next[i] |= visit[n];
+//         }
 
-        if (next[i].any()) {
-          next[i] &= ~seen[i];
-          seen[i] |= next[i];
+//         if (next[i].any()) {
+//           next[i] &= ~seen[i];
+//           seen[i] |= next[i];
 
-          top_down_cost += normal_v[i + 1] - normal_v[i];
-        }
-        if (~seen[i].all()) {
-          bottom_up_cost += v[i + 1] - v[i];
-        }
+//           top_down_cost += normal_v[i + 1] - normal_v[i];
+//         }
+//         if (~seen[i].all()) {
+//           bottom_up_cost += v[i + 1] - v[i];
+//         }
 
-#endif
-      }
-    }
-  }
+// #endif
+//       }
+//     }
+//   }
 
   void ReachDetect() {
     auto &bfs_state = state.global_bfs_state;
@@ -861,14 +862,14 @@ public:
             global_csr->edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
             return 1;
           });
-      TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
-          input.data[7], input.data[4], input.data[2], result, input.size(),
-          [&](int64_t dst, int64_t src, int64_t edge_id) {
-            const auto pos = ++global_csr->reverse_v[dst + 1];
-            global_csr->reverse_e[static_cast<int64_t>(pos) - 1] = src;
-            global_csr->reverse_edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
-            return 1;
-          });
+      // TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
+      //     input.data[7], input.data[4], input.data[2], result, input.size(),
+      //     [&](int64_t dst, int64_t src, int64_t edge_id) {
+      //       const auto pos = ++global_csr->reverse_v[dst + 1];
+      //       global_csr->reverse_e[static_cast<int64_t>(pos) - 1] = src;
+      //       global_csr->reverse_edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
+      //       return 1;
+      //     });
     }
     event->FinishTask();
     return TaskExecutionResult::TASK_FINISHED;
@@ -1149,7 +1150,7 @@ private:
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
     int64_t *v = (int64_t *)state.global_csr->v;
-    int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
+    // int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
     vector<int64_t> &e = state.global_csr->e;
     auto& edge_ids = state.global_csr->edge_ids;
     auto& top_down_cost = bfs_state->top_down_cost;
@@ -1285,140 +1286,140 @@ private:
     }
   }
 
-  void IterativeLengthBottomUp() {
-    auto& bfs_state = state.global_bfs_state;
-    auto& seen = bfs_state->seen;
-    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
-    auto& barrier = bfs_state->barrier;
-    int64_t *v = (int64_t *)state.global_csr->reverse_v;
-    int64_t *normal_v = (int64_t *)state.global_csr->v;
-    vector<int64_t> &e = state.global_csr->reverse_e;
-    auto& edge_ids = state.global_csr->reverse_edge_ids;
-    auto& top_down_cost = bfs_state->top_down_cost;
-    auto& bottom_up_cost = bfs_state->bottom_up_cost;
-    auto& parents_v = bfs_state->parents_v;
-    auto& parents_e = bfs_state->parents_e;
+//   void IterativeLengthBottomUp() {
+//     auto& bfs_state = state.global_bfs_state;
+//     auto& seen = bfs_state->seen;
+//     auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+//     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+//     auto& barrier = bfs_state->barrier;
+//     int64_t *v = (int64_t *)state.global_csr->reverse_v;
+//     int64_t *normal_v = (int64_t *)state.global_csr->v;
+//     vector<int64_t> &e = state.global_csr->reverse_e;
+//     auto& edge_ids = state.global_csr->reverse_edge_ids;
+//     auto& top_down_cost = bfs_state->top_down_cost;
+//     auto& bottom_up_cost = bfs_state->bottom_up_cost;
+//     auto& parents_v = bfs_state->parents_v;
+//     auto& parents_e = bfs_state->parents_e;
 
-    // clear next before each iteration
-    for (auto i = left; i < right; i++) {
-#ifdef SEGMENT_BITSET
-      for (auto j = 0; j < 8; j++) {
-        next[i][j].store(0, std::memory_order_relaxed);
-      }
-#else
-      next[i] = 0;
-#endif
-    }
+//     // clear next before each iteration
+//     for (auto i = left; i < right; i++) {
+// #ifdef SEGMENT_BITSET
+//       for (auto j = 0; j < 8; j++) {
+//         next[i][j].store(0, std::memory_order_relaxed);
+//       }
+// #else
+//       next[i] = 0;
+// #endif
+//     }
     
-    barrier.Wait();
+//     barrier.Wait();
 
-    while (true) {
-      auto task = bfs_state->FetchTask(worker_id);
-      if (task.first == task.second) {
-        break;
-      }
-      auto start = task.first;
-      auto end = task.second;
+//     while (true) {
+//       auto task = bfs_state->FetchTask(worker_id);
+//       if (task.first == task.second) {
+//         break;
+//       }
+//       auto start = task.first;
+//       auto end = task.second;
 
-#ifdef SEGMENT_BITSET
-      idx_t old_next, new_next;
-#else
-      std::bitset<LANE_LIMIT> old_next, new_next;
-#endif
+// #ifdef SEGMENT_BITSET
+//       idx_t old_next, new_next;
+// #else
+//       std::bitset<LANE_LIMIT> old_next, new_next;
+// #endif
 
-      for (auto i = start; i < end; i++) {
-#ifdef SEGMENT_BITSET
-        for (auto j = 0; j < 8; j++) {
-          if (~seen[i][j] == 0) {
-            continue;
-          }
+//       for (auto i = start; i < end; i++) {
+// #ifdef SEGMENT_BITSET
+//         for (auto j = 0; j < 8; j++) {
+//           if (~seen[i][j] == 0) {
+//             continue;
+//           }
 
-          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-            auto n = e[offset];
-            auto edge_id = edge_ids[offset];
-            do {
-              old_next = next[i][j].load();
-              new_next = old_next | visit[n][j].load();
-            } while (!next[i][j].compare_exchange_weak(old_next, new_next));
-            for (auto l = 0; l < LANE_LIMIT; l++) {
-              parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
-                      ? n : parents_v[i][l];
-              parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
-                      ? edge_id : parents_e[i][l];
-            }
-          }
+//           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+//             auto n = e[offset];
+//             auto edge_id = edge_ids[offset];
+//             do {
+//               old_next = next[i][j].load();
+//               new_next = old_next | visit[n][j].load();
+//             } while (!next[i][j].compare_exchange_weak(old_next, new_next));
+//             for (auto l = 0; l < LANE_LIMIT; l++) {
+//               parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
+//                       ? n : parents_v[i][l];
+//               parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
+//                       ? edge_id : parents_e[i][l];
+//             }
+//           }
           
-          if (next[i][j].load()) {
-            next[i][j].store(next[i][j].load() & ~seen[i][j].load(), std::memory_order_relaxed);
-            seen[i][j].store(seen[i][j].load() | next[i][j].load(), std::memory_order_relaxed);
+//           if (next[i][j].load()) {
+//             next[i][j].store(next[i][j].load() & ~seen[i][j].load(), std::memory_order_relaxed);
+//             seen[i][j].store(seen[i][j].load() | next[i][j].load(), std::memory_order_relaxed);
 
-            top_down_cost += normal_v[i + 1] - normal_v[i];
-          }
-          if (~seen[i][j].load()) {
-            bottom_up_cost += v[i + 1] - v[i];
-          }
-        }
-#elif defined(ATOMIC_BITSET)
-        if (seen[i].load().all()) {
-          continue;
-        }
+//             top_down_cost += normal_v[i + 1] - normal_v[i];
+//           }
+//           if (~seen[i][j].load()) {
+//             bottom_up_cost += v[i + 1] - v[i];
+//           }
+//         }
+// #elif defined(ATOMIC_BITSET)
+//         if (seen[i].load().all()) {
+//           continue;
+//         }
 
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          auto edge_id = edge_ids[offset];
-          do {
-            old_next = next[i].load();
-            new_next = old_next | visit[n].load();
-          } while (!next[i].compare_exchange_weak(old_next, new_next));
-          for (auto l = 0; l < LANE_LIMIT; l++) {
-            parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n].load()[l])
-                    ? i : parents_v[i][l];
-            parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n].load()[l])
-                    ? edge_id : parents_e[i][l];
-          }
-        }
+//         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+//           auto n = e[offset];
+//           auto edge_id = edge_ids[offset];
+//           do {
+//             old_next = next[i].load();
+//             new_next = old_next | visit[n].load();
+//           } while (!next[i].compare_exchange_weak(old_next, new_next));
+//           for (auto l = 0; l < LANE_LIMIT; l++) {
+//             parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n].load()[l])
+//                     ? i : parents_v[i][l];
+//             parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n].load()[l])
+//                     ? edge_id : parents_e[i][l];
+//           }
+//         }
 
-        if (next[i].load().any()) {
-          next[i].store(next[i].load() & ~seen[i].load());
-          seen[i].store(seen[i].load() | next[i].load());
+//         if (next[i].load().any()) {
+//           next[i].store(next[i].load() & ~seen[i].load());
+//           seen[i].store(seen[i].load() | next[i].load());
 
-          top_down_cost += normal_v[i + 1] - normal_v[i];
-        }
-        if (~seen[i].load().all()) {
-          bottom_up_cost += v[i + 1] - v[i];
-        }
+//           top_down_cost += normal_v[i + 1] - normal_v[i];
+//         }
+//         if (~seen[i].load().all()) {
+//           bottom_up_cost += v[i + 1] - v[i];
+//         }
 
-#else
-        if (seen[i].all()) {
-          continue;
-        }
+// #else
+//         if (seen[i].all()) {
+//           continue;
+//         }
 
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          auto edge_id = edge_ids[offset];
-          next[i] |= visit[n];
-          for (auto l = 0; l < LANE_LIMIT; l++) {
-            parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l])
-                    ? i : parents_v[i][l];
-            parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l])
-                    ? edge_id : parents_e[i][l];
-          }
-        }
+//         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+//           auto n = e[offset];
+//           auto edge_id = edge_ids[offset];
+//           next[i] |= visit[n];
+//           for (auto l = 0; l < LANE_LIMIT; l++) {
+//             parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l])
+//                     ? i : parents_v[i][l];
+//             parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l])
+//                     ? edge_id : parents_e[i][l];
+//           }
+//         }
 
-        if (next[i].any()) {
-          next[i] &= ~seen[i];
-          seen[i] |= next[i];
+//         if (next[i].any()) {
+//           next[i] &= ~seen[i];
+//           seen[i] |= next[i];
 
-          top_down_cost += normal_v[i + 1] - normal_v[i];
-        }
-        if (~seen[i].any()) {
-          bottom_up_cost += v[i + 1] - v[i];
-        }
-#endif
-      }
-    }
-  }
+//           top_down_cost += normal_v[i + 1] - normal_v[i];
+//         }
+//         if (~seen[i].any()) {
+//           bottom_up_cost += v[i + 1] - v[i];
+//         }
+// #endif
+//       }
+//     }
+//   }
 
   void ReachDetect() {
     auto &bfs_state = state.global_bfs_state;
