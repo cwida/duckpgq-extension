@@ -114,12 +114,12 @@ public:
 void PathFindingLocalState::CreateCSRVertex(DataChunk &input,
                                       GlobalCompressedSparseRow &global_csr) {
   if (!global_csr.initialized_v) {
-    const auto v_size = input.data[9].GetValue(0).GetValue<int64_t>();
+    const auto v_size = input.data[8].GetValue(0).GetValue<int64_t>();
     global_csr.InitializeVertex(v_size);
   }
   auto result = Vector(LogicalTypeId::BIGINT);
   BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
-      input.data[4], input.data[3], result, input.size(),
+      input.data[6], input.data[5], result, input.size(),
       [&](const int64_t src, const int64_t cnt) {
         int64_t edge_count = 0;
         global_csr.v[src + 2] = cnt;
@@ -851,11 +851,11 @@ public:
         }
       }
       if (!global_csr->initialized_e) {
-        const auto e_size = input.data[8].GetValue(0).GetValue<int64_t>();
+        const auto e_size = input.data[7].GetValue(0).GetValue<int64_t>();
         global_csr->InitializeEdge(e_size);
       }
       TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
-          input.data[4], input.data[7], input.data[2], result, input.size(),
+          input.data[6], input.data[4], input.data[2], result, input.size(),
           [&](int64_t src, int64_t dst, int64_t edge_id) {
             const auto pos = ++global_csr->v[src + 1];
             global_csr->e[static_cast<int64_t>(pos) - 1] = dst;
@@ -1837,13 +1837,18 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 
     auto const sequential = client_config.set_variables.find("experimental_path_finding_operator_sequential");
     if (sequential != client_config.set_variables.end() && sequential->second.GetValue<bool>()) {
+      if (gstate.mode == "iterativelength") {
+        auto bfs_event = make_shared<SequentialIterativeEvent>(gstate, pipeline);
+        event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
+      } else if (gstate.mode == "shortestpath") {
+        auto bfs_event = make_shared<SequentialShortestPathEvent>(gstate, pipeline);
+        event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
+      }
+    } else {
       // Schedule the first round of BFS tasks
       if (all_pairs->size() > 0) {
         ScheduleBFSTasks(pipeline, event, gstate);
       }
-    } else {
-      auto bfs_event = make_shared<ParallelShortestPathEvent>(gstate, pipeline);
-      event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
     }
   }
 
