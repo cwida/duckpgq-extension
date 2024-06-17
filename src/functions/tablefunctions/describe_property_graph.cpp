@@ -29,10 +29,13 @@ DescribePropertyGraphFunction::DescribePropertyGraphBind(
 
   auto pg_table =
       duckpgq_state->registered_property_graphs.find(show_ref->table_name);
-  if (pg_table == duckpgq_state->registered_property_graphs.end() ) {
-    throw Exception(ExceptionType::INVALID, "Property graph " + show_ref->table_name + " does not exist.");
+  if (pg_table == duckpgq_state->registered_property_graphs.end()) {
+    throw Exception(ExceptionType::INVALID, "Property graph " +
+                                                show_ref->table_name +
+                                                " does not exist.");
   }
-  auto property_graph = dynamic_cast<CreatePropertyGraphInfo *>(pg_table->second.get());
+  auto property_graph =
+      dynamic_cast<CreatePropertyGraphInfo *>(pg_table->second.get());
 
   names.emplace_back("table_name");
   return_types.emplace_back(LogicalType::VARCHAR);
@@ -57,7 +60,6 @@ DescribePropertyGraphFunction::DescribePropertyGraphBind(
   names.emplace_back("sub_labels");
   return_types.emplace_back(LogicalType::LIST(LogicalType::VARCHAR));
 
-
   return make_uniq<DescribePropertyGraphBindData>(property_graph);
 }
 
@@ -76,7 +78,7 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
   }
   auto pg_info = bind_data.describe_pg_info;
   idx_t vector_idx = 0;
-  for (const auto& vertex_table : pg_info->vertex_tables) {
+  for (const auto &vertex_table : pg_info->vertex_tables) {
     output.SetValue(0, vector_idx, Value(vertex_table->table_name));
     output.SetValue(1, vector_idx, Value(vertex_table->main_label));
     output.SetValue(2, vector_idx, Value(vertex_table->is_vertex_table));
@@ -89,49 +91,55 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
     if (!vertex_table->discriminator.empty()) {
       output.SetValue(9, vector_idx, Value(vertex_table->discriminator));
       vector<Value> sub_labels;
-      for (const auto& label : vertex_table->sub_labels) {
+      for (const auto &label : vertex_table->sub_labels) {
         sub_labels.push_back(Value(label));
       }
-      output.SetValue(10, vector_idx, Value::LIST(LogicalType::VARCHAR, sub_labels));
+      output.SetValue(10, vector_idx,
+                      Value::LIST(LogicalType::VARCHAR, sub_labels));
     } else {
       output.SetValue(9, vector_idx, Value());
       output.SetValue(10, vector_idx, Value());
     }
     vector_idx++;
   }
-  for (const auto& edge_table : pg_info->edge_tables) {
+  for (const auto &edge_table : pg_info->edge_tables) {
     output.SetValue(0, vector_idx, Value(edge_table->table_name));
     output.SetValue(1, vector_idx, Value(edge_table->main_label));
     output.SetValue(2, vector_idx, Value(edge_table->is_vertex_table));
     output.SetValue(3, vector_idx, Value(edge_table->source_reference));
     vector<Value> source_pk_list;
-    for (const auto& col : edge_table->source_pk) {
+    for (const auto &col : edge_table->source_pk) {
       source_pk_list.push_back(Value(col));
     }
-    output.SetValue(4, vector_idx, Value::LIST(LogicalType::VARCHAR,source_pk_list));
+    output.SetValue(4, vector_idx,
+                    Value::LIST(LogicalType::VARCHAR, source_pk_list));
     vector<Value> source_fk_list;
-    for (const auto& col : edge_table->source_fk) {
+    for (const auto &col : edge_table->source_fk) {
       source_fk_list.push_back(Value(col));
     }
-    output.SetValue(5, vector_idx, Value::LIST(LogicalType::VARCHAR,source_fk_list));
+    output.SetValue(5, vector_idx,
+                    Value::LIST(LogicalType::VARCHAR, source_fk_list));
     output.SetValue(6, vector_idx, Value(edge_table->destination_reference));
     vector<Value> destination_pk_list;
-    for (const auto& col : edge_table->destination_pk) {
+    for (const auto &col : edge_table->destination_pk) {
       destination_pk_list.push_back(Value(col));
     }
-    output.SetValue(7, vector_idx, Value::LIST(LogicalType::VARCHAR,destination_pk_list));
+    output.SetValue(7, vector_idx,
+                    Value::LIST(LogicalType::VARCHAR, destination_pk_list));
     vector<Value> destination_fk_list;
-    for (const auto& col : edge_table->destination_fk) {
+    for (const auto &col : edge_table->destination_fk) {
       destination_fk_list.push_back(Value(col));
     }
-    output.SetValue(8, vector_idx, Value::LIST(LogicalType::VARCHAR,destination_fk_list));
+    output.SetValue(8, vector_idx,
+                    Value::LIST(LogicalType::VARCHAR, destination_fk_list));
     if (!edge_table->discriminator.empty()) {
       output.SetValue(9, vector_idx, Value(edge_table->discriminator));
       vector<Value> sub_labels;
-      for (const auto& label : edge_table->sub_labels) {
+      for (const auto &label : edge_table->sub_labels) {
         sub_labels.push_back(Value(label));
       }
-      output.SetValue(10, vector_idx, Value::LIST(LogicalType::VARCHAR, sub_labels));
+      output.SetValue(10, vector_idx,
+                      Value::LIST(LogicalType::VARCHAR, sub_labels));
     } else {
       output.SetValue(9, vector_idx, Value());
       output.SetValue(10, vector_idx, Value());

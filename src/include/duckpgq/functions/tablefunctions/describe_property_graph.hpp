@@ -33,18 +33,17 @@ public:
     bool done = false;
   };
 
-  static unique_ptr<FunctionData>
-  DescribePropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
-                          vector<LogicalType> &return_types,
-                          vector<string> &names);
+  static unique_ptr<FunctionData> DescribePropertyGraphBind(
+      ClientContext &context, TableFunctionBindInput &input,
+      vector<LogicalType> &return_types, vector<string> &names);
 
   static unique_ptr<GlobalTableFunctionState>
   DescribePropertyGraphInit(ClientContext &context,
-                          TableFunctionInitInput &input);
+                            TableFunctionInitInput &input);
 
   static void DescribePropertyGraphFunc(ClientContext &context,
-                                      TableFunctionInput &data_p,
-                                      DataChunk &output);
+                                        TableFunctionInput &data_p,
+                                        DataChunk &output);
 };
 
 } // namespace duckdb

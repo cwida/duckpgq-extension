@@ -64,9 +64,7 @@ struct DuckPGQParseData : ParserExtensionParseData {
         statement->Copy());
   }
 
-  string ToString() const override {
-    return statement->ToString();
-  };
+  string ToString() const override { return statement->ToString(); };
 
   explicit DuckPGQParseData(unique_ptr<SQLStatement> statement)
       : statement(std::move(statement)) {}
@@ -80,7 +78,7 @@ public:
   void QueryEnd() override {
     parse_data.reset();
     transform_expression.clear();
-    match_index = 0; // Reset the index
+    match_index = 0;              // Reset the index
     unnamed_graphtable_index = 1; // Reset the index
     for (const auto &csr_id : csr_to_delete) {
       csr_list.erase(csr_id);

@@ -91,10 +91,11 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                       : query);
   if (parser.statements.size() != 1) {
     throw Exception(ExceptionType::PARSER,
-        "More than one statement detected, please only give one.");
+                    "More than one statement detected, please only give one.");
   }
-  return ParserExtensionParseResult(make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
-      std::move(parser.statements[0])));
+  return ParserExtensionParseResult(
+      make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
+          std::move(parser.statements[0])));
 }
 
 BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
@@ -125,9 +126,11 @@ void duckpgq_find_match_function(TableRef *table_ref,
       return;
     }
     int32_t match_index = duckpgq_state.match_index++;
-    duckpgq_state.transform_expression[match_index] = std::move(function->children[0]);
+    duckpgq_state.transform_expression[match_index] =
+        std::move(function->children[0]);
     function->children.pop_back();
-    auto function_identifier = make_uniq<ConstantExpression>(Value::CreateValue(match_index));
+    auto function_identifier =
+        make_uniq<ConstantExpression>(Value::CreateValue(match_index));
     function->children.push_back(std::move(function_identifier));
   } else if (auto join_ref = dynamic_cast<JoinRef *>(table_ref)) {
     // Handle JoinRef case
@@ -142,7 +145,8 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
     const auto select_statement = dynamic_cast<SelectStatement *>(statement);
     const auto select_node =
         dynamic_cast<SelectNode *>(select_statement->node.get());
-    const auto describe_node = dynamic_cast<ShowRef *>(select_node->from_table.get());
+    const auto describe_node =
+        dynamic_cast<ShowRef *>(select_node->from_table.get());
     if (describe_node) {
       ParserExtensionPlanResult result;
       result.function = DescribePropertyGraphFunction();
@@ -193,7 +197,8 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
   }
 
   throw Exception(ExceptionType::NOT_IMPLEMENTED,
-    StatementTypeToString(statement->type) + "has not been implemented yet for DuckPGQ queries");
+                  StatementTypeToString(statement->type) +
+                      "has not been implemented yet for DuckPGQ queries");
 }
 
 ParserExtensionPlanResult

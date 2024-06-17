@@ -245,7 +245,8 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state,
           break;
         }
         default:
-          throw Exception(ExceptionType::INTERNAL, "Unknown reachability mode encountered");
+          throw Exception(ExceptionType::INTERNAL,
+                          "Unknown reachability mode encountered");
         }
       } else {
         exit_early = BfsWithoutArray(exit_early, csr, input_size, seen, visit,
