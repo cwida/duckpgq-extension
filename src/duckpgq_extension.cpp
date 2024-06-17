@@ -12,6 +12,8 @@
 
 #include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/expression/constant_expression.hpp"
+
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
@@ -122,8 +124,11 @@ void duckpgq_find_match_function(TableRef *table_ref,
     if (function->function_name != "duckpgq_match") {
       return;
     }
-    duckpgq_state.transform_expression.push_back(std::move(function->children[0]));
+    int32_t match_index = duckpgq_state.match_index++;
+    duckpgq_state.transform_expression[match_index] = std::move(function->children[0]);
     function->children.pop_back();
+    auto function_identifier = make_uniq<ConstantExpression>(Value::CreateValue(match_index));
+    function->children.push_back(std::move(function_identifier));
   } else if (auto join_ref = dynamic_cast<JoinRef *>(table_ref)) {
     // Handle JoinRef case
     duckpgq_find_match_function(join_ref->left.get(), duckpgq_state);

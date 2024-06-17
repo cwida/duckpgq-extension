@@ -941,10 +941,9 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
   auto duckpgq_state_entry = context.registered_state.find("duckpgq");
   auto duckpgq_state =
       dynamic_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
-
+  auto match_index = bind_input.inputs[0].GetValue<int32_t>();
   auto ref = dynamic_cast<MatchExpression *>(
-      duckpgq_state->transform_expression[duckpgq_state->match_index].get());
-  duckpgq_state->match_index++;
+      duckpgq_state->transform_expression[match_index].get());
   auto pg_table = duckpgq_state->GetPropertyGraph(ref->pg_name);
 
   vector<unique_ptr<ParsedExpression>> conditions;

@@ -107,7 +107,7 @@ public:
 public:
   unique_ptr<ParserExtensionParseData> parse_data;
 
-  vector<unique_ptr<ParsedExpression>> transform_expression;
+  unordered_map<int32_t, unique_ptr<ParsedExpression>> transform_expression;
   int32_t match_index = 0;
   int32_t unnamed_graphtable_index = 1; // Used to generate unique names for
                                         // unnamed graph tables

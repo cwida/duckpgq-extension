@@ -20,7 +20,9 @@ struct PGQMatchFunction : public TableFunction {
 public:
   PGQMatchFunction() {
     name = "duckpgq_match";
+    arguments.push_back(LogicalType::INTEGER);
     bind_replace = MatchBindReplace;
+    // bind = MatchBind;
   }
 
   struct MatchBindData : public TableFunctionData {
