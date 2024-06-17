@@ -9,6 +9,7 @@ require duckpgq
 
 statement ok
 set experimental_path_finding_operator=true;
+set experimental_path_finding_operator_sequential=true;
 
 statement ok
 CREATE TABLE pair(src BIGINT, dst BIGINT); INSERT INTO pair(src, dst) VALUES (0, 1), (1, 2), (2,0);
@@ -55,32 +56,26 @@ query III
 SELECT *, shortestpath(src, dst, 'pair') as path
 FROM pair AS p
 WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
-              (SELECT count(a.id) as v_size FROM Student a),
-              (SELECT count(k.src) as e_size from know k),
+            (SELECT count(a.id) as v_size FROM Student a),
+            (SELECT count(k.src) as e_size from know k),
               a.rowid,
               c.rowid,
               k.rowid,
-              t.cnt,
-              t_r.cnt_r)    FROM Know k
+              t.cnt)    FROM Know k
                           JOIN student a on a.id = k.src
                           JOIN student c on c.id = k.dst
                           JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
                                   FROM student a
                                  LEFT JOIN know k ON k.src = a.id
                                  GROUP BY a.rowid) t
-                             ON t.a_rowid = a.rowid
-                          JOIN (SELECT count(k.dst) cnt_r, c.rowid as c_rowid
-                                  FROM student c
-                                 LEFT JOIN know k ON k.dst = c.id
-                                 GROUP BY c.rowid) t_r
-                             ON t_r.c_rowid = c.rowid) AND p.dst;
+                             ON t.a_rowid = a.rowid) AND p.dst;
 ----
 0	1	NULL
 1	2	[1, 3, 0, 1, 2]
 2	0	[2, 4, 0]
 
 statement ok
-import database 'duckdb-pgq/data/SNB1-projected|';
+import database 'duckdb-pgq/data/SNB0.003';
 
 statement ok
 select setseed(0.42)
@@ -114,20 +109,14 @@ WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
             a.rowid,
             c.rowid,
             k.rowid,
-            t.cnt,
-            t_r.cnt_r)    FROM Person_knows_Person k
+            t.cnt)    FROM Person_knows_Person k
                         JOIN Person a on a.id = k.Person1Id
                         JOIN Person c on c.id = k.Person2Id
                         JOIN (SELECT count(k.Person1Id) cnt, a.rowid as a_rowid
                                 FROM Person a
                                 LEFT JOIN Person_knows_Person k ON k.Person1Id = a.id
                                 GROUP BY a.rowid) t
-                            ON t.a_rowid = a.rowid
-                        JOIN (SELECT count(k.Person2Id) cnt_r, c.rowid as c_rowid
-                                FROM Person c
-                                LEFT JOIN Person_knows_Person k ON k.Person2Id = c.id
-                                GROUP BY c.rowid) t_r
-                            ON t_r.c_rowid = c.rowid) AND p.dst;
+                            ON t.a_rowid = a.rowid) AND p.dst;
 ----
 42	22	NULL
 3	33	2
@@ -187,20 +176,14 @@ WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
             a.rowid,
             c.rowid,
             k.rowid,
-            t.cnt,
-            t_r.cnt_r)    FROM Person_knows_Person k
+            t.cnt)    FROM Person_knows_Person k
                         JOIN Person a on a.id = k.Person1Id
                         JOIN Person c on c.id = k.Person2Id
                         JOIN (SELECT count(k.Person1Id) cnt, a.rowid as a_rowid
                                 FROM Person a
                                 LEFT JOIN Person_knows_Person k ON k.Person1Id = a.id
                                 GROUP BY a.rowid) t
-                            ON t.a_rowid = a.rowid
-                        JOIN (SELECT count(k.Person2Id) cnt_r, c.rowid as c_rowid
-                                FROM Person c
-                                LEFT JOIN Person_knows_Person k ON k.Person2Id = c.id
-                                GROUP BY c.rowid) t_r
-                            ON t_r.c_rowid = c.rowid) AND p.dst;
+                            ON t.a_rowid = a.rowid) AND p.dst;
 ----
 10	2	NULL
 

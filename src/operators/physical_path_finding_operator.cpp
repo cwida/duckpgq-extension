@@ -18,7 +18,6 @@
 
 // #define SEGMENT_BITSET
 // #define ATOMIC_BITSET
-// #define FINE_GRAINED_LOCK
 #define ELEMENT_LOCK
 
 namespace duckdb {
@@ -180,6 +179,7 @@ public:
     case 2:
       pthread_barrier_wait(&mBarrier);
       break;
+    case 3:
     default:
       break;
     }
@@ -615,9 +615,7 @@ private:
         if (visit[i].any()) {
           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
             auto n = e[offset];
-#ifdef FINE_GRAINED_LOCK
-            std::lock_guard<std::mutex> lock(bfs_state->lock);
-#elif defined(ELEMENT_LOCK)
+#ifdef ELEMENT_LOCK
             std::lock_guard<std::mutex> lock(bfs_state->locks[n]);
 #endif
             next[n] |= visit[i];
@@ -1228,9 +1226,7 @@ private:
           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
             auto n = e[offset];
             auto edge_id = edge_ids[offset];
-#ifdef FINE_GRAINED_LOCK
-            std::lock_guard<std::mutex> lock(bfs_state->lock);
-#elif defined(ELEMENT_LOCK)
+#ifdef ELEMENT_LOCK
             std::lock_guard<std::mutex> lock(bfs_state->locks[n]);
 #endif
             next[n] |= visit[i];
