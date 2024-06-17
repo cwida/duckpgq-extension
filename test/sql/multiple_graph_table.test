@@ -136,6 +136,30 @@ FROM GRAPH_TABLE(pg MATCH (a:student)) a,
 4	David	2	Gabor	3	Peter
 4	David	4	David	3	Peter
 
+query II
+-select unnamed_subquery.id, unnamed_graphtable.id
+FROM GRAPH_TABLE(pg MATCH (a:student)), (select 1 as id);
+----
+1	0
+1	1
+1	2
+1	3
+1	4
+
+statement ok
+CREATE TABLE cities (
+name VARCHAR,
+lat DECIMAL,
+lon DECIMAL
+);
+
+statement ok
+CREATE TABLE cities_are_adjacent (
+city1name VARCHAR,
+city2name VARCHAR
+);
+
+
 statement ok
 -CREATE PROPERTY GRAPH citymap
 VERTEX TABLES (
