@@ -1,0 +1,176 @@
+# name: test/sql/multiple_graph_table.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+CREATE TABLE Student(id BIGINT, name VARCHAR);INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17);
+
+statement ok
+CREATE TABLE School(name VARCHAR, Id BIGINT, Kind VARCHAR);INSERT INTO School VALUES ('VU', 0, 'University'), ('UVA', 1, 'University');
+
+statement ok
+CREATE TABLE StudyAt(personId BIGINT, schoolId BIGINT);INSERT INTO StudyAt VALUES (0, 0), (1, 0), (2, 1), (3, 1), (4, 1);
+
+statement ok
+-CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+    Student,
+    School
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id ),
+    studyAt SOURCE KEY ( personId ) REFERENCES Student ( id )
+            DESTINATION KEY ( SchoolId ) REFERENCES School ( id )
+    );
+
+query II
+-select a.id, b.id FROM GRAPH_TABLE(pg MATCH (a:student)) a, GRAPH_TABLE(pg MATCH (b:student)) b;
+----
+0	0
+0	1
+0	2
+0	3
+0	4
+1	0
+1	1
+1	2
+1	3
+1	4
+2	0
+2	1
+2	2
+2	3
+2	4
+3	0
+3	1
+3	2
+3	3
+3	4
+4	0
+4	1
+4	2
+4	3
+4	4
+
+query II
+-select unnamed_graphtable.id, unnamed_graphtable2.id FROM GRAPH_TABLE(pg MATCH (a:student)), GRAPH_TABLE(pg MATCH (b:student));
+----
+0	0
+0	1
+0	2
+0	3
+0	4
+1	0
+1	1
+1	2
+1	3
+1	4
+2	0
+2	1
+2	2
+2	3
+2	4
+3	0
+3	1
+3	2
+3	3
+3	4
+4	0
+4	1
+4	2
+4	3
+4	4
+
+
+query IIIIII
+-select a.id, a.name, unnamed_graphtable.b_id, unnamed_graphtable.b_name, unnamed_graphtable.C_id, unnamed_graphtable.c_name
+FROM GRAPH_TABLE(pg MATCH (a:student)) a,
+    GRAPH_TABLE(pg
+        MATCH (b:student)-[r:know]->(c:student)
+        COLUMNS (b.id as b_id, b.name as b_name, c.name as c_name, c.id as c_id)
+    );
+----
+0	Daniel	0	Daniel	1	Tavneet
+0	Daniel	0	Daniel	2	Gabor
+0	Daniel	0	Daniel	3	Peter
+0	Daniel	3	Peter	0	Daniel
+0	Daniel	1	Tavneet	2	Gabor
+0	Daniel	1	Tavneet	3	Peter
+0	Daniel	2	Gabor	3	Peter
+0	Daniel	4	David	3	Peter
+1	Tavneet	0	Daniel	1	Tavneet
+1	Tavneet	0	Daniel	2	Gabor
+1	Tavneet	0	Daniel	3	Peter
+1	Tavneet	3	Peter	0	Daniel
+1	Tavneet	1	Tavneet	2	Gabor
+1	Tavneet	1	Tavneet	3	Peter
+1	Tavneet	2	Gabor	3	Peter
+1	Tavneet	4	David	3	Peter
+2	Gabor	0	Daniel	1	Tavneet
+2	Gabor	0	Daniel	2	Gabor
+2	Gabor	0	Daniel	3	Peter
+2	Gabor	3	Peter	0	Daniel
+2	Gabor	1	Tavneet	2	Gabor
+2	Gabor	1	Tavneet	3	Peter
+2	Gabor	2	Gabor	3	Peter
+2	Gabor	4	David	3	Peter
+3	Peter	0	Daniel	1	Tavneet
+3	Peter	0	Daniel	2	Gabor
+3	Peter	0	Daniel	3	Peter
+3	Peter	3	Peter	0	Daniel
+3	Peter	1	Tavneet	2	Gabor
+3	Peter	1	Tavneet	3	Peter
+3	Peter	2	Gabor	3	Peter
+3	Peter	4	David	3	Peter
+4	David	0	Daniel	1	Tavneet
+4	David	0	Daniel	2	Gabor
+4	David	0	Daniel	3	Peter
+4	David	3	Peter	0	Daniel
+4	David	1	Tavneet	2	Gabor
+4	David	1	Tavneet	3	Peter
+4	David	2	Gabor	3	Peter
+4	David	4	David	3	Peter
+
+query II
+-select unnamed_subquery.id, unnamed_graphtable.id
+FROM GRAPH_TABLE(pg MATCH (a:student)), (select 1 as id);
+----
+1	0
+1	1
+1	2
+1	3
+1	4
+
+statement ok
+CREATE TABLE cities (
+name VARCHAR,
+lat DECIMAL,
+lon DECIMAL
+);
+
+statement ok
+CREATE TABLE cities_are_adjacent (
+city1name VARCHAR,
+city2name VARCHAR
+);
+
+
+statement ok
+-CREATE PROPERTY GRAPH citymap
+VERTEX TABLES (
+cities PROPERTIES (name,lat,lon) LABEL city
+)
+EDGE TABLES (
+cities_are_adjacent SOURCE KEY ( city1name ) REFERENCES cities ( name )
+DESTINATION KEY ( city2name ) REFERENCES cities ( name )
+LABEL adjacent
+);
+
+statement ok
+-select * from GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g1, GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g2;
+
