@@ -20,6 +20,7 @@ struct PGQMatchFunction : public TableFunction {
 public:
   PGQMatchFunction() {
     name = "duckpgq_match";
+    arguments.push_back(LogicalType::INTEGER);
     bind_replace = MatchBindReplace;
   }
 
@@ -128,8 +129,7 @@ public:
                const string &prev_binding, const string &next_binding,
                vector<unique_ptr<ParsedExpression>> &conditions,
                unordered_map<string, string> &alias_map,
-               int32_t &extra_alias_counter,
-               unique_ptr<TableRef> &from_clause);
+               int32_t &extra_alias_counter, unique_ptr<TableRef> &from_clause);
 
   static void ProcessPathList(
       vector<unique_ptr<PathReference>> &path_pattern,

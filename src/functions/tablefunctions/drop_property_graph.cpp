@@ -43,10 +43,11 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(
     throw BinderException("Registered DuckPGQ state not found");
   }
   auto duckpgq_state = (DuckPGQState *)lookup->second.get();
-  auto registered_pg =
-      duckpgq_state->registered_property_graphs.find(pg_info->property_graph_name);
+  auto registered_pg = duckpgq_state->registered_property_graphs.find(
+      pg_info->property_graph_name);
   if (registered_pg == duckpgq_state->registered_property_graphs.end()) {
-    throw BinderException("Property graph %s does not exist.", pg_info->property_graph_name);
+    throw BinderException("Property graph %s does not exist.",
+                          pg_info->property_graph_name);
   }
   duckpgq_state->registered_property_graphs.erase(registered_pg);
 }
