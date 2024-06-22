@@ -46,11 +46,33 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
   auto src_data = (int64_t *)vdata_src.data;
 
   ValidityMask &result_validity = FlatVector::Validity(result);
-
   // create result vector
   result.SetVectorType(VectorType::FLAT_VECTOR);
   auto result_data = FlatVector::GetData<int64_t>(result);
 
+  for (int32_t n = 0; n < args.size(); n++) {
+    int64_t src_node = src_data[n];
+    int64_t count = 0;
+    for (auto offset = v[src_node]; offset < v[src_node + 1]; offset++) {
+      auto neighbour = e[offset];
+      for (auto offset2 = v[neighbour]; offset2 < v[neighbour + 1]; offset2++) {
+        auto n2 = e[offset2];
+        for (auto offset_src = v[src_node]; offset_src < v[src_node + 1]; offset_src++) {
+          if (n2 == e[offset_src]) {
+            count++;
+            break;
+          }
+        }
+      }
+    }
+    int32_t number_of_edges = v[src_node + 1] - v[src_node];
+    if (number_of_edges > 1) {
+      count = count / (number_of_edges * (number_of_edges - 1));
+    } else {
+      count = 0;
+    }
+    result_data[n] = count;
+  }
 
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
