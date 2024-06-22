@@ -42,6 +42,22 @@ public:
                                  // when no type is provided
 };
 
+struct LocalClusteringCoefficientFunctionData : public FunctionData {
+public:
+  ClientContext &context;
+  int32_t csr_id;
+
+  LocalClusteringCoefficientFunctionData(ClientContext &context, int32_t csr_id)
+      : context(context), csr_id(csr_id) {}
+  static unique_ptr<FunctionData>
+  LocalClusteringCoefficientBind(ClientContext &context, ScalarFunction &bound_function,
+                      vector<unique_ptr<Expression>> &arguments);
+
+  unique_ptr<FunctionData> Copy() const override;
+  bool Equals(const FunctionData &other_p) const override;
+};
+
+
 struct IterativeLengthFunctionData : public FunctionData {
 public:
   ClientContext &context;
