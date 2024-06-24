@@ -19,7 +19,7 @@ EDGE TABLES (
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
     );
 
-query III
+query II
 WITH cte1 AS (
     SELECT  CREATE_CSR_EDGE(
             0,
@@ -30,24 +30,282 @@ WITH cte1 AS (
                             (SELECT count(a.id) FROM Student a),
                             sub.dense_id,
                             sub.cnt)
+                            ) * 2
+                FROM (
+                    SELECT a.rowid as dense_id, count(k.src) * 2 as cnt
+                    FROM (SELECT a.rowid as dense_id FROM Student a
+                            LEFT JOIN Know k ON k.src = a.id
+                            GROUP BY a.rowid) sub
+                )
+            AS BIGINT),
+            src,
+            dst,
+            edge) as temp FROM (
+    select src, dst, any_value(edge) as edge FROM (
+        select a.rowid as src, c.rowid as dst, k.rowid as edge FROM Know k
+        JOIN Student a on a.id = k.src
+        JOIN Student c on c.id = k.dst
+        UNION ALL
+        select a.rowid as src, c.rowid as dst, k.rowid as edge FROM Know k
+        JOIN Student a on a.id = k.dst
+        JOIN Student c on c.id = k.src)
+    GROUP BY src, dst)
+) SELECT __x.temp + local_clustering_coefficient(0, a.rowid) as lcc, a.name
+        FROM (select count(cte1.temp) * 0 as temp from cte1) __x, Student a
+        ORDER BY lcc DESC;
+----
+0.5	Daniel
+0.5	Tavneet
+0.0	Gabor
+0.0	Peter
+0.0	David
+
+
+#statement ok
+#CREATE TABLE Node(id BIGINT);INSERT INTO Node VALUES (0), (1), (2), (3);
+#
+#statement ok
+#CREATE TABLE Edge(src BIGINT, dst BIGINT);INSERT INTO Edge VALUES (0,1), (0,2), (0,3), (1,0), (1,2), (1,3), (2,0), (2,1), (2,3), (3,0), (3,1), (3,2);
+
+#query III
+#WITH cte1 AS (
+#    SELECT  CREATE_CSR_EDGE(
+#            0,
+#            (SELECT count(a.id) FROM Edge a),
+#            CAST (
+#                (SELECT sum(CREATE_CSR_VERTEX(
+#                            0,
+#                            (SELECT count(a.id) FROM Node a),
+#                            sub.dense_id,
+#                            sub.cnt)
+#                            )
+#                FROM (
+#                    SELECT a.rowid as dense_id, count(k.src) as cnt
+#                    FROM Node a
+#                    LEFT JOIN Edge k ON k.src = a.id
+#                    GROUP BY a.rowid) sub
+#                )
+#            AS BIGINT),
+#            a.rowid,
+#            c.rowid,
+#            k.rowid) as temp
+#    FROM Edge k
+#    JOIN Node a on a.id = k.src
+#    JOIN Node c on c.id = k.dst
+#) SELECT __x.temp + local_clustering_coefficient(0, a.rowid) as lcc, a.name as a_name
+#        FROM (select count(cte1.temp) * 0 as temp from cte1) __x, Node a
+#----
+#[0, 0, 1]	Daniel	Tavneet
+#[0, 1, 2]	Daniel	Gabor
+#[0, 2, 3]	Daniel	Peter
+
+
+statement ok
+import database '~/git/duckpgq-experiments/data/SNB1-projected|';
+
+#query II
+#WITH neighbors AS (
+#    SELECT
+#        person1id AS id,
+#        person2id AS neighbor
+#    FROM
+#        person_knows_person
+#    UNION ALL
+#    SELECT
+#        person2id AS id,
+#        person1id AS neighbor
+#    FROM
+#        person_knows_person
+#),
+#in_degree AS (
+#    SELECT
+#        id,
+#        COUNT(DISTINCT neighbor) AS in_degree
+#    FROM
+#        neighbors
+#    GROUP BY
+#        id
+#),
+#out_degree AS (
+#    SELECT
+#        person1id AS id,
+#        COUNT(DISTINCT person2id) AS out_degree
+#    FROM
+#        person_knows_person
+#    GROUP BY
+#        person1id
+#),
+#triangles AS (
+#    SELECT
+#        pkp1.person1id AS id,
+#        COUNT(DISTINCT pkp2.person2id) AS triangle_count
+#    FROM
+#        person_knows_person pkp1
+#    JOIN
+#        person_knows_person pkp2 ON pkp1.person2id = pkp2.person1id
+#    JOIN
+#        person_knows_person pkp3 ON pkp2.person2id = pkp3.person2id AND pkp1.person1id = pkp3.person1id
+#    GROUP BY
+#        pkp1.person1id
+#),
+#local_clustering_coefficient AS (
+#    SELECT
+#        id,
+#        in_degree + out_degree AS degree,
+#        triangle_count,
+#        CASE
+#            WHEN (in_degree + out_degree) > 1 THEN 1.0 * triangle_count / ((in_degree + out_degree) * (in_degree + out_degree - 1))
+#            ELSE 0.0
+#        END AS local_clustering_coefficient
+#    FROM
+#        in_degree
+#    JOIN
+#        out_degree USING (id)
+#    LEFT JOIN
+#        triangles USING (id)
+#)
+#SELECT
+#    id,
+#    local_clustering_coefficient
+#FROM
+#    local_clustering_coefficient
+#ORDER BY
+#    local_clustering_coefficient DESC;
+#----
+#0.5	Arbaaz
+#0.5	Lei
+#0.5	Almira
+#0.5	Alexei
+#0.41666666	Miguel
+#0.33333334	Eric
+#0.25	Jan
+#0.2	John
+#0.2	Ken
+#0.16666667	Hossein
+#0.14285715	Celso
+#0.102564104	Ali
+#0.083333336	Evangelos
+#0.06666667	Alim
+#0.0	Ayesha
+#0.0	Alejandro
+#0.0	Rahul
+#0.0	John
+#0.0	John
+#0.0	Adje van den Berg
+#0.0	Joakim
+#0.0	Rahul
+#0.0	Mehmet
+#0.0	Wojciech
+#0.0	Ali
+#0.0	John
+#0.0	Jimmy
+#0.0	Baby
+#0.0	Jun
+#0.0	Wei
+#0.0	Djelaludin
+#0.0	Otto
+#0.0	Roberto
+#0.0	Bryn
+#0.0	Ge
+#0.0	Yahya Ould Ahmed El
+#0.0	Hans
+#0.0	Ali
+#0.0	Tissa
+#0.0	Aleksandr
+#0.0	Jose
+#0.0	Cheng
+#0.0	Alfonso
+#0.0	Ashok
+#0.0	Abdul Haris
+#0.0	Neil
+#0.0	Jie
+#0.0	Alexei
+#0.0	Wolfgang
+#0.0	Luigi
+#
+#
+
+query II
+WITH cte1 AS (
+    SELECT  CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) * 2 FROM Person a),
+            CAST (
+                (SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) * 2 FROM Person a),
+                            sub.dense_id,
+                            sub.cnt)
                             )
                 FROM (
-                    SELECT a.rowid as dense_id, count(k.src) as cnt
-                    FROM Student a
-                    LEFT JOIN Know k ON k.src = a.id
+                    SELECT a.rowid as dense_id, count(k.person1id) as cnt
+                    FROM Person a
+                    LEFT JOIN Person_knows_person k ON k.person1id = a.id
                     GROUP BY a.rowid) sub
                 )
             AS BIGINT),
-            a.rowid,
-            c.rowid,
-            k.rowid) as temp
-    FROM Know k
-    JOIN student a on a.id = k.src
-    JOIN student c on c.id = k.dst
-) SELECT __x.temp + local_clustering_coefficient(0, a.rowid) as path, a.name as a_name, b.name as b_name
-        FROM (select count(cte1.temp) * 0 as temp from cte1) __x, student a, student b
+            src,
+            dst,
+            edge) as temp FROM (
+    select src, dst, edge FROM (
+        select a.rowid as src, c.rowid as dst, k.rowid as edge FROM Person_knows_person k
+        JOIN Person a on a.id = k.person1id
+        JOIN Person c on c.id = k.person2id
+        UNION ALL
+        select a.rowid as src, c.rowid as dst, k.rowid as edge FROM Person_knows_person k
+        JOIN Person a on a.id = k.person2id
+        JOIN Person c on c.id = k.person1id))
+) SELECT __x.temp + local_clustering_coefficient(0, a.rowid) as lcc, a.id as a_name
+        FROM (select count(cte1.temp) * 0 as temp from cte1) __x, Person a
+        ORDER BY lcc DESC;
 ----
-[0, 0, 1]	Daniel	Tavneet
-[0, 1, 2]	Daniel	Gabor
-[0, 2, 3]	Daniel	Peter
-
+0.5	Arbaaz
+0.5	Lei
+0.5	Almira
+0.5	Alexei
+0.41666666	Miguel
+0.33333334	Eric
+0.25	Jan
+0.2	John
+0.2	Ken
+0.16666667	Hossein
+0.14285715	Celso
+0.102564104	Ali
+0.083333336	Evangelos
+0.06666667	Alim
+0.0	Ayesha
+0.0	Alejandro
+0.0	Rahul
+0.0	John
+0.0	John
+0.0	Adje van den Berg
+0.0	Joakim
+0.0	Rahul
+0.0	Mehmet
+0.0	Wojciech
+0.0	Ali
+0.0	John
+0.0	Jimmy
+0.0	Baby
+0.0	Jun
+0.0	Wei
+0.0	Djelaludin
+0.0	Otto
+0.0	Roberto
+0.0	Bryn
+0.0	Ge
+0.0	Yahya Ould Ahmed El
+0.0	Hans
+0.0	Ali
+0.0	Tissa
+0.0	Aleksandr
+0.0	Jose
+0.0	Cheng
+0.0	Alfonso
+0.0	Ashok
+0.0	Abdul Haris
+0.0	Neil
+0.0	Jie
+0.0	Alexei
+0.0	Wolfgang
+0.0	Luigi
