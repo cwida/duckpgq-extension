@@ -9,7 +9,8 @@ require duckpgq
 
 statement ok
 set experimental_path_finding_operator=true;
-set experimental_path_finding_operator_sequential=true;
+set experimental_path_finding_operator_sequential=false;
+set experimental_path_finding_operator_barrier=2;
 
 statement ok
 CREATE TABLE pair(src BIGINT, dst BIGINT); INSERT INTO pair(src, dst) VALUES (0, 1), (1, 2), (2,0);

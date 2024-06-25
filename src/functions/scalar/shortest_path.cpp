@@ -238,11 +238,6 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetShortestPathFunction() {
                             LogicalType::LIST(LogicalType::BIGINT),
                             ShortestPathFunction,
                             IterativeLengthFunctionData::IterativeLengthBind));
-  set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
-                           LogicalType::BIGINT, LogicalType::BIGINT},
-                          LogicalType::LIST(LogicalType::BIGINT),
-                          ShortestPathFunction,
-                          IterativeLengthFunctionData::IterativeLengthBind));
 
   set.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
                                  LogicalType::LIST(LogicalType::BIGINT), ShortestPathFunction,

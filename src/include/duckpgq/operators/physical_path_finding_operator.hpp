@@ -146,7 +146,7 @@ public:
 public:
   vector<unique_ptr<Expression>> expressions;
   string mode; // "iterativelength" or "shortestpath"
-
+  std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
 
 public:
   // CachingOperator Interface

@@ -26,6 +26,7 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
                                          unique_ptr<PhysicalOperator> left,
                                          unique_ptr<PhysicalOperator> right)
     : PhysicalComparisonJoin(op, TYPE, {}, JoinType::INNER, 0) {
+  start_time = std::chrono::high_resolution_clock::now();
   children.push_back(std::move(left));
   children.push_back(std::move(right));
   expressions = std::move(op.expressions);
@@ -200,16 +201,13 @@ class GlobalBFSState {
       PhysicalPathFinding::GlobalCompressedSparseRow;
 public:
   GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_, shared_ptr<DataChunk> pairs_, int64_t v_size_, 
-                idx_t num_threads_, idx_t barrier_type_, ClientContext &context_)
+                idx_t num_threads_, idx_t barrier_type_, idx_t mode_, ClientContext &context_)
       : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false), 
         started_searches(0), total_len(0), context(context_), seen(v_size_), visit1(v_size_), visit2(v_size_),
         parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)),
         top_down_cost(0), bottom_up_cost(0), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
-        task_queues_reverse(num_threads_), barrier(barrier_type_, num_threads_), locks(v_size_) {
+        task_queues_reverse(num_threads_), barrier(barrier_type_, num_threads_), locks(v_size_), mode(mode_) {
     result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
-    for (auto i = 0; i < LANE_LIMIT; i++) {
-      lane_to_num[i] = -1;
-    }
     auto &src_data = pairs->data[0];
     auto &dst_data = pairs->data[1];
     src_data.ToUnifiedFormat(pairs->size(), vdata_src);
@@ -217,45 +215,29 @@ public:
     src = FlatVector::GetData<int64_t>(src_data);
     dst = FlatVector::GetData<int64_t>(dst_data);
 
-    for (auto i = 0; i < v_size; i++) {
-#ifdef SEGMENT_BITSET
-      for (auto j = 0; j < 8; j++) {
-        seen[i][j] = ~0;
-        visit1[i][j] = 0;
-      }
-#else
-      seen[i] = ~0;
-      visit1[i] = 0;
-#endif
-      for (auto j = 0; j < LANE_LIMIT; j++) {
-        parents_v[i][j] = -1;
-        parents_e[i][j] = -1;
-      }
-    }
-
     CreateTasks();
   }
 
   void Clear() {
     iter = 1;
+    active = 0;
     change = false;
-    for (auto i = 0; i < LANE_LIMIT; i++) {
-      lane_to_num[i] = -1;
-    }
     // empty visit vectors
     for (auto i = 0; i < v_size; i++) {
 #ifdef SEGMENT_BITSET
       for (auto j = 0; j < 8; j++) {
-        seen[i][j] = ~0;
+        seen[i][j] = 0;
         visit1[i][j] = 0;
       }
 #else
-      seen[i] = ~0;
+      seen[i] = 0;
       visit1[i] = 0;
 #endif
-      for (auto j = 0; j < LANE_LIMIT; j++) {
-        parents_v[i][j] = -1;
-        parents_e[i][j] = -1;
+      if (mode == 1) {
+        for (auto j = 0; j < LANE_LIMIT; j++) {
+          parents_v[i][j] = -1;
+          parents_e[i][j] = -1;
+        }
       }
     }
   }
@@ -263,7 +245,7 @@ public:
 
   void CreateTasks() {
     // workerTasks[workerId] = [task1, task2, ...]
-    auto queues = {&task_queues, &task_queues_reverse};
+    auto queues = {&task_queues};
     is_top_down = true;
     for (auto& queue : queues) {
       vector<vector<pair<idx_t, idx_t>>> worker_tasks(num_threads);
@@ -360,6 +342,7 @@ public:
   UnifiedVectorFormat vdata_src;
   UnifiedVectorFormat vdata_dst;
   int64_t lane_to_num[LANE_LIMIT];
+  idx_t active = 0;
   DataChunk result; // 0 for length, 1 for path
   ClientContext& context;
 #ifdef SEGMENT_BITSET
@@ -399,6 +382,8 @@ public:
   // lock for next
   mutable mutex lock;
   mutable vector<mutex> locks;
+
+  idx_t mode;
 };
 
 class PathFindingGlobalState : public GlobalSinkState {
@@ -797,8 +782,12 @@ private:
           result_data[search_num] =
               bfs_state->iter;               /* found at iter => iter = path length */
           bfs_state->lane_to_num[lane] = -1; // mark inactive
+          bfs_state->active--;
         }
       }
+    }
+    if (bfs_state->active == 0) {
+      bfs_state->change = false;
     }
     // into the next iteration
     bfs_state->iter++;
@@ -1422,7 +1411,6 @@ private:
     auto &change = bfs_state->change;
     auto &top_down_cost = bfs_state->top_down_cost;
     auto &bottom_up_cost = bfs_state->bottom_up_cost;
-    int64_t finished_searches = 0;
     // detect lanes that finished
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
       int64_t search_num = bfs_state->lane_to_num[lane];
@@ -1437,15 +1425,13 @@ private:
 #else
         if (bfs_state->seen[bfs_state->dst[dst_pos]][lane]) {
 #endif
-          finished_searches++;
+          bfs_state->active--;
         }
-      } else {
-        finished_searches++;
       }
     }
-    if (finished_searches == LANE_LIMIT) {
+    if (bfs_state->active == 0) {
       change = false;
-    } 
+    }
     // else {
     //   if (top_down_cost > 0 || bottom_up_cost > 0) {
     //     change = true;
@@ -1826,7 +1812,8 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     auto& client_config = ClientConfig::GetConfig(context);
     auto const barrier_type_idx = client_config.set_variables.find("experimental_path_finding_operator_barrier");
     auto barrier_type = barrier_type_idx != client_config.set_variables.end() ? barrier_type_idx->second.GetValue<id_t>() : 0;
-    gstate.global_bfs_state = make_uniq<GlobalBFSState>(csr, all_pairs, csr->v_size - 2, num_threads, barrier_type, context);
+    idx_t mode = this->mode == "iterativelength" ? 0 : 1;
+    gstate.global_bfs_state = make_uniq<GlobalBFSState>(csr, all_pairs, csr->v_size - 2, num_threads, barrier_type, mode, context);
 
     auto const task_size = client_config.set_variables.find("experimental_path_finding_operator_task_size");
     gstate.global_bfs_state->split_size = task_size != client_config.set_variables.end() ? task_size->second.GetValue<idx_t>() : 256;
@@ -1883,27 +1870,18 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
         } else {
 #ifdef SEGMENT_BITSET
           bfs_state->visit1[bfs_state->src[src_pos]][lane / 64] |= ((idx_t)1 << (lane % 64));
-          for (int i = 0; i < bfs_state->v_size; i++) {
-            bfs_state->seen[i][lane / 64] &= ~((idx_t)1 << (lane % 64));
-          }
 #elif defined(ATOMIC_BITSET)
           auto new_visit = bfs_state->visit1[bfs_state->src[src_pos]].load();
           new_visit[lane] = true;
           bfs_state->visit1[bfs_state->src[src_pos]].store(new_visit);
-          for (int i = 0; i < bfs_state->v_size; i++) {
-            auto new_seen = bfs_state->seen[i].load();
-            new_seen[lane] = false;
-            bfs_state->seen[i].store(new_seen);
-          }
 #else
           bfs_state->visit1[bfs_state->src[src_pos]][lane] = true;
-          for (int i = 0; i < bfs_state->v_size; i++) {
-            bfs_state->seen[i][lane] = false;
-          }
 #endif
           bfs_state->lane_to_num[lane] = search_num; // active lane
+          bfs_state->active++;
           break;
         }
+
       }
     }
     if (gstate.mode == "iterativelength") {
@@ -1988,6 +1966,9 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   }
   pf_bfs_state->result.SetCardinality(*pf_bfs_state->pairs);
 
+  // string message = "Algorithm time elapsed: " + to_string(pf_bfs_state->time_elapsed.count()) + " microseconds";
+  // Printer::Print(message);
+
   result.Move(*pf_bfs_state->pairs);
   auto result_path = make_uniq<DataChunk>();
   //! Split off the path from the path length, and then fuse into the result
@@ -1999,6 +1980,12 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   } else {
       throw NotImplementedException("Unrecognized mode for Path Finding");
   }
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+  // string message2 = "Total time elapsed: " + to_string(duration.count()) + " microseconds";
+  // Printer::Print(message2);
+
   // result.Print();
   return result.size() == 0
       ? SourceResultType::FINISHED
