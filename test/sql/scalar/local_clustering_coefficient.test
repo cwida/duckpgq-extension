@@ -32,10 +32,18 @@ WITH cte1 AS (
                             sub.cnt)
                             ) * 2
                 FROM (
-                    SELECT a.rowid as dense_id, count(k.src) * 2 as cnt
-                    FROM (SELECT a.rowid as dense_id FROM Student a
-                            LEFT JOIN Know k ON k.src = a.id
-                            GROUP BY a.rowid) sub
+                    SELECT dense_id, count(*) as cnt FROM (
+                        SELECT dense_id, outgoing_edge, incoming_edge
+                            FROM (
+                                SELECT a.rowid AS dense_id, k.src AS outgoing_edge, k.dst AS incoming_edge
+                                FROM Student a
+                                JOIN Know k ON k.src = a.id
+                                UNION ALL
+                                SELECT a.rowid AS dense_id, k.dst AS outgoing_edge, k.src AS incoming_edge
+                                FROM Student a
+                                JOIN know k on k.dst = a.id)
+                        GROUP BY dense_id, outgoing_edge, incoming_edge)
+                   GROUP BY dense_id) sub
                 )
             AS BIGINT),
             src,
