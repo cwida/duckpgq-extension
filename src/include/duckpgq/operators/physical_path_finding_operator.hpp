@@ -148,6 +148,7 @@ public:
   string mode; // "iterativelength" or "shortestpath"
   std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
 
+
 public:
   // CachingOperator Interface
   OperatorResultType ExecuteInternal(ExecutionContext &context,

@@ -26,7 +26,6 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
                                          unique_ptr<PhysicalOperator> left,
                                          unique_ptr<PhysicalOperator> right)
     : PhysicalComparisonJoin(op, TYPE, {}, JoinType::INNER, 0) {
-  start_time = std::chrono::high_resolution_clock::now();
   children.push_back(std::move(left));
   children.push_back(std::move(right));
   expressions = std::move(op.expressions);
@@ -378,6 +377,7 @@ public:
   Barrier barrier;
 
   std::chrono::microseconds time_elapsed = std::chrono::microseconds(0);
+  std::chrono::microseconds time_elapsed_task_init = std::chrono::microseconds(0);
 
   // lock for next
   mutable mutex lock;
@@ -406,8 +406,19 @@ public:
       global_bfs_state(std::move(prev.global_bfs_state)), child(prev.child + 1), mode(prev.mode) {
   }
 
-  void Sink(DataChunk &input, PathFindingLocalState &lstate) const {
+  void Sink(DataChunk &input, PathFindingLocalState &lstate) {
+    if (operator_start_time == std::chrono::time_point<std::chrono::high_resolution_clock>()) {
+      operator_start_time = std::chrono::high_resolution_clock::now();
+    }
+    auto start_time = std::chrono::high_resolution_clock::now();
     lstate.Sink(input, *global_csr, child);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+    if (child == 1) {
+      time_elapsed_pairs += duration;
+    } else {
+      time_elapsed_csr += duration;
+    }
   }
 
   void CSRCreateEdge() {
@@ -439,6 +450,11 @@ public:
   // ColumnDataCollection global_results;
   ColumnDataScanState scan_state;
   ColumnDataAppendState append_state;
+
+  std::chrono::microseconds time_elapsed_csr = std::chrono::microseconds(0);
+  std::chrono::microseconds time_elapsed_pairs = std::chrono::microseconds(0);
+  std::chrono::time_point<std::chrono::high_resolution_clock> operator_start_time;
+  std::chrono::microseconds time_elapsed_operator = std::chrono::microseconds(0);
 
   shared_ptr<GlobalCompressedSparseRow> global_csr;
   // state for BFS
@@ -875,7 +891,11 @@ public:
 
   PathFindingGlobalState &gstate;
 
+private:
+  std::chrono::high_resolution_clock::time_point start_time;
+
   void Schedule() override {
+    start_time = std::chrono::high_resolution_clock::now();
     auto &context = pipeline->GetClientContext();
     auto &ts = TaskScheduler::GetScheduler(context);
     idx_t num_threads = ts.NumberOfThreads();
@@ -895,6 +915,10 @@ public:
     auto &gstate = this->gstate;
     auto &global_csr = gstate.global_csr;
     global_csr->is_ready = true;
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+    string msg = "CSR edge creation time: " + std::to_string(duration.count()) + " microseconds";
+    Printer::Print(msg);
     // debug print
     // global_csr->Print();
   }
@@ -913,6 +937,8 @@ private:
 
 public:
 	void Schedule() override {
+    start_time = std::chrono::high_resolution_clock::now();
+
     auto &bfs_state = gstate.global_bfs_state;
 		auto &context = pipeline->GetClientContext();
 
@@ -921,7 +947,6 @@ public:
       bfs_tasks.push_back(make_uniq<PhysicalIterativeTask>(shared_from_this(), context, gstate, tnum));
     }
 		SetTasks(std::move(bfs_tasks));
-    start_time = std::chrono::high_resolution_clock::now();
 	}
 
 	void FinishEvent() override {
@@ -1791,10 +1816,16 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
   auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
   auto &csr = gstate.global_csr;
   auto &global_tasks = gstate.global_tasks;
+
   if (gstate.child == 0) {
     auto csr_event = make_shared<CSREdgeCreationEvent>(gstate, pipeline);
     event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(csr_event)));
   } else if (gstate.child == 1 && global_tasks->Count() > 0) {
+    string msg_csr = "CSR vertex creation time: " + std::to_string(gstate.time_elapsed_csr.count()) + " microseconds";
+    Printer::Print(msg_csr);
+    string msg_pairs = "Pair creation time: " + std::to_string(gstate.time_elapsed_pairs.count()) + " microseconds";
+    Printer::Print(msg_pairs);
+    auto start_time = std::chrono::high_resolution_clock::now();
     auto all_pairs = make_shared<DataChunk>();
     DataChunk pairs;
     global_tasks->InitializeScanChunk(*all_pairs);
@@ -1804,9 +1835,15 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     while (global_tasks->Scan(scan_state, pairs)) {
       all_pairs->Append(pairs, true);
     }
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+    string msg = "Time to collect all pairs: " + std::to_string(duration.count()) + " microseconds";
+    Printer::Print(msg);
     // debug print
     // all_pairs->Print();
 
+
+    start_time = std::chrono::high_resolution_clock::now();
     auto &ts = TaskScheduler::GetScheduler(context);
 		idx_t num_threads = ts.NumberOfThreads();
     auto& client_config = ClientConfig::GetConfig(context);
@@ -1819,6 +1856,10 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     gstate.global_bfs_state->split_size = task_size != client_config.set_variables.end() ? task_size->second.GetValue<idx_t>() : 256;
 
     auto const sequential = client_config.set_variables.find("experimental_path_finding_operator_sequential");
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+    msg = "Time to initialize BFS state: " + std::to_string(duration.count()) + " microseconds";
+    Printer::Print(msg);
     if (sequential != client_config.set_variables.end() && sequential->second.GetValue<bool>()) {
       if (gstate.mode == "iterativelength") {
         auto bfs_event = make_shared<SequentialIterativeEvent>(gstate, pipeline);
@@ -1843,6 +1884,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 
 void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
                                            GlobalSinkState &state) {
+  auto start_time = std::chrono::high_resolution_clock::now();
   auto &gstate = state.Cast<PathFindingGlobalState>();
   auto &bfs_state = gstate.global_bfs_state;
 
@@ -1893,6 +1935,9 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
     }
 
   }
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+  bfs_state->time_elapsed_task_init += duration;
 }
 
 //===--------------------------------------------------------------------===//
@@ -1959,6 +2004,7 @@ PhysicalPathFinding::GetLocalSourceState(ExecutionContext &context,
 SourceResultType
 PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
                              OperatorSourceInput &input) const {
+  auto results_start_time = std::chrono::high_resolution_clock::now();
   auto &pf_sink = sink_state->Cast<PathFindingGlobalState>();
   auto &pf_bfs_state = pf_sink.global_bfs_state;
   if (pf_bfs_state->pairs->size() == 0) {
@@ -1966,8 +2012,11 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   }
   pf_bfs_state->result.SetCardinality(*pf_bfs_state->pairs);
 
-  // string message = "Algorithm time elapsed: " + to_string(pf_bfs_state->time_elapsed.count()) + " microseconds";
-  // Printer::Print(message);
+  string msg = "Task init time elapsed: " + to_string(pf_bfs_state->time_elapsed_task_init.count()) + " microseconds";
+  Printer::Print(msg);
+
+  string message = "Algorithm time elapsed: " + to_string(pf_bfs_state->time_elapsed.count()) + " microseconds";
+  Printer::Print(message);
 
   result.Move(*pf_bfs_state->pairs);
   auto result_path = make_uniq<DataChunk>();
@@ -1982,9 +2031,12 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   }
 
   auto end_time = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-  // string message2 = "Total time elapsed: " + to_string(duration.count()) + " microseconds";
-  // Printer::Print(message2);
+  auto results_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - results_start_time);
+  string message_results = "Results time elapsed: " + to_string(results_duration.count()) + " microseconds";
+  Printer::Print(message_results);
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - pf_sink.operator_start_time);
+  string message2 = "Total time elapsed: " + to_string(duration.count()) + " microseconds\n";
+  Printer::Print(message2);
 
   // result.Print();
   return result.size() == 0
