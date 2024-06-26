@@ -71,7 +71,6 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
       }
     }
     float_t local_result =  static_cast<float_t>(count) / (number_of_edges * (number_of_edges - 1));
-    std::cout << src_node << " " << count << " " << number_of_edges << " " << local_result << std::endl;
     result_data[n] = local_result;
   }
 
