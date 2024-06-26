@@ -40,6 +40,7 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
   }
   int64_t *v = (int64_t *)duckpgq_state->csr_list[info.csr_id]->v;
   vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
+  size_t v_size = duckpgq_state->csr_list[info.csr_id]->vsize;
   // get src and dst vectors for searches
   auto &src = args.data[1];
   UnifiedVectorFormat vdata_src;
@@ -52,6 +53,9 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
   auto result_data = FlatVector::GetData<float_t>(result);
   auto start_time = std::chrono::high_resolution_clock::now();
 
+  DuckPGQBitmap neighbors(v_size);
+
+
   for (int32_t n = 0; n < args.size(); n++) {
     auto src_sel = vdata_src.sel->get_index(n);
     int64_t src_node = src_data[src_sel];
@@ -60,21 +64,21 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
       result_data[n] = static_cast<float_t>(0.0);
       continue;
     }
-    int32_t count = 0;
-    // Collect neighbors of src_node
-    std::set<int64_t> neighbors;
+    neighbors.reset();
     for (size_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
-      neighbors.insert(e[offset]);
+      neighbors.set(e[offset]);
     }
 
     // Count connections between neighbors
-    for (const auto &neighbor : neighbors) {
-      for (size_t offset = v[neighbor]; offset < v[neighbor + 1]; offset++) {
-        if (neighbors.find(e[offset]) != neighbors.end()) {
-          count++;
-        }
+    int64_t count = 0;
+    for (size_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
+      int64_t neighbor = e[offset];
+      for (size_t offset2 = v[neighbor]; offset2 < v[neighbor + 1]; offset2++) {
+        int is_connected = neighbors.test(e[offset2]);
+        count += is_connected; // Add 1 if connected, 0 otherwise
       }
     }
+
     float_t local_result =  static_cast<float_t>(count) / (number_of_edges * (number_of_edges - 1));
     result_data[n] = local_result;
   }

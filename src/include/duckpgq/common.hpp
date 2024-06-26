@@ -20,6 +20,21 @@
 
 namespace duckdb {
 
+class DuckPGQBitmap {
+public:
+  explicit DuckPGQBitmap(size_t size);
+  void set(size_t index);
+  bool test(size_t index) const;
+  void reset();
+
+private:
+  size_t size;
+  std::vector<uint64_t> bitmap;
+
+};
+
+
+
 struct CSRFunctionData : public FunctionData {
 public:
   CSRFunctionData(ClientContext &context, int32_t id, LogicalType weight_type);
