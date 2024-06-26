@@ -51,13 +51,15 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
   // create result vector
   result.SetVectorType(VectorType::FLAT_VECTOR);
   auto result_data = FlatVector::GetData<float_t>(result);
-  auto start_time = std::chrono::high_resolution_clock::now();
 
   DuckPGQBitmap neighbors(v_size);
 
 
   for (int32_t n = 0; n < args.size(); n++) {
     auto src_sel = vdata_src.sel->get_index(n);
+    if (!vdata_src.validity.RowIsValid(src_sel)) {
+      result_validity.SetInvalid(n);
+    }
     int64_t src_node = src_data[src_sel];
     int64_t number_of_edges = v[src_node + 1] - v[src_node];
     if (number_of_edges < 2) {
@@ -82,9 +84,6 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
     float_t local_result =  static_cast<float_t>(count) / (number_of_edges * (number_of_edges - 1));
     result_data[n] = local_result;
   }
-  auto end_time = std::chrono::high_resolution_clock::now();
-
-  std::cout << "Total time spent: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms\n";
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
