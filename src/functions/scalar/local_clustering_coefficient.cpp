@@ -4,6 +4,8 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
+#include "chrono"
+
 
 
 namespace duckdb {
@@ -48,32 +50,37 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
   // create result vector
   result.SetVectorType(VectorType::FLAT_VECTOR);
   auto result_data = FlatVector::GetData<float_t>(result);
+  auto start_time = std::chrono::high_resolution_clock::now();
 
   for (int32_t n = 0; n < args.size(); n++) {
     auto src_sel = vdata_src.sel->get_index(n);
     int64_t src_node = src_data[src_sel];
-    int32_t number_of_edges = v[src_node + 1] - v[src_node];
+    int64_t number_of_edges = v[src_node + 1] - v[src_node];
     if (number_of_edges < 2) {
       result_data[n] = static_cast<float_t>(0.0);
       continue;
     }
     int32_t count = 0;
-    for (auto offset = v[src_node]; offset < v[src_node + 1]; offset++) {
-      auto neighbour = e[offset];
-      for (auto offset2 = v[neighbour]; offset2 < v[neighbour + 1]; offset2++) {
-        auto n2 = e[offset2];
-        for (auto offset_src = v[src_node]; offset_src < v[src_node + 1]; offset_src++) {
-          if (n2 == e[offset_src]) {
-            count++;
-            break;
-          }
+    // Collect neighbors of src_node
+    std::set<int64_t> neighbors;
+    for (size_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
+      neighbors.insert(e[offset]);
+    }
+
+    // Count connections between neighbors
+    for (const auto &neighbor : neighbors) {
+      for (size_t offset = v[neighbor]; offset < v[neighbor + 1]; offset++) {
+        if (neighbors.find(e[offset]) != neighbors.end()) {
+          count++;
         }
       }
     }
     float_t local_result =  static_cast<float_t>(count) / (number_of_edges * (number_of_edges - 1));
     result_data[n] = local_result;
   }
+  auto end_time = std::chrono::high_resolution_clock::now();
 
+  std::cout << "Total time spent: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms\n";
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
