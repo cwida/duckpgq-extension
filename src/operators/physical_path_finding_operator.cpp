@@ -203,9 +203,10 @@ public:
                 idx_t num_threads_, idx_t barrier_type_, idx_t mode_, ClientContext &context_)
       : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false), 
         started_searches(0), total_len(0), context(context_), seen(v_size_), visit1(v_size_), visit2(v_size_),
-        parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT, -1)),
+        parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT)),
         top_down_cost(0), bottom_up_cost(0), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
         task_queues_reverse(num_threads_), barrier(barrier_type_, num_threads_), locks(v_size_), mode(mode_) {
+    auto start = std::chrono::high_resolution_clock::now();
     result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
     auto &src_data = pairs->data[0];
     auto &dst_data = pairs->data[1];
@@ -215,6 +216,11 @@ public:
     dst = FlatVector::GetData<int64_t>(dst_data);
 
     CreateTasks();
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    string message = "BFS state initialization time: " + std::to_string(duration.count()) + " microseconds";
+    Printer::Print(message);
   }
 
   void Clear() {
@@ -410,14 +416,16 @@ public:
     if (operator_start_time == std::chrono::time_point<std::chrono::high_resolution_clock>()) {
       operator_start_time = std::chrono::high_resolution_clock::now();
     }
-    auto start_time = std::chrono::high_resolution_clock::now();
+    if (child == 1 && pairs_start_time == std::chrono::time_point<std::chrono::high_resolution_clock>()) {
+      pairs_start_time = std::chrono::high_resolution_clock::now();
+    } else if (child != 1 && csr_start_time == std::chrono::time_point<std::chrono::high_resolution_clock>()) {
+      csr_start_time = std::chrono::high_resolution_clock::now();
+    }
     lstate.Sink(input, *global_csr, child);
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
     if (child == 1) {
-      time_elapsed_pairs += duration;
+      pairs_end_time = std::chrono::high_resolution_clock::now();
     } else {
-      time_elapsed_csr += duration;
+      csr_end_time = std::chrono::high_resolution_clock::now();
     }
   }
 
@@ -451,10 +459,12 @@ public:
   ColumnDataScanState scan_state;
   ColumnDataAppendState append_state;
 
-  std::chrono::microseconds time_elapsed_csr = std::chrono::microseconds(0);
-  std::chrono::microseconds time_elapsed_pairs = std::chrono::microseconds(0);
   std::chrono::time_point<std::chrono::high_resolution_clock> operator_start_time;
   std::chrono::microseconds time_elapsed_operator = std::chrono::microseconds(0);
+  std::chrono::time_point<std::chrono::high_resolution_clock> pairs_start_time;
+  std::chrono::time_point<std::chrono::high_resolution_clock> pairs_end_time;
+  std::chrono::time_point<std::chrono::high_resolution_clock> csr_start_time;
+  std::chrono::time_point<std::chrono::high_resolution_clock> csr_end_time;
 
   shared_ptr<GlobalCompressedSparseRow> global_csr;
   // state for BFS
@@ -1821,9 +1831,11 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     auto csr_event = make_shared<CSREdgeCreationEvent>(gstate, pipeline);
     event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(csr_event)));
   } else if (gstate.child == 1 && global_tasks->Count() > 0) {
-    string msg_csr = "CSR vertex creation time: " + std::to_string(gstate.time_elapsed_csr.count()) + " microseconds";
+    auto csr_duration = std::chrono::duration_cast<std::chrono::microseconds>(gstate.csr_end_time - gstate.csr_start_time);
+    string msg_csr = "CSR vertex creation time: " + std::to_string(csr_duration.count()) + " microseconds";
     Printer::Print(msg_csr);
-    string msg_pairs = "Pair creation time: " + std::to_string(gstate.time_elapsed_pairs.count()) + " microseconds";
+    auto pairs_duration = std::chrono::duration_cast<std::chrono::microseconds>(gstate.pairs_end_time - gstate.pairs_start_time);
+    string msg_pairs = "Pair creation time: " + std::to_string(pairs_duration.count()) + " microseconds";
     Printer::Print(msg_pairs);
     auto start_time = std::chrono::high_resolution_clock::now();
     auto all_pairs = make_shared<DataChunk>();
