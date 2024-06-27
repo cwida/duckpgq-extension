@@ -5,7 +5,7 @@
 
 namespace duckdb {
 
-unique_ptr<TableRef> LocalClusteringCoefficientBindReplace(ClientContext &context,
+unique_ptr<TableRef> LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(ClientContext &context,
                                              TableFunctionBindInput &input) {
   return nullptr;
 }
