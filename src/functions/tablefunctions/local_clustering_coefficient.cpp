@@ -10,8 +10,11 @@ unique_ptr<TableRef>
 LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(
     ClientContext &context, TableFunctionBindInput &input) {
   auto pg_name = StringValue::Get(input.inputs[0]);
+  std::transform(pg_name.begin(), pg_name.end(), pg_name.begin(), ::tolower);
   auto node_table = StringValue::Get(input.inputs[1]);
+  std::transform(node_table.begin(), node_table.end(), node_table.begin(), ::tolower);
   auto edge_table = StringValue::Get(input.inputs[2]);
+  std::transform(edge_table.begin(), edge_table.end(), edge_table.begin(), ::tolower);
 
   auto lookup = context.registered_state.find("duckpgq");
   if (lookup == context.registered_state.end()) {
