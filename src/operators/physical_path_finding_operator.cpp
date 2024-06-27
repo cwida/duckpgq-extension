@@ -16,10 +16,6 @@
 #include <numeric>
 #include <thread>
 
-// #define SEGMENT_BITSET
-// #define ATOMIC_BITSET
-#define ELEMENT_LOCK
-
 namespace duckdb {
 
 PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
@@ -43,7 +39,7 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(
   v_size = v_size_ + 2;
   try {
     v = new std::atomic<int64_t>[v_size];
-    // reverse_v = new std::atomic<int64_t>[v_size];
+    reverse_v = new std::atomic<int64_t>[v_size];
   } catch (std::bad_alloc const &) {
     throw InternalException(
         "Unable to initialize vector of size for csr vertex table "
@@ -51,7 +47,7 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(
   }
   for (idx_t i = 0; i < v_size; ++i) {
     v[i].store(0);
-    // reverse_v[i].store(0);
+    reverse_v[i].store(0);
   }
   initialized_v = true;
 }
@@ -63,16 +59,16 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeEdge(
   }
   try {
     e.resize(e_size, 0);
-    // reverse_e.resize(e_size, 0);
+    reverse_e.resize(e_size, 0);
     edge_ids.resize(e_size, 0);
-    // reverse_edge_ids.resize(e_size, 0);
+    reverse_edge_ids.resize(e_size, 0);
   } catch (std::bad_alloc const &) {
     throw InternalException("Unable to initialize vector of size for csr "
                             "edge table representation");
   }
   for (idx_t i = 1; i < v_size; i++) {
     v[i] += v[i - 1];
-    // reverse_v[i] += reverse_v[i - 1];
+    reverse_v[i] += reverse_v[i - 1];
   }
   initialized_e = true;
 }
@@ -113,81 +109,49 @@ public:
 void PathFindingLocalState::CreateCSRVertex(DataChunk &input,
                                       GlobalCompressedSparseRow &global_csr) {
   if (!global_csr.initialized_v) {
-    const auto v_size = input.data[8].GetValue(0).GetValue<int64_t>();
+    const auto v_size = input.data[9].GetValue(0).GetValue<int64_t>();
     global_csr.InitializeVertex(v_size);
   }
   auto result = Vector(LogicalTypeId::BIGINT);
   BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
-      input.data[6], input.data[5], result, input.size(),
+      input.data[4], input.data[3], result, input.size(),
       [&](const int64_t src, const int64_t cnt) {
         int64_t edge_count = 0;
         global_csr.v[src + 2] = cnt;
         edge_count = edge_count + cnt;
         return edge_count;
       });
-  // BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
-  //     input.data[7], input.data[6], result, input.size(),
-  //     [&](const int64_t dst, const int64_t cnt) {
-  //       int64_t edge_count = 0;
-  //       global_csr.reverse_v[dst + 2] = cnt;
-  //       edge_count = edge_count + cnt;
-  //       return edge_count;
-  //     });
+  BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
+      input.data[7], input.data[6], result, input.size(),
+      [&](const int64_t dst, const int64_t cnt) {
+        int64_t edge_count = 0;
+        global_csr.reverse_v[dst + 2] = cnt;
+        edge_count = edge_count + cnt;
+        return edge_count;
+      });
 }
 
 class Barrier {
 public:
-  explicit Barrier(std::size_t iType, std::size_t iCount) :
-    mType(iType),
+  explicit Barrier(std::size_t iCount) :
     mThreshold(iCount),
     mCount(iCount),
     mGeneration(0) {
-    if (iType == 2) {
-      pthread_barrier_init(&mBarrier, nullptr, iCount);
-    }
   }
 
   void Wait() {
-    switch (mType)
-    {
-    case 0:
-      {
-        std::unique_lock<std::mutex> lLock{mMutex};
-        auto lGen = mGeneration.load();
-        if (!--mCount) {
-            mGeneration++;
-            mCount = mThreshold;
-            mCond.notify_all();
-        } else {
-            mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
-        }
-      }
-      break;
-    case 1:
-      {
-        auto lGen = mGeneration.load();
-        if (!--mCount) {
-          mCount = mThreshold;
-          ++mGeneration;
-        } else {
-          while (lGen == mGeneration.load()) {
-            std::this_thread::yield();
-          }
-        }
-      }
-      break;
-    case 2:
-      pthread_barrier_wait(&mBarrier);
-      break;
-    case 3:
-    default:
-      break;
+    std::unique_lock<std::mutex> lLock{mMutex};
+    auto lGen = mGeneration.load();
+    if (!--mCount) {
+        mGeneration++;
+        mCount = mThreshold;
+        mCond.notify_all();
+    } else {
+        mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
     }
   }
 
 private:
-  std::size_t mType;
-  pthread_barrier_t mBarrier;
   std::mutex mMutex;
   std::condition_variable mCond;
   std::size_t mThreshold;
@@ -200,11 +164,11 @@ class GlobalBFSState {
       PhysicalPathFinding::GlobalCompressedSparseRow;
 public:
   GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_, shared_ptr<DataChunk> pairs_, int64_t v_size_, 
-                idx_t num_threads_, idx_t barrier_type_, idx_t mode_, ClientContext &context_)
+                idx_t num_threads_, idx_t mode_, ClientContext &context_)
       : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false), 
         started_searches(0), total_len(0), context(context_), seen(v_size_), visit1(v_size_), visit2(v_size_),
         top_down_cost(0), bottom_up_cost(0), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
-        task_queues_reverse(num_threads_), barrier(barrier_type_, num_threads_), locks(v_size_), mode(mode_) {
+        task_queues_reverse(num_threads_), barrier(num_threads_), locks(v_size_), mode(mode_) {
     result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
     auto &src_data = pairs->data[0];
     auto &dst_data = pairs->data[1];
@@ -227,15 +191,7 @@ public:
     change = false;
     // empty visit vectors
     for (auto i = 0; i < v_size; i++) {
-#ifdef SEGMENT_BITSET
-      for (auto j = 0; j < 8; j++) {
-        seen[i][j] = 0;
-        visit1[i][j] = 0;
-      }
-#else
-      seen[i] = 0;
       visit1[i] = 0;
-#endif
       if (mode == 1) {
         for (auto j = 0; j < LANE_LIMIT; j++) {
           parents_v[i][j] = -1;
@@ -248,13 +204,12 @@ public:
 
   void CreateTasks() {
     // workerTasks[workerId] = [task1, task2, ...]
-    auto queues = {&task_queues};
+    auto queues = {&task_queues, &task_queues_reverse};
     is_top_down = true;
     for (auto& queue : queues) {
       vector<vector<pair<idx_t, idx_t>>> worker_tasks(num_threads);
       auto cur_worker = 0;
-      // int64_t *v = is_top_down ? (int64_t*)csr->v : (int64_t*)csr->reverse_v;
-      int64_t *v = (int64_t*)csr->v;
+      int64_t *v = is_top_down ? (int64_t*)csr->v : (int64_t*)csr->reverse_v;
       int64_t current_task_edges = 0;
       idx_t current_task_start = 0;
       for (idx_t i = 0; i < (idx_t)v_size; i++) {
@@ -317,16 +272,12 @@ public:
   void DirectionSwitch() {
     // Determine the switch of algorithms
     // debug print
-    if (top_down_cost > bottom_up_cost) {
+    if (top_down_cost * alpha > bottom_up_cost) {
       is_top_down = false;
     } else {
       is_top_down = true;
     }
-    if (top_down_cost > 0) {
-      change = true;
-    } else {
-      change = false;
-    }
+    change = top_down_cost ? true : false;
     // clear the counters after the switch
     top_down_cost = 0;
     bottom_up_cost = 0;
@@ -348,27 +299,15 @@ public:
   idx_t active = 0;
   DataChunk result; // 0 for length, 1 for path
   ClientContext& context;
-#ifdef SEGMENT_BITSET
-  vector<array<atomic<idx_t>, 8>> seen;
-  vector<array<atomic<idx_t>, 8>> visit1;
-  vector<array<atomic<idx_t>, 8>> visit2;
-#elif defined(ATOMIC_BITSET)
-  vector<atomic<std::bitset<LANE_LIMIT>>> seen;
-  vector<atomic<std::bitset<LANE_LIMIT>>> visit1;
-  vector<atomic<std::bitset<LANE_LIMIT>>> visit2;
-#else
   vector<std::bitset<LANE_LIMIT>> seen;
   vector<std::bitset<LANE_LIMIT>> visit1;
   vector<std::bitset<LANE_LIMIT>> visit2;
-#endif
-
   vector<std::vector<int64_t>> parents_v;
   vector<std::vector<int64_t>> parents_e;
 
   atomic<int64_t> top_down_cost;
   atomic<int64_t> bottom_up_cost;
-  int64_t alpha = 1024;
-  int64_t beta = 64;
+  double alpha = 1;
   atomic<bool> is_top_down;
 
   idx_t num_threads;
@@ -380,11 +319,7 @@ public:
 
   Barrier barrier;
 
-  std::chrono::microseconds time_elapsed = std::chrono::microseconds(0);
-  std::chrono::microseconds time_elapsed_task_init = std::chrono::microseconds(0);
-
   // lock for next
-  mutable mutex lock;
   mutable vector<mutex> locks;
 
   idx_t mode;
@@ -411,42 +346,7 @@ public:
   }
 
   void Sink(DataChunk &input, PathFindingLocalState &lstate) {
-    if (operator_start_time == std::chrono::time_point<std::chrono::high_resolution_clock>()) {
-      operator_start_time = std::chrono::high_resolution_clock::now();
-    }
-    if (child == 1 && pairs_start_time == std::chrono::time_point<std::chrono::high_resolution_clock>()) {
-      pairs_start_time = std::chrono::high_resolution_clock::now();
-    } else if (child != 1 && csr_start_time == std::chrono::time_point<std::chrono::high_resolution_clock>()) {
-      csr_start_time = std::chrono::high_resolution_clock::now();
-    }
     lstate.Sink(input, *global_csr, child);
-    if (child == 1) {
-      pairs_end_time = std::chrono::high_resolution_clock::now();
-    } else {
-      csr_end_time = std::chrono::high_resolution_clock::now();
-    }
-  }
-
-  void CSRCreateEdge() {
-    DataChunk input;
-    global_inputs->InitializeScanChunk(input);
-    ColumnDataScanState scan_state;
-    global_inputs->InitializeScan(scan_state);
-    auto result = Vector(LogicalTypeId::BIGINT);
-    while (global_inputs->Scan(scan_state, input)) {
-      if (!global_csr->initialized_e) {
-        const auto e_size = input.data[7].GetValue(0).GetValue<int64_t>();
-        global_csr->InitializeEdge(e_size);
-      }
-      TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
-          input.data[6], input.data[4], input.data[2], result, input.size(),
-          [&](int64_t src, int64_t dst, int64_t edge_id) {
-            const auto pos = ++global_csr->v[src + 1];
-            global_csr->e[static_cast<int64_t>(pos) - 1] = dst;
-            global_csr->edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
-            return 1;
-          });
-    }
   }
 
   // pairs is a 2-column table with src and dst
@@ -456,13 +356,6 @@ public:
   // ColumnDataCollection global_results;
   ColumnDataScanState scan_state;
   ColumnDataAppendState append_state;
-
-  std::chrono::time_point<std::chrono::high_resolution_clock> operator_start_time;
-  std::chrono::microseconds time_elapsed_operator = std::chrono::microseconds(0);
-  std::chrono::time_point<std::chrono::high_resolution_clock> pairs_start_time;
-  std::chrono::time_point<std::chrono::high_resolution_clock> pairs_end_time;
-  std::chrono::time_point<std::chrono::high_resolution_clock> csr_start_time;
-  std::chrono::time_point<std::chrono::high_resolution_clock> csr_end_time;
 
   shared_ptr<GlobalCompressedSparseRow> global_csr;
   // state for BFS
@@ -531,18 +424,17 @@ public:
     do {
       bfs_state->InitTask(worker_id);
 
-      // if (bfs_state->is_top_down) {
-      //   IterativeLengthTopDown();
-      // } else {
-      //   IterativeLengthBottomUp();
-      // }
-      IterativeLengthTopDown();
+      if (bfs_state->is_top_down) {
+        IterativeLengthTopDown();
+      } else {
+        IterativeLengthBottomUp();
+      }
 
       barrier.Wait();
 
       if (worker_id == 0) {
         ReachDetect();
-        // bfs_state->DirectionSwitch();
+        bfs_state->DirectionSwitch();
       }
       barrier.Wait();
     } while (change);
@@ -563,22 +455,15 @@ private:
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
     int64_t *v = (int64_t *)state.global_csr->v;
-    // int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
+    int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
     vector<int64_t> &e = state.global_csr->e;
     auto& top_down_cost = bfs_state->top_down_cost;
     auto& bottom_up_cost = bfs_state->bottom_up_cost;
     auto& lane_to_num = bfs_state->lane_to_num;
-    auto& change = bfs_state->change;
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
-#ifdef SEGMENT_BITSET
-      for (auto j = 0; j < 8; j++) {
-        next[i][j].store(0, std::memory_order_relaxed);
-      }
-#else
       next[i] = 0;
-#endif
     }
 
     barrier.Wait();
@@ -591,201 +476,79 @@ private:
       auto start = task.first;
       auto end = task.second;
 
-#ifdef SEGMENT_BITSET
-      idx_t old_next, new_next;
-#else
-      std::bitset<LANE_LIMIT> old_next, new_next;
-#endif
-
       for (auto i = start; i < end; i++) {
-#ifdef SEGMENT_BITSET
-        for (auto j = 0; j < 8; j++) {
-          if (visit[i][j].load(std::memory_order_relaxed)) {
-            for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-              auto n = e[offset];
-              do {
-                old_next = next[n][j].load();
-                new_next = old_next | visit[i][j].load();
-              } while (!next[n][j].compare_exchange_weak(old_next, new_next));
-            }
-          }
-        }
-#elif defined(ATOMIC_BITSET)
-        if (visit[i].load(std::memory_order_relaxed).any()) {
-          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-            auto n = e[offset];
-            do {
-              old_next = next[n].load();
-              new_next = old_next | visit[i].load();
-            } while (!next[n].compare_exchange_weak(old_next, new_next));
-          }
-        }
-#else
         if (visit[i].any()) {
           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
             auto n = e[offset];
-#ifdef ELEMENT_LOCK
             std::lock_guard<std::mutex> lock(bfs_state->locks[n]);
-#endif
             next[n] |= visit[i];
           }
         }
-#endif
       }
     }
 
-    change = false;
     barrier.Wait();
 
     for (auto i = left; i < right; i++) {
-#ifdef SEGMENT_BITSET
-      for (auto j = 0; j < 8; j++) {
-        if (next[i][j].load()) {
-          next[i][j].store(next[i][j].load() & ~seen[i][j].load());
-          seen[i][j].store(seen[i][j].load() | next[i][j].load());
-          change |= next[i][j].load();
-          // top_down_cost += v[i + 1] - v[i];
-        }
-        // if (~seen[i][j].load()) {
-        //   bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-        // }
-      }
-#elif defined(ATOMIC_BITSET)
-      if (next[i].load().any()) {
-        next[i].store(next[i].load() & ~seen[i].load());
-        seen[i].store(seen[i].load() | next[i].load());
-        change |= next[i].load().any();
-        // top_down_cost += v[i + 1] - v[i];
-      }
-      // if (~seen[i].load().all()) {
-        // bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-      // }
-#else
       if (next[i].any()) {
         next[i] &= ~seen[i];
         seen[i] |= next[i];
-        change |= next[i].any();
-        // top_down_cost += v[i + 1] - v[i];
+        top_down_cost += v[i + 1] - v[i];
       }
-      // if (~seen[i].all()) {
-        // bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-      // }
-#endif
+      if (~(seen[i].all())) {
+        bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
+      }
     }
   }
 
-//   void IterativeLengthBottomUp() {
-//     auto& bfs_state = state.global_bfs_state;
-//     auto& seen = bfs_state->seen;
-//     auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-//     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
-//     auto& barrier = bfs_state->barrier;
-//     int64_t *v = (int64_t *)state.global_csr->reverse_v;
-//     int64_t *normal_v = (int64_t *)state.global_csr->v;
-//     vector<int64_t> &e = state.global_csr->reverse_e;
-//     auto& top_down_cost = bfs_state->top_down_cost;
-//     auto& bottom_up_cost = bfs_state->bottom_up_cost;
+  void IterativeLengthBottomUp() {
+    auto& bfs_state = state.global_bfs_state;
+    auto& seen = bfs_state->seen;
+    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+    auto& barrier = bfs_state->barrier;
+    int64_t *v = (int64_t *)state.global_csr->reverse_v;
+    int64_t *normal_v = (int64_t *)state.global_csr->v;
+    vector<int64_t> &e = state.global_csr->reverse_e;
+    auto& top_down_cost = bfs_state->top_down_cost;
+    auto& bottom_up_cost = bfs_state->bottom_up_cost;
 
-//     // clear next before each iteration
-//     for (auto i = left; i < right; i++) {
-// #ifdef SEGMENT_BITSET
-//       for (auto j = 0; j < 8; j++) {
-//         next[i][j].store(0, std::memory_order_relaxed);
-//       }
-// #else
-//       next[i] = 0;
-// #endif
-//     }
+    // clear next before each iteration
+    for (auto i = left; i < right; i++) {
+      next[i] = 0;
+    }
     
-//     barrier.Wait();
+    barrier.Wait();
 
-//     while (true) {
-//       auto task = bfs_state->FetchTask(worker_id);
-//       if (task.first == task.second) {
-//         break;
-//       }
-//       auto start = task.first;
-//       auto end = task.second;
+    while (true) {
+      auto task = bfs_state->FetchTask(worker_id);
+      if (task.first == task.second) {
+        break;
+      }
+      auto start = task.first;
+      auto end = task.second;
 
-// #ifdef SEGMENT_BITSET
-//       idx_t old_next, new_next;
-// #else
-//       std::bitset<LANE_LIMIT> old_next, new_next;
-// #endif
+      for (auto i = start; i < end; i++) {
+        if (seen[i].all()) {
+          continue;
+        }
 
-//       for (auto i = start; i < end; i++) {
-// #ifdef SEGMENT_BITSET
-//         for (auto j = 0; j < 8; j++) {
-//           if (~seen[i][j] == 0) {
-//             continue;
-//           }
+        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+          auto n = e[offset];
+          next[i] |= visit[n];
+        }
 
-//           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-//             auto n = e[offset];
-//             if (visit[n][j].load(std::memory_order_relaxed)) {
-//               do {
-//                 old_next = next[i][j].load();
-//                 new_next = old_next | visit[n][j].load();
-//               } while (!next[i][j].compare_exchange_weak(old_next, new_next));
-//             }
-//           }
-
-//           if (next[i][j].load()) {
-//             next[i][j].store(next[i][j].load() & ~seen[i][j].load());
-//             seen[i][j].store(seen[i][j].load() | next[i][j].load());
-
-//             top_down_cost += normal_v[i + 1] - normal_v[i];
-//           }
-//           if (~seen[i][j].load()) {
-//             bottom_up_cost += v[i + 1] - v[i];
-//           }
-//         }
-// #elif defined(ATOMIC_BITSET)
-//         if (seen[i].load().all()) {
-//           continue;
-//         }
-
-//         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-//           auto n = e[offset];
-//           do {
-//             old_next = next[i].load();
-//             new_next = old_next | visit[n].load();
-//           } while (!next[i].compare_exchange_weak(old_next, new_next));
-//         }
-
-//         if (next[i].load().any()) {
-//           next[i].store(next[i].load() & ~seen[i].load());
-//           seen[i].store(seen[i].load() | next[i].load());
-
-//           top_down_cost += normal_v[i + 1] - normal_v[i];
-//         }
-//         if (~seen[i].load().all()) {
-//           bottom_up_cost += v[i + 1] - v[i];
-//         }
-// #else
-//         if (seen[i].all()) {
-//           continue;
-//         }
-
-//         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-//           auto n = e[offset];
-//           next[i] |= visit[n];
-//         }
-
-//         if (next[i].any()) {
-//           next[i] &= ~seen[i];
-//           seen[i] |= next[i];
-
-//           top_down_cost += normal_v[i + 1] - normal_v[i];
-//         }
-//         if (~seen[i].all()) {
-//           bottom_up_cost += v[i + 1] - v[i];
-//         }
-
-// #endif
-//       }
-//     }
-//   }
+        if (next[i].any()) {
+          next[i] &= ~seen[i];
+          seen[i] |= next[i];
+          top_down_cost += normal_v[i + 1] - normal_v[i];
+        }
+        if (~(seen[i].all())) {
+          bottom_up_cost += v[i + 1] - v[i];
+        }
+      }
+    }
+  }
 
   void ReachDetect() {
     auto &bfs_state = state.global_bfs_state;
@@ -796,13 +559,7 @@ private:
       int64_t search_num = bfs_state->lane_to_num[lane];
       if (search_num >= 0) { // active lane
         int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
-#ifdef SEGMENT_BITSET
-        if (bfs_state->seen[bfs_state->dst[dst_pos]][lane / 64] & ((idx_t)1 << (lane % 64))) {
-#elif defined(ATOMIC_BITSET)
-        if (bfs_state->seen[bfs_state->dst[dst_pos]].load()[lane]) {
-#else
         if (bfs_state->seen[bfs_state->dst[dst_pos]][lane]) {
-#endif
           result_data[search_num] =
               bfs_state->iter;               /* found at iter => iter = path length */
           bfs_state->lane_to_num[lane] = -1; // mark inactive
@@ -862,25 +619,25 @@ public:
         }
       }
       if (!global_csr->initialized_e) {
-        const auto e_size = input.data[7].GetValue(0).GetValue<int64_t>();
+        const auto e_size = input.data[8].GetValue(0).GetValue<int64_t>();
         global_csr->InitializeEdge(e_size);
       }
       TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
-          input.data[6], input.data[4], input.data[2], result, input.size(),
+          input.data[4], input.data[7], input.data[2], result, input.size(),
           [&](int64_t src, int64_t dst, int64_t edge_id) {
             const auto pos = ++global_csr->v[src + 1];
             global_csr->e[static_cast<int64_t>(pos) - 1] = dst;
             global_csr->edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
             return 1;
           });
-      // TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
-      //     input.data[7], input.data[4], input.data[2], result, input.size(),
-      //     [&](int64_t dst, int64_t src, int64_t edge_id) {
-      //       const auto pos = ++global_csr->reverse_v[dst + 1];
-      //       global_csr->reverse_e[static_cast<int64_t>(pos) - 1] = src;
-      //       global_csr->reverse_edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
-      //       return 1;
-      //     });
+      TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
+          input.data[7], input.data[4], input.data[2], result, input.size(),
+          [&](int64_t dst, int64_t src, int64_t edge_id) {
+            const auto pos = ++global_csr->reverse_v[dst + 1];
+            global_csr->reverse_e[static_cast<int64_t>(pos) - 1] = src;
+            global_csr->reverse_edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
+            return 1;
+          });
     }
     event->FinishTask();
     return TaskExecutionResult::TASK_FINISHED;
@@ -899,11 +656,7 @@ public:
 
   PathFindingGlobalState &gstate;
 
-private:
-  std::chrono::high_resolution_clock::time_point start_time;
-
   void Schedule() override {
-    start_time = std::chrono::high_resolution_clock::now();
     auto &context = pipeline->GetClientContext();
     auto &ts = TaskScheduler::GetScheduler(context);
     idx_t num_threads = ts.NumberOfThreads();
@@ -923,10 +676,6 @@ private:
     auto &gstate = this->gstate;
     auto &global_csr = gstate.global_csr;
     global_csr->is_ready = true;
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-    string msg = "CSR edge creation time: " + std::to_string(duration.count()) + " microseconds";
-    Printer::Print(msg);
     // debug print
     // global_csr->Print();
   }
@@ -940,13 +689,8 @@ public:
 
 	PathFindingGlobalState &gstate;
 
-private:
-  std::chrono::high_resolution_clock::time_point start_time;
-
 public:
 	void Schedule() override {
-    start_time = std::chrono::high_resolution_clock::now();
-
     auto &bfs_state = gstate.global_bfs_state;
 		auto &context = pipeline->GetClientContext();
 
@@ -959,10 +703,6 @@ public:
 
 	void FinishEvent() override {
 		auto& bfs_state = gstate.global_bfs_state;
-
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-    bfs_state->time_elapsed += duration;
 
     // if remaining pairs, schedule the BFS for the next batch
     if (bfs_state->started_searches < gstate.global_tasks->Count()) {
@@ -992,7 +732,6 @@ public:
     IterativeLengthFunction(gstate.global_csr, pairs, result);
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    bfs_state->time_elapsed += duration;
   }
 
 private:
@@ -1138,17 +877,16 @@ public:
     do {
       bfs_state->InitTask(worker_id);
 
-      // if (bfs_state->is_top_down) {
-      //   IterativeLengthTopDown();
-      // } else {
-      //   IterativeLengthBottomUp();
-      // }
-      IterativeLengthTopDown();
+      if (bfs_state->is_top_down) {
+        IterativePathTopDown();
+      } else {
+        IterativePathBottomUp();
+      }
       barrier.Wait();
 
       if (worker_id == 0) {
         ReachDetect();
-        // bfs_state->DirectionSwitch();
+        bfs_state->DirectionSwitch();
       }
 
       barrier.Wait();
@@ -1163,31 +901,24 @@ public:
   }
 
 private:
-  void IterativeLengthTopDown() {
+  void IterativePathTopDown() {
     auto& bfs_state = state.global_bfs_state;
     auto& seen = bfs_state->seen;
     auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
     int64_t *v = (int64_t *)state.global_csr->v;
-    // int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
+    int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
     vector<int64_t> &e = state.global_csr->e;
     auto& edge_ids = state.global_csr->edge_ids;
     auto& top_down_cost = bfs_state->top_down_cost;
     auto& bottom_up_cost = bfs_state->bottom_up_cost;
     auto& parents_v = bfs_state->parents_v;
     auto& parents_e = bfs_state->parents_e;
-    auto& change = bfs_state->change;
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
-#ifdef SEGMENT_BITSET
-      for (auto j = 0; j < 8; j++) {
-        next[i][j].store(0, std::memory_order_relaxed);
-      }
-#else
       next[i] = 0;
-#endif
     }
 
     barrier.Wait();
@@ -1200,57 +931,12 @@ private:
       auto start = task.first;
       auto end = task.second;
 
-#ifdef SEGMENT_BITSET
-      idx_t old_next, new_next;
-#else
-      std::bitset<LANE_LIMIT> old_next, new_next;
-#endif
-
       for (auto i = start; i < end; i++) {
-#ifdef SEGMENT_BITSET
-        for (auto j = 0; j < 8; j++) {
-          if (visit[i][j].load(std::memory_order_relaxed)) {
-            for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-              auto n = e[offset];
-              auto edge_id = edge_ids[offset];
-              do {
-                old_next = next[n][j].load();
-                new_next = old_next | visit[i][j].load();
-              } while (!next[n][j].compare_exchange_weak(old_next, new_next));
-              for (auto l = 0; l < LANE_LIMIT; l++) {
-                parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
-                        ? i : parents_v[n][l];
-                parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
-                        ? edge_id : parents_e[n][l];
-              }
-            }
-          }
-        }
-#elif defined(ATOMIC_BITSET)
-        if (visit[i].load(std::memory_order_relaxed).any()) {
-          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-            auto n = e[offset];
-            auto edge_id = edge_ids[offset];
-            do {
-              old_next = next[n].load();
-              new_next = old_next | visit[i].load();
-            } while (!next[n].compare_exchange_weak(old_next, new_next));
-            for (auto l = 0; l < LANE_LIMIT; l++) {
-              parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i].load()[l])
-                      ? i : parents_v[n][l];
-              parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i].load()[l])
-                      ? edge_id : parents_e[n][l];
-            }
-          }
-        }
-#else
         if (visit[i].any()) {
           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
             auto n = e[offset];
             auto edge_id = edge_ids[offset];
-#ifdef ELEMENT_LOCK
             std::lock_guard<std::mutex> lock(bfs_state->locks[n]);
-#endif
             next[n] |= visit[i];
             for (auto l = 0; l < LANE_LIMIT; l++) {
               parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i][l])
@@ -1260,184 +946,81 @@ private:
             }
           }
         }
-#endif
       }
     }
 
-    change = false;
     barrier.Wait();
 
     for (auto i = left; i < right; i++) {
-#ifdef SEGMENT_BITSET
-      for (auto j = 0; j < 8; j++) {
-        if (next[i][j].load()) {
-          next[i][j].store(next[i][j].load() & ~seen[i][j].load());
-          seen[i][j].store(seen[i][j].load() | next[i][j].load());
-          change |= next[i][j].load();
-          // top_down_cost += v[i + 1] - v[i];
-        }
-        // if (~seen[i][j].load()) {
-          // bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-        // }
-      }
-#elif defined(ATOMIC_BITSET)
-      if (next[i].load().any()) {
-        next[i].store(next[i].load() & ~seen[i].load());
-        seen[i].store(seen[i].load() | next[i].load());
-        change |= next[i].load().any();
-        // top_down_cost += v[i + 1] - v[i];
-      }
-      // if (~seen[i].load().all()) {
-        // bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-      // }
-#else
       if (next[i].any()) {
         next[i] &= ~seen[i];
         seen[i] |= next[i];
-        change |= next[i].any();
-        // top_down_cost += v[i + 1] - v[i];
+        top_down_cost += v[i + 1] - v[i];
       }
-      // if (~seen[i].all()) {
-        // bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-      // }
-#endif
+      if (~(seen[i].all())) {
+        bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
+      }
     }
   }
 
-//   void IterativeLengthBottomUp() {
-//     auto& bfs_state = state.global_bfs_state;
-//     auto& seen = bfs_state->seen;
-//     auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-//     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
-//     auto& barrier = bfs_state->barrier;
-//     int64_t *v = (int64_t *)state.global_csr->reverse_v;
-//     int64_t *normal_v = (int64_t *)state.global_csr->v;
-//     vector<int64_t> &e = state.global_csr->reverse_e;
-//     auto& edge_ids = state.global_csr->reverse_edge_ids;
-//     auto& top_down_cost = bfs_state->top_down_cost;
-//     auto& bottom_up_cost = bfs_state->bottom_up_cost;
-//     auto& parents_v = bfs_state->parents_v;
-//     auto& parents_e = bfs_state->parents_e;
+  void IterativePathBottomUp() {
+    auto& bfs_state = state.global_bfs_state;
+    auto& seen = bfs_state->seen;
+    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+    auto& barrier = bfs_state->barrier;
+    int64_t *v = (int64_t *)state.global_csr->reverse_v;
+    int64_t *normal_v = (int64_t *)state.global_csr->v;
+    vector<int64_t> &e = state.global_csr->reverse_e;
+    auto& edge_ids = state.global_csr->reverse_edge_ids;
+    auto& top_down_cost = bfs_state->top_down_cost;
+    auto& bottom_up_cost = bfs_state->bottom_up_cost;
+    auto& parents_v = bfs_state->parents_v;
+    auto& parents_e = bfs_state->parents_e;
 
-//     // clear next before each iteration
-//     for (auto i = left; i < right; i++) {
-// #ifdef SEGMENT_BITSET
-//       for (auto j = 0; j < 8; j++) {
-//         next[i][j].store(0, std::memory_order_relaxed);
-//       }
-// #else
-//       next[i] = 0;
-// #endif
-//     }
+    // clear next before each iteration
+    for (auto i = left; i < right; i++) {
+      next[i] = 0;
+    }
     
-//     barrier.Wait();
+    barrier.Wait();
 
-//     while (true) {
-//       auto task = bfs_state->FetchTask(worker_id);
-//       if (task.first == task.second) {
-//         break;
-//       }
-//       auto start = task.first;
-//       auto end = task.second;
+    while (true) {
+      auto task = bfs_state->FetchTask(worker_id);
+      if (task.first == task.second) {
+        break;
+      }
+      auto start = task.first;
+      auto end = task.second;
 
-// #ifdef SEGMENT_BITSET
-//       idx_t old_next, new_next;
-// #else
-//       std::bitset<LANE_LIMIT> old_next, new_next;
-// #endif
+      for (auto i = start; i < end; i++) {
+        if (seen[i].all()) {
+          continue;
+        }
 
-//       for (auto i = start; i < end; i++) {
-// #ifdef SEGMENT_BITSET
-//         for (auto j = 0; j < 8; j++) {
-//           if (~seen[i][j] == 0) {
-//             continue;
-//           }
+        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+          auto n = e[offset];
+          auto edge_id = edge_ids[offset];
+          next[i] |= visit[n];
+          for (auto l = 0; l < LANE_LIMIT; l++) {
+            parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l])
+                    ? n : parents_v[i][l];
+            parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l])
+                    ? edge_id : parents_e[i][l];
+          }
+        }
 
-//           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-//             auto n = e[offset];
-//             auto edge_id = edge_ids[offset];
-//             do {
-//               old_next = next[i][j].load();
-//               new_next = old_next | visit[n][j].load();
-//             } while (!next[i][j].compare_exchange_weak(old_next, new_next));
-//             for (auto l = 0; l < LANE_LIMIT; l++) {
-//               parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
-//                       ? n : parents_v[i][l];
-//               parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l / 64].load(std::memory_order_relaxed) & ((idx_t)1 << (l % 64)))
-//                       ? edge_id : parents_e[i][l];
-//             }
-//           }
-          
-//           if (next[i][j].load()) {
-//             next[i][j].store(next[i][j].load() & ~seen[i][j].load(), std::memory_order_relaxed);
-//             seen[i][j].store(seen[i][j].load() | next[i][j].load(), std::memory_order_relaxed);
-
-//             top_down_cost += normal_v[i + 1] - normal_v[i];
-//           }
-//           if (~seen[i][j].load()) {
-//             bottom_up_cost += v[i + 1] - v[i];
-//           }
-//         }
-// #elif defined(ATOMIC_BITSET)
-//         if (seen[i].load().all()) {
-//           continue;
-//         }
-
-//         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-//           auto n = e[offset];
-//           auto edge_id = edge_ids[offset];
-//           do {
-//             old_next = next[i].load();
-//             new_next = old_next | visit[n].load();
-//           } while (!next[i].compare_exchange_weak(old_next, new_next));
-//           for (auto l = 0; l < LANE_LIMIT; l++) {
-//             parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n].load()[l])
-//                     ? i : parents_v[i][l];
-//             parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n].load()[l])
-//                     ? edge_id : parents_e[i][l];
-//           }
-//         }
-
-//         if (next[i].load().any()) {
-//           next[i].store(next[i].load() & ~seen[i].load());
-//           seen[i].store(seen[i].load() | next[i].load());
-
-//           top_down_cost += normal_v[i + 1] - normal_v[i];
-//         }
-//         if (~seen[i].load().all()) {
-//           bottom_up_cost += v[i + 1] - v[i];
-//         }
-
-// #else
-//         if (seen[i].all()) {
-//           continue;
-//         }
-
-//         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-//           auto n = e[offset];
-//           auto edge_id = edge_ids[offset];
-//           next[i] |= visit[n];
-//           for (auto l = 0; l < LANE_LIMIT; l++) {
-//             parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l])
-//                     ? i : parents_v[i][l];
-//             parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l])
-//                     ? edge_id : parents_e[i][l];
-//           }
-//         }
-
-//         if (next[i].any()) {
-//           next[i] &= ~seen[i];
-//           seen[i] |= next[i];
-
-//           top_down_cost += normal_v[i + 1] - normal_v[i];
-//         }
-//         if (~seen[i].any()) {
-//           bottom_up_cost += v[i + 1] - v[i];
-//         }
-// #endif
-//       }
-//     }
-//   }
+        if (next[i].any()) {
+          next[i] &= ~seen[i];
+          seen[i] |= next[i];
+          top_down_cost += normal_v[i + 1] - normal_v[i];
+        }
+        if (~(seen[i].any())) {
+          bottom_up_cost += v[i + 1] - v[i];
+        }
+      }
+    }
+  }
 
   void ReachDetect() {
     auto &bfs_state = state.global_bfs_state;
@@ -1451,13 +1034,7 @@ private:
       if (search_num >= 0) { // active lane
         //! Check if dst for a source has been seen
         int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
-#ifdef SEGMENT_BITSET
-        if (bfs_state->seen[bfs_state->dst[dst_pos]][lane / 64] & ((idx_t)1 << (lane % 64))) {
-#elif defined(ATOMIC_BITSET)
-        if (bfs_state->seen[bfs_state->dst[dst_pos]].load()[lane]) {
-#else
         if (bfs_state->seen[bfs_state->dst[dst_pos]][lane]) {
-#endif
           bfs_state->active--;
         }
       }
@@ -1465,13 +1042,6 @@ private:
     if (bfs_state->active == 0) {
       change = false;
     }
-    // else {
-    //   if (top_down_cost > 0 || bottom_up_cost > 0) {
-    //     change = true;
-    //   } else {
-    //     change = false;
-    //   }
-    // }
     // into the next iteration
     bfs_state->iter++;
   }
@@ -1564,9 +1134,6 @@ public:
 
   PathFindingGlobalState &gstate;
 
-private:
-  std::chrono::high_resolution_clock::time_point start_time;
-
 public:
   void Schedule() override {
     auto &bfs_state = gstate.global_bfs_state;
@@ -1576,15 +1143,11 @@ public:
     for (idx_t tnum = 0; tnum < bfs_state->num_threads; tnum++) {
       bfs_tasks.push_back(make_uniq<PhysicalShortestPathTask>(shared_from_this(), context, gstate, tnum));
     }
-    start_time = std::chrono::high_resolution_clock::now();
 		SetTasks(std::move(bfs_tasks));
   }
 
   void FinishEvent() override {
     auto &bfs_state = gstate.global_bfs_state;
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-    bfs_state->time_elapsed += duration;
 
     // if remaining pairs, schedule the BFS for the next batch
     if (bfs_state->started_searches < gstate.global_tasks->Count()) {
@@ -1610,7 +1173,6 @@ public:
     ShortestPathFunction(gstate.global_csr, pairs, result);
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    bfs_state->time_elapsed = duration;
   }
 
 private:
@@ -1829,13 +1391,6 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     auto csr_event = make_shared<CSREdgeCreationEvent>(gstate, pipeline);
     event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(csr_event)));
   } else if (gstate.child == 1 && global_tasks->Count() > 0) {
-    auto csr_duration = std::chrono::duration_cast<std::chrono::microseconds>(gstate.csr_end_time - gstate.csr_start_time);
-    string msg_csr = "CSR vertex creation time: " + std::to_string(csr_duration.count()) + " microseconds";
-    Printer::Print(msg_csr);
-    auto pairs_duration = std::chrono::duration_cast<std::chrono::microseconds>(gstate.pairs_end_time - gstate.pairs_start_time);
-    string msg_pairs = "Pair creation time: " + std::to_string(pairs_duration.count()) + " microseconds";
-    Printer::Print(msg_pairs);
-    auto start_time = std::chrono::high_resolution_clock::now();
     auto all_pairs = make_shared<DataChunk>();
     DataChunk pairs;
     global_tasks->InitializeScanChunk(*all_pairs);
@@ -1845,31 +1400,23 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     while (global_tasks->Scan(scan_state, pairs)) {
       all_pairs->Append(pairs, true);
     }
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-    string msg = "Time to collect all pairs: " + std::to_string(duration.count()) + " microseconds";
-    Printer::Print(msg);
     // debug print
     // all_pairs->Print();
 
 
-    start_time = std::chrono::high_resolution_clock::now();
     auto &ts = TaskScheduler::GetScheduler(context);
 		idx_t num_threads = ts.NumberOfThreads();
     auto& client_config = ClientConfig::GetConfig(context);
-    auto const barrier_type_idx = client_config.set_variables.find("experimental_path_finding_operator_barrier");
-    auto barrier_type = barrier_type_idx != client_config.set_variables.end() ? barrier_type_idx->second.GetValue<id_t>() : 0;
     idx_t mode = this->mode == "iterativelength" ? 0 : 1;
-    gstate.global_bfs_state = make_uniq<GlobalBFSState>(csr, all_pairs, csr->v_size - 2, num_threads, barrier_type, mode, context);
+    gstate.global_bfs_state = make_uniq<GlobalBFSState>(csr, all_pairs, csr->v_size - 2, num_threads, mode, context);
 
     auto const task_size = client_config.set_variables.find("experimental_path_finding_operator_task_size");
     gstate.global_bfs_state->split_size = task_size != client_config.set_variables.end() ? task_size->second.GetValue<idx_t>() : 256;
 
+    auto const alpha = client_config.set_variables.find("experimental_path_finding_operator_alpha");
+    gstate.global_bfs_state->alpha = alpha != client_config.set_variables.end() ? alpha->second.GetValue<double>() : 1;
+
     auto const sequential = client_config.set_variables.find("experimental_path_finding_operator_sequential");
-    end_time = std::chrono::high_resolution_clock::now();
-    duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-    msg = "Time to initialize BFS state: " + std::to_string(duration.count()) + " microseconds";
-    Printer::Print(msg);
     if (sequential != client_config.set_variables.end() && sequential->second.GetValue<bool>()) {
       if (gstate.mode == "iterativelength") {
         auto bfs_event = make_shared<SequentialIterativeEvent>(gstate, pipeline);
@@ -1894,7 +1441,6 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 
 void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
                                            GlobalSinkState &state) {
-  auto start_time = std::chrono::high_resolution_clock::now();
   auto &gstate = state.Cast<PathFindingGlobalState>();
   auto &bfs_state = gstate.global_bfs_state;
 
@@ -1906,6 +1452,7 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
 
     auto result_data = FlatVector::GetData<int64_t>(bfs_state->result.data[0]);
     auto& result_validity = FlatVector::Validity(bfs_state->result.data[0]);
+    std::bitset<LANE_LIMIT> seen_mask = ~0;
 
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
       bfs_state->lane_to_num[lane] = -1;
@@ -1920,22 +1467,18 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
           result_data[search_num] =
               (uint64_t)0; // path of length 0 does not require a search
         } else {
-#ifdef SEGMENT_BITSET
-          bfs_state->visit1[bfs_state->src[src_pos]][lane / 64] |= ((idx_t)1 << (lane % 64));
-#elif defined(ATOMIC_BITSET)
-          auto new_visit = bfs_state->visit1[bfs_state->src[src_pos]].load();
-          new_visit[lane] = true;
-          bfs_state->visit1[bfs_state->src[src_pos]].store(new_visit);
-#else
           bfs_state->visit1[bfs_state->src[src_pos]][lane] = true;
-#endif
           bfs_state->lane_to_num[lane] = search_num; // active lane
           bfs_state->active++;
+          seen_mask[lane] = false;
           break;
         }
-
       }
     }
+    for (int64_t i = 0; i < bfs_state->v_size; i++) {
+      bfs_state->seen[i] = seen_mask;
+    }
+
     if (gstate.mode == "iterativelength") {
       auto bfs_event = make_shared<ParallelIterativeEvent>(gstate, pipeline);
       event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
@@ -1945,9 +1488,6 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
     }
 
   }
-  auto end_time = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-  bfs_state->time_elapsed_task_init += duration;
 }
 
 //===--------------------------------------------------------------------===//
@@ -2022,12 +1562,6 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   }
   pf_bfs_state->result.SetCardinality(*pf_bfs_state->pairs);
 
-  string msg = "Task init time elapsed: " + to_string(pf_bfs_state->time_elapsed_task_init.count()) + " microseconds";
-  Printer::Print(msg);
-
-  string message = "Algorithm time elapsed: " + to_string(pf_bfs_state->time_elapsed.count()) + " microseconds";
-  Printer::Print(message);
-
   result.Move(*pf_bfs_state->pairs);
   auto result_path = make_uniq<DataChunk>();
   //! Split off the path from the path length, and then fuse into the result
@@ -2039,14 +1573,6 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   } else {
       throw NotImplementedException("Unrecognized mode for Path Finding");
   }
-
-  auto end_time = std::chrono::high_resolution_clock::now();
-  auto results_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - results_start_time);
-  string message_results = "Results time elapsed: " + to_string(results_duration.count()) + " microseconds";
-  Printer::Print(message_results);
-  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - pf_sink.operator_start_time);
-  string message2 = "Total time elapsed: " + to_string(duration.count()) + " microseconds\n";
-  Printer::Print(message2);
 
   // result.Print();
   return result.size() == 0

@@ -27,17 +27,17 @@ public:
       if (v) {
         delete[] v;
       }
-      // if (reverse_v) {
-      //   delete[] reverse_v;
-      // }
+      if (reverse_v) {
+        delete[] reverse_v;
+      }
     }
 
     atomic<int64_t> *v;
-    // atomic<int64_t> *reverse_v;
+    atomic<int64_t> *reverse_v;
     vector<int64_t> e;
-    // vector<int64_t> reverse_e;
+    vector<int64_t> reverse_e;
     vector<int64_t> edge_ids;
-    // vector<int64_t> reverse_edge_ids;
+    vector<int64_t> reverse_edge_ids;
     vector<int64_t> w;
     vector<double> w_double;
     bool initialized_v = false;
@@ -76,30 +76,30 @@ public:
       } else {
         result += "not initialized";
       }
-      // result += "\nReverse V: ";
-      // if (initialized_v) {
-      //   for (idx_t i = 0; i < v_size; ++i) {
-      //     result += std::to_string(reverse_v[i]) + ' ';
-      //   }
-      // } else {
-      //   result += "not initialized";
-      // }
-      // result += "\nReverse E: ";
-      // if (initialized_e) {
-      //   for (auto i : reverse_e) {
-      //     result += std::to_string(i) + " ";
-      //   }
-      // } else {
-      //   result += "not initialized";
-      // }
-      // result += "\nReverse Edge IDs: ";
-      // if (initialized_e) {
-      //   for (auto i : reverse_edge_ids) {
-      //     result += std::to_string(i) + " ";
-      //   }
-      // } else {
-      //   result += "not initialized";
-      // }
+      result += "\nReverse V: ";
+      if (initialized_v) {
+        for (idx_t i = 0; i < v_size; ++i) {
+          result += std::to_string(reverse_v[i]) + ' ';
+        }
+      } else {
+        result += "not initialized";
+      }
+      result += "\nReverse E: ";
+      if (initialized_e) {
+        for (auto i : reverse_e) {
+          result += std::to_string(i) + " ";
+        }
+      } else {
+        result += "not initialized";
+      }
+      result += "\nReverse Edge IDs: ";
+      if (initialized_e) {
+        for (auto i : reverse_edge_ids) {
+          result += std::to_string(i) + " ";
+        }
+      } else {
+        result += "not initialized";
+      }
       result += "\nW: ";
       if (initialized_w) {
         for (auto i : w) {
@@ -146,7 +146,6 @@ public:
 public:
   vector<unique_ptr<Expression>> expressions;
   string mode; // "iterativelength" or "shortestpath"
-  std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
 
 
 public:

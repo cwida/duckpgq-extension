@@ -51,8 +51,8 @@ static void LoadInternal(DatabaseInstance &instance) {
   config.AddExtensionOption("experimental_path_finding_operator",
     "Enables the experimental path finding operator to be triggered",
     LogicalType::BOOLEAN, Value(false));
-  config.AddExtensionOption("experimental_path_finding_operator_barrier",
-    "Barrier variants selection", LogicalType::INTEGER, Value(0));
+  config.AddExtensionOption("experimental_path_finding_operator_alpha",
+    "The ratio to switch top-down and bottom up", LogicalType::DOUBLE, Value(1.0));
   config.AddExtensionOption("experimental_path_finding_operator_task_size",
     "Number of vertices processed per thread at a time", LogicalType::INTEGER, Value(256));
   config.AddExtensionOption("experimental_path_finding_operator_sequential",
