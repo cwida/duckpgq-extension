@@ -203,10 +203,8 @@ public:
                 idx_t num_threads_, idx_t barrier_type_, idx_t mode_, ClientContext &context_)
       : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false), 
         started_searches(0), total_len(0), context(context_), seen(v_size_), visit1(v_size_), visit2(v_size_),
-        parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT)),
         top_down_cost(0), bottom_up_cost(0), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
         task_queues_reverse(num_threads_), barrier(barrier_type_, num_threads_), locks(v_size_), mode(mode_) {
-    auto start = std::chrono::high_resolution_clock::now();
     result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
     auto &src_data = pairs->data[0];
     auto &dst_data = pairs->data[1];
@@ -215,12 +213,12 @@ public:
     src = FlatVector::GetData<int64_t>(src_data);
     dst = FlatVector::GetData<int64_t>(dst_data);
 
-    CreateTasks();
+    if (mode == 1) {
+      parents_v.resize(v_size_, std::vector<int64_t>(LANE_LIMIT));
+      parents_e.resize(v_size_, std::vector<int64_t>(LANE_LIMIT));
+    }
 
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    string message = "BFS state initialization time: " + std::to_string(duration.count()) + " microseconds";
-    Printer::Print(message);
+    CreateTasks();
   }
 
   void Clear() {
