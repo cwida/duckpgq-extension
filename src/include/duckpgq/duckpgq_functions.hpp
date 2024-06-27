@@ -10,7 +10,6 @@
 
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
-#include "duckdb/main/extension_util.hpp"
 
 namespace duckdb {
 
