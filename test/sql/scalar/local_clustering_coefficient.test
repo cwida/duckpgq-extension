@@ -19,6 +19,9 @@ EDGE TABLES (
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
     );
 
+statement ok
+select * from local_clustering_coefficient(pg, student, know);
+
 query II
 WITH cte1 AS (
     SELECT  CREATE_CSR_EDGE(
@@ -286,3 +289,4 @@ WITH cte1 AS (
 35184372088871	0.0
 37383395344394	0.0
 37383395344409	0.0
+
