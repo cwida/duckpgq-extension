@@ -19,8 +19,16 @@ EDGE TABLES (
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
     );
 
-statement ok
+query II
 select * from local_clustering_coefficient(pg, student, know);
+----
+1.0	Daniel
+1.0	Tavneet
+1.0	Gabor
+0.5	Peter
+0.0	David
+
+
 
 query II
 WITH cte1 AS (
