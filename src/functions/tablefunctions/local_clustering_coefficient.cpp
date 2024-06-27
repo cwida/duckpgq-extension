@@ -5,6 +5,8 @@
 #include <duckdb/parser/query_node/select_node.hpp>
 #include <duckdb/parser/tableref/basetableref.hpp>
 #include <duckdb/parser/tableref/subqueryref.hpp>
+#include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/expression/constant_expression.hpp"
 
 namespace duckdb {
 
@@ -42,7 +44,18 @@ LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(
   auto select_node = make_uniq<SelectNode>();
   std::vector<unique_ptr<ParsedExpression>> select_expression;
   select_expression.emplace_back(make_uniq<ColumnRefExpression>(edge_pg_entry->source_pk[0], edge_pg_entry->source_reference));
+  // __x.temp + local_clustering_coefficient(0, a.rowid) as lcc
 
+  auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
+
+  vector<unique_ptr<ParsedExpression>> lcc_children;
+  lcc_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
+  lcc_children.push_back(make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->source_reference));
+
+  auto lcc_function = make_uniq<FunctionExpression>(
+      "local_clustering_coefficient", std::move(lcc_children));
+
+  select_expression.emplace_back(std::move(lcc_function));
   select_node->select_list = std::move(select_expression);
   auto src_base_ref = make_uniq<BaseTableRef>();
   src_base_ref->table_name = edge_pg_entry->source_reference;
