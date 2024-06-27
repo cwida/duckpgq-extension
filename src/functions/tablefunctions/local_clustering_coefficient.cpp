@@ -55,7 +55,11 @@ LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(
   auto lcc_function = make_uniq<FunctionExpression>(
       "local_clustering_coefficient", std::move(lcc_children));
 
-  select_expression.emplace_back(std::move(lcc_function));
+  std::vector<unique_ptr<ParsedExpression>> addition_children;
+  addition_children.emplace_back(std::move(cte_col_ref));
+  addition_children.emplace_back(std::move(lcc_function));
+  auto addition_function = make_uniq<FunctionExpression>("add", std::move(addition_children));
+  select_expression.emplace_back(std::move(addition_function));
   select_node->select_list = std::move(select_expression);
   auto src_base_ref = make_uniq<BaseTableRef>();
   src_base_ref->table_name = edge_pg_entry->source_reference;
@@ -65,7 +69,7 @@ LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(
   subquery->node = std::move(select_node);
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery));
-
+  result->Print(); // debug print
   return result;
 }
 
