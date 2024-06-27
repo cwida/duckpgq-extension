@@ -25,10 +25,12 @@
 
 #include "duckdb/parser/statement/extension_statement.hpp"
 
-#include "duckpgq/functions/tablefunctions/drop_property_graph.hpp"
 #include "duckpgq/functions/tablefunctions/create_property_graph.hpp"
 #include "duckpgq/functions/tablefunctions/describe_property_graph.hpp"
+#include "duckpgq/functions/tablefunctions/drop_property_graph.hpp"
 #include "duckpgq/functions/tablefunctions/match.hpp"
+
+#include <duckpgq/functions/tablefunctions/local_clustering_coefficient.hpp>
 
 namespace duckdb {
 
@@ -64,6 +66,11 @@ static void LoadInternal(DatabaseInstance &instance) {
   DropPropertyGraphFunction drop_pg_function;
   CreateTableFunctionInfo drop_pg_info(drop_pg_function);
   catalog.CreateTableFunction(*con.context, drop_pg_info);
+
+  LocalClusteringCoefficientFunction local_clustering_coefficient_function;
+  CreateTableFunctionInfo local_clustering_coefficient_info(
+      local_clustering_coefficient_function);
+  catalog.CreateTableFunction(*con.context, local_clustering_coefficient_info);
 
   for (auto &fun : DuckPGQFunctions::GetFunctions()) {
     catalog.CreateFunction(*con.context, fun);
