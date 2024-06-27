@@ -2,6 +2,8 @@
 #include "duckdb/function/table_function.hpp"
 #include "duckpgq_extension.hpp"
 
+#include <duckdb/parser/query_node/select_node.hpp>
+#include <duckdb/parser/tableref/basetableref.hpp>
 #include <duckdb/parser/tableref/subqueryref.hpp>
 
 namespace duckdb {
@@ -37,7 +39,21 @@ LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(
                         " is not a source of edge table " + edge_table);
   }
 
-  return nullptr;
+  auto select_node = make_uniq<SelectNode>();
+  std::vector<unique_ptr<ParsedExpression>> select_expression;
+  select_expression.emplace_back(make_uniq<ColumnRefExpression>(edge_pg_entry->source_pk[0], edge_pg_entry->source_reference));
+
+  select_node->select_list = std::move(select_expression);
+  auto src_base_ref = make_uniq<BaseTableRef>();
+  src_base_ref->table_name = edge_pg_entry->source_reference;
+  select_node->from_table = std::move(src_base_ref);
+
+  auto subquery = make_uniq<SelectStatement>();
+  subquery->node = std::move(select_node);
+
+  auto result = make_uniq<SubqueryRef>(std::move(subquery));
+
+  return result;
 }
 
 } // namespace duckdb
