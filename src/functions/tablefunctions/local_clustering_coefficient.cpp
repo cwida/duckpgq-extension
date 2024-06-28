@@ -2,9 +2,11 @@
 #include "duckdb/function/table_function.hpp"
 #include "duckpgq_extension.hpp"
 
+#include "duckdb/parser/expression/cast_expression.hpp"
+#include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
-#include "duckdb/parser/expression/comparison_expression.hpp"
+#include "duckdb/parser/expression/subquery_expression.hpp"
 #include <duckdb/parser/query_node/select_node.hpp>
 #include <duckdb/parser/tableref/basetableref.hpp>
 #include <duckdb/parser/tableref/subqueryref.hpp>
@@ -15,37 +17,45 @@ namespace duckdb {
 
 // Utility function to transform a string to lowercase
 std::string ToLowerCase(const std::string &input) {
-    std::string result = input;
-    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
-    return result;
+  std::string result = input;
+  std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+  return result;
 }
 
 // Function to get DuckPGQState
 DuckPGQState *GetDuckPGQState(ClientContext &context) {
-    auto lookup = context.registered_state.find("duckpgq");
-    if (lookup == context.registered_state.end()) {
-        throw Exception(ExceptionType::INVALID, "Registered DuckPGQ state not found");
-    }
-    return dynamic_cast<DuckPGQState *>(lookup->second.get());
+  auto lookup = context.registered_state.find("duckpgq");
+  if (lookup == context.registered_state.end()) {
+    throw Exception(ExceptionType::INVALID,
+                    "Registered DuckPGQ state not found");
+  }
+  return dynamic_cast<DuckPGQState *>(lookup->second.get());
 }
 
 // Function to get PropertyGraphInfo
-CreatePropertyGraphInfo *GetPropertyGraphInfo(DuckPGQState *duckpgq_state, const std::string &pg_name) {
-    auto property_graph = duckpgq_state->registered_property_graphs.find(pg_name);
-    if (property_graph == duckpgq_state->registered_property_graphs.end()) {
-        throw Exception(ExceptionType::INVALID, "Property graph " + pg_name + " not found");
-    }
-    return dynamic_cast<CreatePropertyGraphInfo *>(property_graph->second.get());
+CreatePropertyGraphInfo *GetPropertyGraphInfo(DuckPGQState *duckpgq_state,
+                                              const std::string &pg_name) {
+  auto property_graph = duckpgq_state->registered_property_graphs.find(pg_name);
+  if (property_graph == duckpgq_state->registered_property_graphs.end()) {
+    throw Exception(ExceptionType::INVALID,
+                    "Property graph " + pg_name + " not found");
+  }
+  return dynamic_cast<CreatePropertyGraphInfo *>(property_graph->second.get());
 }
 
 // Function to validate the source node and edge table
-shared_ptr<PropertyGraphTable> ValidateSourceNodeAndEdgeTable(CreatePropertyGraphInfo *pg_info, const std::string &node_table, const std::string &edge_table) {
-    auto source_node_pg_entry = pg_info->GetTable(node_table);
-    auto edge_pg_entry = pg_info->GetTable(edge_table);
-    if (edge_pg_entry->source_reference != node_table) {
-        throw Exception(ExceptionType::INVALID, "Vertex table " + node_table + " is not a source of edge table " + edge_table);
-    }
-    return edge_pg_entry;
+shared_ptr<PropertyGraphTable>
+ValidateSourceNodeAndEdgeTable(CreatePropertyGraphInfo *pg_info,
+                               const std::string &node_table,
+                               const std::string &edge_table) {
+  auto source_node_pg_entry = pg_info->GetTable(node_table);
+  auto edge_pg_entry = pg_info->GetTable(edge_table);
+  if (edge_pg_entry->source_reference != node_table) {
+    throw Exception(ExceptionType::INVALID,
+                    "Vertex table " + node_table +
+                        " is not a source of edge table " + edge_table);
+  }
+  return edge_pg_entry;
 }
 
 unique_ptr<SubqueryRef> CreateCountCTESubquery() {
@@ -82,157 +92,322 @@ unique_ptr<SubqueryRef> CreateCountCTESubquery() {
   return temp_cte_select_subquery;
 }
 
+unique_ptr<SubqueryExpression>
+GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table,
+              const string &prev_binding) {
+  // SELECT count(s.id) FROM src s
+  auto select_count = make_uniq<SelectStatement>();
+  auto select_inner = make_uniq<SelectNode>();
+  auto ref = make_uniq<BaseTableRef>();
+
+  ref->table_name = edge_table->source_reference;
+  ref->alias = prev_binding;
+  select_inner->from_table = std::move(ref);
+  vector<unique_ptr<ParsedExpression>> children;
+  children.push_back(
+      make_uniq<ColumnRefExpression>(edge_table->source_pk[0], prev_binding));
+
+  auto count_function =
+      make_uniq<FunctionExpression>("count", std::move(children));
+  select_inner->select_list.push_back(std::move(count_function));
+  select_count->node = std::move(select_inner);
+  auto result = make_uniq<SubqueryExpression>();
+  result->subquery = std::move(select_count);
+  result->subquery_type = SubqueryType::SCALAR;
+  return result;
+}
+
+unique_ptr<CommonTableExpressionInfo>
+CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
+             const string &prev_binding, const string &edge_binding,
+             const string &next_binding) {
+  auto csr_edge_id_constant = make_uniq<ConstantExpression>(Value::INTEGER(0));
+  auto count_create_edge_select =
+      GetCountTable(edge_table, edge_table->source_reference);
+
+  auto cast_subquery_expr = make_uniq<SubqueryExpression>();
+  auto cast_select_node = make_uniq<SelectNode>();
+
+  vector<unique_ptr<ParsedExpression>> csr_vertex_children;
+  csr_vertex_children.push_back(
+      make_uniq<ConstantExpression>(Value::INTEGER(0)));
+
+  auto count_create_vertex_expr = GetCountTable(edge_table, prev_binding);
+
+  csr_vertex_children.push_back(std::move(count_create_vertex_expr));
+
+  csr_vertex_children.push_back(
+      make_uniq<ColumnRefExpression>("dense_id", "sub"));
+  csr_vertex_children.push_back(make_uniq<ColumnRefExpression>("cnt", "sub"));
+
+  auto create_vertex_function = make_uniq<FunctionExpression>(
+      "create_csr_vertex", std::move(csr_vertex_children));
+  vector<unique_ptr<ParsedExpression>> sum_children;
+  sum_children.push_back(std::move(create_vertex_function));
+  auto sum_function =
+      make_uniq<FunctionExpression>("sum", std::move(sum_children));
+
+  vector<unique_ptr<ParsedExpression>> multiply_csr_vertex_children;
+  auto two_constant = make_uniq<ConstantExpression>(Value::INTEGER(2));
+    multiply_csr_vertex_children.push_back(std::move(two_constant));
+    multiply_csr_vertex_children.push_back(std::move(sum_function));
+
+    auto multiply_function = make_uniq<FunctionExpression>("multiply", multiply_csr_vertex_children );
+
+  auto inner_select_statement = make_uniq<SelectStatement>();
+  auto inner_select_node = make_uniq<SelectNode>();
+
+  auto source_rowid_colref =
+      make_uniq<ColumnRefExpression>("rowid", prev_binding);
+  source_rowid_colref->alias = "dense_id";
+
+  auto count_create_inner_expr = make_uniq<SubqueryExpression>();
+  count_create_inner_expr->subquery_type = SubqueryType::SCALAR;
+  auto edge_src_colref =
+      make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_binding);
+  vector<unique_ptr<ParsedExpression>> inner_count_children;
+  inner_count_children.push_back(std::move(edge_src_colref));
+  auto inner_count_function =
+      make_uniq<FunctionExpression>("count", std::move(inner_count_children));
+  inner_count_function->alias = "cnt";
+
+  inner_select_node->select_list.push_back(std::move(source_rowid_colref));
+  inner_select_node->select_list.push_back(std::move(inner_count_function));
+  auto source_rowid_colref_1 =
+      make_uniq<ColumnRefExpression>("rowid", prev_binding);
+  expression_map_t<idx_t> grouping_expression_map;
+  inner_select_node->groups.group_expressions.push_back(
+      std::move(source_rowid_colref_1));
+  GroupingSet grouping_set = {0};
+  inner_select_node->groups.grouping_sets.push_back(grouping_set);
+
+  auto inner_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
+  inner_join_ref->type = JoinType::LEFT;
+  auto left_base_ref = make_uniq<BaseTableRef>();
+  left_base_ref->table_name = edge_table->source_reference;
+  left_base_ref->alias = prev_binding;
+  auto right_base_ref = make_uniq<BaseTableRef>();
+  right_base_ref->table_name = edge_table->table_name;
+  right_base_ref->alias = edge_binding;
+  inner_join_ref->left = std::move(left_base_ref);
+  inner_join_ref->right = std::move(right_base_ref);
+
+  auto edge_join_colref =
+      make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_binding);
+  auto vertex_join_colref =
+      make_uniq<ColumnRefExpression>(edge_table->source_pk[0], prev_binding);
+
+  inner_join_ref->condition = make_uniq<ComparisonExpression>(
+      ExpressionType::COMPARE_EQUAL, std::move(edge_join_colref),
+      std::move(vertex_join_colref));
+  inner_select_node->from_table = std::move(inner_join_ref);
+  inner_select_statement->node = std::move(inner_select_node);
+
+  auto inner_from_subquery =
+      make_uniq<SubqueryRef>(std::move(inner_select_statement), "sub");
+
+  cast_select_node->from_table = std::move(inner_from_subquery);
+
+  cast_select_node->select_list.push_back(std::move(sum_function));
+  auto cast_select_stmt = make_uniq<SelectStatement>();
+  cast_select_stmt->node = std::move(cast_select_node);
+  cast_subquery_expr->subquery = std::move(cast_select_stmt);
+  cast_subquery_expr->subquery_type = SubqueryType::SCALAR;
+
+  auto src_rowid_colref = make_uniq<ColumnRefExpression>("rowid", prev_binding);
+  auto dst_rowid_colref = make_uniq<ColumnRefExpression>("rowid", next_binding);
+  auto edge_rowid_colref =
+      make_uniq<ColumnRefExpression>("rowid", edge_binding);
+
+  auto cast_expression = make_uniq<CastExpression>(
+      LogicalType::BIGINT, std::move(cast_subquery_expr));
+
+  vector<unique_ptr<ParsedExpression>> csr_edge_children;
+  csr_edge_children.push_back(std::move(csr_edge_id_constant));
+  csr_edge_children.push_back(std::move(count_create_edge_select));
+  csr_edge_children.push_back(std::move(cast_expression));
+  csr_edge_children.push_back(std::move(src_rowid_colref));
+  csr_edge_children.push_back(std::move(dst_rowid_colref));
+  csr_edge_children.push_back(std::move(edge_rowid_colref));
+
+  auto outer_select_node = make_uniq<SelectNode>();
+
+  auto create_csr_edge_function = make_uniq<FunctionExpression>(
+      "create_csr_edge", std::move(csr_edge_children));
+  create_csr_edge_function->alias = "temp";
+
+  outer_select_node->select_list.push_back(std::move(create_csr_edge_function));
+  // outer_select_node->from_table =
+  //     GetJoinRef(edge_table, edge_binding, prev_binding, next_binding);
+  auto outer_select_statement = make_uniq<SelectStatement>();
+
+  outer_select_statement->node = std::move(outer_select_node);
+  auto info = make_uniq<CommonTableExpressionInfo>();
+  info->query = std::move(outer_select_statement);
+  return info;
+}
 
 // Function to create the SELECT node
-unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &edge_pg_entry) {
-    auto select_node = make_uniq<SelectNode>();
-    std::vector<unique_ptr<ParsedExpression>> select_expression;
+unique_ptr<SelectNode>
+CreateSelectNode(const shared_ptr<PropertyGraphTable> &edge_pg_entry) {
+  auto select_node = make_uniq<SelectNode>();
+  std::vector<unique_ptr<ParsedExpression>> select_expression;
 
-    select_expression.emplace_back(make_uniq<ColumnRefExpression>(edge_pg_entry->source_pk[0], edge_pg_entry->source_reference));
+  select_expression.emplace_back(make_uniq<ColumnRefExpression>(
+      edge_pg_entry->source_pk[0], edge_pg_entry->source_reference));
 
-    auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
+  auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
 
-    vector<unique_ptr<ParsedExpression>> lcc_children;
-    lcc_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
-    lcc_children.push_back(make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->source_reference));
+  vector<unique_ptr<ParsedExpression>> lcc_children;
+  lcc_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
+  lcc_children.push_back(
+      make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->source_reference));
 
-    auto lcc_function = make_uniq<FunctionExpression>("local_clustering_coefficient", std::move(lcc_children));
+  auto lcc_function = make_uniq<FunctionExpression>(
+      "local_clustering_coefficient", std::move(lcc_children));
 
-    std::vector<unique_ptr<ParsedExpression>> addition_children;
-    addition_children.emplace_back(std::move(cte_col_ref));
-    addition_children.emplace_back(std::move(lcc_function));
+  std::vector<unique_ptr<ParsedExpression>> addition_children;
+  addition_children.emplace_back(std::move(cte_col_ref));
+  addition_children.emplace_back(std::move(lcc_function));
 
-    auto addition_function = make_uniq<FunctionExpression>("add", std::move(addition_children));
-    select_expression.emplace_back(std::move(addition_function));
-    select_node->select_list = std::move(select_expression);
+  auto addition_function =
+      make_uniq<FunctionExpression>("add", std::move(addition_children));
+  select_expression.emplace_back(std::move(addition_function));
+  select_node->select_list = std::move(select_expression);
 
-    auto src_base_ref = make_uniq<BaseTableRef>();
-    src_base_ref->table_name = edge_pg_entry->source_reference;
-    // FROM (select count(cte1.temp) * 0 as temp from cte1) __x
-    auto temp_cte_select_subquery = CreateCountCTESubquery();
+  auto src_base_ref = make_uniq<BaseTableRef>();
+  src_base_ref->table_name = edge_pg_entry->source_reference;
+  // FROM (select count(cte1.temp) * 0 as temp from cte1) __x
+  auto temp_cte_select_subquery = CreateCountCTESubquery();
 
-    auto cross_join_ref = make_uniq<JoinRef>(JoinRefType::CROSS);
-    cross_join_ref->left = std::move(src_base_ref);
-    cross_join_ref->right = std::move(temp_cte_select_subquery);
+  auto cross_join_ref = make_uniq<JoinRef>(JoinRefType::CROSS);
+  cross_join_ref->left = std::move(src_base_ref);
+  cross_join_ref->right = std::move(temp_cte_select_subquery);
 
+  select_node->from_table = std::move(cross_join_ref);
 
-    select_node->from_table = std::move(cross_join_ref);
-
-    return select_node;
+  return select_node;
 }
 
 // Function to create the CTE for the edges
-unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_pg_entry) {
-    /*
-    SELECT src.rowid as src, dst.rowid, edge.rowid as edges
-    FROM edge_table edge
-    JOIN source_table on edge.source_fk = source_table.source_pk
-    JOIN destination_table on edge.destination_fk = destination_table.destination_pk
-    */
-    std::vector<unique_ptr<ParsedExpression>> select_expression;
-    auto src_col_ref = make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->source_reference);
-    src_col_ref->alias = "src";
-    select_expression.emplace_back(std::move(src_col_ref));
+unique_ptr<CommonTableExpressionInfo>
+MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_pg_entry) {
+  /*
+  SELECT src.rowid as src, dst.rowid, edge.rowid as edges
+  FROM edge_table edge
+  JOIN source_table on edge.source_fk = source_table.source_pk
+  JOIN destination_table on edge.destination_fk =
+  destination_table.destination_pk
+  */
+  std::vector<unique_ptr<ParsedExpression>> select_expression;
+  auto src_col_ref =
+      make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->source_reference);
+  src_col_ref->alias = "src";
+  select_expression.emplace_back(std::move(src_col_ref));
 
-    auto dst_col_ref = make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->destination_reference);
-    dst_col_ref->alias = "dst";
-    select_expression.emplace_back(std::move(dst_col_ref));
+  auto dst_col_ref = make_uniq<ColumnRefExpression>(
+      "rowid", edge_pg_entry->destination_reference);
+  dst_col_ref->alias = "dst";
+  select_expression.emplace_back(std::move(dst_col_ref));
 
-    auto edge_col_ref = make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->table_name);
-    dst_col_ref->alias = "edges";
-    select_expression.emplace_back(std::move(dst_col_ref));
-    auto select_node = make_uniq<SelectNode>();
-    select_node->select_list = std::move(select_expression);
+  auto edge_col_ref =
+      make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->table_name);
+  dst_col_ref->alias = "edges";
+  select_expression.emplace_back(std::move(dst_col_ref));
+  auto select_node = make_uniq<SelectNode>();
+  select_node->select_list = std::move(select_expression);
 
-    auto edge_table_ref = make_uniq<BaseTableRef>();
-    edge_table_ref->table_name = edge_pg_entry->table_name;
+  auto edge_table_ref = make_uniq<BaseTableRef>();
+  edge_table_ref->table_name = edge_pg_entry->table_name;
 
-    auto src_table_ref = make_uniq<BaseTableRef>();
-    src_table_ref->table_name = edge_pg_entry->source_reference;
+  auto src_table_ref = make_uniq<BaseTableRef>();
+  src_table_ref->table_name = edge_pg_entry->source_reference;
 
-    auto join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
+  auto join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
 
-    auto first_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
-    first_join_ref->type = JoinType::INNER;
+  auto first_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
+  first_join_ref->type = JoinType::INNER;
 
-    first_join_ref->left = std::move(edge_table_ref);
-    first_join_ref->right = std::move(src_table_ref);
+  first_join_ref->left = std::move(edge_table_ref);
+  first_join_ref->right = std::move(src_table_ref);
 
-    auto edge_from_ref =
-        make_uniq<ColumnRefExpression>(edge_pg_entry->source_fk[0], edge_pg_entry->table_name);
-    auto src_cid_ref =
-        make_uniq<ColumnRefExpression>(edge_pg_entry->source_pk[0], edge_pg_entry->source_reference);
-    first_join_ref->condition = make_uniq<ComparisonExpression>(
-        ExpressionType::COMPARE_EQUAL, std::move(edge_from_ref),
-        std::move(src_cid_ref));
+  auto edge_from_ref = make_uniq<ColumnRefExpression>(
+      edge_pg_entry->source_fk[0], edge_pg_entry->table_name);
+  auto src_cid_ref = make_uniq<ColumnRefExpression>(
+      edge_pg_entry->source_pk[0], edge_pg_entry->source_reference);
+  first_join_ref->condition = make_uniq<ComparisonExpression>(
+      ExpressionType::COMPARE_EQUAL, std::move(edge_from_ref),
+      std::move(src_cid_ref));
 
-    auto dst_table_ref = make_uniq<BaseTableRef>();
-    dst_table_ref->table_name = edge_pg_entry->destination_reference;
+  auto dst_table_ref = make_uniq<BaseTableRef>();
+  dst_table_ref->table_name = edge_pg_entry->destination_reference;
 
-    auto second_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
-    second_join_ref->type = JoinType::INNER;
+  auto second_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
+  second_join_ref->type = JoinType::INNER;
 
-    second_join_ref->left = std::move(first_join_ref);
-    second_join_ref->right = std::move(dst_table_ref);
+  second_join_ref->left = std::move(first_join_ref);
+  second_join_ref->right = std::move(dst_table_ref);
 
-    auto edge_to_ref =
-        make_uniq<ColumnRefExpression>(edge_pg_entry->destination_fk[0], edge_pg_entry->table_name);
-    auto dst_cid_ref =
-        make_uniq<ColumnRefExpression>(edge_pg_entry->destination_pk[0], edge_pg_entry->destination_reference);
-    second_join_ref->condition = make_uniq<ComparisonExpression>(
-        ExpressionType::COMPARE_EQUAL, std::move(edge_to_ref),
-        std::move(dst_cid_ref));
+  auto edge_to_ref = make_uniq<ColumnRefExpression>(
+      edge_pg_entry->destination_fk[0], edge_pg_entry->table_name);
+  auto dst_cid_ref = make_uniq<ColumnRefExpression>(
+      edge_pg_entry->destination_pk[0], edge_pg_entry->destination_reference);
+  second_join_ref->condition = make_uniq<ComparisonExpression>(
+      ExpressionType::COMPARE_EQUAL, std::move(edge_to_ref),
+      std::move(dst_cid_ref));
 
-    select_node->from_table = std::move(second_join_ref);
+  select_node->from_table = std::move(second_join_ref);
 
-    auto src_base_ref = make_uniq<BaseTableRef>();
-    src_base_ref->table_name = edge_pg_entry->main_label;
-    select_node->from_table = std::move(src_base_ref);
+  auto src_base_ref = make_uniq<BaseTableRef>();
+  src_base_ref->table_name = edge_pg_entry->main_label;
+  select_node->from_table = std::move(src_base_ref);
 
-    auto select_statement = make_uniq<SelectStatement>();
-    select_statement->node = std::move(select_node);
+  auto select_statement = make_uniq<SelectStatement>();
+  select_statement->node = std::move(select_node);
 
-    auto result = make_uniq<CommonTableExpressionInfo>();
-    result->query = std::move(select_statement);
+  auto result = make_uniq<CommonTableExpressionInfo>();
+  result->query = std::move(select_statement);
 
-    return result;
+  return result;
 }
 
-unique_ptr<CommonTableExpressionInfo> MakeUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_pg_entry) {
-    auto select_node = make_uniq<SelectNode>();
-    auto select_statement = make_uniq<SelectStatement>();
-    select_statement->node = std::move(select_node);
+unique_ptr<CommonTableExpressionInfo>
+MakeUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_pg_entry) {
+  auto select_node = make_uniq<SelectNode>();
+  auto select_statement = make_uniq<SelectStatement>();
+  select_statement->node = std::move(select_node);
 
-    auto result = make_uniq<CommonTableExpressionInfo>();
-    result->query = std::move(select_statement);
+  auto result = make_uniq<CommonTableExpressionInfo>();
+  result->query = std::move(select_statement);
 
-    return result;
+  return result;
 }
-
 
 // Main binding function
-unique_ptr<TableRef> LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(
+unique_ptr<TableRef>
+LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(
     ClientContext &context, TableFunctionBindInput &input) {
 
-    auto pg_name = ToLowerCase(StringValue::Get(input.inputs[0]));
-    auto node_table = ToLowerCase(StringValue::Get(input.inputs[1]));
-    auto edge_table = ToLowerCase(StringValue::Get(input.inputs[2]));
+  auto pg_name = ToLowerCase(StringValue::Get(input.inputs[0]));
+  auto node_table = ToLowerCase(StringValue::Get(input.inputs[1]));
+  auto edge_table = ToLowerCase(StringValue::Get(input.inputs[2]));
 
-    auto duckpgq_state = GetDuckPGQState(context);
-    auto pg_info = GetPropertyGraphInfo(duckpgq_state, pg_name);
-    auto edge_pg_entry = ValidateSourceNodeAndEdgeTable(pg_info, node_table, edge_table);
+  auto duckpgq_state = GetDuckPGQState(context);
+  auto pg_info = GetPropertyGraphInfo(duckpgq_state, pg_name);
+  auto edge_pg_entry =
+      ValidateSourceNodeAndEdgeTable(pg_info, node_table, edge_table);
 
-    auto select_node = CreateSelectNode(edge_pg_entry);
+  auto select_node = CreateSelectNode(edge_pg_entry);
 
-    select_node->cte_map.map["edges_cte"] = MakeEdgesCTE(edge_pg_entry);
-    select_node->cte_map.map["csr_cte"] = MakeUndirectedCSRCTE(edge_pg_entry);
-    auto subquery = make_uniq<SelectStatement>();
-    subquery->node = std::move(select_node);
+  select_node->cte_map.map["edges_cte"] = MakeEdgesCTE(edge_pg_entry);
+  select_node->cte_map.map["csr_cte"] = MakeUndirectedCSRCTE(edge_pg_entry);
+  auto subquery = make_uniq<SelectStatement>();
+  subquery->node = std::move(select_node);
 
-    auto result = make_uniq<SubqueryRef>(std::move(subquery));
-    result->Print(); // debug print
+  auto result = make_uniq<SubqueryRef>(std::move(subquery));
+  result->Print(); // debug print
 
-    return result;
+  return result;
 }
 
 } // namespace duckdb
