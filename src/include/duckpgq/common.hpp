@@ -29,6 +29,7 @@ public:
 
 private:
   std::vector<uint64_t> bitmap;
+  size_t size;
 };
 
 
