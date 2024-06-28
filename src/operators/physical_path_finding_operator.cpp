@@ -954,12 +954,9 @@ private:
           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
             auto n = e[offset];
             auto edge_id = edge_ids[offset];
-            {
-              std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
-              next[n] |= visit[i];
-            }
+            std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
+            next[n] |= visit[i];
             for (auto l = 0; l < LANE_LIMIT; l++) {
-              std::lock_guard<std::mutex> lock(bfs_state->lane_locks[n][l]);
               parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i][l])
                       ? i : parents_v[n][l];
               parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i][l])
@@ -1023,8 +1020,8 @@ private:
           auto n = e[offset];
           auto edge_id = edge_ids[offset];
           next[i] |= visit[n];
+          std::lock_guard<std::mutex> lock(bfs_state->element_locks[i]);
           for (auto l = 0; l < LANE_LIMIT; l++) {
-            std::lock_guard<std::mutex> lock(bfs_state->lane_locks[i][l]);
             parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l])
                     ? n : parents_v[i][l];
             parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l])
