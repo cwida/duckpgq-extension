@@ -514,7 +514,7 @@ PathElement *PGQMatchFunction::HandleNestedSubPath(
 }
 
 unique_ptr<ParsedExpression>
-CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions) {
+PGQMatchFunction::CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions) {
   unique_ptr<ParsedExpression> where_clause;
   for (auto &condition : conditions) {
     if (where_clause) {
