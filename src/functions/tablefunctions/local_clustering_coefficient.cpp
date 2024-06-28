@@ -149,6 +149,18 @@ unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGrap
     return result;
 }
 
+unique_ptr<CommonTableExpressionInfo> MakeUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_pg_entry) {
+    auto select_node = make_uniq<SelectNode>();
+    auto select_statement = make_uniq<SelectStatement>();
+    select_statement->node = std::move(select_node);
+
+    auto result = make_uniq<CommonTableExpressionInfo>();
+    result->query = std::move(select_statement);
+
+    return result;
+}
+
+
 // Main binding function
 unique_ptr<TableRef> LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(
     ClientContext &context, TableFunctionBindInput &input) {
@@ -163,8 +175,8 @@ unique_ptr<TableRef> LocalClusteringCoefficientFunction::LocalClusteringCoeffici
 
     auto select_node = CreateSelectNode(edge_pg_entry);
 
-
-    select_node->cte_map["edges_cte"] = MakeEdgesCTE(edge_pg_entry);
+    select_node->cte_map.map["edges_cte"] = MakeEdgesCTE(edge_pg_entry);
+    select_node->cte_map.map["csr_cte"] = MakeUndirectedCSRCTE(edge_pg_entry);
     auto subquery = make_uniq<SelectStatement>();
     subquery->node = std::move(select_node);
 
