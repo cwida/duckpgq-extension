@@ -28,9 +28,7 @@ public:
   void reset();
 
 private:
-  size_t size;
   std::vector<uint64_t> bitmap;
-
 };
 
 
