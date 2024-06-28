@@ -149,10 +149,11 @@ CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
 
   vector<unique_ptr<ParsedExpression>> multiply_csr_vertex_children;
   auto two_constant = make_uniq<ConstantExpression>(Value::INTEGER(2));
-    multiply_csr_vertex_children.push_back(std::move(two_constant));
-    multiply_csr_vertex_children.push_back(std::move(sum_function));
+  multiply_csr_vertex_children.push_back(std::move(two_constant));
+  multiply_csr_vertex_children.push_back(std::move(sum_function));
 
-    auto multiply_function = make_uniq<FunctionExpression>("multiply", multiply_csr_vertex_children );
+  auto multiply_function =
+      make_uniq<FunctionExpression>("multiply", multiply_csr_vertex_children);
 
   auto inner_select_statement = make_uniq<SelectStatement>();
   auto inner_select_node = make_uniq<SelectNode>();
@@ -208,7 +209,7 @@ CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
 
   cast_select_node->from_table = std::move(inner_from_subquery);
 
-  cast_select_node->select_list.push_back(std::move(sum_function));
+  cast_select_node->select_list.push_back(std::move(multiply_function));
   auto cast_select_stmt = make_uniq<SelectStatement>();
   cast_select_stmt->node = std::move(cast_select_node);
   cast_subquery_expr->subquery = std::move(cast_select_stmt);
