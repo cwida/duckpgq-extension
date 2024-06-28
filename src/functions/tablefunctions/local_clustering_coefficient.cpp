@@ -4,6 +4,7 @@
 
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/expression/comparison_expression.hpp"
 #include <duckdb/parser/query_node/select_node.hpp>
 #include <duckdb/parser/tableref/basetableref.hpp>
 #include <duckdb/parser/tableref/subqueryref.hpp>
@@ -112,12 +113,26 @@ unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGrap
         make_uniq<ColumnRefExpression>(edge_pg_entry->source_fk[0], edge_pg_entry->table_name);
     auto src_cid_ref =
         make_uniq<ColumnRefExpression>(edge_pg_entry->source_pk[0], edge_pg_entry->source_reference);
-    // second_join_ref->condition = make_uniq<ComparisonExpression>(
-    //     ExpressionType::COMPARE_EQUAL, std::move(t_from_ref),
-    //     std::move(src_cid_ref));
+    first_join_ref->condition = make_uniq<ComparisonExpression>(
+        ExpressionType::COMPARE_EQUAL, std::move(edge_from_ref),
+        std::move(src_cid_ref));
+
+    auto dst_table_ref = make_uniq<BaseTableRef>();
+    dst_table_ref->table_name = edge_pg_entry->destination_reference;
 
     auto second_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
     second_join_ref->type = JoinType::INNER;
+
+    second_join_ref->left = std::move(first_join_ref);
+    second_join_ref->right = std::move(dst_table_ref);
+
+    auto edge_to_ref =
+        make_uniq<ColumnRefExpression>(edge_pg_entry->destination_fk[0], edge_pg_entry->table_name);
+    auto dst_cid_ref =
+        make_uniq<ColumnRefExpression>(edge_pg_entry->destination_pk[0], edge_pg_entry->destination_reference);
+    second_join_ref->condition = make_uniq<ComparisonExpression>(
+        ExpressionType::COMPARE_EQUAL, std::move(edge_to_ref),
+        std::move(dst_cid_ref));
 
     select_node->from_table = std::move(second_join_ref);
 
