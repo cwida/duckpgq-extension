@@ -18,6 +18,13 @@
 
 namespace duckdb {
 
+struct ve {
+  int64_t v;
+  int64_t e;
+  ve() : v(-1), e(-1) {}
+  ve(int64_t v_, int64_t e_) : v(v_), e(e_) {}
+};
+
 PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
                                          unique_ptr<PhysicalOperator> left,
                                          unique_ptr<PhysicalOperator> right)
@@ -181,12 +188,12 @@ public:
   }
 
   GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_, shared_ptr<DataChunk> pairs_, int64_t v_size_, 
-                idx_t num_threads_, idx_t mode_, ClientContext &context_, bool is_path)
+                idx_t num_threads_, idx_t mode_, ClientContext &context_, bool is_path_)
       : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false), 
         started_searches(0), total_len(0), context(context_), seen(v_size_), visit1(v_size_), visit2(v_size_),
-        parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT)),
+        parents_ve(v_size_),
         top_down_cost(0), bottom_up_cost(0), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
-        task_queues_reverse(num_threads_), barrier(num_threads_), element_locks(v_size_), lane_locks(v_size_), mode(mode_) {
+        task_queues_reverse(num_threads_), barrier(num_threads_), element_locks(v_size_), mode(mode_) {
     result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
     auto &src_data = pairs->data[0];
     auto &dst_data = pairs->data[1];
@@ -207,8 +214,7 @@ public:
       visit1[i] = 0;
       if (mode == 1) {
         for (auto j = 0; j < LANE_LIMIT; j++) {
-          parents_v[i][j] = -1;
-          parents_e[i][j] = -1;
+          parents_ve[i][j] = {-1, -1};
         }
       }
     }
@@ -319,8 +325,8 @@ public:
   vector<std::bitset<LANE_LIMIT>> seen;
   vector<std::bitset<LANE_LIMIT>> visit1;
   vector<std::bitset<LANE_LIMIT>> visit2;
-  vector<std::vector<int64_t>> parents_v;
-  vector<std::vector<int64_t>> parents_e;
+  vector<std::array<atomic<ve>, LANE_LIMIT>> parents_ve;
+  // vector<std::vector<int64_t>> parents_e;
 
   atomic<int64_t> top_down_cost;
   atomic<int64_t> bottom_up_cost;
@@ -338,7 +344,6 @@ public:
 
   // lock for next
   mutable vector<mutex> element_locks;
-  mutable vector<array<mutex, LANE_LIMIT>> lane_locks;
 
   idx_t mode;
 };
@@ -931,8 +936,9 @@ private:
     auto& edge_ids = state.global_csr->edge_ids;
     auto& top_down_cost = bfs_state->top_down_cost;
     auto& bottom_up_cost = bfs_state->bottom_up_cost;
-    auto& parents_v = bfs_state->parents_v;
-    auto& parents_e = bfs_state->parents_e;
+    // auto& parents_v = bfs_state->parents_v;
+    // auto& parents_e = bfs_state->parents_e;
+    auto& parents_ve = bfs_state->parents_ve;
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
@@ -957,10 +963,13 @@ private:
             std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
             next[n] |= visit[i];
             for (auto l = 0; l < LANE_LIMIT; l++) {
-              parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i][l])
-                      ? i : parents_v[n][l];
-              parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i][l])
-                      ? edge_id : parents_e[n][l];
+              // parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i][l])
+              //         ? i : parents_v[n][l];
+              // parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i][l])
+              //         ? edge_id : parents_e[n][l];
+              if (parents_ve[n][l].load().v == -1 && visit[i][l]) {
+                parents_ve[n][l] = {static_cast<int64_t>(i), edge_id};
+              }
             }
           }
         }
@@ -993,8 +1002,9 @@ private:
     auto& edge_ids = state.global_csr->reverse_edge_ids;
     auto& top_down_cost = bfs_state->top_down_cost;
     auto& bottom_up_cost = bfs_state->bottom_up_cost;
-    auto& parents_v = bfs_state->parents_v;
-    auto& parents_e = bfs_state->parents_e;
+    // auto& parents_v = bfs_state->parents_v;
+    // auto& parents_e = bfs_state->parents_e;
+    auto& parents_ve = bfs_state->parents_ve;
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
@@ -1022,10 +1032,13 @@ private:
           next[i] |= visit[n];
           std::lock_guard<std::mutex> lock(bfs_state->element_locks[i]);
           for (auto l = 0; l < LANE_LIMIT; l++) {
-            parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l])
-                    ? n : parents_v[i][l];
-            parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l])
-                    ? edge_id : parents_e[i][l];
+            // parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l])
+            //         ? n : parents_v[i][l];
+            // parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l])
+            //         ? edge_id : parents_e[i][l];
+            if (parents_ve[i][l].load().v == -1 && visit[n][l]) {
+              parents_ve[i][l] = {n, edge_id};
+            }
           }
         }
 
@@ -1095,12 +1108,15 @@ private:
       std::vector<int64_t> output_edge;
       auto source_v = bfs_state->src[src_pos]; // Take the source
 
-      auto parent_vertex =
-          bfs_state->parents_v[bfs_state->dst[dst_pos]]
-                  [lane]; // Take the parent vertex of the destination vertex
-      auto parent_edge =
-          bfs_state->parents_e[bfs_state->dst[dst_pos]]
-                  [lane]; // Take the parent edge of the destination vertex
+      // auto parent_vertex =
+      //     bfs_state->parents_v[bfs_state->dst[dst_pos]]
+      //             [lane]; // Take the parent vertex of the destination vertex
+      // auto parent_edge =
+      //     bfs_state->parents_e[bfs_state->dst[dst_pos]]
+      //             [lane]; // Take the parent edge of the destination vertex
+      auto ve = bfs_state->parents_ve[bfs_state->dst[dst_pos]][lane].load();
+      auto parent_vertex = ve.v;
+      auto parent_edge = ve.e;
 
       output_vector.push_back(bfs_state->dst[dst_pos]); // Add destination vertex
       output_vector.push_back(parent_edge);
@@ -1108,13 +1124,16 @@ private:
                                           // have reached the source vertex
         //! -1 is used to signify no parent
         if (parent_vertex == -1 ||
-            parent_vertex == bfs_state->parents_v[parent_vertex][lane]) {
+            parent_vertex == bfs_state->parents_ve[parent_vertex][lane].load().v) {
           result_validity.SetInvalid(search_num);
           break;
         }
         output_vector.push_back(parent_vertex);
-        parent_edge = bfs_state->parents_e[parent_vertex][lane];
-        parent_vertex = bfs_state->parents_v[parent_vertex][lane];
+        // parent_edge = bfs_state->parents_e[parent_vertex][lane];
+        // parent_vertex = bfs_state->parents_v[parent_vertex][lane];
+        auto ve = bfs_state->parents_ve[parent_vertex][lane].load();
+        parent_edge = ve.e;
+        parent_vertex = ve.v;
         output_vector.push_back(parent_edge);
       }
 
