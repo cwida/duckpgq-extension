@@ -277,7 +277,11 @@ public:
     } else {
       is_top_down = true;
     }
+    
     change = top_down_cost ? true : false;
+    // // debug print
+    // string msg = "Iter " + std::to_string(iter) + " top_down_cost: " + std::to_string(top_down_cost) + " bottom_up_cost: " + std::to_string(bottom_up_cost);
+    // Printer::Print(msg);
     // clear the counters after the switch
     top_down_cost = 0;
     bottom_up_cost = 0;
@@ -495,7 +499,7 @@ private:
         seen[i] |= next[i];
         top_down_cost += v[i + 1] - v[i];
       }
-      if (~(seen[i].all())) {
+      if (seen[i].all() == false) {
         bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
       }
     }
@@ -543,7 +547,7 @@ private:
           seen[i] |= next[i];
           top_down_cost += normal_v[i + 1] - normal_v[i];
         }
-        if (~(seen[i].all())) {
+        if (seen[i].all() == false) {
           bottom_up_cost += v[i + 1] - v[i];
         }
       }
@@ -957,7 +961,7 @@ private:
         seen[i] |= next[i];
         top_down_cost += v[i + 1] - v[i];
       }
-      if (~(seen[i].all())) {
+      if (seen[i].all() == false) {
         bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
       }
     }
@@ -1015,7 +1019,7 @@ private:
           seen[i] |= next[i];
           top_down_cost += normal_v[i + 1] - normal_v[i];
         }
-        if (~(seen[i].any())) {
+        if (seen[i].all() == false) {
           bottom_up_cost += v[i + 1] - v[i];
         }
       }
@@ -1443,6 +1447,8 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
                                            GlobalSinkState &state) {
   auto &gstate = state.Cast<PathFindingGlobalState>();
   auto &bfs_state = gstate.global_bfs_state;
+  int64_t *v = (int64_t *)gstate.global_csr->v;
+  int64_t *reverse_v = (int64_t *)gstate.global_csr->reverse_v;
 
   // for every batch of pairs, schedule a BFS task
   bfs_state->Clear();
@@ -1452,7 +1458,8 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
 
     auto result_data = FlatVector::GetData<int64_t>(bfs_state->result.data[0]);
     auto& result_validity = FlatVector::Validity(bfs_state->result.data[0]);
-    std::bitset<LANE_LIMIT> seen_mask = ~0;
+    std::bitset<LANE_LIMIT> seen_mask;
+    seen_mask.set();
 
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
       bfs_state->lane_to_num[lane] = -1;
@@ -1477,7 +1484,18 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
     }
     for (int64_t i = 0; i < bfs_state->v_size; i++) {
       bfs_state->seen[i] = seen_mask;
+
+      if (bfs_state->visit1[i].any()) {
+        bfs_state->top_down_cost += v[i + 1] - v[i];
+      }
+      if (bfs_state->seen[i].all() == false) {
+        bfs_state->bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
+      }
     }
+
+    // // debug print
+    // string msg = "Iter 1, top down cost: " + to_string(bfs_state->top_down_cost) + ", bottom up cost: " + to_string(bfs_state->bottom_up_cost);
+    // Printer::Print(msg);
 
     if (gstate.mode == "iterativelength") {
       auto bfs_event = make_shared<ParallelIterativeEvent>(gstate, pipeline);
