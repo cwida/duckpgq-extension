@@ -48,6 +48,41 @@ shared_ptr<PropertyGraphTable> ValidateSourceNodeAndEdgeTable(CreatePropertyGrap
     return edge_pg_entry;
 }
 
+unique_ptr<SubqueryRef> CreateCountCTESubquery() {
+  //! BEGIN OF (SELECT count(cte1.temp) as temp * 0 from cte1) __x
+
+  auto temp_cte_select_node = make_uniq<SelectNode>();
+
+  auto cte_table_ref = make_uniq<BaseTableRef>();
+
+  cte_table_ref->table_name = "cte1";
+  temp_cte_select_node->from_table = std::move(cte_table_ref);
+  vector<unique_ptr<ParsedExpression>> children;
+  children.push_back(make_uniq<ColumnRefExpression>("temp", "cte1"));
+
+  auto count_function =
+      make_uniq<FunctionExpression>("count", std::move(children));
+
+  auto zero = make_uniq<ConstantExpression>(Value::INTEGER((int32_t)0));
+
+  vector<unique_ptr<ParsedExpression>> multiply_children;
+
+  multiply_children.push_back(std::move(zero));
+  multiply_children.push_back(std::move(count_function));
+  auto multiply_function =
+      make_uniq<FunctionExpression>("multiply", std::move(multiply_children));
+  multiply_function->alias = "temp";
+  temp_cte_select_node->select_list.push_back(std::move(multiply_function));
+  auto temp_cte_select_statement = make_uniq<SelectStatement>();
+  temp_cte_select_statement->node = std::move(temp_cte_select_node);
+
+  auto temp_cte_select_subquery =
+      make_uniq<SubqueryRef>(std::move(temp_cte_select_statement), "__x");
+  //! END OF (SELECT count(cte1.temp) * 0 as temp from cte1) __x
+  return temp_cte_select_subquery;
+}
+
+
 // Function to create the SELECT node
 unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &edge_pg_entry) {
     auto select_node = make_uniq<SelectNode>();
@@ -73,13 +108,27 @@ unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &ed
 
     auto src_base_ref = make_uniq<BaseTableRef>();
     src_base_ref->table_name = edge_pg_entry->source_reference;
-    select_node->from_table = std::move(src_base_ref);
+    // FROM (select count(cte1.temp) * 0 as temp from cte1) __x
+    auto temp_cte_select_subquery = CreateCountCTESubquery();
+
+    auto cross_join_ref = make_uniq<JoinRef>(JoinRefType::CROSS);
+    cross_join_ref->left = std::move(src_base_ref);
+    cross_join_ref->right = std::move(temp_cte_select_subquery);
+
+
+    select_node->from_table = std::move(cross_join_ref);
 
     return select_node;
 }
 
 // Function to create the CTE for the edges
 unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_pg_entry) {
+    /*
+    SELECT src.rowid as src, dst.rowid, edge.rowid as edges
+    FROM edge_table edge
+    JOIN source_table on edge.source_fk = source_table.source_pk
+    JOIN destination_table on edge.destination_fk = destination_table.destination_pk
+    */
     std::vector<unique_ptr<ParsedExpression>> select_expression;
     auto src_col_ref = make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->source_reference);
     src_col_ref->alias = "src";
