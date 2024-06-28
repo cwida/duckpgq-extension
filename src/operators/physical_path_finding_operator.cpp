@@ -168,7 +168,7 @@ public:
       : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false), 
         started_searches(0), total_len(0), context(context_), seen(v_size_), visit1(v_size_), visit2(v_size_),
         top_down_cost(0), bottom_up_cost(0), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
-        task_queues_reverse(num_threads_), barrier(num_threads_), locks(v_size_), mode(mode_) {
+        task_queues_reverse(num_threads_), barrier(num_threads_), element_locks(v_size_), mode(mode_) {
     result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
     auto &src_data = pairs->data[0];
     auto &dst_data = pairs->data[1];
@@ -177,10 +177,23 @@ public:
     src = FlatVector::GetData<int64_t>(src_data);
     dst = FlatVector::GetData<int64_t>(dst_data);
 
-    if (mode == 1) {
-      parents_v.resize(v_size_, std::vector<int64_t>(LANE_LIMIT));
-      parents_e.resize(v_size_, std::vector<int64_t>(LANE_LIMIT));
-    }
+    CreateTasks();
+  }
+
+  GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_, shared_ptr<DataChunk> pairs_, int64_t v_size_, 
+                idx_t num_threads_, idx_t mode_, ClientContext &context_, bool is_path)
+      : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false), 
+        started_searches(0), total_len(0), context(context_), seen(v_size_), visit1(v_size_), visit2(v_size_),
+        parents_v(v_size_, std::vector<int64_t>(LANE_LIMIT)), parents_e(v_size_, std::vector<int64_t>(LANE_LIMIT)),
+        top_down_cost(0), bottom_up_cost(0), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
+        task_queues_reverse(num_threads_), barrier(num_threads_), element_locks(v_size_), lane_locks(v_size_), mode(mode_) {
+    result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
+    auto &src_data = pairs->data[0];
+    auto &dst_data = pairs->data[1];
+    src_data.ToUnifiedFormat(pairs->size(), vdata_src);
+    dst_data.ToUnifiedFormat(pairs->size(), vdata_dst);
+    src = FlatVector::GetData<int64_t>(src_data);
+    dst = FlatVector::GetData<int64_t>(dst_data);
 
     CreateTasks();
   }
@@ -277,7 +290,7 @@ public:
     } else {
       is_top_down = true;
     }
-    
+
     change = top_down_cost ? true : false;
     // // debug print
     // string msg = "Iter " + std::to_string(iter) + " top_down_cost: " + std::to_string(top_down_cost) + " bottom_up_cost: " + std::to_string(bottom_up_cost);
@@ -324,7 +337,8 @@ public:
   Barrier barrier;
 
   // lock for next
-  mutable vector<mutex> locks;
+  mutable vector<mutex> element_locks;
+  mutable vector<array<mutex, LANE_LIMIT>> lane_locks;
 
   idx_t mode;
 };
@@ -484,7 +498,7 @@ private:
         if (visit[i].any()) {
           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
             auto n = e[offset];
-            std::lock_guard<std::mutex> lock(bfs_state->locks[n]);
+            std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
             next[n] |= visit[i];
           }
         }
@@ -940,9 +954,12 @@ private:
           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
             auto n = e[offset];
             auto edge_id = edge_ids[offset];
-            std::lock_guard<std::mutex> lock(bfs_state->locks[n]);
-            next[n] |= visit[i];
+            {
+              std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
+              next[n] |= visit[i];
+            }
             for (auto l = 0; l < LANE_LIMIT; l++) {
+              std::lock_guard<std::mutex> lock(bfs_state->lane_locks[n][l]);
               parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i][l])
                       ? i : parents_v[n][l];
               parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i][l])
@@ -1007,6 +1024,7 @@ private:
           auto edge_id = edge_ids[offset];
           next[i] |= visit[n];
           for (auto l = 0; l < LANE_LIMIT; l++) {
+            std::lock_guard<std::mutex> lock(bfs_state->lane_locks[i][l]);
             parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l])
                     ? n : parents_v[i][l];
             parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l])
@@ -1412,7 +1430,11 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 		idx_t num_threads = ts.NumberOfThreads();
     auto& client_config = ClientConfig::GetConfig(context);
     idx_t mode = this->mode == "iterativelength" ? 0 : 1;
-    gstate.global_bfs_state = make_uniq<GlobalBFSState>(csr, all_pairs, csr->v_size - 2, num_threads, mode, context);
+    if (mode == 0) {
+      gstate.global_bfs_state = make_uniq<GlobalBFSState>(csr, all_pairs, csr->v_size - 2, num_threads, mode, context);
+    } else {
+      gstate.global_bfs_state = make_uniq<GlobalBFSState>(csr, all_pairs, csr->v_size - 2, num_threads, mode, context, true);
+    }
 
     auto const task_size = client_config.set_variables.find("experimental_path_finding_operator_task_size");
     gstate.global_bfs_state->split_size = task_size != client_config.set_variables.end() ? task_size->second.GetValue<idx_t>() : 256;
