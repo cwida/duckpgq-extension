@@ -80,6 +80,14 @@ select id, local_clustering_coefficient from local_clustering_coefficient(pg, st
 3	0.5
 4	0.0
 
+query III
+select a.id, a.name, local_clustering_coefficient from local_clustering_coefficient(pg, student, know), student a where a.id = lcc.id;
+----
+0	Daniel	1.0
+1	Tavneet	1.0
+2	Gabor	1.0
+3	Peter	0.5
+4	David	0.0
 
 statement ok
 import database 'duckdb-pgq/data/SNB0.003';
