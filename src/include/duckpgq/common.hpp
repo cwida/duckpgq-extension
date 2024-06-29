@@ -20,6 +20,20 @@
 
 namespace duckdb {
 
+class DuckPGQBitmap {
+public:
+  explicit DuckPGQBitmap(size_t size);
+  void set(size_t index);
+  bool test(size_t index) const;
+  void reset();
+
+private:
+  std::vector<uint64_t> bitmap;
+  size_t size;
+};
+
+
+
 struct CSRFunctionData : public FunctionData {
 public:
   CSRFunctionData(ClientContext &context, int32_t id, LogicalType weight_type);
@@ -41,6 +55,22 @@ public:
   const LogicalType weight_type; // TODO Make sure type is LogicalType::SQLNULL
                                  // when no type is provided
 };
+
+struct LocalClusteringCoefficientFunctionData : public FunctionData {
+public:
+  ClientContext &context;
+  int32_t csr_id;
+
+  LocalClusteringCoefficientFunctionData(ClientContext &context, int32_t csr_id)
+      : context(context), csr_id(csr_id) {}
+  static unique_ptr<FunctionData>
+  LocalClusteringCoefficientBind(ClientContext &context, ScalarFunction &bound_function,
+                      vector<unique_ptr<Expression>> &arguments);
+
+  unique_ptr<FunctionData> Copy() const override;
+  bool Equals(const FunctionData &other_p) const override;
+};
+
 
 struct IterativeLengthFunctionData : public FunctionData {
 public:
