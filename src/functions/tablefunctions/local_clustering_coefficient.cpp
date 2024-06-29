@@ -59,7 +59,7 @@ ValidateSourceNodeAndEdgeTable(CreatePropertyGraphInfo *pg_info,
   if (edge_pg_entry->is_vertex_table) {
     throw Exception(ExceptionType::INVALID, edge_table + " is a vertex table, expected an edge table");
   }
-  if (edge_pg_entry->source_reference != node_table) {
+  if (!edge_pg_entry->IsSourceTable(node_table)) {
     throw Exception(ExceptionType::INVALID,
                     "Vertex table " + node_table +
                         " is not a source of edge table " + edge_table);
