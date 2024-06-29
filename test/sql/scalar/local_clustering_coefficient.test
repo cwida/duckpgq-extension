@@ -121,127 +121,70 @@ Invalid Error: foo is a vertex table, expected an edge table
 statement ok
 import database 'duckdb-pgq/data/SNB0.003';
 
-#query II
-#WITH neighbors AS (
-#    SELECT
-#        person1id AS id,
-#        person2id AS neighbor
-#    FROM
-#        person_knows_person
-#    UNION ALL
-#    SELECT
-#        person2id AS id,
-#        person1id AS neighbor
-#    FROM
-#        person_knows_person
-#),
-#in_degree AS (
-#    SELECT
-#        id,
-#        COUNT(DISTINCT neighbor) AS in_degree
-#    FROM
-#        neighbors
-#    GROUP BY
-#        id
-#),
-#out_degree AS (
-#    SELECT
-#        person1id AS id,
-#        COUNT(DISTINCT person2id) AS out_degree
-#    FROM
-#        person_knows_person
-#    GROUP BY
-#        person1id
-#),
-#triangles AS (
-#    SELECT
-#        pkp1.person1id AS id,
-#        COUNT(DISTINCT pkp2.person2id) AS triangle_count
-#    FROM
-#        person_knows_person pkp1
-#    JOIN
-#        person_knows_person pkp2 ON pkp1.person2id = pkp2.person1id
-#    JOIN
-#        person_knows_person pkp3 ON pkp2.person2id = pkp3.person2id AND pkp1.person1id = pkp3.person1id
-#    GROUP BY
-#        pkp1.person1id
-#),
-#local_clustering_coefficient AS (
-#    SELECT
-#        id,
-#        in_degree + out_degree AS degree,
-#        triangle_count,
-#        CASE
-#            WHEN (in_degree + out_degree) > 1 THEN 1.0 * triangle_count / ((in_degree + out_degree) * (in_degree + out_degree - 1))
-#            ELSE 0.0
-#        END AS local_clustering_coefficient
-#    FROM
-#        in_degree
-#    JOIN
-#        out_degree USING (id)
-#    LEFT JOIN
-#        triangles USING (id)
-#)
-#SELECT
-#    id,
-#    local_clustering_coefficient
-#FROM
-#    local_clustering_coefficient
-#ORDER BY
-#    local_clustering_coefficient DESC;
-#----
-#0.5	Arbaaz
-#0.5	Lei
-#0.5	Almira
-#0.5	Alexei
-#0.41666666	Miguel
-#0.33333334	Eric
-#0.25	Jan
-#0.2	John
-#0.2	Ken
-#0.16666667	Hossein
-#0.14285715	Celso
-#0.102564104	Ali
-#0.083333336	Evangelos
-#0.06666667	Alim
-#0.0	Ayesha
-#0.0	Alejandro
-#0.0	Rahul
-#0.0	John
-#0.0	John
-#0.0	Adje van den Berg
-#0.0	Joakim
-#0.0	Rahul
-#0.0	Mehmet
-#0.0	Wojciech
-#0.0	Ali
-#0.0	John
-#0.0	Jimmy
-#0.0	Baby
-#0.0	Jun
-#0.0	Wei
-#0.0	Djelaludin
-#0.0	Otto
-#0.0	Roberto
-#0.0	Bryn
-#0.0	Ge
-#0.0	Yahya Ould Ahmed El
-#0.0	Hans
-#0.0	Ali
-#0.0	Tissa
-#0.0	Aleksandr
-#0.0	Jose
-#0.0	Cheng
-#0.0	Alfonso
-#0.0	Ashok
-#0.0	Abdul Haris
-#0.0	Neil
-#0.0	Jie
-#0.0	Alexei
-#0.0	Wolfgang
-#0.0	Luigi
-#
-#
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows);
+
+query II
+select id, local_clustering_coefficient from local_clustering_coefficient(snb, person, knows);
+----
+14	0.33333334
+16	0.5
+32	0.8333333
+2199023255557	0.6666667
+2199023255573	1.0
+2199023255594	0.1904762
+4398046511139	0.0
+6597069766702	0.0
+8796093022234	0.0
+8796093022237	0.6666667
+8796093022244	0.0
+8796093022249	0.4
+10995116277761	0.3
+10995116277782	0.23809524
+10995116277783	0.0
+10995116277808	0.0
+13194139533342	1.0
+13194139533352	0.31111112
+13194139533355	0.2
+15393162788877	0.0
+17592186044443	0.0
+17592186044461	1.0
+19791209299968	1.0
+19791209299987	0.0
+21990232555526	0.0
+21990232555527	0.0
+24189255811081	0.125
+24189255811109	1.0
+26388279066632	0.0
+26388279066641	0.8333333
+26388279066655	0.33333334
+26388279066658	0.21794872
+26388279066668	0.5
+28587302322180	0.16666667
+28587302322191	0.0
+28587302322196	0.8333333
+28587302322204	0.2857143
+28587302322209	0.0
+28587302322223	0.0
+30786325577731	0.0
+30786325577740	1.0
+32985348833291	0.0
+32985348833318	0.0
+32985348833329	0.0
+35184372088834	0.0
+35184372088850	0.6666667
+35184372088856	0.33333334
+35184372088871	0.0
+37383395344394	0.0
+37383395344409	0.0
+
 
 query II
 WITH cte1 AS (
