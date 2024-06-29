@@ -29,48 +29,23 @@ struct ve {
   ve(uint64_t value) : value(value) {}
   ve(int64_t v, int64_t e) {
     uint64_t new_value = 0;
-    if (v < 0) {
-      new_value |= v_mask;
-    } else {
-      new_value |= (v << e_bits);
-    }
-    if (e < 0) {
-      new_value |= e_mask;
-    } else {
-      new_value |= e & e_mask;
-    }
+    new_value |= v < 0 ? v_mask : (v << e_bits);
+    new_value |= e < 0 ? e_mask : (e & e_mask);
     value = new_value;
   }
   ve& operator=(std::initializer_list<int64_t> list) {
-    if (list.size() != 2) {
-      throw std::invalid_argument("Initializer list for ve must have exactly 2 elements.");
-    }
     uint64_t new_value = 0;
     auto it = list.begin();
-    if (*it < 0) {
-      new_value |= v_mask;
-    } else {
-      new_value |= (*it << e_bits);
-    }
-    if (*(++it) < 0) {
-      new_value |= e_mask;
-    } else {
-      new_value |= (*it & e_mask);
-    }
+    new_value |= *it < 0 ? v_mask : (*it << e_bits);
+    new_value |= *(++it) < 0 ? e_mask : (*it & e_mask);
     value = new_value;
     return *this;
   }
-  int64_t GetV() {
-    if ((value & v_mask) == v_mask) {
-      return -1;
-    }
-    return static_cast<int64_t>(value >> e_bits);
+  inline int64_t GetV() {
+    return (value & v_mask) == v_mask ? -1 : static_cast<int64_t>(value >> e_bits);
   }
-  int64_t GetE() {
-    if ((value & e_mask) == e_mask) {
-      return -1;
-    }
-    return static_cast<int64_t>(value & e_mask);
+  inline int64_t GetE() {
+    return (value & e_mask) == e_mask ? -1 : static_cast<int64_t>(value & e_mask);
   }
 };
 
@@ -345,7 +320,6 @@ public:
     } else {
       is_top_down = true;
     }
-
     change = top_down_cost ? true : false;
     // // debug print
     // string msg = "Iter " + std::to_string(iter) + " top_down_cost: " + std::to_string(top_down_cost) + " bottom_up_cost: " + std::to_string(bottom_up_cost);
