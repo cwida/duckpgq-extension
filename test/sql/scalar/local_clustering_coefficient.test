@@ -10,9 +10,13 @@ statement ok
 CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17);
 
 statement ok
+CREATE TABLE Foo(id BIGINT);INSERT INTO Foo VALUES (0), (1), (2), (3), (4);
+
+statement ok
 -CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
-    Student
+    Student,
+    Foo
     )
 EDGE TABLES (
     know    SOURCE KEY ( src ) REFERENCES Student ( id )
@@ -88,6 +92,31 @@ select a.id, a.name, local_clustering_coefficient from local_clustering_coeffici
 2	Gabor	1.0
 3	Peter	0.5
 4	David	0.0
+
+statement error
+select local_clustering_coefficient from local_clustering_coefficient(pgdoesnotexist, student, know), student a where a.id = lcc.id;
+----
+Invalid Error: Property graph pgdoesnotexist not found
+
+statement error
+select local_clustering_coefficient from local_clustering_coefficient(pg, a, know), student a where a.id = lcc.id;
+----
+Invalid Error: Table a not found in property graph pg
+
+statement error
+select local_clustering_coefficient from local_clustering_coefficient(pg, student, b), student a where a.id = lcc.id;
+----
+Invalid Error: Table b not found in property graph pg
+
+statement error
+select local_clustering_coefficient from local_clustering_coefficient(pg, foo, student), student a where a.id = lcc.id;
+----
+Invalid Error: student is a vertex table, expected an edge table
+
+statement error
+select local_clustering_coefficient from local_clustering_coefficient(pg, student, foo), student a where a.id = lcc.id;
+----
+Invalid Error: foo is a vertex table, expected an edge table
 
 statement ok
 import database 'duckdb-pgq/data/SNB0.003';

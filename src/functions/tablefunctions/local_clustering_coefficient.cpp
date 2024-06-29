@@ -52,7 +52,13 @@ ValidateSourceNodeAndEdgeTable(CreatePropertyGraphInfo *pg_info,
                                const std::string &node_table,
                                const std::string &edge_table) {
   auto source_node_pg_entry = pg_info->GetTable(node_table);
+  if (source_node_pg_entry->is_vertex_table == false) {
+    throw Exception(ExceptionType::INVALID, node_table + " is an edge table, expected a vertex table");
+  }
   auto edge_pg_entry = pg_info->GetTable(edge_table);
+  if (edge_pg_entry->is_vertex_table) {
+    throw Exception(ExceptionType::INVALID, edge_table + " is a vertex table, expected an edge table");
+  }
   if (edge_pg_entry->source_reference != node_table) {
     throw Exception(ExceptionType::INVALID,
                     "Vertex table " + node_table +
