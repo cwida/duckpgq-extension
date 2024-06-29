@@ -19,10 +19,59 @@
 namespace duckdb {
 
 struct ve {
-  int64_t v;
-  int64_t e;
-  ve() : v(-1), e(-1) {}
-  ve(int64_t v_, int64_t e_) : v(v_), e(e_) {}
+  // higher 30 bits for v, lower 34 bits for e
+  const uint8_t v_bits = 30;
+  const uint8_t e_bits = 34;
+  uint64_t value;
+  const uint64_t v_mask = UINT64_MAX << e_bits;
+  const uint64_t e_mask = UINT64_MAX >> v_bits;
+  ve() : value(UINT64_MAX) {}
+  ve(uint64_t value) : value(value) {}
+  ve(int64_t v, int64_t e) {
+    uint64_t new_value = 0;
+    if (v < 0) {
+      new_value |= v_mask;
+    } else {
+      new_value |= (v << e_bits);
+    }
+    if (e < 0) {
+      new_value |= e_mask;
+    } else {
+      new_value |= e & e_mask;
+    }
+    value = new_value;
+  }
+  ve& operator=(std::initializer_list<int64_t> list) {
+    if (list.size() != 2) {
+      throw std::invalid_argument("Initializer list for ve must have exactly 2 elements.");
+    }
+    uint64_t new_value = 0;
+    auto it = list.begin();
+    if (*it < 0) {
+      new_value |= v_mask;
+    } else {
+      new_value |= (*it << e_bits);
+    }
+    if (*(++it) < 0) {
+      new_value |= e_mask;
+    } else {
+      new_value |= (*it & e_mask);
+    }
+    value = new_value;
+    return *this;
+  }
+  int64_t GetV() {
+    if ((value & v_mask) == v_mask) {
+      return -1;
+    }
+    return static_cast<int64_t>(value >> e_bits);
+  }
+  int64_t GetE() {
+    if ((value & e_mask) == e_mask) {
+      return -1;
+    }
+    return static_cast<int64_t>(value & e_mask);
+  }
 };
 
 PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
@@ -325,7 +374,7 @@ public:
   vector<std::bitset<LANE_LIMIT>> seen;
   vector<std::bitset<LANE_LIMIT>> visit1;
   vector<std::bitset<LANE_LIMIT>> visit2;
-  vector<std::array<atomic<ve>, LANE_LIMIT>> parents_ve;
+  vector<std::array<ve, LANE_LIMIT>> parents_ve;
   // vector<std::vector<int64_t>> parents_e;
 
   atomic<int64_t> top_down_cost;
@@ -967,7 +1016,7 @@ private:
               //         ? i : parents_v[n][l];
               // parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i][l])
               //         ? edge_id : parents_e[n][l];
-              if (parents_ve[n][l].load().v == -1 && visit[i][l]) {
+              if (parents_ve[n][l].GetV() == -1 && visit[i][l]) {
                 parents_ve[n][l] = {static_cast<int64_t>(i), edge_id};
               }
             }
@@ -1036,7 +1085,7 @@ private:
             //         ? n : parents_v[i][l];
             // parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l])
             //         ? edge_id : parents_e[i][l];
-            if (parents_ve[i][l].load().v == -1 && visit[n][l]) {
+            if (parents_ve[i][l].GetV() == -1 && visit[n][l]) {
               parents_ve[i][l] = {n, edge_id};
             }
           }
@@ -1114,9 +1163,8 @@ private:
       // auto parent_edge =
       //     bfs_state->parents_e[bfs_state->dst[dst_pos]]
       //             [lane]; // Take the parent edge of the destination vertex
-      auto ve = bfs_state->parents_ve[bfs_state->dst[dst_pos]][lane].load();
-      auto parent_vertex = ve.v;
-      auto parent_edge = ve.e;
+      auto parent_vertex = bfs_state->parents_ve[bfs_state->dst[dst_pos]][lane].GetV();
+      auto parent_edge = bfs_state->parents_ve[bfs_state->dst[dst_pos]][lane].GetE();
 
       output_vector.push_back(bfs_state->dst[dst_pos]); // Add destination vertex
       output_vector.push_back(parent_edge);
@@ -1124,16 +1172,15 @@ private:
                                           // have reached the source vertex
         //! -1 is used to signify no parent
         if (parent_vertex == -1 ||
-            parent_vertex == bfs_state->parents_ve[parent_vertex][lane].load().v) {
+            parent_vertex == bfs_state->parents_ve[parent_vertex][lane].GetV()) {
           result_validity.SetInvalid(search_num);
           break;
         }
         output_vector.push_back(parent_vertex);
         // parent_edge = bfs_state->parents_e[parent_vertex][lane];
         // parent_vertex = bfs_state->parents_v[parent_vertex][lane];
-        auto ve = bfs_state->parents_ve[parent_vertex][lane].load();
-        parent_edge = ve.e;
-        parent_vertex = ve.v;
+        parent_edge = bfs_state->parents_ve[parent_vertex][lane].GetE();
+        parent_vertex = bfs_state->parents_ve[parent_vertex][lane].GetV();
         output_vector.push_back(parent_edge);
       }
 
