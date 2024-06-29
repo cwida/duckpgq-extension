@@ -12,8 +12,8 @@
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/parser/path_element.hpp"
-#include "duckdb/parser/subpath_element.hpp"
 #include "duckdb/parser/path_pattern.hpp"
+#include "duckdb/parser/subpath_element.hpp"
 
 namespace duckdb {
 struct PGQMatchFunction : public TableFunction {
@@ -63,6 +63,9 @@ public:
   CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
                const string &edge_binding, const string &prev_binding,
                const string &next_binding);
+
+  static unique_ptr<ParsedExpression>
+  CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions);
 
   static void EdgeTypeAny(const shared_ptr<PropertyGraphTable> &edge_table,
                           const string &edge_binding,
