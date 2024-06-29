@@ -41,7 +41,6 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
   int64_t *v = (int64_t *)duckpgq_state->csr_list[info.csr_id]->v;
   vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
   size_t v_size = duckpgq_state->csr_list[info.csr_id]->vsize;
-  std::cout << duckpgq_state->csr_list[info.csr_id]->ToString();
   // get src and dst vectors for searches
   auto &src = args.data[1];
   UnifiedVectorFormat vdata_src;
