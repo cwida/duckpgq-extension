@@ -475,3 +475,125 @@ ORDER BY id ASC;
 35184372088871	0.0
 37383395344394	0.0
 37383395344409	0.0
+
+# Test with an empty graph
+statement ok
+CREATE TABLE EmptyStudent(id BIGINT, name VARCHAR);
+
+statement ok
+CREATE TABLE EmptyKnow(src BIGINT, dst BIGINT);
+
+statement ok
+-CREATE PROPERTY GRAPH empty_pg
+VERTEX TABLES (
+    EmptyStudent
+    )
+EDGE TABLES (
+    EmptyKnow    SOURCE KEY ( src ) REFERENCES EmptyStudent ( id )
+            DESTINATION KEY ( dst ) REFERENCES EmptyStudent ( id )
+    );
+
+query II
+select id, local_clustering_coefficient from local_clustering_coefficient(empty_pg, emptystudent, emptyknow);
+----
+
+# Test with a graph having no edges
+statement ok
+CREATE TABLE IsolatedStudent(id BIGINT, name VARCHAR);INSERT INTO IsolatedStudent VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie');
+
+statement ok
+CREATE TABLE NoEdgeKnow(src BIGINT, dst BIGINT);
+
+statement ok
+-CREATE PROPERTY GRAPH no_edge_pg
+VERTEX TABLES (
+    IsolatedStudent
+    )
+EDGE TABLES (
+    NoEdgeKnow    SOURCE KEY ( src ) REFERENCES IsolatedStudent ( id )
+            DESTINATION KEY ( dst ) REFERENCES IsolatedStudent ( id )
+    );
+
+query II
+select id, local_clustering_coefficient from local_clustering_coefficient(no_edge_pg, isolatedstudent, noedgeknow);
+----
+0	0.0
+1	0.0
+2	0.0
+
+# Test with a graph having self-loops
+statement ok
+CREATE TABLE SelfLoopStudent(id BIGINT, name VARCHAR);INSERT INTO SelfLoopStudent VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie');
+
+statement ok
+CREATE TABLE SelfLoopKnow(src BIGINT, dst BIGINT);INSERT INTO SelfLoopKnow VALUES (0,0), (1,1), (2,2);
+
+statement ok
+-CREATE PROPERTY GRAPH self_loop_pg
+VERTEX TABLES (
+    SelfLoopStudent
+    )
+EDGE TABLES (
+    SelfLoopKnow    SOURCE KEY ( src ) REFERENCES SelfLoopStudent ( id )
+            DESTINATION KEY ( dst ) REFERENCES SelfLoopStudent ( id )
+    );
+
+query II
+select id, local_clustering_coefficient from local_clustering_coefficient(self_loop_pg, selfloopstudent, selfloopknow);
+----
+0	0.0
+1	0.0
+2	0.0
+
+# Test with a disconnected graph
+statement ok
+CREATE TABLE DisconnectedStudent(id BIGINT, name VARCHAR);INSERT INTO DisconnectedStudent VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'Dave'), (4, 'Eve');
+
+statement ok
+CREATE TABLE DisconnectedKnow(src BIGINT, dst BIGINT);INSERT INTO DisconnectedKnow VALUES (0,1), (2,3);
+
+statement ok
+-CREATE PROPERTY GRAPH disconnected_pg
+VERTEX TABLES (
+    DisconnectedStudent
+    )
+EDGE TABLES (
+    DisconnectedKnow    SOURCE KEY ( src ) REFERENCES DisconnectedStudent ( id )
+            DESTINATION KEY ( dst ) REFERENCES DisconnectedStudent ( id )
+    );
+
+query II
+select id, local_clustering_coefficient from local_clustering_coefficient(disconnected_pg, disconnectedstudent, disconnectedknow);
+----
+0	0.0
+1	0.0
+2	0.0
+3	0.0
+4	0.0
+
+# Test with a different number of vertices and edges
+statement ok
+CREATE TABLE VariedStudent(id BIGINT, name VARCHAR);INSERT INTO VariedStudent VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'Dave'), (4, 'Eve'), (5, 'Frank');
+
+statement ok
+CREATE TABLE VariedKnow(src BIGINT, dst BIGINT);INSERT INTO VariedKnow VALUES (0,1), (0,2), (0,3), (1,2), (2,3), (3,4), (4,5);
+
+statement ok
+-CREATE PROPERTY GRAPH varied_pg
+VERTEX TABLES (
+    VariedStudent
+    )
+EDGE TABLES (
+    VariedKnow    SOURCE KEY ( src ) REFERENCES VariedStudent ( id )
+            DESTINATION KEY ( dst ) REFERENCES VariedStudent ( id )
+    );
+
+query II
+select id, local_clustering_coefficient from local_clustering_coefficient(varied_pg, variedstudent, variedknow);
+----
+0	0.33333334
+1	1.0
+2	0.33333334
+3	0.33333334
+4	0.0
+5	0.0
