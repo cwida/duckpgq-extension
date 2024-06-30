@@ -3,9 +3,6 @@
 #include "duckpgq/common.hpp"
 #include "duckdb/parser/sql_statement.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
-#include "duckdb/parser/query_node.hpp"
-#include "duckdb/parser/column_list.hpp"
-#include "duckdb/parser/simplified_token.hpp"
 #include "duckpgq/compressed_sparse_row.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 
