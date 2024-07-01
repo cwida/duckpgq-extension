@@ -31,6 +31,7 @@
 #include "duckpgq/functions/tablefunctions/match.hpp"
 
 #include <duckpgq/functions/tablefunctions/local_clustering_coefficient.hpp>
+#include <duckpgq/utils/duckpgq_utils.hpp>
 
 namespace duckdb {
 
@@ -110,7 +111,7 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
                             SQLStatement &statement) {
   auto lookup = context.registered_state.find("duckpgq");
   if (lookup == context.registered_state.end()) {
-    throw;
+    throw; // Throw the original error that got us here if DuckPGQ is not loaded
   }
 
   auto duckpgq_state = (DuckPGQState *)lookup->second.get();

@@ -1,8 +1,9 @@
 #include "duckpgq/functions/tablefunctions/describe_property_graph.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
-#include "duckdb/parser/statement/create_statement.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
+#include "duckdb/parser/statement/create_statement.hpp"
 #include "duckdb/parser/tableref/showref.hpp"
+#include <duckpgq/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 
 namespace duckdb {
@@ -10,12 +11,8 @@ unique_ptr<FunctionData>
 DescribePropertyGraphFunction::DescribePropertyGraphBind(
     ClientContext &context, TableFunctionBindInput &input,
     vector<LogicalType> &return_types, vector<string> &names) {
-  auto lookup = context.registered_state.find("duckpgq");
-  if (lookup == context.registered_state.end()) {
-    throw Exception(ExceptionType::INVALID,
-                    "Registered DuckPGQ state not found");
-  }
-  const auto duckpgq_state = dynamic_cast<DuckPGQState *>(lookup->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
+
   const auto duckpgq_parse_data =
       dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
 

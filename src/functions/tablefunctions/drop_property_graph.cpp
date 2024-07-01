@@ -1,6 +1,7 @@
 #include "duckpgq/functions/tablefunctions/drop_property_graph.hpp"
 
 #include "duckdb/parser/parsed_data/drop_property_graph_info.hpp"
+#include <duckpgq/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 
 namespace duckdb {
@@ -10,11 +11,8 @@ DropPropertyGraphFunction::DropPropertyGraphBind(
     vector<LogicalType> &return_types, vector<string> &names) {
   names.emplace_back("success");
   return_types.emplace_back(LogicalType::VARCHAR);
-  auto lookup = context.registered_state.find("duckpgq");
-  if (lookup == context.registered_state.end()) {
-    throw BinderException("Registered DuckPGQ state not found");
-  }
-  auto duckpgq_state = (DuckPGQState *)lookup->second.get();
+  auto duckpgq_state = GetDuckPGQState(context);
+
   auto duckpgq_parse_data =
       dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
 
@@ -38,11 +36,8 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(
   auto &bind_data = data_p.bind_data->Cast<DropPropertyGraphBindData>();
 
   auto pg_info = bind_data.drop_pg_info;
-  auto lookup = context.registered_state.find("duckpgq");
-  if (lookup == context.registered_state.end()) {
-    throw BinderException("Registered DuckPGQ state not found");
-  }
-  auto duckpgq_state = (DuckPGQState *)lookup->second.get();
+  auto duckpgq_state = GetDuckPGQState(context);
+
   auto registered_pg = duckpgq_state->registered_property_graphs.find(
       pg_info->property_graph_name);
   if (registered_pg == duckpgq_state->registered_property_graphs.end()) {
