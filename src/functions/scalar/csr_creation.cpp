@@ -6,8 +6,9 @@
 #include "duckpgq/compressed_sparse_row.hpp"
 
 #include <cmath>
-#include <mutex>
+#include <duckpgq/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
+#include <mutex>
 
 namespace duckdb {
 
@@ -40,8 +41,6 @@ static void CsrInitializeVertex(DuckPGQState &context, int32_t id,
                     "Unable to initialize vector of size for csr vertex table "
                     "representation");
   }
-
-  return;
 }
 
 static void CsrInitializeEdge(DuckPGQState &context, int32_t id, int64_t v_size,
@@ -98,16 +97,7 @@ static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state,
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (CSRFunctionData &)*func_expr.bind_info;
 
-  auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == info.context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
-
+  auto duckpgq_state = GetDuckPGQState(info.context);
   int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
   auto csr_entry = duckpgq_state->csr_list.find(info.id);
 
