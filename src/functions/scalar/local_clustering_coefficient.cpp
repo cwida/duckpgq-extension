@@ -3,15 +3,17 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
-#include "duckpgq_extension.hpp"
 #include "duckpgq/utils/duckpgq_bitmap.hpp"
 #include "duckpgq/utils/duckpgq_utils.hpp"
+#include "duckpgq_extension.hpp"
+
+#include "duckpgq/functions/function_data/local_clustering_coefficient_function_data.hpp"
 
 namespace duckdb {
 static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState &state,
                                     Vector &result) {
   auto &func_expr = (BoundFunctionExpression &)state.expr;
-  auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
+  auto &info = (LocalClusteringCoefficientFunctionData &)*func_expr.bind_info;
   auto duckpgq_state = GetDuckPGQState(info.context);
 
   auto csr_entry = duckpgq_state->csr_list.find((uint64_t)info.csr_id);
