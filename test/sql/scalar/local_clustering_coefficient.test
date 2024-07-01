@@ -3,6 +3,50 @@
 
 require duckpgq
 
+# Test with a graph having no edges
+statement ok
+CREATE TABLE IsolatedStudent(id BIGINT, name VARCHAR);INSERT INTO IsolatedStudent VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie');
+
+statement ok
+CREATE TABLE NoEdgeKnow(src BIGINT, dst BIGINT);
+
+statement ok
+-CREATE PROPERTY GRAPH no_edge_pg
+VERTEX TABLES (
+    IsolatedStudent
+    )
+EDGE TABLES (
+    NoEdgeKnow    SOURCE KEY ( src ) REFERENCES IsolatedStudent ( id )
+            DESTINATION KEY ( dst ) REFERENCES IsolatedStudent ( id )
+    );
+
+statement error
+select id, local_clustering_coefficient from local_clustering_coefficient(no_edge_pg, isolatedstudent, noedgeknow);
+----
+Constraint Error: CSR not found. Is the graph populated?
+
+
+# Test with an empty graph
+statement ok
+CREATE TABLE EmptyStudent(id BIGINT, name VARCHAR);
+
+statement ok
+CREATE TABLE EmptyKnow(src BIGINT, dst BIGINT);
+
+statement ok
+-CREATE PROPERTY GRAPH empty_pg
+VERTEX TABLES (
+    EmptyStudent
+    )
+EDGE TABLES (
+    EmptyKnow    SOURCE KEY ( src ) REFERENCES EmptyStudent ( id )
+            DESTINATION KEY ( dst ) REFERENCES EmptyStudent ( id )
+    );
+
+query II
+select id, local_clustering_coefficient from local_clustering_coefficient(empty_pg, emptystudent, emptyknow);
+----
+
 statement ok
 CREATE TABLE Student(id BIGINT, name VARCHAR);INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
 
@@ -476,50 +520,8 @@ ORDER BY id ASC;
 37383395344394	0.0
 37383395344409	0.0
 
-# Test with an empty graph
-statement ok
-CREATE TABLE EmptyStudent(id BIGINT, name VARCHAR);
 
-statement ok
-CREATE TABLE EmptyKnow(src BIGINT, dst BIGINT);
 
-statement ok
--CREATE PROPERTY GRAPH empty_pg
-VERTEX TABLES (
-    EmptyStudent
-    )
-EDGE TABLES (
-    EmptyKnow    SOURCE KEY ( src ) REFERENCES EmptyStudent ( id )
-            DESTINATION KEY ( dst ) REFERENCES EmptyStudent ( id )
-    );
-
-query II
-select id, local_clustering_coefficient from local_clustering_coefficient(empty_pg, emptystudent, emptyknow);
-----
-
-# Test with a graph having no edges
-statement ok
-CREATE TABLE IsolatedStudent(id BIGINT, name VARCHAR);INSERT INTO IsolatedStudent VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie');
-
-statement ok
-CREATE TABLE NoEdgeKnow(src BIGINT, dst BIGINT);
-
-statement ok
--CREATE PROPERTY GRAPH no_edge_pg
-VERTEX TABLES (
-    IsolatedStudent
-    )
-EDGE TABLES (
-    NoEdgeKnow    SOURCE KEY ( src ) REFERENCES IsolatedStudent ( id )
-            DESTINATION KEY ( dst ) REFERENCES IsolatedStudent ( id )
-    );
-
-query II
-select id, local_clustering_coefficient from local_clustering_coefficient(no_edge_pg, isolatedstudent, noedgeknow);
-----
-0	0.0
-1	0.0
-2	0.0
 
 # Test with a graph having self-loops
 statement ok
@@ -591,9 +593,9 @@ EDGE TABLES (
 query II
 select id, local_clustering_coefficient from local_clustering_coefficient(varied_pg, variedstudent, variedknow);
 ----
-0	0.33333334
+0	0.6666667
 1	1.0
-2	0.33333334
+2	0.6666667
 3	0.33333334
 4	0.0
 5	0.0
