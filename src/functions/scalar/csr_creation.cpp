@@ -63,7 +63,6 @@ static void CsrInitializeEdge(DuckPGQState &context, int32_t id, int64_t v_size,
     csr_entry->second->v[i] += csr_entry->second->v[i - 1];
   }
   csr_entry->second->initialized_e = true;
-  return;
 }
 
 static void CsrInitializeWeight(DuckPGQState &context, int32_t id,
@@ -89,7 +88,6 @@ static void CsrInitializeWeight(DuckPGQState &context, int32_t id,
   }
 
   csr_entry->second->initialized_w = true;
-  return;
 }
 
 static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state,

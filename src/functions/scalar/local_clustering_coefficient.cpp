@@ -15,15 +15,10 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
   auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
   auto duckpgq_state = GetDuckPGQState(info.context);
 
-  D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
-
-  if ((uint64_t)info.csr_id + 1 > duckpgq_state->csr_list.size()) {
-    throw ConstraintException("Invalid ID");
-  }
   auto csr_entry = duckpgq_state->csr_list.find((uint64_t)info.csr_id);
   if (csr_entry == duckpgq_state->csr_list.end()) {
     throw ConstraintException(
-        "Need to initialize CSR before doing shortest path");
+        "CSR not found. Is the graph populated?");
   }
 
   if (!(csr_entry->second->initialized_v && csr_entry->second->initialized_e)) {
