@@ -1,7 +1,6 @@
 #include "chrono"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
 #include "duckpgq/utils/duckpgq_bitmap.hpp"
 #include "duckpgq/utils/duckpgq_utils.hpp"

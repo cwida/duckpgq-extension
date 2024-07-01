@@ -1,6 +1,5 @@
 #include <duckpgq_extension.hpp>
 #include "duckpgq/functions/tablefunctions/pgq_scan.hpp"
-#include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
 #include "duckpgq/utils/compressed_sparse_row.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"

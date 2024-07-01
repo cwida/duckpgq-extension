@@ -1,13 +1,7 @@
-#include "duckpgq/common.hpp"
-
+#include "duckpgq/functions/function_data/iterative_length_function_data.hpp"
 #include "duckdb/execution/expression_executor.hpp"
-#include "duckdb/main/client_data.hpp"
-#include "duckpgq/utils/compressed_sparse_row.hpp"
-#include "duckpgq_extension.hpp"
 
 namespace duckdb {
-
-
 
 unique_ptr<FunctionData> IterativeLengthFunctionData::Copy() const {
   return make_uniq<IterativeLengthFunctionData>(context, csr_id);
@@ -33,5 +27,4 @@ unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
 }
 
 
-
-} // namespace duckdb
+}

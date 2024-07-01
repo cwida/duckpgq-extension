@@ -10,7 +10,7 @@
 #include "duckdb/main/client_context.hpp"
 
 namespace duckdb {
-struct LocalClusteringCoefficientFunctionData : FunctionData {
+struct LocalClusteringCoefficientFunctionData final : FunctionData {
   ClientContext &context;
   int32_t csr_id;
 

@@ -1,24 +1,16 @@
 //===----------------------------------------------------------------------===//
 //                         DuckPGQ
 //
-// duckpgq/common.hpp
+// duckpgq/functions/function_data/iterative_length_function_data.hpp
 //
 //
 //===----------------------------------------------------------------------===//
 
 #pragma once
-
-#include "duckdb.hpp"
-#include "duckdb/main/extension_util.hpp"
-
 #include "duckdb/main/client_context.hpp"
-#include "duckdb/planner/expression/bound_function_expression.hpp"
 
 namespace duckdb {
-
-
-struct IterativeLengthFunctionData : public FunctionData {
-public:
+struct IterativeLengthFunctionData final : FunctionData {
   ClientContext &context;
   int32_t csr_id;
 
@@ -32,4 +24,4 @@ public:
   bool Equals(const FunctionData &other_p) const override;
 };
 
-} // namespace duckdb
+}

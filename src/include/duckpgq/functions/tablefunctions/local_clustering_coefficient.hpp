@@ -1,7 +1,6 @@
 #pragma once
 
 #include "duckdb/function/table_function.hpp"
-#include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
 
 namespace duckdb {
