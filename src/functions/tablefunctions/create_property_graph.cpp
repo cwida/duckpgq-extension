@@ -1,6 +1,7 @@
 #include "duckpgq/functions/tablefunctions/create_property_graph.hpp"
-#include "duckdb/parser/statement/create_statement.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/parser/statement/create_statement.hpp"
+#include <duckpgq/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 
 namespace duckdb {
@@ -66,12 +67,8 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
     vector<LogicalType> &return_types, vector<string> &names) {
   names.emplace_back("Success");
   return_types.emplace_back(LogicalType::BOOLEAN);
-  auto lookup = context.registered_state.find("duckpgq");
-  if (lookup == context.registered_state.end()) {
-    throw Exception(ExceptionType::INVALID,
-                    "Registered DuckPGQ state not found");
-  }
-  const auto duckpgq_state = dynamic_cast<DuckPGQState *>(lookup->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
+
   const auto duckpgq_parse_data =
       dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
 
@@ -188,12 +185,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
   auto &bind_data = data_p.bind_data->Cast<CreatePropertyGraphBindData>();
 
   auto pg_info = bind_data.create_pg_info;
-  auto lookup = context.registered_state.find("duckpgq");
-  if (lookup == context.registered_state.end()) {
-    throw Exception(ExceptionType::INVALID,
-                    "Registered DuckPGQ state not found");
-  }
-  auto duckpgq_state = (DuckPGQState *)lookup->second.get();
+  auto duckpgq_state = GetDuckPGQState(context);
+
   duckpgq_state->registered_property_graphs[pg_info->property_graph_name] =
       pg_info->Copy();
 }

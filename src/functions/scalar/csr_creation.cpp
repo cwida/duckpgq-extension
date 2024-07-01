@@ -115,8 +115,6 @@ static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state,
         edge_count = edge_count + cnt;
         return edge_count;
       });
-
-  return;
 }
 
 static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
@@ -180,8 +178,6 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
         csr_entry->second->w_double[(int64_t)pos - 1] = weight;
         return weight;
       });
-
-  return;
 }
 
 CreateScalarFunctionInfo DuckPGQFunctions::GetCsrVertexFunction() {

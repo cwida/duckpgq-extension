@@ -26,6 +26,7 @@
 #include "duckdb/parser/subpath_element.hpp"
 #include <cmath>
 #include <duckdb/common/enums/set_operation_type.hpp>
+#include <duckpgq/utils/duckpgq_utils.hpp>
 
 namespace duckdb {
 shared_ptr<PropertyGraphTable>
@@ -943,9 +944,8 @@ void PGQMatchFunction::ProcessPathList(
 unique_ptr<TableRef>
 PGQMatchFunction::MatchBindReplace(ClientContext &context,
                                    TableFunctionBindInput &bind_input) {
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  auto duckpgq_state =
-      dynamic_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
+
   auto match_index = bind_input.inputs[0].GetValue<int32_t>();
   auto ref = dynamic_cast<MatchExpression *>(
       duckpgq_state->transform_expression[match_index].get());
