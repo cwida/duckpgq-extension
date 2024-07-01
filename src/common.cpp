@@ -52,10 +52,10 @@ CSRFunctionData::CSRVertexBind(ClientContext &context,
     auto logical_type = LogicalType::SQLNULL;
     return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
                                       logical_type);
-  } else {
-    return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                      arguments[3]->return_type);
   }
+  return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
+                                      arguments[3]->return_type);
+
 }
 
 unique_ptr<FunctionData>
