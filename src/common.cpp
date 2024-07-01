@@ -3,28 +3,9 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/main/client_data.hpp"
 #include "duckpgq/compressed_sparse_row.hpp"
-
-#include <utility>
 #include "duckpgq_extension.hpp"
 
 namespace duckdb {
-
-DuckPGQBitmap::DuckPGQBitmap(size_t size) : size(size) {
-  bitmap.resize((size + 63) / 64, 0);
-}
-
-void DuckPGQBitmap::set(size_t index) {
-  bitmap[index / 64] |= (1ULL << (index % 64));
-}
-
-bool DuckPGQBitmap::test(size_t index) const {
-  return (bitmap[index / 64] & (1ULL << (index % 64))) != 0;
-}
-
-void DuckPGQBitmap::reset() {
-  std::fill(bitmap.begin(), bitmap.end(), 0);
-}
-
 
 CSRFunctionData::CSRFunctionData(ClientContext &context, int32_t id,
                                  LogicalType weight_type)
