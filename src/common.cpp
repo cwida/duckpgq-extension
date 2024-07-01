@@ -32,49 +32,6 @@ unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
   return make_uniq<IterativeLengthFunctionData>(context, csr_id);
 }
 
-unique_ptr<FunctionData> CheapestPathLengthFunctionData::CheapestPathLengthBind(
-    ClientContext &context, ScalarFunction &bound_function,
-    vector<unique_ptr<Expression>> &arguments) {
 
-  if (!arguments[0]->IsFoldable()) {
-    throw InvalidInputException("Id must be constant.");
-  }
-
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
-
-  int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0])
-                       .GetValue<int32_t>();
-  CSR *csr = duckpgq_state->GetCSR(csr_id);
-
-  if (!(csr->initialized_v && csr->initialized_e && csr->initialized_w)) {
-    throw ConstraintException(
-        "Need to initialize CSR before doing cheapest path");
-  }
-
-  if (csr->w.empty()) {
-    bound_function.return_type = LogicalType::DOUBLE;
-  } else {
-    bound_function.return_type = LogicalType::BIGINT;
-  }
-
-  return make_uniq<CheapestPathLengthFunctionData>(context, csr_id);
-}
-
-unique_ptr<FunctionData> CheapestPathLengthFunctionData::Copy() const {
-  return make_uniq<CheapestPathLengthFunctionData>(context, csr_id);
-}
-
-bool CheapestPathLengthFunctionData::Equals(const FunctionData &other_p) const {
-  auto &other = (const CheapestPathLengthFunctionData &)other_p;
-  return other.csr_id == csr_id;
-}
 
 } // namespace duckdb

@@ -1,5 +1,4 @@
 #include "duckdb/common/fstream.hpp"
-#include "duckdb/common/profiler.hpp"
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
