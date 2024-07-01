@@ -6,10 +6,10 @@
 namespace duckdb {
 class CSR {
 public:
-  CSR() {}
+  CSR() = default;
   ~CSR() { delete[] v; }
 
-  atomic<int64_t> *v;
+  atomic<int64_t> *v{};
 
   vector<int64_t> e;
   vector<int64_t> edge_ids;
@@ -21,7 +21,7 @@ public:
   bool initialized_e = false;
   bool initialized_w = false;
 
-  size_t vsize;
+  size_t vsize{};
 
   string ToString() {
     string result;

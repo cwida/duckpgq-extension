@@ -1,12 +1,11 @@
 #include "chrono"
-#include "duckdb/main/client_data.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
-#include <duckpgq_extension.hpp>
-
-#include <duckpgq/utils/duckpgq_utils.hpp>
+#include "duckpgq_extension.hpp"
+#include "duckpgq/utils/duckpgq_bitmap.hpp"
+#include "duckpgq/utils/duckpgq_utils.hpp"
 
 namespace duckdb {
 static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState &state,
