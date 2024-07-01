@@ -1,7 +1,6 @@
 #include "duckdb/common/vector_operations/quaternary_executor.hpp"
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
 #include "duckpgq/utils/compressed_sparse_row.hpp"
 

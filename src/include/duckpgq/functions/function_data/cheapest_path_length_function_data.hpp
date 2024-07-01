@@ -12,7 +12,7 @@
 
 namespace duckdb {
 
-struct CheapestPathLengthFunctionData : public FunctionData {
+struct CheapestPathLengthFunctionData final : FunctionData {
   ClientContext &context;
   int32_t csr_id;
 

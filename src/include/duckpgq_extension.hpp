@@ -1,6 +1,6 @@
 #pragma once
 
-#include "duckpgq/common.hpp"
+#include "duckdb.hpp"
 #include "duckdb/parser/sql_statement.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
 #include "duckpgq/utils/compressed_sparse_row.hpp"
