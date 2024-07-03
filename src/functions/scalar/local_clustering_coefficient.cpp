@@ -37,7 +37,7 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
   ValidityMask &result_validity = FlatVector::Validity(result);
   // create result vector
   result.SetVectorType(VectorType::FLAT_VECTOR);
-  auto result_data = FlatVector::GetData<float_t>(result);
+  auto result_data = FlatVector::GetData<float>(result);
 
   DuckPGQBitmap neighbors(v_size);
 
@@ -50,7 +50,7 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
     int64_t src_node = src_data[src_sel];
     int64_t number_of_edges = v[src_node + 1] - v[src_node];
     if (number_of_edges < 2) {
-      result_data[n] = static_cast<float_t>(0.0);
+      result_data[n] = static_cast<float>(0.0);
       continue;
     }
     neighbors.reset();
@@ -68,7 +68,7 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
       }
     }
 
-    float_t local_result =  static_cast<float_t>(count) / (number_of_edges * (number_of_edges - 1));
+    float local_result =  static_cast<float>(count) / (number_of_edges * (number_of_edges - 1));
     result_data[n] = local_result;
   }
   duckpgq_state->csr_to_delete.insert(info.csr_id);
