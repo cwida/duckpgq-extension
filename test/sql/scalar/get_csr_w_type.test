@@ -1,5 +1,5 @@
-# name: test/sql/sqlpgq/get_csr_w_type.test
-# group: [sqlpgq]
+# name: test/sql/scalar/get_csr_w_type.test
+# group: [duckpgq]
 
 require duckpgq
 
