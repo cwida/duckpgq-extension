@@ -70,7 +70,6 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(
   v_size = v_size_ + 2;
   try {
     v = new std::atomic<int64_t>[v_size];
-    reverse_v = new std::atomic<int64_t>[v_size];
   } catch (std::bad_alloc const &) {
     throw InternalException(
         "Unable to initialize vector of size for csr vertex table "
@@ -78,7 +77,6 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeVertex(
   }
   for (idx_t i = 0; i < v_size; ++i) {
     v[i].store(0);
-    reverse_v[i].store(0);
   }
   initialized_v = true;
 }
@@ -90,16 +88,13 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeEdge(
   }
   try {
     e.resize(e_size, 0);
-    reverse_e.resize(e_size, 0);
     edge_ids.resize(e_size, 0);
-    reverse_edge_ids.resize(e_size, 0);
   } catch (std::bad_alloc const &) {
     throw InternalException("Unable to initialize vector of size for csr "
                             "edge table representation");
   }
   for (idx_t i = 1; i < v_size; i++) {
     v[i] += v[i - 1];
-    reverse_v[i] += reverse_v[i - 1];
   }
   initialized_e = true;
 }
@@ -140,23 +135,15 @@ public:
 void PathFindingLocalState::CreateCSRVertex(DataChunk &input,
                                       GlobalCompressedSparseRow &global_csr) {
   if (!global_csr.initialized_v) {
-    const auto v_size = input.data[9].GetValue(0).GetValue<int64_t>();
+    const auto v_size = input.data[8].GetValue(0).GetValue<int64_t>();
     global_csr.InitializeVertex(v_size);
   }
   auto result = Vector(LogicalTypeId::BIGINT);
   BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
-      input.data[4], input.data[3], result, input.size(),
+      input.data[6], input.data[5], result, input.size(),
       [&](const int64_t src, const int64_t cnt) {
         int64_t edge_count = 0;
         global_csr.v[src + 2] = cnt;
-        edge_count = edge_count + cnt;
-        return edge_count;
-      });
-  BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
-      input.data[7], input.data[6], result, input.size(),
-      [&](const int64_t dst, const int64_t cnt) {
-        int64_t edge_count = 0;
-        global_csr.reverse_v[dst + 2] = cnt;
         edge_count = edge_count + cnt;
         return edge_count;
       });
@@ -198,8 +185,7 @@ public:
                 idx_t num_threads_, idx_t mode_, ClientContext &context_)
       : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false), 
         started_searches(0), total_len(0), context(context_), seen(v_size_), visit1(v_size_), visit2(v_size_),
-        top_down_cost(0), bottom_up_cost(0), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
-        task_queues_reverse(num_threads_), barrier(num_threads_), element_locks(v_size_), mode(mode_) {
+        num_threads(num_threads_), task_queues(num_threads_), barrier(num_threads_), element_locks(v_size_), mode(mode_) {
     result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
     auto &src_data = pairs->data[0];
     auto &dst_data = pairs->data[1];
@@ -215,9 +201,8 @@ public:
                 idx_t num_threads_, idx_t mode_, ClientContext &context_, bool is_path_)
       : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false), 
         started_searches(0), total_len(0), context(context_), seen(v_size_), visit1(v_size_), visit2(v_size_),
-        parents_ve(v_size_),
-        top_down_cost(0), bottom_up_cost(0), is_top_down(true), num_threads(num_threads_), task_queues(num_threads_), 
-        task_queues_reverse(num_threads_), barrier(num_threads_), element_locks(v_size_), mode(mode_) {
+        parents_ve(v_size_), num_threads(num_threads_), task_queues(num_threads_), barrier(num_threads_), 
+        element_locks(v_size_), mode(mode_) {
     result.Initialize(context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)}, pairs_->size());
     auto &src_data = pairs->data[0];
     auto &dst_data = pairs->data[1];
@@ -247,50 +232,41 @@ public:
 
   void CreateTasks() {
     // workerTasks[workerId] = [task1, task2, ...]
-    auto queues = {&task_queues, &task_queues_reverse};
-    is_top_down = true;
-    for (auto& queue : queues) {
-      vector<vector<pair<idx_t, idx_t>>> worker_tasks(num_threads);
-      auto cur_worker = 0;
-      int64_t *v = is_top_down ? (int64_t*)csr->v : (int64_t*)csr->reverse_v;
-      int64_t current_task_edges = 0;
-      idx_t current_task_start = 0;
-      for (idx_t i = 0; i < (idx_t)v_size; i++) {
-        auto vertex_edges = v[i + 1] - v[i];
-        if (current_task_edges + vertex_edges > split_size && i != current_task_start) {
-          auto worker_id = cur_worker % num_threads;
-          pair<idx_t, idx_t> range = {current_task_start, i};
-          worker_tasks[worker_id].push_back(range);
-          current_task_start = i;
-          current_task_edges = 0;
-          cur_worker++;
-        }
-        current_task_edges += vertex_edges;
-      }
-      if (current_task_start < (idx_t)v_size) {
+    auto queues = &task_queues;
+    vector<vector<pair<idx_t, idx_t>>> worker_tasks(num_threads);
+    auto cur_worker = 0;
+    int64_t *v = (int64_t*)csr->v;
+    int64_t current_task_edges = 0;
+    idx_t current_task_start = 0;
+    for (idx_t i = 0; i < (idx_t)v_size; i++) {
+      auto vertex_edges = v[i + 1] - v[i];
+      if (current_task_edges + vertex_edges > split_size && i != current_task_start) {
         auto worker_id = cur_worker % num_threads;
-        pair<idx_t, idx_t> range = {current_task_start, v_size};
+        pair<idx_t, idx_t> range = {current_task_start, i};
         worker_tasks[worker_id].push_back(range);
+        current_task_start = i;
+        current_task_edges = 0;
+        cur_worker++;
       }
-      for (idx_t worker_id = 0; worker_id < num_threads; worker_id++) {
-        queue->at(worker_id).first.store(0);
-        queue->at(worker_id).second = worker_tasks[worker_id];
-      }
-      is_top_down = false;
+      current_task_edges += vertex_edges;
     }
-    is_top_down = true;
+    if (current_task_start < (idx_t)v_size) {
+      auto worker_id = cur_worker % num_threads;
+      pair<idx_t, idx_t> range = {current_task_start, v_size};
+      worker_tasks[worker_id].push_back(range);
+    }
+    for (idx_t worker_id = 0; worker_id < num_threads; worker_id++) {
+      queues->at(worker_id).first.store(0);
+      queues->at(worker_id).second = worker_tasks[worker_id];
+    }
   }
 
   void InitTask(idx_t worker_id) {
-    if (is_top_down) {
-      task_queues[worker_id].first.store(0);
-    } else {
-      task_queues_reverse[worker_id].first.store(0);
-    }
+    task_queues[worker_id].first.store(0);
   }
 
   pair<idx_t, idx_t> FetchTask(idx_t worker_id) {
-    auto& task_queue = is_top_down ? task_queues : task_queues_reverse;
+    auto& task_queue = task_queues;
     idx_t offset = 0;
     do {
       auto worker_idx = (worker_id + offset) % task_queue.size();
@@ -310,23 +286,6 @@ public:
     idx_t left = block_size * worker_id;
     idx_t right = std::min(block_size * (worker_id + 1), (idx_t)v_size);
     return {left, right};
-  }
-
-  void DirectionSwitch() {
-    // Determine the switch of algorithms
-    // debug print
-    if (top_down_cost * alpha > bottom_up_cost) {
-      is_top_down = false;
-    } else {
-      is_top_down = true;
-    }
-    change = top_down_cost ? true : false;
-    // // debug print
-    // string msg = "Iter " + std::to_string(iter) + " top_down_cost: " + std::to_string(top_down_cost) + " bottom_up_cost: " + std::to_string(bottom_up_cost);
-    // Printer::Print(msg);
-    // clear the counters after the switch
-    top_down_cost = 0;
-    bottom_up_cost = 0;
   }
 
 public:
@@ -349,18 +308,11 @@ public:
   vector<std::bitset<LANE_LIMIT>> visit1;
   vector<std::bitset<LANE_LIMIT>> visit2;
   vector<std::array<ve, LANE_LIMIT>> parents_ve;
-  // vector<std::vector<int64_t>> parents_e;
-
-  atomic<int64_t> top_down_cost;
-  atomic<int64_t> bottom_up_cost;
-  double alpha = 1;
-  atomic<bool> is_top_down;
 
   idx_t num_threads;
   // task_queues[workerId] = {curTaskIx, queuedTasks}
   // queuedTasks[curTaskIx] = {start, end}
   vector<pair<atomic<idx_t>, vector<pair<idx_t, idx_t>>>> task_queues;
-  vector<pair<atomic<idx_t>, vector<pair<idx_t, idx_t>>>> task_queues_reverse;
   int64_t split_size = 256;
 
   Barrier barrier;
@@ -470,17 +422,12 @@ public:
     do {
       bfs_state->InitTask(worker_id);
 
-      if (bfs_state->is_top_down) {
-        IterativeLengthTopDown();
-      } else {
-        IterativeLengthBottomUp();
-      }
+      IterativeLength();
 
       barrier.Wait();
 
       if (worker_id == 0) {
         ReachDetect();
-        bfs_state->DirectionSwitch();
       }
       barrier.Wait();
     } while (change);
@@ -494,18 +441,16 @@ public:
 	}
 
 private:
-  void IterativeLengthTopDown() {
+  void IterativeLength() {
     auto& bfs_state = state.global_bfs_state;
     auto& seen = bfs_state->seen;
     auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
     int64_t *v = (int64_t *)state.global_csr->v;
-    int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
     vector<int64_t> &e = state.global_csr->e;
-    auto& top_down_cost = bfs_state->top_down_cost;
-    auto& bottom_up_cost = bfs_state->bottom_up_cost;
     auto& lane_to_num = bfs_state->lane_to_num;
+    auto& change = bfs_state->change;
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
@@ -533,65 +478,14 @@ private:
       }
     }
 
+    change = false;
     barrier.Wait();
 
     for (auto i = left; i < right; i++) {
       if (next[i].any()) {
         next[i] &= ~seen[i];
         seen[i] |= next[i];
-        top_down_cost += v[i + 1] - v[i];
-      }
-      if (seen[i].all() == false) {
-        bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-      }
-    }
-  }
-
-  void IterativeLengthBottomUp() {
-    auto& bfs_state = state.global_bfs_state;
-    auto& seen = bfs_state->seen;
-    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
-    auto& barrier = bfs_state->barrier;
-    int64_t *v = (int64_t *)state.global_csr->reverse_v;
-    int64_t *normal_v = (int64_t *)state.global_csr->v;
-    vector<int64_t> &e = state.global_csr->reverse_e;
-    auto& top_down_cost = bfs_state->top_down_cost;
-    auto& bottom_up_cost = bfs_state->bottom_up_cost;
-
-    // clear next before each iteration
-    for (auto i = left; i < right; i++) {
-      next[i] = 0;
-    }
-    
-    barrier.Wait();
-
-    while (true) {
-      auto task = bfs_state->FetchTask(worker_id);
-      if (task.first == task.second) {
-        break;
-      }
-      auto start = task.first;
-      auto end = task.second;
-
-      for (auto i = start; i < end; i++) {
-        if (seen[i].all()) {
-          continue;
-        }
-
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          next[i] |= visit[n];
-        }
-
-        if (next[i].any()) {
-          next[i] &= ~seen[i];
-          seen[i] |= next[i];
-          top_down_cost += normal_v[i + 1] - normal_v[i];
-        }
-        if (seen[i].all() == false) {
-          bottom_up_cost += v[i + 1] - v[i];
-        }
+        change |= next[i].any();
       }
     }
   }
@@ -665,23 +559,15 @@ public:
         }
       }
       if (!global_csr->initialized_e) {
-        const auto e_size = input.data[8].GetValue(0).GetValue<int64_t>();
+        const auto e_size = input.data[7].GetValue(0).GetValue<int64_t>();
         global_csr->InitializeEdge(e_size);
       }
       TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
-          input.data[4], input.data[7], input.data[2], result, input.size(),
+          input.data[6], input.data[4], input.data[2], result, input.size(),
           [&](int64_t src, int64_t dst, int64_t edge_id) {
             const auto pos = ++global_csr->v[src + 1];
             global_csr->e[static_cast<int64_t>(pos) - 1] = dst;
             global_csr->edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
-            return 1;
-          });
-      TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
-          input.data[7], input.data[4], input.data[2], result, input.size(),
-          [&](int64_t dst, int64_t src, int64_t edge_id) {
-            const auto pos = ++global_csr->reverse_v[dst + 1];
-            global_csr->reverse_e[static_cast<int64_t>(pos) - 1] = src;
-            global_csr->reverse_edge_ids[static_cast<int64_t>(pos) - 1] = edge_id;
             return 1;
           });
     }
@@ -722,8 +608,6 @@ public:
     auto &gstate = this->gstate;
     auto &global_csr = gstate.global_csr;
     global_csr->is_ready = true;
-    // debug print
-    // global_csr->Print();
   }
 };
 
@@ -757,154 +641,6 @@ public:
   }
 };
 
-class SequentialIterativeEvent : public BasePipelineEvent {
-public:
-  SequentialIterativeEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p)
-      : BasePipelineEvent(pipeline_p), gstate(gstate_p) {
-  }
-
-  PathFindingGlobalState &gstate;
-
-private:
-  std::chrono::high_resolution_clock::time_point start_time;
-
-public:
-  void Schedule() override {
-    auto &bfs_state = gstate.global_bfs_state;
-
-    auto& pairs = *bfs_state->pairs;
-    auto& result = bfs_state->result.data[0];
-    start_time = std::chrono::high_resolution_clock::now();
-    IterativeLengthFunction(gstate.global_csr, pairs, result);
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-  }
-
-private:
-  static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
-                              vector<std::bitset<LANE_LIMIT>> &seen,
-                              vector<std::bitset<LANE_LIMIT>> &visit,
-                              vector<std::bitset<LANE_LIMIT>> &next) {
-    bool change = false;
-    for (auto i = 0; i < v_size; i++) {
-      next[i] = 0;
-    }
-    for (auto i = 0; i < v_size; i++) {
-      if (visit[i].any()) {
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          next[n] = next[n] | visit[i];
-        }
-      }
-    }
-    for (auto i = 0; i < v_size; i++) {
-      next[i] = next[i] & ~seen[i];
-      seen[i] = seen[i] | next[i];
-      change |= next[i].any();
-    }
-    return change;
-  }
-
-  static void IterativeLengthFunction(const shared_ptr<PathFindingGlobalState::GlobalCompressedSparseRow> &csr,
-                                      DataChunk &pairs, Vector &result) {
-    int64_t v_size = csr->v_size;
-    int64_t *v = (int64_t *)csr->v;
-    vector<int64_t> &e = csr->e;
-
-    // get src and dst vectors for searches
-    auto &src = pairs.data[0];
-    auto &dst = pairs.data[1];
-    UnifiedVectorFormat vdata_src;
-    UnifiedVectorFormat vdata_dst;
-    src.ToUnifiedFormat(pairs.size(), vdata_src);
-    dst.ToUnifiedFormat(pairs.size(), vdata_dst);
-
-    auto src_data = FlatVector::GetData<int64_t>(src);
-    auto dst_data = FlatVector::GetData<int64_t>(dst);
-
-    ValidityMask &result_validity = FlatVector::Validity(result);
-
-    // create result vector
-    result.SetVectorType(VectorType::FLAT_VECTOR);
-    auto result_data = FlatVector::GetData<int64_t>(result);
-
-    // create temp SIMD arrays
-    vector<std::bitset<LANE_LIMIT>> seen(v_size);
-    vector<std::bitset<LANE_LIMIT>> visit1(v_size);
-    vector<std::bitset<LANE_LIMIT>> visit2(v_size);
-
-    // maps lane to search number
-    short lane_to_num[LANE_LIMIT];
-    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-      lane_to_num[lane] = -1; // inactive
-    }
-
-    idx_t started_searches = 0;
-    while (started_searches < pairs.size()) {
-
-      // empty visit vectors
-      for (auto i = 0; i < v_size; i++) {
-        seen[i] = 0;
-        visit1[i] = 0;
-      }
-
-      // add search jobs to free lanes
-      uint64_t active = 0;
-      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-        lane_to_num[lane] = -1;
-        while (started_searches < pairs.size()) {
-          int64_t search_num = started_searches++;
-          int64_t src_pos = vdata_src.sel->get_index(search_num);
-          int64_t dst_pos = vdata_dst.sel->get_index(search_num);
-          if (!vdata_src.validity.RowIsValid(src_pos)) {
-            result_validity.SetInvalid(search_num);
-            result_data[search_num] = (uint64_t)-1; /* no path */
-          } else if (src_data[src_pos] == dst_data[dst_pos]) {
-            result_data[search_num] =
-                (uint64_t)0; // path of length 0 does not require a search
-          } else {
-            visit1[src_data[src_pos]][lane] = true;
-            lane_to_num[lane] = search_num; // active lane
-            active++;
-            break;
-          }
-        }
-      }
-
-      // make passes while a lane is still active
-      for (int64_t iter = 1; active; iter++) {
-        if (!IterativeLength(v_size, v, e, seen, (iter & 1) ? visit1 : visit2,
-                            (iter & 1) ? visit2 : visit1)) {
-          break;
-        }
-        // detect lanes that finished
-        for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-          int64_t search_num = lane_to_num[lane];
-          if (search_num >= 0) { // active lane
-            int64_t dst_pos = vdata_dst.sel->get_index(search_num);
-            if (seen[dst_data[dst_pos]][lane]) {
-              result_data[search_num] =
-                  iter;               /* found at iter => iter = path length */
-              lane_to_num[lane] = -1; // mark inactive
-              active--;
-            }
-          }
-        }
-      }
-
-      // no changes anymore: any still active searches have no path
-      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-        int64_t search_num = lane_to_num[lane];
-        if (search_num >= 0) { // active lane
-          result_validity.SetInvalid(search_num);
-          result_data[search_num] = (int64_t)-1; /* no path */
-          lane_to_num[lane] = -1;                // mark inactive
-        }
-      }
-    }
-  }
-};
-
 class PhysicalShortestPathTask : public ExecutorTask {
 public:
   PhysicalShortestPathTask(shared_ptr<Event> event_p, ClientContext &context, PathFindingGlobalState &state, idx_t worker_id)
@@ -923,16 +659,11 @@ public:
     do {
       bfs_state->InitTask(worker_id);
 
-      if (bfs_state->is_top_down) {
-        IterativePathTopDown();
-      } else {
-        IterativePathBottomUp();
-      }
+      IterativePath();
       barrier.Wait();
 
       if (worker_id == 0) {
         ReachDetect();
-        bfs_state->DirectionSwitch();
       }
 
       barrier.Wait();
@@ -947,21 +678,17 @@ public:
   }
 
 private:
-  void IterativePathTopDown() {
+  void IterativePath() {
     auto& bfs_state = state.global_bfs_state;
     auto& seen = bfs_state->seen;
     auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
     auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
     auto& barrier = bfs_state->barrier;
     int64_t *v = (int64_t *)state.global_csr->v;
-    int64_t *reverse_v = (int64_t *)state.global_csr->reverse_v;
     vector<int64_t> &e = state.global_csr->e;
     auto& edge_ids = state.global_csr->edge_ids;
-    auto& top_down_cost = bfs_state->top_down_cost;
-    auto& bottom_up_cost = bfs_state->bottom_up_cost;
-    // auto& parents_v = bfs_state->parents_v;
-    // auto& parents_e = bfs_state->parents_e;
     auto& parents_ve = bfs_state->parents_ve;
+    auto& change = bfs_state->change;
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
@@ -983,13 +710,11 @@ private:
           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
             auto n = e[offset];
             auto edge_id = edge_ids[offset];
-            std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
-            next[n] |= visit[i];
+            {
+              std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
+              next[n] |= visit[i];
+            }
             for (auto l = 0; l < LANE_LIMIT; l++) {
-              // parents_v[n][l] = ((parents_v[n][l] == -1) && visit[i][l])
-              //         ? i : parents_v[n][l];
-              // parents_e[n][l] = ((parents_e[n][l] == -1) && visit[i][l])
-              //         ? edge_id : parents_e[n][l];
               if (parents_ve[n][l].GetV() == -1 && visit[i][l]) {
                 parents_ve[n][l] = {static_cast<int64_t>(i), edge_id};
               }
@@ -1005,74 +730,7 @@ private:
       if (next[i].any()) {
         next[i] &= ~seen[i];
         seen[i] |= next[i];
-        top_down_cost += v[i + 1] - v[i];
-      }
-      if (seen[i].all() == false) {
-        bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-      }
-    }
-  }
-
-  void IterativePathBottomUp() {
-    auto& bfs_state = state.global_bfs_state;
-    auto& seen = bfs_state->seen;
-    auto& visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-    auto& next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
-    auto& barrier = bfs_state->barrier;
-    int64_t *v = (int64_t *)state.global_csr->reverse_v;
-    int64_t *normal_v = (int64_t *)state.global_csr->v;
-    vector<int64_t> &e = state.global_csr->reverse_e;
-    auto& edge_ids = state.global_csr->reverse_edge_ids;
-    auto& top_down_cost = bfs_state->top_down_cost;
-    auto& bottom_up_cost = bfs_state->bottom_up_cost;
-    // auto& parents_v = bfs_state->parents_v;
-    // auto& parents_e = bfs_state->parents_e;
-    auto& parents_ve = bfs_state->parents_ve;
-
-    // clear next before each iteration
-    for (auto i = left; i < right; i++) {
-      next[i] = 0;
-    }
-    
-    barrier.Wait();
-
-    while (true) {
-      auto task = bfs_state->FetchTask(worker_id);
-      if (task.first == task.second) {
-        break;
-      }
-      auto start = task.first;
-      auto end = task.second;
-
-      for (auto i = start; i < end; i++) {
-        if (seen[i].all()) {
-          continue;
-        }
-
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          auto edge_id = edge_ids[offset];
-          next[i] |= visit[n];
-          std::lock_guard<std::mutex> lock(bfs_state->element_locks[i]);
-          for (auto l = 0; l < LANE_LIMIT; l++) {
-            // parents_v[i][l] = ((parents_v[i][l] == -1) && visit[n][l])
-            //         ? n : parents_v[i][l];
-            // parents_e[i][l] = ((parents_e[i][l] == -1) && visit[n][l])
-            //         ? edge_id : parents_e[i][l];
-            if (parents_ve[i][l].GetV() == -1 && visit[n][l]) {
-              parents_ve[i][l] = {n, edge_id};
-            }
-          }
-        }
-
-        if (next[i].any()) {
-          next[i] &= ~seen[i];
-          seen[i] |= next[i];
-          top_down_cost += normal_v[i + 1] - normal_v[i];
-        }
-        if (seen[i].all() == false) {
-          bottom_up_cost += v[i + 1] - v[i];
-        }
+        change |= next[i].any();
       }
     }
   }
@@ -1080,8 +738,6 @@ private:
   void ReachDetect() {
     auto &bfs_state = state.global_bfs_state;
     auto &change = bfs_state->change;
-    auto &top_down_cost = bfs_state->top_down_cost;
-    auto &bottom_up_cost = bfs_state->bottom_up_cost;
     // detect lanes that finished
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
       int64_t search_num = bfs_state->lane_to_num[lane];
@@ -1131,12 +787,6 @@ private:
       std::vector<int64_t> output_edge;
       auto source_v = bfs_state->src[src_pos]; // Take the source
 
-      // auto parent_vertex =
-      //     bfs_state->parents_v[bfs_state->dst[dst_pos]]
-      //             [lane]; // Take the parent vertex of the destination vertex
-      // auto parent_edge =
-      //     bfs_state->parents_e[bfs_state->dst[dst_pos]]
-      //             [lane]; // Take the parent edge of the destination vertex
       auto parent_vertex = bfs_state->parents_ve[bfs_state->dst[dst_pos]][lane].GetV();
       auto parent_edge = bfs_state->parents_ve[bfs_state->dst[dst_pos]][lane].GetE();
 
@@ -1151,8 +801,6 @@ private:
           break;
         }
         output_vector.push_back(parent_vertex);
-        // parent_edge = bfs_state->parents_e[parent_vertex][lane];
-        // parent_vertex = bfs_state->parents_v[parent_vertex][lane];
         parent_edge = bfs_state->parents_ve[parent_vertex][lane].GetE();
         parent_vertex = bfs_state->parents_ve[parent_vertex][lane].GetV();
         output_vector.push_back(parent_edge);
@@ -1215,229 +863,6 @@ public:
   }
 };
 
-class SequentialShortestPathEvent : public BasePipelineEvent {
-public:
-  SequentialShortestPathEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p)
-      : BasePipelineEvent(pipeline_p), gstate(gstate_p) {
-  }
-
-  PathFindingGlobalState &gstate;
-
-public:
-  void Schedule() override {
-    auto &bfs_state = gstate.global_bfs_state;
-    auto &pairs = *bfs_state->pairs;
-    auto &result = bfs_state->result.data[1];
-    auto start_time = std::chrono::high_resolution_clock::now();
-    ShortestPathFunction(gstate.global_csr, pairs, result);
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-  }
-
-private:
-  static bool IterativeLength(int64_t v_size, int64_t *V, vector<int64_t> &E,
-                              vector<int64_t> &edge_ids,
-                              vector<std::vector<int64_t>> &parents_v,
-                              vector<std::vector<int64_t>> &parents_e,
-                              vector<std::bitset<LANE_LIMIT>> &seen,
-                              vector<std::bitset<LANE_LIMIT>> &visit,
-                              vector<std::bitset<LANE_LIMIT>> &next) {
-    bool change = false;
-    for (auto v = 0; v < v_size; v++) {
-      next[v] = 0;
-    }
-    //! Keep track of edge id through which the node was reached
-    for (auto v = 0; v < v_size; v++) {
-      if (visit[v].any()) {
-        for (auto e = V[v]; e < V[v + 1]; e++) {
-          auto n = E[e];
-          auto edge_id = edge_ids[e];
-          next[n] = next[n] | visit[v];
-          for (auto l = 0; l < LANE_LIMIT; l++) {
-            parents_v[n][l] =
-                ((parents_v[n][l] == -1) && visit[v][l]) ? v : parents_v[n][l];
-            parents_e[n][l] = ((parents_e[n][l] == -1) && visit[v][l])
-                                  ? edge_id
-                                  : parents_e[n][l];
-          }
-        }
-      }
-    }
-
-    for (auto v = 0; v < v_size; v++) {
-      next[v] = next[v] & ~seen[v];
-      seen[v] = seen[v] | next[v];
-      change |= next[v].any();
-    }
-    return change;
-  }
-
-  static void ShortestPathFunction(const shared_ptr<PathFindingGlobalState::GlobalCompressedSparseRow> &csr,
-                                      DataChunk &pairs, Vector &result) {
-    int64_t v_size = csr->v_size;
-    int64_t *v = (int64_t *)csr->v;
-    vector<int64_t> &e = csr->e;
-    vector<int64_t> &edge_ids = csr->edge_ids;
-
-    auto &src = pairs.data[0];
-    auto &dst = pairs.data[1];
-    UnifiedVectorFormat vdata_src;
-    UnifiedVectorFormat vdata_dst;
-    src.ToUnifiedFormat(pairs.size(), vdata_src);
-    dst.ToUnifiedFormat(pairs.size(), vdata_dst);
-
-    auto src_data = (int64_t *)vdata_src.data;
-    auto dst_data = (int64_t *)vdata_dst.data;
-
-    result.SetVectorType(VectorType::FLAT_VECTOR);
-    auto result_data = FlatVector::GetData<list_entry_t>(result);
-    ValidityMask &result_validity = FlatVector::Validity(result);
-
-    // create temp SIMD arrays
-    vector<std::bitset<LANE_LIMIT>> seen(v_size);
-    vector<std::bitset<LANE_LIMIT>> visit1(v_size);
-    vector<std::bitset<LANE_LIMIT>> visit2(v_size);
-    vector<std::vector<int64_t>> parents_v(v_size,
-                                          std::vector<int64_t>(LANE_LIMIT, -1));
-    vector<std::vector<int64_t>> parents_e(v_size,
-                                          std::vector<int64_t>(LANE_LIMIT, -1));
-
-    // maps lane to search number
-    int16_t lane_to_num[LANE_LIMIT];
-    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-      lane_to_num[lane] = -1; // inactive
-    }
-    int64_t total_len = 0;
-
-    idx_t started_searches = 0;
-    while (started_searches < pairs.size()) {
-
-      // empty visit vectors
-      for (auto i = 0; i < v_size; i++) {
-        seen[i] = 0;
-        visit1[i] = 0;
-        for (auto j = 0; j < LANE_LIMIT; j++) {
-          parents_v[i][j] = -1;
-          parents_e[i][j] = -1;
-        }
-      }
-
-      // add search jobs to free lanes
-      uint64_t active = 0;
-      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-        lane_to_num[lane] = -1;
-        while (started_searches < pairs.size()) {
-          int64_t search_num = started_searches++;
-          int64_t src_pos = vdata_src.sel->get_index(search_num);
-          if (!vdata_src.validity.RowIsValid(src_pos)) {
-            result_validity.SetInvalid(search_num);
-          } else {
-            visit1[src_data[src_pos]][lane] = true;
-            parents_v[src_data[src_pos]][lane] =
-                src_data[src_pos]; // Mark source with source id
-            parents_e[src_data[src_pos]][lane] =
-                -2; // Mark the source with -2, there is no incoming edge for the
-                    // source.
-            lane_to_num[lane] = search_num; // active lane
-            active++;
-            break;
-          }
-        }
-      }
-
-      //! make passes while a lane is still active
-      for (int64_t iter = 1; active; iter++) {
-        //! Perform one step of bfs exploration
-        if (!IterativeLength(v_size, v, e, edge_ids, parents_v, parents_e, seen,
-                            (iter & 1) ? visit1 : visit2,
-                            (iter & 1) ? visit2 : visit1)) {
-          break;
-        }
-        int64_t finished_searches = 0;
-        // detect lanes that finished
-        for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-          int64_t search_num = lane_to_num[lane];
-          if (search_num >= 0) { // active lane
-            //! Check if dst for a source has been seen
-            int64_t dst_pos = vdata_dst.sel->get_index(search_num);
-            if (seen[dst_data[dst_pos]][lane]) {
-              finished_searches++;
-            }
-          }
-        }
-        if (finished_searches == LANE_LIMIT) {
-          break;
-        }
-      }
-      //! Reconstruct the paths
-      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-        int64_t search_num = lane_to_num[lane];
-        if (search_num == -1) { // empty lanes
-          continue;
-        }
-
-        //! Searches that have stopped have found a path
-        int64_t src_pos = vdata_src.sel->get_index(search_num);
-        int64_t dst_pos = vdata_dst.sel->get_index(search_num);
-        if (src_data[src_pos] == dst_data[dst_pos]) { // Source == destination
-          unique_ptr<Vector> output =
-              make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
-          ListVector::PushBack(*output, src_data[src_pos]);
-          ListVector::Append(result, ListVector::GetEntry(*output),
-                            ListVector::GetListSize(*output));
-          result_data[search_num].length = ListVector::GetListSize(*output);
-          result_data[search_num].offset = total_len;
-          total_len += result_data[search_num].length;
-          continue;
-        }
-        std::vector<int64_t> output_vector;
-        std::vector<int64_t> output_edge;
-        auto source_v = src_data[src_pos]; // Take the source
-
-        auto parent_vertex =
-            parents_v[dst_data[dst_pos]]
-                    [lane]; // Take the parent vertex of the destination vertex
-        auto parent_edge =
-            parents_e[dst_data[dst_pos]]
-                    [lane]; // Take the parent edge of the destination vertex
-
-        output_vector.push_back(dst_data[dst_pos]); // Add destination vertex
-        output_vector.push_back(parent_edge);
-        while (parent_vertex != source_v) { // Continue adding vertices until we
-                                            // have reached the source vertex
-          //! -1 is used to signify no parent
-          if (parent_vertex == -1 ||
-              parent_vertex == parents_v[parent_vertex][lane]) {
-            result_validity.SetInvalid(search_num);
-            break;
-          }
-          output_vector.push_back(parent_vertex);
-          parent_edge = parents_e[parent_vertex][lane];
-          parent_vertex = parents_v[parent_vertex][lane];
-          output_vector.push_back(parent_edge);
-        }
-
-        if (!result_validity.RowIsValid(search_num)) {
-          continue;
-        }
-        output_vector.push_back(source_v);
-        std::reverse(output_vector.begin(), output_vector.end());
-        auto output = make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
-        for (auto val : output_vector) {
-          Value value_to_insert = val;
-          ListVector::PushBack(*output, value_to_insert);
-        }
-
-        result_data[search_num].length = ListVector::GetListSize(*output);
-        result_data[search_num].offset = total_len;
-        ListVector::Append(result, ListVector::GetEntry(*output),
-                          ListVector::GetListSize(*output));
-        total_len += result_data[search_num].length;
-      }
-    }
-  }
-};
-
 SinkFinalizeType
 PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
                               ClientContext &context,
@@ -1459,9 +884,6 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     while (global_tasks->Scan(scan_state, pairs)) {
       all_pairs->Append(pairs, true);
     }
-    // debug print
-    // all_pairs->Print();
-
 
     auto &ts = TaskScheduler::GetScheduler(context);
 		idx_t num_threads = ts.NumberOfThreads();
@@ -1476,23 +898,9 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     auto const task_size = client_config.set_variables.find("experimental_path_finding_operator_task_size");
     gstate.global_bfs_state->split_size = task_size != client_config.set_variables.end() ? task_size->second.GetValue<idx_t>() : 256;
 
-    auto const alpha = client_config.set_variables.find("experimental_path_finding_operator_alpha");
-    gstate.global_bfs_state->alpha = alpha != client_config.set_variables.end() ? alpha->second.GetValue<double>() : 1;
-
-    auto const sequential = client_config.set_variables.find("experimental_path_finding_operator_sequential");
-    if (sequential != client_config.set_variables.end() && sequential->second.GetValue<bool>()) {
-      if (gstate.mode == "iterativelength") {
-        auto bfs_event = make_shared<SequentialIterativeEvent>(gstate, pipeline);
-        event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
-      } else if (gstate.mode == "shortestpath") {
-        auto bfs_event = make_shared<SequentialShortestPathEvent>(gstate, pipeline);
-        event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
-      }
-    } else {
-      // Schedule the first round of BFS tasks
-      if (all_pairs->size() > 0) {
-        ScheduleBFSTasks(pipeline, event, gstate);
-      }
+    // Schedule the first round of BFS tasks
+    if (all_pairs->size() > 0) {
+      ScheduleBFSTasks(pipeline, event, gstate);
     }
   }
 
@@ -1507,7 +915,6 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
   auto &gstate = state.Cast<PathFindingGlobalState>();
   auto &bfs_state = gstate.global_bfs_state;
   int64_t *v = (int64_t *)gstate.global_csr->v;
-  int64_t *reverse_v = (int64_t *)gstate.global_csr->reverse_v;
 
   // for every batch of pairs, schedule a BFS task
   bfs_state->Clear();
@@ -1543,18 +950,7 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
     }
     for (int64_t i = 0; i < bfs_state->v_size; i++) {
       bfs_state->seen[i] = seen_mask;
-
-      if (bfs_state->visit1[i].any()) {
-        bfs_state->top_down_cost += v[i + 1] - v[i];
-      }
-      if (bfs_state->seen[i].all() == false) {
-        bfs_state->bottom_up_cost += reverse_v[i + 1] - reverse_v[i];
-      }
     }
-
-    // // debug print
-    // string msg = "Iter 1, top down cost: " + to_string(bfs_state->top_down_cost) + ", bottom up cost: " + to_string(bfs_state->bottom_up_cost);
-    // Printer::Print(msg);
 
     if (gstate.mode == "iterativelength") {
       auto bfs_event = make_shared<ParallelIterativeEvent>(gstate, pipeline);
