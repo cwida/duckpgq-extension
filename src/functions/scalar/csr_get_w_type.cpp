@@ -1,8 +1,9 @@
-#include <duckpgq_extension.hpp>
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
+#include <duckpgq_extension.hpp>
+
+#include <duckpgq/utils/duckpgq_utils.hpp>
 
 namespace duckdb {
 
@@ -18,15 +19,8 @@ static void GetCsrWTypeFunction(DataChunk &args, ExpressionState &state,
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (CSRFunctionData &)*func_expr.bind_info;
 
-  auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == info.context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(info.context);
+
   result.SetVectorType(VectorType::CONSTANT_VECTOR);
   auto result_data = ConstantVector::GetData<int32_t>(result);
   auto csr = duckpgq_state->GetCSR(info.id);

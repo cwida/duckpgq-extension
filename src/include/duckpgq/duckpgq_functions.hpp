@@ -10,7 +10,6 @@
 
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
-#include "duckdb/main/extension_util.hpp"
 
 namespace duckdb {
 
@@ -33,6 +32,7 @@ public:
     functions.push_back(GetIterativeLength2Function());
     functions.push_back(GetDeleteCsrFunction());
     functions.push_back(GetGetCsrWTypeFunction());
+    functions.push_back(GetLocalClusteringCoefficientFunction());
 
     return functions;
   }
@@ -63,6 +63,7 @@ private:
   static CreateScalarFunctionInfo GetIterativeLength2Function();
   static CreateScalarFunctionInfo GetDeleteCsrFunction();
   static CreateScalarFunctionInfo GetGetCsrWTypeFunction();
+  static CreateScalarFunctionInfo GetLocalClusteringCoefficientFunction();
 
   static void AddAliases(vector<string> names, CreateScalarFunctionInfo fun,
                          vector<CreateScalarFunctionInfo> &functions) {

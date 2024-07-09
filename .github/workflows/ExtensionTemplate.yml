@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ '<submodule_version>' ]
+        duckdb_version: [ 'v1.0.0' ]
     env:
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
       VCPKG_TARGET_TRIPLET: 'x64-linux'
@@ -81,7 +81,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ '<submodule_version>']
+        duckdb_version: [ 'v1.0.0']
     env:
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
       VCPKG_TARGET_TRIPLET: 'x64-osx'
@@ -127,51 +127,51 @@ jobs:
         run: |
           make test
 
-#  windows:
-#    name: Windows
-#    if: ${{ vars.RUN_RENAME_TEST == 'true' || github.repository == 'duckdb/extension-template' }}
-#    runs-on: windows-latest
-#    strategy:
-#      matrix:
-#        # Add commits/tags to build against other DuckDB versions
-#        duckdb_version: [ '<submodule_version>' ]
-#    env:
-#      VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-#      VCPKG_TARGET_TRIPLET: 'x64-windows-static-md'
-#    defaults:
-#      run:
-#        shell: bash
-#
-#    steps:
-#      - uses: actions/checkout@v3
-#        with:
-#          fetch-depth: 0
-#          submodules: 'true'
-#
-#      - uses: actions/setup-python@v2
-#        with:
-#          python-version: '3.7'
-#
-#      - name: Checkout DuckDB to version
-#        # Add commits/tags to build against other DuckDB versions
-#        if: ${{ matrix.duckdb_version != '<submodule_version>'}}
-#        run: |
-#          cd duckdb-pgq
-#          git checkout ${{ matrix.duckdb_version }}
-#
-#      - name: Setup vcpkg
-#        uses: lukka/run-vcpkg@v11.1
-#        with:
-#          vcpkgGitCommitId: a1a1cbc975abf909a6c8985a6a2b8fe20bbd9bd6
-#
-#      - name: Rename extension
-#        run: |
-#          python scripts/bootstrap-template.py ext_1_a_123b_b11
-#
-#      - name: Build
-#        run: |
-#          make
-#
-#      - name: Test extension
-#        run: |
-#          build/release/test/Release/unittest.exe
+  windows:
+    name: Windows
+    if: ${{ vars.RUN_RENAME_TEST == 'true' || github.repository == 'duckdb/extension-template' }}
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        # Add commits/tags to build against other DuckDB versions
+        duckdb_version: [ '<submodule_version>' ]
+    env:
+      VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+      VCPKG_TARGET_TRIPLET: 'x64-windows-static-md'
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: 'true'
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.7'
+
+      - name: Checkout DuckDB to version
+        # Add commits/tags to build against other DuckDB versions
+        if: ${{ matrix.duckdb_version != '<submodule_version>'}}
+        run: |
+          cd duckdb-pgq
+          git checkout ${{ matrix.duckdb_version }}
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11.1
+        with:
+          vcpkgGitCommitId: a1a1cbc975abf909a6c8985a6a2b8fe20bbd9bd6
+
+      - name: Rename extension
+        run: |
+          python scripts/bootstrap-template.py ext_1_a_123b_b11
+
+      - name: Build
+        run: |
+          make
+
+      - name: Test extension
+        run: |
+          build/release/test/Release/unittest.exe

@@ -1,12 +1,12 @@
 #include "duckdb/common/fstream.hpp"
-#include "duckdb/common/profiler.hpp"
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
+#include "duckpgq/functions/function_data/iterative_length_function_data.hpp"
 
 #include <algorithm>
+#include <duckpgq/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 
 namespace duckdb {
@@ -52,15 +52,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
                                  Vector &result) {
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
-  auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == info.context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(info.context);
 
   D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
   int32_t id = args.data[0].GetValue(0).GetValue<int32_t>();

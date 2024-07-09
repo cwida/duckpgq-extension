@@ -6,8 +6,7 @@
  */
 
 #include "duckdb/function/table_function.hpp"
-#include "duckpgq/compressed_sparse_row.hpp"
-#include "duckpgq/common.hpp"
+#include "duckpgq/utils/compressed_sparse_row.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
 #include "duckdb/common/types/value.hpp"
 

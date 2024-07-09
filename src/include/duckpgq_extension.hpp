@@ -1,26 +1,10 @@
 #pragma once
 
-#include "duckdb/main/config.hpp"
-#include "duckdb/parser/column_list.hpp"
-#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
-#include "duckdb/parser/parsed_expression.hpp"
-#include "duckdb/parser/query_node.hpp"
-#include "duckdb/parser/simplified_token.hpp"
+#include "duckdb.hpp"
 #include "duckdb/parser/sql_statement.hpp"
-#include "duckdb/planner/logical_operator.hpp"
-#include "duckdb/planner/operator/logical_aggregate.hpp"
-#include "duckdb/planner/operator/logical_comparison_join.hpp"
-#include "duckdb/planner/operator/logical_empty_result.hpp"
-#include "duckdb/planner/operator/logical_filter.hpp"
-#include "duckdb/planner/operator/logical_get.hpp"
-#include "duckdb/planner/operator/logical_limit.hpp"
-#include "duckdb/planner/operator/logical_projection.hpp"
-#include "duckpgq/common.hpp"
-#include "duckpgq/compressed_sparse_row.hpp"
-#include "duckpgq/operators/logical_path_finding_operator.hpp"
-#include "duckdb/function/table/table_scan.hpp"
-#include "duckdb/main/database_manager.hpp"
-#include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
+#include "duckdb/parser/parsed_expression.hpp"
+#include "duckpgq/utils/compressed_sparse_row.hpp"
+#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 
 namespace duckdb {
 
@@ -183,7 +167,7 @@ struct DuckPGQParserExtension : public ParserExtension {
   DuckPGQParserExtension() : ParserExtension() {
     parse_function = duckpgq_parse;
     plan_function = duckpgq_plan;
-    parser_info = make_shared<DuckPGQParserExtensionInfo>();
+    parser_info = make_shared_ptr<DuckPGQParserExtensionInfo>();
   }
 };
 
@@ -194,6 +178,8 @@ struct DuckPGQParseData : ParserExtensionParseData {
     return make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
         statement->Copy());
   }
+
+  string ToString() const override { return statement->ToString(); };
 
   explicit DuckPGQParseData(unique_ptr<SQLStatement> statement)
       : statement(std::move(statement)) {}
@@ -206,6 +192,9 @@ public:
 
   void QueryEnd() override {
     parse_data.reset();
+    transform_expression.clear();
+    match_index = 0;              // Reset the index
+    unnamed_graphtable_index = 1; // Reset the index
     for (const auto &csr_id : csr_to_delete) {
       csr_list.erase(csr_id);
     }
@@ -231,7 +220,10 @@ public:
 public:
   unique_ptr<ParserExtensionParseData> parse_data;
 
-  unique_ptr<ParsedExpression> transform_expression;
+  unordered_map<int32_t, unique_ptr<ParsedExpression>> transform_expression;
+  int32_t match_index = 0;
+  int32_t unnamed_graphtable_index = 1; // Used to generate unique names for
+                                        // unnamed graph tables
 
   //! Property graphs that are registered
   std::unordered_map<string, unique_ptr<CreateInfo>> registered_property_graphs;

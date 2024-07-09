@@ -10,6 +10,8 @@
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/statement/drop_statement.hpp"
 
+#include <duckdb/parser/parsed_data/drop_property_graph_info.hpp>
+
 namespace duckdb {
 
 class DropPropertyGraphFunction : public TableFunction {
@@ -22,10 +24,10 @@ public:
   }
 
   struct DropPropertyGraphBindData : public TableFunctionData {
-    explicit DropPropertyGraphBindData(DropInfo *pg_info)
+    explicit DropPropertyGraphBindData(DropPropertyGraphInfo *pg_info)
         : drop_pg_info(pg_info) {}
 
-    DropInfo *drop_pg_info;
+    DropPropertyGraphInfo *drop_pg_info;
   };
 
   struct DropPropertyGraphGlobalData : public GlobalTableFunctionState {

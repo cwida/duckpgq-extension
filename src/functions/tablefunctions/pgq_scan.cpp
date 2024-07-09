@@ -1,13 +1,13 @@
 #include <duckpgq_extension.hpp>
 #include "duckpgq/functions/tablefunctions/pgq_scan.hpp"
-#include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
-#include "duckpgq/compressed_sparse_row.hpp"
+#include "duckpgq/utils/compressed_sparse_row.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/parser/property_graph_table.hpp"
+#include "duckpgq/utils/duckpgq_utils.hpp"
 #include <cstdint>
 
 namespace duckdb {
@@ -23,15 +23,7 @@ static void ScanCSREFunction(ClientContext &context, TableFunctionInput &data_p,
 
   gstate = true;
 
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
   auto csr_id = data_p.bind_data->Cast<CSRScanEData>().csr_id;
   CSR *csr = duckpgq_state->GetCSR(csr_id);
   output.SetCardinality(csr->e.size());
@@ -50,15 +42,7 @@ static void ScanCSRPtrFunction(ClientContext &context,
 
   gstate = true;
 
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
   auto csr_id = data_p.bind_data->Cast<CSRScanPtrData>().csr_id;
   CSR *csr = duckpgq_state->GetCSR(csr_id);
   output.SetCardinality(5);
@@ -100,15 +84,7 @@ static void ScanCSRVFunction(ClientContext &context, TableFunctionInput &data_p,
 
   gstate = true;
 
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
   auto csr_id = data_p.bind_data->Cast<CSRScanVData>().csr_id;
   CSR *csr = duckpgq_state->GetCSR(csr_id);
   output.SetCardinality(csr->vsize);
@@ -128,15 +104,7 @@ static void ScanCSRWFunction(ClientContext &context, TableFunctionInput &data_p,
 
   gstate = true;
 
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
   auto csr_scanw_data = data_p.bind_data->Cast<CSRScanWData>();
   auto csr_id = csr_scanw_data.csr_id;
   CSR *csr = duckpgq_state->GetCSR(csr_id);
@@ -162,15 +130,7 @@ static void ScanPGVTableFunction(ClientContext &context,
 
   gstate = true;
 
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
   auto pg_name = data_p.bind_data->Cast<PGScanVTableData>().pg_name;
   auto pg = duckpgq_state->GetPropertyGraph(pg_name);
 
@@ -196,15 +156,7 @@ static void ScanPGETableFunction(ClientContext &context,
 
   gstate = true;
 
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
   auto pg_name = data_p.bind_data->Cast<PGScanETableData>().pg_name;
   auto pg = duckpgq_state->GetPropertyGraph(pg_name);
 
@@ -240,15 +192,7 @@ static void ScanPGVColFunction(ClientContext &context,
 
   gstate = true;
 
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
   auto scan_v_col_data = data_p.bind_data->Cast<PGScanVColData>();
   auto pg_name = scan_v_col_data.pg_name;
   auto table_name = scan_v_col_data.table_name;
@@ -277,15 +221,7 @@ static void ScanPGEColFunction(ClientContext &context,
 
   gstate = true;
 
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
   auto pg_scan_e_col_data = data_p.bind_data->Cast<PGScanEColData>();
   auto pg_name = pg_scan_e_col_data.pg_name;
   auto table_name = pg_scan_e_col_data.table_name;
@@ -301,34 +237,6 @@ static void ScanPGEColFunction(ClientContext &context,
     size++;
   }
   output.SetCardinality(size);
-}
-
-static void ScanCSRWDoubleFunction(ClientContext &context,
-                                   TableFunctionInput &data_p,
-                                   DataChunk &output) {
-  bool &gstate = ((CSRScanState &)*data_p.global_state).finished;
-
-  if (gstate) {
-    output.SetCardinality(0);
-    return;
-  }
-
-  gstate = true;
-
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
-  auto csr_id = data_p.bind_data->Cast<CSRScanEData>().csr_id;
-  CSR *csr = duckpgq_state->GetCSR(csr_id);
-  output.SetCardinality(csr->w_double.size());
-  output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
-  FlatVector::SetData(output.data[0], (data_ptr_t)csr->w_double.data());
 }
 
 CreateTableFunctionInfo DuckPGQFunctions::GetScanCSREFunction() {

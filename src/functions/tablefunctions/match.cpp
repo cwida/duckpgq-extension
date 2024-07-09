@@ -26,6 +26,7 @@
 #include "duckdb/parser/subpath_element.hpp"
 #include <cmath>
 #include <duckdb/common/enums/set_operation_type.hpp>
+#include <duckpgq/utils/duckpgq_utils.hpp>
 
 namespace duckdb {
 shared_ptr<PropertyGraphTable>
@@ -33,8 +34,10 @@ PGQMatchFunction::FindGraphTable(const string &label,
                                  CreatePropertyGraphInfo &pg_table) {
   const auto graph_table_entry = pg_table.label_map.find(label);
   if (graph_table_entry == pg_table.label_map.end()) {
-    throw Exception(ExceptionType::BINDER, "The label " + label +
-      " is not registered in property graph " + pg_table.property_graph_name);
+    throw Exception(ExceptionType::BINDER,
+                    "The label " + label +
+                        " is not registered in property graph " +
+                        pg_table.property_graph_name);
   }
 
   return graph_table_entry->second;
@@ -377,8 +380,10 @@ void PGQMatchFunction::EdgeTypeAny(
   edge_left_ref->table_name = edge_table->table_name;
   src_dst_select_node->from_table = std::move(edge_left_ref);
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
-  src_dst_children.push_back(make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name));
-  src_dst_children.push_back(make_uniq<ColumnRefExpression>(edge_table->destination_fk[0], edge_table->table_name));
+  src_dst_children.push_back(make_uniq<ColumnRefExpression>(
+      edge_table->source_fk[0], edge_table->table_name));
+  src_dst_children.push_back(make_uniq<ColumnRefExpression>(
+      edge_table->destination_fk[0], edge_table->table_name));
   src_dst_children.push_back(make_uniq<StarExpression>());
 
   src_dst_select_node->select_list = std::move(src_dst_children);
@@ -394,8 +399,8 @@ void PGQMatchFunction::EdgeTypeAny(
 
   dst_src_children.push_back(make_uniq<ColumnRefExpression>(
       edge_table->destination_fk[0], edge_table->table_name));
-  dst_src_children.push_back(make_uniq<ColumnRefExpression>(edge_table->source_fk[0],
-                                                      edge_table->table_name));
+  dst_src_children.push_back(make_uniq<ColumnRefExpression>(
+      edge_table->source_fk[0], edge_table->table_name));
   dst_src_children.push_back(make_uniq<StarExpression>());
 
   dst_src_select_node->select_list = std::move(dst_src_children);
@@ -408,7 +413,8 @@ void PGQMatchFunction::EdgeTypeAny(
   union_node->right = std::move(dst_src_select_node);
   auto union_select = make_uniq<SelectStatement>();
   union_select->node = std::move(union_node);
-  // (SELECT src, dst, * from edge_table UNION ALL SELECT dst, src, * from edge_table)
+  // (SELECT src, dst, * from edge_table UNION ALL SELECT dst, src, * from
+  // edge_table)
   auto union_subquery = make_uniq<SubqueryRef>(std::move(union_select));
   union_subquery->alias = edge_binding;
   if (from_clause) {
@@ -510,7 +516,7 @@ PathElement *PGQMatchFunction::HandleNestedSubPath(
 }
 
 unique_ptr<ParsedExpression>
-CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions) {
+PGQMatchFunction::CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions) {
   unique_ptr<ParsedExpression> where_clause;
   for (auto &condition : conditions) {
     if (where_clause) {
@@ -631,7 +637,8 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
   return final_list;
 }
 
-void PGQMatchFunction::AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
+void PGQMatchFunction::AddEdgeJoins(
+    const shared_ptr<PropertyGraphTable> &edge_table,
     const shared_ptr<PropertyGraphTable> &previous_vertex_table,
     const shared_ptr<PropertyGraphTable> &next_vertex_table,
     PGQMatchType edge_type, const string &edge_binding,
@@ -922,9 +929,8 @@ void PGQMatchFunction::ProcessPathList(
       } else {
         alias_map[edge_element->variable_binding] =
             edge_table->source_reference;
-        AddEdgeJoins(edge_table, previous_vertex_table,
-                     next_vertex_table, edge_element->match_type,
-                     edge_element->variable_binding,
+        AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table,
+                     edge_element->match_type, edge_element->variable_binding,
                      previous_vertex_element->variable_binding,
                      next_vertex_element->variable_binding, conditions,
                      alias_map, extra_alias_counter, from_clause);
@@ -934,19 +940,19 @@ void PGQMatchFunction::ProcessPathList(
       auto edge_table = FindGraphTable(edge_element->label, pg_table);
       CheckInheritance(edge_table, edge_element, conditions);
       // check aliases
-      AddEdgeJoins(edge_table, previous_vertex_table,
-                   next_vertex_table, edge_element->match_type,
-                   edge_element->variable_binding,
+      AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table,
+                   edge_element->match_type, edge_element->variable_binding,
                    previous_vertex_element->variable_binding,
-                   next_vertex_element->variable_binding, conditions,
-                   alias_map, extra_alias_counter, from_clause);
+                   next_vertex_element->variable_binding, conditions, alias_map,
+                   extra_alias_counter, from_clause);
       // Check the edge type
       // If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
       // If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
       // If (a)-[b]-(c)  	-> 	(b.src = a.id AND b.dst = c.id)
       //              FROM (src, dst, * from b UNION ALL dst, src, * from b)
       // If (a)<-[b]->(c)	->  (b.src = a.id AND b.dst = c.id) AND
-      //						(b.dst = a.id AND b.src = c.id)
+      //						(b.dst = a.id AND b.src
+      //= c.id)
     }
     previous_vertex_element = next_vertex_element;
     previous_vertex_table = next_vertex_table;
@@ -956,15 +962,12 @@ void PGQMatchFunction::ProcessPathList(
 unique_ptr<TableRef>
 PGQMatchFunction::MatchBindReplace(ClientContext &context,
                                    TableFunctionBindInput &bind_input) {
-  auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-  auto duckpgq_state =
-      dynamic_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(context);
 
+  auto match_index = bind_input.inputs[0].GetValue<int32_t>();
   auto ref = dynamic_cast<MatchExpression *>(
-      duckpgq_state->transform_expression.get());
+      duckpgq_state->transform_expression[match_index].get());
   auto pg_table = duckpgq_state->GetPropertyGraph(ref->pg_name);
-
-  auto data = make_uniq<MatchBindData>();
 
   vector<unique_ptr<ParsedExpression>> conditions;
 
@@ -1058,6 +1061,13 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
 
   auto subquery = make_uniq<SelectStatement>();
   subquery->node = std::move(select_node);
+  if (ref->alias == "unnamed_graphtable") {
+    if (duckpgq_state->unnamed_graphtable_index > 1) {
+      ref->alias = "unnamed_graphtable" +
+                   std::to_string(duckpgq_state->unnamed_graphtable_index);
+    }
+    duckpgq_state->unnamed_graphtable_index++;
+  }
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
   return std::move(result);

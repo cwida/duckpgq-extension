@@ -14,6 +14,8 @@
 
 #include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/expression/constant_expression.hpp"
+
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
@@ -25,10 +27,13 @@
 
 #include "duckdb/parser/statement/extension_statement.hpp"
 
-#include "duckpgq/functions/tablefunctions/drop_property_graph.hpp"
 #include "duckpgq/functions/tablefunctions/create_property_graph.hpp"
 #include "duckpgq/functions/tablefunctions/describe_property_graph.hpp"
+#include "duckpgq/functions/tablefunctions/drop_property_graph.hpp"
 #include "duckpgq/functions/tablefunctions/match.hpp"
+
+#include <duckpgq/functions/tablefunctions/local_clustering_coefficient.hpp>
+#include <duckpgq/utils/duckpgq_utils.hpp>
 
 namespace duckdb {
 
@@ -70,6 +75,11 @@ static void LoadInternal(DatabaseInstance &instance) {
   CreateTableFunctionInfo drop_pg_info(drop_pg_function);
   catalog.CreateTableFunction(*con.context, drop_pg_info);
 
+  LocalClusteringCoefficientFunction local_clustering_coefficient_function;
+  CreateTableFunctionInfo local_clustering_coefficient_info(
+      local_clustering_coefficient_function);
+  catalog.CreateTableFunction(*con.context, local_clustering_coefficient_info);
+
   for (auto &fun : DuckPGQFunctions::GetFunctions()) {
     catalog.CreateFunction(*con.context, fun);
   }
@@ -96,10 +106,11 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                       : query);
   if (parser.statements.size() != 1) {
     throw Exception(ExceptionType::PARSER,
-        "More than 1 statement detected, please only give one.");
+                    "More than one statement detected, please only give one.");
   }
-  return ParserExtensionParseResult(make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
-      std::move(parser.statements[0])));
+  return ParserExtensionParseResult(
+      make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
+          std::move(parser.statements[0])));
 }
 
 BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
@@ -107,7 +118,7 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
                             SQLStatement &statement) {
   auto lookup = context.registered_state.find("duckpgq");
   if (lookup == context.registered_state.end()) {
-    throw;
+    throw; // Throw the original error that got us here if DuckPGQ is not loaded
   }
 
   auto duckpgq_state = (DuckPGQState *)lookup->second.get();
@@ -126,11 +137,16 @@ void duckpgq_find_match_function(TableRef *table_ref,
     // Handle TableFunctionRef case
     auto function =
         dynamic_cast<FunctionExpression *>(table_function_ref->function.get());
-    if (function->function_name == "duckpgq_match") {
-      duckpgq_state.transform_expression =
-          std::move(std::move(function->children[0]));
-      function->children.pop_back();
+    if (function->function_name != "duckpgq_match") {
+      return;
     }
+    int32_t match_index = duckpgq_state.match_index++;
+    duckpgq_state.transform_expression[match_index] =
+        std::move(function->children[0]);
+    function->children.pop_back();
+    auto function_identifier =
+        make_uniq<ConstantExpression>(Value::CreateValue(match_index));
+    function->children.push_back(std::move(function_identifier));
   } else if (auto join_ref = dynamic_cast<JoinRef *>(table_ref)) {
     // Handle JoinRef case
     duckpgq_find_match_function(join_ref->left.get(), duckpgq_state);
@@ -144,7 +160,8 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
     const auto select_statement = dynamic_cast<SelectStatement *>(statement);
     const auto select_node =
         dynamic_cast<SelectNode *>(select_statement->node.get());
-    const auto describe_node = dynamic_cast<ShowRef *>(select_node->from_table.get());
+    const auto describe_node =
+        dynamic_cast<ShowRef *>(select_node->from_table.get());
     if (describe_node) {
       ParserExtensionPlanResult result;
       result.function = DescribePropertyGraphFunction();
@@ -179,14 +196,12 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
   }
   if (statement->type == StatementType::EXPLAIN_STATEMENT) {
     auto &explain_statement = statement->Cast<ExplainStatement>();
-    // auto select_statement =
-    // dynamic_cast<SelectStatement*>(explain_statement.stmt.get());
     duckpgq_handle_statement(explain_statement.stmt.get(), duckpgq_state);
   }
   if (statement->type == StatementType::COPY_STATEMENT) {
     const auto &copy_statement = statement->Cast<CopyStatement>();
     const auto select_node =
-        dynamic_cast<SelectNode *>(copy_statement.select_statement.get());
+        dynamic_cast<SelectNode *>(copy_statement.info->select_statement.get());
     duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
     throw Exception(ExceptionType::BINDER, "use duckpgq_bind instead");
   }
@@ -197,7 +212,8 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
   }
 
   throw Exception(ExceptionType::NOT_IMPLEMENTED,
-    StatementTypeToString(statement->type) + "has not been implemented yet for DuckPGQ queries");
+                  StatementTypeToString(statement->type) +
+                      "has not been implemented yet for DuckPGQ queries");
 }
 
 ParserExtensionPlanResult
@@ -206,7 +222,7 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
   auto duckpgq_state_entry = context.registered_state.find("duckpgq");
   DuckPGQState *duckpgq_state;
   if (duckpgq_state_entry == context.registered_state.end()) {
-    auto state = make_shared<DuckPGQState>(std::move(parse_data));
+    auto state = make_shared_ptr<DuckPGQState>(std::move(parse_data));
     context.registered_state["duckpgq"] = state;
     duckpgq_state = state.get();
   } else {

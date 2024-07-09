@@ -1,9 +1,11 @@
-#include <duckpgq_extension.hpp>
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
+#include "duckpgq/functions/function_data/iterative_length_function_data.hpp"
+#include <duckpgq_extension.hpp>
+
+#include <duckpgq/utils/duckpgq_utils.hpp>
 
 namespace duckdb {
 typedef enum { NO_ARRAY, ARRAY, INTERMEDIATE } msbfs_modes_t;
@@ -199,15 +201,7 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state,
   result.SetVectorType(VectorType::FLAT_VECTOR);
 
   auto result_data = FlatVector::GetData<bool>(result);
-  auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == info.context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(info.context);
 
   CSR *csr = duckpgq_state->GetCSR(info.csr_id);
 
@@ -245,7 +239,8 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state,
           break;
         }
         default:
-          throw Exception(ExceptionType::INTERNAL, "Unknown reachability mode encountered");
+          throw Exception(ExceptionType::INTERNAL,
+                          "Unknown reachability mode encountered");
         }
       } else {
         exit_early = BfsWithoutArray(exit_early, csr, input_size, seen, visit,

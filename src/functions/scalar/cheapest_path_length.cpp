@@ -1,8 +1,10 @@
-#include <duckpgq_extension.hpp>
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
+#include "duckpgq/functions/function_data/cheapest_path_length_function_data.hpp"
+#include <duckpgq_extension.hpp>
+
+#include <duckpgq/utils/duckpgq_utils.hpp>
 
 namespace duckdb {
 
@@ -148,15 +150,7 @@ static void CheapestPathLengthFunction(DataChunk &args, ExpressionState &state,
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (CheapestPathLengthFunctionData &)*func_expr.bind_info;
   int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
-  auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == info.context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+  auto duckpgq_state = GetDuckPGQState(info.context);
 
   CSR *csr = duckpgq_state->GetCSR(info.csr_id);
   auto &src = args.data[2];

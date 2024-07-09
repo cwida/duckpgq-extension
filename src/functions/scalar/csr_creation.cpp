@@ -1,13 +1,13 @@
 #include "duckdb/common/vector_operations/quaternary_executor.hpp"
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/common.hpp"
 #include "duckpgq/duckpgq_functions.hpp"
-#include "duckpgq/compressed_sparse_row.hpp"
+#include "duckpgq/utils/compressed_sparse_row.hpp"
 
 #include <cmath>
-#include <mutex>
+#include <duckpgq/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
+#include <mutex>
 
 namespace duckdb {
 
@@ -36,11 +36,10 @@ static void CsrInitializeVertex(DuckPGQState &context, int32_t id,
     csr->initialized_v = true;
     context.csr_list[id] = std::move(csr);
   } catch (std::bad_alloc const &) {
-    throw Exception(ExceptionType::INTERNAL, "Unable to initialize vector of size for csr vertex table "
+    throw Exception(ExceptionType::INTERNAL,
+                    "Unable to initialize vector of size for csr vertex table "
                     "representation");
   }
-
-  return;
 }
 
 static void CsrInitializeEdge(DuckPGQState &context, int32_t id, int64_t v_size,
@@ -58,14 +57,14 @@ static void CsrInitializeEdge(DuckPGQState &context, int32_t id, int64_t v_size,
     csr_entry->second->e.resize(e_size, 0);
     csr_entry->second->edge_ids.resize(e_size, 0);
   } catch (std::bad_alloc const &) {
-    throw Exception(ExceptionType::INTERNAL, "Unable to initialize vector of size for csr edge table "
+    throw Exception(ExceptionType::INTERNAL,
+                    "Unable to initialize vector of size for csr edge table "
                     "representation");
   }
   for (auto i = 1; i < v_size + 2; i++) {
     csr_entry->second->v[i] += csr_entry->second->v[i - 1];
   }
   csr_entry->second->initialized_e = true;
-  return;
 }
 
 static void CsrInitializeWeight(DuckPGQState &context, int32_t id,
@@ -87,12 +86,12 @@ static void CsrInitializeWeight(DuckPGQState &context, int32_t id,
       throw NotImplementedException("Unrecognized weight type detected.");
     }
   } catch (std::bad_alloc const &) {
-    throw Exception(ExceptionType::INTERNAL, "Unable to initialize vector of size for csr weight table "
+    throw Exception(ExceptionType::INTERNAL,
+                    "Unable to initialize vector of size for csr weight table "
                     "representation");
   }
 
   csr_entry->second->initialized_w = true;
-  return;
 }
 
 static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state,
@@ -100,16 +99,7 @@ static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state,
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (CSRFunctionData &)*func_expr.bind_info;
 
-  auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == info.context.registered_state.end()) {
-    //! Wondering how you can get here if the extension wasn't loaded, but
-    //! leaving this check in anyways
-    throw MissingExtensionException(
-        "The DuckPGQ extension has not been loaded");
-  }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
-
+  auto duckpgq_state = GetDuckPGQState(info.context);
   int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
   auto csr_entry = duckpgq_state->csr_list.find(info.id);
 
@@ -130,8 +120,6 @@ static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state,
         edge_count = edge_count + cnt;
         return edge_count;
       });
-
-  return;
 }
 
 static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
@@ -198,8 +186,6 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
         csr_entry->second->w_double[(int64_t)pos - 1] = weight;
         return weight;
       });
-
-  return;
 }
 
 CreateScalarFunctionInfo DuckPGQFunctions::GetCsrVertexFunction() {

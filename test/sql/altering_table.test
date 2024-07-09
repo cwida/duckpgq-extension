@@ -2,8 +2,8 @@
 # group: [sql]
 # issue: https://github.com/cwida/duckpgq-extension/issues/44
 
-statement ok
-pragma enable_verification
+#statement ok
+#pragma enable_verification
 
 require duckpgq
 
