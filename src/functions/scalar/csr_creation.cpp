@@ -207,14 +207,7 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetCsrEdgeFunction() {
                                   LogicalType::BIGINT, LogicalType::BIGINT,
                                   LogicalType::BIGINT, LogicalType::BIGINT},
                                  LogicalType::INTEGER, CreateCsrEdgeFunction,
-                                 CSRFunctionData::CSREdgeBind));
-
-  set.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT,
-                                  LogicalType::BIGINT, LogicalType::BIGINT,
-                                  LogicalType::BIGINT, LogicalType::BIGINT,
-                                  LogicalType::BIGINT},
-                                 LogicalType::INTEGER, CreateCsrEdgeFunction,
-                                 CSRFunctionData::CSREdgeBind));                          
+                                 CSRFunctionData::CSREdgeBind));                        
 
   //! No edge weight
   set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,

@@ -19,42 +19,10 @@ create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (
 statement ok
 create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
 
-#statement ok
-#-CREATE PROPERTY GRAPH pg
-#VERTEX TABLES (
-#student
-#)
-#EDGE TABLES (
-#know   SOURCE KEY (src) REFERENCES student (id)
-#        DESTINATION KEY (dst) references student (id)
-#);
-#
-#query III
-#SELECT *, iterativelength(src, dst) as length
-#FROM pair AS p
-#WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
-#            (SELECT count(a.id) as v_size FROM Student a),
-#            (SELECT count(k.src) as e_size from know k),
-#              a.rowid,
-#              c.rowid,
-#              k.rowid,
-#              t.cnt)    FROM Know k
-#                          JOIN student a on a.id = k.src
-#                          JOIN student c on c.id = k.dst
-#                          JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
-#                                  FROM student a
-#                                 LEFT JOIN know k ON k.src = a.id
-#                                 GROUP BY a.rowid) t
-#                             ON t.a_rowid = a.rowid) AND p.dst;
-#----
-#0	1	NULL
-#1	2	2
-#2	0	1
-
 query III
 SELECT *, shortestpath(src, dst, 'pair') as path
 FROM pair AS p
-WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
+WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(0,
             (SELECT count(a.id) as v_size FROM Student a),
             (SELECT count(k.src) as e_size from know k),
               a.rowid,
@@ -87,22 +55,10 @@ CREATE OR REPLACE TABLE pairs2 AS (
     USING SAMPLE reservoir(2 ROWS) REPEATABLE (300)
 );
 
-#statement ok
-#-CREATE PROPERTY GRAPH snb
-#VERTEX TABLES (
-#    Person PROPERTIES (id) LABEL Person
-#    )
-#EDGE TABLES (
-#    Person_knows_Person     SOURCE KEY (Person1Id) REFERENCES Person (id)
-#                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
-#                            LABEL Knows
-#    );
-
-
 query III
 SELECT *, iterativelength(src, dst, 'pairs2') as length
 FROM pairs2 AS p
-WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
+WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(0,
             (SELECT count(a.id) as v_size FROM Person a),
             (SELECT count(k.Person1Id) as e_size FROM Person_knows_Person k),
             a.rowid,
@@ -119,39 +75,6 @@ WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
 ----
 42	22	NULL
 3	33	2
-
-
-#query III
-#WITH cte1 AS (
-#    SELECT  CREATE_CSR_EDGE(
-#            0,
-#            (SELECT count(a.id) FROM Person a),
-#            CAST (
-#                (SELECT sum(CREATE_CSR_VERTEX(
-#                            0,
-#                            (SELECT count(a.id) FROM Person a),
-#                            sub.dense_id,
-#                            sub.cnt)
-#                            )
-#                FROM (
-#                    SELECT a.rowid as dense_id, count(k.Person1Id) as cnt
-#                    FROM Person a
-#                    LEFT JOIN Person_knows_Person k ON k.Person1Id = a.id
-#                    GROUP BY a.rowid) sub
-#                )
-#            AS BIGINT),
-#            a.rowid,
-#            c.rowid,
-#            k.rowid) as temp
-#    FROM Person_knows_Person k
-#    JOIN Person a on a.id = k.Person1Id
-#    JOIN Person c on c.id = k.Person2Id
-#) SELECT p.src, p.dst, iterativelength(0, (select count(*) from Person), p.src, p.dst) as length
-#        FROM pairs2 p, (select count(cte1.temp) * 0 as temp from cte1) __x
-#        WHERE __x.temp * 0 >= 0;
-#----
-#42	22	NULL
-#3	33	2
 
 statement ok
 CREATE OR REPLACE TABLE pairs3 AS (
@@ -185,66 +108,3 @@ WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
                             ON t.a_rowid = a.rowid) AND p.dst;
 ----
 10	2	NULL
-
-#            CAST (
-#                (SELECT sum(CREATE_CSR_VERTEX(0,
-#                    (SELECT count(a.id) FROM Student a),
-#                      sub.dense_id,
-#                      sub.cnt)
-#                )
-#                FROM (
-#                    SELECT a.rowid as dense_id, count(k.src) as cnt
-#                    FROM Student a
-#                    LEFT JOIN Knows k ON k.src = a.id
-#                    GROUP BY a.rowid) sub
-#            ) AS BIGINT),
-
-
-#statement ok
-#SELECT *
-#FROM pairs AS p
-#WHERE (p.src, p.dst) BETWEEN (
-#            SELECT (csr_id, 0) FROM (SELECT 0 as csr_id,
-#            (SELECT count(a.id) FROM Student a),
-#            0,
-#            a.rowid,
-#            c.rowid,
-#            k.rowid    FROM Knows k
-#                        JOIN student a on a.id = k.src
-#                        JOIN student c on c.id = k.dst)) AND (0, 3);
-
-#CAST (
-#                (SELECT sum(CREATE_CSR_VERTEX(0,
-#                    (SELECT count(a.id) FROM Student a),
-#                      sub.dense_id,
-#                      sub.cnt)
-#                )
-#                FROM (
-#                    SELECT a.rowid as dense_id, count(k.src) as cnt
-#                    FROM Student a
-#                    LEFT JOIN Knows k ON k.src = a.id
-#                    GROUP BY a.rowid) sub
-#            ) AS BIGINT),
-#statement ok
-#select 1;
-# LHS of IEJOIN
-# RHS of IEJoin
-# 0,
-#            (SELECT count(a.id) FROM Student a),
-#            CAST (
-#                (SELECT sum(CREATE_CSR_VERTEX(
-#                            0,
-#                            (SELECT count(a.id) FROM Student a),
-#                            sub.dense_id,
-#                            sub.cnt)
-#                            )
-#                FROM (
-#                    SELECT a.rowid as dense_id, count(k.src) as cnt
-#                    FROM Student a
-#                    LEFT JOIN Know k ON k.src = a.id
-#                    GROUP BY a.rowid) sub
-#                )
-#            AS BIGINT),
-#            a.rowid,
-#            c.rowid,
-#            k.rowid

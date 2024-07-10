@@ -4,7 +4,7 @@
 namespace duckdb {
 
 unique_ptr<FunctionData> IterativeLengthFunctionData::Copy() const {
-  return make_uniq<IterativeLengthFunctionData>(context, csr_id);
+  return make_uniq<IterativeLengthFunctionData>(context, table_to_scan, csr_id);
 }
 
 bool IterativeLengthFunctionData::Equals(const FunctionData &other_p) const {
@@ -23,7 +23,7 @@ unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
   int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0])
                        .GetValue<int32_t>();
 
-  return make_uniq<IterativeLengthFunctionData>(context, csr_id);
+  return make_uniq<IterativeLengthFunctionData>(context, "", csr_id);
 }
 
 

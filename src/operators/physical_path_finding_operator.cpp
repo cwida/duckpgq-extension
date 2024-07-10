@@ -872,10 +872,10 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
   auto &global_tasks = gstate.global_tasks;
 
   if (gstate.child == 0) {
-    auto csr_event = make_shared<CSREdgeCreationEvent>(gstate, pipeline);
-    event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(csr_event)));
+    auto csr_event = make_shared_ptr<CSREdgeCreationEvent>(gstate, pipeline);
+    event.InsertEvent(std::move(csr_event));
   } else if (gstate.child == 1 && global_tasks->Count() > 0) {
-    auto all_pairs = make_shared<DataChunk>();
+    auto all_pairs = make_shared_ptr<DataChunk>();
     DataChunk pairs;
     global_tasks->InitializeScanChunk(*all_pairs);
     global_tasks->InitializeScanChunk(pairs);
@@ -953,11 +953,11 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
     }
 
     if (gstate.mode == "iterativelength") {
-      auto bfs_event = make_shared<ParallelIterativeEvent>(gstate, pipeline);
-      event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
+      auto bfs_event = make_shared_ptr<ParallelIterativeEvent>(gstate, pipeline);
+      event.InsertEvent(std::move(bfs_event));
     } else if (gstate.mode == "shortestpath") {
-      auto bfs_event = make_shared<ParallelShortestPathEvent>(gstate, pipeline);
-      event.InsertEvent(std::move(std::dynamic_pointer_cast<BasePipelineEvent>(bfs_event)));
+      auto bfs_event = make_shared_ptr<ParallelShortestPathEvent>(gstate, pipeline);
+      event.InsertEvent(std::move(bfs_event));
     }
 
   }

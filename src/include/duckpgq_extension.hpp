@@ -1,10 +1,31 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "duckdb/main/config.hpp"
+#include "duckdb/parser/column_list.hpp"
 #include "duckdb/parser/sql_statement.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
 #include "duckpgq/utils/compressed_sparse_row.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
+#include "duckdb/parser/parsed_expression.hpp"
+#include "duckdb/parser/query_node.hpp"
+#include "duckdb/parser/simplified_token.hpp"
+#include "duckdb/parser/sql_statement.hpp"
+#include "duckdb/planner/logical_operator.hpp"
+#include "duckdb/planner/operator/logical_aggregate.hpp"
+#include "duckdb/planner/operator/logical_comparison_join.hpp"
+#include "duckdb/planner/operator/logical_empty_result.hpp"
+#include "duckdb/planner/operator/logical_filter.hpp"
+#include "duckdb/planner/operator/logical_get.hpp"
+#include "duckdb/planner/operator/logical_limit.hpp"
+#include "duckdb/planner/operator/logical_projection.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckpgq/operators/logical_path_finding_operator.hpp"
+#include "duckpgq/functions/function_data/iterative_length_function_data.hpp"
+#include "duckdb/function/table/table_scan.hpp"
+#include "duckdb/main/database_manager.hpp"
+#include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
+#include <iostream>
 
 namespace duckdb {
 
@@ -108,6 +129,7 @@ public:
           path_finding_children, path_finding_expressions, mode);
       op.children.clear();
       op.children.push_back(std::move(path_finding_operator));
+      std::cout << "Found path-finding operator" << std::endl;
       return true; // We have found the path-finding operator, no need to continue
     }
     for (auto &child : op.children) {
@@ -118,9 +140,9 @@ public:
     return false;
   }
 
-  static void DuckpgqOptimizeFunction(ClientContext &context, OptimizerExtensionInfo *info,
+  static void DuckpgqOptimizeFunction(OptimizerExtensionInput &input,
                                      duckdb::unique_ptr<LogicalOperator> &plan) {
-    auto& client_config = ClientConfig::GetConfig(context);
+    auto& client_config = ClientConfig::GetConfig(input.context);
     auto const path_finding_operator_option = client_config.set_variables.find("experimental_path_finding_operator");
     if (path_finding_operator_option == client_config.set_variables.end()) {
       return; // If the path finding operator is not enabled, we do not need to do anything
@@ -128,7 +150,7 @@ public:
     if (!path_finding_operator_option->second.GetValue<bool>()) {
       return;
     }
-    InsertPathFindingOperator(*plan, context);
+    InsertPathFindingOperator(*plan, input.context);
   }
 };
 

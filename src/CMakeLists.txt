@@ -1,4 +1,5 @@
 add_subdirectory(functions)
+add_subdirectory(operators)
 add_subdirectory(utils)
 
 set(EXTENSION_SOURCES
