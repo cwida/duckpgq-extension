@@ -22,7 +22,7 @@ create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20),
 query III
 SELECT *, shortestpath(src, dst, 'pair') as path
 FROM pair AS p
-WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(0,
+WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
             (SELECT count(a.id) as v_size FROM Student a),
             (SELECT count(k.src) as e_size from know k),
               a.rowid,
