@@ -8,11 +8,12 @@ This repository is currently a research project and a work in progress. Feel fre
 ---
 
 ## Loading DuckPGQ 
-Since DuckDB v1.0.0, DuckPGQ can be loaded as a community extension without the requirement of the `unsigned` flag. From any DuckDB instance, the following two commands will allow you to install and load DuckPGQ:
+Since DuckDB v1.0.0, DuckPGQ can be loaded as a community extension without requiring the `unsigned` flag. From any DuckDB instance, the following two commands will allow you to install and load DuckPGQ:
 ```sql
 install duckpgq from community;
 load duckpgq;
 ```
+See the [DuckPGQ community extension page](https://community-extensions.duckdb.org/extensions/duckpgq.html) for more information.
 
 For older DuckDB versions there are two ways to install the DuckPGQ extension. 
 Both ways require DuckDB to be launched in the `unsigned` mode.
