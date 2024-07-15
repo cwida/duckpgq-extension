@@ -8,7 +8,14 @@ This repository is currently a research project and a work in progress. Feel fre
 ---
 
 ## Loading DuckPGQ 
-There are currently two ways to install the DuckPGQ extension. 
+Since DuckDB v1.0.0, DuckPGQ can be loaded as a community extension without requiring the `unsigned` flag. From any DuckDB instance, the following two commands will allow you to install and load DuckPGQ:
+```sql
+install duckpgq from community;
+load duckpgq;
+```
+See the [DuckPGQ community extension page](https://community-extensions.duckdb.org/extensions/duckpgq.html) for more information.
+
+For older DuckDB versions there are two ways to install the DuckPGQ extension. 
 Both ways require DuckDB to be launched in the `unsigned` mode.
 The first way is by setting the `custom_extension_repository` command (see below). The other way is by directly downloading the extension file for your OS + architecture (see the [DuckPGQ availibility section](#duckpgq-extension-availability))
 
@@ -64,6 +71,13 @@ load 'duckpgq';
 | eh        | [wasm_eh](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.0.0/wasm_eh/duckpgq.duckdb_extension.wasm>) |
 | mvp        | [wasm_mvp](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.0.0/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
 | threads        | [wasm_threads](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.0.0/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+
+### Windows
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [windows_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.0.0/windows_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_rtools        | [windows_amd64_rtools](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.0.0/windows_amd64_rtools/duckpgq.duckdb_extension.gz>) |
 
 </details>
 
@@ -162,6 +176,7 @@ load 'duckpgq';
 | arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v0.10.0/osx_arm64/duckpgq.duckdb_extension.gz>) |
 
 </details>
+
 
 ## Building
 ### Managing dependencies
