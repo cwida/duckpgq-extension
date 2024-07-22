@@ -162,6 +162,18 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
       result.return_type = StatementReturnType::QUERY_RESULT;
       return result;
     }
+    auto cte_keys = select_node->cte_map.map.Keys();
+    for (auto &key : cte_keys) {
+      auto cte = select_node->cte_map.map.find(key);
+      auto cte_select_statement = dynamic_cast<SelectStatement *>(cte->second->query.get());
+      if (cte_select_statement == nullptr) {
+        continue; // Skip non-select statements
+      }
+      auto cte_node = dynamic_cast<SelectNode *>(cte_select_statement->node.get());
+      if (cte_node) {
+        duckpgq_find_match_function(cte_node->from_table.get(), duckpgq_state);
+      }
+    }
     duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
     throw Exception(ExceptionType::BINDER, "use duckpgq_bind instead");
   }
