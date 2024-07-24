@@ -163,3 +163,36 @@ EDGE TABLES (
 ----
 Invalid Error: Referenced vertex table Student does not exist.
 
+
+# Check duplicate labels
+statement error
+-CREATE PROPERTY GRAPH pg4
+VERTEX TABLES (
+    School  LABEL School IN School_kind (Hogeschool, Hogeschool),
+    Student
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            PROPERTIES ( createDate ) LABEL Knows
+    );
+----
+Constraint Error: Label hogeschool is not unique, make sure all labels are unique
+
+
+# Check duplicate labels with case insenstitivity
+statement error
+-CREATE PROPERTY GRAPH pg4
+VERTEX TABLES (
+    School  LABEL School IN School_kind (HOGESCHOOL, University),
+    Student LABEL Hogeschool
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            PROPERTIES ( createDate ) LABEL Knows
+    );
+----
+Constraint Error: Label hogeschool is not unique, make sure all labels are unique
+
+
