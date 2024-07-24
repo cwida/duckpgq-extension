@@ -11,6 +11,21 @@
 #include "duckdb/common/types/vector.hpp"
 #include <duckdb/function/function.hpp>
 
+#include "duckdb/parser/expression/cast_expression.hpp"
+#include "duckdb/parser/expression/comparison_expression.hpp"
+#include "duckdb/parser/expression/constant_expression.hpp"
+#include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/expression/star_expression.hpp"
+#include "duckdb/parser/expression/subquery_expression.hpp"
+#include "duckdb/parser/query_node/set_operation_node.hpp"
+
+#include <duckdb/parser/expression/columnref_expression.hpp>
+#include <duckdb/parser/property_graph_table.hpp>
+#include <duckdb/parser/query_node/select_node.hpp>
+#include <duckdb/parser/tableref/basetableref.hpp>
+#include <duckdb/parser/tableref/joinref.hpp>
+#include <duckdb/parser/tableref/subqueryref.hpp>
+
 namespace duckdb {
 class CSR {
 public:
@@ -52,4 +67,13 @@ struct CSRFunctionData : FunctionData {
   const int32_t id;
   const LogicalType weight_type;
 };
+
+// CSR BindReplace functions
+unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table);
+
+
+// Helper functions
+unique_ptr<SubqueryExpression> GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table, const string &prev_binding);
+unique_ptr<ColumnRefExpression> CreateColumnRef(const std::string &column_name, const std::string &table_name, const std::string &alias);
+void SetupSelectNode(unique_ptr<SelectNode> &select_node, const shared_ptr<PropertyGraphTable> &edge_table, bool reverse = false);
 } // namespace duckdb
