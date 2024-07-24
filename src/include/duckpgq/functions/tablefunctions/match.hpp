@@ -59,10 +59,7 @@ public:
 
   static unique_ptr<SubqueryRef> CreateCountCTESubquery();
 
-  static unique_ptr<CommonTableExpressionInfo>
-  CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
-               const string &edge_binding, const string &prev_binding,
-               const string &next_binding);
+
 
   static unique_ptr<ParsedExpression>
   CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions);
