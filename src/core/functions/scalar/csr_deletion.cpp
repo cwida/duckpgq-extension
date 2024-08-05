@@ -4,7 +4,9 @@
 #include <duckpgq/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
 
 static void DeleteCsrFunction(DataChunk &args, ExpressionState &state,
                               Vector &result) {
@@ -30,4 +32,7 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetDeleteCsrFunction() {
   return CreateScalarFunctionInfo(set);
 }
 
-} // namespace duckdb
+} // namespace core
+
+} // namespace duckpgq
+

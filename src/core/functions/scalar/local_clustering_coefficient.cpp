@@ -8,7 +8,10 @@
 
 #include "duckpgq/functions/function_data/local_clustering_coefficient_function_data.hpp"
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
+
 static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState &state,
                                     Vector &result) {
   auto &func_expr = (BoundFunctionExpression &)state.expr;
@@ -82,5 +85,7 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetLocalClusteringCoefficientFunction
   return CreateScalarFunctionInfo(fun);
 }
 
-}
+} // namespace core
+
+} // namespace duckpgq
 

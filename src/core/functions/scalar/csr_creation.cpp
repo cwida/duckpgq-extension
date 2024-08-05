@@ -9,7 +9,9 @@
 #include <duckpgq_extension.hpp>
 #include <mutex>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
 
 static void CsrInitializeVertex(DuckPGQState &context, int32_t id,
                                 int64_t v_size) {
@@ -220,4 +222,6 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetCsrEdgeFunction() {
   return CreateScalarFunctionInfo(set);
 }
 
-} // namespace duckdb
+} // namespace core
+
+} // namespace duckpgq

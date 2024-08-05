@@ -7,7 +7,9 @@
 
 #include <duckpgq/utils/duckpgq_utils.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
 
 static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
                             vector<std::bitset<LANE_LIMIT>> &seen,
@@ -161,4 +163,7 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetIterativeLengthFunction() {
   return CreateScalarFunctionInfo(fun);
 }
 
-} // namespace duckdb
+} // namespace core
+
+} // namespace duckpgq
+

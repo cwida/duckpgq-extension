@@ -7,7 +7,10 @@
 
 #include <duckpgq/utils/duckpgq_utils.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
+
 typedef enum { NO_ARRAY, ARRAY, INTERMEDIATE } msbfs_modes_t;
 
 static int16_t InitialiseBfs(
@@ -283,4 +286,7 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetReachabilityFunction() {
   return CreateScalarFunctionInfo(fun);
 }
 
-} // namespace duckdb
+} // namespace core
+
+} // namespace duckpgq
+

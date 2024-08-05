@@ -9,7 +9,9 @@
 #include <duckpgq/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
 
 static bool IterativeLength(int64_t v_size, int64_t *V, vector<int64_t> &E,
                             vector<int64_t> &edge_ids,
@@ -231,4 +233,7 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetShortestPathFunction() {
   return CreateScalarFunctionInfo(fun);
 }
 
-}; // namespace duckdb
+} // namespace core
+
+} // namespace duckpgq
+
