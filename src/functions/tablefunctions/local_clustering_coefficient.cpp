@@ -192,7 +192,7 @@ unique_ptr<TableRef> LocalClusteringCoefficientFunction::LocalClusteringCoeffici
 
     auto result = make_uniq<SubqueryRef>(std::move(subquery));
     result->alias = "lcc";
-    return result;
+    return std::move(result);
 }
 
 } // namespace duckdb
