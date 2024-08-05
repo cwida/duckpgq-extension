@@ -7,7 +7,9 @@
 
 #include <duckpgq/utils/duckpgq_utils.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
 
 static bool
 IterativeLengthBidirectional(int64_t v_size, int64_t *V, vector<int64_t> &E,
@@ -174,4 +176,7 @@ DuckPGQFunctions::GetIterativeLengthBidirectionalFunction() {
   return CreateScalarFunctionInfo(fun);
 }
 
-} // namespace duckdb
+} // namespace core
+
+} // namespace duckpgq
+

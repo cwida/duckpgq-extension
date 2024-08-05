@@ -6,7 +6,9 @@
 
 #include <duckpgq/utils/duckpgq_utils.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
 
 template <typename T, int16_t lane_limit>
 static int16_t InitialiseBellmanFord(const DataChunk &args, int64_t input_size,
@@ -185,4 +187,7 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetCheapestPathLengthFunction() {
 
   return CreateScalarFunctionInfo(set);
 }
-} // namespace duckdb
+
+} // namespace core
+
+} // namespace duckpgq

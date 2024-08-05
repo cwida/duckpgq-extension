@@ -5,7 +5,9 @@
 
 #include <duckpgq/utils/duckpgq_utils.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
 
 enum class CSRWType : int32_t {
   // possible weight types of a csr
@@ -47,4 +49,7 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetGetCsrWTypeFunction() {
   return CreateScalarFunctionInfo(set);
 }
 
-} // namespace duckdb
+} // namespace core
+
+} // namespace duckpgq
+
