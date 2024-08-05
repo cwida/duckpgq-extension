@@ -1,7 +1,9 @@
 #include "duckpgq/functions/function_data/local_clustering_coefficient_function_data.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
 
 LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientFunctionData(
     ClientContext &context, int32_t csr_id)
@@ -32,6 +34,6 @@ bool LocalClusteringCoefficientFunctionData::Equals(const FunctionData &other_p)
   return other.csr_id == csr_id;
 }
 
+} // namespace core
 
-
-} // namespace duckdb
+} // namespace duckpgq
