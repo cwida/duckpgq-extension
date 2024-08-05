@@ -3,6 +3,7 @@ add_subdirectory(scalar)
 add_subdirectory(tablefunctions)
 
 set(EXTENSION_SOURCES
-    ${EXTENSION_SOURCES}
-    PARENT_SCOPE
+        ${CMAKE_CURRENT_SOURCE_DIR}/module.cpp
+        ${EXTENSION_SOURCES}
+        PARENT_SCOPE
     )

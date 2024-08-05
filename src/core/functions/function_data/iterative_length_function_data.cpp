@@ -1,7 +1,9 @@
 #include "duckpgq/functions/function_data/iterative_length_function_data.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
 
 unique_ptr<FunctionData> IterativeLengthFunctionData::Copy() const {
   return make_uniq<IterativeLengthFunctionData>(context, csr_id);
@@ -27,4 +29,6 @@ unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
 }
 
 
-}
+} // namespace core
+
+} //namespace duckpgq
