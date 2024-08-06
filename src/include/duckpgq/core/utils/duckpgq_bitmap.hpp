@@ -6,11 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #pragma once
+#include "duckpgq/common.hpp"
 #include "duckdb/common/vector.hpp"
 
-namespace duckdb {
+namespace duckpgq {
+namespace core {
+
 class DuckPGQBitmap {
 public:
   explicit DuckPGQBitmap(size_t size);
@@ -23,4 +25,5 @@ private:
   size_t size;
 };
 
-}
+} // namespace core
+} // namespace duckpgq
