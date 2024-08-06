@@ -1,0 +1,66 @@
+# name: test/sql/path_finding/path-finding-cte.test
+# group: [duckpgq]
+
+require duckpgq
+
+statement ok
+CREATE TABLE Student(id BIGINT, name VARCHAR); INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT); INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17);
+
+statement ok
+CREATE TABLE School(name VARCHAR, Id BIGINT, Kind VARCHAR); INSERT INTO School VALUES ('VU', 0, 'University'), ('UVA', 1, 'University');
+
+statement ok
+CREATE TABLE StudyAt(personId BIGINT, schoolId BIGINT); INSERT INTO StudyAt VALUES (0, 0), (1, 0), (2, 1), (3, 1), (4, 1);
+
+statement ok
+-CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+    Student PROPERTIES ( id, name ) LABEL Person,
+    School LABEL SCHOOL
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            LABEL Knows,
+    studyAt SOURCE KEY ( personId ) REFERENCES Student ( id )
+            DESTINATION KEY ( SchoolId ) REFERENCES School ( id )
+            LABEL StudyAt
+    );
+
+statement ok
+-WITH cte1 AS (
+    SELECT  CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Student a),
+            CAST (
+                (SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Student a),
+                            sub.dense_id,
+                            sub.cnt)
+                            )
+                FROM (
+                    SELECT a.rowid as dense_id, count(k.src) as cnt
+                    FROM Student a
+                    LEFT JOIN Know k ON k.src = a.id
+                    GROUP BY a.rowid) sub
+                )
+            AS BIGINT),
+            a.rowid,
+            c.rowid,
+            k.rowid) as temp
+    FROM Know k
+    JOIN student a on a.id = k.src
+    JOIN student c on c.id = k.dst
+), shortest_path_p AS MATERIALIZED (
+	 SELECT shortestpath(0, (select count(*) from student), a.rowid, b.rowid) as path, a.rowid as src_rowid, b.rowid as dst_rowid
+      FROM student a, student b, (select count(cte1.temp) * 0 as temp from cte1) __x
+      WHERE a.name = 'Daniel' and __x.temp * 0 + iterativelength(0, (select count(*) from student), a.rowid, b.rowid) between 1 and 3)
+SELECT  path, a.name, b.name,
+				len(path) // 2,
+				path[1:-:2],
+				path[2:-:2]
+FROM shortest_path_p, student a, student b where a.name = 'Daniel' and a.rowid = src_rowid and b.rowid = dst_rowid;
