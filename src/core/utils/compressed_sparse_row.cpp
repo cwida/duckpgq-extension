@@ -1,10 +1,14 @@
-#include "duckpgq/utils/compressed_sparse_row.hpp"
+#include "duckpgq/core/utils/compressed_sparse_row.hpp"
 #include "duckdb/common/string.hpp"
 #include "duckdb/execution/expression_executor.hpp"
-#include "duckdb/parser/tableref.hpp"
+#include "duckdb/parser/tableref/basetableref.hpp"
+#include "duckdb/parser/expression/comparison_expression.hpp"
+#include "duckdb/parser/expression/constant_expression.hpp"
+#include "duckdb/parser/tableref/subqueryref.hpp"
 
+namespace duckpgq {
 
-namespace duckdb {
+namespace core {
 string CSR::ToString() const {
   string result;
   if (initialized_v) {
@@ -270,173 +274,173 @@ unique_ptr<SubqueryExpression> CreateDirectedCSRVertexSubquery(const shared_ptr<
 
 // Helper function to create CSR Vertex Subquery
 unique_ptr<SubqueryExpression> CreateUndirectedCSRVertexSubquery(const shared_ptr<PropertyGraphTable> &edge_table, const std::string &binding) {
-    auto count_create_vertex_expr = GetCountTable(edge_table, binding);
+  auto count_create_vertex_expr = GetCountTable(edge_table, binding);
 
-    vector<unique_ptr<ParsedExpression>> csr_vertex_children;
-    csr_vertex_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
-    csr_vertex_children.push_back(std::move(count_create_vertex_expr));
-    csr_vertex_children.push_back(make_uniq<ColumnRefExpression>("dense_id", "sub"));
-    csr_vertex_children.push_back(make_uniq<ColumnRefExpression>("cnt", "sub"));
+  vector<unique_ptr<ParsedExpression>> csr_vertex_children;
+  csr_vertex_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
+  csr_vertex_children.push_back(std::move(count_create_vertex_expr));
+  csr_vertex_children.push_back(make_uniq<ColumnRefExpression>("dense_id", "sub"));
+  csr_vertex_children.push_back(make_uniq<ColumnRefExpression>("cnt", "sub"));
 
-    auto create_vertex_function = make_uniq<FunctionExpression>("create_csr_vertex", std::move(csr_vertex_children));
-    vector<unique_ptr<ParsedExpression>> sum_children;
-    sum_children.push_back(std::move(create_vertex_function));
-    auto sum_function = make_uniq<FunctionExpression>("sum", std::move(sum_children));
+  auto create_vertex_function = make_uniq<FunctionExpression>("create_csr_vertex", std::move(csr_vertex_children));
+  vector<unique_ptr<ParsedExpression>> sum_children;
+  sum_children.push_back(std::move(create_vertex_function));
+  auto sum_function = make_uniq<FunctionExpression>("sum", std::move(sum_children));
 
-    vector<unique_ptr<ParsedExpression>> multiply_csr_vertex_children;
-    auto two_constant = make_uniq<ConstantExpression>(Value::INTEGER(2));
-    multiply_csr_vertex_children.push_back(std::move(two_constant));
-    multiply_csr_vertex_children.push_back(std::move(sum_function));
+  vector<unique_ptr<ParsedExpression>> multiply_csr_vertex_children;
+  auto two_constant = make_uniq<ConstantExpression>(Value::INTEGER(2));
+  multiply_csr_vertex_children.push_back(std::move(two_constant));
+  multiply_csr_vertex_children.push_back(std::move(sum_function));
 
-    auto multiply_function = make_uniq<FunctionExpression>("multiply", std::move(multiply_csr_vertex_children));
+  auto multiply_function = make_uniq<FunctionExpression>("multiply", std::move(multiply_csr_vertex_children));
 
-    auto inner_select_statement = make_uniq<SelectStatement>();
-    auto inner_select_node = make_uniq<SelectNode>();
+  auto inner_select_statement = make_uniq<SelectStatement>();
+  auto inner_select_node = make_uniq<SelectNode>();
 
-    auto dense_id_ref = make_uniq<ColumnRefExpression>("dense_id");
+  auto dense_id_ref = make_uniq<ColumnRefExpression>("dense_id");
 
-    auto count_create_inner_expr = make_uniq<SubqueryExpression>();
-    count_create_inner_expr->subquery_type = SubqueryType::SCALAR;
-    auto outgoing_edges_ref = make_uniq<ColumnRefExpression>("outgoing_edges");
-    vector<unique_ptr<ParsedExpression>> inner_count_children;
-    inner_count_children.push_back(std::move(outgoing_edges_ref));
-    auto inner_count_function = make_uniq<FunctionExpression>("count", std::move(inner_count_children));
-    inner_count_function->alias = "cnt";
+  auto count_create_inner_expr = make_uniq<SubqueryExpression>();
+  count_create_inner_expr->subquery_type = SubqueryType::SCALAR;
+  auto outgoing_edges_ref = make_uniq<ColumnRefExpression>("outgoing_edges");
+  vector<unique_ptr<ParsedExpression>> inner_count_children;
+  inner_count_children.push_back(std::move(outgoing_edges_ref));
+  auto inner_count_function = make_uniq<FunctionExpression>("count", std::move(inner_count_children));
+  inner_count_function->alias = "cnt";
 
-    inner_select_node->select_list.push_back(std::move(dense_id_ref));
-    inner_select_node->select_list.push_back(std::move(inner_count_function));
+  inner_select_node->select_list.push_back(std::move(dense_id_ref));
+  inner_select_node->select_list.push_back(std::move(inner_count_function));
 
-    auto dense_id_colref = make_uniq<ColumnRefExpression>("dense_id");
-    inner_select_node->groups.group_expressions.push_back(std::move(dense_id_colref));
-    GroupingSet grouping_set = {0};
-    inner_select_node->groups.grouping_sets.push_back(grouping_set);
+  auto dense_id_colref = make_uniq<ColumnRefExpression>("dense_id");
+  inner_select_node->groups.group_expressions.push_back(std::move(dense_id_colref));
+  GroupingSet grouping_set = {0};
+  inner_select_node->groups.grouping_sets.push_back(grouping_set);
 
-    unique_ptr<SelectNode> unique_edges_select_node, unique_edges_select_node_reverse;
+  unique_ptr<SelectNode> unique_edges_select_node, unique_edges_select_node_reverse;
 
-    SetupSelectNode(unique_edges_select_node, edge_table, false);
-    SetupSelectNode(unique_edges_select_node_reverse, edge_table, true);
+  SetupSelectNode(unique_edges_select_node, edge_table, false);
+  SetupSelectNode(unique_edges_select_node_reverse, edge_table, true);
 
-    auto union_all_node = make_uniq<SetOperationNode>();
-    union_all_node->setop_type = SetOperationType::UNION_BY_NAME;
-    union_all_node->left = std::move(unique_edges_select_node);
-    union_all_node->right = std::move(unique_edges_select_node_reverse);
+  auto union_all_node = make_uniq<SetOperationNode>();
+  union_all_node->setop_type = SetOperationType::UNION_BY_NAME;
+  union_all_node->left = std::move(unique_edges_select_node);
+  union_all_node->right = std::move(unique_edges_select_node_reverse);
 
-    auto subquery_select_statement = make_uniq<SelectStatement>();
-    subquery_select_statement->node = std::move(union_all_node);
-    auto unique_edges_subquery = make_uniq<SubqueryRef>(std::move(subquery_select_statement), "unique_edges");
+  auto subquery_select_statement = make_uniq<SelectStatement>();
+  subquery_select_statement->node = std::move(union_all_node);
+  auto unique_edges_subquery = make_uniq<SubqueryRef>(std::move(subquery_select_statement), "unique_edges");
 
-    inner_select_node->from_table = std::move(unique_edges_subquery);
-    inner_select_statement->node = std::move(inner_select_node);
+  inner_select_node->from_table = std::move(unique_edges_subquery);
+  inner_select_statement->node = std::move(inner_select_node);
 
-    auto inner_from_subquery = make_uniq<SubqueryRef>(std::move(inner_select_statement), "sub");
+  auto inner_from_subquery = make_uniq<SubqueryRef>(std::move(inner_select_statement), "sub");
 
-    auto cast_select_node = make_uniq<SelectNode>();
-    cast_select_node->from_table = std::move(inner_from_subquery);
-    cast_select_node->select_list.push_back(std::move(multiply_function));
+  auto cast_select_node = make_uniq<SelectNode>();
+  cast_select_node->from_table = std::move(inner_from_subquery);
+  cast_select_node->select_list.push_back(std::move(multiply_function));
 
-    auto cast_select_stmt = make_uniq<SelectStatement>();
-    cast_select_stmt->node = std::move(cast_select_node);
+  auto cast_select_stmt = make_uniq<SelectStatement>();
+  cast_select_stmt->node = std::move(cast_select_node);
 
-    auto cast_subquery_expr = make_uniq<SubqueryExpression>();
-    cast_subquery_expr->subquery = std::move(cast_select_stmt);
-    cast_subquery_expr->subquery_type = SubqueryType::SCALAR;
+  auto cast_subquery_expr = make_uniq<SubqueryExpression>();
+  cast_subquery_expr->subquery = std::move(cast_select_stmt);
+  cast_subquery_expr->subquery_type = SubqueryType::SCALAR;
 
-    return cast_subquery_expr;
+  return cast_subquery_expr;
 }
 
 
 // Helper function to create outer select edges node
 unique_ptr<SelectNode> CreateOuterSelectEdgesNode() {
-    auto outer_select_edges_node = make_uniq<SelectNode>();
-    outer_select_edges_node->select_list.push_back(make_uniq<ColumnRefExpression>("src"));
-    outer_select_edges_node->select_list.push_back(make_uniq<ColumnRefExpression>("dst"));
+  auto outer_select_edges_node = make_uniq<SelectNode>();
+  outer_select_edges_node->select_list.push_back(make_uniq<ColumnRefExpression>("src"));
+  outer_select_edges_node->select_list.push_back(make_uniq<ColumnRefExpression>("dst"));
 
-    vector<unique_ptr<ParsedExpression>> any_value_children;
-    any_value_children.push_back(make_uniq<ColumnRefExpression>("edges"));
-    auto any_value_function = make_uniq<FunctionExpression>("any_value", std::move(any_value_children));
-    any_value_function->alias = "edge";
-    outer_select_edges_node->select_list.push_back(std::move(any_value_function));
+  vector<unique_ptr<ParsedExpression>> any_value_children;
+  any_value_children.push_back(make_uniq<ColumnRefExpression>("edges"));
+  auto any_value_function = make_uniq<FunctionExpression>("any_value", std::move(any_value_children));
+  any_value_function->alias = "edge";
+  outer_select_edges_node->select_list.push_back(std::move(any_value_function));
 
-    outer_select_edges_node->groups.group_expressions.push_back(make_uniq<ColumnRefExpression>("src"));
-    outer_select_edges_node->groups.group_expressions.push_back(make_uniq<ColumnRefExpression>("dst"));
-    GroupingSet outer_grouping_set = {0, 1};
-    outer_select_edges_node->groups.grouping_sets.push_back(outer_grouping_set);
+  outer_select_edges_node->groups.group_expressions.push_back(make_uniq<ColumnRefExpression>("src"));
+  outer_select_edges_node->groups.group_expressions.push_back(make_uniq<ColumnRefExpression>("dst"));
+  GroupingSet outer_grouping_set = {0, 1};
+  outer_select_edges_node->groups.grouping_sets.push_back(outer_grouping_set);
 
-    return outer_select_edges_node;
+  return outer_select_edges_node;
 }
 
 // Helper function to create outer select node
 unique_ptr<SelectNode> CreateOuterSelectNode(unique_ptr<FunctionExpression> create_csr_edge_function) {
-    auto outer_select_node = make_uniq<SelectNode>();
-    create_csr_edge_function->alias = "temp";
-    outer_select_node->select_list.push_back(std::move(create_csr_edge_function));
-    return outer_select_node;
+  auto outer_select_node = make_uniq<SelectNode>();
+  create_csr_edge_function->alias = "temp";
+  outer_select_node->select_list.push_back(std::move(create_csr_edge_function));
+  return outer_select_node;
 }
 
 
 // Function to create the CTE for the Undirected CSR
 unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table) {
-    auto csr_edge_id_constant = make_uniq<ConstantExpression>(Value::INTEGER(0));
-    auto count_create_edge_select = GetCountTable(edge_table, edge_table->source_reference);
+  auto csr_edge_id_constant = make_uniq<ConstantExpression>(Value::INTEGER(0));
+  auto count_create_edge_select = GetCountTable(edge_table, edge_table->source_reference);
 
-    auto cast_subquery_expr = CreateUndirectedCSRVertexSubquery(edge_table, edge_table->source_reference);
+  auto cast_subquery_expr = CreateUndirectedCSRVertexSubquery(edge_table, edge_table->source_reference);
 
-    auto src_rowid_colref = make_uniq<ColumnRefExpression>("src");
-    auto dst_rowid_colref = make_uniq<ColumnRefExpression>("dst");
-    auto edge_rowid_colref = make_uniq<ColumnRefExpression>("edge");
+  auto src_rowid_colref = make_uniq<ColumnRefExpression>("src");
+  auto dst_rowid_colref = make_uniq<ColumnRefExpression>("dst");
+  auto edge_rowid_colref = make_uniq<ColumnRefExpression>("edge");
 
-    auto cast_expression = make_uniq<CastExpression>(LogicalType::BIGINT, std::move(cast_subquery_expr));
+  auto cast_expression = make_uniq<CastExpression>(LogicalType::BIGINT, std::move(cast_subquery_expr));
 
-    vector<unique_ptr<ParsedExpression>> csr_edge_children;
-    csr_edge_children.push_back(std::move(csr_edge_id_constant));
-    csr_edge_children.push_back(std::move(count_create_edge_select));
-    csr_edge_children.push_back(std::move(cast_expression));
-    csr_edge_children.push_back(std::move(src_rowid_colref));
-    csr_edge_children.push_back(std::move(dst_rowid_colref));
-    csr_edge_children.push_back(std::move(edge_rowid_colref));
+  vector<unique_ptr<ParsedExpression>> csr_edge_children;
+  csr_edge_children.push_back(std::move(csr_edge_id_constant));
+  csr_edge_children.push_back(std::move(count_create_edge_select));
+  csr_edge_children.push_back(std::move(cast_expression));
+  csr_edge_children.push_back(std::move(src_rowid_colref));
+  csr_edge_children.push_back(std::move(dst_rowid_colref));
+  csr_edge_children.push_back(std::move(edge_rowid_colref));
 
-    auto create_csr_edge_function = make_uniq<FunctionExpression>("create_csr_edge", std::move(csr_edge_children));
-    auto outer_select_node = CreateOuterSelectNode(std::move(create_csr_edge_function));
+  auto create_csr_edge_function = make_uniq<FunctionExpression>("create_csr_edge", std::move(csr_edge_children));
+  auto outer_select_node = CreateOuterSelectNode(std::move(create_csr_edge_function));
 
-    auto outer_select_edges_node = CreateOuterSelectEdgesNode();
+  auto outer_select_edges_node = CreateOuterSelectEdgesNode();
 
-    auto outer_union_all_node = make_uniq<SetOperationNode>();
-    outer_union_all_node->setop_all = true;
-    outer_union_all_node->setop_type = SetOperationType::UNION;
+  auto outer_union_all_node = make_uniq<SetOperationNode>();
+  outer_union_all_node->setop_all = true;
+  outer_union_all_node->setop_type = SetOperationType::UNION;
 
-    auto src_dst_select_node = make_uniq<SelectNode>();
-    auto edges_cte_tableref = make_uniq<BaseTableRef>();
-    edges_cte_tableref->table_name = "edges_cte";
-    src_dst_select_node->from_table = std::move(edges_cte_tableref);
-    src_dst_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("src"));
-    src_dst_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("dst"));
-    src_dst_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("edges"));
+  auto src_dst_select_node = make_uniq<SelectNode>();
+  auto edges_cte_tableref = make_uniq<BaseTableRef>();
+  edges_cte_tableref->table_name = "edges_cte";
+  src_dst_select_node->from_table = std::move(edges_cte_tableref);
+  src_dst_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("src"));
+  src_dst_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("dst"));
+  src_dst_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("edges"));
 
-    auto dst_src_select_node = make_uniq<SelectNode>();
-    auto dst_edges_cte_tableref = make_uniq<BaseTableRef>();
-    dst_edges_cte_tableref->table_name = "edges_cte";
-    dst_src_select_node->from_table = std::move(dst_edges_cte_tableref);
-    dst_src_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("dst"));
-    dst_src_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("src"));
-    dst_src_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("edges"));
+  auto dst_src_select_node = make_uniq<SelectNode>();
+  auto dst_edges_cte_tableref = make_uniq<BaseTableRef>();
+  dst_edges_cte_tableref->table_name = "edges_cte";
+  dst_src_select_node->from_table = std::move(dst_edges_cte_tableref);
+  dst_src_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("dst"));
+  dst_src_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("src"));
+  dst_src_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("edges"));
 
-    outer_union_all_node->left = std::move(src_dst_select_node);
-    outer_union_all_node->right = std::move(dst_src_select_node);
+  outer_union_all_node->left = std::move(src_dst_select_node);
+  outer_union_all_node->right = std::move(dst_src_select_node);
 
-    auto outer_union_select_statement = make_uniq<SelectStatement>();
-    outer_union_select_statement->node = std::move(outer_union_all_node);
-    outer_select_edges_node->from_table = make_uniq<SubqueryRef>(std::move(outer_union_select_statement));
+  auto outer_union_select_statement = make_uniq<SelectStatement>();
+  outer_union_select_statement->node = std::move(outer_union_all_node);
+  outer_select_edges_node->from_table = make_uniq<SubqueryRef>(std::move(outer_union_select_statement));
 
-    auto outer_select_edges_select_statement = make_uniq<SelectStatement>();
-    outer_select_edges_select_statement->node = std::move(outer_select_edges_node);
-    outer_select_node->from_table = make_uniq<SubqueryRef>(std::move(outer_select_edges_select_statement));
+  auto outer_select_edges_select_statement = make_uniq<SelectStatement>();
+  outer_select_edges_select_statement->node = std::move(outer_select_edges_node);
+  outer_select_node->from_table = make_uniq<SubqueryRef>(std::move(outer_select_edges_select_statement));
 
-    auto outer_select_statement = make_uniq<SelectStatement>();
-    outer_select_statement->node = std::move(outer_select_node);
+  auto outer_select_statement = make_uniq<SelectStatement>();
+  outer_select_statement->node = std::move(outer_select_node);
 
-    auto info = make_uniq<CommonTableExpressionInfo>();
-    info->query = std::move(outer_select_statement);
-    return info;
+  auto info = make_uniq<CommonTableExpressionInfo>();
+  info->query = std::move(outer_select_statement);
+  return info;
 }
 
 
@@ -473,6 +477,6 @@ unique_ptr<CommonTableExpressionInfo> CreateDirectedCSRCTE(const shared_ptr<Prop
   info->query = std::move(outer_select_statement);
   return info;
 }
+} // namespace core
 
-
-} // namespace duckdb
+} // namespace duckpgq

@@ -1,11 +1,11 @@
 #include "duckdb/common/vector_operations/quaternary_executor.hpp"
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/duckpgq_functions.hpp"
-#include "duckpgq/utils/compressed_sparse_row.hpp"
-
+#include "duckpgq/common.hpp"
+#include "duckpgq/core/utils/compressed_sparse_row.hpp"
 #include <cmath>
-#include <duckpgq/utils/duckpgq_utils.hpp>
+#include <duckpgq/core/functions/scalar.hpp>
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 #include <mutex>
 
@@ -182,7 +182,7 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
       });
 }
 
-CreateScalarFunctionInfo DuckPGQFunctions::GetCsrVertexFunction() {
+ScalarFunctionSet GetCSRVertexFunction() {
   ScalarFunctionSet set("create_csr_vertex");
 
   set.AddFunction(ScalarFunction("create_csr_vertex",
@@ -191,10 +191,10 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetCsrVertexFunction() {
                                  LogicalType::BIGINT, CreateCsrVertexFunction,
                                  CSRFunctionData::CSRVertexBind));
 
-  return CreateScalarFunctionInfo(set);
+  return set;
 }
 
-CreateScalarFunctionInfo DuckPGQFunctions::GetCsrEdgeFunction() {
+ScalarFunctionSet GetCSREdgeFunction() {
   ScalarFunctionSet set("create_csr_edge");
   //! No edge weight
   set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
@@ -219,7 +219,15 @@ CreateScalarFunctionInfo DuckPGQFunctions::GetCsrEdgeFunction() {
                                  LogicalType::INTEGER, CreateCsrEdgeFunction,
                                  CSRFunctionData::CSREdgeBind));
 
-  return CreateScalarFunctionInfo(set);
+  return set;
+}
+
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreScalarFunctions::RegisterCSRCreationScalarFunctions(DatabaseInstance &db) {
+  ExtensionUtil::RegisterFunction(db, GetCSREdgeFunction());
+  ExtensionUtil::RegisterFunction(db, GetCSRVertexFunction());
 }
 
 } // namespace core

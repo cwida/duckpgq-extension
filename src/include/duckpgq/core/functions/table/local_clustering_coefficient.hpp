@@ -1,9 +1,12 @@
 #pragma once
 
+#include "duckpgq/common.hpp"
 #include "duckdb/function/table_function.hpp"
-#include "duckpgq/duckpgq_functions.hpp"
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
+
 class LocalClusteringCoefficientFunction : public TableFunction {
 public:
   LocalClusteringCoefficientFunction() {
@@ -48,5 +51,6 @@ public:
    bool finished = false;
 };
 
+} // namespace core
 
-}
+} // namespace duckpgq

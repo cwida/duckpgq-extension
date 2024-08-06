@@ -1,12 +1,11 @@
-#include "chrono"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/duckpgq_functions.hpp"
-#include "duckpgq/utils/duckpgq_bitmap.hpp"
-#include "duckpgq/utils/duckpgq_utils.hpp"
-#include "duckpgq_extension.hpp"
+#include "duckpgq/common.hpp"
+#include "duckpgq/core/functions/function_data/local_clustering_coefficient_function_data.hpp"
+#include "duckpgq/core/utils/duckpgq_bitmap.hpp"
+#include "duckpgq/core/utils/duckpgq_utils.hpp"
 
-#include "duckpgq/functions/function_data/local_clustering_coefficient_function_data.hpp"
+#include <duckpgq/core/functions/scalar.hpp>
 
 namespace duckpgq {
 
@@ -77,12 +76,17 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
-CreateScalarFunctionInfo DuckPGQFunctions::GetLocalClusteringCoefficientFunction() {
-  auto fun = ScalarFunction("local_clustering_coefficient",
-                            {LogicalType::INTEGER, LogicalType::BIGINT},
-                            LogicalType::FLOAT, LocalClusteringCoefficientFunction,
-                            LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientBind);
-  return CreateScalarFunctionInfo(fun);
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreScalarFunctions::RegisterLocalClusteringCoefficientScalarFunction(
+    DatabaseInstance &db) {
+  ExtensionUtil::RegisterFunction(
+      db, ScalarFunction("local_clustering_coefficient",
+                         {LogicalType::INTEGER, LogicalType::BIGINT},
+                         LogicalType::FLOAT, LocalClusteringCoefficientFunction,
+                         LocalClusteringCoefficientFunctionData::
+                             LocalClusteringCoefficientBind));
 }
 
 } // namespace core

@@ -1,11 +1,12 @@
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/duckpgq_functions.hpp"
-#include "duckpgq/functions/function_data/iterative_length_function_data.hpp"
+#include "duckpgq/common.hpp"
+#include "duckpgq/core/functions/function_data/iterative_length_function_data.hpp"
 #include <duckpgq_extension.hpp>
 
-#include <duckpgq/utils/duckpgq_utils.hpp>
+#include <duckpgq/core/functions/scalar.hpp>
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
 
 namespace duckpgq {
 
@@ -141,13 +142,18 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state,
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
-CreateScalarFunctionInfo DuckPGQFunctions::GetIterativeLength2Function() {
-  auto fun = ScalarFunction("iterativelength2",
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreScalarFunctions::RegisterIterativeLength2ScalarFunction(
+    DatabaseInstance &db) {
+  ExtensionUtil::RegisterFunction(
+      db,
+      ScalarFunction("iterativelength2",
                             {LogicalType::INTEGER, LogicalType::BIGINT,
                              LogicalType::BIGINT, LogicalType::BIGINT},
                             LogicalType::BIGINT, IterativeLength2Function,
-                            IterativeLengthFunctionData::IterativeLengthBind);
-  return CreateScalarFunctionInfo(fun);
+                            IterativeLengthFunctionData::IterativeLengthBind));
 }
 
 } // namespace core

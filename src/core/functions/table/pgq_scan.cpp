@@ -1,16 +1,19 @@
-#include <duckpgq_extension.hpp>
-#include "duckpgq/functions/tablefunctions/pgq_scan.hpp"
-#include "duckpgq/duckpgq_functions.hpp"
-#include "duckpgq/utils/compressed_sparse_row.hpp"
-#include "duckdb/parser/parsed_data/create_table_function_info.hpp"
+#include "duckpgq/core/functions/table/pgq_scan.hpp"
+#include "duckdb/common/types.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
-#include "duckdb/common/types.hpp"
+#include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/property_graph_table.hpp"
-#include "duckpgq/utils/duckpgq_utils.hpp"
+#include "duckpgq/core/utils/compressed_sparse_row.hpp"
+#include "duckpgq/core/utils/duckpgq_utils.hpp"
 #include <cstdint>
+#include <duckpgq/core/functions/table.hpp>
+#include <duckpgq_extension.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
+
 
 static void ScanCSREFunction(ClientContext &context, TableFunctionInput &data_p,
                              DataChunk &output) {
@@ -239,76 +242,34 @@ static void ScanPGEColFunction(ClientContext &context,
   output.SetCardinality(size);
 }
 
-CreateTableFunctionInfo DuckPGQFunctions::GetScanCSREFunction() {
-  TableFunctionSet function_set("get_csr_e");
-
-  function_set.AddFunction(
-      TableFunction({LogicalType::INTEGER}, ScanCSREFunction,
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreTableFunctions::RegisterScanTableFunctions(DatabaseInstance &db) {
+  ExtensionUtil::RegisterFunction(db, TableFunction("get_csr_e", {LogicalType::INTEGER}, ScanCSREFunction,
                     CSRScanEData::ScanCSREBind, CSRScanState::Init));
-  return CreateTableFunctionInfo(function_set);
-}
 
-CreateTableFunctionInfo DuckPGQFunctions::GetScanCSRVFunction() {
-  TableFunctionSet function_set("get_csr_v");
-
-  function_set.AddFunction(
-      TableFunction({LogicalType::INTEGER}, ScanCSRVFunction,
+  ExtensionUtil::RegisterFunction(db, TableFunction("get_csr_v", {LogicalType::INTEGER}, ScanCSRVFunction,
                     CSRScanVData::ScanCSRVBind, CSRScanState::Init));
-  return CreateTableFunctionInfo(function_set);
-}
 
-CreateTableFunctionInfo DuckPGQFunctions::GetScanCSRWFunction() {
-  TableFunctionSet function_set("get_csr_w");
-
-  function_set.AddFunction(
-      TableFunction({LogicalType::INTEGER}, ScanCSRWFunction,
+  ExtensionUtil::RegisterFunction(db, TableFunction("get_csr_w", {LogicalType::INTEGER}, ScanCSRWFunction,
                     CSRScanWData::ScanCSRWBind, CSRScanState::Init));
-  return CreateTableFunctionInfo(function_set);
-}
 
-CreateTableFunctionInfo DuckPGQFunctions::GetScanPGVTableFunction() {
-  TableFunctionSet function_set("get_pg_vtablenames");
-
-  function_set.AddFunction(
-      TableFunction({LogicalType::VARCHAR}, ScanPGVTableFunction,
+  ExtensionUtil::RegisterFunction(db, TableFunction("get_pg_vtablenames", {LogicalType::VARCHAR}, ScanPGVTableFunction,
                     PGScanVTableData::ScanPGVTableBind, CSRScanState::Init));
-  return CreateTableFunctionInfo(function_set);
-}
 
-CreateTableFunctionInfo DuckPGQFunctions::GetScanPGVColFunction() {
-  TableFunctionSet function_set("get_pg_vcolnames");
+  ExtensionUtil::RegisterFunction(db, TableFunction("get_pg_vcolnames", {LogicalType::VARCHAR, LogicalType::VARCHAR}, ScanPGVColFunction,
+                    PGScanVColData::ScanPGVColBind, CSRScanState::Init));
 
-  function_set.AddFunction(TableFunction(
-      {LogicalType::VARCHAR, LogicalType::VARCHAR}, ScanPGVColFunction,
-      PGScanVColData::ScanPGVColBind, CSRScanState::Init));
-  return CreateTableFunctionInfo(function_set);
-}
-
-CreateTableFunctionInfo DuckPGQFunctions::GetScanCSRPtrFunction() {
-  TableFunctionSet function_set("get_csr_ptr");
-
-  function_set.AddFunction(
-      TableFunction({LogicalType::INTEGER}, ScanCSRPtrFunction,
+  ExtensionUtil::RegisterFunction(db, TableFunction("get_csr_ptr", {LogicalType::INTEGER}, ScanCSRPtrFunction,
                     CSRScanPtrData::ScanCSRPtrBind, CSRScanState::Init));
-  return CreateTableFunctionInfo(function_set);
-}
 
-CreateTableFunctionInfo DuckPGQFunctions::GetScanPGETableFunction() {
-  TableFunctionSet function_set("get_pg_etablenames");
-
-  function_set.AddFunction(
-      TableFunction({LogicalType::VARCHAR}, ScanPGETableFunction,
+  ExtensionUtil::RegisterFunction(db, TableFunction("get_pg_etablenames", {LogicalType::VARCHAR}, ScanPGETableFunction,
                     PGScanETableData::ScanPGETableBind, CSRScanState::Init));
-  return CreateTableFunctionInfo(function_set);
-}
 
-CreateTableFunctionInfo DuckPGQFunctions::GetScanPGEColFunction() {
-  TableFunctionSet function_set("get_pg_ecolnames");
-
-  function_set.AddFunction(TableFunction(
-      {LogicalType::VARCHAR, LogicalType::VARCHAR}, ScanPGEColFunction,
-      PGScanEColData::ScanPGEColBind, CSRScanState::Init));
-  return CreateTableFunctionInfo(function_set);
+  ExtensionUtil::RegisterFunction(db, TableFunction("get_pg_ecolnames", {LogicalType::VARCHAR, LogicalType::VARCHAR}, ScanPGEColFunction,
+                    PGScanEColData::ScanPGEColBind, CSRScanState::Init));
 }
+} // namespace core
 
 } // namespace duckdb

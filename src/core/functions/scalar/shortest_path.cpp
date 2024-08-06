@@ -2,12 +2,11 @@
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/duckpgq_functions.hpp"
-#include "duckpgq/functions/function_data/iterative_length_function_data.hpp"
+#include "duckpgq/common.hpp"
+#include "duckpgq/core/functions/function_data/iterative_length_function_data.hpp"
 
-#include <algorithm>
-#include <duckpgq/utils/duckpgq_utils.hpp>
-#include <duckpgq_extension.hpp>
+#include <duckpgq/core/functions/scalar.hpp>
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
 
 namespace duckpgq {
 
@@ -223,14 +222,19 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
-CreateScalarFunctionInfo DuckPGQFunctions::GetShortestPathFunction() {
-  auto fun = ScalarFunction("shortestpath",
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreScalarFunctions::RegisterShortestPathScalarFunction(
+    DatabaseInstance &db) {
+  ExtensionUtil::RegisterFunction(
+      db,
+      ScalarFunction("shortestpath",
                             {LogicalType::INTEGER, LogicalType::BIGINT,
                              LogicalType::BIGINT, LogicalType::BIGINT},
                             LogicalType::LIST(LogicalType::BIGINT),
                             ShortestPathFunction,
-                            IterativeLengthFunctionData::IterativeLengthBind);
-  return CreateScalarFunctionInfo(fun);
+                            IterativeLengthFunctionData::IterativeLengthBind));
 }
 
 } // namespace core

@@ -5,14 +5,17 @@
  * This header defines all the structs and classes used later.
  */
 
-#include "duckdb/function/table_function.hpp"
-#include "duckpgq/utils/compressed_sparse_row.hpp"
-#include "duckpgq/duckpgq_functions.hpp"
 #include "duckdb/common/types/value.hpp"
+#include "duckdb/function/table_function.hpp"
+#include "duckpgq/core/utils/compressed_sparse_row.hpp"
 
-namespace duckdb {
+#include <duckpgq_state.hpp>
 
-struct CSRScanVData : public TableFunctionData {
+namespace duckpgq {
+
+namespace core {
+
+struct CSRScanVData : TableFunctionData {
 public:
   static unique_ptr<FunctionData>
   ScanCSRVBind(ClientContext &context, TableFunctionBindInput &input,
@@ -191,4 +194,6 @@ public:
   bool finished = false;
 };
 
-} // namespace duckdb
+}   // namespace core
+
+} // namespace duckpgq

@@ -8,8 +8,12 @@
 
 #pragma once
 #include "duckdb/main/client_context.hpp"
+#include "duckpgq/common.hpp"
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
+
 struct LocalClusteringCoefficientFunctionData final : FunctionData {
   ClientContext &context;
   int32_t csr_id;
@@ -23,4 +27,5 @@ struct LocalClusteringCoefficientFunctionData final : FunctionData {
   bool Equals(const FunctionData &other_p) const override;
 };
 
-} // namespace duckdb
+} // namespace core
+} // namespace duckpgq
