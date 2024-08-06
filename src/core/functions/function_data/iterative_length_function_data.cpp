@@ -1,5 +1,6 @@
-#include "duckpgq/functions/function_data/iterative_length_function_data.hpp"
+#include "duckpgq/core/functions/function_data/iterative_length_function_data.hpp"
 #include "duckdb/execution/expression_executor.hpp"
+#include "duckpgq/common.hpp"
 
 namespace duckpgq {
 

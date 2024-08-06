@@ -7,12 +7,16 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
+#include "duckpgq/common.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/statement/drop_statement.hpp"
 
 #include <duckdb/parser/parsed_data/drop_property_graph_info.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
+
 
 class DropPropertyGraphFunction : public TableFunction {
 public:
@@ -23,23 +27,23 @@ public:
     function = DropPropertyGraphFunc;
   }
 
-  struct DropPropertyGraphBindData : public TableFunctionData {
+  struct DropPropertyGraphBindData : TableFunctionData {
     explicit DropPropertyGraphBindData(DropPropertyGraphInfo *pg_info)
         : drop_pg_info(pg_info) {}
 
     DropPropertyGraphInfo *drop_pg_info;
   };
 
-  struct DropPropertyGraphGlobalData : public GlobalTableFunctionState {
+  struct DropPropertyGraphGlobalData : GlobalTableFunctionState {
     DropPropertyGraphGlobalData() = default;
   };
 
-  static duckdb::unique_ptr<FunctionData>
+  static unique_ptr<FunctionData>
   DropPropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
                         vector<LogicalType> &return_types,
                         vector<string> &names);
 
-  static duckdb::unique_ptr<GlobalTableFunctionState>
+  static unique_ptr<GlobalTableFunctionState>
   DropPropertyGraphInit(ClientContext &context, TableFunctionInitInput &input);
 
   static void DropPropertyGraphFunc(ClientContext &context,
@@ -47,4 +51,6 @@ public:
                                     DataChunk &output);
 };
 
-} // namespace duckdb
+} // namespace core
+
+} // namespace duckpgq

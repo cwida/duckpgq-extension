@@ -8,9 +8,13 @@
 
 
 #pragma once
+#include "duckpgq/common.hpp"
 #include "duckdb/main/client_context.hpp"
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
+
 
 struct CheapestPathLengthFunctionData final : FunctionData {
   ClientContext &context;
@@ -26,4 +30,5 @@ struct CheapestPathLengthFunctionData final : FunctionData {
   bool Equals(const FunctionData &other_p) const override;
 };
 
-} // namespace duckdb
+} // namespace core
+} // namespace duckpgq

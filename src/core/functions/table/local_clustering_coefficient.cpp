@@ -1,19 +1,22 @@
-#include "duckpgq/functions/tablefunctions/local_clustering_coefficient.hpp"
+#include "duckpgq/core/functions/table/local_clustering_coefficient.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckpgq_extension.hpp"
-#include "duckpgq/utils/duckpgq_utils.hpp"
+#include "duckpgq/core/utils/duckpgq_utils.hpp"
 
 #include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
+#include "duckpgq/core/utils/compressed_sparse_row.hpp"
 #include <duckdb/parser/query_node/select_node.hpp>
 #include <duckdb/parser/tableref/basetableref.hpp>
-#include <duckdb/parser/tableref/subqueryref.hpp>
 #include <duckdb/parser/tableref/joinref.hpp>
-#include "duckpgq/utils/compressed_sparse_row.hpp"
+#include <duckdb/parser/tableref/subqueryref.hpp>
 
-namespace duckdb {
+#include <duckpgq/core/functions/table.hpp>
 
+namespace duckpgq {
+
+namespace core {
 // Utility function to transform a string to lowercase
 std::string ToLowerCase(const std::string &input) {
     std::string result = input;
@@ -194,5 +197,13 @@ unique_ptr<TableRef> LocalClusteringCoefficientFunction::LocalClusteringCoeffici
     result->alias = "lcc";
     return std::move(result);
 }
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreTableFunctions::RegisterLocalClusteringCoefficientTableFunction(DatabaseInstance &db) {
+    ExtensionUtil::RegisterFunction(db, LocalClusteringCoefficientFunction());
+}
+
+} // namespace core
 
 } // namespace duckdb

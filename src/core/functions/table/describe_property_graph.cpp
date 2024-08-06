@@ -1,12 +1,18 @@
-#include "duckpgq/functions/tablefunctions/describe_property_graph.hpp"
+#include "duckpgq/core/functions/table/describe_property_graph.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/statement/create_statement.hpp"
 #include "duckdb/parser/tableref/showref.hpp"
-#include <duckpgq/utils/duckpgq_utils.hpp>
+#include <duckpgq/core/functions/table.hpp>
+#include <duckpgq/core/parser/duckpgq_parser.hpp>
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+namespace core {
+
+
+
 unique_ptr<FunctionData>
 DescribePropertyGraphFunction::DescribePropertyGraphBind(
     ClientContext &context, TableFunctionBindInput &input,
@@ -146,4 +152,14 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
   output.SetCardinality(vector_idx);
   data.done = true;
 }
-}; // namespace duckdb
+
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreTableFunctions::RegisterDescribePropertyGraphTableFunction(DatabaseInstance &db) {
+  ExtensionUtil::RegisterFunction(db, DescribePropertyGraphFunction());
+}
+
+} // namespace core
+
+} // namespace duckpgq

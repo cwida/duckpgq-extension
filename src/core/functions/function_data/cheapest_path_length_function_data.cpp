@@ -1,5 +1,5 @@
-#include "duckpgq/functions/function_data/cheapest_path_length_function_data.hpp"
-#include "duckpgq/utils/duckpgq_utils.hpp"
+#include "duckpgq/core/functions/function_data/cheapest_path_length_function_data.hpp"
+#include "duckpgq/core/utils/duckpgq_utils.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 
 namespace duckpgq {

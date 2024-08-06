@@ -1,4 +1,4 @@
-#include "duckpgq/functions/function_data/local_clustering_coefficient_function_data.hpp"
+#include "duckpgq/core/functions/function_data/local_clustering_coefficient_function_data.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 
 namespace duckpgq {

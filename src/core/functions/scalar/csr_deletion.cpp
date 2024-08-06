@@ -1,7 +1,8 @@
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/duckpgq_functions.hpp"
-#include <duckpgq/utils/duckpgq_utils.hpp>
+#include "duckpgq/common.hpp"
+#include <duckpgq/core/functions/scalar.hpp>
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 
 namespace duckpgq {
@@ -22,15 +23,17 @@ static void DeleteCsrFunction(DataChunk &args, ExpressionState &state,
   result_data[0] = (flag == 1);
 }
 
-CreateScalarFunctionInfo DuckPGQFunctions::GetDeleteCsrFunction() {
-  ScalarFunctionSet set("delete_csr");
-
-  set.AddFunction(ScalarFunction("delete_csr", {LogicalType::INTEGER},
-                                 LogicalType::BOOLEAN, DeleteCsrFunction,
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreScalarFunctions::RegisterCSRDeletionScalarFunction(
+    DatabaseInstance &db) {
+  ExtensionUtil::RegisterFunction(
+      db,
+      ScalarFunction("delete_csr", {LogicalType::INTEGER}, LogicalType::BOOLEAN, DeleteCsrFunction,
                                  CSRFunctionData::CSRBind));
-
-  return CreateScalarFunctionInfo(set);
 }
+
 
 } // namespace core
 

@@ -1,10 +1,11 @@
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/duckpgq_functions.hpp"
-#include "duckpgq/functions/function_data/cheapest_path_length_function_data.hpp"
+#include "duckpgq/common.hpp"
+#include "duckpgq/core/functions/function_data/cheapest_path_length_function_data.hpp"
+#include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq_extension.hpp>
 
-#include <duckpgq/utils/duckpgq_utils.hpp>
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
 
 namespace duckpgq {
 
@@ -175,17 +176,18 @@ static void CheapestPathLengthFunction(DataChunk &args, ExpressionState &state,
   }
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
-
-CreateScalarFunctionInfo DuckPGQFunctions::GetCheapestPathLengthFunction() {
-  ScalarFunctionSet set("cheapest_path_length");
-
-  set.AddFunction(
-      ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreScalarFunctions::RegisterCheapestPathLengthScalarFunction(
+    DatabaseInstance &db) {
+  ExtensionUtil::RegisterFunction(
+      db,
+      ScalarFunction("cheapest_path_length",
+                     {LogicalType::INTEGER, LogicalType::BIGINT,
                       LogicalType::BIGINT, LogicalType::BIGINT},
                      LogicalType::ANY, CheapestPathLengthFunction,
                      CheapestPathLengthFunctionData::CheapestPathLengthBind));
-
-  return CreateScalarFunctionInfo(set);
 }
 
 } // namespace core

@@ -1,6 +1,7 @@
-add_subdirectory(function_data)
-add_subdirectory(scalar)
-add_subdirectory(tablefunctions)
+add_subdirectory(functions)
+add_subdirectory(operator)
+add_subdirectory(parser)
+add_subdirectory(utils)
 
 set(EXTENSION_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/module.cpp

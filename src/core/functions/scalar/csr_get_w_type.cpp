@@ -1,9 +1,9 @@
-#include "duckdb/main/client_data.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckpgq/duckpgq_functions.hpp"
+#include "duckpgq/common.hpp"
 #include <duckpgq_extension.hpp>
 
-#include <duckpgq/utils/duckpgq_utils.hpp>
+#include <duckpgq/core/functions/scalar.hpp>
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
 
 namespace duckpgq {
 
@@ -39,14 +39,16 @@ static void GetCsrWTypeFunction(DataChunk &args, ExpressionState &state,
   result_data[0] = flag;
 }
 
-CreateScalarFunctionInfo DuckPGQFunctions::GetGetCsrWTypeFunction() {
-  ScalarFunctionSet set("csr_get_w_type");
-
-  set.AddFunction(ScalarFunction("csr_get_w_type", {LogicalType::INTEGER},
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreScalarFunctions::RegisterGetCSRWTypeScalarFunction(
+    DatabaseInstance &db) {
+  ExtensionUtil::RegisterFunction(
+      db,
+      ScalarFunction("csr_get_w_type", {LogicalType::INTEGER},
                                  LogicalType::INTEGER, GetCsrWTypeFunction,
                                  CSRFunctionData::CSRBind));
-
-  return CreateScalarFunctionInfo(set);
 }
 
 } // namespace core

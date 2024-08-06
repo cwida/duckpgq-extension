@@ -1,11 +1,15 @@
-#include "duckpgq/functions/tablefunctions/create_property_graph.hpp"
+#include "duckpgq/core/functions/table/create_property_graph.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/parser/statement/create_statement.hpp"
-#include <duckpgq/utils/duckpgq_utils.hpp>
+#include "duckpgq/common.hpp"
+#include <duckpgq/core/functions/table.hpp>
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 
-namespace duckdb {
+#include <duckpgq/core/parser/duckpgq_parser.hpp>
 
+namespace duckpgq {
+namespace core {
 void CreatePropertyGraphFunction::CheckPropertyGraphTableLabels(
     const shared_ptr<PropertyGraphTable> &pg_table, TableCatalogEntry &table) {
   if (!pg_table->discriminator.empty()) {
@@ -21,7 +25,7 @@ void CreatePropertyGraphFunction::CheckPropertyGraphTableLabels(
                       "The discriminator column " + pg_table->discriminator +
                           " of table " + pg_table->table_name +
                           " should be of type BIGINT or INTEGER");
-    }
+          }
   }
 }
 
@@ -86,7 +90,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
     throw Exception(ExceptionType::INVALID, "Property graph table with name " +
                                                 info->property_graph_name +
                                                 " already exists");
-  }
+      }
 
   auto &catalog = Catalog::GetCatalog(context, info->catalog);
   case_insensitive_set_t v_table_names;
@@ -141,7 +145,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
       throw Exception(ExceptionType::INVALID, "Referenced vertex table " +
                                                   edge_table->source_reference +
                                                   " does not exist.");
-    }
+        }
 
     auto &pk_source_table = catalog.GetEntry<TableCatalogEntry>(
         context, info->schema, edge_table->source_reference);
@@ -158,7 +162,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
       throw Exception(ExceptionType::INVALID, "Referenced vertex table " +
                                                   edge_table->source_reference +
                                                   " does not exist");
-    }
+        }
 
     auto &pk_destination_table = catalog.GetEntry<TableCatalogEntry>(
         context, info->schema, edge_table->destination_reference);
@@ -190,4 +194,13 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
   duckpgq_state->registered_property_graphs[pg_info->property_graph_name] =
       pg_info->Copy();
 }
-}; // namespace duckdb
+
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreTableFunctions::RegisterCreatePropertyGraphTableFunction(DatabaseInstance &db) {
+  ExtensionUtil::RegisterFunction(db, CreatePropertyGraphFunction());
+}
+} // namespace core
+
+} // namespace duckpgq

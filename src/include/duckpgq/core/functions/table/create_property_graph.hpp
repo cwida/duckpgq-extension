@@ -7,12 +7,14 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
+#include "duckpgq/common.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 
-namespace duckdb {
+namespace duckpgq {
 
+namespace core {
 class CreatePropertyGraphFunction : public TableFunction {
 public:
   CreatePropertyGraphFunction() {
@@ -55,4 +57,6 @@ public:
                                       DataChunk &output);
 };
 
-} // namespace duckdb
+} // namespace core
+
+} // namespace duckpgq

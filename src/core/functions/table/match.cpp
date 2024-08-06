@@ -1,5 +1,5 @@
 #include <duckpgq_extension.hpp>
-#include "duckpgq/functions/tablefunctions/match.hpp"
+#include "duckpgq/core/functions/table/match.hpp"
 
 #include "duckdb/parser/tableref/matchref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
@@ -21,15 +21,19 @@
 
 #include "duckdb/common/enums/subquery_type.hpp"
 #include "duckdb/common/enums/joinref_type.hpp"
-#include "duckpgq/utils/compressed_sparse_row.hpp"
+#include "duckpgq/core/utils/compressed_sparse_row.hpp"
 
 #include "duckdb/parser/property_graph_table.hpp"
 #include "duckdb/parser/subpath_element.hpp"
 #include <cmath>
 #include <duckdb/common/enums/set_operation_type.hpp>
-#include <duckpgq/utils/duckpgq_utils.hpp>
+#include <duckpgq/core/functions/table.hpp>
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
+
 shared_ptr<PropertyGraphTable>
 PGQMatchFunction::FindGraphTable(const string &label,
                                  CreatePropertyGraphInfo &pg_table) {
@@ -891,4 +895,16 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
   return std::move(result);
 }
+
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreTableFunctions::RegisterMatchTableFunction(DatabaseInstance &db) {
+  // TableFunctionSet match_set("duckpgq_match");
+  // match_set.AddFunction(PGQMatchFunction());
+  ExtensionUtil::RegisterFunction(db, PGQMatchFunction());
+}
+
+} // namespace core
+
 } // namespace duckdb

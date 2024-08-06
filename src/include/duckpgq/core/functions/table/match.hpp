@@ -7,6 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
+
+#include "duckpgq/common.hpp"
 #include <duckdb/parser/parsed_data/create_pragma_function_info.hpp>
 
 #include "duckdb/function/table_function.hpp"
@@ -15,7 +17,11 @@
 #include "duckdb/parser/path_pattern.hpp"
 #include "duckdb/parser/subpath_element.hpp"
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
+
+
 struct PGQMatchFunction : public TableFunction {
 public:
   PGQMatchFunction() {
@@ -144,4 +150,7 @@ public:
                     vector<unique_ptr<ParsedExpression>> &column_list,
                     CreatePropertyGraphInfo &pg_table);
 };
+
+} // namespace core
+
 } // namespace duckdb
