@@ -114,6 +114,8 @@ public:
       vector<unique_ptr<ParsedExpression>> &column_list,
       unordered_set<string> &named_subpaths);
 
+  static unique_ptr<CommonTableExpressionInfo> GenerateShortestPathCTE(CreatePropertyGraphInfo & pg_table, SubPath * edge_subpath,
+                                     PathElement * path_element, PathElement * next_vertex_element);
   static unique_ptr<ParsedExpression>
   CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list,
                             CreatePropertyGraphInfo &pg_table);
