@@ -409,7 +409,7 @@ unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(
   auto dst_tableref = make_uniq<BaseTableRef>();
   dst_tableref->table_name = edge_table->destination_reference;
   dst_tableref->alias = next_vertex_element->variable_binding;
-  auto first_cross_join_ref = make_uniq<JoinRef>();
+  auto first_cross_join_ref = make_uniq<JoinRef>(JoinRefType::CROSS);
   first_cross_join_ref->left = std::move(src_tableref);
   first_cross_join_ref->right = std::move(dst_tableref);
   auto temp_cte_select_subquery = CreateCountCTESubquery();
@@ -437,9 +437,10 @@ unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(
 
 unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
     vector<unique_ptr<PathReference>> &path_list,
-    CreatePropertyGraphInfo &pg_table,
-    unique_ptr<ParsedExpression> &original_where_clause) {
-  // This method will return a SubqueryRef of a list of rowids
+    CreatePropertyGraphInfo &pg_table, const string &path_variable,
+    unique_ptr<SelectNode> &final_select_node,
+    vector<unique_ptr<ParsedExpression>> &conditions) {
+  // This method will return a SubqueryRef of a list of] rowids
   // For every vertex and edge element, we add the rowid to the list using
   // list_append, or list_prepend The difficulty is that there may be a
   // (un)bounded path pattern at some point in the query This is computed using
@@ -456,6 +457,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
     auto previous_vertex_subpath =
         reinterpret_cast<SubPath *>(path_list[0].get());
       if (previous_vertex_subpath->where_clause) {
+        conditions.push_back(previous_vertex_subpath->where_clause->Copy());
         path_finding_conditions.push_back(std::move(previous_vertex_subpath->where_clause));
       }
     previous_vertex_element =
@@ -468,6 +470,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
       auto next_vertex_subpath =
           reinterpret_cast<SubPath *>(path_list[idx_i + 1].get());
       if (next_vertex_subpath->where_clause) {
+        conditions.push_back(next_vertex_subpath->where_clause->Copy());
         path_finding_conditions.push_back(std::move(next_vertex_subpath->where_clause));
       }
       next_vertex_element = GetPathElement(next_vertex_subpath->path_list[0]);
@@ -479,35 +482,35 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
       if (edge_subpath->upper > 1) {
         // (un)bounded shortest path
         // Add the shortest path UDF as a CTE
-        // TODO add subpath name to CTE name
-        select_node->cte_map["shortest_path_cte"] =
-            GenerateShortestPathCTE(pg_table, edge_subpath, previous_vertex_element,
-                                    next_vertex_element, path_finding_conditions);
-        // edge_element = GetPathElement(edge_subpath->path_list[0]);
-        // auto edge_table = FindGraphTable(edge_element->label, pg_table);
-        // auto src_row_id = make_uniq<ColumnRefExpression>(
-        //     "rowid", previous_vertex_element->variable_binding);
-        // auto dst_row_id = make_uniq<ColumnRefExpression>(
-        //     "rowid", next_vertex_element->variable_binding);
-        // auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER(0));
-        //
-        // vector<unique_ptr<ParsedExpression>> pathfinding_children;
-        // pathfinding_children.push_back(std::move(csr_id));
-        // pathfinding_children.push_back(std::move(GetCountTable(
-        //     edge_table, previous_vertex_element->variable_binding)));
-        // pathfinding_children.push_back(std::move(src_row_id));
-        // pathfinding_children.push_back(std::move(dst_row_id));
-        //
-        // auto shortest_path_function = make_uniq<FunctionExpression>(
-        //     "shortestpath", std::move(pathfinding_children));
+        string shortest_path_cte_name = "shortest_path_cte_"  + path_variable;
+        if (final_select_node->cte_map.map.find(shortest_path_cte_name) == final_select_node->cte_map.map.end()) {
+          final_select_node->cte_map.map[shortest_path_cte_name] =
+              GenerateShortestPathCTE(pg_table, edge_subpath, previous_vertex_element,
+                                      next_vertex_element, path_finding_conditions);
+          auto cte_shortest_path_ref = make_uniq<BaseTableRef>();
+          cte_shortest_path_ref->table_name = shortest_path_cte_name;
+          if (!final_select_node->from_table) {
+            final_select_node->from_table = std::move(cte_shortest_path_ref);
+          } else {
+            auto join_ref = make_uniq<JoinRef>(JoinRefType::CROSS);
+            join_ref->left = std::move(final_select_node->from_table);
+            join_ref->right = std::move(cte_shortest_path_ref);
+            final_select_node->from_table = std::move(join_ref);
+          }
+          conditions.push_back(make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL,
+              make_uniq<ColumnRefExpression>("src_rowid", shortest_path_cte_name), make_uniq<ColumnRefExpression>("rowid", previous_vertex_element->variable_binding)));
+          conditions.push_back(make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL,
+            make_uniq<ColumnRefExpression>("dst_rowid", shortest_path_cte_name), make_uniq<ColumnRefExpression>("rowid", next_vertex_element->variable_binding)));
 
+        }
+        auto shortest_path_ref = make_uniq<ColumnRefExpression>("path", shortest_path_cte_name);
         if (!final_list) {
-          final_list = std::move(shortest_path_function);
+          final_list = std::move(shortest_path_ref);
         } else {
           auto pop_front_shortest_path_children =
               vector<unique_ptr<ParsedExpression>>();
           pop_front_shortest_path_children.push_back(
-              std::move(shortest_path_function));
+              std::move(shortest_path_ref));
           auto pop_front = make_uniq<FunctionExpression>(
               "array_pop_front", std::move(pop_front_shortest_path_children));
 
@@ -641,26 +644,26 @@ void PGQMatchFunction::AddPathFinding(
   select_node->cte_map.map["cte1"] =
       CreateDirectedCSRCTE(edge_table, prev_binding, edge_binding, next_binding);
 
-  auto temp_cte_select_subquery = CreateCountCTESubquery();
-
-  if (from_clause) {
-    // create a cross join since there is already something in the
-    // from clause
-    auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
-    from_join->left = std::move(from_clause);
-    from_join->right = std::move(temp_cte_select_subquery);
-    from_clause = std::move(from_join);
-  } else {
-    from_clause = std::move(temp_cte_select_subquery);
-  }
+  // auto temp_cte_select_subquery = CreateCountCTESubquery();
+  //
+  // if (from_clause) {
+  //   // create a cross join since there is already something in the
+  //   // from clause
+  //   auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
+  //   from_join->left = std::move(from_clause);
+  //   from_join->right = std::move(temp_cte_select_subquery);
+  //   from_clause = std::move(from_join);
+  // } else {
+  //   from_clause = std::move(temp_cte_select_subquery);
+  // }
   //! END
   //! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
 
   //! START
   //! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id)
   //!       from dst c, a.rowid, b.rowid) between lower and upper
-  conditions.push_back(AddPathQuantifierCondition(prev_binding, next_binding,
-                                                  edge_table, subpath));
+  // conditions.push_back(AddPathQuantifierCondition(prev_binding, next_binding,
+  //                                                 edge_table, subpath));
   //! END
   //! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(s.id)
   //! from src s, a.rowid, b.rowid) between lower and upper
@@ -668,7 +671,8 @@ void PGQMatchFunction::AddPathFinding(
 
 void PGQMatchFunction::CheckNamedSubpath(
     SubPath &subpath, MatchExpression &original_ref,
-    CreatePropertyGraphInfo &pg_table) {
+    CreatePropertyGraphInfo &pg_table, unique_ptr<SelectNode> &final_select_node,
+    vector<unique_ptr<ParsedExpression>> &conditions) {
   for (idx_t idx_i = 0; idx_i < original_ref.column_list.size(); idx_i++) {
     FunctionExpression *parsed_ref =
         dynamic_cast<FunctionExpression *>(original_ref.column_list[idx_i].get());
@@ -681,7 +685,6 @@ void PGQMatchFunction::CheckNamedSubpath(
       continue;
     }
 
-
     if (column_ref->column_names[0] != subpath.path_variable) {
       continue;
     }
@@ -691,7 +694,7 @@ void PGQMatchFunction::CheckNamedSubpath(
       // Check subpath name matches the column referenced in the function -->
       // element_id(named_subpath)
       auto shortest_path_function =
-          CreatePathFindingFunction(subpath.path_list, pg_table, original_ref.where_clause);
+          CreatePathFindingFunction(subpath.path_list, pg_table, subpath.path_variable, final_select_node, conditions);
 
       if (column_alias.empty()) {
         shortest_path_function->alias =
@@ -704,7 +707,7 @@ void PGQMatchFunction::CheckNamedSubpath(
                          std::move(shortest_path_function));
     } else if (parsed_ref->function_name == "path_length") {
       auto shortest_path_function =
-          CreatePathFindingFunction(subpath.path_list, pg_table, original_ref.where_clause);
+          CreatePathFindingFunction(subpath.path_list, pg_table, subpath.path_variable, final_select_node, conditions);
       auto path_len_children = vector<unique_ptr<ParsedExpression>>();
       path_len_children.push_back(std::move(shortest_path_function));
       auto path_len =
@@ -724,7 +727,7 @@ void PGQMatchFunction::CheckNamedSubpath(
     } else if (parsed_ref->function_name == "vertices" ||
                parsed_ref->function_name == "edges") {
       auto shortest_path_function =
-          CreatePathFindingFunction(subpath.path_list, pg_table, original_ref.where_clause);
+      CreatePathFindingFunction(subpath.path_list, pg_table, subpath.path_variable, final_select_node, conditions);
       auto list_slice_children = vector<unique_ptr<ParsedExpression>>();
       list_slice_children.push_back(std::move(shortest_path_function));
 
@@ -760,7 +763,7 @@ void PGQMatchFunction::CheckNamedSubpath(
 void PGQMatchFunction::ProcessPathList(
     vector<unique_ptr<PathReference>> &path_list,
     vector<unique_ptr<ParsedExpression>> &conditions,
-    unique_ptr<TableRef> &from_clause, unique_ptr<SelectNode> &select_node,
+    unique_ptr<SelectNode> &final_select_node,
     unordered_map<string, string> &alias_map, CreatePropertyGraphInfo &pg_table,
     int32_t &extra_alias_counter,
     MatchExpression &original_ref) {
@@ -768,7 +771,7 @@ void PGQMatchFunction::ProcessPathList(
   if (!previous_vertex_element) {
     const auto previous_vertex_subpath =
         reinterpret_cast<SubPath *>(path_list[0].get());
-    CheckNamedSubpath(*previous_vertex_subpath, original_ref, pg_table);
+    CheckNamedSubpath(*previous_vertex_subpath, original_ref, pg_table, final_select_node, conditions);
     if (previous_vertex_subpath->where_clause) {
       conditions.push_back(std::move(previous_vertex_subpath->where_clause));
     }
@@ -778,7 +781,7 @@ void PGQMatchFunction::ProcessPathList(
     } else {
       // Add the shortest path if the name is found in the column_list
       ProcessPathList(previous_vertex_subpath->path_list, conditions,
-                      from_clause, select_node, alias_map, pg_table,
+                      final_select_node, alias_map, pg_table,
                       extra_alias_counter, original_ref);
       return;
     }
@@ -829,7 +832,7 @@ void PGQMatchFunction::ProcessPathList(
 
       if (edge_subpath->upper > 1) {
         // Add the path-finding
-        AddPathFinding(select_node, from_clause, conditions,
+        AddPathFinding(final_select_node, final_select_node->from_table, conditions,
                        previous_vertex_element->variable_binding,
                        edge_element->variable_binding,
                        next_vertex_element->variable_binding, edge_table,
@@ -841,7 +844,7 @@ void PGQMatchFunction::ProcessPathList(
                      edge_element->match_type, edge_element->variable_binding,
                      previous_vertex_element->variable_binding,
                      next_vertex_element->variable_binding, conditions,
-                     alias_map, extra_alias_counter, from_clause);
+                     alias_map, extra_alias_counter, final_select_node->from_table);
       }
     } else {
       // The edge element is a path element without WHERE or path-finding.
@@ -852,7 +855,7 @@ void PGQMatchFunction::ProcessPathList(
                    edge_element->match_type, edge_element->variable_binding,
                    previous_vertex_element->variable_binding,
                    next_vertex_element->variable_binding, conditions, alias_map,
-                   extra_alias_counter, from_clause);
+                   extra_alias_counter, final_select_node->from_table);
       // Check the edge type
       // If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
       // If (a)<-[b]-(c) 	-> 	b.dst = a.id AND b.src = c.id
@@ -879,17 +882,16 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
 
   vector<unique_ptr<ParsedExpression>> conditions;
 
-  auto select_node = make_uniq<SelectNode>();
+  auto final_select_node = make_uniq<SelectNode>();
   unordered_map<string, string> alias_map;
-  unique_ptr<TableRef> from_clause;
 
   int32_t extra_alias_counter = 0;
   for (idx_t idx_i = 0; idx_i < ref->path_patterns.size(); idx_i++) {
     auto &path_pattern = ref->path_patterns[idx_i];
     // Check if the element is PathElement or a Subpath with potentially many
     // items
-    ProcessPathList(path_pattern->path_elements, conditions, from_clause,
-                    select_node, alias_map, *pg_table, extra_alias_counter,
+    ProcessPathList(path_pattern->path_elements, conditions,
+                    final_select_node, alias_map, *pg_table, extra_alias_counter,
                     *ref);
   }
 
@@ -899,17 +901,15 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     table_ref->table_name = table_alias_entry.second;
     table_ref->alias = table_alias_entry.first;
 
-    if (from_clause) {
+    if (final_select_node->from_table) {
       auto new_root = make_uniq<JoinRef>(JoinRefType::CROSS);
-      new_root->left = std::move(from_clause);
+      new_root->left = std::move(final_select_node->from_table);
       new_root->right = std::move(table_ref);
-      from_clause = std::move(new_root);
+      final_select_node->from_table = std::move(new_root);
     } else {
-      from_clause = std::move(table_ref);
+      final_select_node->from_table = std::move(table_ref);
     }
   }
-
-  select_node->from_table = std::move(from_clause);
 
   if (ref->where_clause) {
     conditions.push_back(std::move(ref->where_clause));
@@ -964,11 +964,11 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     final_column_list.push_back(std::move(expression));
   }
 
-  select_node->where_clause = CreateWhereClause(conditions);
-  select_node->select_list = std::move(final_column_list);
+  final_select_node->where_clause = CreateWhereClause(conditions);
+  final_select_node->select_list = std::move(final_column_list);
 
   auto subquery = make_uniq<SelectStatement>();
-  subquery->node = std::move(select_node);
+  subquery->node = std::move(final_select_node);
   if (ref->alias == "unnamed_graphtable") {
     if (duckpgq_state->unnamed_graphtable_index > 1) {
       ref->alias = "unnamed_graphtable" +
@@ -978,6 +978,7 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
   }
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
+  result->Print();
   return std::move(result);
 }
 
