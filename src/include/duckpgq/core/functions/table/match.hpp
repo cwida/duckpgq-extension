@@ -67,8 +67,6 @@ public:
 
   static unique_ptr<SubqueryRef> CreateCountCTESubquery();
 
-
-
   static unique_ptr<ParsedExpression>
   CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions);
 
@@ -107,6 +105,7 @@ public:
   HandleNestedSubPath(unique_ptr<PathReference> &path_reference,
                       vector<unique_ptr<ParsedExpression>> &conditions,
                       idx_t element_idx);
+
   static unique_ptr<ParsedExpression> AddPathQuantifierCondition(
     const string &prev_binding, const string &next_binding,
     const shared_ptr<PropertyGraphTable> &edge_table, const SubPath *subpath);
@@ -123,8 +122,7 @@ public:
                                      PathElement * path_element, PathElement * next_vertex_element, vector<unique_ptr<ParsedExpression>> &path_finding_conditions);
   static unique_ptr<ParsedExpression>
   CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list,
-  CreatePropertyGraphInfo &pg_table,
-unique_ptr<ParsedExpression> &where_clause);
+  CreatePropertyGraphInfo &pg_table, const string &path_variable, unique_ptr<SelectNode> &final_select_node, vector<unique_ptr<ParsedExpression>> &conditions);
 
   static void AddPathFinding(const unique_ptr<SelectNode> &select_node,
                              unique_ptr<TableRef> &from_clause,
@@ -148,7 +146,7 @@ unique_ptr<ParsedExpression> &where_clause);
   static void ProcessPathList(
       vector<unique_ptr<PathReference>> &path_pattern,
       vector<unique_ptr<ParsedExpression>> &conditions,
-      unique_ptr<TableRef> &from_clause, unique_ptr<SelectNode> &select_node,
+      unique_ptr<SelectNode> &select_node,
       unordered_map<string, string> &alias_map,
       CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
       MatchExpression &original_ref);
@@ -156,7 +154,9 @@ unique_ptr<ParsedExpression> &where_clause);
   static void
   CheckNamedSubpath(SubPath &subpath,
                     MatchExpression &original_ref,
-                    CreatePropertyGraphInfo &pg_table);
+                    CreatePropertyGraphInfo &pg_table,
+                    unique_ptr<SelectNode> &final_select_node,
+                    vector<unique_ptr<ParsedExpression>> &conditions);
 };
 
 } // namespace core
