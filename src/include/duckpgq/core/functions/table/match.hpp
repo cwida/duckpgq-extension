@@ -124,14 +124,13 @@ public:
   CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list,
   CreatePropertyGraphInfo &pg_table, const string &path_variable, unique_ptr<SelectNode> &final_select_node, vector<unique_ptr<ParsedExpression>> &conditions);
 
-  static void AddPathFinding(const unique_ptr<SelectNode> &select_node,
-                             unique_ptr<TableRef> &from_clause,
-                             vector<unique_ptr<ParsedExpression>> &conditions,
-                             const string &prev_binding,
-                             const string &edge_binding,
-                             const string &next_binding,
-                             const shared_ptr<PropertyGraphTable> &edge_table,
-                             const SubPath *subpath);
+  static void AddPathFinding(
+    unique_ptr<SelectNode> &select_node,
+    vector<unique_ptr<ParsedExpression>> &conditions,
+    const string &prev_binding, const string &edge_binding,
+    const string &next_binding,
+    const shared_ptr<PropertyGraphTable> &edge_table,
+    CreatePropertyGraphInfo &pg_table, SubPath *subpath);
 
   static void
   AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
