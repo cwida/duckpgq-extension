@@ -50,9 +50,9 @@ query III
     COLUMNS (element_id(p), a.name as name, b.name as b_name)
     ) study;
 ----
-[0, 0, 1]	Daniel	Tavneet
-[0, 1, 2]	Daniel	Gabor
 [0, 2, 3]	Daniel	Peter
+[0, 1, 2]	Daniel	Gabor
+[0, 0, 1]	Daniel	Tavneet
 
 query IIII
 -FROM GRAPH_TABLE (pg
