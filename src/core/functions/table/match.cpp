@@ -857,8 +857,6 @@ void PGQMatchFunction::ProcessPathList(
         next_vertex_element->variable_binding, edge_table,
         pg_table, edge_subpath);
     } else {
-      alias_map[edge_element->variable_binding] =
-          edge_table->source_reference;
       AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table,
                    edge_element->match_type, edge_element->variable_binding,
                    previous_vertex_element->variable_binding,
@@ -995,7 +993,6 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     }
     duckpgq_state->unnamed_graphtable_index++;
   }
-
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
   return std::move(result);
 }
