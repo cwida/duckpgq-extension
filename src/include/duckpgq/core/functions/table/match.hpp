@@ -24,8 +24,6 @@ namespace duckpgq {
 namespace core {
 
 
-config.optimizer_extensions.push_back(DuckpgqOptimizerExtension());
-
 
 
 
