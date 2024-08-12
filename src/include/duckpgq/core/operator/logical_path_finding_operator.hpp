@@ -1,7 +1,11 @@
 #pragma once
+#include "duckpgq/common.hpp"
 #include <duckdb/planner/operator/logical_extension_operator.hpp>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
+
 
 class LogicalPathFindingOperator : public LogicalExtensionOperator {
 public:
@@ -29,5 +33,6 @@ public:
 public:
   string mode;
 };
+} // namespace core
 
-} // namespace duckdb
+} // namespace duckpgq

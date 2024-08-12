@@ -1,4 +1,6 @@
-#include "duckpgq/operators/physical_path_finding_operator.hpp"
+#include "duckpgq/core/operator/physical_path_finding_operator.hpp"
+#include <duckpgq/core/operator/logical_path_finding_operator.hpp>
+#include "duckpgq/common.hpp"
 
 #include "duckdb/common/sort/sort.hpp"
 #include "duckdb/common/types/column/column_data_collection.hpp"
@@ -9,14 +11,12 @@
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 #include <algorithm>
-#include <chrono>
 #include <cmath>
-#include <duckpgq/operators/logical_path_finding_operator.hpp>
-#include <pthread.h>
-#include <numeric>
 #include <thread>
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
 
 struct ve {
   // higher 30 bits for v, lower 34 bits for e
@@ -26,7 +26,7 @@ struct ve {
   const uint64_t v_mask = UINT64_MAX << e_bits;
   const uint64_t e_mask = UINT64_MAX >> v_bits;
   ve() : value(UINT64_MAX) {}
-  ve(uint64_t value) : value(value) {}
+  explicit ve(uint64_t value) : value(value) {}
   ve(int64_t v, int64_t e) {
     uint64_t new_value = 0;
     new_value |= v < 0 ? v_mask : (v << e_bits);
@@ -1084,4 +1084,5 @@ void PhysicalPathFinding::BuildPipelines(Pipeline &current,
   child_meta_pipeline.AddFinishEvent(rhs_pipeline);
 }
 
+} // namespace core
 } // namespace duckdb

@@ -15,6 +15,7 @@ void CoreModule::Register(DatabaseInstance &db) {
     CoreScalarFunctions::Register(db);
     CorePGQParser::Register(db);
     CorePGQOperator::Register(db);
+    CorePGQOptions::Register(db);
 }
 
 

@@ -23,6 +23,7 @@ namespace duckpgq {
 
 namespace core {
 
+
 config.optimizer_extensions.push_back(DuckpgqOptimizerExtension());
 config.AddExtensionOption("experimental_path_finding_operator",
   "Enables the experimental path finding operator to be triggered",

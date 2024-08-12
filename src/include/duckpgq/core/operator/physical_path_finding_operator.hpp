@@ -7,13 +7,15 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
-
+#include "duckpgq/common.hpp"
 #include "duckdb/common/types/row/row_layout.hpp"
 #include "duckdb/execution/operator/join/physical_comparison_join.hpp"
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
 
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 #define LANE_LIMIT 512
@@ -161,4 +163,6 @@ public:
 	static void ScheduleBFSTasks(Pipeline &pipeline, Event &event, GlobalSinkState &state);
 };
 
-} // namespace duckdb
+} // namespace core
+} // namespace duckpgq
+

@@ -1,9 +1,12 @@
 
-#include "duckpgq/operators/logical_path_finding_operator.hpp"
-#include <duckpgq/operators/physical_path_finding_operator.hpp>
-#include <duckpgq_extension.hpp>
+#include "duckpgq/core/operator/logical_path_finding_operator.hpp"
+#include "duckpgq/core/operator/physical_path_finding_operator.hpp"
+#include "duckpgq/common.hpp"
 
-namespace duckdb {
+namespace duckpgq {
+
+namespace core {
+
 unique_ptr<PhysicalOperator> LogicalPathFindingOperator::CreatePlan(
     ClientContext &, duckdb::PhysicalPlanGenerator &generator) {
   D_ASSERT(children.size() == 2);
@@ -39,4 +42,6 @@ string LogicalPathFindingOperator::ParamsToString() const {
   return extra_info;
 
 }
+
+} // namespace core
 } // namespace duckdb
