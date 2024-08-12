@@ -234,17 +234,13 @@ void CoreScalarFunctions::RegisterShortestPathScalarFunction(
                              LogicalType::BIGINT, LogicalType::BIGINT},
                             LogicalType::LIST(LogicalType::BIGINT),
                             ShortestPathFunction,
-                            IterativeLengthFunctionData::IterativeLengthBind);
-    ExtensionUtil::RegisterFunction(
+                            IterativeLengthFunctionData::IterativeLengthBind));
+
+  ExtensionUtil::RegisterFunction(
     db,
     ScalarFunction("shortestpath", {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
                                                  LogicalType::LIST(LogicalType::BIGINT), ShortestPathFunction,
                                                  IterativeLengthFunctionData::IterativeLengthBind));
-
-
-
-
-  return CreateScalarFunctionInfo(fun);
 }
 
 } // namespace core

@@ -204,130 +204,6 @@ unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
   return temp_cte_select_subquery;
 }
 
-unique_ptr<SubqueryExpression>
-PGQMatchFunction::CreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
-                               const string &prev_binding,
-                               const string &edge_binding,
-                               const string &next_binding) {
-  auto csr_edge_id_constant = make_uniq<ConstantExpression>(Value::INTEGER(0));
-  auto count_create_edge_select = GetCountTable(edge_table, prev_binding);
-
-  auto cast_subquery_expr = make_uniq<SubqueryExpression>();
-  auto cast_select_node = make_uniq<SelectNode>();
-
-  vector<unique_ptr<ParsedExpression>> csr_vertex_children;
-  csr_vertex_children.push_back(
-      make_uniq<ConstantExpression>(Value::INTEGER(0)));
-
-  auto count_create_vertex_expr = GetCountTable(edge_table, prev_binding);
-
-  csr_vertex_children.push_back(std::move(count_create_vertex_expr));
-
-  csr_vertex_children.push_back(
-      make_uniq<ColumnRefExpression>("dense_id", "sub"));
-  csr_vertex_children.push_back(make_uniq<ColumnRefExpression>("cnt", "sub"));
-
-  auto create_vertex_function = make_uniq<FunctionExpression>(
-      "create_csr_vertex", std::move(csr_vertex_children));
-  vector<unique_ptr<ParsedExpression>> sum_children;
-  sum_children.push_back(std::move(create_vertex_function));
-  auto sum_function =
-      make_uniq<FunctionExpression>("sum", std::move(sum_children));
-
-  auto inner_select_statement = make_uniq<SelectStatement>();
-  auto inner_select_node = make_uniq<SelectNode>();
-
-  auto source_rowid_colref =
-      make_uniq<ColumnRefExpression>("rowid", prev_binding);
-  source_rowid_colref->alias = "dense_id";
-
-  auto count_create_inner_expr = make_uniq<SubqueryExpression>();
-  count_create_inner_expr->subquery_type = SubqueryType::SCALAR;
-  auto edge_src_colref =
-      make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_binding);
-  vector<unique_ptr<ParsedExpression>> inner_count_children;
-  inner_count_children.push_back(std::move(edge_src_colref));
-  auto inner_count_function =
-      make_uniq<FunctionExpression>("count", std::move(inner_count_children));
-  inner_count_function->alias = "cnt";
-
-  inner_select_node->select_list.push_back(std::move(source_rowid_colref));
-  inner_select_node->select_list.push_back(std::move(inner_count_function));
-  auto source_rowid_colref_1 =
-      make_uniq<ColumnRefExpression>("rowid", prev_binding);
-  expression_map_t<idx_t> grouping_expression_map;
-  inner_select_node->groups.group_expressions.push_back(
-      std::move(source_rowid_colref_1));
-  GroupingSet grouping_set = {0};
-  inner_select_node->groups.grouping_sets.push_back(grouping_set);
-
-  auto inner_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
-  inner_join_ref->type = JoinType::LEFT;
-  auto left_base_ref = make_uniq<BaseTableRef>();
-  left_base_ref->table_name = edge_table->source_reference;
-  left_base_ref->alias = prev_binding;
-  auto right_base_ref = make_uniq<BaseTableRef>();
-  right_base_ref->table_name = edge_table->table_name;
-  right_base_ref->alias = edge_binding;
-  inner_join_ref->left = std::move(left_base_ref);
-  inner_join_ref->right = std::move(right_base_ref);
-
-  auto edge_join_colref =
-      make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_binding);
-  auto vertex_join_colref =
-      make_uniq<ColumnRefExpression>(edge_table->source_pk[0], prev_binding);
-
-  inner_join_ref->condition = make_uniq<ComparisonExpression>(
-      ExpressionType::COMPARE_EQUAL, std::move(edge_join_colref),
-      std::move(vertex_join_colref));
-  inner_select_node->from_table = std::move(inner_join_ref);
-  inner_select_statement->node = std::move(inner_select_node);
-
-  auto inner_from_subquery =
-      make_uniq<SubqueryRef>(std::move(inner_select_statement), "sub");
-
-  cast_select_node->from_table = std::move(inner_from_subquery);
-
-  cast_select_node->select_list.push_back(std::move(sum_function));
-  auto cast_select_stmt = make_uniq<SelectStatement>();
-  cast_select_stmt->node = std::move(cast_select_node);
-  cast_subquery_expr->subquery = std::move(cast_select_stmt);
-  cast_subquery_expr->subquery_type = SubqueryType::SCALAR;
-
-  auto src_rowid_colref = make_uniq<ColumnRefExpression>("rowid", prev_binding);
-  auto dst_rowid_colref = make_uniq<ColumnRefExpression>("rowid", next_binding);
-  auto edge_rowid_colref =
-      make_uniq<ColumnRefExpression>("rowid", edge_binding);
-
-  auto cast_expression = make_uniq<CastExpression>(
-      LogicalType::BIGINT, std::move(cast_subquery_expr));
-
-  vector<unique_ptr<ParsedExpression>> csr_edge_children;
-  csr_edge_children.push_back(std::move(csr_edge_id_constant));
-  csr_edge_children.push_back(std::move(count_create_edge_select));
-  csr_edge_children.push_back(std::move(cast_expression));
-  csr_edge_children.push_back(std::move(src_rowid_colref));
-  csr_edge_children.push_back(std::move(dst_rowid_colref));
-  csr_edge_children.push_back(std::move(edge_rowid_colref));
-
-  auto outer_select_node = make_uniq<SelectNode>();
-
-  auto create_csr_edge_function = make_uniq<FunctionExpression>(
-      "create_csr_edge", std::move(csr_edge_children));
-  create_csr_edge_function->alias = "temp";
-
-  outer_select_node->select_list.push_back(std::move(create_csr_edge_function));
-  outer_select_node->from_table =
-      GetJoinRef(edge_table, edge_binding, prev_binding, next_binding);
-  auto outer_select_statement = make_uniq<SelectStatement>();
-
-  outer_select_statement->node = std::move(outer_select_node);
-  auto csr_subquery = make_uniq<SubqueryExpression>();
-  csr_subquery->subquery = std::move(outer_select_statement);
-  csr_subquery->subquery_type = SubqueryType::SCALAR;
-  return csr_subquery;
-}
-
 void PGQMatchFunction::EdgeTypeAny(
     const shared_ptr<PropertyGraphTable> &edge_table,
     const string &edge_binding, const string &prev_binding,
@@ -799,6 +675,7 @@ void PGQMatchFunction::AddPathFinding(
   //! END
   //! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
   // TODO wrap this with the config option for experimental path finding
+
   // auto csr = CreateCSRCTE(edge_table, prev_binding, edge_binding, next_binding);
   // auto src_tasks = make_uniq<ColumnRefExpression>("rowid", prev_binding);
   // auto dst_tasks = make_uniq<ColumnRefExpression>("rowid", next_binding);

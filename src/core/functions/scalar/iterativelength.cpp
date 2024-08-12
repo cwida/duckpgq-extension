@@ -171,7 +171,7 @@ void CoreScalarFunctions::RegisterIterativeLengthScalarFunction(
   ExtensionUtil::RegisterFunction(
     db,
     ScalarFunction("iterativelength",
-          ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
+      {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
              LogicalType::BIGINT, IterativeLengthFunction,
              IterativeLengthFunctionData::IterativeLengthBind));
 }
