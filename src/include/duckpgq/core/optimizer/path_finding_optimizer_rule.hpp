@@ -1,0 +1,8 @@
+//
+// Created by Daniel ten Wolde on 12/08/2024.
+//
+
+#ifndef PATH_FINDING_OPTIMIZER_RULE_HPP
+#define PATH_FINDING_OPTIMIZER_RULE_HPP
+
+#endif //PATH_FINDING_OPTIMIZER_RULE_HPP

@@ -1,6 +1,7 @@
 add_subdirectory(functions)
 add_subdirectory(operator)
 add_subdirectory(option)
+add_subdirectory(optimizer)
 add_subdirectory(parser)
 add_subdirectory(utils)
 
