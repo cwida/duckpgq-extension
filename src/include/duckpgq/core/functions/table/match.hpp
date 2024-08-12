@@ -23,10 +23,6 @@ namespace duckpgq {
 
 namespace core {
 
-
-
-
-
 struct PGQMatchFunction : public TableFunction {
 public:
   PGQMatchFunction() {
@@ -115,8 +111,8 @@ public:
                       idx_t element_idx);
 
   static unique_ptr<ParsedExpression> AddPathQuantifierCondition(
-    const string &prev_binding, const string &next_binding,
-    const shared_ptr<PropertyGraphTable> &edge_table, const SubPath *subpath);
+      const string &prev_binding, const string &next_binding,
+      const shared_ptr<PropertyGraphTable> &edge_table, const SubPath *subpath);
 
   static unique_ptr<TableRef> MatchBindReplace(ClientContext &context,
                                                TableFunctionBindInput &input);
@@ -126,19 +122,25 @@ public:
       vector<unique_ptr<ParsedExpression>> &column_list,
       unordered_set<string> &named_subpaths);
 
-  static unique_ptr<CommonTableExpressionInfo> GenerateShortestPathCTE(CreatePropertyGraphInfo & pg_table, SubPath * edge_subpath,
-                                     PathElement * path_element, PathElement * next_vertex_element, vector<unique_ptr<ParsedExpression>> &path_finding_conditions);
+  static unique_ptr<CommonTableExpressionInfo> GenerateShortestPathCTE(
+      CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
+      PathElement *path_element, PathElement *next_vertex_element,
+      vector<unique_ptr<ParsedExpression>> &path_finding_conditions);
   static unique_ptr<ParsedExpression>
   CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list,
-  CreatePropertyGraphInfo &pg_table, const string &path_variable, unique_ptr<SelectNode> &final_select_node, vector<unique_ptr<ParsedExpression>> &conditions);
+                            CreatePropertyGraphInfo &pg_table,
+                            const string &path_variable,
+                            unique_ptr<SelectNode> &final_select_node,
+                            vector<unique_ptr<ParsedExpression>> &conditions);
 
-  static void AddPathFinding(
-    unique_ptr<SelectNode> &select_node,
-    vector<unique_ptr<ParsedExpression>> &conditions,
-    const string &prev_binding, const string &edge_binding,
-    const string &next_binding,
-    const shared_ptr<PropertyGraphTable> &edge_table,
-    CreatePropertyGraphInfo &pg_table, SubPath *subpath);
+  static void AddPathFinding(unique_ptr<SelectNode> &select_node,
+                             vector<unique_ptr<ParsedExpression>> &conditions,
+                             const string &prev_binding,
+                             const string &edge_binding,
+                             const string &next_binding,
+                             const shared_ptr<PropertyGraphTable> &edge_table,
+                             CreatePropertyGraphInfo &pg_table,
+                             SubPath *subpath);
 
   static void
   AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
@@ -150,17 +152,16 @@ public:
                unordered_map<string, string> &alias_map,
                int32_t &extra_alias_counter, unique_ptr<TableRef> &from_clause);
 
-  static void ProcessPathList(
-      vector<unique_ptr<PathReference>> &path_pattern,
-      vector<unique_ptr<ParsedExpression>> &conditions,
-      unique_ptr<SelectNode> &select_node,
-      unordered_map<string, string> &alias_map,
-      CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
-      MatchExpression &original_ref);
+  static void ProcessPathList(vector<unique_ptr<PathReference>> &path_pattern,
+                              vector<unique_ptr<ParsedExpression>> &conditions,
+                              unique_ptr<SelectNode> &select_node,
+                              unordered_map<string, string> &alias_map,
+                              CreatePropertyGraphInfo &pg_table,
+                              int32_t &extra_alias_counter,
+                              MatchExpression &original_ref);
 
   static void
-  CheckNamedSubpath(SubPath &subpath,
-                    MatchExpression &original_ref,
+  CheckNamedSubpath(SubPath &subpath, MatchExpression &original_ref,
                     CreatePropertyGraphInfo &pg_table,
                     unique_ptr<SelectNode> &final_select_node,
                     vector<unique_ptr<ParsedExpression>> &conditions);
@@ -168,4 +169,4 @@ public:
 
 } // namespace core
 
-} // namespace duckdb
+} // namespace duckpgq

@@ -800,12 +800,12 @@ void PGQMatchFunction::AddPathFinding(
   //! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
   // TODO wrap this with the config option for experimental path finding
   // auto csr = CreateCSRCTE(edge_table, prev_binding, edge_binding, next_binding);
-  auto src_tasks = make_uniq<ColumnRefExpression>("rowid", prev_binding);
-  auto dst_tasks = make_uniq<ColumnRefExpression>("rowid", next_binding);
-  auto between_expression = make_uniq<BetweenExpression>(
-    std::move(src_tasks), std::move(csr), std::move(dst_tasks));
+  // auto src_tasks = make_uniq<ColumnRefExpression>("rowid", prev_binding);
+  // auto dst_tasks = make_uniq<ColumnRefExpression>("rowid", next_binding);
+  // auto between_expression = make_uniq<BetweenExpression>(
+  //   std::move(src_tasks), std::move(CSR), std::move(dst_tasks));
 
-  conditions.push_back(std::move(between_expression));
+  // conditions.push_back(std::move(between_expression));
 
   //! START
   //! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id)
