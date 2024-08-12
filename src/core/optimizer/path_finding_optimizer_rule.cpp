@@ -18,6 +18,15 @@
 namespace duckpgq {
 namespace core {
 
+bool DuckpgqOptimizerExtension::GetPathFindingOption(ClientContext &context) {
+  auto& client_config = ClientConfig::GetConfig(context);
+  auto const path_finding_operator_option = client_config.set_variables.find("experimental_path_finding_operator");
+  if (path_finding_operator_option == client_config.set_variables.end()) {
+    return false; // If the path finding operator is not enabled, we do not need to do anything
+  }
+  return path_finding_operator_option->second.GetValue<bool>();
+}
+
 bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, ClientContext &context) {
     unique_ptr<Expression> function_expression;
     string mode;
@@ -119,12 +128,7 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, C
 
 void DuckpgqOptimizerExtension::DuckpgqOptimizeFunction(OptimizerExtensionInput &input,
                                     duckdb::unique_ptr<LogicalOperator> &plan) {
-  auto& client_config = ClientConfig::GetConfig(input.context);
-  auto const path_finding_operator_option = client_config.set_variables.find("experimental_path_finding_operator");
-  if (path_finding_operator_option == client_config.set_variables.end()) {
-    return; // If the path finding operator is not enabled, we do not need to do anything
-  }
-  if (!path_finding_operator_option->second.GetValue<bool>()) {
+  if (!GetPathFindingOption(input.context)) {
     return;
   }
   InsertPathFindingOperator(*plan, input.context);
