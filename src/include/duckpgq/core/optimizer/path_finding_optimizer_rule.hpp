@@ -1,8 +1,9 @@
-//
-// Created by Daniel ten Wolde on 12/08/2024.
-//
+#pragma once
 
-#ifndef PATH_FINDING_OPTIMIZER_RULE_HPP
-#define PATH_FINDING_OPTIMIZER_RULE_HPP
+#include "duckpgq/common.hpp"
 
-#endif //PATH_FINDING_OPTIMIZER_RULE_HPP
+namespace duckpgq {
+namespace core {
+
+} // namespace core
+} // namespace duckpgq
