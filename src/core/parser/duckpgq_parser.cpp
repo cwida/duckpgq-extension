@@ -185,7 +185,7 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
 
 
 //------------------------------------------------------------------------------
-// Register functions
+// Register parser
 //------------------------------------------------------------------------------
 void CorePGQParser::RegisterPGQParserExtension(
     DatabaseInstance &db) {

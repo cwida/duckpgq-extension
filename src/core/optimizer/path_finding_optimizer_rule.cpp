@@ -132,15 +132,14 @@ void DuckpgqOptimizerExtension::DuckpgqOptimizeFunction(OptimizerExtensionInput 
 
 
 //------------------------------------------------------------------------------
-// Register functions
+// Register optimizer
 //------------------------------------------------------------------------------
 void CorePGQOptimizer::RegisterPathFindingOptimizerRule(
     DatabaseInstance &db) {
   auto &config = DBConfig::GetConfig(db);
 
-  config.optimizer_extensions.push_back(DuckpgqOptimizerExtension());}
-
-
+  config.optimizer_extensions.push_back(DuckpgqOptimizerExtension());
+}
 
 } // namespace core
 } // namespace duckpgq

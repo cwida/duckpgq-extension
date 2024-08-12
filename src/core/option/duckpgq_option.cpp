@@ -6,7 +6,7 @@ namespace core {
 
 
 //------------------------------------------------------------------------------
-// Register functions
+// Register option
 //------------------------------------------------------------------------------
 void CorePGQOptions::RegisterExperimentalPathFindingOperator(
     DatabaseInstance &db) {
@@ -17,7 +17,7 @@ void CorePGQOptions::RegisterExperimentalPathFindingOperator(
 }
 
 //------------------------------------------------------------------------------
-// Register functions
+// Register option
 //------------------------------------------------------------------------------
 void CorePGQOptions::RegisterPathFindingTaskSize(
     DatabaseInstance &db) {
