@@ -8,12 +8,26 @@ namespace core {
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CorePGQOptions::Register(
+void CorePGQOptions::RegisterExperimentalPathFindingOperator(
     DatabaseInstance &db) {
   auto &config = DBConfig::GetConfig(db);
-  DuckPGQParserExtension pgq_parser;
-  config.parser_extensions.push_back(pgq_parser);
+  config.AddExtensionOption("experimental_path_finding_operator",
+  "Enables the experimental path finding operator to be triggered",
+  LogicalType::BOOLEAN, Value(true));
 }
+
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingTaskSize(
+    DatabaseInstance &db) {
+  auto &config = DBConfig::GetConfig(db);
+
+  config.AddExtensionOption("experimental_path_finding_operator_task_size",
+    "Number of vertices processed per thread at a time", LogicalType::INTEGER, Value(256));
+}
+
+
 
 } // namespace core
 } // namespace duckpgq
