@@ -1,6 +1,5 @@
 #include "duckpgq/core/functions/function_data/cheapest_path_length_function_data.hpp"
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
-#include "duckdb/execution/expression_executor.hpp"
 
 namespace duckpgq {
 
@@ -10,14 +9,8 @@ unique_ptr<FunctionData> CheapestPathLengthFunctionData::CheapestPathLengthBind(
     ClientContext &context, ScalarFunction &bound_function,
     vector<unique_ptr<Expression>> &arguments) {
 
-  if (!arguments[0]->IsFoldable()) {
-    throw InvalidInputException("Id must be constant.");
-  }
-
+  auto csr_id = GetCSRId(arguments[0], context);
   auto duckpgq_state = GetDuckPGQState(context);
-
-  int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0])
-                       .GetValue<int32_t>();
   CSR *csr = duckpgq_state->GetCSR(csr_id);
 
   if (!(csr->initialized_v && csr->initialized_e && csr->initialized_w)) {

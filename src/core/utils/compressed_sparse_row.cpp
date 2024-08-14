@@ -52,48 +52,32 @@ unique_ptr<FunctionData>
 CSRFunctionData::CSRVertexBind(ClientContext &context,
                                ScalarFunction &bound_function,
                                vector<unique_ptr<Expression>> &arguments) {
-  if (!arguments[0]->IsFoldable()) {
-    throw InvalidInputException("Id must be constant.");
-  }
-
-  Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
+  auto csr_id = GetCSRId(arguments[0], context);
   if (arguments.size() == 4) {
     auto logical_type = LogicalType::SQLNULL;
-    return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                      logical_type);
+    return make_uniq<CSRFunctionData>(context, csr_id, logical_type);
   }
-  return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                      arguments[3]->return_type);
-
+  return make_uniq<CSRFunctionData>(context, csr_id, arguments[3]->return_type);
 }
 
 unique_ptr<FunctionData>
 CSRFunctionData::CSREdgeBind(ClientContext &context,
                              ScalarFunction &bound_function,
                              vector<unique_ptr<Expression>> &arguments) {
-  if (!arguments[0]->IsFoldable()) {
-    throw InvalidInputException("Id must be constant.");
-  }
-  Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
+  auto csr_id = GetCSRId(arguments[0], context);
   if (arguments.size() == 7) {
-    return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
+    return make_uniq<CSRFunctionData>(context, csr_id,
                                       arguments[6]->return_type);
-  } else {
-    auto logical_type = LogicalType::SQLNULL;
-    return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                      logical_type);
   }
+  auto logical_type = LogicalType::SQLNULL;
+  return make_uniq<CSRFunctionData>(context, csr_id, logical_type);
 }
 
 unique_ptr<FunctionData>
 CSRFunctionData::CSRBind(ClientContext &context, ScalarFunction &bound_function,
                          vector<unique_ptr<Expression>> &arguments) {
-  if (!arguments[0]->IsFoldable()) {
-    throw InvalidInputException("Id must be constant.");
-  }
-  Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
-  return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                    LogicalType::BOOLEAN);
+  auto csr_id = GetCSRId(arguments[0], context);
+  return make_uniq<CSRFunctionData>(context, csr_id, LogicalType::BOOLEAN);
 }
 
 // Helper function to create a ColumnRefExpression with alias
@@ -476,6 +460,13 @@ unique_ptr<CommonTableExpressionInfo> CreateDirectedCSRCTE(const shared_ptr<Prop
   auto info = make_uniq<CommonTableExpressionInfo>();
   info->query = std::move(outer_select_statement);
   return info;
+}
+
+int32_t GetCSRId(const unique_ptr<Expression> &expr, ClientContext &context) {
+  if (!expr->IsFoldable()) {
+    throw InvalidInputException("CSR ID must be constant.");
+  }
+  return ExpressionExecutor::EvaluateScalar(context, *expr).GetValue<int32_t>();
 }
 } // namespace core
 

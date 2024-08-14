@@ -1,5 +1,5 @@
 #include "duckpgq/core/functions/function_data/local_clustering_coefficient_function_data.hpp"
-#include "duckdb/execution/expression_executor.hpp"
+#include <duckpgq/core/utils/compressed_sparse_row.hpp>
 
 namespace duckpgq {
 
@@ -15,12 +15,7 @@ unique_ptr<FunctionData>
 LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientBind(
     ClientContext &context, ScalarFunction &bound_function,
     vector<unique_ptr<Expression>> &arguments) {
-  if (!arguments[0]->IsFoldable()) {
-    throw InvalidInputException("Id must be constant.");
-  }
-
-  int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0])
-                       .GetValue<int32_t>();
+  auto csr_id = GetCSRId(arguments[0], context);
 
   return make_uniq<LocalClusteringCoefficientFunctionData>(context, csr_id);
 }
