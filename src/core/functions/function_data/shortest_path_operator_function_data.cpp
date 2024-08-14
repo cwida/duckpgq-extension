@@ -9,7 +9,6 @@ unique_ptr<FunctionData>
 ShortestPathOperatorData::ShortestPathOperatorBind(
     ClientContext &context, ScalarFunction &bound_function,
     vector<unique_ptr<Expression>> &arguments) {
-  // TODO look into the arguments and bound_function to see if we need to do anything
   string table_to_scan = ExpressionExecutor::EvaluateScalar(context, *arguments[2]).GetValue<string>();
   return make_uniq<ShortestPathOperatorData>(context, table_to_scan);
 }
