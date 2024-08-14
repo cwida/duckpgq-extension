@@ -18,7 +18,7 @@ struct CoreScalarFunctions {
     RegisterReachabilityScalarFunction(db);
     RegisterShortestPathScalarFunction(db);
     RegisterShortestPathOperatorScalarFunction(db);
-
+    RegisterCSROperatorCreationScalarFunctions(db);
   }
 
 private:
@@ -33,7 +33,7 @@ private:
   static void RegisterReachabilityScalarFunction(DatabaseInstance &db);
   static void  RegisterShortestPathScalarFunction(DatabaseInstance &db);
   static void  RegisterShortestPathOperatorScalarFunction(DatabaseInstance &db);
-
+  static void  RegisterCSROperatorCreationScalarFunctions(DatabaseInstance &db);
 };
 
 
