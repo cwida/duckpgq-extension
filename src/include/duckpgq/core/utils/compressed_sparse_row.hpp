@@ -46,25 +46,6 @@ public:
   string ToString() const;
 };
 
-struct CSRFunctionData : FunctionData {
-  CSRFunctionData(ClientContext &context, int32_t id, LogicalType weight_type);
-  unique_ptr<FunctionData> Copy() const override;
-  bool Equals(const FunctionData &other_p) const override;
-  static unique_ptr<FunctionData>
-  CSRVertexBind(ClientContext &context, ScalarFunction &bound_function,
-                vector<unique_ptr<Expression>> &arguments);
-  static unique_ptr<FunctionData>
-  CSREdgeBind(ClientContext &context, ScalarFunction &bound_function,
-              vector<unique_ptr<Expression>> &arguments);
-  static unique_ptr<FunctionData>
-  CSRBind(ClientContext &context, ScalarFunction &bound_function,
-          vector<unique_ptr<Expression>> &arguments);
-
-  ClientContext &context;
-  const int32_t id;
-  const LogicalType weight_type;
-};
-
 // CSR BindReplace functions
 unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table);
 unique_ptr<CommonTableExpressionInfo> CreateDirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table, const string &prev_binding, const string &edge_binding, const string &next_binding);
