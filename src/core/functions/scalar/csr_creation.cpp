@@ -6,8 +6,6 @@
 #include <cmath>
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
-#include <duckpgq_extension.hpp>
-#include <mutex>
 
 namespace duckpgq {
 

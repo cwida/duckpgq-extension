@@ -1,5 +1,4 @@
 #include "duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp"
-
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
 
 namespace duckpgq {
