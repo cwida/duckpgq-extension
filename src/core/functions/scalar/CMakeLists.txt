@@ -10,7 +10,6 @@ set(EXTENSION_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/reachability.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path_operator.cpp
-
         ${CMAKE_CURRENT_SOURCE_DIR}/csr_creation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/local_clustering_coefficient.cpp
         PARENT_SCOPE

@@ -231,9 +231,7 @@ ScalarFunctionSet GetShortestPathFunction() {
       LogicalType::LIST(LogicalType::BIGINT), ShortestPathFunction,
       IterativeLengthFunctionData::IterativeLengthBind));
 
-  set.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
-                                                LogicalType::LIST(LogicalType::BIGINT), ShortestPathFunction,
-                                                IterativeLengthFunctionData::IterativeLengthBind));
+
   return set;
 }
 

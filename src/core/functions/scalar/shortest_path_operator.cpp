@@ -1,4 +1,7 @@
+
 #include "duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp"
+
+#include <duckpgq/core/functions/scalar.hpp>
 
 namespace duckpgq {
 
@@ -11,7 +14,9 @@ void CoreScalarFunctions::RegisterShortestPathScalarFunction(
     DatabaseInstance &db) {
 
   ExtensionUtil::RegisterFunction(
-    db, GetShortestPathFunction());
+  db, ScalarFunction("shortestpathoperator", {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
+                                              LogicalType::LIST(LogicalType::BIGINT), ShortestPathOperatorFunction,
+                                              ShortestPathOperatorData::ShortestPathOperatorBind));
 }
 
 
