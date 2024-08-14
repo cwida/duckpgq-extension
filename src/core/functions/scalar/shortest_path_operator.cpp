@@ -7,6 +7,11 @@ namespace duckpgq {
 
 namespace core {
 
+static void ShortestPathOperatorFunction(DataChunk &args, ExpressionState &state,
+                                 Vector &result) {
+  throw NotImplementedException("ShortestPathOperatorFunction not implemented, should have gone to the operator instead.");
+}
+
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
