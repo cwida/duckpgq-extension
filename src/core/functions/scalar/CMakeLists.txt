@@ -8,6 +8,7 @@ set(EXTENSION_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength_bidirectional.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength_operator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/reachability.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path_operator.cpp

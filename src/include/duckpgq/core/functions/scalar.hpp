@@ -19,6 +19,7 @@ struct CoreScalarFunctions {
     RegisterShortestPathScalarFunction(db);
     RegisterShortestPathOperatorScalarFunction(db);
     RegisterCSROperatorCreationScalarFunctions(db);
+    RegisterIterativeLengthOperatorScalarFunction(db);
   }
 
 private:
@@ -32,6 +33,8 @@ private:
   static void RegisterLocalClusteringCoefficientScalarFunction(DatabaseInstance &db);
   static void RegisterReachabilityScalarFunction(DatabaseInstance &db);
   static void  RegisterShortestPathScalarFunction(DatabaseInstance &db);
+  static void  RegisterIterativeLengthOperatorScalarFunction(DatabaseInstance &db);
+
   static void  RegisterShortestPathOperatorScalarFunction(DatabaseInstance &db);
   static void  RegisterCSROperatorCreationScalarFunctions(DatabaseInstance &db);
 };
