@@ -15,7 +15,7 @@ static void ShortestPathOperatorFunction(DataChunk &args, ExpressionState &state
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreScalarFunctions::RegisterShortestPathScalarFunction(
+void CoreScalarFunctions::RegisterShortestPathOperatorScalarFunction(
     DatabaseInstance &db) {
 
   ExtensionUtil::RegisterFunction(
