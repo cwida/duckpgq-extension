@@ -10,6 +10,11 @@ require duckpgq
 statement ok
 set experimental_path_finding_operator=true;
 
+query I
+SELECT current_setting('experimental_path_finding_operator');
+----
+true
+
 statement ok
 CREATE TABLE pair(src BIGINT, dst BIGINT); INSERT INTO pair(src, dst) VALUES (0, 1), (1, 2), (2,0);
 
@@ -20,9 +25,9 @@ statement ok
 create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
 
 query III
-SELECT *, shortestpath(src, dst, 'pair') as path
+SELECT *, shortestpathoperator(src, dst, 'pair') as path
 FROM pair AS p
-WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
+WHERE p.src BETWEEN (SELECT CSR_OPERATOR(
             (SELECT count(a.id) as v_size FROM Student a),
             (SELECT count(k.src) as e_size from know k),
               a.rowid,
@@ -56,9 +61,30 @@ CREATE OR REPLACE TABLE pairs2 AS (
 );
 
 query III
-SELECT *, iterativelength(src, dst, 'pairs2') as length
+SELECT *, shortestpathoperator(src, dst, 'pairs2') as length
 FROM pairs2 AS p
-WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(0,
+WHERE p.src BETWEEN (SELECT CSR_OPERATOR(
+            (SELECT count(a.id) as v_size FROM Person a),
+            (SELECT count(k.Person1Id) as e_size FROM Person_knows_Person k),
+            a.rowid,
+            c.rowid,
+            k.rowid,
+            t.cnt)    FROM Person_knows_Person k
+                        JOIN Person a on a.id = k.Person1Id
+                        JOIN Person c on c.id = k.Person2Id
+                        JOIN (SELECT count(k.Person1Id) cnt, a.rowid as a_rowid
+                                FROM Person a
+                                LEFT JOIN Person_knows_Person k ON k.Person1Id = a.id
+                                GROUP BY a.rowid) t
+                            ON t.a_rowid = a.rowid) AND p.dst;
+----
+42	22	NULL
+3	33	[3, 13, 26, 64, 33]
+
+query III
+SELECT *, iterativelengthoperator(src, dst, 'pairs2') as length
+FROM pairs2 AS p
+WHERE p.src BETWEEN (SELECT CSR_OPERATOR(
             (SELECT count(a.id) as v_size FROM Person a),
             (SELECT count(k.Person1Id) as e_size FROM Person_knows_Person k),
             a.rowid,
@@ -90,9 +116,9 @@ from pairs3;
 10	2
 
 query III
-SELECT *, iterativelength(src, dst, 'pairs3') as length
+SELECT *, iterativelengthoperator(src, dst, 'pairs3') as length
 FROM pairs3 as p
-WHERE p.src BETWEEN (SELECT CREATE_CSR_EDGE(
+WHERE p.src BETWEEN (SELECT CSR_OPERATOR(
             (SELECT count(a.id) as v_size FROM Person a),
             (SELECT count(k.Person1Id) as e_size FROM Person_knows_Person k),
             a.rowid,
