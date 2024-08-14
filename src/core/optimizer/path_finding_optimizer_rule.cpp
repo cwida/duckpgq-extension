@@ -33,13 +33,14 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, C
         continue;
       }
       auto &bound_function_expression = expr->Cast<BoundFunctionExpression>();
-      if (bound_function_expression.function.name == "iterativelength") {
+      // TODO create iterativelengthoperator UDF
+      if (bound_function_expression.function.name == "iterativelengthoperator") {
         op.expressions.emplace_back(make_uniq<BoundColumnRefExpression>(
     expr->alias, LogicalType::BIGINT, ColumnBinding(10, 0)));
         function_expression = expr->Copy();
         op.expressions.erase(op.expressions.begin() + i);
         mode = "iterativelength";
-      } else if (bound_function_expression.function.name == "shortestpath") {
+      } else if (bound_function_expression.function.name == "shortestpathoperator") {
         op.expressions.emplace_back(make_uniq<BoundColumnRefExpression>(
     expr->alias, LogicalType::LIST(LogicalType::BIGINT), ColumnBinding(10, 0)));
         function_expression = expr->Copy();
@@ -67,7 +68,7 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, C
       auto &get_projection = get_limit.children[0]->Cast<LogicalProjection>();
       auto &get_function_expression =
           get_projection.expressions[0]->Cast<BoundFunctionExpression>();
-      if (get_function_expression.function.name != "create_csr_edge") {
+      if (get_function_expression.function.name != "csr_operator") {
         continue;
       }
       vector<unique_ptr<Expression>> path_finding_expressions =
