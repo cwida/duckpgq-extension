@@ -155,25 +155,29 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
-//------------------------------------------------------------------------------
-// Register functions
-//------------------------------------------------------------------------------
-void CoreScalarFunctions::RegisterIterativeLengthScalarFunction(
-    DatabaseInstance &db) {
-  ExtensionUtil::RegisterFunction(
-      db,
-      ScalarFunction("iterativelength",
+ScalarFunctionSet GetIterativeLengthFunction() {
+  ScalarFunctionSet set("iterativelength");
+
+  set.AddFunction(ScalarFunction(
                             {LogicalType::INTEGER, LogicalType::BIGINT,
                              LogicalType::BIGINT, LogicalType::BIGINT},
                             LogicalType::BIGINT, IterativeLengthFunction,
                             IterativeLengthFunctionData::IterativeLengthBind));
 
-  ExtensionUtil::RegisterFunction(
-    db,
-    ScalarFunction("iterativelength",
-      {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
-             LogicalType::BIGINT, IterativeLengthFunction,
-             IterativeLengthFunctionData::IterativeLengthBind));
+  set.AddFunction(
+  ScalarFunction(
+    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
+           LogicalType::BIGINT, IterativeLengthFunction,
+           IterativeLengthFunctionData::IterativeLengthBind));
+  return set;
+}
+
+//------------------------------------------------------------------------------
+// Register functions
+//------------------------------------------------------------------------------
+void CoreScalarFunctions::RegisterIterativeLengthScalarFunction(
+    DatabaseInstance &db) {
+  ExtensionUtil::RegisterFunction(db, GetIterativeLengthFunction());
 }
 
 } // namespace core
