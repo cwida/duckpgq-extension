@@ -6,7 +6,7 @@ namespace duckpgq {
 namespace core {
 
 struct CSROperatorFunctionData : FunctionData {
-  CSROperatorFunctionData(ClientContext &context);
+  explicit CSROperatorFunctionData(ClientContext &context);
   unique_ptr<FunctionData> Copy() const override;
   bool Equals(const FunctionData &other_p) const override;
   static unique_ptr<FunctionData> CSRBind(ClientContext &context,
