@@ -25,6 +25,31 @@ statement ok
 create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
 
 query III
+WITH shortestpath_cte as (
+SELECT src, dst, shortestpathoperator(src, dst, 'pair') as path
+FROM pair p
+WHERE p.src between (SELECT CSR_OPERATOR(
+                             (SELECT count(a.id) as v_size FROM Student a),
+                             (SELECT count(k.src) as e_size from know k),
+                               a.rowid,
+                               c.rowid,
+                               k.rowid,
+                               t.cnt) FROM Know k
+                                           JOIN student a on a.id = k.src
+                                           JOIN student c on c.id = k.dst
+                                           JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
+                                                   FROM student a
+                                                  LEFT JOIN know k ON k.src = a.id
+                                                  GROUP BY a.rowid) t
+                                              ON t.a_rowid = a.rowid) and p.dst)
+ SELECT * FROM shortestpath_cte;
+----
+0	1	NULL
+1	2	[1, 3, 0, 1, 2]
+2	0	[2, 4, 0]
+
+
+query III
 SELECT *, shortestpathoperator(src, dst, 'pair') as path
 FROM pair AS p
 WHERE p.src BETWEEN (SELECT CSR_OPERATOR(
@@ -45,6 +70,9 @@ WHERE p.src BETWEEN (SELECT CSR_OPERATOR(
 0	1	NULL
 1	2	[1, 3, 0, 1, 2]
 2	0	[2, 4, 0]
+
+
+
 
 statement ok
 import database 'duckdb-pgq/data/SNB0.003';
