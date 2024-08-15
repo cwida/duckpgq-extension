@@ -9,10 +9,13 @@ namespace core {
 
 class LogicalPathFindingOperator : public LogicalExtensionOperator {
 public:
-  explicit LogicalPathFindingOperator(vector<unique_ptr<LogicalOperator>> &children_, vector<unique_ptr<Expression>> &expressions_, const string& mode_)
+  explicit LogicalPathFindingOperator(vector<unique_ptr<LogicalOperator>> &children_, vector<unique_ptr<Expression>> &expressions_,
+    const string& mode_, idx_t table_index_, vector<idx_t> &offsets_)
       : LogicalExtensionOperator(std::move(expressions_)) {
     children = std::move(children_);
     mode = mode_;
+    table_index = table_index_;
+    offsets = offsets_;
   }
 
   void Serialize(Serializer &serializer) const override {
@@ -32,6 +35,8 @@ public:
 
 public:
   string mode;
+  idx_t table_index;
+  vector<idx_t> offsets;
 };
 } // namespace core
 
