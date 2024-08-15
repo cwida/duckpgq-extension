@@ -33,7 +33,6 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, C
         continue;
       }
       auto &bound_function_expression = expr->Cast<BoundFunctionExpression>();
-      // TODO create iterativelengthoperator UDF
       if (bound_function_expression.function.name == "iterativelengthoperator") {
         op.expressions.emplace_back(make_uniq<BoundColumnRefExpression>(
     expr->alias, LogicalType::BIGINT, ColumnBinding(10, 0)));
