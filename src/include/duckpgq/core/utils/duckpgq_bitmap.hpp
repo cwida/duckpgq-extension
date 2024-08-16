@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckPGQ
 //
-// duckpgq/utils/duckpgq_bitmap.hpp
+// duckpgq/core/utils/duckpgq_bitmap.hpp
 //
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +22,6 @@ public:
 
 private:
   vector<uint64_t> bitmap;
-  size_t size;
 };
 
 } // namespace core
