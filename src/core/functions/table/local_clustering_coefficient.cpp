@@ -3,7 +3,6 @@
 #include "duckpgq_extension.hpp"
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
 
-#include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
@@ -115,66 +114,6 @@ unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &ed
     return select_node;
 }
 
-// Function to create the CTE for the edges
-unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_pg_entry) {
-    std::vector<unique_ptr<ParsedExpression>> select_expression;
-    auto src_col_ref = make_uniq<ColumnRefExpression>("rowid", "src_table");
-    src_col_ref->alias = "src";
-
-    select_expression.emplace_back(std::move(src_col_ref));
-
-    auto dst_col_ref = make_uniq<ColumnRefExpression>("rowid", "dst_table");
-    dst_col_ref->alias = "dst";
-    select_expression.emplace_back(std::move(dst_col_ref));
-
-    auto edge_col_ref = make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->table_name);
-    edge_col_ref->alias = "edges";
-    select_expression.emplace_back(std::move(edge_col_ref));
-
-    auto select_node = make_uniq<SelectNode>();
-    select_node->select_list = std::move(select_expression);
-
-    auto edge_table_ref = make_uniq<BaseTableRef>();
-    edge_table_ref->table_name = edge_pg_entry->table_name;
-
-    auto src_table_ref = make_uniq<BaseTableRef>();
-    src_table_ref->table_name = edge_pg_entry->source_reference;
-    src_table_ref->alias = "src_table";
-
-    auto join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
-
-    auto first_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
-    first_join_ref->type = JoinType::INNER;
-    first_join_ref->left = std::move(edge_table_ref);
-    first_join_ref->right = std::move(src_table_ref);
-
-    auto edge_from_ref = make_uniq<ColumnRefExpression>(edge_pg_entry->source_fk[0], edge_pg_entry->table_name);
-    auto src_cid_ref = make_uniq<ColumnRefExpression>(edge_pg_entry->source_pk[0], "src_table");
-    first_join_ref->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, std::move(edge_from_ref), std::move(src_cid_ref));
-
-    auto dst_table_ref = make_uniq<BaseTableRef>();
-    dst_table_ref->table_name = edge_pg_entry->destination_reference;
-    dst_table_ref->alias = "dst_table";
-
-    auto second_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
-    second_join_ref->type = JoinType::INNER;
-    second_join_ref->left = std::move(first_join_ref);
-    second_join_ref->right = std::move(dst_table_ref);
-
-    auto edge_to_ref = make_uniq<ColumnRefExpression>(edge_pg_entry->destination_fk[0], edge_pg_entry->table_name);
-    auto dst_cid_ref = make_uniq<ColumnRefExpression>(edge_pg_entry->destination_pk[0], "dst_table");
-    second_join_ref->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, std::move(edge_to_ref), std::move(dst_cid_ref));
-
-    select_node->from_table = std::move(second_join_ref);
-
-    auto select_statement = make_uniq<SelectStatement>();
-    select_statement->node = std::move(select_node);
-
-    auto result = make_uniq<CommonTableExpressionInfo>();
-    result->query = std::move(select_statement);
-    return result;
-}
-
 // Main binding function
 unique_ptr<TableRef> LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(ClientContext &context, TableFunctionBindInput &input) {
     auto pg_name = ToLowerCase(StringValue::Get(input.inputs[0]));
@@ -187,8 +126,7 @@ unique_ptr<TableRef> LocalClusteringCoefficientFunction::LocalClusteringCoeffici
 
     auto select_node = CreateSelectNode(edge_pg_entry);
 
-    select_node->cte_map.map["edges_cte"] = MakeEdgesCTE(edge_pg_entry);
-    select_node->cte_map.map["csr_cte"] = CreateUndirectedCSRCTE(edge_pg_entry);
+    select_node->cte_map.map["csr_cte"] = CreateUndirectedCSRCTE(edge_pg_entry, select_node);
 
     auto subquery = make_uniq<SelectStatement>();
     subquery->node = std::move(select_node);
