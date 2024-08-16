@@ -486,8 +486,15 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
         }
         if (final_select_node->cte_map.map.find("cte1") == final_select_node->cte_map.map.end()) {
           edge_element = reinterpret_cast<PathElement *>(edge_subpath->path_list[0].get());
-          final_select_node->cte_map.map["cte1"] =
+          if (edge_element->match_type == PGQMatchType::MATCH_EDGE_RIGHT) {
+            final_select_node->cte_map.map["cte1"] =
             CreateDirectedCSRCTE(FindGraphTable(edge_element->label, pg_table), previous_vertex_element->variable_binding, edge_element->variable_binding, next_vertex_element->variable_binding);
+          } else if (edge_element->match_type == PGQMatchType::MATCH_EDGE_ANY) {
+            final_select_node->cte_map.map["cte1"] =
+              CreateUndirectedCSRCTE(FindGraphTable(edge_element->label, pg_table), final_select_node);
+          } else {
+            throw NotImplementedException("Cannot do shortest path for edge type %s", edge_element->match_type == PGQMatchType::MATCH_EDGE_LEFT ? "MATCH_EDGE_LEFT" : "MATCH_EDGE_LEFT_RIGHT");
+          }
         }
         string shortest_path_cte_name = "shortest_path_cte" ;
         if (final_select_node->cte_map.map.find(shortest_path_cte_name) == final_select_node->cte_map.map.end()) {
