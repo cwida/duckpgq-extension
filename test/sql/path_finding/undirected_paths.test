@@ -46,3 +46,110 @@ query III
 4	2	1
 4	3	1
 4	4	0
+
+statement error
+-FROM GRAPH_TABLE (pg
+    MATCH
+    o = ANY SHORTEST (a:Student WHERE a.id = 4)<-[e:know]- *(b:Student)
+    COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
+    ) study
+    ORDER BY a_id, b_id;
+----
+Cannot do shortest path for edge type MATCH_EDGE_LEFT
+
+statement error
+-FROM GRAPH_TABLE (pg
+    MATCH
+    o = ANY SHORTEST (a:Student WHERE a.id = 4)<-[e:know]-> *(b:Student)
+    COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
+    ) study
+    ORDER BY a_id, b_id;
+----
+Cannot do shortest path for edge type MATCH_EDGE_LEFT_RIGHT
+
+query II
+-FROM GRAPH_TABLE (pg
+    MATCH
+    (a:Student WHERE a.id = 4)-[e:know]-{0,1}(b:Student)
+    COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
+    ) study
+    ORDER BY a_id, b_id;
+----
+4	2
+4	3
+
+query III
+-FROM GRAPH_TABLE (pg
+    MATCH
+    o = ANY SHORTEST (a:Student WHERE a.id = 999)-[e:know]- *(b:Student)
+    COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
+    ) study
+    ORDER BY a_id, b_id;
+----
+
+query III
+-FROM GRAPH_TABLE (pg
+    MATCH
+    o = ANY SHORTEST (a:Student)-[e:know]- *(b:Student)
+    COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
+    ) study
+    ORDER BY a_id, b_id;
+----
+0	0	0
+0	1	1
+0	2	1
+0	3	1
+0	4	2
+1	0	1
+1	1	0
+1	2	1
+1	3	1
+1	4	2
+2	0	1
+2	1	1
+2	2	0
+2	3	1
+2	4	1
+3	0	1
+3	1	1
+3	2	1
+3	3	0
+3	4	1
+4	0	2
+4	1	2
+4	2	1
+4	3	1
+4	4	0
+
+query III
+-FROM GRAPH_TABLE (pg
+    MATCH
+    o = ANY SHORTEST (a:Student WHERE a.id = 3)-[e:know]- *(b:Student WHERE b.id = 3)
+    COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
+    ) study
+    ORDER BY a_id, b_id;
+----
+3	3	0
+
+query III
+-FROM GRAPH_TABLE (pg
+    MATCH
+    o = ANY SHORTEST (a:Student WHERE a.id = 0)-[e:know]- *(b:Student WHERE b.id = 5)
+    COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
+    ) study
+    ORDER BY a_id, b_id;
+----
+
+query III
+-FROM GRAPH_TABLE (pg
+    MATCH
+    o = ANY SHORTEST (a:Student WHERE a.id = 0)-[e:know]-{0,2}(b:Student)
+    COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
+    ) study
+    ORDER BY a_id, b_id;
+----
+0	0	0
+0	1	1
+0	2	1
+0	3	1
+0	4	2

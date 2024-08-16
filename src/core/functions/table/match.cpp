@@ -659,12 +659,23 @@ void PGQMatchFunction::AddPathFinding(
     const string &prev_binding, const string &edge_binding,
     const string &next_binding,
     const shared_ptr<PropertyGraphTable> &edge_table,
-    CreatePropertyGraphInfo &pg_table, SubPath *subpath) {
+    CreatePropertyGraphInfo &pg_table, SubPath *subpath,
+    PGQMatchType edge_type) {
   //! START
   //! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
   if (select_node->cte_map.map.find("cte1") == select_node->cte_map.map.end()) {
+    if (edge_type == PGQMatchType::MATCH_EDGE_RIGHT) {
       select_node->cte_map.map["cte1"] =
       CreateDirectedCSRCTE(edge_table, prev_binding, edge_binding, next_binding);
+    } else if (edge_type == PGQMatchType::MATCH_EDGE_ANY) {
+      select_node->cte_map.map["cte1"] =
+          CreateUndirectedCSRCTE(edge_table, select_node);
+    } else {
+      throw NotImplementedException("Cannot do shortest path for edge type %s",
+                                    edge_type == PGQMatchType::MATCH_EDGE_LEFT
+                                        ? "MATCH_EDGE_LEFT"
+                                        : "MATCH_EDGE_LEFT_RIGHT");
+    }
   }
   if (select_node->cte_map.map.find("shortest_path_cte") != select_node->cte_map.map.end()) {
     return;
@@ -860,9 +871,9 @@ void PGQMatchFunction::ProcessPathList(
         // Add the path-finding
         AddPathFinding(final_select_node, conditions,
         previous_vertex_element->variable_binding,
-        edge_element->variable_binding,
-        next_vertex_element->variable_binding, edge_table,
-        pg_table, edge_subpath);
+                       edge_element->variable_binding,
+                       next_vertex_element->variable_binding, edge_table,
+        pg_table, edge_subpath, edge_element->match_type);
     } else {
       AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table,
                    edge_element->match_type, edge_element->variable_binding,
