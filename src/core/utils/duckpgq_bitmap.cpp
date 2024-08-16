@@ -4,7 +4,7 @@ namespace duckpgq {
 
 namespace core {
 
-DuckPGQBitmap::DuckPGQBitmap(size_t size) : size(size) {
+DuckPGQBitmap::DuckPGQBitmap(size_t size) {
   bitmap.resize((size + 63) / 64, 0);
 }
 

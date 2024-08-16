@@ -130,7 +130,7 @@ public:
     const string &prev_binding, const string &edge_binding,
     const string &next_binding,
     const shared_ptr<PropertyGraphTable> &edge_table,
-    CreatePropertyGraphInfo &pg_table, SubPath *subpath);
+    CreatePropertyGraphInfo &pg_table, SubPath *subpath, PGQMatchType edge_type);
 
   static void
   AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
