@@ -1,5 +1,5 @@
 # name: test/sql/sqlpgq/subpath_match.test
-# group: [sqlpgq]
+# group: [duckpgq]
 
 #statement ok
 #pragma enable_verification
