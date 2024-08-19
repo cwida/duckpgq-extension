@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/no_properties.test
-# group: [sqlpgq]
+# name: test/sql/create_pg/no_properties.test
+# description: Testing property graphs with no properties
+# group: [duckpgq_sql_create_pg]
 
 #statement ok
 #pragma enable_verification

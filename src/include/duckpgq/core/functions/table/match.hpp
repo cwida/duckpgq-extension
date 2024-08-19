@@ -121,6 +121,7 @@ public:
       CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
       PathElement *path_element, PathElement *next_vertex_element,
       vector<unique_ptr<ParsedExpression>> &path_finding_conditions);
+
   static unique_ptr<ParsedExpression>
   CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list,
                             CreatePropertyGraphInfo &pg_table,
@@ -128,14 +129,13 @@ public:
                             unique_ptr<SelectNode> &final_select_node,
                             vector<unique_ptr<ParsedExpression>> &conditions);
 
-  static void AddPathFinding(unique_ptr<SelectNode> &select_node,
-                             vector<unique_ptr<ParsedExpression>> &conditions,
-                             const string &prev_binding,
-                             const string &edge_binding,
-                             const string &next_binding,
-                             const shared_ptr<PropertyGraphTable> &edge_table,
-                             CreatePropertyGraphInfo &pg_table,
-                             SubPath *subpath);
+  static void AddPathFinding(
+    unique_ptr<SelectNode> &select_node,
+    vector<unique_ptr<ParsedExpression>> &conditions,
+    const string &prev_binding, const string &edge_binding,
+    const string &next_binding,
+    const shared_ptr<PropertyGraphTable> &edge_table,
+    CreatePropertyGraphInfo &pg_table, SubPath *subpath, PGQMatchType edge_type);
 
   static void
   AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,

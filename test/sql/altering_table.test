@@ -1,6 +1,6 @@
-# name: test/sql/sqlpgq/altering_table.test
-# group: [sql]
-# issue: https://github.com/cwida/duckpgq-extension/issues/44
+# name: test/sql/altering_table.test
+# description: Testing altering a table after creating a property graph over it
+# group: [duckpgq_sql]
 
 #statement ok
 #pragma enable_verification

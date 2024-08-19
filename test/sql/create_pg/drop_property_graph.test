@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/drop_property_graph.test
-# group: [sqlpgq]
+# name: test/sql/create_pg/drop_property_graph.test
+# description: Testing the drop property graph syntax
+# group: [duckpgq_sql_create_pg]
 
 require duckpgq
 
@@ -83,6 +84,7 @@ EDGE TABLES (
             LABEL StudyAt
     );
 
+
 statement ok
 -SELECT *
 FROM GRAPH_TABLE (pg
@@ -90,3 +92,18 @@ FROM GRAPH_TABLE (pg
     (a:Person)
     COLUMNS (a.id)
     ) study;
+
+
+# should drop the property graph
+statement ok
+-DROP PROPERTY GRAPH if exists pg;
+
+# should not give an error as the property graph is already dropped
+statement ok
+-DROP PROPERTY GRAPH if exists pg;
+
+# should not give an error as the property graph is already dropped
+statement error
+-DROP PROPERTY GRAPH pg;
+----
+Binder Error: Property graph pg does not exist

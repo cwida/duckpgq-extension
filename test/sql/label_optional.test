@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/snb.test
-# group: [duckpgq]
+# name: test/sql/label_optional.test
+# description: Testing the optional label for property graph creation
+# group: [duckpgq_sql]
 
 require duckpgq
 
