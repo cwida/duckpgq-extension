@@ -894,6 +894,9 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     } else {
       gstate.global_bfs_state = make_uniq<GlobalBFSState>(csr, all_pairs, csr->v_size - 2, num_threads, mode, context, true);
     }
+    Value task_size_value;
+    context.TryGetCurrentSetting("experimental_path_finding_operator_task_size", task_size_value);
+    gstate.global_bfs_state->split_size =    task_size_value.GetValue<idx_t>();;
 
     auto const task_size = client_config.set_variables.find("experimental_path_finding_operator_task_size");
     gstate.global_bfs_state->split_size = task_size != client_config.set_variables.end() ? task_size->second.GetValue<idx_t>() : 256;
@@ -923,7 +926,7 @@ void PhysicalPathFinding::ScheduleBFSTasks(Pipeline &pipeline, Event &event,
   if (bfs_state->started_searches < gstate.global_tasks->Count()) {
 
     auto result_data = FlatVector::GetData<int64_t>(bfs_state->result.data[0]);
-    auto& result_validity = FlatVector::Validity(bfs_state->result.data[0]);
+    auto &result_validity = FlatVector::Validity(bfs_state->result.data[0]);
     std::bitset<LANE_LIMIT> seen_mask;
     seen_mask.set();
 
