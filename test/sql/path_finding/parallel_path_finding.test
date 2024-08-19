@@ -1,6 +1,6 @@
-# name: test/sql/join/pathfinding/test_path_finding.test
+# name: test/sql/path_finding/parallel_path_finding.test
 # description: Prototype the path finding operator
-# group: [path-finding]
+# group: [duckpgq_sql_path_finding]
 
 #statement ok
 #PRAGMA enable_verification
