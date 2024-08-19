@@ -156,9 +156,13 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
       }
       logical_get->column_ids = std::move(column_ids_vector);
       path_finding_children.push_back(std::move(logical_get));
+    } else {
+      throw InternalException("Did not find pairs for path-finding operator. The left child was of type " + LogicalOperatorToString(get_join.children[0]->type));
     }
     path_finding_children.push_back(std::move(get_projection.children[0]));
-
+    if (path_finding_children.size() != 2) {
+      throw InternalException("Path-findig operator should have 2 children");
+    }
     auto path_finding_operator = make_uniq<LogicalPathFindingOperator>(
         path_finding_children, path_finding_expressions, mode, op_proj.table_index, offsets);
     op.children.clear();
