@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/snb.test
-# group: [duckpgq]
+# name: test/sql/path_finding/complex_matching.test
+# description: Testing more complex pattern matching
+# group: [duckpgq_sql_path_finding]
 
 require duckpgq
 

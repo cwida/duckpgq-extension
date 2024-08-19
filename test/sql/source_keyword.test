@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/snb.test
-# group: [duckpgq]
+# name: test/sql/source_keyword.test
+# description: Testing the SOURCE keyword 
+# group: [duckpgq_sql]
 
 require duckpgq
 

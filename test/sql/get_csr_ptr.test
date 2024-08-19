@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/get_csr_ptr.test
-# group: [sqlpgq]
+# name: test/sql/get_csr_ptr.test
+# description: Test getting the CSR pointer
+# group: [duckpgq_sql]
 
 require duckpgq
 

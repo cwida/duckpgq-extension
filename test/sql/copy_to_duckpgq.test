@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/copy_to_duckpgq.test
-# group: [duckpgq]
+# name: test/sql/copy_to_duckpgq.test
+# description: Testing the COPY TO query with a PGQ pattern
+# group: [duckpgq_sql]
 
 require duckpgq
 

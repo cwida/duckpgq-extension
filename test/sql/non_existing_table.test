@@ -1,6 +1,8 @@
+# name: test/sql/non_existing_table.test
+# description: Testing creating a property graph on non-existing tables
+# group: [duckpgq_sql]
+
 # https://github.com/cwida/duckpgq-extension/issues/95
-# name: test/sql/sqlpgq/non_existing_table.test
-# group: [sqlpgq]
 
 require duckpgq
 

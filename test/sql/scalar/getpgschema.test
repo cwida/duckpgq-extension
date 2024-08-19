@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/getpgschema.test
-# group: [sqlpgq]
+# name: test/sql/scalar/getpgschema.test
+# description: Testing getting the various UDFs to get CSR statistics
+# group: [duckpgq_sql_scalar]
 
 require duckpgq
 

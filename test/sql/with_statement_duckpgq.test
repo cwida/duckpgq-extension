@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/snb.test
-# group: [duckpgq]
+# name: test/sql/with_statement_duckpgq.test
+# description: Testing PGQ query and WITH in single query
+# group: [duckpgq_sql]
 
 require duckpgq
 

@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/snb.test
-# group: [duckpgq]
+# name: test/sql/snb/snb_inheritance.test
+# description: Testing the inheritance support for the SNB dataset
+# group: [duckpgq_sql_snb]
 
 require duckpgq
 

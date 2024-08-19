@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/all_properties.test
-# group: [sqlpgq]
+# name: test/sql/create_pg/all_properties.test
+# description: Testing the creation of property graphs with all properties
+# group: [duckpgq_sql_create_pg]
 
 #statement ok
 #pragma enable_verification

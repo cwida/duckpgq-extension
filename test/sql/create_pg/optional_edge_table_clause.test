@@ -1,5 +1,6 @@
 # name: test/sql/create_pg/optional_edge_table_clause.test
-# group: [duckpgq]
+# description: Testing the optional edge table property graphs
+# group: [duckpgq_sql_create_pg]
 
 require duckpgq
 

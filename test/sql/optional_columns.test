@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/snb.test
-# group: [duckpgq]
+# name: test/sql/optional_columns.test
+# description: Testing the optional columns syntax improvement
+# group: [duckpgq_sql]
 
 require duckpgq
 
