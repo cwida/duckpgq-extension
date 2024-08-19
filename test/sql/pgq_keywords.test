@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/pgq_keywords.test
-# group: [sqlpgq]
+# name: test/sql/pgq_keywords.test
+# description: Testing PGQ reserved keywords in other queries
+# group: [duckpgq_sql]
 
 #statement ok
 #pragma enable_verification

@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/shortest_path.test
-# group: [sqlpgq]
+# name: test/sql/path_finding/shortest_path.test
+# description: Testing the shortest path matching
+# group: [duckpgq_sql_path_finding]
 
 #statement ok
 #pragma enable_verification

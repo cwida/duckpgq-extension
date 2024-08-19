@@ -1,5 +1,6 @@
 # name: test/sql/scalar/local_clustering_coefficient.test
-# group: [duckpgq]
+# description: Testing the local clustering coefficient calculations
+# group: [duckpgq_sql_scalar]
 
 require duckpgq
 

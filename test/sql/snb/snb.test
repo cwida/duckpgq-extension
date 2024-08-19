@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/snb.test
-# group: [duckpgq]
+# name: test/sql/snb/snb.test
+# description: Testing SNB Interactive queries and loading the property graph
+# group: [duckpgq_sql_snb]
 
 require duckpgq
 

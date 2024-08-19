@@ -1,5 +1,6 @@
-# name: test/sql/sqlpgq/snb.test
-# group: [duckpgq]
+# name: test/sql/create_pg/create_or_replace_pg.test
+# description: Testing create or replace property graph syntax
+# group: [duckpgq_sql_create_pg]
 
 require duckpgq
 
