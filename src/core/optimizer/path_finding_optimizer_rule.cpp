@@ -82,10 +82,6 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
   unique_ptr<Expression> function_expression;
   string mode;
   vector<idx_t> offsets;
-  // Iterate in reverse to not influence the upcoming iterations when
-  // erasing an element from the list. Does not work if both iterativelength
-  // and shortestpath are called in the same query for now. To be improved
-  // in the future.
   if (op.type != LogicalOperatorType::LOGICAL_PROJECTION) {
     for (auto &child : op.children) {
       if (InsertPathFindingOperator(*child, context)) {
@@ -112,12 +108,13 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
       Left is aggregate and right is filter
       Right is aggregate, left is filter
     */
-
-    if (get_join.children[1]->type !=
+    auto &left_child = get_join.children[0];
+    auto &right_child = get_join.children[1];
+    if (right_child->type !=
         LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
       continue;
     }
-    auto &get_aggregate = get_join.children[1]->Cast<LogicalAggregate>();
+    auto &get_aggregate = right_child->Cast<LogicalAggregate>();
     auto &get_limit = get_aggregate.children[0]->Cast<LogicalLimit>();
     auto &get_projection = get_limit.children[0]->Cast<LogicalProjection>();
     auto &get_function_expression =
@@ -127,37 +124,50 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
     }
     vector<unique_ptr<Expression>> path_finding_expressions =
         std::move(get_function_expression.children);
-    if (get_join.children[0]->type == LogicalOperatorType::LOGICAL_FILTER) {
-      auto &get_filter = get_join.children[0]->Cast<LogicalFilter>();
+
+    if (left_child->type == LogicalOperatorType::LOGICAL_FILTER) {
+      auto &get_filter = left_child->Cast<LogicalFilter>();
+
       if (get_filter.children[0]->type != LogicalOperatorType::LOGICAL_GET) {
         continue;
       }
+
       path_finding_children.push_back(std::move(get_filter.children[0]));
-    } else if (get_join.children[0]->type ==
-               LogicalOperatorType::LOGICAL_EMPTY_RESULT) {
+    } else if (left_child->type == LogicalOperatorType::LOGICAL_EMPTY_RESULT) {
       auto default_database = DatabaseManager::GetDefaultDatabase(context);
       auto &catalog = Catalog::GetCatalog(context, default_database);
       auto &bound_function_expression =
           function_expression->Cast<BoundFunctionExpression>();
-      auto &bind_info = bound_function_expression.bind_info
-                            ->Cast<ShortestPathOperatorData>();
+      auto &bind_info =
+          bound_function_expression.bind_info->Cast<ShortestPathOperatorData>();
       auto &duckdb_table = catalog.GetEntry<DuckTableEntry>(
           context, DEFAULT_SCHEMA, bind_info.table_to_scan);
-      auto &get_empty_result = get_join.children[0]->Cast<LogicalEmptyResult>();
+      auto &get_empty_result = left_child->Cast<LogicalEmptyResult>();
+
       vector<string> returned_names = {"src", "dst"};
       unique_ptr<FunctionData> bind_data;
       auto scan_function = duckdb_table.GetScanFunction(context, bind_data);
+
       auto logical_get = make_uniq<LogicalGet>(
           get_empty_result.bindings[0].table_index, scan_function,
-          std::move(bind_data), get_empty_result.return_types, returned_names);
+          std::move(bind_data), get_empty_result.return_types, returned_names
+      );
+
       vector<column_t> column_ids_vector;
       for (const auto &binding : get_empty_result.bindings) {
         column_ids_vector.push_back(binding.column_index);
       }
       logical_get->column_ids = std::move(column_ids_vector);
+
       path_finding_children.push_back(std::move(logical_get));
-    } else {
-      throw InternalException("Did not find pairs for path-finding operator. The left child was of type " + LogicalOperatorToString(get_join.children[0]->type));
+    } else if (left_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
+      path_finding_children.push_back(std::move(left_child));
+    }
+
+    else {
+      throw InternalException("Did not find pairs for path-finding operator. "
+                              "The left child was of type " +
+                              LogicalOperatorToString(left_child->type));
     }
     path_finding_children.push_back(std::move(get_projection.children[0]));
     if (path_finding_children.size() != 2) {
