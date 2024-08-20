@@ -21,7 +21,7 @@ void ParallelIterativeEvent::Schedule() {
   SetTasks(std::move(bfs_tasks));
 }
 
-void ParallelIterativeEvent::FinishEvent() override {
+void ParallelIterativeEvent::FinishEvent() {
   auto &bfs_state = gstate.global_bfs_state;
 
   // if remaining pairs, schedule the BFS for the next batch

@@ -9,7 +9,7 @@ PhysicalIterativeTask::PhysicalIterativeTask(shared_ptr<Event> event_p, ClientCo
       : ExecutorTask(context, std::move(event_p)), context(context),
         state(state), worker_id(worker_id) {}
 
-  TaskExecutionResult PhysicalIterativeTask::ExecuteTask(TaskExecutionMode mode) override {
+  TaskExecutionResult PhysicalIterativeTask::ExecuteTask(TaskExecutionMode mode) {
     auto &bfs_state = state.global_bfs_state;
     auto &change = bfs_state->change;
     auto &barrier = bfs_state->barrier;
