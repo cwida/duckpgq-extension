@@ -188,11 +188,6 @@ public:
                  shared_ptr<DataChunk> pairs_, int64_t v_size_,
                  idx_t num_threads_, idx_t mode_, ClientContext &context_);
 
-  GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_,
-                 shared_ptr<DataChunk> pairs_, int64_t v_size_,
-                 idx_t num_threads_, idx_t mode_, ClientContext &context_,
-                 bool is_path_);
-
   void Clear();
 
   void CreateTasks();

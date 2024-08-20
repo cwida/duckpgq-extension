@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <duckpgq/core/operator/event/shortest_path_event.hpp>
 #include <thread>
+#include <utility>
 
 #include "duckpgq/core/utils/duckpgq_barrier.hpp"
 
@@ -73,7 +74,7 @@ void PhysicalPathFinding::GlobalCompressedSparseRow::InitializeEdge(
 GlobalBFSState::GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_,
                shared_ptr<DataChunk> pairs_, int64_t v_size_,
                idx_t num_threads_, idx_t mode_, ClientContext &context_)
-    : csr(csr_), pairs(pairs_), iter(1), v_size(v_size_), change(false),
+    : csr(std::move(csr_)), pairs(pairs_), iter(1), v_size(v_size_), change(false),
       started_searches(0), total_len(0), context(context_), seen(v_size_),
       visit1(v_size_), visit2(v_size_), num_threads(num_threads_),
       task_queues(num_threads_), barrier(num_threads_),
@@ -531,15 +532,10 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 
     auto &ts = TaskScheduler::GetScheduler(context);
     idx_t num_threads = ts.NumberOfThreads();
-    auto &client_config = ClientConfig::GetConfig(context);
     idx_t mode = this->mode == "iterativelength" ? 0 : 1;
-    if (mode == 0) {
-      gstate.global_bfs_state = make_uniq<GlobalBFSState>(
+    gstate.global_bfs_state = make_uniq<GlobalBFSState>(
           csr, all_pairs, csr->v_size - 2, num_threads, mode, context);
-    } else {
-      gstate.global_bfs_state = make_uniq<GlobalBFSState>(
-          csr, all_pairs, csr->v_size - 2, num_threads, mode, context, true);
-    }
+
     Value task_size_value;
     context.TryGetCurrentSetting("experimental_path_finding_operator_task_size",
                                  task_size_value);
