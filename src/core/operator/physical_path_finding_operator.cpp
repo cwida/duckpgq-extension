@@ -79,7 +79,7 @@ GlobalBFSState::GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_,
       started_searches(0), total_len(0), context(context_), seen(v_size_),
       visit1(v_size_), visit2(v_size_), num_threads(num_threads_),
       task_queues(num_threads_), barrier(num_threads_),
-      element_locks(v_size_), mode(mode_) {
+      element_locks(v_size_), mode(mode_), parents_ve(v_size_) {
   result.Initialize(
       context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)},
       pairs_->size());

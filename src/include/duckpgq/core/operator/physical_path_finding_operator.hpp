@@ -198,7 +198,6 @@ public:
 
   pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) const;
 
-public:
   shared_ptr<GlobalCompressedSparseRow> csr;
   shared_ptr<DataChunk> pairs;
   int64_t iter;
