@@ -12,10 +12,14 @@
 #include "duckdb/execution/operator/join/physical_comparison_join.hpp"
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
+#include "duckpgq/core/utils/duckpgq_barrier.hpp"
+#include "duckpgq/core/utils/duckpgq_path_reconstruction.hpp"
 
 namespace duckpgq {
 
 namespace core {
+
+
 
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 #define LANE_LIMIT 512
