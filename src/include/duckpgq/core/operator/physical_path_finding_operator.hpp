@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckDB
 //
-// duckpgq/operators/physical_path_finding_operator.hpp
+// duckpgq/core/operator/physical_path_finding_operator.hpp
 //
 //
 //===----------------------------------------------------------------------===//
@@ -19,15 +19,13 @@ namespace duckpgq {
 
 namespace core {
 
-
-
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 #define LANE_LIMIT 512
 
 public:
   class GlobalCompressedSparseRow {
   public:
-    GlobalCompressedSparseRow(ClientContext &context){
+    explicit GlobalCompressedSparseRow(ClientContext &context){
     };
     ~GlobalCompressedSparseRow() {
       if (v) {
@@ -104,22 +102,16 @@ public:
     const PhysicalPathFinding &op;
     //! Local copy of the expression executor
     ExpressionExecutor executor;
-
     //! Final result for the path-finding pairs
     DataChunk local_results;
-
   };
 
-public:
-  static constexpr const PhysicalOperatorType TYPE =
-      PhysicalOperatorType::EXTENSION;
-
-
-public:
   PhysicalPathFinding(LogicalExtensionOperator &op,
                       unique_ptr<PhysicalOperator> left,
                       unique_ptr<PhysicalOperator> right);
-public:
+
+    static constexpr PhysicalOperatorType TYPE =
+      PhysicalOperatorType::EXTENSION;
   vector<unique_ptr<Expression>> expressions;
   string mode; // "iterativelength" or "shortestpath"
 
@@ -164,7 +156,112 @@ public:
   void BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) override;
 
   // //! Schedules tasks to calculate the next iteration of the path-finding
-	static void ScheduleBFSTasks(Pipeline &pipeline, Event &event, GlobalSinkState &state);
+	static void ScheduleBFSEvent(Pipeline &pipeline, Event &event, GlobalSinkState &state);
+};
+
+//===--------------------------------------------------------------------===//
+// Sink
+//===--------------------------------------------------------------------===//
+class PathFindingLocalState : public LocalSinkState {
+public:
+  using GlobalCompressedSparseRow =
+      PhysicalPathFinding::GlobalCompressedSparseRow;
+  PathFindingLocalState(ClientContext &context, const PhysicalPathFinding &op,
+                        idx_t child);
+
+  void Sink(DataChunk &input, GlobalCompressedSparseRow &global_csr,
+            idx_t child);
+
+  static void CreateCSRVertex(DataChunk &input,
+                              GlobalCompressedSparseRow &global_csr);
+
+  ColumnDataCollection local_tasks;
+  ColumnDataCollection local_inputs;
+};
+
+class GlobalBFSState {
+  using GlobalCompressedSparseRow =
+      PhysicalPathFinding::GlobalCompressedSparseRow;
+
+public:
+  GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_,
+                 shared_ptr<DataChunk> pairs_, int64_t v_size_,
+                 idx_t num_threads_, idx_t mode_, ClientContext &context_);
+
+  GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_,
+                 shared_ptr<DataChunk> pairs_, int64_t v_size_,
+                 idx_t num_threads_, idx_t mode_, ClientContext &context_,
+                 bool is_path_);
+
+  void Clear();
+
+  void CreateTasks();
+
+  void InitTask(idx_t worker_id);
+
+  pair<idx_t, idx_t> FetchTask(idx_t worker_id);
+
+  pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) const;
+
+public:
+  shared_ptr<GlobalCompressedSparseRow> csr;
+  shared_ptr<DataChunk> pairs;
+  int64_t iter;
+  int64_t v_size;
+  bool change;
+  idx_t started_searches;
+  int64_t total_len;
+  int64_t *src;
+  int64_t *dst;
+  UnifiedVectorFormat vdata_src;
+  UnifiedVectorFormat vdata_dst;
+  int64_t lane_to_num[LANE_LIMIT];
+  idx_t active = 0;
+  DataChunk result; // 0 for length, 1 for path
+  ClientContext &context;
+  vector<std::bitset<LANE_LIMIT>> seen;
+  vector<std::bitset<LANE_LIMIT>> visit1;
+  vector<std::bitset<LANE_LIMIT>> visit2;
+  vector<std::array<ve, LANE_LIMIT>> parents_ve;
+
+  idx_t num_threads;
+  // task_queues[workerId] = {curTaskIx, queuedTasks}
+  // queuedTasks[curTaskIx] = {start, end}
+  vector<pair<atomic<idx_t>, vector<pair<idx_t, idx_t>>>> task_queues;
+  int64_t split_size = 256;
+
+  Barrier barrier;
+
+  // lock for next
+  mutable vector<mutex> element_locks;
+
+  idx_t mode;
+};
+
+class PathFindingGlobalState : public GlobalSinkState {
+public:
+  using GlobalCompressedSparseRow =
+      PhysicalPathFinding::GlobalCompressedSparseRow;
+  PathFindingGlobalState(ClientContext &context,
+                         const PhysicalPathFinding &op);
+
+  PathFindingGlobalState(PathFindingGlobalState &prev);
+
+  void Sink(DataChunk &input, PathFindingLocalState &lstate);
+
+  // pairs is a 2-column table with src and dst
+  unique_ptr<ColumnDataCollection> global_tasks;
+  unique_ptr<ColumnDataCollection> global_inputs;
+  // pairs with path exists
+  // ColumnDataCollection global_results;
+  ColumnDataScanState scan_state;
+  ColumnDataAppendState append_state;
+
+  shared_ptr<GlobalCompressedSparseRow> global_csr;
+  // state for BFS
+  unique_ptr<GlobalBFSState> global_bfs_state;
+  size_t child;
+  string mode;
 };
 
 } // namespace core
