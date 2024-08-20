@@ -16,7 +16,7 @@ namespace core {
 
 class Barrier {
 public:
-  explicit Barrier::Barrier(std::size_t iCount);
+  explicit Barrier(std::size_t iCount);
 
   void Wait();
 
