@@ -4,6 +4,10 @@
 
 #include "duckpgq/core/functions/table/describe_property_graph.hpp"
 #include "duckpgq/core/functions/table/drop_property_graph.hpp"
+#include "duckdb/parser/expression/constant_expression.hpp"
+#include "duckdb/parser/tableref/joinref.hpp"
+#include "duckdb/parser/tableref/basetableref.hpp"
+#include "duckdb/parser/tableref/subqueryref.hpp"
 
 namespace duckpgq {
 
@@ -49,7 +53,43 @@ shared_ptr<PropertyGraphTable> ValidateSourceNodeAndEdgeTable(CreatePropertyGrap
   return edge_pg_entry;
 }
 
+// Function to create the SELECT node
+unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &edge_pg_entry, const string& function_name) {
+  auto select_node = make_uniq<SelectNode>();
+  std::vector<unique_ptr<ParsedExpression>> select_expression;
 
+  select_expression.emplace_back(make_uniq<ColumnRefExpression>(edge_pg_entry->source_pk[0], edge_pg_entry->source_reference));
+
+  auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
+
+  vector<unique_ptr<ParsedExpression>> lcc_children;
+  lcc_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
+  lcc_children.push_back(make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->source_reference));
+
+  auto lcc_function = make_uniq<FunctionExpression>(function_name, std::move(lcc_children));
+
+  std::vector<unique_ptr<ParsedExpression>> addition_children;
+  addition_children.emplace_back(std::move(cte_col_ref));
+  addition_children.emplace_back(std::move(lcc_function));
+
+  auto addition_function = make_uniq<FunctionExpression>("add", std::move(addition_children));
+  addition_function->alias = function_name;
+  select_expression.emplace_back(std::move(addition_function));
+  select_node->select_list = std::move(select_expression);
+
+  auto src_base_ref = make_uniq<BaseTableRef>();
+  src_base_ref->table_name = edge_pg_entry->source_reference;
+
+  auto temp_cte_select_subquery = CreateCountCTESubquery();
+
+  auto cross_join_ref = make_uniq<JoinRef>(JoinRefType::CROSS);
+  cross_join_ref->left = std::move(src_base_ref);
+  cross_join_ref->right = std::move(temp_cte_select_subquery);
+
+  select_node->from_table = std::move(cross_join_ref);
+
+  return select_node;
+}
 
 
 } // namespace core
