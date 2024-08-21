@@ -10,71 +10,11 @@
 #include <duckdb/parser/tableref/basetableref.hpp>
 #include <duckdb/parser/tableref/joinref.hpp>
 #include <duckdb/parser/tableref/subqueryref.hpp>
-
 #include <duckpgq/core/functions/table.hpp>
 
 namespace duckpgq {
 
 namespace core {
-// Utility function to transform a string to lowercase
-std::string ToLowerCase(const std::string &input) {
-    std::string result = input;
-    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
-    return result;
-}
-
-// Function to get PropertyGraphInfo from DuckPGQState
-CreatePropertyGraphInfo* GetPropertyGraphInfo(DuckPGQState *duckpgq_state, const std::string &pg_name) {
-    auto property_graph = duckpgq_state->registered_property_graphs.find(pg_name);
-    if (property_graph == duckpgq_state->registered_property_graphs.end()) {
-        throw Exception(ExceptionType::INVALID, "Property graph " + pg_name + " not found");
-    }
-    return dynamic_cast<CreatePropertyGraphInfo*>(property_graph->second.get());
-}
-
-// Function to validate the source node and edge table
-shared_ptr<PropertyGraphTable> ValidateSourceNodeAndEdgeTable(CreatePropertyGraphInfo *pg_info, const std::string &node_table, const std::string &edge_table) {
-    auto source_node_pg_entry = pg_info->GetTable(node_table);
-    if (!source_node_pg_entry->is_vertex_table) {
-        throw Exception(ExceptionType::INVALID, node_table + " is an edge table, expected a vertex table");
-    }
-    auto edge_pg_entry = pg_info->GetTable(edge_table);
-    if (edge_pg_entry->is_vertex_table) {
-        throw Exception(ExceptionType::INVALID, edge_table + " is a vertex table, expected an edge table");
-    }
-    if (!edge_pg_entry->IsSourceTable(node_table)) {
-        throw Exception(ExceptionType::INVALID, "Vertex table " + node_table + " is not a source of edge table " + edge_table);
-    }
-    return edge_pg_entry;
-}
-
-// Function to create a subquery for counting with CTE
-unique_ptr<SubqueryRef> CreateCountCTESubquery() {
-    auto temp_cte_select_node = make_uniq<SelectNode>();
-
-    auto cte_table_ref = make_uniq<BaseTableRef>();
-    cte_table_ref->table_name = "csr_cte";
-    temp_cte_select_node->from_table = std::move(cte_table_ref);
-
-    vector<unique_ptr<ParsedExpression>> children;
-    children.push_back(make_uniq<ColumnRefExpression>("temp", "csr_cte"));
-
-    auto count_function = make_uniq<FunctionExpression>("count", std::move(children));
-    auto zero = make_uniq<ConstantExpression>(Value::INTEGER((int32_t)0));
-
-    vector<unique_ptr<ParsedExpression>> multiply_children;
-    multiply_children.push_back(std::move(zero));
-    multiply_children.push_back(std::move(count_function));
-
-    auto multiply_function = make_uniq<FunctionExpression>("multiply", std::move(multiply_children));
-    multiply_function->alias = "temp";
-    temp_cte_select_node->select_list.push_back(std::move(multiply_function));
-
-    auto temp_cte_select_statement = make_uniq<SelectStatement>();
-    temp_cte_select_statement->node = std::move(temp_cte_select_node);
-
-    return make_uniq<SubqueryRef>(std::move(temp_cte_select_statement), "__x");
-}
 
 // Function to create the SELECT node
 unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &edge_pg_entry) {
