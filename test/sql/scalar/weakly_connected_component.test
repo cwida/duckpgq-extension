@@ -32,3 +32,59 @@ select id, componentId from weakly_connected_component(pg, student, know);
 2	0
 3	0
 4	0
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'David'), (4, 'Eve');
+
+statement ok
+CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
+INSERT INTO know VALUES (0, 0, 10), (1, 1, 11), (2, 2, 12), (3, 3, 13), (4, 4, 14);
+# Self loops
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH pg_disconnected
+VERTEX TABLES (
+    Student
+)
+EDGE TABLES (
+    know SOURCE KEY ( src ) REFERENCES Student ( id )
+         DESTINATION KEY ( dst ) REFERENCES Student ( id )
+);
+
+query II
+select id, componentId from weakly_connected_component(pg_disconnected, student, know);
+----
+0	0
+1	1
+2	2
+3	3
+4	4
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'David'), (4, 'Eve'), (5, 'Frank');
+
+statement ok
+CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
+INSERT INTO know VALUES (0, 1, 10), (1, 2, 11), (2, 3, 12), (3, 0, 13);
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH pg_isolated
+VERTEX TABLES (
+    Student
+)
+EDGE TABLES (
+    know SOURCE KEY ( src ) REFERENCES Student ( id )
+         DESTINATION KEY ( dst ) REFERENCES Student ( id )
+);
+
+query II
+select id, componentId from weakly_connected_component(pg_isolated, student, know);
+----
+0	0
+1	0
+2	0
+3	0
+4	4
+5	5
