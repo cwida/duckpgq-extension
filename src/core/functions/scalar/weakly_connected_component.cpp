@@ -182,12 +182,16 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
     if (!vdata_src.validity.RowIsValid(src_pos)) {
       result_validity.SetInvalid(i);
     } else {
+      auto component_id = info.componentId[src_data[src_pos]];
+      if (component_id == -1) {
+        info.componentId[src_data[src_pos]] = src_data[src_pos];
+      }
       result_data[i] = info.componentId[src_data[src_pos]];
     }
   }
 
-  // Handle any unfinished lanes and assign component IDs
-  AssignUnfinishedLanesToComponent(result, info, vdata_src, src_data, v_size);
+  // // Handle any unfinished lanes and assign component IDs
+  // AssignUnfinishedLanesToComponent(result, info, vdata_src, src_data, v_size);
 
 
   duckpgq_state->csr_to_delete.insert(info.csr_id);
