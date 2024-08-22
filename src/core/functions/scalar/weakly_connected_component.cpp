@@ -177,7 +177,7 @@ void CoreScalarFunctions::RegisterWeaklyConnectedComponentScalarFunction(
       ScalarFunction(
           "weakly_connected_component",
           {LogicalType::INTEGER, LogicalType::BIGINT},
-          LogicalType::FLOAT, WeaklyConnectedComponentFunction,
+          LogicalType::BIGINT, WeaklyConnectedComponentFunction,
           WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentBind));
 }
 
