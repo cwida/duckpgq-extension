@@ -17,6 +17,7 @@ struct CoreScalarFunctions {
     RegisterLocalClusteringCoefficientScalarFunction(db);
     RegisterReachabilityScalarFunction(db);
     RegisterShortestPathScalarFunction(db);
+    RegisterWeaklyConnectedComponentScalarFunction(db);
   }
 
 private:
@@ -30,8 +31,7 @@ private:
   static void RegisterLocalClusteringCoefficientScalarFunction(DatabaseInstance &db);
   static void RegisterReachabilityScalarFunction(DatabaseInstance &db);
   static void  RegisterShortestPathScalarFunction(DatabaseInstance &db);
-
-
+  static void  RegisterWeaklyConnectedComponentScalarFunction(DatabaseInstance &db);
 };
 
 
