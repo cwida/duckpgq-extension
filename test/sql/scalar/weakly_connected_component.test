@@ -1,0 +1,34 @@
+# name: test/sql/scalar/weakly_connected_component.test
+# description: Testing the weakly connected component implementation
+# group: [duckpgq_sql_scalar]
+
+require duckpgq
+
+statement ok
+CREATE TABLE Student(id BIGINT, name VARCHAR);INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17);
+
+statement ok
+CREATE TABLE Foo(id BIGINT);INSERT INTO Foo VALUES (0), (1), (2), (3), (4);
+
+statement ok
+-CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+    Student,
+    Foo
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+    );
+
+query II
+select id, componentId from weakly_connected_component(pg, student, know);
+----
+0	0
+1	0
+2	0
+3	0
+4	0
