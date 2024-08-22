@@ -1,4 +1,3 @@
-#include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/functions/function_data/local_clustering_coefficient_function_data.hpp"
@@ -42,7 +41,6 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
   auto result_data = FlatVector::GetData<float>(result);
 
   DuckPGQBitmap neighbors(v_size);
-
 
   for (int32_t n = 0; n < args.size(); n++) {
     auto src_sel = vdata_src.sel->get_index(n);

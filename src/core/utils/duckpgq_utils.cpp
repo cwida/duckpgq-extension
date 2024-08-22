@@ -54,7 +54,7 @@ shared_ptr<PropertyGraphTable> ValidateSourceNodeAndEdgeTable(CreatePropertyGrap
 }
 
 // Function to create the SELECT node
-unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &edge_pg_entry, const string& function_name) {
+unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &edge_pg_entry, const string& function_name, const string& function_alias) {
   auto select_node = make_uniq<SelectNode>();
   std::vector<unique_ptr<ParsedExpression>> select_expression;
 
@@ -62,18 +62,17 @@ unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &ed
 
   auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
 
-  vector<unique_ptr<ParsedExpression>> lcc_children;
-  lcc_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
-  lcc_children.push_back(make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->source_reference));
-
-  auto lcc_function = make_uniq<FunctionExpression>(function_name, std::move(lcc_children));
+  vector<unique_ptr<ParsedExpression>> function_children;
+  function_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
+  function_children.push_back(make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->source_reference));
+  auto function = make_uniq<FunctionExpression>(function_name, std::move(function_children));
 
   std::vector<unique_ptr<ParsedExpression>> addition_children;
   addition_children.emplace_back(std::move(cte_col_ref));
-  addition_children.emplace_back(std::move(lcc_function));
+  addition_children.emplace_back(std::move(function));
 
   auto addition_function = make_uniq<FunctionExpression>("add", std::move(addition_children));
-  addition_function->alias = function_name;
+  addition_function->alias = function_alias;
   select_expression.emplace_back(std::move(addition_function));
   select_node->select_list = std::move(select_expression);
 

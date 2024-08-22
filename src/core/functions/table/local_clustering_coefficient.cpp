@@ -28,7 +28,7 @@ unique_ptr<TableRef> LocalClusteringCoefficientFunction::LocalClusteringCoeffici
     auto pg_info = GetPropertyGraphInfo(duckpgq_state, pg_name);
     auto edge_pg_entry = ValidateSourceNodeAndEdgeTable(pg_info, node_table, edge_table);
 
-    auto select_node = CreateSelectNode(edge_pg_entry);
+    auto select_node = CreateSelectNode(edge_pg_entry, "local_clustering_coefficient", "local_clustering_coefficient");
 
     select_node->cte_map.map["csr_cte"] = CreateUndirectedCSRCTE(edge_pg_entry, select_node);
 
