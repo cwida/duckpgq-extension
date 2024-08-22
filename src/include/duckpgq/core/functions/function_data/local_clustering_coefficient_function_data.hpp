@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckPGQ
 //
-// duckpgq/functions/function_data/local_clustering_coefficient_function_data.hpp
+// duckpgq/core/functions/function_data/local_clustering_coefficient_function_data.hpp
 //
 //
 //===----------------------------------------------------------------------===//
