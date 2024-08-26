@@ -39,6 +39,7 @@ def replace_everywhere(to_find, to_replace):
     replace("./Makefile", to_find.upper(), to_replace.upper())
     replace("./README.md", to_find, to_replace)
     replace("./extension_config.cmake", to_find, to_replace)
+    replace("./scripts/setup-custom-toolchain.sh", to_find, to_replace)
 
 
 if __name__ == "__main__":
