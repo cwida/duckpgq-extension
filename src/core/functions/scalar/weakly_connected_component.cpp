@@ -138,7 +138,6 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
         int64_t src_node = src_data[src_pos];
         // Check if the node is already part of a component
         if (info.componentId[src_node] != -1) {
-          // result_validity.SetInvalid(search_num);
           result_data[search_num] = info.componentId[src_node]; // Already known component
           continue;
         }
@@ -189,10 +188,6 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
       result_data[i] = info.componentId[src_data[src_pos]];
     }
   }
-
-  // // Handle any unfinished lanes and assign component IDs
-  // AssignUnfinishedLanesToComponent(result, info, vdata_src, src_data, v_size);
-
 
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }

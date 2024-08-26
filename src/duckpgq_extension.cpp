@@ -5,9 +5,6 @@
 #include "duckpgq/core/module.hpp"
 
 
-// #include "duckpgq/core/functions/table/drop_property_graph.hpp"
-
-
 namespace duckdb {
 
 static void LoadInternal(DatabaseInstance &instance) {
