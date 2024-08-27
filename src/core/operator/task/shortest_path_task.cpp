@@ -7,7 +7,9 @@ namespace core {
 PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, ClientContext &context,
                            PathFindingGlobalState &state, idx_t worker_id)
       : ExecutorTask(context, std::move(event_p)), context(context),
-        state(state), worker_id(worker_id) {}
+        state(state), worker_id(worker_id) {
+  left = right = UINT64_MAX; // NOLINT
+}
 
   TaskExecutionResult PhysicalShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
     auto &bfs_state = state.global_bfs_state;
