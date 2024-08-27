@@ -132,20 +132,23 @@ void GlobalBFSState::CreateTasks() {
   }
 }
 
-// void GlobalBFSState::InitTask(idx_t worker_id) { task_queues[worker_id].first.store(0); }
 
-pair<idx_t, idx_t> GlobalBFSState::FetchTask(idx_t worker_id) {
-  auto &task_queue = task_queues;
-  idx_t offset = 0;
-  do {
-    auto worker_idx = (worker_id + offset) % task_queue.size();
-    auto cur_task_ix = task_queue[worker_idx].first.fetch_add(1);
-    if (cur_task_ix < task_queue[worker_idx].second.size()) {
-      return task_queue[worker_idx].second[cur_task_ix];
-    }
-    offset++;
-  } while (offset < task_queue.size());
-  return {0, 0};
+optional_ptr<pair<idx_t, idx_t>> GlobalBFSState::FetchTask() {
+  std::unique_lock<std::mutex> lock(queue_mutex);  // Lock the mutex to access the queue
+
+  // Wait until the queue is not empty or some other condition to continue
+  queue_cv.wait(lock, [this]() { return !global_task_queue.empty(); });
+
+  // If the queue is empty, return an empty optional (though this shouldn't happen due to wait condition)
+  if (global_task_queue.empty()) {
+    return nullptr;
+  }
+
+  // Fetch the task from the front of the queue
+  auto task = global_task_queue.back();
+  global_task_queue.pop_back();
+
+  return task;
 }
 
 pair<idx_t, idx_t> GlobalBFSState::BoundaryCalculation(idx_t worker_id) const {

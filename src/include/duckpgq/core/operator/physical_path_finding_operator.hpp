@@ -191,8 +191,7 @@ public:
   void Clear();
 
   void CreateTasks();
-
-  pair<idx_t, idx_t> FetchTask(idx_t worker_id);
+  optional_ptr<pair<idx_t, idx_t>> FetchTask();      // Function to fetch a task
 
   pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) const;
 
@@ -220,6 +219,8 @@ public:
   // task_queues[workerId] = {curTaskIdx, queuedTasks}
   // queuedTasks[curTaskIx] = {start, end}
   vector<pair<idx_t, idx_t>> global_task_queue;
+  std::mutex queue_mutex;                                  // Mutex for synchronizing access
+  std::condition_variable queue_cv;                        // Condition variable for task availability
   // vector<pair<atomic<idx_t>, vector<pair<idx_t, idx_t>>>> task_queues;
   int64_t split_size = 256;
 

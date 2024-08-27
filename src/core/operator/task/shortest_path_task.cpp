@@ -21,7 +21,7 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
     right = bound.second;
 
     do {
-      bfs_state->InitTask(worker_id);
+      // bfs_state->InitTask(worker_id);
 
       IterativePath();
       barrier.Wait();
