@@ -16,13 +16,7 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
     auto &change = bfs_state->change;
     auto &barrier = bfs_state->barrier;
 
-    auto bound = bfs_state->BoundaryCalculation(worker_id);
-    left = bound.first;
-    right = bound.second;
-
     do {
-      // bfs_state->InitTask(worker_id);
-
       IterativePath();
       barrier.Wait();
 
@@ -41,6 +35,16 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
     return TaskExecutionResult::TASK_FINISHED;
   }
 
+  void PhysicalShortestPathTask::SetTaskRange() {
+    auto task = state.global_bfs_state->FetchTask();
+    if (task == nullptr) {
+      return;
+    }
+    left = task->first;
+    right = task->second;
+}
+
+
 
   void PhysicalShortestPathTask::IterativePath() {
     auto &bfs_state = state.global_bfs_state;
@@ -54,6 +58,8 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
     auto &parents_ve = bfs_state->parents_ve;
     auto &change = bfs_state->change;
 
+
+
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
       next[i] = 0;
@@ -62,14 +68,7 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
     barrier.Wait();
 
     while (true) {
-      auto task = bfs_state->FetchTask(worker_id);
-      if (task.first == task.second) {
-        break;
-      }
-      auto start = task.first;
-      auto end = task.second;
-
-      for (auto i = start; i < end; i++) {
+      for (auto i = left; i < right; i++) {
         if (visit[i].any()) {
           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
             auto n = e[offset];
@@ -86,6 +85,12 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
           }
         }
       }
+      auto task = bfs_state->FetchTask();
+      if (!task) {
+        break;
+      }
+      left = task->first;
+      right = task->second;
     }
 
     barrier.Wait();
