@@ -139,14 +139,14 @@ optional_ptr<pair<idx_t, idx_t>> GlobalBFSState::FetchTask() {
   // Wait until the queue is not empty or some other condition to continue
   queue_cv.wait(lock, [this]() { return !global_task_queue.empty(); });
 
-  // If the queue is empty, return an empty optional (though this shouldn't happen due to wait condition)
-  if (global_task_queue.empty()) {
+  // If all tasks are processed, return an empty optional
+  if (current_task_index >= global_task_queue.size()) {
     return nullptr;
   }
 
-  // Fetch the task from the front of the queue
-  auto task = global_task_queue.back();
-  global_task_queue.pop_back();
+  // Fetch the task using the current index
+  auto task = global_task_queue[current_task_index];
+  current_task_index++;  // Move to the next task
 
   return task;
 }

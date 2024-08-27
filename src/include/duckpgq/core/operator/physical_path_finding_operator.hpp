@@ -221,7 +221,7 @@ public:
   vector<pair<idx_t, idx_t>> global_task_queue;
   std::mutex queue_mutex;                                  // Mutex for synchronizing access
   std::condition_variable queue_cv;                        // Condition variable for task availability
-  // vector<pair<atomic<idx_t>, vector<pair<idx_t, idx_t>>>> task_queues;
+  size_t current_task_index = 0;                           // Index to track the current task
   int64_t split_size = 256;
 
   Barrier barrier;
