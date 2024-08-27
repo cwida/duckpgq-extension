@@ -78,8 +78,8 @@ GlobalBFSState::GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_,
     : csr(std::move(csr_)), pairs(pairs_), iter(1), v_size(v_size_), change(false),
       started_searches(0), total_len(0), context(context_), seen(v_size_),
       visit1(v_size_), visit2(v_size_), num_threads(num_threads_),
-      task_queues(num_threads_), barrier(num_threads_),
-      element_locks(v_size_), mode(mode_), parents_ve(v_size_) {
+      barrier(num_threads_), element_locks(v_size_),
+      mode(mode_), parents_ve(v_size_) {
   result.Initialize(
       context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)},
       pairs_->size());
@@ -110,38 +110,29 @@ void GlobalBFSState::Clear() {
 
 void GlobalBFSState::CreateTasks() {
   // workerTasks[workerId] = [task1, task2, ...]
-  auto queues = &task_queues;
-  vector<vector<pair<idx_t, idx_t>>> worker_tasks(num_threads);
-  auto cur_worker = 0;
+  // vector<vector<pair<idx_t, idx_t>>> worker_tasks(num_threads);
+  // auto cur_worker = 0;
   int64_t *v = (int64_t *)csr->v;
   int64_t current_task_edges = 0;
   idx_t current_task_start = 0;
-  for (idx_t i = 0; i < (idx_t)v_size; i++) {
-    auto vertex_edges = v[i + 1] - v[i];
-    if (current_task_edges + vertex_edges > split_size &&
-        i != current_task_start) {
-      auto worker_id = cur_worker % num_threads;
-      pair<idx_t, idx_t> range = {current_task_start, i};
-      worker_tasks[worker_id].push_back(range);
-      current_task_start = i;
-      current_task_edges = 0;
-      cur_worker++;
+  for (idx_t v_idx = 0; v_idx < (idx_t)v_size; v_idx++) {
+    auto number_of_edges = v[v_idx + 1] - v[v_idx];
+    if (current_task_edges + number_of_edges > split_size) {
+      global_task_queue.push_back({current_task_start, v_idx});
+      current_task_start = v_idx;
+      current_task_edges = 0; // reset
     }
-    current_task_edges += vertex_edges;
-  }
-  if (current_task_start < (idx_t)v_size) {
-    auto worker_id = cur_worker % num_threads;
-    pair<idx_t, idx_t> range = {current_task_start, v_size};
 
-    worker_tasks[worker_id].push_back(range);
+    current_task_edges += number_of_edges;
   }
-  for (idx_t worker_id = 0; worker_id < num_threads; worker_id++) {
-    queues->at(worker_id).first.store(0);
-    queues->at(worker_id).second = worker_tasks[worker_id];
+
+  // Final task if there are any remaining edges
+  if (current_task_start < (idx_t)v_size) {
+    global_task_queue.push_back({current_task_start, v_size});
   }
 }
 
-void GlobalBFSState::InitTask(idx_t worker_id) { task_queues[worker_id].first.store(0); }
+// void GlobalBFSState::InitTask(idx_t worker_id) { task_queues[worker_id].first.store(0); }
 
 pair<idx_t, idx_t> GlobalBFSState::FetchTask(idx_t worker_id) {
   auto &task_queue = task_queues;

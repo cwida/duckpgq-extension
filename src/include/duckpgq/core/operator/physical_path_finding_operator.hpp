@@ -192,8 +192,6 @@ public:
 
   void CreateTasks();
 
-  void InitTask(idx_t worker_id);
-
   pair<idx_t, idx_t> FetchTask(idx_t worker_id);
 
   pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) const;
@@ -219,9 +217,10 @@ public:
   vector<std::array<ve, LANE_LIMIT>> parents_ve;
 
   idx_t num_threads;
-  // task_queues[workerId] = {curTaskIx, queuedTasks}
+  // task_queues[workerId] = {curTaskIdx, queuedTasks}
   // queuedTasks[curTaskIx] = {start, end}
-  vector<pair<atomic<idx_t>, vector<pair<idx_t, idx_t>>>> task_queues;
+  vector<pair<idx_t, idx_t>> global_task_queue;
+  // vector<pair<atomic<idx_t>, vector<pair<idx_t, idx_t>>>> task_queues;
   int64_t split_size = 256;
 
   Barrier barrier;
