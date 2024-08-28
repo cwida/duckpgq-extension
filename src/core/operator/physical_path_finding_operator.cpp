@@ -348,9 +348,6 @@ void PhysicalPathFinding::ScheduleBFSEvent(Pipeline &pipeline, Event &event,
         if (!bfs_state->vdata_src.validity.RowIsValid(src_pos)) {
           result_validity.SetInvalid(search_num);
           result_data[search_num] = (uint64_t)-1; /* no path */
-        } else if (bfs_state->src[src_pos] == bfs_state->dst[dst_pos]) {
-          result_data[search_num] =
-              (uint64_t)0; // path of length 0 does not require a search
         } else {
           bfs_state->visit1[bfs_state->src[src_pos]][lane] = true;
           // bfs_state->seen[bfs_state->src[src_pos]][lane] = true;
