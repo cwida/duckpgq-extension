@@ -20,7 +20,7 @@ private:
 
   void PathConstruction();
 
-  void SetTaskRange();
+  bool SetTaskRange();
 
   ClientContext &context;
   PathFindingGlobalState &state;

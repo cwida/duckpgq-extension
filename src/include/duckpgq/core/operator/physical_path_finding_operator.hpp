@@ -191,7 +191,9 @@ public:
   void Clear();
 
   void CreateTasks();
-  optional_ptr<pair<idx_t, idx_t>> FetchTask();      // Function to fetch a task
+  shared_ptr<pair<idx_t, idx_t>> FetchTask();      // Function to fetch a task
+  void ResetTaskIndex();
+
 
   pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) const;
 

@@ -132,14 +132,22 @@ void GlobalBFSState::CreateTasks() {
   if (current_task_start < (idx_t)v_size) {
     global_task_queue.push_back({current_task_start, v_size});
   }
+  // for (const auto& task : global_task_queue) {
+  //   std::cout << "Task: " << task.first << " " << task.second << std::endl; // debug
+  // }
 }
 
 
-optional_ptr<pair<idx_t, idx_t>> GlobalBFSState::FetchTask() {
+shared_ptr<pair<idx_t, idx_t>> GlobalBFSState::FetchTask() {
   std::unique_lock<std::mutex> lock(queue_mutex);  // Lock the mutex to access the queue
 
+  // Check if there are no more tasks to process
+  if (current_task_index >= global_task_queue.size()) {
+    return nullptr;  // No more tasks, return immediately
+  }
+
   // Wait until the queue is not empty or some other condition to continue
-  queue_cv.wait(lock, [this]() { return !global_task_queue.empty(); });
+  queue_cv.wait(lock, [this]() { return current_task_index < global_task_queue.size(); });
 
   // If all tasks are processed, return an empty optional
   if (current_task_index >= global_task_queue.size()) {
@@ -147,10 +155,16 @@ optional_ptr<pair<idx_t, idx_t>> GlobalBFSState::FetchTask() {
   }
 
   // Fetch the task using the current index
-  auto task = global_task_queue[current_task_index];
+  auto task = make_shared_ptr<pair<idx_t, idx_t>>(global_task_queue[current_task_index]);
   current_task_index++;  // Move to the next task
 
   return task;
+}
+
+void GlobalBFSState::ResetTaskIndex() {
+  std::lock_guard<std::mutex> lock(queue_mutex);  // Lock to reset index safely
+  current_task_index = 0;  // Reset the task index for the next stage
+  queue_cv.notify_all();  // Notify all threads that tasks are available
 }
 
 pair<idx_t, idx_t> GlobalBFSState::BoundaryCalculation(idx_t worker_id) const {
@@ -339,6 +353,7 @@ void PhysicalPathFinding::ScheduleBFSEvent(Pipeline &pipeline, Event &event,
               (uint64_t)0; // path of length 0 does not require a search
         } else {
           bfs_state->visit1[bfs_state->src[src_pos]][lane] = true;
+          // bfs_state->seen[bfs_state->src[src_pos]][lane] = true;
           bfs_state->lane_to_num[lane] = search_num; // active lane
           bfs_state->active++;
           seen_mask[lane] = false;
