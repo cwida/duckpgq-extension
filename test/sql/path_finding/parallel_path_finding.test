@@ -48,7 +48,7 @@ WHERE p.src between (SELECT CSR_OPERATOR(
 1	2	[1, 3, 0, 1, 2]
 2	0	[2, 4, 0]
 
-query III
+query IIII
 WITH pairs as (
     SELECT src, dst
     FROM (SELECT a.rowid AS src FROM Student a where id = 10),
@@ -70,12 +70,14 @@ WHERE p.src between (SELECT CSR_OPERATOR(
                                                   LEFT JOIN know k ON k.src = a.id
                                                   GROUP BY a.rowid) t
                                               ON t.a_rowid = a.rowid) and p.dst)
- SELECT * FROM shortestpath_cte;
+SELECT src, dst, src.id as src_id, path FROM shortestpath_cte
+JOIN student src on src = rowid
+ORDER BY dst;
 ----
-0	0	[0]
-0	1	NULL
-0	2	[0, 1, 2]
-0	3	NULL
+0	0	10	[0]
+0	1	10	NULL
+0	2	10	[0, 1, 2]
+0	3	10	NULL
 
 
 query III
