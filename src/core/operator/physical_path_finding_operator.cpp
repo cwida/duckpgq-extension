@@ -132,9 +132,6 @@ void GlobalBFSState::CreateTasks() {
   if (current_task_start < (idx_t)v_size) {
     global_task_queue.push_back({current_task_start, v_size});
   }
-  // for (const auto& task : global_task_queue) {
-  //   std::cout << "Task: " << task.first << " " << task.second << std::endl; // debug
-  // }
 }
 
 
@@ -189,7 +186,6 @@ void PathFindingLocalState::Sink(DataChunk &input, GlobalCompressedSparseRow &gl
     // Add the tasks (src, dst) to sink
     // Optimizations: Eliminate duplicate sources/destinations
     local_tasks.Append(input);
-    local_tasks.Print();
   } else {
     // Create CSR
     local_inputs.Append(input);
@@ -344,7 +340,6 @@ void PhysicalPathFinding::ScheduleBFSEvent(Pipeline &pipeline, Event &event,
       while (bfs_state->started_searches < gstate.global_tasks->Count()) {
         int64_t search_num = bfs_state->started_searches++;
         int64_t src_pos = bfs_state->vdata_src.sel->get_index(search_num);
-        int64_t dst_pos = bfs_state->vdata_dst.sel->get_index(search_num);
         if (!bfs_state->vdata_src.validity.RowIsValid(src_pos)) {
           result_validity.SetInvalid(search_num);
           result_data[search_num] = (uint64_t)-1; /* no path */
@@ -458,7 +453,6 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
     throw NotImplementedException("Unrecognized mode for Path Finding");
   }
 
-  // result.Print();
   return result.size() == 0 ? SourceResultType::FINISHED
                             : SourceResultType::HAVE_MORE_OUTPUT;
 }
