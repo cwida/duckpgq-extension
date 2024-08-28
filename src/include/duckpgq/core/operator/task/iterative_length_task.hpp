@@ -14,9 +14,10 @@ public:
 
   TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
 private:
-  void IterativeLength() const;
+  void IterativeLength();
   void ReachDetect() const;
   void UnReachableSet() const;
+  bool SetTaskRange();
 
 private:
   ClientContext &context;

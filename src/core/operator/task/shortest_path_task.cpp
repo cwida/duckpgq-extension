@@ -13,7 +13,6 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
 
   TaskExecutionResult PhysicalShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
     auto &bfs_state = state.global_bfs_state;
-    auto &change = bfs_state->change;
     auto &barrier = bfs_state->barrier;
 
     do {
@@ -33,7 +32,7 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
         });
 
       barrier->Wait();
-    } while (change);
+    } while (bfs_state->change);
 
     if (worker_id == 0) {
       PathConstruction();
@@ -102,11 +101,12 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
             bfs_state->ResetTaskIndex();  // Reset task index safely
         });
 
+  barrier->Wait();
+
   if (!SetTaskRange()) {
     return; // no more tasks
   }
 
-  barrier->Wait();
   while (true) {
     for (auto i = left; i < right; i++) {
       if (next[i].any()) {

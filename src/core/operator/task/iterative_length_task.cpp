@@ -9,26 +9,39 @@ PhysicalIterativeTask::PhysicalIterativeTask(shared_ptr<Event> event_p, ClientCo
       : ExecutorTask(context, std::move(event_p)), context(context),
         state(state), worker_id(worker_id) {}
 
+bool PhysicalIterativeTask::SetTaskRange() {
+  auto task = state.global_bfs_state->FetchTask();
+  if (task == nullptr) {
+    return false;
+  }
+  left = task->first;
+  right = task->second;
+  return true;
+}
+
+
   TaskExecutionResult PhysicalIterativeTask::ExecuteTask(TaskExecutionMode mode) {
     auto &bfs_state = state.global_bfs_state;
-    auto &change = bfs_state->change;
     auto &barrier = bfs_state->barrier;
-
-    auto bound = bfs_state->BoundaryCalculation(worker_id);
-    left = bound.first;
-    right = bound.second;
-
     do {
 
       IterativeLength();
+      barrier->Wait([&]() {
+            bfs_state->ResetTaskIndex();  // Reset task index safely
+        });
 
       barrier->Wait();
 
       if (worker_id == 0) {
         ReachDetect();
       }
+
+      barrier->Wait([&]() {
+        bfs_state->ResetTaskIndex();  // Reset task index safely
+      });
+
       barrier->Wait();
-    } while (change);
+    } while (bfs_state->change);
 
     if (worker_id == 0) {
       UnReachableSet();
@@ -38,7 +51,7 @@ PhysicalIterativeTask::PhysicalIterativeTask(shared_ptr<Event> event_p, ClientCo
     return TaskExecutionResult::TASK_FINISHED;
   }
 
-  void PhysicalIterativeTask::IterativeLength() const {
+  void PhysicalIterativeTask::IterativeLength() {
     auto &bfs_state = state.global_bfs_state;
     auto &seen = bfs_state->seen;
     auto &visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
@@ -46,8 +59,11 @@ PhysicalIterativeTask::PhysicalIterativeTask(shared_ptr<Event> event_p, ClientCo
     auto &barrier = bfs_state->barrier;
     int64_t *v = (int64_t *)state.global_csr->v;
     vector<int64_t> &e = state.global_csr->e;
-    auto &lane_to_num = bfs_state->lane_to_num;
     auto &change = bfs_state->change;
+
+    if (!SetTaskRange()) {
+      return;
+    }
 
     // clear next before each iteration
     for (auto i = left; i < right; i++) {
@@ -57,14 +73,7 @@ PhysicalIterativeTask::PhysicalIterativeTask(shared_ptr<Event> event_p, ClientCo
     barrier->Wait();
 
     while (true) {
-      auto task = bfs_state->FetchTask(worker_id);
-      if (task.first == task.second) {
-        break;
-      }
-      auto start = task.first;
-      auto end = task.second;
-
-      for (auto i = start; i < end; i++) {
+      for (auto i = left; i < right; i++) {
         if (visit[i].any()) {
           for (auto offset = v[i]; offset < v[i + 1]; offset++) {
             auto n = e[offset];
@@ -73,18 +82,40 @@ PhysicalIterativeTask::PhysicalIterativeTask(shared_ptr<Event> event_p, ClientCo
           }
         }
       }
-    }
-
-    change = false;
-    barrier->Wait();
-
-    for (auto i = left; i < right; i++) {
-      if (next[i].any()) {
-        next[i] &= ~seen[i];
-        seen[i] |= next[i];
-        change |= next[i].any();
+      if (!SetTaskRange()) {
+        break; // no more tasks
       }
     }
+    change = false;
+    barrier->Wait([&]() {
+              bfs_state->ResetTaskIndex();  // Reset task index safely
+          });
+
+
+
+    barrier->Wait();
+
+    if (!SetTaskRange()) {
+      return; // no more tasks
+    }
+    while (true) {
+      for (auto i = left; i < right; i++) {
+        if (next[i].any()) {
+          next[i] &= ~seen[i];
+          seen[i] |= next[i];
+          change |= next[i].any();
+        }
+      }
+      if (!SetTaskRange()) {
+        break; // no more tasks
+      }
+    }
+    barrier->Wait([&]() {
+              bfs_state->ResetTaskIndex();  // Reset task index safely
+          });
+
+    barrier->Wait();
+
   }
 
   void PhysicalIterativeTask::ReachDetect() const {

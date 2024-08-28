@@ -14,7 +14,9 @@ void ParallelIterativeEvent::Schedule() {
   auto &context = pipeline->GetClientContext();
 
   vector<shared_ptr<Task>> bfs_tasks;
-  for (idx_t tnum = 0; tnum < bfs_state->num_threads; tnum++) {
+  size_t threads_to_schedule = std::min(bfs_state->num_threads, (idx_t)bfs_state->global_task_queue.size());
+
+  for (idx_t tnum = 0; tnum < threads_to_schedule; tnum++) {
     bfs_tasks.push_back(make_uniq<PhysicalIterativeTask>(
         shared_from_this(), context, gstate, tnum));
   }
