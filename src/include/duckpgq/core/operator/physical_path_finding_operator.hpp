@@ -224,7 +224,7 @@ public:
   size_t current_task_index = 0;                           // Index to track the current task
   int64_t split_size = 256;
 
-  Barrier barrier;
+  unique_ptr<Barrier> barrier;
 
   // lock for next
   mutable vector<mutex> element_locks;
