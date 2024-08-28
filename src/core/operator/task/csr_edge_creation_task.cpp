@@ -37,7 +37,6 @@ TaskExecutionResult PhysicalCSREdgeCreationTask::ExecuteTask(TaskExecutionMode m
         });
   }
   event->FinishTask();
-  global_csr->Print();
   return TaskExecutionResult::TASK_FINISHED;
 }
 
