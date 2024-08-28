@@ -78,7 +78,7 @@ GlobalBFSState::GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_,
     : csr(std::move(csr_)), pairs(pairs_), iter(1), v_size(v_size_), change(false),
       started_searches(0), total_len(0), context(context_), seen(v_size_),
       visit1(v_size_), visit2(v_size_), num_threads(num_threads_),
-      barrier(num_threads_), element_locks(v_size_),
+      element_locks(v_size_),
       mode(mode_), parents_ve(v_size_) {
   result.Initialize(
       context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)},
@@ -91,6 +91,8 @@ GlobalBFSState::GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_,
   dst = FlatVector::GetData<int64_t>(dst_data);
 
   CreateTasks();
+  size_t number_of_threads_to_schedule = std::min(num_threads, (idx_t)global_task_queue.size());
+  barrier = make_uniq<Barrier>(number_of_threads_to_schedule);
 }
 
 void GlobalBFSState::Clear() {
