@@ -19,16 +19,15 @@ PhysicalIterativeTask::PhysicalIterativeTask(shared_ptr<Event> event_p, ClientCo
     right = bound.second;
 
     do {
-      bfs_state->InitTask(worker_id);
 
       IterativeLength();
 
-      barrier.Wait();
+      barrier->Wait();
 
       if (worker_id == 0) {
         ReachDetect();
       }
-      barrier.Wait();
+      barrier->Wait();
     } while (change);
 
     if (worker_id == 0) {
@@ -55,7 +54,7 @@ PhysicalIterativeTask::PhysicalIterativeTask(shared_ptr<Event> event_p, ClientCo
       next[i] = 0;
     }
 
-    barrier.Wait();
+    barrier->Wait();
 
     while (true) {
       auto task = bfs_state->FetchTask(worker_id);
@@ -77,7 +76,7 @@ PhysicalIterativeTask::PhysicalIterativeTask(shared_ptr<Event> event_p, ClientCo
     }
 
     change = false;
-    barrier.Wait();
+    barrier->Wait();
 
     for (auto i = left; i < right; i++) {
       if (next[i].any()) {
