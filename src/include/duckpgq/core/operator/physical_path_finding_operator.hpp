@@ -117,6 +117,8 @@ public:
 
 
 public:
+  string ParamsToString() const override;
+
   // CachingOperator Interface
   OperatorResultType ExecuteInternal(ExecutionContext &context,
                                      DataChunk &input, DataChunk &chunk,

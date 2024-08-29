@@ -8,8 +8,9 @@ namespace duckpgq {
 namespace core {
 
 unique_ptr<PhysicalOperator> LogicalPathFindingOperator::CreatePlan(
-    ClientContext &, duckdb::PhysicalPlanGenerator &generator) {
+    ClientContext &context, duckdb::PhysicalPlanGenerator &generator) {
   D_ASSERT(children.size() == 2);
+  estimated_cardinality = children[0]->EstimateCardinality(context);
   auto left = generator.CreatePlan(std::move(children[0]));
   auto right = generator.CreatePlan(std::move(children[1]));
   return make_uniq<PhysicalPathFinding>(*this, std::move(left),

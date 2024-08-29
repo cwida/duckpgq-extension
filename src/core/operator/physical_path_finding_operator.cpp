@@ -26,10 +26,11 @@ namespace core {
 PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
                                          unique_ptr<PhysicalOperator> left,
                                          unique_ptr<PhysicalOperator> right)
-    : PhysicalComparisonJoin(op, TYPE, {}, JoinType::INNER, 0) {
+    : PhysicalComparisonJoin(op, TYPE, {}, JoinType::INNER, op.estimated_cardinality) {
   children.push_back(std::move(left));
   children.push_back(std::move(right));
   expressions = std::move(op.expressions);
+  estimated_cardinality = op.estimated_cardinality;
   auto &path_finding_op = op.Cast<LogicalPathFindingOperator>();
   mode = path_finding_op.mode;
 }
@@ -306,7 +307,6 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     context.TryGetCurrentSetting("experimental_path_finding_operator_task_size",
                                  task_size_value);
     gstate.global_bfs_state->split_size = task_size_value.GetValue<idx_t>();
-    ;
 
     // Schedule the first round of BFS tasks
     if (all_pairs->size() > 0) {
@@ -367,6 +367,14 @@ void PhysicalPathFinding::ScheduleBFSEvent(Pipeline &pipeline, Event &event,
       event.InsertEvent(std::move(bfs_event));
     }
   }
+}
+
+string PhysicalPathFinding::ParamsToString() const {
+  std::cout << "ParamsToString" << std::endl;
+  auto result = mode;
+  result += "\n[INFOSEPARATOR]\n";
+  result += StringUtil::Format("EC: %llu", estimated_cardinality);
+  return result;
 }
 
 //===--------------------------------------------------------------------===//
