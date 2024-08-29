@@ -96,7 +96,7 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
       break; // no more tasks
     }
   }
-
+  change = false;
   barrier->Wait([&]() {
             bfs_state->ResetTaskIndex();  // Reset task index safely
         });
