@@ -18,6 +18,6 @@ SELECT quack('Sam');
 Quack Sam 🐥
 
 query I
-SELECT quack_openssl_version('Michael');
+SELECT quack_openssl_version('Michael') ILIKE 'Quack Michael, my linked OpenSSL version is OpenSSL%';
 ----
-<REGEX>:Quack Michael, my linked OpenSSL version is OpenSSL.*
+true
