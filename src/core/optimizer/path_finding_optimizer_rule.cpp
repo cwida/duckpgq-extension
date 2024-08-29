@@ -15,15 +15,10 @@
 #include <duckpgq/core/functions/function_data/iterative_length_function_data.hpp>
 #include <duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp>
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
+#include <duckpgq/core/option/duckpgq_option.hpp>
 
 namespace duckpgq {
 namespace core {
-
-bool DuckpgqOptimizerExtension::GetPathFindingOption(ClientContext &context) {
-  Value value;
-  context.TryGetCurrentSetting("experimental_path_finding_operator", value);
-  return value.GetValue<bool>();
-}
 
 // Helper function to create the required BoundColumnRefExpression
 unique_ptr<Expression> CreateReplacementExpression(const string &alias, const string &functionName, idx_t tableIndex, idx_t position) {

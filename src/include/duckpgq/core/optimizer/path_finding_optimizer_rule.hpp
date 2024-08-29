@@ -11,7 +11,6 @@ public:
     optimize_function = DuckpgqOptimizeFunction;
   }
 
-  static bool GetPathFindingOption(ClientContext &context);
   static bool InsertPathFindingOperator(LogicalOperator &op, ClientContext &context);
 
   static void DuckpgqOptimizeFunction(OptimizerExtensionInput &input,

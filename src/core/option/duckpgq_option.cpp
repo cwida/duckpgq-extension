@@ -4,6 +4,11 @@
 namespace duckpgq {
 namespace core {
 
+bool GetPathFindingOption(ClientContext &context) {
+  Value value;
+  context.TryGetCurrentSetting("experimental_path_finding_operator", value);
+  return value.GetValue<bool>();
+}
 
 //------------------------------------------------------------------------------
 // Register option
