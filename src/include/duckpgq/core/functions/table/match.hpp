@@ -117,6 +117,9 @@ public:
       vector<unique_ptr<ParsedExpression>> &column_list,
       unordered_set<string> &named_subpaths);
 
+  static unique_ptr<CommonTableExpressionInfo> GenerateShortestPathOperatorCTE(
+    CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath);
+
   static unique_ptr<CommonTableExpressionInfo> GenerateShortestPathCTE(
       CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
       PathElement *path_element, PathElement *next_vertex_element,
@@ -127,7 +130,8 @@ public:
                             CreatePropertyGraphInfo &pg_table,
                             const string &path_variable,
                             unique_ptr<SelectNode> &final_select_node,
-                            vector<unique_ptr<ParsedExpression>> &conditions);
+                            vector<unique_ptr<ParsedExpression>> &conditions,
+                            ClientContext &context);
 
   static void AddPathFinding(
     unique_ptr<SelectNode> &select_node,
@@ -153,13 +157,14 @@ public:
                               unordered_map<string, string> &alias_map,
                               CreatePropertyGraphInfo &pg_table,
                               int32_t &extra_alias_counter,
-                              MatchExpression &original_ref);
+                              MatchExpression &original_ref, ClientContext &context);
 
   static void
   CheckNamedSubpath(SubPath &subpath, MatchExpression &original_ref,
                     CreatePropertyGraphInfo &pg_table,
                     unique_ptr<SelectNode> &final_select_node,
-                    vector<unique_ptr<ParsedExpression>> &conditions);
+                    vector<unique_ptr<ParsedExpression>> &conditions,
+                    ClientContext &context);
 };
 
 } // namespace core
