@@ -196,16 +196,26 @@ ScalarFunctionSet GetCSRVertexFunction() {
 
 ScalarFunctionSet GetCSREdgeFunction() {
   ScalarFunctionSet set("create_csr_edge");
+  /* 1. CSR ID
+   * 2. Vertex size
+   * 3. Sum of the edges (assuming all unique vertices)
+   * 4. Edge size (to ensure all vertices are unique this should equal point 3)
+   * 4. source rowid
+   * 5. destination rowid
+   * 6. edge rowid
+   * 7. <optional> edge weight (INT OR DOUBLE)
+   */
+
   //! No edge weight
   set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
-                                  LogicalType::BIGINT, LogicalType::BIGINT,
+                                  LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT,
                                   LogicalType::BIGINT, LogicalType::BIGINT},
                                  LogicalType::INTEGER, CreateCsrEdgeFunction,
                                  CSRFunctionData::CSREdgeBind));
 
   //! Integer for edge weight
   set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
-                                  LogicalType::BIGINT, LogicalType::BIGINT,
+                                  LogicalType::BIGINT,  LogicalType::BIGINT, LogicalType::BIGINT,
                                   LogicalType::BIGINT, LogicalType::BIGINT,
                                   LogicalType::BIGINT},
                                  LogicalType::INTEGER, CreateCsrEdgeFunction,
@@ -213,7 +223,7 @@ ScalarFunctionSet GetCSREdgeFunction() {
 
   //! Double for edge weight
   set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
-                                  LogicalType::BIGINT, LogicalType::BIGINT,
+                                  LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT,
                                   LogicalType::BIGINT, LogicalType::BIGINT,
                                   LogicalType::DOUBLE},
                                  LogicalType::INTEGER, CreateCsrEdgeFunction,
