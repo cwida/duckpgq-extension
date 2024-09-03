@@ -8,6 +8,7 @@
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/parser/expression/columnref_expression.hpp"
+#include "duckdb/parser/tableref/subqueryref.hpp"
 
 namespace duckpgq {
 
@@ -110,6 +111,6 @@ unique_ptr<ColumnRefExpression> CreateColumnRefExpression(const string &column_n
     column_ref->alias = alias;
   }
   return column_ref;
-
+}
 } // namespace core
 } // namespace duckpgq
