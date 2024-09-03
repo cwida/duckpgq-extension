@@ -6,7 +6,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Disclaimer:** This project is maintained by a single person and is primarily a research project. As such, it may take longer to review and fix issues. We appreciate your patience and understanding.
+        **Disclaimer:** Please note that this is a research project.
+        While I am committed to improving the project, responses to issues and bug fixes might take longer than expected. 
+        I appreciate your patience and understanding as I work to address issues. Thank you for helping make this project better!
+
     
   - type: textarea
     attributes:
