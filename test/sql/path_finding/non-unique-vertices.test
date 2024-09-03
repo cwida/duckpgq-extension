@@ -36,15 +36,19 @@ statement ok
 );
 
 # ANY SHORTEST v-[e]-> +(v) fails with "INTERNAL Error: Attempted to access index 1 within vector of size 1"
-statement ok
+statement error
 -FROM GRAPH_TABLE(g
   MATCH p = ANY SHORTEST (v1:v)-[e:e]-> +(v2:v)
   COLUMNS (path_length(p), vertices(p), v2.x)
 );
+----
+Constraint Error: Non-unique vertices detected. Make sure all vertices are unique for path-finding queries.
 
 # ANY SHORTEST v-[e]->{1,2}(v) also fails with "INTERNAL Error: Attempted to access index 1 within vector of size 1"
-statement ok
+statement error
 -FROM GRAPH_TABLE(g
   MATCH p = ANY SHORTEST (v1:v)-[e:e]->{1,2}(v2:v)
   COLUMNS (path_length(p), vertices(p), v2.x)
 );
+----
+Constraint Error: Non-unique vertices detected. Make sure all vertices are unique for path-finding queries.
