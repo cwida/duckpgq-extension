@@ -21,7 +21,7 @@ unique_ptr<TableRef> PageRankFunction::PageRankBindReplace(ClientContext &contex
 
   auto select_node = CreateSelectNode(edge_pg_entry, "pagerank", "pagerank");
 
-  select_node->cte_map.map["csr_cte"] = CreateDirectedCSRCTE(edge_pg_entry, edge_pg_entry->source_reference, edge_pg_entry->table_name, edge_pg_entry->destination_reference);
+  select_node->cte_map.map["csr_cte"] = CreateDirectedCSRCTE(edge_pg_entry, "src", "edge", "dst");
 
   auto subquery = make_uniq<SelectStatement>();
   subquery->node = std::move(select_node);

@@ -25,8 +25,8 @@ PageRankFunctionData::PageRankBind(ClientContext &context,
 }
 
 // Copy method
-unique_ptr<FunctionData> PageRankFunctionData::Copy() const override {
-  auto result = make_unique<PageRankFunctionData>(context, csr_id);
+unique_ptr<FunctionData> PageRankFunctionData::Copy() const {
+  auto result = make_uniq<PageRankFunctionData>(context, csr_id);
   result->rank = rank;           // Deep copy of rank vector
   result->temp_rank = temp_rank; // Deep copy of temp_rank vector
   result->damping_factor = damping_factor;
@@ -39,7 +39,7 @@ unique_ptr<FunctionData> PageRankFunctionData::Copy() const override {
 }
 
 // Equals method
-bool PageRankFunctionData::Equals(const FunctionData &other_p) const override {
+bool PageRankFunctionData::Equals(const FunctionData &other_p) const {
   auto &other = (const PageRankFunctionData &)other_p;
   if (csr_id != other.csr_id) {
     return false;
