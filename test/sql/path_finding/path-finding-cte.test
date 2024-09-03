@@ -50,6 +50,7 @@ statement ok
                     GROUP BY a.rowid) sub
                 )
             AS BIGINT),
+            (select count(*) from know k join student a on a.id = k.src join student c on c.id = k.dst),
             a.rowid,
             c.rowid,
             k.rowid) as temp
