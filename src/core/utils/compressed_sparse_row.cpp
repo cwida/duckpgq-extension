@@ -430,7 +430,6 @@ unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGrap
 
     auto result = make_uniq<CommonTableExpressionInfo>();
     result->query = std::move(select_statement);
-    std::cout << result->query->ToString();
     return result;
 }
 
