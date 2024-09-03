@@ -143,6 +143,7 @@ WITH CTE1 AS (SELECT  CREATE_CSR_EDGE(
                     GROUP BY a.rowid) sub
                 )
             AS BIGINT),
+            (select count(*) from Person_knows_Person k JOIN Person a on a.id = k.person1id JOIN Person b on b.id = k.person2id),
             a.rowid,
             b.rowid,
             k.rowid) as temp

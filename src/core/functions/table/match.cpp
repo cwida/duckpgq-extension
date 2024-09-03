@@ -145,31 +145,6 @@ PathElement *PGQMatchFunction::GetPathElement(
   throw InternalException("Unknown path reference type detected");
 }
 
-unique_ptr<SubqueryExpression> PGQMatchFunction::GetCountTable(
-    const shared_ptr<PropertyGraphTable> &edge_table,
-    const string &prev_binding) {
-  // SELECT count(s.id) FROM src s
-  auto select_count = make_uniq<SelectStatement>();
-  auto select_inner = make_uniq<SelectNode>();
-  auto ref = make_uniq<BaseTableRef>();
-
-  ref->table_name = edge_table->source_reference;
-  ref->alias = prev_binding;
-  select_inner->from_table = std::move(ref);
-  vector<unique_ptr<ParsedExpression>> children;
-  children.push_back(
-      make_uniq<ColumnRefExpression>(edge_table->source_pk[0], prev_binding));
-
-  auto count_function =
-      make_uniq<FunctionExpression>("count", std::move(children));
-  select_inner->select_list.push_back(std::move(count_function));
-  select_count->node = std::move(select_inner);
-  auto result = make_uniq<SubqueryExpression>();
-  result->subquery = std::move(select_count);
-  result->subquery_type = SubqueryType::SCALAR;
-  return result;
-}
-
 unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
   //! BEGIN OF (SELECT count(cte1.temp) as temp * 0 from cte1) __x
 
@@ -388,7 +363,7 @@ unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(
   vector<unique_ptr<ParsedExpression>> pathfinding_children;
   pathfinding_children.push_back(std::move(csr_id));
   pathfinding_children.push_back(std::move(GetCountTable(
-      edge_table, previous_vertex_element->variable_binding)));
+      edge_table->source_reference, previous_vertex_element->variable_binding, edge_table->source_pk[0])));
   pathfinding_children.push_back(std::move(src_row_id));
   pathfinding_children.push_back(std::move(dst_row_id));
 
@@ -628,7 +603,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::AddPathQuantifierCondition(
   vector<unique_ptr<ParsedExpression>> pathfinding_children;
   pathfinding_children.push_back(std::move(csr_id));
   pathfinding_children.push_back(
-      std::move(GetCountTable(edge_table, prev_binding)));
+      std::move(GetCountTable(edge_table->source_reference, prev_binding, edge_table->source_pk[0])));
   pathfinding_children.push_back(std::move(src_row_id));
   pathfinding_children.push_back(std::move(dst_row_id));
 

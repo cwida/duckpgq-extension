@@ -7,6 +7,7 @@
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"
+#include "duckdb/parser/expression/columnref_expression.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 
 namespace duckpgq {
@@ -90,6 +91,26 @@ unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &ed
   return select_node;
 }
 
+unique_ptr<BaseTableRef> CreateBaseTableRef(const string &table_name, const string &alias) {
+  auto base_table_ref = make_uniq<BaseTableRef>();
+  base_table_ref->table_name = table_name;
+  if (!alias.empty()) {
+    base_table_ref->alias = alias;
+  }
+  return base_table_ref;
+}
 
+unique_ptr<ColumnRefExpression> CreateColumnRefExpression(const string &column_name, const string &table_name, const string& alias) {
+  unique_ptr<ColumnRefExpression> column_ref;
+  if (table_name.empty()) {
+    column_ref = make_uniq<ColumnRefExpression>(column_name);
+  } else  {
+    column_ref = make_uniq<ColumnRefExpression>(column_name, table_name);
+  }
+  if (!alias.empty()) {
+    column_ref->alias = alias;
+  }
+  return column_ref;
+}
 } // namespace core
 } // namespace duckpgq

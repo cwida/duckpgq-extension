@@ -57,28 +57,6 @@ static void UpdateComponentId(int64_t node, int64_t component_id,
   }
 }
 
-// Function to handle nodes that didn't finish properly
-static void AssignUnfinishedLanesToComponent(Vector &result,
-                                             WeaklyConnectedComponentFunctionData &info,
-                                             UnifiedVectorFormat &vdata_src,
-                                             int64_t *src_data,
-                                             size_t v_size) {
-  auto result_data = FlatVector::GetData<int64_t>(result);
-  for (idx_t i = 0; i < v_size; i++) {
-    if (info.componentId[i] == -1) {
-      // Assign the node to its own component
-      info.componentId[i] = i;
-    }
-  }
-
-  for (idx_t i = 0; i < v_size; i++) {
-    int64_t src_pos = vdata_src.sel->get_index(i);
-    if (vdata_src.validity.RowIsValid(src_pos)) {
-      result_data[i] = info.componentId[src_data[src_pos]];
-    }
-  }
-}
-
 static void WeaklyConnectedComponentFunction(DataChunk &args,
                                              ExpressionState &state,
                                              Vector &result) {
