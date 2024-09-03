@@ -35,7 +35,7 @@ statement ok
   COLUMNS (path_length(p), vertices(p), v2.x)
 );
 
-# ANY SHORTEST v-[e]-> +(v) fails with "INTERNAL Error: Attempted to access index 1 within vector of size 1"
+## ANY SHORTEST v-[e]-> +(v) fails with "INTERNAL Error: Attempted to access index 1 within vector of size 1"
 statement error
 -FROM GRAPH_TABLE(g
   MATCH p = ANY SHORTEST (v1:v)-[e:e]-> +(v2:v)
@@ -48,6 +48,32 @@ Constraint Error: Non-unique vertices detected. Make sure all vertices are uniqu
 statement error
 -FROM GRAPH_TABLE(g
   MATCH p = ANY SHORTEST (v1:v)-[e:e]->{1,2}(v2:v)
+  COLUMNS (path_length(p), vertices(p), v2.x)
+);
+----
+Constraint Error: Non-unique vertices detected. Make sure all vertices are unique for path-finding queries.
+
+statement ok
+CREATE TABLE v2 (x VARCHAR);INSERT INTO v2 VALUES ('a'), ('b'), ('c'), ('c'), ('b');
+
+statement ok
+CREATE TABLE e2 (x1 VARCHAR, x2 VARCHAR);INSERT INTO e2 VALUES ('a', 'b'), ('b', 'c');
+
+statement ok
+-CREATE PROPERTY GRAPH g2
+VERTEX TABLES (
+    v2
+)
+EDGE TABLES (
+    e2
+        SOURCE KEY (x1) REFERENCES v2 (x)
+        DESTINATION KEY (x2) REFERENCES v2 (x)
+);
+
+# ANY SHORTEST v-[e]->{1,2}(v) also fails with "INTERNAL Error: Attempted to access index 1 within vector of size 1"
+statement error
+-FROM GRAPH_TABLE(g2
+  MATCH p = ANY SHORTEST (v1:v2)-[e:e2]->{1,2}(v2:v2)
   COLUMNS (path_length(p), vertices(p), v2.x)
 );
 ----
