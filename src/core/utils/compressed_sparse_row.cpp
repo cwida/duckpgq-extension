@@ -141,17 +141,17 @@ void SetupSelectNode(unique_ptr<SelectNode> &select_node, const shared_ptr<Prope
 
 
 // Function to create a subquery expression for counting table entries
-unique_ptr<SubqueryExpression> GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table, const string &prev_binding) {
+unique_ptr<SubqueryExpression> GetCountTable(const string &table_name, const string &table_alias, const string &primary_key) {
   auto select_count = make_uniq<SelectStatement>();
   auto select_inner = make_uniq<SelectNode>();
   auto ref = make_uniq<BaseTableRef>();
 
-  ref->table_name = edge_table->source_reference;
-  ref->alias = prev_binding;
+  ref->table_name = table_name;
+  ref->alias = table_alias;
   select_inner->from_table = std::move(ref);
 
   vector<unique_ptr<ParsedExpression>> children;
-  children.push_back(make_uniq<ColumnRefExpression>(edge_table->source_pk[0], prev_binding));
+  children.push_back(make_uniq<ColumnRefExpression>(primary_key, table_alias));
 
   auto count_function = make_uniq<FunctionExpression>("count", std::move(children));
   select_inner->select_list.push_back(std::move(count_function));
@@ -206,7 +206,7 @@ GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,
 }
 
 unique_ptr<SubqueryExpression> CreateDirectedCSRVertexSubquery(const shared_ptr<PropertyGraphTable> &edge_table, const std::string &prev_binding) {
-  auto count_create_vertex_expr = GetCountTable(edge_table, prev_binding);
+  auto count_create_vertex_expr = GetCountTable(edge_table->source_reference, prev_binding, edge_table->source_pk[0]);
 
   vector<unique_ptr<ParsedExpression>> csr_vertex_children;
   csr_vertex_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
@@ -274,7 +274,7 @@ unique_ptr<SubqueryExpression> CreateDirectedCSRVertexSubquery(const shared_ptr<
 
 // Helper function to create CSR Vertex Subquery
 unique_ptr<SubqueryExpression> CreateUndirectedCSRVertexSubquery(const shared_ptr<PropertyGraphTable> &edge_table, const std::string &binding) {
-  auto count_create_vertex_expr = GetCountTable(edge_table, binding);
+  auto count_create_vertex_expr = GetCountTable(edge_table->source_reference, binding, edge_table->source_pk[0]);
 
   vector<unique_ptr<ParsedExpression>> csr_vertex_children;
   csr_vertex_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
@@ -512,7 +512,7 @@ unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<Pr
 // Function to create the CTE for the Directed CSR
 unique_ptr<CommonTableExpressionInfo> CreateDirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table, const std::string &prev_binding, const std::string &edge_binding, const std::string &next_binding) {
   auto csr_edge_id_constant = make_uniq<ConstantExpression>(Value::INTEGER(0));
-  auto count_create_edge_select = GetCountTable(edge_table, prev_binding);
+  auto count_create_edge_select = GetCountTable(edge_table->source_reference, prev_binding, edge_table->source_pk[0]);
 
   auto cast_subquery_expr = CreateDirectedCSRVertexSubquery(edge_table, prev_binding);
 
