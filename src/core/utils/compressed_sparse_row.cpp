@@ -98,12 +98,6 @@ CSRFunctionData::CSRBind(ClientContext &context, ScalarFunction &bound_function,
                                     LogicalType::BOOLEAN);
 }
 
-// Helper function to create a ColumnRefExpression with alias
-// unique_ptr<ColumnRefExpression> CreateColumnRef(const std::string &column_name, const std::string &table_name, const std::string &alias) {
-//   auto col_ref = make_uniq<ColumnRefExpression>(column_name, table_name);
-//   col_ref->alias = alias;
-//   return col_ref;
-// }
 
 // Helper function to create a JoinRef
 unique_ptr<JoinRef> CreateJoin(const std::string &fk_column, const std::string &pk_column, const std::string &table_name, const std::string &source_reference) {
