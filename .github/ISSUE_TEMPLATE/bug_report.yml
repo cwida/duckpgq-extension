@@ -3,6 +3,11 @@ description: Create a report to help us improve
 labels:
   - needs triage
 body:
+  - type: markdown
+    attributes:
+      value: |
+        **Disclaimer:** This project is maintained by a single person and is primarily a research project. As such, it may take longer to review and fix issues. We appreciate your patience and understanding.
+    
   - type: textarea
     attributes:
       label: What happens?
