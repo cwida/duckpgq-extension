@@ -39,7 +39,7 @@ conn.execute("force install 'duckpgq';")
 conn.execute("load 'duckpgq';")
 ```
 
-## DuckPGQ Extension Availability
+## Direct download
 To use the extension, check the direct download links below. To install and load the extension, launch DuckDB in unsigned mode and execute the commands:
 ```sql
 force install 'path/to/duckpgq_extension';
