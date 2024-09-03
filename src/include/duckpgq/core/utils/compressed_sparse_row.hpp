@@ -80,7 +80,7 @@ unique_ptr<JoinRef> GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,
 unique_ptr<SubqueryExpression> GetCountTable(const string &table_name, const string &table_alias, const string &primary_key);
 void SetupSelectNode(unique_ptr<SelectNode> &select_node, const shared_ptr<PropertyGraphTable> &edge_table, bool reverse = false);
 unique_ptr<SubqueryRef> CreateCountCTESubquery();
-unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable ();
+unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable();
 unique_ptr<SubqueryExpression> GetCountEdgeTable(const shared_ptr<PropertyGraphTable> &edge_table);
 } // namespace core
 

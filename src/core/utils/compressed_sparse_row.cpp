@@ -453,7 +453,6 @@ unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<Pr
 
   auto count_edges_subquery = GetCountUndirectedEdgeTable();
 
-
   auto cast_subquery_expr = CreateUndirectedCSRVertexSubquery(edge_table, edge_table->source_reference);
 
   auto src_rowid_colref = make_uniq<ColumnRefExpression>("src");
@@ -506,21 +505,24 @@ unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<Pr
 
   auto outer_select_statement = make_uniq<SelectStatement>();
   outer_select_statement->node = std::move(outer_select_node);
-
   auto info = make_uniq<CommonTableExpressionInfo>();
   info->query = std::move(outer_select_statement);
   return info;
 }
 
-unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable () {
+unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable() {
   auto count_edges_select_statement = make_uniq<SelectStatement>();
   auto count_edges_select_node = make_uniq<SelectNode>();
   vector<unique_ptr<ParsedExpression>> count_children;
-  count_edges_select_node->select_list.emplace_back(make_uniq<FunctionExpression>(INVALID_CATALOG, INVALID_SCHEMA, "count", std::move(count_children)));
+  auto count_function = make_uniq<FunctionExpression>(INVALID_CATALOG, INVALID_SCHEMA, "count", std::move(count_children));
+  vector<unique_ptr<ParsedExpression>> multiply_children;
+  auto constant_two = make_uniq<ConstantExpression>(Value::BIGINT(2));
+  multiply_children.push_back(std::move(constant_two));
+  multiply_children.push_back(std::move(count_function));
+  auto multiply_function = make_uniq<FunctionExpression>(INVALID_CATALOG, INVALID_SCHEMA, "multiply", std::move(multiply_children));
+  count_edges_select_node->select_list.emplace_back(std::move(multiply_function));
 
-  auto inner_from_subquery = make_uniq<SubqueryRef>();
   auto inner_select_statement = make_uniq<SelectStatement>();
-  auto inner_select_node = make_uniq<SelectNode>();
 
   auto src_dst_select_node = make_uniq<SelectNode>();
   src_dst_select_node->select_list.emplace_back(CreateColumnRefExpression("src"));
@@ -533,7 +535,19 @@ unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable () {
   dst_src_select_node->select_list.emplace_back(CreateColumnRefExpression("src", "", "dst"));
   dst_src_select_node->from_table = CreateBaseTableRef("edges_cte");
 
-
+  auto union_by_name_node = make_uniq<SetOperationNode>();
+  union_by_name_node->setop_all = false;
+  union_by_name_node->setop_type = SetOperationType::UNION_BY_NAME;
+  union_by_name_node->left = std::move(src_dst_select_node);
+  union_by_name_node->right = std::move(dst_src_select_node);
+  inner_select_statement->node = std::move(union_by_name_node);
+  auto inner_from_subquery = make_uniq<SubqueryRef>(std::move(inner_select_statement));
+  count_edges_select_node->from_table = std::move(inner_from_subquery);
+  count_edges_select_statement->node = std::move(count_edges_select_node);
+  auto result = make_uniq<SubqueryExpression>();
+  result->subquery = std::move(count_edges_select_statement);
+  result->subquery_type = SubqueryType::SCALAR;
+  return result;
 }
 
 unique_ptr<SubqueryExpression> GetCountEdgeTable(const shared_ptr<PropertyGraphTable> &edge_table) {
