@@ -36,9 +36,9 @@ CSRFunctionData::CSREdgeBind(ClientContext &context,
                              ScalarFunction &bound_function,
                              vector<unique_ptr<Expression>> &arguments) {
   auto csr_id = GetCSRId(arguments[0], context);
-  if (arguments.size() == 7) {
+  if (arguments.size() == 8) {
     return make_uniq<CSRFunctionData>(context, csr_id,
-                                      arguments[6]->return_type);
+                                      arguments[7]->return_type);
   }
   auto logical_type = LogicalType::SQLNULL;
   return make_uniq<CSRFunctionData>(context, csr_id, logical_type);
