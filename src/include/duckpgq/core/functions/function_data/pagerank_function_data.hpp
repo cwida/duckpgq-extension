@@ -1,10 +1,11 @@
 //===----------------------------------------------------------------------===//
 //                         DuckPGQ
 //
-// duckpgq/core/functions/function_data/iterative_length_function_data.hpp
+// duckpgq/core/functions/function_data/pagerank_function_data.hpp
 //
 //
 //===----------------------------------------------------------------------===//
+
 
 #pragma once
 #include "duckdb/main/client_context.hpp"
@@ -12,20 +13,29 @@
 
 namespace duckpgq {
 namespace core {
-
-struct IterativeLengthFunctionData final : FunctionData {
+struct PageRankFunctionData final : FunctionData {
   ClientContext &context;
   int32_t csr_id;
+  vector<double_t> rank;
+  vector<double_t> temp_rank;
+  double_t damping_factor;
+  double_t convergence_threshold;
+  int64_t iteration_count;
+  std::mutex state_lock; // Lock for state
+  bool state_initialized;
+  bool converged;
 
-  IterativeLengthFunctionData(ClientContext &context, int32_t csr_id)
-      : context(context), csr_id(csr_id) {}
+  PageRankFunctionData(ClientContext &context, int32_t csr_id);
+  PageRankFunctionData(ClientContext &context, int32_t csr_id, const vector<int64_t> &componentId);
   static unique_ptr<FunctionData>
-  IterativeLengthBind(ClientContext &context, ScalarFunction &bound_function,
+  PageRankBind(ClientContext &context, ScalarFunction &bound_function,
                       vector<unique_ptr<Expression>> &arguments);
 
   unique_ptr<FunctionData> Copy() const override;
   bool Equals(const FunctionData &other_p) const override;
 };
 
+
 } // namespace core
+
 } // namespace duckpgq
