@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckPGQ
 //
-// duckpgq/functions/function_data/iterative_length_function_data.hpp
+// duckpgq/core/functions/function_data/iterative_length_function_data.hpp
 //
 //
 //===----------------------------------------------------------------------===//
