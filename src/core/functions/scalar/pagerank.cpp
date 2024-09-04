@@ -1,7 +1,6 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/functions/function_data/pagerank_function_data.hpp"
-#include <duckpgq/core/functions/function_data/pagerank_function_data.hpp>
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/functions/table/pagerank.hpp>
 #include <duckpgq/core/utils/duckpgq_bitmap.hpp>
@@ -93,11 +92,16 @@ static void PageRankFunction(DataChunk &args,
     // Create result vector
     ValidityMask &result_validity = FlatVector::Validity(result);
     result.SetVectorType(VectorType::FLAT_VECTOR);
-    auto result_data = FlatVector::GetData<double>(result);
+    auto result_data = FlatVector::GetData<double_t>(result);
 
     // Output the PageRank value corresponding to each source ID in the DataChunk
     for (idx_t i = 0; i < args.size(); i++) {
-        auto node_id = src_data[i];
+        auto id_pos = vdata_src.sel->get_index(i);
+        if (!vdata_src.validity.RowIsValid(id_pos)) {
+            result_validity.SetInvalid(i);
+            continue; // Skip invalid rows
+        }
+        auto node_id = src_data[id_pos];
         if (node_id < 0 || node_id >= (int64_t)v_size) {
             result_validity.SetInvalid(i);
             continue;
