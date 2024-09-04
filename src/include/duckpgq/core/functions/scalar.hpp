@@ -18,6 +18,7 @@ struct CoreScalarFunctions {
     RegisterReachabilityScalarFunction(db);
     RegisterShortestPathScalarFunction(db);
     RegisterWeaklyConnectedComponentScalarFunction(db);
+    RegisterPageRankScalarFunction(db);
   }
 
 private:
@@ -32,6 +33,8 @@ private:
   static void RegisterReachabilityScalarFunction(DatabaseInstance &db);
   static void  RegisterShortestPathScalarFunction(DatabaseInstance &db);
   static void  RegisterWeaklyConnectedComponentScalarFunction(DatabaseInstance &db);
+  static void  RegisterPageRankScalarFunction(DatabaseInstance &db);
+
 };
 
 
