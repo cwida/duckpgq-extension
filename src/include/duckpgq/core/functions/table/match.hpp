@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckPGQ
 //
-// duckpgq/functions/tablefunctions/match.hpp
+// duckpgq/core/functions/table/match.hpp
 //
 //
 //===----------------------------------------------------------------------===//
@@ -54,10 +54,6 @@ public:
 
   static PathElement *
   GetPathElement(const unique_ptr<PathReference> &path_reference);
-
-  static unique_ptr<SubqueryExpression>
-  GetCountTable(const shared_ptr<PropertyGraphTable> &edge_table,
-                const string &prev_binding);
 
   static unique_ptr<JoinRef>
   GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,

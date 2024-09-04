@@ -1,10 +1,11 @@
 //===----------------------------------------------------------------------===//
 //                         DuckPGQ
 //
-// duckpgq/core/functions/function_data/iterative_length_function_data.hpp
+// duckpgq/core/functions/function_data/weakly_connected_component_function_data.hpp
 //
 //
 //===----------------------------------------------------------------------===//
+
 
 #pragma once
 #include "duckdb/main/client_context.hpp"
@@ -12,21 +13,23 @@
 
 namespace duckpgq {
 namespace core {
-
-struct IterativeLengthFunctionData final : FunctionData {
+struct WeaklyConnectedComponentFunctionData final : FunctionData {
   ClientContext &context;
-  string table_to_scan;
   int32_t csr_id;
-
-  IterativeLengthFunctionData(ClientContext &context, string table_to_scan, int32_t csr_id)
-      : context(context), table_to_scan(table_to_scan), csr_id(csr_id) {}
+  vector<int64_t> componentId;
+  std::mutex component_lock;
+  bool component_id_initialized; // if componentId is initialized
+  WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id);
+  WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id, const vector<int64_t> &componentId);
   static unique_ptr<FunctionData>
-  IterativeLengthBind(ClientContext &context, ScalarFunction &bound_function,
+  WeaklyConnectedComponentBind(ClientContext &context, ScalarFunction &bound_function,
                       vector<unique_ptr<Expression>> &arguments);
 
   unique_ptr<FunctionData> Copy() const override;
   bool Equals(const FunctionData &other_p) const override;
 };
 
+
 } // namespace core
+
 } // namespace duckpgq

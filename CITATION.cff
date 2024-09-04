@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "ten Wolde"
+  given-names: "Daniel"
+  orcid: "https://orcid.org/0009-0008-8502-1148"
+title: "DuckPGQ"
+url: "https://github.com/cwida/duckpgq-extension"

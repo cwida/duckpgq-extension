@@ -48,6 +48,7 @@ SELECT  CREATE_CSR_EDGE(
                     GROUP BY a.rowid) sub
                 )
             AS BIGINT),
+            (select count() FROM Know k JOIN student a on a.id = k.src JOIN student c on c.id = k.dst),
             a.rowid,
             c.rowid,
             k.rowid) as temp
@@ -73,6 +74,7 @@ SELECT  CREATE_CSR_EDGE(
                     GROUP BY a.rowid) sub
                 )
             AS BIGINT),
+            (select count() FROM Know k JOIN student a on a.id = k.src JOIN student c on c.id = k.dst),
             a.rowid,
             c.rowid,
             k.rowid) as temp

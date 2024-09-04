@@ -4,7 +4,9 @@ set(EXTENSION_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/drop_property_graph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/local_clustering_coefficient.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/match.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/pagerank.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/pgq_scan.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/weakly_connected_component.cpp
         ${EXTENSION_SOURCES}
         PARENT_SCOPE
         )

@@ -1,0 +1,122 @@
+name: Bug report
+description: Create a report to help us improve
+labels:
+  - needs triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Disclaimer:** Please note that this is a research project.
+        While I am committed to improving the project, responses to issues and bug fixes might take longer than expected. 
+        I appreciate your patience and understanding as I work to address issues. Thank you for helping make this project better!
+
+    
+  - type: textarea
+    attributes:
+      label: What happens?
+      description: A short, clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: To Reproduce
+      description: |
+        Please provide steps to reproduce the behavior, preferably a [minimal reproducible example](https://en.wikipedia.org/wiki/Minimal_reproducible_example). Please adhere the following guidelines:
+
+        * Format the code and the output as [code blocks](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-and-highlighting-code-blocks) using triple backticks:
+
+          ````
+          ```
+          CODE HERE
+          ```
+          ````
+        * Add all required imports for scripts, e.g., `import duckdb`, `import pandas as pd`.
+        * Remove all prompts from the scripts. This include DuckDB's 'D' prompt and Python's `>>>` prompt. Removing these prompts makes reproduction attempts quicker.
+        * Make sure that the script and its outputs are provided in separate code blocks.
+        * If applicable, please check whether the issue is reproducible via running plain SQL queries from the DuckDB CLI client.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "# Environment (please complete the following information):"
+  - type: input
+    attributes:
+      label: "OS:"
+      placeholder: e.g., iOS
+      description: Please include operating system version and architecture (e.g., aarch64, x86, x64, etc)
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: "DuckDB Version:"
+      placeholder: e.g., 22
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: "DuckDB Client:"
+      placeholder: e.g., Python
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "# Identity Disclosure:"
+  - type: input
+    attributes:
+      label: "Full Name:"
+      placeholder: e.g., John Doe
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: "Affiliation:"
+      placeholder: e.g., Acme Corporation
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        If the above is not given and is not obvious from your GitHub profile page, we might close your issue without further review. Please refer to the [reasoning behind this rule](https://berthub.eu/articles/posts/anonymous-help/) if you have questions.
+
+        # Before Submitting:
+
+  - type: dropdown
+    attributes:
+      label: How did you load the extension?
+      description: |
+        Visit [Loading DuckPGQ](https://duckpgq.notion.site/Loading-DuckPGQ-29eda93a97b140e1861614cce1f5498c) and [Building DuckPGQ](https://www.notion.so/duckpgq/Building-DuckPGQ-619783a5af604efbb7c93f09811d996f) for more information.
+      options:
+        - Community extension version
+        - Latest version
+        - Built from source
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Did you include all relevant data sets for reproducing the issue?
+      options:
+        - "No - Other reason (please specify in the issue body)"
+        - "No - I cannot share the data sets because they are confidential"
+        - "No - I cannot easily share my data sets due to their large size"
+        - "Not applicable - the reproduction does not require a data set"
+        - "Yes"
+      default: 0
+    validations:
+      required: true
+
+  - type: checkboxes
+    attributes:
+      label: Did you include all code required to reproduce the issue?
+      options:
+        - label: Yes, I have
+
+  - type: checkboxes
+    attributes:
+      label: Did you include all relevant configuration (e.g., CPU architecture, Python version, Linux distribution) to reproduce the issue?
+      options:
+        - label: Yes, I have
