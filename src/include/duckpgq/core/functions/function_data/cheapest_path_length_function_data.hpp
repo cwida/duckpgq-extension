@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckPGQ
 //
-// duckpgq/functions/function_data/cheapest_path_length_function_data.hpp
+// duckpgq/core/functions/function_data/cheapest_path_length_function_data.hpp
 //
 //
 //===----------------------------------------------------------------------===//
