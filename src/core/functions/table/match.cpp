@@ -380,9 +380,56 @@ void PGQMatchFunction::CreatePairsCTE(
   final_select_node->cte_map.map[pairs_cte_name] = std::move(cte_info);
 }
 
-unique_ptr<SubqueryExpression> PGQMatchFunction::GenerateCSROperatorSubquery(shared_ptr<PropertyGraphTable> &edge_table, const string& src_table_alias, const string& dst_table_alias) {
+unique_ptr<SubqueryExpression> PGQMatchFunction::GenerateCSROperatorSubquery(shared_ptr<PropertyGraphTable> &edge_table, const string& src_table_alias, const string& edge_table_alias, const string& dst_table_alias) {
   auto result = make_uniq<SubqueryExpression>();
+  auto select_statement = make_uniq<SelectStatement>();
+  auto select_node = make_uniq<SelectNode>();
 
+  vector<unique_ptr<ParsedExpression>> csr_operator_children;
+  csr_operator_children.emplace_back(GetCountTable(edge_table->source_reference, src_table_alias, edge_table->source_pk[0]));
+  csr_operator_children.emplace_back(GetCountTable(edge_table->table_name, edge_table_alias, edge_table->source_fk[0]));
+
+  csr_operator_children.emplace_back(CreateColumnRefExpression("rowid", src_table_alias));
+  csr_operator_children.emplace_back(CreateColumnRefExpression("rowid", dst_table_alias));
+  csr_operator_children.emplace_back(CreateColumnRefExpression("rowid", edge_table_alias));
+
+  csr_operator_children.emplace_back(CreateColumnRefExpression("cnt", "count_per_vertex"));
+
+  select_node->select_list.emplace_back(make_uniq<FunctionExpression>("csr_operator", std::move(csr_operator_children)));
+  auto edge_src_joinref = make_uniq<JoinRef>(JoinRefType::REGULAR);
+  edge_src_joinref->left = CreateBaseTableRef(edge_table->table_name, edge_table_alias);
+  edge_src_joinref->right = CreateBaseTableRef(edge_table->source_reference, src_table_alias);
+  edge_src_joinref->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, CreateColumnRefExpression(edge_table->source_fk[0], edge_table_alias), CreateColumnRefExpression(edge_table->source_pk[0], src_table_alias));
+
+  auto edge_dst_joinref = make_uniq<JoinRef>(JoinRefType::REGULAR);
+  edge_dst_joinref->left = std::move(edge_src_joinref);
+  edge_dst_joinref->right = CreateBaseTableRef(edge_table->destination_reference, dst_table_alias);
+  edge_dst_joinref->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, CreateColumnRefExpression(edge_table->destination_fk[0], edge_table_alias), CreateColumnRefExpression(edge_table->destination_pk[0], dst_table_alias));
+
+  auto edges_per_vertex_subquery = make_uniq<SubqueryRef>();
+  auto edges_per_vertex_select_statement = make_uniq<SelectStatement>();
+  auto edges_per_vertex_select_node = make_uniq<SelectNode>();
+
+  vector<unique_ptr<ParsedExpression>> count_children;
+  count_children.emplace_back(CreateColumnRefExpression(edge_table->source_fk[0], edge_table_alias));
+  auto count_function_expression = make_uniq<FunctionExpression>("count", std::move(count_children));
+  count_function_expression->alias = "cnt";
+  edges_per_vertex_select_node->select_list.emplace_back(std::move(count_function_expression));
+  edges_per_vertex_select_node->select_list.emplace_back(CreateColumnRefExpression("rowid", src_table_alias));
+
+  auto left_join = make_uniq<JoinRef>(JoinRefType::REGULAR);
+  left_join->type = JoinType::LEFT;
+  left_join->left = CreateBaseTableRef(edge_table->source_reference, src_table_alias);
+  left_join->right = CreateBaseTableRef(edge_table->table_name, edge_table_alias);
+  left_join->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, CreateColumnRefExpression(edge_table->source_pk[0], src_table_alias), CreateColumnRefExpression(edge_table->source_fk[0], edge_table_alias));
+
+  edges_per_vertex_select_node->from_table = std::move(left_join);
+  // edges_per_vertex_select_node->groups = make_uniq<GroupByNode>();
+
+
+  select_statement->node = std::move(select_node);
+  result->subquery = std::move(select_statement);
+  return result;
 }
 
 
@@ -392,6 +439,7 @@ void PGQMatchFunction::GenerateShortestPathOperatorCTE(
     unique_ptr<ParsedExpression> &src_conditions,
     unique_ptr<ParsedExpression> &dst_conditions,
     const string& src_table_alias,
+    const string& edge_table_alias,
     const string& dst_table_alias) {
   string pairs_cte_name = "pairs_cte";
   auto cte_info = make_uniq<CommonTableExpressionInfo>();
@@ -551,7 +599,8 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
           // Do the new path finding operator + CSR creation here
           GenerateShortestPathOperatorCTE(pg_table, edge_subpath, final_select_node,
             previous_vertex_subpath->where_clause, next_vertex_subpath->where_clause,
-            previous_vertex_element->variable_binding, next_vertex_element->variable_binding);
+            previous_vertex_element->variable_binding, edge_element->variable_binding,
+            next_vertex_element->variable_binding);
         } else {
           if (previous_vertex_subpath) {
             path_finding_conditions.push_back(std::move(previous_vertex_subpath->where_clause));
