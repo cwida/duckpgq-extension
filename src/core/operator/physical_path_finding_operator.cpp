@@ -370,7 +370,6 @@ void PhysicalPathFinding::ScheduleBFSEvent(Pipeline &pipeline, Event &event,
 }
 
 string PhysicalPathFinding::ParamsToString() const {
-  std::cout << "ParamsToString" << std::endl;
   auto result = mode;
   result += "\n[INFOSEPARATOR]\n";
   result += StringUtil::Format("EC: %llu", estimated_cardinality);

@@ -35,9 +35,10 @@ EDGE TABLES (know    SOURCE KEY ( src ) REFERENCES Student ( id )
 query III
 -FROM GRAPH_TABLE (g
     MATCH p = ANY SHORTEST (src:Student WHERE src.id = 10)-[k:know]-> *(dst:Student)
-    COLUMNS (element_id(p) AS path));
+    COLUMNS (element_id(p) AS path, src.id, dst.id));
 ----
-
+[0]	10	10
+[0, 1, 2]	10	30
 
 query III
 WITH shortestpath_cte as (
@@ -65,7 +66,7 @@ WHERE p.src between (SELECT CSR_OPERATOR(
 
 # MATCH ANY SHORTEST p = (a:Person)-[k2:knows]->(src:Person WHERE src.id = 10)-[k:knows]->*(dst:Person)
 # COLUMNS (element_id(p) AS path)
-query IIII
+query IIIIII
 WITH pairs as (
     SELECT src, dst
     FROM (SELECT a.rowid AS src FROM Student a where id = 10),
