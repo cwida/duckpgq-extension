@@ -9,6 +9,8 @@
 
 #pragma once
 #include <functional>
+#include <condition_variable>
+#include <atomic>
 #include "mutex"
 
 namespace duckpgq {
