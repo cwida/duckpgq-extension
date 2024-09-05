@@ -1,6 +1,5 @@
 
 #include "duckpgq/core/utils/duckpgq_barrier.hpp"
-
 #include <mutex>
 
 namespace duckpgq {

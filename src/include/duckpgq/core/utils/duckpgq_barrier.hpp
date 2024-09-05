@@ -8,7 +8,7 @@
 
 
 #pragma once
-
+#include <functional>
 #include "mutex"
 
 namespace duckpgq {
