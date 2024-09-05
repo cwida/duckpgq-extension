@@ -362,7 +362,9 @@ unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathOper
   shortest_path_operator_children.emplace_back(CreateColumnRefExpression("dst"));
   auto pairs_cte_ref = make_uniq<ConstantExpression>(Value('pairs_cte'));
   pairs_cte_ref->alias = "path";
-  shortest_path_operator_children.emplace_back(std::move(pairs_cte_ref));
+
+  auto shortest_path_function  = make_uniq<FunctionExpression>("shortestpathoperator", std::move(shortest_path_operator_children));
+  shortest_path_operator_children.emplace_back(std::move(shortest_path_function));
 
   select_node->from_table = CreateBaseTableRef("pairs_cte", "p");
 
