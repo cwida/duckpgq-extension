@@ -605,10 +605,14 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
                 GraphUtils::ToString(edge_element->match_type));
           }
           // Do the new path finding operator + CSR creation here
+          unique_ptr<ParsedExpression> previous_where_clause = (previous_vertex_subpath && previous_vertex_subpath->where_clause) ? previous_vertex_subpath->where_clause->Copy() : nullptr;
+          unique_ptr<ParsedExpression> next_where_clause = (next_vertex_subpath && next_vertex_subpath->where_clause) ? next_vertex_subpath->where_clause->Copy() : nullptr;
+
           GenerateShortestPathOperatorCTE(pg_table, edge_subpath, final_select_node,
-            previous_vertex_subpath->where_clause, next_vertex_subpath->where_clause,
-            previous_vertex_element->variable_binding, edge_element->variable_binding,
-            next_vertex_element->variable_binding);
+          previous_where_clause, next_where_clause,
+          previous_vertex_element->variable_binding, edge_element->variable_binding,
+          next_vertex_element->variable_binding);
+
         } else {
           if (previous_vertex_subpath) {
             path_finding_conditions.push_back(std::move(previous_vertex_subpath->where_clause));
