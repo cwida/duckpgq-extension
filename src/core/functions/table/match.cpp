@@ -348,7 +348,6 @@ void PGQMatchFunction::CreatePairsCTE(
   pairs_cte_select_node->select_list.emplace_back(CreateColumnRefExpression("src"));
   pairs_cte_select_node->select_list.emplace_back(CreateColumnRefExpression("dst"));
 
-  auto src_subquery = make_uniq<SubqueryRef>();
   auto src_select_statement = make_uniq<SelectStatement>();
   auto src_select_node = make_uniq<SelectNode>();
 
@@ -356,9 +355,8 @@ void PGQMatchFunction::CreatePairsCTE(
   src_select_node->from_table = CreateBaseTableRef(edge_table->source_reference);
   src_select_node->where_clause = std::move(src_conditions);
   src_select_statement->node = std::move(src_select_node);
-  src_subquery->subquery = std::move(src_select_statement);
+  auto src_subquery = make_uniq<SubqueryRef>(std::move(src_select_statement));
 
-  auto dst_subquery = make_uniq<SubqueryRef>();
   auto dst_select_statement = make_uniq<SelectStatement>();
   auto dst_select_node = make_uniq<SelectNode>();
 
@@ -366,7 +364,7 @@ void PGQMatchFunction::CreatePairsCTE(
   dst_select_node->from_table = CreateBaseTableRef(edge_table->destination_reference);
   dst_select_node->where_clause = std::move(dst_conditions);
   dst_select_statement->node = std::move(dst_select_node);
-  dst_subquery->subquery = std::move(dst_select_statement);
+  auto dst_subquery = make_uniq<SubqueryRef>(std::move(dst_select_statement));
 
   auto cross_join = make_uniq<JoinRef>(JoinRefType::CROSS);
   cross_join->left = std::move(src_subquery);
@@ -407,7 +405,6 @@ unique_ptr<SubqueryExpression> PGQMatchFunction::GenerateCSROperatorSubquery(sha
   edge_dst_joinref->right = CreateBaseTableRef(edge_table->destination_reference, dst_table_alias);
   edge_dst_joinref->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, CreateColumnRefExpression(edge_table->destination_fk[0], edge_table_alias), CreateColumnRefExpression(edge_table->destination_pk[0], dst_table_alias));
 
-  auto edges_per_vertex_subquery = make_uniq<SubqueryRef>();
   auto edges_per_vertex_select_statement = make_uniq<SelectStatement>();
   auto edges_per_vertex_select_node = make_uniq<SelectNode>();
 
@@ -430,7 +427,7 @@ unique_ptr<SubqueryExpression> PGQMatchFunction::GenerateCSROperatorSubquery(sha
   edges_per_vertex_select_node->groups.grouping_sets.push_back(grouping_set);
 
   edges_per_vertex_select_statement->node = std::move(edges_per_vertex_select_node);
-  edges_per_vertex_subquery->subquery = std::move(edges_per_vertex_select_statement);
+  auto edges_per_vertex_subquery = make_uniq<SubqueryRef>(std::move(edges_per_vertex_select_statement));
   edges_per_vertex_subquery->alias = "__count_per_vertex";
   auto final_join  = make_uniq<JoinRef>(JoinRefType::REGULAR);
   final_join->left = std::move(edge_dst_joinref);
@@ -478,11 +475,11 @@ void PGQMatchFunction::GenerateShortestPathOperatorCTE(
   shortest_path_operator_children.emplace_back(
       std::move(shortest_path_function));
 
-  select_node->from_table = CreateBaseTableRef(pairs_cte_name, "p");
+  select_node->from_table = CreateBaseTableRef(pairs_cte_name, "__p");
 
-  GenerateCSROperatorSubquery(edge_table, src_table_alias, edge_table_alias, dst_table_alias);
-
-
+  auto csr_subquery = GenerateCSROperatorSubquery(edge_table, src_table_alias, edge_table_alias, dst_table_alias);
+  auto between_expression = make_uniq<BetweenExpression>(std::move(csr_subquery), CreateColumnRefExpression("src", "__p"), CreateColumnRefExpression("dst, __p"));
+  select_node->where_clause = std::move(between_expression);
   select_statement->node = std::move(select_node);
   cte_info->query = std::move(select_statement);
   final_select_node->cte_map.map["shortestpath_cte"] = std::move(cte_info);
