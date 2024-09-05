@@ -380,7 +380,8 @@ void PGQMatchFunction::CreatePairsCTE(
   final_select_node->cte_map.map[pairs_cte_name] = std::move(cte_info);
 }
 
-unique_ptr<SubqueryExpression> PGQMatchFunction::GenerateCSROperatorSubquery(shared_ptr<PropertyGraphTable> &edge_table, const string& src_table_alias, const string& edge_table_alias, const string& dst_table_alias) {
+unique_ptr<SubqueryExpression> PGQMatchFunction::GenerateCSROperatorSubquery(shared_ptr<PropertyGraphTable> &edge_table,
+  const string& src_table_alias, const string& edge_table_alias, const string& dst_table_alias) {
   auto result = make_uniq<SubqueryExpression>();
   auto select_statement = make_uniq<SelectStatement>();
   auto select_node = make_uniq<SelectNode>();
@@ -469,7 +470,7 @@ void PGQMatchFunction::GenerateShortestPathOperatorCTE(
 
   select_node->from_table = CreateBaseTableRef(pairs_cte_name, "p");
 
-  GenerateCSROperatorSubquery(edge_table, src_table_alias, dst_table_alias);
+  GenerateCSROperatorSubquery(edge_table, src_table_alias, edge_table_alias, dst_table_alias);
 
 
   select_statement->node = std::move(select_node);
