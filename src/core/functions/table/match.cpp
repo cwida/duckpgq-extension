@@ -348,12 +348,50 @@ PGQMatchFunction::CreateWhereClause(vector<unique_ptr<ParsedExpression>> &condit
 void PGQMatchFunction::CreatePairsCTE(
     shared_ptr<PropertyGraphTable> &edge_table, const string &pairs_cte_name,
     unique_ptr<SelectNode> &final_select_node,
-    vector<unique_ptr<ParsedExpression>> &conditions) {}
+    unique_ptr<ParsedExpression> &src_conditions,
+    unique_ptr<ParsedExpression> &dst_conditions) {
+  auto pairs_cte_select_node = make_uniq<SelectNode>();
+
+  pairs_cte_select_node->select_list.emplace_back(CreateColumnRefExpression("src"));
+  pairs_cte_select_node->select_list.emplace_back(CreateColumnRefExpression("dst"));
+
+  auto src_subquery = make_uniq<SubqueryRef>();
+  auto src_select_statement = make_uniq<SelectStatement>();
+  auto src_select_node = make_uniq<SelectNode>();
+
+  src_select_node->select_list.emplace_back(CreateColumnRefExpression("rowid", "", "src"));
+  src_select_node->from_table = CreateBaseTableRef(edge_table->source_reference);
+  src_select_node->where_clause = std::move(src_conditions);
+  src_select_statement->node = std::move(src_select_node);
+  src_subquery->subquery = std::move(src_select_statement);
+
+  auto dst_subquery = make_uniq<SubqueryRef>();
+  auto dst_select_statement = make_uniq<SelectStatement>();
+  auto dst_select_node = make_uniq<SelectNode>();
+
+  dst_select_node->select_list.emplace_back(CreateColumnRefExpression("rowid", "", "dst"));
+  dst_select_node->from_table = CreateBaseTableRef(edge_table->destination_reference);
+  dst_select_node->where_clause = std::move(dst_conditions);
+  dst_select_statement->node = std::move(dst_select_node);
+  dst_subquery->subquery = std::move(dst_select_statement);
+
+  auto cross_join = make_uniq<JoinRef>(JoinRefType::CROSS);
+  cross_join->left = std::move(src_subquery);
+  cross_join->right = std::move(dst_subquery);
+
+  pairs_cte_select_node->from_table = std::move(cross_join);
+  auto select_statement = make_uniq<SelectStatement>();
+  auto cte_info = make_uniq<CommonTableExpressionInfo>();
+  select_statement->node = std::move(pairs_cte_select_node);
+  cte_info->query = std::move(select_statement);
+  final_select_node->cte_map.map[pairs_cte_name] = std::move(cte_info);
+}
 
 void PGQMatchFunction::GenerateShortestPathOperatorCTE(
     CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
     const unique_ptr<SelectNode> &final_select_node,
-    vector<unique_ptr<ParsedExpression>> &path_finding_conditions) {
+    unique_ptr<ParsedExpression> &src_conditions,
+    unique_ptr<ParsedExpression> &dst_conditions) {
   string pairs_cte_name = "pairs_cte";
   auto cte_info = make_uniq<CommonTableExpressionInfo>();
   cte_info->materialized = CTEMaterialize::CTE_MATERIALIZE_ALWAYS;
@@ -364,7 +402,7 @@ void PGQMatchFunction::GenerateShortestPathOperatorCTE(
   auto edge_table = FindGraphTable(edge_element->label, pg_table);
 
   CreatePairsCTE(edge_table, pairs_cte_name, select_node,
-                 path_finding_conditions);
+                 src_conditions, dst_conditions);
 
   select_node->select_list.emplace_back(CreateColumnRefExpression("src"));
   select_node->select_list.emplace_back(CreateColumnRefExpression("dst"));
@@ -497,12 +535,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
       if (edge_subpath->upper > 1) {
         // (un)bounded shortest path
         // Add the shortest path UDF as a CTE
-        if (previous_vertex_subpath) {
-          path_finding_conditions.push_back(std::move(previous_vertex_subpath->where_clause));
-        }
-        if (next_vertex_subpath) {
-          path_finding_conditions.push_back(std::move(next_vertex_subpath->where_clause));
-        }
+
         string shortest_path_cte_name = "shortest_path_cte" ;
         if (GetPathFindingOption(context)) {
           edge_element = reinterpret_cast<PathElement *>(edge_subpath->path_list[0].get());
@@ -512,8 +545,14 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
                 GraphUtils::ToString(edge_element->match_type));
           }
           // Do the new path finding operator + CSR creation here
-          GenerateShortestPathOperatorCTE(pg_table, edge_subpath, final_select_node, path_finding_conditions);
+          GenerateShortestPathOperatorCTE(pg_table, edge_subpath, final_select_node, previous_vertex_subpath->where_clause, next_vertex_subpath->where_clause);
         } else {
+          if (previous_vertex_subpath) {
+            path_finding_conditions.push_back(std::move(previous_vertex_subpath->where_clause));
+          }
+          if (next_vertex_subpath) {
+            path_finding_conditions.push_back(std::move(next_vertex_subpath->where_clause));
+          }
           // Create UDF based CSR if not exists
           if (final_select_node->cte_map.map.find("cte1") == final_select_node->cte_map.map.end()) {
             edge_element = reinterpret_cast<PathElement *>(edge_subpath->path_list[0].get());

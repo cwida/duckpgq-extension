@@ -115,12 +115,14 @@ public:
 
   static void CreatePairsCTE(shared_ptr<PropertyGraphTable> &edge_table,
     const string& pairs_cte_name, unique_ptr<SelectNode> &final_select_node,
-    vector<unique_ptr<ParsedExpression>> &conditions);
+    unique_ptr<ParsedExpression> &src_conditions,
+    unique_ptr<ParsedExpression> &dst_conditions);
 
   static void GenerateShortestPathOperatorCTE(
     CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
       const unique_ptr<SelectNode> &final_select_node,
-      vector<unique_ptr<ParsedExpression>> &path_finding_conditions);
+      unique_ptr<ParsedExpression> &src_conditions,
+    unique_ptr<ParsedExpression> &dst_conditions);
 
   static unique_ptr<CommonTableExpressionInfo> GenerateShortestPathCTE(
       CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
