@@ -113,6 +113,8 @@ public:
       vector<unique_ptr<ParsedExpression>> &column_list,
       unordered_set<string> &named_subpaths);
 
+  static unique_ptr<SubqueryExpression> GenerateCSROperatorSubquery(shared_ptr<PropertyGraphTable> &edge_table, const string& src_table_alias, const string& dst_table_alias)
+
   static void CreatePairsCTE(shared_ptr<PropertyGraphTable> &edge_table,
     const string& pairs_cte_name, unique_ptr<SelectNode> &final_select_node,
     unique_ptr<ParsedExpression> &src_conditions,
@@ -122,7 +124,9 @@ public:
     CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
       const unique_ptr<SelectNode> &final_select_node,
       unique_ptr<ParsedExpression> &src_conditions,
-    unique_ptr<ParsedExpression> &dst_conditions);
+      unique_ptr<ParsedExpression> &dst_conditions,
+      const string& src_table_alias,
+      const string& dst_table_alias);
 
   static unique_ptr<CommonTableExpressionInfo> GenerateShortestPathCTE(
       CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,

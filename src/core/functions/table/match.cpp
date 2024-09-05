@@ -387,11 +387,19 @@ void PGQMatchFunction::CreatePairsCTE(
   final_select_node->cte_map.map[pairs_cte_name] = std::move(cte_info);
 }
 
+unique_ptr<SubqueryExpression> PGQMatchFunction::GenerateCSROperatorSubquery(shared_ptr<PropertyGraphTable> &edge_table, const string& src_table_alias, const string& dst_table_alias) {
+  auto result = make_uniq<SubqueryExpression>();
+
+}
+
+
 void PGQMatchFunction::GenerateShortestPathOperatorCTE(
     CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
     const unique_ptr<SelectNode> &final_select_node,
     unique_ptr<ParsedExpression> &src_conditions,
-    unique_ptr<ParsedExpression> &dst_conditions) {
+    unique_ptr<ParsedExpression> &dst_conditions,
+    const string& src_table_alias,
+    const string& dst_table_alias) {
   string pairs_cte_name = "pairs_cte";
   auto cte_info = make_uniq<CommonTableExpressionInfo>();
   cte_info->materialized = CTEMaterialize::CTE_MATERIALIZE_ALWAYS;
@@ -419,6 +427,9 @@ void PGQMatchFunction::GenerateShortestPathOperatorCTE(
       std::move(shortest_path_function));
 
   select_node->from_table = CreateBaseTableRef(pairs_cte_name, "p");
+
+  GenerateCSROperatorSubquery(edge_table, src_table_alias, dst_table_alias);
+
 
   select_statement->node = std::move(select_node);
   cte_info->query = std::move(select_statement);
@@ -545,7 +556,9 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
                 GraphUtils::ToString(edge_element->match_type));
           }
           // Do the new path finding operator + CSR creation here
-          GenerateShortestPathOperatorCTE(pg_table, edge_subpath, final_select_node, previous_vertex_subpath->where_clause, next_vertex_subpath->where_clause);
+          GenerateShortestPathOperatorCTE(pg_table, edge_subpath, final_select_node,
+            previous_vertex_subpath->where_clause, next_vertex_subpath->where_clause,
+            previous_vertex_element->variable_binding, next_vertex_element->variable_binding);
         } else {
           if (previous_vertex_subpath) {
             path_finding_conditions.push_back(std::move(previous_vertex_subpath->where_clause));
