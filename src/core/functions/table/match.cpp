@@ -347,6 +347,27 @@ PGQMatchFunction::CreateWhereClause(vector<unique_ptr<ParsedExpression>> &condit
 
 unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathOperatorCTE(CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath) {
   auto cte_info = make_uniq<CommonTableExpressionInfo>();
+  cte_info->materialized = CTEMaterialize::CTE_MATERIALIZE_ALWAYS;
+  auto select_statement = make_uniq<SelectStatement>();
+  auto select_node = make_uniq<SelectNode>();
+
+  auto edge_element = GetPathElement(edge_subpath->path_list[0]);
+  auto edge_table = FindGraphTable(edge_element->label, pg_table);
+
+  select_node->select_list.emplace_back(CreateColumnRefExpression("src"));
+  select_node->select_list.emplace_back(CreateColumnRefExpression("dst"));
+
+  vector<unique_ptr<ParsedExpression>> shortest_path_operator_children;
+  shortest_path_operator_children.emplace_back(CreateColumnRefExpression("src"));
+  shortest_path_operator_children.emplace_back(CreateColumnRefExpression("dst"));
+  auto pairs_cte_ref = make_uniq<ConstantExpression>(Value('pairs_cte'));
+  pairs_cte_ref->alias = "path";
+  shortest_path_operator_children.emplace_back(std::move(pairs_cte_ref));
+
+  select_node->from_table = CreateBaseTableRef("pairs_cte", "p");
+
+
+
 
   return cte_info;
 }
