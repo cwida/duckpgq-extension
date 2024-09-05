@@ -41,6 +41,37 @@ query III
 [0, 1, 2]	10	30
 
 query III
+-FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (src:Student)-[k:know]-> *(dst:Student where dst.id = 30)
+    COLUMNS (element_id(p) AS path, src.id, dst.id));
+----
+[0, 1, 2]	10	30
+[1, 3, 0, 1, 2]	20	30
+[2]	30	30
+[3, 0, 1, 3, 0, 1, 2]	40	30
+
+query III
+-FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (src:Student)-[k:know]-> *(dst:Student where dst.id = 30)
+    COLUMNS (path_length(p) AS path, src.id, dst.id));
+----
+1	10	30
+2	20	30
+0	30	30
+3	40	30
+
+query IIIII
+-FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:Student)-[k2:know]->(src:Student)-[k:know]-> *(dst:Student where dst.id = 30)
+    COLUMNS (a.id, element_id(p), path_length(p) AS path, src.id, dst.id));
+----
+40	[3, 0, 1, 3, 0, 1, 2]	3	20	30
+10	[0, 1, 2]	1	30	30
+10	[0, 2, 0, 1, 2]	2	10	30
+20	[1, 3, 0, 1, 2]	2	10	30
+30	[2, 4, 0, 1, 2]	2	10	30
+
+query III
 WITH shortestpath_cte as (
 SELECT src, dst, shortestpathoperator(src, dst, 'pair') as path
 FROM pair p
