@@ -323,13 +323,6 @@ void PGQMatchFunction::EdgeTypeLeftRight(
   conditions.push_back(std::move(combined_expr));
 }
 
-PathElement *PGQMatchFunction::HandleNestedSubPath(
-    unique_ptr<PathReference> &path_reference,
-    vector<unique_ptr<ParsedExpression>> &conditions, idx_t element_idx) {
-  auto subpath = reinterpret_cast<SubPath *>(path_reference.get());
-  return GetPathElement(subpath->path_list[element_idx]);
-}
-
 unique_ptr<ParsedExpression>
 PGQMatchFunction::CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions) {
   unique_ptr<ParsedExpression> where_clause;
