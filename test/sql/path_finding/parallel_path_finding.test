@@ -24,6 +24,21 @@ create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (
 statement ok
 create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
 
+statement ok
+-CREATE PROPERTY GRAPH g
+VERTEX TABLES (student)
+EDGE TABLES (know    SOURCE KEY ( src ) REFERENCES Student ( id )
+                         DESTINATION KEY ( dst ) REFERENCES Student ( id )
+                         );
+
+
+query III
+-FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (src:Student WHERE src.id = 10)-[k:know]-> *(dst:Student)
+    COLUMNS (element_id(p) AS path));
+----
+
+
 query III
 WITH shortestpath_cte as (
 SELECT src, dst, shortestpathoperator(src, dst, 'pair') as path
@@ -49,13 +64,13 @@ WHERE p.src between (SELECT CSR_OPERATOR(
 2	0	[2, 4, 0]
 
 # MATCH ANY SHORTEST p = (a:Person)-[k2:knows]->(src:Person WHERE src.id = 10)-[k:knows]->*(dst:Person)
-# COLUMNS (element_id(p)) AS path
+# COLUMNS (element_id(p) AS path)
 query IIII
 WITH pairs as (
     SELECT src, dst
     FROM (SELECT a.rowid AS src FROM Student a where id = 10),
         (SELECT b.rowid AS dst FROM Student b)
-), p_cte as (
+), shortestpath as (
 SELECT src, dst, shortestpathoperator(src, dst, 'pairs') as path
 FROM pairs p
 WHERE p.src between (SELECT CSR_OPERATOR(
@@ -72,16 +87,25 @@ WHERE p.src between (SELECT CSR_OPERATOR(
                                                   LEFT JOIN know k ON k.src = a.id
                                                   GROUP BY a.rowid) t
                                               ON t.a_rowid = a.rowid) and p.dst)
-SELECT a.id, src.id, p_cte.src, p_cte.dst, src.id as src_id, path FROM p_cte
-JOIN student src on p_cte.src = rowid
+SELECT a.id as a_id, src.id src_id, shortestpath.src as sp_src, shortestpath.dst as sp_dst, dst.id, path FROM shortestpath
+JOIN student src on shortestpath.src = src.rowid
+JOIN student dst on shortestpath.dst = dst.rowid
 JOIN know k2 on k2.dst = src.id
 JOIN student a on a.id = k2.src
-ORDER BY p_cte.dst;
+ORDER BY shortestpath.dst;
 ----
-0	0	10	[0]
-0	1	10	NULL
-0	2	10	[0, 1, 2]
-0	3	10	NULL
+10	10	0	0	10	[0]
+20	10	0	0	10	[0]
+30	10	0	0	10	[0]
+10	10	0	1	20	NULL
+20	10	0	1	20	NULL
+30	10	0	1	20	NULL
+10	10	0	2	30	[0, 1, 2]
+20	10	0	2	30	[0, 1, 2]
+30	10	0	2	30	[0, 1, 2]
+10	10	0	3	40	NULL
+20	10	0	3	40	NULL
+30	10	0	3	40	NULL
 
 query IIII
 WITH pairs as (
