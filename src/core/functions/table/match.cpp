@@ -92,12 +92,12 @@ void PGQMatchFunction::CheckInheritance(
 void PGQMatchFunction::CheckEdgeTableConstraints(
     const string &src_reference, const string &dst_reference,
     const shared_ptr<PropertyGraphTable> &edge_table) {
-  if (src_reference != edge_table->source_reference) {
+  if (StringUtil::Lower(src_reference) != StringUtil::Lower(edge_table->source_reference)) {
     throw BinderException("Label %s is not registered as a source reference "
                           "for edge pattern of table %s",
                           src_reference, edge_table->table_name);
   }
-  if (dst_reference != edge_table->destination_reference) {
+  if (StringUtil::Lower(dst_reference) != StringUtil::Lower(edge_table->destination_reference)) {
     throw BinderException("Label %s is not registered as a destination "
                           "reference for edge pattern of table %s",
                           src_reference, edge_table->table_name);
