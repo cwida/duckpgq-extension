@@ -1,0 +1,23 @@
+# name: test/sql/create_pg/create_pg_with_pk_fk.test
+# description: Testing create with predefined primary and foreign keys
+# group: [duckpgq_sql_create_pg]
+
+require duckpgq
+
+statement ok
+create table v (
+    id BIGINT primary key,
+    name varchar
+);
+
+statement ok
+create table e (
+    id bigint primary key,
+    v_id BIGINT references v(id)
+);
+
+statement ok
+-create property graph g
+vertex tables (v)
+edge tables (e source v destination v);
+
