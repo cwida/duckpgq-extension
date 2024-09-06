@@ -62,3 +62,46 @@ query II
 -FROM GRAPH_TABLE (g MATCH (v:v)-[e2:e2]->(w:w) COLUMNS (v.id, w.id));
 ----
 1	2
+
+statement ok
+CREATE TABLE a (
+    id BIGINT,
+    name VARCHAR
+);
+
+statement error
+CREATE TABLE b (
+    name VARCHAR,
+    src BIGINT REFERENCES a(id),
+    dst BIGINT,
+);
+----
+Binder Error: Failed to create foreign key: there is no primary key or unique constraint for referenced table "a"
+
+statement ok
+CREATE TABLE b (
+    name VARCHAR,
+    src BIGINT,
+    dst BIGINT,
+);
+
+statement error
+-CREATE PROPERTY GRAPH g2 VERTEX TABLES (a) EDGE TABLES (b SOURCE a DESTINATION a);
+----
+Invalid Error: No primary key - foreign key relationship found in b with source table a
+
+statement ok
+CREATE TABLE a_pk (
+    id BIGINT primary key,
+    name VARCHAR
+);
+
+statement ok
+CREATE TABLE b_pk (
+    name VARCHAR,
+    src BIGINT REFERENCES a_pk(id),
+    dst BIGINT,
+);
+
+statement ok
+-CREATE PROPERTY GRAPH g2 VERTEX TABLES (a_pk) EDGE TABLES (b_pk SOURCE a_pk DESTINATION a_pk);
