@@ -26,7 +26,7 @@ void CreatePropertyGraphFunction::CheckPropertyGraphTableLabels(
                       "The discriminator column " + pg_table->discriminator +
                           " of table " + pg_table->table_name +
                           " should be of type BIGINT or INTEGER");
-          }
+    }
   }
 }
 
@@ -91,7 +91,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
     throw Exception(ExceptionType::INVALID, "Property graph table with name " +
                                                 info->property_graph_name +
                                                 " already exists");
-      }
+  }
 
   auto &catalog = Catalog::GetCatalog(context, info->catalog);
   case_insensitive_set_t v_table_names;
@@ -114,61 +114,74 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
   }
 
   for (auto &edge_table : info->edge_tables) {
-      auto &table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
-                                                        edge_table->table_name);
+    auto &table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
+                                                      edge_table->table_name);
 
-      CheckPropertyGraphTableColumns(edge_table, table);
-      CheckPropertyGraphTableLabels(edge_table, table);
-      auto &table_constraints = table.GetConstraints();
+    CheckPropertyGraphTableColumns(edge_table, table);
+    CheckPropertyGraphTableLabels(edge_table, table);
+    auto &table_constraints = table.GetConstraints();
 
-      if (edge_table->source_fk.empty() && edge_table->source_pk.empty()) {
-        if (table_constraints.empty()) {
-          throw Exception(ExceptionType::INVALID,
-              "No primary key - foreign key relationship found in " +
-              edge_table->table_name + " with source table " +
-              edge_table->source_reference);
-        }
-        for (const auto &constraint : table_constraints) {
-          if (constraint->type == ConstraintType::FOREIGN_KEY) {
-            auto fk_constraint = constraint->Cast<ForeignKeyConstraint>();
-            if (fk_constraint.info.table != edge_table->source_reference) {
-              continue;
-            }
-            // If we get here again, it means that a primary key - foreign key relationship was found earlier with the same table. Leads to ambiguity. Throw an exception.
-            if (!edge_table->source_pk.empty() && !edge_table->source_fk.empty()) {
-              throw Exception(ExceptionType::INVALID, "Multiple primary key - foreign key relationships detected with the same table. "
-                                        "Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> references " + edge_table->source_reference + " <foreign key>`");
-            }
-            edge_table->source_pk = fk_constraint.pk_columns;
-            edge_table->source_fk = fk_constraint.fk_columns;
-          }
-        }
-        if (edge_table->source_pk.empty()) {
-          throw Exception(ExceptionType::INVALID, "The primary key for the source table " +
-                                    edge_table->source_reference +
-                                    " is not defined in the edge table " +
-                                    edge_table->table_name);
-        }
-        if (edge_table->source_fk.empty()) {
-          throw Exception(ExceptionType::INVALID, "The foreign key for the source table " +
-                                    edge_table->source_reference +
-                                    " is not defined in the edge table " +
-                                    edge_table->table_name);
-        }
-      }
-
-      for (auto &fk : edge_table->source_fk) {
-        if (!table.ColumnExists(fk)) {
-          throw Exception(ExceptionType::INVALID,
-                          "Foreign key " + fk + " does not exist in table " +
-                              edge_table->table_name);
-        }
-      }
-    if (edge_table->destination_fk.empty() && edge_table->destination_pk.empty()) {
+    if (edge_table->source_fk.empty() && edge_table->source_pk.empty()) {
       if (table_constraints.empty()) {
-        throw Exception(ExceptionType::INVALID, "No primary key - foreign key relationship found in " +
-                                  edge_table->table_name + " with destination table " +
-                                  edge_table->destination_reference);
+        throw Exception(ExceptionType::INVALID,
+                        "No primary key - foreign key relationship found in " +
+                            edge_table->table_name + " with source table " +
+                            edge_table->source_reference);
+      }
+      for (const auto &constraint : table_constraints) {
+        if (constraint->type == ConstraintType::FOREIGN_KEY) {
+          auto fk_constraint = constraint->Cast<ForeignKeyConstraint>();
+          if (fk_constraint.info.table != edge_table->source_reference) {
+            continue;
+          }
+          // If we get here again, it means that a primary key - foreign key
+          // relationship was found earlier with the same table. Leads to
+          // ambiguity. Throw an exception.
+          if (!edge_table->source_pk.empty() &&
+              !edge_table->source_fk.empty()) {
+            throw Exception(
+                ExceptionType::INVALID,
+                "Multiple primary key - foreign key relationships detected "
+                "with the same table. "
+                "Please explicitly define the primary key and foreign key "
+                "columns using `SOURCE KEY <primary key> references " +
+                    edge_table->source_reference + " <foreign key>`");
+          }
+          edge_table->source_pk = fk_constraint.pk_columns;
+          edge_table->source_fk = fk_constraint.fk_columns;
+        }
+      }
+      if (edge_table->source_pk.empty()) {
+        throw Exception(ExceptionType::INVALID,
+                        "The primary key for the source table " +
+                            edge_table->source_reference +
+                            " is not defined in the edge table " +
+                            edge_table->table_name);
+      }
+      if (edge_table->source_fk.empty()) {
+        throw Exception(ExceptionType::INVALID,
+                        "The foreign key for the source table " +
+                            edge_table->source_reference +
+                            " is not defined in the edge table " +
+                            edge_table->table_name);
+      }
+    }
+
+    for (auto &fk : edge_table->source_fk) {
+      if (!table.ColumnExists(fk)) {
+        throw Exception(ExceptionType::INVALID,
+                        "Foreign key " + fk + " does not exist in table " +
+                            edge_table->table_name);
+      }
+    }
+    if (edge_table->destination_fk.empty() &&
+        edge_table->destination_pk.empty()) {
+      if (table_constraints.empty()) {
+        throw Exception(ExceptionType::INVALID,
+                        "No primary key - foreign key relationship found in " +
+                            edge_table->table_name +
+                            " with destination table " +
+                            edge_table->destination_reference);
       }
       for (const auto &constraint : table_constraints) {
         if (constraint->type == ConstraintType::FOREIGN_KEY) {
@@ -188,7 +201,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                 "Please explicitly define the primary key and foreign key "
                 "columns using `DESTINATION KEY <primary key> references " +
                     edge_table->destination_reference + " <foreign key>`");
-              }
+          }
           edge_table->destination_pk = fk_constraint.pk_columns;
           edge_table->destination_fk = fk_constraint.fk_columns;
         }
@@ -219,9 +232,10 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
 
     if (v_table_names.find(edge_table->source_reference) ==
         v_table_names.end()) {
-      throw Exception(ExceptionType::INVALID, "Referenced vertex table " +
-                                                  edge_table->source_reference +
-                                                  " is not registered in the vertex tables.");
+      throw Exception(ExceptionType::INVALID,
+                      "Referenced vertex table " +
+                          edge_table->source_reference +
+                          " is not registered in the vertex tables.");
     }
 
     auto &pk_source_table = catalog.GetEntry<TableCatalogEntry>(
@@ -236,9 +250,10 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
 
     if (v_table_names.find(edge_table->destination_reference) ==
         v_table_names.end()) {
-      throw Exception(ExceptionType::INVALID, "Referenced vertex table " +
-                                                  edge_table->destination_reference +
-                                                  " is not registered in the vertex tables");
+      throw Exception(ExceptionType::INVALID,
+                      "Referenced vertex table " +
+                          edge_table->destination_reference +
+                          " is not registered in the vertex tables");
     }
 
     auto &pk_destination_table = catalog.GetEntry<TableCatalogEntry>(
@@ -275,7 +290,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreTableFunctions::RegisterCreatePropertyGraphTableFunction(DatabaseInstance &db) {
+void CoreTableFunctions::RegisterCreatePropertyGraphTableFunction(
+    DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(db, CreatePropertyGraphFunction());
 }
 } // namespace core
