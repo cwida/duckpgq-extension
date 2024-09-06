@@ -1,5 +1,6 @@
 #include "duckpgq/core/functions/table/create_property_graph.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/parser/constraints/foreign_key_constraint.hpp"
 #include "duckdb/parser/statement/create_statement.hpp"
 #include "duckpgq/common.hpp"
 #include <duckpgq/core/functions/table.hpp>
@@ -39,7 +40,7 @@ void CreatePropertyGraphFunction::CheckPropertyGraphTableColumns(
     for (auto &except_column : pg_table->except_columns) {
       if (!table.ColumnExists(except_column)) {
         throw Exception(ExceptionType::INVALID,
-                        "Except column " + except_column +
+                        "EXCEPT column " + except_column +
                             " not found in table " + pg_table->table_name);
       }
     }
@@ -113,12 +114,49 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
   }
 
   for (auto &edge_table : info->edge_tables) {
-    try {
       auto &table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
                                                         edge_table->table_name);
 
       CheckPropertyGraphTableColumns(edge_table, table);
       CheckPropertyGraphTableLabels(edge_table, table);
+
+      // TODO what if either one is empty? --> should not be allowed in the parser but add a test for it
+      if (edge_table->source_fk.empty() && edge_table->source_pk.empty()) {
+        auto &table_constraints = table.GetConstraints();
+        if (table_constraints.empty()) {
+          throw Exception(ExceptionType::INVALID,
+              "No primary key - foreign key relationship found in " +
+              edge_table->table_name + " with source table " +
+              edge_table->source_reference);
+        }
+        for (const auto &constraint : table_constraints) {
+          if (constraint->type == ConstraintType::FOREIGN_KEY) {
+            auto fk_constraint = constraint->Cast<ForeignKeyConstraint>();
+            if (fk_constraint.info.table != edge_table->source_reference) {
+              continue;
+            }
+            // If we get here again, it means that a primary key - foreign key relationship was found earlier with the same table. Leads to ambiguity. Throw an exception.
+            if (!edge_table->source_pk.empty() && !edge_table->source_fk.empty()) {
+              throw Exception(ExceptionType::INVALID, "Multiple primary key - foreign key relationships detected with the same table. "
+                                        "Please explicitly define the primary key and foreign key columns using SOURCE KEY <primary key> references " + edge_table->source_reference + " <foreign key>");
+            }
+            edge_table->source_pk = fk_constraint.pk_columns;
+            edge_table->source_fk = fk_constraint.fk_columns;
+          }
+        }
+        if (edge_table->source_pk.empty()) {
+          throw Exception(ExceptionType::INVALID, "The primary key for the source table " +
+                                    edge_table->source_reference +
+                                    " is not defined in the edge table " +
+                                    edge_table->table_name);
+        }
+        if (edge_table->source_fk.empty()) {
+          throw Exception(ExceptionType::INVALID, "The foreign key for the source table " +
+                                    edge_table->source_reference +
+                                    " is not defined in the edge table " +
+                                    edge_table->table_name);
+        }
+      }
 
       for (auto &fk : edge_table->source_fk) {
         if (!table.ColumnExists(fk)) {
@@ -127,18 +165,18 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                               edge_table->table_name);
         }
       }
+      if (edge_table->destination_fk.empty() && edge_table->destination_pk.empty()) {
 
-      for (auto &fk : edge_table->destination_fk) {
+      }
+
+
+        for (auto &fk : edge_table->destination_fk) {
         if (!table.ColumnExists(fk)) {
           throw Exception(ExceptionType::INVALID,
                           "Foreign key " + fk + " does not exist in table " +
                               edge_table->table_name);
         }
       }
-    } catch (const Exception &) {
-      throw Exception(ExceptionType::INVALID,
-                      edge_table->table_name + " does not exist");
-    }
 
     if (v_table_names.find(edge_table->source_reference) ==
         v_table_names.end()) {
