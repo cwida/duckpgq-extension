@@ -138,7 +138,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
             // If we get here again, it means that a primary key - foreign key relationship was found earlier with the same table. Leads to ambiguity. Throw an exception.
             if (!edge_table->source_pk.empty() && !edge_table->source_fk.empty()) {
               throw Exception(ExceptionType::INVALID, "Multiple primary key - foreign key relationships detected with the same table. "
-                                        "Please explicitly define the primary key and foreign key columns using SOURCE KEY <primary key> references " + edge_table->source_reference + " <foreign key>");
+                                        "Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> references " + edge_table->source_reference + " <foreign key>`");
             }
             edge_table->source_pk = fk_constraint.pk_columns;
             edge_table->source_fk = fk_constraint.fk_columns;
