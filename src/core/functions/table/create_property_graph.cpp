@@ -96,16 +96,15 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
   auto &catalog = Catalog::GetCatalog(context, info->catalog);
   case_insensitive_set_t v_table_names;
   for (auto &vertex_table : info->vertex_tables) {
-    try {
-      auto &table = catalog.GetEntry<TableCatalogEntry>(
-          context, info->schema, vertex_table->table_name);
+      auto table = catalog.GetEntry<TableCatalogEntry>(
+          context, info->schema, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
+      if (!table) {
+        throw Exception(ExceptionType::INVALID,
+                        "Table " + vertex_table->table_name + " not found");
+      }
 
-      CheckPropertyGraphTableColumns(vertex_table, table);
-      CheckPropertyGraphTableLabels(vertex_table, table);
-    } catch (Exception &) {
-      throw Exception(ExceptionType::INVALID,
-                      vertex_table->table_name + " does not exist");
-    }
+      CheckPropertyGraphTableColumns(vertex_table, *table);
+      CheckPropertyGraphTableLabels(vertex_table, *table);
 
     v_table_names.insert(vertex_table->table_name);
     if (vertex_table->hasTableNameAlias()) {
@@ -114,12 +113,16 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
   }
 
   for (auto &edge_table : info->edge_tables) {
-    auto &table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
-                                                      edge_table->table_name);
+    auto table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
+                                                      edge_table->table_name, OnEntryNotFound::RETURN_NULL);
+    if (!table) {
+      throw Exception(ExceptionType::INVALID,
+                      "Table " + edge_table->table_name + " not found");
+    }
 
-    CheckPropertyGraphTableColumns(edge_table, table);
-    CheckPropertyGraphTableLabels(edge_table, table);
-    auto &table_constraints = table.GetConstraints();
+    CheckPropertyGraphTableColumns(edge_table, *table);
+    CheckPropertyGraphTableLabels(edge_table, *table);
+    auto &table_constraints = table->GetConstraints();
 
     if (edge_table->source_fk.empty() && edge_table->source_pk.empty()) {
       if (table_constraints.empty()) {
@@ -168,7 +171,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
     }
 
     for (auto &fk : edge_table->source_fk) {
-      if (!table.ColumnExists(fk)) {
+      if (!table->ColumnExists(fk)) {
         throw Exception(ExceptionType::INVALID,
                         "Foreign key " + fk + " does not exist in table " +
                             edge_table->table_name);
@@ -222,7 +225,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
       }
 
       for (auto &fk : edge_table->destination_fk) {
-        if (!table.ColumnExists(fk)) {
+        if (!table->ColumnExists(fk)) {
           throw Exception(ExceptionType::INVALID,
                           "Foreign key " + fk + " does not exist in table " +
                               edge_table->table_name);

@@ -11,7 +11,7 @@ statement error
 -CREATE PROPERTY GRAPH pg4
 VERTEX TABLES (tabledoesnotexist);
 ----
-Invalid Error: tabledoesnotexist does not exist
+Invalid Error: Table tabledoesnotexist not found
 
 
 statement ok
@@ -24,7 +24,7 @@ EDGE TABLES (edgetabledoesnotexist SOURCE KEY (id) REFERENCES Student (id)
                                     DESTINATION KEY (id) REFERENCES Student (id)
             );
 ----
-Invalid Error: edgetabledoesnotexist does not exist
+Invalid Error: Table edgetabledoesnotexist not found
 
 statement ok
 CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
@@ -147,7 +147,7 @@ EDGE TABLES (
             PROPERTIES ( createDate ) LABEL Knows
     )
 ----
-Invalid Error: Referenced vertex table Student does not exist.
+Invalid Error: Referenced vertex table Student is not registered in the vertex tables.
 
 
 # Should fail since the edge table references vertex tables that do not exist
@@ -162,7 +162,7 @@ EDGE TABLES (
             PROPERTIES ( createDate ) LABEL Knows
     );
 ----
-Invalid Error: Referenced vertex table Student does not exist.
+Invalid Error: Referenced vertex table Student is not registered in the vertex tables.
 
 
 # Check duplicate labels
