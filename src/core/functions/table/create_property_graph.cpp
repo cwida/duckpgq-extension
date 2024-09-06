@@ -216,8 +216,8 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
         v_table_names.end()) {
       throw Exception(ExceptionType::INVALID, "Referenced vertex table " +
                                                   edge_table->source_reference +
-                                                  " does not exist.");
-        }
+                                                  " is not registered in the vertex tables.");
+    }
 
     auto &pk_source_table = catalog.GetEntry<TableCatalogEntry>(
         context, info->schema, edge_table->source_reference);
@@ -229,12 +229,12 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
       }
     }
 
-    if (v_table_names.find(edge_table->source_reference) ==
+    if (v_table_names.find(edge_table->destination_reference) ==
         v_table_names.end()) {
       throw Exception(ExceptionType::INVALID, "Referenced vertex table " +
-                                                  edge_table->source_reference +
-                                                  " does not exist");
-        }
+                                                  edge_table->destination_reference +
+                                                  " is not registered in the vertex tables");
+    }
 
     auto &pk_destination_table = catalog.GetEntry<TableCatalogEntry>(
         context, info->schema, edge_table->destination_reference);
