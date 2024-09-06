@@ -16,8 +16,8 @@ INSERT INTO v VALUES (1, 'a');
 statement ok
 create table e (
     id bigint primary key,
-    src BIGINT references v(id),
-    dst BIGINT references v(id)
+    src BIGINT REFERENCES v(id),
+    dst BIGINT REFERENCES v(id)
 );
 
 statement error
@@ -25,7 +25,7 @@ statement error
 vertex tables (v)
 edge tables (e source v destination v);
 ----
-Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> references v <foreign key>`
+Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES v <foreign key>`
 
 statement ok
 create table w (
@@ -39,8 +39,8 @@ INSERT INTO w VALUES (2, 'b');
 statement ok
 create table e2 (
     id bigint primary key,
-    src BIGINT references v(id),
-    dst BIGINT references w(id)
+    src BIGINT REFERENCES v(id),
+    dst BIGINT REFERENCES w(id)
 );
 
 statement ok
@@ -124,7 +124,7 @@ statement error
 VERTEX TABLES (x)
 EDGE TABLES (y SOURCE x DESTINATION x);
 ----
-Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> references x <foreign key>`
+Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES x <foreign key>`
 
 statement ok
 -CREATE PROPERTY GRAPH g3_explicit
@@ -244,7 +244,7 @@ statement error
 VERTEX TABLES (node_a)
 EDGE TABLES (edge_a SOURCE node_a DESTINATION KEY (dst) REFERENCES node_a (id));
 ----
-Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> references node_a <foreign key>`
+Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES node_a <foreign key>`
 
 statement ok
 -CREATE PROPERTY GRAPH g10
