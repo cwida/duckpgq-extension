@@ -105,3 +105,55 @@ CREATE TABLE b_pk (
 
 statement ok
 -CREATE PROPERTY GRAPH g2 VERTEX TABLES (a_pk) EDGE TABLES (b_pk SOURCE a_pk DESTINATION a_pk);
+
+statement ok
+CREATE TABLE x (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR
+);
+
+statement ok
+CREATE TABLE y (
+    id BIGINT PRIMARY KEY,
+    src BIGINT REFERENCES x(id),
+    dst BIGINT REFERENCES x(id)
+);
+
+statement error
+-CREATE PROPERTY GRAPH g3
+VERTEX TABLES (x)
+EDGE TABLES (y SOURCE x DESTINATION x);
+----
+Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> references x <foreign key>`
+
+statement ok
+CREATE PROPERTY GRAPH g3_explicit
+VERTEX TABLES (x)
+EDGE TABLES (y SOURCE KEY src REFERENCES x(id) DESTINATION KEY dst REFERENCES x(id));
+
+query II
+-FROM GRAPH_TABLE (g3_explicit MATCH (x:x)-[y:y]->(x:x) COLUMNS (x.id));
+----
+
+statement ok
+CREATE TABLE m (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR
+);
+
+statement ok
+CREATE TABLE n (
+    id BIGINT PRIMARY KEY,
+    src BIGINT,
+    dst BIGINT
+);
+
+statement error
+-CREATE PROPERTY GRAPH g4
+VERTEX TABLES (m)
+EDGE TABLES (n SOURCE m DESTINATION m);
+----
+Invalid Error: No primary key - foreign key relationship found in n with source table m
+
+
+
