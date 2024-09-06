@@ -60,7 +60,7 @@ public:
 
   static void ValidateForeignKeyColumns(shared_ptr<PropertyGraphTable> &edge_table,
                                  const vector<string> &fk_columns,
-                                 optional_ptr<TableCatalogEntry> &table)
+                                 optional_ptr<TableCatalogEntry> &table);
 
       static unique_ptr<GlobalTableFunctionState>
   CreatePropertyGraphInit(ClientContext &context,

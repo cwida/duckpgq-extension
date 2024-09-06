@@ -25,7 +25,7 @@ statement error
 vertex tables (v)
 edge tables (e source v destination v);
 ----
-Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES v <foreign key>`
+Invalid Error: Multiple primary key - foreign key relationships detected between e and v. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES v <foreign key>`
 
 statement ok
 create table w (
@@ -88,7 +88,7 @@ CREATE TABLE b (
 statement error
 -CREATE PROPERTY GRAPH g2 VERTEX TABLES (a) EDGE TABLES (b SOURCE a DESTINATION a);
 ----
-Invalid Error: No primary key - foreign key relationship found in b with source table a
+Invalid Error: No primary key - foreign key relationship found in b with SOURCE table a
 
 statement ok
 CREATE TABLE a_pk (
@@ -124,7 +124,14 @@ statement error
 VERTEX TABLES (x)
 EDGE TABLES (y SOURCE x DESTINATION x);
 ----
-Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES x <foreign key>`
+Invalid Error: Multiple primary key - foreign key relationships detected between y and x. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES x <foreign key>`
+
+statement error
+-CREATE PROPERTY GRAPH g3
+VERTEX TABLES (x)
+EDGE TABLES (y SOURCE KEY (src) REFERENCES x (id) DESTINATION x);
+----
+Invalid Error: Multiple primary key - foreign key relationships detected between y and x. Please explicitly define the primary key and foreign key columns using `DESTINATION KEY <primary key> REFERENCES x <foreign key>`
 
 statement ok
 -CREATE PROPERTY GRAPH g3_explicit
@@ -154,7 +161,7 @@ statement error
 VERTEX TABLES (m)
 EDGE TABLES (n SOURCE m DESTINATION m);
 ----
-Invalid Error: The primary key for the source table m is not defined in the edge table n
+Invalid Error: The primary key for the SOURCE table m is not defined in the edge table n
 
 statement error
 -CREATE PROPERTY GRAPH g4
@@ -244,7 +251,7 @@ statement error
 VERTEX TABLES (node_a)
 EDGE TABLES (edge_a SOURCE node_a DESTINATION KEY (dst) REFERENCES node_a (id));
 ----
-Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES node_a <foreign key>`
+Invalid Error: Multiple primary key - foreign key relationships detected between edge_a and node_a. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES node_a <foreign key>`
 
 statement ok
 -CREATE PROPERTY GRAPH g10
