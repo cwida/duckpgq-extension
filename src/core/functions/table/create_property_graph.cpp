@@ -121,8 +121,6 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
       CheckPropertyGraphTableLabels(edge_table, table);
       auto &table_constraints = table.GetConstraints();
 
-      // TODO what if either one is empty? --> should not be allowed in the
-      // parser but add a test for it
       if (edge_table->source_fk.empty() && edge_table->source_pk.empty()) {
         if (table_constraints.empty()) {
           throw Exception(ExceptionType::INVALID,
