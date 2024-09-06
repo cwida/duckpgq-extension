@@ -127,11 +127,12 @@ EDGE TABLES (y SOURCE x DESTINATION x);
 Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> references x <foreign key>`
 
 statement ok
-CREATE PROPERTY GRAPH g3_explicit
+-CREATE PROPERTY GRAPH g3_explicit
 VERTEX TABLES (x)
-EDGE TABLES (y SOURCE KEY src REFERENCES x(id) DESTINATION KEY dst REFERENCES x(id));
+EDGE TABLES (y SOURCE KEY (src) REFERENCES x (id)
+                             DESTINATION KEY (dst) REFERENCES x (id));
 
-query II
+query I
 -FROM GRAPH_TABLE (g3_explicit MATCH (x:x)-[y:y]->(x:x) COLUMNS (x.id));
 ----
 
@@ -153,7 +154,7 @@ statement error
 VERTEX TABLES (m)
 EDGE TABLES (n SOURCE m DESTINATION m);
 ----
-Invalid Error: No primary key - foreign key relationship found in n with source table m
+Invalid Error: The primary key for the source table m is not defined in the edge table n
 
 
 
