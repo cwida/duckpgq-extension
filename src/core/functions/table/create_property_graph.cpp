@@ -166,6 +166,12 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                               edge_table->table_name);
         }
       }
+    if (edge_table->destination_fk.empty() && edge_table->destination_pk.empty()) {
+      if (table_constraints.empty()) {
+        throw Exception(ExceptionType::INVALID, "No primary key - foreign key relationship found in " +
+                                  edge_table->table_name + " with destination table " +
+                                  edge_table->destination_reference);
+      }
       for (const auto &constraint : table_constraints) {
         if (constraint->type == ConstraintType::FOREIGN_KEY) {
           auto fk_constraint = constraint->Cast<ForeignKeyConstraint>();
@@ -184,7 +190,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                 "Please explicitly define the primary key and foreign key "
                 "columns using `DESTINATION KEY <primary key> references " +
                     edge_table->destination_reference + " <foreign key>`");
-          }
+              }
           edge_table->destination_pk = fk_constraint.pk_columns;
           edge_table->destination_fk = fk_constraint.fk_columns;
         }
@@ -211,6 +217,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                               edge_table->table_name);
         }
       }
+    }
 
     if (v_table_names.find(edge_table->source_reference) ==
         v_table_names.end()) {
