@@ -156,5 +156,135 @@ EDGE TABLES (n SOURCE m DESTINATION m);
 ----
 Invalid Error: The primary key for the source table m is not defined in the edge table n
 
+statement error
+-CREATE PROPERTY GRAPH g4
+VERTEX TABLES (m)
+EDGE TABLES (n SOURCE KEY (src) REFERENCES m DESTINATION m);
+----
+Parser Error: syntax error at or near "DESTINATION"
 
+statement ok
+CREATE TABLE p (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR
+);
 
+statement ok
+CREATE TABLE q (
+    id BIGINT PRIMARY KEY,
+    src BIGINT,
+    dst BIGINT REFERENCES p(id)
+);
+
+statement error
+CREATE PROPERTY GRAPH g5
+VERTEX TABLES (p)
+EDGE TABLES (q DESTINATION p);
+----
+Parser Error: syntax error at or near "DESTINATION"
+
+statement ok
+CREATE TABLE u (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR
+);
+
+statement ok
+CREATE TABLE v2 (
+    id BIGINT PRIMARY KEY,
+    src BIGINT REFERENCES u(id),
+    dst BIGINT
+);
+
+statement ok
+CREATE TABLE w2 (
+    id BIGINT PRIMARY KEY,
+    src BIGINT,
+    dst BIGINT REFERENCES u(id)
+);
+
+statement error
+CREATE PROPERTY GRAPH g6
+VERTEX TABLES (u)
+EDGE TABLES (v2 SOURCE u, w2 DESTINATION u);
+----
+Parser Error: syntax error at or near ","
+
+statement ok
+CREATE TABLE vertex_b (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR
+);
+
+statement ok
+-CREATE PROPERTY GRAPH g11
+VERTEX TABLES (vertex_b);
+
+statement ok
+CREATE TABLE node_a (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR
+);
+
+statement ok
+CREATE TABLE edge_a (
+    src BIGINT REFERENCES node_a(id),
+    dst BIGINT REFERENCES node_a(id)
+);
+
+statement error
+-CREATE PROPERTY GRAPH g10
+VERTEX TABLES (node_a)
+EDGE TABLES (edge_a);
+----
+Parser Error: syntax error at or near ")"
+
+statement error
+-CREATE PROPERTY GRAPH g10
+VERTEX TABLES (node_a)
+EDGE TABLES (edge_a SOURCE node_a DESTINATION KEY (dst) REFERENCES node_a (id));
+----
+Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> references node_a <foreign key>`
+
+statement ok
+-CREATE PROPERTY GRAPH g10
+VERTEX TABLES (node_a)
+EDGE TABLES (edge_a SOURCE KEY (src) REFERENCES node_a (id) DESTINATION KEY (dst) REFERENCES node_a (id));
+
+statement ok
+CREATE OR REPLACE TABLE a (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR
+);
+
+statement ok
+CREATE OR REPLACE TABLE b (
+    id BIGINT PRIMARY KEY,
+    description VARCHAR
+);
+
+statement ok
+CREATE TABLE edge_ab (
+    id BIGINT PRIMARY KEY,
+    src BIGINT REFERENCES a(id),
+    dst BIGINT REFERENCES b(id)
+);
+
+statement ok
+-CREATE PROPERTY GRAPH g_relationship
+VERTEX TABLES (a, b)
+EDGE TABLES (edge_ab SOURCE a DESTINATION b);
+
+statement ok
+INSERT INTO a VALUES (1, 'Vertex A');
+
+statement ok
+INSERT INTO b VALUES (2, 'Vertex B');
+
+statement ok
+INSERT INTO edge_ab VALUES (1, 1, 2);
+
+query II
+-FROM GRAPH_TABLE (g_relationship MATCH (a:a)-[edge_ab:edge_ab]->(b:b) COLUMNS (a.id, b.id));
+----
+1	2
