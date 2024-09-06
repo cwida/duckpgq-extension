@@ -67,6 +67,82 @@ void CreatePropertyGraphFunction::CheckPropertyGraphTableColumns(
   }
 }
 
+// Helper function to validate source/destination keys
+void CreatePropertyGraphFunction::ValidateKeys(shared_ptr<PropertyGraphTable> &edge_table, const string &reference, const string &key_type,
+                  vector<string> &pk_columns, vector<string> &fk_columns,
+                  const vector<unique_ptr<Constraint>> &table_constraints) {
+  if (fk_columns.empty() && pk_columns.empty()) {
+    if (table_constraints.empty()) {
+      throw Exception(ExceptionType::INVALID,
+                      "No primary key - foreign key relationship found in " +
+                          edge_table->table_name + " with " + key_type +
+                          " table " + reference);
+    }
+
+    for (const auto &constraint : table_constraints) {
+      if (constraint->type == ConstraintType::FOREIGN_KEY) {
+        auto fk_constraint = constraint->Cast<ForeignKeyConstraint>();
+        if (fk_constraint.info.table != reference) {
+          continue;
+        }
+        // If a PK-FK relationship was found earlier, throw an ambiguity exception
+        if (!pk_columns.empty() && !fk_columns.empty()) {
+          throw Exception(
+              ExceptionType::INVALID,
+              "Multiple primary key - foreign key relationships detected with the same table. "
+              "Please explicitly define the primary key and foreign key columns using `" +
+                  key_type + " KEY <primary key> REFERENCES " + reference + " <foreign key>`");
+        }
+        pk_columns = fk_constraint.pk_columns;
+        fk_columns = fk_constraint.fk_columns;
+      }
+    }
+
+    if (pk_columns.empty()) {
+      throw Exception(ExceptionType::INVALID,
+                      "The primary key for the " + key_type + " table " + reference +
+                          " is not defined in the edge table " + edge_table->table_name);
+    }
+
+    if (fk_columns.empty()) {
+      throw Exception(ExceptionType::INVALID,
+                      "The foreign key for the " + key_type + " table " + reference +
+                          " is not defined in the edge table " + edge_table->table_name);
+    }
+  }
+}
+
+void CreatePropertyGraphFunction::ValidateForeignKeyColumns(shared_ptr<PropertyGraphTable> &edge_table, const vector<string> &fk_columns, optional_ptr<TableCatalogEntry> &table) {
+  for (const auto &fk : fk_columns) {
+    if (!table->ColumnExists(fk)) {
+      throw Exception(ExceptionType::INVALID,
+                      "Foreign key " + fk + " does not exist in table " + edge_table->table_name);
+    }
+  }
+}
+
+// Helper function to check if the vertex table is registered
+void CreatePropertyGraphFunction::ValidateVertexTableRegistration(const string &reference, const case_insensitive_set_t &v_table_names) {
+  if (v_table_names.find(reference) == v_table_names.end()) {
+    throw Exception(ExceptionType::INVALID,
+                    "Referenced vertex table " + reference +
+                    " is not registered in the vertex tables.");
+  }
+}
+
+// Helper function to validate primary keys in the source or destination tables
+void CreatePropertyGraphFunction::ValidatePrimaryKeyInTable(Catalog &catalog, ClientContext &context, const string &schema,
+                               const string &reference, const vector<string> &pk_columns) {
+  auto &table_entry = catalog.GetEntry<TableCatalogEntry>(context, schema, reference);
+
+  for (const auto &pk : pk_columns) {
+    if (!table_entry.ColumnExists(pk)) {
+      throw Exception(ExceptionType::INVALID,
+                      "Primary key " + pk + " does not exist in table " + reference);
+    }
+  }
+}
+
 unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
     ClientContext &context, TableFunctionBindInput &input,
     vector<LogicalType> &return_types, vector<string> &names) {
@@ -124,151 +200,30 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
     CheckPropertyGraphTableLabels(edge_table, *table);
     auto &table_constraints = table->GetConstraints();
 
-    if (edge_table->source_fk.empty() && edge_table->source_pk.empty()) {
-      if (table_constraints.empty()) {
-        throw Exception(ExceptionType::INVALID,
-                        "No primary key - foreign key relationship found in " +
-                            edge_table->table_name + " with source table " +
-                            edge_table->source_reference);
-      }
-      for (const auto &constraint : table_constraints) {
-        if (constraint->type == ConstraintType::FOREIGN_KEY) {
-          auto fk_constraint = constraint->Cast<ForeignKeyConstraint>();
-          if (fk_constraint.info.table != edge_table->source_reference) {
-            continue;
-          }
-          // If we get here again, it means that a primary key - foreign key
-          // relationship was found earlier with the same table. Leads to
-          // ambiguity. Throw an exception.
-          if (!edge_table->source_pk.empty() &&
-              !edge_table->source_fk.empty()) {
-            throw Exception(
-                ExceptionType::INVALID,
-                "Multiple primary key - foreign key relationships detected "
-                "with the same table. "
-                "Please explicitly define the primary key and foreign key "
-                "columns using `SOURCE KEY <primary key> references " +
-                    edge_table->source_reference + " <foreign key>`");
-          }
-          edge_table->source_pk = fk_constraint.pk_columns;
-          edge_table->source_fk = fk_constraint.fk_columns;
-        }
-      }
-      if (edge_table->source_pk.empty()) {
-        throw Exception(ExceptionType::INVALID,
-                        "The primary key for the source table " +
-                            edge_table->source_reference +
-                            " is not defined in the edge table " +
-                            edge_table->table_name);
-      }
-      if (edge_table->source_fk.empty()) {
-        throw Exception(ExceptionType::INVALID,
-                        "The foreign key for the source table " +
-                            edge_table->source_reference +
-                            " is not defined in the edge table " +
-                            edge_table->table_name);
-      }
-    }
+    ValidateKeys(edge_table, edge_table->source_reference, "source",
+                   edge_table->source_pk, edge_table->source_fk, table_constraints);
 
-    for (auto &fk : edge_table->source_fk) {
-      if (!table->ColumnExists(fk)) {
-        throw Exception(ExceptionType::INVALID,
-                        "Foreign key " + fk + " does not exist in table " +
-                            edge_table->table_name);
-      }
-    }
-    if (edge_table->destination_fk.empty() &&
-        edge_table->destination_pk.empty()) {
-      if (table_constraints.empty()) {
-        throw Exception(ExceptionType::INVALID,
-                        "No primary key - foreign key relationship found in " +
-                            edge_table->table_name +
-                            " with destination table " +
-                            edge_table->destination_reference);
-      }
-      for (const auto &constraint : table_constraints) {
-        if (constraint->type == ConstraintType::FOREIGN_KEY) {
-          auto fk_constraint = constraint->Cast<ForeignKeyConstraint>();
-          if (fk_constraint.info.table != edge_table->destination_reference) {
-            continue;
-          }
-          // If we get here again, it means that a primary key - foreign key
-          // relationship was found earlier with the same table. Leads to
-          // ambiguity. Throw an exception.
-          if (!edge_table->destination_pk.empty() &&
-              !edge_table->destination_fk.empty()) {
-            throw Exception(
-                ExceptionType::INVALID,
-                "Multiple primary key - foreign key relationships detected "
-                "with the same table. "
-                "Please explicitly define the primary key and foreign key "
-                "columns using `DESTINATION KEY <primary key> references " +
-                    edge_table->destination_reference + " <foreign key>`");
-          }
-          edge_table->destination_pk = fk_constraint.pk_columns;
-          edge_table->destination_fk = fk_constraint.fk_columns;
-        }
-      }
-      if (edge_table->destination_pk.empty()) {
-        throw Exception(ExceptionType::INVALID,
-                        "The primary key for the source table " +
-                            edge_table->destination_reference +
-                            " is not defined in the edge table " +
-                            edge_table->table_name);
-      }
-      if (edge_table->destination_fk.empty()) {
-        throw Exception(ExceptionType::INVALID,
-                        "The foreign key for the source table " +
-                            edge_table->destination_reference +
-                            " is not defined in the edge table " +
-                            edge_table->table_name);
-      }
+    // Check source foreign key columns exist in the table
+    ValidateForeignKeyColumns(edge_table, edge_table->source_fk, table);
 
-      for (auto &fk : edge_table->destination_fk) {
-        if (!table->ColumnExists(fk)) {
-          throw Exception(ExceptionType::INVALID,
-                          "Foreign key " + fk + " does not exist in table " +
-                              edge_table->table_name);
-        }
-      }
-    }
+    // Validate destination keys
+    ValidateKeys(edge_table, edge_table->destination_reference, "destination",
+                 edge_table->destination_pk, edge_table->destination_fk, table_constraints);
 
-    if (v_table_names.find(edge_table->source_reference) ==
-        v_table_names.end()) {
-      throw Exception(ExceptionType::INVALID,
-                      "Referenced vertex table " +
-                          edge_table->source_reference +
-                          " is not registered in the vertex tables.");
-    }
+    // Check destination foreign key columns exist in the table
+    ValidateForeignKeyColumns(edge_table, edge_table->destination_fk, table);
 
-    auto &pk_source_table = catalog.GetEntry<TableCatalogEntry>(
-        context, info->schema, edge_table->source_reference);
-    for (auto &pk : edge_table->source_pk) {
-      if (!pk_source_table.ColumnExists(pk)) {
-        throw Exception(ExceptionType::INVALID,
-                        "Primary key " + pk + " does not exist in table " +
-                            edge_table->source_reference);
-      }
-    }
+    // Validate source table registration
+    ValidateVertexTableRegistration(edge_table->source_reference, v_table_names);
 
-    if (v_table_names.find(edge_table->destination_reference) ==
-        v_table_names.end()) {
-      throw Exception(ExceptionType::INVALID,
-                      "Referenced vertex table " +
-                          edge_table->destination_reference +
-                          " is not registered in the vertex tables");
-    }
+    // Validate primary keys in the source table
+    ValidatePrimaryKeyInTable(catalog, context, info->schema, edge_table->source_reference, edge_table->source_pk);
 
-    auto &pk_destination_table = catalog.GetEntry<TableCatalogEntry>(
-        context, info->schema, edge_table->destination_reference);
+    // Validate destination table registration
+    ValidateVertexTableRegistration(edge_table->destination_reference, v_table_names);
 
-    for (auto &pk : edge_table->destination_pk) {
-      if (!pk_destination_table.ColumnExists(pk)) {
-        throw Exception(ExceptionType::INVALID,
-                        "Primary key " + pk + " does not exist in table " +
-                            edge_table->destination_reference);
-      }
-    }
+    // Validate primary keys in the destination table
+    ValidatePrimaryKeyInTable(catalog, context, info->schema, edge_table->destination_reference, edge_table->destination_pk);
   }
   return make_uniq<CreatePropertyGraphBindData>(info);
 }
