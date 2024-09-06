@@ -75,7 +75,7 @@ void CreatePropertyGraphFunction::ValidateKeys(shared_ptr<PropertyGraphTable> &e
     if (table_constraints.empty()) {
       throw Exception(ExceptionType::INVALID,
                       "No primary key - foreign key relationship found in " +
-                          edge_table->table_name + " with " + key_type +
+                          edge_table->table_name + " with " + StringUtil::Upper(key_type) +
                           " table " + reference);
     }
 
@@ -89,9 +89,9 @@ void CreatePropertyGraphFunction::ValidateKeys(shared_ptr<PropertyGraphTable> &e
         if (!pk_columns.empty() && !fk_columns.empty()) {
           throw Exception(
               ExceptionType::INVALID,
-              "Multiple primary key - foreign key relationships detected with the same table. "
+              "Multiple primary key - foreign key relationships detected between " + edge_table->table_name + " and " + reference + ". "
               "Please explicitly define the primary key and foreign key columns using `" +
-                  key_type + " KEY <primary key> REFERENCES " + reference + " <foreign key>`");
+                  StringUtil::Upper(key_type) + " KEY <primary key> REFERENCES " + reference + " <foreign key>`");
         }
         pk_columns = fk_constraint.pk_columns;
         fk_columns = fk_constraint.fk_columns;
@@ -100,13 +100,13 @@ void CreatePropertyGraphFunction::ValidateKeys(shared_ptr<PropertyGraphTable> &e
 
     if (pk_columns.empty()) {
       throw Exception(ExceptionType::INVALID,
-                      "The primary key for the " + key_type + " table " + reference +
+                      "The primary key for the " + StringUtil::Upper(key_type) + " table " + reference +
                           " is not defined in the edge table " + edge_table->table_name);
     }
 
     if (fk_columns.empty()) {
       throw Exception(ExceptionType::INVALID,
-                      "The foreign key for the " + key_type + " table " + reference +
+                      "The foreign key for the " + StringUtil::Upper(key_type) + " table " + reference +
                           " is not defined in the edge table " + edge_table->table_name);
     }
   }
