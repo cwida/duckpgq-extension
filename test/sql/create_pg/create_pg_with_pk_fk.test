@@ -11,13 +11,54 @@ create table v (
 );
 
 statement ok
-create table e (
-    id bigint primary key,
-    v_id BIGINT references v(id)
-);
+INSERT INTO v VALUES (1, 'a');
 
 statement ok
+create table e (
+    id bigint primary key,
+    src BIGINT references v(id),
+    dst BIGINT references v(id)
+);
+
+statement error
 -create property graph g
 vertex tables (v)
 edge tables (e source v destination v);
+----
+Invalid Error: Multiple primary key - foreign key relationships detected with the same table. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> references v <foreign key>`
 
+statement ok
+create table w (
+    id BIGINT primary key,
+    name varchar
+);
+
+statement ok
+INSERT INTO w VALUES (2, 'b');
+
+statement ok
+create table e2 (
+    id bigint primary key,
+    src BIGINT references v(id),
+    dst BIGINT references w(id)
+);
+
+statement ok
+INSERT INTO e2 VALUES (1, 1, 2);
+
+statement error
+-create property graph g
+vertex tables (v)
+edge tables (e2 source v destination w);
+----
+Invalid Error: Referenced vertex table w is not registered in the vertex tables
+
+statement ok
+-create property graph g
+vertex tables (v, w)
+edge tables (e2 source v destination w);
+
+query II
+-FROM GRAPH_TABLE (g MATCH (v:v)-[e2:e2]->(w:w) COLUMNS (v.id, w.id));
+----
+1	2
