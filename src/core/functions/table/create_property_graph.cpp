@@ -119,10 +119,11 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
 
       CheckPropertyGraphTableColumns(edge_table, table);
       CheckPropertyGraphTableLabels(edge_table, table);
+      auto &table_constraints = table.GetConstraints();
 
-      // TODO what if either one is empty? --> should not be allowed in the parser but add a test for it
+      // TODO what if either one is empty? --> should not be allowed in the
+      // parser but add a test for it
       if (edge_table->source_fk.empty() && edge_table->source_pk.empty()) {
-        auto &table_constraints = table.GetConstraints();
         if (table_constraints.empty()) {
           throw Exception(ExceptionType::INVALID,
               "No primary key - foreign key relationship found in " +
@@ -165,12 +166,45 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                               edge_table->table_name);
         }
       }
-      if (edge_table->destination_fk.empty() && edge_table->destination_pk.empty()) {
-
+      for (const auto &constraint : table_constraints) {
+        if (constraint->type == ConstraintType::FOREIGN_KEY) {
+          auto fk_constraint = constraint->Cast<ForeignKeyConstraint>();
+          if (fk_constraint.info.table != edge_table->destination_reference) {
+            continue;
+          }
+          // If we get here again, it means that a primary key - foreign key
+          // relationship was found earlier with the same table. Leads to
+          // ambiguity. Throw an exception.
+          if (!edge_table->destination_pk.empty() &&
+              !edge_table->destination_fk.empty()) {
+            throw Exception(
+                ExceptionType::INVALID,
+                "Multiple primary key - foreign key relationships detected "
+                "with the same table. "
+                "Please explicitly define the primary key and foreign key "
+                "columns using `DESTINATION KEY <primary key> references " +
+                    edge_table->destination_reference + " <foreign key>`");
+          }
+          edge_table->destination_pk = fk_constraint.pk_columns;
+          edge_table->destination_fk = fk_constraint.fk_columns;
+        }
+      }
+      if (edge_table->destination_pk.empty()) {
+        throw Exception(ExceptionType::INVALID,
+                        "The primary key for the source table " +
+                            edge_table->destination_reference +
+                            " is not defined in the edge table " +
+                            edge_table->table_name);
+      }
+      if (edge_table->destination_fk.empty()) {
+        throw Exception(ExceptionType::INVALID,
+                        "The foreign key for the source table " +
+                            edge_table->destination_reference +
+                            " is not defined in the edge table " +
+                            edge_table->table_name);
       }
 
-
-        for (auto &fk : edge_table->destination_fk) {
+      for (auto &fk : edge_table->destination_fk) {
         if (!table.ColumnExists(fk)) {
           throw Exception(ExceptionType::INVALID,
                           "Foreign key " + fk + " does not exist in table " +
