@@ -172,6 +172,7 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
         path_finding_children, path_finding_expressions, mode, op_proj.table_index, offsets);
     op.children.clear();
     op.children.push_back(std::move(path_finding_operator));
+    std::cout << "Inserted path-finding operator" << std::endl;
     return true; // We have found the path-finding operator, no need to continue
   }
   for (auto &child : op.children) {
