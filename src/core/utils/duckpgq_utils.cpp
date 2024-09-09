@@ -22,13 +22,6 @@ shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context) {
   return lookup;
 }
 
-// Utility function to transform a string to lowercase
-std::string ToLowerCase(const std::string &input) {
-  std::string result = input;
-  std::transform(result.begin(), result.end(), result.begin(), ::tolower);
-  return result;
-}
-
 // Function to get PropertyGraphInfo from DuckPGQState
 CreatePropertyGraphInfo* GetPropertyGraphInfo(const shared_ptr<DuckPGQState> &duckpgq_state, const std::string &pg_name) {
   auto property_graph = duckpgq_state->registered_property_graphs.find(pg_name);

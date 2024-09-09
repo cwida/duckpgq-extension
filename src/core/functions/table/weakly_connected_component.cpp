@@ -11,9 +11,9 @@ namespace core {
 
 // Main binding function
 unique_ptr<TableRef> WeaklyConnectedComponentFunction::WeaklyConnectedComponentBindReplace(ClientContext &context, TableFunctionBindInput &input) {
-  auto pg_name = ToLowerCase(StringValue::Get(input.inputs[0]));
-  auto node_table = ToLowerCase(StringValue::Get(input.inputs[1]));
-  auto edge_table = ToLowerCase(StringValue::Get(input.inputs[2]));
+  auto pg_name = StringUtil::Lower(StringValue::Get(input.inputs[0]));
+  auto node_table = StringUtil::Lower(StringValue::Get(input.inputs[1]));
+  auto edge_table = StringUtil::Lower(StringValue::Get(input.inputs[2]));
 
   auto duckpgq_state = GetDuckPGQState(context);
   auto pg_info = GetPropertyGraphInfo(duckpgq_state, pg_name);
