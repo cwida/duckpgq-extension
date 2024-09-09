@@ -12,12 +12,11 @@ namespace core {
 BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
                             OperatorExtensionInfo *info,
                             SQLStatement &statement) {
-  auto lookup = context.registered_state.find("duckpgq");
-  if (lookup == context.registered_state.end()) {
+  auto duckpgq_state = context.registered_state->Get<DuckPGQState>("duckpgq");
+  if (!duckpgq_state) {
     throw; // Throw the original error that got us here if DuckPGQ is not loaded
   }
 
-  auto duckpgq_state = (DuckPGQState *)lookup->second.get();
   auto duckpgq_binder = Binder::CreateBinder(context, &binder);
   auto duckpgq_parse_data =
       dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
