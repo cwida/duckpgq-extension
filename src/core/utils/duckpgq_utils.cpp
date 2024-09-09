@@ -23,7 +23,7 @@ shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context) {
 }
 
 // Function to get PropertyGraphInfo from DuckPGQState
-CreatePropertyGraphInfo* GetPropertyGraphInfo(const shared_ptr<DuckPGQState> &duckpgq_state, const std::string &pg_name) {
+CreatePropertyGraphInfo* GetPropertyGraphInfo(const shared_ptr<DuckPGQState> &duckpgq_state, const string &pg_name) {
   auto property_graph = duckpgq_state->registered_property_graphs.find(pg_name);
   if (property_graph == duckpgq_state->registered_property_graphs.end()) {
     throw Exception(ExceptionType::INVALID, "Property graph " + pg_name + " not found");
