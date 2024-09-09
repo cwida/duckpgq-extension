@@ -124,15 +124,13 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (CSRFunctionData &)*func_expr.bind_info;
 
-  auto duckpgq_state_entry = info.context.registered_state.find("duckpgq");
-  if (duckpgq_state_entry == info.context.registered_state.end()) {
+  auto duckpgq_state = info.context.registered_state->Get<DuckPGQState>("duckpgq");
+  if (!duckpgq_state) {
     //! Wondering how you can get here if the extension wasn't loaded, but
     //! leaving this check in anyways
     throw MissingExtensionException(
         "The DuckPGQ extension has not been loaded");
   }
-  auto duckpgq_state =
-      reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
 
   int64_t vertex_size = args.data[1].GetValue(0).GetValue<int64_t>();
   int64_t edge_size = args.data[2].GetValue(0).GetValue<int64_t>();
