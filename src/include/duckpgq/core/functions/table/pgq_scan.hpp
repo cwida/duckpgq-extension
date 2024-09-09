@@ -5,6 +5,7 @@
  * This header defines all the structs and classes used later.
  */
 
+#pragma once
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
