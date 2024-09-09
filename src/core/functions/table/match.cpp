@@ -347,7 +347,6 @@ PGQMatchFunction::CreateWhereClause(vector<unique_ptr<ParsedExpression>> &condit
 unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
                                    PathElement * previous_vertex_element, PathElement * next_vertex_element, vector<unique_ptr<ParsedExpression>> &path_finding_conditions) {
   auto cte_info = make_uniq<CommonTableExpressionInfo>();
-  cte_info->materialized = CTEMaterialize::CTE_MATERIALIZE_ALWAYS;
   auto select_statement = make_uniq<SelectStatement>();
   auto select_node = make_uniq<SelectNode>();
 
