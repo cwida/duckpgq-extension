@@ -19,7 +19,7 @@ shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context) {
   if (!lookup) {
     throw Exception(ExceptionType::INVALID, "Registered DuckPGQ state not found");
   }
-  return lookup
+  return lookup;
 }
 
 // Utility function to transform a string to lowercase
