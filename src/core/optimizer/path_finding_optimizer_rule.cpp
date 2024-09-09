@@ -185,8 +185,11 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
 void DuckpgqOptimizerExtension::DuckpgqOptimizeFunction(
     OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan) {
   if (!GetPathFindingOption(input.context)) {
+    std::cout << "Disabled path finding operator, skipping optimizer rule" << std::endl;
     return;
   }
+  std::cout << "Enabled path finding operator, running optimizer rule" << std::endl;
+
   InsertPathFindingOperator(*plan, input.context);
 }
 
