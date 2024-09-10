@@ -63,13 +63,14 @@ query III
 query IIIII
 -FROM GRAPH_TABLE (g
     MATCH p = ANY SHORTEST (a:Student)-[k2:know]->(src:Student)-[k:know]-> *(dst:Student where dst.id = 30)
-    COLUMNS (a.id, element_id(p), path_length(p) AS path, src.id, dst.id));
+    COLUMNS (a.id as a_id, element_id(p), path_length(p) AS path_length, src.id, dst.id))
+    ORDER BY  a_id, path_length
 ----
-40	[3, 0, 1, 3, 0, 1, 2]	3	20	30
 10	[0, 1, 2]	1	30	30
 10	[0, 2, 0, 1, 2]	2	10	30
 20	[1, 3, 0, 1, 2]	2	10	30
 30	[2, 4, 0, 1, 2]	2	10	30
+40	[3, 0, 1, 3, 0, 1, 2]	3	20	30
 
 query III
 WITH shortestpath_cte as (
