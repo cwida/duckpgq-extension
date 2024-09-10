@@ -4,9 +4,8 @@ namespace duckpgq {
 namespace core {
 
 PhysicalCSREdgeCreationTask::PhysicalCSREdgeCreationTask(shared_ptr<Event> event_p, ClientContext &context,
-                              PathFindingGlobalState &state)
-      : ExecutorTask(context, std::move(event_p)), context(context),
-        state(state) {}
+                              PathFindingGlobalState &state, const PhysicalOperator &op_p)
+      : ExecutorTask(context, std::move(event_p), op_p), state(state) {}
 
 TaskExecutionResult PhysicalCSREdgeCreationTask::ExecuteTask(TaskExecutionMode mode) {
   auto &global_inputs = state.global_inputs;

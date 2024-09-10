@@ -117,7 +117,7 @@ public:
 
 
 public:
-  string ParamsToString() const override;
+  InsertionOrderPreservingMap<string> ParamsToString() const override;
 
   // CachingOperator Interface
   OperatorResultType ExecuteInternal(ExecutionContext &context,
@@ -158,7 +158,7 @@ public:
   void BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) override;
 
   // //! Schedules tasks to calculate the next iteration of the path-finding
-	static void ScheduleBFSEvent(Pipeline &pipeline, Event &event, GlobalSinkState &state);
+	void ScheduleBFSEvent(Pipeline &pipeline, Event &event, GlobalSinkState &state) const;
 };
 
 //===--------------------------------------------------------------------===//
@@ -242,8 +242,6 @@ public:
       PhysicalPathFinding::GlobalCompressedSparseRow;
   PathFindingGlobalState(ClientContext &context,
                          const PhysicalPathFinding &op);
-
-  PathFindingGlobalState(PathFindingGlobalState &prev);
 
   void Sink(DataChunk &input, PathFindingLocalState &lstate);
 

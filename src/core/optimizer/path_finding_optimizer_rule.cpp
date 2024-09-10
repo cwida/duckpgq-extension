@@ -152,7 +152,7 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
       for (const auto &binding : get_empty_result.bindings) {
         column_ids_vector.push_back(binding.column_index);
       }
-      logical_get->column_ids = std::move(column_ids_vector);
+      logical_get->SetColumnIds(std::move(column_ids_vector));
 
       path_finding_children.push_back(std::move(logical_get));
     } else if (left_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {

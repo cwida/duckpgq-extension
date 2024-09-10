@@ -9,8 +9,9 @@ namespace duckpgq {
 namespace core {
 class CSREdgeCreationEvent : public BasePipelineEvent {
 public:
-  CSREdgeCreationEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p);
+  CSREdgeCreationEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p, const PhysicalOperator &op_p);
   PathFindingGlobalState &gstate;
+  const PhysicalOperator &op;
 
   void Schedule() override;
   void FinishEvent() override;

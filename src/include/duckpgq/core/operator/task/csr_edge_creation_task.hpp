@@ -10,12 +10,11 @@ namespace core {
 class PhysicalCSREdgeCreationTask : public ExecutorTask {
 public:
   PhysicalCSREdgeCreationTask(shared_ptr<Event> event_p, ClientContext &context,
-                              PathFindingGlobalState &state);
+                              PathFindingGlobalState &state, const PhysicalOperator &op_p);
 
   TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
 
 private:
-  ClientContext &context;
   PathFindingGlobalState &state;
 };
 

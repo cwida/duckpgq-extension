@@ -7,8 +7,8 @@ namespace duckpgq {
 namespace core {
 
 ParallelShortestPathEvent::ParallelShortestPathEvent(PathFindingGlobalState &gstate_p,
-                          Pipeline &pipeline_p)
-    : BasePipelineEvent(pipeline_p), gstate(gstate_p) {
+                          Pipeline &pipeline_p, const PhysicalOperator &op_p)
+    : BasePipelineEvent(pipeline_p), gstate(gstate_p), op(op_p) {
 
 }
 
@@ -20,7 +20,7 @@ void ParallelShortestPathEvent::Schedule() {
   size_t threads_to_schedule = std::min(bfs_state->num_threads, (idx_t)bfs_state->global_task_queue.size());
   for (idx_t tnum = 0; tnum < threads_to_schedule; tnum++) {
     bfs_tasks.push_back(make_uniq<PhysicalShortestPathTask>(
-        shared_from_this(), context, gstate, tnum));
+        shared_from_this(), context, gstate, tnum, op));
   }
   SetTasks(std::move(bfs_tasks));
 }

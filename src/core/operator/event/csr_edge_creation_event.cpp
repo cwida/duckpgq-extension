@@ -4,8 +4,8 @@
 namespace duckpgq {
 namespace core {
 
-CSREdgeCreationEvent::CSREdgeCreationEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p)
-      : BasePipelineEvent(pipeline_p), gstate(gstate_p) {}
+CSREdgeCreationEvent::CSREdgeCreationEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p, const PhysicalOperator &op_p)
+      : BasePipelineEvent(pipeline_p), gstate(gstate_p), op(op_p) {}
 
 void CSREdgeCreationEvent::Schedule() {
   auto &context = pipeline->GetClientContext();
@@ -19,7 +19,7 @@ void CSREdgeCreationEvent::Schedule() {
   vector<shared_ptr<Task>> tasks;
   for (idx_t tnum = 0; tnum < num_threads; tnum++) {
     tasks.push_back(make_uniq<PhysicalCSREdgeCreationTask>(shared_from_this(),
-                                                           context, gstate));
+                                                           context, gstate, op));
   }
   SetTasks(std::move(tasks));
 }

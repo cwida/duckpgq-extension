@@ -222,13 +222,6 @@ PathFindingGlobalState::PathFindingGlobalState(ClientContext &context,
   mode = op.mode;
 }
 
-PathFindingGlobalState::PathFindingGlobalState(PathFindingGlobalState &prev)
-    : GlobalSinkState(prev), global_tasks(std::move(prev.global_tasks)),
-      global_inputs(std::move(prev.global_inputs)),
-      global_csr(std::move(prev.global_csr)),
-      global_bfs_state(std::move(prev.global_bfs_state)),
-      child(prev.child + 1), mode(prev.mode) {}
-
 void PathFindingGlobalState::Sink(DataChunk &input, PathFindingLocalState &lstate) {
   lstate.Sink(input, *global_csr, child);
 }
@@ -284,7 +277,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
   auto &global_tasks = gstate.global_tasks;
 
   if (gstate.child == 0) {
-    auto csr_event = make_shared_ptr<CSREdgeCreationEvent>(gstate, pipeline);
+    auto csr_event = make_shared_ptr<CSREdgeCreationEvent>(gstate, pipeline, *this);
     event.InsertEvent(std::move(csr_event));
   } else if (gstate.child == 1 && global_tasks->Count() > 0) {
     auto all_pairs = make_shared_ptr<DataChunk>();
@@ -321,7 +314,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 }
 
 void PhysicalPathFinding::ScheduleBFSEvent(Pipeline &pipeline, Event &event,
-                                           GlobalSinkState &state) {
+                                           GlobalSinkState &state) const {
   auto &gstate = state.Cast<PathFindingGlobalState>();
   auto &bfs_state = gstate.global_bfs_state;
 
@@ -359,20 +352,20 @@ void PhysicalPathFinding::ScheduleBFSEvent(Pipeline &pipeline, Event &event,
 
     if (gstate.mode == "iterativelength") {
       auto bfs_event =
-          make_shared_ptr<ParallelIterativeEvent>(gstate, pipeline);
+          make_shared_ptr<ParallelIterativeEvent>(gstate, pipeline, *this);
       event.InsertEvent(std::move(bfs_event));
     } else if (gstate.mode == "shortestpath") {
       auto bfs_event =
-          make_shared_ptr<ParallelShortestPathEvent>(gstate, pipeline);
+          make_shared_ptr<ParallelShortestPathEvent>(gstate, pipeline, *this);
       event.InsertEvent(std::move(bfs_event));
     }
   }
 }
 
-string PhysicalPathFinding::ParamsToString() const {
-  auto result = mode;
-  result += "\n[INFOSEPARATOR]\n";
-  result += StringUtil::Format("EC: %llu", estimated_cardinality);
+InsertionOrderPreservingMap<string> PhysicalPathFinding::ParamsToString() const {
+  InsertionOrderPreservingMap<string> result;
+  result["Mode"] = mode;
+  SetEstimatedCardinality(result, estimated_cardinality);
   return result;
 }
 

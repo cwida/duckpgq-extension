@@ -31,7 +31,7 @@ public:
 
   void ResolveTypes() override;
 
-  string ParamsToString() const override;
+  InsertionOrderPreservingMap<string>  ParamsToString() const override;
 
 public:
   string mode;

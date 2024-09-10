@@ -17,13 +17,14 @@ class PathFindingGlobalState;
 
 class ParallelShortestPathEvent : public BasePipelineEvent {
 public:
-  explicit ParallelShortestPathEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p);
+  explicit ParallelShortestPathEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p, const PhysicalOperator& op_p);
 
   void Schedule() override;
   void FinishEvent() override;
 
 private:
   PathFindingGlobalState &gstate;
+  const PhysicalOperator &op;
 };
 
 } // namespace core

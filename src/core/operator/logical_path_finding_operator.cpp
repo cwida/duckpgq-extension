@@ -36,13 +36,15 @@ void LogicalPathFindingOperator::ResolveTypes() {
   }
 }
 
-string LogicalPathFindingOperator::ParamsToString() const {
-  string extra_info;
+InsertionOrderPreservingMap<string>  LogicalPathFindingOperator::ParamsToString() const {
+  InsertionOrderPreservingMap<string> result;
+  string expression_info;
   for (auto &expr : expressions) {
-    extra_info += "\n";
-    extra_info += expr->ToString();
+    expression_info += "\n";
+    expression_info += expr->GetName();
   }
-  return extra_info;
+  result["Expressions"] = expression_info;
+  return result;
 
 }
 

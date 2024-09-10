@@ -5,8 +5,9 @@ namespace duckpgq {
 namespace core {
 
 PhysicalIterativeTask::PhysicalIterativeTask(shared_ptr<Event> event_p, ClientContext &context,
-                        PathFindingGlobalState &state, idx_t worker_id)
-      : ExecutorTask(context, std::move(event_p)), context(context),
+                        PathFindingGlobalState &state, idx_t worker_id,
+                                             const PhysicalOperator &op_p)
+      : ExecutorTask(context, std::move(event_p), op_p), context(context),
         state(state), worker_id(worker_id) {}
 
 bool PhysicalIterativeTask::SetTaskRange() {
