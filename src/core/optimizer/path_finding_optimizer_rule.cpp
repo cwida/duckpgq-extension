@@ -157,9 +157,7 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
       path_finding_children.push_back(std::move(logical_get));
     } else if (left_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
       path_finding_children.push_back(std::move(left_child));
-    }
-
-    else {
+    } else {
       throw InternalException("Did not find pairs for path-finding operator. "
                               "The left child was of type " +
                               LogicalOperatorToString(left_child->type));
