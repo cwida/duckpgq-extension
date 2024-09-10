@@ -11,10 +11,10 @@ namespace core {
 
 class ParallelIterativeEvent : public BasePipelineEvent {
 public:
-  ParallelIterativeEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p, const PhysicalOperator &op_p);
+  ParallelIterativeEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p, const PhysicalPathFinding &op_p);
 
   PathFindingGlobalState &gstate;
-  const PhysicalOperator &op;
+  const PhysicalPathFinding &op;
 
   void Schedule() override;
 
