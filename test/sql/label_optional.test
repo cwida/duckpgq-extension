@@ -25,27 +25,29 @@ EDGE TABLES (
 query III
 -FROM GRAPH_TABLE (snb
     MATCH (p:Person)-[w:workAt_Organisation]->(u:University)
-    COLUMNS (p.id, u.id, u.type)
+    COLUMNS (p.id as p_id, u.id as u_id, u.type)
     ) tmp
+    ORDER BY p_id, u_id
     limit 10;
 ----
-26388279066632	1580	University
-13194139533352	1856	University
+14	4593	University
+16	5809	University
+32	5047	University
 2199023255557	1953	University
-28587302322209	1596	University
+2199023255573	5263	University
 2199023255594	1597	University
-35184372088856	2208	University
-21990232555526	2209	University
-32985348833291	2211	University
-30786325577740	2435	University
-26388279066655	2832	University
+4398046511139	4929	University
+6597069766702	5038	University
+8796093022234	3008	University
+8796093022244	3008	University
 
 
 query II
 -FROM GRAPH_TABLE (snb
     MATCH (p:Person)-[k:knows]->(p2:Person)
-    COLUMNS (p.id, p2.id)
+    COLUMNS (p.id as p_id, p2.id as p2_id)
     ) tmp
+    order by p_id, p2_id
     limit 10;
 ----
 14	10995116277782
