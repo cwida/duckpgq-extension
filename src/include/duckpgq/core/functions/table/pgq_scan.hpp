@@ -5,6 +5,7 @@
  * This header defines all the structs and classes used later.
  */
 
+#pragma once
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
@@ -71,14 +72,13 @@ public:
     auto result = make_uniq<CSRScanWData>();
     result->csr_id = input.inputs[0].GetValue<int32_t>();
 
-    auto duckpgq_state_entry = context.registered_state.find("duckpgq");
-    if (duckpgq_state_entry == context.registered_state.end()) {
+    auto duckpgq_state = context.registered_state->Get<DuckPGQState>("duckpgq");
+    if (!duckpgq_state) {
       //! Wondering how you can get here if the extension wasn't loaded, but
       //! leaving this check in anyways
       throw InternalException("The DuckPGQ extension has not been loaded");
     }
-    auto duckpgq_state =
-        reinterpret_cast<DuckPGQState *>(duckpgq_state_entry->second.get());
+
 
     CSR *csr = duckpgq_state->GetCSR(result->csr_id);
 
