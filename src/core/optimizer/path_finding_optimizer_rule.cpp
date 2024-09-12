@@ -38,6 +38,7 @@ void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_
 
     for (size_t offset = 0; offset < op.expressions.size(); ++offset) {
         const auto &expr = op.expressions[offset];
+        std::cout << expr->ToString() << std::endl;
         if (expr->expression_class != ExpressionClass::BOUND_FUNCTION) {
             // Directly transfer the expression to the new vector if no replacement is needed
             new_expressions.push_back(std::move(op.expressions[offset]));
@@ -45,8 +46,9 @@ void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_
         }
 
         auto &bound_function_expression = expr->Cast<BoundFunctionExpression>();
+        std::cout << bound_function_expression.ToString();
         const auto &function_name = bound_function_expression.function.name;
-
+        std::cout << "function name: " << function_name << std::endl;
         if (function_name == "iterativelengthoperator" || function_name == "shortestpathoperator") {
             // Create the replacement expression
             auto replacement_expr = CreateReplacementExpression(expr->alias, function_name, op.table_index, offset);
@@ -86,9 +88,8 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
     return false;
   }
   auto &op_proj = op.Cast<LogicalProjection>();
-  ReplaceExpressions(op_proj, function_expression, mode, offsets);
 
-  for (const auto &child : op.children) {
+  for (const auto &child : op_proj.children) {
     vector<unique_ptr<LogicalOperator>> path_finding_children;
     if (child->type != LogicalOperatorType::LOGICAL_COMPARISON_JOIN) {
       continue;
@@ -102,23 +103,50 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
     /*TODO Check both options:
       Left is aggregate and right is filter
       Right is aggregate, left is filter
+
+      Right can also be projection into aggregate
     */
     auto &left_child = get_join.children[0];
     auto &right_child = get_join.children[1];
+    std::cout << "left child type: " << LogicalOperatorToString(left_child->type) << std::endl;
+    std::cout << "right child type: " << LogicalOperatorToString(right_child->type) << std::endl;
+    if (right_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
+      right_child = std::move(right_child->children[0]);
+    }
     if (right_child->type !=
         LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
       continue;
     }
     auto &get_aggregate = right_child->Cast<LogicalAggregate>();
-    auto &get_limit = get_aggregate.children[0]->Cast<LogicalLimit>();
-    auto &get_projection = get_limit.children[0]->Cast<LogicalProjection>();
-    auto &get_function_expression =
-        get_projection.expressions[0]->Cast<BoundFunctionExpression>();
-    if (get_function_expression.function.name != "csr_operator") {
-      continue;
+    vector<unique_ptr<Expression>> path_finding_expressions;
+    auto *current_projection = &get_aggregate.children[0]->Cast<LogicalProjection>();
+
+    while (true) {
+      // Get the function expression from the current projection
+      auto &get_function_expression = current_projection->expressions[0]->Cast<BoundFunctionExpression>();
+      std::cout << get_function_expression.function.name << std::endl;
+      // Check if the function is 'csr_operator'
+      if (get_function_expression.function.name == "csr_operator") {
+        // Function found, move the expressions to path_finding_expressions
+        path_finding_expressions = std::move(get_function_expression.children);
+        std::cout << "Found csr_operator" << std::endl;
+        // Break the loop after moving the expressions
+        break;
+      }
+
+      // If not, check if there is a child projection to continue the search
+      if (current_projection->children.empty() ||
+          current_projection->children[0]->type != LogicalOperatorType::LOGICAL_PROJECTION) {
+          // No more child projections, exit the loop
+          break;
+          }
+
+      // Move to the child projection
+      current_projection = &current_projection->children[0]->Cast<LogicalProjection>();
     }
-    vector<unique_ptr<Expression>> path_finding_expressions =
-        std::move(get_function_expression.children);
+    if (path_finding_expressions.empty()) {
+      continue; // No path-finding expressions found, continue searching
+    }
 
     if (left_child->type == LogicalOperatorType::LOGICAL_FILTER) {
       auto &get_filter = left_child->Cast<LogicalFilter>();
@@ -162,10 +190,12 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
                               "The left child was of type " +
                               LogicalOperatorToString(left_child->type));
     }
-    path_finding_children.push_back(std::move(get_projection.children[0]));
+    path_finding_children.push_back(std::move(current_projection->children[0]));
     if (path_finding_children.size() != 2) {
       throw InternalException("Path-findig operator should have 2 children");
     }
+    ReplaceExpressions(op_proj, function_expression, mode, offsets);
+
     auto path_finding_operator = make_uniq<LogicalPathFindingOperator>(
         path_finding_children, path_finding_expressions, mode, op_proj.table_index, offsets);
     op.children.clear();
@@ -188,8 +218,8 @@ void DuckpgqOptimizerExtension::DuckpgqOptimizeFunction(
     return;
   }
   std::cout << "Enabled path finding operator, running optimizer rule" << std::endl;
-
   InsertPathFindingOperator(*plan, input.context);
+  std::cout << "Finished path finding optimizer rule" << std::endl;
 }
 
 //------------------------------------------------------------------------------
