@@ -68,58 +68,6 @@ EDGE TABLES (
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
     );
 
-
-
-#
-#query II
-#WITH cte1 AS (
-#    SELECT  CREATE_CSR_EDGE(
-#            0,
-#            (SELECT count(a.id) FROM Student a),
-#            CAST (
-#                (SELECT sum(CREATE_CSR_VERTEX(
-#                            0,
-#                            (SELECT count(a.id) FROM Student a),
-#                            sub.dense_id,
-#                            sub.cnt)
-#                            ) * 2
-#                FROM (
-#                    SELECT dense_id, count(*) as cnt FROM (
-#                        SELECT dense_id, outgoing_edge, incoming_edge
-#                            FROM (
-#                                SELECT a.rowid AS dense_id, k.src AS outgoing_edge, k.dst AS incoming_edge
-#                                FROM Student a
-#                                JOIN Know k ON k.src = a.id
-#                                UNION ALL
-#                                SELECT a.rowid AS dense_id, k.dst AS outgoing_edge, k.src AS incoming_edge
-#                                FROM Student a
-#                                JOIN know k on k.dst = a.id)
-#                        GROUP BY dense_id, outgoing_edge, incoming_edge)
-#                   GROUP BY dense_id) sub
-#                )
-#            AS BIGINT),
-#            src,
-#            dst,
-#            edge) as temp FROM (
-#    select src, dst, any_value(edge) as edge FROM (
-#        select a.rowid as src, c.rowid as dst, k.rowid as edge FROM Know k
-#        JOIN Student a on a.id = k.src
-#        JOIN Student c on c.id = k.dst
-#        UNION ALL
-#        select a.rowid as src, c.rowid as dst, k.rowid as edge FROM Know k
-#        JOIN Student a on a.id = k.dst
-#        JOIN Student c on c.id = k.src)
-#    GROUP BY src, dst)
-#) SELECT __x.temp + local_clustering_coefficient(0, a.rowid) as lcc, a.name
-#        FROM (select count(cte1.temp) * 0 as temp from cte1) __x, Student a
-#        ORDER BY lcc DESC;
-#----
-#1.0	Daniel
-#1.0	Tavneet
-#1.0	Gabor
-#0.5	Peter
-#0.0	David
-
 query II
 select id, local_clustering_coefficient from local_clustering_coefficient(pg, student, know);
 ----
@@ -146,22 +94,22 @@ Invalid Error: Property graph pgdoesnotexist not found
 statement error
 select local_clustering_coefficient from local_clustering_coefficient(pg, a, know), student a where a.id = lcc.id;
 ----
-Invalid Error: Table a not found in property graph pg
+Invalid Error: Label 'a' not found. Did you mean the vertex label 'foo'?
 
 statement error
 select local_clustering_coefficient from local_clustering_coefficient(pg, student, b), student a where a.id = lcc.id;
 ----
-Invalid Error: Table b not found in property graph pg
+Invalid Error: Label 'b' not found. Did you mean the edge label 'know'?
 
 statement error
 select local_clustering_coefficient from local_clustering_coefficient(pg, foo, student), student a where a.id = lcc.id;
 ----
-Invalid Error: student is a vertex table, expected an edge table
+Invalid Error: Exact label 'student' found, but it is not a edge table.
 
 statement error
 select local_clustering_coefficient from local_clustering_coefficient(pg, student, foo), student a where a.id = lcc.id;
 ----
-Invalid Error: foo is a vertex table, expected an edge table
+Invalid Error: Exact label 'foo' found, but it is not a edge table.
 
 statement ok
 import database 'duckdb-pgq/data/SNB0.003';
