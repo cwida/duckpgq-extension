@@ -8,5 +8,4 @@ as follows:
   - `./extension-ci-tools` should be set to updated branch corresponding to latest DuckDB release
 - Bump versions in `./github/workflows`
   - `duckdb_version` input in `MainDistributionPipeline.yml` should be set to latest tagged release
-  - reusable workflow `_extension_distribution.yml` should be set to updated branch corresponding to latest DuckDB release
 

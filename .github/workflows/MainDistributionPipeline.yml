@@ -23,7 +23,7 @@ jobs:
     name: Build extension binaries
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.0.0
     with:
-      duckdb_version: v1.0.0
+      duckdb_version: v1.1.0
       extension_name: quack
 
   duckdb-stable-deploy:
@@ -32,6 +32,6 @@ jobs:
     uses: ./.github/workflows/_extension_deploy.yml
     secrets: inherit
     with:
-      duckdb_version: v1.0.0
+      duckdb_version: v1.1.0
       extension_name: quack
       deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
