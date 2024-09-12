@@ -308,7 +308,7 @@ statement ok
 -CREATE OR REPLACE PROPERTY GRAPH my_graph
   VERTEX TABLES (
    nodes LABEL nodes,
-   thisisadifferenttable
+   thisisadifferenttable label thisisadifferenttablelabel
  )
   EDGE TABLES (
     edges SOURCE KEY (source) REFERENCES nodes (id)
@@ -344,5 +344,5 @@ Invalid Error: Label 'qaaaaaa' not found. Did you mean the vertex label 'nodes'?
 statement error
 SELECT * FROM weakly_connected_component(my_graph, thisisadifferent, knows);
 ----
-Invalid Error: Label 'thisisadifferent' not found. Did you mean the vertex label 'thisisadifferenttable'?
+Invalid Error: Label 'thisisadifferent' not found. Did you mean the vertex label 'thisisadifferenttablelabel'?
 
