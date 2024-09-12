@@ -299,9 +299,16 @@ CREATE OR REPLACE TABLE nodes AS
     ) );
 
 statement ok
+CREATE TABLE thisisadifferenttable (id INTEGER);
+
+statement ok
+INSERT INTO thisisadifferenttable VALUES (1);
+
+statement ok
 -CREATE OR REPLACE PROPERTY GRAPH my_graph
   VERTEX TABLES (
-   nodes LABEL nodes
+   nodes LABEL nodes,
+   thisisadifferenttable
  )
   EDGE TABLES (
     edges SOURCE KEY (source) REFERENCES nodes (id)
@@ -312,9 +319,30 @@ statement ok
 statement error
 SELECT * FROM weakly_connected_component(my_graph, nodes, edges);
 ----
-Invalid Error: Table edges found in the property graph, but does not have the correct label. Did you mean the label knows instead?
+Invalid Error: Table 'edges' found in the property graph, but does not have the correct label. Did you mean the label 'knows' instead?
 
 statement error
 SELECT * FROM weakly_connected_component(my_graph, nodes, kows);
 ----
 Invalid Error: Label 'kows' not found. Did you mean the edge label 'knows'?
+
+statement error
+SELECT * FROM weakly_connected_component(my_graph, knows, knows);
+----
+Invalid Error: Exact label 'knows' found, but it is not a vertex table.
+
+statement error
+SELECT * FROM weakly_connected_component(my_graph, no, knows);
+----
+Invalid Error: Label 'no' not found. Did you mean the vertex label 'nodes'?
+
+statement error
+SELECT * FROM weakly_connected_component(my_graph, qaaaaaa, knows);
+----
+Invalid Error: Label 'qaaaaaa' not found. Did you mean the vertex label 'nodes'?
+
+statement error
+SELECT * FROM weakly_connected_component(my_graph, thisisadifferent, knows);
+----
+Invalid Error: Label 'thisisadifferent' not found. Did you mean the vertex label 'thisisadifferenttable'?
+
