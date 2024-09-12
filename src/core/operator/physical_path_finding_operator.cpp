@@ -197,12 +197,12 @@ void PathFindingLocalState::Sink(DataChunk &input, GlobalCompressedSparseRow &gl
 void PathFindingLocalState::CreateCSRVertex(
     DataChunk &input, GlobalCompressedSparseRow &global_csr) {
   if (!global_csr.initialized_v) {
-    const auto v_size = input.data[8].GetValue(0).GetValue<int64_t>();
+    const auto v_size = input.data[7].GetValue(0).GetValue<int64_t>();
     global_csr.InitializeVertex(v_size);
   }
   auto result = Vector(LogicalTypeId::BIGINT);
   BinaryExecutor::Execute<int64_t, int64_t, int64_t>(
-      input.data[6], input.data[5], result, input.size(),
+      input.data[1], input.data[2], result, input.size(),
       [&](const int64_t src, const int64_t cnt) {
         int64_t edge_count = 0;
         global_csr.v[src + 2] = cnt;
@@ -247,6 +247,7 @@ SinkResultType PhysicalPathFinding::Sink(ExecutionContext &context,
                                          OperatorSinkInput &input) const {
   auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
   auto &lstate = input.local_state.Cast<PathFindingLocalState>();
+  chunk.Print();
   gstate.Sink(chunk, lstate);
   return SinkResultType::NEED_MORE_INPUT;
 }

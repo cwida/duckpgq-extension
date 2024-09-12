@@ -23,11 +23,11 @@ TaskExecutionResult PhysicalCSREdgeCreationTask::ExecuteTask(TaskExecutionMode m
       }
     }
     if (!global_csr->initialized_e) {
-      const auto e_size = input.data[7].GetValue(0).GetValue<int64_t>();
+      const auto e_size = input.data[6].GetValue(0).GetValue<int64_t>();
       global_csr->InitializeEdge(e_size);
     }
     TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
-        input.data[6], input.data[4], input.data[2], result, input.size(),
+        input.data[3], input.data[5], input.data[10], result, input.size(),
         [&](int64_t src, int64_t dst, int64_t edge_id) {
           const auto pos = ++global_csr->v[src + 1];
           global_csr->e[static_cast<int64_t>(pos) - 1] = dst;
