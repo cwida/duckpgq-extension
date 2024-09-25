@@ -241,17 +241,6 @@ The main binaries that will be built are:
 ## Running the extension
 To run the extension code, simply start the shell with `./build/release/duckdb`.
 
-Now we can use the features from the extension directly in DuckDB. The template contains a single scalar function `duckpgq()` that takes a string arguments and returns a string:
-```
-D select duckpgq('Jan') as result;
-┌───────────────┐
-│    result     │
-│    varchar    │
-├───────────────┤
-│ Duckpgq Jan 🐥│
-└───────────────┘
-```
-
 ## Running the tests
 Different tests can be created for DuckDB extensions. The primary way of testing DuckDB extensions should be the SQL tests in `./test/sql`. These SQL tests can be run using:
 ```sh
