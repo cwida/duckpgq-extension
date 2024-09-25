@@ -35,5 +35,6 @@ jobs:
     secrets: inherit
     with:
       duckdb_version: v1.1.1
+      ci_tools_version: v1.1.1
       extension_name: duckpgq
       deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
