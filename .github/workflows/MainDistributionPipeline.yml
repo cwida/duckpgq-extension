@@ -14,7 +14,7 @@ concurrency:
 jobs:
   duckdb-next-build:
     name: Build extension binaries
-    uses: cwida/extension-ci-tools/.github/workflows/_extension_distribution.yml@main
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@main
     with:
       duckdb_version: main
       ci_tools_version: main
@@ -22,7 +22,7 @@ jobs:
 
   duckdb-stable-build:
     name: Build extension binaries
-    uses: cwida/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.1.1
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.1.1
     with:
       duckdb_version: v1.1.1
       ci_tools_version: v1.1.1
