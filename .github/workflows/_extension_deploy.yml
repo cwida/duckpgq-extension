@@ -47,7 +47,7 @@ on:
       matrix_parse_script:
         required: false
         type: string
-        default: "./duckdb-pgq/scripts/modify_distribution_matrix.py"
+        default: "./duckdb/scripts/modify_distribution_matrix.py"
 
 jobs:
   generate_matrix:
@@ -63,12 +63,12 @@ jobs:
 
       - name: Checkout DuckDB to version
         run: |
-          cd duckdb-pgq
+          cd duckdb
           git checkout ${{ inputs.duckdb_version }}
 
       - id: parse-matrices
         run: |
-          python3 ${{ inputs.matrix_parse_script }} --input ./duckdb-pgq/.github/config/distribution_matrix.json --deploy_matrix --output deploy_matrix.json --exclude "${{ inputs.exclude_archs }}" --pretty
+          python3 ${{ inputs.matrix_parse_script }} --input ./duckdb/.github/config/distribution_matrix.json --deploy_matrix --output deploy_matrix.json --exclude "${{ inputs.exclude_archs }}" --pretty
           deploy_matrix="`cat deploy_matrix.json`"
           echo deploy_matrix=$deploy_matrix >> $GITHUB_OUTPUT
           echo `cat $GITHUB_OUTPUT`
@@ -89,7 +89,7 @@ jobs:
 
       - name: Checkout DuckDB to version
         run: |
-          cd duckdb-pgq
+          cd duckdb
           git checkout ${{ inputs.duckdb_version }}
 
       - uses: actions/download-artifact@v3
@@ -110,7 +110,7 @@ jobs:
           pwd
           python3 -m pip install pip awscli
           git config --global --add safe.directory '*'
-          cd duckdb-pgq
+          cd duckdb
           git fetch --tags
           export DUCKDB_VERSION=`git tag --points-at HEAD`
           export DUCKDB_VERSION=${DUCKDB_VERSION:=`git log -1 --format=%h`}
