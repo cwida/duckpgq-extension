@@ -24,7 +24,7 @@ DUCKDB_EXTENSION_API void duckpgq_init(DatabaseInstance &db) {
 }
 
 DUCKDB_EXTENSION_API const char *duckpgq_version() {
-  return duckdb::DuckDB::LibraryVersion();
+  return DuckDB::LibraryVersion();
 }
 }
 

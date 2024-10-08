@@ -1,11 +1,8 @@
-[submodule "duckdb-pgq"]
-	path = duckdb-pgq
+[submodule "duckdb"]
+	path = duckdb
 	url = git@github.com:cwida/duckdb-pgq.git
 	branch = main
 [submodule "extension-ci-tools"]
 	path = extension-ci-tools
-	url = git@github.com:cwida/extension-ci-tools.git
+	url = git@github.com:duckdb/extension-ci-tools.git
 	branch = main
-[submodule "duckdb"]
-	path = duckdb
-	url = git@github.com:duckdb/duckdb.git
