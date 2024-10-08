@@ -5,7 +5,7 @@
 require duckpgq
 
 statement ok
-import database 'duckdb-pgq/data/SNB0.003';
+import database 'duckdb/data/SNB0.003';
 
 statement ok
 -CREATE PROPERTY GRAPH snb

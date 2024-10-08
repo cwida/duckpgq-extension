@@ -5,7 +5,7 @@
 #require duckpgq
 
 #statement ok
-#import database 'duckdb-pgq/data/SNB1-projected|';
+#import database 'duckdb/data/SNB1-projected|';
 
 #statement ok
 #-CREATE PROPERTY GRAPH snb_projected

@@ -215,7 +215,7 @@ require duckpgq
 #Invalid Error: Table non_existent_edge not found in property graph pg_no_edge_table
 #
 #statement ok
-#import database 'duckdb-pgq/data/SNB0.003';
+#import database 'duckdb/data/SNB0.003';
 #
 #statement ok
 #-CREATE PROPERTY GRAPH snb
