@@ -21,7 +21,7 @@ SELECT b from test;
 Binder Error: Referenced column "b" not found in FROM clause!
 
 statement ok
-import database 'duckdb-pgq/data/SNB0.003';
+import database 'duckdb/data/SNB0.003';
 
 statement ok
 -CREATE PROPERTY GRAPH snb
