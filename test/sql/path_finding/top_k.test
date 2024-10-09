@@ -1,0 +1,30 @@
+# name: test/sql/path_finding/top_k.test
+# description: Testing top-k functionality, not implemented yet.
+# group: [duckpgq_sql_path_finding]
+
+require duckpgq
+
+statement ok
+CREATE TABLE Student(id BIGINT, name VARCHAR); INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT); INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17);
+
+
+statement ok
+-CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+    Student LABEL person
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            label knows
+    );
+
+
+statement ok
+-FROM GRAPH_TABLE (pg
+        MATCH
+        p = ANY SHORTEST 5 WALK (a:Person)-[k:knows]-> *(b:Person)
+        WHERE a.name = 'Daniel');
