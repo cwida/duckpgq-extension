@@ -22,9 +22,37 @@ EDGE TABLES (
             label knows
     );
 
+statement error
+-FROM GRAPH_TABLE (pg
+    MATCH
+    p = ANY SHORTEST 5 WALK (a:Person)-[k:knows]-> *(b:Person)
+    WHERE a.name = 'Daniel'
+    COLUMNS (p, a.name as name, b.name as school)
+    ) study;
+----
+Parser Error: syntax error at or near "5"
 
-statement ok
+
+statement error
 -FROM GRAPH_TABLE (pg
         MATCH
-        p = ANY SHORTEST 5 WALK (a:Person)-[k:knows]-> *(b:Person)
+        p =  SHORTEST 5 (a:Person)-[k:knows]-> *(b:Person)
         WHERE a.name = 'Daniel');
+----
+Not implemented Error: TopK has not been implemented yet.
+
+statement error
+-FROM GRAPH_TABLE (pg
+        MATCH
+        p =  SHORTEST 5 WALK (a:Person)-[k:knows]-> *(b:Person)
+        WHERE a.name = 'Daniel');
+----
+Not implemented Error: TopK has not been implemented yet.
+
+statement error
+-FROM GRAPH_TABLE (pg
+        MATCH
+        p =  ANY SHORTEST 5 WALK (a:Person)-[k:knows]-> *(b:Person)
+        WHERE a.name = 'Daniel');
+----
+Parser Error: syntax error at or near "5"
