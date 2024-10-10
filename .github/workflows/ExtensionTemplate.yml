@@ -17,11 +17,12 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ 'v1.1.0' ]
+        duckdb_version: [ 'v1.1.1' ]
     env:
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
       VCPKG_TARGET_TRIPLET: 'x64-linux'
       GEN: ninja
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     defaults:
       run:
         shell: bash
@@ -52,10 +53,10 @@ jobs:
       - name: Checkout DuckDB to version
         if: ${{ matrix.duckdb_version != '<submodule_version>'}}
         run: |
-          cd duckdb-pgq
+          cd duckdb
           git checkout ${{ matrix.duckdb_version }}
 
-      - uses: ./duckdb-pgq/.github/actions/ubuntu_18_setup
+      - uses: ./duckdb/.github/actions/ubuntu_18_setup
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11.1
@@ -81,7 +82,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ 'v1.1.0']
+        duckdb_version: [ 'v1.1.1']
     env:
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
       VCPKG_TARGET_TRIPLET: 'x64-osx'
@@ -107,7 +108,7 @@ jobs:
       - name: Checkout DuckDB to version
         if: ${{ matrix.duckdb_version != '<submodule_version>'}}
         run: |
-          cd duckdb-pgq
+          cd duckdb
           git checkout ${{ matrix.duckdb_version }}
 
       - name: Setup vcpkg
@@ -134,7 +135,7 @@ jobs:
     strategy:
       matrix:
         # Add commits/tags to build against other DuckDB versions
-        duckdb_version: [ '1.0.0' ]
+        duckdb_version: [ '1.1.1' ]
     env:
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
       VCPKG_TARGET_TRIPLET: 'x64-windows-static-md'
@@ -156,7 +157,7 @@ jobs:
         # Add commits/tags to build against other DuckDB versions
         if: ${{ matrix.duckdb_version != '<submodule_version>'}}
         run: |
-          cd duckdb-pgq
+          cd duckdb
           git checkout ${{ matrix.duckdb_version }}
 
       - name: Setup vcpkg

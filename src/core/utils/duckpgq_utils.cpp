@@ -33,11 +33,11 @@ CreatePropertyGraphInfo* GetPropertyGraphInfo(const shared_ptr<DuckPGQState> &du
 
 // Function to validate the source node and edge table
 shared_ptr<PropertyGraphTable> ValidateSourceNodeAndEdgeTable(CreatePropertyGraphInfo *pg_info, const std::string &node_table, const std::string &edge_table) {
-  auto source_node_pg_entry = pg_info->GetTable(node_table);
+  auto source_node_pg_entry = pg_info->GetTable(node_table, true, true);
   if (!source_node_pg_entry->is_vertex_table) {
     throw Exception(ExceptionType::INVALID, node_table + " is an edge table, expected a vertex table");
   }
-  auto edge_pg_entry = pg_info->GetTable(edge_table);
+  auto edge_pg_entry = pg_info->GetTable(edge_table, true, false);
   if (edge_pg_entry->is_vertex_table) {
     throw Exception(ExceptionType::INVALID, edge_table + " is a vertex table, expected an edge table");
   }

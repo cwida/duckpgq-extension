@@ -46,6 +46,42 @@ force install 'path/to/duckpgq_extension';
 load 'duckpgq'; 
 ```
 
+## DuckPGQ Extension Availability
+
+<details>
+<summary>Version v1.1.0</summary>
+
+### Linux
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [linux_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.0/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.0/linux_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Osx
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [osx_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.0/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.0/osx_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Wasm
+
+| Architecture | Download Link |
+|--------------|---------------|
+| eh        | [wasm_eh](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.0/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.0/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.0/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+
+### Windows
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [windows_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.0/windows_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_rtools        | [windows_amd64_rtools](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.0/windows_amd64_rtools/duckpgq.duckdb_extension.gz>) |
+
+</details>
+
 <details>
 <summary>Version v1.0.0</summary>
 
@@ -177,7 +213,6 @@ load 'duckpgq';
 
 </details>
 
-
 ## Building
 ### Managing dependencies
 DuckDB extensions uses VCPKG for dependency management. Enabling VCPKG is very simple: follow the [installation instructions](https://vcpkg.io/en/getting-started) or just run the following:
@@ -205,17 +240,6 @@ The main binaries that will be built are:
 
 ## Running the extension
 To run the extension code, simply start the shell with `./build/release/duckdb`.
-
-Now we can use the features from the extension directly in DuckDB. The template contains a single scalar function `duckpgq()` that takes a string arguments and returns a string:
-```
-D select duckpgq('Jan') as result;
-┌───────────────┐
-│    result     │
-│    varchar    │
-├───────────────┤
-│ Duckpgq Jan 🐥│
-└───────────────┘
-```
 
 ## Running the tests
 Different tests can be created for DuckDB extensions. The primary way of testing DuckDB extensions should be the SQL tests in `./test/sql`. These SQL tests can be run using:
