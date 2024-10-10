@@ -13,6 +13,9 @@ struct CoreScalarFunctions {
     RegisterGetCSRWTypeScalarFunction(db);
     RegisterIterativeLengthScalarFunction(db);
     RegisterIterativeLength2ScalarFunction(db);
+    RegisterCSROperatorCreationScalarFunctions(db);
+    RegisterShortestPathOperatorScalarFunction(db);
+    RegisterIterativeLengthOperatorScalarFunction(db);
     RegisterIterativeLengthBidirectionalScalarFunction(db);
     RegisterLocalClusteringCoefficientScalarFunction(db);
     RegisterReachabilityScalarFunction(db);
@@ -34,6 +37,9 @@ private:
   static void  RegisterShortestPathScalarFunction(DatabaseInstance &db);
   static void  RegisterWeaklyConnectedComponentScalarFunction(DatabaseInstance &db);
   static void  RegisterPageRankScalarFunction(DatabaseInstance &db);
+  static void RegisterCSROperatorCreationScalarFunctions(DatabaseInstance &db);
+  static void RegisterShortestPathOperatorScalarFunction(DatabaseInstance &db);
+  static void RegisterIterativeLengthOperatorScalarFunction(DatabaseInstance &db);
 
 };
 

@@ -4,10 +4,9 @@
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 #include <cmath>
+#include <duckpgq/core/functions/function_data/csr_function_data.hpp>
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
-#include <duckpgq_extension.hpp>
-#include <mutex>
 
 namespace duckpgq {
 
@@ -49,6 +48,9 @@ static void CsrInitializeEdge(DuckPGQState &context, int32_t id, int64_t v_size,
   const lock_guard<mutex> csr_init_lock(context.csr_lock);
 
   auto csr_entry = context.csr_list.find(id);
+  if (csr_entry == context.csr_list.end()) {
+    throw InvalidInputException("CSR has not been initialized properly");
+  }
   if (csr_entry->second->initialized_e) {
     return;
   }
@@ -70,7 +72,9 @@ static void CsrInitializeWeight(DuckPGQState &context, int32_t id,
                                 int64_t e_size, PhysicalType weight_type) {
   const lock_guard<mutex> csr_init_lock(context.csr_lock);
   auto csr_entry = context.csr_list.find(id);
-
+  if (csr_entry == context.csr_list.end()) {
+    throw InvalidInputException("CSR has not been initialized properly");
+  }
   if (csr_entry->second->initialized_w) {
     return;
   }
@@ -141,6 +145,9 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
   }
 
   auto csr_entry = duckpgq_state->csr_list.find(info.id);
+  if (csr_entry == duckpgq_state->csr_list.end()) {
+    throw InvalidInputException("CSR has not been initialized properly");
+  }
   if (!csr_entry->second->initialized_e) {
     CsrInitializeEdge(*duckpgq_state, info.id, vertex_size, edge_size);
   }
@@ -208,6 +215,13 @@ ScalarFunctionSet GetCSREdgeFunction() {
    * 6. edge rowid
    * 7. <optional> edge weight (INT OR DOUBLE)
    */
+
+
+  set.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT,
+                                  LogicalType::BIGINT, LogicalType::BIGINT,
+                                  LogicalType::BIGINT, LogicalType::BIGINT},
+                                 LogicalType::INTEGER, CreateCsrEdgeFunction,
+                                 CSRFunctionData::CSREdgeBind));
 
   //! No edge weight
   set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
