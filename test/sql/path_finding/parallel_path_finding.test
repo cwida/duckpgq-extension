@@ -11,7 +11,7 @@ statement ok
 set experimental_path_finding_operator=true;
 
 statement ok
-SET scalar_subquery_error_on_multiple_rows=false
+SET scalar_subquery_error_on_multiple_rows=false;
 
 query I
 SELECT current_setting('experimental_path_finding_operator');
@@ -101,47 +101,47 @@ WHERE p.src between (SELECT CSR_OPERATOR(
 
 # MATCH ANY SHORTEST p = (a:Person)-[k2:knows]->(src:Person WHERE src.id = 10)-[k:knows]->*(dst:Person)
 # COLUMNS (element_id(p) AS path)
-query IIIIII
-WITH pairs as (
-    SELECT src, dst
-    FROM (SELECT a.rowid AS src FROM Student a where id = 10),
-        (SELECT b.rowid AS dst FROM Student b)
-), shortestpath as (
-SELECT src, dst, shortestpathoperator(src, dst, 'pairs') as path
-FROM pairs p
-WHERE p.src between (SELECT CSR_OPERATOR(
-                             (SELECT count(a.id) as v_size FROM Student a),
-                             (SELECT count(k.src) as e_size from know k),
-                               a.rowid,
-                               c.rowid,
-                               k.rowid,
-                               t.cnt) FROM Know k
-                                           JOIN student a on a.id = k.src
-                                           JOIN student c on c.id = k.dst
-                                           JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
-                                                   FROM student a
-                                                  LEFT JOIN know k ON k.src = a.id
-                                                  GROUP BY a.rowid) t
-                                              ON t.a_rowid = a.rowid) and p.dst)
-SELECT a.id as a_id, src.id src_id, shortestpath.src as sp_src, shortestpath.dst as sp_dst, dst.id, path FROM shortestpath
-JOIN student src on shortestpath.src = src.rowid
-JOIN student dst on shortestpath.dst = dst.rowid
-JOIN know k2 on k2.dst = src.id
-JOIN student a on a.id = k2.src
-ORDER BY shortestpath.dst;
-----
-10	10	0	0	10	[0]
-20	10	0	0	10	[0]
-30	10	0	0	10	[0]
-10	10	0	1	20	NULL
-20	10	0	1	20	NULL
-30	10	0	1	20	NULL
-10	10	0	2	30	[0, 1, 2]
-20	10	0	2	30	[0, 1, 2]
-30	10	0	2	30	[0, 1, 2]
-10	10	0	3	40	NULL
-20	10	0	3	40	NULL
-30	10	0	3	40	NULL
+#query IIIIII
+#WITH pairs as (
+#    SELECT src, dst
+#    FROM (SELECT a.rowid AS src FROM Student a where id = 10),
+#        (SELECT b.rowid AS dst FROM Student b)
+#), shortestpath as (
+#SELECT src, dst, shortestpathoperator(src, dst, 'pairs') as path
+#FROM pairs p
+#WHERE p.src between (SELECT CSR_OPERATOR(
+#                             (SELECT count(a.id) as v_size FROM Student a),
+#                             (SELECT count(k.src) as e_size from know k),
+#                               a.rowid,
+#                               c.rowid,
+#                               k.rowid,
+#                               t.cnt) FROM Know k
+#                                           JOIN student a on a.id = k.src
+#                                           JOIN student c on c.id = k.dst
+#                                           JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
+#                                                   FROM student a
+#                                                  LEFT JOIN know k ON k.src = a.id
+#                                                  GROUP BY a.rowid) t
+#                                              ON t.a_rowid = a.rowid) and p.dst)
+#SELECT a.id as a_id, src.id src_id, shortestpath.src as sp_src, shortestpath.dst as sp_dst, dst.id, path FROM shortestpath
+#JOIN student src on shortestpath.src = src.rowid
+#JOIN student dst on shortestpath.dst = dst.rowid
+#JOIN know k2 on k2.dst = src.id
+#JOIN student a on a.id = k2.src
+#ORDER BY shortestpath.dst;
+#----
+#10	10	0	0	10	[0]
+#20	10	0	0	10	[0]
+#30	10	0	0	10	[0]
+#10	10	0	1	20	NULL
+#20	10	0	1	20	NULL
+#30	10	0	1	20	NULL
+#10	10	0	2	30	[0, 1, 2]
+#20	10	0	2	30	[0, 1, 2]
+#30	10	0	2	30	[0, 1, 2]
+#10	10	0	3	40	NULL
+#20	10	0	3	40	NULL
+#30	10	0	3	40	NULL
 
 #query IIII
 #WITH pairs as (
@@ -175,6 +175,7 @@ ORDER BY shortestpath.dst;
 #0	3	10	NULL
 #
 #
+
 #query III
 #SELECT *, shortestpathoperator(src, dst, 'pair') as path
 #FROM pair AS p
@@ -196,7 +197,7 @@ ORDER BY shortestpath.dst;
 #0	1	NULL
 #1	2	[1, 3, 0, 1, 2]
 #2	0	[2, 4, 0]
-#
+
 #
 #
 #

@@ -12,7 +12,6 @@
 #include <duckdb/planner/operator/logical_get.hpp>
 #include <duckdb/planner/operator/logical_limit.hpp>
 #include <duckdb/planner/operator/logical_projection.hpp>
-#include <duckpgq/core/functions/function_data/iterative_length_function_data.hpp>
 #include <duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp>
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
