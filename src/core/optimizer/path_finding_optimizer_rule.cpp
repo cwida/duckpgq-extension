@@ -73,7 +73,7 @@ void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_
     op.expressions = std::move(new_expressions);
 }
 
-bool DuckpgqOptimizerExtension::FindCSRAndPairs(unique_ptr<LogicalOperator>& first_child, unique_ptr<LogicalOperator>& second_child) {
+unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPairs(unique_ptr<LogicalOperator>& first_child, unique_ptr<LogicalOperator>& second_child, LogicalProjection& op_proj) {
   bool csr_found = false;
   bool pairs_found = false;
   vector<unique_ptr<Expression>> path_finding_expressions;
@@ -119,8 +119,12 @@ bool DuckpgqOptimizerExtension::FindCSRAndPairs(unique_ptr<LogicalOperator>& fir
     if (path_finding_children.size() != 2) {
       throw InternalException("Path-finding operator should have 2 children");
     }
-//    return make_uniq<LogicalPathFindingOperator>(
-//      path_finding_children, path_finding_expressions, mode, op_proj.table_index, offsets);
+    unique_ptr<Expression> function_expression;
+    string path_finding_mode;
+    vector<idx_t> offsets;
+    ReplaceExpressions(op_proj, function_expression, path_finding_mode, offsets);
+    return make_uniq<LogicalPathFindingOperator>(
+      path_finding_children, path_finding_expressions, path_finding_mode, op_proj.table_index, offsets);
     return true;
   } else {
     return false;
@@ -166,9 +170,9 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
     std::cout << "left child type: " << LogicalOperatorToString(left_child->type) << std::endl;
     std::cout << "right child type: " << LogicalOperatorToString(right_child->type) << std::endl;
 
-    if (FindCSRAndPairs(left_child, right_child)) {
+    if (FindCSRAndPairs(left_child, right_child, op_proj)) {
       std::cout << "Found CSR left, pairs right" << std::endl;
-    } else if (FindCSRAndPairs(right_child, left_child)) {
+    } else if (FindCSRAndPairs(right_child, left_child, op_proj)) {
       std::cout << "Found pairs left, CSR right" << std::endl;
     }
 
