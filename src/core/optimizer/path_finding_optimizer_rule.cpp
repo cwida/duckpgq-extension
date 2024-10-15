@@ -82,6 +82,7 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
   vector<unique_ptr<Expression>> path_finding_expressions;
   vector<unique_ptr<LogicalOperator>> path_finding_children;
   LogicalProjection *csr_projection = nullptr;
+  // Find CSR
   if (first_child->type == LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
     auto &get_aggregate = first_child->Cast<LogicalAggregate>();
     auto &potential_csr_projection = get_aggregate.children[0]->Cast<LogicalProjection>();
@@ -94,11 +95,13 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
     }
   }
 
+  // Find pairs
   if (second_child->type == LogicalOperatorType::LOGICAL_FILTER) {
     auto &get_filter = second_child->Cast<LogicalFilter>();
     if (get_filter.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
       std::cout << "Found pairs" << std::endl;
       pairs_found = true;
+      path_finding_children.push_back(std::move(get_filter.children[0]));
     }
   } else if (second_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
       auto &get_projection = second_child->Cast<LogicalProjection>();
@@ -108,7 +111,6 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
           std::cout << "Found pairs" << std::endl;
           pairs_found = true;
           path_finding_children.push_back(std::move(get_filter.children[0]));
-
         }
       } else if (get_projection.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
         path_finding_children.push_back(std::move(get_projection.children[0]));

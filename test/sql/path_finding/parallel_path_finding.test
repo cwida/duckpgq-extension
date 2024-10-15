@@ -13,6 +13,9 @@ set experimental_path_finding_operator=true;
 statement ok
 SET scalar_subquery_error_on_multiple_rows=false;
 
+statement ok
+set disabled_optimizers = 'compressed_materialization';
+
 query I
 SELECT current_setting('experimental_path_finding_operator');
 ----
