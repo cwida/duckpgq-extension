@@ -15,6 +15,8 @@ public:
 
   static void DuckpgqOptimizeFunction(OptimizerExtensionInput &input,
                                      unique_ptr<LogicalOperator> &plan);
+
+  static bool FindCSRAndPairs(unique_ptr<LogicalOperator>& first_child, unique_ptr<LogicalOperator>& second_child);
 };
 
 } // namespace core

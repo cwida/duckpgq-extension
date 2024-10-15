@@ -73,6 +73,43 @@ void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_
     op.expressions = std::move(new_expressions);
 }
 
+bool DuckpgqOptimizerExtension::FindCSRAndPairs(unique_ptr<LogicalOperator>& first_child, unique_ptr<LogicalOperator>& second_child) {
+  bool csr_found = false;
+  bool pairs_found = false;
+
+  if (first_child->type == LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
+    auto &get_aggregate = first_child->Cast<LogicalAggregate>();
+    auto &current_projection = get_aggregate.children[0]->Cast<LogicalProjection>();
+    auto &get_function_expression = current_projection.expressions[0]->Cast<BoundFunctionExpression>();
+    if (get_function_expression.function.name == "csr_operator") {
+      std::cout << "Found csr_operator" << std::endl;
+      csr_found = true;
+    }
+  }
+
+  if (second_child->type == LogicalOperatorType::LOGICAL_FILTER) {
+    auto &get_filter = second_child->Cast<LogicalFilter>();
+    if (get_filter.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
+      std::cout << "Found pairs" << std::endl;
+      pairs_found = true;
+    }
+  } else if (second_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
+      auto &get_projection = second_child->Cast<LogicalProjection>();
+      if (get_projection.children[0]->type == LogicalOperatorType::LOGICAL_FILTER) {
+        auto &get_filter = get_projection.children[0]->Cast<LogicalFilter>();
+        if (get_filter.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
+          std::cout << "Found pairs" << std::endl;
+          pairs_found = true;
+        }
+      } else if (get_projection.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
+        std::cout << "Found pairs" << std::endl;
+        pairs_found = true;
+      }
+  }
+
+  return csr_found & pairs_found;
+}
+
 bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
     LogicalOperator &op, ClientContext &context) {
   unique_ptr<Expression> function_expression;
@@ -109,98 +146,106 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
     auto &right_child = get_join.children[1];
     std::cout << "left child type: " << LogicalOperatorToString(left_child->type) << std::endl;
     std::cout << "right child type: " << LogicalOperatorToString(right_child->type) << std::endl;
-    if (right_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
-      right_child = std::move(right_child->children[0]);
-    }
-    if (right_child->type !=
-        LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
-      continue;
-    }
-    auto &get_aggregate = right_child->Cast<LogicalAggregate>();
-    vector<unique_ptr<Expression>> path_finding_expressions;
-    auto *current_projection = &get_aggregate.children[0]->Cast<LogicalProjection>();
 
-    while (true) {
-      // Get the function expression from the current projection
-      auto &get_function_expression = current_projection->expressions[0]->Cast<BoundFunctionExpression>();
-      std::cout << get_function_expression.function.name << std::endl;
-      // Check if the function is 'csr_operator'
-      if (get_function_expression.function.name == "csr_operator") {
-        // Function found, move the expressions to path_finding_expressions
-        path_finding_expressions = std::move(get_function_expression.children);
-        std::cout << "Found csr_operator" << std::endl;
-        // Break the loop after moving the expressions
-        break;
-      }
-
-      // If not, check if there is a child projection to continue the search
-      if (current_projection->children.empty() ||
-          current_projection->children[0]->type != LogicalOperatorType::LOGICAL_PROJECTION) {
-          // No more child projections, exit the loop
-          break;
-          }
-
-      // Move to the child projection
-      current_projection = &current_projection->children[0]->Cast<LogicalProjection>();
-    }
-    if (path_finding_expressions.empty()) {
-      continue; // No path-finding expressions found, continue searching
+    if (FindCSRAndPairs(left_child, right_child)) {
+      std::cout << "Found CSR left, pairs right" << std::endl;
+    } else if (FindCSRAndPairs(right_child, left_child)) {
+      std::cout << "Found pairs left, CSR right" << std::endl;
     }
 
-    if (left_child->type == LogicalOperatorType::LOGICAL_FILTER) {
-      auto &get_filter = left_child->Cast<LogicalFilter>();
-
-      if (get_filter.children[0]->type != LogicalOperatorType::LOGICAL_GET) {
-        continue;
-      }
-
-      path_finding_children.push_back(std::move(get_filter.children[0]));
-    } else if (left_child->type == LogicalOperatorType::LOGICAL_EMPTY_RESULT) {
-      auto default_database = DatabaseManager::GetDefaultDatabase(context);
-      auto &catalog = Catalog::GetCatalog(context, default_database);
-      auto &bound_function_expression =
-          function_expression->Cast<BoundFunctionExpression>();
-      auto &bind_info =
-          bound_function_expression.bind_info->Cast<ShortestPathOperatorData>();
-      auto &duckdb_table = catalog.GetEntry<DuckTableEntry>(
-          context, DEFAULT_SCHEMA, bind_info.table_to_scan);
-      auto &get_empty_result = left_child->Cast<LogicalEmptyResult>();
-
-      vector<string> returned_names = {"src", "dst"};
-      unique_ptr<FunctionData> bind_data;
-      auto scan_function = duckdb_table.GetScanFunction(context, bind_data);
-
-      auto logical_get = make_uniq<LogicalGet>(
-          get_empty_result.bindings[0].table_index, scan_function,
-          std::move(bind_data), get_empty_result.return_types, returned_names
-      );
-
-      vector<column_t> column_ids_vector;
-      for (const auto &binding : get_empty_result.bindings) {
-        column_ids_vector.push_back(binding.column_index);
-      }
-      logical_get->SetColumnIds(std::move(column_ids_vector));
-
-      path_finding_children.push_back(std::move(logical_get));
-    } else if (left_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
-      path_finding_children.push_back(std::move(left_child));
-    } else {
-      throw InternalException("Did not find pairs for path-finding operator. "
-                              "The left child was of type " +
-                              LogicalOperatorToString(left_child->type));
-    }
-    path_finding_children.push_back(std::move(current_projection->children[0]));
-    if (path_finding_children.size() != 2) {
-      throw InternalException("Path-findig operator should have 2 children");
-    }
-    ReplaceExpressions(op_proj, function_expression, mode, offsets);
-
-    auto path_finding_operator = make_uniq<LogicalPathFindingOperator>(
-        path_finding_children, path_finding_expressions, mode, op_proj.table_index, offsets);
-    op.children.clear();
-    op.children.push_back(std::move(path_finding_operator));
-    std::cout << "Inserted path-finding operator" << std::endl;
-    return true; // We have found the path-finding operator, no need to continue
+//
+//    if (right_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
+//      right_child = std::move(right_child->children[0]);
+//    }
+//    if (right_child->type !=
+//        LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
+//      continue;
+//    }
+//    auto &get_aggregate = right_child->Cast<LogicalAggregate>();
+//    vector<unique_ptr<Expression>> path_finding_expressions;
+//    auto *current_projection = &get_aggregate.children[0]->Cast<LogicalProjection>();
+//
+//    while (true) {
+//      // Get the function expression from the current projection
+//      auto &get_function_expression = current_projection->expressions[0]->Cast<BoundFunctionExpression>();
+//      std::cout << get_function_expression.function.name << std::endl;
+//      // Check if the function is 'csr_operator'
+//      if (get_function_expression.function.name == "csr_operator") {
+//        // Function found, move the expressions to path_finding_expressions
+//        path_finding_expressions = std::move(get_function_expression.children);
+//        std::cout << "Found csr_operator" << std::endl;
+//        // Break the loop after moving the expressions
+//        break;
+//      }
+//
+//      // If not, check if there is a child projection to continue the search
+//      if (current_projection->children.empty() ||
+//          current_projection->children[0]->type != LogicalOperatorType::LOGICAL_PROJECTION) {
+//          // No more child projections, exit the loop
+//          break;
+//          }
+//
+//      // Move to the child projection
+//      current_projection = &current_projection->children[0]->Cast<LogicalProjection>();
+//    }
+//    if (path_finding_expressions.empty()) {
+//      continue; // No path-finding expressions found, continue searching
+//    }
+//
+//    if (left_child->type == LogicalOperatorType::LOGICAL_FILTER) {
+//      auto &get_filter = left_child->Cast<LogicalFilter>();
+//
+//      if (get_filter.children[0]->type != LogicalOperatorType::LOGICAL_GET) {
+//        continue;
+//      }
+//
+//      path_finding_children.push_back(std::move(get_filter.children[0]));
+//    } else if (left_child->type == LogicalOperatorType::LOGICAL_EMPTY_RESULT) {
+//      auto default_database = DatabaseManager::GetDefaultDatabase(context);
+//      auto &catalog = Catalog::GetCatalog(context, default_database);
+//      auto &bound_function_expression =
+//          function_expression->Cast<BoundFunctionExpression>();
+//      auto &bind_info =
+//          bound_function_expression.bind_info->Cast<ShortestPathOperatorData>();
+//      auto &duckdb_table = catalog.GetEntry<DuckTableEntry>(
+//          context, DEFAULT_SCHEMA, bind_info.table_to_scan);
+//      auto &get_empty_result = left_child->Cast<LogicalEmptyResult>();
+//
+//      vector<string> returned_names = {"src", "dst"};
+//      unique_ptr<FunctionData> bind_data;
+//      auto scan_function = duckdb_table.GetScanFunction(context, bind_data);
+//
+//      auto logical_get = make_uniq<LogicalGet>(
+//          get_empty_result.bindings[0].table_index, scan_function,
+//          std::move(bind_data), get_empty_result.return_types, returned_names
+//      );
+//
+//      vector<column_t> column_ids_vector;
+//      for (const auto &binding : get_empty_result.bindings) {
+//        column_ids_vector.push_back(binding.column_index);
+//      }
+//      logical_get->SetColumnIds(std::move(column_ids_vector));
+//
+//      path_finding_children.push_back(std::move(logical_get));
+//    } else if (left_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
+//      path_finding_children.push_back(std::move(left_child));
+//    } else {
+//      throw InternalException("Did not find pairs for path-finding operator. "
+//                              "The left child was of type " +
+//                              LogicalOperatorToString(left_child->type));
+//    }
+//    path_finding_children.push_back(std::move(current_projection->children[0]));
+//    if (path_finding_children.size() != 2) {
+//      throw InternalException("Path-findig operator should have 2 children");
+//    }
+//    ReplaceExpressions(op_proj, function_expression, mode, offsets);
+//
+//    auto path_finding_operator = make_uniq<LogicalPathFindingOperator>(
+//        path_finding_children, path_finding_expressions, mode, op_proj.table_index, offsets);
+//    op.children.clear();
+//    op.children.push_back(std::move(path_finding_operator));
+//    std::cout << "Inserted path-finding operator" << std::endl;
+//    return true; // We have found the path-finding operator, no need to continue
   }
   for (auto &child : op.children) {
     if (InsertPathFindingOperator(*child, context)) {
