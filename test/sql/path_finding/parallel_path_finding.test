@@ -37,6 +37,70 @@ EDGE TABLES (know    SOURCE KEY ( src ) REFERENCES Student ( id )
                          DESTINATION KEY ( dst ) REFERENCES Student ( id )
                          );
 
+query III
+WITH shortestpath_cte as (
+SELECT src, dst, shortestpathoperator(src, dst, 'pair') as path
+FROM pair p
+WHERE p.src between (SELECT CSR_OPERATOR(
+                             (SELECT count(a.id) as v_size FROM Student a),
+                             (SELECT count(k.src) as e_size from know k),
+                               a.rowid,
+                               c.rowid,
+                               k.rowid,
+                               t.cnt) FROM Know k
+                                           JOIN student a on a.id = k.src
+                                           JOIN student c on c.id = k.dst
+                                           JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
+                                                   FROM student a
+                                                  LEFT JOIN know k ON k.src = a.id
+                                                  GROUP BY a.rowid) t
+                                              ON t.a_rowid = a.rowid) and p.dst)
+ SELECT * FROM shortestpath_cte;
+----
+0	1	NULL
+1	2	[1, 3, 0, 1, 2]
+2	0	[2, 4, 0]
+
+statement ok
+import database 'duckdb/data/SNB0.003';
+
+statement ok
+-create property graph snb vertex tables (person)
+edge tables (person_knows_person    source key (person1id) references person (id)
+                                    destination key (person2id) references person (id));
+
+statement ok
+create table snb_pairs as (
+    select src, dst
+    from (select a.rowid as src from person a),
+         (select b.rowid as dst from person b)
+    using sample reservoir(2 rows) repeatable (300)
+);
+
+
+query III
+WITH shortestpath_cte as (
+SELECT src, dst, shortestpathoperator(src, dst, 'snb_pairs') as path
+FROM snb_pairs p
+WHERE p.src between (SELECT CSR_OPERATOR(
+                             (SELECT count(a.id) as v_size FROM person a),
+                             (SELECT count(k.person1id) as e_size from person_knows_person k),
+                               a.rowid,
+                               c.rowid,
+                               k.rowid,
+                               t.cnt) FROM person_knows_person k
+                                           JOIN person a on a.id = k.person1id
+                                           JOIN person c on c.id = k.person2id
+                                           JOIN (SELECT count(k.person1id) cnt, a.rowid as a_rowid
+                                                   FROM person a
+                                                  LEFT JOIN person_knows_person k ON k.person1id = a.id
+                                                  GROUP BY a.rowid) t
+                                              ON t.a_rowid = a.rowid) and p.dst)
+ SELECT * FROM shortestpath_cte;
+----
+0	1	NULL
+1	2	[1, 3, 0, 1, 2]
+2	0	[2, 4, 0]
 
 #query III
 #-FROM GRAPH_TABLE (g
@@ -78,29 +142,7 @@ EDGE TABLES (know    SOURCE KEY ( src ) REFERENCES Student ( id )
 #30	[2, 4, 0, 1, 2]	2	10	30
 #40	[3, 0, 1, 3, 0, 1, 2]	3	20	30
 
-query III
-WITH shortestpath_cte as (
-SELECT src, dst, shortestpathoperator(src, dst, 'pair') as path
-FROM pair p
-WHERE p.src between (SELECT CSR_OPERATOR(
-                             (SELECT count(a.id) as v_size FROM Student a),
-                             (SELECT count(k.src) as e_size from know k),
-                               a.rowid,
-                               c.rowid,
-                               k.rowid,
-                               t.cnt) FROM Know k
-                                           JOIN student a on a.id = k.src
-                                           JOIN student c on c.id = k.dst
-                                           JOIN (SELECT count(k.src) cnt, a.rowid as a_rowid
-                                                   FROM student a
-                                                  LEFT JOIN know k ON k.src = a.id
-                                                  GROUP BY a.rowid) t
-                                              ON t.a_rowid = a.rowid) and p.dst)
- SELECT * FROM shortestpath_cte;
-----
-0	1	NULL
-1	2	[1, 3, 0, 1, 2]
-2	0	[2, 4, 0]
+
 
 # MATCH ANY SHORTEST p = (a:Person)-[k2:knows]->(src:Person WHERE src.id = 10)-[k:knows]->*(dst:Person)
 # COLUMNS (element_id(p) AS path)
