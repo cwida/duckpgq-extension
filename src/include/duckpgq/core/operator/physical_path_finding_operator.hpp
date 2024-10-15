@@ -248,8 +248,7 @@ public:
   // pairs is a 2-column table with src and dst
   unique_ptr<ColumnDataCollection> global_tasks;
   unique_ptr<ColumnDataCollection> global_inputs;
-  // pairs with path exists
-  // ColumnDataCollection global_results;
+
   ColumnDataScanState scan_state;
   ColumnDataAppendState append_state;
 
