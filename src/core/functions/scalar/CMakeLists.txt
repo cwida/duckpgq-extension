@@ -4,12 +4,15 @@ set(EXTENSION_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/csr_creation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/csr_deletion.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/csr_get_w_type.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/csr_operator_creation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength_bidirectional.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength_operator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/pagerank.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/reachability.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path_operator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/csr_creation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/local_clustering_coefficient.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/weakly_connected_component.cpp

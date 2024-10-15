@@ -222,22 +222,29 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
+ScalarFunctionSet GetShortestPathFunction() {
+  ScalarFunctionSet set("shortestpath");
+
+  set.AddFunction(ScalarFunction(
+      {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT,
+       LogicalType::BIGINT},
+      LogicalType::LIST(LogicalType::BIGINT), ShortestPathFunction,
+      IterativeLengthFunctionData::IterativeLengthBind));
+
+
+  return set;
+}
+
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
 void CoreScalarFunctions::RegisterShortestPathScalarFunction(
     DatabaseInstance &db) {
+
   ExtensionUtil::RegisterFunction(
-      db,
-      ScalarFunction("shortestpath",
-                            {LogicalType::INTEGER, LogicalType::BIGINT,
-                             LogicalType::BIGINT, LogicalType::BIGINT},
-                            LogicalType::LIST(LogicalType::BIGINT),
-                            ShortestPathFunction,
-                            IterativeLengthFunctionData::IterativeLengthBind));
+    db, GetShortestPathFunction());
 }
 
 } // namespace core
 
 } // namespace duckpgq
-

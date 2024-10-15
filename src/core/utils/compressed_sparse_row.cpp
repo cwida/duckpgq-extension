@@ -37,66 +37,6 @@ string CSR::ToString() const {
   return result;
 }
 
-CSRFunctionData::CSRFunctionData(ClientContext &context, int32_t id,
-                                 LogicalType weight_type)
-    : context(context), id(id), weight_type(std::move(weight_type)) {}
-
-unique_ptr<FunctionData> CSRFunctionData::Copy() const {
-  return make_uniq<CSRFunctionData>(context, id, weight_type);
-}
-
-bool CSRFunctionData::Equals(const FunctionData &other_p) const {
-  auto &other = (const CSRFunctionData &)other_p;
-  return id == other.id && weight_type == other.weight_type;
-}
-
-
-unique_ptr<FunctionData>
-CSRFunctionData::CSRVertexBind(ClientContext &context,
-                               ScalarFunction &bound_function,
-                               vector<unique_ptr<Expression>> &arguments) {
-  if (!arguments[0]->IsFoldable()) {
-    throw InvalidInputException("Id must be constant.");
-  }
-
-  Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
-  if (arguments.size() == 4) {
-    auto logical_type = LogicalType::SQLNULL;
-    return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                      logical_type);
-  }
-  return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                      arguments[3]->return_type);
-
-}
-
-unique_ptr<FunctionData>
-CSRFunctionData::CSREdgeBind(ClientContext &context,
-                             ScalarFunction &bound_function,
-                             vector<unique_ptr<Expression>> &arguments) {
-  if (!arguments[0]->IsFoldable()) {
-    throw InvalidInputException("Id must be constant.");
-  }
-  Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
-  if (arguments.size() == 8) {
-    return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                      arguments[7]->return_type);
-  }
-  auto logical_type = LogicalType::SQLNULL;
-  return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                    logical_type);
-}
-
-unique_ptr<FunctionData>
-CSRFunctionData::CSRBind(ClientContext &context, ScalarFunction &bound_function,
-                         vector<unique_ptr<Expression>> &arguments) {
-  if (!arguments[0]->IsFoldable()) {
-    throw InvalidInputException("Id must be constant.");
-  }
-  Value id = ExpressionExecutor::EvaluateScalar(context, *arguments[0]);
-  return make_uniq<CSRFunctionData>(context, id.GetValue<int32_t>(),
-                                    LogicalType::BOOLEAN);
-}
 
 
 // Helper function to create a JoinRef
@@ -633,6 +573,13 @@ unique_ptr<SubqueryRef> CreateCountCTESubquery() {
   return make_uniq<SubqueryRef>(std::move(temp_cte_select_statement), "__x");
 }
 
+
+int32_t GetCSRId(const unique_ptr<Expression> &expr, ClientContext &context) {
+  if (!expr->IsFoldable()) {
+    throw InvalidInputException("CSR ID must be constant.");
+  }
+  return ExpressionExecutor::EvaluateScalar(context, *expr).GetValue<int32_t>();
+}
 } // namespace core
 
 } // namespace duckpgq
