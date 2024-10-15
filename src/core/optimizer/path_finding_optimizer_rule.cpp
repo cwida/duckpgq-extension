@@ -73,7 +73,10 @@ void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_
     op.expressions = std::move(new_expressions);
 }
 
-unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPairs(unique_ptr<LogicalOperator>& first_child, unique_ptr<LogicalOperator>& second_child, LogicalProjection& op_proj) {
+unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPairs(
+    unique_ptr<LogicalOperator>& first_child,
+    unique_ptr<LogicalOperator>& second_child,
+    LogicalProjection& op_proj) {
   bool csr_found = false;
   bool pairs_found = false;
   vector<unique_ptr<Expression>> path_finding_expressions;
@@ -125,13 +128,10 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
     ReplaceExpressions(op_proj, function_expression, path_finding_mode, offsets);
     return make_uniq<LogicalPathFindingOperator>(
       path_finding_children, path_finding_expressions, path_finding_mode, op_proj.table_index, offsets);
-    return true;
   } else {
-    return false;
+    return nullptr;
   }
-
-
- }
+}
 
 bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
     LogicalOperator &op, ClientContext &context) {
@@ -169,12 +169,18 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
     auto &right_child = get_join.children[1];
     std::cout << "left child type: " << LogicalOperatorToString(left_child->type) << std::endl;
     std::cout << "right child type: " << LogicalOperatorToString(right_child->type) << std::endl;
-
-    if (FindCSRAndPairs(left_child, right_child, op_proj)) {
-      std::cout << "Found CSR left, pairs right" << std::endl;
-    } else if (FindCSRAndPairs(right_child, left_child, op_proj)) {
-      std::cout << "Found pairs left, CSR right" << std::endl;
+    auto path_finding_operator = FindCSRAndPairs(left_child, right_child, op_proj);
+    if (path_finding_operator == nullptr) {
+      path_finding_operator = FindCSRAndPairs(right_child, left_child, op_proj);
     }
+    if (path_finding_operator != nullptr) {
+      op.children.clear();
+      op.children.push_back(std::move(path_finding_operator));
+      std::cout << "Inserted path-finding operator" << std::endl;
+      return true;
+    }
+
+    return false; // No path-finding operator found
 
 //
 //    if (right_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
