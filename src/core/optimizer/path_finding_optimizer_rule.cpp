@@ -255,7 +255,7 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
 //    }
 //    path_finding_children.push_back(std::move(current_projection->children[0]));
 //    if (path_finding_children.size() != 2) {
-//      throw InternalException("Path-findig operator should have 2 children");
+//      throw InternalException("Path-finding operator should have 2 children");
 //    }
 //    ReplaceExpressions(op_proj, function_expression, mode, offsets);
 //
