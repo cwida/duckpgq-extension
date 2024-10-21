@@ -247,6 +247,11 @@ SinkResultType PhysicalPathFinding::Sink(ExecutionContext &context,
                                          OperatorSinkInput &input) const {
   auto &gstate = input.global_state.Cast<PathFindingGlobalState>();
   auto &lstate = input.local_state.Cast<PathFindingLocalState>();
+  if (gstate.child == 0) {
+    std::cout << "Sink phase CSR" << std::endl;
+  } else {
+    std::cout << "Sink phase PF pairs" << std::endl;
+  }
   chunk.Print();
   gstate.Sink(chunk, lstate);
   return SinkResultType::NEED_MORE_INPUT;
