@@ -292,7 +292,9 @@ void DuckpgqOptimizerExtension::DuckpgqOptimizeFunction(
     std::cout << "Disabled path finding operator, skipping optimizer rule" << std::endl;
     return;
   }
-  InsertPathFindingOperator(*plan, input.context);
+  if (InsertPathFindingOperator(*plan, input.context)) {
+    plan->Print();
+  }
 }
 
 //------------------------------------------------------------------------------
