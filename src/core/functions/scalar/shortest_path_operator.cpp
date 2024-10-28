@@ -19,7 +19,7 @@ void CoreScalarFunctions::RegisterShortestPathOperatorScalarFunction(
     DatabaseInstance &db) {
 
   ExtensionUtil::RegisterFunction(
-  db, ScalarFunction("shortestpathoperator", {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
+  db, ScalarFunction("shortestpathoperator", {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
                                               LogicalType::LIST(LogicalType::BIGINT), ShortestPathOperatorFunction,
                                               ShortestPathOperatorData::ShortestPathOperatorBind));
 }
