@@ -2,7 +2,25 @@
 
 namespace duckdb {
 
-DuckPGQState::DuckPGQState() = default;
+DuckPGQState::DuckPGQState(shared_ptr<ClientContext> context) {
+  auto new_conn = make_shared_ptr<ClientContext>(context->db);
+  auto query = new_conn->Query("CREATE TABLE IF NOT EXISTS __duckpgq_internal ("
+                  "property_graph varchar, "
+                  "table_name varchar, "
+                  "label varchar, "
+                  "is_vertex_table boolean, "
+                  "source_table varchar, "
+                  "source_pk varchar[], "
+                  "source_fk varchar[], "
+                  "destination_table varchar, "
+                  "destination_pk varchar[], "
+                  "destination_fk varchar[], "
+                  "discriminator varchar, "
+                  "sub_labels varchar[])", false);
+  if (query->HasError()) {
+    throw TransactionException(query->GetError());
+  }
+}
 
 void DuckPGQState::QueryEnd() {
   parse_data.reset();
