@@ -1,29 +1,26 @@
 # name: test/sql/create_pg/all_properties.test
-# description: Testing the creation of property graphs with all properties
-# group: [duckpgq_sql_create_pg]
-
-#statement ok
-#pragma enable_verification
+# description: Testing the creation of property graphs across multiple connections
+# group: [duckpgq_sql_create_pg_multiple_connections]
 
 require duckpgq
 
-statement ok
+statement ok con1
 CREATE TABLE Student(id BIGINT, name VARCHAR);
 
-statement ok
+statement ok con1
 CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
 
-statement ok
+statement ok con1
 CREATE TABLE School(school_name VARCHAR, school_id BIGINT, school_kind BIGINT);
 
-statement ok
+statement ok con1
 INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter');
 
-statement ok
+statement ok con1
 INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (1,2, 14), (1,3, 15), (2,3, 16);
 
 # all properties
-statement ok
+statement ok con2
 -CREATE PROPERTY GRAPH pg_all_properties
 VERTEX TABLES (
     Student LABEL Person,
