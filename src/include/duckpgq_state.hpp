@@ -8,7 +8,7 @@ namespace duckdb {
 
 class DuckPGQState : public ClientContextState {
 public:
-  explicit DuckPGQState();
+  explicit DuckPGQState(shared_ptr<ClientContext> context);
 
   void QueryEnd() override;
   CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name);
