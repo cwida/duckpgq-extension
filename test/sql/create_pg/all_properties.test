@@ -33,4 +33,4 @@ EDGE TABLES (
     know    SOURCE KEY ( src ) REFERENCES Student ( id )
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
             LABEL Knows
-    )
+    );
