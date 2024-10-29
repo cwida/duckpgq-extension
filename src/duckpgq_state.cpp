@@ -2,8 +2,7 @@
 
 namespace duckdb {
 
-DuckPGQState::DuckPGQState(unique_ptr<ParserExtensionParseData> parse_data)
-    : parse_data(std::move(parse_data)) {}
+DuckPGQState::DuckPGQState() = default;
 
 void DuckPGQState::QueryEnd() {
   parse_data.reset();
