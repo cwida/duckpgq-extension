@@ -199,41 +199,50 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
   }
 
   for (auto &edge_table : info->edge_tables) {
-    auto table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
+    try {
+      auto table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
                                                       edge_table->table_name, OnEntryNotFound::RETURN_NULL);
-    if (!table) {
-      throw Exception(ExceptionType::INVALID,
-                      "Table " + edge_table->table_name + " not found");
+      if (!table) {
+        throw Exception(ExceptionType::INVALID,
+                        "Table " + edge_table->table_name + " not found");
+      }
+
+      CheckPropertyGraphTableColumns(edge_table, *table);
+      CheckPropertyGraphTableLabels(edge_table, *table);
+
+      auto &table_constraints = table->GetConstraints();
+
+      ValidateKeys(edge_table, edge_table->source_reference, "source",
+                     edge_table->source_pk, edge_table->source_fk, table_constraints);
+
+      // Check source foreign key columns exist in the table
+      ValidateForeignKeyColumns(edge_table, edge_table->source_fk, table);
+
+      // Validate destination keys
+      ValidateKeys(edge_table, edge_table->destination_reference, "destination",
+                   edge_table->destination_pk, edge_table->destination_fk, table_constraints);
+
+      // Check destination foreign key columns exist in the table
+      ValidateForeignKeyColumns(edge_table, edge_table->destination_fk, table);
+
+      // Validate source table registration
+      ValidateVertexTableRegistration(edge_table->source_reference, v_table_names);
+
+      // Validate primary keys in the source table
+      ValidatePrimaryKeyInTable(catalog, context, info->schema, edge_table->source_reference, edge_table->source_pk);
+
+      // Validate destination table registration
+      ValidateVertexTableRegistration(edge_table->destination_reference, v_table_names);
+
+      // Validate primary keys in the destination table
+      ValidatePrimaryKeyInTable(catalog, context, info->schema, edge_table->destination_reference, edge_table->destination_pk);
+    } catch (CatalogException &e) {
+      auto table = catalog.GetEntry<ViewCatalogEntry>(context, info->schema, edge_table->table_name, OnEntryNotFound::RETURN_NULL);
+      if (table) {
+        throw Exception(ExceptionType::INVALID, "Found a view with name " + edge_table->table_name + ". Creating property graph tables over views is currently not supported.");
+      }
+      throw Exception(ExceptionType::INVALID, e.what());
     }
-
-    CheckPropertyGraphTableColumns(edge_table, *table);
-    CheckPropertyGraphTableLabels(edge_table, *table);
-    auto &table_constraints = table->GetConstraints();
-
-    ValidateKeys(edge_table, edge_table->source_reference, "source",
-                   edge_table->source_pk, edge_table->source_fk, table_constraints);
-
-    // Check source foreign key columns exist in the table
-    ValidateForeignKeyColumns(edge_table, edge_table->source_fk, table);
-
-    // Validate destination keys
-    ValidateKeys(edge_table, edge_table->destination_reference, "destination",
-                 edge_table->destination_pk, edge_table->destination_fk, table_constraints);
-
-    // Check destination foreign key columns exist in the table
-    ValidateForeignKeyColumns(edge_table, edge_table->destination_fk, table);
-
-    // Validate source table registration
-    ValidateVertexTableRegistration(edge_table->source_reference, v_table_names);
-
-    // Validate primary keys in the source table
-    ValidatePrimaryKeyInTable(catalog, context, info->schema, edge_table->source_reference, edge_table->source_pk);
-
-    // Validate destination table registration
-    ValidateVertexTableRegistration(edge_table->destination_reference, v_table_names);
-
-    // Validate primary keys in the destination table
-    ValidatePrimaryKeyInTable(catalog, context, info->schema, edge_table->destination_reference, edge_table->destination_pk);
   }
   return make_uniq<CreatePropertyGraphBindData>(info);
 }
