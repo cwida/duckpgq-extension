@@ -53,6 +53,10 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(
                           pg_info->property_graph_name);
   }
   duckpgq_state->registered_property_graphs.erase(registered_pg);
+  auto new_conn = make_shared_ptr<ClientContext>(context.db);
+  new_conn->Query("DELETE FROM __duckpgq_internal where property_graph = '" +
+                      pg_info->property_graph_name + "'",
+                  false);
 }
 
 //------------------------------------------------------------------------------
