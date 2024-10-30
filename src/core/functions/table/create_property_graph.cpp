@@ -5,7 +5,6 @@
 #include "duckpgq/common.hpp"
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
-#include <duckpgq_extension.hpp>
 
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
 
@@ -251,7 +250,16 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
   }
   auto &query_result = retrieve_query->Cast<MaterializedQueryResult>();
   if (query_result.RowCount() > 0) {
-    throw Exception(ExceptionType::INVALID, "Property graph " + pg_info->property_graph_name + " is already registered");
+    if (pg_info->on_conflict == OnCreateConflict::ERROR_ON_CONFLICT) {
+      throw Exception(ExceptionType::INVALID, "Property graph " + pg_info->property_graph_name + " is already registered");
+    }
+    if (pg_info->on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
+      return; // Do nothing and silently return
+    }
+    if (pg_info->on_conflict == OnCreateConflict::REPLACE_ON_CONFLICT) {
+      // DELETE the old property graph and insert new one.
+      new_conn->Query("DELETE FROM __duckpgq_internal WHERE property_graph = '" + pg_info->property_graph_name + "';", false);
+    }
   }
 
   string insert_info = "INSERT INTO __duckpgq_internal VALUES ";
