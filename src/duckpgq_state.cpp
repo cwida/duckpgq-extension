@@ -45,22 +45,21 @@ void DuckPGQState::RetrievePropertyGraphs(shared_ptr<ClientContext> context) {
       // Handle edge table related things.
       table->source_reference = chunk->GetValue(4, i).GetValue<string>();
       auto source_pk_chunk = ListValue::GetChildren(chunk->GetValue(5, i));
-      for (const auto& source: source_pk_chunk) {
-        table->source_pk.push_back(source.GetValue<string>());
+      for (const auto& source_pk: source_pk_chunk) {
+        table->source_pk.push_back(source_pk.GetValue<string>());
       }
       auto source_fk_chunk = ListValue::GetChildren(chunk->GetValue(6, i));
-      for (const auto& destination: source_fk_chunk) {
-        table->source_fk.push_back(destination.GetValue<string>());
+      for (const auto& source_fk: source_fk_chunk) {
+        table->source_fk.push_back(source_fk.GetValue<string>());
       }
       table->destination_reference = chunk->GetValue(7, i).GetValue<string>();
       auto destination_pk_chunk = ListValue::GetChildren(chunk->GetValue(8, i));
-
-      for (const auto& source: destination_pk_chunk) {
-        table->destination_pk.push_back(source.GetValue<string>());
+      for (const auto& dest_pk: destination_pk_chunk) {
+        table->destination_pk.push_back(dest_pk.GetValue<string>());
       }
       auto destination_fk_chunk = ListValue::GetChildren(chunk->GetValue(9, i));
-      for (const auto& destination: destination_fk_chunk) {
-        table->destination_fk.push_back(destination.GetValue<string>());
+      for (const auto& dest_fk: destination_fk_chunk) {
+        table->destination_fk.push_back(dest_fk.GetValue<string>());
       }
     }
     string discriminator = chunk->GetValue(10, i).GetValue<string>();
