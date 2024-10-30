@@ -7,6 +7,7 @@
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include "duckdb/main/connection_manager.hpp"
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
+#include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
 
 namespace duckpgq {
 namespace core {
@@ -183,7 +184,11 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
         CheckPropertyGraphTableColumns(vertex_table, *table);
         CheckPropertyGraphTableLabels(vertex_table, *table);
       } catch (CatalogException &e) {
-        throw Exception(ExceptionType::INVALID, "Catalog exception while creating table " + vertex_table->table_name);
+        auto table = catalog.GetEntry<ViewCatalogEntry>(context, info->schema, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
+        if (table) {
+          throw Exception(ExceptionType::INVALID, "Found a view with name " + vertex_table->table_name + ". Creating property graph tables over views is currently not supported.");
+        }
+        throw Exception(ExceptionType::INVALID, e.what());
       }
 
 
