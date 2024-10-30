@@ -171,15 +171,21 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
   auto &catalog = Catalog::GetCatalog(context, info->catalog);
   case_insensitive_set_t v_table_names;
   for (auto &vertex_table : info->vertex_tables) {
-      auto table = catalog.GetEntry<TableCatalogEntry>(
+      try {
+        auto table = catalog.GetEntry<TableCatalogEntry>(
           context, info->schema, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
-      if (!table) {
-        throw Exception(ExceptionType::INVALID,
-                        "Table " + vertex_table->table_name + " not found");
+
+        if (!table) {
+          throw Exception(ExceptionType::INVALID,
+                          "Table " + vertex_table->table_name + " not found");
+        }
+
+        CheckPropertyGraphTableColumns(vertex_table, *table);
+        CheckPropertyGraphTableLabels(vertex_table, *table);
+      } catch (CatalogException &e) {
+        throw Exception(ExceptionType::INVALID, "Catalog exception while creating table " + vertex_table->table_name);
       }
 
-      CheckPropertyGraphTableColumns(vertex_table, *table);
-      CheckPropertyGraphTableLabels(vertex_table, *table);
 
     v_table_names.insert(vertex_table->table_name);
     if (vertex_table->hasTableNameAlias()) {
