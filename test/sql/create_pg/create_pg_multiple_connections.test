@@ -1,0 +1,79 @@
+# name: test/sql/create_pg/all_properties.test
+# description: Testing the creation of property graphs across multiple connections
+# group: [duckpgq_sql_create_pg_multiple_connections]
+
+require duckpgq
+
+statement ok con1
+CREATE TABLE Student(id BIGINT, name VARCHAR);
+
+statement ok con1
+CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
+
+statement ok con1
+CREATE TABLE School(school_name VARCHAR, school_id BIGINT, school_kind BIGINT);
+
+statement ok con1
+INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter');
+
+statement ok con1
+INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (1,2, 14), (1,3, 15), (2,3, 16);
+
+# all properties
+statement ok con1
+-CREATE PROPERTY GRAPH pg_all_properties
+VERTEX TABLES (
+    Student,
+    School  LABEL School IN School_kind (Hogeschool, University)
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            LABEL Knows
+    )
+
+statement ok con2
+select * from local_clustering_coefficient(pg_all_properties, student, knows);
+
+statement ok con2
+-from graph_table (pg_all_properties match (a:student))
+
+statement ok con1
+-from graph_table (pg_all_properties match (a:student))
+
+statement ok con3
+-from graph_table (pg_all_properties match (a:student))
+
+statement ok con1
+-DROP PROPERTY GRAPH pg_all_properties
+
+statement error con3
+-from graph_table (pg_all_properties match (a:student))
+----
+Binder Error: Property graph pg_all_properties does not exist
+
+statement error con4
+-from graph_table (pg_all_properties match (a:student))
+----
+Binder Error: Property graph pg_all_properties does not exist
+
+statement error con2
+-from graph_table (pg_all_properties match (a:student))
+----
+Binder Error: Property graph pg_all_properties does not exist
+
+statement ok con1
+-CREATE PROPERTY GRAPH pg_all_properties
+VERTEX TABLES (
+    Student,
+    School  LABEL School IN School_kind (Hogeschool, University)
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            LABEL Knows
+    )
+
+# connection 2 already exists, but pg has been dropped and recreated
+statement ok con2
+-from graph_table (pg_all_properties match (a:student))

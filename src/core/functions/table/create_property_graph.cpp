@@ -5,8 +5,7 @@
 #include "duckpgq/common.hpp"
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
-#include <duckpgq_extension.hpp>
-
+#include "duckdb/main/connection_manager.hpp"
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
 
 namespace duckpgq {
@@ -237,12 +236,111 @@ CreatePropertyGraphFunction::CreatePropertyGraphInit(
 void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
     ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
   auto &bind_data = data_p.bind_data->Cast<CreatePropertyGraphBindData>();
-
   auto pg_info = bind_data.create_pg_info;
   auto duckpgq_state = GetDuckPGQState(context);
 
-  duckpgq_state->registered_property_graphs[pg_info->property_graph_name] =
+  for (auto &connection : ConnectionManager::Get(*context.db).GetConnectionList()) {
+    auto local_state = connection->registered_state->Get<DuckPGQState>("duckpgq");
+    if (!local_state) {
+      continue;
+    }
+    local_state->registered_property_graphs[pg_info->property_graph_name] =
       pg_info->Copy();
+  }
+
+  auto new_conn = make_shared_ptr<ClientContext>(context.db);
+
+  auto retrieve_query = new_conn->Query("SELECT * FROM __duckpgq_internal where property_graph = '" + pg_info->property_graph_name + "';", false);
+  if (retrieve_query->HasError()) {
+    throw TransactionException(retrieve_query->GetError());
+  }
+  auto &query_result = retrieve_query->Cast<MaterializedQueryResult>();
+  if (query_result.RowCount() > 0) {
+    if (pg_info->on_conflict == OnCreateConflict::ERROR_ON_CONFLICT) {
+      throw Exception(ExceptionType::INVALID, "Property graph " + pg_info->property_graph_name + " is already registered");
+    }
+    if (pg_info->on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
+      return; // Do nothing and silently return
+    }
+    if (pg_info->on_conflict == OnCreateConflict::REPLACE_ON_CONFLICT) {
+      // DELETE the old property graph and insert new one.
+      new_conn->Query("DELETE FROM __duckpgq_internal WHERE property_graph = '" + pg_info->property_graph_name + "';", false);
+    }
+  }
+
+  string insert_info = "INSERT INTO __duckpgq_internal VALUES ";
+  for (const auto &v_table : pg_info->vertex_tables) {
+    insert_info += "(";
+    insert_info += "'" + pg_info->property_graph_name + "', ";
+    insert_info += "'" + v_table->table_name + "', ";
+    insert_info += "'" + v_table->main_label + "', ";
+    insert_info += "true, "; // is_vertex_table
+    insert_info += "NULL, "; // source_table
+    insert_info += "NULL, "; // source_pk
+    insert_info += "NULL, "; // source_fk
+    insert_info += "NULL, "; // destination_table
+    insert_info += "NULL, "; // destination_pk
+    insert_info += "NULL, "; // destination_fk
+    insert_info += v_table->discriminator.empty() ? "NULL, " : "'" + v_table->discriminator + "', ";
+    if (!v_table->discriminator.empty()) {
+      insert_info += "[";
+      for (idx_t i = 0; i < v_table->sub_labels.size(); i++) {
+        insert_info += "'" + v_table->sub_labels[i] + (i == v_table->sub_labels.size() - 1 ? "'" : "', ");
+      }
+      insert_info += "]";
+    } else {
+      insert_info += "NULL";
+    }
+    insert_info += "), ";
+  }
+
+  for (const auto &e_table : pg_info->edge_tables) {
+    insert_info += "(";
+    insert_info += "'" + pg_info->property_graph_name + "', ";
+    insert_info += "'" + e_table->table_name + "', ";
+    insert_info += "'" + e_table->main_label + "', ";
+    insert_info += "false, "; // is_vertex_table
+    insert_info += "'" + e_table->source_reference + "', ";
+    insert_info += "[";
+    for (const auto &source_pk : e_table->source_pk) {
+      insert_info += "'" + source_pk + "', ";
+    }
+    insert_info += "], ";
+    insert_info += "[";
+    for (const auto &source_fk : e_table->source_fk) {
+      insert_info += "'" + source_fk + "', ";
+    }
+    insert_info += "], ";
+
+    insert_info += "'" + e_table->destination_reference + "', ";
+    insert_info += "[";
+    for (const auto &destination_pk : e_table->destination_pk) {
+      insert_info += "'" + destination_pk + "', ";
+    }
+    insert_info += "], ";
+    insert_info += "[";
+    for (const auto &destination_fk : e_table->destination_fk) {
+      insert_info += "'" + destination_fk + "', ";
+    }
+    insert_info += "], ";
+
+    insert_info += e_table->discriminator.empty() ? "NULL, " : "'" + e_table->discriminator + "', ";
+    if (!e_table->discriminator.empty()) {
+      insert_info += "[";
+      for (idx_t i = 0; i < e_table->sub_labels.size(); i++) {
+        insert_info += "'" + e_table->sub_labels[i] + (i == e_table->sub_labels.size() - 1 ? "'" : "', ");
+      }
+      insert_info += "]";
+    } else {
+      insert_info += "NULL";
+    }
+    insert_info += "), ";
+  }
+
+  auto insert_query = new_conn->Query(insert_info, false);
+  if (insert_query->HasError()) {
+    throw TransactionException(insert_query->GetError());
+  }
 }
 
 //------------------------------------------------------------------------------
