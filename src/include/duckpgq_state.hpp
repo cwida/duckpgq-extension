@@ -8,10 +8,13 @@ namespace duckdb {
 
 class DuckPGQState : public ClientContextState {
 public:
-  explicit DuckPGQState(unique_ptr<ParserExtensionParseData> parse_data);
+  explicit DuckPGQState(shared_ptr<ClientContext> context);
+
   void QueryEnd() override;
   CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name);
   duckpgq::core::CSR *GetCSR(int32_t id);
+
+  void RetrievePropertyGraphs(shared_ptr<ClientContext> context);
 
 public:
   unique_ptr<ParserExtensionParseData> parse_data;
