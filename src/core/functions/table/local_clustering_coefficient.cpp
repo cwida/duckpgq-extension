@@ -21,12 +21,12 @@ namespace core {
 // Main binding function
 unique_ptr<TableRef> LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(ClientContext &context, TableFunctionBindInput &input) {
     auto pg_name = StringUtil::Lower(StringValue::Get(input.inputs[0]));
-    auto node_table = StringUtil::Lower(StringValue::Get(input.inputs[1]));
-    auto edge_table = StringUtil::Lower(StringValue::Get(input.inputs[2]));
+    auto node_label = StringUtil::Lower(StringValue::Get(input.inputs[1]));
+    auto edge_label = StringUtil::Lower(StringValue::Get(input.inputs[2]));
 
     auto duckpgq_state = GetDuckPGQState(context);
     auto pg_info = GetPropertyGraphInfo(duckpgq_state, pg_name);
-    auto edge_pg_entry = ValidateSourceNodeAndEdgeTable(pg_info, node_table, edge_table);
+    auto edge_pg_entry = ValidateSourceNodeAndEdgeTable(pg_info, node_label, edge_label);
 
     auto select_node = CreateSelectNode(edge_pg_entry, "local_clustering_coefficient", "local_clustering_coefficient");
 
