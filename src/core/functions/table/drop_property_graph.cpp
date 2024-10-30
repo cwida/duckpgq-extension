@@ -4,7 +4,7 @@
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
-#include <duckpgq_extension.hpp>
+#include "duckdb/main/connection_manager.hpp"
 
 namespace duckpgq {
 namespace core {
@@ -52,7 +52,15 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(
     throw BinderException("Property graph %s does not exist.",
                           pg_info->property_graph_name);
   }
-  duckpgq_state->registered_property_graphs.erase(registered_pg);
+
+  for (auto &connection : ConnectionManager::Get(*context.db).GetConnectionList()) {
+    auto local_state = connection->registered_state->Get<DuckPGQState>("duckpgq");
+    if (!local_state) {
+      continue;
+    }
+    local_state->registered_property_graphs.erase(pg_info->property_graph_name);
+  }
+
   auto new_conn = make_shared_ptr<ClientContext>(context.db);
   new_conn->Query("DELETE FROM __duckpgq_internal where property_graph = '" +
                       pg_info->property_graph_name + "'",

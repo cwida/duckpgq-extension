@@ -5,7 +5,7 @@
 #include "duckpgq/common.hpp"
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
-
+#include "duckdb/main/connection_manager.hpp"
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
 
 namespace duckpgq {
@@ -239,8 +239,14 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
   auto pg_info = bind_data.create_pg_info;
   auto duckpgq_state = GetDuckPGQState(context);
 
-  duckpgq_state->registered_property_graphs[pg_info->property_graph_name] =
+  for (auto &connection : ConnectionManager::Get(*context.db).GetConnectionList()) {
+    auto local_state = connection->registered_state->Get<DuckPGQState>("duckpgq");
+    if (!local_state) {
+      continue;
+    }
+    local_state->registered_property_graphs[pg_info->property_graph_name] =
       pg_info->Copy();
+  }
 
   auto new_conn = make_shared_ptr<ClientContext>(context.db);
 
@@ -329,18 +335,12 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
       insert_info += "NULL";
     }
     insert_info += "), ";
-
   }
 
   auto insert_query = new_conn->Query(insert_info, false);
-
-  // TODO handle on conflict
   if (insert_query->HasError()) {
     throw TransactionException(insert_query->GetError());
   }
-
-
-
 }
 
 //------------------------------------------------------------------------------
