@@ -43,3 +43,37 @@ statement ok con1
 
 statement ok con3
 -from graph_table (pg_all_properties match (a:student))
+
+statement ok con1
+-DROP PROPERTY GRAPH pg_all_properties
+
+statement error con3
+-from graph_table (pg_all_properties match (a:student))
+----
+Binder Error: Property graph pg_all_properties does not exist
+
+statement error con4
+-from graph_table (pg_all_properties match (a:student))
+----
+Binder Error: Property graph pg_all_properties does not exist
+
+statement error con2
+-from graph_table (pg_all_properties match (a:student))
+----
+Binder Error: Property graph pg_all_properties does not exist
+
+statement ok con1
+-CREATE PROPERTY GRAPH pg_all_properties
+VERTEX TABLES (
+    Student,
+    School  LABEL School IN School_kind (Hogeschool, University)
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            LABEL Knows
+    )
+
+# connection 2 already exists, but pg has been dropped and recreated
+statement ok con2
+-from graph_table (pg_all_properties match (a:student))
