@@ -23,6 +23,17 @@ std::string DuckpgqExtension::Name() { return "duckpgq"; }
 
 } // namespace duckpgq
 
+extern "C" {
+
+  DUCKDB_EXTENSION_API void duckpgq_init(DatabaseInstance &db) {
+    LoadInternal(db);
+  }
+
+  DUCKDB_EXTENSION_API const char *duckpgq_version() {
+    return DuckDB::LibraryVersion();
+  }
+}
+
 #ifndef DUCKDB_EXTENSION_MAIN
 #error DUCKDB_EXTENSION_MAIN not defined
 #endif
