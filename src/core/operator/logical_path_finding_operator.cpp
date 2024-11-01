@@ -21,7 +21,8 @@ unique_ptr<PhysicalOperator> LogicalPathFindingOperator::CreatePlan(
 vector<ColumnBinding> LogicalPathFindingOperator::GetColumnBindings() {
   auto left_bindings = children[0]->GetColumnBindings();
   for (const auto &offset : offsets) {
-    left_bindings.push_back(ColumnBinding(table_index, offset));
+    auto binding = ColumnBinding(table_index, offset);
+    left_bindings.push_back(binding);
   }
   return left_bindings;
 }
