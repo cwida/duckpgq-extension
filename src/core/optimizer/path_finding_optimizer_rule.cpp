@@ -10,6 +10,7 @@
 #include <duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp>
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
+#include <duckdb/planner/operator/logical_cross_product.hpp>
 
 namespace duckpgq {
 namespace core {
@@ -71,7 +72,8 @@ void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_
 unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPairs(
     unique_ptr<LogicalOperator>& first_child,
     unique_ptr<LogicalOperator>& second_child,
-    LogicalProjection& op_proj) {
+    LogicalProjection& op_proj,
+    ClientContext &context) {
   bool csr_found = false;
   bool pairs_found = false;
   vector<unique_ptr<Expression>> path_finding_expressions;
@@ -80,13 +82,50 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
   // Find CSR
   if (first_child->type == LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
     auto &get_aggregate = first_child->Cast<LogicalAggregate>();
+    if (get_aggregate.children[0]->type != LogicalOperatorType::LOGICAL_PROJECTION) {
+      return nullptr;
+    }
     auto &potential_csr_projection = get_aggregate.children[0]->Cast<LogicalProjection>();
-    auto &get_function_expression = potential_csr_projection.expressions[0]->Cast<BoundFunctionExpression>();
-    if (get_function_expression.function.name == "csr_operator_e") {
-      std::cout << "Found csr_e_operator" << std::endl;
-      csr_found = true;
-      path_finding_expressions = std::move(get_function_expression.children);
-      csr_projection = &potential_csr_projection;
+    auto &csr_e_function = potential_csr_projection.expressions[0]->Cast<BoundFunctionExpression>();
+    if (csr_e_function.function.name != "csr_operator_e") {
+      return nullptr;
+    }
+    std::cout << "Found csr_e_operator" << std::endl;
+    csr_found = true;
+
+    path_finding_expressions = std::move(csr_e_function.children);
+    csr_projection = &potential_csr_projection;
+    // Need to find the CSR V expression
+    for (const auto &proj_child : csr_projection->children) {
+      if (proj_child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
+        continue;
+      }
+      auto &cross_join = proj_child->Cast<LogicalCrossProduct>();
+      for (const auto &cross_child : cross_join.children) {
+        if (cross_child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
+          continue;
+        }
+        auto &second_cross_child = cross_child->Cast<LogicalCrossProduct>();
+        auto &aggregate_child = second_cross_child.children[0]->Cast<LogicalAggregate>();
+        if (aggregate_child.children[0]->type ==
+            LogicalOperatorType::LOGICAL_PROJECTION) {
+          auto &second_proj_child =
+              aggregate_child.children[0]->Cast<LogicalProjection>();
+          auto &csr_v_function =
+              second_proj_child.expressions[0]->Cast<BoundFunctionExpression>();
+          if (csr_v_function.function.name != "csr_operator_v") {
+            return nullptr;
+          }
+          for (auto &expr : csr_v_function.children) {
+            path_finding_expressions.push_back(expr->Copy());
+          }
+          path_finding_children.push_back(aggregate_child.children[0]->children[0]->Copy(context));
+        }
+        auto cross_copy = second_cross_child.children[1]->Copy(context);
+        cross_join.children.pop_back();
+        cross_join.AddChild(std::move(cross_copy));
+
+      }
     }
   }
 
@@ -116,8 +155,8 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
   if (pairs_found && csr_found) {
     path_finding_children.push_back(std::move(csr_projection->children[0]));
     std::cout << "Found both csr and pairs" << std::endl;
-    if (path_finding_children.size() != 2) {
-      throw InternalException("Path-finding operator should have 2 children");
+    if (path_finding_children.size() != 3) {
+      throw InternalException("Path-finding operator should have 3 children");
     }
     unique_ptr<Expression> function_expression;
     string path_finding_mode;
@@ -163,9 +202,9 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
     auto &right_child = get_join.children[1];
     std::cout << "left child type: " << LogicalOperatorToString(left_child->type) << std::endl;
     std::cout << "right child type: " << LogicalOperatorToString(right_child->type) << std::endl;
-    auto path_finding_operator = FindCSRAndPairs(left_child, right_child, op_proj);
+    auto path_finding_operator = FindCSRAndPairs(left_child, right_child, op_proj, context);
     if (path_finding_operator == nullptr) {
-      path_finding_operator = FindCSRAndPairs(right_child, left_child, op_proj);
+      path_finding_operator = FindCSRAndPairs(right_child, left_child, op_proj, context);
     }
     if (path_finding_operator != nullptr) {
       op.children.clear();

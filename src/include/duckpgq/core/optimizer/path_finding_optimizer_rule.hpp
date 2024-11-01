@@ -20,7 +20,8 @@ public:
   static unique_ptr<LogicalPathFindingOperator> FindCSRAndPairs(
       unique_ptr<LogicalOperator>& first_child,
       unique_ptr<LogicalOperator>& second_child,
-      LogicalProjection& op_proj);
+      LogicalProjection& op_proj,
+      ClientContext &context);
 };
 
 } // namespace core
