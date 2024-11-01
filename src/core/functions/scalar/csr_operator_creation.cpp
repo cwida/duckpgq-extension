@@ -22,13 +22,13 @@ void CoreScalarFunctions::RegisterCSROperatorCreationScalarFunctions(
   ExtensionUtil::RegisterFunction(
       db, ScalarFunction("csr_operator_e",
                          {LogicalType::BIGINT, LogicalType::BIGINT,
-                          LogicalType::BIGINT, LogicalType::BIGINT},
+                          LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
                          LogicalType::INTEGER, CreateCSROperatorFunction,
                          CSROperatorFunctionData::CSRBind));
 
   ExtensionUtil::RegisterFunction(
     db, ScalarFunction("csr_operator_v", {LogicalType::BIGINT,
-                                            LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+                                            LogicalType::BIGINT, LogicalType::BIGINT},
                          LogicalType::INTEGER, CreateCSROperatorFunction,
                          CSROperatorFunctionData::CSRBind));
 }

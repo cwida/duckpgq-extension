@@ -1,16 +1,11 @@
 #include "duckpgq/core/optimizer/path_finding_optimizer_rule.hpp"
 
 #include "duckpgq/core/optimizer/duckpgq_optimizer.hpp"
-
 #include <duckdb/catalog/catalog_entry/duck_table_entry.hpp>
-#include <duckdb/main/database_manager.hpp>
 #include <duckdb/planner/expression/bound_function_expression.hpp>
 #include <duckdb/planner/operator/logical_aggregate.hpp>
 #include <duckdb/planner/operator/logical_comparison_join.hpp>
-#include <duckdb/planner/operator/logical_empty_result.hpp>
 #include <duckdb/planner/operator/logical_filter.hpp>
-#include <duckdb/planner/operator/logical_get.hpp>
-#include <duckdb/planner/operator/logical_limit.hpp>
 #include <duckdb/planner/operator/logical_projection.hpp>
 #include <duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp>
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>

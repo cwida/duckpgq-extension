@@ -24,11 +24,12 @@ namespace core {
 
 
 PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
-                                         unique_ptr<PhysicalOperator> left,
-                                         unique_ptr<PhysicalOperator> right)
+                                         unique_ptr<PhysicalOperator> csr_v,
+                                         unique_ptr<PhysicalOperator> csr_e,
+                                         unique_ptr<PhysicalOperator> pairs)
     : PhysicalComparisonJoin(op, TYPE, {}, JoinType::INNER, op.estimated_cardinality) {
-  children.push_back(std::move(left));
-  children.push_back(std::move(right));
+  children.push_back(std::move(csr_v));
+  children.push_back(std::move(csr_e));
   expressions = std::move(op.expressions);
   estimated_cardinality = op.estimated_cardinality;
   auto &path_finding_op = op.Cast<LogicalPathFindingOperator>();
