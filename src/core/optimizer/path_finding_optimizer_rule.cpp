@@ -82,8 +82,8 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
     auto &get_aggregate = first_child->Cast<LogicalAggregate>();
     auto &potential_csr_projection = get_aggregate.children[0]->Cast<LogicalProjection>();
     auto &get_function_expression = potential_csr_projection.expressions[0]->Cast<BoundFunctionExpression>();
-    if (get_function_expression.function.name == "csr_operator") {
-      std::cout << "Found csr_operator" << std::endl;
+    if (get_function_expression.function.name == "csr_operator_e") {
+      std::cout << "Found csr_e_operator" << std::endl;
       csr_found = true;
       path_finding_expressions = std::move(get_function_expression.children);
       csr_projection = &potential_csr_projection;
@@ -125,9 +125,11 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
     ReplaceExpressions(op_proj, function_expression, path_finding_mode, offsets);
     return make_uniq<LogicalPathFindingOperator>(
       path_finding_children, path_finding_expressions, path_finding_mode, op_proj.table_index, offsets);
-  } else {
-    return nullptr;
+  } if (csr_found) {
+    throw InternalException("Found csr but missing the pairs");
   }
+  // Found neither
+  return nullptr;
 }
 
 bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
