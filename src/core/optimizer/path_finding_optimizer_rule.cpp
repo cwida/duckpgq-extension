@@ -2,15 +2,17 @@
 
 #include "duckpgq/core/optimizer/duckpgq_optimizer.hpp"
 #include <duckdb/catalog/catalog_entry/duck_table_entry.hpp>
+#include <duckdb/planner/expression/bound_cast_expression.hpp>
 #include <duckdb/planner/expression/bound_function_expression.hpp>
 #include <duckdb/planner/operator/logical_aggregate.hpp>
 #include <duckdb/planner/operator/logical_comparison_join.hpp>
+#include <duckdb/planner/operator/logical_cross_product.hpp>
 #include <duckdb/planner/operator/logical_filter.hpp>
+#include <duckdb/planner/operator/logical_get.hpp>
 #include <duckdb/planner/operator/logical_projection.hpp>
 #include <duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp>
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
-#include <duckdb/planner/operator/logical_cross_product.hpp>
 
 namespace duckpgq {
 namespace core {
@@ -79,78 +81,97 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
   vector<unique_ptr<Expression>> path_finding_expressions;
   vector<unique_ptr<LogicalOperator>> path_finding_children;
   LogicalProjection *csr_projection = nullptr;
-  // Find CSR
-  if (first_child->type == LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
-    auto &get_aggregate = first_child->Cast<LogicalAggregate>();
-    if (get_aggregate.children[0]->type != LogicalOperatorType::LOGICAL_PROJECTION) {
-      return nullptr;
+  if (first_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
+    auto &first_proj = first_child->Cast<LogicalProjection>();
+    for (const auto &expr : first_proj.expressions) {
+      if (expr->type != ExpressionType::OPERATOR_CAST) {
+        continue;
+      }
+      auto &bound_cast_expr = expr->Cast<BoundCastExpression>();
+      if (bound_cast_expr.GetName() == "csr_id") {
+        csr_found = true;
+        csr_projection = &first_proj;
+        break;
+      }
     }
-    auto &potential_csr_projection = get_aggregate.children[0]->Cast<LogicalProjection>();
-    auto &csr_e_function = potential_csr_projection.expressions[0]->Cast<BoundFunctionExpression>();
-    if (csr_e_function.function.name != "csr_operator_e") {
-      return nullptr;
-    }
-    csr_found = true;
-
-    // path_finding_expressions = std::move(csr_e_function.children);
-    csr_projection = &potential_csr_projection;
-    // Need to find the CSR V expression
-    // for (const auto &proj_child : csr_projection->children) {
-    //   if (proj_child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
-    //     continue;
-    //   }
-    //   auto &cross_join = proj_child->Cast<LogicalCrossProduct>();
-    //   for (const auto &cross_child : cross_join.children) {
-    //     if (cross_child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
-    //       continue;
-    //     }
-    //     auto &second_cross_child = cross_child->Cast<LogicalCrossProduct>();
-    //     auto &aggregate_child = second_cross_child.children[0]->Cast<LogicalAggregate>();
-    //     if (aggregate_child.children[0]->type ==
-    //         LogicalOperatorType::LOGICAL_PROJECTION) {
-    //       auto &second_proj_child =
-    //           aggregate_child.children[0]->Cast<LogicalProjection>();
-    //       auto &csr_v_function =
-    //           second_proj_child.expressions[0]->Cast<BoundFunctionExpression>();
-    //       if (csr_v_function.function.name != "csr_operator_v") {
-    //         return nullptr;
-    //       }
-    //       for (auto &expr : csr_v_function.children) {
-    //         path_finding_expressions.push_back(expr->Copy());
-    //       }
-    //       path_finding_children.push_back(aggregate_child.children[0]->children[0]->Copy(context));
-    //     }
-    //     auto cross_copy = second_cross_child.children[1]->Copy(context);
-    //     cross_join.children.pop_back();
-    //     cross_join.AddChild(std::move(cross_copy));
-    //
-    //   }
-    // }
   }
+
+  // // Find CSR
+  // if (first_child->type == LogicalOperatorType::LOGICAL_AGGREGATE_AND_GROUP_BY) {
+  //   auto &get_aggregate = first_child->Cast<LogicalAggregate>();
+  //   if (get_aggregate.children[0]->type != LogicalOperatorType::LOGICAL_PROJECTION) {
+  //     return nullptr;
+  //   }
+  //   auto &potential_csr_projection = get_aggregate.children[0]->Cast<LogicalProjection>();
+  //   auto &csr_e_function = potential_csr_projection.expressions[0]->Cast<BoundFunctionExpression>();
+  //   if (csr_e_function.function.name != "csr_operator_e") {
+  //     return nullptr;
+  //   }
+  //   csr_found = true;
+  //
+  //   // path_finding_expressions = std::move(csr_e_function.children);
+  //   csr_projection = &potential_csr_projection;
+  //   // Need to find the CSR V expression
+  //   // for (const auto &proj_child : csr_projection->children) {
+  //   //   if (proj_child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
+  //   //     continue;
+  //   //   }
+  //   //   auto &cross_join = proj_child->Cast<LogicalCrossProduct>();
+  //   //   for (const auto &cross_child : cross_join.children) {
+  //   //     if (cross_child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
+  //   //       continue;
+  //   //     }
+  //   //     auto &second_cross_child = cross_child->Cast<LogicalCrossProduct>();
+  //   //     auto &aggregate_child = second_cross_child.children[0]->Cast<LogicalAggregate>();
+  //   //     if (aggregate_child.children[0]->type ==
+  //   //         LogicalOperatorType::LOGICAL_PROJECTION) {
+  //   //       auto &second_proj_child =
+  //   //           aggregate_child.children[0]->Cast<LogicalProjection>();
+  //   //       auto &csr_v_function =
+  //   //           second_proj_child.expressions[0]->Cast<BoundFunctionExpression>();
+  //   //       if (csr_v_function.function.name != "csr_operator_v") {
+  //   //         return nullptr;
+  //   //       }
+  //   //       for (auto &expr : csr_v_function.children) {
+  //   //         path_finding_expressions.push_back(expr->Copy());
+  //   //       }
+  //   //       path_finding_children.push_back(aggregate_child.children[0]->children[0]->Copy(context));
+  //   //     }
+  //   //     auto cross_copy = second_cross_child.children[1]->Copy(context);
+  //   //     cross_join.children.pop_back();
+  //   //     cross_join.AddChild(std::move(cross_copy));
+  //   //
+  //   //   }
+  //   // }
+  // }
 
   // Find pairs
-  if (second_child->type == LogicalOperatorType::LOGICAL_FILTER) {
-    auto &get_filter = second_child->Cast<LogicalFilter>();
-    if (get_filter.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
-      std::cout << "Found pairs" << std::endl;
-      pairs_found = true;
-      path_finding_children.push_back(std::move(get_filter.children[0]));
-    }
-  } else if (second_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
-      auto &get_projection = second_child->Cast<LogicalProjection>();
-      if (get_projection.children[0]->type == LogicalOperatorType::LOGICAL_FILTER) {
-        auto &get_filter = get_projection.children[0]->Cast<LogicalFilter>();
-        if (get_filter.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
-          std::cout << "Found pairs" << std::endl;
-          pairs_found = true;
-          path_finding_children.push_back(std::move(get_filter.children[0]));
-        }
-      } else if (get_projection.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
-        path_finding_children.push_back(std::move(get_projection.children[0]));
-        std::cout << "Found pairs" << std::endl;
-        pairs_found = true;
-      }
+  if (second_child->type == LogicalOperatorType::LOGICAL_GET) {
+    auto &get_second_child = second_child->Cast<LogicalGet>();
   }
+
+  // if (second_child->type == LogicalOperatorType::LOGICAL_FILTER) {
+  //   auto &get_filter = second_child->Cast<LogicalFilter>();
+  //   if (get_filter.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
+  //     std::cout << "Found pairs" << std::endl;
+  //     pairs_found = true;
+  //     path_finding_children.push_back(std::move(get_filter.children[0]));
+  //   }
+  // } else if (second_child->type == LogicalOperatorType::LOGICAL_PROJECTION) {
+  //     auto &get_projection = second_child->Cast<LogicalProjection>();
+  //     if (get_projection.children[0]->type == LogicalOperatorType::LOGICAL_FILTER) {
+  //       auto &get_filter = get_projection.children[0]->Cast<LogicalFilter>();
+  //       if (get_filter.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
+  //         std::cout << "Found pairs" << std::endl;
+  //         pairs_found = true;
+  //         path_finding_children.push_back(std::move(get_filter.children[0]));
+  //       }
+  //     } else if (get_projection.children[0]->type == LogicalOperatorType::LOGICAL_GET) {
+  //       path_finding_children.push_back(std::move(get_projection.children[0]));
+  //       std::cout << "Found pairs" << std::endl;
+  //       pairs_found = true;
+  //     }
+  // }
   if (pairs_found && csr_found) {
     if (csr_projection == nullptr) {
       throw InternalException("Found CSR but the projection node was not found");
@@ -190,10 +211,10 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
 
   for (const auto &child : op_proj.children) {
     vector<unique_ptr<LogicalOperator>> path_finding_children;
-    if (child->type != LogicalOperatorType::LOGICAL_COMPARISON_JOIN) {
+    if (child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
       continue;
     }
-    auto &get_join = child->Cast<LogicalComparisonJoin>();
+    auto &get_join = child->Cast<LogicalCrossProduct>();
     //! For now we assume this is enough to detect we have found a
     //! path-finding query. Should be improved in the future
     if (get_join.children.size() != 2) {

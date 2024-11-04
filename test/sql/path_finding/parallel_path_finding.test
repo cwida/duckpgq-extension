@@ -11,9 +11,6 @@ statement ok
 set experimental_path_finding_operator=true;
 
 statement ok
-SET scalar_subquery_error_on_multiple_rows=false;
-
-statement ok
 set disabled_optimizers = 'compressed_materialization';
 
 query I
@@ -58,7 +55,7 @@ SELECT cast(min(create_csr_edge(
         (select count() FROM Know k JOIN student a on a.id = k.src JOIN student c on c.id = k.dst),
         a.rowid,
         c.rowid,
-        k.rowid)) as bigint) as edge_count
+        k.rowid)) as bigint) as csr_id
     FROM Know k
     JOIN student a on a.id = k.src
     JOIN student c on c.id = k.dst)
