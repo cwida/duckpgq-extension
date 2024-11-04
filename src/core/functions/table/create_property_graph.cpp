@@ -174,11 +174,11 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
   for (auto &vertex_table : info->vertex_tables) {
       try {
         auto table = catalog.GetEntry<TableCatalogEntry>(
-          context, info->schema, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
+          context, DEFAULT_SCHEMA, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
 
         if (!table) {
           throw Exception(ExceptionType::INVALID,
-                          "Table " + vertex_table->table_name + " not found");
+                          "Table " + vertex_table->schema_name + "." + vertex_table->table_name + " not found");
         }
 
         CheckPropertyGraphTableColumns(vertex_table, *table);
@@ -200,11 +200,11 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
 
   for (auto &edge_table : info->edge_tables) {
     try {
-      auto table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
+      auto table = catalog.GetEntry<TableCatalogEntry>(context, edge_table->schema_name,
                                                       edge_table->table_name, OnEntryNotFound::RETURN_NULL);
       if (!table) {
         throw Exception(ExceptionType::INVALID,
-                        "Table " + edge_table->table_name + " not found");
+                        "Table " + edge_table->schema_name + "." + edge_table->table_name + " not found");
       }
 
       CheckPropertyGraphTableColumns(edge_table, *table);
