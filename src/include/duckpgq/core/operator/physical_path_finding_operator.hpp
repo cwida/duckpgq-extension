@@ -107,9 +107,8 @@ public:
   };
 
   PhysicalPathFinding(LogicalExtensionOperator &op,
-                      unique_ptr<PhysicalOperator> csr_v,
-                      unique_ptr<PhysicalOperator> csr_e,
-                      unique_ptr<PhysicalOperator> pairs);
+                      unique_ptr<PhysicalOperator> pairs,
+                      unique_ptr<PhysicalOperator> csr);
 
     static constexpr PhysicalOperatorType TYPE =
       PhysicalOperatorType::EXTENSION;

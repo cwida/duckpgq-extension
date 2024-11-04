@@ -9,13 +9,12 @@ namespace core {
 
 unique_ptr<PhysicalOperator> LogicalPathFindingOperator::CreatePlan(
     ClientContext &context, duckdb::PhysicalPlanGenerator &generator) {
-  D_ASSERT(children.size() == 3);
+  D_ASSERT(children.size() == 2);
   estimated_cardinality = children[0]->EstimateCardinality(context);
-  auto csr_v = generator.CreatePlan(std::move(children[0]));
-  auto csr_e = generator.CreatePlan(std::move(children[1]));
-  auto pairs = generator.CreatePlan(std::move(children[2]));
-  return make_uniq<PhysicalPathFinding>(*this, std::move(csr_v),
-                                        std::move(csr_e), std::move(pairs));
+  auto pairs = generator.CreatePlan(std::move(children[0]));
+  auto csr = generator.CreatePlan(std::move(children[1]));
+  return make_uniq<PhysicalPathFinding>(*this, std::move(pairs),
+                                        std::move(csr));
 }
 
 vector<ColumnBinding> LogicalPathFindingOperator::GetColumnBindings() {
