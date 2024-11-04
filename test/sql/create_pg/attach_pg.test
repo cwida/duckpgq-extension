@@ -1,0 +1,15 @@
+# name: test/sql/create_pg/attach_pg.test
+# description: Testing create property graph with an attached database
+# group: [duckpgq_sql_create_pg]
+
+require duckpgq
+
+statement ok
+ATTACH 'https://raw.githubusercontent.com/Dtenwolde/bluesky-follows-graph/main/bluesky.duckdb';
+
+statement ok
+select * from bluesky.follows;
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH bluesky
+            VERTEX TABLES (bluesky.account);
