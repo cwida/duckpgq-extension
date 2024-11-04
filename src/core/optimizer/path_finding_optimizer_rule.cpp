@@ -92,40 +92,40 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
     }
     csr_found = true;
 
-    path_finding_expressions = std::move(csr_e_function.children);
+    // path_finding_expressions = std::move(csr_e_function.children);
     csr_projection = &potential_csr_projection;
     // Need to find the CSR V expression
-    for (const auto &proj_child : csr_projection->children) {
-      if (proj_child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
-        continue;
-      }
-      auto &cross_join = proj_child->Cast<LogicalCrossProduct>();
-      for (const auto &cross_child : cross_join.children) {
-        if (cross_child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
-          continue;
-        }
-        auto &second_cross_child = cross_child->Cast<LogicalCrossProduct>();
-        auto &aggregate_child = second_cross_child.children[0]->Cast<LogicalAggregate>();
-        if (aggregate_child.children[0]->type ==
-            LogicalOperatorType::LOGICAL_PROJECTION) {
-          auto &second_proj_child =
-              aggregate_child.children[0]->Cast<LogicalProjection>();
-          auto &csr_v_function =
-              second_proj_child.expressions[0]->Cast<BoundFunctionExpression>();
-          if (csr_v_function.function.name != "csr_operator_v") {
-            return nullptr;
-          }
-          for (auto &expr : csr_v_function.children) {
-            path_finding_expressions.push_back(expr->Copy());
-          }
-          path_finding_children.push_back(aggregate_child.children[0]->children[0]->Copy(context));
-        }
-        auto cross_copy = second_cross_child.children[1]->Copy(context);
-        cross_join.children.pop_back();
-        cross_join.AddChild(std::move(cross_copy));
-
-      }
-    }
+    // for (const auto &proj_child : csr_projection->children) {
+    //   if (proj_child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
+    //     continue;
+    //   }
+    //   auto &cross_join = proj_child->Cast<LogicalCrossProduct>();
+    //   for (const auto &cross_child : cross_join.children) {
+    //     if (cross_child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
+    //       continue;
+    //     }
+    //     auto &second_cross_child = cross_child->Cast<LogicalCrossProduct>();
+    //     auto &aggregate_child = second_cross_child.children[0]->Cast<LogicalAggregate>();
+    //     if (aggregate_child.children[0]->type ==
+    //         LogicalOperatorType::LOGICAL_PROJECTION) {
+    //       auto &second_proj_child =
+    //           aggregate_child.children[0]->Cast<LogicalProjection>();
+    //       auto &csr_v_function =
+    //           second_proj_child.expressions[0]->Cast<BoundFunctionExpression>();
+    //       if (csr_v_function.function.name != "csr_operator_v") {
+    //         return nullptr;
+    //       }
+    //       for (auto &expr : csr_v_function.children) {
+    //         path_finding_expressions.push_back(expr->Copy());
+    //       }
+    //       path_finding_children.push_back(aggregate_child.children[0]->children[0]->Copy(context));
+    //     }
+    //     auto cross_copy = second_cross_child.children[1]->Copy(context);
+    //     cross_join.children.pop_back();
+    //     cross_join.AddChild(std::move(cross_copy));
+    //
+    //   }
+    // }
   }
 
   // Find pairs
@@ -152,6 +152,9 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
       }
   }
   if (pairs_found && csr_found) {
+    if (csr_projection == nullptr) {
+      throw InternalException("Found CSR but the projection node was not found");
+    }
     path_finding_children.push_back(std::move(csr_projection->children[0]));
     std::cout << "Found both csr and pairs" << std::endl;
     if (path_finding_children.size() != 3) {
