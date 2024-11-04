@@ -176,7 +176,7 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
           csr_entry->second->e[(int64_t)pos - 1] = dst;
           csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id;
           csr_entry->second->w[(int64_t)pos - 1] = weight;
-          return weight;
+          return info.id;
         });
     return;
   }

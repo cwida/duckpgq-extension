@@ -90,7 +90,6 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
     if (csr_e_function.function.name != "csr_operator_e") {
       return nullptr;
     }
-    std::cout << "Found csr_e_operator" << std::endl;
     csr_found = true;
 
     path_finding_expressions = std::move(csr_e_function.children);
