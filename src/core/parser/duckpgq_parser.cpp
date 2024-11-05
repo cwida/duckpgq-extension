@@ -162,15 +162,11 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
 ParserExtensionPlanResult
 duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
              unique_ptr<ParserExtensionParseData> parse_data) {
-
   auto duckpgq_state = context.registered_state->Get<DuckPGQState>("duckpgq");
-  if (duckpgq_state== nullptr) {
-    auto state = make_shared_ptr<DuckPGQState>(std::move(parse_data));
-    context.registered_state->Insert("duckpgq", state);
-    duckpgq_state = context.registered_state->Get<DuckPGQState>("duckpgq");
-  } else {
-    duckpgq_state->parse_data = std::move(parse_data);
+  if (duckpgq_state == nullptr) {
+    throw Exception(ExceptionType::INVALID, "DuckPGQ extension has not been properly initialized");
   }
+  duckpgq_state->parse_data = std::move(parse_data);
   auto duckpgq_parse_data =
       dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
 
@@ -189,8 +185,7 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
 void CorePGQParser::RegisterPGQParserExtension(
     DatabaseInstance &db) {
   auto &config = DBConfig::GetConfig(db);
-  DuckPGQParserExtension pgq_parser;
-  config.parser_extensions.push_back(pgq_parser);
+  config.parser_extensions.push_back(DuckPGQParserExtension());
 }
 
 } // namespace core

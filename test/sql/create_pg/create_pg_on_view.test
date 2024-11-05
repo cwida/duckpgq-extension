@@ -1,0 +1,40 @@
+
+
+require duckpgq
+
+statement ok
+CREATE TABLE vdata(id TEXT PRIMARY KEY);
+
+statement ok
+CREATE VIEW v AS SELECT * FROM vdata;
+
+statement ok
+CREATE TABLE w(id TEXT PRIMARY KEY);
+
+statement ok
+CREATE TABLE v_w(v_id TEXT, w_id TEXT);
+
+statement ok
+create view v_w_view as select * from v_w;
+
+statement error
+-CREATE PROPERTY GRAPH g1
+  VERTEX TABLES (v, w)
+  EDGE TABLES (
+    v_w SOURCE KEY (v_id) REFERENCES v (id)
+        DESTINATION KEY (w_id) REFERENCES w (id)
+    LABEL hasW
+  );
+----
+Invalid Error: Found a view with name v. Creating property graph tables over views is currently not supported.
+
+statement error
+-CREATE PROPERTY GRAPH g1
+  VERTEX TABLES (vdata, w)
+  EDGE TABLES (
+    v_w_view SOURCE KEY (v_id) REFERENCES vdata (id)
+        DESTINATION KEY (w_id) REFERENCES w (id)
+    LABEL hasW
+  );
+----
+Invalid Error: Found a view with name v_w_view. Creating property graph tables over views is currently not supported.
