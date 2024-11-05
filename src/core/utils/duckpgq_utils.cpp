@@ -32,17 +32,17 @@ CreatePropertyGraphInfo* GetPropertyGraphInfo(const shared_ptr<DuckPGQState> &du
 }
 
 // Function to validate the source node and edge table
-shared_ptr<PropertyGraphTable> ValidateSourceNodeAndEdgeTable(CreatePropertyGraphInfo *pg_info, const std::string &node_table, const std::string &edge_table) {
-  auto source_node_pg_entry = pg_info->GetTable(node_table, true, true);
+shared_ptr<PropertyGraphTable> ValidateSourceNodeAndEdgeTable(CreatePropertyGraphInfo *pg_info, const std::string &node_label, const std::string &edge_label) {
+  auto source_node_pg_entry = pg_info->GetTable(node_label, true, true);
   if (!source_node_pg_entry->is_vertex_table) {
-    throw Exception(ExceptionType::INVALID, node_table + " is an edge table, expected a vertex table");
+    throw Exception(ExceptionType::INVALID, node_label + " is an edge table, expected a vertex table");
   }
-  auto edge_pg_entry = pg_info->GetTable(edge_table, true, false);
+  auto edge_pg_entry = pg_info->GetTable(edge_label, true, false);
   if (edge_pg_entry->is_vertex_table) {
-    throw Exception(ExceptionType::INVALID, edge_table + " is a vertex table, expected an edge table");
+    throw Exception(ExceptionType::INVALID, edge_label + " is a vertex table, expected an edge table");
   }
-  if (!edge_pg_entry->IsSourceTable(node_table)) {
-    throw Exception(ExceptionType::INVALID, "Vertex table " + node_table + " is not a source of edge table " + edge_table);
+  if (!edge_pg_entry->IsSourceTable(source_node_pg_entry->table_name)) {
+    throw Exception(ExceptionType::INVALID, "Vertex table " + node_label + " is not a source of edge table " + edge_label);
   }
   return edge_pg_entry;
 }
