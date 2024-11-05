@@ -19,13 +19,13 @@ class PathFindingGlobalState;
 
 class ParallelShortestPathEvent : public BasePipelineEvent {
 public:
-  explicit ParallelShortestPathEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p, const PhysicalPathFinding& op_p);
+  explicit ParallelShortestPathEvent(PathFindingGlobalSinkState &gstate_p, Pipeline &pipeline_p, const PhysicalPathFinding& op_p);
 
   void Schedule() override;
   void FinishEvent() override;
 
 private:
-  PathFindingGlobalState &gstate;
+  PathFindingGlobalSinkState &gstate;
   const PhysicalPathFinding &op;
 };
 

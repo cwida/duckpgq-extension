@@ -5,7 +5,7 @@ namespace duckpgq {
 namespace core {
 
 PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, ClientContext &context,
-                           PathFindingGlobalState &state, idx_t worker_id, const PhysicalOperator &op_p)
+                           PathFindingGlobalSinkState &state, idx_t worker_id, const PhysicalOperator &op_p)
       : ExecutorTask(context, std::move(event_p), op_p), context(context),
         state(state), worker_id(worker_id) {
   left = right = UINT64_MAX; // NOLINT
@@ -58,73 +58,73 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
   auto &visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
   auto &next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
   auto &barrier = bfs_state->barrier;
-  int64_t *v = (int64_t *)state.global_csr->v;
-  vector<int64_t> &e = state.global_csr->e;
-  auto &edge_ids = state.global_csr->edge_ids;
-  auto &parents_ve = bfs_state->parents_ve;
-  auto &change = bfs_state->change;
-
-  if (!SetTaskRange()) {
-    return; // no more tasks
-  }
-  // clear next before each iteration
-  for (auto i = left; i < right; i++) {
-    next[i] = 0;
-  }
-
-  barrier->Wait();
-
-  while (true) {
-    for (auto i = left; i < right; i++) {
-      if (visit[i].any()) {
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          auto edge_id = edge_ids[offset];
-          {
-            std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
-            next[n] |= visit[i];
-          }
-          for (auto l = 0; l < LANE_LIMIT; l++) {
-            if (parents_ve[n][l].GetV() == -1 && visit[i][l]) {
-              parents_ve[n][l] = {static_cast<int64_t>(i), edge_id};
-            }
-          }
-        }
-      }
-    }
-    if (!SetTaskRange()) {
-      break; // no more tasks
-    }
-  }
-  change = false;
-  barrier->Wait([&]() {
-            bfs_state->ResetTaskIndex();  // Reset task index safely
-        });
-
-  barrier->Wait();
-
-  if (!SetTaskRange()) {
-    return; // no more tasks
-  }
-
-  while (true) {
-    for (auto i = left; i < right; i++) {
-      if (next[i].any()) {
-        next[i] &= ~seen[i];
-        seen[i] |= next[i];
-        change |= next[i].any();
-      }
-    }
-
-    if (!SetTaskRange()) {
-      break; // no more tasks
-    }
-  }
-  barrier->Wait([&]() {
-            bfs_state->ResetTaskIndex();  // Reset task index safely
-        });
-
-  barrier->Wait();
+  // int64_t *v = (int64_t *)state.global_csr->v;
+  // vector<int64_t> &e = state.global_csr->e;
+  // auto &edge_ids = state.global_csr->edge_ids;
+  // auto &parents_ve = bfs_state->parents_ve;
+  // auto &change = bfs_state->change;
+  //
+  // if (!SetTaskRange()) {
+  //   return; // no more tasks
+  // }
+  // // clear next before each iteration
+  // for (auto i = left; i < right; i++) {
+  //   next[i] = 0;
+  // }
+  //
+  // barrier->Wait();
+  //
+  // while (true) {
+  //   for (auto i = left; i < right; i++) {
+  //     if (visit[i].any()) {
+  //       for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+  //         auto n = e[offset];
+  //         auto edge_id = edge_ids[offset];
+  //         {
+  //           std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
+  //           next[n] |= visit[i];
+  //         }
+  //         for (auto l = 0; l < LANE_LIMIT; l++) {
+  //           if (parents_ve[n][l].GetV() == -1 && visit[i][l]) {
+  //             parents_ve[n][l] = {static_cast<int64_t>(i), edge_id};
+  //           }
+  //         }
+  //       }
+  //     }
+  //   }
+  //   if (!SetTaskRange()) {
+  //     break; // no more tasks
+  //   }
+  // }
+  // change = false;
+  // barrier->Wait([&]() {
+  //           bfs_state->ResetTaskIndex();  // Reset task index safely
+  //       });
+  //
+  // barrier->Wait();
+  //
+  // if (!SetTaskRange()) {
+  //   return; // no more tasks
+  // }
+  //
+  // while (true) {
+  //   for (auto i = left; i < right; i++) {
+  //     if (next[i].any()) {
+  //       next[i] &= ~seen[i];
+  //       seen[i] |= next[i];
+  //       change |= next[i].any();
+  //     }
+  //   }
+  //
+  //   if (!SetTaskRange()) {
+  //     break; // no more tasks
+  //   }
+  // }
+  // barrier->Wait([&]() {
+  //           bfs_state->ResetTaskIndex();  // Reset task index safely
+  //       });
+  //
+  // barrier->Wait();
 }
 
   void PhysicalShortestPathTask::ReachDetect() {

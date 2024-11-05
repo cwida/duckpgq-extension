@@ -10,7 +10,7 @@ namespace core {
 class PhysicalIterativeTask : public ExecutorTask {
 public:
   PhysicalIterativeTask(shared_ptr<Event> event_p, ClientContext &context,
-                        PathFindingGlobalState &state, idx_t worker_id,
+                        PathFindingGlobalSinkState &state, idx_t worker_id,
                         const PhysicalOperator &op_p);
 
   TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
@@ -22,7 +22,7 @@ private:
 
 private:
   ClientContext &context;
-  PathFindingGlobalState &state;
+  PathFindingGlobalSinkState &state;
   // [left, right)
   idx_t left;
   idx_t right;

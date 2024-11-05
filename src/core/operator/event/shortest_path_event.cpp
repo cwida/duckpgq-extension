@@ -6,7 +6,7 @@
 namespace duckpgq {
 namespace core {
 
-ParallelShortestPathEvent::ParallelShortestPathEvent(PathFindingGlobalState &gstate_p,
+ParallelShortestPathEvent::ParallelShortestPathEvent(PathFindingGlobalSinkState &gstate_p,
                           Pipeline &pipeline_p, const PhysicalPathFinding &op_p)
     : BasePipelineEvent(pipeline_p), gstate(gstate_p), op(op_p) {
 
@@ -29,7 +29,7 @@ void ParallelShortestPathEvent::FinishEvent() {
   auto &bfs_state = gstate.global_bfs_state;
 
   // if remaining pairs, schedule the BFS for the next batch
-  if (bfs_state->started_searches < gstate.global_tasks->Count()) {
+  if (bfs_state->started_searches < gstate.global_pairs->Count()) {
     op.ScheduleBFSEvent(*pipeline, *this, gstate);
   }
 };

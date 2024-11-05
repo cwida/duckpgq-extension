@@ -9,7 +9,7 @@ namespace core {
 class PhysicalShortestPathTask : public ExecutorTask {
 public:
   PhysicalShortestPathTask(shared_ptr<Event> event_p, ClientContext &context,
-                           PathFindingGlobalState &state, idx_t worker_id, const PhysicalOperator &op_p);
+                           PathFindingGlobalSinkState &state, idx_t worker_id, const PhysicalOperator &op_p);
 
   TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
 
@@ -23,7 +23,7 @@ private:
   bool SetTaskRange();
 
   ClientContext &context;
-  PathFindingGlobalState &state;
+  PathFindingGlobalSinkState &state;
   // [left, right)
   idx_t left;
   idx_t right;

@@ -5,7 +5,7 @@
 namespace duckpgq {
 namespace core {
 
-ParallelIterativeEvent::ParallelIterativeEvent(PathFindingGlobalState &gstate_p, Pipeline &pipeline_p, const PhysicalPathFinding &op_p)
+ParallelIterativeEvent::ParallelIterativeEvent(PathFindingGlobalSinkState &gstate_p, Pipeline &pipeline_p, const PhysicalPathFinding &op_p)
       : BasePipelineEvent(pipeline_p), gstate(gstate_p), op(op_p) {}
 
 
@@ -27,7 +27,7 @@ void ParallelIterativeEvent::FinishEvent() {
   auto &bfs_state = gstate.global_bfs_state;
 
   // if remaining pairs, schedule the BFS for the next batch
-  if (bfs_state->started_searches < gstate.global_tasks->Count()) {
+  if (bfs_state->started_searches < gstate.global_pairs->Count()) {
     op.ScheduleBFSEvent(*pipeline, *this, gstate);
   }
 }

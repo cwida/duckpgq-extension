@@ -7,13 +7,15 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
-#include "duckpgq/common.hpp"
 #include "duckdb/common/types/row/row_layout.hpp"
 #include "duckdb/execution/operator/join/physical_comparison_join.hpp"
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
+#include "duckpgq/common.hpp"
 #include "duckpgq/core/utils/duckpgq_barrier.hpp"
 #include "duckpgq/core/utils/duckpgq_path_reconstruction.hpp"
+
+#include <duckpgq/core/utils/compressed_sparse_row.hpp>
 
 namespace duckpgq {
 
@@ -23,89 +25,6 @@ class PhysicalPathFinding : public PhysicalComparisonJoin {
 #define LANE_LIMIT 512
 
 public:
-  class GlobalCompressedSparseRow {
-  public:
-    explicit GlobalCompressedSparseRow(ClientContext &context){
-    };
-    ~GlobalCompressedSparseRow() {
-      if (v) {
-        delete[] v;
-      }
-    }
-
-    atomic<int64_t> *v;
-    vector<int64_t> e;
-    vector<int64_t> edge_ids;
-    vector<int64_t> w;
-    vector<double> w_double;
-    bool initialized_v = false;
-    bool initialized_e = false;
-    bool initialized_w = false;
-    size_t v_size;
-    bool is_ready = false;
-
-    std::mutex csr_lock;
-  public:
-    void InitializeVertex(int64_t v_size);
-    void InitializeEdge(int64_t e_size);
-    void Print() {
-      string result;
-      result += "CSR:\nV: ";
-      if (initialized_v) {
-        for (idx_t i = 0; i < v_size; ++i) {
-          result += std::to_string(v[i]) + ' ';
-        }
-      } else {
-        result += "not initialized";
-      }
-      result += "\nE: ";
-      if (initialized_e) {
-        for (auto i : e) {
-          result += std::to_string(i) + " ";
-        }
-      } else {
-        result += "not initialized";
-      }
-      result += "\nEdge IDs: ";
-      if (initialized_e) {
-        for (auto i : edge_ids) {
-          result += std::to_string(i) + " ";
-        }
-      } else {
-        result += "not initialized";
-      }
-      result += "\nW: ";
-      if (initialized_w) {
-        for (auto i : w) {
-          result += std::to_string(i) + " ";
-        }
-      } else {
-        result += "not initialized";
-      }
-      Printer::Print(result);
-    };
-  };
-
-  class LocalCompressedSparseRow {
-  public:
-    LocalCompressedSparseRow(ClientContext &context,
-                             const PhysicalPathFinding &op);
-
-
-
-    static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
-                    vector<std::bitset<LANE_LIMIT>> &seen,
-                    vector<std::bitset<LANE_LIMIT>> &visit,
-                    vector<std::bitset<LANE_LIMIT>> &next);
-
-    //! The hosting operator
-    const PhysicalPathFinding &op;
-    //! Local copy of the expression executor
-    ExpressionExecutor executor;
-    //! Final result for the path-finding pairs
-    DataChunk local_results;
-  };
-
   PhysicalPathFinding(LogicalExtensionOperator &op,
                       unique_ptr<PhysicalOperator> pairs,
                       unique_ptr<PhysicalOperator> csr);
@@ -157,37 +76,27 @@ public:
 
   void BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) override;
 
-  // //! Schedules tasks to calculate the next iteration of the path-finding
+  // Schedules tasks to calculate the next iteration of the path-finding
 	void ScheduleBFSEvent(Pipeline &pipeline, Event &event, GlobalSinkState &state) const;
 };
 
 //===--------------------------------------------------------------------===//
 // Sink
 //===--------------------------------------------------------------------===//
-class PathFindingLocalState : public LocalSinkState {
+class PathFindingLocalSinkState : public LocalSinkState {
 public:
-  using GlobalCompressedSparseRow =
-      PhysicalPathFinding::GlobalCompressedSparseRow;
-  PathFindingLocalState(ClientContext &context, const PhysicalPathFinding &op,
-                        idx_t child);
+  PathFindingLocalSinkState(ClientContext &context, const PhysicalPathFinding &op);
 
-  void Sink(DataChunk &input, GlobalCompressedSparseRow &global_csr,
-            idx_t child);
+  void Sink(DataChunk &input, idx_t child);
 
-  static void CreateCSRVertex(DataChunk &input,
-                              GlobalCompressedSparseRow &global_csr);
+  ColumnDataCollection local_pairs;
 
-  ColumnDataCollection local_tasks;
-  ColumnDataCollection local_inputs;
 };
 
 class GlobalBFSState {
-  using GlobalCompressedSparseRow =
-      PhysicalPathFinding::GlobalCompressedSparseRow;
 
 public:
-  GlobalBFSState(shared_ptr<GlobalCompressedSparseRow> csr_,
-                 shared_ptr<DataChunk> pairs_, int64_t v_size_,
+  GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_,
                  idx_t num_threads_, idx_t mode_, ClientContext &context_);
 
   void Clear();
@@ -196,10 +105,8 @@ public:
   shared_ptr<pair<idx_t, idx_t>> FetchTask();      // Function to fetch a task
   void ResetTaskIndex();
 
-
   pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) const;
-
-  shared_ptr<GlobalCompressedSparseRow> csr;
+  CSR *csr = nullptr;
   shared_ptr<DataChunk> pairs;
   int64_t iter;
   int64_t v_size;
@@ -236,27 +143,25 @@ public:
   idx_t mode;
 };
 
-class PathFindingGlobalState : public GlobalSinkState {
+class PathFindingGlobalSinkState : public GlobalSinkState {
 public:
-  using GlobalCompressedSparseRow =
-      PhysicalPathFinding::GlobalCompressedSparseRow;
-  PathFindingGlobalState(ClientContext &context,
+  PathFindingGlobalSinkState(ClientContext &context,
                          const PhysicalPathFinding &op);
 
-  void Sink(DataChunk &input, PathFindingLocalState &lstate);
+  void Sink(DataChunk &input, PathFindingLocalSinkState &lstate);
 
   // pairs is a 2-column table with src and dst
-  unique_ptr<ColumnDataCollection> global_tasks;
-  unique_ptr<ColumnDataCollection> global_inputs;
+  unique_ptr<ColumnDataCollection> global_pairs;
+  unique_ptr<ColumnDataCollection> global_csr_column_data;
 
   ColumnDataScanState scan_state;
   ColumnDataAppendState append_state;
-
-  shared_ptr<GlobalCompressedSparseRow> global_csr;
   // state for BFS
   unique_ptr<GlobalBFSState> global_bfs_state;
+  CSR* csr;
   size_t child;
   string mode;
+  ClientContext &context_;
 };
 
 } // namespace core
