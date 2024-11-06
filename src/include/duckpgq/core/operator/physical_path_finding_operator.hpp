@@ -96,7 +96,7 @@ public:
 class GlobalBFSState {
 
 public:
-  GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_,
+  GlobalBFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, int64_t vsize_,
                  idx_t num_threads_, idx_t mode_, ClientContext &context_);
 
   void Clear();
@@ -106,7 +106,7 @@ public:
   void ResetTaskIndex();
 
   pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) const;
-  CSR *csr = nullptr;
+  CSR *csr;
   shared_ptr<DataChunk> pairs;
   int64_t iter;
   int64_t v_size;

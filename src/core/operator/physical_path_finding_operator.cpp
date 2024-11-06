@@ -37,13 +37,13 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
   mode = path_finding_op.mode;
 }
 
-GlobalBFSState::GlobalBFSState(shared_ptr<DataChunk> pairs_, int64_t v_size_,
+GlobalBFSState::GlobalBFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, int64_t vsize_,
                idx_t num_threads_, idx_t mode_, ClientContext &context_)
-    : pairs(pairs_), iter(1), v_size(v_size_), change(false),
-      started_searches(0), total_len(0), context(context_), seen(v_size_),
-      visit1(v_size_), visit2(v_size_), num_threads(num_threads_),
-      element_locks(v_size_),
-      mode(mode_), parents_ve(v_size_) {
+    : pairs(pairs_), iter(1), csr(csr_), v_size(vsize_), change(false),
+      started_searches(0), total_len(0), context(context_), seen(vsize_),
+      visit1(vsize_), visit2(vsize_), num_threads(num_threads_),
+      element_locks(vsize_),
+      mode(mode_), parents_ve(vsize_) {
   result.Initialize(
       context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)},
       pairs_->size());
@@ -249,7 +249,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     idx_t num_threads = ts.NumberOfThreads();
     idx_t mode = this->mode == "iterativelength" ? 0 : 1;
     // TODO
-    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, gstate.csr->vsize,
+    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, gstate.csr, gstate.csr->vsize-2,
       num_threads, mode, context);
 
     Value task_size_value;

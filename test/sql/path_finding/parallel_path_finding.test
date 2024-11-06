@@ -59,7 +59,7 @@ SELECT cast(min(create_csr_edge(
     FROM Know k
     JOIN student a on a.id = k.src
     JOIN student c on c.id = k.dst)
-SELECT shortestpathoperator(src, dst, csr_id) FROM pair, csr_cte;
+SELECT src, dst, shortestpathoperator(src, dst, csr_id) FROM pair, csr_cte;
 ----
 0	1	NULL
 1	2	[1, 3, 0, 1, 2]
