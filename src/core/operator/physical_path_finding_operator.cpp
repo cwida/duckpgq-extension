@@ -204,10 +204,10 @@ PhysicalPathFinding::Combine(ExecutionContext &context,
                              OperatorSinkCombineInput &input) const {
   auto &gstate = input.global_state.Cast<PathFindingGlobalSinkState>();
   auto &lstate = input.local_state.Cast<PathFindingLocalSinkState>();
-  auto &client_profiler = QueryProfiler::Get(context.client);
-
+  if (gstate.child == 0) {
+    return SinkCombineResultType::FINISHED;
+  }
   gstate.global_pairs->Combine(lstate.local_pairs);
-  client_profiler.Flush(context.thread.profiler);
   return SinkCombineResultType::FINISHED;
 }
 
@@ -223,11 +223,18 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
   auto &global_tasks = gstate.global_pairs;
   auto duckpgq_state = GetDuckPGQState(context);
   // TODO
-  auto csr = duckpgq_state->GetCSR(0);
+  if (gstate.csr == nullptr) {
+    throw InternalException("CSR not initialized");
+  }
+  std::cout << gstate.csr->ToString() << std::endl;
+
   // Check if we have to do anything for CSR child
+  if (gstate.child == 0) {
+    ++gstate.child;
+    return SinkFinalizeType::READY;
+  }
 
-
-  if (gstate.child == 1 && global_tasks->Count() > 0) {
+  if (global_tasks->Count() > 0) {
     auto all_pairs = make_shared_ptr<DataChunk>();
     DataChunk pairs;
     global_tasks->InitializeScanChunk(*all_pairs);
@@ -242,7 +249,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     idx_t num_threads = ts.NumberOfThreads();
     idx_t mode = this->mode == "iterativelength" ? 0 : 1;
     // TODO
-    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, 0,
+    gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, gstate.csr->vsize,
       num_threads, mode, context);
 
     Value task_size_value;
