@@ -17,10 +17,9 @@ namespace core {
 
 struct ShortestPathOperatorData final : FunctionData {
   ClientContext &context;
-  string table_to_scan;
 
-  ShortestPathOperatorData(ClientContext &context, string table_to_scan)
-      : context(context), table_to_scan(std::move(table_to_scan)) {}
+  ShortestPathOperatorData(ClientContext &context)
+      : context(context) {}
   static unique_ptr<FunctionData>
   ShortestPathOperatorBind(ClientContext &context, ScalarFunction &bound_function,
                       vector<unique_ptr<Expression>> &arguments);

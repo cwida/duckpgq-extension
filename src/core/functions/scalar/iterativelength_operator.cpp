@@ -17,7 +17,7 @@ static void IterativeLengthOperatorFunction(DataChunk &args, ExpressionState &st
 //------------------------------------------------------------------------------
 void CoreScalarFunctions::RegisterIterativeLengthOperatorScalarFunction(DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(
-  db, ScalarFunction("iterativelengthoperator", {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
+  db, ScalarFunction("iterativelengthoperator", {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
                                               LogicalType::BIGINT, IterativeLengthOperatorFunction,
                                               ShortestPathOperatorData::ShortestPathOperatorBind));
 }

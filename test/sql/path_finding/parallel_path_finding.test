@@ -131,7 +131,7 @@ create or replace table snb_pairs as (
    select src, dst
    from (select a.rowid as src from person a),
         (select b.rowid as dst from person b)
-   using sample reservoir(10 rows) repeatable (300)
+   using sample reservoir(50 rows) repeatable (300)
 );
 
 query III
@@ -161,16 +161,57 @@ SELECT cast(min(create_csr_edge(
     JOIN person c on c.id = k.person2id)
 SELECT src, dst, shortestpathoperator(src, dst, csr_id) FROM snb_pairs, csr_cte;
 ----
-11	22	[11, 35, 22]
-36	1	NULL
-14	7	NULL
-0	47	NULL
-5	44	[5, 22, 26, 66, 44]
-34	43	NULL
-5	33	[5, 25, 33]
-27	45	NULL
-26	29	NULL
-36	33	NULL
+41	7	NULL
+0	1	NULL
+14	2	NULL
+11	15	NULL
+6	5	NULL
+24	39	NULL
+9	10	NULL
+2	15	NULL
+27	39	NULL
+12	15	NULL
+9	29	NULL
+4	24	NULL
+35	31	NULL
+30	10	NULL
+34	15	NULL
+49	8	NULL
+32	12	NULL
+40	17	NULL
+31	11	NULL
+42	30	NULL
+25	44	[25, 60, 26, 66, 44]
+39	31	NULL
+0	22	NULL
+32	27	NULL
+15	21	NULL
+15	14	NULL
+31	42	NULL
+3	16	NULL
+40	21	NULL
+10	43	[10, 32, 18, 56, 43]
+8	41	NULL
+20	15	NULL
+2	37	NULL
+47	25	NULL
+4	48	NULL
+46	21	NULL
+8	13	NULL
+43	31	NULL
+37	25	NULL
+0	39	[0, 0, 13, 44, 33, 79, 39]
+5	26	[5, 22, 26]
+5	43	[5, 25, 33, 80, 43]
+44	35	NULL
+3	27	[3, 11, 9, 31, 27]
+30	13	NULL
+9	15	NULL
+0	46	[0, 0, 13, 46, 46]
+2	30	[2, 7, 5, 17, 12, 40, 30]
+41	48	NULL
+45	9	NULL
+
 
 
 query III
@@ -198,15 +239,107 @@ SELECT cast(min(create_csr_edge(
     FROM person_knows_person k
     JOIN person a on a.id = k.person1id
     JOIN person c on c.id = k.person2id)
-SELECT src, dst, shortestpathoperator(src, dst, csr_id) FROM snb_pairs, csr_cte where src > 10;
+SELECT src, dst, shortestpathoperator(src, dst, csr_id) FROM snb_pairs, csr_cte where src < 10;
 ----
-11	22	[11, 35, 22]
-36	1	NULL
-14	7	NULL
-34	43	NULL
-27	45	NULL
-26	29	NULL
-36	33	NULL
+0	1	NULL
+6	5	NULL
+9	10	NULL
+2	15	NULL
+9	29	NULL
+4	24	NULL
+0	22	NULL
+3	16	NULL
+8	41	NULL
+2	37	NULL
+4	48	NULL
+8	13	NULL
+0	39	[0, 0, 13, 44, 33, 79, 39]
+5	26	[5, 22, 26]
+5	43	[5, 25, 33, 80, 43]
+3	27	[3, 11, 9, 31, 27]
+9	15	NULL
+0	46	[0, 0, 13, 46, 46]
+2	30	[2, 7, 5, 17, 12, 40, 30]
+
+
+query III
+with csr_cte as (
+SELECT cast(min(create_csr_edge(
+        0,
+        (SELECT count(a.id) FROM person a),
+        CAST (
+            (SELECT sum(create_csr_vertex(
+                0,
+                (SELECT count(a.id) FROM person a),
+                sub.dense_id,
+                sub.cnt))
+            FROM (
+                SELECT a.rowid as dense_id, count(k.person1id) as cnt
+                FROM person a
+                LEFT JOIN person_knows_person k ON k.person1id = a.id
+                GROUP BY a.rowid) sub
+            )
+        AS BIGINT),
+        (select count() FROM person_knows_person k JOIN person a on a.id = k.person1id JOIN person c on c.id = k.person2id),
+        a.rowid,
+        c.rowid,
+        k.rowid)) as bigint) as csr_id
+    FROM person_knows_person k
+    JOIN person a on a.id = k.person1id
+    JOIN person c on c.id = k.person2id)
+SELECT src, dst, iterativelengthoperator(src, dst, csr_id) FROM snb_pairs, csr_cte;
+----
+41	7	NULL
+0	1	NULL
+14	2	NULL
+11	15	NULL
+6	5	NULL
+24	39	NULL
+9	10	NULL
+2	15	NULL
+27	39	NULL
+12	15	NULL
+9	29	NULL
+4	24	NULL
+35	31	NULL
+30	10	NULL
+34	15	NULL
+49	8	NULL
+32	12	NULL
+40	17	NULL
+31	11	NULL
+42	30	NULL
+25	44	2
+39	31	NULL
+0	22	NULL
+32	27	NULL
+15	21	NULL
+15	14	NULL
+31	42	NULL
+3	16	NULL
+40	21	NULL
+10	43	2
+8	41	NULL
+20	15	NULL
+2	37	NULL
+47	25	NULL
+4	48	NULL
+46	21	NULL
+8	13	NULL
+43	31	NULL
+37	25	NULL
+0	39	3
+5	26	1
+5	43	2
+44	35	NULL
+3	27	2
+30	13	NULL
+9	15	NULL
+0	46	2
+2	30	3
+41	48	NULL
+45	9	NULL
+
 
 
 # 0 pair test
