@@ -611,7 +611,6 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
           previous_where_clause, next_where_clause,
           previous_vertex_element->variable_binding, edge_element->variable_binding,
           next_vertex_element->variable_binding);
-          std::cout << "Inserted shortest path operator cte" << std::endl;
         } else {
           if (previous_vertex_subpath) {
             path_finding_conditions.push_back(std::move(previous_vertex_subpath->where_clause));

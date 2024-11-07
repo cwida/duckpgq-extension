@@ -119,7 +119,6 @@ static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state,
         int64_t edge_count = 0;
         csr_entry->second->v[src + 2] = cnt;
         edge_count = edge_count + cnt;
-        std::cout << src << " " << cnt << " " << edge_count << std::endl;
         return edge_count;
       });
 }
