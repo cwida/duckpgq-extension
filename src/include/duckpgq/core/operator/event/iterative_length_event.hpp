@@ -1,6 +1,5 @@
 #pragma once
 
-#include "duckpgq/common.hpp"
 
 #include <duckdb/parallel/base_pipeline_event.hpp>
 #include <duckpgq/core/operator/physical_path_finding_operator.hpp>
