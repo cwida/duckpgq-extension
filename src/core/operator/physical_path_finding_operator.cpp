@@ -197,12 +197,6 @@ SinkResultType PhysicalPathFinding::Sink(ExecutionContext &context,
                                          OperatorSinkInput &input) const {
   auto &gstate = input.global_state.Cast<PathFindingGlobalSinkState>();
   auto &lstate = input.local_state.Cast<PathFindingLocalSinkState>();
-  if (gstate.child == 0) {
-    std::cout << "Sink phase CSR" << std::endl;
-  } else {
-    std::cout << "Sink phase PF pairs" << std::endl;
-  }
-  chunk.Print();
   gstate.Sink(chunk, lstate);
   return SinkResultType::NEED_MORE_INPUT;
 }
@@ -233,7 +227,6 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
   if (gstate.csr == nullptr) {
     throw InternalException("CSR not initialized");
   }
-  std::cout << gstate.csr->ToString() << std::endl;
 
   // Check if we have to do anything for CSR child
   if (gstate.child == 0) {
@@ -398,20 +391,9 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
     return SourceResultType::FINISHED;
   }
   pf_bfs_state->result.SetCardinality(*pf_bfs_state->pairs);
-  // CHECK IF THIS IS REACHED WHEN BACK
   result.Move(*pf_bfs_state->pairs);
   result.Fuse(pf_bfs_state->result);
 
-  // // auto result_path = make_uniq<DataChunk>();
-  // //! Split off the path from the path length, and then fuse into the result
-  // // pf_bfs_state->result.Split(*result_path, 1);
-  // if (pf_sink.mode == "iterativelength") {
-  // } else if (pf_sink.mode == "shortestpath") {
-  //   result.Fuse(*result_path);
-  // } else {
-  //   throw NotImplementedException("Unrecognized mode for Path Finding");
-  // }
-  result.Print();
   return result.size() == 0 ? SourceResultType::FINISHED
                             : SourceResultType::HAVE_MORE_OUTPUT;
 }
