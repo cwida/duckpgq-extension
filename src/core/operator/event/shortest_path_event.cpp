@@ -34,7 +34,5 @@ void ParallelShortestPathEvent::FinishEvent() {
   }
 };
 
-
-
 } // namespace core
 } // namespace duckpgq

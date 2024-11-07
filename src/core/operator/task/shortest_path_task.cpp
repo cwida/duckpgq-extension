@@ -149,7 +149,7 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
 
   void PhysicalShortestPathTask::PathConstruction() {
     auto &bfs_state = state.global_bfs_state;
-    auto &result = bfs_state->result.data[1];
+    auto &result = bfs_state->result.data[0];
     auto result_data = FlatVector::GetData<list_entry_t>(result);
     auto &result_validity = FlatVector::Validity(result);
     //! Reconstruct the paths

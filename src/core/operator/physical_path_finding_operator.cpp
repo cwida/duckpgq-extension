@@ -44,9 +44,17 @@ GlobalBFSState::GlobalBFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, int64_t 
       visit1(vsize_), visit2(vsize_), num_threads(num_threads_),
       element_locks(vsize_),
       mode(mode_), parents_ve(vsize_) {
-  result.Initialize(
-      context, {LogicalType::BIGINT, LogicalType::LIST(LogicalType::BIGINT)},
+  if (mode == 0) { // length
+    result.Initialize(
+        context, {LogicalType::BIGINT},
+        pairs_->size());
+  } else if (mode == 1) { // path
+    result.Initialize(
+      context, {LogicalType::LIST(LogicalType::BIGINT)},
       pairs_->size());
+  } else {
+    throw NotImplementedException("Mode not supported");
+  }
   auto &src_data = pairs->data[0];
   auto &dst_data = pairs->data[1];
   src_data.ToUnifiedFormat(pairs->size(), vdata_src);
@@ -164,7 +172,7 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context,
 void PathFindingGlobalSinkState::Sink(DataChunk &input, PathFindingLocalSinkState &lstate) {
   if (child == 0) {
     // CSR phase
-    int32_t csr_id = input.GetValue(0, 0).GetValue<int64_t>();
+    csr_id = input.GetValue(0, 0).GetValue<int64_t>();
     auto duckpgq_state = GetDuckPGQState(context_);
     csr = duckpgq_state->GetCSR(csr_id);
   } else {
@@ -222,7 +230,6 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
   auto &gstate = input.global_state.Cast<PathFindingGlobalSinkState>();
   auto &global_tasks = gstate.global_pairs;
   auto duckpgq_state = GetDuckPGQState(context);
-  // TODO
   if (gstate.csr == nullptr) {
     throw InternalException("CSR not initialized");
   }
@@ -248,7 +255,6 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     auto &ts = TaskScheduler::GetScheduler(context);
     idx_t num_threads = ts.NumberOfThreads();
     idx_t mode = this->mode == "iterativelength" ? 0 : 1;
-    // TODO
     gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, gstate.csr, gstate.csr->vsize-2,
       num_threads, mode, context);
 
@@ -265,7 +271,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 
   // Move to the next input child
   ++gstate.child;
-
+  duckpgq_state->csr_to_delete.insert(gstate.csr_id);
   return SinkFinalizeType::READY;
 }
 
@@ -279,7 +285,6 @@ void PhysicalPathFinding::ScheduleBFSEvent(Pipeline &pipeline, Event &event,
 
   // remaining pairs
   if (bfs_state->started_searches < gstate.global_pairs->Count()) {
-    auto result_data = FlatVector::GetData<int64_t>(bfs_state->result.data[0]);
     auto &result_validity = FlatVector::Validity(bfs_state->result.data[0]);
     std::bitset<LANE_LIMIT> seen_mask;
     seen_mask.set();
@@ -291,7 +296,6 @@ void PhysicalPathFinding::ScheduleBFSEvent(Pipeline &pipeline, Event &event,
         int64_t src_pos = bfs_state->vdata_src.sel->get_index(search_num);
         if (!bfs_state->vdata_src.validity.RowIsValid(src_pos)) {
           result_validity.SetInvalid(search_num);
-          result_data[search_num] = (uint64_t)-1; /* no path */
         } else {
           bfs_state->visit1[bfs_state->src[src_pos]][lane] = true;
           // bfs_state->seen[bfs_state->src[src_pos]][lane] = true;
@@ -390,23 +394,24 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
                              OperatorSourceInput &input) const {
   auto &pf_sink = sink_state->Cast<PathFindingGlobalSinkState>();
   auto &pf_bfs_state = pf_sink.global_bfs_state;
-  if (pf_bfs_state->pairs->size() == 0) {
+  if (pf_sink.global_pairs->Count() == 0) {
     return SourceResultType::FINISHED;
   }
   pf_bfs_state->result.SetCardinality(*pf_bfs_state->pairs);
-
+  // CHECK IF THIS IS REACHED WHEN BACK
   result.Move(*pf_bfs_state->pairs);
-  auto result_path = make_uniq<DataChunk>();
-  //! Split off the path from the path length, and then fuse into the result
-  pf_bfs_state->result.Split(*result_path, 1);
-  if (pf_sink.mode == "iterativelength") {
-    result.Fuse(pf_bfs_state->result);
-  } else if (pf_sink.mode == "shortestpath") {
-    result.Fuse(*result_path);
-  } else {
-    throw NotImplementedException("Unrecognized mode for Path Finding");
-  }
+  result.Fuse(pf_bfs_state->result);
 
+  // // auto result_path = make_uniq<DataChunk>();
+  // //! Split off the path from the path length, and then fuse into the result
+  // // pf_bfs_state->result.Split(*result_path, 1);
+  // if (pf_sink.mode == "iterativelength") {
+  // } else if (pf_sink.mode == "shortestpath") {
+  //   result.Fuse(*result_path);
+  // } else {
+  //   throw NotImplementedException("Unrecognized mode for Path Finding");
+  // }
+  result.Print();
   return result.size() == 0 ? SourceResultType::FINISHED
                             : SourceResultType::HAVE_MORE_OUTPUT;
 }

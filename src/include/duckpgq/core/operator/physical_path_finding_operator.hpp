@@ -119,7 +119,7 @@ public:
   UnifiedVectorFormat vdata_dst;
   int64_t lane_to_num[LANE_LIMIT];
   idx_t active = 0;
-  DataChunk result; // 0 for length, 1 for path
+  DataChunk result;
   ClientContext &context;
   vector<std::bitset<LANE_LIMIT>> seen;
   vector<std::bitset<LANE_LIMIT>> visit1;
@@ -159,6 +159,7 @@ public:
   // state for BFS
   unique_ptr<GlobalBFSState> global_bfs_state;
   CSR* csr;
+  int32_t csr_id;
   size_t child;
   string mode;
   ClientContext &context_;
