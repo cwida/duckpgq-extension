@@ -4,6 +4,43 @@
 
 require duckpgq
 
+# Test with a different number of vertices and edges
+statement ok
+CREATE TABLE VariedStudent(id BIGINT, name VARCHAR);INSERT INTO VariedStudent VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'Dave'), (4, 'Eve'), (5, 'Frank');
+
+statement ok
+CREATE TABLE VariedKnow(src BIGINT, dst BIGINT);INSERT INTO VariedKnow VALUES (0,1), (0,2), (0,3), (1,2), (2,3), (3,4), (4,5);
+
+statement ok
+-CREATE PROPERTY GRAPH varied_pg_label_a
+VERTEX TABLES (
+    VariedStudent label a
+    )
+EDGE TABLES (
+    VariedKnow    SOURCE KEY ( src ) REFERENCES VariedStudent ( id )
+            DESTINATION KEY ( dst ) REFERENCES VariedStudent ( id )
+    );
+
+
+query II
+select id, local_clustering_coefficient from local_clustering_coefficient(varied_pg_label_a, a, variedknow);
+----
+0	0.6666667
+1	1.0
+2	0.6666667
+3	0.33333334
+4	0.0
+5	0.0
+
+statement ok
+select * from pagerank(varied_pg_label_a, a, variedknow);
+
+statement error
+select id, local_clustering_coefficient from local_clustering_coefficient(varied_pg_label_a, variedStudent, variedknow);
+----
+Invalid Error: Label 'variedstudent' not found. Did you mean the vertex label 'a'?
+
+
 statement ok
 import database 'duckdb/data/SNB0.003';
 
