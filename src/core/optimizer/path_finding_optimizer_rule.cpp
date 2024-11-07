@@ -35,7 +35,6 @@ void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_
 
     for (size_t offset = 0; offset < op.expressions.size(); ++offset) {
         const auto &expr = op.expressions[offset];
-        std::cout << expr->ToString() << std::endl;
         if (expr->expression_class != ExpressionClass::BOUND_FUNCTION) {
             // Directly transfer the expression to the new vector if no replacement is needed
             new_expressions.push_back(std::move(op.expressions[offset]));
@@ -43,9 +42,7 @@ void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_
         }
 
         auto &bound_function_expression = expr->Cast<BoundFunctionExpression>();
-        std::cout << bound_function_expression.ToString();
         const auto &function_name = bound_function_expression.function.name;
-        std::cout << "function name: " << function_name << std::endl;
         if (function_name == "iterativelengthoperator" || function_name == "shortestpathoperator") {
             // Create the replacement expression
             auto replacement_expr = CreateReplacementExpression(expr->alias, function_name, op.table_index, offset);
@@ -101,7 +98,6 @@ unique_ptr<LogicalPathFindingOperator> DuckpgqOptimizerExtension::FindCSRAndPair
     }
     path_finding_children.push_back(std::move(second_child));
     path_finding_children.push_back(csr_projection->Copy(context));
-    std::cout << "Found both csr and pairs" << std::endl;
     if (path_finding_children.size() != 2) {
       throw InternalException("Path-finding operator should have 2 children");
     }
@@ -145,8 +141,6 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
 
     auto &left_child = get_join.children[0];
     auto &right_child = get_join.children[1];
-    std::cout << "left child type: " << LogicalOperatorToString(left_child->type) << std::endl;
-    std::cout << "right child type: " << LogicalOperatorToString(right_child->type) << std::endl;
     auto path_finding_operator = FindCSRAndPairs(left_child, right_child, op_proj, context);
     if (path_finding_operator == nullptr) {
       path_finding_operator = FindCSRAndPairs(right_child, left_child, op_proj, context);
@@ -154,7 +148,6 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(
     if (path_finding_operator != nullptr) {
       op.children.clear();
       op.children.push_back(std::move(path_finding_operator));
-      std::cout << "Inserted path-finding operator" << std::endl;
       return true;
     }
 
