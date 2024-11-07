@@ -16,7 +16,9 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
     auto &barrier = bfs_state->barrier;
 
     do {
+      // std::cout << worker_id << ": Starting iterative path"  << std::endl;
       IterativePath();
+      // std::cout << worker_id << ": Finished iterative path" << std::endl;
       barrier->Wait([&]() {
             bfs_state->ResetTaskIndex();  // Reset task index safely
         });
@@ -24,7 +26,9 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
       barrier->Wait();
 
       if (worker_id == 0) {
+        // std::cout << worker_id << ": Starting reach detected" << std::endl;
         ReachDetect();
+        // std::cout << worker_id << ": Finished reach detected" << std::endl;
       }
 
       barrier->Wait([&]() {
@@ -33,12 +37,14 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
 
       barrier->Wait();
     } while (bfs_state->change);
-
     if (worker_id == 0) {
+      // std::cout << worker_id << ": Starting path construction" << std::endl;
       PathConstruction();
+      // std::cout << worker_id << ": Finished path construction" << std::endl;
     }
 
     event->FinishTask();
+    // std::cout << worker_id << ": Finished event" << std::endl;
     return TaskExecutionResult::TASK_FINISHED;
   }
 
@@ -53,79 +59,80 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
 }
 
   void PhysicalShortestPathTask::IterativePath() {
-  auto &bfs_state = state.global_bfs_state;
-  auto &seen = bfs_state->seen;
-  auto &visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
-  auto &next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
-  auto &barrier = bfs_state->barrier;
-  int64_t *v = (int64_t *)state.csr->v;
-  vector<int64_t> &e = state.csr->e;
-  auto &edge_ids = state.csr->edge_ids;
-  auto &parents_ve = bfs_state->parents_ve;
-  auto &change = bfs_state->change;
+    auto &bfs_state = state.global_bfs_state;
+    auto &seen = bfs_state->seen;
+    auto &visit = bfs_state->iter & 1 ? bfs_state->visit1 : bfs_state->visit2;
+    auto &next = bfs_state->iter & 1 ? bfs_state->visit2 : bfs_state->visit1;
+    auto &barrier = bfs_state->barrier;
+    int64_t *v = (int64_t *)state.csr->v;
+    vector<int64_t> &e = state.csr->e;
+    auto &edge_ids = state.csr->edge_ids;
+    auto &parents_ve = bfs_state->parents_ve;
+    auto &change = bfs_state->change;
 
-  if (!SetTaskRange()) {
-    return; // no more tasks
-  }
-  // clear next before each iteration
-  for (auto i = left; i < right; i++) {
-    next[i] = 0;
-  }
 
-  barrier->Wait();
 
-  while (true) {
+    if (!SetTaskRange()) {
+      return; // no more tasks
+    }
+    // clear next before each iteration
     for (auto i = left; i < right; i++) {
-      if (visit[i].any()) {
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          auto edge_id = edge_ids[offset];
-          {
-            std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
-            next[n] |= visit[i];
-          }
-          for (auto l = 0; l < LANE_LIMIT; l++) {
-            if (parents_ve[n][l].GetV() == -1 && visit[i][l]) {
-              parents_ve[n][l] = {static_cast<int64_t>(i), edge_id};
+      next[i] = 0;
+    }
+    // std::cout << worker_id << " Finished clearing next" << std::endl;
+
+    barrier->Wait();
+
+    while (true) {
+      for (auto i = left; i < right; i++) {
+        if (visit[i].any()) {
+          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+            auto n = e[offset];
+            auto edge_id = edge_ids[offset];
+            {
+              std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
+              next[n] |= visit[i];
+            }
+            for (auto l = 0; l < LANE_LIMIT; l++) {
+              if (parents_ve[n][l].GetV() == -1 && visit[i][l]) {
+                parents_ve[n][l] = {static_cast<int64_t>(i), edge_id};
+              }
             }
           }
         }
       }
-    }
-    if (!SetTaskRange()) {
-      break; // no more tasks
-    }
-  }
-  change = false;
-  barrier->Wait([&]() {
-            bfs_state->ResetTaskIndex();  // Reset task index safely
-        });
-
-  barrier->Wait();
-
-  if (!SetTaskRange()) {
-    return; // no more tasks
-  }
-
-  while (true) {
-    for (auto i = left; i < right; i++) {
-      if (next[i].any()) {
-        next[i] &= ~seen[i];
-        seen[i] |= next[i];
-        change |= next[i].any();
+      if (!SetTaskRange()) {
+        // std::cout << worker_id << ": No more tasks found to explore" << std::endl;
+        break; // no more tasks
       }
     }
+    barrier->Wait([&]() {
+              bfs_state->ResetTaskIndex();  // Reset task index safely
+          });
 
-    if (!SetTaskRange()) {
-      break; // no more tasks
-    }
+    barrier->Wait();
+    //
+    // if (!SetTaskRange()) {
+    //   return; // no more tasks
+    // }
+
+    change = false;
+    do {
+      for (auto i = left; i < right; i++) {
+        if (next[i].any()) {
+          next[i] &= ~seen[i];
+          seen[i] |= next[i];
+          change |= next[i].any();
+        }
+      }
+    } while (SetTaskRange());
+
+    barrier->Wait([&]() {
+                bfs_state->ResetTaskIndex();  // Reset task index safely
+          });
+
+    barrier->Wait();
   }
-  barrier->Wait([&]() {
-            bfs_state->ResetTaskIndex();  // Reset task index safely
-        });
-
-  barrier->Wait();
-}
 
   void PhysicalShortestPathTask::ReachDetect() {
     auto &bfs_state = state.global_bfs_state;

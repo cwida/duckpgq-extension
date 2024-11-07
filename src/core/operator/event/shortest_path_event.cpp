@@ -29,9 +29,12 @@ void ParallelShortestPathEvent::FinishEvent() {
   auto &bfs_state = gstate.global_bfs_state;
 
   // if remaining pairs, schedule the BFS for the next batch
+  // std::cout << "Started searches: " << bfs_state->started_searches << std::endl;
+  // std::cout << "Total pairs: " << gstate.global_pairs->Count() << std::endl;
   if (bfs_state->started_searches < gstate.global_pairs->Count()) {
     op.ScheduleBFSEvent(*pipeline, *this, gstate);
   }
+  // std::cout << "Finished event" << std::endl;
 };
 
 } // namespace core
