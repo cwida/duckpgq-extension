@@ -173,9 +173,7 @@ void DuckpgqOptimizerExtension::DuckpgqOptimizeFunction(
   if (!GetPathFindingOption(input.context)) {
     return;
   }
-  if (InsertPathFindingOperator(*plan, input.context)) {
-    plan->Print();
-  }
+  InsertPathFindingOperator(*plan, input.context);
 }
 
 //------------------------------------------------------------------------------
