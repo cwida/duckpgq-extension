@@ -190,8 +190,7 @@ void PGQMatchFunction::EdgeTypeAny(
   // START SELECT src, dst, * from edge_table
   auto src_dst_select_node = make_uniq<SelectNode>();
 
-  auto edge_left_ref = make_uniq<BaseTableRef>();
-  edge_left_ref->table_name = edge_table->table_name;
+  auto edge_left_ref = edge_table->CreateBaseTableRef();
   src_dst_select_node->from_table = std::move(edge_left_ref);
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
   src_dst_children.push_back(make_uniq<ColumnRefExpression>(
@@ -206,8 +205,7 @@ void PGQMatchFunction::EdgeTypeAny(
   // START SELECT dst, src, * from edge_table
   auto dst_src_select_node = make_uniq<SelectNode>();
 
-  auto edge_right_ref = make_uniq<BaseTableRef>();
-  edge_right_ref->table_name = edge_table->table_name;
+  auto edge_right_ref = edge_table->CreateBaseTableRef();
   auto dst_src_children = vector<unique_ptr<ParsedExpression>>();
   dst_src_select_node->from_table = std::move(edge_right_ref);
 

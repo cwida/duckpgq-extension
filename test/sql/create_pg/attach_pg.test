@@ -5,11 +5,14 @@
 require duckpgq
 
 statement ok
-ATTACH 'https://raw.githubusercontent.com/Dtenwolde/bluesky-follows-graph/main/bluesky.duckdb';
+attach '/Users/dljtw/git/duckpgq/data/bluesky.duckdb';
 
 statement ok
 select * from bluesky.follows;
 
 statement ok
 -CREATE OR REPLACE PROPERTY GRAPH bluesky
-            VERTEX TABLES (bluesky.account);
+            VERTEX TABLES (bluesky.account LABEL account);
+
+statement ok
+-FROM GRAPH_TABLE (bluesky MATCH (a:account));

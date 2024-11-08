@@ -169,10 +169,10 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                                                 " already exists");
   }
 
-  auto &catalog = Catalog::GetCatalog(context, info->catalog);
   case_insensitive_set_t v_table_names;
   for (auto &vertex_table : info->vertex_tables) {
       try {
+        auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
         auto table = catalog.GetEntry<TableCatalogEntry>(
           context, DEFAULT_SCHEMA, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
 
@@ -184,6 +184,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
         CheckPropertyGraphTableColumns(vertex_table, *table);
         CheckPropertyGraphTableLabels(vertex_table, *table);
       } catch (CatalogException &e) {
+        auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
         auto table = catalog.GetEntry<ViewCatalogEntry>(context, info->schema, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
         if (table) {
           throw Exception(ExceptionType::INVALID, "Found a view with name " + vertex_table->table_name + ". Creating property graph tables over views is currently not supported.");
@@ -200,6 +201,8 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
 
   for (auto &edge_table : info->edge_tables) {
     try {
+      auto &catalog = Catalog::GetCatalog(context, edge_table->catalog_name);
+
       auto table = catalog.GetEntry<TableCatalogEntry>(context, edge_table->schema_name,
                                                       edge_table->table_name, OnEntryNotFound::RETURN_NULL);
       if (!table) {
@@ -237,6 +240,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
       // Validate primary keys in the destination table
       ValidatePrimaryKeyInTable(catalog, context, info->schema, edge_table->destination_reference, edge_table->destination_pk);
     } catch (CatalogException &e) {
+      auto &catalog = Catalog::GetCatalog(context, edge_table->catalog_name);
       auto table = catalog.GetEntry<ViewCatalogEntry>(context, info->schema, edge_table->table_name, OnEntryNotFound::RETURN_NULL);
       if (table) {
         throw Exception(ExceptionType::INVALID, "Found a view with name " + edge_table->table_name + ". Creating property graph tables over views is currently not supported.");
