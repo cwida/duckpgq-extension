@@ -12,8 +12,9 @@ Note that `--recurse-submodules` will ensure DuckDB is pulled which is required 
 ### Managing dependencies
 DuckDB extensions uses VCPKG for dependency management. Enabling VCPKG is very simple: follow the [installation instructions](https://vcpkg.io/en/getting-started) or just run the following:
 ```shell
+cd <your-working-dir-not-the-plugin-repo>
 git clone https://github.com/Microsoft/vcpkg.git
-./vcpkg/bootstrap-vcpkg.sh
+sh ./vcpkg/scripts/bootstrap-vcpkg.sh
 export VCPKG_TOOLCHAIN_PATH=`pwd`/vcpkg/scripts/buildsystems/vcpkg.cmake
 ```
 Note: VCPKG is only required for extensions that want to rely on it for dependency management. If you want to develop an extension without dependencies, or want to do your own dependency management, just skip this step. Note that the example extension uses VCPKG to build with a dependency for instructive purposes, so when skipping this step the build may not work without removing the dependency.
