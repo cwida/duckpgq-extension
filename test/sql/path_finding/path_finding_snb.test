@@ -13,14 +13,24 @@ import database '/Users/dljtw/git/duckpgq/duckdb/data/SNB0.003';
 
 # many pair test
 statement ok
-create or replace table snb_zero_pairs as (
+create or replace table snb_many_pairs as (
    select src, dst
    from (select a.rowid as src from person a),
         (select b.rowid as dst from person b)
-   using sample reservoir(3000 rows) repeatable (300)
+   using sample reservoir(2500 rows) repeatable (300)
+   UNION ALL
+   select src, dst
+      from (select a.rowid as src from person a),
+           (select b.rowid as dst from person b)
+      using sample reservoir(2500 rows) repeatable (300)
+   UNION ALL
+   select src, dst
+   from (select a.rowid as src from person a),
+        (select b.rowid as dst from person b)
+   using sample reservoir(2500 rows) repeatable (300)
 );
 
-query III
+query I
 with csr_cte as (
 SELECT cast(min(create_csr_edge(
         0,
@@ -45,5 +55,6 @@ SELECT cast(min(create_csr_edge(
     FROM person_knows_person k
     JOIN person a on a.id = k.person1id
     JOIN person c on c.id = k.person2id)
-SELECT src, dst, shortestpathoperator(src, dst, csr_id) FROM snb_zero_pairs, csr_cte;
+Select count(*) from (SELECT src, dst, shortestpathoperator(src, dst, csr_id) FROM snb_many_pairs, csr_cte);
 ----
+7500

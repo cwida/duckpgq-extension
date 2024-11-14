@@ -61,6 +61,8 @@ GlobalBFSState::GlobalBFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, int64_t 
   dst_data.ToUnifiedFormat(pairs->size(), vdata_dst);
   src = FlatVector::GetData<int64_t>(src_data);
   dst = FlatVector::GetData<int64_t>(dst_data);
+  result.SetCapacity(pairs->size());
+  std::cout << pairs->size() << std::endl;
 
   CreateTasks();
   size_t number_of_threads_to_schedule = std::min(num_threads, (idx_t)global_task_queue.size());
@@ -391,15 +393,10 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   if (pf_sink.global_pairs->Count() == 0) {
     return SourceResultType::FINISHED;
   }
-  if (pf_bfs_state->pairs->size() > STANDARD_VECTOR_SIZE) {
-
-  }
-
   pf_bfs_state->result.SetCardinality(*pf_bfs_state->pairs);
-
+  result.SetCapacity(pf_bfs_state->pairs->size());
   result.Move(*pf_bfs_state->pairs);
   result.Fuse(pf_bfs_state->result);
-
   return result.size() == 0 ? SourceResultType::FINISHED
                             : SourceResultType::HAVE_MORE_OUTPUT;
 }
