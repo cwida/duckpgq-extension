@@ -27,3 +27,6 @@ query IIIII
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
 ----
+1	1	[0]	[]	0
+2	2	[1]	[]	0
+3	3	[2]	[]	0
