@@ -1,0 +1,28 @@
+
+require duckpgq
+
+statement ok
+CREATE TABLE nodes (id INTEGER);
+
+statement ok
+CREATE TABLE edges (src INTEGER, dst INTEGER);
+
+statement ok
+INSERT INTO nodes VALUES (1), (2), (3);
+
+statement ok
+-CREATE PROPERTY GRAPH testgraph
+  	VERTEX TABLES (
+	    nodes LABEL N
+	)
+	EDGE TABLES (
+  	    edges SOURCE KEY (src) REFERENCES nodes (id)
+        	  DESTINATION KEY (dst) REFERENCES nodes (id)
+  		  LABEL E
+);
+
+statement ok
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)-[e:E]-> * (n2:N)
+      COLUMNS (edges(p) AS path_edges)
+);
