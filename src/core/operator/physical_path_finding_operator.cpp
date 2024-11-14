@@ -62,7 +62,6 @@ GlobalBFSState::GlobalBFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, int64_t 
   src = FlatVector::GetData<int64_t>(src_data);
   dst = FlatVector::GetData<int64_t>(dst_data);
   result.SetCapacity(pairs->size());
-  std::cout << pairs->size() << std::endl;
 
   CreateTasks();
   size_t number_of_threads_to_schedule = std::min(num_threads, (idx_t)global_task_queue.size());

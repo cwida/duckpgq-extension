@@ -28,6 +28,11 @@ create or replace table snb_many_pairs as (
    from (select a.rowid as src from person a),
         (select b.rowid as dst from person b)
    using sample reservoir(2500 rows) repeatable (300)
+  UNION ALL
+  select src, dst
+  from (select a.rowid as src from person a),
+       (select b.rowid as dst from person b)
+  using sample reservoir(2500 rows) repeatable (300)
 );
 
 query I
@@ -57,4 +62,4 @@ SELECT cast(min(create_csr_edge(
     JOIN person c on c.id = k.person2id)
 Select count(*) from (SELECT src, dst, shortestpathoperator(src, dst, csr_id) FROM snb_many_pairs, csr_cte);
 ----
-7500
+10000
