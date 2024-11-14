@@ -53,7 +53,7 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
         "Need to initialize CSR before doing shortest path");
   }
 
-  if (!(csr_entry->second->initialized_v && csr_entry->second->initialized_e)) {
+  if (!csr_entry->second->initialized_v) {
     throw ConstraintException(
         "Need to initialize CSR before doing shortest path");
   }

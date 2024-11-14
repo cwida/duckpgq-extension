@@ -21,8 +21,12 @@ statement ok
   		  LABEL E
 );
 
-statement ok
+query II
 -FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]-> * (n2:N)
-      COLUMNS (edges(p) AS path_edges)
+      COLUMNS (n1.id, edges(p) AS path_edges)
 );
+----
+1	[]
+2	[]
+3	[]
