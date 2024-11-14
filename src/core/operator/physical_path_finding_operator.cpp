@@ -391,7 +391,12 @@ PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
   if (pf_sink.global_pairs->Count() == 0) {
     return SourceResultType::FINISHED;
   }
+  if (pf_bfs_state->pairs->size() > STANDARD_VECTOR_SIZE) {
+
+  }
+
   pf_bfs_state->result.SetCardinality(*pf_bfs_state->pairs);
+
   result.Move(*pf_bfs_state->pairs);
   result.Fuse(pf_bfs_state->result);
 

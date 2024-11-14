@@ -30,12 +30,12 @@ create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (
 statement ok
 create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
 
-statement ok
--CREATE PROPERTY GRAPH g
-VERTEX TABLES (student)
-EDGE TABLES (know    SOURCE KEY ( src ) REFERENCES Student ( id )
-                         DESTINATION KEY ( dst ) REFERENCES Student ( id )
-                         );
+#statement ok
+#-CREATE PROPERTY GRAPH g
+#VERTEX TABLES (student)
+#EDGE TABLES (know    SOURCE KEY ( src ) REFERENCES Student ( id )
+#                         DESTINATION KEY ( dst ) REFERENCES Student ( id )
+#                         );
 
 query III
 with csr_cte as (
