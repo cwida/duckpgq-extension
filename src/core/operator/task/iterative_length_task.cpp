@@ -62,62 +62,63 @@ bool PhysicalIterativeTask::SetTaskRange() {
     vector<int64_t> &e = state.csr->e;
     auto &change = bfs_state->change;
 
-    if (!SetTaskRange()) {
-      return;
-    }
+    // Attempt to get a task range
+    bool has_tasks = SetTaskRange();
+    std::cout << "Worker " << worker_id << ": Has tasks = " << has_tasks << std::endl;
 
-    // clear next before each iteration
+    // Clear `next` array regardless of task availability
     for (auto i = left; i < right; i++) {
-      next[i] = 0;
+        next[i] = 0;
     }
 
+    // Synchronize after clearing
     barrier->Wait();
 
-    while (true) {
-      for (auto i = left; i < right; i++) {
-        if (visit[i].any()) {
-          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-            auto n = e[offset];
-            std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
-            next[n] |= visit[i];
-          }
+    // Main processing loop
+    while (has_tasks) {
+        for (auto i = left; i < right; i++) {
+            if (visit[i].any()) {
+                for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+                    auto n = e[offset];
+                    {
+                        std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
+                        next[n] |= visit[i];
+                    }
+                }
+            }
         }
-      }
-      if (!SetTaskRange()) {
-        break; // no more tasks
-      }
+        has_tasks = SetTaskRange();
     }
+
+    // Synchronize at the end of the main processing
+    barrier->Wait([&]() {
+        std::cout << "Worker " << worker_id << ": Resetting task index." << std::endl;
+        bfs_state->ResetTaskIndex();
+    });
+    barrier->Wait();
+
+    // Check and process tasks for the next phase
+    has_tasks = SetTaskRange();
     change = false;
-    barrier->Wait([&]() {
-              bfs_state->ResetTaskIndex();  // Reset task index safely
-          });
 
-
-
-    barrier->Wait();
-
-    if (!SetTaskRange()) {
-      return; // no more tasks
-    }
-    while (true) {
-      for (auto i = left; i < right; i++) {
-        if (next[i].any()) {
-          next[i] &= ~seen[i];
-          seen[i] |= next[i];
-          change |= next[i].any();
+    while (has_tasks) {
+        for (auto i = left; i < right; i++) {
+            if (next[i].any()) {
+                next[i] &= ~seen[i];
+                seen[i] |= next[i];
+                change |= next[i].any();
+            }
         }
-      }
-      if (!SetTaskRange()) {
-        break; // no more tasks
-      }
+        has_tasks = SetTaskRange();
     }
+
+    // Final synchronization after processing
     barrier->Wait([&]() {
-              bfs_state->ResetTaskIndex();  // Reset task index safely
-          });
-
+        std::cout << "Worker " << worker_id << ": Resetting task index at second barrier." << std::endl;
+        bfs_state->ResetTaskIndex();
+    });
     barrier->Wait();
-
-  }
+}
 
   void PhysicalIterativeTask::ReachDetect() const {
     auto &bfs_state = state.global_bfs_state;
