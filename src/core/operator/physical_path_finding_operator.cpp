@@ -113,12 +113,12 @@ shared_ptr<std::pair<idx_t, idx_t>> GlobalBFSState::FetchTask() {
   std::unique_lock<std::mutex> lock(queue_mutex);  // Lock the mutex to access the queue
 
   // Log entry into FetchTask
-  std::cout << "FetchTask: Checking tasks. Current index: " << current_task_index
-            << ", Total tasks: " << global_task_queue.size() << std::endl;
+  // std::cout << "FetchTask: Checking tasks. Current index: " << current_task_index
+  //           << ", Total tasks: " << global_task_queue.size() << std::endl;
 
   // Avoid unnecessary waiting if no tasks are available
   if (current_task_index >= global_task_queue.size()) {
-    std::cout << "FetchTask: No more tasks available. Exiting." << std::endl;
+    // std::cout << "FetchTask: No more tasks available. Exiting." << std::endl;
     return nullptr;  // No more tasks
   }
 
@@ -133,14 +133,14 @@ shared_ptr<std::pair<idx_t, idx_t>> GlobalBFSState::FetchTask() {
     current_task_index++;
 
     // Log the fetched task
-    std::cout << "FetchTask: Fetched task " << current_task_index - 1
-              << " -> [" << task->first << ", " << task->second << "]" << std::endl;
+    // std::cout << "FetchTask: Fetched task " << current_task_index - 1
+              // << " -> [" << task->first << ", " << task->second << "]" << std::endl;
 
     return task;
   }
 
   // Log no tasks available after wait
-  std::cout << "FetchTask: No more tasks available after wait. Exiting." << std::endl;
+  // std::cout << "FetchTask: No more tasks available after wait. Exiting." << std::endl;
   return nullptr;
 }
 

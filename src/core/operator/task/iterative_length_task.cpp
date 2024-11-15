@@ -64,7 +64,7 @@ bool PhysicalIterativeTask::SetTaskRange() {
 
     // Attempt to get a task range
     bool has_tasks = SetTaskRange();
-    std::cout << "Worker " << worker_id << ": Has tasks = " << has_tasks << std::endl;
+    // std::cout << "Worker " << worker_id << ": Has tasks = " << has_tasks << std::endl;
 
     // Clear `next` array regardless of task availability
     for (auto i = left; i < right; i++) {
@@ -92,7 +92,7 @@ bool PhysicalIterativeTask::SetTaskRange() {
 
     // Synchronize at the end of the main processing
     barrier->Wait([&]() {
-        std::cout << "Worker " << worker_id << ": Resetting task index." << std::endl;
+        // std::cout << "Worker " << worker_id << ": Resetting task index." << std::endl;
         bfs_state->ResetTaskIndex();
     });
     barrier->Wait();
@@ -114,7 +114,7 @@ bool PhysicalIterativeTask::SetTaskRange() {
 
     // Final synchronization after processing
     barrier->Wait([&]() {
-        std::cout << "Worker " << worker_id << ": Resetting task index at second barrier." << std::endl;
+        // std::cout << "Worker " << worker_id << ": Resetting task index at second barrier." << std::endl;
         bfs_state->ResetTaskIndex();
     });
     barrier->Wait();

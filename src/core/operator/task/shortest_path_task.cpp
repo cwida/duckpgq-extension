@@ -29,26 +29,26 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
       ReachDetect();
     }
 
-    std::cout << "Worker " << worker_id << ": Waiting at barrier before ResetTaskIndex." << std::endl;
+    // std::cout << "Worker " << worker_id << ": Waiting at barrier before ResetTaskIndex." << std::endl;
     barrier->Wait();
     if (worker_id == 0) {
       bfs_state->ResetTaskIndex();
-      std::cout << "Worker " << worker_id << ": ResetTaskIndex completed." << std::endl;
+      // std::cout << "Worker " << worker_id << ": ResetTaskIndex completed." << std::endl;
     }
     barrier->Wait();
-    std::cout << "Worker " << worker_id << ": Passed barrier after ResetTaskIndex." << std::endl;
+    // std::cout << "Worker " << worker_id << ": Passed barrier after ResetTaskIndex." << std::endl;
   } while (bfs_state->change);
 
   barrier->Wait();
   if (worker_id == 0) {
-    std::cout << "Worker " << worker_id << " started path construction" << std::endl;
+    // std::cout << "Worker " << worker_id << " started path construction" << std::endl;
     PathConstruction();
-    std::cout << "Worker " << worker_id << " finished path construction" << std::endl;
+    // std::cout << "Worker " << worker_id << " finished path construction" << std::endl;
   }
 
   // Final synchronization before finishing
   barrier->Wait();
-  std::cout << "Worker " << worker_id << " finishing task" << std::endl;
+  // std::cout << "Worker " << worker_id << " finishing task" << std::endl;
   event->FinishTask();
   return TaskExecutionResult::TASK_FINISHED;
 
@@ -78,7 +78,7 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
 
     // Attempt to get a task range
     bool has_tasks = SetTaskRange();
-    std::cout << "Worker " << worker_id << ": Has tasks = " << has_tasks << std::endl;
+    // std::cout << "Worker " << worker_id << ": Has tasks = " << has_tasks << std::endl;
 
     // Clear next array regardless of whether the worker has tasks
     for (auto i = left; i < right; i++) {
@@ -87,7 +87,7 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
 
     // Synchronize after clearing
     barrier->Wait();
-    std::cout << "Worker " << worker_id << ": Passed first barrier." << std::endl;
+    // std::cout << "Worker " << worker_id << ": Passed first barrier." << std::endl;
 
     // Main processing loop
     while (has_tasks) {
@@ -112,13 +112,13 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
         // Check for a new task range
         has_tasks = SetTaskRange();
         if (!has_tasks) {
-            std::cout << "Worker " << worker_id << ": No more tasks found to explore." << std::endl;
+            // std::cout << "Worker " << worker_id << ": No more tasks found to explore." << std::endl;
         }
     }
 
     // Synchronize at the end of the main processing
     barrier->Wait([&]() {
-        std::cout << "Worker " << worker_id << ": Resetting task index." << std::endl;
+        // std::cout << "Worker " << worker_id << ": Resetting task index." << std::endl;
         bfs_state->ResetTaskIndex();
     });
     barrier->Wait();
@@ -139,11 +139,11 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
 
     // Synchronize again
     barrier->Wait([&]() {
-        std::cout << "Worker " << worker_id << ": Resetting task index at second barrier." << std::endl;
+        // std::cout << "Worker " << worker_id << ": Resetting task index at second barrier." << std::endl;
         bfs_state->ResetTaskIndex();
     });
     barrier->Wait();
-    std::cout << "Worker " << worker_id << ": Passed second barrier." << std::endl;
+    // std::cout << "Worker " << worker_id << ": Passed second barrier." << std::endl;
 }
 
   void PhysicalShortestPathTask::ReachDetect() {
