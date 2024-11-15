@@ -109,27 +109,39 @@ void GlobalBFSState::CreateTasks() {
 }
 
 
-shared_ptr<pair<idx_t, idx_t>> GlobalBFSState::FetchTask() {
+shared_ptr<std::pair<idx_t, idx_t>> GlobalBFSState::FetchTask() {
   std::unique_lock<std::mutex> lock(queue_mutex);  // Lock the mutex to access the queue
 
-  // Check if there are no more tasks to process
+  // Log entry into FetchTask
+  std::cout << "FetchTask: Checking tasks. Current index: " << current_task_index
+            << ", Total tasks: " << global_task_queue.size() << std::endl;
+
+  // Avoid unnecessary waiting if no tasks are available
   if (current_task_index >= global_task_queue.size()) {
-    return nullptr;  // No more tasks, return immediately
+    std::cout << "FetchTask: No more tasks available. Exiting." << std::endl;
+    return nullptr;  // No more tasks
   }
 
-  // Wait until the queue is not empty or some other condition to continue
-  queue_cv.wait(lock, [this]() { return current_task_index < global_task_queue.size(); });
+  // Wait until a task is available or the queue is finalized
+  queue_cv.wait(lock, [this]() {
+    return current_task_index < global_task_queue.size();
+  });
 
-  // If all tasks are processed, return an empty optional
-  if (current_task_index >= global_task_queue.size()) {
-    return nullptr;
+  // Fetch the next task and increment the task index
+  if (current_task_index < global_task_queue.size()) {
+    auto task = make_shared_ptr<std::pair<idx_t, idx_t>>(global_task_queue[current_task_index]);
+    current_task_index++;
+
+    // Log the fetched task
+    std::cout << "FetchTask: Fetched task " << current_task_index - 1
+              << " -> [" << task->first << ", " << task->second << "]" << std::endl;
+
+    return task;
   }
 
-  // Fetch the task using the current index
-  auto task = make_shared_ptr<pair<idx_t, idx_t>>(global_task_queue[current_task_index]);
-  current_task_index++;  // Move to the next task
-
-  return task;
+  // Log no tasks available after wait
+  std::cout << "FetchTask: No more tasks available after wait. Exiting." << std::endl;
+  return nullptr;
 }
 
 void GlobalBFSState::ResetTaskIndex() {

@@ -72,66 +72,96 @@ PhysicalShortestPathTask::PhysicalShortestPathTask(shared_ptr<Event> event_p, Cl
 
 
 
-    if (!SetTaskRange()) {
-      return; // no more tasks
-    }
-    // clear next before each iteration
+  if (!SetTaskRange()) {
+    std::cout << "Worker " << worker_id << ": No more tasks at start." << std::endl;
+    return; // no more tasks
+  }
+  std::cout << "Worker " << worker_id << ": Clearing next array." << std::endl;
+  for (auto i = left; i < right; i++) {
+    next[i] = 0;
+  }
+  barrier->Wait();
+  std::cout << "Worker " << worker_id << ": Passed first barrier." << std::endl;
+
+  while (true) {
+    // std::cout << "Worker " << worker_id << ": Processing range [" << left << ", " << right << "]." << std::endl;
     for (auto i = left; i < right; i++) {
-      next[i] = 0;
-    }
-    // std::cout << worker_id << " Finished clearing next" << std::endl;
-
-    barrier->Wait();
-
-    while (true) {
-      for (auto i = left; i < right; i++) {
-        if (visit[i].any()) {
-          for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-            auto n = e[offset];
-            auto edge_id = edge_ids[offset];
+      if (visit[i].any()) {
+        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+          auto n = e[offset];
+          auto edge_id = edge_ids[offset];
+          {
+            auto start_time = std::chrono::high_resolution_clock::now();
             {
               std::lock_guard<std::mutex> lock(bfs_state->element_locks[n]);
-              next[n] |= visit[i];
             }
-            for (auto l = 0; l < LANE_LIMIT; l++) {
-              if (parents_ve[n][l].GetV() == -1 && visit[i][l]) {
-                parents_ve[n][l] = {static_cast<int64_t>(i), edge_id};
-              }
+            auto end_time = std::chrono::high_resolution_clock::now();
+            std::cout << "Worker " << worker_id << ": Lock for element " << n
+                      << " held for " << std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()
+                      << " microseconds." << std::endl;
+            next[n] |= visit[i];
+          }
+          for (auto l = 0; l < LANE_LIMIT; l++) {
+            if (parents_ve[n][l].GetV() == -1 && visit[i][l]) {
+              parents_ve[n][l] = {static_cast<int64_t>(i), edge_id};
             }
           }
         }
       }
-      if (!SetTaskRange()) {
-        // std::cout << worker_id << ": No more tasks found to explore" << std::endl;
-        break; // no more tasks
+    }
+    if (!SetTaskRange()) {
+      std::cout << "Worker " << worker_id << ": No more tasks found to explore." << std::endl;
+      break; // no more tasks
+    }
+  }
+  std::cout << "Worker " << worker_id << ": Waiting at second barrier." << std::endl;
+  barrier->Wait([&]() {
+      std::cout << "Worker " << worker_id << ": Resetting task index." << std::endl;
+      bfs_state->ResetTaskIndex();  // Reset task index safely
+  });
+
+  barrier->Wait();
+  // std::cout << "Worker " << worker_id << ": Passed second barrier." << std::endl;
+
+  if (!SetTaskRange()) {
+    barrier->Wait();
+    std::cout << "Worker " << worker_id << ": No more tasks at start." << std::endl;
+    return; // no more tasks
+  }
+
+  change = false;
+
+  do {
+    // std::cout << "Worker " << worker_id << ": Starting task range [" << left << ", " << right << "]." << std::endl;
+    for (auto i = left; i < right; i++) {
+      if (next[i].any()) {
+        // std::cout << "Worker " << worker_id << ": Processing node " << i << ", next[i]: "
+        //           << next[i] << ", seen[i]: " << seen[i] << std::endl;
+
+        // Update `next` and `seen`
+        next[i] &= ~seen[i];
+        seen[i] |= next[i];
+        change |= next[i].any();
+
+        // std::cout << "Worker " << worker_id << ": Updated node " << i
+        //           << ", prev_next: " << prev_next << ", next[i]: " << next[i]
+        //           << ", seen[i]: " << seen[i] << ", change: " << change << std::endl;
       }
     }
-    barrier->Wait([&]() {
-              bfs_state->ResetTaskIndex();  // Reset task index safely
-          });
+  } while (SetTaskRange());
 
-    barrier->Wait();
-    //
-    // if (!SetTaskRange()) {
-    //   return; // no more tasks
-    // }
+  // std::cout << "Worker " << worker_id << ": Completed tasks, waiting at barrier to reset task index." << std::endl;
 
-    change = false;
-    do {
-      for (auto i = left; i < right; i++) {
-        if (next[i].any()) {
-          next[i] &= ~seen[i];
-          seen[i] |= next[i];
-          change |= next[i].any();
-        }
-      }
-    } while (SetTaskRange());
+  barrier->Wait([&]() {
+      std::cout << "Worker " << worker_id << ": Resetting task index at barrier." << std::endl;
+      bfs_state->ResetTaskIndex();  // Reset task index safely
+  });
 
-    barrier->Wait([&]() {
-                bfs_state->ResetTaskIndex();  // Reset task index safely
-          });
+  std::cout << "Worker " << worker_id << ": Waiting at third barrier." << std::endl;
 
-    barrier->Wait();
+  barrier->Wait();
+
+  std::cout << "Worker " << worker_id << ": Passed third barrier." << std::endl;
   }
 
   void PhysicalShortestPathTask::ReachDetect() {
