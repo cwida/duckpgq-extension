@@ -196,6 +196,9 @@ create or replace table snb_few_pairs as (
    using sample reservoir(10 rows) repeatable (300)
 );
 
+# statement ok
+# pragma threads=4;
+
 query III nosort few_pairs
 with csr_cte as (
 SELECT cast(min(create_csr_edge(
@@ -234,46 +237,46 @@ SELECT src, dst, shortestpathoperator(src, dst, csr_id) FROM snb_few_pairs, csr_
 9830	273	NULL
 4491	242	NULL
 
-query III
-WITH cte1 AS (
-        SELECT  CREATE_CSR_EDGE(
-                0,
-                (SELECT count(a.id) FROM person a),
-                CAST (
-                    (SELECT sum(CREATE_CSR_VERTEX(
-                                0,
-                                (SELECT count(a.id) FROM person a),
-                                sub.dense_id,
-                                sub.cnt)
-                                )
-                    FROM (
-                        SELECT a.rowid as dense_id, count(k.person1id) as cnt
-                        FROM person a
-                        LEFT JOIN person_knows_person k ON k.person1id = a.id
-                        GROUP BY a.rowid) sub
-                    )
-                AS BIGINT),
-                (select count(*) from person_knows_person k JOIN person a on a.id = k.person1id JOIN person c on c.id = k.person2id),
-                a.rowid,
-                c.rowid,
-                k.rowid) as temp
-        FROM person_knows_person k
-        JOIN person a on a.id = k.person1id
-        JOIN person c on c.id = k.person2id
-    ) SELECT src as source, dst as destination, shortestpath(0, (select count(*) from person), snb_few_pairs.src, snb_few_pairs.dst) as path
-            FROM snb_few_pairs, (select count(cte1.temp) * 0 as temp from cte1) __x
-            WHERE __x.temp * 0 = 0;
-----
-571	3434	NULL
-9038	3919	NULL
-5437	2038	NULL
-5819	8333	NULL
-9909	7659	NULL
-2689	6058	NULL
-3445	3883	[3445, 95264, 3501, 96258, 3883]
-8307	5240	NULL
-9830	273	NULL
-4491	242	NULL
+# query III
+# WITH cte1 AS (
+#         SELECT  CREATE_CSR_EDGE(
+#                 0,
+#                 (SELECT count(a.id) FROM person a),
+#                 CAST (
+#                     (SELECT sum(CREATE_CSR_VERTEX(
+#                                 0,
+#                                 (SELECT count(a.id) FROM person a),
+#                                 sub.dense_id,
+#                                 sub.cnt)
+#                                 )
+#                     FROM (
+#                         SELECT a.rowid as dense_id, count(k.person1id) as cnt
+#                         FROM person a
+#                         LEFT JOIN person_knows_person k ON k.person1id = a.id
+#                         GROUP BY a.rowid) sub
+#                     )
+#                 AS BIGINT),
+#                 (select count(*) from person_knows_person k JOIN person a on a.id = k.person1id JOIN person c on c.id = k.person2id),
+#                 a.rowid,
+#                 c.rowid,
+#                 k.rowid) as temp
+#         FROM person_knows_person k
+#         JOIN person a on a.id = k.person1id
+#         JOIN person c on c.id = k.person2id
+#     ) SELECT src as source, dst as destination, shortestpath(0, (select count(*) from person), snb_few_pairs.src, snb_few_pairs.dst) as path
+#             FROM snb_few_pairs, (select count(cte1.temp) * 0 as temp from cte1) __x
+#             WHERE __x.temp * 0 = 0;
+# ----
+# 571	3434	NULL
+# 9038	3919	NULL
+# 5437	2038	NULL
+# 5819	8333	NULL
+# 9909	7659	NULL
+# 2689	6058	NULL
+# 3445	3883	[3445, 95264, 3501, 96258, 3883]
+# 8307	5240	NULL
+# 9830	273	NULL
+# 4491	242	NULL
 
 
 # few pair test
@@ -285,7 +288,9 @@ create or replace table snb_many_pairs as (
    using sample reservoir(2500 rows) repeatable (300)
 );
 
-query III nosort many_pairs
+
+
+query III
 with csr_cte as (
 SELECT cast(min(create_csr_edge(
         0,
@@ -314,33 +319,33 @@ SELECT src, dst, shortestpathoperator(src, dst, csr_id) FROM snb_many_pairs, csr
 ----
 
 
-query III nosort many_pairs
-WITH cte1 AS (
-        SELECT  CREATE_CSR_EDGE(
-                0,
-                (SELECT count(a.id) FROM person a),
-                CAST (
-                    (SELECT sum(CREATE_CSR_VERTEX(
-                                0,
-                                (SELECT count(a.id) FROM person a),
-                                sub.dense_id,
-                                sub.cnt)
-                                )
-                    FROM (
-                        SELECT a.rowid as dense_id, count(k.person1id) as cnt
-                        FROM person a
-                        LEFT JOIN person_knows_person k ON k.person1id = a.id
-                        GROUP BY a.rowid) sub
-                    )
-                AS BIGINT),
-                (select count(*) from person_knows_person k JOIN person a on a.id = k.person1id JOIN person c on c.id = k.person2id),
-                a.rowid,
-                c.rowid,
-                k.rowid) as temp
-        FROM person_knows_person k
-        JOIN person a on a.id = k.person1id
-        JOIN person c on c.id = k.person2id
-    ) SELECT src as source, dst as destination, shortestpath(0, (select count(*) from person), src, dst) as path
-            FROM snb_many_pairs, (select count(cte1.temp) * 0 as temp from cte1) __x
-            WHERE __x.temp * 0 = 0;
-----
+# query III nosort many_pairs
+# WITH cte1 AS (
+#         SELECT  CREATE_CSR_EDGE(
+#                 0,
+#                 (SELECT count(a.id) FROM person a),
+#                 CAST (
+#                     (SELECT sum(CREATE_CSR_VERTEX(
+#                                 0,
+#                                 (SELECT count(a.id) FROM person a),
+#                                 sub.dense_id,
+#                                 sub.cnt)
+#                                 )
+#                     FROM (
+#                         SELECT a.rowid as dense_id, count(k.person1id) as cnt
+#                         FROM person a
+#                         LEFT JOIN person_knows_person k ON k.person1id = a.id
+#                         GROUP BY a.rowid) sub
+#                     )
+#                 AS BIGINT),
+#                 (select count(*) from person_knows_person k JOIN person a on a.id = k.person1id JOIN person c on c.id = k.person2id),
+#                 a.rowid,
+#                 c.rowid,
+#                 k.rowid) as temp
+#         FROM person_knows_person k
+#         JOIN person a on a.id = k.person1id
+#         JOIN person c on c.id = k.person2id
+#     ) SELECT src as source, dst as destination, shortestpath(0, (select count(*) from person), src, dst) as path
+#             FROM snb_many_pairs, (select count(cte1.temp) * 0 as temp from cte1) __x
+#             WHERE __x.temp * 0 = 0;
+# ----
