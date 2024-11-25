@@ -99,7 +99,6 @@ query IIIII
 2	2	[1]	[]	0
 3	3	[2]	[]	0
 
-
 query IIIII
 -FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]->{1,1}(n2:N)
