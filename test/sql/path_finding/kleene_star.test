@@ -1,0 +1,117 @@
+require duckpgq
+
+statement ok
+CREATE TABLE nodes (id INTEGER);
+
+statement ok
+CREATE TABLE edges (src INTEGER, dst INTEGER);
+
+statement ok
+INSERT INTO nodes VALUES (1), (2), (3);
+
+statement ok
+-CREATE PROPERTY GRAPH testgraph
+  	VERTEX TABLES (
+	    nodes LABEL N
+	)
+	EDGE TABLES (
+  	    edges SOURCE KEY (src) REFERENCES nodes (id)
+        	  DESTINATION KEY (dst) REFERENCES nodes (id)
+  		  LABEL E
+);
+
+query IIIII
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)-[e:E]->*(n2:N)
+      COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
+);
+----
+1	1	[0]	[]	0
+2	2	[1]	[]	0
+3	3	[2]	[]	0
+
+query IIIII
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)-[e:E]->+(n2:N)
+      COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
+);
+----
+
+query IIIII
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)-[e:E]->{1,3}(n2:N)
+      COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
+);
+----
+
+query IIIII
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)-[e:E]->{0,3}(n2:N)
+      COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
+);
+----
+1	1	[0]	[]	0
+2	2	[1]	[]	0
+3	3	[2]	[]	0
+
+query IIIII
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)-[e:E]->{,3}(n2:N)
+      COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
+);
+----
+1	1	[0]	[]	0
+2	2	[1]	[]	0
+3	3	[2]	[]	0
+
+
+statement error
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)*<-[e:E]->(n2:N)
+      COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
+);
+----
+Parser Error: PGQ expected an arrow instead of *< operator. at or near "*<"
+
+statement error
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)*-[e:E]->(n2:N)
+      COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
+);
+----
+Parser Error: syntax error at or near "*"
+
+statement error
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)-[e:E]->{3,1}(n2:N)
+      COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
+);
+----
+Constraint Error: Lower bound greater than upper bound
+
+query IIIII
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)-[e:E]->{,}(n2:N)
+      COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
+);
+----
+1	1	[0]	[]	0
+2	2	[1]	[]	0
+3	3	[2]	[]	0
+
+
+query IIIII
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)-[e:E]->{1,1}(n2:N)
+      COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
+);
+----
+
+statement error
+-FROM GRAPH_TABLE(testgraph
+      MATCH p = ANY SHORTEST (n1:N)-[e:E]->*(n2:N
+      COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
+);
+----
+Parser Error: syntax error at or near "COLUMNS"
+
