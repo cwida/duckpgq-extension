@@ -190,7 +190,7 @@ void PGQMatchFunction::EdgeTypeAny(
   // START SELECT src, dst, * from edge_table
   auto src_dst_select_node = make_uniq<SelectNode>();
 
-  auto edge_left_ref = edge_table->CreateBaseTableRef();
+  auto edge_left_ref = edge_table->CreateBaseTableRef(edge_binding);
   src_dst_select_node->from_table = std::move(edge_left_ref);
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
   src_dst_children.push_back(make_uniq<ColumnRefExpression>(
@@ -205,7 +205,7 @@ void PGQMatchFunction::EdgeTypeAny(
   // START SELECT dst, src, * from edge_table
   auto dst_src_select_node = make_uniq<SelectNode>();
 
-  auto edge_right_ref = edge_table->CreateBaseTableRef();
+  auto edge_right_ref = edge_table->CreateBaseTableRef(edge_binding);
   auto dst_src_children = vector<unique_ptr<ParsedExpression>>();
   dst_src_select_node->from_table = std::move(edge_right_ref);
 
@@ -979,6 +979,7 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     duckpgq_state->unnamed_graphtable_index++;
   }
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
+  result->Print();
   return std::move(result);
 }
 
