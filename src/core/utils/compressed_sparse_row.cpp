@@ -207,18 +207,10 @@ unique_ptr<SubqueryExpression> CreateDirectedCSRVertexSubquery(const shared_ptr<
   count_function->alias = "cnt";
   inner_select_node->select_list.emplace_back(std::move(count_function));
 
-  auto src_tableref = make_uniq<BaseTableRef>();
-  src_tableref->table_name = edge_table->source_reference;
-  src_tableref->alias = prev_binding;
-
-  auto edge_tableref = make_uniq<BaseTableRef>();
-  edge_tableref->table_name = edge_table->table_name;
-  edge_tableref->alias = edge_table->table_name_alias;
-
   auto left_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
   left_join_ref->type = JoinType::LEFT;
-  left_join_ref->left = std::move(src_tableref);
-  left_join_ref->right = std::move(edge_tableref);
+  left_join_ref->left = edge_table->source_pg_table->CreateBaseTableRef(prev_binding);
+  left_join_ref->right = edge_table->CreateBaseTableRef(edge_table->table_name_alias);
 
   auto join_condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL,
                                                         make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name),
