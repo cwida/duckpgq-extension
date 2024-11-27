@@ -64,3 +64,31 @@ did:plc:sc6ieuzeygvm55vv2bjubkgt	0.102591224
 did:plc:g5gf5ho5yn3n5anprzf45hvm	0.103670634
 did:plc:cwcykfexwbxozuxhpuud63qa	0.35714287
 did:plc:c5ccfcya6zez3rhry6gluup4	0.07952872
+
+query II
+from weakly_connected_component(bluesky, account, follows) limit 10;
+----
+did:plc:rsfoi33e4iya2rd7jw52nfmo	0
+did:plc:btsulrw4wcqdai23fkl5qwm5	0
+did:plc:z72i7hdynmk6r22z27h6tvur	0
+did:plc:twcatus5xoa7jaeysmrhzcpv	0
+did:plc:wptnzi6wyzqltbenxapqa5qd	0
+did:plc:edglm4muiyzty2snc55ysuqx	0
+did:plc:sc6ieuzeygvm55vv2bjubkgt	0
+did:plc:g5gf5ho5yn3n5anprzf45hvm	0
+did:plc:cwcykfexwbxozuxhpuud63qa	0
+did:plc:c5ccfcya6zez3rhry6gluup4	0
+
+query II
+from pagerank(bluesky, account, follows) limit 10;
+----
+did:plc:rsfoi33e4iya2rd7jw52nfmo	0.0001775254576762574
+did:plc:btsulrw4wcqdai23fkl5qwm5	0.0002686321909810804
+did:plc:z72i7hdynmk6r22z27h6tvur	0.0008689709539525615
+did:plc:twcatus5xoa7jaeysmrhzcpv	0.00018038910592903322
+did:plc:wptnzi6wyzqltbenxapqa5qd	0.00019702956517977273
+did:plc:edglm4muiyzty2snc55ysuqx	0.000183535102914441
+did:plc:sc6ieuzeygvm55vv2bjubkgt	0.00016956149650616158
+did:plc:g5gf5ho5yn3n5anprzf45hvm	0.00019340188585017924
+did:plc:cwcykfexwbxozuxhpuud63qa	0.0001771935670038598
+did:plc:c5ccfcya6zez3rhry6gluup4	0.00047818698168931504
