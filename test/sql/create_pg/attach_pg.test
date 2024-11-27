@@ -51,6 +51,24 @@ did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22qt6jzmwtgyxzft57kvwut6
 did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22u3xlfdxqxyzva2fsljotcy
 did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:23df55poeztue4terk3s5ain
 
+query III
+-FROM GRAPH_TABLE (bluesky MATCH p = ANY SHORTEST (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->*(b:account)
+                    COLUMNS (element_id(p) as path, a.did as a_id, b.did as b_id))
+ORDER BY a_id, b_id
+LIMIT 10;
+----
+[15, 13, 9, 347, 276, 11536, 5145]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:224f4aj5p5vgk7tpcc4lltgx
+[15, 8, 1, 27, 65, 2565, 1530]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:225ihm6x4pkgdpbmvfpxyicf
+[15, 8, 1, 44, 31, 1058, 863]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22btehtv4y5dogqne5nuu2jx
+[15, 3, 0, 22, 18, 620, 484]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22exfzbkuj3dlzj3ukyy4g5y
+[15, 8, 1, 64, 68, 2709, 1594]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22m65anrpfstjo5ymgyl2vwu
+[15, 7, 6, 260, 206, 8273, 4031]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22mof5hzsrituokdxsnoi7qi
+[15, 6, 11, 424, 316, 13257, 5646]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22nbqn2zjp2pobu6cwquhjuu
+[15, 8, 1, 39, 27, 882, 730]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22qt6jzmwtgyxzft57kvwut6
+[15, 2, 4, 140, 104, 4215, 2188]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22u3xlfdxqxyzva2fsljotcy
+[15, 3, 0, 24, 17, 585, 461, 19521, 8887]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:23czq4ad6kgrjdgke52yapso
+
+
 query II
 from local_clustering_coefficient(bluesky, account, follows) limit 10;
 ----
