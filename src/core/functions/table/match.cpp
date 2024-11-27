@@ -160,7 +160,7 @@ unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
   auto count_function =
       make_uniq<FunctionExpression>("count", std::move(children));
 
-  auto zero = make_uniq<ConstantExpression>(Value::INTEGER((int32_t)0));
+  auto zero = make_uniq<ConstantExpression>(Value::INTEGER(0));
 
   vector<unique_ptr<ParsedExpression>> multiply_children;
 
@@ -194,9 +194,9 @@ void PGQMatchFunction::EdgeTypeAny(
   src_dst_select_node->from_table = std::move(edge_left_ref);
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
   src_dst_children.push_back(make_uniq<ColumnRefExpression>(
-      edge_table->source_fk[0], edge_table->table_name));
+      edge_table->source_fk[0], edge_binding));
   src_dst_children.push_back(make_uniq<ColumnRefExpression>(
-      edge_table->destination_fk[0], edge_table->table_name));
+      edge_table->destination_fk[0], edge_binding));
   src_dst_children.push_back(make_uniq<StarExpression>());
 
   src_dst_select_node->select_list = std::move(src_dst_children);
@@ -210,9 +210,9 @@ void PGQMatchFunction::EdgeTypeAny(
   dst_src_select_node->from_table = std::move(edge_right_ref);
 
   dst_src_children.push_back(make_uniq<ColumnRefExpression>(
-      edge_table->destination_fk[0], edge_table->table_name));
+      edge_table->destination_fk[0], edge_binding));
   dst_src_children.push_back(make_uniq<ColumnRefExpression>(
-      edge_table->source_fk[0], edge_table->table_name));
+      edge_table->source_fk[0], edge_binding));
   dst_src_children.push_back(make_uniq<StarExpression>());
 
   dst_src_select_node->select_list = std::move(dst_src_children);
