@@ -46,25 +46,6 @@ public:
   string ToString() const;
 };
 
-struct CSRFunctionData : FunctionData {
-  CSRFunctionData(ClientContext &context, int32_t id, LogicalType weight_type);
-  unique_ptr<FunctionData> Copy() const override;
-  bool Equals(const FunctionData &other_p) const override;
-  static unique_ptr<FunctionData>
-  CSRVertexBind(ClientContext &context, ScalarFunction &bound_function,
-                vector<unique_ptr<Expression>> &arguments);
-  static unique_ptr<FunctionData>
-  CSREdgeBind(ClientContext &context, ScalarFunction &bound_function,
-              vector<unique_ptr<Expression>> &arguments);
-  static unique_ptr<FunctionData>
-  CSRBind(ClientContext &context, ScalarFunction &bound_function,
-          vector<unique_ptr<Expression>> &arguments);
-
-  ClientContext &context;
-  const int32_t id;
-  const LogicalType weight_type;
-};
-
 // CSR BindReplace functions
 unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
                        const unique_ptr<SelectNode> &select_node);
@@ -79,6 +60,8 @@ unique_ptr<SelectNode> CreateOuterSelectNode(unique_ptr<FunctionExpression> crea
 unique_ptr<JoinRef> GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,const string &edge_binding, const string &prev_binding, const string &next_binding);
 unique_ptr<SubqueryExpression> GetCountTable(const string &table_name, const string &table_alias, const string &primary_key);
 void SetupSelectNode(unique_ptr<SelectNode> &select_node, const shared_ptr<PropertyGraphTable> &edge_table, bool reverse = false);
+int32_t GetCSRId(const unique_ptr<Expression> &expr, ClientContext &context);
+
 unique_ptr<SubqueryRef> CreateCountCTESubquery();
 unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable();
 unique_ptr<SubqueryExpression> GetCountEdgeTable(const shared_ptr<PropertyGraphTable> &edge_table);

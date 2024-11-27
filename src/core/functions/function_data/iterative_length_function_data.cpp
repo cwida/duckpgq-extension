@@ -1,13 +1,14 @@
 #include "duckpgq/core/functions/function_data/iterative_length_function_data.hpp"
-#include "duckdb/execution/expression_executor.hpp"
 #include "duckpgq/common.hpp"
+
+#include <duckpgq/core/utils/compressed_sparse_row.hpp>
 
 namespace duckpgq {
 
 namespace core {
 
 unique_ptr<FunctionData> IterativeLengthFunctionData::Copy() const {
-  return make_uniq<IterativeLengthFunctionData>(context, csr_id);
+  return make_uniq<IterativeLengthFunctionData>(context, table_to_scan, csr_id);
 }
 
 bool IterativeLengthFunctionData::Equals(const FunctionData &other_p) const {
@@ -19,14 +20,13 @@ bool IterativeLengthFunctionData::Equals(const FunctionData &other_p) const {
 unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
     ClientContext &context, ScalarFunction &bound_function,
     vector<unique_ptr<Expression>> &arguments) {
-  if (!arguments[0]->IsFoldable()) {
-    throw InvalidInputException("Id must be constant.");
+  if (arguments.size() == 3) {
+    string table_to_scan = ExpressionExecutor::EvaluateScalar(context, *arguments[2]).GetValue<string>();
+    return make_uniq<IterativeLengthFunctionData>(context, table_to_scan, 0);
   }
+ auto csr_id = GetCSRId(arguments[0], context);
 
-  int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0])
-                       .GetValue<int32_t>();
-
-  return make_uniq<IterativeLengthFunctionData>(context, csr_id);
+  return make_uniq<IterativeLengthFunctionData>(context, "", csr_id);
 }
 
 
