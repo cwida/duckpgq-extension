@@ -106,7 +106,7 @@ unique_ptr<JoinRef> CreateJoin(const string &fk_column, const string &pk_column,
   join->left = fk_table->CreateBaseTableRef();
   join->right = pk_table->CreateBaseTableRef();
   join->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL,
-    make_uniq<ColumnRefExpression>(fk_column, fk_table->main_label), make_uniq<ColumnRefExpression>(pk_column, pk_table->main_label));
+    make_uniq<ColumnRefExpression>(fk_column, fk_table->table_name), make_uniq<ColumnRefExpression>(pk_column, pk_table->table_name));
   return join;
 }
 
@@ -378,7 +378,7 @@ unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGrap
     auto second_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
     second_join_ref->type = JoinType::INNER;
     second_join_ref->left = std::move(first_join_ref);
-    second_join_ref->right = edge_table->destination_pg_table->destination_pg_table->CreateBaseTableRef("dst_table");
+    second_join_ref->right = edge_table->destination_pg_table->CreateBaseTableRef("dst_table");
 
     auto edge_to_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk[0], edge_table->table_name);
     auto dst_cid_ref = make_uniq<ColumnRefExpression>(edge_table->destination_pk[0], "dst_table");

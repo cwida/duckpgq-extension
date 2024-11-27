@@ -7,8 +7,6 @@
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 #include <duckdb/parser/query_node/select_node.hpp>
-#include <duckdb/parser/tableref/basetableref.hpp>
-#include <duckdb/parser/tableref/joinref.hpp>
 #include <duckdb/parser/tableref/subqueryref.hpp>
 #include <duckpgq/core/functions/table.hpp>
 
