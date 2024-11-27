@@ -133,8 +133,7 @@ void SetupSelectNode(unique_ptr<SelectNode> &select_node, const shared_ptr<Prope
 unique_ptr<SubqueryExpression> GetCountTable(const shared_ptr<PropertyGraphTable> &table, const string &table_alias, const string &primary_key) {
   auto select_count = make_uniq<SelectStatement>();
   auto select_inner = make_uniq<SelectNode>();
-  auto ref = table->CreateBaseTableRef();
-  ref->alias = table_alias;
+  auto ref = table->CreateBaseTableRef(table_alias);
   select_inner->from_table = std::move(ref);
 
   vector<unique_ptr<ParsedExpression>> children;
@@ -161,14 +160,8 @@ GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,
   auto second_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
   second_join_ref->type = JoinType::INNER;
 
-  auto edge_base_ref = make_uniq<BaseTableRef>();
-  edge_base_ref->table_name = edge_table->table_name;
-  edge_base_ref->alias = edge_binding;
-  auto src_base_ref = make_uniq<BaseTableRef>();
-  src_base_ref->table_name = edge_table->source_reference;
-  src_base_ref->alias = prev_binding;
-  second_join_ref->left = std::move(edge_base_ref);
-  second_join_ref->right = std::move(src_base_ref);
+  second_join_ref->left = edge_table->CreateBaseTableRef(edge_binding);
+  second_join_ref->right = edge_table->source_pg_table->CreateBaseTableRef(prev_binding);
   auto t_from_ref =
       make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_binding);
   auto src_cid_ref =
@@ -176,11 +169,8 @@ GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,
   second_join_ref->condition = make_uniq<ComparisonExpression>(
       ExpressionType::COMPARE_EQUAL, std::move(t_from_ref),
       std::move(src_cid_ref));
-  auto dst_base_ref = make_uniq<BaseTableRef>();
-  dst_base_ref->table_name = edge_table->destination_reference;
-  dst_base_ref->alias = next_binding;
   first_join_ref->left = std::move(second_join_ref);
-  first_join_ref->right = std::move(dst_base_ref);
+  first_join_ref->right = edge_table->destination_pg_table->CreateBaseTableRef(next_binding);
 
   auto t_to_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk[0],
                                                  edge_binding);
