@@ -38,15 +38,15 @@ did:plc:23df55poeztue4terk3s5ain	did:plc:6k63663icgdybm5evgszxjn2
 did:plc:23df55poeztue4terk3s5ain	did:plc:7562tstpez4aexd75ttshl3z
 
 query II
--FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->{1,3}(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
+-FROM GRAPH_TABLE (bluesky MATCH (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->{1,3}(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
 ----
-did:plc:23df55poeztue4terk3s5ain	did:plc:274qq3cgl4vrrofdg77balfw
-did:plc:23df55poeztue4terk3s5ain	did:plc:2ktpgfwt7cc2osldzh6uyww5
-did:plc:23df55poeztue4terk3s5ain	did:plc:2p5eadzea3yb2ghwtzrlaebo
-did:plc:23df55poeztue4terk3s5ain	did:plc:37drmtazrclxzxezzk4ijuk7
-did:plc:23df55poeztue4terk3s5ain	did:plc:42qpqlgojbezm3gt2nxdfikk
-did:plc:23df55poeztue4terk3s5ain	did:plc:45g7v5rojoj4tpspb7fg6dvp
-did:plc:23df55poeztue4terk3s5ain	did:plc:4kv7ldgzot7q4w4y65kpsbwo
-did:plc:23df55poeztue4terk3s5ain	did:plc:4nt6nwx353a3xxo5mzjiy4ha
-did:plc:23df55poeztue4terk3s5ain	did:plc:6k63663icgdybm5evgszxjn2
-did:plc:23df55poeztue4terk3s5ain	did:plc:7562tstpez4aexd75ttshl3z
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:224f4aj5p5vgk7tpcc4lltgx
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:225ihm6x4pkgdpbmvfpxyicf
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22btehtv4y5dogqne5nuu2jx
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22exfzbkuj3dlzj3ukyy4g5y
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22m65anrpfstjo5ymgyl2vwu
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22mof5hzsrituokdxsnoi7qi
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22nbqn2zjp2pobu6cwquhjuu
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22qt6jzmwtgyxzft57kvwut6
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22u3xlfdxqxyzva2fsljotcy
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:23df55poeztue4terk3s5ain

@@ -979,7 +979,6 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     duckpgq_state->unnamed_graphtable_index++;
   }
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
-  result->Print();
   return std::move(result);
 }
 
