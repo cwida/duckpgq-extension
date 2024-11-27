@@ -8,3 +8,4 @@ duckdb_extension_load(duckpgq
 
 # Any extra extensions that should be built
 # e.g.: duckdb_extension_load(json)
+duckdb_extension_load(httpfs)
