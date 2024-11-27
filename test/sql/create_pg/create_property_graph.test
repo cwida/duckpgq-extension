@@ -147,8 +147,7 @@ EDGE TABLES (
             PROPERTIES ( createDate ) LABEL Knows
     )
 ----
-Invalid Error: Referenced vertex table Student is not registered in the vertex tables.
-
+Invalid Error: Table 'Student' not found in the property graph pg3.
 
 # Should fail since the edge table references vertex tables that do not exist
 statement error
@@ -157,12 +156,12 @@ VERTEX TABLES (
     School  LABEL School IN School_kind (Hogeschool, University)
     )
 EDGE TABLES (
-    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+    know    SOURCE KEY ( src ) REFERENCES School ( school_id )
             DESTINATION KEY ( dst ) REFERENCES Student__ ( id )
             PROPERTIES ( createDate ) LABEL Knows
     );
 ----
-Invalid Error: Referenced vertex table Student is not registered in the vertex tables.
+Invalid Error: Table 'Student__' not found in the property graph pg3.
 
 
 # Check duplicate labels

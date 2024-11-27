@@ -51,7 +51,7 @@ statement error
 vertex tables (v)
 edge tables (e2 source v destination w);
 ----
-Invalid Error: Referenced vertex table w is not registered in the vertex tables
+Invalid Error: Table 'w' not found in the property graph g.
 
 statement ok
 -create property graph g
