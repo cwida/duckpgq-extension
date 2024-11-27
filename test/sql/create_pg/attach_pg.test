@@ -5,7 +5,7 @@
 require duckpgq
 
 statement ok
-attach '/Users/dljtw/git/duckpgq/data/bluesky.duckdb';
+attach 'duckdb/data/bluesky/bluesky.duckdb';
 
 statement ok
 select * from bluesky.follows;
