@@ -365,32 +365,20 @@ unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGrap
     auto select_node = make_uniq<SelectNode>();
     select_node->select_list = std::move(select_expression);
 
-    auto edge_table_ref = make_uniq<BaseTableRef>();
-    edge_table_ref->table_name = edge_table->table_name;
-
-    auto src_table_ref = make_uniq<BaseTableRef>();
-    src_table_ref->table_name = edge_table->source_reference;
-    src_table_ref->alias = "src_table";
-
     auto join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
-
     auto first_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
     first_join_ref->type = JoinType::INNER;
-    first_join_ref->left = std::move(edge_table_ref);
-    first_join_ref->right = std::move(src_table_ref);
+    first_join_ref->left = edge_table->CreateBaseTableRef();
+    first_join_ref->right = edge_table->source_pg_table->CreateBaseTableRef("src_table");
 
     auto edge_from_ref = make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_table->table_name);
     auto src_cid_ref = make_uniq<ColumnRefExpression>(edge_table->source_pk[0], "src_table");
     first_join_ref->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, std::move(edge_from_ref), std::move(src_cid_ref));
 
-    auto dst_table_ref = make_uniq<BaseTableRef>();
-    dst_table_ref->table_name = edge_table->destination_reference;
-    dst_table_ref->alias = "dst_table";
-
     auto second_join_ref = make_uniq<JoinRef>(JoinRefType::REGULAR);
     second_join_ref->type = JoinType::INNER;
     second_join_ref->left = std::move(first_join_ref);
-    second_join_ref->right = std::move(dst_table_ref);
+    second_join_ref->right = edge_table->destination_pg_table->destination_pg_table->CreateBaseTableRef("dst_table");
 
     auto edge_to_ref = make_uniq<ColumnRefExpression>(edge_table->destination_fk[0], edge_table->table_name);
     auto dst_cid_ref = make_uniq<ColumnRefExpression>(edge_table->destination_pk[0], "dst_table");
