@@ -67,8 +67,6 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
     throw ConstraintException(
         "Need to initialize CSR before doing shortest path");
   }
-
-  int32_t id = args.data[0].GetValue(0).GetValue<int32_t>();
   int64_t v_size = args.data[1].GetValue(0).GetValue<int64_t>();
 
   auto *v = (int64_t *)csr->v;
