@@ -174,7 +174,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
       try {
         auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
         auto table = catalog.GetEntry<TableCatalogEntry>(
-          context, DEFAULT_SCHEMA, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
+          context, info->schema, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
 
         if (!table) {
           throw Exception(ExceptionType::INVALID,
