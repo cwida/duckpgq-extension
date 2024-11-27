@@ -70,8 +70,7 @@ unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &ed
   select_expression.emplace_back(std::move(addition_function));
   select_node->select_list = std::move(select_expression);
 
-  auto src_base_ref = make_uniq<BaseTableRef>();
-  src_base_ref->table_name = edge_pg_entry->source_reference;
+  auto src_base_ref = edge_pg_entry->source_pg_table->CreateBaseTableRef();
 
   auto temp_cte_select_subquery = CreateCountCTESubquery();
 
