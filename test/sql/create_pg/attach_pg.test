@@ -50,3 +50,17 @@ did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22nbqn2zjp2pobu6cwquhjuu
 did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22qt6jzmwtgyxzft57kvwut6
 did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22u3xlfdxqxyzva2fsljotcy
 did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:23df55poeztue4terk3s5ain
+
+query II
+from local_clustering_coefficient(bluesky, account, follows) limit 10;
+----
+did:plc:rsfoi33e4iya2rd7jw52nfmo	0.11904762
+did:plc:btsulrw4wcqdai23fkl5qwm5	0.12508735
+did:plc:z72i7hdynmk6r22z27h6tvur	0.028301887
+did:plc:twcatus5xoa7jaeysmrhzcpv	0.15726179
+did:plc:wptnzi6wyzqltbenxapqa5qd	0.07191316
+did:plc:edglm4muiyzty2snc55ysuqx	0.117788464
+did:plc:sc6ieuzeygvm55vv2bjubkgt	0.102591224
+did:plc:g5gf5ho5yn3n5anprzf45hvm	0.103670634
+did:plc:cwcykfexwbxozuxhpuud63qa	0.35714287
+did:plc:c5ccfcya6zez3rhry6gluup4	0.07952872
