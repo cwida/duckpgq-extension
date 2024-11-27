@@ -359,9 +359,9 @@ unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(
 
   vector<unique_ptr<ParsedExpression>> pathfinding_children;
   pathfinding_children.push_back(std::move(csr_id));
-  auto src_table = FindGraphTable( edge_table->source_reference, pg_table);
+  // auto src_table = FindGraphTable( edge_table->source_reference, pg_table);
   pathfinding_children.push_back(std::move(GetCountTable(
-      src_table, previous_vertex_element->variable_binding, edge_table->source_pk[0])));
+      edge_table->source_reference, previous_vertex_element->variable_binding, edge_table->source_pk[0])));
   pathfinding_children.push_back(std::move(src_row_id));
   pathfinding_children.push_back(std::move(dst_row_id));
 
@@ -376,11 +376,9 @@ unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(
   dst_rowid_outer_select->alias = "dst_rowid";
   select_node->select_list.push_back(std::move(dst_rowid_outer_select));
 
-  auto src_table = FindGraphTable(edge_table->source_reference, pg_table);
-  auto src_tableref = src_table->CreateBaseTableRef();
+  auto src_tableref = edge_table->source_pg_table->CreateBaseTableRef();
   src_tableref->alias = previous_vertex_element->variable_binding;
-  auto dst_table = FindGraphTable(edge_table->destination_reference, pg_table);
-  auto dst_tableref = dst_table->CreateBaseTableRef();
+  auto dst_tableref = edge_table->destination_pg_table->CreateBaseTableRef();
   dst_tableref->alias = next_vertex_element->variable_binding;
   auto first_cross_join_ref = make_uniq<JoinRef>(JoinRefType::CROSS);
   first_cross_join_ref->left = std::move(src_tableref);
