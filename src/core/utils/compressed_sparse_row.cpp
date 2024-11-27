@@ -137,12 +137,10 @@ void SetupSelectNode(unique_ptr<SelectNode> &select_node, const shared_ptr<Prope
 
 
 // Function to create a subquery expression for counting table entries
-unique_ptr<SubqueryExpression> GetCountTable(const string &table_name, const string &table_alias, const string &primary_key) {
+unique_ptr<SubqueryExpression> GetCountTable(const shared_ptr<PropertyGraphTable> &table, const string &table_alias, const string &primary_key) {
   auto select_count = make_uniq<SelectStatement>();
   auto select_inner = make_uniq<SelectNode>();
-  auto ref = make_uniq<BaseTableRef>();
-
-  ref->table_name = table_name;
+  auto ref = table->CreateBaseTableRef();
   ref->alias = table_alias;
   select_inner->from_table = std::move(ref);
 

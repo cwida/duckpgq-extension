@@ -359,8 +359,9 @@ unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(
 
   vector<unique_ptr<ParsedExpression>> pathfinding_children;
   pathfinding_children.push_back(std::move(csr_id));
+  auto src_table = FindGraphTable( edge_table->source_reference, pg_table);
   pathfinding_children.push_back(std::move(GetCountTable(
-      edge_table->source_reference, previous_vertex_element->variable_binding, edge_table->source_pk[0])));
+      src_table, previous_vertex_element->variable_binding, edge_table->source_pk[0])));
   pathfinding_children.push_back(std::move(src_row_id));
   pathfinding_children.push_back(std::move(dst_row_id));
 
