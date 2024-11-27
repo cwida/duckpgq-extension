@@ -113,3 +113,13 @@ did:plc:sc6ieuzeygvm55vv2bjubkgt	0.00016956149650616158
 did:plc:g5gf5ho5yn3n5anprzf45hvm	0.00019340188585017924
 did:plc:cwcykfexwbxozuxhpuud63qa	0.0001771935670038598
 did:plc:c5ccfcya6zez3rhry6gluup4	0.00047818698168931504
+
+statement error
+select count(*) from follows;
+----
+Catalog Error: Table with name follows does not exist!
+
+statement error
+from pagerank(bluesky, bluesky.account, follows) limit 10;
+----
+Invalid Error: Label 'bluesky.account' not found. Did you mean the vertex label 'account'?
