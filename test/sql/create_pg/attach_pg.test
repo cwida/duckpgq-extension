@@ -7,8 +7,11 @@ require duckpgq
 statement ok
 attach 'duckdb/data/bluesky/bluesky.duckdb';
 
-statement ok
-select * from bluesky.follows;
+query I
+select count(*) from bluesky.follows;
+----
+19566
+
 
 statement ok
 -CREATE OR REPLACE PROPERTY GRAPH bluesky

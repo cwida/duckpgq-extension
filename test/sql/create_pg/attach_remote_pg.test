@@ -1,0 +1,103 @@
+
+
+require httpfs
+
+require duckpgq
+
+statement ok
+ATTACH 'https://raw.githubusercontent.com/Dtenwolde/bluesky-follows-graph/main/bluesky.duckdb' as bluesky;
+
+query I
+select count(*) from bluesky.follows;
+----
+540697
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH bluesky
+            VERTEX TABLES (bluesky.account LABEL account)
+            EDGE TABLES (bluesky.follows    SOURCE KEY (source) REFERENCES bluesky.account (did)
+                                            DESTINATION KEY (destination) REFERENCES bluesky.account (did)
+            LABEL follows);
+
+statement ok
+-FROM GRAPH_TABLE (bluesky MATCH (a:account));
+
+statement ok
+-FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account));
+
+query II
+-FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
+----
+did:plc:224f4aj5p5vgk7tpcc4lltgx	did:plc:22jrdlgid2nhpwa5u5525lef
+did:plc:224f4aj5p5vgk7tpcc4lltgx	did:plc:24ngrqljhck7hpvbgrg7a23k
+did:plc:224f4aj5p5vgk7tpcc4lltgx	did:plc:24s6lvl3lisrsmjxx3exkspm
+did:plc:224f4aj5p5vgk7tpcc4lltgx	did:plc:2745n6ytq3cprryyrgul3kel
+did:plc:224f4aj5p5vgk7tpcc4lltgx	did:plc:2kpbqyhuebc2umwu67ge3xgh
+did:plc:224f4aj5p5vgk7tpcc4lltgx	did:plc:2nlppqeeihrk7pkhwpozeazu
+did:plc:224f4aj5p5vgk7tpcc4lltgx	did:plc:2oqynfamqep626jjgttfio7l
+did:plc:224f4aj5p5vgk7tpcc4lltgx	did:plc:2oxtl5d74nb27ibd5ktojtq7
+did:plc:224f4aj5p5vgk7tpcc4lltgx	did:plc:2tnby3rd32bvlwzvagvia6ca
+did:plc:224f4aj5p5vgk7tpcc4lltgx	did:plc:2tpyhqjrnhs3atnbgyth2gen
+
+query II
+-FROM GRAPH_TABLE (bluesky MATCH (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->{1,3}(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
+----
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:2224h5pbnk6teu2equ3tqwko
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:2224x6c53tqc6dpnbamce2yg
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:2226xwprhlf5q3z7lzonrkuv
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:222ewmjskyx4pbxzsbfjkjcp
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:222p42fegwhwfyrc3gqam76j
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:222rnvnta2lbl364bog2plxw
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:223cpcieytdlbmzovhs2ypg2
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:223d4u6shuqs6p4qr66nqvxd
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:223lbodofunlne6qxftgqu4b
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:223le4hxoinieka3qkamdu7j
+
+query III
+-FROM GRAPH_TABLE (bluesky MATCH p = ANY SHORTEST (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->*(b:account where b.did='did:plc:2745n6ytq3cprryyrgul3kel')
+                    COLUMNS (element_id(p) as path, a.did as a_id, b.did as b_id))
+ORDER BY a_id, b_id;
+----
+[712, 282170, 0, 103, 45, 14102, 7368]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:2745n6ytq3cprryyrgul3kel
+
+query II
+from local_clustering_coefficient(bluesky, account, follows) limit 10;
+----
+did:plc:wmu4hhq2ryqc3lcxip6dg552	0.38192064
+did:plc:s5pbcofzgcgdhl3aqw7zvob7	0.16769202
+did:plc:4z5i7njrld66ew36htufcwry	0.17623869
+did:plc:ravsk2tdj7ao4jx4d46ub7jw	0.5918021
+did:plc:twcatus5xoa7jaeysmrhzcpv	0.41726252
+did:plc:sczjbpbbnz7aghq4e2twtree	0.6632801
+did:plc:wptnzi6wyzqltbenxapqa5qd	0.20515554
+did:plc:rsfoi33e4iya2rd7jw52nfmo	0.42694065
+did:plc:o5xqvvs2c3dh5ha6akshadma	0.37183392
+did:plc:edglm4muiyzty2snc55ysuqx	0.118156046
+
+query II
+from weakly_connected_component(bluesky, account, follows) limit 10;
+----
+did:plc:wmu4hhq2ryqc3lcxip6dg552	0
+did:plc:s5pbcofzgcgdhl3aqw7zvob7	0
+did:plc:4z5i7njrld66ew36htufcwry	0
+did:plc:ravsk2tdj7ao4jx4d46ub7jw	0
+did:plc:twcatus5xoa7jaeysmrhzcpv	0
+did:plc:sczjbpbbnz7aghq4e2twtree	0
+did:plc:wptnzi6wyzqltbenxapqa5qd	0
+did:plc:rsfoi33e4iya2rd7jw52nfmo	0
+did:plc:o5xqvvs2c3dh5ha6akshadma	0
+did:plc:edglm4muiyzty2snc55ysuqx	0
+
+query II
+from pagerank(bluesky, account, follows) limit 10;
+----
+did:plc:wmu4hhq2ryqc3lcxip6dg552	7.944697004771359e-06
+did:plc:s5pbcofzgcgdhl3aqw7zvob7	2.8221657823019645e-05
+did:plc:4z5i7njrld66ew36htufcwry	2.7609573737088023e-05
+did:plc:ravsk2tdj7ao4jx4d46ub7jw	1.0904610196570368e-05
+did:plc:twcatus5xoa7jaeysmrhzcpv	9.975467149698722e-06
+did:plc:sczjbpbbnz7aghq4e2twtree	1.6355910151572163e-05
+did:plc:wptnzi6wyzqltbenxapqa5qd	2.4455939891078224e-05
+did:plc:rsfoi33e4iya2rd7jw52nfmo	1.302302726848795e-05
+did:plc:o5xqvvs2c3dh5ha6akshadma	1.6924053894410747e-05
+did:plc:edglm4muiyzty2snc55ysuqx	1.6559147184846025e-05
