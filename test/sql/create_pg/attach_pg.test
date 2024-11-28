@@ -31,105 +31,105 @@ select count(*) from bluesky.account;
 statement ok con2
 -FROM GRAPH_TABLE (bluesky MATCH (a:account));
 
-# statement ok con1
-# -FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account));
-#
-# query II con1
-# -FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
-# ----
-# did:plc:23df55poeztue4terk3s5ain	did:plc:274qq3cgl4vrrofdg77balfw
-# did:plc:23df55poeztue4terk3s5ain	did:plc:2ktpgfwt7cc2osldzh6uyww5
-# did:plc:23df55poeztue4terk3s5ain	did:plc:2p5eadzea3yb2ghwtzrlaebo
-# did:plc:23df55poeztue4terk3s5ain	did:plc:37drmtazrclxzxezzk4ijuk7
-# did:plc:23df55poeztue4terk3s5ain	did:plc:42qpqlgojbezm3gt2nxdfikk
-# did:plc:23df55poeztue4terk3s5ain	did:plc:45g7v5rojoj4tpspb7fg6dvp
-# did:plc:23df55poeztue4terk3s5ain	did:plc:4kv7ldgzot7q4w4y65kpsbwo
-# did:plc:23df55poeztue4terk3s5ain	did:plc:4nt6nwx353a3xxo5mzjiy4ha
-# did:plc:23df55poeztue4terk3s5ain	did:plc:6k63663icgdybm5evgszxjn2
-# did:plc:23df55poeztue4terk3s5ain	did:plc:7562tstpez4aexd75ttshl3z
-#
-# query II con1
-# -FROM GRAPH_TABLE (bluesky MATCH (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->{1,3}(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
-# ----
-# did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:224f4aj5p5vgk7tpcc4lltgx
-# did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:225ihm6x4pkgdpbmvfpxyicf
-# did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22btehtv4y5dogqne5nuu2jx
-# did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22exfzbkuj3dlzj3ukyy4g5y
-# did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22m65anrpfstjo5ymgyl2vwu
-# did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22mof5hzsrituokdxsnoi7qi
-# did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22nbqn2zjp2pobu6cwquhjuu
-# did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22qt6jzmwtgyxzft57kvwut6
-# did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22u3xlfdxqxyzva2fsljotcy
-# did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:23df55poeztue4terk3s5ain
-#
-# query III con1
-# -FROM GRAPH_TABLE (bluesky MATCH p = ANY SHORTEST (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->*(b:account)
-#                     COLUMNS (element_id(p) as path, a.did as a_id, b.did as b_id))
-# ORDER BY a_id, b_id
-# LIMIT 10;
-# ----
-# [15, 13, 9, 347, 276, 11536, 5145]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:224f4aj5p5vgk7tpcc4lltgx
-# [15, 8, 1, 27, 65, 2565, 1530]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:225ihm6x4pkgdpbmvfpxyicf
-# [15, 8, 1, 44, 31, 1058, 863]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22btehtv4y5dogqne5nuu2jx
-# [15, 3, 0, 22, 18, 620, 484]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22exfzbkuj3dlzj3ukyy4g5y
-# [15, 8, 1, 64, 68, 2709, 1594]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22m65anrpfstjo5ymgyl2vwu
-# [15, 7, 6, 260, 206, 8273, 4031]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22mof5hzsrituokdxsnoi7qi
-# [15, 6, 11, 424, 316, 13257, 5646]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22nbqn2zjp2pobu6cwquhjuu
-# [15, 8, 1, 39, 27, 882, 730]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22qt6jzmwtgyxzft57kvwut6
-# [15, 2, 4, 140, 104, 4215, 2188]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22u3xlfdxqxyzva2fsljotcy
-# [15, 3, 0, 24, 17, 585, 461, 19521, 8887]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:23czq4ad6kgrjdgke52yapso
-#
-#
-# query II con1
-# from local_clustering_coefficient(bluesky, account, follows) limit 10;
-# ----
-# did:plc:rsfoi33e4iya2rd7jw52nfmo	0.11904762
-# did:plc:btsulrw4wcqdai23fkl5qwm5	0.12508735
-# did:plc:z72i7hdynmk6r22z27h6tvur	0.028301887
-# did:plc:twcatus5xoa7jaeysmrhzcpv	0.15726179
-# did:plc:wptnzi6wyzqltbenxapqa5qd	0.07191316
-# did:plc:edglm4muiyzty2snc55ysuqx	0.117788464
-# did:plc:sc6ieuzeygvm55vv2bjubkgt	0.102591224
-# did:plc:g5gf5ho5yn3n5anprzf45hvm	0.103670634
-# did:plc:cwcykfexwbxozuxhpuud63qa	0.35714287
-# did:plc:c5ccfcya6zez3rhry6gluup4	0.07952872
-#
-# query II con1
-# from weakly_connected_component(bluesky, account, follows) limit 10;
-# ----
-# did:plc:rsfoi33e4iya2rd7jw52nfmo	0
-# did:plc:btsulrw4wcqdai23fkl5qwm5	0
-# did:plc:z72i7hdynmk6r22z27h6tvur	0
-# did:plc:twcatus5xoa7jaeysmrhzcpv	0
-# did:plc:wptnzi6wyzqltbenxapqa5qd	0
-# did:plc:edglm4muiyzty2snc55ysuqx	0
-# did:plc:sc6ieuzeygvm55vv2bjubkgt	0
-# did:plc:g5gf5ho5yn3n5anprzf45hvm	0
-# did:plc:cwcykfexwbxozuxhpuud63qa	0
-# did:plc:c5ccfcya6zez3rhry6gluup4	0
-#
-# query II con1
-# from pagerank(bluesky, account, follows) limit 10;
-# ----
-# did:plc:rsfoi33e4iya2rd7jw52nfmo	0.0001775254576762574
-# did:plc:btsulrw4wcqdai23fkl5qwm5	0.0002686321909810804
-# did:plc:z72i7hdynmk6r22z27h6tvur	0.0008689709539525615
-# did:plc:twcatus5xoa7jaeysmrhzcpv	0.00018038910592903322
-# did:plc:wptnzi6wyzqltbenxapqa5qd	0.00019702956517977273
-# did:plc:edglm4muiyzty2snc55ysuqx	0.000183535102914441
-# did:plc:sc6ieuzeygvm55vv2bjubkgt	0.00016956149650616158
-# did:plc:g5gf5ho5yn3n5anprzf45hvm	0.00019340188585017924
-# did:plc:cwcykfexwbxozuxhpuud63qa	0.0001771935670038598
-# did:plc:c5ccfcya6zez3rhry6gluup4	0.00047818698168931504
-#
-# statement error con1
-# select count(*) from follows;
-# ----
-# Catalog Error: Table with name follows does not exist!
-#
-# statement error con1
-# from pagerank(bluesky, bluesky.account, follows) limit 10;
-# ----
-# Invalid Error: Label 'bluesky.account' not found. Did you mean the vertex label 'account'?
-#
+statement ok con1
+-FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account));
+
+query II con1
+-FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
+----
+did:plc:23df55poeztue4terk3s5ain	did:plc:274qq3cgl4vrrofdg77balfw
+did:plc:23df55poeztue4terk3s5ain	did:plc:2ktpgfwt7cc2osldzh6uyww5
+did:plc:23df55poeztue4terk3s5ain	did:plc:2p5eadzea3yb2ghwtzrlaebo
+did:plc:23df55poeztue4terk3s5ain	did:plc:37drmtazrclxzxezzk4ijuk7
+did:plc:23df55poeztue4terk3s5ain	did:plc:42qpqlgojbezm3gt2nxdfikk
+did:plc:23df55poeztue4terk3s5ain	did:plc:45g7v5rojoj4tpspb7fg6dvp
+did:plc:23df55poeztue4terk3s5ain	did:plc:4kv7ldgzot7q4w4y65kpsbwo
+did:plc:23df55poeztue4terk3s5ain	did:plc:4nt6nwx353a3xxo5mzjiy4ha
+did:plc:23df55poeztue4terk3s5ain	did:plc:6k63663icgdybm5evgszxjn2
+did:plc:23df55poeztue4terk3s5ain	did:plc:7562tstpez4aexd75ttshl3z
+
+query II con1
+-FROM GRAPH_TABLE (bluesky MATCH (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->{1,3}(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
+----
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:224f4aj5p5vgk7tpcc4lltgx
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:225ihm6x4pkgdpbmvfpxyicf
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22btehtv4y5dogqne5nuu2jx
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22exfzbkuj3dlzj3ukyy4g5y
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22m65anrpfstjo5ymgyl2vwu
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22mof5hzsrituokdxsnoi7qi
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22nbqn2zjp2pobu6cwquhjuu
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22qt6jzmwtgyxzft57kvwut6
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22u3xlfdxqxyzva2fsljotcy
+did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:23df55poeztue4terk3s5ain
+
+query III con1
+-FROM GRAPH_TABLE (bluesky MATCH p = ANY SHORTEST (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->*(b:account)
+                    COLUMNS (element_id(p) as path, a.did as a_id, b.did as b_id))
+ORDER BY a_id, b_id
+LIMIT 10;
+----
+[15, 13, 9, 347, 276, 11536, 5145]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:224f4aj5p5vgk7tpcc4lltgx
+[15, 8, 1, 27, 65, 2565, 1530]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:225ihm6x4pkgdpbmvfpxyicf
+[15, 8, 1, 44, 31, 1058, 863]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22btehtv4y5dogqne5nuu2jx
+[15, 3, 0, 22, 18, 620, 484]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22exfzbkuj3dlzj3ukyy4g5y
+[15, 8, 1, 64, 68, 2709, 1594]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22m65anrpfstjo5ymgyl2vwu
+[15, 7, 6, 260, 206, 8273, 4031]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22mof5hzsrituokdxsnoi7qi
+[15, 6, 11, 424, 316, 13257, 5646]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22nbqn2zjp2pobu6cwquhjuu
+[15, 8, 1, 39, 27, 882, 730]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22qt6jzmwtgyxzft57kvwut6
+[15, 2, 4, 140, 104, 4215, 2188]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22u3xlfdxqxyzva2fsljotcy
+[15, 3, 0, 24, 17, 585, 461, 19521, 8887]	did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:23czq4ad6kgrjdgke52yapso
+
+
+query II con1
+from local_clustering_coefficient(bluesky, account, follows) limit 10;
+----
+did:plc:rsfoi33e4iya2rd7jw52nfmo	0.11904762
+did:plc:btsulrw4wcqdai23fkl5qwm5	0.12508735
+did:plc:z72i7hdynmk6r22z27h6tvur	0.028301887
+did:plc:twcatus5xoa7jaeysmrhzcpv	0.15726179
+did:plc:wptnzi6wyzqltbenxapqa5qd	0.07191316
+did:plc:edglm4muiyzty2snc55ysuqx	0.117788464
+did:plc:sc6ieuzeygvm55vv2bjubkgt	0.102591224
+did:plc:g5gf5ho5yn3n5anprzf45hvm	0.103670634
+did:plc:cwcykfexwbxozuxhpuud63qa	0.35714287
+did:plc:c5ccfcya6zez3rhry6gluup4	0.07952872
+
+query II con1
+from weakly_connected_component(bluesky, account, follows) limit 10;
+----
+did:plc:rsfoi33e4iya2rd7jw52nfmo	0
+did:plc:btsulrw4wcqdai23fkl5qwm5	0
+did:plc:z72i7hdynmk6r22z27h6tvur	0
+did:plc:twcatus5xoa7jaeysmrhzcpv	0
+did:plc:wptnzi6wyzqltbenxapqa5qd	0
+did:plc:edglm4muiyzty2snc55ysuqx	0
+did:plc:sc6ieuzeygvm55vv2bjubkgt	0
+did:plc:g5gf5ho5yn3n5anprzf45hvm	0
+did:plc:cwcykfexwbxozuxhpuud63qa	0
+did:plc:c5ccfcya6zez3rhry6gluup4	0
+
+query II con1
+from pagerank(bluesky, account, follows) limit 10;
+----
+did:plc:rsfoi33e4iya2rd7jw52nfmo	0.0001775254576762574
+did:plc:btsulrw4wcqdai23fkl5qwm5	0.0002686321909810804
+did:plc:z72i7hdynmk6r22z27h6tvur	0.0008689709539525615
+did:plc:twcatus5xoa7jaeysmrhzcpv	0.00018038910592903322
+did:plc:wptnzi6wyzqltbenxapqa5qd	0.00019702956517977273
+did:plc:edglm4muiyzty2snc55ysuqx	0.000183535102914441
+did:plc:sc6ieuzeygvm55vv2bjubkgt	0.00016956149650616158
+did:plc:g5gf5ho5yn3n5anprzf45hvm	0.00019340188585017924
+did:plc:cwcykfexwbxozuxhpuud63qa	0.0001771935670038598
+did:plc:c5ccfcya6zez3rhry6gluup4	0.00047818698168931504
+
+statement error con1
+select count(*) from follows;
+----
+Catalog Error: Table with name follows does not exist!
+
+statement error con1
+from pagerank(bluesky, bluesky.account, follows) limit 10;
+----
+Invalid Error: Label 'bluesky.account' not found. Did you mean the vertex label 'account'?
+
 
