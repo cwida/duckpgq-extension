@@ -43,16 +43,16 @@ FROM GRAPH_TABLE (pg
 ----
 0	Daniel
 
-#query II
-#-SELECT study.a_id, study.b_id
-#FROM GRAPH_TABLE (pg
-#    MATCH
-#    (a:Person)-[k:Knows WHERE k.id = 10]->(b:Person)
-#    COLUMNS (a.id as a_id, b.id as b_id)
-#    ) study
-#----
-#0	1
-#
+query II
+-SELECT study.a_id, study.b_id
+FROM GRAPH_TABLE (pg
+   MATCH
+   (a:Person)-[k:Knows WHERE k.id = 10]->(b:Person)
+   COLUMNS (a.id as a_id, b.id as b_id)
+   ) study
+----
+0	1
+
 #query II
 #WITH cte1 AS (
 #    SELECT  CREATE_CSR_EDGE(
