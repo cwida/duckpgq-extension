@@ -33,11 +33,11 @@ CreatePropertyGraphInfo* GetPropertyGraphInfo(const shared_ptr<DuckPGQState> &du
 
 // Function to validate the source node and edge table
 shared_ptr<PropertyGraphTable> ValidateSourceNodeAndEdgeTable(CreatePropertyGraphInfo *pg_info, const std::string &node_label, const std::string &edge_label) {
-  auto source_node_pg_entry = pg_info->GetTable(node_label, true, true);
+  auto source_node_pg_entry = pg_info->GetTableByLabel(node_label, true, true);
   if (!source_node_pg_entry->is_vertex_table) {
     throw Exception(ExceptionType::INVALID, node_label + " is an edge table, expected a vertex table");
   }
-  auto edge_pg_entry = pg_info->GetTable(edge_label, true, false);
+  auto edge_pg_entry = pg_info->GetTableByLabel(edge_label, true, false);
   if (edge_pg_entry->is_vertex_table) {
     throw Exception(ExceptionType::INVALID, edge_label + " is a vertex table, expected an edge table");
   }
@@ -70,8 +70,7 @@ unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &ed
   select_expression.emplace_back(std::move(addition_function));
   select_node->select_list = std::move(select_expression);
 
-  auto src_base_ref = make_uniq<BaseTableRef>();
-  src_base_ref->table_name = edge_pg_entry->source_reference;
+  auto src_base_ref = edge_pg_entry->source_pg_table->CreateBaseTableRef();
 
   auto temp_cte_select_subquery = CreateCountCTESubquery();
 
