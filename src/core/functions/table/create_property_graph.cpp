@@ -178,7 +178,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
 
         if (!table) {
           throw Exception(ExceptionType::INVALID,
-                          "Table " + vertex_table->catalog_name + "." + vertex_table->table_name + " not found");
+                          "Table " + (vertex_table->catalog_name.empty() ? DEFAULT_SCHEMA : vertex_table->catalog_name) + "." + vertex_table->table_name + " not found");
         }
 
         CheckPropertyGraphTableColumns(vertex_table, *table);
@@ -209,7 +209,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                                                       edge_table->table_name, OnEntryNotFound::RETURN_NULL);
       if (!table) {
         throw Exception(ExceptionType::INVALID,
-                        "Table " + edge_table->catalog_name + "." + edge_table->table_name + " not found");
+                        "Table " + (edge_table->catalog_name.empty() ? DEFAULT_SCHEMA : edge_table->catalog_name) + "." + edge_table->table_name + " not found");
       }
 
       CheckPropertyGraphTableColumns(edge_table, *table);
