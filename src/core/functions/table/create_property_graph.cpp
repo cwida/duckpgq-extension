@@ -311,10 +311,12 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
       for (idx_t i = 0; i < v_table->sub_labels.size(); i++) {
         insert_info += "'" + v_table->sub_labels[i] + (i == v_table->sub_labels.size() - 1 ? "'" : "', ");
       }
-      insert_info += "]";
+      insert_info += "],";
     } else {
-      insert_info += "NULL";
+      insert_info += "NULL,";
     }
+    insert_info += "'" + v_table->catalog_name + "', ";
+    insert_info += "'" + v_table->schema_name + "'";
     insert_info += "), ";
   }
 
@@ -354,10 +356,12 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
       for (idx_t i = 0; i < e_table->sub_labels.size(); i++) {
         insert_info += "'" + e_table->sub_labels[i] + (i == e_table->sub_labels.size() - 1 ? "'" : "', ");
       }
-      insert_info += "]";
+      insert_info += "], ";
     } else {
-      insert_info += "NULL";
+      insert_info += "NULL, ";
     }
+    insert_info += "'" + e_table->catalog_name + "', ";
+    insert_info += "'" + e_table->schema_name + "'";
     insert_info += "), ";
   }
 
