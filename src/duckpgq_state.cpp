@@ -16,7 +16,9 @@ DuckPGQState::DuckPGQState(shared_ptr<ClientContext> context) {
                                "destination_pk varchar[], "
                                "destination_fk varchar[], "
                                "discriminator varchar, "
-                               "sub_labels varchar[])",
+                               "sub_labels varchar[], "
+                               "catalog varchar, "
+                               "schema varchar)",
                                false);
   if (query->HasError()) {
     throw TransactionException(query->GetError());
@@ -49,6 +51,8 @@ void DuckPGQState::RetrievePropertyGraphs(shared_ptr<ClientContext> context) {
         table->sub_labels.push_back(sublabel.GetValue<string>());
       }
     }
+    table->catalog_name = vertex_pg_chunk->GetValue(12, i).GetValue<string>();
+    table->schema_name = vertex_pg_chunk->GetValue(13, i).GetValue<string>();
 
     if (registered_property_graphs.find(property_graph_name) ==
         registered_property_graphs.end()) {
@@ -110,6 +114,8 @@ void DuckPGQState::RetrievePropertyGraphs(shared_ptr<ClientContext> context) {
         table->sub_labels.push_back(sublabel.GetValue<string>());
       }
     }
+    table->catalog_name = vertex_pg_chunk->GetValue(12, i).GetValue<string>();
+    table->schema_name = vertex_pg_chunk->GetValue(13, i).GetValue<string>();
 
     if (registered_property_graphs.find(property_graph_name) ==
         registered_property_graphs.end()) {
@@ -125,9 +131,9 @@ void DuckPGQState::RetrievePropertyGraphs(shared_ptr<ClientContext> context) {
       }
     }
     // TODO verify this works with labels
-    table->source_pg_table = pg_info.label_map[table->source_reference];
+    table->source_pg_table = pg_info.GetTableByName(table->source_reference);
     D_ASSERT(table->source_pg_table);
-    table->destination_pg_table = pg_info.label_map[table->destination_reference];
+    table->destination_pg_table = pg_info.GetTableByName(table->destination_reference);
     D_ASSERT(table->destination_pg_table);
 
     pg_info.edge_tables.push_back(std::move(table));
