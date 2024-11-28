@@ -31,6 +31,9 @@ select count(*) from bluesky.account;
 statement ok con2
 -FROM GRAPH_TABLE (bluesky MATCH (a:account));
 
+statement ok con2
+-FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account));
+
 statement ok con1
 -FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account));
 
