@@ -162,7 +162,7 @@ unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
   auto count_function =
       make_uniq<FunctionExpression>("count", std::move(children));
 
-  auto zero = make_uniq<ConstantExpression>(Value::INTEGER((int32_t)0));
+  auto zero = make_uniq<ConstantExpression>(Value::INTEGER(0));
 
   vector<unique_ptr<ParsedExpression>> multiply_children;
 
@@ -191,14 +191,13 @@ void PGQMatchFunction::EdgeTypeAny(
   // START SELECT src, dst, * from edge_table
   auto src_dst_select_node = make_uniq<SelectNode>();
 
-  auto edge_left_ref = make_uniq<BaseTableRef>();
-  edge_left_ref->table_name = edge_table->table_name;
+  auto edge_left_ref = edge_table->CreateBaseTableRef(edge_binding);
   src_dst_select_node->from_table = std::move(edge_left_ref);
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
   src_dst_children.push_back(make_uniq<ColumnRefExpression>(
-      edge_table->source_fk[0], edge_table->table_name));
+      edge_table->source_fk[0], edge_binding));
   src_dst_children.push_back(make_uniq<ColumnRefExpression>(
-      edge_table->destination_fk[0], edge_table->table_name));
+      edge_table->destination_fk[0], edge_binding));
   src_dst_children.push_back(make_uniq<StarExpression>());
 
   src_dst_select_node->select_list = std::move(src_dst_children);
@@ -207,15 +206,14 @@ void PGQMatchFunction::EdgeTypeAny(
   // START SELECT dst, src, * from edge_table
   auto dst_src_select_node = make_uniq<SelectNode>();
 
-  auto edge_right_ref = make_uniq<BaseTableRef>();
-  edge_right_ref->table_name = edge_table->table_name;
+  auto edge_right_ref = edge_table->CreateBaseTableRef(edge_binding);
   auto dst_src_children = vector<unique_ptr<ParsedExpression>>();
   dst_src_select_node->from_table = std::move(edge_right_ref);
 
   dst_src_children.push_back(make_uniq<ColumnRefExpression>(
-      edge_table->destination_fk[0], edge_table->table_name));
+      edge_table->destination_fk[0], edge_binding));
   dst_src_children.push_back(make_uniq<ColumnRefExpression>(
-      edge_table->source_fk[0], edge_table->table_name));
+      edge_table->source_fk[0], edge_binding));
   dst_src_children.push_back(make_uniq<StarExpression>());
 
   dst_src_select_node->select_list = std::move(dst_src_children);
@@ -290,7 +288,7 @@ void PGQMatchFunction::EdgeTypeLeftRight(
     const string &edge_binding, const string &prev_binding,
     const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
-    unordered_map<string, string> &alias_map, int32_t &extra_alias_counter) {
+    case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map, int32_t &extra_alias_counter) {
   auto src_left_expr = CreateMatchJoinExpression(
       edge_table->source_pk, edge_table->source_fk, next_binding, edge_binding);
   auto dst_left_expr = CreateMatchJoinExpression(edge_table->destination_pk,
@@ -305,7 +303,7 @@ void PGQMatchFunction::EdgeTypeLeftRight(
       edge_binding + std::to_string(extra_alias_counter);
   extra_alias_counter++;
 
-  alias_map[additional_edge_alias] = edge_table->table_name;
+  alias_map[additional_edge_alias] = edge_table;
 
   auto src_right_expr =
       CreateMatchJoinExpression(edge_table->source_pk, edge_table->source_fk,
@@ -486,7 +484,7 @@ void PGQMatchFunction::GenerateShortestPathOperatorCTE(
 }
 
 unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
-                                   PathElement * previous_vertex_element, PathElement * next_vertex_element, vector<unique_ptr<ParsedExpression>> &path_finding_conditions) {
+                                   PathElement *previous_vertex_element, PathElement * next_vertex_element, vector<unique_ptr<ParsedExpression>> &path_finding_conditions) {
   auto cte_info = make_uniq<CommonTableExpressionInfo>();
   auto select_statement = make_uniq<SelectStatement>();
   auto select_node = make_uniq<SelectNode>();
@@ -503,7 +501,7 @@ unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(
   vector<unique_ptr<ParsedExpression>> pathfinding_children;
   pathfinding_children.push_back(std::move(csr_id));
   pathfinding_children.push_back(std::move(GetCountTable(
-      edge_table->source_reference, previous_vertex_element->variable_binding, edge_table->source_pk[0])));
+      edge_table->source_pg_table, previous_vertex_element->variable_binding, edge_table->source_pk[0])));
   pathfinding_children.push_back(std::move(src_row_id));
   pathfinding_children.push_back(std::move(dst_row_id));
 
@@ -518,11 +516,9 @@ unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(
   dst_rowid_outer_select->alias = "dst_rowid";
   select_node->select_list.push_back(std::move(dst_rowid_outer_select));
 
-  auto src_tableref = make_uniq<BaseTableRef>();
-  src_tableref->table_name = edge_table->source_reference;
+  auto src_tableref = edge_table->source_pg_table->CreateBaseTableRef();
   src_tableref->alias = previous_vertex_element->variable_binding;
-  auto dst_tableref = make_uniq<BaseTableRef>();
-  dst_tableref->table_name = edge_table->destination_reference;
+  auto dst_tableref = edge_table->destination_pg_table->CreateBaseTableRef();
   dst_tableref->alias = next_vertex_element->variable_binding;
   auto first_cross_join_ref = make_uniq<JoinRef>(JoinRefType::CROSS);
   first_cross_join_ref->left = std::move(src_tableref);
@@ -721,10 +717,10 @@ void PGQMatchFunction::AddEdgeJoins(
     PGQMatchType edge_type, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
-    unordered_map<string, string> &alias_map, int32_t &extra_alias_counter,
+    case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map, int32_t &extra_alias_counter,
     unique_ptr<TableRef> &from_clause) {
   if (edge_type != PGQMatchType::MATCH_EDGE_ANY) {
-    alias_map[edge_binding] = edge_table->table_name;
+    alias_map[edge_binding] = edge_table;
   }
   switch (edge_type) {
   case PGQMatchType::MATCH_EDGE_ANY: {
@@ -763,7 +759,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::AddPathQuantifierCondition(
   vector<unique_ptr<ParsedExpression>> pathfinding_children;
   pathfinding_children.push_back(std::move(csr_id));
   pathfinding_children.push_back(
-      std::move(GetCountTable(edge_table->source_reference, prev_binding, edge_table->source_pk[0])));
+      std::move(GetCountTable(edge_table->source_pg_table, prev_binding, edge_table->source_pk[0])));
   pathfinding_children.push_back(std::move(src_row_id));
   pathfinding_children.push_back(std::move(dst_row_id));
 
@@ -943,7 +939,7 @@ void PGQMatchFunction::ProcessPathList(
     vector<unique_ptr<PathReference>> &path_list,
     vector<unique_ptr<ParsedExpression>> &conditions,
     unique_ptr<SelectNode> &final_select_node,
-    unordered_map<string, string> &alias_map, CreatePropertyGraphInfo &pg_table,
+    case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map, CreatePropertyGraphInfo &pg_table,
     int32_t &extra_alias_counter,
     MatchExpression &original_ref, ClientContext &context) {
   PathElement *previous_vertex_element = GetPathElement(path_list[0]);
@@ -971,7 +967,7 @@ void PGQMatchFunction::ProcessPathList(
       FindGraphTable(previous_vertex_element->label, pg_table);
   CheckInheritance(previous_vertex_table, previous_vertex_element, conditions);
   alias_map[previous_vertex_element->variable_binding] =
-      previous_vertex_table->table_name;
+      previous_vertex_table;
 
   for (idx_t idx_j = 1; idx_j < path_list.size(); idx_j = idx_j + 2) {
     PathElement *next_vertex_element = GetPathElement(path_list[idx_j + 1]);
@@ -994,8 +990,7 @@ void PGQMatchFunction::ProcessPathList(
     auto next_vertex_table =
         FindGraphTable(next_vertex_element->label, pg_table);
     CheckInheritance(next_vertex_table, next_vertex_element, conditions);
-    alias_map[next_vertex_element->variable_binding] =
-        next_vertex_table->table_name;
+    alias_map[next_vertex_element->variable_binding] = next_vertex_table;
 
     PathElement *edge_element = GetPathElement(path_list[idx_j]);
     if (!edge_element) {
@@ -1062,7 +1057,7 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
   vector<unique_ptr<ParsedExpression>> conditions;
 
   auto final_select_node = make_uniq<SelectNode>();
-  unordered_map<string, string> alias_map;
+  case_insensitive_map_t<shared_ptr<PropertyGraphTable>> alias_map;
 
   int32_t extra_alias_counter = 0;
   for (idx_t idx_i = 0; idx_i < ref->path_patterns.size(); idx_i++) {
@@ -1076,10 +1071,8 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
 
   // Go through all aliases encountered
   for (auto &table_alias_entry : alias_map) {
-    auto table_ref = make_uniq<BaseTableRef>();
-    table_ref->table_name = table_alias_entry.second;
+    auto table_ref = table_alias_entry.second->CreateBaseTableRef();
     table_ref->alias = table_alias_entry.first;
-
     if (final_select_node->from_table) {
       auto new_root = make_uniq<JoinRef>(JoinRefType::CROSS);
       new_root->left = std::move(final_select_node->from_table);

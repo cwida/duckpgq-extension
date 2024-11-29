@@ -169,26 +169,29 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                                                 " already exists");
   }
 
-  auto &catalog = Catalog::GetCatalog(context, info->catalog);
   case_insensitive_set_t v_table_names;
   for (auto &vertex_table : info->vertex_tables) {
       try {
+        auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
         auto table = catalog.GetEntry<TableCatalogEntry>(
           context, info->schema, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
 
         if (!table) {
           throw Exception(ExceptionType::INVALID,
-                          "Table " + vertex_table->table_name + " not found");
+                          "Table " + (vertex_table->catalog_name.empty() ? DEFAULT_SCHEMA : vertex_table->catalog_name) + "." + vertex_table->table_name + " not found");
         }
 
         CheckPropertyGraphTableColumns(vertex_table, *table);
         CheckPropertyGraphTableLabels(vertex_table, *table);
       } catch (CatalogException &e) {
+        auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
         auto table = catalog.GetEntry<ViewCatalogEntry>(context, info->schema, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
         if (table) {
           throw Exception(ExceptionType::INVALID, "Found a view with name " + vertex_table->table_name + ". Creating property graph tables over views is currently not supported.");
         }
         throw Exception(ExceptionType::INVALID, e.what());
+      } catch (BinderException &e) {
+        throw Exception(ExceptionType::INVALID, "Catalog '" + vertex_table->catalog_name + "' does not exist!");
       }
 
 
@@ -200,11 +203,13 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
 
   for (auto &edge_table : info->edge_tables) {
     try {
-      auto table = catalog.GetEntry<TableCatalogEntry>(context, info->schema,
+      auto &catalog = Catalog::GetCatalog(context, edge_table->catalog_name);
+
+      auto table = catalog.GetEntry<TableCatalogEntry>(context, edge_table->schema_name,
                                                       edge_table->table_name, OnEntryNotFound::RETURN_NULL);
       if (!table) {
         throw Exception(ExceptionType::INVALID,
-                        "Table " + edge_table->table_name + " not found");
+                        "Table " + (edge_table->catalog_name.empty() ? DEFAULT_SCHEMA : edge_table->catalog_name) + "." + edge_table->table_name + " not found");
       }
 
       CheckPropertyGraphTableColumns(edge_table, *table);
@@ -237,11 +242,14 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
       // Validate primary keys in the destination table
       ValidatePrimaryKeyInTable(catalog, context, info->schema, edge_table->destination_reference, edge_table->destination_pk);
     } catch (CatalogException &e) {
+      auto &catalog = Catalog::GetCatalog(context, edge_table->catalog_name);
       auto table = catalog.GetEntry<ViewCatalogEntry>(context, info->schema, edge_table->table_name, OnEntryNotFound::RETURN_NULL);
       if (table) {
         throw Exception(ExceptionType::INVALID, "Found a view with name " + edge_table->table_name + ". Creating property graph tables over views is currently not supported.");
       }
       throw Exception(ExceptionType::INVALID, e.what());
+    } catch (BinderException &e) {
+      throw Exception(ExceptionType::INVALID, "Catalog '" + edge_table->catalog_name + "' does not exist!");
     }
   }
   return make_uniq<CreatePropertyGraphBindData>(info);
@@ -307,10 +315,12 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
       for (idx_t i = 0; i < v_table->sub_labels.size(); i++) {
         insert_info += "'" + v_table->sub_labels[i] + (i == v_table->sub_labels.size() - 1 ? "'" : "', ");
       }
-      insert_info += "]";
+      insert_info += "],";
     } else {
-      insert_info += "NULL";
+      insert_info += "NULL,";
     }
+    insert_info += "'" + v_table->catalog_name + "', ";
+    insert_info += "'" + v_table->schema_name + "'";
     insert_info += "), ";
   }
 
@@ -350,10 +360,12 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
       for (idx_t i = 0; i < e_table->sub_labels.size(); i++) {
         insert_info += "'" + e_table->sub_labels[i] + (i == e_table->sub_labels.size() - 1 ? "'" : "', ");
       }
-      insert_info += "]";
+      insert_info += "], ";
     } else {
-      insert_info += "NULL";
+      insert_info += "NULL, ";
     }
+    insert_info += "'" + e_table->catalog_name + "', ";
+    insert_info += "'" + e_table->schema_name + "'";
     insert_info += "), ";
   }
 

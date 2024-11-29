@@ -16,6 +16,7 @@
 #include "duckdb/parser/path_element.hpp"
 #include "duckdb/parser/path_pattern.hpp"
 #include "duckdb/parser/subpath_element.hpp"
+#include "duckdb/parser/property_graph_table.hpp"
 
 #include <duckdb/parser/tableref/matchref.hpp>
 
@@ -93,7 +94,7 @@ public:
                     const string &edge_binding, const string &prev_binding,
                     const string &next_binding,
                     vector<unique_ptr<ParsedExpression>> &conditions,
-                    unordered_map<string, string> &alias_map,
+                    case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
                     int32_t &extra_alias_counter);
 
   static unique_ptr<ParsedExpression> AddPathQuantifierCondition(
@@ -155,16 +156,16 @@ public:
                PGQMatchType edge_type, const string &edge_binding,
                const string &prev_binding, const string &next_binding,
                vector<unique_ptr<ParsedExpression>> &conditions,
-               unordered_map<string, string> &alias_map,
+               case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
                int32_t &extra_alias_counter, unique_ptr<TableRef> &from_clause);
 
-  static void ProcessPathList(vector<unique_ptr<PathReference>> &path_pattern,
-                              vector<unique_ptr<ParsedExpression>> &conditions,
-                              unique_ptr<SelectNode> &select_node,
-                              unordered_map<string, string> &alias_map,
-                              CreatePropertyGraphInfo &pg_table,
-                              int32_t &extra_alias_counter,
-                              MatchExpression &original_ref, ClientContext &context);
+  static void ProcessPathList(
+      vector<unique_ptr<PathReference>> &path_pattern,
+      vector<unique_ptr<ParsedExpression>> &conditions,
+      unique_ptr<SelectNode> &select_node,
+      case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
+      CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
+      MatchExpression &original_ref, ClientContext &context);
 
   static void
   CheckNamedSubpath(SubPath &subpath, MatchExpression &original_ref,
