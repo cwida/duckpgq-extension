@@ -181,6 +181,14 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context,
       make_uniq<ColumnDataCollection>(context, op.children[0]->GetTypes());
   global_csr_column_data =
       make_uniq<ColumnDataCollection>(context, op.children[1]->GetTypes());
+
+  auto result_types = op.children[0]->GetTypes();
+  if (op.mode == "iterativelength") {
+    result_types.push_back(LogicalType::BIGINT);
+  } else {
+    result_types.push_back(LogicalType::LIST(LogicalType::BIGINT));
+  }
+  results = make_uniq<ColumnDataCollection>(context, result_types);
   child = 0;
   mode = op.mode;
 }
@@ -412,7 +420,6 @@ SourceResultType PhysicalPathFinding::GetData(ExecutionContext &context, DataChu
   static idx_t current_offset = 0;
 
   // Determine the number of tuples to process in this call
-  idx_t remaining_tuples = pf_bfs_state->pairs->size() - current_offset;
   auto tuples_to_copy = std::min<idx_t>(STANDARD_VECTOR_SIZE, pf_bfs_state->pairs->size() - current_offset);
   // If there are no tuples left, we're finished
   if (tuples_to_copy == 0) {

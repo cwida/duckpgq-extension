@@ -154,6 +154,8 @@ public:
   unique_ptr<ColumnDataCollection> global_pairs;
   unique_ptr<ColumnDataCollection> global_csr_column_data;
 
+  unique_ptr<ColumnDataCollection> results; // results of the path-finding
+
   ColumnDataScanState scan_state;
   ColumnDataAppendState append_state;
   // state for BFS
