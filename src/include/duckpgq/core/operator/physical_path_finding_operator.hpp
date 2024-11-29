@@ -97,7 +97,10 @@ class GlobalBFSState {
 
 public:
   GlobalBFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, int64_t vsize_,
-                 idx_t num_threads_, idx_t mode_, ClientContext &context_);
+                 idx_t num_threads_, string mode_, ClientContext &context_);
+
+  void ScheduleBFSEvent(Pipeline &pipeline, Event &event,
+                                           GlobalSinkState &state);
 
   void Clear();
 
@@ -140,7 +143,7 @@ public:
   // lock for next
   mutable vector<mutex> element_locks;
 
-  idx_t mode;
+  string mode;
 };
 
 class PathFindingGlobalSinkState : public GlobalSinkState {
@@ -158,13 +161,13 @@ public:
 
   ColumnDataScanState scan_state;
   ColumnDataAppendState append_state;
-  // state for BFS
-  unique_ptr<GlobalBFSState> global_bfs_state;
   CSR* csr;
   int32_t csr_id;
   size_t child;
   string mode;
   ClientContext &context_;
+  idx_t pairs_processed;
+  idx_t num_threads;
 };
 
 } // namespace core

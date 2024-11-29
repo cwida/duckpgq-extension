@@ -6,10 +6,11 @@
 namespace duckpgq {
 namespace core {
 
-class PhysicalShortestPathTask : public ExecutorTask {
+class ShortestPathTask : public ExecutorTask {
 public:
-  PhysicalShortestPathTask(shared_ptr<Event> event_p, ClientContext &context,
-                           PathFindingGlobalSinkState &state, idx_t worker_id, const PhysicalOperator &op_p);
+  ShortestPathTask(shared_ptr<Event> event_p, ClientContext &context,
+                           GlobalBFSState &state, idx_t worker_id,
+                           const PhysicalOperator &op_p);
 
   TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
 
@@ -23,7 +24,7 @@ private:
   bool SetTaskRange();
 
   ClientContext &context;
-  PathFindingGlobalSinkState &state;
+  GlobalBFSState &state;
   // [left, right)
   idx_t left;
   idx_t right;
