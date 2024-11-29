@@ -383,8 +383,8 @@ unique_ptr<SubqueryExpression> PGQMatchFunction::GenerateCSROperatorSubquery(sha
   auto select_node = make_uniq<SelectNode>();
 
   vector<unique_ptr<ParsedExpression>> csr_operator_children;
-  csr_operator_children.emplace_back(GetCountTable(edge_table->source_reference, src_table_alias, edge_table->source_pk[0]));
-  csr_operator_children.emplace_back(GetCountTable(edge_table->table_name, edge_table_alias, edge_table->source_fk[0]));
+  csr_operator_children.emplace_back(GetCountTable(edge_table->source_pg_table, src_table_alias, edge_table->source_pk[0]));
+  csr_operator_children.emplace_back(GetCountTable(edge_table, edge_table_alias, edge_table->source_fk[0]));
 
   csr_operator_children.emplace_back(CreateColumnRefExpression("rowid", src_table_alias));
   csr_operator_children.emplace_back(CreateColumnRefExpression("rowid", dst_table_alias));
