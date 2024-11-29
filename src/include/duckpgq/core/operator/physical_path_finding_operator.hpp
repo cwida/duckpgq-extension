@@ -34,7 +34,6 @@ public:
   vector<unique_ptr<Expression>> expressions;
   string mode; // "iterativelength" or "shortestpath"
 
-
 public:
   InsertionOrderPreservingMap<string> ParamsToString() const override;
 
@@ -96,11 +95,11 @@ public:
 class GlobalBFSState {
 
 public:
-  GlobalBFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, int64_t vsize_,
+  GlobalBFSState(DataChunk &pairs_, CSR* csr_, int64_t vsize_,
                  idx_t num_threads_, string mode_, ClientContext &context_);
 
   void ScheduleBFSEvent(Pipeline &pipeline, Event &event,
-                                           GlobalSinkState &state);
+    GlobalSinkState &state, const PhysicalPathFinding *op);
 
   void Clear();
 
@@ -110,7 +109,7 @@ public:
 
   pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) const;
   CSR *csr;
-  shared_ptr<DataChunk> pairs;
+  DataChunk &pairs;
   int64_t iter;
   int64_t v_size;
   bool change;

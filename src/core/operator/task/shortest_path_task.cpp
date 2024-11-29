@@ -82,18 +82,12 @@ void ShortestPathTask::IterativePath() {
 
   // Attempt to get a task range
   bool has_tasks = SetTaskRange();
-  // std::cout << "Worker " << worker_id << ": Has tasks = " << has_tasks <<
-  // std::endl;
-
-  // Clear next array regardless of whether the worker has tasks
   for (auto i = left; i < right; i++) {
     next[i] = 0;
   }
 
   // Synchronize after clearing
   barrier->Wait();
-  // std::cout << "Worker " << worker_id << ": Passed first barrier." <<
-  // std::endl;
 
   // Main processing loop
   while (has_tasks) {
@@ -117,16 +111,10 @@ void ShortestPathTask::IterativePath() {
 
     // Check for a new task range
     has_tasks = SetTaskRange();
-    if (!has_tasks) {
-      // std::cout << "Worker " << worker_id << ": No more tasks found to
-      // explore." << std::endl;
-    }
   }
 
   // Synchronize at the end of the main processing
   barrier->Wait([&]() {
-    // std::cout << "Worker " << worker_id << ": Resetting task index." <<
-    // std::endl;
     state.ResetTaskIndex();
   });
   barrier->Wait();
@@ -147,13 +135,9 @@ void ShortestPathTask::IterativePath() {
 
   // Synchronize again
   barrier->Wait([&]() {
-    // std::cout << "Worker " << worker_id << ": Resetting task index at second
-    // barrier." << std::endl;
     state.ResetTaskIndex();
   });
   barrier->Wait();
-  // std::cout << "Worker " << worker_id << ": Passed second barrier." <<
-  // std::endl;
 }
 
 void ShortestPathTask::ReachDetect() {

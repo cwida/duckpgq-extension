@@ -37,7 +37,7 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
   mode = path_finding_op.mode;
 }
 
-GlobalBFSState::GlobalBFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, int64_t vsize_,
+GlobalBFSState::GlobalBFSState(DataChunk &pairs_, CSR* csr_, int64_t vsize_,
                idx_t num_threads_, string mode_, ClientContext &context_)
     : pairs(pairs_), iter(1), csr(csr_), v_size(vsize_), change(false),
       started_searches(0), total_len(0), context(context_), seen(vsize_),
@@ -47,23 +47,23 @@ GlobalBFSState::GlobalBFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, int64_t 
   if (mode == "iterativelength") { // length
     result.Initialize(
         context, {LogicalType::BIGINT},
-        pairs_->size());
+        pairs_.size());
   } else if (mode == "shortestpath") { // path
     result.Initialize(
       context, {LogicalType::LIST(LogicalType::BIGINT)},
-      pairs_->size());
+      pairs_.size());
   } else {
     throw NotImplementedException("Mode not supported");
   }
-  result.SetCardinality(pairs_->size());
+  result.SetCardinality(pairs_.size());
 
-  auto &src_data = pairs->data[0];
-  auto &dst_data = pairs->data[1];
-  src_data.ToUnifiedFormat(pairs->size(), vdata_src);
-  dst_data.ToUnifiedFormat(pairs->size(), vdata_dst);
+  auto &src_data = pairs.data[0];
+  auto &dst_data = pairs.data[1];
+  src_data.ToUnifiedFormat(pairs.size(), vdata_src);
+  dst_data.ToUnifiedFormat(pairs.size(), vdata_dst);
   src = FlatVector::GetData<int64_t>(src_data);
   dst = FlatVector::GetData<int64_t>(dst_data);
-  result.SetCapacity(pairs->size());
+  result.SetCapacity(pairs.size());
 
   CreateTasks();
   size_t number_of_threads_to_schedule = std::min(num_threads, (idx_t)global_task_queue.size());
@@ -268,38 +268,14 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 
     auto global_bfs_state = make_uniq<GlobalBFSState>(pairs_to_process, gstate.csr, gstate.csr->vsize-2,
       gstate.num_threads, mode, context);
-    global_bfs_state->ScheduleBFSEvent(pipeline, event, gstate);
+    global_bfs_state->ScheduleBFSEvent(pipeline, event, gstate, this);
     ColumnDataAppendState append_state;
+    // TODO add back in option to set the task size
+    gstate.pairs_processed += pairs_to_process.size();
     gstate.results->Append(append_state, global_bfs_state->result);
+    std::cout << "Processed " << gstate.pairs_processed << " pairs" << std::endl;
+    std::cout << "Total size: " << global_tasks->Count() << std::endl;
   }
-
-  // if (global_tasks->Count() > 0) {
-  //   auto all_pairs = make_shared_ptr<DataChunk>();
-  //   DataChunk pairs;
-  //   global_tasks->InitializeScanChunk(*all_pairs);
-  //   global_tasks->InitializeScanChunk(pairs);
-  //   ColumnDataScanState scan_state;
-  //   global_tasks->InitializeScan(scan_state);
-  //   while (global_tasks->Scan(scan_state, pairs)) {
-  //     all_pairs->Append(pairs, true);
-  //   }
-  //
-  //   auto &ts = TaskScheduler::GetScheduler(context);
-  //   idx_t num_threads = ts.NumberOfThreads();
-  //   idx_t mode = this->mode == "iterativelength" ? 0 : 1;
-  //   gstate.global_bfs_state = make_uniq<GlobalBFSState>(all_pairs, gstate.csr, gstate.csr->vsize-2,
-  //     num_threads, mode, context);
-  //
-  //   Value task_size_value;
-  //   context.TryGetCurrentSetting("experimental_path_finding_operator_task_size",
-  //                                task_size_value);
-  //   gstate.global_bfs_state->split_size = task_size_value.GetValue<idx_t>();
-  //
-  //   // Schedule the first round of BFS tasks
-  //   if (all_pairs->size() > 0) {
-  //     ScheduleBFSEvent(pipeline, event, gstate);
-  //   }
-  // }
 
   // Move to the next input child
   ++gstate.child;
@@ -308,17 +284,17 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 }
 
 void GlobalBFSState::ScheduleBFSEvent(Pipeline &pipeline, Event &event,
-                                           GlobalSinkState &state) {
+                                           GlobalSinkState &state, const PhysicalPathFinding *op) {
   auto &gstate = state.Cast<PathFindingGlobalSinkState>();
   // remaining pairs
-  if (started_searches < gstate.global_pairs->Count()) {
+  if (started_searches < pairs.size()) {
     auto &result_validity = FlatVector::Validity(result.data[0]);
     std::bitset<LANE_LIMIT> seen_mask;
     seen_mask.set();
 
     for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
       lane_to_num[lane] = -1;
-      while (started_searches < gstate.global_pairs->Count()) {
+      while (started_searches < pairs.size()) {
         auto search_num = started_searches++;
         int64_t src_pos = vdata_src.sel->get_index(search_num);
         if (!vdata_src.validity.RowIsValid(src_pos)) {
@@ -338,13 +314,14 @@ void GlobalBFSState::ScheduleBFSEvent(Pipeline &pipeline, Event &event,
     }
 
     if (mode == "iterativelength") {
-      auto bfs_event =
-          make_shared_ptr<ParallelIterativeEvent>(gstate, pipeline, *this);
-      event.InsertEvent(std::move(bfs_event));
+      throw NotImplementedException("Iterative length has not been implemented yet");
+      // event.InsertEvent(
+        // make_shared_ptr<ParallelIterativeEvent>(gstate, pipeline, *this));
     } else if (gstate.mode == "shortestpath") {
-      auto bfs_event =
-          make_shared_ptr<ShortestPathEvent>(gstate, pipeline, *this);
-      event.InsertEvent(std::move(bfs_event));
+      event.InsertEvent(
+        make_shared_ptr<ShortestPathEvent>(*this, pipeline, op));
+    } else {
+      throw NotImplementedException("Mode not supported");
     }
   }
 }
@@ -424,44 +401,9 @@ SourceResultType PhysicalPathFinding::GetData(ExecutionContext &context, DataChu
   if (pf_sink.results->Count() == 0) {
     return SourceResultType::FINISHED;
   }
+  ColumnDataScanState result_scan_state;
+  pf_sink.results->Scan(result_scan_state, result);
 
-  // // Track the current offset to handle batches larger than STANDARD_VECTOR_SIZE
-  // static idx_t current_offset = 0;
-  //
-  // // Determine the number of tuples to process in this call
-  // auto tuples_to_copy = std::min<idx_t>(STANDARD_VECTOR_SIZE, pf_bfs_state->pairs->size() - current_offset);
-  // // If there are no tuples left, we're finished
-  // if (tuples_to_copy == 0) {
-  //   current_offset = 0; // Reset for future calls
-  //   return SourceResultType::FINISHED;
-  // }
-  //
-  // std::cout << "Current offset: " << current_offset
-  //         << ", Tuples to copy: " << tuples_to_copy
-  //         << ", Pairs size: " << pf_bfs_state->pairs->size()
-  //         << ", Result size: " << pf_bfs_state->result.size() << std::endl;
-  //
-  // // Slice the pairs and result data to the appropriate size for this batch
-  // DataChunk temp_pairs;
-  // temp_pairs.Initialize(context.client, pf_bfs_state->pairs->GetTypes());
-  // pf_bfs_state->pairs->Copy(temp_pairs, current_offset);
-  //
-  // DataChunk temp_result;
-  // temp_result.Initialize(context.client, pf_bfs_state->result.GetTypes());
-  // pf_bfs_state->result.Copy(temp_result, current_offset);
-  //
-  // // Move the sliced data into the result DataChunk
-  // result.SetCapacity(tuples_to_copy);
-  // result.Move(temp_pairs);
-  // result.Fuse(temp_result);
-  // result.SetCardinality(tuples_to_copy);
-  //
-  // // Update the current offset
-  // current_offset += tuples_to_copy;
-
-  // Return appropriate status based on whether there are more tuples to process
-  // return current_offset >= pf_bfs_state->pairs->size() ? SourceResultType::FINISHED
-                                                       // : SourceResultType::HAVE_MORE_OUTPUT;
   return SourceResultType::FINISHED;
 }
 
