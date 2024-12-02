@@ -30,7 +30,7 @@ unique_ptr<FunctionData> WeaklyConnectedComponentFunctionData::WeaklyConnectedCo
 unique_ptr<FunctionData> WeaklyConnectedComponentFunctionData::Copy() const {
   auto result =  make_uniq<WeaklyConnectedComponentFunctionData>(context, csr_id, componentId);
   result->component_id_initialized = component_id_initialized;
-  return result;
+  return std::move(result);
 
 }
 bool WeaklyConnectedComponentFunctionData::Equals(const FunctionData &other_p) const {
