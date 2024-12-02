@@ -35,7 +35,7 @@ unique_ptr<FunctionData> PageRankFunctionData::Copy() const {
   result->state_initialized = state_initialized;
   result->converged = converged;
   // Note: state_lock is not copied as mutexes are not copyable
-  return result;
+  return std::move(result);
 }
 
 // Equals method

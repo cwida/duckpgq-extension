@@ -620,7 +620,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::AddPathQuantifierCondition(
   auto between_expression = make_uniq<BetweenExpression>(
       std::move(addition_function), std::move(lower_limit),
       std::move(upper_limit));
-  return between_expression;
+  return std::move(between_expression);
 }
 
 void PGQMatchFunction::AddPathFinding(
