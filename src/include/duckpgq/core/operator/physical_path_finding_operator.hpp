@@ -74,9 +74,6 @@ public:
   bool ParallelSink() const override { return true; }
 
   void BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) override;
-
-  // Schedules tasks to calculate the next iteration of the path-finding
-	void ScheduleBFSEvent(Pipeline &pipeline, Event &event, GlobalSinkState &state) const;
 };
 
 //===--------------------------------------------------------------------===//
@@ -92,14 +89,13 @@ public:
 
 };
 
-class GlobalBFSState {
+class GlobalBFSState : public enable_shared_from_this<GlobalBFSState> {
 
 public:
-  GlobalBFSState(DataChunk &pairs_, CSR* csr_, int64_t vsize_,
+  GlobalBFSState(unique_ptr<ColumnDataCollection> &pairs_, CSR* csr_, int64_t vsize_,
                  idx_t num_threads_, string mode_, ClientContext &context_);
 
-  void ScheduleBFSEvent(Pipeline &pipeline, Event &event,
-    GlobalSinkState &state, const PhysicalPathFinding *op);
+  void ScheduleBFSEvent(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op);
 
   void Clear();
 
@@ -109,11 +105,13 @@ public:
 
   pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) const;
   CSR *csr;
-  DataChunk &pairs;
+  unique_ptr<ColumnDataCollection> &pairs; // (src, dst) pairs
+  unique_ptr<DataChunk> current_pairs_batch;
+  const PhysicalPathFinding *op;
   int64_t iter;
-  int64_t v_size;
+  int64_t v_size; // Number of vertices
   bool change;
-  idx_t started_searches;
+  idx_t started_searches; // Number of started searches in current batch
   int64_t total_len;
   int64_t *src;
   int64_t *dst;
@@ -121,20 +119,25 @@ public:
   UnifiedVectorFormat vdata_dst;
   int64_t lane_to_num[LANE_LIMIT];
   idx_t active = 0;
-  DataChunk result;
+  unique_ptr<ColumnDataCollection> results; // results of (src, dst, path-finding)
+  ColumnDataScanState scan_state;
+  ColumnDataAppendState append_state;
   ClientContext &context;
   vector<std::bitset<LANE_LIMIT>> seen;
   vector<std::bitset<LANE_LIMIT>> visit1;
   vector<std::bitset<LANE_LIMIT>> visit2;
   vector<std::array<ve, LANE_LIMIT>> parents_ve;
 
+  idx_t total_pairs_processed;
   idx_t num_threads;
+  idx_t scheduled_threads;
+
   // task_queues[workerId] = {curTaskIdx, queuedTasks}
   // queuedTasks[curTaskIx] = {start, end}
   vector<pair<idx_t, idx_t>> global_task_queue;
-  std::mutex queue_mutex;                                  // Mutex for synchronizing access
-  std::condition_variable queue_cv;                        // Condition variable for task availability
-  size_t current_task_index = 0;                           // Index to track the current task
+  std::mutex queue_mutex; // Mutex for synchronizing access
+  std::condition_variable queue_cv; // Condition variable for task availability
+  size_t current_task_index = 0; // Index to track the current task
   int64_t split_size = 256;
 
   unique_ptr<Barrier> barrier;
@@ -155,17 +158,11 @@ public:
   // pairs is a 2-column table with src and dst
   unique_ptr<ColumnDataCollection> global_pairs;
   unique_ptr<ColumnDataCollection> global_csr_column_data;
-
-  unique_ptr<ColumnDataCollection> results; // results of the path-finding
-
-  ColumnDataScanState scan_state;
-  ColumnDataAppendState append_state;
   CSR* csr;
   int32_t csr_id;
   size_t child;
   string mode;
   ClientContext &context_;
-  idx_t pairs_processed;
   idx_t num_threads;
 };
 

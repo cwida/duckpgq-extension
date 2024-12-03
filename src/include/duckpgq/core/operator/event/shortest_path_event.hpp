@@ -15,16 +15,16 @@
 
 namespace duckpgq {
 namespace core {
-class PathFindingGlobalState;
 
 class ShortestPathEvent : public BasePipelineEvent {
 public:
-  explicit ShortestPathEvent(GlobalBFSState &gbfs_state_p, Pipeline &pipeline_p, const PhysicalPathFinding& op_p);
+  explicit ShortestPathEvent(shared_ptr<GlobalBFSState> gbfs_state_p, Pipeline &pipeline_p, const PhysicalPathFinding& op_p);
 
   void Schedule() override;
+  void FinishEvent() override;
 
 private:
-  GlobalBFSState &gbfs_state;
+  shared_ptr<GlobalBFSState> gbfs_state;
   const PhysicalPathFinding &op;
 };
 

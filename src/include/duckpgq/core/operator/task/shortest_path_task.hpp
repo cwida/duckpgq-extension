@@ -9,7 +9,7 @@ namespace core {
 class ShortestPathTask : public ExecutorTask {
 public:
   ShortestPathTask(shared_ptr<Event> event_p, ClientContext &context,
-                           GlobalBFSState &state, idx_t worker_id,
+                           shared_ptr<GlobalBFSState> &state, idx_t worker_id,
                            const PhysicalOperator &op_p);
 
   TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
@@ -24,7 +24,7 @@ private:
   bool SetTaskRange();
 
   ClientContext &context;
-  GlobalBFSState &state;
+  shared_ptr<GlobalBFSState> &state;
   // [left, right)
   idx_t left;
   idx_t right;
