@@ -102,7 +102,7 @@ void GlobalBFSState::CreateTasks() {
   if (current_task_start < (idx_t)v_size) {
     global_task_queue.push_back({current_task_start, v_size});
   }
-  std::cout << "Set the number of tasks to " << global_task_queue.size() << std::endl;
+  // std::cout << "Set the number of tasks to " << global_task_queue.size() << std::endl;
 }
 
 

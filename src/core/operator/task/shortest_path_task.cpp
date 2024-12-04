@@ -48,13 +48,13 @@ TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
     // std::cout << "Worker " << worker_id << " started path construction" <<
     // std::endl;
     PathConstruction();
-    std::cout << "Worker " << worker_id << " finished path construction" <<
-    std::endl;
+    // std::cout << "Worker " << worker_id << " finished path construction" <<
+    // std::endl;
   }
 
   // Final synchronization before finishing
   barrier->Wait();
-  std::cout << "Worker " << worker_id << " finishing task" << std::endl;
+  // std::cout << "Worker " << worker_id << " finishing task" << std::endl;
   event->FinishTask();
   return TaskExecutionResult::TASK_FINISHED;
 }
