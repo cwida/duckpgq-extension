@@ -229,9 +229,9 @@ void ShortestPathTask::PathConstruction() {
   path_finding_result->SetCardinality(state->current_pairs_batch->size());
 
   state->current_pairs_batch->Fuse(*path_finding_result);
-  state->current_pairs_batch->Print();
+  // state->current_pairs_batch->Print();
   state->results->Append(*state->current_pairs_batch);
-  state->results->Print();
+  // state->results->Print();
 }
 
 } // namespace core

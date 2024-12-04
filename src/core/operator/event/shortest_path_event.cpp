@@ -14,7 +14,7 @@ ShortestPathEvent::ShortestPathEvent(shared_ptr<GlobalBFSState> gbfs_state_p,
 
 void ShortestPathEvent::Schedule() {
   auto &context = pipeline->GetClientContext();
-  std::cout << gbfs_state->csr->ToString();
+  // std::cout << gbfs_state->csr->ToString();
   vector<shared_ptr<Task>> bfs_tasks;
   for (idx_t tnum = 0; tnum < gbfs_state->scheduled_threads; tnum++) {
     bfs_tasks.push_back(make_uniq<ShortestPathTask>(
