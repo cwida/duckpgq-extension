@@ -1,0 +1,87 @@
+
+
+require duckpgq
+
+statement ok
+set experimental_path_finding_operator=true;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+CREATE TABLE person_knows_person(person1id BIGINT, person2id BIGINT);
+
+statement ok
+INSERT INTO person(id) VALUES
+(0), (1), (2), (3), (4), (5), (6), (7), (8), (9);
+
+statement ok
+INSERT INTO person_knows_person(person1id, person2id) VALUES
+(0, 1), (1, 2), (2, 3), (3, 4), (4, 5),
+(5, 6), (6, 7), (7, 8), (8, 9), (9, 0), -- Circular connections
+(0, 2), (1, 3), (2, 4), (3, 5), (4, 6),
+(5, 7), (6, 8), (7, 9), (8, 0), (9, 1); -- Additional connections
+
+statement ok
+CREATE TABLE pairs(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO pairs(src, dst) VALUES
+    (0,2), (2,4), (4,6), (6,8), (8,0),
+    (1,3), (3,5), (5,7), (7,9), (9,1), -- Existing connections
+    (0,3), (1,4), (2,5), (3,6), (4,7), -- Additional connections
+    (5,8), (6,9), (7,0), (8,1), (9,2), -- Wrap-around connections
+    (0,4), (1,5), (2,6), (3,7), (4,8); -- Further extended connections
+
+query III
+with csr_cte as (
+SELECT cast(min(create_csr_edge(
+        0,
+        (SELECT count(a.id) FROM person a),
+        CAST (
+            (SELECT sum(create_csr_vertex(
+                0,
+                (SELECT count(a.id) FROM person a),
+                sub.dense_id,
+                sub.cnt))
+            FROM (
+                SELECT a.rowid as dense_id, count(k.person1id) as cnt
+                FROM person a
+                LEFT JOIN person_knows_person k ON k.person1id = a.id
+                GROUP BY a.rowid) sub
+            )
+        AS BIGINT),
+        (select count() FROM person_knows_person k JOIN person a on a.id = k.person1id JOIN person c on c.id = k.person2id),
+        a.rowid,
+        c.rowid,
+        k.rowid)) as bigint) as csr_id
+    FROM person_knows_person k
+    JOIN person a on a.id = k.person1id
+    JOIN person c on c.id = k.person2id)
+SELECT src, dst, shortestpathoperator(src, dst, csr_id) FROM pairs, csr_cte;
+----
+0	2	[0, 10, 2]
+2	4	[2, 12, 4]
+4	6	[4, 14, 6]
+6	8	[6, 16, 8]
+8	0	[8, 18, 0]
+1	3	[1, 11, 3]
+3	5	[3, 13, 5]
+5	7	[5, 15, 7]
+7	9	[7, 17, 9]
+9	1	[9, 19, 1]
+0	3	[0, 0, 1, 11, 3]
+1	4	[1, 1, 2, 12, 4]
+2	5	[2, 2, 3, 13, 5]
+3	6	[3, 3, 4, 14, 6]
+4	7	[4, 4, 5, 15, 7]
+5	8	[5, 5, 6, 16, 8]
+6	9	[6, 6, 7, 17, 9]
+7	0	[7, 7, 8, 18, 0]
+8	1	[8, 18, 0, 0, 1]
+9	2	[9, 9, 0, 10, 2]
+0	4	[0, 10, 2, 12, 4]
+1	5	[1, 11, 3, 13, 5]
+2	6	[2, 12, 4, 14, 6]
+3	7	[3, 13, 5, 15, 7]
+4	8	[4, 14, 6, 16, 8]

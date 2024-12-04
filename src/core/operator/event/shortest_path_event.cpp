@@ -26,6 +26,7 @@ void ShortestPathEvent::Schedule() {
 void ShortestPathEvent::FinishEvent() {
   // if remaining pairs, schedule the BFS for the next batch
   if (gbfs_state->total_pairs_processed < gbfs_state->pairs->Count()) {
+    gbfs_state->Clear();
     gbfs_state->ScheduleBFSEvent(*pipeline, *this, gbfs_state->op);
   }
 }

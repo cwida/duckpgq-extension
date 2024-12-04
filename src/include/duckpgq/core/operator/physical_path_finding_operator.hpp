@@ -20,6 +20,7 @@
 namespace duckpgq {
 
 namespace core {
+class GlobalBFSState;
 
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 #define LANE_LIMIT 512
@@ -29,7 +30,7 @@ public:
                       unique_ptr<PhysicalOperator> pairs,
                       unique_ptr<PhysicalOperator> csr);
 
-    static constexpr PhysicalOperatorType TYPE =
+  static constexpr PhysicalOperatorType TYPE =
       PhysicalOperatorType::EXTENSION;
   vector<unique_ptr<Expression>> expressions;
   string mode; // "iterativelength" or "shortestpath"
@@ -120,7 +121,8 @@ public:
   int64_t lane_to_num[LANE_LIMIT];
   idx_t active = 0;
   unique_ptr<ColumnDataCollection> results; // results of (src, dst, path-finding)
-  ColumnDataScanState scan_state;
+  ColumnDataScanState result_scan_state;
+  ColumnDataScanState input_scan_state;
   ColumnDataAppendState append_state;
   ClientContext &context;
   vector<std::bitset<LANE_LIMIT>> seen;
@@ -158,6 +160,7 @@ public:
   // pairs is a 2-column table with src and dst
   unique_ptr<ColumnDataCollection> global_pairs;
   unique_ptr<ColumnDataCollection> global_csr_column_data;
+  shared_ptr<GlobalBFSState> global_bfs_state;
   CSR* csr;
   int32_t csr_id;
   size_t child;

@@ -164,6 +164,7 @@ void ShortestPathTask::PathConstruction() {
   path_finding_result->Initialize(context, {LogicalType::LIST(LogicalType::BIGINT)});
   auto result_data = FlatVector::GetData<list_entry_t>(path_finding_result->data[0]);
   auto &result_validity = FlatVector::Validity(path_finding_result->data[0]);
+  size_t list_len = 0;
   //! Reconstruct the paths
   for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
     int64_t search_num = state->lane_to_num[lane];
@@ -182,7 +183,7 @@ void ShortestPathTask::PathConstruction() {
                          ListVector::GetListSize(*output));
       result_data[search_num].length = ListVector::GetListSize(*output);
       result_data[search_num].offset = state->total_len;
-      state->total_len += result_data[search_num].length;
+      list_len += result_data[search_num].length;
       continue;
     }
     std::vector<int64_t> output_vector;
@@ -220,17 +221,16 @@ void ShortestPathTask::PathConstruction() {
     }
 
     result_data[search_num].length = ListVector::GetListSize(*output);
-    result_data[search_num].offset = state->total_len;
+    result_data[search_num].offset = list_len;
     ListVector::Append(path_finding_result->data[0], ListVector::GetEntry(*output),
                        ListVector::GetListSize(*output));
-    state->total_len += result_data[search_num].length;
+    list_len += result_data[search_num].length;
   }
   path_finding_result->SetCardinality(state->current_pairs_batch->size());
 
   state->current_pairs_batch->Fuse(*path_finding_result);
   state->current_pairs_batch->Print();
   state->results->Append(*state->current_pairs_batch);
-
   state->results->Print();
 }
 

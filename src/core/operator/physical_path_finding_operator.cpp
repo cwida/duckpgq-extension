@@ -54,11 +54,11 @@ GlobalBFSState::GlobalBFSState(unique_ptr<ColumnDataCollection> &pairs_, CSR* cs
   }
 
   results = make_uniq<ColumnDataCollection>(Allocator::Get(context), types);
-  current_pairs_batch = make_uniq<DataChunk>();
+  results->InitializeScan(result_scan_state);
 
   // Only have to initialize the the current batch and state once.
-  pairs->InitializeScan(scan_state);
-  pairs->InitializeScanChunk(scan_state, *current_pairs_batch);
+  pairs->InitializeScan(input_scan_state);
+
 
   CreateTasks();
   scheduled_threads = std::min(num_threads, (idx_t)global_task_queue.size());
@@ -251,9 +251,9 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     return SinkFinalizeType::READY;
   }
 
-  auto global_bfs_state = make_shared_ptr<GlobalBFSState>(global_tasks, gstate.csr, gstate.csr->vsize-2,
+  gstate.global_bfs_state = make_shared_ptr<GlobalBFSState>(global_tasks, gstate.csr, gstate.csr->vsize-2,
     gstate.num_threads, mode, context);
-  global_bfs_state->ScheduleBFSEvent(pipeline, event, this);
+  gstate.global_bfs_state->ScheduleBFSEvent(pipeline, event, this);
 
   // Move to the next input child
   ++gstate.child;
@@ -262,8 +262,9 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 }
 
 void GlobalBFSState::ScheduleBFSEvent(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op_) {
-  current_pairs_batch->Reset();
-  pairs->Scan(scan_state, *current_pairs_batch);
+  current_pairs_batch = make_uniq<DataChunk>();
+  pairs->InitializeScanChunk(input_scan_state, *current_pairs_batch);
+  pairs->Scan(input_scan_state, *current_pairs_batch);
   op = op_;
 
   started_searches = 0; // reset
@@ -374,16 +375,16 @@ PhysicalPathFinding::GetLocalSourceState(ExecutionContext &context,
 SourceResultType PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
                              OperatorSourceInput &input) const {
   auto &pf_sink = sink_state->Cast<PathFindingGlobalSinkState>();
-  std::cout << "GetData" << std::endl;
-  //
-  // // If there are no pairs, we're done
-  // if (pf_sink.results->Count() == 0) {
-  //   return SourceResultType::FINISHED;
-  // }
-  // ColumnDataScanState result_scan_state;
-  // pf_sink.results->Scan(result_scan_state, result);
 
-  return SourceResultType::FINISHED;
+  // If there are no pairs, we're done
+  if (pf_sink.global_bfs_state->results->Count() == 0) {
+    return SourceResultType::FINISHED;
+  }
+  pf_sink.global_bfs_state->results->Scan(pf_sink.global_bfs_state->result_scan_state, result);
+  if (pf_sink.global_bfs_state->result_scan_state.current_row_index == pf_sink.global_bfs_state->results->Count()) {
+    return SourceResultType::FINISHED;
+  }
+  return SourceResultType::HAVE_MORE_OUTPUT;
 }
 
 //===--------------------------------------------------------------------===//
