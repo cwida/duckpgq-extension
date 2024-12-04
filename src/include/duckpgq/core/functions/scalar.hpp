@@ -34,13 +34,12 @@ private:
   static void RegisterIterativeLengthBidirectionalScalarFunction(DatabaseInstance &db);
   static void RegisterLocalClusteringCoefficientScalarFunction(DatabaseInstance &db);
   static void RegisterReachabilityScalarFunction(DatabaseInstance &db);
-  static void  RegisterShortestPathScalarFunction(DatabaseInstance &db);
-  static void  RegisterWeaklyConnectedComponentScalarFunction(DatabaseInstance &db);
-  static void  RegisterPageRankScalarFunction(DatabaseInstance &db);
+  static void RegisterShortestPathScalarFunction(DatabaseInstance &db);
+  static void RegisterWeaklyConnectedComponentScalarFunction(DatabaseInstance &db);
+  static void RegisterPageRankScalarFunction(DatabaseInstance &db);
   static void RegisterCSROperatorCreationScalarFunctions(DatabaseInstance &db);
   static void RegisterShortestPathOperatorScalarFunction(DatabaseInstance &db);
   static void RegisterIterativeLengthOperatorScalarFunction(DatabaseInstance &db);
-
 };
 
 
