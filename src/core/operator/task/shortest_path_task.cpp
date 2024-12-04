@@ -182,7 +182,7 @@ void ShortestPathTask::PathConstruction() {
       ListVector::Append(path_finding_result->data[0], ListVector::GetEntry(*output),
                          ListVector::GetListSize(*output));
       result_data[search_num].length = ListVector::GetListSize(*output);
-      result_data[search_num].offset = state->total_len;
+      result_data[search_num].offset = list_len;
       list_len += result_data[search_num].length;
       continue;
     }

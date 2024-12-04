@@ -88,7 +88,7 @@ create or replace table snb_pairs as (
    select src, dst
    from (select a.rowid as src from person a),
         (select b.rowid as dst from person b)
-   using sample reservoir(5000 rows) repeatable (300)
+   using sample reservoir(1000 rows) repeatable (300)
 );
 
 
