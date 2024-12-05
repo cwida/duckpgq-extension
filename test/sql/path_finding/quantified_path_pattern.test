@@ -1,0 +1,59 @@
+
+
+require duckpgq
+
+statement ok
+create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (40);
+
+statement ok
+create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
+
+statement ok
+-create property graph g vertex tables (student) edge tables (know source key (src) references student (id) destination key (dst) references student (id));
+
+query IIII
+-FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:student)-[k:know]->{0,0}(b:student)
+    WHERE a.id = 10
+    COLUMNS (a.id as a_id, b.id as b_id, path_length(p) as path_length, element_id(p) as path)
+);
+----
+10	10	0	[]
+
+query II
+-FROM GRAPH_TABLE (g
+    MATCH
+    ANY SHORTEST (a:student)-[k:know]->{1,1}(b:student)
+    WHERE a.id = 10
+    COLUMNS (a.id as a_id, b.id as b_id)
+    );
+----
+10	10
+10	30
+
+query II
+-FROM GRAPH_TABLE (g
+    MATCH
+    ANY SHORTEST (a:student)-[k:know]->{0,0}(b:student)
+    WHERE a.id = 10
+    COLUMNS (a.id as a_id, b.id as b_id)
+    );
+----
+
+query II
+-FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:student)-[k:know]->{0,0}(b:student)
+    WHERE a.id = 10
+    COLUMNS (a.id as a_id, b.id as b_id)
+    );
+----
+
+query IIII
+-FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:student)-[k:know]->{0,0}(b:student)
+    WHERE a.id = 10
+    COLUMNS (a.id as a_id, b.id as b_id, path_length(p) as path_length, element_id(p) as path)
+    );
+----
+10	10	0	[]
+

@@ -835,6 +835,18 @@ void PGQMatchFunction::ProcessPathList(
       }
       edge_element = GetPathElement(edge_subpath->path_list[0]);
       auto edge_table = FindGraphTable(edge_element->label, pg_table);
+      if (edge_subpath->lower == 0 && edge_subpath->upper == 0) {
+        AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table,
+                   edge_element->match_type, edge_element->variable_binding,
+                   previous_vertex_element->variable_binding,
+                   next_vertex_element->variable_binding, conditions,
+                   alias_map, extra_alias_counter, final_select_node->from_table);
+
+        conditions.push_back(make_uniq<ComparisonExpression>(
+            ExpressionType::COMPARE_EQUAL,
+            make_uniq<ColumnRefExpression>("rowid", previous_vertex_element->variable_binding),
+            make_uniq<ColumnRefExpression>("rowid", next_vertex_element->variable_binding)));
+      }
 
       if (edge_subpath->upper > 1) {
         // Add the path-finding
@@ -979,6 +991,7 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     duckpgq_state->unnamed_graphtable_index++;
   }
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
+  result->Print();
   return std::move(result);
 }
 
