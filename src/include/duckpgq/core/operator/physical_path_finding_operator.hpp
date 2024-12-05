@@ -14,6 +14,7 @@
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/utils/duckpgq_barrier.hpp"
 #include "duckpgq/core/utils/duckpgq_path_reconstruction.hpp"
+#include "duckpgq/core/utils/duckpgq_utils.hpp"
 
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
 
@@ -23,7 +24,6 @@ namespace core {
 class GlobalBFSState;
 
 class PhysicalPathFinding : public PhysicalComparisonJoin {
-#define LANE_LIMIT 512
 
 public:
   PhysicalPathFinding(LogicalExtensionOperator &op,
@@ -113,7 +113,6 @@ public:
   int64_t v_size; // Number of vertices
   bool change;
   idx_t started_searches; // Number of started searches in current batch
-  int64_t total_len;
   int64_t *src;
   int64_t *dst;
   UnifiedVectorFormat vdata_src;

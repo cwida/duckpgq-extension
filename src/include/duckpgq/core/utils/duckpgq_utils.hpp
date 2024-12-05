@@ -7,7 +7,7 @@ namespace duckpgq {
 
 namespace core {
 
-#define LANE_LIMIT 512
+#define LANE_LIMIT 8
 #define VISIT_SIZE_DIVISOR 2
 
 class GraphUtils {

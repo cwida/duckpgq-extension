@@ -40,7 +40,7 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
 GlobalBFSState::GlobalBFSState(unique_ptr<ColumnDataCollection> &pairs_, CSR* csr_, int64_t vsize_,
                idx_t num_threads_, string mode_, ClientContext &context_)
     : pairs(pairs_), iter(1), csr(csr_), v_size(vsize_), change(false),
-      started_searches(0), total_len(0), context(context_), seen(vsize_),
+      started_searches(0), context(context_), seen(vsize_),
       visit1(vsize_), visit2(vsize_), num_threads(num_threads_),
       element_locks(vsize_),
       mode(std::move(mode_)), parents_ve(vsize_) {
