@@ -16,7 +16,6 @@ namespace duckpgq {
 
 namespace core {
 
-
 class DescribePropertyGraphFunction : public TableFunction {
 public:
   DescribePropertyGraphFunction() {

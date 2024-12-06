@@ -48,21 +48,28 @@ public:
                           vector<LogicalType> &return_types,
                           vector<string> &names);
 
-  static void ValidateVertexTableRegistration(const string &reference, const case_insensitive_set_t &v_table_names);
+  static void
+  ValidateVertexTableRegistration(const string &reference,
+                                  const case_insensitive_set_t &v_table_names);
 
-  static void ValidatePrimaryKeyInTable(Catalog &catalog, ClientContext &context, const string &schema,
-                               const string &reference, const vector<string> &pk_columns);
+  static void ValidatePrimaryKeyInTable(Catalog &catalog,
+                                        ClientContext &context,
+                                        const string &schema,
+                                        const string &reference,
+                                        const vector<string> &pk_columns);
 
-  static void ValidateKeys(shared_ptr<PropertyGraphTable> &edge_table,
-                    const string &reference, const string &key_type,
-                    vector<string> &pk_columns, vector<string> &fk_columns,
-                    const vector<unique_ptr<Constraint>> &table_constraints);
+  static void
+  ValidateKeys(shared_ptr<PropertyGraphTable> &edge_table,
+               const string &reference, const string &key_type,
+               vector<string> &pk_columns, vector<string> &fk_columns,
+               const vector<unique_ptr<Constraint>> &table_constraints);
 
-  static void ValidateForeignKeyColumns(shared_ptr<PropertyGraphTable> &edge_table,
-                                 const vector<string> &fk_columns,
-                                 optional_ptr<TableCatalogEntry> &table);
+  static void
+  ValidateForeignKeyColumns(shared_ptr<PropertyGraphTable> &edge_table,
+                            const vector<string> &fk_columns,
+                            optional_ptr<TableCatalogEntry> &table);
 
-      static unique_ptr<GlobalTableFunctionState>
+  static unique_ptr<GlobalTableFunctionState>
   CreatePropertyGraphInit(ClientContext &context,
                           TableFunctionInitInput &input);
 

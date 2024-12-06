@@ -7,9 +7,7 @@ namespace core {
 
 LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientFunctionData(
     ClientContext &context, int32_t csr_id)
-    : context(context), csr_id(csr_id) {
-
-}
+    : context(context), csr_id(csr_id) {}
 
 unique_ptr<FunctionData>
 LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientBind(
@@ -29,7 +27,8 @@ unique_ptr<FunctionData> LocalClusteringCoefficientFunctionData::Copy() const {
   return make_uniq<LocalClusteringCoefficientFunctionData>(context, csr_id);
 }
 
-bool LocalClusteringCoefficientFunctionData::Equals(const FunctionData &other_p) const {
+bool LocalClusteringCoefficientFunctionData::Equals(
+    const FunctionData &other_p) const {
   auto &other = (const LocalClusteringCoefficientFunctionData &)other_p;
   return other.csr_id == csr_id;
 }

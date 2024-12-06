@@ -62,7 +62,6 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
   }
   auto &csr = csr_entry->second;
 
-
   if (!csr->initialized_v) {
     throw ConstraintException(
         "Need to initialize CSR before doing shortest path");
@@ -238,16 +237,14 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
 void CoreScalarFunctions::RegisterShortestPathScalarFunction(
     DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(
-      db,
-      ScalarFunction("shortestpath",
-                            {LogicalType::INTEGER, LogicalType::BIGINT,
-                             LogicalType::BIGINT, LogicalType::BIGINT},
-                            LogicalType::LIST(LogicalType::BIGINT),
-                            ShortestPathFunction,
-                            IterativeLengthFunctionData::IterativeLengthBind));
+      db, ScalarFunction("shortestpath",
+                         {LogicalType::INTEGER, LogicalType::BIGINT,
+                          LogicalType::BIGINT, LogicalType::BIGINT},
+                         LogicalType::LIST(LogicalType::BIGINT),
+                         ShortestPathFunction,
+                         IterativeLengthFunctionData::IterativeLengthBind));
 }
 
 } // namespace core
 
 } // namespace duckpgq
-

@@ -79,7 +79,6 @@ public:
       throw InternalException("The DuckPGQ extension has not been loaded");
     }
 
-
     CSR *csr = duckpgq_state->GetCSR(result->csr_id);
 
     if (!csr->w.empty()) {
@@ -194,6 +193,6 @@ public:
   bool finished = false;
 };
 
-}   // namespace core
+} // namespace core
 
 } // namespace duckpgq
