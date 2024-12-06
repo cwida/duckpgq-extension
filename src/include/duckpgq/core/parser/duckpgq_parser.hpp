@@ -6,9 +6,7 @@ namespace duckpgq {
 namespace core {
 
 struct CorePGQParser {
-  static void Register(DatabaseInstance &db) {
-    RegisterPGQParserExtension(db);
-  }
+  static void Register(DatabaseInstance &db) { RegisterPGQParserExtension(db); }
 
 private:
   static void RegisterPGQParserExtension(DatabaseInstance &db);
@@ -50,7 +48,6 @@ struct DuckPGQParseData : ParserExtensionParseData {
   explicit DuckPGQParseData(unique_ptr<SQLStatement> statement)
       : statement(std::move(statement)) {}
 };
-
 
 } // namespace core
 

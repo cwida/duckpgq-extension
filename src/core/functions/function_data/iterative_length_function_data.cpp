@@ -15,7 +15,6 @@ bool IterativeLengthFunctionData::Equals(const FunctionData &other_p) const {
   return other.csr_id == csr_id;
 }
 
-
 unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
     ClientContext &context, ScalarFunction &bound_function,
     vector<unique_ptr<Expression>> &arguments) {
@@ -29,7 +28,6 @@ unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
   return make_uniq<IterativeLengthFunctionData>(context, csr_id);
 }
 
-
 } // namespace core
 
-} //namespace duckpgq
+} // namespace duckpgq

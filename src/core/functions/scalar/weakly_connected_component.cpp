@@ -116,7 +116,8 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
         int64_t src_node = src_data[src_pos];
         // Check if the node is already part of a component
         if (info.componentId[src_node] != -1) {
-          result_data[search_num] = info.componentId[src_node]; // Already known component
+          result_data[search_num] =
+              info.componentId[src_node]; // Already known component
           continue;
         }
 
@@ -179,8 +180,8 @@ void CoreScalarFunctions::RegisterWeaklyConnectedComponentScalarFunction(
       db,
       ScalarFunction(
           "weakly_connected_component",
-          {LogicalType::INTEGER, LogicalType::BIGINT},
-          LogicalType::BIGINT, WeaklyConnectedComponentFunction,
+          {LogicalType::INTEGER, LogicalType::BIGINT}, LogicalType::BIGINT,
+          WeaklyConnectedComponentFunction,
           WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentBind));
 }
 

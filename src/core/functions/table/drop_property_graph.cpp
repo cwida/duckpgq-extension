@@ -9,9 +9,7 @@
 namespace duckpgq {
 namespace core {
 
-
-unique_ptr<FunctionData>
-DropPropertyGraphFunction::DropPropertyGraphBind(
+unique_ptr<FunctionData> DropPropertyGraphFunction::DropPropertyGraphBind(
     ClientContext &context, TableFunctionBindInput &,
     vector<LogicalType> &return_types, vector<string> &names) {
   names.emplace_back("success");
@@ -53,8 +51,10 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(
                           pg_info->property_graph_name);
   }
 
-  for (auto &connection : ConnectionManager::Get(*context.db).GetConnectionList()) {
-    auto local_state = connection->registered_state->Get<DuckPGQState>("duckpgq");
+  for (auto &connection :
+       ConnectionManager::Get(*context.db).GetConnectionList()) {
+    auto local_state =
+        connection->registered_state->Get<DuckPGQState>("duckpgq");
     if (!local_state) {
       continue;
     }
@@ -70,7 +70,8 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreTableFunctions::RegisterDropPropertyGraphTableFunction(DatabaseInstance &db) {
+void CoreTableFunctions::RegisterDropPropertyGraphTableFunction(
+    DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(db, DropPropertyGraphFunction());
 }
 } // namespace core
