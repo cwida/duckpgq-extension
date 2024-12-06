@@ -11,8 +11,6 @@
 namespace duckpgq {
 namespace core {
 
-
-
 unique_ptr<FunctionData>
 DescribePropertyGraphFunction::DescribePropertyGraphBind(
     ClientContext &context, TableFunctionBindInput &input,
@@ -156,7 +154,8 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreTableFunctions::RegisterDescribePropertyGraphTableFunction(DatabaseInstance &db) {
+void CoreTableFunctions::RegisterDescribePropertyGraphTableFunction(
+    DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(db, DescribePropertyGraphFunction());
 }
 

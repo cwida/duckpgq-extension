@@ -15,11 +15,14 @@ public:
   duckpgq::core::CSR *GetCSR(int32_t id);
 
   void RetrievePropertyGraphs(const shared_ptr<ClientContext> &context);
-  void ProcessPropertyGraphs(unique_ptr<QueryResult> &property_graphs, bool is_vertex);
+  void ProcessPropertyGraphs(unique_ptr<QueryResult> &property_graphs,
+                             bool is_vertex);
   void PopulateEdgeSpecificFields(unique_ptr<DataChunk> &chunk, idx_t row_idx,
                                   PropertyGraphTable &table);
-  static void ExtractListValues(const Value &list_value, vector<string> &output);
-  void RegisterPropertyGraph(const shared_ptr<PropertyGraphTable> &table, const string &graph_name, bool is_vertex);
+  static void ExtractListValues(const Value &list_value,
+                                vector<string> &output);
+  void RegisterPropertyGraph(const shared_ptr<PropertyGraphTable> &table,
+                             const string &graph_name, bool is_vertex);
 
 public:
   unique_ptr<ParserExtensionParseData> parse_data;

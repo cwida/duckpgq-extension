@@ -283,16 +283,14 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state,
 void CoreScalarFunctions::RegisterReachabilityScalarFunction(
     DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(
-      db,
-      ScalarFunction("reachability",
-                            {LogicalType::INTEGER, LogicalType::BOOLEAN,
-                             LogicalType::BIGINT, LogicalType::BIGINT,
-                             LogicalType::BIGINT},
-                            LogicalType::BOOLEAN, ReachabilityFunction,
-                            IterativeLengthFunctionData::IterativeLengthBind));
+      db, ScalarFunction("reachability",
+                         {LogicalType::INTEGER, LogicalType::BOOLEAN,
+                          LogicalType::BIGINT, LogicalType::BIGINT,
+                          LogicalType::BIGINT},
+                         LogicalType::BOOLEAN, ReachabilityFunction,
+                         IterativeLengthFunctionData::IterativeLengthBind));
 }
 
 } // namespace core
 
 } // namespace duckpgq
-

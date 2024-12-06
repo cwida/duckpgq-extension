@@ -29,13 +29,11 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder,
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CorePGQOperator::RegisterPGQBindOperator(
-    DatabaseInstance &db) {
+void CorePGQOperator::RegisterPGQBindOperator(DatabaseInstance &db) {
   auto &config = DBConfig::GetConfig(db);
   config.operator_extensions.push_back(make_uniq<DuckPGQOperatorExtension>());
-
 }
 
-}
+} // namespace core
 
 } // namespace duckpgq

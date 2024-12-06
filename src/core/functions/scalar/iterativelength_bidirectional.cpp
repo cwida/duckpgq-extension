@@ -53,7 +53,6 @@ static void IterativeLengthBidirectionalFunction(DataChunk &args,
 
   auto duckpgq_state = GetDuckPGQState(info.context);
 
-
   D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
   int64_t v_size = args.data[1].GetValue(0).GetValue<int64_t>();
   int64_t *v = (int64_t *)duckpgq_state->csr_list[info.csr_id]->v;
@@ -182,4 +181,3 @@ void CoreScalarFunctions::RegisterIterativeLengthBidirectionalScalarFunction(
 } // namespace core
 
 } // namespace duckpgq
-

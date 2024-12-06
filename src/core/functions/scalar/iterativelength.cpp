@@ -41,7 +41,6 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
   auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
   auto duckpgq_state = GetDuckPGQState(info.context);
 
-
   D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
 
   if ((uint64_t)info.csr_id + 1 > duckpgq_state->csr_list.size()) {
@@ -160,15 +159,13 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
 void CoreScalarFunctions::RegisterIterativeLengthScalarFunction(
     DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(
-      db,
-      ScalarFunction("iterativelength",
-                            {LogicalType::INTEGER, LogicalType::BIGINT,
-                             LogicalType::BIGINT, LogicalType::BIGINT},
-                            LogicalType::BIGINT, IterativeLengthFunction,
-                            IterativeLengthFunctionData::IterativeLengthBind));
+      db, ScalarFunction("iterativelength",
+                         {LogicalType::INTEGER, LogicalType::BIGINT,
+                          LogicalType::BIGINT, LogicalType::BIGINT},
+                         LogicalType::BIGINT, IterativeLengthFunction,
+                         IterativeLengthFunctionData::IterativeLengthBind));
 }
 
 } // namespace core
 
 } // namespace duckpgq
-

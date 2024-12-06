@@ -16,8 +16,6 @@ bool DuckPGQBitmap::test(size_t index) const {
   return (bitmap[index / 64] & (1ULL << (index % 64))) != 0;
 }
 
-void DuckPGQBitmap::reset() {
-  fill(bitmap.begin(), bitmap.end(), 0);
-}
+void DuckPGQBitmap::reset() { fill(bitmap.begin(), bitmap.end(), 0); }
 } // namespace core
 } // namespace duckpgq

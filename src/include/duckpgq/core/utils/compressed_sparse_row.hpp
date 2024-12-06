@@ -66,22 +66,38 @@ struct CSRFunctionData : FunctionData {
 };
 
 // CSR BindReplace functions
-unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
+unique_ptr<CommonTableExpressionInfo>
+CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
                        const unique_ptr<SelectNode> &select_node);
-unique_ptr<CommonTableExpressionInfo> CreateDirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table, const string &prev_binding, const string &edge_binding, const string &next_binding);
+unique_ptr<CommonTableExpressionInfo>
+CreateDirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
+                     const string &prev_binding, const string &edge_binding,
+                     const string &next_binding);
 
 // Helper functions
-unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_table);
-unique_ptr<SubqueryExpression> CreateDirectedCSRVertexSubquery(const shared_ptr<PropertyGraphTable> &edge_table, const string &binding);
-unique_ptr<SubqueryExpression> CreateUndirectedCSRVertexSubquery(const shared_ptr<PropertyGraphTable> &edge_table, const string &binding);
+unique_ptr<CommonTableExpressionInfo>
+MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_table);
+unique_ptr<SubqueryExpression> CreateDirectedCSRVertexSubquery(
+    const shared_ptr<PropertyGraphTable> &edge_table, const string &binding);
+unique_ptr<SubqueryExpression> CreateUndirectedCSRVertexSubquery(
+    const shared_ptr<PropertyGraphTable> &edge_table, const string &binding);
 unique_ptr<SelectNode> CreateOuterSelectEdgesNode();
-unique_ptr<SelectNode> CreateOuterSelectNode(unique_ptr<FunctionExpression> create_csr_edge_function);
-unique_ptr<JoinRef> GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,const string &edge_binding, const string &prev_binding, const string &next_binding);
-unique_ptr<SubqueryExpression> GetCountTable(const shared_ptr<PropertyGraphTable> &table, const string &table_alias, const string &primary_key);
-void SetupSelectNode(unique_ptr<SelectNode> &select_node, const shared_ptr<PropertyGraphTable> &edge_table, bool reverse = false);
+unique_ptr<SelectNode>
+CreateOuterSelectNode(unique_ptr<FunctionExpression> create_csr_edge_function);
+unique_ptr<JoinRef> GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,
+                               const string &edge_binding,
+                               const string &prev_binding,
+                               const string &next_binding);
+unique_ptr<SubqueryExpression>
+GetCountTable(const shared_ptr<PropertyGraphTable> &table,
+              const string &table_alias, const string &primary_key);
+void SetupSelectNode(unique_ptr<SelectNode> &select_node,
+                     const shared_ptr<PropertyGraphTable> &edge_table,
+                     bool reverse = false);
 unique_ptr<SubqueryRef> CreateCountCTESubquery();
 unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable();
-unique_ptr<SubqueryExpression> GetCountEdgeTable(const shared_ptr<PropertyGraphTable> &edge_table);
+unique_ptr<SubqueryExpression>
+GetCountEdgeTable(const shared_ptr<PropertyGraphTable> &edge_table);
 } // namespace core
 
 } // namespace duckpgq

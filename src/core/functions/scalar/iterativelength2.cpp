@@ -145,15 +145,13 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state,
 void CoreScalarFunctions::RegisterIterativeLength2ScalarFunction(
     DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(
-      db,
-      ScalarFunction("iterativelength2",
-                            {LogicalType::INTEGER, LogicalType::BIGINT,
-                             LogicalType::BIGINT, LogicalType::BIGINT},
-                            LogicalType::BIGINT, IterativeLength2Function,
-                            IterativeLengthFunctionData::IterativeLengthBind));
+      db, ScalarFunction("iterativelength2",
+                         {LogicalType::INTEGER, LogicalType::BIGINT,
+                          LogicalType::BIGINT, LogicalType::BIGINT},
+                         LogicalType::BIGINT, IterativeLength2Function,
+                         IterativeLengthFunctionData::IterativeLengthBind));
 }
 
 } // namespace core
 
 } // namespace duckpgq
-

@@ -35,8 +35,6 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
           std::move(parser.statements[0])));
 }
 
-
-
 void duckpgq_find_match_function(TableRef *table_ref,
                                  DuckPGQState &duckpgq_state) {
   if (auto table_function_ref = dynamic_cast<TableFunctionRef *>(table_ref)) {
@@ -60,7 +58,6 @@ void duckpgq_find_match_function(TableRef *table_ref,
   }
 }
 
-
 ParserExtensionPlanResult
 duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
   if (statement->type == StatementType::SELECT_STATEMENT) {
@@ -80,7 +77,8 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
 
     // Check if node is a ShowRef
     if (node) {
-      const auto describe_node = dynamic_cast<ShowRef *>(node->from_table.get());
+      const auto describe_node =
+          dynamic_cast<ShowRef *>(node->from_table.get());
       if (describe_node) {
         ParserExtensionPlanResult result;
         result.function = DescribePropertyGraphFunction();
@@ -99,11 +97,13 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
     }
     for (auto &key : cte_keys) {
       auto cte = node->cte_map.map.find(key);
-      auto cte_select_statement = dynamic_cast<SelectStatement *>(cte->second->query.get());
+      auto cte_select_statement =
+          dynamic_cast<SelectStatement *>(cte->second->query.get());
       if (cte_select_statement == nullptr) {
         continue; // Skip non-select statements
       }
-      auto cte_node = dynamic_cast<SelectNode *>(cte_select_statement->node.get());
+      auto cte_node =
+          dynamic_cast<SelectNode *>(cte_select_statement->node.get());
       if (cte_node) {
         duckpgq_find_match_function(cte_node->from_table.get(), duckpgq_state);
       }
@@ -164,7 +164,8 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
              unique_ptr<ParserExtensionParseData> parse_data) {
   auto duckpgq_state = context.registered_state->Get<DuckPGQState>("duckpgq");
   if (duckpgq_state == nullptr) {
-    throw Exception(ExceptionType::INVALID, "DuckPGQ extension has not been properly initialized");
+    throw Exception(ExceptionType::INVALID,
+                    "DuckPGQ extension has not been properly initialized");
   }
   duckpgq_state->parse_data = std::move(parse_data);
   auto duckpgq_parse_data =
@@ -178,12 +179,10 @@ duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
   return duckpgq_handle_statement(statement, *duckpgq_state);
 }
 
-
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CorePGQParser::RegisterPGQParserExtension(
-    DatabaseInstance &db) {
+void CorePGQParser::RegisterPGQParserExtension(DatabaseInstance &db) {
   auto &config = DBConfig::GetConfig(db);
   config.parser_extensions.push_back(DuckPGQParserExtension());
 }

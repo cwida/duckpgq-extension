@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #pragma once
 #include "duckdb/main/client_context.hpp"
 #include "duckpgq/common.hpp"
@@ -20,15 +19,16 @@ struct WeaklyConnectedComponentFunctionData final : FunctionData {
   std::mutex component_lock;
   bool component_id_initialized; // if componentId is initialized
   WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id);
-  WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id, const vector<int64_t> &componentId);
+  WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id,
+                                       const vector<int64_t> &componentId);
   static unique_ptr<FunctionData>
-  WeaklyConnectedComponentBind(ClientContext &context, ScalarFunction &bound_function,
-                      vector<unique_ptr<Expression>> &arguments);
+  WeaklyConnectedComponentBind(ClientContext &context,
+                               ScalarFunction &bound_function,
+                               vector<unique_ptr<Expression>> &arguments);
 
   unique_ptr<FunctionData> Copy() const override;
   bool Equals(const FunctionData &other_p) const override;
 };
-
 
 } // namespace core
 
