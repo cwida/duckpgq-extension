@@ -1,6 +1,6 @@
 # name: test/sql/pattern_matching/undirected_edges.test
 # description: Testing the undirected edge path pattern matching
-# group: [duckpgq_sql_pattern_matching]
+# group: [pattern_matching]
 
 #statement ok
 #pragma enable_verification

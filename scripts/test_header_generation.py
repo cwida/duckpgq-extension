@@ -1,4 +1,6 @@
 import os
+
+
 def generate_headers(base_dir):
     # Ensure to include the 'test' directory in the path
     test_dir = os.path.join(base_dir, "test")  # Adjust this if the base_dir does not already include 'test'
@@ -18,9 +20,7 @@ def generate_headers(base_dir):
                 content = f.read()
 
                 # Create the header content
-                header = f"# name: {relative_path}\n" \
-                         f"# description: ""\n" \
-                         f"# group: [{group}]\n\n"
+                header = f"# name: {relative_path}\n" f"# description: " "\n" f"# group: [{group}]\n\n"
 
                 # Search and replace old header if exists
                 if header.split("\n")[0] in content:

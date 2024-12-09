@@ -1,6 +1,6 @@
 # name: test/sql/explain_duckpgq.test
 # description: Testing the EXPLAIN statements
-# group: [duckpgq_sql]
+# group: [sql]
 
 require duckpgq
 

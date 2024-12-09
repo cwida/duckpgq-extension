@@ -4,6 +4,7 @@ s3_client = boto3.client('s3')
 bucket_name = 'duckpgq'
 prefix = 'v'
 
+
 def list_extensions(bucket, prefix):
     response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
     extensions = {}
@@ -29,6 +30,7 @@ def list_extensions(bucket, prefix):
 
     return extensions
 
+
 def generate_markdown_table(extensions):
     table = '## DuckPGQ Extension Availability\n\n'
 
@@ -45,6 +47,7 @@ def generate_markdown_table(extensions):
         table += '</details>\n\n'
 
     return table
+
 
 extensions = list_extensions(bucket_name, prefix)
 markdown_table = generate_markdown_table(extensions)

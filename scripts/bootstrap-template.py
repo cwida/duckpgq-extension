@@ -44,9 +44,7 @@ def replace_everywhere(to_find, to_replace):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        raise Exception(
-            "usage: python3 bootstrap-template.py <name_for_extension_in_snake_case>"
-        )
+        raise Exception("usage: python3 bootstrap-template.py <name_for_extension_in_snake_case>")
 
     name_extension = sys.argv[1]
 
@@ -79,9 +77,7 @@ if __name__ == "__main__":
 
     # rename files
     os.rename(f"test/sql/{string_to_find}.test", f"test/sql/{string_to_replace}.test")
-    os.rename(
-        f"src/{string_to_find}_extension.cpp", f"src/{string_to_replace}_extension.cpp"
-    )
+    os.rename(f"src/{string_to_find}_extension.cpp", f"src/{string_to_replace}_extension.cpp")
     os.rename(
         f"src/include/{string_to_find}_extension.hpp",
         f"src/include/{string_to_replace}_extension.hpp",

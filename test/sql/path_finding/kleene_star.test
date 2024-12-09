@@ -1,3 +1,6 @@
+# name: test/sql/path_finding/kleene_star.test
+# group: [path_finding]
+
 require duckpgq
 
 statement ok

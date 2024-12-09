@@ -1,6 +1,6 @@
 # name: test/sql/scalar/pagerank.test
 # description: Testing the pagerank implementation
-# group: [duckpgq_sql_scalar]
+# group: [scalar]
 
 require duckpgq
 

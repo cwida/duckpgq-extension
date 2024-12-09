@@ -57,7 +57,7 @@ extensions = [
 ]
 formatted_directories = ['src', 'test', 'scripts']
 ignored_files = []
-ignored_directories = []
+ignored_directories = ['__pycache__', '.pytest_cache']
 format_all = False
 check_only = True
 confirm = True

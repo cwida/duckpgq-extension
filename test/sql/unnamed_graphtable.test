@@ -1,6 +1,6 @@
 # name: test/sql/unnamed_graphtable.test
 # description: Testing unnamed graphtable support
-# group: [duckpgq_sql]
+# group: [sql]
 
 require duckpgq
 

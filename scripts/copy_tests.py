@@ -37,12 +37,18 @@ def main(argv):
     for file in onlyfiles:
         f = open(test_path_duckpgq + "/" + file, "r")
         content = f.read()
-        content = content.replace("require duckpgq\n",
-                                  dedent("statement ok\n"
-                                         "force install '__BUILD_DIRECTORY__/../../../build/"+mode+"/extension/duckpgq/duckpgq.duckdb_extension';\n"
-                                         "\n"
-                                         "statement ok\n"
-                                         "load 'duckpgq';\n"))
+        content = content.replace(
+            "require duckpgq\n",
+            dedent(
+                "statement ok\n"
+                "force install '__BUILD_DIRECTORY__/../../../build/"
+                + mode
+                + "/extension/duckpgq/duckpgq.duckdb_extension';\n"
+                "\n"
+                "statement ok\n"
+                "load 'duckpgq';\n"
+            ),
+        )
 
         new_file = open(test_path_duckdb + "/" + file, "w")
         new_file.write(content)
