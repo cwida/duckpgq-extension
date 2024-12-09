@@ -10,4 +10,4 @@ public:
   std::string Name() override;
 };
 
-} // namespace duckpgq
+} // namespace duckdb

@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #pragma once
 #include "duckdb/main/client_context.hpp"
 #include "duckpgq/common.hpp"
@@ -26,15 +25,15 @@ struct PageRankFunctionData final : FunctionData {
   bool converged;
 
   PageRankFunctionData(ClientContext &context, int32_t csr_id);
-  PageRankFunctionData(ClientContext &context, int32_t csr_id, const vector<int64_t> &componentId);
+  PageRankFunctionData(ClientContext &context, int32_t csr_id,
+                       const vector<int64_t> &componentId);
   static unique_ptr<FunctionData>
   PageRankBind(ClientContext &context, ScalarFunction &bound_function,
-                      vector<unique_ptr<Expression>> &arguments);
+               vector<unique_ptr<Expression>> &arguments);
 
   unique_ptr<FunctionData> Copy() const override;
   bool Equals(const FunctionData &other_p) const override;
 };
-
 
 } // namespace core
 

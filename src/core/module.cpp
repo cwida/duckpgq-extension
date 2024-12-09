@@ -11,12 +11,11 @@ namespace duckpgq {
 namespace core {
 
 void CoreModule::Register(DatabaseInstance &db) {
-    CoreTableFunctions::Register(db);
-    CoreScalarFunctions::Register(db);
-    CorePGQParser::Register(db);
-    CorePGQOperator::Register(db);
+  CoreTableFunctions::Register(db);
+  CoreScalarFunctions::Register(db);
+  CorePGQParser::Register(db);
+  CorePGQOperator::Register(db);
 }
-
 
 } // namespace core
 

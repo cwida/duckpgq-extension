@@ -17,7 +17,6 @@ namespace duckpgq {
 
 namespace core {
 
-
 class DropPropertyGraphFunction : public TableFunction {
 public:
   DropPropertyGraphFunction() {
