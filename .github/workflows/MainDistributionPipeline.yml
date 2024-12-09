@@ -12,6 +12,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  code-quality-check:
+    name: Code Quality Check
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@main
+    with:
+      duckdb_version: main
+      ci_tools_version: main
+      extension_name: duckpgq
+
   duckdb-next-build:
     name: Build extension binaries
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@main
