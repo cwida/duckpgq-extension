@@ -1,5 +1,4 @@
 #pragma once
-#include "duckpgq/common.hpp"
 
 namespace duckpgq {
 
