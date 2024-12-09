@@ -15,10 +15,6 @@ jobs:
   code-quality-check:
     name: Code Quality Check
     uses: Dtenwolde/extension-ci-tools/.github/workflows/_extension_code_quality.yml@main
-    with:
-      duckdb_version: main
-      ci_tools_version: main
-      extension_name: duckpgq
 
   duckdb-next-build:
     name: Build extension binaries
