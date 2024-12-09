@@ -28,15 +28,16 @@ private:
   static void RegisterGetCSRWTypeScalarFunction(DatabaseInstance &db);
   static void RegisterIterativeLengthScalarFunction(DatabaseInstance &db);
   static void RegisterIterativeLength2ScalarFunction(DatabaseInstance &db);
-  static void RegisterIterativeLengthBidirectionalScalarFunction(DatabaseInstance &db);
-  static void RegisterLocalClusteringCoefficientScalarFunction(DatabaseInstance &db);
+  static void
+  RegisterIterativeLengthBidirectionalScalarFunction(DatabaseInstance &db);
+  static void
+  RegisterLocalClusteringCoefficientScalarFunction(DatabaseInstance &db);
   static void RegisterReachabilityScalarFunction(DatabaseInstance &db);
-  static void  RegisterShortestPathScalarFunction(DatabaseInstance &db);
-  static void  RegisterWeaklyConnectedComponentScalarFunction(DatabaseInstance &db);
-  static void  RegisterPageRankScalarFunction(DatabaseInstance &db);
-
+  static void RegisterShortestPathScalarFunction(DatabaseInstance &db);
+  static void
+  RegisterWeaklyConnectedComponentScalarFunction(DatabaseInstance &db);
+  static void RegisterPageRankScalarFunction(DatabaseInstance &db);
 };
-
 
 } // namespace core
 

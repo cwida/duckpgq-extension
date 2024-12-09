@@ -22,12 +22,13 @@ private:
   static void RegisterMatchTableFunction(DatabaseInstance &db);
   static void RegisterDropPropertyGraphTableFunction(DatabaseInstance &db);
   static void RegisterDescribePropertyGraphTableFunction(DatabaseInstance &db);
-  static void RegisterLocalClusteringCoefficientTableFunction(DatabaseInstance &db);
+  static void
+  RegisterLocalClusteringCoefficientTableFunction(DatabaseInstance &db);
   static void RegisterScanTableFunctions(DatabaseInstance &db);
-  static void RegisterWeaklyConnectedComponentTableFunction(DatabaseInstance &db);
+  static void
+  RegisterWeaklyConnectedComponentTableFunction(DatabaseInstance &db);
   static void RegisterPageRankTableFunction(DatabaseInstance &db);
 };
-
 
 } // namespace core
 

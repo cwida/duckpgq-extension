@@ -10,16 +10,16 @@ namespace duckpgq {
 
 namespace core {
 
-static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState &state,
-                                    Vector &result) {
+static void LocalClusteringCoefficientFunction(DataChunk &args,
+                                               ExpressionState &state,
+                                               Vector &result) {
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (LocalClusteringCoefficientFunctionData &)*func_expr.bind_info;
   auto duckpgq_state = GetDuckPGQState(info.context);
 
   auto csr_entry = duckpgq_state->csr_list.find((uint64_t)info.csr_id);
   if (csr_entry == duckpgq_state->csr_list.end()) {
-    throw ConstraintException(
-        "CSR not found. Is the graph populated?");
+    throw ConstraintException("CSR not found. Is the graph populated?");
   }
 
   if (!(csr_entry->second->initialized_v && csr_entry->second->initialized_e)) {
@@ -68,7 +68,8 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
       }
     }
 
-    float local_result =  static_cast<float>(count) / (number_of_edges * (number_of_edges - 1));
+    float local_result =
+        static_cast<float>(count) / (number_of_edges * (number_of_edges - 1));
     result_data[n] = local_result;
   }
   duckpgq_state->csr_to_delete.insert(info.csr_id);
@@ -90,4 +91,3 @@ void CoreScalarFunctions::RegisterLocalClusteringCoefficientScalarFunction(
 } // namespace core
 
 } // namespace duckpgq
-
