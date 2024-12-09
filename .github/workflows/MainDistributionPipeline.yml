@@ -17,7 +17,7 @@ jobs:
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@main
     with:
       duckdb_version: main
-      ci_tools_version: main
+      ci_tools_version: code-quality-check
       extension_name: duckpgq
 
   duckdb-next-build:
