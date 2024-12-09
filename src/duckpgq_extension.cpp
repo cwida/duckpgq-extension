@@ -19,7 +19,7 @@ static void LoadInternal(DatabaseInstance &instance) {
   }
 }
 
-void DuckpgqExtension::Load(DuckDB &db   ) { LoadInternal(*db.instance); }
+void DuckpgqExtension::Load(DuckDB &db) { LoadInternal(*db.instance); }
 
 std::string DuckpgqExtension::Name() { return "duckpgq"; }
 
