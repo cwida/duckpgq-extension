@@ -14,7 +14,7 @@ concurrency:
 jobs:
   code-quality-check:
     name: Code Quality Check
-    uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@main
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml
     with:
       duckdb_version: main
       ci_tools_version: main
