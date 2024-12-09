@@ -4,5 +4,5 @@
 	branch = main
 [submodule "extension-ci-tools"]
 	path = extension-ci-tools
-	url = git@github.com:dtenwolde/extension-ci-tools.git
+	url = git@github.com:Dtenwolde/extension-ci-tools.git
 	branch = main
