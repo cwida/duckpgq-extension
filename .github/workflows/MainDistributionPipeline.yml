@@ -15,6 +15,9 @@ jobs:
   code-quality-check:
     name: Code Quality Check
     uses: Dtenwolde/extension-ci-tools/.github/workflows/_extension_code_quality.yml@main
+    with:
+      override_ci_tools_repository: "Dtenwolde/extension-ci-tools"
+      ci_tools_version: ${{ github.sha }}
 
   duckdb-next-build:
     name: Build extension binaries
