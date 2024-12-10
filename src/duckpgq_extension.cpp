@@ -16,11 +16,7 @@ static void LoadInternal(DatabaseInstance &instance) {
        ConnectionManager::Get(instance).GetConnectionList()) {
     connection->registered_state->Insert(
 
-
-
-
-
-    "duckpgq", make_shared_ptr<DuckPGQState>(connection));
+        "duckpgq", make_shared_ptr<DuckPGQState>(connection));
   }
 }
 
