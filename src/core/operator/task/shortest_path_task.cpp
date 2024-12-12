@@ -6,7 +6,7 @@ namespace core {
 
 ShortestPathTask::ShortestPathTask(shared_ptr<Event> event_p,
                                    ClientContext &context,
-                                   shared_ptr<GlobalBFSState> &state, idx_t worker_id,
+                                   shared_ptr<BFSState> &state, idx_t worker_id,
                                    const PhysicalOperator &op_p)
     : ExecutorTask(context, std::move(event_p), op_p), context(context),
       state(state), worker_id(worker_id) {
@@ -16,6 +16,7 @@ ShortestPathTask::ShortestPathTask(shared_ptr<Event> event_p,
 TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
   auto &barrier = state->barrier;
   std::cout << "Starting to execute task " << worker_id << std::endl;
+
   do {
     IterativePath();
 
@@ -148,7 +149,7 @@ void ShortestPathTask::ReachDetect() {
 }
 
 void ShortestPathTask::PathConstruction() {
-
+  throw NotImplementedException("Temp disable");
   auto result_data = FlatVector::GetData<list_entry_t>(state->path_finding_result->data[0]);
   auto &result_validity = FlatVector::Validity(state->path_finding_result->data[0]);
   //! Reconstruct the paths

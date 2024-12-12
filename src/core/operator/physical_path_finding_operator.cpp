@@ -7,11 +7,9 @@
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/parallel/base_pipeline_event.hpp"
-#include "duckdb/parallel/event.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
-#include <duckpgq/core/operator/event/shortest_path_event.hpp>
 #include <thread>
 #include <duckpgq_state.hpp>
 #include <duckpgq/core/operator/event/iterative_length_event.hpp>
@@ -57,6 +55,9 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context,
       make_uniq<ColumnDataCollection>(context, op.children[0]->GetTypes());
   global_csr_column_data =
       make_uniq<ColumnDataCollection>(context, op.children[1]->GetTypes());
+
+  global_pairs->InitializeScan(global_scan_state);
+
 
   child = 0;
   mode = op.mode;
@@ -117,7 +118,6 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
                               ClientContext &context,
                               OperatorSinkFinalizeInput &input) const {
   auto &gstate = input.global_state.Cast<PathFindingGlobalSinkState>();
-  auto &global_tasks = gstate.global_pairs;
   auto duckpgq_state = GetDuckPGQState(context);
   if (gstate.csr == nullptr) {
     throw InternalException("CSR not initialized");
@@ -128,13 +128,19 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     ++gstate.child;
     return SinkFinalizeType::READY;
   }
-  if (global_tasks->Count() == 0) {
+  if (gstate.global_pairs->Count() == 0) {
     return SinkFinalizeType::READY;
   }
 
-  gstate.global_bfs_state = make_shared_ptr<GlobalBFSState>(global_tasks, gstate.csr, gstate.csr->vsize-2,
-    gstate.num_threads, mode, context);
-  gstate.global_bfs_state->InitializeBFS(pipeline, event, this);
+  while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
+    // Schedule the BFS Event for the current DataChunk
+    DataChunk current_chunk;
+    current_chunk.Initialize(context, gstate.global_pairs->Types());
+    gstate.global_pairs->Scan(gstate.global_scan_state, current_chunk);
+    auto bfs_state = make_shared_ptr<BFSState>(current_chunk, gstate.csr, gstate.num_threads, mode, context);
+    bfs_state->ScheduleBFSBatch(pipeline, event, this);
+    gstate.bfs_states.push_back(std::move(bfs_state));
+  }
 
   // Move to the next input child
   ++gstate.child;
@@ -201,18 +207,18 @@ PhysicalPathFinding::GetLocalSourceState(ExecutionContext &context,
 
 SourceResultType PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
                              OperatorSourceInput &input) const {
-  auto &pf_sink = sink_state->Cast<PathFindingGlobalSinkState>();
-  pf_sink.global_bfs_state->path_finding_result->SetCardinality(pf_sink.global_bfs_state->pairs->Count());
-  pf_sink.global_bfs_state->path_finding_result->Print();
-  // If there are no pairs, we're done
-  if (pf_sink.global_bfs_state->results->Count() == 0) {
-    return SourceResultType::FINISHED;
-  }
-  pf_sink.global_bfs_state->results->Scan(pf_sink.global_bfs_state->result_scan_state, result);
-  if (pf_sink.global_bfs_state->result_scan_state.current_row_index == pf_sink.global_bfs_state->results->Count()) {
-    return SourceResultType::FINISHED;
-  }
-  return SourceResultType::HAVE_MORE_OUTPUT;
+  // auto &pf_sink = sink_state->Cast<PathFindingGlobalSinkState>();
+  // pf_sink.global_bfs_state->path_finding_result->SetCardinality(pf_sink.global_bfs_state->pairs->Count());
+  // pf_sink.global_bfs_state->path_finding_result->Print();
+  // // If there are no pairs, we're done
+  // if (pf_sink.global_bfs_state->results->Count() == 0) {
+  //   return SourceResultType::FINISHED;
+  // }
+  // pf_sink.global_bfs_state->results->Scan(pf_sink.global_bfs_state->result_scan_state, result);
+  // if (pf_sink.global_bfs_state->result_scan_state.current_row_index == pf_sink.global_bfs_state->results->Count()) {
+  //   return SourceResultType::FINISHED;
+  // }
+  return SourceResultType::FINISHED;
 }
 
 //===--------------------------------------------------------------------===//

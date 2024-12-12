@@ -12,16 +12,14 @@
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 #include "duckpgq/common.hpp"
-#include "duckpgq/core/utils/duckpgq_barrier.hpp"
-#include "duckpgq/core/utils/duckpgq_path_reconstruction.hpp"
-#include "duckpgq/core/utils/duckpgq_utils.hpp"
+#include "duckpgq/core/operator/bfs_state.hpp"
 
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
 
 namespace duckpgq {
 
 namespace core {
-class GlobalBFSState;
+class BFSState; // Forward declaration
 
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 
@@ -102,7 +100,8 @@ public:
   // pairs is a 2-column table with src and dst
   unique_ptr<ColumnDataCollection> global_pairs;
   unique_ptr<ColumnDataCollection> global_csr_column_data;
-  shared_ptr<GlobalBFSState> global_bfs_state;
+  ColumnDataScanState global_scan_state;
+  vector<shared_ptr<BFSState>> bfs_states;
   CSR* csr;
   int32_t csr_id;
   size_t child;
