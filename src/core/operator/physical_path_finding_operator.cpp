@@ -28,8 +28,6 @@ PhysicalPathFinding::PhysicalPathFinding(LogicalExtensionOperator &op,
     : PhysicalComparisonJoin(op, TYPE, {}, JoinType::INNER, op.estimated_cardinality) {
   children.push_back(std::move(pairs));
   children.push_back(std::move(csr));
-
-  // TODO check if there are expressions
   expressions = std::move(op.expressions);
   estimated_cardinality = op.estimated_cardinality;
   auto &path_finding_op = op.Cast<LogicalPathFindingOperator>();
