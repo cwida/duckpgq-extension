@@ -15,7 +15,7 @@ ShortestPathTask::ShortestPathTask(shared_ptr<Event> event_p,
 
 TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
   auto &barrier = state->barrier;
-
+  std::cout << "Starting to execute task " << worker_id << std::endl;
   do {
     IterativePath();
 
@@ -25,36 +25,24 @@ TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
       state->ResetTaskIndex();
     }
     barrier->Wait();
-
     if (worker_id == 0) {
       ReachDetect();
     }
-
-    // std::cout << "Worker " << worker_id << ": Waiting at barrier before
-    // ResetTaskIndex." << std::endl;
     barrier->Wait();
     if (worker_id == 0) {
       state->ResetTaskIndex();
-      // std::cout << "Worker " << worker_id << ": ResetTaskIndex completed." <<
-      // std::endl;
     }
     barrier->Wait();
-    // std::cout << "Worker " << worker_id << ": Passed barrier after
-    // ResetTaskIndex." << std::endl;
   } while (state->change);
 
   barrier->Wait();
   if (worker_id == 0) {
-    // std::cout << "Worker " << worker_id << " started path construction" <<
-    // std::endl;
     PathConstruction();
-    // std::cout << "Worker " << worker_id << " finished path construction" <<
-    // std::endl;
   }
 
   // Final synchronization before finishing
   barrier->Wait();
-  // std::cout << "Worker " << worker_id << " finishing task" << std::endl;
+  std::cout << "Worker " << worker_id << " finishing task" << std::endl;
   event->FinishTask();
   return TaskExecutionResult::TASK_FINISHED;
 }
@@ -160,11 +148,9 @@ void ShortestPathTask::ReachDetect() {
 }
 
 void ShortestPathTask::PathConstruction() {
-  auto path_finding_result = make_uniq<DataChunk>();
-  path_finding_result->Initialize(context, {LogicalType::LIST(LogicalType::BIGINT)});
-  auto result_data = FlatVector::GetData<list_entry_t>(path_finding_result->data[0]);
-  auto &result_validity = FlatVector::Validity(path_finding_result->data[0]);
-  size_t list_len = 0;
+
+  auto result_data = FlatVector::GetData<list_entry_t>(state->path_finding_result->data[0]);
+  auto &result_validity = FlatVector::Validity(state->path_finding_result->data[0]);
   //! Reconstruct the paths
   for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
     int64_t search_num = state->lane_to_num[lane];
@@ -179,11 +165,11 @@ void ShortestPathTask::PathConstruction() {
       unique_ptr<Vector> output =
           make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
       ListVector::PushBack(*output, state->src[src_pos]);
-      ListVector::Append(path_finding_result->data[0], ListVector::GetEntry(*output),
+      ListVector::Append(state->path_finding_result->data[0], ListVector::GetEntry(*output),
                          ListVector::GetListSize(*output));
       result_data[search_num].length = ListVector::GetListSize(*output);
-      result_data[search_num].offset = list_len;
-      list_len += result_data[search_num].length;
+      result_data[search_num].offset = state->current_batch_path_list_len;
+      state->current_batch_path_list_len += result_data[search_num].length;
       continue;
     }
     std::vector<int64_t> output_vector;
@@ -221,17 +207,11 @@ void ShortestPathTask::PathConstruction() {
     }
 
     result_data[search_num].length = ListVector::GetListSize(*output);
-    result_data[search_num].offset = list_len;
-    ListVector::Append(path_finding_result->data[0], ListVector::GetEntry(*output),
+    result_data[search_num].offset = state->current_batch_path_list_len;
+    ListVector::Append(state->path_finding_result->data[0], ListVector::GetEntry(*output),
                        ListVector::GetListSize(*output));
-    list_len += result_data[search_num].length;
+    state->current_batch_path_list_len += result_data[search_num].length;
   }
-  path_finding_result->SetCardinality(state->current_pairs_batch->size());
-
-  state->current_pairs_batch->Fuse(*path_finding_result);
-  // state->current_pairs_batch->Print();
-  state->results->Append(*state->current_pairs_batch);
-  // state->results->Print();
 }
 
 } // namespace core

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "duckpgq/common.hpp"
-#include <duckpgq/core/operator/physical_path_finding_operator.hpp>
+#include <duckpgq/core/operator/bfs_state.hpp>
 
 namespace duckpgq {
 namespace core {

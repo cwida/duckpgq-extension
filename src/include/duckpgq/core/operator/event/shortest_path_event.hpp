@@ -21,7 +21,7 @@ public:
   explicit ShortestPathEvent(shared_ptr<GlobalBFSState> gbfs_state_p, Pipeline &pipeline_p, const PhysicalPathFinding& op_p);
 
   void Schedule() override;
-  void FinishEvent() override;
+  // void FinishEvent() override;
 
 private:
   shared_ptr<GlobalBFSState> gbfs_state;
