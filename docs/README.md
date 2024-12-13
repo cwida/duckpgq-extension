@@ -77,42 +77,42 @@ For inspiration/examples on how to extend DuckDB in a more meaningful way, check
 the [in-tree extensions](https://github.com/duckdb/duckdb/tree/main/extension), and the [out-of-tree extensions](https://github.com/duckdblabs).
 
 ## Distributing your extension
-Easy distribution of extensions built with this template is facilitated using a similar process used by DuckDB itself. 
-Binaries are generated for various versions/platforms allowing duckdb to automatically install the correct binary.
+To distribute your extension binaries, there are a few options.
 
-This step requires that you pass the following 4 parameters to your GitHub repo as action secrets:
+### Community extensions
+The recommended way of distributing extensions is through the [community extensions repository](https://github.com/duckdb/community-extensions).
+This repository is designed specifically for extensions that are built using this extension template, meaning that as long as your extension can be
+built using the default CI in this template, submitting it to the community extensions is a very simple process. The process works similarly to popular
+package managers like homebrew and vcpkg, where a PR containing a descriptor file is submitted to the package manager repository. After the CI in the 
+community extensions repository completes, the extension can be installed and loaded in DuckDB with:
+```SQL
+INSTALL <my_extension> FROM community;
+LOAD <my_extension>
+```
+For more information, see the [community extensions documentation](https://duckdb.org/community_extensions/documentation).
 
-| secret name   | description                         |
-| ------------- | ----------------------------------- |
-| S3_REGION     | s3 region holding your bucket       |
-| S3_BUCKET     | the name of the bucket to deploy to |
-| S3_DEPLOY_ID  | the S3 key id                       |
-| S3_DEPLOY_KEY | the S3 key secret                   |
-
-After setting these variables, all pushes to main will trigger a new (dev) release. Note that your AWS token should
-have full permissions to the bucket, and you will need to have ACLs enabled.
-
-### Installing the deployed binaries
-To install your extension binaries from S3, you will need to do two things. Firstly, DuckDB should be launched with the 
-`allow_unsigned_extensions` option set to true. How to set this will depend on the client you're using. Some examples:
-
-CLI:
+### Downloading artifacts from GitHub
+The default CI in this template will automatically upload the binaries for every push to the main branch as GitHub Actions artifacts. These
+can be downloaded manually and then loaded directly using:
+```SQL
+LOAD '/path/to/downloaded/extension.duckdb_extension';
+```
+Note that this will require starting DuckDB with the
+`allow_unsigned_extensions` option set to true. How to set this will depend on the client you're using. For the CLI it is done like:
 ```shell
 duckdb -unsigned
 ```
 
-Secondly, you will need to set the repository endpoint in DuckDB to the HTTP url of your bucket + version of the extension 
-you want to install. To do this run the following SQL query in DuckDB:
-```sql
-SET custom_extension_repository='bucket.s3.eu-west-1.amazonaws.com/<your_extension_name>/latest';
-```
-Note that the `/latest` path will allow you to install the latest extension version available for your current version of 
-DuckDB. To specify a specific version, you can pass the version instead.
+### Uploading to a custom repository
+If for some reason distributing through community extensions is not an option, extensions can also be uploaded to a custom extension repository.
+This will give some more control over where and how the extensions are distributed, but comes with the downside of requiring the `allow_unsigned_extensions`
+option to be set. For examples of how to configure a manual GitHub Actions deploy pipeline, check out the extension deploy script in https://github.com/duckdb/extension-ci-tools.
+Some examples of extensions that use this CI/CD workflow check out [spatial](https://github.com/duckdblabs/duckdb_spatial) or [aws](https://github.com/duckdb/duckdb_aws).
 
-After running these steps, you can install and load your extension using the regular INSTALL/LOAD commands in DuckDB:
-```sql
-INSTALL <your_extension_name>
-LOAD <your_extension_name>
+Extensions in custom repositories can be installed and loaded using:
+```SQL
+INSTALL <my_extension> FROM 'http://my-custom-repo'
+LOAD <my_extension>
 ```
 
 ### Versioning of your extension
