@@ -9,11 +9,11 @@ namespace duckpgq {
 
 namespace core {
 
-BFSState::BFSState(DataChunk &pairs_, CSR *csr_, idx_t num_threads_,
+BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
                    string mode_, ClientContext &context_)
-    : pairs(pairs_), csr(csr_), v_size(csr_->vsize - 2),
+    : pairs(std::move(pairs_)), csr(csr_), v_size(csr_->vsize - 2),
       context(context_), num_threads(num_threads_), mode(std::move(mode_)),
-      src_data(pairs.data[0]), dst_data(pairs.data[1]){
+      src_data(pairs->data[0]), dst_data(pairs->data[1]){
   LogicalType bfs_type = mode == "iterativelength"
                              ? LogicalType::BIGINT
                              : LogicalType::LIST(LogicalType::BIGINT);
@@ -36,8 +36,8 @@ BFSState::BFSState(DataChunk &pairs_, CSR *csr_, idx_t num_threads_,
       v_size, std::array<ve, LANE_LIMIT>{});
 
   // Initialize source and destination vectors
-  src_data.ToUnifiedFormat(pairs.size(), vdata_src);
-  dst_data.ToUnifiedFormat(pairs.size(), vdata_dst);
+  src_data.ToUnifiedFormat(pairs->size(), vdata_src);
+  dst_data.ToUnifiedFormat(pairs->size(), vdata_dst);
   src = FlatVector::GetData<int64_t>(src_data);
   dst = FlatVector::GetData<int64_t>(dst_data);
 
@@ -130,7 +130,7 @@ void BFSState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const Physical
 
   for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
     lane_to_num[lane] = -1;
-    while (started_searches < pairs.size()) {
+    while (started_searches < pairs->size()) {
       auto search_num = started_searches++;
       int64_t src_pos = vdata_src.sel->get_index(search_num);
       if (!vdata_src.validity.RowIsValid(src_pos)) {

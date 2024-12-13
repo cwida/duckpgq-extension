@@ -15,7 +15,7 @@ class PhysicalPathFinding; // Forward declaration
 class BFSState : public enable_shared_from_this<BFSState> {
 
 public:
-  BFSState(DataChunk &pairs_, CSR* csr_, idx_t num_threads_,
+  BFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, idx_t num_threads_,
         string mode_, ClientContext &context_);
 
   // void InitializeBFS(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op);
@@ -28,7 +28,7 @@ public:
   void ResetTaskIndex();
 
   pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) const;
-  DataChunk &pairs; // (src, dst) pairs
+  shared_ptr<DataChunk> pairs; // (src, dst) pairs
   CSR *csr;
   string mode;
   DataChunk pf_results; // results of (src, dst, path-finding)

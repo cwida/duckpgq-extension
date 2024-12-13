@@ -134,9 +134,9 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 
   while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
     // Schedule the BFS Event for the current DataChunk
-    DataChunk current_chunk;
-    current_chunk.Initialize(context, gstate.global_pairs->Types());
-    gstate.global_pairs->Scan(gstate.global_scan_state, current_chunk);
+    auto current_chunk = make_shared_ptr<DataChunk>();
+    current_chunk->Initialize(context, gstate.global_pairs->Types());
+    gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
     auto bfs_state = make_shared_ptr<BFSState>(current_chunk, gstate.csr, gstate.num_threads, mode, context);
     bfs_state->ScheduleBFSBatch(pipeline, event, this);
     gstate.bfs_states.push_back(std::move(bfs_state));
@@ -207,17 +207,17 @@ PhysicalPathFinding::GetLocalSourceState(ExecutionContext &context,
 
 SourceResultType PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
                              OperatorSourceInput &input) const {
-  // auto &pf_sink = sink_state->Cast<PathFindingGlobalSinkState>();
+  auto &pf_sink = sink_state->Cast<PathFindingGlobalSinkState>();
   // pf_sink.global_bfs_state->path_finding_result->SetCardinality(pf_sink.global_bfs_state->pairs->Count());
   // pf_sink.global_bfs_state->path_finding_result->Print();
-  // // If there are no pairs, we're done
-  // if (pf_sink.global_bfs_state->results->Count() == 0) {
-  //   return SourceResultType::FINISHED;
-  // }
-  // pf_sink.global_bfs_state->results->Scan(pf_sink.global_bfs_state->result_scan_state, result);
-  // if (pf_sink.global_bfs_state->result_scan_state.current_row_index == pf_sink.global_bfs_state->results->Count()) {
-  //   return SourceResultType::FINISHED;
-  // }
+  // If there are no pairs, we're done
+  if (pf_sink.global_pairs->Count() == 0) {
+    return SourceResultType::FINISHED;
+  }
+  for (const auto &state : pf_sink.bfs_states) {
+    state->pf_results.SetCardinality(state->pairs->size());
+    state->pf_results.Print();
+  }
   return SourceResultType::FINISHED;
 }
 
