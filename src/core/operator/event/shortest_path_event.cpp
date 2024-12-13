@@ -23,21 +23,9 @@ void ShortestPathEvent::Schedule() {
   SetTasks(std::move(bfs_tasks));
 }
 
-// void ShortestPathEvent::FinishEvent() {
-//   std::cout << "Total pairs processed: " << gbfs_state->started_searches << std::endl;
-//   std::cout << "Number of pairs: " << gbfs_state->current_pairs_batch->size() << std::endl;
-//   gbfs_state->path_finding_result->Print();
-//   // if remaining pairs, schedule the BFS for the next batch
-//   if (gbfs_state->started_searches == gbfs_state->current_pairs_batch->size()) {
-//     gbfs_state->path_finding_result->SetCardinality(gbfs_state->current_pairs_batch->size());
-//     gbfs_state->total_pairs_processed += gbfs_state->current_pairs_batch->size();
-//     gbfs_state->current_pairs_batch->Fuse(*gbfs_state->path_finding_result);
-//     gbfs_state->results->Append(*gbfs_state->current_pairs_batch);
-//
-//   }
-//   std::cout << gbfs_state->started_searches << " " << gbfs_state->pairs->Count() << std::endl;
-//   std::cout << "Finished event" << std::endl;
-// }
+void ShortestPathEvent::FinishEvent() {
+  std::cout << "Finished BFSEvent" << std::endl;
+}
 
 } // namespace core
 } // namespace duckpgq

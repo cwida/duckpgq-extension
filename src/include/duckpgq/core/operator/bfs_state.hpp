@@ -20,7 +20,7 @@ public:
 
   // void InitializeBFS(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op);
   void ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op);
-
+  void InitializeLanes();
   void Clear();
 
   void CreateTasks();

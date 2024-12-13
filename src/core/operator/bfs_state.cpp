@@ -123,7 +123,7 @@ pair<idx_t, idx_t> BFSState::BoundaryCalculation(idx_t worker_id) const {
   return {left, right};
 }
 
-void BFSState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) {
+void BFSState::InitializeLanes() {
   auto &result_validity = FlatVector::Validity(pf_results->data[0]);
   std::bitset<LANE_LIMIT> seen_mask;
   seen_mask.set();
@@ -149,6 +149,9 @@ void BFSState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const Physical
     seen[i] = seen_mask;
   }
 
+}
+
+void BFSState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) {
   if (mode == "iterativelength") {
     throw NotImplementedException("Iterative length has not been implemented yet");
     // event.InsertEvent(

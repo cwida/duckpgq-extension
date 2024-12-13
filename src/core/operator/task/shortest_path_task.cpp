@@ -15,34 +15,45 @@ ShortestPathTask::ShortestPathTask(shared_ptr<Event> event_p,
 
 TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
   auto &barrier = state->barrier;
-  std::cout << "Starting to execute task " << worker_id << std::endl;
-  state->pairs->Print();
-  do {
-    IterativePath();
+  while (state->started_searches < state->pairs->size()) {
+    std::cout << "Started searches: " << state->started_searches << std::endl;
+    barrier->Wait();
+    if (worker_id == 0) {
+      state->InitializeLanes();
+      state->pairs->Print();
+    }
+    barrier->Wait();
+    do {
+      IterativePath();
 
-    // Synchronize after IterativePath
-    barrier->Wait();
-    if (worker_id == 0) {
-      state->ResetTaskIndex();
-    }
-    barrier->Wait();
-    if (worker_id == 0) {
-      ReachDetect();
-    }
-    barrier->Wait();
-    if (worker_id == 0) {
-      state->ResetTaskIndex();
-    }
-    barrier->Wait();
-  } while (state->change);
+      // Synchronize after IterativePath
+      barrier->Wait();
+      if (worker_id == 0) {
+        state->ResetTaskIndex();
+      }
+      barrier->Wait();
+      if (worker_id == 0) {
+        ReachDetect();
+      }
+      barrier->Wait();
+      if (worker_id == 0) {
+        state->ResetTaskIndex();
+      }
+      barrier->Wait();
+    } while (state->change);
 
-  barrier->Wait();
-  if (worker_id == 0) {
-    PathConstruction();
+    barrier->Wait();
+    if (worker_id == 0) {
+      PathConstruction();
+    }
+
+    // Final synchronization before finishing
+    barrier->Wait();
+    if (worker_id == 0) {
+      state->Clear();
+    }
+    barrier->Wait();
   }
-
-  // Final synchronization before finishing
-  barrier->Wait();
   std::cout << "Worker " << worker_id << " finishing task" << std::endl;
   event->FinishTask();
   return TaskExecutionResult::TASK_FINISHED;
