@@ -226,7 +226,10 @@ SourceResultType PhysicalPathFinding::GetData(ExecutionContext &context, DataChu
   std::cout << "Batch list length: " << current_state->current_batch_path_list_len << std::endl;
 
   pf_sink.result_scan_idx++;
-  return SourceResultType::FINISHED;
+  if (pf_sink.result_scan_idx == pf_sink.bfs_states.size()) {
+    return SourceResultType::FINISHED;
+  }
+  return SourceResultType::HAVE_MORE_OUTPUT;
 }
 
 //===--------------------------------------------------------------------===//
