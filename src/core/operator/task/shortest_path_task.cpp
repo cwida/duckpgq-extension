@@ -16,7 +16,7 @@ ShortestPathTask::ShortestPathTask(shared_ptr<Event> event_p,
 TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
   auto &barrier = state->barrier;
   std::cout << "Starting to execute task " << worker_id << std::endl;
-
+  state->pairs->Print();
   do {
     IterativePath();
 
@@ -149,9 +149,8 @@ void ShortestPathTask::ReachDetect() {
 }
 
 void ShortestPathTask::PathConstruction() {
-  throw NotImplementedException("Temp disable");
-  auto result_data = FlatVector::GetData<list_entry_t>(state->path_finding_result->data[0]);
-  auto &result_validity = FlatVector::Validity(state->path_finding_result->data[0]);
+  auto result_data = FlatVector::GetData<list_entry_t>(state->pf_results->data[0]);
+  auto &result_validity = FlatVector::Validity(state->pf_results->data[0]);
   //! Reconstruct the paths
   for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
     int64_t search_num = state->lane_to_num[lane];
@@ -166,7 +165,7 @@ void ShortestPathTask::PathConstruction() {
       unique_ptr<Vector> output =
           make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
       ListVector::PushBack(*output, state->src[src_pos]);
-      ListVector::Append(state->path_finding_result->data[0], ListVector::GetEntry(*output),
+      ListVector::Append(state->pf_results->data[0], ListVector::GetEntry(*output),
                          ListVector::GetListSize(*output));
       result_data[search_num].length = ListVector::GetListSize(*output);
       result_data[search_num].offset = state->current_batch_path_list_len;
@@ -209,7 +208,7 @@ void ShortestPathTask::PathConstruction() {
 
     result_data[search_num].length = ListVector::GetListSize(*output);
     result_data[search_num].offset = state->current_batch_path_list_len;
-    ListVector::Append(state->path_finding_result->data[0], ListVector::GetEntry(*output),
+    ListVector::Append(state->pf_results->data[0], ListVector::GetEntry(*output),
                        ListVector::GetListSize(*output));
     state->current_batch_path_list_len += result_data[search_num].length;
   }

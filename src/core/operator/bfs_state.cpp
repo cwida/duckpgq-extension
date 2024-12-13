@@ -25,8 +25,8 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
   active = 0;
   iter = 1;
   change = false;
-
-  pf_results.Initialize(context, {bfs_type});
+  pf_results = make_shared_ptr<DataChunk>();
+  pf_results->Initialize(context, {bfs_type});
 
   visit1 = vector<std::bitset<LANE_LIMIT>>(v_size);
   visit2 = vector<std::bitset<LANE_LIMIT>>(v_size);
@@ -124,7 +124,7 @@ pair<idx_t, idx_t> BFSState::BoundaryCalculation(idx_t worker_id) const {
 }
 
 void BFSState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) {
-  auto &result_validity = FlatVector::Validity(pf_results.data[0]);
+  auto &result_validity = FlatVector::Validity(pf_results->data[0]);
   std::bitset<LANE_LIMIT> seen_mask;
   seen_mask.set();
 

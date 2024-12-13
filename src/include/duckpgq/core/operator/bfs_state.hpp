@@ -31,7 +31,7 @@ public:
   shared_ptr<DataChunk> pairs; // (src, dst) pairs
   CSR *csr;
   string mode;
-  DataChunk pf_results; // results of (src, dst, path-finding)
+  shared_ptr<DataChunk> pf_results; // results of path-finding
   LogicalType bfs_type;
   // const PhysicalPathFinding *op;
   int64_t iter;

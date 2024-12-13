@@ -57,7 +57,7 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context,
       make_uniq<ColumnDataCollection>(context, op.children[1]->GetTypes());
 
   global_pairs->InitializeScan(global_scan_state);
-
+  result_scan_idx = 0;
 
   child = 0;
   mode = op.mode;
@@ -214,10 +214,18 @@ SourceResultType PhysicalPathFinding::GetData(ExecutionContext &context, DataChu
   if (pf_sink.global_pairs->Count() == 0) {
     return SourceResultType::FINISHED;
   }
-  for (const auto &state : pf_sink.bfs_states) {
-    state->pf_results.SetCardinality(state->pairs->size());
-    state->pf_results.Print();
-  }
+  D_ASSERT(pf_sink.result_scan_idx < pf_sink.bfs_states.size());
+  auto current_state = pf_sink.bfs_states[pf_sink.result_scan_idx];
+  auto result_types = current_state->pairs->GetTypes();
+  result_types.push_back(current_state->bfs_type);
+  // result.Initialize(context.client, result_types, DEFAULT_STANDARD_VECTOR_SIZE);
+  current_state->pf_results->SetCardinality(*current_state->pairs);
+  current_state->pairs->Fuse(*current_state->pf_results);
+  current_state->pairs->Print();
+  result.Move(*current_state->pairs);
+  std::cout << "Batch list length: " << current_state->current_batch_path_list_len << std::endl;
+
+  pf_sink.result_scan_idx++;
   return SourceResultType::FINISHED;
 }
 

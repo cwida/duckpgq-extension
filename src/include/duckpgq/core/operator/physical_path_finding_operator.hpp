@@ -101,6 +101,7 @@ public:
   unique_ptr<ColumnDataCollection> global_pairs;
   unique_ptr<ColumnDataCollection> global_csr_column_data;
   ColumnDataScanState global_scan_state;
+  idx_t result_scan_idx;
   vector<shared_ptr<BFSState>> bfs_states;
   CSR* csr;
   int32_t csr_id;
