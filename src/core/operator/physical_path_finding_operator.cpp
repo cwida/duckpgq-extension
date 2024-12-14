@@ -221,9 +221,9 @@ SourceResultType PhysicalPathFinding::GetData(ExecutionContext &context, DataChu
   // result.Initialize(context.client, result_types, DEFAULT_STANDARD_VECTOR_SIZE);
   current_state->pf_results->SetCardinality(*current_state->pairs);
   current_state->pairs->Fuse(*current_state->pf_results);
-  current_state->pairs->Print();
+  // current_state->pairs->Print();
   result.Move(*current_state->pairs);
-  std::cout << "Batch list length: " << current_state->current_batch_path_list_len << std::endl;
+  // std::cout << "Batch list length: " << current_state->current_batch_path_list_len << std::endl;
 
   pf_sink.result_scan_idx++;
   if (pf_sink.result_scan_idx == pf_sink.bfs_states.size()) {

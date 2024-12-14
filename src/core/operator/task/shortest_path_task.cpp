@@ -16,11 +16,11 @@ ShortestPathTask::ShortestPathTask(shared_ptr<Event> event_p,
 TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
   auto &barrier = state->barrier;
   while (state->started_searches < state->pairs->size()) {
-    std::cout << "Started searches: " << state->started_searches << std::endl;
+    // std::cout << "Started searches: " << state->started_searches << std::endl;
     barrier->Wait();
     if (worker_id == 0) {
       state->InitializeLanes();
-      state->pairs->Print();
+      // state->pairs->Print();
     }
     barrier->Wait();
     do {
@@ -54,7 +54,7 @@ TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
     }
     barrier->Wait();
   }
-  std::cout << "Worker " << worker_id << " finishing task" << std::endl;
+  // std::cout << "Worker " << worker_id << " finishing task" << std::endl;
   event->FinishTask();
   return TaskExecutionResult::TASK_FINISHED;
 }

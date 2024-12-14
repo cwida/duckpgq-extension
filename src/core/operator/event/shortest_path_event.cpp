@@ -24,7 +24,7 @@ void ShortestPathEvent::Schedule() {
 }
 
 void ShortestPathEvent::FinishEvent() {
-  std::cout << "Finished BFSEvent" << std::endl;
+  // std::cout << "Finished BFSEvent" << std::endl;
 }
 
 } // namespace core
