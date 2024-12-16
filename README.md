@@ -232,12 +232,19 @@ Now to build the extension, run:
 ```sh
 make <debug> GEN=ninja
 ```
-The main binaries that will be built are:
-```sh
-./build/release/duckdb
-./build/release/test/unittest
-./build/release/extension/duckpgq/duckpgq.duckdb_extension
-```
+The location of the binaries depends on the `BUILD_TYPE` flag (`release` or `debug`) specified during the build process. By default, the binaries are organized as follows:
+
+### For a **release build** (`make release`):
+- DuckDB binary: `./build/release/duckdb`
+- Unit tests: `./build/release/test/unittest`
+- DuckPGQ extension: `./build/release/extension/duckpgq/duckpgq.duckdb_extension`
+
+### For a **debug build** (`make debug`):
+- DuckDB binary: `./build/debug/duckdb`
+- Unit tests: `./build/debug/test/unittest`
+- DuckPGQ extension: `./build/debug/extension/duckpgq/duckpgq.duckdb_extension`
+
+Ensure you specify the appropriate `BUILD_TYPE` flag when configuring the build to place binaries in the corresponding directory.
 - `duckdb` is the binary for the duckdb shell with the extension code automatically loaded.
 - `unittest` is the test runner of duckdb. Again, the extension is already linked into the binary.
 - `duckpgq.duckdb_extension` is the loadable binary as it would be distributed.
@@ -246,7 +253,7 @@ The main binaries that will be built are:
 To run the extension code, simply start the shell with `./build/release/duckdb`.
 
 > [!CAUTION]
-> Any query containing SQL/PGQ syntax requires a `-` at the start of the query when building the extension from the source, otherwise, you will experience a segmentation fault. This is not the case when loading the extension from DuckDB.
+> Any query containing SQL/PGQ syntax requires a `-` at the start of the query when building the extension from the source, otherwise, you will experience a segmentation fault. This is not the case when loading the extension from DuckDB.
 
 ## Running the tests
 Different tests can be created for DuckDB extensions. The primary way of testing DuckDB extensions should be the SQL tests in `./test/sql`. These SQL tests can be run using:
