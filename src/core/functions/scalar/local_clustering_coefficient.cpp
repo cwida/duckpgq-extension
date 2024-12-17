@@ -42,7 +42,7 @@ static void LocalClusteringCoefficientFunction(DataChunk &args,
 
   DuckPGQBitmap neighbors(v_size);
 
-  for (int32_t n = 0; n < args.size(); n++) {
+  for (idx_t n = 0; n < args.size(); n++) {
     auto src_sel = vdata_src.sel->get_index(n);
     if (!vdata_src.validity.RowIsValid(src_sel)) {
       result_validity.SetInvalid(n);
@@ -54,15 +54,15 @@ static void LocalClusteringCoefficientFunction(DataChunk &args,
       continue;
     }
     neighbors.reset();
-    for (size_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
+    for (int64_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
       neighbors.set(e[offset]);
     }
 
     // Count connections between neighbors
     int64_t count = 0;
-    for (size_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
+    for (int64_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
       int64_t neighbor = e[offset];
-      for (size_t offset2 = v[neighbor]; offset2 < v[neighbor + 1]; offset2++) {
+      for (int64_t offset2 = v[neighbor]; offset2 < v[neighbor + 1]; offset2++) {
         int is_connected = neighbors.test(e[offset2]);
         count += is_connected; // Add 1 if connected, 0 otherwise
       }

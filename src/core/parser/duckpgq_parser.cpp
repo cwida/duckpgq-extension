@@ -22,7 +22,6 @@ namespace core {
 
 ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
                                          const std::string &query) {
-  auto parse_info = (DuckPGQParserExtensionInfo &)(info);
   Parser parser;
   parser.ParseQuery((query[0] == '-') ? query.substr(1, query.length())
                                       : query);
