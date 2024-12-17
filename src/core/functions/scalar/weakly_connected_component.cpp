@@ -101,7 +101,7 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
   idx_t started_searches = 0;
   while (started_searches < args.size()) {
     // empty visit vectors
-    for (auto i = 0; i < v_size; i++) {
+    for (size_t i = 0; i < v_size; i++) {
       seen[i] = 0;
       visit1[i] = 0;
     }
@@ -146,7 +146,7 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
           continue;
         }
         // Update component IDs
-        for (int64_t i = 0; i < v_size; i++) {
+        for (size_t i = 0; i < v_size; i++) {
           if (seen[i][lane]) {
             UpdateComponentId(i, src_data[search_num], info);
           }
