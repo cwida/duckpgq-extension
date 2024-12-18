@@ -22,11 +22,6 @@ TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
     }
     barrier->Wait();
     do {
-      if (worker_id == 0) {
-        for (auto & i : state->iter & 1 ? state->visit2 : state->visit1) {
-          i.reset();
-        }
-      }
       IterativePath();
 
       // Synchronize after IterativePath
@@ -84,7 +79,12 @@ void ShortestPathTask::IterativePath() {
 
   // Attempt to get a task range
   bool has_tasks = SetTaskRange();
+  for (auto i = left; i < right; i++) {
+    next[i] = 0;
+  }
 
+  // Synchronize after clearing
+  barrier->Wait();
   // Main processing loop
   while (has_tasks) {
 
