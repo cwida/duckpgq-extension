@@ -90,7 +90,7 @@ void ShortestPathTask::IterativePath() {
 
   // Main processing loop
   while (has_tasks) {
-    std::cout << worker_id << " " << left << " " << right << std::endl;
+    // std::cout << worker_id << " " << left << " " << right << std::endl;
 
     for (auto i = left; i < right; i++) {
       if (visit[i].any()) {
