@@ -16,11 +16,9 @@ ShortestPathTask::ShortestPathTask(shared_ptr<Event> event_p,
 TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
   auto &barrier = state->barrier;
   while (state->started_searches < state->pairs->size()) {
-    // std::cout << "Started searches: " << state->started_searches << std::endl;
     barrier->Wait();
     if (worker_id == 0) {
       state->InitializeLanes();
-      // state->pairs->Print();
     }
     barrier->Wait();
     do {
@@ -59,7 +57,6 @@ TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
     }
     barrier->Wait();
   }
-  // std::cout << "Worker " << worker_id << " finishing task" << std::endl;
   event->FinishTask();
   return TaskExecutionResult::TASK_FINISHED;
 }
@@ -90,7 +87,6 @@ void ShortestPathTask::IterativePath() {
 
   // Main processing loop
   while (has_tasks) {
-    // std::cout << worker_id << " " << left << " " << right << std::endl;
 
     for (auto i = left; i < right; i++) {
       if (visit[i].any()) {
@@ -148,11 +144,12 @@ void ShortestPathTask::ReachDetect() {
   // detect lanes that finished
   for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
     int64_t search_num = state->lane_to_num[lane];
-    if (search_num >= 0) { // active lane
+    if (search_num >= 0 && !state->lane_completed.test(lane)) { // Active lane that has not yet completed
       //! Check if dst for a source has been seen
       int64_t dst_pos = state->vdata_dst.sel->get_index(search_num);
       if (state->seen[state->dst[dst_pos]][lane]) {
-        state->active--;
+        state->active--; // Decrement active count
+        state->lane_completed.set(lane);  // Mark this lane as completed
       }
     }
   }
@@ -193,7 +190,6 @@ void ShortestPathTask::PathConstruction() {
 
     auto parent_vertex = state->parents_ve[state->dst[dst_pos]][lane].GetV();
     auto parent_edge = state->parents_ve[state->dst[dst_pos]][lane].GetE();
-
     output_vector.push_back(state->dst[dst_pos]); // Add destination vertex
     output_vector.push_back(parent_edge);
     while (parent_vertex != source_v) { // Continue adding vertices until we

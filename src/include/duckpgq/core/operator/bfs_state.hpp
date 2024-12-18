@@ -55,6 +55,8 @@ public:
   vector<std::bitset<LANE_LIMIT>> visit2;
   vector<std::array<ve, LANE_LIMIT>> parents_ve;
 
+  std::bitset<LANE_LIMIT> lane_completed;
+
   idx_t total_pairs_processed;
   idx_t num_threads;
   idx_t scheduled_threads;

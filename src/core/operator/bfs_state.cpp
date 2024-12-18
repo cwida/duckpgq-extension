@@ -61,6 +61,7 @@ void BFSState::Clear() {
       }
     }
   }
+  lane_completed.reset();
 }
 
 void BFSState::CreateTasks() {
