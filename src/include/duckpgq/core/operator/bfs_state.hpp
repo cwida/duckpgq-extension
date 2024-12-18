@@ -73,6 +73,7 @@ public:
 
   // lock for next
   mutable vector<mutex> element_locks;
+  mutex change_lock;
 };
 
 } // namespace core
