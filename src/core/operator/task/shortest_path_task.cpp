@@ -24,6 +24,11 @@ TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
     }
     barrier->Wait();
     do {
+      if (worker_id == 0) {
+        for (auto & i : state->iter & 1 ? state->visit2 : state->visit1) {
+          i.reset();
+        }
+      }
       IterativePath();
 
       // Synchronize after IterativePath
@@ -82,15 +87,11 @@ void ShortestPathTask::IterativePath() {
 
   // Attempt to get a task range
   bool has_tasks = SetTaskRange();
-  for (auto i = left; i < right; i++) {
-    next[i] = 0;
-  }
-
-  // Synchronize after clearing
-  barrier->Wait();
 
   // Main processing loop
   while (has_tasks) {
+    std::cout << worker_id << " " << left << " " << right << std::endl;
+
     for (auto i = left; i < right; i++) {
       if (visit[i].any()) {
         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
@@ -101,9 +102,12 @@ void ShortestPathTask::IterativePath() {
             next[n] |= visit[i];
           }
           for (auto l = 0; l < LANE_LIMIT; l++) {
-            if (parents_ve[n][l].GetV() == -1 && visit[i][l]) {
-              parents_ve[n][l] = {static_cast<int64_t>(i), edge_id};
-            }
+            // Create the mask: true (-1 in all bits) if condition is met, else 0
+            uint64_t mask = ((parents_ve[n][l].GetV() == -1) && visit[i][l]) ? ~uint64_t(0) : 0;
+
+            // Use the mask to conditionally update the `value` field of the `ve` struct
+            uint64_t new_value = (static_cast<uint64_t>(i) << parents_ve[n][l].e_bits) | (edge_id & parents_ve[n][l].e_mask);
+            parents_ve[n][l].value = (mask & new_value) | (~mask & parents_ve[n][l].value);
           }
         }
       }
@@ -216,12 +220,13 @@ void ShortestPathTask::PathConstruction() {
       Value value_to_insert = val;
       ListVector::PushBack(*output, value_to_insert);
     }
+    auto list_len = ListVector::GetListSize(*output);
 
-    result_data[search_num].length = ListVector::GetListSize(*output);
+    result_data[search_num].length = list_len;
     result_data[search_num].offset = state->current_batch_path_list_len;
     ListVector::Append(state->pf_results->data[0], ListVector::GetEntry(*output),
-                       ListVector::GetListSize(*output));
-    state->current_batch_path_list_len += result_data[search_num].length;
+                       list_len);
+    state->current_batch_path_list_len += list_len;
   }
 }
 
