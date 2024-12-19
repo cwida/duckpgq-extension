@@ -18,7 +18,7 @@ statement ok
 INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (1,2, 14), (1,3, 15), (2,3, 16);
 
 statement ok
--CREATE IF NOT EXISTS PROPERTY GRAPH pg_all_properties
+-CREATE PROPERTY GRAPH IF NOT EXISTS pg_all_properties
 VERTEX TABLES (
     Student,
     School  LABEL School IN School_kind (Hogeschool, University)
@@ -29,14 +29,40 @@ EDGE TABLES (
             LABEL Knows
     )
 
+query I
+select count(*) from __duckpgq_internal where is_vertex_table;
+----
+2
+
 statement ok
--CREATE IF NOT EXISTS PROPERTY GRAPH pg_all_properties
+-CREATE PROPERTY GRAPH IF NOT EXISTS pg_all_properties
 VERTEX TABLES (
-    Student,
-    School  LABEL School IN School_kind (Hogeschool, University)
+    Student
     )
 EDGE TABLES (
     know    SOURCE KEY ( src ) REFERENCES Student ( id )
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
             LABEL Knows
     )
+
+query I
+select count(*) from __duckpgq_internal where is_vertex_table;
+----
+2
+
+statement ok
+-CREATE PROPERTY GRAPH IF NOT EXISTS snb
+VERTEX TABLES (
+    Student
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            LABEL Knows
+    )
+
+query I
+select distinct property_graph from __duckpgq_internal order by property_graph desc;
+----
+snb
+pg_all_properties
