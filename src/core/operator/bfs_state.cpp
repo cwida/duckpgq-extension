@@ -55,12 +55,15 @@ void BFSState::Clear() {
     visit1[i] = 0;
     visit2[i] = 0;
     seen[i] = 0; // reset
-    if (mode == "shortestpath") {
+  }
+  if (mode == "shortestpath") {
+    for (auto i = 0; i < v_size; i++) {
       for (auto j = 0; j < LANE_LIMIT; j++) {
         parents_ve[i][j] = {-1, -1};
       }
     }
   }
+
   lane_completed.reset();
 }
 
