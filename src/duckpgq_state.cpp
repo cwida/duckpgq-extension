@@ -75,8 +75,13 @@ void DuckPGQState::ProcessPropertyGraphs(
     }
 
     // Extract catalog and schema names
-    table->catalog_name = chunk->GetValue(12, i).GetValue<string>();
-    table->schema_name = chunk->GetValue(13, i).GetValue<string>();
+    if (chunk->ColumnCount() == 14) {
+      table->catalog_name = chunk->GetValue(12, i).GetValue<string>();
+      table->schema_name = chunk->GetValue(13, i).GetValue<string>();
+    } else {
+      table->catalog_name = "";
+      table->schema_name = DEFAULT_SCHEMA;
+    }
 
     // Additional edge-specific handling
     if (!is_vertex) {
