@@ -18,11 +18,11 @@ EDGE TABLES (
                             LABEL Knows
     );
 
-query IIIIIIIIIII
+query IIIIIIIIIIIIII
 -DESCRIBE PROPERTY GRAPH snb;
 ----
-Person	person	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
-Person_knows_person	knows	false	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL
+snb	Person	person	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
+snb	Person_knows_person	knows	false	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL	NULL	main
 
 statement ok
 -CREATE OR REPLACE PROPERTY GRAPH snb
@@ -67,29 +67,46 @@ EDGE TABLES (
                             LABEL replyOf
     );
 
-query IIIIIIIIIII
+query IIIIIIIIIIIIII
 -DESCRIBE PROPERTY GRAPH snb;
 ----
-Message	message	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
-City	city	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
-Country	country	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
-TagClass	tagclass	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
-Tag	tag	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
-Place	place	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
-Organisation	organisation	true	NULL	NULL	NULL	NULL	NULL	NULL	typemask	[company, university]
-Forum	forum	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
-Person	person	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
-Message_replyOf_Message	replyof	false	Message	[id]	[messageId]	Message	[id]	[ParentMessageId]	NULL	NULL
-Message_hasAuthor_Person	hasauthor	false	Message	[id]	[messageId]	Person	[id]	[PersonId]	NULL	NULL
-Message_hasTag_Tag	message_hastag	false	Message	[id]	[id]	Tag	[id]	[TagId]	NULL	NULL
-Person_likes_Message	likes_message	false	Person	[id]	[PersonId]	Message	[id]	[id]	NULL	NULL
-person_workAt_Organisation	workat_organisation	false	Person	[id]	[PersonId]	Organisation	[id]	[OrganisationId]	NULL	NULL
-Person_hasInterest_Tag	hasinterest	false	Person	[id]	[PersonId]	Tag	[id]	[TagId]	NULL	NULL
-Forum_hasTag_Tag	forum_hastag	false	Forum	[id]	[ForumId]	Tag	[id]	[TagId]	NULL	NULL
-Forum_hasMember_Person	hasmember	false	Forum	[id]	[ForumId]	Person	[id]	[PersonId]	NULL	NULL
-Person_knows_person	knows	false	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL
+snb	Message	message	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
+snb	City	city	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
+snb	Country	country	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
+snb	TagClass	tagclass	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
+snb	Tag	tag	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
+snb	Place	place	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
+snb	Organisation	organisation	true	NULL	NULL	NULL	NULL	NULL	NULL	typemask	[company, university]	NULL	main
+snb	Forum	forum	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
+snb	Person	person	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
+snb	Message_replyOf_Message	replyof	false	Message	[id]	[messageId]	Message	[id]	[ParentMessageId]	NULL	NULL	NULL	main
+snb	Message_hasAuthor_Person	hasauthor	false	Message	[id]	[messageId]	Person	[id]	[PersonId]	NULL	NULL	NULL	main
+snb	Message_hasTag_Tag	message_hastag	false	Message	[id]	[id]	Tag	[id]	[TagId]	NULL	NULL	NULL	main
+snb	Person_likes_Message	likes_message	false	Person	[id]	[PersonId]	Message	[id]	[id]	NULL	NULL	NULL	main
+snb	person_workAt_Organisation	workat_organisation	false	Person	[id]	[PersonId]	Organisation	[id]	[OrganisationId]	NULL	NULL	NULL	main
+snb	Person_hasInterest_Tag	hasinterest	false	Person	[id]	[PersonId]	Tag	[id]	[TagId]	NULL	NULL	NULL	main
+snb	Forum_hasTag_Tag	forum_hastag	false	Forum	[id]	[ForumId]	Tag	[id]	[TagId]	NULL	NULL	NULL	main
+snb	Forum_hasMember_Person	hasmember	false	Forum	[id]	[ForumId]	Person	[id]	[PersonId]	NULL	NULL	NULL	main
+snb	Person_knows_person	knows	false	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL	NULL	main
 
 statement error
 -DESCRIBE PROPERTY GRAPH pgdoesnotexist;
 ----
 Invalid Error: Property graph pgdoesnotexist does not exist.
+
+
+statement ok con1
+attach 'duckdb/data/bluesky/bluesky.duckdb';
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH bluesky
+            VERTEX TABLES (bluesky.account LABEL account)
+            EDGE TABLES (bluesky.follows    SOURCE KEY (source) REFERENCES bluesky.account (did)
+                                            DESTINATION KEY (destination) REFERENCES bluesky.account (did)
+            LABEL follows);
+
+query IIIIIIIIIIIIII
+-DESCRIBE PROPERTY GRAPH bluesky;
+----
+bluesky	account	account	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	bluesky	main
+bluesky	follows	follows	false	account	[did]	[source]	account	[did]	[destination]	NULL	NULL	bluesky	main
