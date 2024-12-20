@@ -155,10 +155,10 @@ static void TriangleCountingFunction(DataChunk &args, ExpressionState &state,
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreScalarFunctions::RegisterWeaklyConnectedComponentScalarFunction(
+void CoreScalarFunctions::RegisterTriangleCountingScalarFunction(
     DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(
-      db, ScalarFunction("weakly_connected_component",
+      db, ScalarFunction("triangle_counting",
                          {LogicalType::INTEGER, LogicalType::BIGINT},
                          LogicalType::BIGINT, TriangleCountingFunction,
                          TriangleCountingFunctionData::TriangleCountingBind));
