@@ -212,7 +212,7 @@ VERTEX TABLES (
 statement error
 select id, componentId from weakly_connected_component(pg_no_edge_table, student, non_existent_edge);
 ----
-Invalid Error: Table non_existent_edge not found in property graph pg_no_edge_table
+Invalid Error: Label 'non_existent_edge' not found in the property graph for a edge table.
 
 statement ok
 import database 'duckdb/data/SNB0.003';
