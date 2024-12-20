@@ -12,6 +12,8 @@ set(EXTENSION_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/csr_creation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/local_clustering_coefficient.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/triangle_counting.cpp
+
         ${CMAKE_CURRENT_SOURCE_DIR}/weakly_connected_component.cpp
         PARENT_SCOPE
     )

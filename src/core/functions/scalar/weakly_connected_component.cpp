@@ -1,6 +1,5 @@
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckpgq/common.hpp"
-#include "duckpgq/core/functions/function_data/local_clustering_coefficient_function_data.hpp"
 #include <duckpgq/core/functions/function_data/weakly_connected_component_function_data.hpp>
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/functions/table/weakly_connected_component.hpp>
