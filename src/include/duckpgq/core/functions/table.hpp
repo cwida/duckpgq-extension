@@ -13,6 +13,8 @@ struct CoreTableFunctions {
     RegisterDescribePropertyGraphTableFunction(db);
     RegisterLocalClusteringCoefficientTableFunction(db);
     RegisterScanTableFunctions(db);
+    RegisterTriangleCountingTableFunction(db);
+
     RegisterWeaklyConnectedComponentTableFunction(db);
     RegisterPageRankTableFunction(db);
   }
@@ -25,6 +27,7 @@ private:
   static void
   RegisterLocalClusteringCoefficientTableFunction(DatabaseInstance &db);
   static void RegisterScanTableFunctions(DatabaseInstance &db);
+  static void RegisterTriangleCountingTableFunction(DatabaseInstance &db);
   static void
   RegisterWeaklyConnectedComponentTableFunction(DatabaseInstance &db);
   static void RegisterPageRankTableFunction(DatabaseInstance &db);
