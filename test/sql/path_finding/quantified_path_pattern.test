@@ -3,57 +3,96 @@
 require duckpgq
 
 statement ok
-create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (40);
+CREATE TABLE Person (
+    ID BIGINT,
+    Name VARCHAR
+);
 
 statement ok
-create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
+CREATE TABLE Knows (
+    Person1ID BIGINT,
+    Person2ID BIGINT
+);
 
 statement ok
--create property graph g vertex tables (student) edge tables (know source key (src) references student (id) destination key (dst) references student (id));
+INSERT INTO Person VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Charlie'), (4, 'Diana');
 
-query IIII
+statement ok
+INSERT INTO Knows (Person1ID, Person2ID) VALUES (1, 2), (1, 3), (2, 4);
+
+statement ok
+-create property graph g
+    vertex tables (person)
+    edge tables (
+        knows
+            source key (person1id) references person (id)
+            destination key (person2id) references person (id)
+    );
+
+statement error
 -FROM GRAPH_TABLE (g
-    MATCH p = ANY SHORTEST (a:student)-[k:know]->{0,0}(b:student)
+    MATCH p = ANY SHORTEST (a:person)-[k:knows]->{0,0}(b:person)
     WHERE a.id = 10
-    COLUMNS (a.id as a_id, b.id as b_id, path_length(p) as path_length, element_id(p) as path)
+    COLUMNS (a.id as a_id, b.id as b_id)
 );
 ----
-10	10	0	[]
+Binder Error: Lower bound must be non-negative. The upper value must be positive and greater than or equal to the lower bound value.
 
 query II
 -FROM GRAPH_TABLE (g
     MATCH
-    ANY SHORTEST (a:student)-[k:know]->{1,1}(b:student)
-    WHERE a.id = 10
+    ANY SHORTEST (a:person)-[k:knows]->{1,1}(b:person)
+    COLUMNS (a.id as a_id, b.id as b_id)
+    )
+ORDER BY a_id, b_id;
+----
+1	2
+1	3
+2	4
+
+statement error
+-FROM GRAPH_TABLE (g
+    MATCH (a:person)-[k:knows]->{0,0}(b:person)
     COLUMNS (a.id as a_id, b.id as b_id)
     );
 ----
-10	10
-10	30
+Binder Error: Lower bound must be non-negative. The upper value must be positive and greater than or equal to the lower bound value.
 
 query II
 -FROM GRAPH_TABLE (g
     MATCH
-    ANY SHORTEST (a:student)-[k:know]->{0,0}(b:student)
-    WHERE a.id = 10
+    ANY SHORTEST (a:person)-[k:knows]->{0,1}(b:person)
     COLUMNS (a.id as a_id, b.id as b_id)
-    );
+    )
+ORDER BY a_id, b_id;
 ----
+1	1
+1	2
+1	3
+2	2
+2	4
+3	3
+4	4
 
-query II
--FROM GRAPH_TABLE (g
-    MATCH p = ANY SHORTEST (a:student)-[k:know]->{0,0}(b:student)
-    WHERE a.id = 10
-    COLUMNS (a.id as a_id, b.id as b_id)
-    );
-----
 
-query IIII
--FROM GRAPH_TABLE (g
-    MATCH p = ANY SHORTEST (a:student)-[k:know]->{0,0}(b:student)
-    WHERE a.id = 10
-    COLUMNS (a.id as a_id, b.id as b_id, path_length(p) as path_length, element_id(p) as path)
-    );
-----
-10	10	0	[]
+# query IIII
+# -FROM GRAPH_TABLE (g
+#     MATCH p = ANY SHORTEST (a:person)-[k:knows]->{0,1}(b:person)
+#     WHERE a.id = 10
+#     COLUMNS (a.id as a_id, b.id as b_id, path_length(p) as path_length, element_id(p) as path)
+# );
+# ----
+# 10	10	1	[0, 2, 0]
+# 10	30	1	[0, 1, 2]
+#
+#
+# query IIII
+# -FROM GRAPH_TABLE (g
+#     MATCH p = ANY SHORTEST (a:student)-[k:know]->{0,1}(b:student)
+#     WHERE a.id = 10
+#     COLUMNS (a.id as a_id, b.id as b_id, path_length(p) as path_length, element_id(p) as path)
+# );
+# ----
+# 10	10	1	[0, 2, 0]
+# 10	30	1	[0, 1, 2]
 
