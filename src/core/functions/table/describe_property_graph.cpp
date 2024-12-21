@@ -162,7 +162,8 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
       output.SetValue(12, vector_idx, Value());
     } else {
       output.SetValue(12, vector_idx, Value(edge_table->catalog_name));
-    }    output.SetValue(13, vector_idx, Value(edge_table->schema_name));
+    }
+    output.SetValue(13, vector_idx, Value(edge_table->schema_name));
     vector_idx++;
   }
   output.SetCardinality(vector_idx);
