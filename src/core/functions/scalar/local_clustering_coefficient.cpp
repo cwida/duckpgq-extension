@@ -62,7 +62,8 @@ static void LocalClusteringCoefficientFunction(DataChunk &args,
     int64_t count = 0;
     for (int64_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
       int64_t neighbor = e[offset];
-      for (int64_t offset2 = v[neighbor]; offset2 < v[neighbor + 1]; offset2++) {
+      for (int64_t offset2 = v[neighbor]; offset2 < v[neighbor + 1];
+           offset2++) {
         int is_connected = neighbors.test(e[offset2]);
         count += is_connected; // Add 1 if connected, 0 otherwise
       }

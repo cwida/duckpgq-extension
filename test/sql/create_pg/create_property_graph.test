@@ -51,6 +51,24 @@ EDGE TABLES (
             PROPERTIES ( createDate ) LABEL Knows
     )
 
+query I
+-SELECT count(id)
+FROM
+  GRAPH_TABLE (PG 
+    MATCH p = (s1:Person)-[k:Knows]->(s2:Person WHERE s2.name='Daniel') 
+    COLUMNS (s1.id));
+----
+0
+
+query I
+-SELECT count(id)
+FROM
+  GRAPH_TABLE (PG 
+    MATCH p = (s1:Person)-[k:Knows]->(s2:Person WHERE s2.name='Peter') 
+    COLUMNS (s1.id));
+----
+3
+
 # Error as property graph pg already exists
 statement error
 -CREATE PROPERTY GRAPH pg
