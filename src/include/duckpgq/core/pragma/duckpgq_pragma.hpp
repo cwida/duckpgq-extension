@@ -22,10 +22,7 @@ public:
 
 private:
   static void RegisterShowPropertyGraphs(DatabaseInstance &instance);
-
 };
-
-
 
 } // namespace core
 

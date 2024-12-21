@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckpgq/common.hpp"
+#include "duckdb/common/case_insensitive_map.hpp"
 
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
 
@@ -33,7 +34,7 @@ public:
   // unnamed graph tables
 
   //! Property graphs that are registered
-  std::unordered_map<string, unique_ptr<CreateInfo>> registered_property_graphs;
+  case_insensitive_map_t<unique_ptr<CreateInfo>> registered_property_graphs;
 
   //! Used to build the CSR data structures required for path-finding queries
   std::unordered_map<int32_t, unique_ptr<duckpgq::core::CSR>> csr_list;
