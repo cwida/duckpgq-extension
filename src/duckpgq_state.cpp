@@ -107,6 +107,7 @@ void DuckPGQState::PopulateEdgeSpecificFields(unique_ptr<DataChunk> &chunk,
 void DuckPGQState::ExtractListValues(const Value &list_value,
                                      vector<string> &output) {
   auto children = ListValue::GetChildren(list_value);
+  output.reserve(output.size() + children.size());
   for (const auto &child : children) {
     output.push_back(child.GetValue<string>());
   }
