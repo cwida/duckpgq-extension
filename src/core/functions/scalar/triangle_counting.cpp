@@ -22,13 +22,11 @@ static void TriangleCountingFunction(DataChunk &args, ExpressionState &state,
   }
 
   if (!(csr_entry->second->initialized_v && csr_entry->second->initialized_e)) {
-    throw ConstraintException(
-        "Need to initialize CSR before counting triangles.");
+    throw ConstraintException("Need to initialize CSR before counting triangles.");
   }
 
   int64_t *v = (int64_t *)duckpgq_state->csr_list[info.csr_id]->v;
   vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
-  size_t v_size = duckpgq_state->csr_list[info.csr_id]->vsize;
 
   // Get source vector for searches
   auto &src = args.data[1];
@@ -41,112 +39,53 @@ static void TriangleCountingFunction(DataChunk &args, ExpressionState &state,
   result.SetVectorType(VectorType::FLAT_VECTOR);
   auto result_data = FlatVector::GetData<int64_t>(result);
 
-  // Temporary bitsets for batch processing
-  vector<std::bitset<LANE_LIMIT>> active(v_size);
-  vector<std::bitset<LANE_LIMIT>> seen(v_size);
-
-  // Map lanes to source indices
-  short lane_to_num[LANE_LIMIT];
-  for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-    lane_to_num[lane] = -1; // Mark as inactive
-  }
-
-  vector<int64_t> triangle_counts(args.size(), 0);
-
-  idx_t started_searches = 0;
-  while (started_searches < args.size()) {
-    // Reset bitsets
-    for (size_t i = 0; i < v_size; i++) {
-      active[i].reset();
-      seen[i].reset();
-    }
-
-    // Assign free lanes to new sources
-    uint64_t active_lanes = 0;
-    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-      lane_to_num[lane] = -1;
-      while (started_searches < args.size()) {
-        int64_t search_num = started_searches++;
-        int64_t src_pos = vdata_src.sel->get_index(search_num);
-        int64_t src_node = src_data[src_pos];
-        if (!vdata_src.validity.RowIsValid(src_pos)) {
-          result_validity.SetInvalid(search_num);
-          result_data[search_num] = (uint64_t)-1;
-          continue;
-        }
-
-        // Initialize active set for this source
-        active[src_node][lane] = true;
-        lane_to_num[lane] = search_num; // Map lane to source index
-        active_lanes++;
-        break;
-      }
-    }
-
-    // Process active vertices
-    while (active_lanes > 0) {
-      for (size_t u = 0; u < v_size; u++) {
-        if (!active[u].any()) {
-          continue;
-        }
-
-        // Mark vertex as seen
-        seen[u] |= active[u];
-
-        // Iterate over neighbors of vertex u
-        for (int64_t ei = v[u]; ei < v[u + 1]; ei++) {
-          int64_t neighbor = e[ei];
-
-          // Skip already seen vertices
-          if ((seen[neighbor] & active[u]).any()) {
-            continue;
-          }
-
-          // Count triangles for all active lanes
-          for (int64_t ej = ei + 1; ej < v[u + 1]; ej++) {
-            int64_t neighbor2 = e[ej];
-
-            // Find common neighbors between neighbor1 and neighbor2 for active
-            // lanes
-            for (int64_t ek = v[neighbor]; ek < v[neighbor + 1]; ek++) {
-              int64_t neighbor3 = e[ek];
-              if (neighbor3 == neighbor2) {
-                for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-                  if ((active[u] & active[neighbor2]).test(lane)) {
-                    triangle_counts[lane_to_num[lane]]++;
-                  }
-                }
-              }
-            }
-          }
-
-          // Mark the neighbor as active for the next iteration
-          active[neighbor] |= active[u];
-        }
-      }
-
-      // Clear inactive lanes
-      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-        int64_t search_num = lane_to_num[lane];
-        if (search_num == -1) {
-          continue;
-        }
-        if (!active[search_num].any()) {
-          lane_to_num[lane] = -1;
-          active_lanes--;
-        }
-      }
-    }
-  }
-
-  // Assign triangle counts to result
+  // Process each source
   for (idx_t i = 0; i < args.size(); i++) {
     int64_t src_pos = vdata_src.sel->get_index(i);
+    int64_t src_node = src_data[src_pos];
+
     if (!vdata_src.validity.RowIsValid(src_pos)) {
       result_validity.SetInvalid(i);
-    } else {
-      result_data[i] = triangle_counts[i];
+      result_data[i] = 0;
+      continue;
     }
+
+    // Initialize triangle count for the source
+    int64_t triangle_count = 0;
+
+    // Get the neighbors of the source node
+    int64_t src_start = v[src_node];
+    int64_t src_end = v[src_node + 1];
+
+    // Iterate over all neighbor pairs to count triangles
+    for (int64_t ni = src_start; ni < src_end; ni++) {
+      int64_t neighbor1 = e[ni];
+      int64_t neighbor1_start = v[neighbor1];
+      int64_t neighbor1_end = v[neighbor1 + 1];
+
+      for (int64_t nj = ni + 1; nj < src_end; nj++) {
+        int64_t neighbor2 = e[nj];
+        int64_t neighbor2_start = v[neighbor2];
+        int64_t neighbor2_end = v[neighbor2 + 1];
+
+        // Use two-pointer intersection to count common neighbors
+        int64_t p1 = neighbor1_start;
+        int64_t p2 = neighbor2_start;
+        while (p1 < neighbor1_end && p2 < neighbor2_end) {
+          int64_t n1 = e[p1];
+          int64_t n2 = e[p2];
+
+          // SIMD-friendly comparison to avoid branching
+          bool match = (n1 == n2);
+          triangle_count += match;
+          p1 += (n1 <= n2);
+          p2 += (n1 >= n2);
+        }
+      }
+    }
+
+    // Store the result
+    result_data[i] = triangle_count;
   }
 
   duckpgq_state->csr_to_delete.insert(info.csr_id);
