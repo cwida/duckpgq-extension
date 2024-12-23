@@ -92,7 +92,7 @@ statement error
     ) tmp
     limit 10;
 ----
-Binder Error: Referenced column "o" not found in FROM clause!
+Binder Error: Property o is never registered!
 
 
 # https://github.com/cwida/duckpgq-extension/issues/68
