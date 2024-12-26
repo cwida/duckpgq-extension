@@ -82,6 +82,53 @@ case_insensitive_set_t GetFullyQualifiedColFromPg(
   return col_names;
 }
 
+// Get all fully-qualified column names from the given property graph [pg] for
+// the given relation [alias].
+//
+// Return a vector of column names, each of them represents a stack of names in
+// order of which they appear
+// (column_names[0].column_names[1].column_names[2]....).
+vector<vector<string>> GetRegisteredColFromPg(
+    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
+    const std::string &alias) {
+  vector<vector<string>> registered_col_names;
+  auto iter = alias_map.find(alias);
+  D_ASSERT(iter != alias_map.end());
+  const auto &tbl = iter->second;
+  registered_col_names.reserve(tbl->column_names.size());
+  for (const auto &cur_col : tbl->column_names) {
+    registered_col_names.emplace_back(vector<string>{"", ""});
+    auto &new_col_names = registered_col_names.back();
+    new_col_names[0] = alias;
+    new_col_names[1] = cur_col;
+  }
+  return registered_col_names;
+}
+
+// Get all fully-qualified column names from the given property graph [pg] for
+// all relations.
+//
+// Return a vector of column names, each of them represents a stack of names in
+// order of which they appear
+// (column_names[0].column_names[1].column_names[2]....).
+vector<vector<string>> GetRegisteredColFromPg(
+    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
+  vector<vector<string>> registered_col_names;
+  for (const auto &alias_and_table : alias_map) {
+    const auto &alias = alias_and_table.first;
+    const auto &tbl = alias_and_table.second;
+    registered_col_names.reserve(registered_col_names.size() +
+                                 tbl->column_names.size());
+    for (const auto &cur_col : tbl->column_names) {
+      registered_col_names.emplace_back(vector<string>{"", ""});
+      auto &new_col_names = registered_col_names.back();
+      new_col_names[0] = alias;
+      new_col_names[1] = cur_col;
+    }
+  }
+  return registered_col_names;
+}
+
 } // namespace
 
 shared_ptr<PropertyGraphTable>
@@ -970,7 +1017,7 @@ void PGQMatchFunction::ProcessPathList(
   }
 }
 
-void PGQMatchFunction::PopulateGraphTableAliasMap(
+/*static*/ void PGQMatchFunction::PopulateGraphTableAliasMap(
     const CreatePropertyGraphInfo &pg_table,
     const unique_ptr<PathReference> &path_reference,
     case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
@@ -999,20 +1046,26 @@ void PGQMatchFunction::PopulateGraphTableAliasMap(
   }
 }
 
-/*static*/ void
-PGQMatchFunction::CheckColumnBinding(const CreatePropertyGraphInfo &pg_table,
-                                     const MatchExpression &ref) {
-  // Maps from table alias to table, including vertex and edge tables.
+/*static*/ case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
+PGQMatchFunction::PopulateGraphTableAliasMap(
+    const CreatePropertyGraphInfo &pg_table,
+    const MatchExpression &match_expr) {
   case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
       alias_to_vertex_and_edge_tables;
-  for (idx_t idx_i = 0; idx_i < ref.path_patterns.size(); idx_i++) {
-    const auto &path_list = ref.path_patterns[idx_i]->path_elements;
+  for (idx_t idx_i = 0; idx_i < match_expr.path_patterns.size(); idx_i++) {
+    const auto &path_list = match_expr.path_patterns[idx_i]->path_elements;
     for (const auto &cur_path : path_list) {
       PopulateGraphTableAliasMap(pg_table, cur_path,
                                  alias_to_vertex_and_edge_tables);
     }
   }
+  return alias_to_vertex_and_edge_tables;
+}
 
+/*static*/ void PGQMatchFunction::CheckColumnBinding(
+    const CreatePropertyGraphInfo &pg_table, const MatchExpression &ref,
+    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
+        &alias_to_vertex_and_edge_tables) {
   // All fully-qualified column names for vertex tables and edge tables.
   const auto all_fq_col_names =
       GetFullyQualifiedColFromPg(pg_table, alias_to_vertex_and_edge_tables);
@@ -1081,7 +1134,10 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     conditions.push_back(std::move(ref->where_clause));
   }
 
-  CheckColumnBinding(*pg_table, *ref);
+  // Maps from table alias to table, including vertex and edge tables.
+  auto alias_to_vertex_and_edge_tables =
+      PopulateGraphTableAliasMap(*pg_table, *ref);
+  CheckColumnBinding(*pg_table, *ref, alias_to_vertex_and_edge_tables);
 
   std::vector<unique_ptr<ParsedExpression>> final_column_list;
 
@@ -1134,10 +1190,32 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
       continue;
     }
 
-    // TODO(hjiang): For star expression, only select columns in vertex or edge
-    // table, but not those unspecified in property graph.
-    // Issue reference: https://github.com/cwida/duckpgq-extension/issues/192
-    final_column_list.push_back(std::move(expression));
+    // Handle StarExpression.
+    auto *star_expression = dynamic_cast<StarExpression *>(expression.get());
+    if (star_expression != nullptr) {
+      auto selected_col_names =
+          star_expression->relation_name.empty()
+              ? GetRegisteredColFromPg(alias_to_vertex_and_edge_tables)
+              : GetRegisteredColFromPg(alias_to_vertex_and_edge_tables,
+                                       star_expression->relation_name);
+
+      // Fallback to star expression if cannot figure out the columns to query.
+      if (selected_col_names.empty()) {
+        final_column_list.emplace_back(std::move(expression));
+        continue;
+      }
+
+      final_column_list.reserve(final_column_list.size() +
+                                selected_col_names.size());
+      for (auto &col : selected_col_names) {
+        final_column_list.emplace_back(
+            make_uniq<ColumnRefExpression>(std::move(col)));
+      }
+      continue;
+    }
+
+    // By default, directly handle expression without further processing.
+    final_column_list.emplace_back(std::move(expression));
   }
 
   final_select_node->where_clause = CreateWhereClause(conditions);
