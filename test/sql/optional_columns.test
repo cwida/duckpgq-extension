@@ -25,7 +25,7 @@ EDGE TABLES (
 query IIIIIIIIIII
 -FROM GRAPH_TABLE (snb MATCH (p:Person)) limit 1;
 ----
-2010-01-03 23:10:31.499+00	14	Hossein	Forouhar	male	1984-03-11	77.245.239.11	Firefox	1166	fa;ku;en	Hossein14@hotmail.com
+1166	1984-03-11	Firefox	2010-01-03 23:10:31.499+00	Hossein14@hotmail.com	Hossein	male	14	Forouhar	77.245.239.11	fa;ku;en
 
 query I
 -FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id)) limit 10;
