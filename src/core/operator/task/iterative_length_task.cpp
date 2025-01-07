@@ -112,8 +112,7 @@ bool IterativeLengthTask::SetTaskRange() {
             if (next[i].any()) {
                 next[i] &= ~seen[i];
                 seen[i] |= next[i];
-                std::lock_guard<std::mutex> lock(state->change_lock);
-                change = true;
+                change |= next[i].any();
             }
         }
         has_tasks = SetTaskRange();
