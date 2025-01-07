@@ -7,11 +7,11 @@
 namespace duckpgq {
 namespace core {
 
-class PhysicalIterativeTask : public ExecutorTask {
+class IterativeLengthTask : public ExecutorTask {
 public:
-  PhysicalIterativeTask(shared_ptr<Event> event_p, ClientContext &context,
-                        PathFindingGlobalSinkState &state, idx_t worker_id,
-                        const PhysicalOperator &op_p);
+  IterativeLengthTask(shared_ptr<Event> event_p, ClientContext &context,
+                           shared_ptr<BFSState> &state, idx_t worker_id,
+                           const PhysicalOperator &op_p);
 
   TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
 private:

@@ -1,6 +1,8 @@
 #include "duckpgq/core/operator/bfs_state.hpp"
 
 #include <duckpgq/core/operator/event/shortest_path_event.hpp>
+#include <duckpgq/core/operator/event/iterative_length_event.hpp>
+
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
 #include <duckpgq/core/utils/duckpgq_barrier.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
@@ -159,7 +161,6 @@ void BFSState::InitializeLanes() {
 
 void BFSState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) {
   if (mode == "iterativelength") {
-    throw NotImplementedException("Iterative length has not been implemented yet");
     event.InsertEvent(
     make_shared_ptr<IterativeLengthEvent>(shared_from_this(), pipeline, *op));
   } else if (mode == "shortestpath") {

@@ -9,7 +9,7 @@ statement ok
 select setseed(0.42);
 
 statement ok
-set disabled_optimizers = 'compressed_materialization';
+set threads=1;
 
 query I
 SELECT current_setting('experimental_path_finding_operator');
