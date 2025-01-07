@@ -160,8 +160,8 @@ void BFSState::InitializeLanes() {
 void BFSState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) {
   if (mode == "iterativelength") {
     throw NotImplementedException("Iterative length has not been implemented yet");
-    // event.InsertEvent(
-    // make_shared_ptr<ParallelIterativeEvent>(gstate, pipeline, *this));
+    event.InsertEvent(
+    make_shared_ptr<IterativeLengthEvent>(shared_from_this(), pipeline, *op));
   } else if (mode == "shortestpath") {
     event.InsertEvent(
       make_shared_ptr<ShortestPathEvent>(shared_from_this(), pipeline, *op));
