@@ -171,33 +171,6 @@ void BFSState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const Physical
   }
 }
 
-
-// void BFSState::InitializeBFS(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op_) {
-//   path_finding_result = make_uniq<DataChunk>();
-//   path_finding_result->Initialize(context, {LogicalType::LIST(LogicalType::BIGINT)});
-//
-//
-//
-//   // remaining pairs for current batch
-//   while (started_searches < current_pairs_batch->size()) {
-//     ScheduleBFSBatch(pipeline, event);
-//     Clear();
-//   }
-//   if (started_searches != current_pairs_batch->size()) {
-//     throw InternalException("Number of started searches does not match the number of pairs");
-//   }
-  // path_finding_result->SetCardinality(current_pairs_batch->size());
-  // path_finding_result->Print();
-  // current_pairs_batch->Fuse(*path_finding_result);
-  // current_pairs_batch->Print();
-  // results->Append(*current_pairs_batch);
-  // total_pairs_processed += current_pairs_batch->size();
-  // std::cout << "Total pairs processed: " << total_pairs_processed << std::endl;
-  // if (total_pairs_processed < pairs->Count()) {
-  //   InitializeBFS(pipeline, event, op);
-  // }
-// }
-
 } // namespace core
 
 } // namespace duckpgq

@@ -26,28 +26,35 @@ bool IterativeLengthTask::SetTaskRange() {
 
   TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
     auto &barrier = state->barrier;
-    do {
+    while (state->started_searches < state->pairs->size()) {
+      barrier->Wait();
+      if (worker_id == 0) {
+        state->InitializeLanes();
+      }
+      barrier->Wait();
+      do {
 
-      IterativeLength();
-      barrier->Wait([&]() {
-            state->ResetTaskIndex();  // Reset task index safely
+        IterativeLength();
+        barrier->Wait([&]() {
+              state->ResetTaskIndex();  // Reset task index safely
+          });
+
+        barrier->Wait();
+
+        if (worker_id == 0) {
+          ReachDetect();
+        }
+
+        barrier->Wait([&]() {
+          state->ResetTaskIndex();  // Reset task index safely
         });
 
-      barrier->Wait();
+        barrier->Wait();
+      } while (state->change);
 
       if (worker_id == 0) {
-        ReachDetect();
+        UnReachableSet();
       }
-
-      barrier->Wait([&]() {
-        state->ResetTaskIndex();  // Reset task index safely
-      });
-
-      barrier->Wait();
-    } while (state->change);
-
-    if (worker_id == 0) {
-      UnReachableSet();
     }
 
     event->FinishTask();
@@ -92,7 +99,6 @@ bool IterativeLengthTask::SetTaskRange() {
 
     // Synchronize at the end of the main processing
     barrier->Wait([&]() {
-        // std::cout << "Worker " << worker_id << ": Resetting task index." << std::endl;
         state->ResetTaskIndex();
     });
     barrier->Wait();
@@ -106,7 +112,8 @@ bool IterativeLengthTask::SetTaskRange() {
             if (next[i].any()) {
                 next[i] &= ~seen[i];
                 seen[i] |= next[i];
-                change |= next[i].any();
+                std::lock_guard<std::mutex> lock(state->change_lock);
+                change = true;
             }
         }
         has_tasks = SetTaskRange();
