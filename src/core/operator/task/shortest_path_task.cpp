@@ -107,22 +107,23 @@ void ShortestPathTask::IterativePath() {
           {
             std::lock_guard<std::mutex> lock(state->element_locks[n]);
             next[n] |= visit[i];
-          }
-          for (auto l = 0; l < LANE_LIMIT; l++) {
-            // Create the mask: true (-1 in all bits) if condition is met, else
-            // 0
-            uint64_t mask = ((parents_ve[n][l].GetV() == -1) && visit[i][l])
-                                ? ~uint64_t(0)
-                                : 0;
+            for (auto l = 0; l < LANE_LIMIT; l++) {
+              // Create the mask: true (-1 in all bits) if condition is met, else
+              // 0
+              uint64_t mask = ((parents_ve[n][l].GetV() == -1) && visit[i][l])
+                                  ? ~uint64_t(0)
+                                  : 0;
 
-            // Use the mask to conditionally update the `value` field of the
-            // `ve` struct
-            uint64_t new_value =
-                (static_cast<uint64_t>(i) << parents_ve[n][l].e_bits) |
-                (edge_id & parents_ve[n][l].e_mask);
-            parents_ve[n][l].value =
-                (mask & new_value) | (~mask & parents_ve[n][l].value);
+              // Use the mask to conditionally update the `value` field of the
+              // `ve` struct
+              uint64_t new_value =
+                  (static_cast<uint64_t>(i) << parents_ve[n][l].e_bits) |
+                  (edge_id & parents_ve[n][l].e_mask);
+              parents_ve[n][l].value =
+                  (mask & new_value) | (~mask & parents_ve[n][l].value);
+            }
           }
+
         }
       }
     }
