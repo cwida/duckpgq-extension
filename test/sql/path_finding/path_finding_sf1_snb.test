@@ -17,7 +17,7 @@ statement ok
 COPY Person_knows_Person FROM '/Users/dljtw/git/duckpgq-experiments/data/SNB1-projected|/person_knows_person.csv' (FORMAT 'csv', quote '"', HEADER 'true', DELIMITER '|');
 
 statement ok
-set experimental_path_finding_operator=true;C
+set experimental_path_finding_operator=true;
 
 statement ok
 create or replace table snb_pairs as (
