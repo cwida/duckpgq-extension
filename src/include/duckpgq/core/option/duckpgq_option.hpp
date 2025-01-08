@@ -7,6 +7,7 @@ namespace duckpgq {
 namespace core {
 
 bool GetPathFindingOption(ClientContext &context);
+int32_t GetPathFindingTaskSize(ClientContext &context);
 
 struct CorePGQOptions {
   static void Register(DatabaseInstance &db) {

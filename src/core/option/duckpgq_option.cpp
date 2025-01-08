@@ -10,6 +10,13 @@ bool GetPathFindingOption(ClientContext &context) {
   return value.GetValue<bool>();
 }
 
+int32_t GetPathFindingTaskSize(ClientContext &context) {
+  Value value;
+  context.TryGetCurrentSetting("experimental_path_finding_operator_task_size", value);
+  std::cout << value.GetValue<int32_t>() << std::endl;
+  return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------

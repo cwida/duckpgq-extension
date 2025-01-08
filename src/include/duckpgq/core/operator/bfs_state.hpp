@@ -3,9 +3,10 @@
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/operator/physical_path_finding_operator.hpp"
 
+#include <duckpgq/core/option/duckpgq_option.hpp>
 #include <duckpgq/core/utils/duckpgq_barrier.hpp>
-#include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq/core/utils/duckpgq_path_reconstruction.hpp>
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
 
 namespace duckpgq {
 
@@ -67,7 +68,7 @@ public:
   std::mutex queue_mutex; // Mutex for synchronizing access
   std::condition_variable queue_cv; // Condition variable for task availability
   size_t current_task_index = 0; // Index to track the current task
-  int64_t split_size = 256;
+  int64_t split_size = GetPathFindingTaskSize(context);
 
   unique_ptr<Barrier> barrier;
 
