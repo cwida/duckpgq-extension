@@ -55,6 +55,16 @@ bool IterativeLengthTask::SetTaskRange() {
       if (worker_id == 0) {
         UnReachableSet();
       }
+
+      // Final synchronization before finishing
+      barrier->Wait();
+      if (worker_id == 0) {
+        state->Clear();
+        // std::cout << "Started searches: " << state->started_searches << std::endl;
+        // std::cout << "Number of pairs: " << state->pairs->size() << std::endl;
+      }
+
+      barrier->Wait();
     }
 
     event->FinishTask();
