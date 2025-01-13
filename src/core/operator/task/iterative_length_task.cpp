@@ -23,6 +23,16 @@ bool IterativeLengthTask::SetTaskRange() {
   return true;
 }
 
+void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
+                                      vector<std::bitset<LANE_LIMIT>> &next,
+                                      bool &change) const {
+  for (auto i = left; i < right; i++) {
+    auto updated = next[i] & ~seen[i];
+    seen[i] |= updated;
+    change |= updated.any();
+  }
+}
+
 
   TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
     auto &barrier = state->barrier;
@@ -118,13 +128,7 @@ bool IterativeLengthTask::SetTaskRange() {
     change = false;
 
     while (has_tasks) {
-        for (auto i = left; i < right; i++) {
-            if (next[i].any()) {
-                next[i] &= ~seen[i];
-                seen[i] |= next[i];
-                change |= next[i].any();
-            }
-        }
+        CheckChange(seen, next, change);
         has_tasks = SetTaskRange();
     }
 

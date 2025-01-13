@@ -17,6 +17,9 @@ public:
 private:
   void IterativeLength();
   void ReachDetect() const;
+  void CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
+                    vector<std::bitset<LANE_LIMIT>> &next,
+                    bool &change) const;
   void UnReachableSet() const;
   bool SetTaskRange();
 
