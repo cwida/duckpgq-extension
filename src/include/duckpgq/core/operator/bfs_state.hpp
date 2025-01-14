@@ -24,17 +24,12 @@ public:
   void InitializeLanes();
   void Clear();
 
-  void CreateTasks();
-  shared_ptr<pair<idx_t, idx_t>> FetchTask();      // Function to fetch a task
-  void ResetTaskIndex();
-
   pair<idx_t, idx_t> BoundaryCalculation(idx_t worker_id) const;
   shared_ptr<DataChunk> pairs; // (src, dst) pairs
   CSR *csr;
   string mode;
   shared_ptr<DataChunk> pf_results; // results of path-finding
   LogicalType bfs_type;
-  // const PhysicalPathFinding *op;
   int64_t iter;
   int64_t v_size; // Number of vertices
   bool change;
@@ -62,20 +57,9 @@ public:
 
   idx_t total_pairs_processed;
   idx_t num_threads;
-  idx_t scheduled_threads;
-
-  // task_queues[workerId] = {curTaskIdx, queuedTasks}
-  // queuedTasks[curTaskIx] = {start, end}
-  vector<pair<idx_t, idx_t>> global_task_queue;
-  std::mutex queue_mutex; // Mutex for synchronizing access
-  std::condition_variable queue_cv; // Condition variable for task availability
-  size_t current_task_index = 0; // Index to track the current task
-  int64_t split_size = GetPathFindingTaskSize(context);
-
   unique_ptr<Barrier> barrier;
 
   // lock for next
-  mutable vector<mutex> element_locks;
   mutex change_lock;
 };
 

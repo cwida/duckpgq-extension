@@ -10,7 +10,6 @@ ShortestPathTask::ShortestPathTask(shared_ptr<Event> event_p,
                                    const PhysicalOperator &op_p)
     : ExecutorTask(context, std::move(event_p), op_p), context(context),
       state(state), worker_id(worker_id) {
-  left = right = UINT64_MAX; // NOLINT
 }
 
 TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
@@ -18,24 +17,21 @@ TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
   while (state->started_searches < state->pairs->size()) {
     barrier->Wait();
     if (worker_id == 0) {
+      for (idx_t n = 0; n < state->v_size; n++) {
+        state->thread_assignment[n] = n % state->num_threads;
+      }
       state->InitializeLanes();
     }
+
     barrier->Wait();
     do {
       IterativePath();
 
       // Synchronize after IterativePath
       barrier->Wait();
-      if (worker_id == 0) {
-        state->ResetTaskIndex();
-      }
-      barrier->Wait();
+
       if (worker_id == 0) {
         ReachDetect();
-      }
-      barrier->Wait();
-      if (worker_id == 0) {
-        state->ResetTaskIndex();
       }
       barrier->Wait();
     } while (state->change);
@@ -59,16 +55,6 @@ TaskExecutionResult ShortestPathTask::ExecuteTask(TaskExecutionMode mode) {
   return TaskExecutionResult::TASK_FINISHED;
 }
 
-bool ShortestPathTask::SetTaskRange() {
-  auto task = state->FetchTask();
-  if (task == nullptr) {
-    return false;
-  }
-  left = task->first;
-  right = task->second;
-  return true;
-}
-
 void ShortestPathTask::IterativePath() {
   auto &seen = state->seen;
   auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
@@ -79,84 +65,63 @@ void ShortestPathTask::IterativePath() {
   auto &edge_ids = state->csr->edge_ids;
   auto &parents_ve = state->parents_ve;
   auto &change = state->change;
-
-  bool has_tasks = SetTaskRange();
+  auto &thread_assignment = state->thread_assignment;
 
   // Attempt to get a task range
-  while (has_tasks) {
-    for (auto i = left; i < right; i++) {
+  if (worker_id == 0) {
+    for (auto i = 0; i < state->v_size; i++) {
       next[i].reset();
     }
-    has_tasks = SetTaskRange();
   }
 
-  barrier->Wait([&]() { state->ResetTaskIndex(); });
 
   // Synchronize after clearing
   barrier->Wait();
 
-  has_tasks = SetTaskRange();
   // Main processing loop
-  while (has_tasks) {
-
-    for (auto i = left; i < right; i++) {
-      if (visit[i].any()) {
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
+  for (auto i = 0; i < state->v_size; i++) {
+    if (visit[i].any()) {
+      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        auto n = e[offset];
+        if (thread_assignment[n] == worker_id) {
           auto edge_id = edge_ids[offset];
-          {
-            std::lock_guard<std::mutex> lock(state->element_locks[n]);
-            next[n] |= visit[i];
-            for (auto l = 0; l < LANE_LIMIT; l++) {
-              // Create the mask: true (-1 in all bits) if condition is met, else
-              // 0
-              uint64_t mask = ((parents_ve[n][l].GetV() == -1) && visit[i][l])
-                                  ? ~uint64_t(0)
-                                  : 0;
 
-              // Use the mask to conditionally update the `value` field of the
-              // `ve` struct
-              uint64_t new_value =
-                  (static_cast<uint64_t>(i) << parents_ve[n][l].e_bits) |
-                  (edge_id & parents_ve[n][l].e_mask);
-              parents_ve[n][l].value =
-                  (mask & new_value) | (~mask & parents_ve[n][l].value);
-            }
+          next[n] |= visit[i];
+          for (auto l = 0; l < LANE_LIMIT; l++) {
+            // Create the mask: true (-1 in all bits) if condition is met, else
+            // 0
+            uint64_t mask = ((parents_ve[n][l].GetV() == -1) && visit[i][l])
+                                ? ~uint64_t(0)
+                                : 0;
+
+            // Use the mask to conditionally update the `value` field of the
+            // `ve` struct
+            uint64_t new_value =
+                (static_cast<uint64_t>(i) << parents_ve[n][l].e_bits) |
+                (edge_id & parents_ve[n][l].e_mask);
+            parents_ve[n][l].value =
+                (mask & new_value) | (~mask & parents_ve[n][l].value);
           }
-
         }
       }
     }
 
-    // Check for a new task range
-    has_tasks = SetTaskRange();
   }
 
-  // Synchronize at the end of the main processing
-  barrier->Wait([&]() { state->ResetTaskIndex(); });
-  barrier->Wait();
-
   // Second processing stage (if needed)
-  has_tasks = SetTaskRange();
   change = false;
   barrier->Wait();
-  while (has_tasks) {
-    for (auto i = left; i < right; i++) {
+  if (worker_id == 0) {
+    for (auto i = 0; i < state->v_size; i++) {
       if (next[i].any()) {
         next[i] &= ~seen[i];
         seen[i] |= next[i];
         if (next[i].any()) {
-          std::lock_guard<std::mutex> lock(state->change_lock);
           change = true;
         }
       }
     }
-    has_tasks = SetTaskRange();
   }
-  // std::cout << "Worker: " << worker_id << " Iteration: " << state->iter << " Change: " << change << std::endl;
-
-  // Synchronize again
-  barrier->Wait([&]() { state->ResetTaskIndex(); });
   barrier->Wait();
 }
 
@@ -190,7 +155,6 @@ void ShortestPathTask::PathConstruction() {
   auto result_data =
       FlatVector::GetData<list_entry_t>(state->pf_results->data[0]);
   auto &result_validity = FlatVector::Validity(state->pf_results->data[0]);
-  // std::cout << "Iterations: " << state->iter << std::endl;
   //! Reconstruct the paths
   for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
     int64_t search_num = state->lane_to_num[lane];

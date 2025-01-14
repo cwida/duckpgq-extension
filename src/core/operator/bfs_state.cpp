@@ -33,7 +33,6 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
   visit1 = vector<std::bitset<LANE_LIMIT>>(v_size);
   visit2 = vector<std::bitset<LANE_LIMIT>>(v_size);
   seen = vector<std::bitset<LANE_LIMIT>>(v_size);
-  element_locks = vector<std::mutex>(v_size);
   parents_ve = std::vector<std::array<ve, LANE_LIMIT>>(
       v_size, std::array<ve, LANE_LIMIT>{});
 
@@ -46,9 +45,8 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
   // Initialize the thread assignment vector
   thread_assignment = std::vector<int64_t>(v_size, -1);
 
-  CreateTasks();
-  scheduled_threads = std::min(num_threads, (idx_t)global_task_queue.size());
-  barrier = make_uniq<Barrier>(scheduled_threads);
+  // CreateTasks();
+  barrier = make_uniq<Barrier>(num_threads);
 }
 
 void BFSState::Clear() {
@@ -72,67 +70,6 @@ void BFSState::Clear() {
   lane_completed.reset();
 }
 
-void BFSState::CreateTasks() {
-  // workerTasks[workerId] = [task1, task2, ...]
-  // vector<vector<pair<idx_t, idx_t>>> worker_tasks(num_threads);
-  // auto cur_worker = 0;
-  int64_t *v = (int64_t *)csr->v;
-  int64_t current_task_edges = 0;
-  idx_t current_task_start = 0;
-  for (idx_t v_idx = 0; v_idx < (idx_t)v_size; v_idx++) {
-    auto number_of_edges = v[v_idx + 1] - v[v_idx];
-    if (current_task_edges + number_of_edges > split_size) {
-      global_task_queue.push_back({current_task_start, v_idx});
-      current_task_start = v_idx;
-      current_task_edges = 0; // reset
-    }
-    current_task_edges += number_of_edges;
-  }
-
-  // Final task if there are any remaining edges
-  if (current_task_start < (idx_t)v_size) {
-    global_task_queue.push_back({current_task_start, v_size});
-  }
-}
-
-
-shared_ptr<std::pair<idx_t, idx_t>> BFSState::FetchTask() {
-  std::unique_lock<std::mutex> lock(queue_mutex);  // Lock the mutex to access the queue
-
-  // Avoid unnecessary waiting if no tasks are available
-  if (current_task_index >= global_task_queue.size()) {
-    // std::cout << "FetchTask: No more tasks available. Exiting." << std::endl;
-    return nullptr;  // No more tasks
-  }
-
-  // Wait until a task is available or the queue is finalized
-  queue_cv.wait(lock, [this]() {
-    return current_task_index < global_task_queue.size();
-  });
-
-  // Fetch the next task and increment the task index
-  if (current_task_index < global_task_queue.size()) {
-    auto task = make_shared_ptr<std::pair<idx_t, idx_t>>(global_task_queue[current_task_index]);
-    current_task_index++;
-
-    return task;
-  }
-  return nullptr;
-}
-
-void BFSState::ResetTaskIndex() {
-  std::lock_guard<std::mutex> lock(queue_mutex);  // Lock to reset index safely
-  current_task_index = 0;  // Reset the task index for the next stage
-  queue_cv.notify_all();  // Notify all threads that tasks are available
-}
-
-pair<idx_t, idx_t> BFSState::BoundaryCalculation(idx_t worker_id) const {
-  idx_t block_size = ceil((double)v_size / num_threads);
-  block_size = block_size == 0 ? 1 : block_size;
-  idx_t left = block_size * worker_id;
-  idx_t right = std::min(block_size * (worker_id + 1), (idx_t)v_size);
-  return {left, right};
-}
 
 void BFSState::InitializeLanes() {
   auto &result_validity = FlatVector::Validity(pf_results->data[0]);
@@ -159,7 +96,6 @@ void BFSState::InitializeLanes() {
   for (int64_t i = 0; i < v_size; i++) {
     seen[i] = seen_mask;
   }
-
 }
 
 void BFSState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) {

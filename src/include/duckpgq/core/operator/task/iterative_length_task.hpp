@@ -21,14 +21,10 @@ private:
                     vector<std::bitset<LANE_LIMIT>> &next,
                     bool &change) const;
   void UnReachableSet() const;
-  bool SetTaskRange();
 
 private:
   ClientContext &context;
   shared_ptr<BFSState> &state;
-  // [left, right)
-  idx_t left;
-  idx_t right;
   idx_t worker_id;
 };
 

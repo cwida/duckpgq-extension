@@ -10,26 +10,19 @@ IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p,
                                    const PhysicalOperator &op_p)
 : ExecutorTask(context, std::move(event_p), op_p), context(context),
   state(state), worker_id(worker_id) {
-  left = right = UINT64_MAX; // NOLINT
-}
-
-bool IterativeLengthTask::SetTaskRange() {
-  auto task = state->FetchTask();
-  if (task == nullptr) {
-    return false;
-  }
-  left = task->first;
-  right = task->second;
-  return true;
 }
 
 void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
                                       vector<std::bitset<LANE_LIMIT>> &next,
                                       bool &change) const {
   for (auto i = 0; i < state->v_size; i++) {
-    auto updated = next[i] & ~seen[i];
-    seen[i] |= updated;
-    change |= updated.any();
+    if (next[i].any()) {
+      next[i] &= ~seen[i];
+      seen[i] |= next[i];
+      if (next[i].any()) {
+        change = true;
+      }
+    }
   }
 }
 
@@ -40,7 +33,7 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
       barrier->Wait();
       if (worker_id == 0) {
         for (auto n = 0; n < state->v_size; n++) {
-          state->thread_assignment[n] = n % state->scheduled_threads;
+          state->thread_assignment[n] = n % state->num_threads;
         }
         state->InitializeLanes();
       }
@@ -102,11 +95,11 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
       }
     }
 
-    barrier->Wait();
 
     // Check and process tasks for the next phase
     change = false;
 
+    barrier->Wait();
     if (worker_id == 0) {
         CheckChange(seen, next, change);
     }
