@@ -43,6 +43,9 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
   src = FlatVector::GetData<int64_t>(src_data);
   dst = FlatVector::GetData<int64_t>(dst_data);
 
+  // Initialize the thread assignment vector
+  thread_assignment = std::vector<int64_t>(v_size, -1);
+
   CreateTasks();
   scheduled_threads = std::min(num_threads, (idx_t)global_task_queue.size());
   barrier = make_uniq<Barrier>(scheduled_threads);

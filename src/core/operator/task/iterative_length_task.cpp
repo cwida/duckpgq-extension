@@ -26,7 +26,7 @@ bool IterativeLengthTask::SetTaskRange() {
 void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
                                       vector<std::bitset<LANE_LIMIT>> &next,
                                       bool &change) const {
-  for (auto i = left; i < right; i++) {
+  for (auto i = 0; i < state->v_size; i++) {
     auto updated = next[i] & ~seen[i];
     seen[i] |= updated;
     change |= updated.any();
@@ -39,29 +39,21 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
     while (state->started_searches < state->pairs->size()) {
       barrier->Wait();
       if (worker_id == 0) {
+        for (auto n = 0; n < state->v_size; n++) {
+          state->thread_assignment[n] = n % state->scheduled_threads;
+        }
         state->InitializeLanes();
       }
       barrier->Wait();
       do {
-
         IterativeLength();
-        barrier->Wait([&]() {
-              state->ResetTaskIndex();  // Reset task index safely
-          });
-
         barrier->Wait();
 
         if (worker_id == 0) {
           ReachDetect();
         }
-
-        barrier->Wait([&]() {
-          state->ResetTaskIndex();  // Reset task index safely
-        });
-
         barrier->Wait();
       } while (state->change);
-
       if (worker_id == 0) {
         UnReachableSet();
       }
@@ -70,10 +62,7 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
       barrier->Wait();
       if (worker_id == 0) {
         state->Clear();
-        // std::cout << "Started searches: " << state->started_searches << std::endl;
-        // std::cout << "Number of pairs: " << state->pairs->size() << std::endl;
       }
-
       barrier->Wait();
     }
 
@@ -89,53 +78,39 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
     int64_t *v = (int64_t *)state->csr->v;
     vector<int64_t> &e = state->csr->e;
     auto &change = state->change;
-
-    // Attempt to get a task range
-    bool has_tasks = SetTaskRange();
+    auto &thread_assignment = state->thread_assignment;
 
     // Clear `next` array regardless of task availability
-    for (auto i = left; i < right; i++) {
+    if (worker_id == 0) {
+      for (int64_t i = 0; i < state->v_size; i++) {
         next[i] = 0;
+      }
     }
 
     // Synchronize after clearing
     barrier->Wait();
 
-    // Main processing loop
-    while (has_tasks) {
-        for (auto i = left; i < right; i++) {
-            if (visit[i].any()) {
-                for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-                    auto n = e[offset];
-                    {
-                        std::lock_guard<std::mutex> lock(state->element_locks[n]);
-                        next[n] |= visit[i];
-                    }
-                }
-            }
+    for (auto i = 0; i < state->v_size; i++) {
+      if (visit[i].any()) {
+        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+          auto n = e[offset];
+          // Check if this thread is responsible for the destination
+          if (thread_assignment[n] == worker_id) {
+            next[n] |= visit[i];
+          }
         }
-        has_tasks = SetTaskRange();
+      }
     }
 
-    // Synchronize at the end of the main processing
-    barrier->Wait([&]() {
-        state->ResetTaskIndex();
-    });
     barrier->Wait();
 
     // Check and process tasks for the next phase
-    has_tasks = SetTaskRange();
     change = false;
 
-    while (has_tasks) {
+    if (worker_id == 0) {
         CheckChange(seen, next, change);
-        has_tasks = SetTaskRange();
     }
 
-    // Final synchronization after processing
-    barrier->Wait([&]() {
-        state->ResetTaskIndex();
-    });
     barrier->Wait();
 }
 

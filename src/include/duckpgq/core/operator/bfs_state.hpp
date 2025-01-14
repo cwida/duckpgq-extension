@@ -44,6 +44,8 @@ public:
   Vector &dst_data;
   int64_t *dst;
 
+  std::vector<int64_t> thread_assignment;
+
   UnifiedVectorFormat vdata_src;
   UnifiedVectorFormat vdata_dst;
   int64_t lane_to_num[LANE_LIMIT];
