@@ -22,6 +22,11 @@ private:
                     bool &change) const;
   void UnReachableSet() const;
 
+  void Explore(vector<std::bitset<LANE_LIMIT>> &visit,
+                                  vector<std::bitset<LANE_LIMIT>> &next, int64_t *v,
+                                  vector<int64_t> &e,
+                                  std::vector<int64_t> &thread_assignment);
+
 private:
   ClientContext &context;
   shared_ptr<BFSState> &state;

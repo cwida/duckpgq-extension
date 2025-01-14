@@ -1,5 +1,6 @@
 #include "duckpgq/core/operator/task/iterative_length_task.hpp"
 #include <duckpgq/core/operator/physical_path_finding_operator.hpp>
+#include <chrono>
 
 namespace duckpgq {
 namespace core {
@@ -28,42 +29,59 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
 
 
   TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
-    auto &barrier = state->barrier;
-    while (state->started_searches < state->pairs->size()) {
-      barrier->Wait();
-      if (worker_id == 0) {
-        for (auto n = 0; n < state->v_size; n++) {
-          state->thread_assignment[n] = n % state->num_threads;
-        }
-        state->InitializeLanes();
+  auto &barrier = state->barrier;
+  while (state->started_searches < state->pairs->size()) {
+    barrier->Wait();
+    if (worker_id == 0) {
+      for (auto n = 0; n < state->v_size; n++) {
+        state->thread_assignment[n] = n % state->num_threads;
       }
+      state->InitializeLanes();
+    }
+    barrier->Wait();
+    do {
+      IterativeLength();
       barrier->Wait();
-      do {
-        IterativeLength();
-        barrier->Wait();
 
-        if (worker_id == 0) {
-          ReachDetect();
-        }
-        barrier->Wait();
-      } while (state->change);
       if (worker_id == 0) {
-        UnReachableSet();
-      }
-
-      // Final synchronization before finishing
-      barrier->Wait();
-      if (worker_id == 0) {
-        state->Clear();
+        ReachDetect();
       }
       barrier->Wait();
+    } while (state->change);
+    if (worker_id == 0) {
+      UnReachableSet();
     }
 
-    event->FinishTask();
-    return TaskExecutionResult::TASK_FINISHED;
+    // Final synchronization before finishing
+    barrier->Wait();
+    if (worker_id == 0) {
+      state->Clear();
+    }
+    barrier->Wait();
   }
 
-  void IterativeLengthTask::IterativeLength() {
+  event->FinishTask();
+  return TaskExecutionResult::TASK_FINISHED;
+}
+
+void IterativeLengthTask::Explore(vector<std::bitset<LANE_LIMIT>> &visit,
+                                  vector<std::bitset<LANE_LIMIT>> &next, int64_t *v,
+                                  vector<int64_t> &e,
+                                  std::vector<int64_t> &thread_assignment) {
+  for (auto i = 0; i < state->v_size; i++) {
+    if (visit[i].any()) {
+      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        auto n = e[offset];
+        // Check if this thread is responsible for the destination
+        if (thread_assignment[n] == worker_id) {
+          next[n] |= visit[i];
+        }
+      }
+    }
+  }
+}
+
+void IterativeLengthTask::IterativeLength() {
     auto &seen = state->seen;
     auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
@@ -83,18 +101,7 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
     // Synchronize after clearing
     barrier->Wait();
 
-    for (auto i = 0; i < state->v_size; i++) {
-      if (visit[i].any()) {
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          // Check if this thread is responsible for the destination
-          if (thread_assignment[n] == worker_id) {
-            next[n] |= visit[i];
-          }
-        }
-      }
-    }
-
+    Explore(visit, next, v, e, thread_assignment);
 
     // Check and process tasks for the next phase
     change = false;
