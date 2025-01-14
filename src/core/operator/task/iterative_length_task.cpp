@@ -32,9 +32,21 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
   auto &barrier = state->barrier;
   while (state->started_searches < state->pairs->size()) {
     barrier->Wait();
+
+
+
     if (worker_id == 0) {
-      for (auto n = 0; n < state->v_size; n++) {
-        state->thread_assignment[n] = n % state->num_threads;
+      // Calculate the range size for each thread
+      size_t range_size = (state->v_size + state->num_threads - 1) / state->num_threads;
+
+      // Assign ranges to threads
+      for (auto thread_id = 0; thread_id < state->num_threads; thread_id++) {
+        size_t start = thread_id * range_size;
+        size_t end = std::min<size_t>((thread_id + 1) * range_size, static_cast<size_t>(state->v_size));
+        
+        for (auto n = start; n < end; n++) {
+          state->thread_assignment[n] = thread_id;
+        }
       }
       state->InitializeLanes();
     }
