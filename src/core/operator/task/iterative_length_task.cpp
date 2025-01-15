@@ -14,14 +14,15 @@ IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p,
 }
 
 void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
-                                      vector<std::bitset<LANE_LIMIT>> &next,
-                                      bool &change) const {
+                                      vector<std::bitset<LANE_LIMIT>> &next) const {
   for (auto i = 0; i < state->v_size; i++) {
-    if (next[i].any()) {
-      next[i] &= ~seen[i];
-      seen[i] |= next[i];
+    if (state->thread_assignment[i] == worker_id) {
       if (next[i].any()) {
-        change = true;
+        next[i] &= ~seen[i];
+        seen[i] |= next[i];
+        if (next[i].any()) {
+          state->change_atomic.store(true, std::memory_order_relaxed);
+        }
       }
     }
   }
@@ -32,8 +33,6 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
   auto &barrier = state->barrier;
   while (state->started_searches < state->pairs->size()) {
     barrier->Wait();
-
-
 
     if (worker_id == 0) {
       // Calculate the range size for each thread
@@ -59,7 +58,7 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
         ReachDetect();
       }
       barrier->Wait();
-    } while (state->change);
+    } while (state->change_atomic);
     if (worker_id == 0) {
       UnReachableSet();
     }
@@ -77,17 +76,27 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
 }
 
 void IterativeLengthTask::Explore(vector<std::bitset<LANE_LIMIT>> &visit,
-                                  vector<std::bitset<LANE_LIMIT>> &next, int64_t *v,
-                                  vector<int64_t> &e,
+                                  vector<std::bitset<LANE_LIMIT>> &next,
+                                  int64_t *v, vector<int64_t> &e,
                                   std::vector<int64_t> &thread_assignment) {
-  for (auto i = 0; i < state->v_size; i++) {
-    if (visit[i].any()) {
-      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-        auto n = e[offset];
-        // Check if this thread is responsible for the destination
-        if (thread_assignment[n] == worker_id) {
-          next[n] |= visit[i];
+#pragma omp parallel
+  {
+    std::vector<std::bitset<LANE_LIMIT>> thread_local_next(state->v_size);
+
+#pragma omp for nowait
+    for (auto i = 0; i < state->v_size; i++) {
+      if (visit[i].any()) {
+        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+          auto n = e[offset];
+          thread_local_next[n] |= visit[i];
         }
+      }
+    }
+
+#pragma omp critical
+    {
+      for (auto i = 0; i < state->v_size; i++) {
+        next[i] |= thread_local_next[i];
       }
     }
   }
@@ -100,7 +109,6 @@ void IterativeLengthTask::IterativeLength() {
     auto &barrier = state->barrier;
     int64_t *v = (int64_t *)state->csr->v;
     vector<int64_t> &e = state->csr->e;
-    auto &change = state->change;
     auto &thread_assignment = state->thread_assignment;
 
     // Clear `next` array regardless of task availability
@@ -116,12 +124,9 @@ void IterativeLengthTask::IterativeLength() {
     Explore(visit, next, v, e, thread_assignment);
 
     // Check and process tasks for the next phase
-    change = false;
-
+    state->change_atomic.store(false, std::memory_order_relaxed);
     barrier->Wait();
-    if (worker_id == 0) {
-        CheckChange(seen, next, change);
-    }
+    CheckChange(seen, next);
 
     barrier->Wait();
 }
@@ -143,7 +148,7 @@ void IterativeLengthTask::IterativeLength() {
       }
     }
     if (state->active == 0) {
-      state->change = false;
+      state->change_atomic.store(false, std::memory_order_relaxed);
     }
     // into the next iteration
     state->iter++;

@@ -32,7 +32,7 @@ public:
   LogicalType bfs_type;
   int64_t iter;
   int64_t v_size; // Number of vertices
-  bool change;
+  atomic<bool> change_atomic;
   idx_t started_searches; // Number of started searches in current batch
   int64_t *src;
   Vector &src_data;

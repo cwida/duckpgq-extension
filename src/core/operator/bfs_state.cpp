@@ -26,7 +26,7 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
   started_searches = 0; // reset
   active = 0;
   iter = 1;
-  change = false;
+  change_atomic = false;
   pf_results = make_shared_ptr<DataChunk>();
   pf_results->Initialize(context, {bfs_type});
 
@@ -52,7 +52,7 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
 void BFSState::Clear() {
   iter = 1;
   active = 0;
-  change = false;
+  change_atomic = false;
   // empty visit vectors
   for (auto i = 0; i < v_size; i++) {
     visit1[i] = 0;
