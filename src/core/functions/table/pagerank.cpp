@@ -31,7 +31,7 @@ PageRankFunction::PageRankBindReplace(ClientContext &context,
   subquery->node = std::move(select_node);
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery));
-  result->alias = "wcc";
+  result->alias = "pagerank";
   return std::move(result);
 }
 
