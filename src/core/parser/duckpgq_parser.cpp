@@ -40,6 +40,7 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state);
 
 void duckpgq_find_match_function(TableRef *table_ref,
                                  DuckPGQState &duckpgq_state) {
+  // TODO(dtenwolde) add support for other style of tableRef (e.g. PivotRef)
   if (auto table_function_ref = dynamic_cast<TableFunctionRef *>(table_ref)) {
     // Handle TableFunctionRef case
     auto function =
