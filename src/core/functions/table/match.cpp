@@ -999,9 +999,8 @@ void PGQMatchFunction::PopulateGraphTableAliasMap(
   }
 }
 
-/*static*/ void
-PGQMatchFunction::CheckColumnBinding(const CreatePropertyGraphInfo &pg_table,
-                                     const MatchExpression &ref) {
+void PGQMatchFunction::CheckColumnBinding(
+    const CreatePropertyGraphInfo &pg_table, const MatchExpression &ref) {
   // Maps from table alias to table, including vertex and edge tables.
   case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
       alias_to_vertex_and_edge_tables;
@@ -1018,6 +1017,11 @@ PGQMatchFunction::CheckColumnBinding(const CreatePropertyGraphInfo &pg_table,
       GetFullyQualifiedColFromPg(pg_table, alias_to_vertex_and_edge_tables);
 
   for (auto &expression : ref.column_list) {
+    // TODO(hjiang): `ColumnRefExpression` alone is not enough, we could have
+    // more complicated expression.
+    //
+    // See issue for reference:
+    // https://github.com/cwida/duckpgq-extension/issues/198
     auto *column_ref = dynamic_cast<ColumnRefExpression *>(expression.get());
     if (column_ref == nullptr) {
       continue;
