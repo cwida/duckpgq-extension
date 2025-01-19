@@ -35,9 +35,6 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
           std::move(parser.statements[0])));
 }
 
-ParserExtensionPlanResult
-duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state);
-
 void duckpgq_find_match_function(TableRef *table_ref,
                                  DuckPGQState &duckpgq_state) {
   // TODO(dtenwolde) add support for other style of tableRef (e.g. PivotRef)

@@ -1,6 +1,8 @@
 #pragma once
 #include "duckpgq/common.hpp"
 
+#include <duckpgq_state.hpp>
+
 namespace duckpgq {
 
 namespace core {
@@ -25,7 +27,10 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info,
                                        unique_ptr<ParserExtensionParseData>);
 
 ParserExtensionPlanResult
-duckpgq_handle_statement(unique_ptr<SQLStatement> &statement);
+duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state);
+
+void duckpgq_find_match_function(TableRef *table_ref,
+                                 DuckPGQState &duckpgq_state);
 
 struct DuckPGQParserExtension : ParserExtension {
   DuckPGQParserExtension() : ParserExtension() {
