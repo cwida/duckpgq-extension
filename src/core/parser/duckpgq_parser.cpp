@@ -15,6 +15,7 @@
 #include <duckpgq/core/functions/table/describe_property_graph.hpp>
 #include <duckpgq/core/functions/table/drop_property_graph.hpp>
 #include "duckdb/parser/query_node/cte_node.hpp"
+#include "duckdb/parser/tableref/subqueryref.hpp"
 
 namespace duckpgq {
 
@@ -33,6 +34,9 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info,
       make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(
           std::move(parser.statements[0])));
 }
+
+ParserExtensionPlanResult
+duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state);
 
 void duckpgq_find_match_function(TableRef *table_ref,
                                  DuckPGQState &duckpgq_state) {
@@ -54,6 +58,9 @@ void duckpgq_find_match_function(TableRef *table_ref,
     // Handle JoinRef case
     duckpgq_find_match_function(join_ref->left.get(), duckpgq_state);
     duckpgq_find_match_function(join_ref->right.get(), duckpgq_state);
+  } else if (auto subquery_ref = dynamic_cast<SubqueryRef *>(table_ref)) {
+    // Handle SubqueryRef case
+    duckpgq_handle_statement(subquery_ref->subquery.get(), duckpgq_state);
   }
 }
 
