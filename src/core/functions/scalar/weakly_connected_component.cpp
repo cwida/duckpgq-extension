@@ -13,29 +13,27 @@ namespace duckpgq {
 namespace core {
 
 // Helper function to find the root of a node with path compression
-static int64_t FindTreeRoot(std::vector<std::atomic<int64_t>> &forest,
+static int64_t FindTreeRoot(std::vector<int64_t> &forest,
                             int64_t node) {
   while (true) {
-    int64_t parent = forest[node].load(std::memory_order_relaxed);
+    int64_t parent = forest[node];
     if (parent == node) {
       return node; // Found the root
     }
-    // Path compression: update parent to grandparent
-    int64_t grandparent = forest[parent].load(std::memory_order_relaxed);
-    forest[node].compare_exchange_weak(parent, grandparent,
-                                       std::memory_order_relaxed);
+    forest[node] = forest[parent];
     node = parent;
   }
 }
 
+
 // Helper function to link two nodes in the same connected component
-static void Link(std::vector<std::atomic<int64_t>> &forest, int64_t nodeA,
+static void Link(std::vector<int64_t> &forest, int64_t nodeA,
                  int64_t nodeB) {
   int64_t rootA = FindTreeRoot(forest, nodeA);
   int64_t rootB = FindTreeRoot(forest, nodeB);
 
   if (rootA != rootB) {
-    forest[rootA].store(rootB, std::memory_order_relaxed);
+    forest[rootA] = rootB;
   }
 }
 
@@ -72,7 +70,7 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
   result.SetVectorType(VectorType::FLAT_VECTOR);
   auto result_data = FlatVector::GetData<int64_t>(result);
 
-  std::vector<std::atomic<int64_t>> forest(v_size);
+  std::vector<int64_t> forest(v_size);
 
   // Check if already converged
   if (!info.state_converged) {
@@ -80,7 +78,7 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
     if (!info.state_converged) {
       // Initialize the forest for connected components
       for (int64_t i = 0; i < v_size - 1; ++i) {
-        forest[i].store(i, std::memory_order_relaxed); // Each node points to itself
+        forest[i] = i; // Each node points to itself
       }
       // Process edges to link nodes
       for (int64_t i = 0; i < v_size - 1; i++) {
