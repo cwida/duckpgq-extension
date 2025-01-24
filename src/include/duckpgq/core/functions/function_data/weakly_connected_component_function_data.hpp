@@ -15,12 +15,12 @@ namespace core {
 struct WeaklyConnectedComponentFunctionData final : FunctionData {
   ClientContext &context;
   int32_t csr_id;
-  vector<int64_t> componentId;
+  vector<std::atomic<int64_t>> componentId;
   std::mutex component_lock;
   bool component_id_initialized; // if componentId is initialized
   WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id);
   WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id,
-                                       const vector<int64_t> &componentId);
+                                       const vector<std::atomic<int64_t>> &componentId);
   static unique_ptr<FunctionData>
   WeaklyConnectedComponentBind(ClientContext &context,
                                ScalarFunction &bound_function,

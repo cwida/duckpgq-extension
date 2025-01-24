@@ -1,0 +1,26 @@
+require duckpgq
+
+
+statement ok
+create table data_table as select * from read_csv("/export/scratch2/dljtw/duckpgq-issue200/links.tsv")
+
+statement ok
+CREATE TABLE devices AS SELECT a AS device FROM data_table UNION SELECT b AS device FROM data_table
+
+statement ok
+CREATE TABLE edges AS SELECT * FROM data_table
+
+statement ok
+-CREATE PROPERTY GRAPH graph
+  VERTEX TABLES (
+    devices
+  )
+  EDGE TABLES (
+    edges
+      SOURCE KEY (a) REFERENCES devices(device)
+      DESTINATION KEY (b) REFERENCES devices(device)
+    LABEL connects
+  );
+
+statement ok
+set threads=1; -FROM weakly_connected_component(graph, devices, connects);
