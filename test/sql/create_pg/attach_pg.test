@@ -113,19 +113,10 @@ did:plc:g5gf5ho5yn3n5anprzf45hvm	0.103670634
 did:plc:cwcykfexwbxozuxhpuud63qa	0.35714287
 did:plc:c5ccfcya6zez3rhry6gluup4	0.07952872
 
-query II con1
-from weakly_connected_component(bluesky, account, follows) limit 10;
+query I con1
+select count(*) as c from weakly_connected_component(bluesky, account, follows) group by componentId order by componentid;
 ----
-did:plc:rsfoi33e4iya2rd7jw52nfmo	0
-did:plc:btsulrw4wcqdai23fkl5qwm5	0
-did:plc:z72i7hdynmk6r22z27h6tvur	0
-did:plc:twcatus5xoa7jaeysmrhzcpv	0
-did:plc:wptnzi6wyzqltbenxapqa5qd	0
-did:plc:edglm4muiyzty2snc55ysuqx	0
-did:plc:sc6ieuzeygvm55vv2bjubkgt	0
-did:plc:g5gf5ho5yn3n5anprzf45hvm	0
-did:plc:cwcykfexwbxozuxhpuud63qa	0
-did:plc:c5ccfcya6zez3rhry6gluup4	0
+8921
 
 query II con1
 from pagerank(bluesky, account, follows) limit 10;
