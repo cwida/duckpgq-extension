@@ -7,18 +7,7 @@ namespace core {
 WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentFunctionData(
     ClientContext &context, int32_t csr_id)
     : context(context), csr_id(csr_id) {
-  component_id_initialized = false;
-}
-
-WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentFunctionData(
-    ClientContext &context, int32_t csr_id, const vector<std::atomic<int64_t>> &componentId_)
-    : context(context), csr_id(csr_id) {
-  componentId = vector<std::atomic<int64_t>>(componentId_.size());
-  for (size_t i = 0; i < componentId.size(); ++i) {
-    componentId[i].store(componentId_[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
-  }
-
-  component_id_initialized = false;
+  state_converged = false; // Initialize state
 }
 
 unique_ptr<FunctionData>
@@ -37,23 +26,18 @@ WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentBind(
 
 unique_ptr<FunctionData> WeaklyConnectedComponentFunctionData::Copy() const {
   auto result = make_uniq<WeaklyConnectedComponentFunctionData>(context, csr_id);
-  result->componentId = vector<std::atomic<int64_t>>(componentId.size());
-  for (size_t i = 0; i < componentId.size(); ++i) {
-    result->componentId[i].store(componentId[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
-  }
-  result->component_id_initialized = component_id_initialized;
   return std::move(result);
 }
+
 bool WeaklyConnectedComponentFunctionData::Equals(
     const FunctionData &other_p) const {
   auto &other = (const WeaklyConnectedComponentFunctionData &)other_p;
   if (csr_id != other.csr_id) {
     return false;
   }
-  if (componentId != other.componentId) {
+  if (state_converged != other.state_converged) {
     return false;
   }
-
   return true;
 }
 

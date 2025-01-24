@@ -6,67 +6,37 @@
 #include <duckpgq/core/functions/table/weakly_connected_component.hpp>
 #include <duckpgq/core/utils/duckpgq_bitmap.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
+#include <atomic>
+#include <vector>
 
 namespace duckpgq {
 namespace core {
 
-void InitializeComponentVector(size_t v_count,
-                               WeaklyConnectedComponentFunctionData &info) {
-  if (info.component_id_initialized) {
-    return;
+// Helper function to find the root of a node with path compression
+static int64_t FindTreeRoot(std::vector<std::atomic<int64_t>> &forest,
+                            int64_t node) {
+  while (true) {
+    int64_t parent = forest[node].load(std::memory_order_relaxed);
+    if (parent == node) {
+      return node; // Found the root
+    }
+    // Path compression: update parent to grandparent
+    int64_t grandparent = forest[parent].load(std::memory_order_relaxed);
+    forest[node].compare_exchange_weak(parent, grandparent,
+                                       std::memory_order_relaxed);
+    node = parent;
   }
-  info.component_lock.lock();
-  info.componentId = std::vector<std::atomic<int64_t>>(v_count);
-  for (auto &atomic_id : info.componentId) {
-    atomic_id.store(-1, std::memory_order_relaxed); // Initialize atomics
-  }
-  info.component_id_initialized = true;
-  info.component_lock.unlock();
 }
 
-static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
-                            vector<std::bitset<LANE_LIMIT>> &seen,
-                            vector<std::bitset<LANE_LIMIT>> &visit,
-                            vector<std::bitset<LANE_LIMIT>> &next) {
-  bool change = false;
-  for (auto i = 0; i < v_size; i++) {
-    next[i] = 0;
-  }
-  for (auto i = 0; i < v_size; i++) {
-    if (visit[i].any()) {
-      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-        auto n = e[offset];
-        next[n] = next[n] | visit[i];
-      }
-    }
-  }
-  for (auto i = 0; i < v_size; i++) {
-    next[i] = next[i] & ~seen[i];
-    seen[i] = seen[i] | next[i];
-    change |= next[i].any();
-  }
-  return change;
-}
+// Helper function to link two nodes in the same connected component
+static void Link(std::vector<std::atomic<int64_t>> &forest, int64_t nodeA,
+                 int64_t nodeB) {
+  int64_t rootA = FindTreeRoot(forest, nodeA);
+  int64_t rootB = FindTreeRoot(forest, nodeB);
 
-static void UpdateComponentId(int64_t node, int64_t component_id,
-                              WeaklyConnectedComponentFunctionData &info) {
-    // Load the current component ID atomically with relaxed memory order
-    int64_t current_id = info.componentId[node].load(std::memory_order_relaxed);
-
-    // If the current ID is -1, attempt to update it
-    if (current_id == -1) {
-        // Compare-and-swap to set the component ID atomically
-        bool success = info.componentId[node].compare_exchange_strong(
-            current_id, component_id, std::memory_order_relaxed);
-        if (!success) {
-            // If CAS fails, current_id is updated to the latest value
-            // Fall through to handle the case where we need to calculate the minimum
-        }
-    } else {
-      // Use std::min to update the component ID to the smallest value
-      info.componentId[node].store(
-          std::min(current_id, component_id), std::memory_order_relaxed);
-    }
+  if (rootA != rootB) {
+    forest[rootA].store(rootB, std::memory_order_relaxed);
+  }
 }
 
 static void WeaklyConnectedComponentFunction(DataChunk &args,
@@ -83,102 +53,57 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
 
   if (!(csr_entry->second->initialized_v && csr_entry->second->initialized_e)) {
     throw ConstraintException(
-        "Need to initialize CSR before doing local clustering coefficient.");
+        "Need to initialize CSR before doing weakly connected components.");
   }
+
+  // Retrieve CSR data
   int64_t *v = (int64_t *)duckpgq_state->csr_list[info.csr_id]->v;
   vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
   size_t v_size = duckpgq_state->csr_list[info.csr_id]->vsize;
-  // get src vector for searches
+
+  // Get source vector for searches
   auto &src = args.data[1];
   UnifiedVectorFormat vdata_src;
   src.ToUnifiedFormat(args.size(), vdata_src);
   auto src_data = (int64_t *)vdata_src.data;
   ValidityMask &result_validity = FlatVector::Validity(result);
-  // create result vector
+
+  // Create result vector
   result.SetVectorType(VectorType::FLAT_VECTOR);
   auto result_data = FlatVector::GetData<int64_t>(result);
-  InitializeComponentVector(v_size, info);
 
-  // create temp SIMD arrays
-  vector<std::bitset<LANE_LIMIT>> seen(v_size);
-  vector<std::bitset<LANE_LIMIT>> visit1(v_size);
-  vector<std::bitset<LANE_LIMIT>> visit2(v_size);
+  std::vector<std::atomic<int64_t>> forest(v_size);
 
-  // maps lane to search number
-  short lane_to_num[LANE_LIMIT];
-  for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-    lane_to_num[lane] = -1; // inactive
-  }
-
-  idx_t started_searches = 0;
-  while (started_searches < args.size()) {
-    // empty visit vectors
-    for (size_t i = 0; i < v_size; i++) {
-      seen[i] = 0;
-      visit1[i] = 0;
-    }
-
-    // add search jobs to free lanes
-    uint64_t active = 0;
-    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-      lane_to_num[lane] = -1;
-      while (started_searches < args.size()) {
-        int64_t search_num = started_searches++;
-        int64_t src_pos = vdata_src.sel->get_index(search_num);
-        int64_t src_node = src_data[src_pos];
-        // Check if the node is already part of a component
-        if (info.componentId[src_node].load(std::memory_order_relaxed) != -1) {
-    	    result_data[search_num] = info.componentId[src_node].load(std::memory_order_relaxed); // Safely load the value
-    	    continue;
- 		    }
-        if (!vdata_src.validity.RowIsValid(src_pos)) {
-          result_validity.SetInvalid(search_num);
-          result_data[search_num] = (uint64_t)-1; /* no path */
-        } else {
-          visit1[src_data[src_pos]][lane] = true;
-          lane_to_num[lane] = search_num; // active lane
-          active++;
-          break;
+  // Check if already converged
+  if (!info.state_converged) {
+    std::lock_guard<std::mutex> guard(info.wcc_lock); // Thread safety
+    if (!info.state_converged) {
+      // Initialize the forest for connected components
+      for (int64_t i = 0; i < v_size - 1; ++i) {
+        forest[i].store(i, std::memory_order_relaxed); // Each node points to itself
+      }
+      // Process edges to link nodes
+      for (int64_t i = 0; i < v_size - 1; i++) {
+        for (int64_t edge_idx = v[i]; edge_idx < v[i + 1]; edge_idx++) {
+          int64_t neighbor = e[edge_idx];
+          Link(forest, i, neighbor);
         }
       }
-    }
-
-    // make passes while a lane is still active
-    for (int64_t iter = 1; active; iter++) {
-      if (!IterativeLength(v_size, v, e, seen, (iter & 1) ? visit1 : visit2,
-                           (iter & 1) ? visit2 : visit1)) {
-        break;
-      }
-      // detect lanes that finished
-      for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-        int64_t search_num = lane_to_num[lane];
-        if (search_num == -1) {
-          continue;
-        }
-        // Update component IDs
-        for (size_t node_idx = 0; node_idx < v_size; node_idx++) {
-          if (seen[node_idx][lane]) {
-            UpdateComponentId(node_idx, src_data[search_num], info);
-          }
-        }
-      }
+      info.state_converged = true;
     }
   }
-  // Assign component IDs to result
-  for (idx_t i = 0; i < args.size(); i++) {
-    int64_t src_pos = vdata_src.sel->get_index(i);
-    if (!vdata_src.validity.RowIsValid(src_pos)) {
-      result_validity.SetInvalid(i);
+  // Assign component IDs for the source nodes
+  for (size_t i = 0; i < args.size(); i++) {
+    int64_t src_node = src_data[i];
+    if (src_node >= 0 && src_node < v_size) {
+      result_data[i] =
+          FindTreeRoot(forest, src_node); // Assign component ID to the result
     } else {
-      auto component_id = info.componentId[src_data[src_pos]].load(std::memory_order_relaxed);
-	    if (component_id == -1) {
-        // Attempt to update the component ID atomically
-        info.componentId[src_data[src_pos]].store(src_data[src_pos], std::memory_order_relaxed);
-	    }
-      // Safely load the updated component ID for the result
-      result_data[i] = info.componentId[src_data[src_pos]].load(std::memory_order_relaxed);
-	  }
+      result_validity.SetInvalid(i);
+    }
   }
+
+  // Mark CSR for deletion
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
