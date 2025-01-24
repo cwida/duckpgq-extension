@@ -7,12 +7,12 @@ namespace core {
 WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentFunctionData(
     ClientContext &context, int32_t csr_id)
     : context(context), csr_id(csr_id) {
-  componentId = vector<int64_t>();
+  componentId = vector<std::atomic<int64_t>>();
   component_id_initialized = false;
 }
 
 WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentFunctionData(
-    ClientContext &context, int32_t csr_id, const vector<int64_t> &componentId)
+    ClientContext &context, int32_t csr_id, const vector<std::atomic<int64_t>> &componentId)
     : context(context), csr_id(csr_id), componentId(componentId) {
   component_id_initialized = false;
 }

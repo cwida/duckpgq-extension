@@ -16,9 +16,9 @@ void InitializeComponentVector(size_t v_count,
     return;
   }
   info.component_lock.lock();
-  info.componentId.reserve(v_count);
-  for (idx_t i = 0; i < v_count; i++) {
-    info.componentId.push_back(-1);
+  info.componentId.resize(v_count);
+  for (auto &atomic_id : info.componentId) {
+    atomic_id.store(-1, std::memory_order_relaxed); // Initialize atomics
   }
   info.component_id_initialized = true;
   info.component_lock.unlock();
@@ -50,11 +50,23 @@ static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e,
 
 static void UpdateComponentId(int64_t node, int64_t component_id,
                               WeaklyConnectedComponentFunctionData &info) {
-  if (info.componentId[node] == -1) {
-    info.componentId[node] = component_id;
-  } else {
-    info.componentId[node] = std::min(info.componentId[node], component_id);
-  }
+    // Load the current component ID atomically with relaxed memory order
+    int64_t current_id = info.componentId[node].load(std::memory_order_relaxed);
+
+    // If the current ID is -1, attempt to update it
+    if (current_id == -1) {
+        // Compare-and-swap to set the component ID atomically
+        bool success = info.componentId[node].compare_exchange_strong(
+            current_id, component_id, std::memory_order_relaxed);
+        if (!success) {
+            // If CAS fails, current_id is updated to the latest value
+            // Fall through to handle the case where we need to calculate the minimum
+        }
+    }
+
+    // Use std::min to update the component ID to the smallest value
+    info.componentId[node].store(
+        std::min(current_id, component_id), std::memory_order_relaxed);
 }
 
 static void WeaklyConnectedComponentFunction(DataChunk &args,
@@ -115,12 +127,10 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
         int64_t src_pos = vdata_src.sel->get_index(search_num);
         int64_t src_node = src_data[src_pos];
         // Check if the node is already part of a component
-        if (info.componentId[src_node] != -1) {
-          result_data[search_num] =
-              info.componentId[src_node]; // Already known component
-          continue;
-        }
-
+        if (info.componentId[src_node].load(std::memory_order_relaxed) != -1) {
+    	  result_data[search_num] = info.componentId[src_node].load(std::memory_order_relaxed); // Safely load the value
+    	  continue;
+ 		}
         if (!vdata_src.validity.RowIsValid(src_pos)) {
           result_validity.SetInvalid(search_num);
           result_data[search_num] = (uint64_t)-1; /* no path */
@@ -160,14 +170,15 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
     if (!vdata_src.validity.RowIsValid(src_pos)) {
       result_validity.SetInvalid(i);
     } else {
-      auto component_id = info.componentId[src_data[src_pos]];
-      if (component_id == -1) {
-        info.componentId[src_data[src_pos]] = src_data[src_pos];
-      }
-      result_data[i] = info.componentId[src_data[src_pos]];
-    }
+      auto component_id = info.componentId[src_data[src_pos]].load(std::memory_order_relaxed);
+	  if (component_id == -1) {
+        // Attempt to update the component ID atomically
+        info.componentId[src_data[src_pos]].store(src_data[src_pos], std::memory_order_relaxed);
+	  }
+    // Safely load the updated component ID for the result
+    result_data[i] = info.componentId[src_data[src_pos]].load(std::memory_order_relaxed);
+	}
   }
-
   duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
