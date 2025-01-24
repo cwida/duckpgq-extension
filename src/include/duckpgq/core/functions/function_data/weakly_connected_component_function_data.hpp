@@ -16,7 +16,10 @@ struct WeaklyConnectedComponentFunctionData final : FunctionData {
   ClientContext &context;
   int32_t csr_id;
   std::mutex wcc_lock;
+  std::mutex initialize_lock;
   bool state_converged;
+  bool state_initialized;
+  vector<int64_t> forest;
 
 
   WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id);

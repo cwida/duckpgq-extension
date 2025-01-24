@@ -70,7 +70,13 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
   result.SetVectorType(VectorType::FLAT_VECTOR);
   auto result_data = FlatVector::GetData<int64_t>(result);
 
-  std::vector<int64_t> forest(v_size);
+  if (!info.state_initialized) {
+    std::lock_guard<std::mutex> guard(info.initialize_lock); // Thread safety
+    if (!info.state_converged) {
+      info.forest.resize(v_size);
+      info.state_initialized = true; // Initialize state
+    }
+  }
 
   // Check if already converged
   if (!info.state_converged) {
@@ -78,13 +84,13 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
     if (!info.state_converged) {
       // Initialize the forest for connected components
       for (int64_t i = 0; i < v_size - 1; ++i) {
-        forest[i] = i; // Each node points to itself
+        info.forest[i] = i; // Each node points to itself
       }
       // Process edges to link nodes
       for (int64_t i = 0; i < v_size - 1; i++) {
         for (int64_t edge_idx = v[i]; edge_idx < v[i + 1]; edge_idx++) {
           int64_t neighbor = e[edge_idx];
-          Link(forest, i, neighbor);
+          Link(info.forest, i, neighbor);
         }
       }
       info.state_converged = true;
@@ -95,7 +101,7 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
     int64_t src_node = src_data[i];
     if (src_node >= 0 && src_node < v_size) {
       result_data[i] =
-          FindTreeRoot(forest, src_node); // Assign component ID to the result
+          FindTreeRoot(info.forest, src_node); // Assign component ID to the result
     } else {
       result_validity.SetInvalid(i);
     }

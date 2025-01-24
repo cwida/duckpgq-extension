@@ -8,6 +8,7 @@ WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentFunctionData(
     ClientContext &context, int32_t csr_id)
     : context(context), csr_id(csr_id) {
   state_converged = false; // Initialize state
+  state_initialized = false;
 }
 
 unique_ptr<FunctionData>
