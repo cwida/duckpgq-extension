@@ -26,6 +26,9 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info,
                                        ClientContext &,
                                        unique_ptr<ParserExtensionParseData>);
 
+ParserExtensionPlanResult duckpgq_find_select_statement(
+  SQLStatement *statement, DuckPGQState &duckpgq_state);
+
 ParserExtensionPlanResult
 duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state);
 
