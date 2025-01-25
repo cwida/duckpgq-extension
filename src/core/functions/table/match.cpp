@@ -1017,7 +1017,7 @@ void PGQMatchFunction::ProcessPathList(
   }
 }
 
-/*static*/ void PGQMatchFunction::PopulateGraphTableAliasMap(
+void PGQMatchFunction::PopulateGraphTableAliasMap(
     const CreatePropertyGraphInfo &pg_table,
     const unique_ptr<PathReference> &path_reference,
     case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
@@ -1046,7 +1046,7 @@ void PGQMatchFunction::ProcessPathList(
   }
 }
 
-/*static*/ case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
+case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
 PGQMatchFunction::PopulateGraphTableAliasMap(
     const CreatePropertyGraphInfo &pg_table,
     const MatchExpression &match_expr) {
@@ -1062,7 +1062,7 @@ PGQMatchFunction::PopulateGraphTableAliasMap(
   return alias_to_vertex_and_edge_tables;
 }
 
-/*static*/ void PGQMatchFunction::CheckColumnBinding(
+void PGQMatchFunction::CheckColumnBinding(
     const CreatePropertyGraphInfo &pg_table, const MatchExpression &ref,
     const case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
         &alias_to_vertex_and_edge_tables) {
@@ -1071,6 +1071,11 @@ PGQMatchFunction::PopulateGraphTableAliasMap(
       GetFullyQualifiedColFromPg(pg_table, alias_to_vertex_and_edge_tables);
 
   for (auto &expression : ref.column_list) {
+    // TODO(hjiang): `ColumnRefExpression` alone is not enough, we could have
+    // more complicated expression.
+    //
+    // See issue for reference:
+    // https://github.com/cwida/duckpgq-extension/issues/198
     auto *column_ref = dynamic_cast<ColumnRefExpression *>(expression.get());
     if (column_ref == nullptr) {
       continue;
