@@ -151,4 +151,22 @@ from pagerank(bluesky, bluesky.account, follows) limit 10;
 ----
 Invalid Error: Label 'bluesky.account' not found. Did you mean the vertex label 'account'?
 
+statement ok
+-CREATE PROPERTY GRAPH pg VERTEX TABLES (bluesky.account PROPERTIES (displayName));
 
+# Query on unspecified columns in the graph throws error.
+statement error
+-SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (acc.displayName, acc.handle));
+----
+Binder Error: Property acc.handle is never registered!
+
+# Columns to query is only allowed to be <column> or <table>.<column>, which we cannot prefix catalog or schema.
+statement error
+-SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (bluesky.main.acc.displayName));
+----
+Binder Error: Property bluesky.main.acc.displayName is never registered!
+
+statement error
+-SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (main.acc.displayName));
+----
+Binder Error: Property main.acc.displayName is never registered!
