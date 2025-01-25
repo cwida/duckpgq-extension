@@ -53,8 +53,19 @@ public:
       vector<string> vertex_keys, vector<string> edge_keys,
       const string &vertex_alias, const string &edge_alias);
 
+  // Populate all vertex and edge tables and their alias into
+  // [alias_to_vertex_and_edge_tables], from paths information from
+  // [path_reference].
+  static void PopulateGraphTableAliasMap(
+      const CreatePropertyGraphInfo &pg_table,
+      const unique_ptr<PathReference> &path_reference,
+      case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
+          &alias_to_vertex_and_edge_tables);
+
   static PathElement *
   GetPathElement(const unique_ptr<PathReference> &path_reference);
+
+  static SubPath *GetSubPath(const unique_ptr<PathReference> &path_reference);
 
   static unique_ptr<JoinRef>
   GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table,
@@ -157,6 +168,11 @@ public:
                     CreatePropertyGraphInfo &pg_table,
                     unique_ptr<SelectNode> &final_select_node,
                     vector<unique_ptr<ParsedExpression>> &conditions);
+
+  // Check whether columns to query are valid against the property graph, throws
+  // BinderException if error.
+  static void CheckColumnBinding(const CreatePropertyGraphInfo &pg_table,
+                                 const MatchExpression &ref);
 };
 
 } // namespace core
