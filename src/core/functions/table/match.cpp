@@ -83,7 +83,7 @@ case_insensitive_set_t GetFullyQualifiedColFromPg(
 }
 
 // Get all fully-qualified column names from the given property graph [pg] for
-// the given relation [alias].
+// the given relation [alias], only vertex table is selected.
 //
 // Return a vector of column names, each of them represents a stack of names in
 // order of which they appear
@@ -95,6 +95,10 @@ vector<vector<string>> GetRegisteredColFromPg(
   auto iter = alias_map.find(alias);
   D_ASSERT(iter != alias_map.end());
   const auto &tbl = iter->second;
+  // Skip edge table.
+  if (!tbl->is_vertex_table) {
+    return registered_col_names;
+  }
   registered_col_names.reserve(tbl->column_names.size());
   for (const auto &cur_col : tbl->column_names) {
     registered_col_names.emplace_back(vector<string>{"", ""});
@@ -106,7 +110,7 @@ vector<vector<string>> GetRegisteredColFromPg(
 }
 
 // Get all fully-qualified column names from the given property graph [pg] for
-// all relations.
+// all vertex relations.
 //
 // Return a vector of column names, each of them represents a stack of names in
 // order of which they appear
@@ -117,6 +121,10 @@ vector<vector<string>> GetRegisteredColFromPg(
   for (const auto &alias_and_table : alias_map) {
     const auto &alias = alias_and_table.first;
     const auto &tbl = alias_and_table.second;
+    // Skip edge table.
+    if (!tbl->is_vertex_table) {
+      continue;
+    }
     registered_col_names.reserve(registered_col_names.size() +
                                  tbl->column_names.size());
     for (const auto &cur_col : tbl->column_names) {
