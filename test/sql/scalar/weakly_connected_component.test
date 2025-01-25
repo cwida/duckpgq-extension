@@ -346,3 +346,37 @@ SELECT * FROM weakly_connected_component(my_graph, thisisadifferent, knows);
 ----
 Invalid Error: Label 'thisisadifferent' not found. Did you mean the vertex label 'thisisadifferenttablelabel'?
 
+statement ok
+create or replace table nodes as select unnest(generate_series(0, 5_000)) as id;
+
+statement ok
+CREATE OR REPLACE TABLE edges AS
+WITH
+    sampled_sources AS (
+        SELECT id AS source
+        FROM nodes
+        WHERE RANDOM() < 0.8
+    ),
+    sampled_destinations AS (
+        SELECT id AS target
+        FROM nodes
+        WHERE RANDOM() < 0.8
+    )
+SELECT source, target
+FROM sampled_sources
+CROSS JOIN sampled_destinations
+WHERE source != target
+using sample 10% (bernoulli);
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH random_graph
+  VERTEX TABLES (
+   nodes
+ )
+  EDGE TABLES (
+    edges SOURCE KEY (source) REFERENCES nodes (id)
+          DESTINATION KEY (target) REFERENCES nodes (id)
+  );
+
+statement ok
+select id, componentId from weakly_connected_component(random_graph, nodes, edges);
