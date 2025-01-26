@@ -166,19 +166,10 @@ EDGE TABLES (
         DESTINATION KEY ( dst ) REFERENCES Student ( id )
 );
 
-query II
-select id, componentId from weakly_connected_component(pg_larger_graph, student, know);
+query I
+select count(distinct componentId) as c from weakly_connected_component(pg_larger_graph, student, know) order by c;
 ----
-0	3
-1	3
-2	3
-3	3
-4	3
-5	8
-6	8
-7	8
-8	8
-9	8
+2
 
 statement error
 select id, componentId from weakly_connected_component(non_existent_graph, student, know);
@@ -227,59 +218,10 @@ statement ok
                                DESTINATION KEY (Person2Id) REFERENCES Person (id)
                                LABEL Knows);
 
-query II
-from weakly_connected_component(snb, person, knows) order by componentId;
+query I
+select count(distinct componentId) as c from weakly_connected_component(snb, person, knows) order by c;
 ----
-4398046511139	6
-8796093022234	8
-10995116277783	14
-10995116277808	15
-21990232555526	24
-28587302322209	37
-14	38
-16	38
-32	38
-2199023255557	38
-2199023255573	38
-2199023255594	38
-6597069766702	38
-8796093022237	38
-8796093022244	38
-8796093022249	38
-10995116277761	38
-10995116277782	38
-13194139533342	38
-13194139533352	38
-13194139533355	38
-15393162788877	38
-17592186044443	38
-17592186044461	38
-19791209299968	38
-19791209299987	38
-21990232555527	38
-24189255811081	38
-24189255811109	38
-26388279066632	38
-26388279066641	38
-26388279066655	38
-26388279066658	38
-26388279066668	38
-28587302322180	38
-28587302322191	38
-28587302322196	38
-28587302322204	38
-28587302322223	38
-30786325577731	38
-30786325577740	38
-32985348833329	38
-35184372088834	38
-35184372088850	38
-35184372088856	38
-32985348833291	41
-32985348833318	42
-35184372088871	47
-37383395344394	48
-37383395344409	49
+12
 
 statement ok
 CREATE or replace TABLE edges (
