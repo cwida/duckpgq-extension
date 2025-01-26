@@ -33,350 +33,350 @@ select id, componentId from weakly_connected_component(pg, student, know);
 3	4
 4	4
 
-# statement ok
-# CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
-# INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'David'), (4, 'Eve');
-#
-# statement ok
-# CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
-# INSERT INTO know VALUES (0, 0, 10), (1, 1, 11), (2, 2, 12), (3, 3, 13), (4, 4, 14);
-# # Self loops
-#
-# statement ok
-# -CREATE OR REPLACE PROPERTY GRAPH pg_disconnected
-# VERTEX TABLES (
-#    Student
-# )
-# EDGE TABLES (
-#    know SOURCE KEY ( src ) REFERENCES Student ( id )
-#         DESTINATION KEY ( dst ) REFERENCES Student ( id )
-# );
-#
-# query II
-# select id, componentId from weakly_connected_component(pg_disconnected, student, know);
-# ----
-# 0	0
-# 1	1
-# 2	2
-# 3	3
-# 4	4
-#
-# statement ok
-# CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
-# INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'David'), (4, 'Eve'), (5, 'Frank');
-#
-# statement ok
-# CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
-# INSERT INTO know VALUES (0, 1, 10), (1, 2, 11), (2, 3, 12), (3, 0, 13);
-#
-# statement ok
-# -CREATE OR REPLACE PROPERTY GRAPH pg_isolated
-# VERTEX TABLES (
-#    Student
-# )
-# EDGE TABLES (
-#    know SOURCE KEY ( src ) REFERENCES Student ( id )
-#         DESTINATION KEY ( dst ) REFERENCES Student ( id )
-# );
-#
-# query II
-# select id, componentId from weakly_connected_component(pg_isolated, student, know);
-# ----
-# 0	2
-# 1	2
-# 2	2
-# 3	2
-# 4	4
-# 5	5
-#
-#
-# statement ok
-# CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
-# INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'David'), (4, 'Eve');
-#
-# statement ok
-# CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
-# INSERT INTO know VALUES (0, 1, 10), (1, 2, 11), (3, 4, 12);
-#
-# statement ok
-# -CREATE OR REPLACE PROPERTY GRAPH pg_two_components
-# VERTEX TABLES (
-#    Student
-# )
-# EDGE TABLES (
-#    know SOURCE KEY ( src ) REFERENCES Student ( id )
-#         DESTINATION KEY ( dst ) REFERENCES Student ( id )
-# );
-#
-# query II
-# select id, componentId from weakly_connected_component(pg_two_components, student, know);
-# ----
-# 0	2
-# 1	2
-# 2	2
-# 3	4
-# 4	4
-#
-# statement ok
-# CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
-# INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'David'), (4, 'Eve');
-#
-# statement ok
-# CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
-# INSERT INTO know VALUES (0, 1, 10), (1, 2, 11), (2, 3, 12), (3, 0, 13), (3, 4, 14);
-#
-# statement ok
-# -CREATE OR REPLACE PROPERTY GRAPH pg_cyclic
-# VERTEX TABLES (
-#    Student
-# )
-# EDGE TABLES (
-#    know SOURCE KEY ( src ) REFERENCES Student ( id )
-#         DESTINATION KEY ( dst ) REFERENCES Student ( id )
-# );
-#
-# query II
-# select id, componentId from weakly_connected_component(pg_cyclic, student, know);
-# ----
-# 0	4
-# 1	4
-# 2	4
-# 3	4
-# 4	4
-#
-# statement ok
-# CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
-# INSERT INTO Student VALUES (0, 'Node0'), (1, 'Node1'), (2, 'Node2'), (3, 'Node3'),
-#                           (4, 'Node4'), (5, 'Node5'), (6, 'Node6'), (7, 'Node7'),
-#                           (8, 'Node8'), (9, 'Node9');
-#
-# statement ok
-# CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
-# INSERT INTO know VALUES (0, 1, 10), (1, 2, 11), (2, 3, 12), (3, 4, 13),
-#                        (5, 6, 14), (6, 7, 15), (7, 8, 16), (8, 9, 17),
-#                        (0, 4, 18), (5, 9, 19);
-#
-# statement ok
-# -CREATE OR REPLACE PROPERTY GRAPH pg_larger_graph
-# VERTEX TABLES (
-#    Student
-# )
-# EDGE TABLES (
-#    know SOURCE KEY ( src ) REFERENCES Student ( id )
-#         DESTINATION KEY ( dst ) REFERENCES Student ( id )
-# );
-#
-# query II
-# select id, componentId from weakly_connected_component(pg_larger_graph, student, know);
-# ----
-# 0	3
-# 1	3
-# 2	3
-# 3	3
-# 4	3
-# 5	8
-# 6	8
-# 7	8
-# 8	8
-# 9	8
-#
-# statement error
-# select id, componentId from weakly_connected_component(non_existent_graph, student, know);
-# ----
-# Invalid Error: Property graph non_existent_graph not found
-#
-# statement error
-# -CREATE PROPERTY GRAPH pg_no_vertex_table
-# EDGE TABLES (
-#    know SOURCE KEY ( src ) REFERENCES Student ( id )
-#         DESTINATION KEY ( dst ) REFERENCES Student ( id )
-# );
-# ----
-# Parser Error: syntax error at or near "EDGE"
-#
-# statement error
-# select id, componentId from weakly_connected_component(pg_no_vertex_table, non_existent_vertex, know);
-# ----
-# Invalid Error: Property graph pg_no_vertex_table not found
-#
-# statement ok
-# CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
-# INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob');
-#
-# statement ok
-# -CREATE PROPERTY GRAPH pg_no_edge_table
-# VERTEX TABLES (
-#    Student
-# );
-#
-# statement error
-# select id, componentId from weakly_connected_component(pg_no_edge_table, student, non_existent_edge);
-# ----
-# Invalid Error: Label 'non_existent_edge' not found in the property graph for a edge table.
-#
-# statement ok
-# import database 'duckdb/data/SNB0.003';
-#
-# statement ok
-# -CREATE PROPERTY GRAPH snb
-#    VERTEX TABLES (
-#        Person
-#        )
-#    EDGE TABLES (
-#        Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
-#                                DESTINATION KEY (Person2Id) REFERENCES Person (id)
-#                                LABEL Knows);
-#
-# query II
-# from weakly_connected_component(snb, person, knows) order by componentId;
-# ----
-# 4398046511139	6
-# 8796093022234	8
-# 10995116277783	14
-# 10995116277808	15
-# 21990232555526	24
-# 28587302322209	37
-# 14	38
-# 16	38
-# 32	38
-# 2199023255557	38
-# 2199023255573	38
-# 2199023255594	38
-# 6597069766702	38
-# 8796093022237	38
-# 8796093022244	38
-# 8796093022249	38
-# 10995116277761	38
-# 10995116277782	38
-# 13194139533342	38
-# 13194139533352	38
-# 13194139533355	38
-# 15393162788877	38
-# 17592186044443	38
-# 17592186044461	38
-# 19791209299968	38
-# 19791209299987	38
-# 21990232555527	38
-# 24189255811081	38
-# 24189255811109	38
-# 26388279066632	38
-# 26388279066641	38
-# 26388279066655	38
-# 26388279066658	38
-# 26388279066668	38
-# 28587302322180	38
-# 28587302322191	38
-# 28587302322196	38
-# 28587302322204	38
-# 28587302322223	38
-# 30786325577731	38
-# 30786325577740	38
-# 32985348833329	38
-# 35184372088834	38
-# 35184372088850	38
-# 35184372088856	38
-# 32985348833291	41
-# 32985348833318	42
-# 35184372088871	47
-# 37383395344394	48
-# 37383395344409	49
-#
-# statement ok
-# CREATE or replace TABLE edges (
-#     source INTEGER,
-#     target INTEGER
-# );
-#
-# statement ok
-# INSERT INTO edges VALUES (1, 2), (2, 3), (4, 5), (2, 4), (10,11);
-#
-# statement ok
-# CREATE OR REPLACE TABLE nodes AS
-#    (SELECT DISTINCT id FROM
-#     (SELECT DISTINCT source AS id FROM edges
-#     UNION
-#     SELECT DISTINCT target AS id FROM edges
-#     ) );
-#
-# statement ok
-# CREATE TABLE thisisadifferenttable (id INTEGER);
-#
-# statement ok
-# INSERT INTO thisisadifferenttable VALUES (1);
-#
-# statement ok
-# -CREATE OR REPLACE PROPERTY GRAPH my_graph
-#   VERTEX TABLES (
-#    nodes LABEL nodes,
-#    thisisadifferenttable label thisisadifferenttablelabel
-#  )
-#   EDGE TABLES (
-#     edges SOURCE KEY (source) REFERENCES nodes (id)
-#           DESTINATION KEY (target) REFERENCES nodes (id)
-#           LABEL knows
-#   );
-#
-# statement error
-# SELECT * FROM weakly_connected_component(my_graph, nodes, edges);
-# ----
-# Invalid Error: Table 'edges' found in the property graph, but does not have the correct label. Did you mean the label 'knows' instead?
-#
-# statement error
-# SELECT * FROM weakly_connected_component(my_graph, nodes, kows);
-# ----
-# Invalid Error: Label 'kows' not found. Did you mean the edge label 'knows'?
-#
-# statement error
-# SELECT * FROM weakly_connected_component(my_graph, knows, knows);
-# ----
-# Invalid Error: Exact label 'knows' found, but it is not a vertex table.
-#
-# statement error
-# SELECT * FROM weakly_connected_component(my_graph, no, knows);
-# ----
-# Invalid Error: Label 'no' not found. Did you mean the vertex label 'nodes'?
-#
-# statement error
-# SELECT * FROM weakly_connected_component(my_graph, qaaaaaa, knows);
-# ----
-# Invalid Error: Label 'qaaaaaa' not found. Did you mean the vertex label 'nodes'?
-#
-# statement error
-# SELECT * FROM weakly_connected_component(my_graph, thisisadifferent, knows);
-# ----
-# Invalid Error: Label 'thisisadifferent' not found. Did you mean the vertex label 'thisisadifferenttablelabel'?
-#
-# statement ok
-# create or replace table nodes as select unnest(generate_series(0, 5_000)) as id;
-#
-# statement ok
-# CREATE OR REPLACE TABLE edges AS
-# WITH
-#     sampled_sources AS (
-#         SELECT id AS source
-#         FROM nodes
-#         WHERE RANDOM() < 0.8
-#     ),
-#     sampled_destinations AS (
-#         SELECT id AS target
-#         FROM nodes
-#         WHERE RANDOM() < 0.8
-#     )
-# SELECT source, target
-# FROM sampled_sources
-# CROSS JOIN sampled_destinations
-# WHERE source != target
-# using sample 10% (bernoulli);
-#
-# statement ok
-# -CREATE OR REPLACE PROPERTY GRAPH random_graph
-#   VERTEX TABLES (
-#    nodes
-#  )
-#   EDGE TABLES (
-#     edges SOURCE KEY (source) REFERENCES nodes (id)
-#           DESTINATION KEY (target) REFERENCES nodes (id)
-#   );
-#
-# statement ok
-# select id, componentId from weakly_connected_component(random_graph, nodes, edges);
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'David'), (4, 'Eve');
+
+statement ok
+CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
+INSERT INTO know VALUES (0, 0, 10), (1, 1, 11), (2, 2, 12), (3, 3, 13), (4, 4, 14);
+# Self loops
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH pg_disconnected
+VERTEX TABLES (
+   Student
+)
+EDGE TABLES (
+   know SOURCE KEY ( src ) REFERENCES Student ( id )
+        DESTINATION KEY ( dst ) REFERENCES Student ( id )
+);
+
+query II
+select id, componentId from weakly_connected_component(pg_disconnected, student, know);
+----
+0	0
+1	1
+2	2
+3	3
+4	4
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'David'), (4, 'Eve'), (5, 'Frank');
+
+statement ok
+CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
+INSERT INTO know VALUES (0, 1, 10), (1, 2, 11), (2, 3, 12), (3, 0, 13);
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH pg_isolated
+VERTEX TABLES (
+   Student
+)
+EDGE TABLES (
+   know SOURCE KEY ( src ) REFERENCES Student ( id )
+        DESTINATION KEY ( dst ) REFERENCES Student ( id )
+);
+
+query II
+select id, componentId from weakly_connected_component(pg_isolated, student, know);
+----
+0	2
+1	2
+2	2
+3	2
+4	4
+5	5
+
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'David'), (4, 'Eve');
+
+statement ok
+CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
+INSERT INTO know VALUES (0, 1, 10), (1, 2, 11), (3, 4, 12);
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH pg_two_components
+VERTEX TABLES (
+   Student
+)
+EDGE TABLES (
+   know SOURCE KEY ( src ) REFERENCES Student ( id )
+        DESTINATION KEY ( dst ) REFERENCES Student ( id )
+);
+
+query II
+select id, componentId from weakly_connected_component(pg_two_components, student, know);
+----
+0	2
+1	2
+2	2
+3	4
+4	4
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie'), (3, 'David'), (4, 'Eve');
+
+statement ok
+CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
+INSERT INTO know VALUES (0, 1, 10), (1, 2, 11), (2, 3, 12), (3, 0, 13), (3, 4, 14);
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH pg_cyclic
+VERTEX TABLES (
+   Student
+)
+EDGE TABLES (
+   know SOURCE KEY ( src ) REFERENCES Student ( id )
+        DESTINATION KEY ( dst ) REFERENCES Student ( id )
+);
+
+query II
+select id, componentId from weakly_connected_component(pg_cyclic, student, know);
+----
+0	4
+1	4
+2	4
+3	4
+4	4
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Node0'), (1, 'Node1'), (2, 'Node2'), (3, 'Node3'),
+                          (4, 'Node4'), (5, 'Node5'), (6, 'Node6'), (7, 'Node7'),
+                          (8, 'Node8'), (9, 'Node9');
+
+statement ok
+CREATE OR REPLACE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
+INSERT INTO know VALUES (0, 1, 10), (1, 2, 11), (2, 3, 12), (3, 4, 13),
+                       (5, 6, 14), (6, 7, 15), (7, 8, 16), (8, 9, 17),
+                       (0, 4, 18), (5, 9, 19);
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH pg_larger_graph
+VERTEX TABLES (
+   Student
+)
+EDGE TABLES (
+   know SOURCE KEY ( src ) REFERENCES Student ( id )
+        DESTINATION KEY ( dst ) REFERENCES Student ( id )
+);
+
+query II
+select id, componentId from weakly_connected_component(pg_larger_graph, student, know);
+----
+0	3
+1	3
+2	3
+3	3
+4	3
+5	8
+6	8
+7	8
+8	8
+9	8
+
+statement error
+select id, componentId from weakly_connected_component(non_existent_graph, student, know);
+----
+Invalid Error: Property graph non_existent_graph not found
+
+statement error
+-CREATE PROPERTY GRAPH pg_no_vertex_table
+EDGE TABLES (
+   know SOURCE KEY ( src ) REFERENCES Student ( id )
+        DESTINATION KEY ( dst ) REFERENCES Student ( id )
+);
+----
+Parser Error: syntax error at or near "EDGE"
+
+statement error
+select id, componentId from weakly_connected_component(pg_no_vertex_table, non_existent_vertex, know);
+----
+Invalid Error: Property graph pg_no_vertex_table not found
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Alice'), (1, 'Bob');
+
+statement ok
+-CREATE PROPERTY GRAPH pg_no_edge_table
+VERTEX TABLES (
+   Student
+);
+
+statement error
+select id, componentId from weakly_connected_component(pg_no_edge_table, student, non_existent_edge);
+----
+Invalid Error: Label 'non_existent_edge' not found in the property graph for a edge table.
+
+statement ok
+import database 'duckdb/data/SNB0.003';
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+   VERTEX TABLES (
+       Person
+       )
+   EDGE TABLES (
+       Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                               DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                               LABEL Knows);
+
+query II
+from weakly_connected_component(snb, person, knows) order by componentId;
+----
+4398046511139	6
+8796093022234	8
+10995116277783	14
+10995116277808	15
+21990232555526	24
+28587302322209	37
+14	38
+16	38
+32	38
+2199023255557	38
+2199023255573	38
+2199023255594	38
+6597069766702	38
+8796093022237	38
+8796093022244	38
+8796093022249	38
+10995116277761	38
+10995116277782	38
+13194139533342	38
+13194139533352	38
+13194139533355	38
+15393162788877	38
+17592186044443	38
+17592186044461	38
+19791209299968	38
+19791209299987	38
+21990232555527	38
+24189255811081	38
+24189255811109	38
+26388279066632	38
+26388279066641	38
+26388279066655	38
+26388279066658	38
+26388279066668	38
+28587302322180	38
+28587302322191	38
+28587302322196	38
+28587302322204	38
+28587302322223	38
+30786325577731	38
+30786325577740	38
+32985348833329	38
+35184372088834	38
+35184372088850	38
+35184372088856	38
+32985348833291	41
+32985348833318	42
+35184372088871	47
+37383395344394	48
+37383395344409	49
+
+statement ok
+CREATE or replace TABLE edges (
+    source INTEGER,
+    target INTEGER
+);
+
+statement ok
+INSERT INTO edges VALUES (1, 2), (2, 3), (4, 5), (2, 4), (10,11);
+
+statement ok
+CREATE OR REPLACE TABLE nodes AS
+   (SELECT DISTINCT id FROM
+    (SELECT DISTINCT source AS id FROM edges
+    UNION
+    SELECT DISTINCT target AS id FROM edges
+    ) );
+
+statement ok
+CREATE TABLE thisisadifferenttable (id INTEGER);
+
+statement ok
+INSERT INTO thisisadifferenttable VALUES (1);
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH my_graph
+  VERTEX TABLES (
+   nodes LABEL nodes,
+   thisisadifferenttable label thisisadifferenttablelabel
+ )
+  EDGE TABLES (
+    edges SOURCE KEY (source) REFERENCES nodes (id)
+          DESTINATION KEY (target) REFERENCES nodes (id)
+          LABEL knows
+  );
+
+statement error
+SELECT * FROM weakly_connected_component(my_graph, nodes, edges);
+----
+Invalid Error: Table 'edges' found in the property graph, but does not have the correct label. Did you mean the label 'knows' instead?
+
+statement error
+SELECT * FROM weakly_connected_component(my_graph, nodes, kows);
+----
+Invalid Error: Label 'kows' not found. Did you mean the edge label 'knows'?
+
+statement error
+SELECT * FROM weakly_connected_component(my_graph, knows, knows);
+----
+Invalid Error: Exact label 'knows' found, but it is not a vertex table.
+
+statement error
+SELECT * FROM weakly_connected_component(my_graph, no, knows);
+----
+Invalid Error: Label 'no' not found. Did you mean the vertex label 'nodes'?
+
+statement error
+SELECT * FROM weakly_connected_component(my_graph, qaaaaaa, knows);
+----
+Invalid Error: Label 'qaaaaaa' not found. Did you mean the vertex label 'nodes'?
+
+statement error
+SELECT * FROM weakly_connected_component(my_graph, thisisadifferent, knows);
+----
+Invalid Error: Label 'thisisadifferent' not found. Did you mean the vertex label 'thisisadifferenttablelabel'?
+
+statement ok
+create or replace table nodes as select unnest(generate_series(0, 5_000)) as id;
+
+statement ok
+CREATE OR REPLACE TABLE edges AS
+WITH
+    sampled_sources AS (
+        SELECT id AS source
+        FROM nodes
+        WHERE RANDOM() < 0.8
+    ),
+    sampled_destinations AS (
+        SELECT id AS target
+        FROM nodes
+        WHERE RANDOM() < 0.8
+    )
+SELECT source, target
+FROM sampled_sources
+CROSS JOIN sampled_destinations
+WHERE source != target
+using sample 10% (bernoulli);
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH random_graph
+  VERTEX TABLES (
+   nodes
+ )
+  EDGE TABLES (
+    edges SOURCE KEY (source) REFERENCES nodes (id)
+          DESTINATION KEY (target) REFERENCES nodes (id)
+  );
+
+statement ok
+select id, componentId from weakly_connected_component(random_graph, nodes, edges);
