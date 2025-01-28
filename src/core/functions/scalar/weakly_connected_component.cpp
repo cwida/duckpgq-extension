@@ -54,8 +54,6 @@ static void WeaklyConnectedComponentFunction(DataChunk &args,
         "Need to initialize CSR before doing weakly connected components.");
   }
 
-  Printer::Print(csr_entry->second->ToString());
-
   // Retrieve CSR data
   int64_t *v = (int64_t *)duckpgq_state->csr_list[info.csr_id]->v;
   vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
