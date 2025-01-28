@@ -35,3 +35,18 @@ EDGE TABLES (
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
             LABEL Knows
     )
+
+statement ok
+-CREATE PROPERTY GRAPH g VERTEX TABLES (Student PROPERTIES (id));
+
+# Query on unspecified columns in the graph throws error.
+statement error
+-SELECT * FROM GRAPH_TABLE (g MATCH (s:Student) COLUMNS (s.id, s.name));
+----
+Binder Error: Property s.name is never registered!
+
+# Columns to query is only allowed to be <column> or <table>.<column>, which we cannot prefix catalog or schema.
+statement error
+-SELECT * FROM GRAPH_TABLE (g MATCH (s:Student) COLUMNS (main.s.id));
+----
+Binder Error: Property main.s.id is never registered!
