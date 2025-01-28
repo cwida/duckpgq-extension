@@ -33,7 +33,6 @@ WeaklyConnectedComponentFunction::WeaklyConnectedComponentBindReplace(
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery));
   result->alias = "wcc";
-  Printer::Print(result->ToString());
   return std::move(result);
 }
 
