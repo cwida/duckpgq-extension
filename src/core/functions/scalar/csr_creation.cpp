@@ -32,7 +32,7 @@ static void CsrInitializeVertex(DuckPGQState &context, int32_t id,
     csr->v = new std::atomic<int64_t>[v_size + 2];
     csr->vsize = v_size + 2;
 
-    for (idx_t i = 0; i < (idx_t)v_size + 1; i++) {
+    for (idx_t i = 0; i < (idx_t)v_size + 2; i++) {
       csr->v[i] = 0;
     }
     csr->initialized_v = true;
