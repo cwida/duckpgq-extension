@@ -10,7 +10,7 @@ namespace core {
 Barrier::Barrier(std::size_t iCount)
     : mThreshold(iCount), mCount(iCount), mGeneration(0) {}
 
-void Barrier::Wait(std::function<void()> resetAction) {
+size_t Barrier::Wait(std::function<void()> resetAction) {
   std::unique_lock<std::mutex> lLock{mMutex};
   auto lGen = mGeneration.load();
 
@@ -19,7 +19,7 @@ void Barrier::Wait(std::function<void()> resetAction) {
 
   // std::cout << "Thread " << thread_id_str << " entering barrier: Current generation = "
   //           << lGen << ", mCount = " << mCount << ", mThreshold = " << mThreshold << std::endl;
-
+  size_t result = mGeneration;
   if (!--mCount) {
     // Last thread to reach the barrier
     mGeneration++;
@@ -42,10 +42,11 @@ void Barrier::Wait(std::function<void()> resetAction) {
     //           << " waiting: Current generation = " << lGen << ", mCount = " << mCount << "." << std::endl;
 
     mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
-
     // std::cout << "Thread " << thread_id_str << " resumed: Current generation = "
     //           << mGeneration << ", mCount = " << mCount << "." << std::endl;
   }
+  return result;
+
 }
 
 } // namespace core

@@ -20,7 +20,7 @@ class Barrier {
 public:
   explicit Barrier(std::size_t iCount);
 
-  void Wait(std::function<void()> resetAction = nullptr);
+  size_t Wait(std::function<void()> resetAction = nullptr);
 
 private:
   std::mutex mMutex;

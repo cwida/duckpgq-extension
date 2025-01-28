@@ -20,21 +20,23 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
                              ? LogicalType::BIGINT
                              : LogicalType::LIST(LogicalType::BIGINT);
   D_ASSERT(csr_ != nullptr);
+  v_cap = v_size + (num_threads << 9);
+
   // Only have to initialize the current batch and state once.
   total_pairs_processed = 0; // Initialize the total pairs processed
   current_batch_path_list_len = 0;
   started_searches = 0; // reset
   active = 0;
   iter = 1;
-  change_atomic = false;
+  change = false;
   pf_results = make_shared_ptr<DataChunk>();
   pf_results->Initialize(context, {bfs_type});
 
-  visit1 = vector<std::bitset<LANE_LIMIT>>(v_size);
-  visit2 = vector<std::bitset<LANE_LIMIT>>(v_size);
-  seen = vector<std::bitset<LANE_LIMIT>>(v_size);
+  visit1 = vector<std::bitset<LANE_LIMIT>>(v_cap);
+  visit2 = vector<std::bitset<LANE_LIMIT>>(v_cap);
+  seen = vector<std::bitset<LANE_LIMIT>>(v_cap);
   parents_ve = std::vector<std::array<ve, LANE_LIMIT>>(
-      v_size, std::array<ve, LANE_LIMIT>{});
+      v_cap, std::array<ve, LANE_LIMIT>{});
 
   // Initialize source and destination vectors
   src_data.ToUnifiedFormat(pairs->size(), vdata_src);
@@ -43,7 +45,7 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
   dst = FlatVector::GetData<int64_t>(dst_data);
 
   // Initialize the thread assignment vector
-  thread_assignment = std::vector<int64_t>(v_size, -1);
+  thread_assignment = std::vector<int64_t>(1 + (v_size >> 9), -1);
 
   // CreateTasks();
   barrier = make_uniq<Barrier>(num_threads);
@@ -52,7 +54,7 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
 void BFSState::Clear() {
   iter = 1;
   active = 0;
-  change_atomic = false;
+  change = false;
   // empty visit vectors
   for (auto i = 0; i < v_size; i++) {
     visit1[i] = 0;
@@ -73,6 +75,8 @@ void BFSState::Clear() {
 
 void BFSState::InitializeLanes() {
   auto &result_validity = FlatVector::Validity(pf_results->data[0]);
+  auto result_data = FlatVector::GetData<int64_t>(pf_results->data[0]);
+
   std::bitset<LANE_LIMIT> seen_mask;
   seen_mask.set();
 
@@ -81,8 +85,13 @@ void BFSState::InitializeLanes() {
     while (started_searches < pairs->size()) {
       auto search_num = started_searches++;
       int64_t src_pos = vdata_src.sel->get_index(search_num);
+      int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+
       if (!vdata_src.validity.RowIsValid(src_pos)) {
         result_validity.SetInvalid(search_num);
+      } else if (src[src_pos] == dst[dst_pos]) {
+        result_data[search_num] =
+            (uint64_t)0; // path of length 0 does not require a search
       } else {
         visit1[src[src_pos]][lane] = true;
         // bfs_state->seen[bfs_state->src[src_pos]][lane] = true;

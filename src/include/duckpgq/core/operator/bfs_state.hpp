@@ -32,7 +32,8 @@ public:
   LogicalType bfs_type;
   int64_t iter;
   int64_t v_size; // Number of vertices
-  atomic<bool> change_atomic;
+  idx_t v_cap;
+  bool change;
   idx_t started_searches; // Number of started searches in current batch
   int64_t *src;
   Vector &src_data;
@@ -40,6 +41,7 @@ public:
   int64_t *dst;
 
   std::vector<int64_t> thread_assignment;
+  int64_t magic_assignment;
 
   UnifiedVectorFormat vdata_src;
   UnifiedVectorFormat vdata_dst;

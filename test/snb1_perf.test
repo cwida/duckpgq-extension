@@ -22,6 +22,8 @@ create or replace table snb_pairs as (
    using sample reservoir(16384 rows) repeatable (300)
 );
 
+statement ok
+set threads=2;
 
 query III nosort lengthpairs
 with csr_cte as (
