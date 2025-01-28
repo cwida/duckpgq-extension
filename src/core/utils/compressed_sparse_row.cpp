@@ -13,28 +13,48 @@ namespace duckpgq {
 
 namespace core {
 string CSR::ToString() const {
-  string result;
-  if (initialized_v) {
-    result += "v: ";
-    for (size_t i = 0; i < vsize; i++) {
-      result += std::to_string(v[i].load()) + " ";
+    std::ostringstream result;
+
+    if (initialized_v) {
+        result << "v (Node Offsets):\n";
+        for (size_t i = 0; i < vsize; i++) {
+            result << "  Node " << i << ": Offset " << v[i].load() << "\n";
+        }
+    } else {
+        result << "v: V has not been initialized\n";
     }
-  }
-  result += "\n";
-  if (initialized_e) {
-    result += "e: ";
-    for (size_t i = 0; i < e.size(); i++) {
-      result += std::to_string(e[i]) + " ";
+
+    result << "\n";
+
+    if (initialized_e) {
+        result << "e (Edges):\n";
+        for (size_t i = 0; i < vsize - 2; i++) {
+            result << "  Node " << i << " connects to: ";
+            for (size_t j = v[i].load(); j < v[i + 1].load(); j++) {
+                result << e[j] << " ";
+            }
+            result << "\n";
+        }
+    } else {
+        result << "e: E has not been initialized\n";
     }
-  }
-  result += "\n";
-  if (initialized_w) {
-    result += "w: ";
-    for (size_t i = 0; i < w.size(); i++) {
-      result += std::to_string(w[i]) + " ";
+
+    result << "\n";
+
+    if (initialized_w) {
+        result << "w (Weights):\n";
+        for (size_t i = 0; i < vsize - 1; i++) {
+            result << "  Node " << i << " weights: ";
+            for (size_t j = v[i].load(); j < v[i + 1].load(); j++) {
+                result << w[j] << " ";
+            }
+            result << "\n";
+        }
+    } else {
+        result << "w: W has not been initialized\n";
     }
-  }
-  return result;
+
+    return result.str();
 }
 
 CSRFunctionData::CSRFunctionData(ClientContext &context, int32_t id,
