@@ -30,3 +30,56 @@ EDGE TABLES (
 
 statement ok
 -select * from (select id, id_1 from graph_table ( pg match (p:person)-[k:know]->(p2:person) columns (p.id, p2.id)));
+
+statement ok
+-SELECT id, friend_id
+FROM (
+    SELECT id, friend_id
+    FROM GRAPH_TABLE (
+        pg MATCH (p:Person)-[k:know]->(p2:Person) COLUMNS (p.id as id, p2.id as friend_id)
+    ) graph
+);
+
+statement ok
+-SELECT id, friend_id
+FROM (
+    SELECT id, friend_id
+    FROM GRAPH_TABLE (
+        pg MATCH (p:Person)-[k:know]->(p2:Person) COLUMNS (p.id as id, p2.id as friend_id)
+    ) graph
+    WHERE id > 1
+);
+
+statement ok
+-SELECT Student.name, friend_id
+FROM Student
+JOIN (
+    SELECT student_id, friend_id
+    FROM GRAPH_TABLE (
+        pg MATCH (p:Person)-[k:know]->(p2:Person) COLUMNS (p.id as student_id, p2.id as friend_id)
+    ) graph
+) AS subquery
+ON Student.id = subquery.student_id;
+
+statement ok
+-SELECT id, nested_friend_id
+FROM (
+    SELECT id, friend_id AS nested_friend_id
+    FROM (
+        SELECT id, friend_id
+        FROM GRAPH_TABLE (
+            pg MATCH (p:Person)-[k:know]->(p2:Person) COLUMNS (p.id as id, p2.id as friend_id)
+        )
+    )
+);
+
+statement ok
+-SELECT id, friend_count
+FROM (
+    SELECT id, COUNT(friend_id) AS friend_count
+    FROM GRAPH_TABLE (
+        pg MATCH (p:Person)-[k:know]->(p2:Person) COLUMNS (p.id as id, p2.id as friend_id)
+    )
+    GROUP BY id
+);
+
