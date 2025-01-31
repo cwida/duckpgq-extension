@@ -59,11 +59,23 @@ def replace(file_name: str, to_find: str, to_replace: str) -> None:
             new_filedata.append(line)
             continue
 
-        # Replace the target string, and add a placeholder for the next step
-        new_line = line.replace(to_find, to_replace)
-        if to_find in line:  # Only add placeholder if the replace actually happened
-            new_line = new_line.replace(to_replace, to_replace + "__REPLACEMENT_DONE__")
-        new_filedata.append(new_line)
+        modified_line = line.replace(
+            to_find,
+            to_replace,
+        )
+        modified_line = modified_line.replace(
+            to_find.capitalize(), to_camel_case(to_replace)
+        )
+        modified_line = modified_line.replace(
+            to_find.upper(),
+            to_replace.upper(),
+        )
+
+        # Add placeholder once after all replacements
+        if to_find in line or to_find.capitalize() in line or to_find.upper() in line:
+            modified_line += "__REPLACEMENT_DONE__"
+
+        new_filedata.append(modified_line)
 
     with open(file_name, "w", encoding="utf8") as file:
         file.writelines(new_filedata)
