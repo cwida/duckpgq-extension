@@ -9,6 +9,7 @@
 #include <duckdb/parser/query_node/select_node.hpp>
 #include <duckdb/parser/tableref/subqueryref.hpp>
 #include <duckpgq/core/functions/table.hpp>
+#include <duckdb/parser/tableref/table_function_ref.hpp>
 
 namespace duckpgq {
 
@@ -39,6 +40,7 @@ LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(
 
   auto result = make_uniq<SubqueryRef>(std::move(subquery));
   result->alias = "lcc";
+  // input.ref.alias = "lcc";
   return std::move(result);
 }
 //------------------------------------------------------------------------------

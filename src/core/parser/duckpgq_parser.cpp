@@ -12,10 +12,12 @@
 #include <duckpgq/core/functions/table/create_property_graph.hpp>
 #include <duckpgq_state.hpp>
 
-#include <duckpgq/core/functions/table/describe_property_graph.hpp>
-#include <duckpgq/core/functions/table/drop_property_graph.hpp>
 #include "duckdb/parser/query_node/cte_node.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
+#include <duckpgq/core/functions/table/describe_property_graph.hpp>
+#include <duckpgq/core/functions/table/drop_property_graph.hpp>
+
+#include <duckdb/parser/tableref/matchref.hpp>
 
 namespace duckpgq {
 
@@ -45,6 +47,7 @@ void duckpgq_find_match_function(TableRef *table_ref,
     if (function->function_name != "duckpgq_match") {
       return;
     }
+    table_function_ref->alias = function->children[0]->Cast<MatchExpression>().alias;
     int32_t match_index = duckpgq_state.match_index++;
     duckpgq_state.transform_expression[match_index] =
         std::move(function->children[0]);
