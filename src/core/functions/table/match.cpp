@@ -85,13 +85,11 @@ case_insensitive_set_t GetFullyQualifiedColFromPg(
 // Get all fully-qualified column names from the given property graph [pg] for
 // the given relation [alias], only vertex table is selected.
 //
-// Return a vector of column names, each of them represents a stack of names in
-// order of which they appear
-// (column_names[0].column_names[1].column_names[2]....).
-vector<vector<string>> GetRegisteredColFromPg(
+// Return column reference expressions which represent columns to select.
+vector<unique_ptr<ColumnRefExpression>> GetColRefExprFromPg(
     const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
     const std::string &alias) {
-  vector<vector<string>> registered_col_names;
+  vector<unique_ptr<ColumnRefExpression>> registered_col_names;
   auto iter = alias_map.find(alias);
   D_ASSERT(iter != alias_map.end());
   const auto &tbl = iter->second;
@@ -101,10 +99,11 @@ vector<vector<string>> GetRegisteredColFromPg(
   }
   registered_col_names.reserve(tbl->column_names.size());
   for (const auto &cur_col : tbl->column_names) {
-    registered_col_names.emplace_back(vector<string>{"", ""});
-    auto &new_col_names = registered_col_names.back();
+    auto new_col_names = vector<string>{"", ""};
     new_col_names[0] = alias;
     new_col_names[1] = cur_col;
+    registered_col_names.emplace_back(
+        make_uniq<ColumnRefExpression>(std::move(new_col_names)));
   }
   return registered_col_names;
 }
@@ -112,12 +111,10 @@ vector<vector<string>> GetRegisteredColFromPg(
 // Get all fully-qualified column names from the given property graph [pg] for
 // all vertex relations.
 //
-// Return a vector of column names, each of them represents a stack of names in
-// order of which they appear
-// (column_names[0].column_names[1].column_names[2]....).
-vector<vector<string>> GetRegisteredColFromPg(
+// Return column reference expressions which represent columns to select.
+vector<unique_ptr<ColumnRefExpression>> GetColRefExprFromPg(
     const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
-  vector<vector<string>> registered_col_names;
+  vector<unique_ptr<ColumnRefExpression>> registered_col_names;
   for (const auto &alias_and_table : alias_map) {
     const auto &alias = alias_and_table.first;
     const auto &tbl = alias_and_table.second;
@@ -128,10 +125,11 @@ vector<vector<string>> GetRegisteredColFromPg(
     registered_col_names.reserve(registered_col_names.size() +
                                  tbl->column_names.size());
     for (const auto &cur_col : tbl->column_names) {
-      registered_col_names.emplace_back(vector<string>{"", ""});
-      auto &new_col_names = registered_col_names.back();
+      auto new_col_names = vector<string>{"", ""};
       new_col_names[0] = alias;
       new_col_names[1] = cur_col;
+      registered_col_names.emplace_back(
+          make_uniq<ColumnRefExpression>(std::move(new_col_names)));
     }
   }
   return registered_col_names;
@@ -1206,23 +1204,22 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     // Handle StarExpression.
     auto *star_expression = dynamic_cast<StarExpression *>(expression.get());
     if (star_expression != nullptr) {
-      auto selected_col_names =
+      auto selected_col_exprs =
           star_expression->relation_name.empty()
-              ? GetRegisteredColFromPg(alias_to_vertex_and_edge_tables)
-              : GetRegisteredColFromPg(alias_to_vertex_and_edge_tables,
-                                       star_expression->relation_name);
+              ? GetColRefExprFromPg(alias_to_vertex_and_edge_tables)
+              : GetColRefExprFromPg(alias_to_vertex_and_edge_tables,
+                                    star_expression->relation_name);
 
       // Fallback to star expression if cannot figure out the columns to query.
-      if (selected_col_names.empty()) {
+      if (selected_col_exprs.empty()) {
         final_column_list.emplace_back(std::move(expression));
         continue;
       }
 
       final_column_list.reserve(final_column_list.size() +
-                                selected_col_names.size());
-      for (auto &col : selected_col_names) {
-        final_column_list.emplace_back(
-            make_uniq<ColumnRefExpression>(std::move(col)));
+                                selected_col_exprs.size());
+      for (auto &expr : selected_col_exprs) {
+        final_column_list.emplace_back(std::move(expr));
       }
       continue;
     }
