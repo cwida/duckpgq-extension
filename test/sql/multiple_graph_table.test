@@ -33,63 +33,63 @@ query II
 -select a.id, b.id FROM GRAPH_TABLE(pg MATCH (a:student)) a, GRAPH_TABLE(pg MATCH (b:student)) b;
 ----
 0	0
-0	1
-0	2
-0	3
-0	4
 1	0
-1	1
-1	2
-1	3
-1	4
 2	0
-2	1
-2	2
-2	3
-2	4
 3	0
-3	1
-3	2
-3	3
-3	4
 4	0
+0	1
+1	1
+2	1
+3	1
 4	1
+0	2
+1	2
+2	2
+3	2
 4	2
+0	3
+1	3
+2	3
+3	3
 4	3
+0	4
+1	4
+2	4
+3	4
 4	4
 
 query II
--select unnamed_graphtable.id, unnamed_graphtable2.id FROM GRAPH_TABLE(pg MATCH (a:student)), GRAPH_TABLE(pg MATCH (b:student));
+-select unnamed_subquery.id, unnamed_subquery2.id FROM GRAPH_TABLE(pg MATCH (a:student)), GRAPH_TABLE(pg MATCH (b:student));
 ----
 0	0
-0	1
-0	2
-0	3
-0	4
 1	0
-1	1
-1	2
-1	3
-1	4
 2	0
-2	1
-2	2
-2	3
-2	4
 3	0
-3	1
-3	2
-3	3
-3	4
 4	0
+0	1
+1	1
+2	1
+3	1
 4	1
+0	2
+1	2
+2	2
+3	2
 4	2
+0	3
+1	3
+2	3
+3	3
 4	3
+0	4
+1	4
+2	4
+3	4
 4	4
 
 
 query IIIIII
--select a.id, a.name, unnamed_graphtable.b_id, unnamed_graphtable.b_name, unnamed_graphtable.C_id, unnamed_graphtable.c_name
+-select a.id, a.name, unnamed_subquery.b_id, unnamed_subquery.b_name, unnamed_subquery.C_id, unnamed_subquery.c_name
 FROM GRAPH_TABLE(pg MATCH (a:student)) a,
     GRAPH_TABLE(pg
         MATCH (b:student)-[r:know]->(c:student)
@@ -138,14 +138,14 @@ FROM GRAPH_TABLE(pg MATCH (a:student)) a,
 4	David	4	David	3	Peter
 
 query II
--select unnamed_subquery.id, unnamed_graphtable.id
+-select unnamed_subquery.id, unnamed_subquery2.id
 FROM GRAPH_TABLE(pg MATCH (a:student)), (select 1 as id);
 ----
-1	0
+0	1
 1	1
-1	2
-1	3
-1	4
+2	1
+3	1
+4	1
 
 statement ok
 CREATE TABLE cities (

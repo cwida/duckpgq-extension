@@ -1149,13 +1149,6 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
 
   auto subquery = make_uniq<SelectStatement>();
   subquery->node = std::move(final_select_node);
-  if (ref->alias == "unnamed_graphtable") {
-    if (duckpgq_state->unnamed_graphtable_index > 1) {
-      ref->alias = "unnamed_graphtable" +
-                   std::to_string(duckpgq_state->unnamed_graphtable_index);
-    }
-    duckpgq_state->unnamed_graphtable_index++;
-  }
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
   return std::move(result);
 }
