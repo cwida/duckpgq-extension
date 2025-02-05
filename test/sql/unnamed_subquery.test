@@ -1,5 +1,5 @@
-# name: test/sql/unnamed_graphtable.test
-# description: Testing unnamed graphtable support
+# name: test/sql/unnamed_subquery.test
+# description: Testing unnamed subquery support
 # group: [duckpgq_sql]
 
 require duckpgq
@@ -77,7 +77,7 @@ Miguel	Ali
 
 # Be a bit more explicit
 query II
--SELECT unnamed_graphtable.p_firstname, unnamed_graphtable.p2_firstname
+-SELECT unnamed_subquery.p_firstname, unnamed_subquery.p2_firstname
 FROM GRAPH_TABLE (snb
     MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
     COLUMNS (p.firstname as p_firstname, p2.firstname as p2_firstname)

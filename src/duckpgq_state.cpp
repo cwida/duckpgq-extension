@@ -149,7 +149,6 @@ void DuckPGQState::QueryEnd() {
   parse_data.reset();
   transform_expression.clear();
   match_index = 0;              // Reset the index
-  unnamed_graphtable_index = 1; // Reset the index
   for (const auto &csr_id : csr_to_delete) {
     csr_list.erase(csr_id);
   }
