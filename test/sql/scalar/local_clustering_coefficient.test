@@ -4,49 +4,49 @@
 
 require duckpgq
 
-# # Test with a graph having no edges
-# statement ok
-# CREATE TABLE IsolatedStudent(id BIGINT, name VARCHAR);INSERT INTO IsolatedStudent VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie');
-#
-# statement ok
-# CREATE TABLE NoEdgeKnow(src BIGINT, dst BIGINT);
-#
-# statement ok
-# -CREATE PROPERTY GRAPH no_edge_pg
-# VERTEX TABLES (
-#     IsolatedStudent
-#     )
-# EDGE TABLES (
-#     NoEdgeKnow    SOURCE KEY ( src ) REFERENCES IsolatedStudent ( id )
-#             DESTINATION KEY ( dst ) REFERENCES IsolatedStudent ( id )
-#     );
-#
-# statement error
-# select id, local_clustering_coefficient from local_clustering_coefficient(no_edge_pg, isolatedstudent, noedgeknow);
-# ----
-# Constraint Error: CSR not found. Is the graph populated?
-#
-#
-# # Test with an empty graph
-# statement ok
-# CREATE TABLE EmptyStudent(id BIGINT, name VARCHAR);
-#
-# statement ok
-# CREATE TABLE EmptyKnow(src BIGINT, dst BIGINT);
-#
-# statement ok
-# -CREATE PROPERTY GRAPH empty_pg
-# VERTEX TABLES (
-#     EmptyStudent
-#     )
-# EDGE TABLES (
-#     EmptyKnow    SOURCE KEY ( src ) REFERENCES EmptyStudent ( id )
-#             DESTINATION KEY ( dst ) REFERENCES EmptyStudent ( id )
-#     );
-#
-# query II
-# select id, local_clustering_coefficient from local_clustering_coefficient(empty_pg, emptystudent, emptyknow);
-# ----
+# Test with a graph having no edges
+statement ok
+CREATE TABLE IsolatedStudent(id BIGINT, name VARCHAR);INSERT INTO IsolatedStudent VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie');
+
+statement ok
+CREATE TABLE NoEdgeKnow(src BIGINT, dst BIGINT);
+
+statement ok
+-CREATE PROPERTY GRAPH no_edge_pg
+VERTEX TABLES (
+    IsolatedStudent
+    )
+EDGE TABLES (
+    NoEdgeKnow    SOURCE KEY ( src ) REFERENCES IsolatedStudent ( id )
+            DESTINATION KEY ( dst ) REFERENCES IsolatedStudent ( id )
+    );
+
+statement error
+select id, local_clustering_coefficient from local_clustering_coefficient(no_edge_pg, isolatedstudent, noedgeknow);
+----
+Constraint Error: CSR not found. Is the graph populated?
+
+
+# Test with an empty graph
+statement ok
+CREATE TABLE EmptyStudent(id BIGINT, name VARCHAR);
+
+statement ok
+CREATE TABLE EmptyKnow(src BIGINT, dst BIGINT);
+
+statement ok
+-CREATE PROPERTY GRAPH empty_pg
+VERTEX TABLES (
+    EmptyStudent
+    )
+EDGE TABLES (
+    EmptyKnow    SOURCE KEY ( src ) REFERENCES EmptyStudent ( id )
+            DESTINATION KEY ( dst ) REFERENCES EmptyStudent ( id )
+    );
+
+query II
+select id, local_clustering_coefficient from local_clustering_coefficient(empty_pg, emptystudent, emptyknow);
+----
 
 statement ok
 CREATE TABLE Student(id BIGINT, name VARCHAR);INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
@@ -68,14 +68,14 @@ EDGE TABLES (
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
     );
 
-# query II
-# select id, local_clustering_coefficient from local_clustering_coefficient(pg, student, know);
-# ----
-# 0	1.0
-# 1	1.0
-# 2	1.0
-# 3	0.5
-# 4	0.0
+query II
+select id, local_clustering_coefficient from local_clustering_coefficient(pg, student, know);
+----
+0	1.0
+1	1.0
+2	1.0
+3	0.5
+4	0.0
 
 query III
 select a.id, a.name, local_clustering_coefficient from local_clustering_coefficient(pg, student, know), student a where a.id = lcc.id;

@@ -34,3 +34,46 @@ EDGE TABLES (
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
             LABEL Knows
     );
+
+
+# all properties
+statement ok
+-CREATE PROPERTY GRAPH pg_only_id
+VERTEX TABLES (
+    Student PROPERTIES (id) LABEL Person
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            LABEL Knows
+    );
+
+query II
+-FROM GRAPH_TABLE (pg_only_id MATCH (p:Person)-[k:Knows]->(p2:Person) COLUMNS (p.id as id, p2.id as friend_id));
+----
+0	1
+0	2
+0	3
+1	2
+1	3
+2	3
+
+statement error
+-FROM GRAPH_TABLE (pg_only_id MATCH (p:Person)-[k:Knows]->(p2:Person) COLUMNS (p.id as id, p2.name as friend_name));
+----
+Binder Error: Property p2.name is never registered!
+
+
+query III
+-FROM GRAPH_TABLE (pg_only_id MATCH p = any shortest (p:Person)-[k:Knows]->*(p2:Person) COLUMNS (p.id as id, p2.id as friend_id, vertices(p)));
+----
+0	0	[0]
+0	1	[0, 1]
+0	2	[0, 2]
+0	3	[0, 3]
+1	1	[1]
+1	2	[1, 2]
+1	3	[1, 3]
+2	2	[2]
+2	3	[2, 3]
+3	3	[3]
