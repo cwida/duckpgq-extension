@@ -1,5 +1,5 @@
-add_subdirectory(event)
-add_subdirectory(task)
+add_subdirectory(iterative_length)
+add_subdirectory(shortest_path)
 
 set(EXTENSION_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/bfs_state.cpp

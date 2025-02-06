@@ -9,22 +9,22 @@
 
 #pragma once
 
-#include "duckpgq/common.hpp"
 #include "duckdb/parallel/base_pipeline_event.hpp"
 #include "duckpgq/core/operator/physical_path_finding_operator.hpp"
+#include "shortest_path_state.hpp"
 
 namespace duckpgq {
 namespace core {
 
 class ShortestPathEvent : public BasePipelineEvent {
 public:
-  explicit ShortestPathEvent(shared_ptr<BFSState> gbfs_state_p, Pipeline &pipeline_p, const PhysicalPathFinding& op_p);
+  explicit ShortestPathEvent(shared_ptr<ShortestPathState> gbfs_state_p, Pipeline &pipeline_p, const PhysicalPathFinding& op_p);
 
   void Schedule() override;
   void FinishEvent() override;
 
 private:
-  shared_ptr<BFSState> gbfs_state;
+  shared_ptr<ShortestPathState> gbfs_state;
   const PhysicalPathFinding &op;
 };
 

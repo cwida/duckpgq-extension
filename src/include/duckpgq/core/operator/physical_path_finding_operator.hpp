@@ -88,8 +88,6 @@ public:
 
 };
 
-
-
 class PathFindingGlobalSinkState : public GlobalSinkState {
 public:
   PathFindingGlobalSinkState(ClientContext &context,

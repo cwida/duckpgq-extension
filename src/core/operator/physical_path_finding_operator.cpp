@@ -10,9 +10,10 @@
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
-#include <thread>
-#include <duckpgq_state.hpp>
+#include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
+#include <duckpgq_state.hpp>
+#include <thread>
 
 namespace duckpgq {
 
@@ -136,10 +137,17 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     auto current_chunk = make_shared_ptr<DataChunk>();
     current_chunk->Initialize(context, gstate.global_pairs->Types());
     gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
-    auto bfs_state = make_shared_ptr<BFSState>(current_chunk, gstate.csr, gstate.num_threads, mode, context);
-    bfs_state->ScheduleBFSBatch(pipeline, event, this);
-    gstate.bfs_states.push_back(std::move(bfs_state));
-  }
+    if (gstate.mode == "iterativelength") {
+      auto bfs_state = make_shared_ptr<IterativeLengthState>(current_chunk, gstate.csr, gstate.num_threads, context);
+      bfs_state->ScheduleBFSBatch(pipeline, event, this);
+      gstate.bfs_states.push_back(std::move(bfs_state));
+    } else if (gstate.mode == "shortestpath") {
+      // TODO(dtenwolde) implement also for shortest path
+      throw NotImplementedException("Shortest path operator has not been implemented yet.");
+    } else {
+      throw InvalidInputException("Unknown mode specified %s", gstate.mode);
+    }
+    }
 
   // Move to the next input child
   ++gstate.child;

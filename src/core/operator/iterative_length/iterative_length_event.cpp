@@ -1,11 +1,11 @@
-#include "duckpgq/core/operator/event/iterative_length_event.hpp"
+#include "duckpgq/core/operator/iterative_length/iterative_length_event.hpp"
 
 #include <duckpgq/core/operator/physical_path_finding_operator.hpp>
 
 namespace duckpgq {
 namespace core {
 
-IterativeLengthEvent::IterativeLengthEvent(shared_ptr<BFSState> gbfs_state_p,
+IterativeLengthEvent::IterativeLengthEvent(shared_ptr<IterativeLengthState> gbfs_state_p,
                           Pipeline &pipeline_p, const PhysicalPathFinding &op_p)
     : BasePipelineEvent(pipeline_p), gbfs_state(std::move(gbfs_state_p)), op(op_p) {
 

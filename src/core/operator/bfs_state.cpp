@@ -1,7 +1,7 @@
 #include "duckpgq/core/operator/bfs_state.hpp"
 
-#include <duckpgq/core/operator/event/shortest_path_event.hpp>
-#include <duckpgq/core/operator/event/iterative_length_event.hpp>
+#include <duckpgq/core/operator/shortest_path/shortest_path_event.hpp>
+#include <duckpgq/core/operator/iterative_length/iterative_length_event.hpp>
 
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
 #include <duckpgq/core/utils/duckpgq_barrier.hpp>
@@ -11,8 +11,8 @@ namespace duckpgq {
 
 namespace core {
 
-BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
-                   string mode_, ClientContext &context_)
+BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, idx_t num_threads_,
+           string mode_, ClientContext &context_)
     : pairs(std::move(pairs_)), csr(csr_), v_size(csr_->vsize - 2),
       context(context_), num_threads(num_threads_), mode(std::move(mode_)),
       src_data(pairs->data[0]), dst_data(pairs->data[1]){
@@ -33,8 +33,6 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
   visit1 = vector<std::bitset<LANE_LIMIT>>(v_size);
   visit2 = vector<std::bitset<LANE_LIMIT>>(v_size);
   seen = vector<std::bitset<LANE_LIMIT>>(v_size);
-  parents_ve = std::vector<std::array<ve, LANE_LIMIT>>(
-      v_size, std::array<ve, LANE_LIMIT>{});
 
   // Initialize source and destination vectors
   src_data.ToUnifiedFormat(pairs->size(), vdata_src);
@@ -49,27 +47,15 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR *csr_, idx_t num_threads_,
   barrier = make_uniq<Barrier>(num_threads);
 }
 
-void BFSState::Clear() {
-  iter = 1;
-  active = 0;
-  change_atomic = false;
-  // empty visit vectors
-  for (auto i = 0; i < v_size; i++) {
-    visit1[i] = 0;
-    visit2[i] = 0;
-    seen[i] = 0; // reset
-  }
-  if (mode == "shortestpath") {
-    for (auto i = 0; i < v_size; i++) {
-      for (auto j = 0; j < LANE_LIMIT; j++) {
-        parents_ve[i][j] = {-1, -1};
-      }
-    }
-  }
+BFSState::~BFSState() = default;  // Define the virtual destructor
 
-  lane_completed.reset();
+void BFSState::Clear() {
+  // Default empty implementation; override in derived classes
 }
 
+void BFSState::ScheduleBFSBatch(Pipeline &, Event &, const PhysicalPathFinding *) {
+  throw NotImplementedException("ScheduleBFSBatch must be implemented in a derived class.");
+}
 
 void BFSState::InitializeLanes() {
   auto &result_validity = FlatVector::Validity(pf_results->data[0]);
@@ -98,17 +84,7 @@ void BFSState::InitializeLanes() {
   }
 }
 
-void BFSState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) {
-  if (mode == "iterativelength") {
-    event.InsertEvent(
-    make_shared_ptr<IterativeLengthEvent>(shared_from_this(), pipeline, *op));
-  } else if (mode == "shortestpath") {
-    event.InsertEvent(
-      make_shared_ptr<ShortestPathEvent>(shared_from_this(), pipeline, *op));
-  } else {
-    throw NotImplementedException("Mode not supported");
-  }
-}
+
 
 } // namespace core
 
