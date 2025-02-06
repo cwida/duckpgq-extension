@@ -8,9 +8,10 @@ namespace core {
 IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p,
                                    ClientContext &context,
                                    shared_ptr<IterativeLengthState> &state, idx_t worker_id,
-                                   const PhysicalOperator &op_p)
+                                   const PhysicalOperator &op_p,
+                                   unique_ptr<LocalCSR> local_csr_)
 : ExecutorTask(context, std::move(event_p), op_p), context(context),
-  state(state), worker_id(worker_id) {
+  state(state), worker_id(worker_id), local_csr(std::move(local_csr_)) {
 }
 
 void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
@@ -77,29 +78,15 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
 
 void IterativeLengthTask::Explore(vector<std::bitset<LANE_LIMIT>> &visit,
                                   vector<std::bitset<LANE_LIMIT>> &next,
-                                  int64_t *v, vector<int64_t> &e,
-                                  std::vector<int64_t> &thread_assignment) {
-#pragma omp parallel
-  {
-    std::vector<std::bitset<LANE_LIMIT>> thread_local_next(state->v_size);
-
-#pragma omp for nowait
+                                  int64_t *v, vector<int64_t> &e) {
     for (auto i = 0; i < state->v_size; i++) {
       if (visit[i].any()) {
         for (auto offset = v[i]; offset < v[i + 1]; offset++) {
           auto n = e[offset];
-          thread_local_next[n] |= visit[i];
+          next[n] |= visit[i];
         }
       }
     }
-
-#pragma omp critical
-    {
-      for (auto i = 0; i < state->v_size; i++) {
-        next[i] |= thread_local_next[i];
-      }
-    }
-  }
 }
 
 void IterativeLengthTask::IterativeLength() {
@@ -107,8 +94,8 @@ void IterativeLengthTask::IterativeLength() {
     auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
     auto &barrier = state->barrier;
-    int64_t *v = (int64_t *)state->csr->v;
-    vector<int64_t> &e = state->csr->e;
+    int64_t *v = (int64_t *)local_csr->v;
+    vector<int64_t> &e = local_csr->e;
     auto &thread_assignment = state->thread_assignment;
 
     // Clear `next` array regardless of task availability
@@ -121,7 +108,7 @@ void IterativeLengthTask::IterativeLength() {
     // Synchronize after clearing
     barrier->Wait();
 
-    Explore(visit, next, v, e, thread_assignment);
+    Explore(visit, next, v, e);
 
     // Check and process tasks for the next phase
     state->change_atomic.store(false, std::memory_order_relaxed);

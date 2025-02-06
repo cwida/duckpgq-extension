@@ -12,7 +12,8 @@ class IterativeLengthTask : public ExecutorTask {
 public:
   IterativeLengthTask(shared_ptr<Event> event_p, ClientContext &context,
                            shared_ptr<IterativeLengthState> &state, idx_t worker_id,
-                           const PhysicalOperator &op_p);
+                           const PhysicalOperator &op_p,
+                           unique_ptr<LocalCSR> local_csr_);
 
   TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
 private:
@@ -25,13 +26,14 @@ private:
   void Explore(vector<std::bitset<LANE_LIMIT>> &visit,
     vector<std::bitset<LANE_LIMIT>> &next,
     int64_t *v,
-                                  vector<int64_t> &e,
-                                  std::vector<int64_t> &thread_assignment);
+    vector<int64_t> &e);
 
 private:
   ClientContext &context;
   shared_ptr<IterativeLengthState> &state;
   idx_t worker_id;
+
+  unique_ptr<LocalCSR> local_csr;
 };
 
 

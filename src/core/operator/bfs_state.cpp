@@ -57,6 +57,24 @@ void BFSState::ScheduleBFSBatch(Pipeline &, Event &, const PhysicalPathFinding *
   throw NotImplementedException("ScheduleBFSBatch must be implemented in a derived class.");
 }
 
+void BFSState::CreateThreadLocalCSRs() {
+  local_csrs.clear(); // Ensure we start fresh
+  local_csrs.reserve(num_threads); // Preallocate memory
+
+  size_t total_edges = csr->e.size();
+  size_t edges_per_thread = total_edges / num_threads;
+
+  for (int t = 0; t < num_threads; t++) {
+    size_t start_idx = t * edges_per_thread;
+    size_t end_idx = (t == num_threads - 1) ? total_edges : (t + 1) * edges_per_thread;
+
+    // Construct LocalCSR with only its assigned edges
+    local_csrs.emplace_back(make_uniq<LocalCSR>(*csr, start_idx, end_idx));
+
+    std::cout << local_csrs[t]->ToString();
+  }
+}
+
 void BFSState::InitializeLanes() {
   auto &result_validity = FlatVector::Validity(pf_results->data[0]);
   std::bitset<LANE_LIMIT> seen_mask;
