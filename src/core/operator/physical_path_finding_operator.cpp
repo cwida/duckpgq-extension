@@ -12,7 +12,6 @@
 #include "duckpgq/core/operator/bfs_state.hpp"
 #include <thread>
 #include <duckpgq_state.hpp>
-#include <duckpgq/core/operator/event/iterative_length_event.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
 namespace duckpgq {

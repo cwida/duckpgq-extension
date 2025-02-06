@@ -1,5 +1,4 @@
 set(EXTENSION_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/csr_edge_creation_event.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/iterative_length_event.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path_event.cpp
         ${EXTENSION_SOURCES}
