@@ -1,6 +1,8 @@
 #include "duckpgq/core/functions/function_data/local_clustering_coefficient_function_data.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
+
 namespace duckpgq {
 
 namespace core {
@@ -19,7 +21,8 @@ LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientBind(
 
   int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0])
                        .GetValue<int32_t>();
-
+  auto duckpgq_state = GetDuckPGQState(context);
+  duckpgq_state->csr_to_delete.insert(csr_id);
   return make_uniq<LocalClusteringCoefficientFunctionData>(context, csr_id);
 }
 
