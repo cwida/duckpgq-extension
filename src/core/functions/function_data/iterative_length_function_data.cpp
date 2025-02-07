@@ -2,6 +2,8 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckpgq/common.hpp"
 
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
+
 namespace duckpgq {
 
 namespace core {
@@ -24,6 +26,9 @@ unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
 
   int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0])
                        .GetValue<int32_t>();
+  auto duckpgq_state = GetDuckPGQState(context);
+  duckpgq_state->csr_to_delete.insert(csr_id);
+
 
   return make_uniq<IterativeLengthFunctionData>(context, csr_id);
 }
