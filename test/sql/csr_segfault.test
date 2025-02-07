@@ -1,0 +1,41 @@
+
+
+require duckpgq
+
+statement ok
+CREATE TABLE edges AS FROM read_csv("/Users/dljtw/git/duckpgq-experiments/data/snb-bi-sf1.e", sep = ' ', columns = { 'src': 'BIGINT', 'dst': 'BIGINT', 'cost': 'BIGINT'});
+
+statement ok
+CREATE TABLE nodes AS FROM read_csv("/Users/dljtw/git/duckpgq-experiments/data/snb-bi-sf1.v", columns = { 'id': 'BIGINT'});
+
+statement ok
+SELECT CREATE_CSR_EDGE(
+                0,
+                (SELECT count(a.id) FROM nodes a),
+                CAST (
+                    (SELECT sum(CREATE_CSR_VERTEX(
+                                0,
+                                (SELECT count(a.id) FROM nodes a),
+                                sub.dense_id,
+                                sub.cnt)
+                                )
+                    FROM (
+                        SELECT a.rowid as dense_id, count(k.src) as cnt
+                        FROM nodes a
+                        LEFT JOIN edges k ON k.src = a.id
+                        GROUP BY a.rowid) sub
+                    )
+                AS BIGINT),
+                (select count(*) from edges k JOIN nodes a on a.id = k.src JOIN nodes c on c.id = k.dst),
+                a.rowid,
+                c.rowid,
+                k.rowid) as temp
+        FROM edges k
+        JOIN nodes a on a.id = k.src
+        JOIN nodes c on c.id = k.dst;
+
+statement ok
+COPY (SELECT csrv FROM get_csr_v(0)) TO 'v.csv';
+
+# statement ok
+# COPY (SELECT csrv FROM get_csr_e(0)) TO 'e.csv';
