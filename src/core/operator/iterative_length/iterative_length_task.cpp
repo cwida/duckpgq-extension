@@ -17,13 +17,11 @@ IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p,
 void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
                                       vector<std::bitset<LANE_LIMIT>> &next) const {
   for (auto i = 0; i < state->v_size; i++) {
-    if (state->thread_assignment[i] == worker_id) {
+    if (next[i].any()) {
+      next[i] &= ~seen[i];
+      seen[i] |= next[i];
       if (next[i].any()) {
-        next[i] &= ~seen[i];
-        seen[i] |= next[i];
-        if (next[i].any()) {
-          state->change_atomic.store(true, std::memory_order_relaxed);
-        }
+        state->change_atomic.store(true, std::memory_order_relaxed);
       }
     }
   }
@@ -36,19 +34,8 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
     barrier->Wait();
 
     if (worker_id == 0) {
-      // Calculate the range size for each thread
-      size_t range_size = (state->v_size + state->num_threads - 1) / state->num_threads;
-
-      // Assign ranges to threads
-      for (auto thread_id = 0; thread_id < state->num_threads; thread_id++) {
-        size_t start = thread_id * range_size;
-        size_t end = std::min<size_t>((thread_id + 1) * range_size, static_cast<size_t>(state->v_size));
-        
-        for (auto n = start; n < end; n++) {
-          state->thread_assignment[n] = thread_id;
-        }
-      }
       state->InitializeLanes();
+      Printer::Print("Finished intialize lanes");
     }
     barrier->Wait();
     do {
@@ -56,7 +43,9 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
       barrier->Wait();
 
       if (worker_id == 0) {
+        Printer::Print("Starting reach detect");
         ReachDetect();
+        Printer::Print("Finished reach detect");
       }
       barrier->Wait();
     } while (state->change_atomic);
@@ -96,7 +85,6 @@ void IterativeLengthTask::IterativeLength() {
     auto &barrier = state->barrier;
     int64_t *v = (int64_t *)local_csr->v;
     vector<int64_t> &e = local_csr->e;
-    auto &thread_assignment = state->thread_assignment;
 
     // Clear `next` array regardless of task availability
     if (worker_id == 0) {
@@ -107,8 +95,10 @@ void IterativeLengthTask::IterativeLength() {
 
     // Synchronize after clearing
     barrier->Wait();
+    Printer::PrintF("%d starting explore\n", worker_id);
 
     Explore(visit, next, v, e);
+    Printer::PrintF("%d finished explore\n", worker_id);
 
     // Check and process tasks for the next phase
     state->change_atomic.store(false, std::memory_order_relaxed);
