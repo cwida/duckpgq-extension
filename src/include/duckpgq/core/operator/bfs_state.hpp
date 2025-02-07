@@ -56,6 +56,13 @@ public:
         << "  initialized_w: " << initialized_w << "\n";
 
     // Print a limited number of edges to keep output readable
+    oss << "  v: [";
+    for (size_t i = 0; i < std::min(vsize, size_t(10)); i++) {
+      oss << v[i] << (i < vsize - 1 ? ", " : "");
+    }
+    if (vsize > 10) oss << "...";
+    oss << "]\n";
+    // Print a limited number of edges to keep output readable
     oss << "  e: [";
     for (size_t i = 0; i < std::min(e.size(), size_t(10)); i++) {
       oss << e[i] << (i < e.size() - 1 ? ", " : "");
