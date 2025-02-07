@@ -58,21 +58,38 @@ void BFSState::ScheduleBFSBatch(Pipeline &, Event &, const PhysicalPathFinding *
 }
 
 void BFSState::CreateThreadLocalCSRs() {
-  local_csrs.clear(); // Ensure we start fresh
-  local_csrs.reserve(num_threads); // Preallocate memory
+  local_csrs.clear(); // Reset existing LocalCSRs
+  idx_t total_edges = csr->e.size();
 
-  size_t total_edges = csr->e.size();
-  size_t edges_per_thread = total_edges / num_threads;
+  std::cout << "Full CSR\n" << csr->ToString();
 
-  for (int t = 0; t < num_threads; t++) {
-    size_t start_idx = t * edges_per_thread;
-    size_t end_idx = (t == num_threads - 1) ? total_edges : (t + 1) * edges_per_thread;
+  // Determine the actual number of tasks needed
+  size_t num_tasks =
+      std::min(num_threads, total_edges); // Don't create more than needed
 
-    // Construct LocalCSR with only its assigned edges
-    local_csrs.emplace_back(make_uniq<LocalCSR>(*csr, start_idx, end_idx));
-
-    std::cout << local_csrs[t]->ToString();
+  if (num_tasks == 0) {
+    std::cout << "Warning: No edges to process, skipping LocalCSR creation.\n";
+    return;
   }
+
+  local_csrs.reserve(num_tasks); // Preallocate memory
+
+  size_t edges_per_task = total_edges / num_tasks; // Distribute evenly
+
+  size_t start_idx = 0;
+  for (size_t t = 0; t < num_tasks; t++) {
+    size_t end_idx = (t == num_tasks - 1) ? total_edges : start_idx + edges_per_task;
+
+    // Construct LocalCSR only when there are edges to process
+    if (start_idx < end_idx) {
+      local_csrs.emplace_back(make_uniq<LocalCSR>(*csr, start_idx, end_idx));
+      std::cout << "Created LocalCSR " << t << ":\n" << local_csrs.back()->ToString();
+    }
+
+    start_idx = end_idx;
+  }
+
+  std::cout << "Created " << local_csrs.size() << " LocalCSR instances for " << total_edges << " edges.\n";
 }
 
 void BFSState::InitializeLanes() {

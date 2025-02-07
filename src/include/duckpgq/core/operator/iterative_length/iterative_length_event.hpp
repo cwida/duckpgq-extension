@@ -1,7 +1,6 @@
 #pragma once
 
 #include <duckdb/parallel/base_pipeline_event.hpp>
-#include <duckpgq/core/operator/physical_path_finding_operator.hpp>
 #include <duckpgq/core/operator/iterative_length/iterative_length_task.hpp>
 
 namespace duckpgq {

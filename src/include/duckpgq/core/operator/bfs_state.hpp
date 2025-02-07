@@ -28,6 +28,9 @@ public:
       w_double.assign(global_csr.w_double.begin() + start_idx, global_csr.w_double.begin() + end_idx);
     }
 
+    // Compute local_v array for this subset of edges
+    ComputeLocalV(global_csr, start_idx, end_idx);
+
     initialized_v = global_csr.initialized_v;
     initialized_e = true;
     initialized_w = global_csr.initialized_w;
@@ -40,12 +43,39 @@ public:
   vector<int64_t> edge_ids; // Corresponding edge IDs
   vector<int64_t> w;        // Weights (if used)
   vector<double> w_double;  // Alternative weight representation
+  vector<int64_t> local_v;  // New: Local offset array for this CSR subset
 
   bool initialized_v = false;
   bool initialized_e = false;
   bool initialized_w = false;
 
   size_t vsize{};
+
+  void ComputeLocalV(const CSR &global_csr, size_t start_idx, size_t end_idx) {
+    local_v.resize(global_csr.vsize + 1, 0);  // Initialize offsets to 0
+
+    size_t local_edge_index = 0;  // Tracks position in local `e`
+    for (size_t i = 0; i < global_csr.vsize; i++) {
+      size_t global_edge_start = global_csr.v[i];
+      size_t global_edge_end = (i + 1 < global_csr.vsize)
+          ? static_cast<size_t>(global_csr.v[i + 1])  // Explicit cast
+          : global_csr.e.size();
+      // Count edges that fall within this thread's assigned range
+      size_t edge_count = 0;
+      for (size_t j = global_edge_start; j < global_edge_end; j++) {
+        if (j >= start_idx && j < end_idx) {
+          edge_count++;
+        }
+      }
+
+      // Assign correct offset for this vertex
+      local_v[i] = local_edge_index;
+      local_edge_index += edge_count; // Move forward by the number of edges in this LocalCSR
+    }
+
+    // Ensure last entry matches total number of edges in this LocalCSR
+    local_v[global_csr.vsize] = local_edge_index;
+  }
 
   std::string ToString() const {
     std::ostringstream oss;
@@ -58,7 +88,7 @@ public:
     // Print a limited number of edges to keep output readable
     oss << "  v: [";
     for (size_t i = 0; i < std::min(vsize, size_t(10)); i++) {
-      oss << v[i] << (i < vsize - 1 ? ", " : "");
+      oss << local_v[i] << (i < vsize - 1 ? ", " : "");
     }
     if (vsize > 10) oss << "...";
     oss << "]\n";

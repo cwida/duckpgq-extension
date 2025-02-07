@@ -8,6 +8,9 @@ set experimental_path_finding_operator=true;
 statement ok
 select setseed(0.42);
 
+statement ok
+set threads = 2;
+
 query I
 SELECT current_setting('experimental_path_finding_operator');
 ----
