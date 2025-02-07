@@ -152,6 +152,7 @@ void DuckPGQState::QueryEnd() {
   for (const auto &csr_id : csr_to_delete) {
     csr_list.erase(csr_id);
   }
+  csr_to_delete.clear();
 }
 
 CreatePropertyGraphInfo *DuckPGQState::GetPropertyGraph(const string &pg_name) {
