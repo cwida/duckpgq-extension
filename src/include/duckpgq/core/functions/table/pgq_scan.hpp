@@ -188,6 +188,7 @@ public:
     auto result = make_uniq<CSRScanState>();
     result->csr_v_offset = 0;
     result->csr_e_offset = 0;
+    result->csr_w_offset = 0;
     return std::move(result);
   }
 
@@ -195,6 +196,7 @@ public:
   bool finished = false;
   idx_t csr_v_offset;
   idx_t csr_e_offset;
+  idx_t csr_w_offset;
 };
 
 } // namespace core
