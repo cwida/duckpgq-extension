@@ -16,21 +16,31 @@ namespace core {
 
 static void ScanCSREFunction(ClientContext &context, TableFunctionInput &data_p,
                              DataChunk &output) {
-  bool &gstate = ((CSRScanState &)*data_p.global_state).finished;
+  auto state = &data_p.global_state->Cast<CSRScanState>();
 
-  if (gstate) {
+  if (state->finished) {
     output.SetCardinality(0);
     return;
   }
 
-  gstate = true;
-
   auto duckpgq_state = GetDuckPGQState(context);
   auto csr_id = data_p.bind_data->Cast<CSRScanEData>().csr_id;
   CSR *csr = duckpgq_state->GetCSR(csr_id);
-  output.SetCardinality(csr->e.size());
+
+  idx_t vector_size = state->csr_e_offset + DEFAULT_STANDARD_VECTOR_SIZE <= csr->e.size() ?
+    DEFAULT_STANDARD_VECTOR_SIZE : csr->e.size() - state->csr_e_offset;
+
+  output.SetCardinality(vector_size);
   output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
-  FlatVector::SetData(output.data[0], (data_ptr_t)csr->e.data());
+  for (idx_t idx_i = 0; idx_i < vector_size; idx_i++) {
+    output.data[0].SetValue(idx_i, Value(csr->e[state->csr_e_offset + idx_i]));
+  }
+
+  if (state->csr_e_offset + vector_size >= csr->e.size()) {
+    state->finished = true;
+  } else {
+    state->csr_e_offset += vector_size;
+  }
 }
 
 static void ScanCSRPtrFunction(ClientContext &context,
@@ -77,47 +87,75 @@ static void ScanCSRPtrFunction(ClientContext &context,
 
 static void ScanCSRVFunction(ClientContext &context, TableFunctionInput &data_p,
                              DataChunk &output) {
-  bool &gstate = ((CSRScanState &)*data_p.global_state).finished;
+  auto state = &data_p.global_state->Cast<CSRScanState>();
 
-  if (gstate) {
+  if (state->finished) {
     output.SetCardinality(0);
     return;
   }
-
-  gstate = true;
 
   auto duckpgq_state = GetDuckPGQState(context);
   auto csr_id = data_p.bind_data->Cast<CSRScanVData>().csr_id;
   CSR *csr = duckpgq_state->GetCSR(csr_id);
-  output.SetCardinality(csr->vsize);
+
+  idx_t vector_size = state->csr_v_offset + DEFAULT_STANDARD_VECTOR_SIZE <= csr->vsize ?
+    DEFAULT_STANDARD_VECTOR_SIZE : csr->vsize - state->csr_v_offset;
+
+  output.SetCardinality(vector_size);
   output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
-  FlatVector::SetData(output.data[0],
-                      (data_ptr_t)(reinterpret_cast<int64_t *>(csr->v)));
+  for (idx_t idx_i = 0; idx_i < vector_size; idx_i++) {
+    output.data[0].SetValue(idx_i, Value(csr->v[state->csr_v_offset + idx_i]));
+  }
+
+  if (state->csr_v_offset + vector_size >= csr->vsize) {
+    state->finished = true;
+  } else {
+    state->csr_v_offset += vector_size;
+  }
 }
 
 static void ScanCSRWFunction(ClientContext &context, TableFunctionInput &data_p,
                              DataChunk &output) {
-  bool &gstate = ((CSRScanState &)*data_p.global_state).finished;
+  auto state = &data_p.global_state->Cast<CSRScanState>();
 
-  if (gstate) {
+  if (state->finished) {
     output.SetCardinality(0);
     return;
   }
-
-  gstate = true;
 
   auto duckpgq_state = GetDuckPGQState(context);
   auto csr_scanw_data = data_p.bind_data->Cast<CSRScanWData>();
   auto csr_id = csr_scanw_data.csr_id;
   CSR *csr = duckpgq_state->GetCSR(csr_id);
+
+  size_t w_size = 0;
+  if (csr_scanw_data.is_double) {
+    w_size = csr->w_double.size();
+  } else {
+    w_size = csr->w.size();
+  }
+
+  idx_t vector_size = state->csr_w_offset + DEFAULT_STANDARD_VECTOR_SIZE <= w_size ?
+    DEFAULT_STANDARD_VECTOR_SIZE : w_size - state->csr_w_offset;
+
+  output.SetCardinality(vector_size);
   output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
   if (csr_scanw_data.is_double) {
-    output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
-    FlatVector::SetData(output.data[0], (data_ptr_t)csr->w_double.data());
+    for (idx_t idx_i = 0; idx_i < vector_size; idx_i++) {
+      output.data[0].SetValue(idx_i, Value(csr->w_double[state->csr_w_offset + idx_i]));
+    }
   } else {
-    output.SetCardinality(csr->w.size());
-    FlatVector::SetData(output.data[0], (data_ptr_t)csr->w.data());
+    for (idx_t idx_i = 0; idx_i < vector_size; idx_i++) {
+      output.data[0].SetValue(idx_i, Value(csr->w[state->csr_w_offset + idx_i]));
+    }
   }
+
+  if (state->csr_w_offset + vector_size >= w_size) {
+    state->finished = true;
+  } else {
+    state->csr_w_offset += vector_size;
+  }
+
 }
 
 static void ScanPGVTableFunction(ClientContext &context,
