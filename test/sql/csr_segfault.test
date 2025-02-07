@@ -37,5 +37,5 @@ SELECT CREATE_CSR_EDGE(
 statement ok
 COPY (SELECT csrv FROM get_csr_v(0)) TO 'v.csv';
 
-# statement ok
-# COPY (SELECT csrv FROM get_csr_e(0)) TO 'e.csv';
+statement ok
+COPY (SELECT csre FROM get_csr_e(0)) TO 'e.csv';
