@@ -15,67 +15,73 @@ class PhysicalPathFinding; // Forward declaration
 
 class LocalCSR {
 public:
-  explicit LocalCSR(const CSR &global_csr, size_t start_idx, size_t end_idx) {
-    // Share the vertex array (no copying needed)
-    v = global_csr.v;
+  explicit LocalCSR(const CSR &global_csr, size_t start_v, size_t end_v) {
+    // Share the vertex array (global_v) but store a subset
+    global_v = global_csr.v; // Still referencing the global `v` array
 
-    // Copy only the relevant edges for this thread
-    e.assign(global_csr.e.begin() + start_idx, global_csr.e.begin() + end_idx);
-    edge_ids.assign(global_csr.edge_ids.begin() + start_idx, global_csr.edge_ids.begin() + end_idx);
+    // Store offsets of `e` array for this LocalCSR
+    v_offset = start_v; // Start offset in the global `v` array
+    v_end = end_v;
+
+    size_t start_e = global_csr.v[start_v];
+    size_t end_e = (end_v < global_csr.vsize)
+        ? static_cast<size_t>(global_csr.v[end_v].load())  // Explicit cast + atomic load
+        : global_csr.e.size();
+
+    e.assign(global_csr.e.begin() + start_e, global_csr.e.begin() + end_e);
+    edge_ids.assign(global_csr.edge_ids.begin() + start_e, global_csr.edge_ids.begin() + end_e);
 
     if (global_csr.initialized_w) {
-      w.assign(global_csr.w.begin() + start_idx, global_csr.w.begin() + end_idx);
-      w_double.assign(global_csr.w_double.begin() + start_idx, global_csr.w_double.begin() + end_idx);
+      w.assign(global_csr.w.begin() + start_e, global_csr.w.begin() + end_e);
+      w_double.assign(global_csr.w_double.begin() + start_e, global_csr.w_double.begin() + end_e);
     }
-
-    // Compute local_v array for this subset of edges
-    ComputeLocalV(global_csr, start_idx, end_idx);
 
     initialized_v = global_csr.initialized_v;
     initialized_e = true;
     initialized_w = global_csr.initialized_w;
-    vsize = global_csr.vsize;
+    vsize = end_v - start_v;
   }
 
-  atomic<int64_t> *v{};  // Pointer to global vertex array (shared)
+  atomic<int64_t> *global_v{};  // Pointer to global vertex array
+  size_t v_offset;              // Start of the local CSR's vertex region
+  size_t v_end;              // Start of the local CSR's vertex region
 
   vector<int64_t> e;       // Thread-specific edges
   vector<int64_t> edge_ids; // Corresponding edge IDs
   vector<int64_t> w;        // Weights (if used)
   vector<double> w_double;  // Alternative weight representation
-  vector<int64_t> local_v;  // New: Local offset array for this CSR subset
 
   bool initialized_v = false;
   bool initialized_e = false;
   bool initialized_w = false;
-
   size_t vsize{};
 
-  void ComputeLocalV(const CSR &global_csr, size_t start_idx, size_t end_idx) {
-    local_v.resize(global_csr.vsize + 1, 0);  // Initialize offsets to 0
 
-    size_t local_edge_index = 0;  // Tracks position in local `e`
-    for (size_t i = 0; i < global_csr.vsize; i++) {
-      size_t global_edge_start = global_csr.v[i];
-      size_t global_edge_end = (i + 1 < global_csr.vsize)
-          ? static_cast<size_t>(global_csr.v[i + 1])  // Explicit cast
-          : global_csr.e.size();
-      // Count edges that fall within this thread's assigned range
-      size_t edge_count = 0;
-      for (size_t j = global_edge_start; j < global_edge_end; j++) {
-        if (j >= start_idx && j < end_idx) {
-          edge_count++;
-        }
-      }
-
-      // Assign correct offset for this vertex
-      local_v[i] = local_edge_index;
-      local_edge_index += edge_count; // Move forward by the number of edges in this LocalCSR
-    }
-
-    // Ensure last entry matches total number of edges in this LocalCSR
-    local_v[global_csr.vsize] = local_edge_index;
-  }
+  // void ComputeLocalV(const CSR &global_csr, size_t start_idx, size_t end_idx) {
+  //   local_v.resize(global_csr.vsize + 1, 0);  // Initialize offsets to 0
+  //
+  //   size_t local_edge_index = 0;  // Tracks position in local `e`
+  //   for (size_t i = 0; i < global_csr.vsize; i++) {
+  //     size_t global_edge_start = global_csr.v[i];
+  //     size_t global_edge_end = (i + 1 < global_csr.vsize)
+  //         ? static_cast<size_t>(global_csr.v[i + 1])  // Explicit cast
+  //         : global_csr.e.size();
+  //     // Count edges that fall within this thread's assigned range
+  //     size_t edge_count = 0;
+  //     for (size_t j = global_edge_start; j < global_edge_end; j++) {
+  //       if (j >= start_idx && j < end_idx) {
+  //         edge_count++;
+  //       }
+  //     }
+  //
+  //     // Assign correct offset for this vertex
+  //     local_v[i] = local_edge_index;
+  //     local_edge_index += edge_count; // Move forward by the number of edges in this LocalCSR
+  //   }
+  //
+  //   // Ensure last entry matches total number of edges in this LocalCSR
+  //   local_v[global_csr.vsize] = local_edge_index;
+  // }
 
   std::string ToString() const {
     std::ostringstream oss;
@@ -87,8 +93,8 @@ public:
 
     // Print a limited number of edges to keep output readable
     oss << "  v: [";
-    for (size_t i = 0; i < std::min(vsize, size_t(10)); i++) {
-      oss << local_v[i] << (i < vsize - 1 ? ", " : "");
+    for (size_t i = v_offset; i < std::min(v_offset + vsize, v_offset + size_t(10)); i++) {
+      oss << global_v[i] << (i < v_offset + vsize - 1 ? ", " : "");
     }
     if (vsize > 10) oss << "...";
     oss << "]\n";

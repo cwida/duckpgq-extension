@@ -15,8 +15,11 @@ IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p,
 }
 
 void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
-                                      vector<std::bitset<LANE_LIMIT>> &next) const {
-  for (auto i = 0; i < state->v_size; i++) {
+                                      vector<std::bitset<LANE_LIMIT>> &next,
+                                      int64_t *v, vector<int64_t> &e) const {
+  Printer::PrintF("CheckChange: %d %d %d\n", worker_id, local_csr->v_offset,
+                  local_csr->vsize);
+  for (auto i = local_csr->v_offset; i < local_csr->v_offset + local_csr->vsize; i++) {
     if (next[i].any()) {
       next[i] &= ~seen[i];
       seen[i] |= next[i];
@@ -68,14 +71,21 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
 void IterativeLengthTask::Explore(vector<std::bitset<LANE_LIMIT>> &visit,
                                   vector<std::bitset<LANE_LIMIT>> &next,
                                   int64_t *v, vector<int64_t> &e) {
-    for (auto i = 0; i < state->v_size; i++) {
-      if (visit[i].any()) {
-        for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-          auto n = e[offset];
-          next[n] |= visit[i];
-        }
+  Printer::PrintF("Explore: %d %d %d\n", worker_id, local_csr->v_offset,
+                  local_csr->vsize);
+  Printer::Print(local_csr->ToString());
+
+  for (auto i = local_csr->v_offset; i < local_csr->v_offset + (local_csr->vsize - 1); i++) {
+    Printer::PrintF("Visit any: %d: %d %d\n", worker_id, visit[i].any(), i);
+    if (visit[i].any()) {  // If the vertex has been visited
+      Printer::PrintF("Offsets: %d: %d %d\n", worker_id, v[i], v[i + 1]);
+      for (auto offset = v[i] - v[local_csr->v_offset]; offset < v[i + 1] - v[local_csr->v_offset]; offset++) {
+        auto n = e[offset];  // Use the local edge index directly
+        Printer::PrintF("N: %d %d %d %d\n", worker_id, i, n, offset);
+        next[n] |= visit[i]; // Propagate the visit bitset
       }
     }
+  }
 }
 
 void IterativeLengthTask::IterativeLength() {
@@ -83,7 +93,7 @@ void IterativeLengthTask::IterativeLength() {
     auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
     auto &barrier = state->barrier;
-    int64_t *v = (int64_t *)local_csr->v;
+    int64_t *v = (int64_t *)local_csr->global_v;
     vector<int64_t> &e = local_csr->e;
 
     // Clear `next` array regardless of task availability
@@ -103,47 +113,48 @@ void IterativeLengthTask::IterativeLength() {
     // Check and process tasks for the next phase
     state->change_atomic.store(false, std::memory_order_relaxed);
     barrier->Wait();
-    CheckChange(seen, next);
+    CheckChange(seen, next, v, e);
 
     barrier->Wait();
 }
 
-  void IterativeLengthTask::ReachDetect() const {
-    auto result_data = FlatVector::GetData<int64_t>(state->pf_results->data[0]);
+void IterativeLengthTask::ReachDetect() const {
+  auto result_data = FlatVector::GetData<int64_t>(state->pf_results->data[0]);
 
-    // detect lanes that finished
-    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-      int64_t search_num = state->lane_to_num[lane];
-      if (search_num >= 0) { // active lane
-        int64_t dst_pos = state->vdata_dst.sel->get_index(search_num);
-        if (state->seen[state->dst[dst_pos]][lane]) {
-          result_data[search_num] =
-              state->iter; /* found at iter => iter = path length */
-          state->lane_to_num[lane] = -1; // mark inactive
-          state->active--;
-        }
-      }
-    }
-    if (state->active == 0) {
-      state->change_atomic.store(false, std::memory_order_relaxed);
-    }
-    // into the next iteration
-    state->iter++;
-  }
-
-  void IterativeLengthTask::UnReachableSet() const {
-    auto result_data = FlatVector::GetData<int64_t>(state->pf_results->data[0]);
-    auto &result_validity = FlatVector::Validity(state->pf_results->data[0]);
-
-    for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-      int64_t search_num = state->lane_to_num[lane];
-      if (search_num >= 0) { // active lane
-        result_validity.SetInvalid(search_num);
-        result_data[search_num] = (int64_t)-1; /* no path */
-        state->lane_to_num[lane] = -1;     // mark inactive
+  // detect lanes that finished
+  for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+    int64_t search_num = state->lane_to_num[lane];
+    if (search_num >= 0) { // active lane
+      int64_t dst_pos = state->vdata_dst.sel->get_index(search_num);
+      if (state->seen[state->dst[dst_pos]][lane]) {
+        result_data[search_num] =
+            state->iter; /* found at iter => iter = path length */
+        state->lane_to_num[lane] = -1; // mark inactive
+        state->active--;
       }
     }
   }
+  if (state->active == 0) {
+    state->change_atomic.store(false, std::memory_order_relaxed);
+  }
+  // into the next iteration
+  state->iter++;
+  Printer::PrintF("Starting next iteration: %d\n", state->iter);
+}
+
+void IterativeLengthTask::UnReachableSet() const {
+  auto result_data = FlatVector::GetData<int64_t>(state->pf_results->data[0]);
+  auto &result_validity = FlatVector::Validity(state->pf_results->data[0]);
+
+  for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+    int64_t search_num = state->lane_to_num[lane];
+    if (search_num >= 0) { // active lane
+      result_validity.SetInvalid(search_num);
+      result_data[search_num] = (int64_t)-1; /* no path */
+      state->lane_to_num[lane] = -1;     // mark inactive
+    }
+  }
+}
 
 } // namespace core
 } // namespace duckpgq

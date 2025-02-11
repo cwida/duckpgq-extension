@@ -59,37 +59,36 @@ void BFSState::ScheduleBFSBatch(Pipeline &, Event &, const PhysicalPathFinding *
 
 void BFSState::CreateThreadLocalCSRs() {
   local_csrs.clear(); // Reset existing LocalCSRs
-  idx_t total_edges = csr->e.size();
+  idx_t total_vertices = csr->vsize; // Use the vertex count
 
   std::cout << "Full CSR\n" << csr->ToString();
 
   // Determine the actual number of tasks needed
-  size_t num_tasks =
-      std::min(num_threads, total_edges); // Don't create more than needed
+  size_t num_tasks = std::min(num_threads, total_vertices); // Don't create more than needed
 
   if (num_tasks == 0) {
-    std::cout << "Warning: No edges to process, skipping LocalCSR creation.\n";
+    std::cout << "Warning: No vertices to process, skipping LocalCSR creation.\n";
     return;
   }
 
   local_csrs.reserve(num_tasks); // Preallocate memory
 
-  size_t edges_per_task = total_edges / num_tasks; // Distribute evenly
+  size_t vertices_per_task = total_vertices / num_tasks; // Distribute evenly
 
-  size_t start_idx = 0;
+  size_t start_v = 0;
   for (size_t t = 0; t < num_tasks; t++) {
-    size_t end_idx = (t == num_tasks - 1) ? total_edges : start_idx + edges_per_task;
+    size_t end_v = (t == num_tasks - 1) ? total_vertices : start_v + vertices_per_task;
 
-    // Construct LocalCSR only when there are edges to process
-    if (start_idx < end_idx) {
-      local_csrs.emplace_back(make_uniq<LocalCSR>(*csr, start_idx, end_idx));
+    // Construct LocalCSR only when there are vertices to process
+    if (start_v < end_v) {
+      local_csrs.emplace_back(make_uniq<LocalCSR>(*csr, start_v, end_v));
       std::cout << "Created LocalCSR " << t << ":\n" << local_csrs.back()->ToString();
     }
 
-    start_idx = end_idx;
+    start_v = end_v;
   }
 
-  std::cout << "Created " << local_csrs.size() << " LocalCSR instances for " << total_edges << " edges.\n";
+  std::cout << "Created " << local_csrs.size() << " LocalCSR instances for " << total_vertices << " vertices.\n";
 }
 
 void BFSState::InitializeLanes() {
