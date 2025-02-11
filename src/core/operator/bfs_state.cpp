@@ -61,7 +61,7 @@ void BFSState::CreateThreadLocalCSRs() {
   local_csrs.clear(); // Reset existing LocalCSRs
   idx_t total_vertices = csr->vsize; // Use the vertex count
 
-  std::cout << "Full CSR\n" << csr->ToString();
+  // std::cout << "Full CSR\n" << csr->ToString();
 
   // Determine the actual number of tasks needed
   size_t num_tasks = std::min(num_threads, total_vertices); // Don't create more than needed
@@ -82,13 +82,13 @@ void BFSState::CreateThreadLocalCSRs() {
     // Construct LocalCSR only when there are vertices to process
     if (start_v < end_v) {
       local_csrs.emplace_back(make_uniq<LocalCSR>(*csr, start_v, end_v));
-      std::cout << "Created LocalCSR " << t << ":\n" << local_csrs.back()->ToString();
+      // std::cout << "Created LocalCSR " << t << ":\n" << local_csrs.back()->ToString();
     }
 
     start_v = end_v;
   }
 
-  std::cout << "Created " << local_csrs.size() << " LocalCSR instances for " << total_vertices << " vertices.\n";
+  // std::cout << "Created " << local_csrs.size() << " LocalCSR instances for " << total_vertices << " vertices.\n";
 }
 
 void BFSState::InitializeLanes() {
