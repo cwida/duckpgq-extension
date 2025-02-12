@@ -1204,6 +1204,16 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     // Handle StarExpression.
     auto *star_expression = dynamic_cast<StarExpression *>(expression.get());
     if (star_expression != nullptr) {
+      // Skip edge table columns.
+      if (!star_expression->relation_name.empty()) {
+        auto tbl_iter = alias_to_vertex_and_edge_tables.find(
+            star_expression->relation_name);
+        if (tbl_iter != alias_to_vertex_and_edge_tables.end() &&
+            !tbl_iter->second->is_vertex_table) {
+          continue;
+        }
+      }
+
       auto selected_col_exprs =
           star_expression->relation_name.empty()
               ? GetColRefExprFromPg(alias_to_vertex_and_edge_tables)
