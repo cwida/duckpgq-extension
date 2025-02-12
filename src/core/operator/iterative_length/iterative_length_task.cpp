@@ -31,7 +31,7 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
 }
 
 
-  TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
+TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
   auto &barrier = state->barrier;
   while (state->started_searches < state->pairs->size()) {
     barrier->Wait();
@@ -71,25 +71,18 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
 void IterativeLengthTask::Explore(vector<std::bitset<LANE_LIMIT>> &visit,
                                   vector<std::bitset<LANE_LIMIT>> &next,
                                   int64_t *v, vector<int64_t> &e) {
-  // Printer::PrintF("Explore - (worker %d): %d %d", worker_id, local_csr->v_offset,
-                  // local_csr->vsize);
-  // Printer::PrintF("(worker %d): %s", worker_id, local_csr->ToString());
-
-  for (auto i = local_csr->v_offset; i < std::min(local_csr->v_offset + local_csr->vsize, visit.size()); i++) {
-    // Printer::PrintF("All offsets - (worker %d): %d %d %d", worker_id, local_csr->v_offset, local_csr->vsize, i);
-    // Printer::PrintF("Visit any - (worker %d): %d %d", worker_id, visit[i].any(), i);
+  auto local_offset = local_csr->v_offset;
+  auto local_size = local_csr->vsize;
+  auto v_offset = v[local_offset];
+  auto upper = std::min(local_offset + local_size, visit.size());
+  for (auto i = local_offset; i < upper; i++) {
     if (visit[i].any()) {  // If the vertex has been visited
-      // Printer::PrintF("Offsets - (worker %d): %d %d %d", worker_id, v[i], v[i + 1], local_csr->v_offset);
-      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-        auto n = e[offset - v[local_csr->v_offset]];  // Use the local edge index directly
-        // Printer::PrintF("Pre N - (worker %d): %d %d %d", worker_id, i, n, offset);
+      for (auto offset = v[i] - v_offset; offset < v[i + 1] - v_offset; offset++) {
+        auto n = e[offset];  // Use the local edge index directly
         next[n] |= visit[i]; // Propagate the visit bitset
-        // Printer::PrintF("Post N - (worker %d): %d %d %d", worker_id, i, n, offset);
       }
-      // Printer::PrintF("Finalized - (worker %d): %d %d", worker_id, i, v[i]);
     }
   }
-  // Printer::PrintF("Loop complete - (worker %d)", worker_id);
 }
 
 void IterativeLengthTask::IterativeLength() {
