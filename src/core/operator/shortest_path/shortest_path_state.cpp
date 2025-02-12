@@ -18,7 +18,7 @@ ShortestPathState::ShortestPathState(shared_ptr<DataChunk> pairs_, CSR* csr_, id
 void ShortestPathState::Clear() {
   iter = 1;
   active = 0;
-  change_atomic = false;
+  change = false;
   // empty visit vectors
   for (auto i = 0; i < v_size; i++) {
     visit1[i] = 0;

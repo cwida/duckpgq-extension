@@ -24,7 +24,7 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
       next[i] &= ~seen[i];
       seen[i] |= next[i];
       if (next[i].any()) {
-        state->change_atomic.store(true, std::memory_order_relaxed);
+        state->change = true;
       }
     }
   }
@@ -51,7 +51,7 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
         // Printer::Print("Finished reach detect");
       }
       barrier->Wait();
-    } while (state->change_atomic);
+    } while (state->change);
     if (worker_id == 0) {
       UnReachableSet();
     }
@@ -92,14 +92,12 @@ void IterativeLengthTask::IterativeLength() {
     auto &barrier = state->barrier;
     int64_t *v = (int64_t *)local_csr->global_v;
     vector<int64_t> &e = local_csr->e;
-
+    auto upper = std::min(local_csr->v_offset + local_csr->vsize, next.size());
     // Clear `next` array regardless of task availability
-    if (worker_id == 0) {
-      for (int64_t i = 0; i < state->v_size; i++) {
-        next[i] = 0;
-      }
-      // Printer::PrintF("Visit size: %d", visit.size());
+    for (auto i = local_csr->v_offset; i < upper; i++) {
+      next[i] = 0;
     }
+
 
     // Synchronize after clearing
     barrier->Wait();
@@ -109,7 +107,7 @@ void IterativeLengthTask::IterativeLength() {
     // Printer::PrintF("%d finished explore\n", worker_id);
 
     // Check and process tasks for the next phase
-    state->change_atomic.store(false, std::memory_order_relaxed);
+    state->change = false;
     barrier->Wait();
     CheckChange(seen, next, v, e);
 
@@ -133,7 +131,7 @@ void IterativeLengthTask::ReachDetect() const {
     }
   }
   if (state->active == 0) {
-    state->change_atomic.store(false, std::memory_order_relaxed);
+    state->change = false;
   }
   // into the next iteration
   state->iter++;

@@ -158,7 +158,7 @@ public:
   LogicalType bfs_type;
   int64_t iter;
   int64_t v_size;
-  atomic<bool> change_atomic;
+  bool change;
   idx_t started_searches;
   int64_t *src;
   Vector &src_data;
