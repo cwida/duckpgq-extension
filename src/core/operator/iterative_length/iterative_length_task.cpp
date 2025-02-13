@@ -33,35 +33,40 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
 
 TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
   auto &barrier = state->barrier;
+  // Printer::PrintF("CSR Sizes - (worker %d): vsize: %d esize: %d", worker_id, local_csr->vsize, local_csr->e.size());
   while (state->started_searches < state->pairs->size()) {
-    barrier->Wait();
+    barrier->Wait(worker_id);
 
     if (worker_id == 0) {
+      barrier->LogMessage(worker_id, "Inializing lanes");
       state->InitializeLanes();
       // Printer::Print("Finished intialize lanes");
     }
-    barrier->Wait();
+    barrier->Wait(worker_id);
     do {
       IterativeLength();
-      barrier->Wait();
-
       if (worker_id == 0) {
-        // Printer::Print("Starting reach detect");
-        ReachDetect();
-        // Printer::Print("Finished reach detect");
+        barrier->LogMessage(worker_id, "Finished IterativeLength");
       }
-      barrier->Wait();
+      barrier->Wait(worker_id);
+      ReachDetect();
+      if (worker_id == 0) {
+        barrier->LogMessage(worker_id, "Finished ReachDetect");
+      }
+      barrier->Wait(worker_id);
     } while (state->change);
     if (worker_id == 0) {
       UnReachableSet();
+      barrier->LogMessage(worker_id, "Finished UnreachableSet");
     }
 
     // Final synchronization before finishing
-    barrier->Wait();
+    barrier->Wait(worker_id);
     if (worker_id == 0) {
       state->Clear();
+      barrier->LogMessage(worker_id, "Cleared state");
     }
-    barrier->Wait();
+    barrier->Wait(worker_id);
   }
 
   event->FinishTask();
@@ -100,7 +105,7 @@ void IterativeLengthTask::IterativeLength() {
 
 
     // Synchronize after clearing
-    barrier->Wait();
+    barrier->Wait(worker_id);
     // Printer::PrintF("%d starting explore\n", worker_id);
 
     Explore(visit, next, v, e);
@@ -108,10 +113,10 @@ void IterativeLengthTask::IterativeLength() {
 
     // Check and process tasks for the next phase
     state->change = false;
-    barrier->Wait();
+    barrier->Wait(worker_id);
     CheckChange(seen, next, v, e);
 
-    barrier->Wait();
+    barrier->Wait(worker_id);
 }
 
 void IterativeLengthTask::ReachDetect() const {

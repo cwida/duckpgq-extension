@@ -24,6 +24,7 @@ void IterativeLengthEvent::Schedule() {
 }
 
 void IterativeLengthEvent::FinishEvent() {
+  gbfs_state->barrier->PrintTimingLogs();
 }
 
 } // namespace core
