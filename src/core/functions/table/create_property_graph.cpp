@@ -191,22 +191,29 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
   case_insensitive_set_t v_table_names;
   for (auto &vertex_table : info->vertex_tables) {
     try {
+      vector<reference<CatalogEntry>> result;
       auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
-      auto table = catalog.GetEntry<TableCatalogEntry>(
-          context, info->schema, vertex_table->table_name,
-          OnEntryNotFound::RETURN_NULL);
-
-      if (!table) {
+  		auto schemas = catalog.GetAllSchemas(context);
+      for (auto &schema_ref : schemas) {
+        auto &schema = schema_ref.get();
+        schema.Scan(context, CatalogType::TABLE_ENTRY, [&](CatalogEntry &entry) {
+          if (entry.name == vertex_table->table_name) {
+            result.push_back(entry);
+          }
+        });
+      };
+      if (result.size() == 0) {
         throw Exception(ExceptionType::INVALID,
                         "Table " +
-                            (vertex_table->catalog_name.empty()
-                                 ? DEFAULT_SCHEMA
-                                 : vertex_table->catalog_name) +
-                            "." + vertex_table->table_name + " not found");
+                            vertex_table->table_name + " not found");
       }
+      if (result.size() > 1) {
+        throw Exception(ExceptionType::INVALID, "Multiple tables in different schemas found with name " + vertex_table->table_name);
+      }
+      auto &table = result[0].get().Cast<TableCatalogEntry>();
 
-      CheckPropertyGraphTableColumns(vertex_table, *table);
-      CheckPropertyGraphTableLabels(vertex_table, *table);
+      CheckPropertyGraphTableColumns(vertex_table, table);
+      CheckPropertyGraphTableLabels(vertex_table, table);
     } catch (CatalogException &e) {
       auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
       auto table = catalog.GetEntry<ViewCatalogEntry>(
