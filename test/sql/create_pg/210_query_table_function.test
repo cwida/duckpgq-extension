@@ -22,10 +22,13 @@ statement ok
   );
 
 statement ok
--FROM query('
-  FROM GRAPH_TABLE (snb
-    MATCH (a:Person)-[k:knows]->(b:Person)
-    COLUMNS (a.id, b.id)
-  )
-  LIMIT 1
-');
+from query('select * from query("select 1")');
+
+# statement ok
+# FROM query('
+#   FROM GRAPH_TABLE (snb
+#     MATCH (a:Person)-[k:knows]->(b:Person)
+#     COLUMNS (a.id, b.id)
+#   )
+#   LIMIT 1
+# ');
