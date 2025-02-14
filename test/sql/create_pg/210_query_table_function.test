@@ -1,0 +1,31 @@
+# name: test/sql/create_pg/210_query_table_function.test
+# description: Test whether the PGQ syntax works inside a query function
+# group: [duckpgq_sql_create_pg]
+
+require duckpgq
+
+statement ok
+CREATE TABLE Person(id BIGINT, name VARCHAR);
+
+statement ok
+CREATE TABLE Person_knows_Person(person1id BIGINT, Person2Id BIGINT);
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+  VERTEX TABLES (
+    Person
+  )
+  EDGE TABLES (
+    Person_knows_person SOURCE KEY (Person1Id) REFERENCES Person (id)
+                        DESTINATION KEY (Person2Id) REFERENCES Person (id)
+    LABEL knows
+  );
+
+statement ok
+-FROM query('
+  FROM GRAPH_TABLE (snb
+    MATCH (a:Person)-[k:knows]->(b:Person)
+    COLUMNS (a.id, b.id)
+  )
+  LIMIT 1
+');
