@@ -12,6 +12,7 @@
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 
+
 namespace duckpgq {
 
 namespace core {
@@ -43,6 +44,8 @@ public:
   CheckPropertyGraphTableColumns(const shared_ptr<PropertyGraphTable> &pg_table,
                                  TableCatalogEntry &table);
 
+  static reference<TableCatalogEntry> GetTableCatalogEntry(ClientContext &context, shared_ptr<PropertyGraphTable> &pg_table);
+
   static unique_ptr<FunctionData>
   CreatePropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
                           vector<LogicalType> &return_types,
@@ -67,7 +70,7 @@ public:
   static void
   ValidateForeignKeyColumns(shared_ptr<PropertyGraphTable> &edge_table,
                             const vector<string> &fk_columns,
-                            optional_ptr<TableCatalogEntry> &table);
+                            TableCatalogEntry &table);
 
   static unique_ptr<GlobalTableFunctionState>
   CreatePropertyGraphInit(ClientContext &context,
