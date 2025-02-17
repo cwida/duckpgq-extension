@@ -7,6 +7,9 @@ statement ok
 use 'test-pathfinding';
 
 statement ok
+pragma disable_progress_bar;
+
+statement ok
 set experimental_path_finding_operator=true;
 
 statement ok

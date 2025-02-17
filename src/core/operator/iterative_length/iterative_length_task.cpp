@@ -19,7 +19,10 @@ void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
                                       int64_t *v, vector<int64_t> &e) const {
   // Printer::PrintF("CheckChange: %d %d %d\n", worker_id, local_csr->v_offset,
   //                 local_csr->vsize);
-  for (auto i = local_csr->v_offset; i < std::min(local_csr->v_offset + local_csr->vsize, seen.size()); i++) {
+  auto upper = std::min(local_csr->v_offset + local_csr->vsize, seen.size());
+  // Printer::PrintF("%d: Checking change for upper %d, v_offset %d", worker_id, upper, local_csr->v_offset);
+  for (auto i = local_csr->v_offset; i < upper; i++) {
+    // Printer::PrintF("%d %d", worker_id, i);
     if (next[i].any()) {
       next[i] &= ~seen[i];
       seen[i] |= next[i];
@@ -37,8 +40,9 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
   while (state->started_searches < state->pairs->size()) {
     barrier->Wait(worker_id);
 
+    // Printer::PrintF("worker %d\n%s", worker_id, local_csr->ToString());
     if (worker_id == 0) {
-      barrier->LogMessage(worker_id, "Inializing lanes");
+      barrier->LogMessage(worker_id, "Initializing lanes");
       state->InitializeLanes();
       // Printer::Print("Finished intialize lanes");
     }
@@ -49,8 +53,8 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
         barrier->LogMessage(worker_id, "Finished IterativeLength");
       }
       barrier->Wait(worker_id);
-      ReachDetect();
       if (worker_id == 0) {
+        ReachDetect();
         barrier->LogMessage(worker_id, "Finished ReachDetect");
       }
       barrier->Wait(worker_id);
@@ -90,6 +94,18 @@ void IterativeLengthTask::Explore(vector<std::bitset<LANE_LIMIT>> &visit,
   }
 }
 
+void PrintMatrix(const std::string &label, const std::vector<std::bitset<LANE_LIMIT>> &matrix) {
+  std::cout << label << ":\n";
+  for (size_t i = 0; i < matrix.size(); i++) {
+    std::cout << "Row " << i << ": ";
+    for (size_t j = 0; j < matrix[i].size(); j++) {
+      std::cout << matrix[i][j] << " ";
+    }
+    std::cout << "\n";
+  }
+  std::cout << std::endl;
+}
+
 void IterativeLengthTask::IterativeLength() {
     auto &seen = state->seen;
     auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
@@ -110,7 +126,13 @@ void IterativeLengthTask::IterativeLength() {
 
     Explore(visit, next, v, e);
     // Printer::PrintF("%d finished explore\n", worker_id);
-
+    barrier->Wait(worker_id);
+    // if (worker_id == 0) {
+    //   std::cout << "Iteration: " << state->iter << std::endl;
+    //   PrintMatrix("Visit", visit);
+    //   PrintMatrix("Next", next);
+    //   PrintMatrix("Seen", seen);
+    // }
     // Check and process tasks for the next phase
     state->change = false;
     barrier->Wait(worker_id);
@@ -140,7 +162,7 @@ void IterativeLengthTask::ReachDetect() const {
   }
   // into the next iteration
   state->iter++;
-  // Printer::PrintF("Starting next iteration: %d\n", state->iter);
+  // Printer::PrintF("Starting next iteration: %d %d\n", worker_id, state->iter);
 }
 
 void IterativeLengthTask::UnReachableSet() const {
