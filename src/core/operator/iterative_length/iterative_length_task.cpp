@@ -16,12 +16,11 @@ IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p,
 
 void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
                                       vector<std::bitset<LANE_LIMIT>> &next,
-                                      int64_t *v, vector<int64_t> &e) const {
+                                      vector<int64_t> &v, vector<int64_t> &e) const {
   // Printer::PrintF("CheckChange: %d %d %d\n", worker_id, local_csr->v_offset,
   //                 local_csr->vsize);
-  auto upper = std::min(local_csr->v_offset + local_csr->vsize, seen.size());
   // Printer::PrintF("%d: Checking change for upper %d, v_offset %d", worker_id, upper, local_csr->v_offset);
-  for (auto i = local_csr->v_offset; i < upper; i++) {
+  for (auto i = 0; i < next.size(); i++) {
     // Printer::PrintF("%d %d", worker_id, i);
     if (next[i].any()) {
       next[i] &= ~seen[i];
@@ -79,15 +78,13 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 
 void IterativeLengthTask::Explore(vector<std::bitset<LANE_LIMIT>> &visit,
                                   vector<std::bitset<LANE_LIMIT>> &next,
-                                  int64_t *v, vector<int64_t> &e) {
-  auto local_offset = local_csr->v_offset;
-  auto local_size = local_csr->vsize;
-  auto v_offset = v[local_offset];
-  auto upper = std::min(local_offset + local_size, visit.size());
-  for (auto i = local_offset; i < upper; i++) {
-    if (visit[i].any()) {  // If the vertex has been visited
-      for (auto offset = v[i] - v_offset; offset < v[i + 1] - v_offset; offset++) {
-        auto n = e[offset];  // Use the local edge index directly
+                                  vector<int64_t> &v, vector<int64_t> &e) {
+  for (auto i = 0; i < v.size() - 2; i++) {
+    // Printer::PrintF("worker %d %d\n", worker_id, i);
+    if (visit[i].any()) { // If the vertex has been visited
+      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+        // Printer::PrintF("worker %d %d %d\n", worker_id, i, offset);
+        auto n = e[offset]; // Use the local edge index directly
         next[n] |= visit[i]; // Propagate the visit bitset
       }
     }
@@ -111,14 +108,14 @@ void IterativeLengthTask::IterativeLength() {
     auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
     auto &barrier = state->barrier;
-    int64_t *v = (int64_t *)local_csr->global_v;
+    vector<int64_t> &v = local_csr->v;
     vector<int64_t> &e = local_csr->e;
-    auto upper = std::min(local_csr->v_offset + local_csr->vsize, next.size());
     // Clear `next` array regardless of task availability
-    for (auto i = local_csr->v_offset; i < upper; i++) {
-      next[i] = 0;
+    if (worker_id == 0) {
+      for (auto i = 0; i < next.size(); i++) {
+        next[i] = 0;
+      }
     }
-
 
     // Synchronize after clearing
     barrier->Wait(worker_id);
@@ -136,8 +133,9 @@ void IterativeLengthTask::IterativeLength() {
     // Check and process tasks for the next phase
     state->change = false;
     barrier->Wait(worker_id);
-    CheckChange(seen, next, v, e);
-
+    if (worker_id == 0) {
+      CheckChange(seen, next, v, e);
+    }
     barrier->Wait(worker_id);
 }
 

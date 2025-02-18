@@ -21,12 +21,12 @@ private:
   void ReachDetect() const;
   void CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
                     vector<std::bitset<LANE_LIMIT>> &next,
-                    int64_t *v, vector<int64_t> &e) const;
+                    vector<int64_t> &v, vector<int64_t> &e) const;
   void UnReachableSet() const;
 
   void Explore(vector<std::bitset<LANE_LIMIT>> &visit,
     vector<std::bitset<LANE_LIMIT>> &next,
-    int64_t *v,
+    vector<int64_t> &v,
     vector<int64_t> &e);
 
 private:

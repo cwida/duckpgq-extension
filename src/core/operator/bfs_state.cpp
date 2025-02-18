@@ -59,36 +59,35 @@ void BFSState::ScheduleBFSBatch(Pipeline &, Event &, const PhysicalPathFinding *
 
 void BFSState::CreateThreadLocalCSRs() {
   local_csrs.clear(); // Reset existing LocalCSRs
-  idx_t total_vertices = csr->vsize; // Use the vertex count
-
-  // std::cout << "Full CSR\n" << csr->ToString();
-
-  // Determine the actual number of tasks needed
-  size_t num_tasks = std::min(num_threads, total_vertices); // Don't create more than needed
-
-  if (num_tasks == 0) {
-    std::cout << "Warning: No vertices to process, skipping LocalCSR creation.\n";
-    return;
+  idx_t total_partitions = num_threads;
+  vector<idx_t> partitions(csr->e.size());
+  for (idx_t i = 0; i < csr->e.size(); i++) {
+    partitions[i] = csr->e[i] % total_partitions;
+    // Printer::PrintF("partition %d %d\n", i, partitions[i]);
   }
 
-  local_csrs.reserve(num_tasks); // Preallocate memory
-
-  size_t vertices_per_task = total_vertices / num_tasks; // Distribute evenly
-
-  size_t start_v = 0;
-  for (size_t t = 0; t < num_tasks; t++) {
-    size_t end_v = (t == num_tasks - 1) ? total_vertices : start_v + vertices_per_task;
-
-    // Construct LocalCSR only when there are vertices to process
-    if (start_v < end_v) {
-      local_csrs.emplace_back(make_uniq<LocalCSR>(*csr, start_v, end_v));
-      // std::cout << "Created LocalCSR " << t << ":\n" << local_csrs.back()->ToString();
+  // Printer::PrintF("vsize %d\n", csr->vsize);
+  // Printer::PrintF("CSR %s", csr->ToString());
+  for (idx_t partition = 0; partition < total_partitions; partition++) {
+    vector<int64_t> v;
+    vector<int64_t> e;
+    idx_t v_offset = 0;
+    for (idx_t j = 0; j < csr->vsize-1; j++) {
+      v.push_back(v_offset);
+      for (idx_t e_offset= csr->v[j]; e_offset < csr->v[j+1]; e_offset++) {
+        // Printer::PrintF("v_offset %d e_offset %d partition %d\n", v_offset, e_offset, partitions[e_offset]);
+        if (partitions[e_offset] == partition) {
+          v_offset++;
+          e.push_back(csr->e[e_offset]);
+        }
+      }
     }
-
-    start_v = end_v;
+    v.push_back(v_offset);
+    local_csrs.push_back(make_uniq<LocalCSR>(v,e));
   }
-
-  // std::cout << "Created " << local_csrs.size() << " LocalCSR instances for " << total_vertices << " vertices.\n";
+  // for (auto &local_csr : local_csrs) {
+  //   std::cout << local_csr->ToString() << std::endl;
+  // }
 }
 
 // void BFSState::CreateThreadLocalCSRs() {
@@ -148,8 +147,11 @@ void BFSState::InitializeLanes() {
     while (started_searches < pairs->size()) {
       auto search_num = started_searches++;
       int64_t src_pos = vdata_src.sel->get_index(search_num);
-      if (!vdata_src.validity.RowIsValid(src_pos)) {
+      int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+      if (!vdata_src.validity.RowIsValid(src_pos) || !vdata_dst.validity.RowIsValid(dst_pos)) {
         result_validity.SetInvalid(search_num);
+      } else if (src[src_pos] == dst[dst_pos]) {
+        pf_results->data[0].SetValue(search_num, 0);
       } else {
         visit1[src[src_pos]][lane] = true;
         // bfs_state->seen[bfs_state->src[src_pos]][lane] = true;

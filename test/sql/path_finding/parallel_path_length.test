@@ -60,19 +60,19 @@ SELECT src, dst, iterativelengthoperator(src, dst, csr_id) FROM pair, csr_cte;
 statement ok
 import database '/Users/dljtw/git/duckpgq/duckdb/data/SNB0.003';
 
+statement ok
+create or replace table snb_pairs as (
+   select src, dst
+   from (select a.rowid as src from person a),
+        (select b.rowid as dst from person b)
+   using sample reservoir(50 rows) repeatable (300)
+);
+
 # statement ok
-# create or replace table snb_pairs as (
-#    select src, dst
-#    from (select a.rowid as src from person a),
-#         (select b.rowid as dst from person b)
-#    using sample reservoir(50 rows) repeatable (300)
-# );
+# create table snb_pairs (src bigint, dst bigint); insert into snb_pairs values (2,43);
 
-statement ok
-create table snb_pairs (src bigint, dst bigint); insert into snb_pairs values (2,43);
-
-statement ok
-set threads=1;
+# statement ok
+# set threads=1;
 
 query III
 with csr_cte as (
