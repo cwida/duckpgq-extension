@@ -34,6 +34,8 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, idx_t num_threads_,
   visit2 = vector<std::bitset<LANE_LIMIT>>(v_size);
   seen = vector<std::bitset<LANE_LIMIT>>(v_size);
 
+  local_csr_counter = 0;
+
   // Initialize source and destination vectors
   src_data.ToUnifiedFormat(pairs->size(), vdata_src);
   dst_data.ToUnifiedFormat(pairs->size(), vdata_dst);
@@ -59,7 +61,7 @@ void BFSState::ScheduleBFSBatch(Pipeline &, Event &, const PhysicalPathFinding *
 
 void BFSState::CreateThreadLocalCSRs() {
   local_csrs.clear(); // Reset existing LocalCSRs
-  idx_t total_partitions = num_threads;
+  idx_t total_partitions = num_threads * 8;
   vector<idx_t> partitions(csr->e.size());
   for (idx_t i = 0; i < csr->e.size(); i++) {
     partitions[i] = csr->e[i] % total_partitions;

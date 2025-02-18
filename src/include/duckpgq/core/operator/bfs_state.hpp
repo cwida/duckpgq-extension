@@ -85,7 +85,8 @@ public:
   idx_t num_threads;
   unique_ptr<Barrier> barrier;
   mutex change_lock;
-
+  mutex local_csr_lock;
+  atomic<int64_t> local_csr_counter;
   size_t current_batch_path_list_len;
   vector<bitset<LANE_LIMIT>> seen;
   vector<bitset<LANE_LIMIT>> visit1;

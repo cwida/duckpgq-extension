@@ -12,16 +12,14 @@ class IterativeLengthTask : public ExecutorTask {
 public:
   IterativeLengthTask(shared_ptr<Event> event_p, ClientContext &context,
                            shared_ptr<IterativeLengthState> &state, idx_t worker_id,
-                           const PhysicalOperator &op_p,
-                           unique_ptr<LocalCSR> local_csr_);
+                           const PhysicalOperator &op_p);
 
   TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
 private:
   void IterativeLength();
   void ReachDetect() const;
   void CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
-                    vector<std::bitset<LANE_LIMIT>> &next,
-                    vector<int64_t> &v, vector<int64_t> &e) const;
+                    vector<std::bitset<LANE_LIMIT>> &next) const;
   void UnReachableSet() const;
 
   void Explore(vector<std::bitset<LANE_LIMIT>> &visit,
@@ -33,8 +31,6 @@ private:
   ClientContext &context;
   shared_ptr<IterativeLengthState> &state;
   idx_t worker_id;
-
-  unique_ptr<LocalCSR> local_csr;
 };
 
 

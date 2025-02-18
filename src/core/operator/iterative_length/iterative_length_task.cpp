@@ -8,15 +8,13 @@ namespace core {
 IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p,
                                    ClientContext &context,
                                    shared_ptr<IterativeLengthState> &state, idx_t worker_id,
-                                   const PhysicalOperator &op_p,
-                                   unique_ptr<LocalCSR> local_csr_)
+                                   const PhysicalOperator &op_p)
 : ExecutorTask(context, std::move(event_p), op_p), context(context),
-  state(state), worker_id(worker_id), local_csr(std::move(local_csr_)) {
+  state(state), worker_id(worker_id) {
 }
 
 void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
-                                      vector<std::bitset<LANE_LIMIT>> &next,
-                                      vector<int64_t> &v, vector<int64_t> &e) const {
+                                      vector<std::bitset<LANE_LIMIT>> &next) const {
   // Printer::PrintF("CheckChange: %d %d %d\n", worker_id, local_csr->v_offset,
   //                 local_csr->vsize);
   // Printer::PrintF("%d: Checking change for upper %d, v_offset %d", worker_id, upper, local_csr->v_offset);
@@ -81,12 +79,10 @@ void IterativeLengthTask::Explore(vector<std::bitset<LANE_LIMIT>> &visit,
                                   vector<int64_t> &v, vector<int64_t> &e) {
   for (auto i = 0; i < v.size() - 2; i++) {
     // Printer::PrintF("worker %d %d\n", worker_id, i);
-    if (visit[i].any()) { // If the vertex has been visited
-      for (auto offset = v[i]; offset < v[i + 1]; offset++) {
-        // Printer::PrintF("worker %d %d %d\n", worker_id, i, offset);
-        auto n = e[offset]; // Use the local edge index directly
-        next[n] |= visit[i]; // Propagate the visit bitset
-      }
+    for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+      // Printer::PrintF("worker %d %d %d\n", worker_id, i, offset);
+      auto n = e[offset]; // Use the local edge index directly
+      next[n] |= visit[i]; // Propagate the visit bitset
     }
   }
 }
@@ -108,33 +104,42 @@ void IterativeLengthTask::IterativeLength() {
     auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
     auto &barrier = state->barrier;
-    vector<int64_t> &v = local_csr->v;
-    vector<int64_t> &e = local_csr->e;
     // Clear `next` array regardless of task availability
     if (worker_id == 0) {
       for (auto i = 0; i < next.size(); i++) {
         next[i] = 0;
       }
     }
+    while (state->local_csr_counter < state->local_csrs.size()) {
+      state->local_csr_lock.lock();
+      if (state->local_csr_counter >= state->local_csrs.size()) {
+        state->local_csr_lock.unlock();
+        break;
+      }
+      auto local_csr = state->local_csrs[state->local_csr_counter++].get();
+      state->local_csr_lock.unlock();
+      vector<int64_t> &v = local_csr->v;
+      vector<int64_t> &e = local_csr->e;
 
-    // Synchronize after clearing
-    barrier->Wait(worker_id);
-    // Printer::PrintF("%d starting explore\n", worker_id);
+      // Synchronize after clearing
+      barrier->Wait(worker_id);
+      // Printer::PrintF("%d starting explore\n", worker_id);
 
-    Explore(visit, next, v, e);
-    // Printer::PrintF("%d finished explore\n", worker_id);
-    barrier->Wait(worker_id);
-    // if (worker_id == 0) {
-    //   std::cout << "Iteration: " << state->iter << std::endl;
-    //   PrintMatrix("Visit", visit);
-    //   PrintMatrix("Next", next);
-    //   PrintMatrix("Seen", seen);
-    // }
-    // Check and process tasks for the next phase
+      Explore(visit, next, v, e);
+      // Printer::PrintF("%d finished explore\n", worker_id);
+      barrier->Wait(worker_id);
+      // if (worker_id == 0) {
+      //   std::cout << "Iteration: " << state->iter << std::endl;
+      //   PrintMatrix("Visit", visit);
+      //   PrintMatrix("Next", next);
+      //   PrintMatrix("Seen", seen);
+      // }
+      // Check and process tasks for the next phase
+    }
     state->change = false;
     barrier->Wait(worker_id);
     if (worker_id == 0) {
-      CheckChange(seen, next, v, e);
+      CheckChange(seen, next);
     }
     barrier->Wait(worker_id);
 }
