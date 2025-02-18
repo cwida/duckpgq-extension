@@ -57,86 +57,86 @@ void BFSState::ScheduleBFSBatch(Pipeline &, Event &, const PhysicalPathFinding *
   throw NotImplementedException("ScheduleBFSBatch must be implemented in a derived class.");
 }
 
-// void BFSState::CreateThreadLocalCSRs() {
-//   local_csrs.clear(); // Reset existing LocalCSRs
-//   idx_t total_vertices = csr->vsize; // Use the vertex count
-//
-//   // std::cout << "Full CSR\n" << csr->ToString();
-//
-//   // Determine the actual number of tasks needed
-//   size_t num_tasks = std::min(num_threads, total_vertices); // Don't create more than needed
-//
-//   if (num_tasks == 0) {
-//     std::cout << "Warning: No vertices to process, skipping LocalCSR creation.\n";
-//     return;
-//   }
-//
-//   local_csrs.reserve(num_tasks); // Preallocate memory
-//
-//   size_t vertices_per_task = total_vertices / num_tasks; // Distribute evenly
-//
-//   size_t start_v = 0;
-//   for (size_t t = 0; t < num_tasks; t++) {
-//     size_t end_v = (t == num_tasks - 1) ? total_vertices : start_v + vertices_per_task;
-//
-//     // Construct LocalCSR only when there are vertices to process
-//     if (start_v < end_v) {
-//       local_csrs.emplace_back(make_uniq<LocalCSR>(*csr, start_v, end_v));
-//       // std::cout << "Created LocalCSR " << t << ":\n" << local_csrs.back()->ToString();
-//     }
-//
-//     start_v = end_v;
-//   }
-//
-//   // std::cout << "Created " << local_csrs.size() << " LocalCSR instances for " << total_vertices << " vertices.\n";
-// }
-//
 void BFSState::CreateThreadLocalCSRs() {
   local_csrs.clear(); // Reset existing LocalCSRs
-  idx_t total_edges = csr->e.size(); // Total edges in the CSR
-  // Printer::PrintF("Global CSR\n%s\n", csr->ToString());
+  idx_t total_vertices = csr->vsize; // Use the vertex count
 
-  size_t num_tasks = std::min(num_threads, total_edges); // Don't create more than needed
+  // std::cout << "Full CSR\n" << csr->ToString();
+
+  // Determine the actual number of tasks needed
+  size_t num_tasks = std::min(num_threads, total_vertices); // Don't create more than needed
 
   if (num_tasks == 0) {
-    std::cout << "Warning: No edges to process, skipping LocalCSR creation.\n";
+    std::cout << "Warning: No vertices to process, skipping LocalCSR creation.\n";
     return;
   }
 
   local_csrs.reserve(num_tasks); // Preallocate memory
 
-  size_t edges_per_task = total_edges / num_tasks;
-  size_t remainder_edges = total_edges % num_tasks; // Remaining edges to be assigned
+  size_t vertices_per_task = total_vertices / num_tasks; // Distribute evenly
 
-  size_t start_v = 0, accumulated_edges = 0;
-
+  size_t start_v = 0;
   for (size_t t = 0; t < num_tasks; t++) {
-    size_t end_v = start_v;
-    size_t edge_count = 0;
+    size_t end_v = (t == num_tasks - 1) ? total_vertices : start_v + vertices_per_task;
 
-    size_t target_edges = edges_per_task + (t < remainder_edges ? 1 : 0); // Distribute remaining edges
-
-    // Expand the vertex range until we reach the target number of edges
-    while (end_v < csr->vsize && edge_count < target_edges) {
-      edge_count += (csr->v[end_v + 1] - csr->v[end_v]); // Count edges for this vertex
-      end_v++;
-    }
-
-    // Construct LocalCSR if valid range is found
+    // Construct LocalCSR only when there are vertices to process
     if (start_v < end_v) {
       local_csrs.emplace_back(make_uniq<LocalCSR>(*csr, start_v, end_v));
-      accumulated_edges += edge_count;
+      // std::cout << "Created LocalCSR " << t << ":\n" << local_csrs.back()->ToString();
     }
 
-    start_v = end_v; // Move to next segment
+    start_v = end_v;
   }
 
-  // Sanity check: Ensure we assigned all edges
-  if (accumulated_edges != total_edges) {
-    std::cerr << "Error: Mismatch in total assigned edges! Expected: " << total_edges
-              << ", Assigned: " << accumulated_edges << std::endl;
-  }
+  // std::cout << "Created " << local_csrs.size() << " LocalCSR instances for " << total_vertices << " vertices.\n";
 }
+
+// void BFSState::CreateThreadLocalCSRs() {
+//   local_csrs.clear(); // Reset existing LocalCSRs
+//   idx_t total_edges = csr->e.size(); // Total edges in the CSR
+//   // Printer::PrintF("Global CSR\n%s\n", csr->ToString());
+//
+//   size_t num_tasks = std::min(num_threads, total_edges); // Don't create more than needed
+//
+//   if (num_tasks == 0) {
+//     std::cout << "Warning: No edges to process, skipping LocalCSR creation.\n";
+//     return;
+//   }
+//
+//   local_csrs.reserve(num_tasks); // Preallocate memory
+//
+//   size_t edges_per_task = total_edges / num_tasks;
+//   size_t remainder_edges = total_edges % num_tasks; // Remaining edges to be assigned
+//
+//   size_t start_v = 0, accumulated_edges = 0;
+//
+//   for (size_t t = 0; t < num_tasks; t++) {
+//     size_t end_v = start_v;
+//     size_t edge_count = 0;
+//
+//     size_t target_edges = edges_per_task + (t < remainder_edges ? 1 : 0); // Distribute remaining edges
+//
+//     // Expand the vertex range until we reach the target number of edges
+//     while (end_v < csr->vsize && edge_count < target_edges) {
+//       edge_count += (csr->v[end_v + 1] - csr->v[end_v]); // Count edges for this vertex
+//       end_v++;
+//     }
+//
+//     // Construct LocalCSR if valid range is found
+//     if (start_v < end_v) {
+//       local_csrs.emplace_back(make_uniq<LocalCSR>(*csr, start_v, end_v));
+//       accumulated_edges += edge_count;
+//     }
+//
+//     start_v = end_v; // Move to next segment
+//   }
+//
+//   // Sanity check: Ensure we assigned all edges
+//   if (accumulated_edges != total_edges) {
+//     std::cerr << "Error: Mismatch in total assigned edges! Expected: " << total_edges
+//               << ", Assigned: " << accumulated_edges << std::endl;
+//   }
+// }
 
 void BFSState::InitializeLanes() {
   auto &result_validity = FlatVector::Validity(pf_results->data[0]);
