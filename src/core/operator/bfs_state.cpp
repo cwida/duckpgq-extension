@@ -62,34 +62,37 @@ void BFSState::ScheduleBFSBatch(Pipeline &, Event &, const PhysicalPathFinding *
 void BFSState::CreateThreadLocalCSRs() {
   local_csrs.clear(); // Reset existing LocalCSRs
   idx_t total_partitions = num_threads * 8;
-  vector<idx_t> partitions(csr->e.size());
-  for (idx_t i = 0; i < csr->e.size(); i++) {
-    partitions[i] = csr->e[i] % total_partitions;
-    // Printer::PrintF("partition %d %d\n", i, partitions[i]);
+
+  idx_t total_vertices = csr->vsize - 1; // Number of vertices
+  idx_t vertices_per_partition = (total_vertices + total_partitions - 1) / total_partitions; // Balanced partition size
+
+  // Define vertex ranges for partitions
+  for (idx_t i = 0; i < total_partitions; i++) {
+    idx_t start_vertex = i * vertices_per_partition;
+    idx_t end_vertex = std::min((i + 1) * vertices_per_partition, total_vertices);
+    partition_ranges.emplace_back(start_vertex, end_vertex);
   }
 
-  // Printer::PrintF("vsize %d\n", csr->vsize);
-  // Printer::PrintF("CSR %s", csr->ToString());
-  for (idx_t partition = 0; partition < total_partitions; partition++) {
-    vector<int64_t> v;
-    vector<int64_t> e;
+  // Construct Local CSRs based on vertex ranges
+  for (const auto &[start_vertex, end_vertex] : partition_ranges) {
+    std::vector<int64_t> v;
+    std::vector<int64_t> e;
     idx_t v_offset = 0;
+
     for (idx_t j = 0; j < csr->vsize-1; j++) {
       v.push_back(v_offset);
-      for (idx_t e_offset= csr->v[j]; e_offset < csr->v[j+1]; e_offset++) {
-        // Printer::PrintF("v_offset %d e_offset %d partition %d\n", v_offset, e_offset, partitions[e_offset]);
-        if (partitions[e_offset] == partition) {
+      for (idx_t e_offset = csr->v[j]; e_offset < csr->v[j + 1]; e_offset++) {
+        int64_t dst = csr->e[e_offset]; // Destination vertex
+        // Only add edges where destination is inside this partition
+        if (dst >= start_vertex && dst < end_vertex) {
           v_offset++;
-          e.push_back(csr->e[e_offset]);
+          e.push_back(dst);
         }
       }
     }
     v.push_back(v_offset);
-    local_csrs.push_back(make_uniq<LocalCSR>(v,e));
+    local_csrs.push_back(make_uniq<LocalCSR>(v, e));
   }
-  // for (auto &local_csr : local_csrs) {
-  //   std::cout << local_csr->ToString() << std::endl;
-  // }
 }
 
 // void BFSState::CreateThreadLocalCSRs() {

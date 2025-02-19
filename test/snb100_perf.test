@@ -1,10 +1,11 @@
 require duckpgq
 
 statement ok
-attach '/Users/dljtw/git/duckpgq/test-pathfinding.duckdb';
+create table person as select * from read_csv_auto('/Users/dljtw/git/duckpgq/duckdb/benchmark/pathfinding/data/snb-bi-sf100.v',header=FALSE, sep=' ', columns={'id':'bigint'});
 
 statement ok
-use 'test-pathfinding';
+create table person_knows_person as select * from read_csv_auto('/Users/dljtw/git/duckpgq/duckdb/benchmark/pathfinding/data/snb-bi-sf100.e',header=FALSE, sep=' ', columns={'person1id':'bigint','person2id':'bigint','weight':'bigint'});
+
 
 statement ok
 pragma disable_progress_bar;
@@ -20,7 +21,7 @@ create or replace table snb_pairs as (
    select src, dst
    from (select a.rowid as src from person a),
         (select b.rowid as dst from person b)
-   using sample reservoir(16384 rows) repeatable (300)
+   using sample reservoir(100000 rows) repeatable (300)
 );
 
 query III nosort lengthpairs
@@ -52,6 +53,9 @@ WITH cte1 AS (
     ) SELECT src as source, dst as destination, iterativelength(0, (select count(*) from person), snb_pairs.src, snb_pairs.dst) as path
             FROM snb_pairs, (select count(cte1.temp) * 0 as temp from cte1) __x
             WHERE __x.temp * 0 = 0;
+
+statement ok
+set threads=6;
 
 query III nosort lengthpairs
 with csr_cte as (

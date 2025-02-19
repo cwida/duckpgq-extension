@@ -18,14 +18,15 @@ public:
 private:
   void IterativeLength();
   void ReachDetect() const;
-  void CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
-                    vector<std::bitset<LANE_LIMIT>> &next) const;
+  void CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen,
+                   std::vector<std::bitset<LANE_LIMIT>> &next,
+                   std::pair<idx_t, idx_t> &partition_range) const;
   void UnReachableSet() const;
 
-  void Explore(vector<std::bitset<LANE_LIMIT>> &visit,
-    vector<std::bitset<LANE_LIMIT>> &next,
-    vector<int64_t> &v,
-    vector<int64_t> &e);
+  void Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
+    std::vector<std::bitset<LANE_LIMIT>> &next,
+    const std::vector<int64_t> &v,
+    const std::vector<int64_t> &e, idx_t v_size);
 
 private:
   ClientContext &context;

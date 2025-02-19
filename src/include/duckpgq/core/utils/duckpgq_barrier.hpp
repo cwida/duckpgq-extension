@@ -22,7 +22,7 @@ public:
   void Wait(idx_t worker_id);
 
   // Prints collected timing logs at the end
-  void PrintTimingLogs();
+  // void PrintTimingLogs();
 
   void LogMessage(idx_t worker_id, const std::string &message);
 

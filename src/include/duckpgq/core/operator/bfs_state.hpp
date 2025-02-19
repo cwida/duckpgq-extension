@@ -15,11 +15,11 @@ class PhysicalPathFinding; // Forward declaration
 
 class LocalCSR {
 public:
-  explicit LocalCSR(vector<int64_t> &v_, vector<int64_t> &e_) :
+  explicit LocalCSR(std::vector<int64_t> &v_, std::vector<int64_t> &e_) :
     v(v_), e(e_) {}
 
-  vector<int64_t> v;
-  vector<int64_t> e;       // Thread-specific edges
+  std::vector<int64_t> v;
+  std::vector<int64_t> e;       // Thread-specific edges
 
   std::string ToString() const {
     std::ostringstream oss;
@@ -63,6 +63,8 @@ public:
   shared_ptr<DataChunk> pairs;
   CSR *csr;
   vector<unique_ptr<LocalCSR>> local_csrs; // Each thread gets one LocalCSR
+  std::vector<std::pair<idx_t, idx_t>> partition_ranges;
+  atomic<int64_t> partition_counter;
   string mode;
   shared_ptr<DataChunk> pf_results;
   LogicalType bfs_type;
