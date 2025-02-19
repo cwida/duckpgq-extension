@@ -11,6 +11,7 @@ IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p,
                                    const PhysicalOperator &op_p)
 : ExecutorTask(context, std::move(event_p), op_p), context(context),
   state(state), worker_id(worker_id) {
+  explore_done = false;
 }
 
 void IterativeLengthTask::CheckChange(vector<std::bitset<LANE_LIMIT>> &seen,
@@ -110,6 +111,9 @@ void IterativeLengthTask::IterativeLength() {
         next[i] = 0;
       }
     }
+    state->local_csr_counter = 0;
+    static std::atomic<int> finished_threads(0);
+    barrier->Wait(worker_id);
     while (state->local_csr_counter < state->local_csrs.size()) {
       state->local_csr_lock.lock();
       if (state->local_csr_counter >= state->local_csrs.size()) {
@@ -117,6 +121,7 @@ void IterativeLengthTask::IterativeLength() {
         break;
       }
       auto local_csr = state->local_csrs[state->local_csr_counter++].get();
+      Printer::PrintF("CSR counter: %d, max size %d\n", state->local_csr_counter.load(), state->local_csrs.size());
       state->local_csr_lock.unlock();
       vector<int64_t> &v = local_csr->v;
       vector<int64_t> &e = local_csr->e;
@@ -137,6 +142,15 @@ void IterativeLengthTask::IterativeLength() {
       // Check and process tasks for the next phase
     }
     state->change = false;
+    // Mark this thread as finished
+    finished_threads.fetch_add(1);
+
+    // Last thread reaching here should reset the counter for the next iteration
+    if (finished_threads.load() == state->num_threads) {
+      finished_threads.store(0); // Reset for the next phase
+    }
+
+    Printer::PrintF("worker %d finished all partitions\n", worker_id);
     barrier->Wait(worker_id);
     if (worker_id == 0) {
       CheckChange(seen, next);

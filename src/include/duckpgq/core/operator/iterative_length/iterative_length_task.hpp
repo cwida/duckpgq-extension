@@ -31,6 +31,7 @@ private:
   ClientContext &context;
   shared_ptr<IterativeLengthState> &state;
   idx_t worker_id;
+  bool explore_done; // Flag to indicate task completion
 };
 
 
