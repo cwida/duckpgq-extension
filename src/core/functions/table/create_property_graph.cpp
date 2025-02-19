@@ -214,6 +214,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
   case_insensitive_set_t v_table_names;
   for (auto &vertex_table : info->vertex_tables) {
     try {
+      auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
       auto table = GetTableCatalogEntry(context, vertex_table);
       CheckPropertyGraphTableColumns(vertex_table, table);
       CheckPropertyGraphTableLabels(vertex_table, table);

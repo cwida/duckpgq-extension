@@ -44,7 +44,8 @@ public:
   CheckPropertyGraphTableColumns(const shared_ptr<PropertyGraphTable> &pg_table,
                                  TableCatalogEntry &table);
 
-  static reference<TableCatalogEntry> GetTableCatalogEntry(ClientContext &context, shared_ptr<PropertyGraphTable> &pg_table);
+  static reference<TableCatalogEntry> GetTableCatalogEntry(ClientContext &context,
+    shared_ptr<PropertyGraphTable> &pg_table);
 
   static unique_ptr<FunctionData>
   CreatePropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
