@@ -27,7 +27,7 @@ Invalid Error: Catalog 'nonexistingcatalog' does not exist!
 statement error
 -create or replace property graph stations vertex tables (bluesky.tabledoesnotexist)
 ----
-Invalid Error: Table bluesky.tabledoesnotexist not found
+Invalid Error: Table tabledoesnotexist not found
 
 statement ok con1
 -CREATE OR REPLACE PROPERTY GRAPH bluesky
