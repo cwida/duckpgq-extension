@@ -1,5 +1,5 @@
 # DuckPGQ
-A DuckDB extension for graph workloads that supports the SQL/PGQ standard. For more information, please see the [documentation page](https://duckpgq.notion.site/duckpgq/b8ac652667964f958bfada1c3e53f1bb?v=3b47a8d44bdf4e0c8b503bf23f1b76f2).
+A DuckDB extension for graph workloads that supports the SQL/PGQ standard. For more information, please see the [documentation page](https://duckpgq.org/).
 
 [![Discord](https://discordapp.com/api/guilds/1225369321077866496/widget.png?style=banner3)](https://discord.gg/8X95XHhQB7)
 ## WIP Disclaimer
