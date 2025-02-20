@@ -128,9 +128,9 @@ void CreatePropertyGraphFunction::ValidateKeys(
 
 void CreatePropertyGraphFunction::ValidateForeignKeyColumns(
     shared_ptr<PropertyGraphTable> &edge_table,
-    const vector<string> &fk_columns, TableCatalogEntry &table) {
+    const vector<string> &fk_columns, optional_ptr<TableCatalogEntry> &table) {
   for (const auto &fk : fk_columns) {
-    if (!table.ColumnExists(fk)) {
+    if (!table->ColumnExists(fk)) {
       throw Exception(ExceptionType::INVALID, "Foreign key " + fk +
                                                   " does not exist in table " +
                                                   edge_table->table_name);
@@ -150,16 +150,18 @@ void CreatePropertyGraphFunction::ValidateVertexTableRegistration(
 
 // Helper function to validate primary keys in the source or destination tables
 void CreatePropertyGraphFunction::ValidatePrimaryKeyInTable(
-    Catalog &catalog, ClientContext &context, const string &schema,
-    const string &reference, const vector<string> &pk_columns) {
-  auto &table_entry =
-      catalog.GetEntry<TableCatalogEntry>(context, schema, reference);
+    ClientContext &context, shared_ptr<PropertyGraphTable> &pg_table, const vector<string> &pk_columns) {
+  auto table =
+      Catalog::GetEntry<TableCatalogEntry>(context, pg_table->catalog_name, pg_table->schema_name, pg_table->table_name, OnEntryNotFound::RETURN_NULL);
+  if (!table) {
+    throw Exception(ExceptionType::INVALID, "Table with name " + pg_table->table_name + " does not exist");
+  }
 
   for (const auto &pk : pk_columns) {
-    if (!table_entry.ColumnExists(pk)) {
+    if (!table->ColumnExists(pk)) {
       throw Exception(ExceptionType::INVALID, "Primary key " + pk +
                                                   " does not exist in table " +
-                                                  reference);
+                                                  pg_table->table_name);
     }
   }
 }
@@ -216,6 +218,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
   case_insensitive_set_t v_table_names;
   for (auto &vertex_table : info->vertex_tables) {
     try {
+      Binder::BindSchemaOrCatalog(context, vertex_table->catalog_name, vertex_table->schema_name);
       auto table = Catalog::GetEntry<TableCatalogEntry>(context, vertex_table->catalog_name, vertex_table->schema_name, vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
       if (!table) {
         throw Exception(ExceptionType::INVALID, "Table with name " + vertex_table->table_name + " does not exist");
@@ -223,9 +226,8 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
       CheckPropertyGraphTableColumns(vertex_table, table);
       CheckPropertyGraphTableLabels(vertex_table, table);
     } catch (CatalogException &e) {
-      auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
-      auto table = catalog.GetEntry<ViewCatalogEntry>(
-          context, info->schema, vertex_table->table_name,
+      auto table = Catalog::GetEntry<ViewCatalogEntry>(
+          context, vertex_table->catalog_name, vertex_table->schema_name, vertex_table->table_name,
           OnEntryNotFound::RETURN_NULL);
       if (table) {
         throw Exception(ExceptionType::INVALID,
@@ -248,21 +250,22 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
 
   for (auto &edge_table : info->edge_tables) {
     try {
+      Binder::BindSchemaOrCatalog(context, edge_table->catalog_name, edge_table->schema_name);
       auto table = Catalog::GetEntry<TableCatalogEntry>(context, edge_table->catalog_name, edge_table->schema_name, edge_table->table_name, OnEntryNotFound::RETURN_NULL);
       if (!table) {
-        throw Exception(ExceptionType::INVALID, "Table " + edge_table->table_name + " not found");
+        throw Exception(ExceptionType::INVALID, "Table with name " + edge_table->table_name + " does not exist");
       }
       CheckPropertyGraphTableColumns(edge_table, table);
       CheckPropertyGraphTableLabels(edge_table, table);
 
-      auto &table_constraints = table.get()->GetConstraints();
+      auto &table_constraints = table->GetConstraints();
 
       ValidateKeys(edge_table, edge_table->source_reference, "source",
                    edge_table->source_pk, edge_table->source_fk,
                    table_constraints);
 
       // Check source foreign key columns exist in the table
-      // ValidateForeignKeyColumns(edge_table, edge_table->source_fk, table);
+      ValidateForeignKeyColumns(edge_table, edge_table->source_fk, table);
 
       // Validate destination keys
       ValidateKeys(edge_table, edge_table->destination_reference, "destination",
@@ -270,29 +273,26 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                    table_constraints);
 
       // Check destination foreign key columns exist in the table
-      // ValidateForeignKeyColumns(edge_table, edge_table->destination_fk, table);
+      ValidateForeignKeyColumns(edge_table, edge_table->destination_fk, table);
 
       // Validate source table registration
       ValidateVertexTableRegistration(edge_table->source_reference,
                                       v_table_names);
 
       // Validate primary keys in the source table
-      // ValidatePrimaryKeyInTable(catalog, context, table_info->schema,
-      //                           edge_table->source_reference,
-      //                           edge_table->source_pk);
+      ValidatePrimaryKeyInTable(context, edge_table->source_pg_table,
+                                edge_table->source_pk);
 
       // Validate destination table registration
       ValidateVertexTableRegistration(edge_table->destination_reference,
                                       v_table_names);
 
       // Validate primary keys in the destination table
-      // ValidatePrimaryKeyInTable(catalog, context, table_info->schema,
-      //                           edge_table->destination_reference,
-      //                           edge_table->destination_pk);
+      ValidatePrimaryKeyInTable(context, edge_table->destination_pg_table,
+                                edge_table->destination_pk);
     } catch (CatalogException &e) {
-      auto &catalog = Catalog::GetCatalog(context, edge_table->catalog_name);
-      auto table = catalog.GetEntry<ViewCatalogEntry>(
-          context, info->schema, edge_table->table_name,
+      auto table = Catalog::GetEntry<ViewCatalogEntry>(
+          context, edge_table->catalog_name, edge_table->schema_name, edge_table->table_name,
           OnEntryNotFound::RETURN_NULL);
       if (table) {
         throw Exception(ExceptionType::INVALID,
