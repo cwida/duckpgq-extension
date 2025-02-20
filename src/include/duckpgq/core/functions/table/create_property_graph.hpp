@@ -56,10 +56,8 @@ public:
   ValidateVertexTableRegistration(const string &reference,
                                   const case_insensitive_set_t &v_table_names);
 
-  static void ValidatePrimaryKeyInTable(Catalog &catalog,
-                                        ClientContext &context,
-                                        const string &schema,
-                                        const string &reference,
+  static void ValidatePrimaryKeyInTable(ClientContext &context,
+                                        shared_ptr<PropertyGraphTable> &pg_table,
                                         const vector<string> &pk_columns);
 
   static void
@@ -71,7 +69,7 @@ public:
   static void
   ValidateForeignKeyColumns(shared_ptr<PropertyGraphTable> &edge_table,
                             const vector<string> &fk_columns,
-                            TableCatalogEntry &table);
+                            optional_ptr<TableCatalogEntry> &table);
 
   static unique_ptr<GlobalTableFunctionState>
   CreatePropertyGraphInit(ClientContext &context,
