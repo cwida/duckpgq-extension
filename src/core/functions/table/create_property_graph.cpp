@@ -8,6 +8,8 @@
 #include "duckdb/main/connection_manager.hpp"
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
 #include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
+#include "duckdb/catalog/catalog.hpp"
+
 
 namespace duckpgq {
 namespace core {
@@ -214,8 +216,9 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
   case_insensitive_set_t v_table_names;
   for (auto &vertex_table : info->vertex_tables) {
     try {
-      auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
-      auto table = GetTableCatalogEntry(context, vertex_table);
+      auto &table = Catalog::GetEntry<TableCatalogEntry>(context, vertex_table->catalog_name, vertex_table->schema_name, vertex_table->table_name);
+      // auto catalog_entry = schema.GetEntry(schema.catalog.GetCatalogTransaction(context), CatalogType::TABLE_ENTRY, vertex_table->table_name);
+      // auto &table = catalog_entry->Cast<TableCatalogEntry>();
       CheckPropertyGraphTableColumns(vertex_table, table);
       CheckPropertyGraphTableLabels(vertex_table, table);
     } catch (CatalogException &e) {
