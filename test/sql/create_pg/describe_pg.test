@@ -21,8 +21,8 @@ EDGE TABLES (
 query IIIIIIIIIIIIII
 -DESCRIBE PROPERTY GRAPH snb;
 ----
-snb	Person	person	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
-snb	Person_knows_person	knows	false	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL	NULL	main
+snb	Person	person	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
+snb	Person_knows_person	knows	0	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL	NULL	(empty)
 
 statement ok
 -CREATE OR REPLACE PROPERTY GRAPH snb
@@ -70,24 +70,25 @@ EDGE TABLES (
 query IIIIIIIIIIIIII
 -DESCRIBE PROPERTY GRAPH snb;
 ----
-snb	Message	message	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
-snb	City	city	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
-snb	Country	country	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
-snb	TagClass	tagclass	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
-snb	Tag	tag	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
-snb	Place	place	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
-snb	Organisation	organisation	true	NULL	NULL	NULL	NULL	NULL	NULL	typemask	[company, university]	NULL	main
-snb	Forum	forum	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
-snb	Person	person	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	main
-snb	Message_replyOf_Message	replyof	false	Message	[id]	[messageId]	Message	[id]	[ParentMessageId]	NULL	NULL	NULL	main
-snb	Message_hasAuthor_Person	hasauthor	false	Message	[id]	[messageId]	Person	[id]	[PersonId]	NULL	NULL	NULL	main
-snb	Message_hasTag_Tag	message_hastag	false	Message	[id]	[id]	Tag	[id]	[TagId]	NULL	NULL	NULL	main
-snb	Person_likes_Message	likes_message	false	Person	[id]	[PersonId]	Message	[id]	[id]	NULL	NULL	NULL	main
-snb	person_workAt_Organisation	workat_organisation	false	Person	[id]	[PersonId]	Organisation	[id]	[OrganisationId]	NULL	NULL	NULL	main
-snb	Person_hasInterest_Tag	hasinterest	false	Person	[id]	[PersonId]	Tag	[id]	[TagId]	NULL	NULL	NULL	main
-snb	Forum_hasTag_Tag	forum_hastag	false	Forum	[id]	[ForumId]	Tag	[id]	[TagId]	NULL	NULL	NULL	main
-snb	Forum_hasMember_Person	hasmember	false	Forum	[id]	[ForumId]	Person	[id]	[PersonId]	NULL	NULL	NULL	main
-snb	Person_knows_person	knows	false	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL	NULL	main
+snb	Message	message	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
+snb	City	city	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
+snb	Country	country	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
+snb	TagClass	tagclass	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
+snb	Tag	tag	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
+snb	Place	place	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
+snb	Organisation	organisation	1	NULL	NULL	NULL	NULL	NULL	NULL	typemask	[company, university]	NULL	(empty)
+snb	Forum	forum	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
+snb	Person	person	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
+snb	Message_replyOf_Message	replyof	0	Message	[id]	[messageId]	Message	[id]	[ParentMessageId]	NULL	NULL	NULL	(empty)
+snb	Message_hasAuthor_Person	hasauthor	0	Message	[id]	[messageId]	Person	[id]	[PersonId]	NULL	NULL	NULL	(empty)
+snb	Message_hasTag_Tag	message_hastag	0	Message	[id]	[id]	Tag	[id]	[TagId]	NULL	NULL	NULL	(empty)
+snb	Person_likes_Message	likes_message	0	Person	[id]	[PersonId]	Message	[id]	[id]	NULL	NULL	NULL	(empty)
+snb	person_workAt_Organisation	workat_organisation	0	Person	[id]	[PersonId]	Organisation	[id]	[OrganisationId]	NULL	NULL	NULL	(empty)
+snb	Person_hasInterest_Tag	hasinterest	0	Person	[id]	[PersonId]	Tag	[id]	[TagId]	NULL	NULL	NULL	(empty)
+snb	Forum_hasTag_Tag	forum_hastag	0	Forum	[id]	[ForumId]	Tag	[id]	[TagId]	NULL	NULL	NULL	(empty)
+snb	Forum_hasMember_Person	hasmember	0	Forum	[id]	[ForumId]	Person	[id]	[PersonId]	NULL	NULL	NULL	(empty)
+snb	Person_knows_person	knows	0	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL	NULL	(empty)
+
 
 statement error
 -DESCRIBE PROPERTY GRAPH pgdoesnotexist;
@@ -108,5 +109,5 @@ statement ok
 query IIIIIIIIIIIIII
 -DESCRIBE PROPERTY GRAPH bluesky;
 ----
-bluesky	account	account	true	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	bluesky	main
-bluesky	follows	follows	false	account	[did]	[source]	account	[did]	[destination]	NULL	NULL	bluesky	main
+bluesky	account	account	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	bluesky	(empty)
+bluesky	follows	follows	0	account	[did]	[source]	account	[did]	[destination]	NULL	NULL	bluesky	(empty)
