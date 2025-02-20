@@ -15,19 +15,19 @@ select count(*) from bluesky.follows;
 statement error
 -create or replace property graph stations vertex tables (stations.stations)
 ----
-Invalid Error: Table stations not found
+Invalid Error: Table with name stations does not exist
 
 statement error
 -create or replace property graph stations vertex tables (nonexistingschema.account)
     edge tables (nonexistingschema.follows source key (source) references nonexistingschema.account (did)
         destination key (destination) references nonexistingschema.account (did))
 ----
-Invalid Error: Catalog 'nonexistingcatalog' does not exist!
+Invalid Error: Table with name account does not exist
 
 statement error
 -create or replace property graph stations vertex tables (bluesky.tabledoesnotexist)
 ----
-Invalid Error: Table tabledoesnotexist not found
+Invalid Error: Table with name tabledoesnotexist does not exist
 
 statement ok con1
 -CREATE OR REPLACE PROPERTY GRAPH bluesky
