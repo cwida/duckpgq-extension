@@ -38,11 +38,11 @@ public:
 
   static void
   CheckPropertyGraphTableLabels(const shared_ptr<PropertyGraphTable> &pg_table,
-                                TableCatalogEntry &table);
+                                optional_ptr<TableCatalogEntry> &table);
 
   static void
   CheckPropertyGraphTableColumns(const shared_ptr<PropertyGraphTable> &pg_table,
-                                 TableCatalogEntry &table);
+                                 optional_ptr<TableCatalogEntry> &table);
 
   static reference<TableCatalogEntry> GetTableCatalogEntry(ClientContext &context,
     shared_ptr<PropertyGraphTable> &pg_table);
