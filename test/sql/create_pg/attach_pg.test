@@ -15,12 +15,12 @@ select count(*) from bluesky.follows;
 statement error
 -create or replace property graph stations vertex tables (stations.stations)
 ----
-Invalid Error: Catalog 'stations' does not exist!
+Invalid Error: Table stations not found
 
 statement error
--create or replace property graph stations vertex tables (bluesky.account)
-    edge tables (nonexistingcatalog.follows source key (source) references bluesky.account (did)
-        destination key (destination) references bluesky.account (did))
+-create or replace property graph stations vertex tables (nonexistingschema.account)
+    edge tables (nonexistingschema.follows source key (source) references nonexistingschema.account (did)
+        destination key (destination) references nonexistingschema.account (did))
 ----
 Invalid Error: Catalog 'nonexistingcatalog' does not exist!
 
