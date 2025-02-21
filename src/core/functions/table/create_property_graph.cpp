@@ -75,6 +75,7 @@ void CreatePropertyGraphFunction::ValidateKeys(
     const string &key_type, vector<string> &pk_columns,
     vector<string> &fk_columns,
     const vector<unique_ptr<Constraint>> &table_constraints) {
+  // todo(dtenwolde) add test case for attached databases or different schema that has pk-fk relationships
   if (fk_columns.empty() && pk_columns.empty()) {
     if (table_constraints.empty()) {
       throw Exception(ExceptionType::INVALID,
@@ -140,10 +141,10 @@ void CreatePropertyGraphFunction::ValidateForeignKeyColumns(
 
 // Helper function to check if the vertex table is registered
 void CreatePropertyGraphFunction::ValidateVertexTableRegistration(
-    const string &reference, const case_insensitive_set_t &v_table_names) {
-  if (v_table_names.find(reference) == v_table_names.end()) {
+    shared_ptr<PropertyGraphTable> &pg_table, const case_insensitive_set_t &v_table_names) {
+  if (v_table_names.find(pg_table->FullTableName()) == v_table_names.end()) {
     throw Exception(ExceptionType::INVALID,
-                    "Referenced vertex table " + reference +
+                    "Referenced vertex table " + pg_table->FullTableName() +
                         " is not registered in the vertex tables.");
   }
 }
@@ -164,29 +165,6 @@ void CreatePropertyGraphFunction::ValidatePrimaryKeyInTable(
                                                   pg_table->table_name);
     }
   }
-}
-
-reference<TableCatalogEntry> CreatePropertyGraphFunction::GetTableCatalogEntry(
-  ClientContext &context, shared_ptr<PropertyGraphTable> &pg_table) {
-  vector<reference<CatalogEntry>> result;
-  auto schemas = Catalog::GetAllSchemas(context);
-  for (auto &schema_ref : schemas) {
-    auto &schema = schema_ref.get();
-    schema.Scan(context, CatalogType::TABLE_ENTRY, [&](CatalogEntry &entry) {
-      if (entry.name == pg_table->table_name) {
-        result.push_back(entry);
-      }
-    });
-  }
-  if (result.empty()) {
-    throw Exception(ExceptionType::INVALID,
-                    "Table " +
-                        pg_table->table_name + " not found");
-  }
-  if (result.size() > 1) {
-    throw Exception(ExceptionType::INVALID, "Multiple tables in different schemas found with name " + pg_table->table_name);
-  }
-  return result[0].get().Cast<TableCatalogEntry>();
 }
 
 unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
@@ -241,8 +219,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                                                   vertex_table->catalog_name +
                                                   "' does not exist!");
     }
-
-    v_table_names.insert(vertex_table->table_name);
+    v_table_names.insert(vertex_table->FullTableName());
     if (vertex_table->hasTableNameAlias()) {
       v_table_names.insert(vertex_table->table_name_alias);
     }
@@ -257,6 +234,8 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
       }
       CheckPropertyGraphTableColumns(edge_table, table);
       CheckPropertyGraphTableLabels(edge_table, table);
+      Binder::BindSchemaOrCatalog(context, edge_table->source_catalog, edge_table->source_schema);
+      Binder::BindSchemaOrCatalog(context, edge_table->destination_catalog, edge_table->destination_schema);
 
       auto &table_constraints = table->GetConstraints();
 
@@ -276,7 +255,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
       ValidateForeignKeyColumns(edge_table, edge_table->destination_fk, table);
 
       // Validate source table registration
-      ValidateVertexTableRegistration(edge_table->source_reference,
+      ValidateVertexTableRegistration(edge_table->source_pg_table,
                                       v_table_names);
 
       // Validate primary keys in the source table
@@ -284,7 +263,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(
                                 edge_table->source_pk);
 
       // Validate destination table registration
-      ValidateVertexTableRegistration(edge_table->destination_reference,
+      ValidateVertexTableRegistration(edge_table->destination_pg_table,
                                       v_table_names);
 
       // Validate primary keys in the destination table
@@ -388,7 +367,11 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
       insert_info += "NULL,";
     }
     insert_info += "'" + v_table->catalog_name + "', ";
-    insert_info += "'" + v_table->schema_name + "'";
+    insert_info += "'" + v_table->schema_name + "', ";
+    insert_info += "NULL,"; // source table catalog
+    insert_info += "NULL,"; // source table schema
+    insert_info += "NULL,"; // destination table catalog
+    insert_info += "NULL"; // destination table schema
     insert_info += "), ";
   }
 
@@ -436,10 +419,13 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
       insert_info += "NULL, ";
     }
     insert_info += "'" + e_table->catalog_name + "', ";
-    insert_info += "'" + e_table->schema_name + "'";
+    insert_info += "'" + e_table->schema_name + "', ";
+    insert_info += "'" + e_table->source_catalog + "', ";
+    insert_info += "'" + e_table->source_schema + "', ";
+    insert_info += "'" + e_table->destination_catalog + "', ";
+    insert_info += "'" + e_table->destination_schema + "'";
     insert_info += "), ";
   }
-
   auto insert_query = new_conn->Query(insert_info, false);
   if (insert_query->HasError()) {
     throw TransactionException(insert_query->GetError());
