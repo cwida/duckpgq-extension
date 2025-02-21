@@ -278,3 +278,42 @@ statement ok
 -create property graph g
 vertex tables (v,w)
 edge tables (e2 source v destination w);
+
+statement ok
+create schema myschema; set search_path = myschema;
+
+statement ok
+CREATE TABLE Person (id bigint); CREATE TABLE Person_knows_person (person1id bigint, person2id bigint);
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH snb
+    VERTEX TABLES (
+      Person
+    )
+    EDGE TABLES (
+      Person_knows_person SOURCE KEY (Person1Id) REFERENCES Person (id)
+                          DESTINATION KEY (Person2Id) REFERENCES Person (id)
+      LABEL knows
+    );
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH snb
+  VERTEX TABLES (
+    myschema.Person
+  )
+  EDGE TABLES (
+    myschema.Person_knows_person SOURCE KEY (Person1Id) REFERENCES myschema.Person (id)
+                        DESTINATION KEY (Person2Id) REFERENCES myschema.Person (id)
+    LABEL knows
+  );
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH snb
+  VERTEX TABLES (
+    memory.myschema.Person
+  )
+  EDGE TABLES (
+    memory.myschema.Person_knows_person SOURCE KEY (Person1Id) REFERENCES memory.myschema.Person (id)
+                        DESTINATION KEY (Person2Id) REFERENCES memory.myschema.Person (id)
+    LABEL knows
+  );
