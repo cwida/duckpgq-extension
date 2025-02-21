@@ -223,3 +223,58 @@ CREATE PROPERTY GRAPH wrong_schema_reference
     );
 ----
 Invalid Error: Table 'schema1.Company' not found in the property graph wrong_schema_reference.
+
+
+
+statement ok
+create table schema2.v (
+    id BIGINT primary key,
+    name varchar
+);
+
+statement ok
+INSERT INTO schema2.v VALUES (1, 'a');
+
+statement error
+create table schema1.e (
+    id bigint primary key,
+    src BIGINT REFERENCES v(id),
+    dst BIGINT REFERENCES v(id)
+);
+----
+Binder Error: Creating foreign keys across different schemas or catalogs is not supported
+
+statement ok
+create table schema2.e (
+    id bigint primary key,
+    src BIGINT REFERENCES schema2.v(id),
+    dst BIGINT REFERENCES schema2.v(id)
+);
+
+statement error
+-create property graph g
+vertex tables (schema2.v)
+edge tables (schema2.e source schema2.v destination schema2.v);
+----
+Invalid Error: Multiple primary key - foreign key relationships detected between e and v. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES v <foreign key>`
+
+statement ok
+create table schema2.w (
+    id BIGINT primary key,
+    name varchar
+);
+
+statement ok
+INSERT INTO schema2.w VALUES (2, 'b');
+
+statement ok
+create table schema2.e2 (
+    id bigint primary key,
+    src BIGINT REFERENCES schema2.v(id),
+    dst BIGINT REFERENCES schema2.w(id)
+);
+
+statement ok
+-create property graph g
+vertex tables (v,w)
+edge tables (e2 source v destination w);
