@@ -297,6 +297,9 @@ statement ok
     );
 
 statement ok
+-FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));
+
+statement ok
 -CREATE OR REPLACE PROPERTY GRAPH snb
   VERTEX TABLES (
     myschema.Person
@@ -308,6 +311,9 @@ statement ok
   );
 
 statement ok
+-FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));
+
+statement ok
 -CREATE OR REPLACE PROPERTY GRAPH snb
   VERTEX TABLES (
     memory.myschema.Person
@@ -317,3 +323,6 @@ statement ok
                         DESTINATION KEY (Person2Id) REFERENCES memory.myschema.Person (id)
     LABEL knows
   );
+
+statement ok
+-FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));
