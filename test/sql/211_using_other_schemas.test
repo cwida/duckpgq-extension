@@ -296,6 +296,7 @@ statement ok
       LABEL knows
     );
 
+
 statement ok
 -FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));
 
