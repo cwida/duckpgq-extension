@@ -53,7 +53,7 @@ public:
                           vector<string> &names);
 
   static void
-  ValidateVertexTableRegistration(const string &reference,
+  ValidateVertexTableRegistration(shared_ptr<PropertyGraphTable> &pg_table,
                                   const case_insensitive_set_t &v_table_names);
 
   static void ValidatePrimaryKeyInTable(ClientContext &context,
