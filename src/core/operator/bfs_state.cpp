@@ -35,6 +35,7 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, idx_t num_threads_,
   seen = vector<std::bitset<LANE_LIMIT>>(v_size);
 
   local_csr_counter = 0;
+  partition_counter = 0;
 
   // Initialize source and destination vectors
   src_data.ToUnifiedFormat(pairs->size(), vdata_src);
@@ -61,7 +62,7 @@ void BFSState::ScheduleBFSBatch(Pipeline &, Event &, const PhysicalPathFinding *
 
 void BFSState::CreateThreadLocalCSRs() {
   local_csrs.clear(); // Reset existing LocalCSRs
-  idx_t total_partitions = num_threads * 8;
+  idx_t total_partitions = num_threads * 4;
 
   idx_t total_vertices = csr->vsize - 1; // Number of vertices
   idx_t vertices_per_partition = (total_vertices + total_partitions - 1) / total_partitions; // Balanced partition size
@@ -69,7 +70,7 @@ void BFSState::CreateThreadLocalCSRs() {
   // Define vertex ranges for partitions
   for (idx_t i = 0; i < total_partitions; i++) {
     idx_t start_vertex = i * vertices_per_partition;
-    idx_t end_vertex = std::min((i + 1) * vertices_per_partition, total_vertices);
+    idx_t end_vertex = std::min((i + 1) * vertices_per_partition, total_vertices - 1);
     partition_ranges.emplace_back(start_vertex, end_vertex);
   }
 
@@ -91,8 +92,14 @@ void BFSState::CreateThreadLocalCSRs() {
       }
     }
     v.push_back(v_offset);
-    local_csrs.push_back(make_uniq<LocalCSR>(v, e));
+    if (!e.empty()) {
+      local_csrs.push_back(make_uniq<LocalCSR>(v, e));
+    }
   }
+
+  // for (auto &local_csr : local_csrs) {
+  //   Printer::PrintF("%s", local_csr->ToString());
+  // }
 }
 
 // void BFSState::CreateThreadLocalCSRs() {

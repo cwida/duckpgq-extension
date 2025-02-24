@@ -21,11 +21,12 @@ void IterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen
     if (next[i].any()) {
       next[i] &= ~seen[i];
       seen[i] |= next[i];
-      if (next[i].any()) {
+      if (state->change || next[i].any()) {
         state->change = true;
       }
     }
   }
+  // Printer::PrintF("%d finished partition %d to %d, state now: %d\n", worker_id, partition_range.first, partition_range.second, state->change);
 }
 
 
@@ -151,7 +152,7 @@ void IterativeLengthTask::IterativeLength() {
 
     // Printer::PrintF("worker %d finished all partitions\n", worker_id);
     barrier->Wait(worker_id);
-
+    // Printer::PrintF("partition counter: %d\n", state->partition_counter.load());
     while (state->partition_counter < state->partition_ranges.size()) {
       state->local_csr_lock.lock();
       if (state->partition_counter >= state->partition_ranges.size()) {
@@ -159,14 +160,14 @@ void IterativeLengthTask::IterativeLength() {
         break;
       }
       auto partition_range = state->partition_ranges[state->partition_counter++];
-      Printer::PrintF("worker %d processing partition %d to %d\n", worker_id, partition_range.first, partition_range.second);
-      Printer::PrintF("Partition counter: %d, max size %d\n", state->partition_counter.load(), state->partition_ranges.size());
       state->local_csr_lock.unlock();
+      // Printer::PrintF("worker %d processing partition %d to %d\n", worker_id, partition_range.first, partition_range.second);
+      // Printer::PrintF("Partition counter: %d, max size %d\n", state->partition_counter.load(), state->partition_ranges.size());
       CheckChange(seen, next, partition_range);
     }
     barrier->Wait(worker_id);
     state->partition_counter = 0;
-    Printer::Print("Finished iteration");
+    // Printer::PrintF("Finished iteration: %d", state->iter);
 }
 
 void IterativeLengthTask::ReachDetect() const {
