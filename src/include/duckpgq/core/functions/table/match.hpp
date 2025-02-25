@@ -62,6 +62,10 @@ public:
       case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
           &alias_to_vertex_and_edge_tables);
 
+  static case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
+  PopulateGraphTableAliasMap(const CreatePropertyGraphInfo &pg_table,
+                             const MatchExpression &match_expr);
+
   static PathElement *
   GetPathElement(const unique_ptr<PathReference> &path_reference);
 
@@ -171,8 +175,10 @@ public:
 
   // Check whether columns to query are valid against the property graph, throws
   // BinderException if error.
-  static void CheckColumnBinding(const CreatePropertyGraphInfo &pg_table,
-                                 const MatchExpression &ref);
+  static void CheckColumnBinding(
+      const CreatePropertyGraphInfo &pg_table, const MatchExpression &ref,
+      const case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
+          &alias_to_vertex_and_edge_tables);
 };
 
 } // namespace core

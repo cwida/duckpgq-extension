@@ -68,6 +68,22 @@ FROM GRAPH_TABLE(pg
 query IIIII
 -SELECT *
 FROM GRAPH_TABLE(pg
+    MATCH (p:Person)-[w:worksAt]->(u:organisation)
+    COLUMNS (p.*, u.*, w.*)
+    ) result
+----
+0	Daniel	1	1	UvA
+0	Daniel	2	2	EY
+0	Daniel	3	2	CWI
+1	Tavneet	2	2	EY
+1	Tavneet	3	2	CWI
+2	Gabor	3	2	CWI
+3	Peter	0	1	VU
+4	David	3	2	CWI
+
+query IIIII
+-SELECT *
+FROM GRAPH_TABLE(pg
     MATCH (p:Person)-[w:worksAt]->(u:ORGANISATION)
     COLUMNS (p.id, p.name, u.id, u.name, u.mask)
     ) result
@@ -191,23 +207,23 @@ EDGE TABLES (
         DESTINATION KEY(collegeID) REFERENCES College(id)
         PROPERTIES (classYear)             LABEL studiesAt );
 
-query IIII
+query III
 -FROM GRAPH_TABLE (pg MATCH (a:Student) COLUMNS(*)) tmp;
 ----
-1	Ana	2000-10-01	1
-2	Bo	2000-01-10	3
-2	Ed	2001-10-10	1
-2	Jo	2001-01-01	1
+1	Ana	2000-10-01
+2	Bo	2000-01-10
+2	Ed	2001-10-10
+2	Jo	2001-01-01
 
-query IIII
+query III
 -FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS(*)) tmp;
 ----
-1	Ana	2000-10-01	1
-2	Bo	2000-01-10	3
-2	Ed	2001-10-10	1
-2	Jo	2001-01-01	1
+1	Ana	2000-10-01
+2	Bo	2000-01-10
+2	Ed	2001-10-10
+2	Jo	2001-01-01
 
-query IIII
+query III
 -FROM GRAPH_TABLE (pg MATCH (a:TA) COLUMNS(*)) tmp;
 ----
-2	Bo	2000-01-10	3
+2	Bo	2000-01-10
