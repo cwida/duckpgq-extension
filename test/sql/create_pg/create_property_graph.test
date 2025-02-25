@@ -11,8 +11,7 @@ statement error
 -CREATE PROPERTY GRAPH pg4
 VERTEX TABLES (tabledoesnotexist);
 ----
-Invalid Error: Table main.tabledoesnotexist not found
-
+Invalid Error: Table with name tabledoesnotexist does not exist
 
 statement ok
 CREATE TABLE Student(id BIGINT, name VARCHAR);
@@ -24,7 +23,7 @@ EDGE TABLES (edgetabledoesnotexist SOURCE KEY (id) REFERENCES Student (id)
                                     DESTINATION KEY (id) REFERENCES Student (id)
             );
 ----
-Invalid Error: Table main.edgetabledoesnotexist not found
+Invalid Error: Table with name edgetabledoesnotexist does not exist
 
 statement ok
 CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
