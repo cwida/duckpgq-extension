@@ -1,10 +1,11 @@
+
 require duckpgq
 
 statement ok
-create table person as select * from read_csv_auto('/Users/dljtw/git/duckpgq/duckdb/benchmark/pathfinding/data/snb-bi-sf100.v',header=FALSE, sep=' ', columns={'id':'bigint'});
+attach '/Users/dljtw/git/duckpgq/duckdb/benchmark/pathfinding/data/snb-bi-sf100.duckdb' as snb;
 
 statement ok
-create table person_knows_person as select * from read_csv_auto('/Users/dljtw/git/duckpgq/duckdb/benchmark/pathfinding/data/snb-bi-sf100.e',header=FALSE, sep=' ', columns={'person1id':'bigint','person2id':'bigint','weight':'bigint'});
+use 'snb';
 
 statement ok
 pragma disable_progress_bar;
@@ -17,7 +18,7 @@ create or replace table snb_pairs as (
    select src, dst
    from (select a.rowid as src from person a),
         (select b.rowid as dst from person b)
-   using sample reservoir(16384 rows) repeatable (300)
+   using sample reservoir(131072 rows) repeatable (300)
 );
 
 # query III nosort lengthpairs
