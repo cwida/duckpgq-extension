@@ -22,7 +22,9 @@ DuckPGQState::DuckPGQState(shared_ptr<ClientContext> context) {
                                "source_catalog varchar, "
                                "source_schema varchar, "
                                "destination_catalog varchar, "
-                               "destination_schema varchar"
+                               "destination_schema varchar, "
+                               "properties varchar[], "
+                               "column_aliases varchar[]"
                                ")",
                                false);
   if (query->HasError()) {
@@ -67,7 +69,6 @@ void DuckPGQState::ProcessPropertyGraphs(
     table->table_name = chunk->GetValue(1, i).GetValue<string>();
     table->main_label = chunk->GetValue(2, i).GetValue<string>();
     table->is_vertex_table = chunk->GetValue(3, i).GetValue<bool>();
-    table->all_columns = true; // todo(dtenwolde) Be stricter on properties
 
     // Handle discriminator and sub-labels
     const auto &discriminator = chunk->GetValue(10, i).GetValue<string>();
@@ -97,6 +98,19 @@ void DuckPGQState::ProcessPropertyGraphs(
       table->schema_name = DEFAULT_SCHEMA;
       table->destination_catalog = "";
       table->destination_schema = DEFAULT_SCHEMA;
+    }
+    if (chunk->ColumnCount() > 18) {
+      // read properties
+      auto properties = ListValue::GetChildren(chunk->GetValue(18, i));
+      for (const auto &property: properties) {
+        table->column_names.push_back(property.GetValue<string>());
+      }
+      auto column_aliases = ListValue::GetChildren(chunk->GetValue(19, i));
+      for (const auto &alias: column_aliases) {
+        table->column_aliases.push_back(alias.GetValue<string>());
+      }
+    } else {
+      table->all_columns = true;
     }
 
     // Additional edge-specific handling

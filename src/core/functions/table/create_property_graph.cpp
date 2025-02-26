@@ -371,7 +371,19 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
     insert_info += "NULL,"; // source table catalog
     insert_info += "NULL,"; // source table schema
     insert_info += "NULL,"; // destination table catalog
-    insert_info += "NULL"; // destination table schema
+    insert_info += "NULL,"; // destination table schema
+    insert_info += "["; // Start of column names
+    for (idx_t i = 0; i < v_table->column_names.size(); i++) {
+        insert_info += "'" + v_table->column_names[i] +
+                       (i == v_table->column_names.size() - 1 ? "'" : "', ");
+    }
+    insert_info += "],"; // End of column names
+    insert_info += "["; // Start of column aliases
+    for (idx_t i = 0; i < v_table->column_aliases.size(); i++) {
+        insert_info += "'" + v_table->column_aliases[i] +
+                       (i == v_table->column_aliases.size() - 1 ? "'" : "', ");
+    }
+    insert_info += "]"; // End of column aliases
     insert_info += "), ";
   }
 
@@ -423,7 +435,19 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
     insert_info += "'" + e_table->source_catalog + "', ";
     insert_info += "'" + e_table->source_schema + "', ";
     insert_info += "'" + e_table->destination_catalog + "', ";
-    insert_info += "'" + e_table->destination_schema + "'";
+    insert_info += "'" + e_table->destination_schema + "', ";
+    insert_info += "["; // Start of column names
+    for (idx_t i = 0; i < e_table->column_names.size(); i++) {
+        insert_info += "'" + e_table->column_names[i] +
+                       (i == e_table->column_names.size() - 1 ? "'" : "', ");
+    }
+    insert_info += "],"; // End of column names
+    insert_info += "["; // Start of column aliases
+    for (idx_t i = 0; i < e_table->column_aliases.size(); i++) {
+        insert_info += "'" + e_table->column_aliases[i] +
+                       (i == e_table->column_aliases.size() - 1 ? "'" : "', ");
+    }
+    insert_info += "]"; // End of column aliases
     insert_info += "), ";
   }
   auto insert_query = new_conn->Query(insert_info, false);
