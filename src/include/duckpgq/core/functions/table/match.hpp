@@ -67,7 +67,7 @@ public:
                              const MatchExpression &match_expr);
 
   static PathElement *
-  GetPathElement(const unique_ptr<PathReference> &path_reference);
+  GetPathElement(const unique_ptr<PathReference> &path_reference, case_insensitive_set_t &anonymous_variable_set);
 
   static SubPath *GetSubPath(const unique_ptr<PathReference> &path_reference);
 
@@ -165,7 +165,8 @@ public:
       unique_ptr<SelectNode> &select_node,
       case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
       CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
-      MatchExpression &original_ref);
+      MatchExpression &original_ref,
+      case_insensitive_set_t &anonymous_variable_set);
 
   static void
   CheckNamedSubpath(SubPath &subpath, MatchExpression &original_ref,
