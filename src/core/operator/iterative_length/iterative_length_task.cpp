@@ -21,7 +21,7 @@ void IterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen
     if (next[i].any()) {
       next[i] &= ~seen[i];
       seen[i] |= next[i];
-      if (state->change || next[i].any()) {
+      if (!state->change && next[i].any()) {
         state->change = true;
       }
     }
@@ -73,7 +73,7 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
   return TaskExecutionResult::TASK_FINISHED;
 }
 
-void IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
+__attribute__((noinline)) void IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                   std::vector<std::bitset<LANE_LIMIT>> &next,
                                   const std::vector<int64_t> &v, const std::vector<int64_t> &e, idx_t v_size) {
   for (auto i = 0; i < v_size; i++) {
@@ -105,13 +105,21 @@ void IterativeLengthTask::IterativeLength() {
     const auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
     auto &barrier = state->barrier;
-    // Clear `next` array regardless of task availability
-    if (worker_id == 0) {
-      auto next_size = next.size();
-      for (auto i = 0; i < next_size; i++) {
+    // Clear `next` array
+    while (state->partition_counter < state->partition_ranges.size()) {
+      state->local_csr_lock.lock();
+      if (state->partition_counter >= state->partition_ranges.size()) {
+        state->local_csr_lock.unlock();
+        break;
+      }
+      auto partition_range = state->partition_ranges[state->partition_counter++];
+      state->local_csr_lock.unlock();
+      for (auto i = partition_range.first; i < partition_range.second; i++) {
         next[i] = 0;
       }
     }
+    barrier->Wait(worker_id);
+    state->partition_counter = 0;
     state->local_csr_counter = 0;
     static std::atomic<int> finished_threads(0);
     barrier->Wait(worker_id);
