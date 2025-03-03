@@ -22,6 +22,16 @@ namespace duckpgq {
 
 namespace core {
 
+class LocalCSR {
+public:
+  explicit LocalCSR(std::vector<int64_t> &v_, std::vector<int64_t> &e_) :
+    v(v_), e(e_) {}
+
+  std::vector<int64_t> v;
+  std::vector<int64_t> e;       // Thread-specific edges
+  std::string ToString() const;
+};
+
 class CSR {
 public:
   CSR() = default;

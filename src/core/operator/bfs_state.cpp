@@ -11,15 +11,14 @@ namespace duckpgq {
 
 namespace core {
 
-BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, idx_t num_threads_,
+BFSState::BFSState(const shared_ptr<DataChunk> &pairs_, std::vector<shared_ptr<LocalCSR>> &local_csrs_, std::vector<std::pair<idx_t, idx_t>> &partition_ranges_, idx_t num_threads_,
            string mode_, ClientContext &context_)
-    : pairs(std::move(pairs_)), csr(csr_), v_size(csr_->vsize - 2),
+    : pairs(pairs_), local_csrs(local_csrs_), partition_ranges(partition_ranges_),
       context(context_), num_threads(num_threads_), mode(std::move(mode_)),
       src_data(pairs->data[0]), dst_data(pairs->data[1]){
   LogicalType bfs_type = mode == "iterativelength"
                              ? LogicalType::BIGINT
                              : LogicalType::LIST(LogicalType::BIGINT);
-  D_ASSERT(csr_ != nullptr);
   // Only have to initialize the current batch and state once.
   total_pairs_processed = 0; // Initialize the total pairs processed
   current_batch_path_list_len = 0;
@@ -29,7 +28,7 @@ BFSState::BFSState(shared_ptr<DataChunk> pairs_, CSR* csr_, idx_t num_threads_,
   change = false;
   pf_results = make_shared_ptr<DataChunk>();
   pf_results->Initialize(context, {bfs_type});
-
+  v_size = local_csrs[0]->v.size() - 2;
   visit1 = vector<std::bitset<LANE_LIMIT>>(v_size);
   visit2 = vector<std::bitset<LANE_LIMIT>>(v_size);
   seen = vector<std::bitset<LANE_LIMIT>>(v_size);
@@ -60,47 +59,7 @@ void BFSState::ScheduleBFSBatch(Pipeline &, Event &, const PhysicalPathFinding *
   throw NotImplementedException("ScheduleBFSBatch must be implemented in a derived class.");
 }
 
-void BFSState::CreateThreadLocalCSRs() {
-  local_csrs.clear(); // Reset existing LocalCSRs
-  idx_t total_partitions = num_threads * 4;
 
-  idx_t total_vertices = csr->vsize - 1; // Number of vertices
-  idx_t vertices_per_partition = (total_vertices + total_partitions - 1) / total_partitions; // Balanced partition size
-
-  // Define vertex ranges for partitions
-  for (idx_t i = 0; i < total_partitions; i++) {
-    idx_t start_vertex = i * vertices_per_partition;
-    idx_t end_vertex = std::min((i + 1) * vertices_per_partition, total_vertices - 1);
-    partition_ranges.emplace_back(start_vertex, end_vertex);
-  }
-
-  // Construct Local CSRs based on vertex ranges
-  for (const auto &[start_vertex, end_vertex] : partition_ranges) {
-    std::vector<int64_t> v;
-    std::vector<int64_t> e;
-    idx_t v_offset = 0;
-
-    for (idx_t j = 0; j < csr->vsize-1; j++) {
-      v.push_back(v_offset);
-      for (idx_t e_offset = csr->v[j]; e_offset < csr->v[j + 1]; e_offset++) {
-        int64_t dst = csr->e[e_offset]; // Destination vertex
-        // Only add edges where destination is inside this partition
-        if (dst >= start_vertex && dst < end_vertex) {
-          v_offset++;
-          e.push_back(dst);
-        }
-      }
-    }
-    v.push_back(v_offset);
-    if (!e.empty()) {
-      local_csrs.push_back(make_uniq<LocalCSR>(v, e));
-    }
-  }
-
-  // for (auto &local_csr : local_csrs) {
-  //   Printer::PrintF("%s", local_csr->ToString());
-  // }
-}
 
 // void BFSState::CreateThreadLocalCSRs() {
 //   local_csrs.clear(); // Reset existing LocalCSRs

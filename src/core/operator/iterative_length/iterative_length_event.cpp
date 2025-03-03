@@ -15,7 +15,6 @@ IterativeLengthEvent::IterativeLengthEvent(shared_ptr<IterativeLengthState> gbfs
 void IterativeLengthEvent::Schedule() {
   auto &context = pipeline->GetClientContext();
   vector<shared_ptr<Task>> bfs_tasks;
-  gbfs_state->CreateThreadLocalCSRs();
   for (idx_t tnum = 0; tnum < gbfs_state->num_threads; tnum++) {
     bfs_tasks.push_back(make_uniq<IterativeLengthTask>(
         shared_from_this(), context, gbfs_state, tnum, op));

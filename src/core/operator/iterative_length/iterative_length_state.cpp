@@ -3,16 +3,12 @@
 #include <duckpgq/core/operator/shortest_path/shortest_path_event.hpp>
 #include <duckpgq/core/operator/iterative_length/iterative_length_event.hpp>
 
-#include <duckpgq/core/utils/compressed_sparse_row.hpp>
-#include <duckpgq/core/utils/duckpgq_barrier.hpp>
-#include <duckpgq/core/utils/duckpgq_utils.hpp>
-
 namespace duckpgq {
 
 namespace core {
 
-IterativeLengthState::IterativeLengthState(shared_ptr<DataChunk> pairs_, CSR* csr_, idx_t num_threads_, ClientContext &context_)
-    : BFSState(std::move(pairs_), csr_, num_threads_, "iterativelength", context_) {
+IterativeLengthState::IterativeLengthState(const shared_ptr<DataChunk> &pairs_, std::vector<shared_ptr<LocalCSR>> &local_csrs_, std::vector<std::pair<idx_t, idx_t>> &partition_ranges_, idx_t num_threads_, ClientContext &context_)
+    : BFSState(pairs_, local_csrs_, partition_ranges_, num_threads_, "iterativelength", context_) {
   // Additional IterativeLengthState-specific initialization here
 }
 
