@@ -15,6 +15,11 @@
 #include <duckpgq_state.hpp>
 #include <thread>
 
+#include <cmath> // for std::sqrt
+#include <duckpgq/core/option/duckpgq_option.hpp>
+#include <fstream>
+#include <numeric> // for std::accumulate
+
 namespace duckpgq {
 
 namespace core {
@@ -66,47 +71,82 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context,
 }
 
 void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
-  local_csrs.clear(); // Reset existing LocalCSRs
-  idx_t total_partitions = num_threads * 4;
+    local_csrs.clear(); // Reset existing LocalCSRs
+    idx_t total_partitions = num_threads * GetPartitionMultiplier(context_);
 
-  idx_t total_vertices = csr->vsize - 1; // Number of vertices
-  idx_t vertices_per_partition = (total_vertices + total_partitions - 1) / total_partitions; // Balanced partition size
 
-  // Define vertex ranges for partitions
-  for (idx_t i = 0; i < total_partitions; i++) {
-    idx_t start_vertex = i * vertices_per_partition;
-    idx_t end_vertex = std::min((i + 1) * vertices_per_partition, total_vertices - 1);
-    partition_ranges.emplace_back(start_vertex, end_vertex);
-  }
+    idx_t total_vertices = csr->vsize - 1; // Number of vertices
+    idx_t total_edges = csr->e.size(); // Number of edges in the global CSR
+    idx_t vertices_per_partition = (total_vertices + total_partitions - 1) / total_partitions; // Balanced partition size
 
-  // Construct Local CSRs based on vertex ranges
-  for (const auto &[start_vertex, end_vertex] : partition_ranges) {
-    std::vector<int64_t> v;
-    std::vector<int64_t> e;
-    idx_t v_offset = 0;
+    std::vector<idx_t> edges_per_partition;
 
-    for (idx_t j = 0; j < csr->vsize-1; j++) {
-      v.push_back(v_offset);
-      for (idx_t e_offset = csr->v[j]; e_offset < csr->v[j + 1]; e_offset++) {
-        int64_t dst = csr->e[e_offset]; // Destination vertex
-        // Only add edges where destination is inside this partition
-        if (dst >= start_vertex && dst < end_vertex) {
-          v_offset++;
-          e.push_back(dst);
+    // Define vertex ranges for partitions
+    for (idx_t i = 0; i < total_partitions; i++) {
+        idx_t start_vertex = i * vertices_per_partition;
+        idx_t end_vertex = std::min((i + 1) * vertices_per_partition, total_vertices - 1);
+        partition_ranges.emplace_back(start_vertex, end_vertex);
+    }
+
+    // Construct Local CSRs based on vertex ranges
+    for (const auto &[start_vertex, end_vertex] : partition_ranges) {
+        std::vector<int64_t> v;
+        std::vector<int64_t> e;
+        idx_t v_offset = 0;
+        idx_t partition_edges = 0; // Track edges per partition
+
+        for (idx_t j = 0; j < csr->vsize - 1; j++) {
+            v.push_back(v_offset);
+            for (idx_t e_offset = csr->v[j]; e_offset < csr->v[j + 1]; e_offset++) {
+                int64_t dst = csr->e[e_offset]; // Destination vertex
+                // Only add edges where destination is inside this partition
+                if (dst >= start_vertex && dst < end_vertex) {
+                    v_offset++;
+                    e.push_back(dst);
+                    partition_edges++;
+                }
+            }
         }
-      }
+        v.push_back(v_offset);
+        edges_per_partition.push_back(partition_edges); // Store edges per partition
+
+        if (!e.empty()) {
+            local_csrs.push_back(make_shared_ptr<LocalCSR>(v, e));
+        }
     }
-    v.push_back(v_offset);
-    if (!e.empty()) {
-      local_csrs.push_back(make_shared_ptr<LocalCSR>(v, e));
+
+    // Compute balance statistics
+    idx_t min_edges = *std::min_element(edges_per_partition.begin(), edges_per_partition.end());
+    idx_t max_edges = *std::max_element(edges_per_partition.begin(), edges_per_partition.end());
+    idx_t avg_edges = std::accumulate(edges_per_partition.begin(), edges_per_partition.end(), 0) / total_partitions;
+
+    double variance = 0.0;
+    for (auto edges : edges_per_partition) {
+        variance += std::pow(edges - avg_edges, 2);
     }
+    variance /= total_partitions;
+    double std_dev = std::sqrt(variance);
+
+  std::ofstream log_file("partition_metrics.csv");
+  if (log_file.is_open()) {
+    log_file << "total_vertices,total_edges,total_partitions,min_edges,max_edges,avg_edges,std_dev\n";
+    log_file << total_vertices << ","
+             << total_edges << ","
+             << total_partitions << ","
+             << min_edges << ","
+             << max_edges << ","
+             << avg_edges << ","
+             << std_dev << "\n\n";
+
+    log_file << "partition_id,edges\n";
+    for (size_t i = 0; i < edges_per_partition.size(); i++) {
+      log_file << i << "," << edges_per_partition[i] << "\n";
+    }
+    log_file.close();
+  } else {
+    std::cerr << "Error opening log file for writing metrics.\n";
   }
-
-  // for (auto &local_csr : local_csrs) {
-  //   Printer::PrintF("%s", local_csr->ToString());
-  // }
 }
-
 void PathFindingGlobalSinkState::Sink(DataChunk &input, PathFindingLocalSinkState &lstate) {
   if (child == 0) {
     // CSR phase

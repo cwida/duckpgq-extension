@@ -16,6 +16,12 @@ int32_t GetPathFindingTaskSize(ClientContext &context) {
   return value.GetValue<int32_t>();
 }
 
+int32_t GetPartitionMultiplier(ClientContext &context) {
+  Value value;
+  context.TryGetCurrentSetting("experimental_path_finding_operator_partition_multiplier", value);
+  return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -38,6 +44,16 @@ void CorePGQOptions::RegisterPathFindingTaskSize(
     "Number of vertices processed per thread at a time", LogicalType::INTEGER, Value(256));
 }
 
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingPartitionMultiplier(
+    DatabaseInstance &db) {
+  auto &config = DBConfig::GetConfig(db);
+
+  config.AddExtensionOption("experimental_path_finding_operator_partition_multiplier",
+    "Multiplier used for local CSR partitioning", LogicalType::INTEGER, Value(4));
+}
 
 
 } // namespace core
