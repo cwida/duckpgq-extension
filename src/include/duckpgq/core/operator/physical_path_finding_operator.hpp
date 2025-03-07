@@ -98,7 +98,7 @@ public:
   // pairs is a 2-column table with src and dst
   unique_ptr<ColumnDataCollection> global_pairs;
   unique_ptr<ColumnDataCollection> global_csr_column_data;
-  vector<shared_ptr<LocalCSR>> local_csrs; // Each thread gets one LocalCSR
+  vector<shared_ptr<ILocalCSR>> local_csrs; // Each thread gets one LocalCSR
   std::vector<std::pair<idx_t, idx_t>> partition_ranges;
   ColumnDataScanState global_scan_state;
   idx_t result_scan_idx;

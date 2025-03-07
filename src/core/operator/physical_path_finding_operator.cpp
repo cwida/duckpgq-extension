@@ -74,7 +74,6 @@ void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
     local_csrs.clear(); // Reset existing LocalCSRs
     idx_t total_partitions = num_threads * GetPartitionMultiplier(context_);
 
-
     idx_t total_vertices = csr->vsize - 1; // Number of vertices
     idx_t total_edges = csr->e.size(); // Number of edges in the global CSR
     idx_t vertices_per_partition = (total_vertices + total_partitions - 1) / total_partitions; // Balanced partition size
@@ -111,7 +110,7 @@ void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
         edges_per_partition.push_back(partition_edges); // Store edges per partition
 
         if (!e.empty()) {
-            local_csrs.push_back(make_shared_ptr<LocalCSR>(v, e));
+            local_csrs.push_back(make_shared_ptr<LocalCSR>(csr->vsize, csr->e.size(), v, e));
         }
     }
 

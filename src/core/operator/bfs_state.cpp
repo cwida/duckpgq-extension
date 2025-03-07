@@ -28,7 +28,7 @@ BFSState::BFSState(const shared_ptr<DataChunk> &pairs_, std::vector<shared_ptr<L
   change = false;
   pf_results = make_shared_ptr<DataChunk>();
   pf_results->Initialize(context, {bfs_type});
-  v_size = local_csrs[0]->v.size() - 2;
+  v_size = local_csrs[0].size() - 2;
   visit1 = vector<std::bitset<LANE_LIMIT>>(v_size);
   visit2 = vector<std::bitset<LANE_LIMIT>>(v_size);
   seen = vector<std::bitset<LANE_LIMIT>>(v_size);

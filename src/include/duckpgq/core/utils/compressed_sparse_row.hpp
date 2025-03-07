@@ -17,6 +17,12 @@
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckpgq/common.hpp"
+#include <vector>
+#include <iostream>
+#include <limits>
+#include <cstdint>
+#include <type_traits>
+
 
 namespace duckpgq {
 
@@ -24,12 +30,56 @@ namespace core {
 
 class LocalCSR {
 public:
-  explicit LocalCSR(std::vector<int64_t> &v_, std::vector<int64_t> &e_) :
-    v(v_), e(e_) {}
+  explicit LocalCSR(int64_t vsize, int64_t esize, size_t num_vertices, size_t num_edges)
+      : v_type(DetermineType(vsize)), e_type(DetermineType(esize)) {
 
-  std::vector<int64_t> v;
-  std::vector<int64_t> e;       // Thread-specific edges
-  std::string ToString() const;
+    // Allocate the correct vector based on type
+    if (v_type == 16) {
+      v_int16.resize(num_vertices);
+    } else if (v_type == 32) {
+      v_int32.resize(num_vertices);
+    } else {
+      v_int64.resize(num_vertices);
+    }
+
+    if (e_type == 16) {
+      e_int16.resize(num_edges);
+    } else if (e_type == 32) {
+      e_int32.resize(num_edges);
+    } else {
+      e_int64.resize(num_edges);
+    }
+  }
+
+  void PrintInfo() const {
+    std::cout << "Vertex storage type: int" << v_type << "_t\n";
+    std::cout << "Edge storage type: int" << e_type << "_t\n";
+  }
+
+  size_t GetVertexSize() {
+    if (v_type == 16) return v_int16.size() - 2;
+    if (v_type == 32) return v_int32.size() - 2;
+    return v_int64.size() - 2;
+  }
+
+  size_t GetEdgeSize() {
+    if (e_type == 16) return e_int16.size();
+    if (e_type == 32) return e_int32.size();
+    return e_int64.size();
+  }
+
+private:
+  std::vector<int16_t> v_int16, e_int16;
+  std::vector<int32_t> v_int32, e_int32;
+  std::vector<int64_t> v_int64, e_int64;
+
+  int v_type, e_type;  // Stores the type of each array
+
+  static int DetermineType(size_t max_value) {
+    if (max_value <= std::numeric_limits<int16_t>::max()) return 16;
+    if (max_value <= std::numeric_limits<int32_t>::max()) return 32;
+    return 64;
+  }
 };
 
 class CSR {

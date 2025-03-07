@@ -132,8 +132,11 @@ void IterativeLengthTask::IterativeLength() {
       auto local_csr = state->local_csrs[state->local_csr_counter++].get();
       // Printer::PrintF("CSR counter: %d, max size %d\n", state->local_csr_counter.load(), state->local_csrs.size());
       state->local_csr_lock.unlock();
-      const std::vector<int64_t> &v = local_csr->v;
-      const std::vector<int64_t> &e = local_csr->e;
+      const auto &v = local_csr->GetVertices();
+
+      std::cout << "Size of V " << sizeof(v[0]) << std::endl;
+      const auto &e = local_csr->GetEdges();
+      std::cout << "Size of E " << sizeof(e[0]) << std::endl;
       idx_t v_size = v.size() - 2;
       // Synchronize after clearing
       // barrier->Wait(worker_id);

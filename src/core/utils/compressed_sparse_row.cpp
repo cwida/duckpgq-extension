@@ -13,27 +13,27 @@ namespace duckpgq {
 
 namespace core {
 
-std::string LocalCSR::ToString() const {
-  std::ostringstream oss;
-  oss << "LocalCSR { \n"
-      << "  vsize: " << v.size() << "\n"
-      << "  esize: " << e.size() << "\n";
-
-  // Print a limited number of edges to keep output readable
-  oss << "  v: [";
-  for (size_t i = 0; i < v.size(); i++) {
-    oss << v[i] << (i < v.size() - 1 ? ", " : "");
-  }
-  oss << "]\n";
-  // Print a limited number of edges to keep output readable
-  oss << "  e: [";
-  for (size_t i = 0; i < e.size(); i++) {
-    oss << e[i] << (i < e.size() - 1 ? ", " : "");
-  }
-  oss << "]\n";
-  oss << "}\n";
-  return oss.str();
-}
+// std::string LocalCSR::ToString() const {
+//   std::ostringstream oss;
+//   oss << "LocalCSR { \n"
+//       << "  vsize: " << v.size() << "\n"
+//       << "  esize: " << e.size() << "\n";
+//
+//   // Print a limited number of edges to keep output readable
+//   oss << "  v: [";
+//   for (size_t i = 0; i < v.size(); i++) {
+//     oss << v[i] << (i < v.size() - 1 ? ", " : "");
+//   }
+//   oss << "]\n";
+//   // Print a limited number of edges to keep output readable
+//   oss << "  e: [";
+//   for (size_t i = 0; i < e.size(); i++) {
+//     oss << e[i] << (i < e.size() - 1 ? ", " : "");
+//   }
+//   oss << "]\n";
+//   oss << "}\n";
+//   return oss.str();
+// }
 
 
 string CSR::ToString() const {
