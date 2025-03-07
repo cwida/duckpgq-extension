@@ -74,7 +74,7 @@ template <typename T, typename E>
 void FillLocalCSR(std::vector<T>& v, std::vector<E>& e, idx_t start_vertex, idx_t end_vertex, CSR* csr) {
   idx_t v_offset = 0;
 
-  for (idx_t j = start_vertex; j < end_vertex; j++) {
+  for (idx_t j = 0; j < csr->vsize - 1; j++) {
     v.push_back(v_offset);  // Store vertex offset
     for (idx_t e_offset = csr->v[j]; e_offset < csr->v[j + 1]; e_offset++) {
       E dst = static_cast<E>(csr->e[e_offset]);  // Cast to correct type
@@ -118,57 +118,83 @@ void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
       FillLocalCSR<int16_t, int16_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
       local_csr->v_int16 = v;
       local_csr->e_int16 = e;
+      if (!local_csr->e_int16.empty()) {
+        local_csrs.push_back(local_csr);
+      }
     } else if (local_csr->v_type == 16 && local_csr->e_type == 32) {
       auto& v = local_csr->GetVertexVectorTyped<int16_t>();
       auto& e = local_csr->GetEdgeVectorTyped<int32_t>();
       FillLocalCSR<int16_t, int32_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
       local_csr->v_int16 = v;
       local_csr->e_int32 = e;
+      if (!local_csr->e_int32.empty()) {
+        local_csrs.push_back(local_csr);
+      }
     } else if (local_csr->v_type == 16 && local_csr->e_type == 64) {
       auto& v = local_csr->GetVertexVectorTyped<int16_t>();
       auto& e = local_csr->GetEdgeVectorTyped<int64_t>();
       FillLocalCSR<int16_t, int64_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
       local_csr->v_int16 = v;
       local_csr->e_int64 = e;
+      if (!local_csr->e_int64.empty()) {
+        local_csrs.push_back(local_csr);
+      }
     } else if (local_csr->v_type == 32 && local_csr->e_type == 16) {
       auto& v = local_csr->GetVertexVectorTyped<int32_t>();
       auto& e = local_csr->GetEdgeVectorTyped<int16_t>();
       FillLocalCSR<int32_t, int16_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
       local_csr->v_int32 = v;
       local_csr->e_int16 = e;
+      if (!local_csr->e_int16.empty()) {
+        local_csrs.push_back(local_csr);
+      }
     } else if (local_csr->v_type == 32 && local_csr->e_type == 32) {
       auto& v = local_csr->GetVertexVectorTyped<int32_t>();
       auto& e = local_csr->GetEdgeVectorTyped<int32_t>();
       FillLocalCSR<int32_t, int32_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
       local_csr->v_int32 = v;
       local_csr->e_int32 = e;
+      if (!local_csr->e_int32.empty()) {
+        local_csrs.push_back(local_csr);
+      }
     } else if (local_csr->v_type == 32 && local_csr->e_type == 64) {
       auto& v = local_csr->GetVertexVectorTyped<int32_t>();
       auto& e = local_csr->GetEdgeVectorTyped<int64_t>();
       FillLocalCSR<int32_t, int64_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
       local_csr->v_int32 = v;
       local_csr->e_int64 = e;
+      if (!local_csr->e_int64.empty()) {
+        local_csrs.push_back(local_csr);
+      }
     } else if (local_csr->v_type == 64 && local_csr->e_type == 16) {
       auto& v = local_csr->GetVertexVectorTyped<int64_t>();
       auto& e = local_csr->GetEdgeVectorTyped<int16_t>();
       FillLocalCSR<int64_t, int16_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
       local_csr->v_int64 = v;
       local_csr->e_int16 = e;
+      if (!local_csr->e_int16.empty()) {
+        local_csrs.push_back(local_csr);
+      }
     } else if (local_csr->v_type == 64 && local_csr->e_type == 32) {
       auto& v = local_csr->GetVertexVectorTyped<int64_t>();
       auto& e = local_csr->GetEdgeVectorTyped<int32_t>();
       FillLocalCSR<int64_t, int32_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
       local_csr->v_int64 = v;
       local_csr->e_int32 = e;
+      if (!local_csr->e_int32.empty()) {
+        local_csrs.push_back(local_csr);
+      }
     } else if (local_csr->v_type == 64 && local_csr->e_type == 64) {
       auto& v = local_csr->GetVertexVectorTyped<int64_t>();
       auto& e = local_csr->GetEdgeVectorTyped<int64_t>();
       FillLocalCSR<int64_t, int64_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
       local_csr->v_int64 = v;
       local_csr->e_int64 = e;
+      if (!local_csr->e_int64.empty()) {
+        local_csrs.push_back(local_csr);
+      }
     }
 
-    local_csrs.push_back(local_csr);
   }
 }
   //   // Compute balance statistics
