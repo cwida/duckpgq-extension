@@ -30,25 +30,21 @@ namespace core {
 
 class LocalCSR {
 public:
-  explicit LocalCSR(int64_t vsize, int64_t esize, size_t num_vertices, size_t num_edges)
+  explicit LocalCSR(int64_t vsize, int64_t esize)
       : v_type(DetermineType(vsize)), e_type(DetermineType(esize)) {
+  }
 
-    // Allocate the correct vector based on type
-    if (v_type == 16) {
-      v_int16.resize(num_vertices);
-    } else if (v_type == 32) {
-      v_int32.resize(num_vertices);
-    } else {
-      v_int64.resize(num_vertices);
-    }
+  // Returns a pointer to the correct vector
+  void* GetVertexVector() {
+    if (v_type == 16) return &v_int16;
+    if (v_type == 32) return &v_int32;
+    return &v_int64;
+  }
 
-    if (e_type == 16) {
-      e_int16.resize(num_edges);
-    } else if (e_type == 32) {
-      e_int32.resize(num_edges);
-    } else {
-      e_int64.resize(num_edges);
-    }
+  void* GetEdgeVector() {
+    if (e_type == 16) return &e_int16;
+    if (e_type == 32) return &e_int32;
+    return &e_int64;
   }
 
   void PrintInfo() const {
@@ -68,18 +64,34 @@ public:
     return e_int64.size();
   }
 
-private:
+  template <typename T>
+  std::vector<T>& GetVertexVectorTyped() {
+    if (v_type == 16 && std::is_same<T, int16_t>::value) return reinterpret_cast<std::vector<T>&>(v_int16);
+    if (v_type == 32 && std::is_same<T, int32_t>::value) return reinterpret_cast<std::vector<T>&>(v_int32);
+    if (v_type == 64 && std::is_same<T, int64_t>::value) return reinterpret_cast<std::vector<T>&>(v_int64);
+    throw std::runtime_error("Requested type does not match stored type");
+  }
+
+  template <typename T>
+  std::vector<T>& GetEdgeVectorTyped() {
+    if (e_type == 16 && std::is_same<T, int16_t>::value) return reinterpret_cast<std::vector<T>&>(e_int16);
+    if (e_type == 32 && std::is_same<T, int32_t>::value) return reinterpret_cast<std::vector<T>&>(e_int32);
+    if (e_type == 64 && std::is_same<T, int64_t>::value) return reinterpret_cast<std::vector<T>&>(e_int64);
+    throw std::runtime_error("Requested type does not match stored type");
+  }
+public:
   std::vector<int16_t> v_int16, e_int16;
   std::vector<int32_t> v_int32, e_int32;
   std::vector<int64_t> v_int64, e_int64;
 
-  int v_type, e_type;  // Stores the type of each array
 
   static int DetermineType(size_t max_value) {
     if (max_value <= std::numeric_limits<int16_t>::max()) return 16;
     if (max_value <= std::numeric_limits<int32_t>::max()) return 32;
     return 64;
   }
+public:
+  int v_type, e_type;  // Stores the type of each array
 };
 
 class CSR {

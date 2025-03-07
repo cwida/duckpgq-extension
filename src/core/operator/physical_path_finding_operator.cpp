@@ -70,82 +70,141 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context,
   num_threads = scheduler.NumberOfThreads();
 }
 
+template <typename T, typename E>
+void FillLocalCSR(std::vector<T>& v, std::vector<E>& e, idx_t start_vertex, idx_t end_vertex, CSR* csr) {
+  idx_t v_offset = 0;
+
+  for (idx_t j = start_vertex; j < end_vertex; j++) {
+    v.push_back(v_offset);  // Store vertex offset
+    for (idx_t e_offset = csr->v[j]; e_offset < csr->v[j + 1]; e_offset++) {
+      E dst = static_cast<E>(csr->e[e_offset]);  // Cast to correct type
+      if (dst >= start_vertex && dst < end_vertex) {
+        v_offset++;
+        e.push_back(dst);
+      }
+    }
+  }
+  v.push_back(v_offset);  // Final offset for last vertex
+}
+
 void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
-    local_csrs.clear(); // Reset existing LocalCSRs
-    idx_t total_partitions = num_threads * GetPartitionMultiplier(context_);
+  local_csrs.clear(); // Reset existing LocalCSRs
+  idx_t total_partitions = num_threads * GetPartitionMultiplier(context_);
 
-    idx_t total_vertices = csr->vsize - 1; // Number of vertices
-    idx_t total_edges = csr->e.size(); // Number of edges in the global CSR
-    idx_t vertices_per_partition = (total_vertices + total_partitions - 1) / total_partitions; // Balanced partition size
+  idx_t total_vertices = csr->vsize - 1; // Number of vertices
+  idx_t vertices_per_partition = (total_vertices + total_partitions - 1) / total_partitions; // Balanced partition size
 
-    std::vector<idx_t> edges_per_partition;
+  std::vector<idx_t> edges_per_partition;
 
-    // Define vertex ranges for partitions
-    for (idx_t i = 0; i < total_partitions; i++) {
-        idx_t start_vertex = i * vertices_per_partition;
-        idx_t end_vertex = std::min((i + 1) * vertices_per_partition, total_vertices - 1);
-        partition_ranges.emplace_back(start_vertex, end_vertex);
+  // Define vertex ranges for partitions
+  for (idx_t i = 0; i < total_partitions; i++) {
+    idx_t start_vertex = i * vertices_per_partition;
+    idx_t end_vertex = std::min((i + 1) * vertices_per_partition, total_vertices - 1);
+    partition_ranges.emplace_back(start_vertex, end_vertex);
+  }
+
+  // Construct Local CSRs based on vertex ranges
+  for (const auto &[start_vertex, end_vertex] : partition_ranges) {
+    idx_t v_size = csr->vsize;
+    idx_t e_size = csr->e.size();
+
+    // Create the LocalCSR instance
+    auto local_csr = make_shared_ptr<LocalCSR>(v_size, e_size);
+
+    // Determine type at runtime
+    if (local_csr->v_type == 16 && local_csr->e_type == 16) {
+      auto& v = local_csr->GetVertexVectorTyped<int16_t>();
+      auto& e = local_csr->GetEdgeVectorTyped<int16_t>();
+      FillLocalCSR<int16_t, int16_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
+      local_csr->v_int16 = v;
+      local_csr->e_int16 = e;
+    } else if (local_csr->v_type == 16 && local_csr->e_type == 32) {
+      auto& v = local_csr->GetVertexVectorTyped<int16_t>();
+      auto& e = local_csr->GetEdgeVectorTyped<int32_t>();
+      FillLocalCSR<int16_t, int32_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
+      local_csr->v_int16 = v;
+      local_csr->e_int32 = e;
+    } else if (local_csr->v_type == 16 && local_csr->e_type == 64) {
+      auto& v = local_csr->GetVertexVectorTyped<int16_t>();
+      auto& e = local_csr->GetEdgeVectorTyped<int64_t>();
+      FillLocalCSR<int16_t, int64_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
+      local_csr->v_int16 = v;
+      local_csr->e_int64 = e;
+    } else if (local_csr->v_type == 32 && local_csr->e_type == 16) {
+      auto& v = local_csr->GetVertexVectorTyped<int32_t>();
+      auto& e = local_csr->GetEdgeVectorTyped<int16_t>();
+      FillLocalCSR<int32_t, int16_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
+      local_csr->v_int32 = v;
+      local_csr->e_int16 = e;
+    } else if (local_csr->v_type == 32 && local_csr->e_type == 32) {
+      auto& v = local_csr->GetVertexVectorTyped<int32_t>();
+      auto& e = local_csr->GetEdgeVectorTyped<int32_t>();
+      FillLocalCSR<int32_t, int32_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
+      local_csr->v_int32 = v;
+      local_csr->e_int32 = e;
+    } else if (local_csr->v_type == 32 && local_csr->e_type == 64) {
+      auto& v = local_csr->GetVertexVectorTyped<int32_t>();
+      auto& e = local_csr->GetEdgeVectorTyped<int64_t>();
+      FillLocalCSR<int32_t, int64_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
+      local_csr->v_int32 = v;
+      local_csr->e_int64 = e;
+    } else if (local_csr->v_type == 64 && local_csr->e_type == 16) {
+      auto& v = local_csr->GetVertexVectorTyped<int64_t>();
+      auto& e = local_csr->GetEdgeVectorTyped<int16_t>();
+      FillLocalCSR<int64_t, int16_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
+      local_csr->v_int64 = v;
+      local_csr->e_int16 = e;
+    } else if (local_csr->v_type == 64 && local_csr->e_type == 32) {
+      auto& v = local_csr->GetVertexVectorTyped<int64_t>();
+      auto& e = local_csr->GetEdgeVectorTyped<int32_t>();
+      FillLocalCSR<int64_t, int32_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
+      local_csr->v_int64 = v;
+      local_csr->e_int32 = e;
+    } else if (local_csr->v_type == 64 && local_csr->e_type == 64) {
+      auto& v = local_csr->GetVertexVectorTyped<int64_t>();
+      auto& e = local_csr->GetEdgeVectorTyped<int64_t>();
+      FillLocalCSR<int64_t, int64_t>(v, e, start_vertex, end_vertex, csr);  // Helper function
+      local_csr->v_int64 = v;
+      local_csr->e_int64 = e;
     }
 
-    // Construct Local CSRs based on vertex ranges
-    for (const auto &[start_vertex, end_vertex] : partition_ranges) {
-        std::vector<int64_t> v;
-        std::vector<int64_t> e;
-        idx_t v_offset = 0;
-        idx_t partition_edges = 0; // Track edges per partition
-
-        for (idx_t j = 0; j < csr->vsize - 1; j++) {
-            v.push_back(v_offset);
-            for (idx_t e_offset = csr->v[j]; e_offset < csr->v[j + 1]; e_offset++) {
-                int64_t dst = csr->e[e_offset]; // Destination vertex
-                // Only add edges where destination is inside this partition
-                if (dst >= start_vertex && dst < end_vertex) {
-                    v_offset++;
-                    e.push_back(dst);
-                    partition_edges++;
-                }
-            }
-        }
-        v.push_back(v_offset);
-        edges_per_partition.push_back(partition_edges); // Store edges per partition
-
-        if (!e.empty()) {
-            local_csrs.push_back(make_shared_ptr<LocalCSR>(csr->vsize, csr->e.size(), v, e));
-        }
-    }
-
-    // Compute balance statistics
-    idx_t min_edges = *std::min_element(edges_per_partition.begin(), edges_per_partition.end());
-    idx_t max_edges = *std::max_element(edges_per_partition.begin(), edges_per_partition.end());
-    idx_t avg_edges = std::accumulate(edges_per_partition.begin(), edges_per_partition.end(), 0) / total_partitions;
-
-    double variance = 0.0;
-    for (auto edges : edges_per_partition) {
-        variance += std::pow(edges - avg_edges, 2);
-    }
-    variance /= total_partitions;
-    double std_dev = std::sqrt(variance);
-
-  std::ofstream log_file("partition_metrics.csv");
-  if (log_file.is_open()) {
-    log_file << "total_vertices,total_edges,total_partitions,min_edges,max_edges,avg_edges,std_dev\n";
-    log_file << total_vertices << ","
-             << total_edges << ","
-             << total_partitions << ","
-             << min_edges << ","
-             << max_edges << ","
-             << avg_edges << ","
-             << std_dev << "\n\n";
-
-    log_file << "partition_id,edges\n";
-    for (size_t i = 0; i < edges_per_partition.size(); i++) {
-      log_file << i << "," << edges_per_partition[i] << "\n";
-    }
-    log_file.close();
-  } else {
-    std::cerr << "Error opening log file for writing metrics.\n";
+    local_csrs.push_back(local_csr);
   }
 }
+  //   // Compute balance statistics
+  //   idx_t min_edges = *std::min_element(edges_per_partition.begin(), edges_per_partition.end());
+  //   idx_t max_edges = *std::max_element(edges_per_partition.begin(), edges_per_partition.end());
+  //   idx_t avg_edges = std::accumulate(edges_per_partition.begin(), edges_per_partition.end(), 0) / total_partitions;
+  //
+  //   double variance = 0.0;
+  //   for (auto edges : edges_per_partition) {
+  //       variance += std::pow(edges - avg_edges, 2);
+  //   }
+  //   variance /= total_partitions;
+  //   double std_dev = std::sqrt(variance);
+  //
+  // std::ofstream log_file("partition_metrics.csv");
+  // if (log_file.is_open()) {
+  //   log_file << "total_vertices,total_edges,total_partitions,min_edges,max_edges,avg_edges,std_dev\n";
+  //   log_file << total_vertices << ","
+  //            << total_edges << ","
+  //            << total_partitions << ","
+  //            << min_edges << ","
+  //            << max_edges << ","
+  //            << avg_edges << ","
+  //            << std_dev << "\n\n";
+  //
+  //   log_file << "partition_id,edges\n";
+  //   for (size_t i = 0; i < edges_per_partition.size(); i++) {
+  //     log_file << i << "," << edges_per_partition[i] << "\n";
+  //   }
+  //   log_file.close();
+  // } else {
+  //   std::cerr << "Error opening log file for writing metrics.\n";
+  // }
+// }
+
+
 void PathFindingGlobalSinkState::Sink(DataChunk &input, PathFindingLocalSinkState &lstate) {
   if (child == 0) {
     // CSR phase
@@ -220,7 +279,8 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     current_chunk->Initialize(context, gstate.global_pairs->Types());
     gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
     if (gstate.mode == "iterativelength") {
-      auto bfs_state = make_shared_ptr<IterativeLengthState>(current_chunk, gstate.local_csrs, gstate.partition_ranges, gstate.num_threads, context);
+
+      auto bfs_state = make_shared_ptr<IterativeLengthState>(current_chunk, gstate.local_csrs, gstate.partition_ranges, gstate.num_threads, context, gstate.csr->vsize);
       bfs_state->ScheduleBFSBatch(pipeline, event, this);
       gstate.bfs_states.push_back(std::move(bfs_state));
     } else if (gstate.mode == "shortestpath") {

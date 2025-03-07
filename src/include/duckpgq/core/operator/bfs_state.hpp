@@ -17,7 +17,7 @@ class PhysicalPathFinding; // Forward declaration
 class BFSState : public enable_shared_from_this<BFSState> {
 public:
   BFSState(const shared_ptr<DataChunk> &pairs_, std::vector<shared_ptr<LocalCSR>> &local_csrs_, std::vector<std::pair<idx_t, idx_t>> &partition_ranges_, idx_t num_threads_,
-           string mode_, ClientContext &context_);
+           string mode_, ClientContext &context_, int64_t vsize_);
 
   virtual ~BFSState();
 
