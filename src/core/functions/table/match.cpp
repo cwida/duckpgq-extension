@@ -119,9 +119,6 @@ vector<unique_ptr<ColumnRefExpression>> GetColRefExprFromPg(
     const auto &alias = alias_and_table.first;
     const auto &tbl = alias_and_table.second;
     // Skip edge table.
-    if (!tbl->is_vertex_table) {
-      continue;
-    }
     registered_col_names.reserve(registered_col_names.size() +
                                  tbl->column_names.size());
     for (const auto &cur_col : tbl->column_names) {

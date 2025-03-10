@@ -20,22 +20,22 @@ statement ok
 );
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]->*(n2:N));
+-FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]->*(n2:N) COLUMNS (n1.*, n2.*));
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]-> *(n2:N));
+-FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]-> *(n2:N) COLUMNS (n1.*, n2.*));
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]- > *(n2:N));
+-FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]- > *(n2:N) COLUMNS (n1.*, n2.*));
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] - > *(n2:N));
+-FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] - > *(n2:N) COLUMNS (n1.*, n2.*));
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] -> *(n2:N));
+-FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] -> *(n2:N) COLUMNS (n1.*, n2.*));
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]< -> *(n2:N));
+-FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]< -> *(n2:N) COLUMNS (n1.*, n2.*));
 ----
 Parser Error: syntax error at or near "<"
 
@@ -71,7 +71,7 @@ statement error
 Parser Error: syntax error at or near "*"
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]- > *(n2:N));
+-FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]- > *(n2:N) COLUMNS (n1.*, n2.*));
 
 statement error
 -FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]<- *(n2:N));
