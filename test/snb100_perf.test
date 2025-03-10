@@ -18,7 +18,7 @@ create or replace table snb_pairs as (
    select src, dst
    from (select a.rowid as src from person a),
         (select b.rowid as dst from person b)
-   using sample reservoir(2048 rows) repeatable (300)
+   using sample reservoir(16384 rows) repeatable (300)
 );
 
 query III nosort lengthpairs
