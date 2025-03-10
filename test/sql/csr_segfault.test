@@ -1,4 +1,6 @@
-
+# name: test/sql/csr_segfault.test
+# description: Testing the csr v and e function which suffered segfault, reference https://github.com/cwida/duckpgq-extension/issues/206
+# group: [duckpgq_sql]
 
 require duckpgq
 
@@ -55,7 +57,7 @@ SELECT count(csre) FROM get_csr_e(0);
 5000
 
 statement ok
-COPY (SELECT csrv FROM get_csr_v(0)) TO 'v.csv';
+COPY (SELECT csrv FROM get_csr_v(0)) TO 'test/generated/v.csv';
 
 statement ok
-COPY (SELECT csre FROM get_csr_e(0)) TO 'e.csv';
+COPY (SELECT csre FROM get_csr_e(0)) TO 'test/generated/e.csv';
