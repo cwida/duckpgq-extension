@@ -14,7 +14,7 @@
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_state.hpp>
 #include <thread>
-
+#include <algorithm>
 #include <cmath> // for std::sqrt
 #include <duckpgq/core/option/duckpgq_option.hpp>
 #include <fstream>
@@ -194,8 +194,11 @@ void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
         local_csrs.push_back(local_csr);
       }
     }
-
   }
+  std::sort(local_csrs.begin(), local_csrs.end(),
+          [](const shared_ptr<LocalCSR>& a, const shared_ptr<LocalCSR>& b) {
+              return a->GetEdgeSize() > b->GetEdgeSize(); // Descending order
+          });
 }
   //   // Compute balance statistics
   //   idx_t min_edges = *std::min_element(edges_per_partition.begin(), edges_per_partition.end());
