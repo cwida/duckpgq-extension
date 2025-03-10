@@ -55,7 +55,17 @@ SELECT count(csre) FROM get_csr_e(0);
 5000
 
 statement ok
-COPY (SELECT csrv FROM get_csr_v(0)) TO 'v.csv';
+COPY (SELECT csrv FROM get_csr_v(0)) TO '__TEST_DIR__/v.csv';
 
 statement ok
-COPY (SELECT csre FROM get_csr_e(0)) TO 'e.csv';
+COPY (SELECT csre FROM get_csr_e(0)) TO '__TEST_DIR__/e.csv';
+
+query I
+SELECT count(*) FROM read_csv('__TEST_DIR__/v.csv');
+----
+5002
+
+query I
+SELECT count(*) FROM read_csv('__TEST_DIR__/e.csv');
+----
+5000
