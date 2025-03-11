@@ -131,6 +131,9 @@ void IterativeLengthTask::IterativeLength() {
         break;
       }
       auto local_csr = state->local_csrs[state->local_csr_counter++].get();
+      if (!local_csr) {
+        throw InternalException("Tried to reference nullptr for LocalCSR");
+      }
       // Printer::PrintF("CSR counter: %d, max size %d\n", state->local_csr_counter.load(), state->local_csrs.size());
       state->local_csr_lock.unlock();
       auto v_type = local_csr->v_type;
@@ -169,15 +172,14 @@ void IterativeLengthTask::IterativeLength() {
     // Printer::PrintF("partition counter: %d\n", state->partition_counter.load());
     while (state->partition_counter < state->partition_ranges.size()) {
       state->local_csr_lock.lock();
-      if (state->partition_counter >= state->partition_ranges.size()) {
+      if (state->partition_counter < state->partition_ranges.size()) {
+        auto partition_range = state->partition_ranges[state->partition_counter++];
         state->local_csr_lock.unlock();
-        break;
+        CheckChange(seen, next, partition_range);
+      } else {
+        state->local_csr_lock.unlock();
+        break; // Avoids reading invalid memory
       }
-      auto partition_range = state->partition_ranges[state->partition_counter++];
-      state->local_csr_lock.unlock();
-      // Printer::PrintF("worker %d processing partition %d to %d\n", worker_id, partition_range.first, partition_range.second);
-      // Printer::PrintF("Partition counter: %d, max size %d\n", state->partition_counter.load(), state->partition_ranges.size());
-      CheckChange(seen, next, partition_range);
     }
     barrier->Wait(worker_id);
     state->partition_counter = 0;
