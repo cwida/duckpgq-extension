@@ -23,11 +23,12 @@ private:
                    std::pair<idx_t, idx_t> &partition_range) const;
   void UnReachableSet() const;
 
-  template<typename T, typename E>
+  template<typename T>
   void Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
     std::vector<std::bitset<LANE_LIMIT>> &next,
     const std::vector<T> &v,
-    const std::vector<E> &e, size_t v_size);
+    const std::vector<T> &e,
+    size_t v_size);
 
 private:
   ClientContext &context;

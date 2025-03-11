@@ -53,6 +53,9 @@ WITH cte1 AS (
             FROM snb_pairs, (select count(cte1.temp) * 0 as temp from cte1) __x
             WHERE __x.temp * 0 = 0;
 
+statement ok
+set threads=8;
+
 query III nosort lengthpairs
 with csr_cte as (
         SELECT cast(min(create_csr_edge(

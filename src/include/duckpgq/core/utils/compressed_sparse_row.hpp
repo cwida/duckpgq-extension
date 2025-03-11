@@ -30,53 +30,52 @@ namespace core {
 
 class LocalCSR {
 public:
-  explicit LocalCSR(int64_t vsize, int64_t esize)
-      : v_type(DetermineType(vsize)), e_type(DetermineType(esize)) {
+  explicit LocalCSR(int64_t esize)
+      : data_type(DetermineType(esize)) {
   }
 
   // Returns a pointer to the correct vector
   void* GetVertexVector() {
-    if (v_type == 16) return &v_int16;
-    if (v_type == 32) return &v_int32;
+    if (data_type == 16) return &v_int16;
+    if (data_type == 32) return &v_int32;
     return &v_int64;
   }
 
   void* GetEdgeVector() {
-    if (e_type == 16) return &e_int16;
-    if (e_type == 32) return &e_int32;
+    if (data_type == 16) return &e_int16;
+    if (data_type == 32) return &e_int32;
     return &e_int64;
   }
 
   void PrintInfo() const {
-    std::cout << "Vertex storage type: int" << v_type << "_t\n";
-    std::cout << "Edge storage type: int" << e_type << "_t\n";
+    std::cout << "Data storage type: int" << data_type << "_t\n";
   }
 
   size_t GetVertexSize() {
-    if (v_type == 16) return v_int16.size() - 2;
-    if (v_type == 32) return v_int32.size() - 2;
+    if (data_type == 16) return v_int16.size() - 2;
+    if (data_type == 32) return v_int32.size() - 2;
     return v_int64.size() - 2;
   }
 
   size_t GetEdgeSize() {
-    if (e_type == 16) return e_int16.size();
-    if (e_type == 32) return e_int32.size();
+    if (data_type == 16) return e_int16.size();
+    if (data_type == 32) return e_int32.size();
     return e_int64.size();
   }
 
   template <typename T>
   std::vector<T>& GetVertexVectorTyped() {
-    if (v_type == 16 && std::is_same<T, int16_t>::value) return reinterpret_cast<std::vector<T>&>(v_int16);
-    if (v_type == 32 && std::is_same<T, int32_t>::value) return reinterpret_cast<std::vector<T>&>(v_int32);
-    if (v_type == 64 && std::is_same<T, int64_t>::value) return reinterpret_cast<std::vector<T>&>(v_int64);
+    if (data_type == 16 && std::is_same<T, int16_t>::value) return reinterpret_cast<std::vector<T>&>(v_int16);
+    if (data_type == 32 && std::is_same<T, int32_t>::value) return reinterpret_cast<std::vector<T>&>(v_int32);
+    if (data_type == 64 && std::is_same<T, int64_t>::value) return reinterpret_cast<std::vector<T>&>(v_int64);
     throw std::runtime_error("Requested type does not match stored type");
   }
 
   template <typename T>
   std::vector<T>& GetEdgeVectorTyped() {
-    if (e_type == 16 && std::is_same<T, int16_t>::value) return reinterpret_cast<std::vector<T>&>(e_int16);
-    if (e_type == 32 && std::is_same<T, int32_t>::value) return reinterpret_cast<std::vector<T>&>(e_int32);
-    if (e_type == 64 && std::is_same<T, int64_t>::value) return reinterpret_cast<std::vector<T>&>(e_int64);
+    if (data_type == 16 && std::is_same<T, int16_t>::value) return reinterpret_cast<std::vector<T>&>(e_int16);
+    if (data_type == 32 && std::is_same<T, int32_t>::value) return reinterpret_cast<std::vector<T>&>(e_int32);
+    if (data_type == 64 && std::is_same<T, int64_t>::value) return reinterpret_cast<std::vector<T>&>(e_int64);
     throw std::runtime_error("Requested type does not match stored type");
   }
 public:
@@ -91,7 +90,7 @@ public:
     return 64;
   }
 public:
-  int v_type, e_type;  // Stores the type of each array
+  int data_type;  // Stores the type of each array
 };
 
 class CSR {

@@ -75,10 +75,10 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
   return TaskExecutionResult::TASK_FINISHED;
 }
 
-template<typename T, typename E>
+template<typename T>
 void IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                   std::vector<std::bitset<LANE_LIMIT>> &next,
-                                  const std::vector<T> &v, const std::vector<E> &e, size_t v_size) {
+                                  const std::vector<T> &v, const std::vector<T> &e, size_t v_size) {
   for (auto i = 0; i < v_size; i++) {
     if (visit[i].any()) {
       auto start_edges = v[i];
@@ -138,27 +138,14 @@ void IterativeLengthTask::IterativeLength() {
       }
       // Printer::PrintF("CSR counter: %d, max size %d\n", state->local_csr_counter.load(), state->local_csrs.size());
       state->local_csr_lock.unlock();
-      auto v_type = local_csr->v_type;
-      auto e_type = local_csr->e_type;
+      auto data_type = local_csr->data_type;
       auto v_size = local_csr->GetVertexSize();
-      if (v_type == 16 && e_type == 16) {
-        Explore<int16_t, int16_t>(visit, next, local_csr->GetVertexVectorTyped<int16_t>(), local_csr->GetEdgeVectorTyped<int16_t>(), v_size);
-      } else if (v_type == 16 && e_type == 32) {
-        Explore<int16_t, int32_t>(visit, next, local_csr->GetVertexVectorTyped<int16_t>(), local_csr->GetEdgeVectorTyped<int32_t>(), v_size);
-      } else if (v_type == 16 && e_type == 64) {
-        Explore<int16_t, int64_t>(visit, next, local_csr->GetVertexVectorTyped<int16_t>(), local_csr->GetEdgeVectorTyped<int64_t>(), v_size);
-      } else if (v_type == 32 && e_type == 16) {
-        Explore<int32_t, int16_t>(visit, next, local_csr->GetVertexVectorTyped<int32_t>(), local_csr->GetEdgeVectorTyped<int16_t>(), v_size);
-      } else if (v_type == 32 && e_type == 32) {
-        Explore<int32_t, int32_t>(visit, next, local_csr->GetVertexVectorTyped<int32_t>(), local_csr->GetEdgeVectorTyped<int32_t>(), v_size);
-      } else if (v_type == 32 && e_type == 64) {
-        Explore<int32_t, int64_t>(visit, next, local_csr->GetVertexVectorTyped<int32_t>(), local_csr->GetEdgeVectorTyped<int64_t>(), v_size);
-      } else if (v_type == 64 && e_type == 16) {
-        Explore<int64_t, int16_t>(visit, next, local_csr->GetVertexVectorTyped<int64_t>(), local_csr->GetEdgeVectorTyped<int16_t>(), v_size);
-      } else if (v_type == 64 && e_type == 32) {
-        Explore<int64_t, int32_t>(visit, next, local_csr->GetVertexVectorTyped<int64_t>(), local_csr->GetEdgeVectorTyped<int32_t>(), v_size);
+      if (data_type == 16) {
+        Explore<int16_t>(visit, next, local_csr->GetVertexVectorTyped<int16_t>(), local_csr->GetEdgeVectorTyped<int16_t>(), v_size);
+      } else if (data_type == 32) {
+        Explore<int32_t>(visit, next, local_csr->GetVertexVectorTyped<int32_t>(), local_csr->GetEdgeVectorTyped<int32_t>(), v_size);
       } else {
-        Explore<int64_t, int64_t>(visit, next, local_csr->GetVertexVectorTyped<int64_t>(), local_csr->GetEdgeVectorTyped<int64_t>(), v_size);
+        Explore<int64_t>(visit, next, local_csr->GetVertexVectorTyped<int64_t>(), local_csr->GetEdgeVectorTyped<int64_t>(), v_size);
       }
     }
     state->change = false;
