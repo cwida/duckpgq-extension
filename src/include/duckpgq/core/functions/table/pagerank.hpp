@@ -15,19 +15,19 @@ class PageRankFunction : public TableFunction {
 public:
   PageRankFunction() {
     name = "pagerank";
-    arguments = {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR};
+    arguments = {LogicalType::VARCHAR, LogicalType::VARCHAR,
+                 LogicalType::VARCHAR};
     bind_replace = PageRankBindReplace;
   }
 
-  static unique_ptr<TableRef> PageRankBindReplace(ClientContext &context,
-                                             TableFunctionBindInput &input);
-
+  static unique_ptr<TableRef>
+  PageRankBindReplace(ClientContext &context, TableFunctionBindInput &input);
 };
 
 struct PageRankData : TableFunctionData {
   static unique_ptr<FunctionData>
   PageRankBind(ClientContext &context, TableFunctionBindInput &input,
-                 vector<LogicalType> &return_types, vector<string> &names) {
+               vector<LogicalType> &return_types, vector<string> &names) {
     auto result = make_uniq<PageRankData>();
     result->pg_name = StringValue::Get(input.inputs[0]);
     result->node_table = StringValue::Get(input.inputs[1]);
@@ -44,8 +44,7 @@ struct PageRankData : TableFunctionData {
   string edge_table;
 };
 
-
-struct PageRankScanState :  GlobalTableFunctionState {
+struct PageRankScanState : GlobalTableFunctionState {
   static unique_ptr<GlobalTableFunctionState>
   Init(ClientContext &context, TableFunctionInitInput &input) {
     auto result = make_uniq<PageRankScanState>();

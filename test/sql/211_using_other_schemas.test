@@ -1,0 +1,331 @@
+require duckpgq
+
+statement ok
+CREATE SCHEMA test_schema;
+
+statement ok
+SET search_path = test_schema;
+
+statement ok
+CREATE TABLE Person(id BIGINT PRIMARY KEY, name TEXT);
+
+statement ok
+CREATE TABLE Company(id BIGINT PRIMARY KEY, name TEXT);
+
+statement ok
+CREATE TABLE WorksAt(person_id BIGINT, company_id BIGINT);
+
+statement ok
+-CREATE PROPERTY GRAPH work_graph
+    VERTEX TABLES (
+      Person,
+      Company
+    )
+    EDGE TABLES (
+      WorksAt SOURCE KEY (person_id) REFERENCES Person (id)
+              DESTINATION KEY (company_id) REFERENCES Company (id)
+              LABEL works_at
+    );
+
+statement ok
+-CREATE PROPERTY GRAPH enriched_graph
+    VERTEX TABLES (
+      Person PROPERTIES (id, name),
+      Company PROPERTIES (id, name)
+    )
+    EDGE TABLES (
+      WorksAt SOURCE KEY (person_id) REFERENCES Person (id)
+              DESTINATION KEY (company_id) REFERENCES Company (id)
+              PROPERTIES (person_id, company_id)
+              LABEL works_at
+    );
+
+statement ok
+CREATE TABLE Friendship(person1_id BIGINT, person2_id BIGINT, since DATE);
+
+statement ok
+-CREATE PROPERTY GRAPH social_graph
+    VERTEX TABLES (
+      Person
+    )
+    EDGE TABLES (
+      Friendship SOURCE KEY (person1_id) REFERENCES Person (id)
+                 DESTINATION KEY (person2_id) REFERENCES Person (id)
+                 PROPERTIES (since)
+                 LABEL friends_with
+    );
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH external_graph
+    VERTEX TABLES (
+      test_schema.Person,
+      test_schema.Company
+    )
+    EDGE TABLES (
+      test_schema.WorksAt SOURCE KEY (person_id) REFERENCES test_schema.Person (id)
+                          DESTINATION KEY (company_id) REFERENCES test_schema.Company (id)
+                          LABEL works_at
+    );
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH memory_graph
+    VERTEX TABLES (
+      memory.test_schema.Person,
+      memory.test_schema.Company
+    )
+    EDGE TABLES (
+      memory.test_schema.WorksAt SOURCE KEY (person_id) REFERENCES memory.test_schema.Person (id)
+                                 DESTINATION KEY (company_id) REFERENCES memory.test_schema.Company (id)
+                                 LABEL works_at
+    );
+
+statement error
+-CREATE PROPERTY GRAPH invalid_graph
+    VERTEX TABLES (
+      nonexistent_schema.Person
+    )
+    EDGE TABLES (
+      nonexistent_schema.WorksAt SOURCE KEY (person_id) REFERENCES nonexistent_schema.Person (id)
+                                 DESTINATION KEY (company_id) REFERENCES nonexistent_schema.Company (id)
+                                 LABEL works_at
+    );
+----
+Invalid Error: Table 'nonexistent_schema.Company' not found in the property graph invalid_graph.
+
+statement ok
+CREATE SCHEMA schema1;
+
+statement ok
+CREATE SCHEMA schema2;
+
+statement ok
+CREATE SCHEMA memory_schema;
+
+statement ok
+SET search_path = schema1;
+
+statement ok
+CREATE TABLE schema1.Person(id BIGINT PRIMARY KEY, name TEXT); INSERT INTO schema1.Person VALUES (1, 'Alice');
+
+statement ok
+CREATE TABLE schema2.Company(id BIGINT PRIMARY KEY, name TEXT); INSERT INTO schema2.Company VALUES (2, 'Bob B.V.');
+
+statement ok
+CREATE TABLE schema2.WorksAt(person_id BIGINT, company_id BIGINT);
+
+statement ok
+CREATE TABLE Friendship(person1_id BIGINT, person2_id BIGINT, since DATE);
+
+statement ok
+-CREATE PROPERTY GRAPH cross_schema_graph
+    VERTEX TABLES (
+      schema1.Person,
+      schema2.Company
+    )
+    EDGE TABLES (
+      schema2.WorksAt SOURCE KEY (person_id) REFERENCES schema1.Person (id)
+                      DESTINATION KEY (company_id) REFERENCES schema2.Company (id)
+                      LABEL works_at
+    );
+
+statement ok
+-CREATE PROPERTY GRAPH memory_inclusive_graph
+    VERTEX TABLES (
+      schema1.Person
+    )
+    EDGE TABLES (
+      Friendship SOURCE KEY (person1_id) REFERENCES schema1.Person (id)
+                               DESTINATION KEY (person2_id) REFERENCES schema1.Person (id)
+                               PROPERTIES (since)
+                               LABEL friends_with
+    );
+
+statement ok
+-CREATE PROPERTY GRAPH fully_qualified_graph
+    VERTEX TABLES (
+      schema1.Person,
+      schema2.Company
+    )
+    EDGE TABLES (
+      schema2.WorksAt SOURCE KEY (person_id) REFERENCES schema1.Person (id)
+                      DESTINATION KEY (company_id) REFERENCES schema2.Company (id)
+                      LABEL works_at,
+      Friendship SOURCE KEY (person1_id) REFERENCES schema1.Person (id)
+                               DESTINATION KEY (person2_id) REFERENCES schema1.Person (id)
+                               LABEL friends_with
+    );
+
+statement ok
+SET search_path = schema2;
+
+statement error
+-CREATE PROPERTY GRAPH search_path_graph
+    VERTEX TABLES (
+      Person, -- Should resolve to schema1.Person
+      Company
+    )
+    EDGE TABLES (
+      WorksAt SOURCE KEY (person_id) REFERENCES Person (id)
+              DESTINATION KEY (company_id) REFERENCES Company (id)
+              LABEL works_at
+    );
+----
+Invalid Error: Table with name Person does not exist
+
+statement ok
+-CREATE PROPERTY GRAPH search_path_graph
+    VERTEX TABLES (
+      schema1.Person, -- Should resolve to schema1.Person
+      Company
+    )
+    EDGE TABLES (
+      WorksAt SOURCE KEY (person_id) REFERENCES schema1.Person (id)
+              DESTINATION KEY (company_id) REFERENCES Company (id)
+              LABEL works_at
+    );
+
+statement error
+CREATE PROPERTY GRAPH invalid_schema_graph
+    VERTEX TABLES (
+      nonexistent_schema.Person
+    )
+    EDGE TABLES (
+      nonexistent_schema.WorksAt SOURCE KEY (person_id) REFERENCES nonexistent_schema.Person (id)
+                                 DESTINATION KEY (company_id) REFERENCES nonexistent_schema.Company (id)
+                                 LABEL works_at
+    );
+----
+Invalid Error: Table 'nonexistent_schema.Company' not found in the property graph invalid_schema_graph.
+
+statement error
+-CREATE PROPERTY GRAPH conflicting_schemas
+    VERTEX TABLES (
+      schema1.Person,
+      schema2.Person  -- Duplicate table name in different schema
+    )
+    EDGE TABLES (
+      schema2.WorksAt SOURCE KEY (person_id) REFERENCES schema1.Person (id)
+                      DESTINATION KEY (company_id) REFERENCES schema2.Company (id)
+                      LABEL works_at
+    );
+----
+Constraint Error: Label person is not unique, make sure all labels are unique
+
+statement error
+CREATE PROPERTY GRAPH wrong_schema_reference
+    VERTEX TABLES (
+      schema1.Person
+    )
+    EDGE TABLES (
+      schema2.WorksAt SOURCE KEY (person_id) REFERENCES schema1.Person (id)
+                      DESTINATION KEY (company_id) REFERENCES schema1.Company (id) -- Incorrect reference
+                      LABEL works_at
+    );
+----
+Invalid Error: Table 'schema1.Company' not found in the property graph wrong_schema_reference.
+
+
+
+statement ok
+create table schema2.v (
+    id BIGINT primary key,
+    name varchar
+);
+
+statement ok
+INSERT INTO schema2.v VALUES (1, 'a');
+
+statement error
+create table schema1.e (
+    id bigint primary key,
+    src BIGINT REFERENCES v(id),
+    dst BIGINT REFERENCES v(id)
+);
+----
+Binder Error: Creating foreign keys across different schemas or catalogs is not supported
+
+statement ok
+create table schema2.e (
+    id bigint primary key,
+    src BIGINT REFERENCES schema2.v(id),
+    dst BIGINT REFERENCES schema2.v(id)
+);
+
+statement error
+-create property graph g
+vertex tables (schema2.v)
+edge tables (schema2.e source schema2.v destination schema2.v);
+----
+Invalid Error: Multiple primary key - foreign key relationships detected between e and v. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES v <foreign key>`
+
+statement ok
+create table schema2.w (
+    id BIGINT primary key,
+    name varchar
+);
+
+statement ok
+INSERT INTO schema2.w VALUES (2, 'b');
+
+statement ok
+create table schema2.e2 (
+    id bigint primary key,
+    src BIGINT REFERENCES schema2.v(id),
+    dst BIGINT REFERENCES schema2.w(id)
+);
+
+statement ok
+-create property graph g
+vertex tables (v,w)
+edge tables (e2 source v destination w);
+
+statement ok
+create schema myschema; set search_path = myschema;
+
+statement ok
+CREATE TABLE Person (id bigint); CREATE TABLE Person_knows_person (person1id bigint, person2id bigint);
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH snb
+    VERTEX TABLES (
+      Person
+    )
+    EDGE TABLES (
+      Person_knows_person SOURCE KEY (Person1Id) REFERENCES Person (id)
+                          DESTINATION KEY (Person2Id) REFERENCES Person (id)
+      LABEL knows
+    );
+
+
+
+
+statement ok
+-FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH snb
+  VERTEX TABLES (
+    myschema.Person
+  )
+  EDGE TABLES (
+    myschema.Person_knows_person SOURCE KEY (Person1Id) REFERENCES myschema.Person (id)
+                        DESTINATION KEY (Person2Id) REFERENCES myschema.Person (id)
+    LABEL knows
+  );
+
+statement ok
+-FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));
+
+statement ok
+-CREATE OR REPLACE PROPERTY GRAPH snb
+  VERTEX TABLES (
+    memory.myschema.Person
+  )
+  EDGE TABLES (
+    memory.myschema.Person_knows_person SOURCE KEY (Person1Id) REFERENCES memory.myschema.Person (id)
+                        DESTINATION KEY (Person2Id) REFERENCES memory.myschema.Person (id)
+    LABEL knows
+  );
+
+statement ok
+-FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));

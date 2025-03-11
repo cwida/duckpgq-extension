@@ -10,16 +10,16 @@ namespace duckpgq {
 
 namespace core {
 
-static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState &state,
-                                    Vector &result) {
+static void LocalClusteringCoefficientFunction(DataChunk &args,
+                                               ExpressionState &state,
+                                               Vector &result) {
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (LocalClusteringCoefficientFunctionData &)*func_expr.bind_info;
   auto duckpgq_state = GetDuckPGQState(info.context);
 
   auto csr_entry = duckpgq_state->csr_list.find((uint64_t)info.csr_id);
   if (csr_entry == duckpgq_state->csr_list.end()) {
-    throw ConstraintException(
-        "CSR not found. Is the graph populated?");
+    throw ConstraintException("CSR not found. Is the graph populated?");
   }
 
   if (!(csr_entry->second->initialized_v && csr_entry->second->initialized_e)) {
@@ -42,7 +42,7 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
 
   DuckPGQBitmap neighbors(v_size);
 
-  for (int32_t n = 0; n < args.size(); n++) {
+  for (idx_t n = 0; n < args.size(); n++) {
     auto src_sel = vdata_src.sel->get_index(n);
     if (!vdata_src.validity.RowIsValid(src_sel)) {
       result_validity.SetInvalid(n);
@@ -54,21 +54,23 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
       continue;
     }
     neighbors.reset();
-    for (size_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
+    for (int64_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
       neighbors.set(e[offset]);
     }
 
     // Count connections between neighbors
     int64_t count = 0;
-    for (size_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
+    for (int64_t offset = v[src_node]; offset < v[src_node + 1]; offset++) {
       int64_t neighbor = e[offset];
-      for (size_t offset2 = v[neighbor]; offset2 < v[neighbor + 1]; offset2++) {
+      for (int64_t offset2 = v[neighbor]; offset2 < v[neighbor + 1];
+           offset2++) {
         int is_connected = neighbors.test(e[offset2]);
         count += is_connected; // Add 1 if connected, 0 otherwise
       }
     }
 
-    float local_result =  static_cast<float>(count) / (number_of_edges * (number_of_edges - 1));
+    float local_result =
+        static_cast<float>(count) / (number_of_edges * (number_of_edges - 1));
     result_data[n] = local_result;
   }
   duckpgq_state->csr_to_delete.insert(info.csr_id);
@@ -90,4 +92,3 @@ void CoreScalarFunctions::RegisterLocalClusteringCoefficientScalarFunction(
 } // namespace core
 
 } // namespace duckpgq
-

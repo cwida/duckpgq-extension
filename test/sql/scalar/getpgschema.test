@@ -126,3 +126,79 @@ query I
 SELECT * from get_pg_ecolnames('pg', 'know');
 ----
 id
+
+query I
+SELECT delete_csr(0) as flag;
+----
+true
+
+statement ok
+create or replace table snb_pairs as (
+   select src, dst
+   from (select a.rowid as src from student a),
+        (select b.rowid as dst from student b)
+   using sample reservoir(5 rows) repeatable (300)
+);
+
+statement ok
+WITH cte1 AS (
+        SELECT CREATE_CSR_EDGE(
+                0,
+                (SELECT count(a.id) FROM student a),
+                CAST (
+                    (SELECT sum(CREATE_CSR_VERTEX(
+                                0,
+                                (SELECT count(a.id) FROM student a),
+                                sub.dense_id,
+                                sub.cnt)
+                                )
+                    FROM (
+                        SELECT a.rowid as dense_id, count(k.src) as cnt
+                        FROM student a
+                        LEFT JOIN know k ON k.src = a.id
+                        GROUP BY a.rowid) sub
+                    )
+                AS BIGINT),
+                (select count(*) from know k JOIN student a on a.id = k.src JOIN student c on c.id = k.dst),
+                a.rowid,
+                c.rowid,
+                k.rowid) as temp
+        FROM know k
+        JOIN student a on a.id = k.src
+        JOIN student c on c.id = k.dst
+    ) SELECT src as source, dst as destination, iterativelength(0, (select count(*) from student), snb_pairs.src, snb_pairs.dst) as path
+            FROM    snb_pairs, (select count(cte1.temp) * 0 as temp from cte1) __x
+            WHERE __x.temp * 0 = 0;
+
+statement ok
+SELECT CREATE_CSR_EDGE(
+                0,
+                (SELECT count(a.id) FROM student a),
+                CAST (
+                    (SELECT sum(CREATE_CSR_VERTEX(
+                                0,
+                                (SELECT count(a.id) FROM student a),
+                                sub.dense_id,
+                                sub.cnt)
+                                )
+                    FROM (
+                        SELECT a.rowid as dense_id, count(k.src) as cnt
+                        FROM student a
+                        LEFT JOIN know k ON k.src = a.id
+                        GROUP BY a.rowid) sub
+                    )
+                AS BIGINT),
+                (select count(*) from know k JOIN student a on a.id = k.src JOIN student c on c.id = k.dst),
+                a.rowid,
+                c.rowid,
+                k.rowid) as temp
+        FROM know k
+        JOIN student a on a.id = k.src
+        JOIN student c on c.id = k.dst;
+
+
+statement ok
+SELECT csrv FROM get_csr_v(0)
+
+statement ok
+SELECT csre FROM get_csr_e(0)

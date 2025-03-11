@@ -12,6 +12,7 @@
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 
+
 namespace duckpgq {
 
 namespace core {
@@ -37,32 +38,40 @@ public:
 
   static void
   CheckPropertyGraphTableLabels(const shared_ptr<PropertyGraphTable> &pg_table,
-                                TableCatalogEntry &table);
+                                optional_ptr<TableCatalogEntry> &table);
 
   static void
   CheckPropertyGraphTableColumns(const shared_ptr<PropertyGraphTable> &pg_table,
-                                 TableCatalogEntry &table);
+                                 optional_ptr<TableCatalogEntry> &table);
+
+  static reference<TableCatalogEntry> GetTableCatalogEntry(ClientContext &context,
+    shared_ptr<PropertyGraphTable> &pg_table);
 
   static unique_ptr<FunctionData>
   CreatePropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
                           vector<LogicalType> &return_types,
                           vector<string> &names);
 
-  static void ValidateVertexTableRegistration(const string &reference, const case_insensitive_set_t &v_table_names);
+  static void
+  ValidateVertexTableRegistration(shared_ptr<PropertyGraphTable> &pg_table,
+                                  const case_insensitive_set_t &v_table_names);
 
-  static void ValidatePrimaryKeyInTable(Catalog &catalog, ClientContext &context, const string &schema,
-                               const string &reference, const vector<string> &pk_columns);
+  static void ValidatePrimaryKeyInTable(ClientContext &context,
+                                        shared_ptr<PropertyGraphTable> &pg_table,
+                                        const vector<string> &pk_columns);
 
-  static void ValidateKeys(shared_ptr<PropertyGraphTable> &edge_table,
-                    const string &reference, const string &key_type,
-                    vector<string> &pk_columns, vector<string> &fk_columns,
-                    const vector<unique_ptr<Constraint>> &table_constraints);
+  static void
+  ValidateKeys(shared_ptr<PropertyGraphTable> &edge_table,
+               const string &reference, const string &key_type,
+               vector<string> &pk_columns, vector<string> &fk_columns,
+               const vector<unique_ptr<Constraint>> &table_constraints);
 
-  static void ValidateForeignKeyColumns(shared_ptr<PropertyGraphTable> &edge_table,
-                                 const vector<string> &fk_columns,
-                                 optional_ptr<TableCatalogEntry> &table);
+  static void
+  ValidateForeignKeyColumns(shared_ptr<PropertyGraphTable> &edge_table,
+                            const vector<string> &fk_columns,
+                            optional_ptr<TableCatalogEntry> &table);
 
-      static unique_ptr<GlobalTableFunctionState>
+  static unique_ptr<GlobalTableFunctionState>
   CreatePropertyGraphInit(ClientContext &context,
                           TableFunctionInitInput &input);
 

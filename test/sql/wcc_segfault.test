@@ -1,0 +1,29 @@
+# require duckpgq
+#
+#
+# statement ok
+# create or replace table data_table as select * from read_csv("/Users/dljtw/git/duckpgq/test/python/links.tsv");
+#
+# statement ok
+# CREATE or replace TABLE devices AS SELECT a AS device FROM data_table UNION SELECT b AS device FROM data_table order by device;
+#
+# statement ok
+# CREATE or replace TABLE edges AS SELECT a.rowid as a, b.rowid as b FROM data_table e join devices a on a.device = e.a join devices b on b.device = e.b;
+#
+# statement ok
+# CREATE or replace TABLE nodes AS SELECT rowid as id from devices;
+#
+# statement ok
+# -CREATE OR REPLACE PROPERTY GRAPH graph
+#   VERTEX TABLES (
+#     nodes
+#   )
+#   EDGE TABLES (
+#     edges
+#       SOURCE KEY (a) REFERENCES nodes(id)
+#       DESTINATION KEY (b) REFERENCES nodes(id)
+#     LABEL connects
+#   );
+#
+# statement ok
+# -FROM weakly_connected_component(graph, nodes, connects);

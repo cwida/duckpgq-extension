@@ -1,0 +1,46 @@
+
+require duckpgq
+
+statement ok con1
+create table person (id bigint, firstName varchar, lastName varchar);
+
+statement ok con1
+create table person_knows_person(person1id bigint, person2id bigint);
+
+statement ok con1
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person
+  )
+EDGE TABLES (
+    Person_knows_person
+        SOURCE KEY ( person1id ) REFERENCES Person ( id )
+        DESTINATION KEY ( person2id ) REFERENCES Person ( id )
+        LABEL Knows
+  );
+
+statement ok con1
+-FROM GRAPH_TABLE(snb
+    MATCH (a:Person WHERE a.firstName = 'Jan')-[k:Knows]->(b:Person)
+    COLUMNS (b.firstName)
+);
+
+statement ok con2
+-FROM GRAPH_TABLE(snb
+    MATCH (a:Person WHERE a.firstName = 'Bob')-[k:Knows]->(b:Person)
+    COLUMNS (b.firstName)
+);
+
+statement ok con2
+-FROM GRAPH_TABLE(snb
+    MATCH (a:Person WHERE a.firstName = 'Bob')-[k:Knows]->(b:Person)
+    COLUMNS (b.FIRSTNAME)
+);
+
+statement error con2
+-FROM GRAPH_TABLE(snb
+    MATCH (a:Person WHERE a.firstName = 'Bob')-[k:Knows]->(b:Person)
+    COLUMNS (b.nonregisteredproperty)
+);
+----
+Binder Error: Property b.nonregisteredproperty is never registered!

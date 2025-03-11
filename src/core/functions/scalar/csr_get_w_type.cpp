@@ -46,13 +46,11 @@ static void GetCsrWTypeFunction(DataChunk &args, ExpressionState &state,
 void CoreScalarFunctions::RegisterGetCSRWTypeScalarFunction(
     DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(
-      db,
-      ScalarFunction("csr_get_w_type", {LogicalType::INTEGER},
-                                 LogicalType::INTEGER, GetCsrWTypeFunction,
-                                 CSRFunctionData::CSRBind));
+      db, ScalarFunction("csr_get_w_type", {LogicalType::INTEGER},
+                         LogicalType::INTEGER, GetCsrWTypeFunction,
+                         CSRFunctionData::CSRBind));
 }
 
 } // namespace core
 
 } // namespace duckpgq
-

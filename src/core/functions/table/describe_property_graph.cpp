@@ -11,8 +11,6 @@
 namespace duckpgq {
 namespace core {
 
-
-
 unique_ptr<FunctionData>
 DescribePropertyGraphFunction::DescribePropertyGraphBind(
     ClientContext &context, TableFunctionBindInput &input,
@@ -39,7 +37,8 @@ DescribePropertyGraphFunction::DescribePropertyGraphBind(
   }
   auto property_graph =
       dynamic_cast<CreatePropertyGraphInfo *>(pg_table->second.get());
-
+  names.emplace_back("property_graph");
+  return_types.emplace_back(LogicalType::VARCHAR);
   names.emplace_back("table_name");
   return_types.emplace_back(LogicalType::VARCHAR);
   names.emplace_back("label");
@@ -62,6 +61,10 @@ DescribePropertyGraphFunction::DescribePropertyGraphBind(
   return_types.emplace_back(LogicalType::VARCHAR);
   names.emplace_back("sub_labels");
   return_types.emplace_back(LogicalType::LIST(LogicalType::VARCHAR));
+  names.emplace_back("catalog");
+  return_types.emplace_back(LogicalType::VARCHAR);
+  names.emplace_back("schema");
+  return_types.emplace_back(LogicalType::VARCHAR);
 
   return make_uniq<DescribePropertyGraphBindData>(property_graph);
 }
@@ -82,71 +85,85 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
   auto pg_info = bind_data.describe_pg_info;
   idx_t vector_idx = 0;
   for (const auto &vertex_table : pg_info->vertex_tables) {
-    output.SetValue(0, vector_idx, Value(vertex_table->table_name));
-    output.SetValue(1, vector_idx, Value(vertex_table->main_label));
-    output.SetValue(2, vector_idx, Value(vertex_table->is_vertex_table));
-    output.SetValue(3, vector_idx, Value());
+    output.SetValue(0, vector_idx, Value(pg_info->property_graph_name));
+    output.SetValue(1, vector_idx, Value(vertex_table->table_name));
+    output.SetValue(2, vector_idx, Value(vertex_table->main_label));
+    output.SetValue(3, vector_idx, Value(vertex_table->is_vertex_table));
     output.SetValue(4, vector_idx, Value());
     output.SetValue(5, vector_idx, Value());
     output.SetValue(6, vector_idx, Value());
     output.SetValue(7, vector_idx, Value());
     output.SetValue(8, vector_idx, Value());
+    output.SetValue(9, vector_idx, Value());
     if (!vertex_table->discriminator.empty()) {
-      output.SetValue(9, vector_idx, Value(vertex_table->discriminator));
+      output.SetValue(10, vector_idx, Value(vertex_table->discriminator));
       vector<Value> sub_labels;
       for (const auto &label : vertex_table->sub_labels) {
         sub_labels.push_back(Value(label));
       }
-      output.SetValue(10, vector_idx,
+      output.SetValue(11, vector_idx,
                       Value::LIST(LogicalType::VARCHAR, sub_labels));
     } else {
-      output.SetValue(9, vector_idx, Value());
       output.SetValue(10, vector_idx, Value());
+      output.SetValue(11, vector_idx, Value());
     }
+    if (vertex_table->catalog_name.empty()) {
+      output.SetValue(12, vector_idx, Value());
+    } else {
+      output.SetValue(12, vector_idx, Value(vertex_table->catalog_name));
+    }
+    output.SetValue(13, vector_idx, Value(vertex_table->schema_name));
     vector_idx++;
   }
   for (const auto &edge_table : pg_info->edge_tables) {
-    output.SetValue(0, vector_idx, Value(edge_table->table_name));
-    output.SetValue(1, vector_idx, Value(edge_table->main_label));
-    output.SetValue(2, vector_idx, Value(edge_table->is_vertex_table));
-    output.SetValue(3, vector_idx, Value(edge_table->source_reference));
+    output.SetValue(0, vector_idx, Value(pg_info->property_graph_name));
+    output.SetValue(1, vector_idx, Value(edge_table->table_name));
+    output.SetValue(2, vector_idx, Value(edge_table->main_label));
+    output.SetValue(3, vector_idx, Value(edge_table->is_vertex_table));
+    output.SetValue(4, vector_idx, Value(edge_table->source_reference));
     vector<Value> source_pk_list;
     for (const auto &col : edge_table->source_pk) {
       source_pk_list.push_back(Value(col));
     }
-    output.SetValue(4, vector_idx,
+    output.SetValue(5, vector_idx,
                     Value::LIST(LogicalType::VARCHAR, source_pk_list));
     vector<Value> source_fk_list;
     for (const auto &col : edge_table->source_fk) {
       source_fk_list.push_back(Value(col));
     }
-    output.SetValue(5, vector_idx,
+    output.SetValue(6, vector_idx,
                     Value::LIST(LogicalType::VARCHAR, source_fk_list));
-    output.SetValue(6, vector_idx, Value(edge_table->destination_reference));
+    output.SetValue(7, vector_idx, Value(edge_table->destination_reference));
     vector<Value> destination_pk_list;
     for (const auto &col : edge_table->destination_pk) {
       destination_pk_list.push_back(Value(col));
     }
-    output.SetValue(7, vector_idx,
+    output.SetValue(8, vector_idx,
                     Value::LIST(LogicalType::VARCHAR, destination_pk_list));
     vector<Value> destination_fk_list;
     for (const auto &col : edge_table->destination_fk) {
       destination_fk_list.push_back(Value(col));
     }
-    output.SetValue(8, vector_idx,
+    output.SetValue(9, vector_idx,
                     Value::LIST(LogicalType::VARCHAR, destination_fk_list));
     if (!edge_table->discriminator.empty()) {
-      output.SetValue(9, vector_idx, Value(edge_table->discriminator));
+      output.SetValue(10, vector_idx, Value(edge_table->discriminator));
       vector<Value> sub_labels;
       for (const auto &label : edge_table->sub_labels) {
         sub_labels.push_back(Value(label));
       }
-      output.SetValue(10, vector_idx,
+      output.SetValue(11, vector_idx,
                       Value::LIST(LogicalType::VARCHAR, sub_labels));
     } else {
-      output.SetValue(9, vector_idx, Value());
       output.SetValue(10, vector_idx, Value());
+      output.SetValue(11, vector_idx, Value());
     }
+    if (edge_table->catalog_name.empty()) {
+      output.SetValue(12, vector_idx, Value());
+    } else {
+      output.SetValue(12, vector_idx, Value(edge_table->catalog_name));
+    }
+    output.SetValue(13, vector_idx, Value(edge_table->schema_name));
     vector_idx++;
   }
   output.SetCardinality(vector_idx);
@@ -156,7 +173,8 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreTableFunctions::RegisterDescribePropertyGraphTableFunction(DatabaseInstance &db) {
+void CoreTableFunctions::RegisterDescribePropertyGraphTableFunction(
+    DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(db, DescribePropertyGraphFunction());
 }
 

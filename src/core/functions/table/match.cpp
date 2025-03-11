@@ -1,6 +1,8 @@
 #include <duckpgq_extension.hpp>
 #include "duckpgq/core/functions/table/match.hpp"
 
+#include "duckdb/common/string_util.hpp"
+#include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/parser/tableref/matchref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
@@ -28,12 +30,109 @@
 #include <duckdb/common/enums/set_operation_type.hpp>
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
-#include <duckpgq/core/option/duckpgq_option.hpp>
-
 
 namespace duckpgq {
 
 namespace core {
+
+namespace {
+
+// Get fully-qualified column names for the property graph [tbl], and insert
+// into set [col_names].
+void PopulateFullyQualifiedColName(
+    const vector<shared_ptr<PropertyGraphTable>> &tbls,
+    const case_insensitive_map_t<vector<string>> &tbl_name_to_aliases,
+    case_insensitive_set_t &col_names) {
+  for (const auto &cur_tbl : tbls) {
+    for (const auto &cur_col : cur_tbl->column_names) {
+      // It's legal to query by `<col>` instead of `<table>.<col>`.
+      col_names.insert(cur_col);
+
+      const string &tbl_name = cur_tbl->table_name;
+      auto iter = tbl_name_to_aliases.find(tbl_name);
+      // Prefer to use table alias specified in the statement, otherwise use
+      // table name.
+      if (iter == tbl_name_to_aliases.end()) {
+        col_names.insert(StringUtil::Format("%s.%s", tbl_name, cur_col));
+      } else {
+        const auto &all_aliases = iter->second;
+        for (const auto &cur_alias : all_aliases) {
+          col_names.insert(StringUtil::Format("%s.%s", cur_alias, cur_col));
+        }
+      }
+    }
+  }
+}
+
+// Get fully-qualified column names from property graph.
+case_insensitive_set_t GetFullyQualifiedColFromPg(
+    const CreatePropertyGraphInfo &pg,
+    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
+  case_insensitive_map_t<vector<string>> relation_name_to_aliases;
+  for (const auto &entry : alias_map) {
+    relation_name_to_aliases[entry.second->table_name].emplace_back(
+        entry.first);
+  }
+
+  case_insensitive_set_t col_names;
+  PopulateFullyQualifiedColName(pg.vertex_tables, relation_name_to_aliases,
+                                col_names);
+  PopulateFullyQualifiedColName(pg.edge_tables, relation_name_to_aliases,
+                                col_names);
+  return col_names;
+}
+
+// Get all fully-qualified column names from the given property graph [pg] for
+// the given relation [alias], only vertex table is selected.
+//
+// Return column reference expressions which represent columns to select.
+vector<unique_ptr<ColumnRefExpression>> GetColRefExprFromPg(
+    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
+    const std::string &alias) {
+  vector<unique_ptr<ColumnRefExpression>> registered_col_names;
+  auto iter = alias_map.find(alias);
+  D_ASSERT(iter != alias_map.end());
+  const auto &tbl = iter->second;
+  // Skip edge table.
+  if (!tbl->is_vertex_table) {
+    return registered_col_names;
+  }
+  registered_col_names.reserve(tbl->column_names.size());
+  for (const auto &cur_col : tbl->column_names) {
+    auto new_col_names = vector<string>{"", ""};
+    new_col_names[0] = alias;
+    new_col_names[1] = cur_col;
+    registered_col_names.emplace_back(
+        make_uniq<ColumnRefExpression>(std::move(new_col_names)));
+  }
+  return registered_col_names;
+}
+
+// Get all fully-qualified column names from the given property graph [pg] for
+// all vertex relations.
+//
+// Return column reference expressions which represent columns to select.
+vector<unique_ptr<ColumnRefExpression>> GetColRefExprFromPg(
+    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
+  vector<unique_ptr<ColumnRefExpression>> registered_col_names;
+  for (const auto &alias_and_table : alias_map) {
+    const auto &alias = alias_and_table.first;
+    const auto &tbl = alias_and_table.second;
+    // Skip edge table.
+    registered_col_names.reserve(registered_col_names.size() +
+                                 tbl->column_names.size());
+    for (const auto &cur_col : tbl->column_names) {
+      auto new_col_names = vector<string>{"", ""};
+      new_col_names[0] = alias;
+      new_col_names[1] = cur_col;
+      registered_col_names.emplace_back(
+          make_uniq<ColumnRefExpression>(std::move(new_col_names)));
+    }
+  }
+  return registered_col_names;
+}
+
+} // namespace
 
 shared_ptr<PropertyGraphTable>
 PGQMatchFunction::FindGraphTable(const string &label,
@@ -147,6 +246,18 @@ PathElement *PGQMatchFunction::GetPathElement(
   throw InternalException("Unknown path reference type detected");
 }
 
+SubPath *
+PGQMatchFunction::GetSubPath(const unique_ptr<PathReference> &path_reference) {
+  if (path_reference->path_reference_type ==
+      PGQPathReferenceType::PATH_ELEMENT) {
+    return nullptr;
+  }
+  if (path_reference->path_reference_type == PGQPathReferenceType::SUBPATH) {
+    return reinterpret_cast<SubPath *>(path_reference.get());
+  }
+  throw InternalException("Unknown path reference type detected");
+}
+
 unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
   //! BEGIN OF (SELECT count(cte1.temp) as temp * 0 from cte1) __x
 
@@ -194,8 +305,8 @@ void PGQMatchFunction::EdgeTypeAny(
   auto edge_left_ref = edge_table->CreateBaseTableRef(edge_binding);
   src_dst_select_node->from_table = std::move(edge_left_ref);
   auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
-  src_dst_children.push_back(make_uniq<ColumnRefExpression>(
-      edge_table->source_fk[0], edge_binding));
+  src_dst_children.push_back(
+      make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_binding));
   src_dst_children.push_back(make_uniq<ColumnRefExpression>(
       edge_table->destination_fk[0], edge_binding));
   src_dst_children.push_back(make_uniq<StarExpression>());
@@ -212,8 +323,8 @@ void PGQMatchFunction::EdgeTypeAny(
 
   dst_src_children.push_back(make_uniq<ColumnRefExpression>(
       edge_table->destination_fk[0], edge_binding));
-  dst_src_children.push_back(make_uniq<ColumnRefExpression>(
-      edge_table->source_fk[0], edge_binding));
+  dst_src_children.push_back(
+      make_uniq<ColumnRefExpression>(edge_table->source_fk[0], edge_binding));
   dst_src_children.push_back(make_uniq<StarExpression>());
 
   dst_src_select_node->select_list = std::move(dst_src_children);
@@ -288,7 +399,8 @@ void PGQMatchFunction::EdgeTypeLeftRight(
     const string &edge_binding, const string &prev_binding,
     const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
-    case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map, int32_t &extra_alias_counter) {
+    case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
+    int32_t &extra_alias_counter) {
   auto src_left_expr = CreateMatchJoinExpression(
       edge_table->source_pk, edge_table->source_fk, next_binding, edge_binding);
   auto dst_left_expr = CreateMatchJoinExpression(edge_table->destination_pk,
@@ -321,8 +433,15 @@ void PGQMatchFunction::EdgeTypeLeftRight(
   conditions.push_back(std::move(combined_expr));
 }
 
-unique_ptr<ParsedExpression>
-PGQMatchFunction::CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions) {
+PathElement *PGQMatchFunction::HandleNestedSubPath(
+    unique_ptr<PathReference> &path_reference,
+    vector<unique_ptr<ParsedExpression>> &conditions, idx_t element_idx) {
+  auto subpath = reinterpret_cast<SubPath *>(path_reference.get());
+  return GetPathElement(subpath->path_list[element_idx]);
+}
+
+unique_ptr<ParsedExpression> PGQMatchFunction::CreateWhereClause(
+    vector<unique_ptr<ParsedExpression>> &conditions) {
   unique_ptr<ParsedExpression> where_clause;
   for (auto &condition : conditions) {
     if (where_clause) {
@@ -336,155 +455,10 @@ PGQMatchFunction::CreateWhereClause(vector<unique_ptr<ParsedExpression>> &condit
   return where_clause;
 }
 
-void PGQMatchFunction::CreatePairsCTE(
-    shared_ptr<PropertyGraphTable> &edge_table, const string &pairs_cte_name,
-    unique_ptr<SelectNode> &final_select_node,
-    unique_ptr<ParsedExpression> &src_conditions,
-    unique_ptr<ParsedExpression> &dst_conditions) {
-  auto pairs_cte_select_node = make_uniq<SelectNode>();
-
-  pairs_cte_select_node->select_list.emplace_back(CreateColumnRefExpression("src"));
-  pairs_cte_select_node->select_list.emplace_back(CreateColumnRefExpression("dst"));
-
-  auto src_select_statement = make_uniq<SelectStatement>();
-  auto src_select_node = make_uniq<SelectNode>();
-
-  src_select_node->select_list.emplace_back(CreateColumnRefExpression("rowid", "", "src"));
-  src_select_node->from_table = CreateBaseTableRef(edge_table->source_reference);
-  src_select_node->where_clause = std::move(src_conditions);
-  src_select_statement->node = std::move(src_select_node);
-  auto src_subquery = make_uniq<SubqueryRef>(std::move(src_select_statement));
-
-  auto dst_select_statement = make_uniq<SelectStatement>();
-  auto dst_select_node = make_uniq<SelectNode>();
-
-  dst_select_node->select_list.emplace_back(CreateColumnRefExpression("rowid", "", "dst"));
-  dst_select_node->from_table = CreateBaseTableRef(edge_table->destination_reference);
-  dst_select_node->where_clause = std::move(dst_conditions);
-  dst_select_statement->node = std::move(dst_select_node);
-  auto dst_subquery = make_uniq<SubqueryRef>(std::move(dst_select_statement));
-
-  auto cross_join = make_uniq<JoinRef>(JoinRefType::CROSS);
-  cross_join->left = std::move(src_subquery);
-  cross_join->right = std::move(dst_subquery);
-
-  pairs_cte_select_node->from_table = std::move(cross_join);
-  auto select_statement = make_uniq<SelectStatement>();
-  auto cte_info = make_uniq<CommonTableExpressionInfo>();
-  select_statement->node = std::move(pairs_cte_select_node);
-  cte_info->query = std::move(select_statement);
-  final_select_node->cte_map.map[pairs_cte_name] = std::move(cte_info);
-}
-
-unique_ptr<SubqueryExpression> PGQMatchFunction::GenerateCSROperatorSubquery(shared_ptr<PropertyGraphTable> &edge_table,
-  const string& src_table_alias, const string& edge_table_alias, const string& dst_table_alias) {
-  auto result = make_uniq<SubqueryExpression>();
-  auto select_statement = make_uniq<SelectStatement>();
-  auto select_node = make_uniq<SelectNode>();
-
-  vector<unique_ptr<ParsedExpression>> csr_operator_children;
-  csr_operator_children.emplace_back(GetCountTable(edge_table->source_pg_table, src_table_alias, edge_table->source_pk[0]));
-  csr_operator_children.emplace_back(GetCountTable(edge_table, edge_table_alias, edge_table->source_fk[0]));
-
-  csr_operator_children.emplace_back(CreateColumnRefExpression("rowid", src_table_alias));
-  csr_operator_children.emplace_back(CreateColumnRefExpression("rowid", dst_table_alias));
-  csr_operator_children.emplace_back(CreateColumnRefExpression("rowid", edge_table_alias));
-
-  csr_operator_children.emplace_back(CreateColumnRefExpression("cnt", "__count_per_vertex"));
-
-  select_node->select_list.emplace_back(make_uniq<FunctionExpression>("csr_operator", std::move(csr_operator_children)));
-  auto edge_src_joinref = make_uniq<JoinRef>(JoinRefType::REGULAR);
-  edge_src_joinref->left = CreateBaseTableRef(edge_table->table_name, edge_table_alias);
-  edge_src_joinref->right = CreateBaseTableRef(edge_table->source_reference, src_table_alias);
-  edge_src_joinref->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, CreateColumnRefExpression(edge_table->source_fk[0], edge_table_alias), CreateColumnRefExpression(edge_table->source_pk[0], src_table_alias));
-
-  auto edge_dst_joinref = make_uniq<JoinRef>(JoinRefType::REGULAR);
-  edge_dst_joinref->left = std::move(edge_src_joinref);
-  edge_dst_joinref->right = CreateBaseTableRef(edge_table->destination_reference, dst_table_alias);
-  edge_dst_joinref->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, CreateColumnRefExpression(edge_table->destination_fk[0], edge_table_alias), CreateColumnRefExpression(edge_table->destination_pk[0], dst_table_alias));
-
-  auto edges_per_vertex_select_statement = make_uniq<SelectStatement>();
-  auto edges_per_vertex_select_node = make_uniq<SelectNode>();
-
-  vector<unique_ptr<ParsedExpression>> count_children;
-  count_children.emplace_back(CreateColumnRefExpression(edge_table->source_fk[0], edge_table_alias));
-  auto count_function_expression = make_uniq<FunctionExpression>("count", std::move(count_children));
-  count_function_expression->alias = "cnt";
-  edges_per_vertex_select_node->select_list.emplace_back(std::move(count_function_expression));
-  edges_per_vertex_select_node->select_list.emplace_back(CreateColumnRefExpression("rowid", src_table_alias));
-
-  auto left_join = make_uniq<JoinRef>(JoinRefType::REGULAR);
-  left_join->type = JoinType::LEFT;
-  left_join->left = CreateBaseTableRef(edge_table->source_reference, src_table_alias);
-  left_join->right = CreateBaseTableRef(edge_table->table_name, edge_table_alias);
-  left_join->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, CreateColumnRefExpression(edge_table->source_pk[0], src_table_alias), CreateColumnRefExpression(edge_table->source_fk[0], edge_table_alias));
-
-  edges_per_vertex_select_node->from_table = std::move(left_join);
-  edges_per_vertex_select_node->groups.group_expressions.emplace_back(CreateColumnRefExpression("rowid", src_table_alias, src_table_alias + "_rowid"));
-  GroupingSet grouping_set = {0};
-  edges_per_vertex_select_node->groups.grouping_sets.push_back(grouping_set);
-
-  edges_per_vertex_select_statement->node = std::move(edges_per_vertex_select_node);
-  auto edges_per_vertex_subquery = make_uniq<SubqueryRef>(std::move(edges_per_vertex_select_statement));
-  edges_per_vertex_subquery->alias = "__count_per_vertex";
-  auto final_join  = make_uniq<JoinRef>(JoinRefType::REGULAR);
-  final_join->left = std::move(edge_dst_joinref);
-  final_join->right = std::move(edges_per_vertex_subquery);
-  final_join->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, CreateColumnRefExpression(src_table_alias + "_rowid", "__count_per_vertex"), CreateColumnRefExpression("rowid", src_table_alias));
-
-  select_node->from_table = std::move(final_join);
-  select_statement->node = std::move(select_node);
-  result->subquery = std::move(select_statement);
-  return result;
-}
-
-
-void PGQMatchFunction::GenerateShortestPathOperatorCTE(
+unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(
     CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
-    const unique_ptr<SelectNode> &final_select_node,
-    unique_ptr<ParsedExpression> &src_conditions,
-    unique_ptr<ParsedExpression> &dst_conditions,
-    const string& src_table_alias,
-    const string& edge_table_alias,
-    const string& dst_table_alias) {
-  string pairs_cte_name = "pairs_cte";
-  auto cte_info = make_uniq<CommonTableExpressionInfo>();
-  cte_info->materialized = CTEMaterialize::CTE_MATERIALIZE_ALWAYS;
-  auto select_statement = make_uniq<SelectStatement>();
-  auto select_node = make_uniq<SelectNode>();
-
-  auto edge_element = GetPathElement(edge_subpath->path_list[0]);
-  auto edge_table = FindGraphTable(edge_element->label, pg_table);
-
-  CreatePairsCTE(edge_table, pairs_cte_name, select_node,
-                 src_conditions, dst_conditions);
-
-  select_node->select_list.emplace_back(CreateColumnRefExpression("src"));
-  select_node->select_list.emplace_back(CreateColumnRefExpression("dst"));
-
-  vector<unique_ptr<ParsedExpression>> shortest_path_operator_children;
-  shortest_path_operator_children.emplace_back(CreateColumnRefExpression("src"));
-  shortest_path_operator_children.emplace_back(
-      CreateColumnRefExpression("dst"));
-  auto pairs_cte_ref = make_uniq<ConstantExpression>(Value(pairs_cte_name));
-  pairs_cte_ref->alias = "path";
-
-  auto shortest_path_function  = make_uniq<FunctionExpression>("shortestpathoperator", std::move(shortest_path_operator_children));
-  shortest_path_operator_children.emplace_back(
-      std::move(shortest_path_function));
-
-  select_node->from_table = CreateBaseTableRef(pairs_cte_name, "__p");
-
-  auto csr_subquery = GenerateCSROperatorSubquery(edge_table, src_table_alias, edge_table_alias, dst_table_alias);
-  auto between_expression = make_uniq<BetweenExpression>(std::move(csr_subquery), CreateColumnRefExpression("src", "__p"), CreateColumnRefExpression("dst, __p"));
-  select_node->where_clause = std::move(between_expression);
-  select_statement->node = std::move(select_node);
-  cte_info->query = std::move(select_statement);
-  final_select_node->cte_map.map["shortestpath_cte"] = std::move(cte_info);
-}
-
-unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
-                                   PathElement *previous_vertex_element, PathElement * next_vertex_element, vector<unique_ptr<ParsedExpression>> &path_finding_conditions) {
+    PathElement *previous_vertex_element, PathElement *next_vertex_element,
+    vector<unique_ptr<ParsedExpression>> &path_finding_conditions) {
   auto cte_info = make_uniq<CommonTableExpressionInfo>();
   auto select_statement = make_uniq<SelectStatement>();
   auto select_node = make_uniq<SelectNode>();
@@ -501,7 +475,8 @@ unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(
   vector<unique_ptr<ParsedExpression>> pathfinding_children;
   pathfinding_children.push_back(std::move(csr_id));
   pathfinding_children.push_back(std::move(GetCountTable(
-      edge_table->source_pg_table, previous_vertex_element->variable_binding, edge_table->source_pk[0])));
+      edge_table->source_pg_table, previous_vertex_element->variable_binding,
+      edge_table->source_pk[0])));
   pathfinding_children.push_back(std::move(src_row_id));
   pathfinding_children.push_back(std::move(dst_row_id));
 
@@ -509,10 +484,12 @@ unique_ptr<CommonTableExpressionInfo> PGQMatchFunction::GenerateShortestPathCTE(
       "shortestpath", std::move(pathfinding_children));
   shortest_path_function->alias = "path";
   select_node->select_list.push_back(std::move(shortest_path_function));
-  auto src_rowid_outer_select = make_uniq<ColumnRefExpression>("rowid", previous_vertex_element->variable_binding);
+  auto src_rowid_outer_select = make_uniq<ColumnRefExpression>(
+      "rowid", previous_vertex_element->variable_binding);
   src_rowid_outer_select->alias = "src_rowid";
   select_node->select_list.push_back(std::move(src_rowid_outer_select));
-  auto dst_rowid_outer_select = make_uniq<ColumnRefExpression>("rowid", next_vertex_element->variable_binding);
+  auto dst_rowid_outer_select = make_uniq<ColumnRefExpression>(
+      "rowid", next_vertex_element->variable_binding);
   dst_rowid_outer_select->alias = "dst_rowid";
   select_node->select_list.push_back(std::move(dst_rowid_outer_select));
 
@@ -550,8 +527,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
     vector<unique_ptr<PathReference>> &path_list,
     CreatePropertyGraphInfo &pg_table, const string &path_variable,
     unique_ptr<SelectNode> &final_select_node,
-    vector<unique_ptr<ParsedExpression>> &conditions,
-    ClientContext &context) {
+    vector<unique_ptr<ParsedExpression>> &conditions) {
   // This method will return a SubqueryRef of a list of rowids
   // For every vertex and edge element, we add the rowid to the list using
   // list_append, or list_prepend The difficulty is that there may be a
@@ -559,7 +535,6 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
   // the shortestpath() UDF and returns a list. This list will be part of the
   // full list of element rowids, using list_concat. For now we will only
   // support returning rowids
-
 
   unique_ptr<ParsedExpression> final_list;
   vector<unique_ptr<ParsedExpression>> path_finding_conditions;
@@ -569,8 +544,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
     // We hit a vertex element with a WHERE, but we only care about the rowid
     // here
     // In the future this might be a recursive path pattern
-    previous_vertex_subpath =
-        reinterpret_cast<SubPath *>(path_list[0].get());
+    previous_vertex_subpath = reinterpret_cast<SubPath *>(path_list[0].get());
     previous_vertex_element =
         GetPathElement(previous_vertex_subpath->path_list[0]);
   }
@@ -590,48 +564,43 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
       if (edge_subpath->upper > 1) {
         // (un)bounded shortest path
         // Add the shortest path UDF as a CTE
-
-        string shortest_path_cte_name = "shortest_path_cte" ;
-        if (GetPathFindingOption(context)) {
-          edge_element = reinterpret_cast<PathElement *>(edge_subpath->path_list[0].get());
-          if (edge_element->match_type != PGQMatchType::MATCH_EDGE_RIGHT) {
+        if (previous_vertex_subpath) {
+          path_finding_conditions.push_back(
+              std::move(previous_vertex_subpath->where_clause));
+        }
+        if (next_vertex_subpath) {
+          path_finding_conditions.push_back(
+              std::move(next_vertex_subpath->where_clause));
+        }
+        if (final_select_node->cte_map.map.find("cte1") ==
+            final_select_node->cte_map.map.end()) {
+          edge_element =
+              reinterpret_cast<PathElement *>(edge_subpath->path_list[0].get());
+          if (edge_element->match_type == PGQMatchType::MATCH_EDGE_RIGHT) {
+            final_select_node->cte_map.map["cte1"] = CreateDirectedCSRCTE(
+                FindGraphTable(edge_element->label, pg_table),
+                previous_vertex_element->variable_binding,
+                edge_element->variable_binding,
+                next_vertex_element->variable_binding);
+          } else if (edge_element->match_type == PGQMatchType::MATCH_EDGE_ANY) {
+            final_select_node->cte_map.map["cte1"] = CreateUndirectedCSRCTE(
+                FindGraphTable(edge_element->label, pg_table),
+                final_select_node);
+          } else {
             throw NotImplementedException(
-                "Cannot do shortest path using the operator for edge type %s",
-                GraphUtils::ToString(edge_element->match_type));
-          }
-          // Do the new path finding operator + CSR creation here
-          unique_ptr<ParsedExpression> previous_where_clause = (previous_vertex_subpath && previous_vertex_subpath->where_clause) ? previous_vertex_subpath->where_clause->Copy() : nullptr;
-          unique_ptr<ParsedExpression> next_where_clause = (next_vertex_subpath && next_vertex_subpath->where_clause) ? next_vertex_subpath->where_clause->Copy() : nullptr;
-
-          GenerateShortestPathOperatorCTE(pg_table, edge_subpath, final_select_node,
-          previous_where_clause, next_where_clause,
-          previous_vertex_element->variable_binding, edge_element->variable_binding,
-          next_vertex_element->variable_binding);
-        } else {
-          if (previous_vertex_subpath) {
-            path_finding_conditions.push_back(std::move(previous_vertex_subpath->where_clause));
-          }
-          if (next_vertex_subpath) {
-            path_finding_conditions.push_back(std::move(next_vertex_subpath->where_clause));
-          }
-          // Create UDF based CSR if not exists
-          if (final_select_node->cte_map.map.find("cte1") == final_select_node->cte_map.map.end()) {
-            edge_element = reinterpret_cast<PathElement *>(edge_subpath->path_list[0].get());
-            if (edge_element->match_type == PGQMatchType::MATCH_EDGE_RIGHT) {
-              final_select_node->cte_map.map["cte1"] =
-              CreateDirectedCSRCTE(FindGraphTable(edge_element->label, pg_table), previous_vertex_element->variable_binding, edge_element->variable_binding, next_vertex_element->variable_binding);
-            } else if (edge_element->match_type == PGQMatchType::MATCH_EDGE_ANY) {
-              final_select_node->cte_map.map["cte1"] =
-                CreateUndirectedCSRCTE(FindGraphTable(edge_element->label, pg_table), final_select_node);
-            } else {
-              throw NotImplementedException("Cannot do shortest path for edge type %s", edge_element->match_type == PGQMatchType::MATCH_EDGE_LEFT ? "MATCH_EDGE_LEFT" : "MATCH_EDGE_LEFT_RIGHT");
-            }
+                "Cannot do shortest path for edge type %s",
+                edge_element->match_type == PGQMatchType::MATCH_EDGE_LEFT
+                    ? "MATCH_EDGE_LEFT"
+                    : "MATCH_EDGE_LEFT_RIGHT");
           }
         }
-        if (final_select_node->cte_map.map.find(shortest_path_cte_name) == final_select_node->cte_map.map.end()) {
+        string shortest_path_cte_name = "shortest_path_cte";
+        if (final_select_node->cte_map.map.find(shortest_path_cte_name) ==
+            final_select_node->cte_map.map.end()) {
           final_select_node->cte_map.map[shortest_path_cte_name] =
-              GenerateShortestPathCTE(pg_table, edge_subpath, previous_vertex_element,
-                                      next_vertex_element, path_finding_conditions);
+              GenerateShortestPathCTE(
+                  pg_table, edge_subpath, previous_vertex_element,
+                  next_vertex_element, path_finding_conditions);
           auto cte_shortest_path_ref = make_uniq<BaseTableRef>();
           cte_shortest_path_ref->table_name = shortest_path_cte_name;
           if (!final_select_node->from_table) {
@@ -643,13 +612,21 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
             final_select_node->from_table = std::move(join_ref);
           }
 
-          conditions.push_back(make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL,
-              make_uniq<ColumnRefExpression>("src_rowid", shortest_path_cte_name), make_uniq<ColumnRefExpression>("rowid", previous_vertex_element->variable_binding)));
-          conditions.push_back(make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL,
-            make_uniq<ColumnRefExpression>("dst_rowid", shortest_path_cte_name), make_uniq<ColumnRefExpression>("rowid", next_vertex_element->variable_binding)));
-
+          conditions.push_back(make_uniq<ComparisonExpression>(
+              ExpressionType::COMPARE_EQUAL,
+              make_uniq<ColumnRefExpression>("src_rowid",
+                                             shortest_path_cte_name),
+              make_uniq<ColumnRefExpression>(
+                  "rowid", previous_vertex_element->variable_binding)));
+          conditions.push_back(make_uniq<ComparisonExpression>(
+              ExpressionType::COMPARE_EQUAL,
+              make_uniq<ColumnRefExpression>("dst_rowid",
+                                             shortest_path_cte_name),
+              make_uniq<ColumnRefExpression>(
+                  "rowid", next_vertex_element->variable_binding)));
         }
-        auto shortest_path_ref = make_uniq<ColumnRefExpression>("path", shortest_path_cte_name);
+        auto shortest_path_ref =
+            make_uniq<ColumnRefExpression>("path", shortest_path_cte_name);
         if (!final_list) {
           final_list = std::move(shortest_path_ref);
         } else {
@@ -717,8 +694,8 @@ void PGQMatchFunction::AddEdgeJoins(
     PGQMatchType edge_type, const string &edge_binding,
     const string &prev_binding, const string &next_binding,
     vector<unique_ptr<ParsedExpression>> &conditions,
-    case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map, int32_t &extra_alias_counter,
-    unique_ptr<TableRef> &from_clause) {
+    case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
+    int32_t &extra_alias_counter, unique_ptr<TableRef> &from_clause) {
   if (edge_type != PGQMatchType::MATCH_EDGE_ANY) {
     alias_map[edge_binding] = edge_table;
   }
@@ -758,8 +735,8 @@ unique_ptr<ParsedExpression> PGQMatchFunction::AddPathQuantifierCondition(
 
   vector<unique_ptr<ParsedExpression>> pathfinding_children;
   pathfinding_children.push_back(std::move(csr_id));
-  pathfinding_children.push_back(
-      std::move(GetCountTable(edge_table->source_pg_table, prev_binding, edge_table->source_pk[0])));
+  pathfinding_children.push_back(std::move(GetCountTable(
+      edge_table->source_pg_table, prev_binding, edge_table->source_pk[0])));
   pathfinding_children.push_back(std::move(src_row_id));
   pathfinding_children.push_back(std::move(dst_row_id));
 
@@ -781,7 +758,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::AddPathQuantifierCondition(
   auto between_expression = make_uniq<BetweenExpression>(
       std::move(addition_function), std::move(lower_limit),
       std::move(upper_limit));
-  return between_expression;
+  return std::move(between_expression);
 }
 
 void PGQMatchFunction::AddPathFinding(
@@ -796,8 +773,8 @@ void PGQMatchFunction::AddPathFinding(
   //! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
   if (select_node->cte_map.map.find("cte1") == select_node->cte_map.map.end()) {
     if (edge_type == PGQMatchType::MATCH_EDGE_RIGHT) {
-      select_node->cte_map.map["cte1"] =
-      CreateDirectedCSRCTE(edge_table, prev_binding, edge_binding, next_binding);
+      select_node->cte_map.map["cte1"] = CreateDirectedCSRCTE(
+          edge_table, prev_binding, edge_binding, next_binding);
     } else if (edge_type == PGQMatchType::MATCH_EDGE_ANY) {
       select_node->cte_map.map["cte1"] =
           CreateUndirectedCSRCTE(edge_table, select_node);
@@ -808,7 +785,8 @@ void PGQMatchFunction::AddPathFinding(
                                         : "MATCH_EDGE_LEFT_RIGHT");
     }
   }
-  if (select_node->cte_map.map.find("shortest_path_cte") != select_node->cte_map.map.end()) {
+  if (select_node->cte_map.map.find("shortest_path_cte") !=
+      select_node->cte_map.map.end()) {
     return;
   }
   auto temp_cte_select_subquery = CreateCountCTESubquery();
@@ -824,15 +802,6 @@ void PGQMatchFunction::AddPathFinding(
   }
   //! END
   //! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
-  // TODO wrap this with the config option for experimental path finding
-
-  // auto csr = CreateCSRCTE(edge_table, prev_binding, edge_binding, next_binding);
-  // auto src_tasks = make_uniq<ColumnRefExpression>("rowid", prev_binding);
-  // auto dst_tasks = make_uniq<ColumnRefExpression>("rowid", next_binding);
-  // auto between_expression = make_uniq<BetweenExpression>(
-  //   std::move(src_tasks), std::move(CSR), std::move(dst_tasks));
-
-  // conditions.push_back(std::move(between_expression));
 
   //! START
   //! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id)
@@ -846,11 +815,12 @@ void PGQMatchFunction::AddPathFinding(
 
 void PGQMatchFunction::CheckNamedSubpath(
     SubPath &subpath, MatchExpression &original_ref,
-    CreatePropertyGraphInfo &pg_table, unique_ptr<SelectNode> &final_select_node,
-    vector<unique_ptr<ParsedExpression>> &conditions, ClientContext &context) {
+    CreatePropertyGraphInfo &pg_table,
+    unique_ptr<SelectNode> &final_select_node,
+    vector<unique_ptr<ParsedExpression>> &conditions) {
   for (idx_t idx_i = 0; idx_i < original_ref.column_list.size(); idx_i++) {
-    auto parsed_ref =
-        dynamic_cast<FunctionExpression *>(original_ref.column_list[idx_i].get());
+    auto parsed_ref = dynamic_cast<FunctionExpression *>(
+        original_ref.column_list[idx_i].get());
     if (parsed_ref == nullptr) {
       continue;
     }
@@ -868,8 +838,9 @@ void PGQMatchFunction::CheckNamedSubpath(
     if (parsed_ref->function_name == "element_id") {
       // Check subpath name matches the column referenced in the function -->
       // element_id(named_subpath)
-      auto shortest_path_function =
-          CreatePathFindingFunction(subpath.path_list, pg_table, subpath.path_variable, final_select_node, conditions, context);
+      auto shortest_path_function = CreatePathFindingFunction(
+          subpath.path_list, pg_table, subpath.path_variable, final_select_node,
+          conditions);
 
       if (column_alias.empty()) {
         shortest_path_function->alias =
@@ -879,10 +850,11 @@ void PGQMatchFunction::CheckNamedSubpath(
       }
       original_ref.column_list.erase(original_ref.column_list.begin() + idx_i);
       original_ref.column_list.insert(original_ref.column_list.begin() + idx_i,
-                         std::move(shortest_path_function));
+                                      std::move(shortest_path_function));
     } else if (parsed_ref->function_name == "path_length") {
-      auto shortest_path_function =
-          CreatePathFindingFunction(subpath.path_list, pg_table, subpath.path_variable, final_select_node, conditions, context);
+      auto shortest_path_function = CreatePathFindingFunction(
+          subpath.path_list, pg_table, subpath.path_variable, final_select_node,
+          conditions);
       auto path_len_children = vector<unique_ptr<ParsedExpression>>();
       path_len_children.push_back(std::move(shortest_path_function));
       auto path_len =
@@ -898,12 +870,13 @@ void PGQMatchFunction::CheckNamedSubpath(
                                : column_alias;
       original_ref.column_list.erase(original_ref.column_list.begin() + idx_i);
       original_ref.column_list.insert(original_ref.column_list.begin() + idx_i,
-                         std::move(path_length_function));
+                                      std::move(path_length_function));
     } else if (parsed_ref->function_name == "vertices" ||
                parsed_ref->function_name == "edges") {
       auto list_slice_children = vector<unique_ptr<ParsedExpression>>();
-      auto shortest_path_function =
-  CreatePathFindingFunction(subpath.path_list, pg_table, subpath.path_variable, final_select_node, conditions, context);
+      auto shortest_path_function = CreatePathFindingFunction(
+          subpath.path_list, pg_table, subpath.path_variable, final_select_node,
+          conditions);
       list_slice_children.push_back(std::move(shortest_path_function));
 
       if (parsed_ref->function_name == "vertices") {
@@ -930,7 +903,8 @@ void PGQMatchFunction::CheckNamedSubpath(
                                 : column_alias;
       }
       original_ref.column_list.erase(original_ref.column_list.begin() + idx_i);
-      original_ref.column_list.insert(original_ref.column_list.begin() + idx_i, std::move(list_slice));
+      original_ref.column_list.insert(original_ref.column_list.begin() + idx_i,
+                                      std::move(list_slice));
     }
   }
 }
@@ -939,9 +913,9 @@ void PGQMatchFunction::ProcessPathList(
     vector<unique_ptr<PathReference>> &path_list,
     vector<unique_ptr<ParsedExpression>> &conditions,
     unique_ptr<SelectNode> &final_select_node,
-    case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map, CreatePropertyGraphInfo &pg_table,
-    int32_t &extra_alias_counter,
-    MatchExpression &original_ref, ClientContext &context) {
+    case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
+    CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
+    MatchExpression &original_ref) {
   PathElement *previous_vertex_element = GetPathElement(path_list[0]);
   if (!previous_vertex_element) {
     const auto previous_vertex_subpath =
@@ -949,8 +923,10 @@ void PGQMatchFunction::ProcessPathList(
     if (previous_vertex_subpath->where_clause) {
       conditions.push_back(std::move(previous_vertex_subpath->where_clause));
     }
-    if (!previous_vertex_subpath->path_variable.empty() && previous_vertex_subpath->path_list.size() > 1) {
-      CheckNamedSubpath(*previous_vertex_subpath, original_ref, pg_table, final_select_node, conditions, context);
+    if (!previous_vertex_subpath->path_variable.empty() &&
+        previous_vertex_subpath->path_list.size() > 1) {
+      CheckNamedSubpath(*previous_vertex_subpath, original_ref, pg_table,
+                        final_select_node, conditions);
     }
     if (previous_vertex_subpath->path_list.size() == 1) {
       previous_vertex_element =
@@ -959,15 +935,14 @@ void PGQMatchFunction::ProcessPathList(
       // Add the shortest path if the name is found in the column_list
       ProcessPathList(previous_vertex_subpath->path_list, conditions,
                       final_select_node, alias_map, pg_table,
-                      extra_alias_counter, original_ref, context);
+                      extra_alias_counter, original_ref);
       return;
     }
   }
   auto previous_vertex_table =
       FindGraphTable(previous_vertex_element->label, pg_table);
   CheckInheritance(previous_vertex_table, previous_vertex_element, conditions);
-  alias_map[previous_vertex_element->variable_binding] =
-      previous_vertex_table;
+  alias_map[previous_vertex_element->variable_binding] = previous_vertex_table;
 
   for (idx_t idx_j = 1; idx_j < path_list.size(); idx_j = idx_j + 2) {
     PathElement *next_vertex_element = GetPathElement(path_list[idx_j + 1]);
@@ -1009,16 +984,17 @@ void PGQMatchFunction::ProcessPathList(
       if (edge_subpath->upper > 1) {
         // Add the path-finding
         AddPathFinding(final_select_node, conditions,
-        previous_vertex_element->variable_binding,
+                       previous_vertex_element->variable_binding,
                        edge_element->variable_binding,
                        next_vertex_element->variable_binding, edge_table,
-        pg_table, edge_subpath, edge_element->match_type);
-    } else {
-      AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table,
-                   edge_element->match_type, edge_element->variable_binding,
-                   previous_vertex_element->variable_binding,
-                   next_vertex_element->variable_binding, conditions,
-                   alias_map, extra_alias_counter, final_select_node->from_table);
+                       pg_table, edge_subpath, edge_element->match_type);
+      } else {
+        AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table,
+                     edge_element->match_type, edge_element->variable_binding,
+                     previous_vertex_element->variable_binding,
+                     next_vertex_element->variable_binding, conditions,
+                     alias_map, extra_alias_counter,
+                     final_select_node->from_table);
       }
     } else {
       // The edge element is a path element without WHERE or path-finding.
@@ -1044,15 +1020,95 @@ void PGQMatchFunction::ProcessPathList(
   }
 }
 
+void PGQMatchFunction::PopulateGraphTableAliasMap(
+    const CreatePropertyGraphInfo &pg_table,
+    const unique_ptr<PathReference> &path_reference,
+    case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
+        &alias_to_vertex_and_edge_tables) {
+  PathElement *path_elem = GetPathElement(path_reference);
+
+  // Populate binding from PathElement.
+  if (path_elem != nullptr) {
+    auto iter = pg_table.label_map.find(path_elem->label);
+    if (iter == pg_table.label_map.end()) {
+      throw BinderException(
+          "The label %s is not registered in property graph %s",
+          path_elem->label, pg_table.property_graph_name);
+    }
+    alias_to_vertex_and_edge_tables[path_elem->variable_binding] = iter->second;
+    return;
+  }
+
+  // Recursively populate binding from SubPath.
+  SubPath *sub_path = GetSubPath(path_reference);
+  D_ASSERT(sub_path != nullptr);
+  const auto &path_list = sub_path->path_list;
+  for (const auto &cur_path : path_list) {
+    PopulateGraphTableAliasMap(pg_table, cur_path,
+                               alias_to_vertex_and_edge_tables);
+  }
+}
+
+case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
+PGQMatchFunction::PopulateGraphTableAliasMap(
+    const CreatePropertyGraphInfo &pg_table,
+    const MatchExpression &match_expr) {
+  case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
+      alias_to_vertex_and_edge_tables;
+  for (idx_t idx_i = 0; idx_i < match_expr.path_patterns.size(); idx_i++) {
+    const auto &path_list = match_expr.path_patterns[idx_i]->path_elements;
+    for (const auto &cur_path : path_list) {
+      PopulateGraphTableAliasMap(pg_table, cur_path,
+                                 alias_to_vertex_and_edge_tables);
+    }
+  }
+  return alias_to_vertex_and_edge_tables;
+}
+
+void PGQMatchFunction::CheckColumnBinding(
+    const CreatePropertyGraphInfo &pg_table, const MatchExpression &ref,
+    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
+        &alias_to_vertex_and_edge_tables) {
+  // All fully-qualified column names for vertex tables and edge tables.
+  const auto all_fq_col_names =
+      GetFullyQualifiedColFromPg(pg_table, alias_to_vertex_and_edge_tables);
+
+  for (auto &expression : ref.column_list) {
+    // TODO(hjiang): `ColumnRefExpression` alone is not enough, we could have
+    // more complicated expression.
+    //
+    // See issue for reference:
+    // https://github.com/cwida/duckpgq-extension/issues/198
+    auto *column_ref = dynamic_cast<ColumnRefExpression *>(expression.get());
+    if (column_ref == nullptr) {
+      continue;
+    }
+    // 'shortest_path_cte' is a special table populated by pgq.
+    if (column_ref->column_names[0] == "shortest_path_cte") {
+      continue;
+    }
+    // 'rowid' is a column duckdb binds automatically.
+    if (column_ref->column_names.back() == "rowid") {
+      continue;
+    }
+    const auto cur_fq_col_name =
+        StringUtil::Join(column_ref->column_names, /*separator=*/".");
+    if (all_fq_col_names.find(cur_fq_col_name) == all_fq_col_names.end()) {
+      throw BinderException("Property %s is never registered!",
+                            cur_fq_col_name);
+    }
+  }
+}
+
 unique_ptr<TableRef>
 PGQMatchFunction::MatchBindReplace(ClientContext &context,
                                    TableFunctionBindInput &bind_input) {
   auto duckpgq_state = GetDuckPGQState(context);
 
   auto match_index = bind_input.inputs[0].GetValue<int32_t>();
-  auto ref = dynamic_cast<MatchExpression *>(
+  auto *ref = dynamic_cast<MatchExpression *>(
       duckpgq_state->transform_expression[match_index].get());
-  auto pg_table = duckpgq_state->GetPropertyGraph(ref->pg_name);
+  auto *pg_table = duckpgq_state->GetPropertyGraph(ref->pg_name);
 
   vector<unique_ptr<ParsedExpression>> conditions;
 
@@ -1064,9 +1120,8 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     auto &path_pattern = ref->path_patterns[idx_i];
     // Check if the element is PathElement or a Subpath with potentially many
     // items
-    ProcessPathList(path_pattern->path_elements, conditions,
-                    final_select_node, alias_map, *pg_table, extra_alias_counter,
-                    *ref, context);
+    ProcessPathList(path_pattern->path_elements, conditions, final_select_node,
+                    alias_map, *pg_table, extra_alias_counter, *ref);
   }
 
   // Go through all aliases encountered
@@ -1086,11 +1141,19 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
   if (ref->where_clause) {
     conditions.push_back(std::move(ref->where_clause));
   }
+
+  // Maps from table alias to table, including vertex and edge tables.
+  auto alias_to_vertex_and_edge_tables =
+      PopulateGraphTableAliasMap(*pg_table, *ref);
+  CheckColumnBinding(*pg_table, *ref, alias_to_vertex_and_edge_tables);
+
   std::vector<unique_ptr<ParsedExpression>> final_column_list;
 
   for (auto &expression : ref->column_list) {
     unordered_set<string> named_subpaths;
-    auto column_ref = dynamic_cast<ColumnRefExpression *>(expression.get());
+
+    // Handle ColumnRefExpression.
+    auto *column_ref = dynamic_cast<ColumnRefExpression *>(expression.get());
     if (column_ref != nullptr) {
       if (named_subpaths.count(column_ref->column_names[0]) &&
           column_ref->column_names.size() == 1) {
@@ -1101,7 +1164,9 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
       }
       continue;
     }
-    auto function_ref = dynamic_cast<FunctionExpression *>(expression.get());
+
+    // Handle FunctionExpression.
+    auto *function_ref = dynamic_cast<FunctionExpression *>(expression.get());
     if (function_ref != nullptr) {
       if (function_ref->function_name == "path_length") {
         column_ref = dynamic_cast<ColumnRefExpression *>(
@@ -1133,7 +1198,41 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
       continue;
     }
 
-    final_column_list.push_back(std::move(expression));
+    // Handle StarExpression.
+    auto *star_expression = dynamic_cast<StarExpression *>(expression.get());
+    if (star_expression != nullptr) {
+      // Skip edge table columns.
+      if (!star_expression->relation_name.empty()) {
+        auto tbl_iter = alias_to_vertex_and_edge_tables.find(
+            star_expression->relation_name);
+        if (tbl_iter != alias_to_vertex_and_edge_tables.end() &&
+            !tbl_iter->second->is_vertex_table) {
+          continue;
+        }
+      }
+
+      auto selected_col_exprs =
+          star_expression->relation_name.empty()
+              ? GetColRefExprFromPg(alias_to_vertex_and_edge_tables)
+              : GetColRefExprFromPg(alias_to_vertex_and_edge_tables,
+                                    star_expression->relation_name);
+
+      // Fallback to star expression if cannot figure out the columns to query.
+      if (selected_col_exprs.empty()) {
+        final_column_list.emplace_back(std::move(expression));
+        continue;
+      }
+
+      final_column_list.reserve(final_column_list.size() +
+                                selected_col_exprs.size());
+      for (auto &expr : selected_col_exprs) {
+        final_column_list.emplace_back(std::move(expr));
+      }
+      continue;
+    }
+
+    // By default, directly handle expression without further processing.
+    final_column_list.emplace_back(std::move(expression));
   }
 
   final_select_node->where_clause = CreateWhereClause(conditions);
@@ -1141,13 +1240,6 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
 
   auto subquery = make_uniq<SelectStatement>();
   subquery->node = std::move(final_select_node);
-  if (ref->alias == "unnamed_graphtable") {
-    if (duckpgq_state->unnamed_graphtable_index > 1) {
-      ref->alias = "unnamed_graphtable" +
-                   std::to_string(duckpgq_state->unnamed_graphtable_index);
-    }
-    duckpgq_state->unnamed_graphtable_index++;
-  }
   auto result = make_uniq<SubqueryRef>(std::move(subquery), ref->alias);
   return std::move(result);
 }
@@ -1161,4 +1253,4 @@ void CoreTableFunctions::RegisterMatchTableFunction(DatabaseInstance &db) {
 
 } // namespace core
 
-} // namespace duckdb
+} // namespace duckpgq

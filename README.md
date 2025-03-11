@@ -1,5 +1,5 @@
 # DuckPGQ
-A DuckDB extension for graph workloads that supports the SQL/PGQ standard. For more information, please see the [documentation page](https://duckpgq.notion.site/duckpgq/b8ac652667964f958bfada1c3e53f1bb?v=3b47a8d44bdf4e0c8b503bf23f1b76f2).
+A DuckDB extension for graph workloads that supports the SQL/PGQ standard. For more information, please see the [documentation page](https://duckpgq.org/).
 
 [![Discord](https://discordapp.com/api/guilds/1225369321077866496/widget.png?style=banner3)](https://discord.gg/8X95XHhQB7)
 ## WIP Disclaimer
@@ -47,6 +47,108 @@ load 'duckpgq';
 ```
 
 ## DuckPGQ Extension Availability
+
+<details>
+<summary>Version v1.1.3</summary>
+
+### Linux
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [linux_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.3/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.3/linux_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Osx
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [osx_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.3/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.3/osx_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Wasm
+
+| Architecture | Download Link |
+|--------------|---------------|
+| eh        | [wasm_eh](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.3/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.3/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.3/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+
+### Windows
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [windows_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.3/windows_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_rtools        | [windows_amd64_rtools](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.3/windows_amd64_rtools/duckpgq.duckdb_extension.gz>) |
+
+</details>
+
+<details>
+<summary>Version v1.1.2</summary>
+
+### Linux
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [linux_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.2/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.2/linux_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Osx
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [osx_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.2/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.2/osx_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Wasm
+
+| Architecture | Download Link |
+|--------------|---------------|
+| eh        | [wasm_eh](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.2/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.2/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.2/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+
+### Windows
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [windows_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.2/windows_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_rtools        | [windows_amd64_rtools](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.2/windows_amd64_rtools/duckpgq.duckdb_extension.gz>) |
+
+</details>
+
+<details>
+<summary>Version v1.1.1</summary>
+
+### Linux
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [linux_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.1/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.1/linux_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Osx
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [osx_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.1/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.1/osx_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Wasm
+
+| Architecture | Download Link |
+|--------------|---------------|
+| eh        | [wasm_eh](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.1/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.1/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.1/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+
+### Windows
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [windows_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.1/windows_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_rtools        | [windows_amd64_rtools](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.1.1/windows_amd64_rtools/duckpgq.duckdb_extension.gz>) |
+
+</details>
 
 <details>
 <summary>Version v1.1.0</summary>
@@ -224,22 +326,36 @@ export VCPKG_TOOLCHAIN_PATH=`pwd`/vcpkg/scripts/buildsystems/vcpkg.cmake
 Note: VCPKG is only required for extensions that want to rely on it for dependency management. If you want to develop an extension without dependencies, or want to do your own dependency management, just skip this step. Note that the example extension uses VCPKG to build with a dependency for instructive purposes, so when skipping this step the build may not work without removing the dependency.
 
 ### Build steps
+Checkout git submodules:
+```sh
+git submodule update --init --recursive
+```
 Now to build the extension, run:
 ```sh
-make
+make <debug> GEN=ninja
 ```
-The main binaries that will be built are:
-```sh
-./build/release/duckdb
-./build/release/test/unittest
-./build/release/extension/duckpgq/duckpgq.duckdb_extension
-```
+The location of the binaries depends on the `BUILD_TYPE` flag (`release` or `debug`) specified during the build process. By default, the binaries are organized as follows:
+
+### For a **release build** (`make release`):
+- DuckDB binary: `./build/release/duckdb`
+- Unit tests: `./build/release/test/unittest`
+- DuckPGQ extension: `./build/release/extension/duckpgq/duckpgq.duckdb_extension`
+
+### For a **debug build** (`make debug`):
+- DuckDB binary: `./build/debug/duckdb`
+- Unit tests: `./build/debug/test/unittest`
+- DuckPGQ extension: `./build/debug/extension/duckpgq/duckpgq.duckdb_extension`
+
+Ensure you specify the appropriate `BUILD_TYPE` flag when configuring the build to place binaries in the corresponding directory.
 - `duckdb` is the binary for the duckdb shell with the extension code automatically loaded.
 - `unittest` is the test runner of duckdb. Again, the extension is already linked into the binary.
 - `duckpgq.duckdb_extension` is the loadable binary as it would be distributed.
 
 ## Running the extension
 To run the extension code, simply start the shell with `./build/release/duckdb`.
+
+> [!CAUTION]
+> Any query containing SQL/PGQ syntax requires a `-` at the start of the query when building the extension from the source, otherwise, you will experience a segmentation fault. This is not the case when loading the extension from DuckDB.
 
 ## Running the tests
 Different tests can be created for DuckDB extensions. The primary way of testing DuckDB extensions should be the SQL tests in `./test/sql`. These SQL tests can be run using:

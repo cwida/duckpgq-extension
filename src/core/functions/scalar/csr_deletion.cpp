@@ -16,7 +16,6 @@ static void DeleteCsrFunction(DataChunk &args, ExpressionState &state,
 
   auto duckpgq_state = GetDuckPGQState(info.context);
 
-
   int flag = duckpgq_state->csr_list.erase(info.id);
   result.SetVectorType(VectorType::CONSTANT_VECTOR);
   auto result_data = ConstantVector::GetData<bool>(result);
@@ -30,12 +29,10 @@ void CoreScalarFunctions::RegisterCSRDeletionScalarFunction(
     DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(
       db,
-      ScalarFunction("delete_csr", {LogicalType::INTEGER}, LogicalType::BOOLEAN, DeleteCsrFunction,
-                                 CSRFunctionData::CSRBind));
+      ScalarFunction("delete_csr", {LogicalType::INTEGER}, LogicalType::BOOLEAN,
+                     DeleteCsrFunction, CSRFunctionData::CSRBind));
 }
-
 
 } // namespace core
 
 } // namespace duckpgq
-

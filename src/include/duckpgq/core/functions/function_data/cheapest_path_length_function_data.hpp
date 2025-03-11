@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #pragma once
 #include "duckpgq/common.hpp"
 #include "duckdb/main/client_context.hpp"
@@ -14,7 +13,6 @@
 namespace duckpgq {
 
 namespace core {
-
 
 struct CheapestPathLengthFunctionData final : FunctionData {
   ClientContext &context;
