@@ -87,7 +87,7 @@ void FillLocalCSR(std::vector<T>& v, std::vector<T>& e, idx_t start_vertex, idx_
   }
   v.push_back(v_offset);  // Final offset for last vertex
 }
-
+// todo(dtenwolde) make partitions until we are in 16 bits range
 void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
   local_csrs.clear(); // Reset existing LocalCSRs
   idx_t total_partitions = num_threads * GetPartitionMultiplier(context_);
