@@ -1,7 +1,6 @@
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckpgq/common.hpp"
-#include <duckpgq/core/functions/function_data/csr_function_data.hpp>
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 

@@ -1,6 +1,8 @@
 #include "duckpgq/core/operator/iterative_length/iterative_length_task.hpp"
 #include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
 #include <duckpgq/core/operator/physical_path_finding_operator.hpp>
+#include <duckdb/parallel/event.hpp>
+
 
 namespace duckpgq {
 namespace core {
@@ -76,7 +78,7 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 template<typename T, typename E>
 void IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                   std::vector<std::bitset<LANE_LIMIT>> &next,
-                                  const std::vector<T> &v, const std::vector<E> &e, idx_t v_size) {
+                                  const std::vector<T> &v, const std::vector<E> &e, size_t v_size) {
   for (auto i = 0; i < v_size; i++) {
     if (visit[i].any()) {
       auto start_edges = v[i];

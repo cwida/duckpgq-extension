@@ -168,6 +168,8 @@ unique_ptr<SubqueryRef> CreateCountCTESubquery();
 unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable();
 unique_ptr<SubqueryExpression>
 GetCountEdgeTable(const shared_ptr<PropertyGraphTable> &edge_table);
+
+int32_t GetCSRId(const unique_ptr<Expression> &expr, ClientContext &context);
 } // namespace core
 
 } // namespace duckpgq

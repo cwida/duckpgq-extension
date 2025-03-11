@@ -4,7 +4,6 @@
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 #include <cmath>
-#include <duckpgq/core/functions/function_data/csr_function_data.hpp>
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
