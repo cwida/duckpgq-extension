@@ -18,6 +18,11 @@ public:
   void ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) override;
 
   void Clear() override;
+
+
+  // Function to write timing results to a file
+  void WriteTimingResults(const std::string &filename);
+
 };
 
 } // namespace core

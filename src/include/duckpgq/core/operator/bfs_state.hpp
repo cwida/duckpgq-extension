@@ -5,6 +5,7 @@
 
 #include <duckpgq/core/utils/duckpgq_barrier.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
+#include <thread>
 
 namespace duckpgq {
 
@@ -44,6 +45,9 @@ public:
   Vector &dst_data;
   int64_t *dst;
   int64_t lane_to_num[LANE_LIMIT];
+
+  mutex log_mutex;
+  std::vector<std::tuple<std::thread::id, int, double, idx_t>> timing_data; // (Thread ID, Core ID, Time in ms)
 
   std::vector<int64_t> thread_assignment;
   UnifiedVectorFormat vdata_src;

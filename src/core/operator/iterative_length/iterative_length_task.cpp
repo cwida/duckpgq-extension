@@ -76,9 +76,10 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 }
 
 template<typename T>
-void IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
+double IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                   std::vector<std::bitset<LANE_LIMIT>> &next,
                                   const std::vector<T> &v, const std::vector<T> &e, size_t v_size) {
+  auto start_time = std::chrono::high_resolution_clock::now();
   for (auto i = 0; i < v_size; i++) {
     if (visit[i].any()) {
       auto start_edges = v[i];
@@ -89,6 +90,9 @@ void IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &vi
       }
     }
   }
+  // Capture end time
+  auto end_time = std::chrono::high_resolution_clock::now();
+  return std::chrono::duration<double, std::milli>(end_time - start_time).count(); // Return time in ms
 }
 
 void PrintMatrix(const std::string &label, const std::vector<std::bitset<LANE_LIMIT>> &matrix) {
@@ -101,6 +105,31 @@ void PrintMatrix(const std::string &label, const std::vector<std::bitset<LANE_LI
     std::cout << "\n";
   }
   std::cout << std::endl;
+}
+
+// Wrapper function to call Explore and log data
+template<typename T>
+void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
+                std::vector<std::bitset<LANE_LIMIT>> &next,
+                const std::vector<T> &v, const std::vector<T> &e, size_t v_size) {
+  double duration_ms = Explore(visit, next, v, e, v_size);
+
+  // Get thread & core info *outside* Explore to reduce per-call overhead
+  std::thread::id thread_id = std::this_thread::get_id();
+  int core_id = -1; // Default if not available
+#ifdef __linux__
+  core_id = sched_getcpu();
+#elif defined(__APPLE__)
+  uint64_t tid;
+  pthread_threadid_np(NULL, &tid);
+  core_id = static_cast<int>(tid % std::thread::hardware_concurrency()); // Approximate core ID mapping
+#endif
+
+  // Store result safely
+  {
+    std::lock_guard<std::mutex> guard(state->log_mutex);
+    state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads);
+  }
 }
 
 void IterativeLengthTask::IterativeLength() {
@@ -141,11 +170,11 @@ void IterativeLengthTask::IterativeLength() {
       auto data_type = local_csr->data_type;
       auto v_size = local_csr->GetVertexSize();
       if (data_type == 16) {
-        Explore<int16_t>(visit, next, local_csr->GetVertexVectorTyped<int16_t>(), local_csr->GetEdgeVectorTyped<int16_t>(), v_size);
+        RunExplore<int16_t>(visit, next, local_csr->GetVertexVectorTyped<int16_t>(), local_csr->GetEdgeVectorTyped<int16_t>(), v_size);
       } else if (data_type == 32) {
-        Explore<int32_t>(visit, next, local_csr->GetVertexVectorTyped<int32_t>(), local_csr->GetEdgeVectorTyped<int32_t>(), v_size);
+        RunExplore<int32_t>(visit, next, local_csr->GetVertexVectorTyped<int32_t>(), local_csr->GetEdgeVectorTyped<int32_t>(), v_size);
       } else {
-        Explore<int64_t>(visit, next, local_csr->GetVertexVectorTyped<int64_t>(), local_csr->GetEdgeVectorTyped<int64_t>(), v_size);
+        RunExplore<int64_t>(visit, next, local_csr->GetVertexVectorTyped<int64_t>(), local_csr->GetEdgeVectorTyped<int64_t>(), v_size);
       }
     }
     state->change = false;

@@ -52,7 +52,7 @@ WITH cte1 AS (
             WHERE __x.temp * 0 = 0;
 
 statement ok
-set threads=8;
+set threads=1;
 
 query III nosort lengthpairs
 with csr_cte as (

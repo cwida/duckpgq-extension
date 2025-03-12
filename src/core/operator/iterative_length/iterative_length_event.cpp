@@ -1,6 +1,8 @@
 #include "duckpgq/core/operator/iterative_length/iterative_length_event.hpp"
-
+#include <chrono>
 #include <duckpgq/core/operator/physical_path_finding_operator.hpp>
+#include <duckpgq/core/option/duckpgq_option.hpp>
+#include <iomanip>
 
 namespace duckpgq {
 namespace core {
@@ -23,7 +25,13 @@ void IterativeLengthEvent::Schedule() {
 }
 
 void IterativeLengthEvent::FinishEvent() {
-  // gbfs_state->barrier->PrintTimingLogs();
+  auto now = std::chrono::system_clock::now();
+  auto time_t_now = std::chrono::system_clock::to_time_t(now);
+  std::stringstream ss;
+  ss << std::put_time(std::localtime(&time_t_now), "%Y-%m-%d_%H-%M-%S");
+  auto timestamp = ss.str();
+  string file_name = "timing_results_" + timestamp + + "_threads_" + std::to_string(gbfs_state->num_threads) + ".csv";
+  gbfs_state->WriteTimingResults(file_name);
 }
 
 } // namespace core

@@ -1,7 +1,9 @@
 #include "duckpgq/core/operator/iterative_length/iterative_length_state.hpp"
 
-#include <duckpgq/core/operator/shortest_path/shortest_path_event.hpp>
 #include <duckpgq/core/operator/iterative_length/iterative_length_event.hpp>
+#include <duckpgq/core/operator/shortest_path/shortest_path_event.hpp>
+#include <duckpgq/core/option/duckpgq_option.hpp>
+#include <fstream>
 
 namespace duckpgq {
 
@@ -31,6 +33,19 @@ void IterativeLengthState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, co
     make_shared_ptr<IterativeLengthEvent>(
       shared_ptr_cast<BFSState, IterativeLengthState>(shared_from_this()),
       pipeline, *op));
+}
+
+
+// Function to write timing results to a file
+void IterativeLengthState::WriteTimingResults(const std::string &filename) {
+  std::ofstream file(filename);
+  if (file.is_open()) {
+    file << "ThreadID,CoreID,Time(ms),ThreadCount,vsize,partitionMultiplier\n";
+    for (const auto &entry : timing_data) {
+      file << std::get<0>(entry) << "," << std::get<1>(entry) << "," << std::get<2>(entry) << "," << std::get<3>(entry) << "," << v_size << "," << GetPartitionMultiplier(context) << "\n";
+    }
+    file.close();
+  }
 }
 
 } // namespace core
