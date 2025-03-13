@@ -75,17 +75,16 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
   return TaskExecutionResult::TASK_FINISHED;
 }
 
-template<typename T>
 double IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                   std::vector<std::bitset<LANE_LIMIT>> &next,
-                                  const std::vector<T> &v, const std::vector<T> &e, size_t v_size) {
+                                  const std::vector<uint64_t> &v, const std::vector<uint16_t> &e, size_t v_size, idx_t v_offset) {
   auto start_time = std::chrono::high_resolution_clock::now();
   for (auto i = 0; i < v_size; i++) {
     if (visit[i].any()) {
       auto start_edges = v[i];
       auto end_edges = v[i+1];
       for (auto offset = start_edges; offset < end_edges; offset++) {
-        auto n = e[offset]; // Use the local edge index directly
+        auto n = e[offset] + v_offset; // Use the local edge index directly
         next[n] |= visit[i]; // Propagate the visit bitset
       }
     }
@@ -108,11 +107,10 @@ void PrintMatrix(const std::string &label, const std::vector<std::bitset<LANE_LI
 }
 
 // Wrapper function to call Explore and log data
-template<typename T>
 void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                 std::vector<std::bitset<LANE_LIMIT>> &next,
-                const std::vector<T> &v, const std::vector<T> &e, size_t v_size) {
-  double duration_ms = Explore(visit, next, v, e, v_size);
+                const std::vector<uint64_t> &v, const std::vector<uint16_t> &e, size_t v_size, idx_t v_offset) {
+  double duration_ms = Explore(visit, next, v, e, v_size, v_offset);
 
   // Get thread & core info *outside* Explore to reduce per-call overhead
   std::thread::id thread_id = std::this_thread::get_id();
@@ -167,15 +165,7 @@ void IterativeLengthTask::IterativeLength() {
       }
       // Printer::PrintF("CSR counter: %d, max size %d\n", state->local_csr_counter.load(), state->local_csrs.size());
       state->local_csr_lock.unlock();
-      auto data_type = local_csr->data_type;
-      auto v_size = local_csr->GetVertexSize();
-      if (data_type == 16) {
-        RunExplore<int16_t>(visit, next, local_csr->GetVertexVectorTyped<int16_t>(), local_csr->GetEdgeVectorTyped<int16_t>(), v_size);
-      } else if (data_type == 32) {
-        RunExplore<int32_t>(visit, next, local_csr->GetVertexVectorTyped<int32_t>(), local_csr->GetEdgeVectorTyped<int32_t>(), v_size);
-      } else {
-        RunExplore<int64_t>(visit, next, local_csr->GetVertexVectorTyped<int64_t>(), local_csr->GetEdgeVectorTyped<int64_t>(), v_size);
-      }
+      RunExplore(visit, next, local_csr->v, local_csr->e, local_csr->GetVertexSize(), local_csr->start_offset);
     }
     state->change = false;
     // Mark this thread as finished

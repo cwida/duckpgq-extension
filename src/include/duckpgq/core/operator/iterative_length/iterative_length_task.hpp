@@ -23,17 +23,15 @@ private:
                    std::pair<idx_t, idx_t> &partition_range) const;
   void UnReachableSet() const;
 
-  template<typename T>
   double Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
     std::vector<std::bitset<LANE_LIMIT>> &next,
-    const std::vector<T> &v,
-    const std::vector<T> &e,
-    size_t v_size);
+    const std::vector<uint64_t> &v,
+    const std::vector<uint16_t> &e,
+    size_t v_size, idx_t v_offset);
 
-  template<typename T>
   void RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                 std::vector<std::bitset<LANE_LIMIT>> &next,
-                const std::vector<T> &v, const std::vector<T> &e, size_t v_size);
+                const std::vector<uint64_t> &v, const std::vector<uint16_t> &e, size_t v_size, idx_t v_offset);
 private:
   ClientContext &context;
   shared_ptr<IterativeLengthState> &state;

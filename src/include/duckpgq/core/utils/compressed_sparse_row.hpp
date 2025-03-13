@@ -30,67 +30,28 @@ namespace core {
 
 class LocalCSR {
 public:
-  explicit LocalCSR(int64_t esize)
-      : data_type(DetermineType(esize)) {
-  }
+  explicit LocalCSR() = default;
 
   // Returns a pointer to the correct vector
-  void* GetVertexVector() {
-    if (data_type == 16) return &v_int16;
-    if (data_type == 32) return &v_int32;
-    return &v_int64;
+  std::vector<uint64_t>* GetVertexVector() {
+    return &v;
   }
 
-  void* GetEdgeVector() {
-    if (data_type == 16) return &e_int16;
-    if (data_type == 32) return &e_int32;
-    return &e_int64;
-  }
-
-  void PrintInfo() const {
-    std::cout << "Data storage type: int" << data_type << "_t\n";
+  std::vector<uint16_t>* GetEdgeVector() {
+    return &e;
   }
 
   size_t GetVertexSize() {
-    if (data_type == 16) return v_int16.size() - 2;
-    if (data_type == 32) return v_int32.size() - 2;
-    return v_int64.size() - 2;
+    return v.size() - 2;
   }
 
   size_t GetEdgeSize() {
-    if (data_type == 16) return e_int16.size();
-    if (data_type == 32) return e_int32.size();
-    return e_int64.size();
+    return e.size();
   }
 
-  template <typename T>
-  std::vector<T>& GetVertexVectorTyped() {
-    if (data_type == 16 && std::is_same<T, int16_t>::value) return reinterpret_cast<std::vector<T>&>(v_int16);
-    if (data_type == 32 && std::is_same<T, int32_t>::value) return reinterpret_cast<std::vector<T>&>(v_int32);
-    if (data_type == 64 && std::is_same<T, int64_t>::value) return reinterpret_cast<std::vector<T>&>(v_int64);
-    throw std::runtime_error("Requested type does not match stored type");
-  }
-
-  template <typename T>
-  std::vector<T>& GetEdgeVectorTyped() {
-    if (data_type == 16 && std::is_same<T, int16_t>::value) return reinterpret_cast<std::vector<T>&>(e_int16);
-    if (data_type == 32 && std::is_same<T, int32_t>::value) return reinterpret_cast<std::vector<T>&>(e_int32);
-    if (data_type == 64 && std::is_same<T, int64_t>::value) return reinterpret_cast<std::vector<T>&>(e_int64);
-    throw std::runtime_error("Requested type does not match stored type");
-  }
-public:
-  std::vector<int16_t> v_int16, e_int16;
-  std::vector<int32_t> v_int32, e_int32;
-  std::vector<int64_t> v_int64, e_int64;
-
-
-  static int DetermineType(size_t max_value) {
-    if (max_value <= std::numeric_limits<int16_t>::max()) return 16;
-    if (max_value <= std::numeric_limits<int32_t>::max()) return 32;
-    return 64;
-  }
-public:
-  int data_type;  // Stores the type of each array
+  std::vector<uint64_t> v;
+  std::vector<uint16_t> e;
+  idx_t start_offset; // Start offset for the vertex vector
 };
 
 class CSR {
