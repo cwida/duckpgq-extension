@@ -22,6 +22,12 @@ int32_t GetPartitionMultiplier(ClientContext &context) {
   return value.GetValue<int32_t>();
 }
 
+int32_t GetPartitionSize(ClientContext &context) {
+  Value value;
+  context.TryGetCurrentSetting("experimental_path_finding_operator_partition_size", value);
+  return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -55,6 +61,16 @@ void CorePGQOptions::RegisterPathFindingPartitionMultiplier(
     "Multiplier used for local CSR partitioning", LogicalType::INTEGER, Value(4));
 }
 
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingPartitionSize(
+    DatabaseInstance &db) {
+  auto &config = DBConfig::GetConfig(db);
+
+  config.AddExtensionOption("experimental_path_finding_operator_partition_size",
+    "Number of edges for local CSR partitioning", LogicalType::INTEGER, Value(500000));
+}
 
 } // namespace core
 } // namespace duckpgq

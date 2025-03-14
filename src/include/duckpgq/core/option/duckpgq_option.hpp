@@ -15,12 +15,14 @@ struct CorePGQOptions {
     RegisterExperimentalPathFindingOperator(db);
     RegisterPathFindingTaskSize(db);
     RegisterPathFindingPartitionMultiplier(db);
+    RegisterPathFindingPartitionSize(db);
   }
 
 private:
   static void RegisterExperimentalPathFindingOperator(DatabaseInstance &db);
   static void RegisterPathFindingTaskSize(DatabaseInstance &db);
   static void RegisterPathFindingPartitionMultiplier(DatabaseInstance &db);
+  static void RegisterPathFindingPartitionSize(DatabaseInstance &db);
 };;
 
 } // namespace core
