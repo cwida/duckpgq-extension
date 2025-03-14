@@ -9,6 +9,7 @@ namespace core {
 bool GetPathFindingOption(ClientContext &context);
 int32_t GetPathFindingTaskSize(ClientContext &context);
 int32_t GetPartitionMultiplier(ClientContext &context);
+int32_t GetPartitionSize(ClientContext &context);
 
 struct CorePGQOptions {
   static void Register(DatabaseInstance &db) {

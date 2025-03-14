@@ -69,7 +69,7 @@ void CorePGQOptions::RegisterPathFindingPartitionSize(
   auto &config = DBConfig::GetConfig(db);
 
   config.AddExtensionOption("experimental_path_finding_operator_partition_size",
-    "Number of edges for local CSR partitioning", LogicalType::INTEGER, Value(500000));
+    "Number of edges for local CSR partitioning", LogicalType::INTEGER, Value(524288));
 }
 
 } // namespace core

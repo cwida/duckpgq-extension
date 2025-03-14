@@ -70,7 +70,6 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context,
   num_threads = scheduler.NumberOfThreads();
 }
 
-#define PARTITION_SIZE 500000  // Adjust between 100K-500K based on experiments
 
 void FillLocalCSR(shared_ptr<LocalCSR> &local_csr, idx_t start_vertex, idx_t end_vertex, CSR* csr) {
     idx_t v_offset = 0;
@@ -97,7 +96,7 @@ void PathFindingGlobalSinkState::PartitionGraph(idx_t start_vertex, idx_t end_ve
         edge_count += (csr->v[v + 1] - csr->v[v]);
     }
 
-    if (edge_count <= PARTITION_SIZE) {
+    if (edge_count <= GetPartitionSize(context_)) {
         // Acceptable partition size → create local CSR
         auto local_csr = make_shared_ptr<LocalCSR>();
         FillLocalCSR(local_csr, start_vertex, end_vertex, csr);
