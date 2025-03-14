@@ -95,6 +95,8 @@ public:
 
   void Sink(DataChunk &input, PathFindingLocalSinkState &lstate);
   void CreateThreadLocalCSRs();
+  void PartitionGraph(idx_t start_vertex, idx_t end_vertex);
+
   // pairs is a 2-column table with src and dst
   unique_ptr<ColumnDataCollection> global_pairs;
   unique_ptr<ColumnDataCollection> global_csr_column_data;

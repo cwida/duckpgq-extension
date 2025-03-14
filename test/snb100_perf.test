@@ -2,7 +2,7 @@
 require duckpgq
 
 statement ok
-attach '/Users/dljtw/git/duckpgq/duckdb/benchmark/pathfinding/data/snb-bi-sf100.duckdb' as snb;
+attach '/Users/dljtw/git/duckpgq/duckdb/benchmark/pathfinding/data/snb-bi-sf10.duckdb' as snb;
 
 statement ok
 use 'snb';
@@ -18,7 +18,7 @@ create or replace table snb_pairs as (
    select src, dst
    from (select a.rowid as src from person a),
         (select b.rowid as dst from person b)
-   using sample reservoir(16384 rows) repeatable (300)
+   using sample reservoir(512 rows) repeatable (300)
 );
 
 query III nosort lengthpairs

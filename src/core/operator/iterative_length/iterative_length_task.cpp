@@ -77,7 +77,7 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 
 double IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                   std::vector<std::bitset<LANE_LIMIT>> &next,
-                                  const std::vector<uint64_t> &v, const std::vector<uint16_t> &e, size_t v_size, idx_t v_offset) {
+                                  const std::vector<uint64_t> &v, const std::vector<uint64_t> &e, size_t v_size, idx_t v_offset) {
   auto start_time = std::chrono::high_resolution_clock::now();
   for (auto i = 0; i < v_size; i++) {
     if (visit[i].any()) {
@@ -109,7 +109,7 @@ void PrintMatrix(const std::string &label, const std::vector<std::bitset<LANE_LI
 // Wrapper function to call Explore and log data
 void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                 std::vector<std::bitset<LANE_LIMIT>> &next,
-                const std::vector<uint64_t> &v, const std::vector<uint16_t> &e, size_t v_size, idx_t v_offset) {
+                const std::vector<uint64_t> &v, const std::vector<uint64_t> &e, size_t v_size, idx_t v_offset) {
   double duration_ms = Explore(visit, next, v, e, v_size, v_offset);
 
   // Get thread & core info *outside* Explore to reduce per-call overhead

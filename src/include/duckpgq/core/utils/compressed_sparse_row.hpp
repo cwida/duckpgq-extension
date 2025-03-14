@@ -37,7 +37,7 @@ public:
     return &v;
   }
 
-  std::vector<uint16_t>* GetEdgeVector() {
+  std::vector<uint64_t>* GetEdgeVector() {
     return &e;
   }
 
@@ -50,7 +50,7 @@ public:
   }
 
   std::vector<uint64_t> v;
-  std::vector<uint16_t> e;
+  std::vector<uint64_t> e;
   idx_t start_offset; // Start offset for the vertex vector
 };
 

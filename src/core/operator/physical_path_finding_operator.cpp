@@ -70,55 +70,87 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context,
   num_threads = scheduler.NumberOfThreads();
 }
 
+#define PARTITION_SIZE 500000  // Adjust between 100K-500K based on experiments
 
 void FillLocalCSR(shared_ptr<LocalCSR> &local_csr, idx_t start_vertex, idx_t end_vertex, CSR* csr) {
     idx_t v_offset = 0;
     local_csr->v.reserve(csr->vsize);
-    local_csr->start_offset = start_vertex;  // Store partition offset
 
     for (idx_t j = 0; j < csr->vsize - 1; j++) {
         local_csr->v.push_back(v_offset);  // Store vertex offset
         for (idx_t e_offset = csr->v[j]; e_offset < csr->v[j + 1]; e_offset++) {
             auto dst = csr->e[e_offset];
             if (dst >= start_vertex && dst < end_vertex) {
-                uint16_t compressed_dst = static_cast<uint16_t>(dst - start_vertex);  // Store as delta
                 v_offset++;
-                local_csr->e.push_back(compressed_dst);
+                local_csr->e.push_back(dst);
             }
         }
     }
     local_csr->v.push_back(v_offset);  // Final offset for last vertex
 }
 
-// Partition the graph into ranges of size <= UINT16_MAX (65535)
-void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
-    local_csrs.clear();  // Reset existing LocalCSRs
-    partition_ranges.clear();  // Clear previous partitions
-
-    idx_t total_vertices = csr->vsize - 2;  // Number of vertices
-    idx_t total_partitions = (total_vertices + UINT16_MAX - 1) / UINT16_MAX;  // Ensure partitions fit in 16-bit
-
-    // Define vertex ranges for partitions
-    for (idx_t i = 0; i < total_partitions; i++) {
-        idx_t start_vertex = i * UINT16_MAX;
-        idx_t end_vertex = std::min((i + 1) * UINT16_MAX, total_vertices);
-        partition_ranges.emplace_back(start_vertex, end_vertex);
+// Recursive function to partition graph dynamically
+void PathFindingGlobalSinkState::PartitionGraph(idx_t start_vertex, idx_t end_vertex) {
+    // Calculate total edge count in this range
+    idx_t edge_count = 0;
+    for (idx_t v = start_vertex; v < end_vertex; v++) {
+        edge_count += (csr->v[v + 1] - csr->v[v]);
     }
 
-    // Construct Local CSRs based on vertex ranges
-    for (const auto &[start_vertex, end_vertex] : partition_ranges) {
+    if (edge_count <= PARTITION_SIZE) {
+        // Acceptable partition size → create local CSR
         auto local_csr = make_shared_ptr<LocalCSR>();
         FillLocalCSR(local_csr, start_vertex, end_vertex, csr);
         if (!local_csr->e.empty()) {
             local_csrs.push_back(local_csr);
+            partition_ranges.emplace_back(start_vertex, end_vertex);
         }
-    }
+    } else {
+        // Too large → Try to split into two smaller partitions
+        idx_t mid_vertex = (start_vertex + end_vertex) / 2;
 
-    // Sort partitions by edge size in descending order (optional optimization)
+        // **Prevent infinite splitting**
+        if (mid_vertex == start_vertex || mid_vertex == end_vertex) {
+            // We cannot split further → **Keep this large partition**
+            auto local_csr = make_shared_ptr<LocalCSR>();
+            FillLocalCSR(local_csr, start_vertex, end_vertex, csr);
+            if (!local_csr->e.empty()) {
+              local_csrs.push_back(local_csr);
+              partition_ranges.emplace_back(start_vertex, end_vertex);
+            }
+            return;
+        }
+
+        // Recursive partitioning
+        PartitionGraph(start_vertex, mid_vertex);
+        PartitionGraph(mid_vertex, end_vertex);
+    }
+}
+
+// Entry function: Initialize partitioning
+void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
+    local_csrs.clear();
+    partition_ranges.clear();
+
+    idx_t total_vertices = csr->vsize - 2;  // Number of vertices
+
+    // Start recursive partitioning
+    PartitionGraph(0, total_vertices);
+
+    // Optional: Sort partitions by edge size (for load balancing)
     std::sort(local_csrs.begin(), local_csrs.end(),
               [](const shared_ptr<LocalCSR>& a, const shared_ptr<LocalCSR>& b) {
                   return a->GetEdgeSize() > b->GetEdgeSize();  // Sort by edge count
               });
+
+    // Printer::PrintF("Number of partitions %d", local_csrs.size());
+    // for (const auto &local_csr : local_csrs) {
+    //   Printer::PrintF("Vsize: %d, esize: %d, partition_size: %d", local_csr->GetVertexSize(), local_csr->GetEdgeSize(), PARTITION_SIZE);
+    // }
+
+    // for (const auto &partition_ranges : partition_ranges) {
+      // Printer::PrintF("start %d, end %d", local_csr->getvertexsize(), local_csr->getedgesize(), partition_size);
+    // }
 }
 
 //   // Compute balance statistics
