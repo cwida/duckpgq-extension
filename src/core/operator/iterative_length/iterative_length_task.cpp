@@ -33,16 +33,12 @@ void IterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen
 
 
 TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
-  auto barrier = make_uniq<Barrier>(state->tasks_scheduled);
-  // Printer::PrintF("CSR Sizes - (worker %d): vsize: %d esize: %d", worker_id, local_csr->vsize, local_csr->e.size());
+  auto &barrier = state->barrier;
   while (state->started_searches < state->pairs->size()) {
     barrier->Wait(worker_id);
 
-    // Printer::PrintF("worker %d\n%s", worker_id, local_csr->ToString());
     if (worker_id == 0) {
-      // barrier->LogMessage(worker_id, "Initializing lanes");
       state->InitializeLanes();
-      // Printer::Print("Finished intialize lanes");
     }
     barrier->Wait(worker_id);
     do {
@@ -77,14 +73,14 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 
 double IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                   std::vector<std::bitset<LANE_LIMIT>> &next,
-                                  const std::vector<uint64_t> &v, const std::vector<uint64_t> &e, size_t v_size, idx_t v_offset) {
+                                  const std::vector<uint64_t> &v, const std::vector<uint64_t> &e, size_t v_size) {
   auto start_time = std::chrono::high_resolution_clock::now();
   for (auto i = 0; i < v_size; i++) {
     if (visit[i].any()) {
       auto start_edges = v[i];
       auto end_edges = v[i+1];
       for (auto offset = start_edges; offset < end_edges; offset++) {
-        auto n = e[offset] + v_offset; // Use the local edge index directly
+        auto n = e[offset]; // Use the local edge index directly
         next[n] |= visit[i]; // Propagate the visit bitset
       }
     }
@@ -109,8 +105,8 @@ void PrintMatrix(const std::string &label, const std::vector<std::bitset<LANE_LI
 // Wrapper function to call Explore and log data
 void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                 std::vector<std::bitset<LANE_LIMIT>> &next,
-                const std::vector<uint64_t> &v, const std::vector<uint64_t> &e, size_t v_size, idx_t v_offset) {
-  double duration_ms = Explore(visit, next, v, e, v_size, v_offset);
+                const std::vector<uint64_t> &v, const std::vector<uint64_t> &e, size_t v_size) {
+  double duration_ms = Explore(visit, next, v, e, v_size);
 
   // Get thread & core info *outside* Explore to reduce per-call overhead
   std::thread::id thread_id = std::this_thread::get_id();
@@ -134,7 +130,7 @@ void IterativeLengthTask::IterativeLength() {
     auto &seen = state->seen;
     const auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
-    auto barrier = make_uniq<Barrier>(state->tasks_scheduled);
+    auto &barrier = state->barrier;
     // Clear `next` array
     while (state->partition_counter < state->partition_ranges.size()) {
       state->local_csr_lock.lock();
@@ -163,9 +159,8 @@ void IterativeLengthTask::IterativeLength() {
       if (!local_csr) {
         throw InternalException("Tried to reference nullptr for LocalCSR");
       }
-      // Printer::PrintF("CSR counter: %d, max size %d\n", state->local_csr_counter.load(), state->local_csrs.size());
       state->local_csr_lock.unlock();
-      RunExplore(visit, next, local_csr->v, local_csr->e, local_csr->GetVertexSize(), local_csr->start_offset);
+      RunExplore(visit, next, local_csr->v, local_csr->e, local_csr->GetVertexSize());
     }
     state->change = false;
     // Mark this thread as finished

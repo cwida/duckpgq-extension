@@ -27,11 +27,11 @@ private:
     std::vector<std::bitset<LANE_LIMIT>> &next,
     const std::vector<uint64_t> &v,
     const std::vector<uint64_t> &e,
-    size_t v_size, idx_t v_offset);
+    size_t v_size);
 
   void RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                 std::vector<std::bitset<LANE_LIMIT>> &next,
-                const std::vector<uint64_t> &v, const std::vector<uint64_t> &e, size_t v_size, idx_t v_offset);
+                const std::vector<uint64_t> &v, const std::vector<uint64_t> &e, size_t v_size);
 private:
   ClientContext &context;
   shared_ptr<IterativeLengthState> &state;

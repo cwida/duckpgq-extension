@@ -62,18 +62,10 @@ void Barrier::Wait(idx_t worker_id) {
   auto lGen = mGeneration.load();
 
   auto thread_id_str = std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id()));
-
   if (!--mCount) {
     // Last thread to reach the barrier
     mGeneration++;
     mCount = mThreshold;
-    // {
-      // std::lock_guard<std::mutex> logLock(logMutex);
-      // std::ostringstream log;
-      // log << "Thread " << worker_id << " releasing threads";
-      // timingLogs.push_back(log.str());
-    // }
-
     mCond.notify_all();  // Wake up all waiting threads
   } else {
     // Other threads wait for the generation to change
