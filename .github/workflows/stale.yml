@@ -19,7 +19,7 @@ jobs:
           days-before-close: 7 # Number of days after being marked stale before the issue or PR is closed
           stale-issue-label: "stale" # Label to apply to stale issues
           stale-pr-label: "stale" # Label to apply to stale pull requests
-          exempt-issue-labels: "pinned, security" # Issues with these labels will not be marked as stale
+          exempt-issue-labels: "pinned, security, reproduced" # Issues with these labels will not be marked as stale
           exempt-pr-labels: "pinned, security" # PRs with these labels will not be marked as stale
           only-issue-labels: "" # Only issues with these labels will be checked (leave empty to check all issues)
           only-pr-labels: "" # Only PRs with these labels will be checked (leave empty to check all PRs)
