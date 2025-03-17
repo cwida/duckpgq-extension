@@ -43,6 +43,7 @@ BFSState::BFSState(const shared_ptr<DataChunk> &pairs_, std::vector<shared_ptr<L
 
   // Initialize the thread assignment vector
   thread_assignment = std::vector<int64_t>(v_size, -1);
+  tasks_scheduled = 0;
 
   // CreateTasks();
   barrier = make_uniq<Barrier>(num_threads);

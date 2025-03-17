@@ -33,7 +33,7 @@ void IterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen
 
 
 TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
-  auto &barrier = state->barrier;
+  auto barrier = make_uniq<Barrier>(state->tasks_scheduled);
   // Printer::PrintF("CSR Sizes - (worker %d): vsize: %d esize: %d", worker_id, local_csr->vsize, local_csr->e.size());
   while (state->started_searches < state->pairs->size()) {
     barrier->Wait(worker_id);
@@ -134,7 +134,7 @@ void IterativeLengthTask::IterativeLength() {
     auto &seen = state->seen;
     const auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
-    auto &barrier = state->barrier;
+    auto barrier = make_uniq<Barrier>(state->tasks_scheduled);
     // Clear `next` array
     while (state->partition_counter < state->partition_ranges.size()) {
       state->local_csr_lock.lock();
@@ -171,7 +171,7 @@ void IterativeLengthTask::IterativeLength() {
     // Mark this thread as finished
     finished_threads.fetch_add(1);
     // Last thread reaching here should reset the counter for the next iteration
-    if (finished_threads.load() == state->num_threads) {
+    if (finished_threads.load() == state->tasks_scheduled) {
       finished_threads.store(0); // Reset for the next phase
     }
 
@@ -191,7 +191,6 @@ void IterativeLengthTask::IterativeLength() {
     }
     barrier->Wait(worker_id);
     state->partition_counter = 0;
-    // Printer::PrintF("Finished iteration: %d", state->iter);
 }
 
 void IterativeLengthTask::ReachDetect() const {
