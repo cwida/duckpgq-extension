@@ -126,6 +126,60 @@ void PathFindingGlobalSinkState::PartitionGraph(idx_t start_vertex, idx_t end_ve
     }
 }
 
+
+
+void PathFindingGlobalSinkState::LogPartitionMetrics(const std::vector<idx_t>& edges_per_partition, idx_t total_vertices, idx_t total_edges) {
+  if (edges_per_partition.empty()) {
+    std::cerr << "Error: No partition data available.\n";
+    return;
+  }
+
+  idx_t total_partitions = edges_per_partition.size();
+
+  // Compute statistics
+  idx_t min_edges = *std::min_element(edges_per_partition.begin(), edges_per_partition.end());
+  idx_t max_edges = *std::max_element(edges_per_partition.begin(), edges_per_partition.end());
+  idx_t avg_edges = total_partitions > 0 ?
+                    std::accumulate(edges_per_partition.begin(), edges_per_partition.end(), 0) / total_partitions : 0;
+
+  double variance = 0.0;
+  for (auto edges : edges_per_partition) {
+    variance += std::pow(edges - avg_edges, 2);
+  }
+  variance = total_partitions > 0 ? variance / total_partitions : 0;
+  double std_dev = std::sqrt(variance);
+  std::string file_name = "partition_metrics_v" + std::to_string(total_vertices) + "_p" + std::to_string(GetPartitionSize(context_)) + ".csv";
+  // Open file for logging
+  std::ofstream log_file(file_name);
+  if (!log_file.is_open()) {
+    std::cerr << "Error: Unable to open log file for writing metrics.\n";
+    return;
+  }
+
+  // Write summary statistics
+  log_file << "total_vertices,total_edges,total_partitions,min_edges,max_edges,avg_edges,std_dev\n";
+  log_file << total_vertices << ","
+           << total_edges << ","
+           << total_partitions << ","
+           << min_edges << ","
+           << max_edges << ","
+           << avg_edges << ","
+           << std_dev;
+
+  log_file.close();
+  std::string file_name_detailed = "partition_metrics_detailed_v" + std::to_string(total_vertices) + "_p" + std::to_string(GetPartitionSize(context_)) + ".csv";
+  std::ofstream log_file_detailed(file_name_detailed);
+  if (!log_file_detailed.is_open()) {
+    std::cerr << "Error: Unable to open log file for writing metrics.\n";
+    return;
+  }// Write detailed partition data
+  log_file_detailed << "partition_id,edges\n";
+  for (size_t i = 0; i < edges_per_partition.size(); i++) {
+    log_file_detailed << i << "," << edges_per_partition[i] << "\n";
+  }
+  log_file_detailed.close();
+}
+
 // Entry function: Initialize partitioning
 void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
     local_csrs.clear();
@@ -141,49 +195,15 @@ void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
               [](const shared_ptr<LocalCSR>& a, const shared_ptr<LocalCSR>& b) {
                   return a->GetEdgeSize() > b->GetEdgeSize();  // Sort by edge count
               });
+    std::vector<idx_t> edges_per_partition;
+    for (const auto &local_csr : local_csrs) {
+        edges_per_partition.push_back(local_csr->GetEdgeSize());
+    }
+    LogPartitionMetrics(edges_per_partition, total_vertices, csr->e.size());
 
-    // Printer::PrintF("Number of partitions %d", local_csrs.size());
-    // for (const auto &local_csr : local_csrs) {
-    //   Printer::PrintF("Vsize: %d, esize: %d, partition_size: %d", local_csr->GetVertexSize(), local_csr->GetEdgeSize(), PARTITION_SIZE);
-    // }
-
-    // for (const auto &partition_ranges : partition_ranges) {
-      // Printer::PrintF("start %d, end %d", local_csr->getvertexsize(), local_csr->getedgesize(), partition_size);
-    // }
 }
 
-//   // Compute balance statistics
-  //   idx_t min_edges = *std::min_element(edges_per_partition.begin(), edges_per_partition.end());
-  //   idx_t max_edges = *std::max_element(edges_per_partition.begin(), edges_per_partition.end());
-  //   idx_t avg_edges = std::accumulate(edges_per_partition.begin(), edges_per_partition.end(), 0) / total_partitions;
-  //
-  //   double variance = 0.0;
-  //   for (auto edges : edges_per_partition) {
-  //       variance += std::pow(edges - avg_edges, 2);
-  //   }
-  //   variance /= total_partitions;
-  //   double std_dev = std::sqrt(variance);
-  //
-  // std::ofstream log_file("partition_metrics.csv");
-  // if (log_file.is_open()) {
-  //   log_file << "total_vertices,total_edges,total_partitions,min_edges,max_edges,avg_edges,std_dev\n";
-  //   log_file << total_vertices << ","
-  //            << total_edges << ","
-  //            << total_partitions << ","
-  //            << min_edges << ","
-  //            << max_edges << ","
-  //            << avg_edges << ","
-  //            << std_dev << "\n\n";
-  //
-  //   log_file << "partition_id,edges\n";
-  //   for (size_t i = 0; i < edges_per_partition.size(); i++) {
-  //     log_file << i << "," << edges_per_partition[i] << "\n";
-  //   }
-  //   log_file.close();
-  // } else {
-  //   std::cerr << "Error opening log file for writing metrics.\n";
-  // }
-// }
+
 
 
 void PathFindingGlobalSinkState::Sink(DataChunk &input, PathFindingLocalSinkState &lstate) {

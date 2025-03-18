@@ -43,26 +43,20 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
     barrier->Wait(worker_id);
     do {
       IterativeLength();
-      // if (worker_id == 0) {
-        // barrier->LogMessage(worker_id, "Finished IterativeLength");
-      // }
       barrier->Wait(worker_id);
       if (worker_id == 0) {
         ReachDetect();
-        // barrier->LogMessage(worker_id, "Finished ReachDetect");
       }
       barrier->Wait(worker_id);
     } while (state->change);
     if (worker_id == 0) {
       UnReachableSet();
-      // barrier->LogMessage(worker_id, "Finished UnreachableSet");
     }
 
     // Final synchronization before finishing
     barrier->Wait(worker_id);
     if (worker_id == 0) {
       state->Clear();
-      // barrier->LogMessage(worker_id, "Cleared state");
     }
     barrier->Wait(worker_id);
   }
@@ -90,18 +84,6 @@ double IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &
   return std::chrono::duration<double, std::milli>(end_time - start_time).count(); // Return time in ms
 }
 
-void PrintMatrix(const std::string &label, const std::vector<std::bitset<LANE_LIMIT>> &matrix) {
-  std::cout << label << ":\n";
-  for (size_t i = 0; i < matrix.size(); i++) {
-    std::cout << "Row " << i << ": ";
-    for (size_t j = 0; j < matrix[i].size(); j++) {
-      std::cout << matrix[i][j] << " ";
-    }
-    std::cout << "\n";
-  }
-  std::cout << std::endl;
-}
-
 // Wrapper function to call Explore and log data
 void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                 std::vector<std::bitset<LANE_LIMIT>> &next,
@@ -122,7 +104,7 @@ void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> 
   // Store result safely
   {
     std::lock_guard<std::mutex> guard(state->log_mutex);
-    state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads);
+    state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, v.size(), e.size(), state->local_csrs.size());
   }
 }
 
