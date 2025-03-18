@@ -8,21 +8,22 @@ namespace duckpgq {
 
         static string PragmaCreateVertexTable(ClientContext &context,
                                                const FunctionParameters &parameters) {
-            if (parameters.values.size() != 4) {
+            if (parameters.values.size() != 5) {
                 throw InvalidInputException("PRAGMA create_vertex_table requires exactly four parameters: edge_table, source_column, destination_column, id_column_name");
             }
 
             string edge_table = parameters.values[0].GetValue<string>();
             string source_column = parameters.values[1].GetValue<string>();
             string destination_column = parameters.values[2].GetValue<string>();
-            string vertex_table_name = parameters.values[2].GetValue<string>();
+            string vertex_table_name = parameters.values[3].GetValue<string>();
             string id_column_name = parameters.values[4].GetValue<string>();
             // todo(dtenwolde) add some error handling
 
-            return "CREATE TABLE " + vertex_table_name + " AS "
-                   "SELECT DISTINCT " + source_column + " AS " + id_column_name + " FROM " + edge_table +
+            return "CREATE TABLE " + vertex_table_name + " AS " +
+                   " SELECT DISTINCT " + id_column_name + " FROM " +
+                   "(SELECT DISTINCT " + source_column + " AS " + id_column_name + " FROM " + edge_table +
                    " UNION ALL " +
-                   "SELECT DISTINCT " + destination_column + " AS " + id_column_name + " FROM " + edge_table;
+                   "SELECT DISTINCT " + destination_column + " AS " + id_column_name + " FROM " + edge_table + ")";
         }
 
         void CorePGQPragma::RegisterCreateVertexTable(duckdb::DatabaseInstance &instance) {
