@@ -1,5 +1,6 @@
 add_subdirectory(iterative_length)
 add_subdirectory(shortest_path)
+add_subdirectory(local_csr)
 
 set(EXTENSION_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/bfs_state.cpp

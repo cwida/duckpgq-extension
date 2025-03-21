@@ -49,9 +49,15 @@ public:
     return e.size();
   }
 
+  bool PartitioningDone(size_t partition_size) {
+    return GetEdgeSize() <= partition_size;
+  }
+
   std::vector<uint64_t> v;
   std::vector<uint64_t> e;
-  idx_t start_offset; // Start offset for the vertex vector
+
+  idx_t start_vertex;
+  idx_t end_vertex;
 };
 
 class CSR {

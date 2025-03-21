@@ -1,6 +1,5 @@
 #include "duckpgq/core/operator/iterative_length/iterative_length_event.hpp"
 #include <chrono>
-#include <duckpgq/core/operator/physical_path_finding_operator.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
 #include <iomanip>
 
