@@ -17,13 +17,13 @@ namespace duckpgq {
             string destination_column = parameters.values[2].GetValue<string>();
             string vertex_table_name = parameters.values[3].GetValue<string>();
             string id_column_name = parameters.values[4].GetValue<string>();
-            // todo(dtenwolde) add some error handling
 
-            return "CREATE TABLE " + vertex_table_name + " AS " +
-                   " SELECT DISTINCT " + id_column_name + " FROM " +
-                   "(SELECT DISTINCT " + source_column + " AS " + id_column_name + " FROM " + edge_table +
+            auto result_query = "CREATE TABLE " + vertex_table_name + " AS " +
+                   "SELECT DISTINCT " + id_column_name + " FROM " +
+                   "(SELECT " + source_column + " AS " + id_column_name + " FROM " + edge_table +
                    " UNION ALL " +
-                   "SELECT DISTINCT " + destination_column + " AS " + id_column_name + " FROM " + edge_table + ")";
+                   "SELECT " + destination_column + " AS " + id_column_name + " FROM " + edge_table + ")";
+            return result_query;
         }
 
         void CorePGQPragma::RegisterCreateVertexTable(duckdb::DatabaseInstance &instance) {
@@ -35,9 +35,9 @@ namespace duckpgq {
                         LogicalType::VARCHAR, // Edge table
                         LogicalType::VARCHAR, // Source column
                         LogicalType::VARCHAR, // Destination column
-                        LogicalType::VARCHAR, // Vertex table name todo(dtenwolde) make optional, default to vertex_table
-                        LogicalType::VARCHAR  // todo(dtenwolde) ID column name (should be optional, default ID)
-                    }                        // Parameter types (mail_limit is an integer)
+                        LogicalType::VARCHAR, // Vertex table name
+                        LogicalType::VARCHAR  // ID column name
+                    }
             );
 
             // Register the pragma function
