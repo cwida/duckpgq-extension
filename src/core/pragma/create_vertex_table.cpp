@@ -9,7 +9,7 @@ namespace duckpgq {
         static string PragmaCreateVertexTable(ClientContext &context,
                                                const FunctionParameters &parameters) {
             if (parameters.values.size() != 5) {
-                throw InvalidInputException("PRAGMA create_vertex_table requires exactly four parameters: edge_table, source_column, destination_column, id_column_name");
+                throw InvalidInputException("PRAGMA create_vertex_table requires exactly five parameters: edge_table, source_column, destination_column, vertex_table_name, id_column_name");
             }
 
             string edge_table = parameters.values[0].GetValue<string>();
