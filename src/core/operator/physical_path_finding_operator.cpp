@@ -268,10 +268,12 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
   // Check if we have to do anything for CSR child
   if (gstate.child == 0) {
     ++gstate.child;
-    auto local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr);
-    event.InsertEvent(make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, *this));
+    auto local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
+    gstate.local_csr_state = local_csr_state;
+    event.InsertEvent(make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, *this, context));
     return SinkFinalizeType::READY;
   }
+
   if (gstate.global_pairs->Count() == 0) {
     return SinkFinalizeType::READY;
   }
@@ -282,8 +284,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     current_chunk->Initialize(context, gstate.global_pairs->Types());
     gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
     if (gstate.mode == "iterativelength") {
-
-      auto bfs_state = make_shared_ptr<IterativeLengthState>(current_chunk, gstate.local_csrs, gstate.partition_ranges, gstate.num_threads, context, gstate.csr->vsize);
+      auto bfs_state = make_shared_ptr<IterativeLengthState>(current_chunk, gstate.local_csr_state->partition_csrs, gstate.num_threads, context, gstate.csr->vsize);
       bfs_state->ScheduleBFSBatch(pipeline, event, this);
       gstate.bfs_states.push_back(std::move(bfs_state));
     } else if (gstate.mode == "shortestpath") {
@@ -297,6 +298,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
   // Move to the next input child
   ++gstate.child;
   duckpgq_state->csr_to_delete.insert(gstate.csr_id);
+  Printer::Print("Reached end of Finalize");
   return SinkFinalizeType::READY;
 }
 

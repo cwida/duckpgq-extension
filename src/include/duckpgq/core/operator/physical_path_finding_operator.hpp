@@ -13,6 +13,7 @@
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
+#include "local_csr/local_csr_state.hpp"
 
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
 
@@ -20,6 +21,7 @@ namespace duckpgq {
 
 namespace core {
 class BFSState; // Forward declaration
+class LocalCSRState; // Forward declaration
 
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 
@@ -111,6 +113,7 @@ public:
   string mode;
   ClientContext &context_;
   idx_t num_threads;
+  shared_ptr<LocalCSRState> local_csr_state;
 };
 
 } // namespace core

@@ -13,9 +13,6 @@ statement ok
 set experimental_path_finding_operator=true;
 
 statement ok
-set experimental_path_finding_operator_task_size=256;
-
-statement ok
 create or replace table snb_pairs as (
    select src, dst
    from (select a.rowid as src from person a),

@@ -12,21 +12,22 @@ class LocalCSRTask : public ExecutorTask {
 public:
   LocalCSRTask(shared_ptr<Event> event_p, ClientContext &context,
                            shared_ptr<LocalCSRState> &state,
-                           const PhysicalOperator &op_p,
-                           shared_ptr<LocalCSR> &input_csr_p);
+                           idx_t worker_id,
+                           const PhysicalOperator &op_p);
 
   TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
-  void PartitionGraph();
-  void FillLocalCSR();
 
-public:
+  void CreateStatistics() const;
+  void DeterminePartitions() const;
+  void CountOutgoingEdgesPerPartition();
+  idx_t GetPartitionForVertex(idx_t vertex) const;
+  void CreateRunningSum() const;
+  void DistributeEdges();
+
   shared_ptr<LocalCSRState> &local_csr_state;
-  shared_ptr<LocalCSR> &input_csr;
-  shared_ptr<LocalCSR> output_csr;
-
+  idx_t worker_id;
 
 };
-
 
 } // namespace core
 } // namespace duckpgq

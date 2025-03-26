@@ -9,6 +9,9 @@ namespace core {
 
 #define LANE_LIMIT 256U
 #define VISIT_SIZE_DIVISOR 2
+#define BUCKET_COUNT 256u
+#define BUCKET_MASK (BUCKET_COUNT - 1)
+
 
 class GraphUtils {
 public:

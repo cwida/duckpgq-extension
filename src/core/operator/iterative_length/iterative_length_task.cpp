@@ -18,8 +18,8 @@ IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p,
 
 void IterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen,
                                       std::vector<std::bitset<LANE_LIMIT>> &next,
-                                      std::pair<idx_t, idx_t> &partition_range) const {
-  for (auto i = partition_range.first; i < partition_range.second; i++) {
+                                      shared_ptr<LocalCSR> &local_csr) const {
+  for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
     if (next[i].any()) {
       next[i] &= ~seen[i];
       seen[i] |= next[i];
@@ -28,7 +28,6 @@ void IterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen
       }
     }
   }
-  // Printer::PrintF("%d finished partition %d to %d, state now: %d\n", worker_id, partition_range.first, partition_range.second, state->change);
 }
 
 
@@ -67,7 +66,7 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 
 double IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                   std::vector<std::bitset<LANE_LIMIT>> &next,
-                                  const std::vector<uint64_t> &v, const std::vector<uint64_t> &e, size_t v_size) {
+                                  const std::vector<uint32_t> &v, const std::vector<uint16_t> &e, size_t v_size) {
   auto start_time = std::chrono::high_resolution_clock::now();
   for (auto i = 0; i < v_size; i++) {
     if (visit[i].any()) {
@@ -87,7 +86,7 @@ double IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &
 // Wrapper function to call Explore and log data
 void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                 std::vector<std::bitset<LANE_LIMIT>> &next,
-                const std::vector<uint64_t> &v, const std::vector<uint64_t> &e, size_t v_size) {
+                const std::vector<uint32_t> &v, const std::vector<uint16_t> &e, size_t v_size) {
   double duration_ms = Explore(visit, next, v, e, v_size);
 
   // Get thread & core info *outside* Explore to reduce per-call overhead
@@ -109,27 +108,28 @@ void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> 
 }
 
 void IterativeLengthTask::IterativeLength() {
+    Printer::Print("Started on iterativelength task");
     auto &seen = state->seen;
     const auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
     auto &barrier = state->barrier;
     // Clear `next` array
-    while (state->partition_counter < state->partition_ranges.size()) {
+    while (state->partition_counter < state->local_csrs.size()) {
       state->local_csr_lock.lock();
-      if (state->partition_counter >= state->partition_ranges.size()) {
+      if (state->partition_counter >= state->local_csrs.size()) {
         state->local_csr_lock.unlock();
         break;
       }
-      auto partition_range = state->partition_ranges[state->partition_counter++];
+      auto &local_csr = state->local_csrs[state->partition_counter++];
       state->local_csr_lock.unlock();
-      for (auto i = partition_range.first; i < partition_range.second; i++) {
+      for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
         next[i] = 0;
       }
     }
     barrier->Wait(worker_id);
     state->partition_counter = 0;
     state->local_csr_counter = 0;
-    static std::atomic<int> finished_threads(0);
+    static std::atomic<int> finished_tasks(0);
     barrier->Wait(worker_id);
     while (state->local_csr_counter < state->local_csrs.size()) {
       state->local_csr_lock.lock();
@@ -146,21 +146,21 @@ void IterativeLengthTask::IterativeLength() {
     }
     state->change = false;
     // Mark this thread as finished
-    finished_threads.fetch_add(1);
+    finished_tasks.fetch_add(1);
     // Last thread reaching here should reset the counter for the next iteration
-    if (finished_threads.load() == state->tasks_scheduled) {
-      finished_threads.store(0); // Reset for the next phase
+    if (finished_tasks.load() == state->tasks_scheduled) {
+      finished_tasks.store(0); // Reset for the next phase
     }
 
     // Printer::PrintF("worker %d finished all partitions\n", worker_id);
     barrier->Wait(worker_id);
     // Printer::PrintF("partition counter: %d\n", state->partition_counter.load());
-    while (state->partition_counter < state->partition_ranges.size()) {
+    while (state->partition_counter < state->local_csrs.size()) {
       state->local_csr_lock.lock();
-      if (state->partition_counter < state->partition_ranges.size()) {
-        auto partition_range = state->partition_ranges[state->partition_counter++];
+      if (state->partition_counter < state->local_csrs.size()) {
+        auto &local_csr = state->local_csrs[state->partition_counter++];
         state->local_csr_lock.unlock();
-        CheckChange(seen, next, partition_range);
+        CheckChange(seen, next, local_csr);
       } else {
         state->local_csr_lock.unlock();
         break; // Avoids reading invalid memory

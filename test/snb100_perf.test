@@ -2,7 +2,7 @@
 require duckpgq
 
 statement ok
-attach '/Users/dljtw/git/duckpgq/duckdb/benchmark/pathfinding/data/snb-bi-sf300.duckdb' as snb;
+attach '/Users/dljtw/git/duckpgq/duckdb/benchmark/pathfinding/data/snb-bi-sf100.duckdb' as snb;
 
 statement ok
 use 'snb';

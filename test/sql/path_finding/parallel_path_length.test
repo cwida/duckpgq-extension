@@ -8,13 +8,15 @@ set experimental_path_finding_operator=true;
 statement ok
 select setseed(0.42);
 
-statement ok
-set threads = 2;
+
 
 query I
 SELECT current_setting('experimental_path_finding_operator');
 ----
 true
+
+statement ok
+set experimental_path_finding_operator_partition_size=20;
 
 # statement ok
 # CREATE TABLE pair(src BIGINT, dst BIGINT); INSERT INTO pair(src, dst) VALUES (0, 1), (1, 2), (2,0), (3,1);
@@ -60,6 +62,8 @@ true
 statement ok
 import database '/Users/dljtw/git/duckpgq/duckdb/data/SNB0.003';
 
+
+
 statement ok
 create or replace table snb_pairs as (
    select src, dst
@@ -73,6 +77,10 @@ create or replace table snb_pairs as (
 
 # statement ok
 # set threads=1;
+
+
+statement ok
+set threads = 2;
 
 query III
 with csr_cte as (

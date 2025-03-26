@@ -20,18 +20,20 @@ private:
   void ReachDetect() const;
   void CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen,
                    std::vector<std::bitset<LANE_LIMIT>> &next,
-                   std::pair<idx_t, idx_t> &partition_range) const;
+                   shared_ptr<LocalCSR> &local_csr) const;
   void UnReachableSet() const;
 
   double Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
     std::vector<std::bitset<LANE_LIMIT>> &next,
-    const std::vector<uint64_t> &v,
-    const std::vector<uint64_t> &e,
+    const std::vector<uint32_t> &v,
+    const std::vector<uint16_t> &e,
     size_t v_size);
 
   void RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                 std::vector<std::bitset<LANE_LIMIT>> &next,
-                const std::vector<uint64_t> &v, const std::vector<uint64_t> &e, size_t v_size);
+                const std::vector<uint32_t> &v,
+                const std::vector<uint16_t> &e,
+                size_t v_size);
 private:
   ClientContext &context;
   shared_ptr<IterativeLengthState> &state;

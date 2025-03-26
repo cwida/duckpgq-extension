@@ -13,29 +13,19 @@ LocalCSREvent::LocalCSREvent(shared_ptr<LocalCSRState> local_csr_state_p,
 void LocalCSREvent::Schedule() {
   auto &context = pipeline->GetClientContext();
   vector<shared_ptr<Task>> csr_tasks;
-
-  while (!local_csr_state->local_csrs_to_partition.empty()) {
-    auto input_csr = std::move(local_csr_state->local_csrs_to_partition.back());
-    local_csr_state->local_csrs_to_partition.pop_back();  // Remove from the list
+  Printer::Print("Scheduling event");
+  for (idx_t tnum = 0; tnum < local_csr_state->num_threads; tnum++) {
     csr_tasks.push_back(make_uniq<LocalCSRTask>(
-      shared_from_this(), context, local_csr_state, op, input_csr));
+        shared_from_this(), context, local_csr_state, tnum, op));
+    local_csr_state->tasks_scheduled++;
   }
+  local_csr_state->barrier = make_uniq<Barrier>(local_csr_state->tasks_scheduled);
   SetTasks(std::move(csr_tasks));
 }
 
 void LocalCSREvent::FinishEvent() {
- if (!local_csr_state->local_csrs_to_partition.empty()) {
-   Schedule();
- }
-
- std::sort(local_csr_state->local_csrs.begin(), local_csr_state->local_csrs.end(),
-              [](const shared_ptr<LocalCSR>& a, const shared_ptr<LocalCSR>& b) {
-                  return a->GetEdgeSize() > b->GetEdgeSize();  // Sort by edge count
-              });
+  Printer::Print("Finished Local CSR event");
 }
-
-
-
 
 } // namespace core
 } // namespace duckpgq

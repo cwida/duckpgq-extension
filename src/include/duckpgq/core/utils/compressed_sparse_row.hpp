@@ -30,14 +30,17 @@ namespace core {
 
 class LocalCSR {
 public:
-  explicit LocalCSR() = default;
+  explicit LocalCSR(idx_t start_vertex_p, idx_t end_vertex_p) {
+    start_vertex = start_vertex_p;
+    end_vertex = end_vertex_p;
+  };
 
   // Returns a pointer to the correct vector
-  std::vector<uint64_t>* GetVertexVector() {
+  std::vector<uint32_t>* GetVertexVector() {
     return &v;
   }
 
-  std::vector<uint64_t>* GetEdgeVector() {
+  std::vector<uint16_t>* GetEdgeVector() {
     return &e;
   }
 
@@ -53,8 +56,10 @@ public:
     return GetEdgeSize() <= partition_size;
   }
 
-  std::vector<uint64_t> v;
-  std::vector<uint64_t> e;
+  std::vector<uint32_t> v;
+  std::vector<uint16_t> e;
+  std::vector<uint32_t> write_offsets;
+
 
   idx_t start_vertex;
   idx_t end_vertex;
