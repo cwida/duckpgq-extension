@@ -30,39 +30,36 @@ namespace core {
 
 class LocalCSR {
 public:
-  explicit LocalCSR(idx_t start_vertex_p, idx_t end_vertex_p) {
-    start_vertex = start_vertex_p;
-    end_vertex = end_vertex_p;
-  };
-
-  // Returns a pointer to the correct vector
-  std::vector<uint32_t>* GetVertexVector() {
-    return &v;
+  explicit LocalCSR(idx_t start_vertex_p, idx_t end_vertex_p, size_t number_of_vertices)
+      : start_vertex(start_vertex_p), end_vertex(end_vertex_p), v_array_size(number_of_vertices + 2) {
+    v = new std::atomic<uint32_t>[v_array_size](); // Zero-initialize
+    initialized_v = true;
   }
 
-  std::vector<uint16_t>* GetEdgeVector() {
-    return &e;
+  ~LocalCSR() {
+    delete[] v;
   }
 
-  size_t GetVertexSize() {
-    return v.size() - 2;
-  }
+  std::atomic<uint32_t>* GetVertexArray() { return v; }
+  std::vector<uint16_t>* GetEdgeVector() { return &e; }
 
-  size_t GetEdgeSize() {
-    return e.size();
-  }
+  string ToString() const;
 
-  bool PartitioningDone(size_t partition_size) {
+  size_t GetVertexSize() const { return v_array_size - 2; }
+  size_t GetEdgeSize() const { return e.size(); }
+
+  bool PartitioningDone(size_t partition_size) const {
     return GetEdgeSize() <= partition_size;
   }
 
-  std::vector<uint32_t> v;
+  std::atomic<uint32_t>* v{};
+  size_t v_array_size;
   std::vector<uint16_t> e;
-  std::vector<uint32_t> write_offsets;
-
 
   idx_t start_vertex;
   idx_t end_vertex;
+  bool initialized_v = false;
+  bool initialized_e = false;
 };
 
 class CSR {

@@ -66,12 +66,12 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 
 double IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                   std::vector<std::bitset<LANE_LIMIT>> &next,
-                                  const std::vector<uint32_t> &v, const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex) {
+                                  const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex) {
   auto start_time = std::chrono::high_resolution_clock::now();
   for (auto i = 0; i < v_size; i++) {
     if (visit[i].any()) {
-      auto start_edges = v[i];
-      auto end_edges = v[i+1];
+      auto start_edges = v[i].load(std::memory_order_relaxed);
+      auto end_edges = v[i+1].load(std::memory_order_relaxed);
       for (auto offset = start_edges; offset < end_edges; offset++) {
         auto n = e[offset] + start_vertex; // Use the local edge index directly
         next[n] |= visit[i]; // Propagate the visit bitset
@@ -86,7 +86,7 @@ double IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &
 // Wrapper function to call Explore and log data
 void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                 std::vector<std::bitset<LANE_LIMIT>> &next,
-                const std::vector<uint32_t> &v, const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex) {
+                const atomic<uint32_t> *v, const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex) {
   double duration_ms = Explore(visit, next, v, e, v_size, start_vertex);
 
   // Get thread & core info *outside* Explore to reduce per-call overhead
@@ -103,12 +103,12 @@ void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> 
   // Store result safely
   {
     std::lock_guard<std::mutex> guard(state->log_mutex);
-    state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, v.size(), e.size(), state->local_csrs.size());
+    state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, v_size, e.size(), state->local_csrs.size());
   }
 }
 
 void IterativeLengthTask::IterativeLength() {
-    Printer::Print("Started on iterativelength task");
+    // Printer::Print("Started on iterativelength task");
     auto &seen = state->seen;
     const auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
@@ -191,7 +191,6 @@ void IterativeLengthTask::ReachDetect() const {
   }
   // into the next iteration
   state->iter++;
-  // Printer::PrintF("Starting next iteration: %d %d\n", worker_id, state->iter);
 }
 
 void IterativeLengthTask::UnReachableSet() const {

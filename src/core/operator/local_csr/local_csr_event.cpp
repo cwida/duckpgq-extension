@@ -13,7 +13,7 @@ LocalCSREvent::LocalCSREvent(shared_ptr<LocalCSRState> local_csr_state_p,
 void LocalCSREvent::Schedule() {
   auto &context = pipeline->GetClientContext();
   vector<shared_ptr<Task>> csr_tasks;
-  Printer::Print("Scheduling event");
+  // Printer::Print("Scheduling event");
   for (idx_t tnum = 0; tnum < local_csr_state->num_threads; tnum++) {
     csr_tasks.push_back(make_uniq<LocalCSRTask>(
         shared_from_this(), context, local_csr_state, tnum, op));
@@ -24,7 +24,7 @@ void LocalCSREvent::Schedule() {
 }
 
 void LocalCSREvent::FinishEvent() {
-  Printer::Print("Finished Local CSR event");
+  // Printer::Print("Finished Local CSR event");
 }
 
 } // namespace core

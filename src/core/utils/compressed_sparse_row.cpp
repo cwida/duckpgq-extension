@@ -12,6 +12,39 @@
 namespace duckpgq {
 
 namespace core {
+
+string LocalCSR::ToString() const {
+    std::ostringstream result;
+    size_t max_print_value = 10;
+    if (initialized_v) {
+        result << "v (Node Offsets):\n";
+        for (size_t i = 0; i < std::min(max_print_value, v_array_size); i++) {
+            result << "  Node " << i << ": Offset " << v[i].load() << "\n";
+        }
+    } else {
+        result << "v: V has not been initialized\n";
+    }
+
+    result << "\n";
+
+    if (initialized_e) {
+        result << "e (Edges):\n";
+
+        for (size_t i = 0; i < std::min(max_print_value, v_array_size - 2); i++) {
+            result << "  Node " << i << " connects to: ";
+            for (size_t j = v[i].load(); j < v[i + 1].load(); j++) {
+                result << e[j] << " ";
+            }
+            result << "\n";
+        }
+    } else {
+        result << "e: E has not been initialized\n";
+    }
+
+    result << "\n";
+    return result.str();
+}
+
 string CSR::ToString() const {
     std::ostringstream result;
 

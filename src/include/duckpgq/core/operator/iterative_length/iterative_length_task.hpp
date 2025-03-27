@@ -25,13 +25,13 @@ private:
 
   double Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
     std::vector<std::bitset<LANE_LIMIT>> &next,
-    const std::vector<uint32_t> &v,
+    const std::atomic<uint32_t> *v,
     const std::vector<uint16_t> &e,
     size_t v_size, idx_t start_vertex);
 
   void RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                 std::vector<std::bitset<LANE_LIMIT>> &next,
-                const std::vector<uint32_t> &v,
+                const std::atomic<uint32_t> *v,
                 const std::vector<uint16_t> &e,
                 size_t v_size, idx_t start_vertex);
 private:

@@ -298,7 +298,7 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
   // Move to the next input child
   ++gstate.child;
   duckpgq_state->csr_to_delete.insert(gstate.csr_id);
-  Printer::Print("Reached end of Finalize");
+  // Printer::Print("Reached end of Finalize");
   return SinkFinalizeType::READY;
 }
 

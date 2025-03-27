@@ -15,24 +15,53 @@ LocalCSRTask::LocalCSRTask(shared_ptr<Event> event_p, ClientContext &context,
 
 TaskExecutionResult LocalCSRTask::ExecuteTask(TaskExecutionMode mode) {
   auto &barrier = local_csr_state->barrier;
-
+  // if (worker_id == 0) {
+  //   Printer::PrintF("%s", local_csr_state->global_csr->ToString());
+  // }
   CreateStatistics(); // Phase 1
   barrier->Wait(worker_id);
   if (worker_id == 0) {
-    size_t total_edge_count = 0;
-    for (idx_t i = 0; i < local_csr_state->statistics_chunks.size(); i++) {
-      Printer::PrintF("Edge count for bucket %d: %d\n", i, local_csr_state->statistics_chunks[i]);
-      total_edge_count += local_csr_state->statistics_chunks[i];
-    }
     DeterminePartitions(); // Phase 2
   }
   barrier->Wait(worker_id);
+  // if (worker_id == 0) {
+    // Printer::PrintF("Phase 3 starting");
+    // for (const auto &local_csr : local_csr_state->partition_csrs) {
+      // Printer::PrintF("%s", local_csr->ToString());
+    // }
+  // }
   CountOutgoingEdgesPerPartition(); // Phase 3
   barrier->Wait(worker_id);
+  // if (worker_id == 0) {
+  //   Printer::PrintF("Phase 4 starting");
+  //   for (const auto &local_csr : local_csr_state->partition_csrs) {
+  //     Printer::PrintF("%s", local_csr->ToString());
+  //   }
+  // }
   CreateRunningSum(); // Phase 4
+
   barrier->Wait(worker_id);
+  // if (worker_id == 0) {
+  //   Printer::PrintF("Phase 5 starting");
+  //   for (const auto &local_csr : local_csr_state->partition_csrs) {
+  //     Printer::PrintF("%s", local_csr->ToString());
+  //   }
+  // }
   DistributeEdges(); // Phase 5
+  // if (worker_id == 0) {
+    // Printer::PrintF("CSR creation finished");
+    // for (const auto &local_csr : local_csr_state->partition_csrs) {
+      // Printer::PrintF("%s", local_csr->ToString());
+      // Printer::PrintF("Number of vertices: %d", local_csr->GetVertexSize());
+      // Printer::PrintF("Number of edges: %d", local_csr->GetEdgeSize());
+      // Printer::PrintF("start_vertex: %d", local_csr->start_vertex);
+      // Printer::PrintF("end_vertex: %d", local_csr->end_vertex);
+    // }
+  // }
   barrier->Wait(worker_id);
+  // if (worker_id == 0) {
+    // Printer::PrintF("Created %d partitions", local_csr_state->partition_csrs.size());
+  // }
   event->FinishTask();
   return TaskExecutionResult::TASK_FINISHED;
 }
@@ -46,8 +75,9 @@ void LocalCSRTask::DistributeEdges() {
   if (worker_id == 0) {
     for (auto &csr_ptr : local_csr_state->partition_csrs) {
       auto &csr = *csr_ptr;
-      csr.e.resize(csr.v.back());
-      csr.write_offsets = csr.v;
+      auto edge_count = csr.v[csr.v_array_size - 1].load(std::memory_order_relaxed);
+      csr.e.resize(edge_count);
+      csr.initialized_e = true;
     }
   }
 
@@ -55,7 +85,7 @@ void LocalCSRTask::DistributeEdges() {
   local_csr_state->barrier->Wait(worker_id);
 
   // Determine per-thread vertex range
-  idx_t vertices_per_worker = (total_vertices + local_csr_state->num_threads - 1) / local_csr_state->num_threads;
+  idx_t vertices_per_worker = (total_vertices + local_csr_state->tasks_scheduled - 1) / local_csr_state->tasks_scheduled;
   idx_t src_start = worker_id * vertices_per_worker;
   idx_t src_end = std::min(src_start + vertices_per_worker, total_vertices);
 
@@ -64,9 +94,9 @@ void LocalCSRTask::DistributeEdges() {
       idx_t dst = e[i];
       idx_t p = GetPartitionForVertex(dst);
       auto &csr = *local_csr_state->partition_csrs[p];
-
-      auto &offset = csr.write_offsets[src];
-      csr.e[offset++] = dst - csr.start_vertex;
+      auto &offset = csr.v[src + 1];
+      idx_t pos = offset.fetch_add(1);
+      csr.e[pos] = dst - csr.start_vertex;
     }
   }
 }
@@ -80,10 +110,11 @@ void LocalCSRTask::CreateRunningSum() const {
     }
 
     auto &v = local_csr_state->partition_csrs[i]->v;
+    auto v_array_size = local_csr_state->partition_csrs[i]->v_array_size;
     int64_t sum = 0;
-    for (idx_t i = 0; i < v.size(); i++) {
-      auto current = v[i];
-      v[i] = sum;
+    for (idx_t i = 0; i < v_array_size; i++) {
+      auto current = v[i].load(std::memory_order_relaxed);
+      v[i].store(sum, std::memory_order_relaxed);
       sum += current;
     }
   }
@@ -118,17 +149,13 @@ void LocalCSRTask::CountOutgoingEdgesPerPartition() {
 
     idx_t local_start = std::max(start, start_edge);
     idx_t local_end = std::min(end, end_edge);
-
+    // Printer::PrintF("(worker_id: %d) Local start: %d, Local end: %d", worker_id, local_start, local_end);
     for (idx_t i = local_start; i < local_end; i++) {
       idx_t dst = e[i];
       idx_t p = GetPartitionForVertex(dst); // Map global vertex ID to partition index
       auto &csr = *local_csr_state->partition_csrs[p];
-
       // Map global src to local src in partition
-      idx_t local_src = src - csr.start_vertex;
-      if (local_src < csr.v.size()) {
-        csr.v[local_src]++;
-      }
+      csr.v[src + 1]++;
     }
   }
 }
@@ -150,10 +177,8 @@ void LocalCSRTask::DeterminePartitions() const {
     if ((current_bucket_vertex_end - start_vertex) > UINT16_MAX) {
       idx_t end_vertex = std::min(i * bucket_size, max_col);
 
-      auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex);
-      csr->v.resize(max_col, 0);
+      auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, max_col);
       local_csr_state->partition_csrs.push_back(csr);
-
       current_start_bucket = i;
     }
   }
@@ -162,9 +187,8 @@ void LocalCSRTask::DeterminePartitions() const {
   if (current_start_bucket < BUCKET_COUNT) {
     idx_t start_vertex = current_start_bucket * bucket_size;
     idx_t end_vertex = max_col;
-    auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex);
-    csr->v.resize(max_col, 0);
-    Printer::PrintF("Set vertex size to %d\n", csr->v.size());
+    auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, max_col);
+    // Printer::PrintF("Set vertex size to %d\n", csr->v_array_size);
     local_csr_state->partition_csrs.push_back(csr);
   }
 }
@@ -189,7 +213,6 @@ void LocalCSRTask::CreateStatistics() const {
   while ((1ULL << (bucket_shift + bucket_bits)) < max_col) {
     bucket_shift++;
   }
-  Printer::PrintF("Bucket shift: %d, bucket bits: %d", bucket_shift, bucket_bits);
 
   // Bucket edges by destination vertex using bitshift and mask
   for (idx_t i = start_edge; i < end_edge; i++) {
@@ -197,7 +220,6 @@ void LocalCSRTask::CreateStatistics() const {
     local_chunks[bucket]++;
   }
 
-  Printer::PrintF("Local chunks size %d for worker %d\n", local_chunks.size(), worker_id);
   // Merge local result into global histogram (atomic add)
   for (idx_t i = 0; i < BUCKET_COUNT; i++) {
     __atomic_fetch_add(&local_csr_state->statistics_chunks[i], local_chunks[i], __ATOMIC_RELAXED);
