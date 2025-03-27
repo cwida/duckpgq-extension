@@ -66,14 +66,14 @@ TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 
 double IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                   std::vector<std::bitset<LANE_LIMIT>> &next,
-                                  const std::vector<uint32_t> &v, const std::vector<uint16_t> &e, size_t v_size) {
+                                  const std::vector<uint32_t> &v, const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex) {
   auto start_time = std::chrono::high_resolution_clock::now();
   for (auto i = 0; i < v_size; i++) {
     if (visit[i].any()) {
       auto start_edges = v[i];
       auto end_edges = v[i+1];
       for (auto offset = start_edges; offset < end_edges; offset++) {
-        auto n = e[offset]; // Use the local edge index directly
+        auto n = e[offset] + start_vertex; // Use the local edge index directly
         next[n] |= visit[i]; // Propagate the visit bitset
       }
     }
@@ -86,8 +86,8 @@ double IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &
 // Wrapper function to call Explore and log data
 void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                 std::vector<std::bitset<LANE_LIMIT>> &next,
-                const std::vector<uint32_t> &v, const std::vector<uint16_t> &e, size_t v_size) {
-  double duration_ms = Explore(visit, next, v, e, v_size);
+                const std::vector<uint32_t> &v, const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex) {
+  double duration_ms = Explore(visit, next, v, e, v_size, start_vertex);
 
   // Get thread & core info *outside* Explore to reduce per-call overhead
   std::thread::id thread_id = std::this_thread::get_id();
@@ -142,7 +142,7 @@ void IterativeLengthTask::IterativeLength() {
         throw InternalException("Tried to reference nullptr for LocalCSR");
       }
       state->local_csr_lock.unlock();
-      RunExplore(visit, next, local_csr->v, local_csr->e, local_csr->GetVertexSize());
+      RunExplore(visit, next, local_csr->v, local_csr->e, local_csr->GetVertexSize(), local_csr->start_vertex);
     }
     state->change = false;
     // Mark this thread as finished

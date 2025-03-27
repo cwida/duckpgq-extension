@@ -65,8 +65,7 @@ void LocalCSRTask::DistributeEdges() {
       idx_t p = GetPartitionForVertex(dst);
       auto &csr = *local_csr_state->partition_csrs[p];
 
-      idx_t local_src = src - csr.start_vertex;
-      auto &offset = csr.write_offsets[local_src];
+      auto &offset = csr.write_offsets[src];
       csr.e[offset++] = dst - csr.start_vertex;
     }
   }
