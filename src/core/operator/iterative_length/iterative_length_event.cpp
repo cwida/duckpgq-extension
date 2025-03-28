@@ -22,7 +22,6 @@ void IterativeLengthEvent::Schedule() {
         shared_from_this(), context, gbfs_state, tnum, op));
     gbfs_state->tasks_scheduled++;
   }
-  // Printer::PrintF("Scheduled %d tasks\n", gbfs_state->tasks_scheduled);
   gbfs_state->barrier = make_uniq<Barrier>(gbfs_state->tasks_scheduled);
   SetTasks(std::move(bfs_tasks));
 }
@@ -34,7 +33,7 @@ void IterativeLengthEvent::FinishEvent() {
   ss << std::put_time(std::localtime(&time_t_now), "%Y-%m-%d_%H-%M-%S");
   auto timestamp = ss.str();
   string file_name = "timing_results_" + timestamp + + "_threads_" + std::to_string(gbfs_state->num_threads) + ".csv";
-  gbfs_state->WriteTimingResults(file_name);
+  // gbfs_state->WriteTimingResults(file_name);
 }
 
 } // namespace core

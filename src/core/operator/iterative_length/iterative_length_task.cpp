@@ -108,7 +108,6 @@ void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> 
 }
 
 void IterativeLengthTask::IterativeLength() {
-    // Printer::Print("Started on iterativelength task");
     auto &seen = state->seen;
     const auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
@@ -152,9 +151,7 @@ void IterativeLengthTask::IterativeLength() {
       finished_tasks.store(0); // Reset for the next phase
     }
 
-    // Printer::PrintF("worker %d finished all partitions\n", worker_id);
     barrier->Wait(worker_id);
-    // Printer::PrintF("partition counter: %d\n", state->partition_counter.load());
     while (state->partition_counter < state->local_csrs.size()) {
       state->local_csr_lock.lock();
       if (state->partition_counter < state->local_csrs.size()) {

@@ -15,53 +15,18 @@ LocalCSRTask::LocalCSRTask(shared_ptr<Event> event_p, ClientContext &context,
 
 TaskExecutionResult LocalCSRTask::ExecuteTask(TaskExecutionMode mode) {
   auto &barrier = local_csr_state->barrier;
-  // if (worker_id == 0) {
-  //   Printer::PrintF("%s", local_csr_state->global_csr->ToString());
-  // }
   CreateStatistics(); // Phase 1
   barrier->Wait(worker_id);
   if (worker_id == 0) {
     DeterminePartitions(); // Phase 2
   }
   barrier->Wait(worker_id);
-  // if (worker_id == 0) {
-    // Printer::PrintF("Phase 3 starting");
-    // for (const auto &local_csr : local_csr_state->partition_csrs) {
-      // Printer::PrintF("%s", local_csr->ToString());
-    // }
-  // }
   CountOutgoingEdgesPerPartition(); // Phase 3
   barrier->Wait(worker_id);
-  // if (worker_id == 0) {
-  //   Printer::PrintF("Phase 4 starting");
-  //   for (const auto &local_csr : local_csr_state->partition_csrs) {
-  //     Printer::PrintF("%s", local_csr->ToString());
-  //   }
-  // }
   CreateRunningSum(); // Phase 4
-
   barrier->Wait(worker_id);
-  // if (worker_id == 0) {
-  //   Printer::PrintF("Phase 5 starting");
-  //   for (const auto &local_csr : local_csr_state->partition_csrs) {
-  //     Printer::PrintF("%s", local_csr->ToString());
-  //   }
-  // }
   DistributeEdges(); // Phase 5
-  // if (worker_id == 0) {
-    // Printer::PrintF("CSR creation finished");
-    // for (const auto &local_csr : local_csr_state->partition_csrs) {
-      // Printer::PrintF("%s", local_csr->ToString());
-      // Printer::PrintF("Number of vertices: %d", local_csr->GetVertexSize());
-      // Printer::PrintF("Number of edges: %d", local_csr->GetEdgeSize());
-      // Printer::PrintF("start_vertex: %d", local_csr->start_vertex);
-      // Printer::PrintF("end_vertex: %d", local_csr->end_vertex);
-    // }
-  // }
   barrier->Wait(worker_id);
-  // if (worker_id == 0) {
-    // Printer::PrintF("Created %d partitions", local_csr_state->partition_csrs.size());
-  // }
   event->FinishTask();
   return TaskExecutionResult::TASK_FINISHED;
 }
@@ -149,7 +114,6 @@ void LocalCSRTask::CountOutgoingEdgesPerPartition() {
 
     idx_t local_start = std::max(start, start_edge);
     idx_t local_end = std::min(end, end_edge);
-    // Printer::PrintF("(worker_id: %d) Local start: %d, Local end: %d", worker_id, local_start, local_end);
     for (idx_t i = local_start; i < local_end; i++) {
       idx_t dst = e[i];
       idx_t p = GetPartitionForVertex(dst); // Map global vertex ID to partition index
@@ -188,7 +152,6 @@ void LocalCSRTask::DeterminePartitions() const {
     idx_t start_vertex = current_start_bucket * bucket_size;
     idx_t end_vertex = max_col;
     auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, max_col);
-    // Printer::PrintF("Set vertex size to %d\n", csr->v_array_size);
     local_csr_state->partition_csrs.push_back(csr);
   }
 }
