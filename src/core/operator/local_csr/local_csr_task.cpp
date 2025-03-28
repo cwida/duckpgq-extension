@@ -126,33 +126,75 @@ void LocalCSRTask::CountOutgoingEdgesPerPartition() {
 
 
 void LocalCSRTask::DeterminePartitions() const {
-  idx_t max_col = local_csr_state->global_csr->vsize;
+  const idx_t max_vertex = local_csr_state->global_csr->vsize;
+  const idx_t chunk_count = 256;
+  const idx_t num_partitions = 2 * local_csr_state->num_threads;
 
-  // Compute bucket size based on max_col
-  idx_t bucket_size = (max_col + BUCKET_COUNT - 1) / BUCKET_COUNT;
+  // Get edge histogram across 256 chunks
+  const auto &edge_histogram = local_csr_state->statistics_chunks; // e.g., vector<idx_t> of size 256
+  D_ASSERT(edge_histogram.size() == chunk_count);
 
-  idx_t current_start_bucket= 0;
-  local_csr_state->partition_csrs.clear();
-
-  for (idx_t i = 0; i < BUCKET_COUNT; i++) {
-    idx_t current_bucket_vertex_end = std::min((i + 1) * bucket_size, max_col);
-
-    idx_t start_vertex = current_start_bucket * bucket_size;
-    if ((current_bucket_vertex_end - start_vertex) > UINT16_MAX) {
-      idx_t end_vertex = std::min(i * bucket_size, max_col);
-
-      auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, max_col);
-      local_csr_state->partition_csrs.push_back(csr);
-      current_start_bucket = i;
-    }
+  // Total edge count
+  idx_t total_edges = 0;
+  for (auto count : edge_histogram) {
+    total_edges += count;
   }
 
-  // Add the final partition
-  if (current_start_bucket < BUCKET_COUNT) {
-    idx_t start_vertex = current_start_bucket * bucket_size;
-    idx_t end_vertex = max_col;
-    auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, max_col);
+  // Split into heavy and light partitions
+  idx_t heavy_partition_count = local_csr_state->num_threads;
+  idx_t light_partition_count = local_csr_state->num_threads;
+
+  idx_t heavy_edge_budget = static_cast<idx_t>(total_edges * 0.75);
+  idx_t light_edge_budget = total_edges - heavy_edge_budget;
+
+  idx_t heavy_target_per_partition = heavy_edge_budget / heavy_partition_count;
+  idx_t light_target_per_partition = light_edge_budget / light_partition_count;
+
+  idx_t current_chunk = 0;
+  idx_t chunk_size = (max_vertex + chunk_count - 1) / chunk_count;
+
+  local_csr_state->partition_csrs.clear();
+
+  auto create_partition = [&](idx_t start_chunk, idx_t end_chunk) {
+    idx_t start_vertex = start_chunk * chunk_size;
+    idx_t end_vertex = std::min(end_chunk * chunk_size, max_vertex);
+    if ((end_vertex - start_vertex) > UINT16_MAX) {
+      // Split within range if needed
+      end_vertex = start_vertex + UINT16_MAX;
+    }
+    auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, max_vertex);
     local_csr_state->partition_csrs.push_back(csr);
+  };
+
+  // Create heavy partitions
+  for (idx_t i = 0; i < heavy_partition_count && current_chunk < chunk_count; i++) {
+    idx_t edge_sum = 0;
+    idx_t start_chunk = current_chunk;
+
+    while (current_chunk < chunk_count && edge_sum < heavy_target_per_partition) {
+      edge_sum += edge_histogram[current_chunk];
+      current_chunk++;
+    }
+
+    create_partition(start_chunk, current_chunk);
+  }
+
+  // Create light partitions
+  for (idx_t i = 0; i < light_partition_count && current_chunk < chunk_count; i++) {
+    idx_t edge_sum = 0;
+    idx_t start_chunk = current_chunk;
+
+    while (current_chunk < chunk_count && edge_sum < light_target_per_partition) {
+      edge_sum += edge_histogram[current_chunk];
+      current_chunk++;
+    }
+
+    create_partition(start_chunk, current_chunk);
+  }
+
+  // If there are leftover chunks (in case of rounding), wrap them up
+  if (current_chunk < chunk_count) {
+    create_partition(current_chunk, chunk_count);
   }
 }
 
