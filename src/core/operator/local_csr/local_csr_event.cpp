@@ -26,6 +26,12 @@ void LocalCSREvent::Schedule() {
 void LocalCSREvent::FinishEvent() {
   // Assume at least one partition exists
   D_ASSERT(!local_csr_state->partition_csrs.empty());
+
+  std::sort(local_csr_state->partition_csrs.begin(), local_csr_state->partition_csrs.end(),
+          [](const shared_ptr<LocalCSR>& a, const shared_ptr<LocalCSR>& b) {
+              return a->GetEdgeSize() > b->GetEdgeSize();  // Sort by edge count
+          });
+
   // size_t vertex_count = local_csr_state->partition_csrs[0]->GetVertexSize();
   //
   // // Create a filename with the number of vertices
