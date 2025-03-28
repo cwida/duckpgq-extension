@@ -92,7 +92,7 @@ idx_t LocalCSRTask::GetPartitionForVertex(idx_t vertex) const {
       return i;
     }
   }
-  throw InternalException("Vertex %llu not found in any partition", vertex);
+  throw OutOfRangeException("Vertex %llu not found in any partition", vertex);
 }
 
 void LocalCSRTask::CountOutgoingEdgesPerPartition() {
@@ -128,7 +128,6 @@ void LocalCSRTask::CountOutgoingEdgesPerPartition() {
 void LocalCSRTask::DeterminePartitions() const {
   const idx_t max_vertex = local_csr_state->global_csr->vsize;
   const idx_t chunk_count = 256;
-  const idx_t num_partitions = 2 * local_csr_state->num_threads;
 
   // Get edge histogram across 256 chunks
   const auto &edge_histogram = local_csr_state->statistics_chunks; // e.g., vector<idx_t> of size 256
@@ -158,12 +157,20 @@ void LocalCSRTask::DeterminePartitions() const {
   auto create_partition = [&](idx_t start_chunk, idx_t end_chunk) {
     idx_t start_vertex = start_chunk * chunk_size;
     idx_t end_vertex = std::min(end_chunk * chunk_size, max_vertex);
-    if ((end_vertex - start_vertex) > UINT16_MAX) {
-      // Split within range if needed
-      end_vertex = start_vertex + UINT16_MAX;
+
+    // If the vertex range exceeds UINT16_MAX, split into multiple subpartitions
+    while ((end_vertex - start_vertex) > UINT16_MAX) {
+      idx_t mid_vertex = start_vertex + UINT16_MAX;
+      auto csr = make_shared_ptr<LocalCSR>(start_vertex, mid_vertex, max_vertex);
+      local_csr_state->partition_csrs.push_back(csr);
+      start_vertex = mid_vertex;
     }
-    auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, max_vertex);
-    local_csr_state->partition_csrs.push_back(csr);
+
+    // Final partition covering the remainder
+    if (start_vertex < end_vertex) {
+      auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, max_vertex);
+      local_csr_state->partition_csrs.push_back(csr);
+    }
   };
 
   // Create heavy partitions
