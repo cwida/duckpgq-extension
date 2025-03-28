@@ -2,7 +2,7 @@
 require duckpgq
 
 statement ok
-attach '/Users/dljtw/git/duckpgq/duckdb/benchmark/pathfinding/data/snb-bi-sf100.duckdb' as snb;
+attach '/Users/dljtw/git/duckpgq/duckdb/benchmark/pathfinding/data/snb-bi-sf300.duckdb' as snb;
 
 statement ok
 use 'snb';
@@ -16,13 +16,13 @@ set experimental_path_finding_operator=true;
 # statement ok
 # set experimental_path_finding_operator_partition_size=6000000;
 #
-# statement ok
-# create or replace table snb_pairs as (
-#    select src, dst
-#    from (select a.rowid as src from person a),
-#         (select b.rowid as dst from person b)
-#    using sample reservoir(16384 rows) repeatable (300)
-# );
+statement ok
+create or replace table snb_pairs as (
+   select src, dst
+   from (select a.rowid as src from person a),
+        (select b.rowid as dst from person b)
+   using sample reservoir(128 rows) repeatable (300)
+);
 
 query III nosort lengthpairs
 WITH cte1 AS (

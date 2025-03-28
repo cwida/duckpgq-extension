@@ -127,11 +127,10 @@ void LocalCSRTask::CountOutgoingEdgesPerPartition() {
 
 void LocalCSRTask::DeterminePartitions() const {
   const idx_t max_vertex = local_csr_state->global_csr->vsize;
-  const idx_t chunk_count = 256;
 
   // Get edge histogram across 256 chunks
   const auto &edge_histogram = local_csr_state->statistics_chunks; // e.g., vector<idx_t> of size 256
-  D_ASSERT(edge_histogram.size() == chunk_count);
+  D_ASSERT(edge_histogram.size() == BUCKET_COUNT);
 
   // Total edge count
   idx_t total_edges = 0;
@@ -150,7 +149,7 @@ void LocalCSRTask::DeterminePartitions() const {
   idx_t light_target_per_partition = light_edge_budget / light_partition_count;
 
   idx_t current_chunk = 0;
-  idx_t chunk_size = (max_vertex + chunk_count - 1) / chunk_count;
+  idx_t chunk_size = (max_vertex + BUCKET_COUNT - 1) / BUCKET_COUNT;
 
   local_csr_state->partition_csrs.clear();
 
@@ -174,11 +173,11 @@ void LocalCSRTask::DeterminePartitions() const {
   };
 
   // Create heavy partitions
-  for (idx_t i = 0; i < heavy_partition_count && current_chunk < chunk_count; i++) {
+  for (idx_t i = 0; i < heavy_partition_count && current_chunk < BUCKET_COUNT; i++) {
     idx_t edge_sum = 0;
     idx_t start_chunk = current_chunk;
 
-    while (current_chunk < chunk_count && edge_sum < heavy_target_per_partition) {
+    while (current_chunk < BUCKET_COUNT && edge_sum < heavy_target_per_partition) {
       edge_sum += edge_histogram[current_chunk];
       current_chunk++;
     }
@@ -187,11 +186,11 @@ void LocalCSRTask::DeterminePartitions() const {
   }
 
   // Create light partitions
-  for (idx_t i = 0; i < light_partition_count && current_chunk < chunk_count; i++) {
+  for (idx_t i = 0; i < light_partition_count && current_chunk < BUCKET_COUNT; i++) {
     idx_t edge_sum = 0;
     idx_t start_chunk = current_chunk;
 
-    while (current_chunk < chunk_count && edge_sum < light_target_per_partition) {
+    while (current_chunk < BUCKET_COUNT && edge_sum < light_target_per_partition) {
       edge_sum += edge_histogram[current_chunk];
       current_chunk++;
     }
@@ -200,8 +199,8 @@ void LocalCSRTask::DeterminePartitions() const {
   }
 
   // If there are leftover chunks (in case of rounding), wrap them up
-  if (current_chunk < chunk_count) {
-    create_partition(current_chunk, chunk_count);
+  if (current_chunk < BUCKET_COUNT) {
+    create_partition(current_chunk, BUCKET_COUNT);
   }
 }
 
