@@ -35,7 +35,10 @@ void LocalCSREvent::FinishEvent() {
   size_t vertex_count = local_csr_state->partition_csrs[0]->GetVertexSize();
 
   // Create a filename with the number of vertices
-  std::string filename = "partition_stats_" + std::to_string(vertex_count) + "_vertices_mphl.csv";
+  auto heavy_partition_fraction = std::to_string(GetHeavyPartitionFraction(context));
+  auto light_partition_multiplier = std::to_string(GetLightPartitionMultiplier(context));
+
+  std::string filename = "partition_stats_" + std::to_string(vertex_count) + "_vertices_mphl_" + heavy_partition_fraction + "_" + light_partition_multiplier + ".csv";
   std::ofstream outfile(filename);
   outfile << "PartitionID,StartVertex,EndVertex,VertexCount,EdgeCount,EdgePerVertex,VertexMemBytes,EdgeMemBytes,TotalMemBytes\n";
 

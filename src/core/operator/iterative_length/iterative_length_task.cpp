@@ -103,7 +103,7 @@ void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> 
   // Store result safely
   {
     std::lock_guard<std::mutex> guard(state->log_mutex);
-    state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, v_size, e.size(), state->local_csrs.size());
+    state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, v_size, e.size(), state->local_csrs.size(), state->iter);
   }
 }
 

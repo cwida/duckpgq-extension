@@ -13,9 +13,12 @@ pragma disable_progress_bar;
 statement ok
 set experimental_path_finding_operator=true;
 
-# statement ok
-# set experimental_path_finding_operator_partition_size=6000000;
-#
+statement ok
+set experimental_path_finding_operator_heavy_partition_fraction = 0.5;
+
+statement ok
+set experimental_path_finding_operator_light_partition_multiplier = 1;
+
 statement ok
 create or replace table snb_pairs as (
    select src, dst

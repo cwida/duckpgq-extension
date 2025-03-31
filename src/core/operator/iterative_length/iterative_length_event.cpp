@@ -29,11 +29,14 @@ void IterativeLengthEvent::Schedule() {
 void IterativeLengthEvent::FinishEvent() {
   auto now = std::chrono::system_clock::now();
   auto time_t_now = std::chrono::system_clock::to_time_t(now);
+
+  auto heavy_partition_fraction = std::to_string(GetHeavyPartitionFraction(gbfs_state->context));
+  auto light_partition_multiplier = std::to_string(GetLightPartitionMultiplier(gbfs_state->context));
   std::stringstream ss;
   ss << std::put_time(std::localtime(&time_t_now), "%Y-%m-%d_%H-%M-%S");
   auto timestamp = ss.str();
-  string file_name = "timing_results_" + timestamp + + "_threads_" + std::to_string(gbfs_state->num_threads) + ".csv";
-  // gbfs_state->WriteTimingResults(file_name);
+  string file_name = "timing_results_" + timestamp + + "_threads_" + std::to_string(gbfs_state->num_threads) + "_" + heavy_partition_fraction + "_" + light_partition_multiplier + ".csv";
+  gbfs_state->WriteTimingResults(file_name);
 }
 
 } // namespace core

@@ -140,9 +140,9 @@ void LocalCSRTask::DeterminePartitions() const {
 
   // Split into heavy and light partitions
   idx_t heavy_partition_count = local_csr_state->num_threads;
-  idx_t light_partition_count = local_csr_state->num_threads;
+  idx_t light_partition_count = local_csr_state->num_threads * GetLightPartitionMultiplier(local_csr_state->context);
 
-  idx_t heavy_edge_budget = static_cast<idx_t>(total_edges * 0.75);
+  idx_t heavy_edge_budget = static_cast<idx_t>(total_edges * GetHeavyPartitionFraction(local_csr_state->context));
   idx_t light_edge_budget = total_edges - heavy_edge_budget;
 
   idx_t heavy_target_per_partition = heavy_edge_budget / heavy_partition_count;

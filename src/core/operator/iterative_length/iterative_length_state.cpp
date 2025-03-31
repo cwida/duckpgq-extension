@@ -40,9 +40,9 @@ void IterativeLengthState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, co
 void IterativeLengthState::WriteTimingResults(const std::string &filename) {
   std::ofstream file(filename);
   if (file.is_open()) {
-    file << "ThreadID,CoreID,Time(ms),ThreadCount,vsize,esize,numPartitions\n";
+    file << "ThreadID,CoreID,Time(ms),ThreadCount,vsize,esize,numPartitions,Iter\n";
     for (const auto &entry : timing_data) {
-      file << std::get<0>(entry) << "," << std::get<1>(entry) << "," << std::get<2>(entry) << "," << std::get<3>(entry) << "," << std::get<4>(entry) << "," << std::get<5>(entry) << "," << std::get<6>(entry) << "\n";
+      file << std::get<0>(entry) << "," << std::get<1>(entry) << "," << std::get<2>(entry) << "," << std::get<3>(entry) << "," << std::get<4>(entry) << "," << std::get<5>(entry) << "," << std::get<6>(entry) << "," << std::get<7>(entry) << "\n";
     }
     file.close();
   }
