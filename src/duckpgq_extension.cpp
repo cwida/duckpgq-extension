@@ -17,6 +17,12 @@ static void LoadInternal(DatabaseInstance &instance) {
     connection->registered_state->Insert(
         "duckpgq", make_shared_ptr<DuckPGQState>(connection));
   }
+
+  // Fill in extension load information.
+  std::string description =
+      StringUtil::Format("Adds support for SQL/PGQ and graph algorithms.");
+  ExtensionUtil::RegisterExtension(instance, /*name=*/"duckpgq",
+                                   ExtensionLoadedInfo{std::move(description)});
 }
 
 void DuckpgqExtension::Load(DuckDB &db) { LoadInternal(*db.instance); }
