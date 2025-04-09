@@ -25,7 +25,7 @@ jobs:
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.2.1
     with:
       duckdb_version: v1.2.2
-      ci_tools_version: v1.2.2
+      ci_tools_version: v1.2.1
       extension_name: duckpgq
 
   duckdb-stable-deploy:
