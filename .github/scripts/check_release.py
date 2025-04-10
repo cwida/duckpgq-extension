@@ -34,7 +34,11 @@ if latest_release != last_seen:
     repo = "cwida/duckpgq-extension"
     token = os.environ["GITHUB_TOKEN"]
     issues_url = f"https://api.github.com/repos/{repo}/issues"
-    auth_headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    auth_headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "duckpgq-release-bot"
+    }
 
     # Create the issue
     issue_data = {"title": issue_title, "body": issue_body}
