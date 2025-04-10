@@ -25,5 +25,5 @@ jobs:
 
       - name: Run release checker
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_CREATE_ISSUES }}
+          GH_PAT: ${{ secrets.PAT_CREATE_ISSUES }}
         run: python .github/scripts/check_release.py
