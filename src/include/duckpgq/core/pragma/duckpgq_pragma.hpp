@@ -18,10 +18,12 @@ public:
   //! Register the PRAGMA function
   static void Register(DatabaseInstance &instance) {
     RegisterShowPropertyGraphs(instance);
+    RegisterCreateVertexTable(instance);
   }
 
 private:
   static void RegisterShowPropertyGraphs(DatabaseInstance &instance);
+  static void RegisterCreateVertexTable(DatabaseInstance &instance);
 };
 
 } // namespace core
