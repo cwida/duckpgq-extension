@@ -40,6 +40,7 @@ if latest_release != last_seen:
         "User-Agent": "duckpgq-release-bot"
     }
 
+
     # Create the issue
     issue_data = {"title": issue_title, "body": issue_body}
     r = requests.post(issues_url, headers=auth_headers, json=issue_data)
