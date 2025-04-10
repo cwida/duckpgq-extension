@@ -49,6 +49,111 @@ load 'duckpgq';
 ## DuckPGQ Extension Availability
 
 <details>
+<summary>Version v1.2.2</summary>
+
+### Linux
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [linux_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.2/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_musl        | [linux_amd64_musl](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.2/linux_amd64_musl/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.2/linux_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Osx
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [osx_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.2/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.2/osx_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Wasm
+
+| Architecture | Download Link |
+|--------------|---------------|
+| eh        | [wasm_eh](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.2/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.2/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.2/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+
+### Windows
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [windows_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.2/windows_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_mingw        | [windows_amd64_mingw](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.2/windows_amd64_mingw/duckpgq.duckdb_extension.gz>) |
+
+</details>
+
+<details>
+<summary>Version v1.2.1</summary>
+
+### Linux
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [linux_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.1/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_musl        | [linux_amd64_musl](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.1/linux_amd64_musl/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.1/linux_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Osx
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [osx_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.1/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.1/osx_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Wasm
+
+| Architecture | Download Link |
+|--------------|---------------|
+| eh        | [wasm_eh](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.1/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.1/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.1/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+
+### Windows
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [windows_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.1/windows_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_mingw        | [windows_amd64_mingw](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.1/windows_amd64_mingw/duckpgq.duckdb_extension.gz>) |
+
+</details>
+
+<details>
+<summary>Version v1.2.0</summary>
+
+### Linux
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [linux_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.0/linux_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_musl        | [linux_amd64_musl](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.0/linux_amd64_musl/duckpgq.duckdb_extension.gz>) |
+| arm64        | [linux_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.0/linux_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Osx
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [osx_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.0/osx_amd64/duckpgq.duckdb_extension.gz>) |
+| arm64        | [osx_arm64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.0/osx_arm64/duckpgq.duckdb_extension.gz>) |
+
+### Wasm
+
+| Architecture | Download Link |
+|--------------|---------------|
+| eh        | [wasm_eh](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.0/wasm_eh/duckpgq.duckdb_extension.wasm>) |
+| mvp        | [wasm_mvp](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.0/wasm_mvp/duckpgq.duckdb_extension.wasm>) |
+| threads        | [wasm_threads](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.0/wasm_threads/duckpgq.duckdb_extension.wasm>) |
+
+### Windows
+
+| Architecture | Download Link |
+|--------------|---------------|
+| amd64        | [windows_amd64](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.0/windows_amd64/duckpgq.duckdb_extension.gz>) |
+| amd64_mingw        | [windows_amd64_mingw](<https://duckpgq.s3.eu-north-1.amazonaws.com/v1.2.0/windows_amd64_mingw/duckpgq.duckdb_extension.gz>) |
+
+</details>
+
+<details>
 <summary>Version v1.1.3</summary>
 
 ### Linux
