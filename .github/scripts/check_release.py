@@ -31,7 +31,7 @@ if latest_release != last_seen:
         f"Previous similar issue: [#231](https://github.com/cwida/duckpgq-extension/issues/231)"
     )
 
-    repo = os.environ["GITHUB_REPOSITORY"]
+    repo = "cwida/duckpgq-extension"
     token = os.environ["GITHUB_TOKEN"]
     issues_url = f"https://api.github.com/repos/{repo}/issues"
     auth_headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
