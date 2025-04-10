@@ -1,6 +1,9 @@
 name: Check for new DuckDB release
 
 on:
+  push:
+    branches:
+      - duckdb-release-bot
   schedule:
     - cron: "0 7 * * *" # runs daily at 07:00 UTC
   workflow_dispatch:
