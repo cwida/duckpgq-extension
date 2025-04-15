@@ -93,10 +93,6 @@ vector<unique_ptr<ColumnRefExpression>> GetColRefExprFromPg(
   auto iter = alias_map.find(alias);
   D_ASSERT(iter != alias_map.end());
   const auto &tbl = iter->second;
-  // Skip edge table.
-  if (!tbl->is_vertex_table) {
-    return registered_col_names;
-  }
   registered_col_names.reserve(tbl->column_names.size());
   for (const auto &cur_col : tbl->column_names) {
     auto new_col_names = vector<string>{"", ""};
@@ -1213,12 +1209,10 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     // Handle StarExpression.
     auto *star_expression = dynamic_cast<StarExpression *>(expression.get());
     if (star_expression != nullptr) {
-      // Skip edge table columns.
       if (!star_expression->relation_name.empty()) {
         auto tbl_iter = alias_to_vertex_and_edge_tables.find(
             star_expression->relation_name);
-        if (tbl_iter != alias_to_vertex_and_edge_tables.end() &&
-            !tbl_iter->second->is_vertex_table) {
+        if (tbl_iter == alias_to_vertex_and_edge_tables.end()) {
           continue;
         }
       }
