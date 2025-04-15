@@ -65,21 +65,21 @@ FROM GRAPH_TABLE(pg
 3	Peter	0	VU
 4	David	3	CWI
 
-query IIIII
+query IIIIIII
 -SELECT *
 FROM GRAPH_TABLE(pg
     MATCH (p:Person)-[w:worksAt]->(u:organisation)
     COLUMNS (p.*, u.*, w.*)
     ) result
 ----
-0	Daniel	1	1	UvA
-0	Daniel	2	2	EY
-0	Daniel	3	2	CWI
-1	Tavneet	2	2	EY
-1	Tavneet	3	2	CWI
-2	Gabor	3	2	CWI
-3	Peter	0	1	VU
-4	David	3	2	CWI
+0	Daniel	1	1	UvA	1	0
+0	Daniel	2	2	EY	2	0
+0	Daniel	3	2	CWI	3	0
+1	Tavneet	2	2	EY	2	1
+1	Tavneet	3	2	CWI	3	1
+2	Gabor	3	2	CWI	3	2
+3	Peter	0	1	VU	0	3
+4	David	3	2	CWI	3	4
 
 query IIIII
 -SELECT *
