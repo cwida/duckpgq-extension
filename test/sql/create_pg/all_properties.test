@@ -45,6 +45,7 @@ VERTEX TABLES (
 EDGE TABLES (
     know    SOURCE KEY ( src ) REFERENCES Student ( id )
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            PROPERTIES (src)
             LABEL Knows
     );
 
@@ -77,3 +78,29 @@ query III
 2	2	[2]
 2	3	[2, 3]
 3	3	[3]
+
+
+statement error
+-FROM GRAPH_TABLE (pg_only_id MATCH (p:Person)-[k:Knows]->(p2:Person) COLUMNS (dst));
+----
+Binder Error: Property dst is never registered!
+
+query I
+-FROM GRAPH_TABLE (pg_only_id MATCH (p:Person)-[k:Knows]->(p2:Person) COLUMNS (src));
+----
+0
+0
+0
+1
+1
+2
+
+query I
+-FROM GRAPH_TABLE (pg_only_id MATCH (p:Person)-[k:Knows]->(p2:Person) COLUMNS (p));
+----
+{'id': 0, 'name': Daniel}
+{'id': 0, 'name': Daniel}
+{'id': 0, 'name': Daniel}
+{'id': 1, 'name': Tavneet}
+{'id': 1, 'name': Tavneet}
+{'id': 2, 'name': Gabor}

@@ -51,6 +51,10 @@ statement ok con1
             LABEL follows);
 
 statement ok con1
+SELECT * FROM bluesky.account;
+
+
+statement ok con1
 -FROM GRAPH_TABLE (bluesky MATCH (a:account));
 
 query I

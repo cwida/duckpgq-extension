@@ -1091,6 +1091,18 @@ void PGQMatchFunction::CheckColumnBinding(
     if (column_ref->column_names.back() == "rowid") {
       continue;
     }
+    if (column_ref->column_names.size() == 1) {
+      bool single_alias = false;
+      for (const auto &alias : alias_to_vertex_and_edge_tables) {
+        if (alias.first == column_ref->column_names[0]) {
+          single_alias = true;
+          break;
+        }
+      }
+      if (single_alias) {
+        continue;
+      }
+    }
     const auto cur_fq_col_name =
         StringUtil::Join(column_ref->column_names, /*separator=*/".");
     if (all_fq_col_names.find(cur_fq_col_name) == all_fq_col_names.end()) {

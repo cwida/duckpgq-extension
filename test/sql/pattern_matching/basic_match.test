@@ -305,5 +305,46 @@ query II
 2	Gabor
 4	David
 
+query I
+-FROM GRAPH_TABLE (pg
+    MATCH
+    (a:PERSON)-[k:knows]->(b:person)
+    COLUMNS (a)
+    ) study;
+----
+{'id': 0, 'name': Daniel}
+{'id': 0, 'name': Daniel}
+{'id': 0, 'name': Daniel}
+{'id': 3, 'name': Peter}
+{'id': 1, 'name': Tavneet}
+{'id': 1, 'name': Tavneet}
+{'id': 2, 'name': Gabor}
+{'id': 4, 'name': David}
+
+query III
+-FROM GRAPH_TABLE (pg
+    MATCH
+    (a:PERSON)-[k:knows]->(b:person)
+    COLUMNS (a, k, b)
+    ) study;
+----
+{'id': 0, 'name': Daniel}	{'src': 0, 'dst': 1, 'createDate': 10}	{'id': 1, 'name': Tavneet}
+{'id': 0, 'name': Daniel}	{'src': 0, 'dst': 2, 'createDate': 11}	{'id': 2, 'name': Gabor}
+{'id': 0, 'name': Daniel}	{'src': 0, 'dst': 3, 'createDate': 12}	{'id': 3, 'name': Peter}
+{'id': 3, 'name': Peter}	{'src': 3, 'dst': 0, 'createDate': 13}	{'id': 0, 'name': Daniel}
+{'id': 1, 'name': Tavneet}	{'src': 1, 'dst': 2, 'createDate': 14}	{'id': 2, 'name': Gabor}
+{'id': 1, 'name': Tavneet}	{'src': 1, 'dst': 3, 'createDate': 15}	{'id': 3, 'name': Peter}
+{'id': 2, 'name': Gabor}	{'src': 2, 'dst': 3, 'createDate': 16}	{'id': 3, 'name': Peter}
+{'id': 4, 'name': David}	{'src': 4, 'dst': 3, 'createDate': 17}	{'id': 3, 'name': Peter}
+
+statement error
+-FROM GRAPH_TABLE (pg
+    MATCH
+    (a:PERSON)-[k:knows]->(b:person)
+    COLUMNS (doesnotexist, k, b)
+    ) study;
+----
+Binder Error: Property doesnotexist is never registered!
+
 statement ok
 -DROP PROPERTY GRAPH pg;
