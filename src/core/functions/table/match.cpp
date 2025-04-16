@@ -93,10 +93,6 @@ vector<unique_ptr<ColumnRefExpression>> GetColRefExprFromPg(
   auto iter = alias_map.find(alias);
   D_ASSERT(iter != alias_map.end());
   const auto &tbl = iter->second;
-  // Skip edge table.
-  if (!tbl->is_vertex_table) {
-    return registered_col_names;
-  }
   registered_col_names.reserve(tbl->column_names.size());
   for (const auto &cur_col : tbl->column_names) {
     auto new_col_names = vector<string>{"", ""};
@@ -1091,6 +1087,18 @@ void PGQMatchFunction::CheckColumnBinding(
     if (column_ref->column_names.back() == "rowid") {
       continue;
     }
+    if (column_ref->column_names.size() == 1) {
+      bool single_alias = false;
+      for (const auto &alias : alias_to_vertex_and_edge_tables) {
+        if (alias.first == column_ref->column_names[0]) {
+          single_alias = true;
+          break;
+        }
+      }
+      if (single_alias) {
+        continue;
+      }
+    }
     const auto cur_fq_col_name =
         StringUtil::Join(column_ref->column_names, /*separator=*/".");
     if (all_fq_col_names.find(cur_fq_col_name) == all_fq_col_names.end()) {
@@ -1201,12 +1209,10 @@ PGQMatchFunction::MatchBindReplace(ClientContext &context,
     // Handle StarExpression.
     auto *star_expression = dynamic_cast<StarExpression *>(expression.get());
     if (star_expression != nullptr) {
-      // Skip edge table columns.
       if (!star_expression->relation_name.empty()) {
         auto tbl_iter = alias_to_vertex_and_edge_tables.find(
             star_expression->relation_name);
-        if (tbl_iter != alias_to_vertex_and_edge_tables.end() &&
-            !tbl_iter->second->is_vertex_table) {
+        if (tbl_iter == alias_to_vertex_and_edge_tables.end()) {
           continue;
         }
       }
