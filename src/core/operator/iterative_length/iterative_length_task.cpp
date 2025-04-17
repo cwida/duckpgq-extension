@@ -123,7 +123,7 @@ void IterativeLengthTask::IterativeLength() {
       state->local_csr_lock.unlock();
       for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
         next[i] = 0;
-        visit[i] &= state->lane_active;
+        // visit[i] &= state->lane_active;
       }
     }
     barrier->Wait(worker_id);
