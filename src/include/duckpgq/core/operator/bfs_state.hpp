@@ -42,6 +42,7 @@ public:
   Vector &dst_data;
   int64_t *dst;
   int64_t lane_to_num[LANE_LIMIT];
+  bitset<LANE_LIMIT> lane_active;
 
   mutex log_mutex;
   std::vector<std::tuple<std::thread::id, int, double, idx_t, size_t, size_t, size_t, int64_t>> timing_data; // (Thread ID, Core ID, Time in ms)

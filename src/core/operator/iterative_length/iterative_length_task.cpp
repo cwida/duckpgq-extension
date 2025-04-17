@@ -109,7 +109,7 @@ void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> 
 
 void IterativeLengthTask::IterativeLength() {
     auto &seen = state->seen;
-    const auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
+    auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
     auto &next = state->iter & 1 ? state->visit2 : state->visit1;
     auto &barrier = state->barrier;
     // Clear `next` array
@@ -123,6 +123,7 @@ void IterativeLengthTask::IterativeLength() {
       state->local_csr_lock.unlock();
       for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
         next[i] = 0;
+        visit[i] &= state->lane_active;
       }
     }
     barrier->Wait(worker_id);
@@ -180,6 +181,7 @@ void IterativeLengthTask::ReachDetect() const {
             state->iter; /* found at iter => iter = path length */
         state->lane_to_num[lane] = -1; // mark inactive
         state->active--;
+        state->lane_active[lane] = false;
       }
     }
   }
@@ -200,6 +202,7 @@ void IterativeLengthTask::UnReachableSet() const {
       result_validity.SetInvalid(search_num);
       result_data[search_num] = (int64_t)-1; /* no path */
       state->lane_to_num[lane] = -1;     // mark inactive
+      state->lane_active[lane] = false;
     }
   }
 }

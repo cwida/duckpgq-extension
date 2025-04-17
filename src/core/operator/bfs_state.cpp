@@ -77,6 +77,7 @@ void BFSState::InitializeLanes() {
         visit1[src[src_pos]][lane] = true;
         // bfs_state->seen[bfs_state->src[src_pos]][lane] = true;
         lane_to_num[lane] = search_num; // active lane
+        lane_active[lane] = true;
         active++;
         seen_mask[lane] = false;
         break;
