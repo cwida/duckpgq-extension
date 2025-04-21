@@ -10,15 +10,11 @@
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
-#include <algorithm>
-#include <cmath> // for std::sqrt
 #include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
 #include <duckpgq/core/operator/local_csr/local_csr_event.hpp>
-#include <duckpgq/core/option/duckpgq_option.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_state.hpp>
 #include <fstream>
-#include <numeric> // for std::accumulate
 #include <thread>
 
 namespace duckpgq {
@@ -47,10 +43,7 @@ PathFindingLocalSinkState::PathFindingLocalSinkState(ClientContext &context, con
 
 void PathFindingLocalSinkState::Sink(DataChunk &input, idx_t child) {
   if (child == 1) {
-    // Add the tasks (src, dst) to sink
-    // Optimizations: Eliminate duplicate sources/destinations
-    //   - For example: group by source, list(destination)
-    local_pairs.Append(input);
+   local_pairs.Append(input);
   }
 }
 
@@ -70,142 +63,6 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context,
   auto &scheduler = TaskScheduler::GetScheduler(context);
   num_threads = scheduler.NumberOfThreads();
 }
-
-
-// void FillLocalCSR(shared_ptr<LocalCSR> &local_csr, idx_t start_vertex, idx_t end_vertex, CSR* csr) {
-//     idx_t v_offset = 0;
-//     local_csr->v.reserve(csr->vsize);
-//
-//     for (idx_t j = 0; j < csr->vsize - 1; j++) {
-//         local_csr->v.push_back(v_offset);  // Store vertex offset
-//         for (idx_t e_offset = csr->v[j]; e_offset < csr->v[j + 1]; e_offset++) {
-//             auto dst = csr->e[e_offset];
-//             if (dst >= start_vertex && dst < end_vertex) {
-//                 v_offset++;
-//                 local_csr->e.push_back(dst);
-//             }
-//         }
-//     }
-//     local_csr->v.push_back(v_offset);  // Final offset for last vertex
-// }
-
-// // Recursive function to partition graph dynamically
-// void PathFindingGlobalSinkState::PartitionGraph(idx_t start_vertex, idx_t end_vertex) {
-//     // Calculate total edge count in this range
-//     idx_t edge_count = 0;
-//     for (idx_t v = start_vertex; v < end_vertex; v++) {
-//         edge_count += (csr->v[v + 1] - csr->v[v]);
-//     }
-//
-//     if (edge_count <= GetPartitionSize(context_)) {
-//         // Acceptable partition size → create local CSR
-//         auto local_csr = make_shared_ptr<LocalCSR>();
-//         FillLocalCSR(local_csr, start_vertex, end_vertex, csr);
-//         if (!local_csr->e.empty()) {
-//             local_csrs.push_back(local_csr);
-//             partition_ranges.emplace_back(start_vertex, end_vertex);
-//         }
-//     } else {
-//         // Too large → Try to split into two smaller partitions
-//         idx_t mid_vertex = (start_vertex + end_vertex) / 2;
-//
-//         // **Prevent infinite splitting**
-//         if (mid_vertex == start_vertex || mid_vertex == end_vertex) {
-//             // We cannot split further → **Keep this large partition**
-//             auto local_csr = make_shared_ptr<LocalCSR>();
-//             FillLocalCSR(local_csr, start_vertex, end_vertex, csr);
-//             if (!local_csr->e.empty()) {
-//               local_csrs.push_back(local_csr);
-//               partition_ranges.emplace_back(start_vertex, end_vertex);
-//             }
-//             return;
-//         }
-//
-//         // Recursive partitioning
-//         PartitionGraph(start_vertex, mid_vertex);
-//         PartitionGraph(mid_vertex, end_vertex);
-//     }
-// }
-
-
-
-// void PathFindingGlobalSinkState::LogPartitionMetrics(const std::vector<idx_t>& edges_per_partition, idx_t total_vertices, idx_t total_edges) {
-//   if (edges_per_partition.empty()) {
-//     std::cerr << "Error: No partition data available.\n";
-//     return;
-//   }
-//
-//   idx_t total_partitions = edges_per_partition.size();
-//
-//   // Compute statistics
-//   idx_t min_edges = *std::min_element(edges_per_partition.begin(), edges_per_partition.end());
-//   idx_t max_edges = *std::max_element(edges_per_partition.begin(), edges_per_partition.end());
-//   idx_t avg_edges = total_partitions > 0 ?
-//                     std::accumulate(edges_per_partition.begin(), edges_per_partition.end(), 0) / total_partitions : 0;
-//
-//   double variance = 0.0;
-//   for (auto edges : edges_per_partition) {
-//     variance += std::pow(edges - avg_edges, 2);
-//   }
-//   variance = total_partitions > 0 ? variance / total_partitions : 0;
-//   double std_dev = std::sqrt(variance);
-//   std::string file_name = "partition_metrics_v" + std::to_string(total_vertices) + "_p" + std::to_string(GetPartitionSize(context_)) + ".csv";
-//   // Open file for logging
-//   std::ofstream log_file(file_name);
-//   if (!log_file.is_open()) {
-//     std::cerr << "Error: Unable to open log file for writing metrics.\n";
-//     return;
-//   }
-//
-//   // Write summary statistics
-//   log_file << "total_vertices,total_edges,total_partitions,min_edges,max_edges,avg_edges,std_dev\n";
-//   log_file << total_vertices << ","
-//            << total_edges << ","
-//            << total_partitions << ","
-//            << min_edges << ","
-//            << max_edges << ","
-//            << avg_edges << ","
-//            << std_dev;
-//
-//   log_file.close();
-//   std::string file_name_detailed = "partition_metrics_detailed_v" + std::to_string(total_vertices) + "_p" + std::to_string(GetPartitionSize(context_)) + ".csv";
-//   std::ofstream log_file_detailed(file_name_detailed);
-//   if (!log_file_detailed.is_open()) {
-//     std::cerr << "Error: Unable to open log file for writing metrics.\n";
-//     return;
-//   }// Write detailed partition data
-//   log_file_detailed << "partition_id,edges\n";
-//   for (size_t i = 0; i < edges_per_partition.size(); i++) {
-//     log_file_detailed << i << "," << edges_per_partition[i] << "\n";
-//   }
-//   log_file_detailed.close();
-// }
-
-// // Entry function: Initialize partitioning
-// void PathFindingGlobalSinkState::CreateThreadLocalCSRs() {
-//     local_csrs.clear();
-//     partition_ranges.clear();
-//
-//     idx_t total_vertices = csr->vsize - 2;  // Number of vertices
-//
-//     // Start recursive partitioning
-//     PartitionGraph(0, total_vertices);
-//
-//     // Optional: Sort partitions by edge size (for load balancing)
-//     std::sort(local_csrs.begin(), local_csrs.end(),
-//               [](const shared_ptr<LocalCSR>& a, const shared_ptr<LocalCSR>& b) {
-//                   return a->GetEdgeSize() > b->GetEdgeSize();  // Sort by edge count
-//               });
-//     std::vector<idx_t> edges_per_partition;
-//     for (const auto &local_csr : local_csrs) {
-//         edges_per_partition.push_back(local_csr->GetEdgeSize());
-//     }
-//     LogPartitionMetrics(edges_per_partition, total_vertices, csr->e.size());
-//
-// }
-
-
-
 
 void PathFindingGlobalSinkState::Sink(DataChunk &input, PathFindingLocalSinkState &lstate) {
   if (child == 0) {
@@ -361,8 +218,6 @@ PhysicalPathFinding::GetLocalSourceState(ExecutionContext &context,
 SourceResultType PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
                              OperatorSourceInput &input) const {
   auto &pf_sink = sink_state->Cast<PathFindingGlobalSinkState>();
-  // pf_sink.global_bfs_state->path_finding_result->SetCardinality(pf_sink.global_bfs_state->pairs->Count());
-  // pf_sink.global_bfs_state->path_finding_result->Print();
   // If there are no pairs, we're done
   if (pf_sink.global_pairs->Count() == 0) {
     return SourceResultType::FINISHED;
