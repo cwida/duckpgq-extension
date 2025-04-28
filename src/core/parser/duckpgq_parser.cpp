@@ -18,6 +18,7 @@
 #include <duckpgq/core/functions/table/drop_property_graph.hpp>
 
 #include <duckdb/parser/tableref/matchref.hpp>
+#include <duckpgq/core/functions/table/summarize_property_graph.hpp>
 
 namespace duckpgq {
 
@@ -87,10 +88,17 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement,
         dynamic_cast<ShowRef *>(node->from_table.get());
     if (describe_node) {
       ParserExtensionPlanResult result;
-      result.function = DescribePropertyGraphFunction();
       result.requires_valid_transaction = true;
       result.return_type = StatementReturnType::QUERY_RESULT;
-      return result;
+      if (describe_node->show_type == ShowType::SUMMARY) {
+        result.function = SummarizePropertyGraphFunction();
+        return result;
+      }
+      if (describe_node->show_type == ShowType::DESCRIBE) {
+        result.function = DescribePropertyGraphFunction();
+        return result;
+      }
+      throw BinderException("Unknown show type %s found.", describe_node->show_type);
     }
   }
 
