@@ -1,0 +1,19 @@
+
+require duckpgq
+
+statement ok
+import database 'duckdb/data/SNB0.003';
+
+statement ok
+-CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person LABEL Person
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows
+    );
+
+query I
+-SUMMARIZE PROPERTY GRAPH snb;
