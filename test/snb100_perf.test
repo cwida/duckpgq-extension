@@ -19,13 +19,13 @@ set experimental_path_finding_operator_heavy_partition_fraction = 0.5;
 statement ok
 set experimental_path_finding_operator_light_partition_multiplier = 1;
 
-# statement ok
-# create or replace table snb_pairs as (
-#    select src, dst
-#    from (select a.rowid as src from person a),
-#         (select b.rowid as dst from person b)
-#    using sample reservoir(16384 rows) repeatable (300)
-# );
+statement ok
+create or replace table snb_pairs as (
+   select src, dst
+   from (select a.rowid as src from person a),
+        (select b.rowid as dst from person b)
+   using sample reservoir(16384 rows) repeatable (300)
+);
 
 query III nosort lengthpairs
 WITH cte1 AS (
