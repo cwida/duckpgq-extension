@@ -37,12 +37,14 @@ public:
 
   static unique_ptr<GlobalTableFunctionState>
   SummarizePropertyGraphInit(ClientContext &context,
-                            TableFunctionInitInput &input);
+                             TableFunctionInitInput &input);
 
+  static unique_ptr<ParsedExpression> GetDistinctCount(shared_ptr<PropertyGraphTable> &pg_table, string alias, bool is_source);
 
   static unique_ptr<CommonTableExpressionInfo> CreateVertexTableCTE(shared_ptr<PropertyGraphTable> &vertex_table);
+  static unique_ptr<CommonTableExpressionInfo> CreateEdgeTableCTE(shared_ptr<PropertyGraphTable> &edge_table);
 
-
+  static unique_ptr<TableRef> HandleSingleVertexTable(shared_ptr<PropertyGraphTable> &vertex_table, string stat_table_alias);
   static unique_ptr<TableRef> SummarizePropertyGraphBindReplace(ClientContext &context,
                                         TableFunctionBindInput &input);
 };

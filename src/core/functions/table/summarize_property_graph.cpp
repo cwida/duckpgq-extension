@@ -7,31 +7,132 @@
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/star_expression.hpp"
-#include "duckdb/parser/tableref/emptytableref.hpp"
+#include "duckdb/parser/expression/subquery_expression.hpp"
+#include "duckdb/parser/expression/function_expression.hpp"
 
 namespace duckpgq {
 namespace core {
 
-unique_ptr<ParsedExpression> GetTableNameConstantExpression(PropertyGraphTable &pg_table) {
-  auto table_name_column = make_uniq<ConstantExpression>(Value(pg_table.table_name));
-  table_name_column->alias = "table_name";
+unique_ptr<ParsedExpression> GetTableNameConstantExpression(string table_name, string alias) {
+  auto table_name_column = make_uniq<ConstantExpression>(Value(table_name));
+  table_name_column->alias = alias;
   return table_name_column;
 }
+
+unique_ptr<ParsedExpression> GetConstantNullExpressionWithAlias(string alias) {
+  auto result = make_uniq<ConstantExpression>(Value());
+  result->alias = alias;
+  return result;
+}
+
+unique_ptr<ParsedExpression> IsVertexTableConstantExpression(bool is_vertex_table, string alias) {
+  auto result = make_uniq<ConstantExpression>(Value(is_vertex_table));
+  result->alias = alias;
+  return result;
+}
+unique_ptr<ParsedExpression> GetTableCount(string alias) {
+	vector<unique_ptr<ParsedExpression>> children;
+	auto aggregate_function = make_uniq<FunctionExpression>("count_star", std::move(children));
+  aggregate_function->alias = alias;
+  return std::move(aggregate_function);
+}
+
+unique_ptr<ParsedExpression>
+SummarizePropertyGraphFunction::GetDistinctCount(
+    shared_ptr<PropertyGraphTable> &pg_table, string alias, bool is_source) {
+  auto result = make_uniq<SubqueryExpression>();
+  result->subquery_type = SubqueryType::SCALAR;
+  auto select_statement = make_uniq<SelectStatement>();
+  auto select_node = make_uniq<SelectNode>();
+  select_node->from_table = make_uniq<BaseTableRef>(TableDescription(pg_table->catalog_name, pg_table->schema_name, pg_table->table_name));
+  vector<unique_ptr<ParsedExpression>> count_children;
+  auto column_to_count = is_source ? pg_table->source_fk[0] : pg_table->destination_fk[0];
+  count_children.push_back(make_uniq<ColumnRefExpression>(column_to_count, pg_table->table_name));
+  auto count_expression = make_uniq<FunctionExpression>("count", std::move(count_children));
+  count_expression->distinct = true;
+  select_node->select_list.push_back(std::move(count_expression));
+  select_statement->node = std::move(select_node);
+  result->subquery = std::move(select_statement);
+  result->alias = alias;
+  return result;
+}
+
 
 
 unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateVertexTableCTE(shared_ptr<PropertyGraphTable> &vertex_table) {
   auto cte_info = make_uniq<CommonTableExpressionInfo>();
   auto select_statement = make_uniq<SelectStatement>();
   auto select_node = make_uniq<SelectNode>();
-  select_node->select_list.push_back(GetTableNameConstantExpression(*vertex_table));
-  select_node->select_list.push_back(make_uniq<ConstantExpression>(Value())); // source table name (NULL for vertex tables)
-  select_node->select_list.push_back(make_uniq<ConstantExpression>(Value())); // destination table name (NULL for vertex tables)
-
+  select_node->select_list.push_back(GetTableNameConstantExpression(vertex_table->table_name, "table_name"));
+  select_node->select_list.push_back(IsVertexTableConstantExpression(true, "is_vertex_table"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("source_table")); // source table name (NULL for vertex tables)
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("destination_table")); // destination table name (NULL for vertex tables)
+  select_node->select_list.push_back(GetTableCount("vertex_count"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("edge_count")); // edge_count (NULL for vertex tables)
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("unique_source_count"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("unique_destination_count"));
   select_node->from_table = make_uniq<BaseTableRef>(TableDescription(vertex_table->catalog_name, vertex_table->schema_name, vertex_table->table_name));
   select_statement->node = std::move(select_node);
   cte_info->query = std::move(select_statement);
   return cte_info;
 }
+
+unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateEdgeTableCTE(shared_ptr<PropertyGraphTable> &edge_table) {
+  auto cte_info = make_uniq<CommonTableExpressionInfo>();
+  auto select_statement = make_uniq<SelectStatement>();
+  auto select_node = make_uniq<SelectNode>();
+  select_node->select_list.push_back(GetTableNameConstantExpression(edge_table->table_name, "table_name"));
+  select_node->select_list.push_back(IsVertexTableConstantExpression(false, "is_vertex_table"));
+  select_node->select_list.push_back(GetTableNameConstantExpression(edge_table->source_reference, "source_table")); // source table name (NULL for vertex tables)
+  select_node->select_list.push_back(GetTableNameConstantExpression(edge_table->destination_reference, "destination_table")); // destination table name (NULL for vertex tables)
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("vertex_count"));
+  select_node->select_list.push_back(GetTableCount("edge_count"));
+  select_node->select_list.push_back(GetDistinctCount(edge_table, "unique_source_count", true));
+  select_node->select_list.push_back(GetDistinctCount(edge_table, "unique_destination_count", false));
+  select_node->from_table = make_uniq<BaseTableRef>(TableDescription(edge_table->catalog_name, edge_table->schema_name, edge_table->table_name));
+  select_statement->node = std::move(select_node);
+  cte_info->query = std::move(select_statement);
+  return cte_info;
+}
+
+unique_ptr<TableRef> SummarizePropertyGraphFunction::HandleSingleVertexTable(shared_ptr<PropertyGraphTable> &vertex_table, string stat_table_alias) {
+    auto select_node = make_uniq<SelectNode>();
+    select_node->cte_map.map.insert(stat_table_alias, CreateVertexTableCTE(vertex_table));
+    auto base_table_ref = make_uniq<BaseTableRef>();
+    base_table_ref->table_name = stat_table_alias;
+    select_node->from_table = std::move(base_table_ref);
+    select_node->select_list.push_back(make_uniq<StarExpression>());
+    auto select_stmt = make_uniq<SelectStatement>();
+    select_stmt->node = std::move(select_node);
+    auto subquery = make_uniq<SubqueryRef>(std::move(select_stmt));
+    return std::move(subquery);
+}
+
+void AddToUnionNode(unique_ptr<SetOperationNode> &final_union_node, unique_ptr<SelectNode> &inner_select_node) {
+  if (final_union_node->left == nullptr) {
+      final_union_node->left = std::move(inner_select_node);
+    } else if (final_union_node->right == nullptr) {
+      final_union_node->right = std::move(inner_select_node);
+    } else {
+      auto new_union_node = make_uniq<SetOperationNode>();
+      new_union_node->setop_type = SetOperationType::UNION;
+      new_union_node->setop_all = true;
+      new_union_node->left = std::move(inner_select_node);
+      new_union_node->right = std::move(final_union_node);
+      final_union_node = std::move(new_union_node);
+    }
+}
+
+unique_ptr<SelectNode> CreateInnerSelectStatNode(shared_ptr<PropertyGraphTable> &pg_table, string stat_table_alias) {
+    auto inner_select_node = make_uniq<SelectNode>();
+    inner_select_node->select_list.push_back(make_uniq<StarExpression>());
+    auto base_table_ref = make_uniq<BaseTableRef>();
+    base_table_ref->table_name = stat_table_alias;
+    inner_select_node->from_table = std::move(base_table_ref);
+    return inner_select_node;
+}
+
+
 
 unique_ptr<TableRef> SummarizePropertyGraphFunction::SummarizePropertyGraphBindReplace(
   ClientContext &context,
@@ -40,22 +141,35 @@ unique_ptr<TableRef> SummarizePropertyGraphFunction::SummarizePropertyGraphBindR
 
   string property_graph = bind_input.inputs[0].GetValue<string>();
   auto pg_info = duckpgq_state->GetPropertyGraph(property_graph);
-  auto select_node = make_uniq<SelectNode>();
-  for (auto &vertex_table : pg_info->vertex_tables) {
-    select_node->cte_map.map.insert(vertex_table->table_name + "_stats", CreateVertexTableCTE(vertex_table));
-    auto base_table_ref = make_uniq<BaseTableRef>();
-    base_table_ref->table_name = vertex_table->table_name + "_stats";
-    select_node->from_table = std::move(base_table_ref);
+
+  if (pg_info->vertex_tables.size() == 1 && pg_info->edge_tables.size() == 0) {
+    // Special case where we don't want to create a union across the different tables
+
+    // todo(dtenwolde) create test case for this
+    string stat_table_alias = pg_info->vertex_tables[0]->table_name + "_stats";
+    return HandleSingleVertexTable(pg_info->vertex_tables[0], stat_table_alias);
   }
 
-  select_node->select_list.push_back(make_uniq<StarExpression>());
+  auto final_union_node = make_uniq<SetOperationNode>();
+  final_union_node->setop_type = SetOperationType::UNION;
+  final_union_node->setop_all = true;
+  for (auto &vertex_table : pg_info->vertex_tables) {
+    string stat_table_alias = vertex_table->table_name + "_stats";
+    auto inner_select_node = CreateInnerSelectStatNode(vertex_table, stat_table_alias);
+    inner_select_node->cte_map.map.insert(stat_table_alias, CreateVertexTableCTE(vertex_table));
+    AddToUnionNode(final_union_node, inner_select_node);
+  }
+  for (auto &edge_table : pg_info->edge_tables) {
+    string stat_table_alias = edge_table->source_reference + "_" + edge_table->table_name + edge_table->destination_reference + "_stats";
+    auto inner_select_node = CreateInnerSelectStatNode(edge_table, stat_table_alias);
+    inner_select_node->cte_map.map.insert(stat_table_alias, CreateEdgeTableCTE(edge_table)); // todo(dtenwolde) make sure it works even if we have multiple edge tables with different relationships
+    AddToUnionNode(final_union_node, inner_select_node);
+  }
 
   auto select_stmt = make_uniq<SelectStatement>();
-  select_stmt->node = std::move(select_node);
+  select_stmt->node = std::move(final_union_node);
   auto subquery = make_uniq<SubqueryRef>(std::move(select_stmt));
   subquery->Print();
-
-
   return std::move(subquery);
 }
 
