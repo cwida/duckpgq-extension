@@ -20,9 +20,8 @@ class SummarizePropertyGraphFunction : public TableFunction {
 public:
   SummarizePropertyGraphFunction() {
     name = "summarize_property_graph";
-    bind = SummarizePropertyGraphBind;
-    init_global = SummarizePropertyGraphInit;
-    function = SummarizePropertyGraphFunc;
+    arguments.push_back(LogicalType::VARCHAR);
+    bind_replace = SummarizePropertyGraphBindReplace;
   }
 
   struct SummarizePropertyGraphBindData : public TableFunctionData {
@@ -36,17 +35,16 @@ public:
     bool done = false;
   };
 
-  static unique_ptr<FunctionData> SummarizePropertyGraphBind(
-      ClientContext &context, TableFunctionBindInput &input,
-      vector<LogicalType> &return_types, vector<string> &names);
-
   static unique_ptr<GlobalTableFunctionState>
   SummarizePropertyGraphInit(ClientContext &context,
                             TableFunctionInitInput &input);
 
-  static void SummarizePropertyGraphFunc(ClientContext &context,
-                                        TableFunctionInput &data_p,
-                                        DataChunk &output);
+
+  static unique_ptr<CommonTableExpressionInfo> CreateVertexTableCTE(shared_ptr<PropertyGraphTable> &vertex_table);
+
+
+  static unique_ptr<TableRef> SummarizePropertyGraphBindReplace(ClientContext &context,
+                                        TableFunctionBindInput &input);
 };
 
 } // namespace core

@@ -16,4 +16,4 @@ EDGE TABLES (
     );
 
 query I
--SUMMARIZE PROPERTY GRAPH snb;
+FROM summarize_property_graph(snb)
