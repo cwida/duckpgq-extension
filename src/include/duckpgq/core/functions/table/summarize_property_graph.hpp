@@ -39,7 +39,7 @@ public:
   SummarizePropertyGraphInit(ClientContext &context,
                              TableFunctionInitInput &input);
 
-  static unique_ptr<ParsedExpression> GetDegreeStatistics(string aggregate_function, bool is_in_degree);
+  static unique_ptr<ParsedExpression> GetDegreeStatistics(string aggregate_function, bool is_in_degree, string alias, const Value &quantile_value = nullptr);
   static unique_ptr<CommonTableExpressionInfo> CreateMaterializedDegreeCTE(shared_ptr<PropertyGraphTable> &pg_table, string degree_column, bool is_in_degree);
   static unique_ptr<ParsedExpression> GetIsolatedNodes(shared_ptr<PropertyGraphTable> &pg_table, string alias, bool is_source);
   static unique_ptr<ParsedExpression> GetDistinctCount(shared_ptr<PropertyGraphTable> &pg_table, string alias, bool is_source);
