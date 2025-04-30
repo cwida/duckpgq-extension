@@ -39,6 +39,7 @@ public:
   SummarizePropertyGraphInit(ClientContext &context,
                              TableFunctionInitInput &input);
 
+  static unique_ptr<ParsedExpression> GetIsolatedNodes(shared_ptr<PropertyGraphTable> &pg_table, string alias, bool is_source);
   static unique_ptr<ParsedExpression> GetDistinctCount(shared_ptr<PropertyGraphTable> &pg_table, string alias, bool is_source);
 
   static unique_ptr<CommonTableExpressionInfo> CreateVertexTableCTE(shared_ptr<PropertyGraphTable> &vertex_table);
