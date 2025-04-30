@@ -92,6 +92,7 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement,
       result.return_type = StatementReturnType::QUERY_RESULT;
       if (describe_node->show_type == ShowType::SUMMARY) {
         result.function = SummarizePropertyGraphFunction();
+        result.parameters.push_back(Value(describe_node->table_name));
         return result;
       }
       if (describe_node->show_type == ShowType::DESCRIBE) {
