@@ -156,16 +156,16 @@ unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateVert
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("isolated_sources"));
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("isolated_destinations"));
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("avg_in_degree"));
-  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("avg_out_degree"));
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("min_in_degree"));
-  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("min_out_degree"));
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("max_in_degree"));
-  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("max_out_degree"));
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("q25_in_degree"));
-  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("q25_out_degree"));
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("q50_in_degree"));
-  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("q50_out_degree"));
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("q75_in_degree"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("avg_out_degree"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("min_out_degree"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("max_out_degree"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("q25_out_degree"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("q50_out_degree"));
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("q75_out_degree"));
   select_node->from_table = make_uniq<BaseTableRef>(TableDescription(vertex_table->catalog_name, vertex_table->schema_name, vertex_table->table_name));
   select_statement->node = std::move(select_node);
@@ -194,21 +194,17 @@ unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateEdge
   select_node->select_list.push_back(GetIsolatedNodes(edge_table, "isolated_destinations", false));
 
   select_node->select_list.push_back(GetDegreeStatistics("avg", true, "avg"));
-  select_node->select_list.push_back(GetDegreeStatistics("avg", false, "avg"));
-
   select_node->select_list.push_back(GetDegreeStatistics("min", true, "min"));
-  select_node->select_list.push_back(GetDegreeStatistics("min", false, "min"));
-
   select_node->select_list.push_back(GetDegreeStatistics("max", true, "max"));
-  select_node->select_list.push_back(GetDegreeStatistics("max", false, "max"));
-
   select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", true, "q25", Value::FLOAT(0.25)));
-  select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", false, "q25", Value::FLOAT(0.25)));
-
   select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", true, "q50", Value::FLOAT(0.50)));
-  select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", false, "q50", Value::FLOAT(0.50)));
-
   select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", true, "q75", Value::FLOAT(0.75)));
+
+  select_node->select_list.push_back(GetDegreeStatistics("avg", false, "avg"));
+  select_node->select_list.push_back(GetDegreeStatistics("min", false, "min"));
+  select_node->select_list.push_back(GetDegreeStatistics("max", false, "max"));
+  select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", false, "q25", Value::FLOAT(0.25)));
+  select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", false, "q50", Value::FLOAT(0.50)));
   select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", false, "q75", Value::FLOAT(0.75)));
 
 
@@ -290,7 +286,6 @@ unique_ptr<TableRef> SummarizePropertyGraphFunction::SummarizePropertyGraphBindR
   auto select_stmt = make_uniq<SelectStatement>();
   select_stmt->node = std::move(final_union_node);
   auto subquery = make_uniq<SubqueryRef>(std::move(select_stmt));
-  subquery->Print();
   return std::move(subquery);
 }
 
