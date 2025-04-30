@@ -9,6 +9,8 @@
 #include "duckdb/parser/expression/star_expression.hpp"
 #include "duckdb/parser/expression/subquery_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/expression/comparison_expression.hpp"
+#include "duckdb/parser/expression/operator_expression.hpp"
 
 namespace duckpgq {
 namespace core {
@@ -57,6 +59,45 @@ SummarizePropertyGraphFunction::GetDistinctCount(
   return result;
 }
 
+unique_ptr<ParsedExpression> SummarizePropertyGraphFunction::GetIsolatedNodes(shared_ptr<PropertyGraphTable> &pg_table, string alias, bool is_source) {
+  auto result = make_uniq<SubqueryExpression>();
+  result->subquery_type = SubqueryType::SCALAR;
+  auto select_statement = make_uniq<SelectStatement>();
+  auto select_node = make_uniq<SelectNode>();
+  vector<unique_ptr<ParsedExpression>> count_children;
+  string table_reference = is_source ? pg_table->source_reference : pg_table->destination_reference;
+  string table_schema = is_source ? pg_table->source_schema : pg_table->destination_schema;
+  string table_catalog = is_source ? pg_table->source_catalog : pg_table->destination_catalog;
+  string pk_reference = is_source ? pg_table->source_pk[0] : pg_table->destination_pk[0];
+  string fk_reference = is_source ? pg_table->source_fk[0] : pg_table->destination_fk[0];
+  count_children.push_back(make_uniq<ColumnRefExpression>(pk_reference, table_reference));
+  select_node->select_list.push_back(make_uniq<FunctionExpression>("count", std::move(count_children)));
+
+  auto join_ref = make_uniq<JoinRef>();
+  join_ref->type = JoinType::LEFT;
+  auto source_table_ref = make_uniq<BaseTableRef>(TableDescription(table_catalog, table_schema, table_reference));
+  auto edge_table_ref = make_uniq<BaseTableRef>(TableDescription(pg_table->catalog_name, pg_table->schema_name, pg_table->table_name));
+  join_ref->left = std::move(source_table_ref);
+  join_ref->right = std::move(edge_table_ref);
+
+  join_ref->condition = make_uniq<ComparisonExpression>(
+    ExpressionType::COMPARE_EQUAL,
+    make_uniq<ColumnRefExpression>(pk_reference, table_reference),
+    make_uniq<ColumnRefExpression>(fk_reference, pg_table->table_name));
+
+  select_node->from_table = std::move(join_ref);
+
+  vector<unique_ptr<ParsedExpression>> operator_children;
+  operator_children.push_back(make_uniq<ColumnRefExpression>(fk_reference, pg_table->table_name));
+  auto operator_expression = make_uniq<OperatorExpression>(ExpressionType::OPERATOR_IS_NULL, std::move(operator_children));
+  select_node->where_clause = std::move(operator_expression);
+
+  select_statement->node = std::move(select_node);
+  result->subquery = std::move(select_statement);
+  result->alias = alias;
+  result->Print();
+  return result;
+}
 
 
 unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateVertexTableCTE(shared_ptr<PropertyGraphTable> &vertex_table) {
@@ -71,6 +112,8 @@ unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateVert
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("edge_count")); // edge_count (NULL for vertex tables)
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("unique_source_count"));
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("unique_destination_count"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("isolated_sources"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("isolated_destinations"));
   select_node->from_table = make_uniq<BaseTableRef>(TableDescription(vertex_table->catalog_name, vertex_table->schema_name, vertex_table->table_name));
   select_statement->node = std::move(select_node);
   cte_info->query = std::move(select_statement);
@@ -89,6 +132,8 @@ unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateEdge
   select_node->select_list.push_back(GetTableCount("edge_count"));
   select_node->select_list.push_back(GetDistinctCount(edge_table, "unique_source_count", true));
   select_node->select_list.push_back(GetDistinctCount(edge_table, "unique_destination_count", false));
+  select_node->select_list.push_back(GetIsolatedNodes(edge_table, "isolated_sources", true));
+  select_node->select_list.push_back(GetIsolatedNodes(edge_table, "isolated_destinations", false));
   select_node->from_table = make_uniq<BaseTableRef>(TableDescription(edge_table->catalog_name, edge_table->schema_name, edge_table->table_name));
   select_statement->node = std::move(select_node);
   cte_info->query = std::move(select_statement);
@@ -133,7 +178,6 @@ unique_ptr<SelectNode> CreateInnerSelectStatNode(shared_ptr<PropertyGraphTable> 
 }
 
 
-
 unique_ptr<TableRef> SummarizePropertyGraphFunction::SummarizePropertyGraphBindReplace(
   ClientContext &context,
   TableFunctionBindInput &bind_input) {
@@ -144,7 +188,6 @@ unique_ptr<TableRef> SummarizePropertyGraphFunction::SummarizePropertyGraphBindR
 
   if (pg_info->vertex_tables.size() == 1 && pg_info->edge_tables.size() == 0) {
     // Special case where we don't want to create a union across the different tables
-
     // todo(dtenwolde) create test case for this
     string stat_table_alias = pg_info->vertex_tables[0]->table_name + "_stats";
     return HandleSingleVertexTable(pg_info->vertex_tables[0], stat_table_alias);
@@ -160,7 +203,7 @@ unique_ptr<TableRef> SummarizePropertyGraphFunction::SummarizePropertyGraphBindR
     AddToUnionNode(final_union_node, inner_select_node);
   }
   for (auto &edge_table : pg_info->edge_tables) {
-    string stat_table_alias = edge_table->source_reference + "_" + edge_table->table_name + edge_table->destination_reference + "_stats";
+    string stat_table_alias = edge_table->source_reference + "_" + edge_table->table_name + "_" + edge_table->destination_reference + "_stats";
     auto inner_select_node = CreateInnerSelectStatNode(edge_table, stat_table_alias);
     inner_select_node->cte_map.map.insert(stat_table_alias, CreateEdgeTableCTE(edge_table)); // todo(dtenwolde) make sure it works even if we have multiple edge tables with different relationships
     AddToUnionNode(final_union_node, inner_select_node);
