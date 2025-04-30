@@ -11,6 +11,7 @@
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/operator_expression.hpp"
+#include "duckdb/parser/group_by_node.hpp"
 
 namespace duckpgq {
 namespace core {
@@ -95,10 +96,47 @@ unique_ptr<ParsedExpression> SummarizePropertyGraphFunction::GetIsolatedNodes(sh
   select_statement->node = std::move(select_node);
   result->subquery = std::move(select_statement);
   result->alias = alias;
-  result->Print();
   return result;
 }
 
+unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateMaterializedDegreeCTE(shared_ptr<PropertyGraphTable> &pg_table, string degree_column, bool is_in_degree) {
+  auto cte_info = make_uniq<CommonTableExpressionInfo>();
+  auto select_statement = make_uniq<SelectStatement>();
+  auto select_node = make_uniq<SelectNode>();
+  select_node->select_list.push_back(make_uniq<ColumnRefExpression>(degree_column));
+	vector<unique_ptr<ParsedExpression>> children;
+  auto count_star_expression = make_uniq<FunctionExpression>("count_star", std::move(children));
+  count_star_expression->alias = is_in_degree ? "in_degree" : "out_degree";
+  select_node->select_list.push_back(std::move(count_star_expression));
+
+  select_node->from_table = make_uniq<BaseTableRef>(TableDescription(pg_table->catalog_name, pg_table->schema_name, pg_table->table_name));
+
+  GroupByNode grouping_node;
+  grouping_node.group_expressions.push_back(make_uniq<ColumnRefExpression>(degree_column));
+  select_node->groups = std::move(grouping_node);
+  select_statement->node = std::move(select_node);
+  cte_info->query = std::move(select_statement);
+  return cte_info;
+}
+
+unique_ptr<ParsedExpression> SummarizePropertyGraphFunction::GetDegreeStatistics(string aggregate_function, bool is_in_degree) {
+  auto result = make_uniq<SubqueryExpression>();
+  result->subquery_type = SubqueryType::SCALAR;
+  auto select_statement = make_uniq<SelectStatement>();
+  auto select_node = make_uniq<SelectNode>();
+
+  vector<unique_ptr<ParsedExpression>> children;
+  children.push_back(make_uniq<ColumnRefExpression>(is_in_degree ? "in_degree" : "out_degree"));
+  auto function_expression = make_uniq<FunctionExpression>(aggregate_function, std::move(children));
+  select_node->select_list.push_back(std::move(function_expression));
+  auto cte_table_ref = make_uniq<BaseTableRef>();
+  cte_table_ref->table_name = is_in_degree ? "in_degrees" : "out_degrees";
+  select_node->from_table = std::move(cte_table_ref);
+  select_statement->node = std::move(select_node);
+  result->subquery = std::move(select_statement);
+  result->alias = aggregate_function + "_" + (is_in_degree ? "in_degree" : "out_degree");
+  return result;
+}
 
 unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateVertexTableCTE(shared_ptr<PropertyGraphTable> &vertex_table) {
   auto cte_info = make_uniq<CommonTableExpressionInfo>();
@@ -114,6 +152,12 @@ unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateVert
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("unique_destination_count"));
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("isolated_sources"));
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("isolated_destinations"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("avg_in_degree"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("avg_out_degree"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("min_in_degree"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("min_out_degree"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("max_in_degree"));
+  select_node->select_list.push_back(GetConstantNullExpressionWithAlias("max_out_degree"));
   select_node->from_table = make_uniq<BaseTableRef>(TableDescription(vertex_table->catalog_name, vertex_table->schema_name, vertex_table->table_name));
   select_statement->node = std::move(select_node);
   cte_info->query = std::move(select_statement);
@@ -124,16 +168,31 @@ unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateEdge
   auto cte_info = make_uniq<CommonTableExpressionInfo>();
   auto select_statement = make_uniq<SelectStatement>();
   auto select_node = make_uniq<SelectNode>();
+  select_node->cte_map.map.insert("in_degrees", CreateMaterializedDegreeCTE(edge_table, edge_table->destination_fk[0], true));
+  select_node->cte_map.map.insert("out_degrees", CreateMaterializedDegreeCTE(edge_table, edge_table->source_fk[0], false));
+
   select_node->select_list.push_back(GetTableNameConstantExpression(edge_table->table_name, "table_name"));
   select_node->select_list.push_back(IsVertexTableConstantExpression(false, "is_vertex_table"));
   select_node->select_list.push_back(GetTableNameConstantExpression(edge_table->source_reference, "source_table")); // source table name (NULL for vertex tables)
   select_node->select_list.push_back(GetTableNameConstantExpression(edge_table->destination_reference, "destination_table")); // destination table name (NULL for vertex tables)
   select_node->select_list.push_back(GetConstantNullExpressionWithAlias("vertex_count"));
   select_node->select_list.push_back(GetTableCount("edge_count"));
+
   select_node->select_list.push_back(GetDistinctCount(edge_table, "unique_source_count", true));
   select_node->select_list.push_back(GetDistinctCount(edge_table, "unique_destination_count", false));
+
   select_node->select_list.push_back(GetIsolatedNodes(edge_table, "isolated_sources", true));
   select_node->select_list.push_back(GetIsolatedNodes(edge_table, "isolated_destinations", false));
+
+  select_node->select_list.push_back(GetDegreeStatistics("avg", true));
+  select_node->select_list.push_back(GetDegreeStatistics("avg", false));
+
+  select_node->select_list.push_back(GetDegreeStatistics("min", true));
+  select_node->select_list.push_back(GetDegreeStatistics("min", false));
+
+  select_node->select_list.push_back(GetDegreeStatistics("max", true));
+  select_node->select_list.push_back(GetDegreeStatistics("max", false));
+
   select_node->from_table = make_uniq<BaseTableRef>(TableDescription(edge_table->catalog_name, edge_table->schema_name, edge_table->table_name));
   select_statement->node = std::move(select_node);
   cte_info->query = std::move(select_statement);
