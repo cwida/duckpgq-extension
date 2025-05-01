@@ -47,3 +47,19 @@ Message_replyOf_Message	false	Message	Message	NULL	471	471	150	3189	3510	3.14	1	
 Person	true	NULL	NULL	50	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
 Person_knows_person	false	Person	Person	NULL	83	28	29	22	21	2.8620689655172415	1	10	1	2	3	2.9642857142857144	1	13	1	2	4
 Person_likes_Message	false	Person	Message	NULL	492	48	234	2	3426	2.1025641025641026	1	41	1	1	1	10.25	1	57	2	6	15
+
+statement ok
+-CREATE PROPERTY GRAPH snb2
+VERTEX TABLES (
+    Person LABEL Person
+);
+
+query IIIIIIIIIIIIIIIIIIIIII
+FROM summarize_property_graph(snb2) order by table_name;
+----
+Person	true	NULL	NULL	50	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+
+statement error
+from summarize_property_graph(pgdoesnotexist) order by table_name;
+----
+Binder Error: Property graph pgdoesnotexist does not exist
