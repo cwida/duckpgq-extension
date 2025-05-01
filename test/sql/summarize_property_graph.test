@@ -7,8 +7,7 @@ import database 'duckdb/data/SNB0.003';
 statement ok
 -CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
-    Person LABEL Person,
-    University LABEL university
+    Person LABEL Person
     )
 EDGE TABLES (
     Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
@@ -17,8 +16,7 @@ EDGE TABLES (
     );
 
 query IIIIIIIIIIIIIIIIIIIIII
-FROM summarize_property_graph(snb)
+FROM summarize_property_graph(snb) order by table_name;
 ----
-Person_knows_person	false	Person	Person	NULL	83	28	29	22	21	2.8620689655172415	2.9642857142857144	1	1	10	13	1	1	2	2	3	4
-University	true	NULL	NULL	6380	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
-Person	true	NULL	NULL	50	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Person	1	NULL	NULL	50	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Person_knows_person	0	Person	Person	NULL	83	28	29	22	21	2.8620689655172415	1	10	1	2	3	2.9642857142857144	1	13	1	2	4
