@@ -20,3 +20,30 @@ FROM summarize_property_graph(snb) order by table_name;
 ----
 Person	1	NULL	NULL	50	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
 Person_knows_person	0	Person	Person	NULL	83	28	29	22	21	2.8620689655172415	1	10	1	2	3	2.9642857142857144	1	13	1	2	4
+
+statement ok
+-CREATE PROPERTY GRAPH snb1
+VERTEX TABLES (
+    Person LABEL Person,
+    Message LABEL Message
+    )
+EDGE TABLES (
+    Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+                            DESTINATION KEY (Person2Id) REFERENCES Person (id)
+                            LABEL Knows,
+    Person_likes_Message    SOURCE KEY (PersonId) REFERENCES Person (id)
+                            DESTINATION KEY (id) REFERENCES Message (id)
+                            LABEL likes_Message,
+    Message_replyOf_Message SOURCE KEY (messageId) REFERENCES Message (id)
+                            DESTINATION KEY (ParentMessageId) REFERENCES Message (id)
+                            LABEL replyOf
+    );
+
+query IIIIIIIIIIIIIIIIIIIIII
+FROM summarize_property_graph(snb1) order by table_name;
+----
+Message	true	NULL	NULL	3660	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Message_replyOf_Message	false	Message	Message	NULL	471	471	150	3189	3510	3.14	1	11	2	3	4	1.0	1	1	1	1	1
+Person	true	NULL	NULL	50	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Person_knows_person	false	Person	Person	NULL	83	28	29	22	21	2.8620689655172415	1	10	1	2	3	2.9642857142857144	1	13	1	2	4
+Person_likes_Message	false	Person	Message	NULL	492	48	234	2	3426	2.1025641025641026	1	41	1	1	1	10.25	1	57	2	6	15
