@@ -281,7 +281,6 @@ unique_ptr<TableRef> SummarizePropertyGraphFunction::SummarizePropertyGraphBindR
 
   if (pg_info->vertex_tables.size() == 1 && pg_info->edge_tables.size() == 0) {
     // Special case where we don't want to create a union across the different tables
-    // todo(dtenwolde) create test case for this
     string stat_table_alias = pg_info->vertex_tables[0]->table_name + "_stats";
     return HandleSingleVertexTable(pg_info->vertex_tables[0], stat_table_alias);
   }
