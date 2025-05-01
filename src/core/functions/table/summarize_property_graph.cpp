@@ -141,7 +141,8 @@ unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateDegr
   select_node->from_table = CreateGroupBySubquery(pg_table, is_in_degree, degree_column);
   select_statement->node = std::move(select_node);
   cte_info->query = std::move(select_statement);
-  cte_info->materialized = CTEMaterialize::CTE_MATERIALIZE_ALWAYS;
+  // todo(dtenwolde) make this CTE materialized
+  // cte_info->materialized = CTEMaterialize::CTE_MATERIALIZE_ALWAYS;
   return cte_info;
 }
 
@@ -304,7 +305,6 @@ unique_ptr<TableRef> SummarizePropertyGraphFunction::SummarizePropertyGraphBindR
   auto select_stmt = make_uniq<SelectStatement>();
   select_stmt->node = std::move(final_union_node);
   auto subquery = make_uniq<SubqueryRef>(std::move(select_stmt));
-  subquery->Print();
   return std::move(subquery);
 }
 
