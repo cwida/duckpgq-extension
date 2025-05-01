@@ -12,6 +12,7 @@
 #include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/parser/group_by_node.hpp"
+#include "duckdb/parser/query_node/cte_node.hpp"
 
 namespace duckpgq {
 namespace core {
@@ -20,6 +21,17 @@ unique_ptr<ParsedExpression> GetTableNameConstantExpression(string table_name, s
   auto table_name_column = make_uniq<ConstantExpression>(Value(table_name));
   table_name_column->alias = alias;
   return table_name_column;
+}
+
+unique_ptr<ParsedExpression> GetFunctionExpression(string aggregate_function, string alias, bool is_in_degree, const Value &value = nullptr) {
+  vector<unique_ptr<ParsedExpression>> max_children;
+  max_children.push_back(make_uniq<ColumnRefExpression>(is_in_degree ? "in_degree" : "out_degree"));
+  if (!value.IsNull()) {
+    max_children.push_back(make_uniq<ConstantExpression>(value));
+  }
+  auto agg_function =  make_uniq<FunctionExpression>(aggregate_function, std::move(max_children));
+  agg_function->alias = alias + (is_in_degree ? "_in_degree" : "_out_degree");
+  return agg_function;
 }
 
 unique_ptr<ParsedExpression> GetConstantNullExpressionWithAlias(string alias) {
@@ -99,45 +111,52 @@ unique_ptr<ParsedExpression> SummarizePropertyGraphFunction::GetIsolatedNodes(sh
   return result;
 }
 
-unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateMaterializedDegreeCTE(shared_ptr<PropertyGraphTable> &pg_table, string degree_column, bool is_in_degree) {
-  auto cte_info = make_uniq<CommonTableExpressionInfo>();
-  auto select_statement = make_uniq<SelectStatement>();
+unique_ptr<SubqueryRef> SummarizePropertyGraphFunction::CreateGroupBySubquery(shared_ptr<PropertyGraphTable> &pg_table, bool is_in_degree, string degree_column) {
   auto select_node = make_uniq<SelectNode>();
   select_node->select_list.push_back(make_uniq<ColumnRefExpression>(degree_column));
 	vector<unique_ptr<ParsedExpression>> children;
   auto count_star_expression = make_uniq<FunctionExpression>("count_star", std::move(children));
   count_star_expression->alias = is_in_degree ? "in_degree" : "out_degree";
   select_node->select_list.push_back(std::move(count_star_expression));
-
   select_node->from_table = make_uniq<BaseTableRef>(TableDescription(pg_table->catalog_name, pg_table->schema_name, pg_table->table_name));
-
   GroupByNode grouping_node;
   grouping_node.group_expressions.push_back(make_uniq<ColumnRefExpression>(degree_column));
+  grouping_node.grouping_sets.push_back({0});
   select_node->groups = std::move(grouping_node);
+  auto select_statement = make_uniq<SelectStatement>();
+  select_statement->node = std::move(select_node);
+  return make_uniq<SubqueryRef>(std::move(select_statement));
+}
+
+unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateDegreeStatisticsCTE(shared_ptr<PropertyGraphTable> &pg_table, string degree_column, bool is_in_degree) {
+  auto cte_info = make_uniq<CommonTableExpressionInfo>();
+  auto select_statement = make_uniq<SelectStatement>();
+  auto select_node = make_uniq<SelectNode>();
+  select_node->select_list.push_back(GetFunctionExpression("avg", "avg", is_in_degree));
+  select_node->select_list.push_back(GetFunctionExpression("min", "min", is_in_degree));
+  select_node->select_list.push_back(GetFunctionExpression("max", "max", is_in_degree));
+  select_node->select_list.push_back(GetFunctionExpression("approx_quantile", "q25", is_in_degree, Value::FLOAT(0.25)));
+  select_node->select_list.push_back(GetFunctionExpression("approx_quantile", "q50", is_in_degree, Value::FLOAT(0.5)));
+  select_node->select_list.push_back(GetFunctionExpression("approx_quantile", "q75", is_in_degree, Value::FLOAT(0.75)));
+  select_node->from_table = CreateGroupBySubquery(pg_table, is_in_degree, degree_column);
   select_statement->node = std::move(select_node);
   cte_info->query = std::move(select_statement);
+  cte_info->materialized = CTEMaterialize::CTE_MATERIALIZE_ALWAYS;
   return cte_info;
 }
 
-unique_ptr<ParsedExpression> SummarizePropertyGraphFunction::GetDegreeStatistics(string aggregate_function, bool is_in_degree, string alias, const Value &quantile_value) {
+unique_ptr<ParsedExpression> SummarizePropertyGraphFunction::GetDegreeStatistics(string aggregate_function, bool is_in_degree) {
   auto result = make_uniq<SubqueryExpression>();
   result->subquery_type = SubqueryType::SCALAR;
   auto select_statement = make_uniq<SelectStatement>();
   auto select_node = make_uniq<SelectNode>();
-
-  vector<unique_ptr<ParsedExpression>> children;
-  children.push_back(make_uniq<ColumnRefExpression>(is_in_degree ? "in_degree" : "out_degree"));
-  if (!quantile_value.IsNull()) {
-    children.push_back(make_uniq<ConstantExpression>(quantile_value));
-  }
-  auto function_expression = make_uniq<FunctionExpression>(aggregate_function, std::move(children));
-  select_node->select_list.push_back(std::move(function_expression));
+  select_node->select_list.push_back(make_uniq<ColumnRefExpression>(aggregate_function + "_" + (is_in_degree ? "in_degree" : "out_degree")));
   auto cte_table_ref = make_uniq<BaseTableRef>();
   cte_table_ref->table_name = is_in_degree ? "in_degrees" : "out_degrees";
   select_node->from_table = std::move(cte_table_ref);
   select_statement->node = std::move(select_node);
   result->subquery = std::move(select_statement);
-  result->alias = alias + "_" + (is_in_degree ? "in_degree" : "out_degree");
+  result->alias = aggregate_function + "_" + (is_in_degree ? "in_degree" : "out_degree");
   return result;
 }
 
@@ -177,8 +196,8 @@ unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateEdge
   auto cte_info = make_uniq<CommonTableExpressionInfo>();
   auto select_statement = make_uniq<SelectStatement>();
   auto select_node = make_uniq<SelectNode>();
-  select_node->cte_map.map.insert("in_degrees", CreateMaterializedDegreeCTE(edge_table, edge_table->destination_fk[0], true));
-  select_node->cte_map.map.insert("out_degrees", CreateMaterializedDegreeCTE(edge_table, edge_table->source_fk[0], false));
+  select_node->cte_map.map.insert("in_degrees", CreateDegreeStatisticsCTE(edge_table, edge_table->destination_fk[0], true));
+  select_node->cte_map.map.insert("out_degrees", CreateDegreeStatisticsCTE(edge_table, edge_table->source_fk[0], false));
 
   select_node->select_list.push_back(GetTableNameConstantExpression(edge_table->table_name, "table_name"));
   select_node->select_list.push_back(IsVertexTableConstantExpression(false, "is_vertex_table"));
@@ -193,20 +212,19 @@ unique_ptr<CommonTableExpressionInfo> SummarizePropertyGraphFunction::CreateEdge
   select_node->select_list.push_back(GetIsolatedNodes(edge_table, "isolated_sources", true));
   select_node->select_list.push_back(GetIsolatedNodes(edge_table, "isolated_destinations", false));
 
-  select_node->select_list.push_back(GetDegreeStatistics("avg", true, "avg"));
-  select_node->select_list.push_back(GetDegreeStatistics("min", true, "min"));
-  select_node->select_list.push_back(GetDegreeStatistics("max", true, "max"));
-  select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", true, "q25", Value::FLOAT(0.25)));
-  select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", true, "q50", Value::FLOAT(0.50)));
-  select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", true, "q75", Value::FLOAT(0.75)));
+  select_node->select_list.push_back(GetDegreeStatistics("avg", true));
+  select_node->select_list.push_back(GetDegreeStatistics("min", true));
+  select_node->select_list.push_back(GetDegreeStatistics("max", true));
+  select_node->select_list.push_back(GetDegreeStatistics("q25", true));
+  select_node->select_list.push_back(GetDegreeStatistics("q50", true));
+  select_node->select_list.push_back(GetDegreeStatistics("q75", true));
 
-  select_node->select_list.push_back(GetDegreeStatistics("avg", false, "avg"));
-  select_node->select_list.push_back(GetDegreeStatistics("min", false, "min"));
-  select_node->select_list.push_back(GetDegreeStatistics("max", false, "max"));
-  select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", false, "q25", Value::FLOAT(0.25)));
-  select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", false, "q50", Value::FLOAT(0.50)));
-  select_node->select_list.push_back(GetDegreeStatistics("approx_quantile", false, "q75", Value::FLOAT(0.75)));
-
+  select_node->select_list.push_back(GetDegreeStatistics("avg", false));
+  select_node->select_list.push_back(GetDegreeStatistics("min", false));
+  select_node->select_list.push_back(GetDegreeStatistics("max", false));
+  select_node->select_list.push_back(GetDegreeStatistics("q25", false));
+  select_node->select_list.push_back(GetDegreeStatistics("q50", false));
+  select_node->select_list.push_back(GetDegreeStatistics("q75", false));
 
   select_node->from_table = make_uniq<BaseTableRef>(TableDescription(edge_table->catalog_name, edge_table->schema_name, edge_table->table_name));
   select_statement->node = std::move(select_node);
@@ -279,13 +297,14 @@ unique_ptr<TableRef> SummarizePropertyGraphFunction::SummarizePropertyGraphBindR
   for (auto &edge_table : pg_info->edge_tables) {
     string stat_table_alias = edge_table->source_reference + "_" + edge_table->table_name + "_" + edge_table->destination_reference + "_stats";
     auto inner_select_node = CreateInnerSelectStatNode(edge_table, stat_table_alias);
-    inner_select_node->cte_map.map.insert(stat_table_alias, CreateEdgeTableCTE(edge_table)); // todo(dtenwolde) make sure it works even if we have multiple edge tables with different relationships
+    inner_select_node->cte_map.map.insert(stat_table_alias, CreateEdgeTableCTE(edge_table));
     AddToUnionNode(final_union_node, inner_select_node);
   }
 
   auto select_stmt = make_uniq<SelectStatement>();
   select_stmt->node = std::move(final_union_node);
   auto subquery = make_uniq<SubqueryRef>(std::move(select_stmt));
+  subquery->Print();
   return std::move(subquery);
 }
 
