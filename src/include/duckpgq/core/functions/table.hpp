@@ -13,6 +13,7 @@ struct CoreTableFunctions {
     RegisterDescribePropertyGraphTableFunction(db);
     RegisterLocalClusteringCoefficientTableFunction(db);
     RegisterScanTableFunctions(db);
+    RegisterSummarizePropertyGraphTableFunction(db);
     RegisterWeaklyConnectedComponentTableFunction(db);
     RegisterPageRankTableFunction(db);
   }
@@ -28,8 +29,9 @@ private:
   static void
   RegisterWeaklyConnectedComponentTableFunction(DatabaseInstance &db);
   static void RegisterPageRankTableFunction(DatabaseInstance &db);
-};
+  static void RegisterSummarizePropertyGraphTableFunction(DatabaseInstance &db);
 
+};
 } // namespace core
 
 } // namespace duckpgq

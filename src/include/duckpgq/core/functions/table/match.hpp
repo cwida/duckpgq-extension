@@ -133,6 +133,7 @@ public:
       CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
       PathElement *path_element, PathElement *next_vertex_element,
       vector<unique_ptr<ParsedExpression>> &path_finding_conditions);
+
   static unique_ptr<ParsedExpression>
   CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list,
                             CreatePropertyGraphInfo &pg_table,
