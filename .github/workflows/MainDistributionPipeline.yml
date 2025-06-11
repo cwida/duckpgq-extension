@@ -35,3 +35,4 @@ jobs:
       duckdb_version: main
       ci_tools_version: main
       extension_name: quack
+      format_checks: 'format'
