@@ -27,3 +27,7 @@ jobs:
       duckdb_version: v1.3.0
       ci_tools_version: v1.3.0
       extension_name: quack
+
+  code-quality-check:
+    name: Code Quality Check
+    uses: dtenwolde/extension-ci-tools/.github/workflows/_extension_code_quality.yml@main
