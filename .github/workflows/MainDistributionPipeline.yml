@@ -35,5 +35,3 @@ jobs:
       duckdb_version: main
       ci_tools_version: main
       extension_name: quack
-      override_repository: dtenwolde/extension-template
-      override_ref: code-quality-v2
