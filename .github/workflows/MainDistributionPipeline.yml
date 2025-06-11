@@ -30,7 +30,7 @@ jobs:
 
   code-quality-check:
     name: Code Quality Check
-    uses: dtenwolde/extension-ci-tools/.github/workflows/_extension_code_quality.yml@main
+    uses: dtenwolde/extension-ci-tools/.github/workflows/_extension_code_quality.yml@code-quality-v2
     with:
       duckdb_version: main
       ci_tools_version: main
