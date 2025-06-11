@@ -33,5 +33,5 @@ jobs:
     uses: dtenwolde/extension-ci-tools/.github/workflows/_extension_code_quality.yml@code-quality-v2
     with:
       duckdb_version: main
-      ci_tools_version: main
+      ci_tools_version: code-quality-v2
       extension_name: quack
