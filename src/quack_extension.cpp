@@ -14,34 +14,29 @@
 namespace duckdb {
 
 inline void QuackScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
-    auto &name_vector = args.data[0];
-    UnaryExecutor::Execute<string_t, string_t>(
-	    name_vector, result, args.size(),
-	    [&](string_t name) {
-			return StringVector::AddString(result, "Quack "+name.GetString()+" 🐥");
-        });
+	auto &name_vector = args.data[0];
+	UnaryExecutor::Execute<string_t, string_t>(name_vector, result, args.size(), [&](string_t name) {
+		return StringVector::AddString(result, "Quack " + name.GetString() + " 🐥");
+	});
 }
 
 inline void QuackOpenSSLVersionScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
-    auto &name_vector = args.data[0];
-    UnaryExecutor::Execute<string_t, string_t>(
-	    name_vector, result, args.size(),
-	    [&](string_t name) {
-			return StringVector::AddString(result, "Quack " + name.GetString() +
-                                                     ", my linked OpenSSL version is " +
-                                                     OPENSSL_VERSION_TEXT );
-        });
+	auto &name_vector = args.data[0];
+	UnaryExecutor::Execute<string_t, string_t>(name_vector, result, args.size(), [&](string_t name) {
+		return StringVector::AddString(result, "Quack " + name.GetString() + ", my linked OpenSSL version is " +
+		                                           OPENSSL_VERSION_TEXT);
+	});
 }
 
 static void LoadInternal(DatabaseInstance &instance) {
-    // Register a scalar function
-    auto quack_scalar_function = ScalarFunction("quack", {LogicalType::VARCHAR}, LogicalType::VARCHAR, QuackScalarFun);
-    ExtensionUtil::RegisterFunction(instance, quack_scalar_function);
+	// Register a scalar function
+	auto quack_scalar_function = ScalarFunction("quack", {LogicalType::VARCHAR}, LogicalType::VARCHAR, QuackScalarFun);
+	ExtensionUtil::RegisterFunction(instance, quack_scalar_function);
 
-    // Register another scalar function
-    auto quack_openssl_version_scalar_function = ScalarFunction("quack_openssl_version", {LogicalType::VARCHAR},
-                                                LogicalType::VARCHAR, QuackOpenSSLVersionScalarFun);
-    ExtensionUtil::RegisterFunction(instance, quack_openssl_version_scalar_function);
+	// Register another scalar function
+	auto quack_openssl_version_scalar_function = ScalarFunction("quack_openssl_version", {LogicalType::VARCHAR},
+	                                                            LogicalType::VARCHAR, QuackOpenSSLVersionScalarFun);
+	ExtensionUtil::RegisterFunction(instance, quack_openssl_version_scalar_function);
 }
 
 void QuackExtension::Load(DuckDB &db) {
@@ -64,8 +59,8 @@ std::string QuackExtension::Version() const {
 extern "C" {
 
 DUCKDB_EXTENSION_API void quack_init(duckdb::DatabaseInstance &db) {
-    duckdb::DuckDB db_wrapper(db);
-    db_wrapper.LoadExtension<duckdb::QuackExtension>();
+	duckdb::DuckDB db_wrapper(db);
+	db_wrapper.LoadExtension<duckdb::QuackExtension>();
 }
 
 DUCKDB_EXTENSION_API const char *quack_version() {

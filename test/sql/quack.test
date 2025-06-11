@@ -1,6 +1,6 @@
 # name: test/sql/quack.test
 # description: test quack extension
-# group: [quack]
+# group: [sql]
 
 # Before we load the extension, this will fail
 statement error
