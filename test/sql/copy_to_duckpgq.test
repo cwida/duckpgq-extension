@@ -57,7 +57,7 @@ statement ok
     COLUMNS(a.firstName, a.lastName, a.birthday, a.locationIP, a.browserUsed, a.LocationCityId, a.gender)
 ) tmp) TO '__TEST_DIR__/is1.csv' (HEADER FALSE);
 
-query IIIIIIII
+query IIIIIII
 SELECT * FROM '__TEST_DIR__/is1.csv';
 ----
 Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male
