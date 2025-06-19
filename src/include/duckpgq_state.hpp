@@ -9,14 +9,15 @@ namespace duckdb {
 
 class DuckPGQState : public ClientContextState {
 public:
-  explicit DuckPGQState(shared_ptr<ClientContext> context);
+  explicit DuckPGQState() {};
 
+  static void InitializeInternalTable(ClientContext &context);
   void QueryEnd() override;
   CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name);
   duckpgq::core::CSR *GetCSR(int32_t id);
 
-  void RetrievePropertyGraphs(const shared_ptr<ClientContext> &context);
-  void ProcessPropertyGraphs(unique_ptr<QueryResult> &property_graphs,
+  void RetrievePropertyGraphs(const shared_ptr<Connection> &context);
+  void ProcessPropertyGraphs(unique_ptr<MaterializedQueryResult> &property_graphs,
                              bool is_vertex);
   void PopulateEdgeSpecificFields(unique_ptr<DataChunk> &chunk, idx_t row_idx,
                                   PropertyGraphTable &table);
@@ -27,7 +28,6 @@ public:
 
 public:
   unique_ptr<ParserExtensionParseData> parse_data;
-
   unordered_map<int32_t, unique_ptr<ParsedExpression>> transform_expression;
   int32_t match_index = 0;
 

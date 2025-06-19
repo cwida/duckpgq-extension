@@ -29,8 +29,8 @@ SELECT a.name AS person, b.name AS friend
 Daniel	Tavneet
 Daniel	Gabor
 Daniel	Peter
-Daniel	David
 Daniel	Peter
+Daniel	David
 
 # Daniel has 3 outgoing edges and 2 incoming edges, so there should be 5 tuples
 query II

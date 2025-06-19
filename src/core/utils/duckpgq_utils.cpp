@@ -14,13 +14,20 @@ namespace duckpgq {
 
 namespace core {
 // Function to get DuckPGQState from ClientContext
-shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context) {
+shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context, bool throw_not_found_error) {
   auto lookup = context.registered_state->Get<DuckPGQState>("duckpgq");
-  if (!lookup) {
-    throw Exception(ExceptionType::INVALID,
-                    "Registered DuckPGQ state not found");
+  if (lookup) {
+    return lookup;
   }
-  return lookup;
+  if (throw_not_found_error) {
+    throw Exception(ExceptionType::INVALID, "Registered DuckPGQ state not found");
+  }
+  shared_ptr<DuckPGQState> state = make_shared_ptr<DuckPGQState>();
+  context.registered_state->Insert("duckpgq", state);
+  state->InitializeInternalTable(context);
+  auto connection = make_shared_ptr<Connection>(*context.db);
+  state->RetrievePropertyGraphs(connection);
+  return state;
 }
 
 // Function to get PropertyGraphInfo from DuckPGQState
