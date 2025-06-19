@@ -60,7 +60,7 @@ statement ok
 query IIIIIIII
 SELECT * FROM '__TEST_DIR__/is1.csv';
 ----
-Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595
+Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595+00
 
 statement ok
 -CREATE TABLE result as (FROM GRAPH_TABLE (snb

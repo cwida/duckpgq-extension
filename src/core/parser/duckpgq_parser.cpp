@@ -20,6 +20,8 @@
 #include <duckdb/parser/tableref/matchref.hpp>
 #include <duckpgq/core/functions/table/summarize_property_graph.hpp>
 
+#include "duckpgq/core/utils/duckpgq_utils.hpp"
+
 namespace duckpgq {
 
 namespace core {
@@ -187,11 +189,7 @@ duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
 ParserExtensionPlanResult
 duckpgq_plan(ParserExtensionInfo *, ClientContext &context,
              unique_ptr<ParserExtensionParseData> parse_data) {
-  auto duckpgq_state = context.registered_state->Get<DuckPGQState>("duckpgq");
-  if (duckpgq_state == nullptr) {
-    throw Exception(ExceptionType::INVALID,
-                    "DuckPGQ extension has not been properly initialized");
-  }
+  auto duckpgq_state = GetDuckPGQState(context);
   duckpgq_state->parse_data = std::move(parse_data);
   auto duckpgq_parse_data =
       dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
