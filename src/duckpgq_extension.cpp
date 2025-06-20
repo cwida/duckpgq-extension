@@ -10,13 +10,11 @@ namespace duckdb {
 
 static void LoadInternal(DatabaseInstance &instance) {
   duckpgq::core::CoreModule::Register(instance);
-  auto &config = DBConfig::GetConfig(instance);
-  config.extension_callbacks.push_back(make_uniq<DuckpgqExtensionCallback>());
-  for (auto &connection :
-       ConnectionManager::Get(instance).GetConnectionList()) {
-    connection->registered_state->Insert(
-        "duckpgq", make_shared_ptr<DuckPGQState>(connection));
-  }
+  // for (auto &connection :
+  //      ConnectionManager::Get(instance).GetConnectionList()) {
+  //   connection->registered_state->Insert(
+  //       "duckpgq", make_shared_ptr<DuckPGQState>());
+  // }
 
   // Fill in extension load information.
   std::string description =

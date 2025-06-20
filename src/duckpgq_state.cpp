@@ -2,9 +2,9 @@
 
 namespace duckdb {
 
-DuckPGQState::DuckPGQState(shared_ptr<ClientContext> context) {
-  auto new_conn = make_shared_ptr<ClientContext>(context->db);
-  auto query = new_conn->Query("CREATE TABLE IF NOT EXISTS __duckpgq_internal ("
+void DuckPGQState::InitializeInternalTable(ClientContext &context) {
+  auto connection = make_shared_ptr<Connection>(*context.db);
+  auto query = connection->Query("CREATE TABLE IF NOT EXISTS __duckpgq_internal ("
                                "property_graph varchar, "
                                "table_name varchar, "
                                "label varchar, "
@@ -25,30 +25,27 @@ DuckPGQState::DuckPGQState(shared_ptr<ClientContext> context) {
                                "destination_schema varchar, "
                                "properties varchar[], "
                                "column_aliases varchar[]"
-                               ")",
-                               false);
+                               ")");
   if (query->HasError()) {
     throw TransactionException(query->GetError());
   }
-
-  RetrievePropertyGraphs(new_conn);
 }
 
 void DuckPGQState::RetrievePropertyGraphs(
-    const shared_ptr<ClientContext> &context) {
+    const shared_ptr<Connection> &connection) {
   // Retrieve and process vertex property graphs
-  auto vertex_property_graphs = context->Query(
-      "SELECT * FROM __duckpgq_internal WHERE is_vertex_table", false);
+  auto vertex_property_graphs = connection->Query(
+      "SELECT * FROM __duckpgq_internal WHERE is_vertex_table");
   ProcessPropertyGraphs(vertex_property_graphs, true);
 
   // Retrieve and process edge property graphs
-  auto edge_property_graphs = context->Query(
-      "SELECT * FROM __duckpgq_internal WHERE NOT is_vertex_table", false);
+  auto edge_property_graphs = connection->Query(
+      "SELECT * FROM __duckpgq_internal WHERE NOT is_vertex_table");
   ProcessPropertyGraphs(edge_property_graphs, false);
 }
 
 void DuckPGQState::ProcessPropertyGraphs(
-    unique_ptr<QueryResult> &property_graphs, bool is_vertex) {
+    unique_ptr<MaterializedQueryResult> &property_graphs, bool is_vertex) {
   if (!property_graphs ||
       property_graphs->type != QueryResultType::MATERIALIZED_RESULT) {
     throw std::runtime_error(
