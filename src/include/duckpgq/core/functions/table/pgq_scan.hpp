@@ -12,6 +12,8 @@
 
 #include <duckpgq_state.hpp>
 
+#include "duckpgq/core/utils/duckpgq_utils.hpp"
+
 namespace duckpgq {
 
 namespace core {
@@ -72,12 +74,7 @@ public:
     auto result = make_uniq<CSRScanWData>();
     result->csr_id = input.inputs[0].GetValue<int32_t>();
 
-    auto duckpgq_state = context.registered_state->Get<DuckPGQState>("duckpgq");
-    if (!duckpgq_state) {
-      //! Wondering how you can get here if the extension wasn't loaded, but
-      //! leaving this check in anyways
-      throw InternalException("The DuckPGQ extension has not been loaded");
-    }
+   auto duckpgq_state = GetDuckPGQState(context);
 
     CSR *csr = duckpgq_state->GetCSR(result->csr_id);
 

@@ -24,13 +24,14 @@ EDGE TABLES (
 query II
 SELECT a.name AS person, b.name AS friend
     FROM ((SELECT know.src, know.dst FROM know) UNION ALL (SELECT know.dst, know.src FROM know)) AS k , Student AS b , Student AS a
-    WHERE ((a.id = k.src) AND (b.id = k.dst) AND (a.name = 'Daniel'));
+    WHERE ((a.id = k.src) AND (b.id = k.dst) AND (a.name = 'Daniel'))
+ORDER BY person, friend;
 ----
-Daniel	Tavneet
+Daniel	David
 Daniel	Gabor
 Daniel	Peter
-Daniel	David
 Daniel	Peter
+Daniel	Tavneet
 
 # Daniel has 3 outgoing edges and 2 incoming edges, so there should be 5 tuples
 query II

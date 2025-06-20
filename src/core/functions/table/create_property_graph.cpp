@@ -301,23 +301,18 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
   auto pg_info = bind_data.create_pg_info;
   auto duckpgq_state = GetDuckPGQState(context);
 
-  for (auto &connection :
+  for (auto &local_client_context:
        ConnectionManager::Get(*context.db).GetConnectionList()) {
-    auto local_state =
-        connection->registered_state->Get<DuckPGQState>("duckpgq");
-    if (!local_state) {
-      continue;
-    }
+    auto local_state = GetDuckPGQState(*local_client_context);
     local_state->registered_property_graphs[pg_info->property_graph_name] =
         pg_info->Copy();
   }
 
-  auto new_conn = make_shared_ptr<ClientContext>(context.db);
-
+  duckpgq_state->InitializeInternalTable(context);
+  auto new_conn = make_shared_ptr<Connection>(*context.db);
   auto retrieve_query = new_conn->Query(
       "SELECT * FROM __duckpgq_internal where property_graph = '" +
-          pg_info->property_graph_name + "';",
-      false);
+          pg_info->property_graph_name + "';");
   if (retrieve_query->HasError()) {
     throw TransactionException(retrieve_query->GetError());
   }
@@ -335,8 +330,7 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
       // DELETE the old property graph and insert new one.
       new_conn->Query(
           "DELETE FROM __duckpgq_internal WHERE property_graph = '" +
-              pg_info->property_graph_name + "';",
-          false);
+              pg_info->property_graph_name + "';");
     }
   }
 
@@ -450,7 +444,7 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(
     insert_info += "]"; // End of column aliases
     insert_info += "), ";
   }
-  auto insert_query = new_conn->Query(insert_info, false);
+  auto insert_query = new_conn->Query(insert_info);
   if (insert_query->HasError()) {
     throw TransactionException(insert_query->GetError());
   }
