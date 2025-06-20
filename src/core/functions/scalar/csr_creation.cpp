@@ -131,8 +131,8 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
   int64_t edge_size_count = args.data[3].GetValue(0).GetValue<int64_t>();
   if (edge_size != edge_size_count) {
     duckpgq_state->csr_to_delete.insert(info.id);
-    throw ConstraintException("Non-unique vertices detected. Make sure all "
-                              "vertices are unique for path-finding queries.");
+    throw ConstraintException("Non-existent/non-unique vertices detected. Make sure all "
+                              "vertices referred by edge tables exist and are unique for path-finding queries.");
   }
 
   auto csr_entry = duckpgq_state->csr_list.find(info.id);
