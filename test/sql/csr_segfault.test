@@ -1,4 +1,5 @@
-
+# name: test/sql/csr_segfault.test
+# group: [sql]
 
 require duckpgq
 

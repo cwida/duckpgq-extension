@@ -15,13 +15,13 @@ namespace core {
 
 class DuckPGQBitmap {
 public:
-  explicit DuckPGQBitmap(size_t size);
-  void set(size_t index);
-  bool test(size_t index) const;
-  void reset();
+	explicit DuckPGQBitmap(size_t size);
+	void set(size_t index);
+	bool test(size_t index) const;
+	void reset();
 
 private:
-  vector<uint64_t> bitmap;
+	vector<uint64_t> bitmap;
 };
 
 } // namespace core

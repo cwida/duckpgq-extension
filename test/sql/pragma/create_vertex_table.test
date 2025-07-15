@@ -1,7 +1,6 @@
 # name: test/sql/pragma/create_vertex_table.test
 # description: Testing the pragma create_vertex_table
-# group: [duckpgq_sql_pragma]
-
+# group: [pragma]
 
 require duckpgq
 

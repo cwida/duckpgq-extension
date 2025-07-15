@@ -1,6 +1,6 @@
 # name: test/sql/scalar/weakly_connected_component.test
 # description: Testing the weakly connected component implementation
-# group: [duckpgq_sql_scalar]
+# group: [scalar]
 
 require duckpgq
 

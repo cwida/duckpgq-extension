@@ -1,6 +1,6 @@
 # name: test/sql/path_finding/subpath_match.test
 # description: Testing the subpath matching
-# group: [duckpgq_sql_path_finding]
+# group: [path_finding]
 
 #statement ok
 #pragma enable_verification

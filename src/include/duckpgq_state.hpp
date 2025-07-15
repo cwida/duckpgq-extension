@@ -9,35 +9,31 @@ namespace duckdb {
 
 class DuckPGQState : public ClientContextState {
 public:
-  explicit DuckPGQState() {};
+	explicit DuckPGQState() {};
 
-  static void InitializeInternalTable(ClientContext &context);
-  void QueryEnd() override;
-  CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name);
-  duckpgq::core::CSR *GetCSR(int32_t id);
+	static void InitializeInternalTable(ClientContext &context);
+	void QueryEnd() override;
+	CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name);
+	duckpgq::core::CSR *GetCSR(int32_t id);
 
-  void RetrievePropertyGraphs(const shared_ptr<Connection> &context);
-  void ProcessPropertyGraphs(unique_ptr<MaterializedQueryResult> &property_graphs,
-                             bool is_vertex);
-  void PopulateEdgeSpecificFields(unique_ptr<DataChunk> &chunk, idx_t row_idx,
-                                  PropertyGraphTable &table);
-  static void ExtractListValues(const Value &list_value,
-                                vector<string> &output);
-  void RegisterPropertyGraph(const shared_ptr<PropertyGraphTable> &table,
-                             const string &graph_name, bool is_vertex);
+	void RetrievePropertyGraphs(const shared_ptr<Connection> &context);
+	void ProcessPropertyGraphs(unique_ptr<MaterializedQueryResult> &property_graphs, bool is_vertex);
+	void PopulateEdgeSpecificFields(unique_ptr<DataChunk> &chunk, idx_t row_idx, PropertyGraphTable &table);
+	static void ExtractListValues(const Value &list_value, vector<string> &output);
+	void RegisterPropertyGraph(const shared_ptr<PropertyGraphTable> &table, const string &graph_name, bool is_vertex);
 
 public:
-  unique_ptr<ParserExtensionParseData> parse_data;
-  unordered_map<int32_t, unique_ptr<ParsedExpression>> transform_expression;
-  int32_t match_index = 0;
+	unique_ptr<ParserExtensionParseData> parse_data;
+	unordered_map<int32_t, unique_ptr<ParsedExpression>> transform_expression;
+	int32_t match_index = 0;
 
-  //! Property graphs that are registered
-  case_insensitive_map_t<unique_ptr<CreateInfo>> registered_property_graphs;
+	//! Property graphs that are registered
+	case_insensitive_map_t<unique_ptr<CreateInfo>> registered_property_graphs;
 
-  //! Used to build the CSR data structures required for path-finding queries
-  std::unordered_map<int32_t, unique_ptr<duckpgq::core::CSR>> csr_list;
-  std::mutex csr_lock;
-  std::unordered_set<int32_t> csr_to_delete;
+	//! Used to build the CSR data structures required for path-finding queries
+	std::unordered_map<int32_t, unique_ptr<duckpgq::core::CSR>> csr_list;
+	std::mutex csr_lock;
+	std::unordered_set<int32_t> csr_to_delete;
 };
 
 } // namespace duckdb

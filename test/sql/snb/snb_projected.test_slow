@@ -1,6 +1,6 @@
 # name: test/sql/snb/snb_projected.test_slow
 # description: Testing the SNB projected dataset
-# group: [duckpgq_sql_snb]
+# group: [snb]
 
 #require duckpgq
 

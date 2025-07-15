@@ -1,4 +1,5 @@
-
+# name: test/sql/path_finding/non-unique-vertices.test
+# group: [path_finding]
 
 require duckpgq
 

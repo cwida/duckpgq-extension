@@ -13,24 +13,21 @@
 namespace duckpgq {
 namespace core {
 struct WeaklyConnectedComponentFunctionData final : FunctionData {
-  ClientContext &context;
-  int32_t csr_id;
-  std::mutex wcc_lock;
-  std::mutex initialize_lock;
-  bool state_converged;
-  bool state_initialized;
-  vector<int64_t> forest;
+	ClientContext &context;
+	int32_t csr_id;
+	std::mutex wcc_lock;
+	std::mutex initialize_lock;
+	bool state_converged;
+	bool state_initialized;
+	vector<int64_t> forest;
 
+	WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id);
 
-  WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id);
+	static unique_ptr<FunctionData> WeaklyConnectedComponentBind(ClientContext &context, ScalarFunction &bound_function,
+	                                                             vector<unique_ptr<Expression>> &arguments);
 
-  static unique_ptr<FunctionData>
-  WeaklyConnectedComponentBind(ClientContext &context,
-                               ScalarFunction &bound_function,
-                               vector<unique_ptr<Expression>> &arguments);
-
-  unique_ptr<FunctionData> Copy() const override;
-  bool Equals(const FunctionData &other_p) const override;
+	unique_ptr<FunctionData> Copy() const override;
+	bool Equals(const FunctionData &other_p) const override;
 };
 
 } // namespace core

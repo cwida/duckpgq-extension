@@ -1,6 +1,6 @@
 # name: test/sql/unnamed_subquery.test
 # description: Testing unnamed subquery support
-# group: [duckpgq_sql]
+# group: [sql]
 
 require duckpgq
 

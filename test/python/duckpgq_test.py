@@ -17,7 +17,7 @@ def duckdb_conn():
 def test_duckpgq(duckdb_conn):
     duckdb_conn.execute("SELECT duckpgq('Sam') as value;")
     res = duckdb_conn.fetchall()
-    assert (res[0][0] == "Duckpgq Sam 🐥");
+    assert res[0][0] == "Duckpgq Sam 🐥"
 
 
 def test_property_graph(duckdb_conn):
@@ -26,4 +26,4 @@ def test_property_graph(duckdb_conn):
     duckdb_conn.execute("-CREATE PROPERTY GRAPH t VERTEX TABLES (foo);")
     duckdb_conn.execute("-FROM GRAPH_TABLE(t MATCH (f:foo))")
     res = duckdb_conn.fetchall()
-    assert (res[0][0] == 1)
+    assert res[0][0] == 1

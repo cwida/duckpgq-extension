@@ -1,3 +1,5 @@
+# name: test/sql/summarize_property_graph.test
+# group: [sql]
 
 require duckpgq
 
