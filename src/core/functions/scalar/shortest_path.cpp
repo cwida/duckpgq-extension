@@ -119,7 +119,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 					parents_v[src_data[src_pos]][lane] = src_data[src_pos]; // Mark source with source id
 					parents_e[src_data[src_pos]][lane] = -2; // Mark the source with -2, there is no incoming edge for
 					                                         // the source.
-					lane_to_num[lane] = search_num; // active lane
+					lane_to_num[lane] = search_num;          // active lane
 					active++;
 					break;
 				}
