@@ -35,5 +35,4 @@ jobs:
       duckdb_version: v1.3.2
       ci_tools_version: main
       extension_name: duckpgq
-      deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
       format_checks: 'format;tidy'
