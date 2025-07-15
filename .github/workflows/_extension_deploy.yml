@@ -22,7 +22,7 @@ on:
       exclude_archs:
         required: false
         type: string
-        default: "linux_amd64_gcc4;windows_amd64;windows_amd64;windows_amd64_mingw"
+        default: "linux_amd64_gcc4"
       # Whether to upload this deployment as the latest. This may overwrite a previous deployment.
       deploy_latest:
         required: false
