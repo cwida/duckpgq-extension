@@ -5,7 +5,5 @@ add_subdirectory(pragma)
 add_subdirectory(utils)
 
 set(EXTENSION_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/module.cpp
-        ${EXTENSION_SOURCES}
-        PARENT_SCOPE
-    )
+    ${CMAKE_CURRENT_SOURCE_DIR}/module.cpp ${EXTENSION_SOURCES}
+    PARENT_SCOPE)

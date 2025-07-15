@@ -1,6 +1,6 @@
 # name: test/sql/create_pg/no_properties.test
 # description: Testing property graphs with no properties
-# group: [duckpgq_sql_create_pg]
+# group: [create_pg]
 
 #statement ok
 #pragma enable_verification

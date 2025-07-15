@@ -15,18 +15,16 @@ namespace duckpgq {
 namespace core {
 
 struct LocalClusteringCoefficientFunctionData final : FunctionData {
-  ClientContext &context;
-  int32_t csr_id;
+	ClientContext &context;
+	int32_t csr_id;
 
-  LocalClusteringCoefficientFunctionData(ClientContext &context,
-                                         int32_t csr_id);
-  static unique_ptr<FunctionData>
-  LocalClusteringCoefficientBind(ClientContext &context,
-                                 ScalarFunction &bound_function,
-                                 vector<unique_ptr<Expression>> &arguments);
+	LocalClusteringCoefficientFunctionData(ClientContext &context, int32_t csr_id);
+	static unique_ptr<FunctionData> LocalClusteringCoefficientBind(ClientContext &context,
+	                                                               ScalarFunction &bound_function,
+	                                                               vector<unique_ptr<Expression>> &arguments);
 
-  unique_ptr<FunctionData> Copy() const override;
-  bool Equals(const FunctionData &other_p) const override;
+	unique_ptr<FunctionData> Copy() const override;
+	bool Equals(const FunctionData &other_p) const override;
 };
 
 } // namespace core

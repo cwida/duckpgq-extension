@@ -6,31 +6,28 @@ namespace duckpgq {
 namespace core {
 
 struct CoreTableFunctions {
-  static void Register(DatabaseInstance &db) {
-    RegisterCreatePropertyGraphTableFunction(db);
-    RegisterMatchTableFunction(db);
-    RegisterDropPropertyGraphTableFunction(db);
-    RegisterDescribePropertyGraphTableFunction(db);
-    RegisterLocalClusteringCoefficientTableFunction(db);
-    RegisterScanTableFunctions(db);
-    RegisterSummarizePropertyGraphTableFunction(db);
-    RegisterWeaklyConnectedComponentTableFunction(db);
-    RegisterPageRankTableFunction(db);
-  }
+	static void Register(DatabaseInstance &db) {
+		RegisterCreatePropertyGraphTableFunction(db);
+		RegisterMatchTableFunction(db);
+		RegisterDropPropertyGraphTableFunction(db);
+		RegisterDescribePropertyGraphTableFunction(db);
+		RegisterLocalClusteringCoefficientTableFunction(db);
+		RegisterScanTableFunctions(db);
+		RegisterSummarizePropertyGraphTableFunction(db);
+		RegisterWeaklyConnectedComponentTableFunction(db);
+		RegisterPageRankTableFunction(db);
+	}
 
 private:
-  static void RegisterCreatePropertyGraphTableFunction(DatabaseInstance &db);
-  static void RegisterMatchTableFunction(DatabaseInstance &db);
-  static void RegisterDropPropertyGraphTableFunction(DatabaseInstance &db);
-  static void RegisterDescribePropertyGraphTableFunction(DatabaseInstance &db);
-  static void
-  RegisterLocalClusteringCoefficientTableFunction(DatabaseInstance &db);
-  static void RegisterScanTableFunctions(DatabaseInstance &db);
-  static void
-  RegisterWeaklyConnectedComponentTableFunction(DatabaseInstance &db);
-  static void RegisterPageRankTableFunction(DatabaseInstance &db);
-  static void RegisterSummarizePropertyGraphTableFunction(DatabaseInstance &db);
-
+	static void RegisterCreatePropertyGraphTableFunction(DatabaseInstance &db);
+	static void RegisterMatchTableFunction(DatabaseInstance &db);
+	static void RegisterDropPropertyGraphTableFunction(DatabaseInstance &db);
+	static void RegisterDescribePropertyGraphTableFunction(DatabaseInstance &db);
+	static void RegisterLocalClusteringCoefficientTableFunction(DatabaseInstance &db);
+	static void RegisterScanTableFunctions(DatabaseInstance &db);
+	static void RegisterWeaklyConnectedComponentTableFunction(DatabaseInstance &db);
+	static void RegisterPageRankTableFunction(DatabaseInstance &db);
+	static void RegisterSummarizePropertyGraphTableFunction(DatabaseInstance &db);
 };
 } // namespace core
 

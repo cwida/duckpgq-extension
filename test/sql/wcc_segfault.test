@@ -1,3 +1,6 @@
+# name: test/sql/wcc_segfault.test
+# group: [sql]
+
 # require duckpgq
 #
 #

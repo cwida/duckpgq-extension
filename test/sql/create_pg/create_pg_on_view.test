@@ -1,4 +1,5 @@
-
+# name: test/sql/create_pg/create_pg_on_view.test
+# group: [create_pg]
 
 require duckpgq
 

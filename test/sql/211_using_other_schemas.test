@@ -1,3 +1,6 @@
+# name: test/sql/211_using_other_schemas.test
+# group: [sql]
+
 require duckpgq
 
 statement ok

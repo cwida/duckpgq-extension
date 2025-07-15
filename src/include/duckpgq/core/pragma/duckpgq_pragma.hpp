@@ -15,15 +15,15 @@ namespace core {
 //! Class to register the PRAGMA create_inbox function
 class CorePGQPragma {
 public:
-  //! Register the PRAGMA function
-  static void Register(DatabaseInstance &instance) {
-    RegisterShowPropertyGraphs(instance);
-    RegisterCreateVertexTable(instance);
-  }
+	//! Register the PRAGMA function
+	static void Register(DatabaseInstance &instance) {
+		RegisterShowPropertyGraphs(instance);
+		RegisterCreateVertexTable(instance);
+	}
 
 private:
-  static void RegisterShowPropertyGraphs(DatabaseInstance &instance);
-  static void RegisterCreateVertexTable(DatabaseInstance &instance);
+	static void RegisterShowPropertyGraphs(DatabaseInstance &instance);
+	static void RegisterCreateVertexTable(DatabaseInstance &instance);
 };
 
 } // namespace core

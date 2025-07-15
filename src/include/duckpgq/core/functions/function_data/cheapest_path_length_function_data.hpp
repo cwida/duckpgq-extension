@@ -15,17 +15,16 @@ namespace duckpgq {
 namespace core {
 
 struct CheapestPathLengthFunctionData final : FunctionData {
-  ClientContext &context;
-  int32_t csr_id;
+	ClientContext &context;
+	int32_t csr_id;
 
-  CheapestPathLengthFunctionData(ClientContext &context, int32_t csr_id)
-      : context(context), csr_id(csr_id) {}
-  static unique_ptr<FunctionData>
-  CheapestPathLengthBind(ClientContext &context, ScalarFunction &bound_function,
-                         vector<unique_ptr<Expression>> &arguments);
+	CheapestPathLengthFunctionData(ClientContext &context, int32_t csr_id) : context(context), csr_id(csr_id) {
+	}
+	static unique_ptr<FunctionData> CheapestPathLengthBind(ClientContext &context, ScalarFunction &bound_function,
+	                                                       vector<unique_ptr<Expression>> &arguments);
 
-  unique_ptr<FunctionData> Copy() const override;
-  bool Equals(const FunctionData &other_p) const override;
+	unique_ptr<FunctionData> Copy() const override;
+	bool Equals(const FunctionData &other_p) const override;
 };
 
 } // namespace core
