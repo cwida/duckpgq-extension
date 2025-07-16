@@ -112,8 +112,8 @@ static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state, Vec
 }
 
 static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &func_expr = (BoundFunctionExpression &)state.expr;
-	auto &info = (CSRFunctionData &)*func_expr.bind_info;
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<CSRFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context, true);
 
