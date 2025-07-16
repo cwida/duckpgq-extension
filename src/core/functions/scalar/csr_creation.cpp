@@ -9,9 +9,9 @@
 #include <duckpgq_extension.hpp>
 #include <mutex>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 static void CsrInitializeVertex(DuckPGQState &context, int32_t id, int64_t v_size) {
 	lock_guard<mutex> csr_init_lock(context.csr_lock);
@@ -86,8 +86,8 @@ static void CsrInitializeWeight(DuckPGQState &context, int32_t id, int64_t e_siz
 }
 
 static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &func_expr = (BoundFunctionExpression &)state.expr;
-	auto &info = (CSRFunctionData &)*func_expr.bind_info;
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<CSRFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 	int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
@@ -217,6 +217,6 @@ void CoreScalarFunctions::RegisterCSRCreationScalarFunctions(DatabaseInstance &d
 	ExtensionUtil::RegisterFunction(db, GetCSRVertexFunction());
 }
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

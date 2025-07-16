@@ -9,12 +9,7 @@
 namespace duckdb {
 
 static void LoadInternal(DatabaseInstance &instance) {
-	duckpgq::core::CoreModule::Register(instance);
-	// for (auto &connection :
-	//      ConnectionManager::Get(instance).GetConnectionList()) {
-	//   connection->registered_state->Insert(
-	//       "duckpgq", make_shared_ptr<DuckPGQState>());
-	// }
+	CoreModule::Register(instance);
 
 	// Fill in extension load information.
 	std::string description = StringUtil::Format("Adds support for SQL/PGQ and graph algorithms.");
@@ -33,12 +28,12 @@ std::string DuckpgqExtension::Name() {
 
 extern "C" {
 
-DUCKDB_EXTENSION_API void duckpgq_init(DatabaseInstance &db) {
+DUCKDB_EXTENSION_API void duckpgq_init(duckdb::DatabaseInstance &db) {
 	LoadInternal(db);
 }
 
 DUCKDB_EXTENSION_API const char *duckpgq_version() {
-	return DuckDB::LibraryVersion();
+	return duckdb::DuckDB::LibraryVersion();
 }
 }
 

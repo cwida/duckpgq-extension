@@ -7,9 +7,9 @@
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 static bool IterativeLengthBidirectional(int64_t v_size, int64_t *V, vector<int64_t> &E,
                                          vector<std::bitset<LANE_LIMIT>> &seen, vector<std::bitset<LANE_LIMIT>> &visit,
@@ -43,8 +43,8 @@ static std::bitset<LANE_LIMIT> InterSectFronteers(int64_t v_size, vector<std::bi
 }
 
 static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &func_expr = (BoundFunctionExpression &)state.expr;
-	auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<IterativeLengthFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
@@ -60,8 +60,8 @@ static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionStat
 	UnifiedVectorFormat vdata_dst;
 	src.ToUnifiedFormat(args.size(), vdata_src);
 	dst.ToUnifiedFormat(args.size(), vdata_dst);
-	auto src_data = (int64_t *)vdata_src.data;
-	auto dst_data = (int64_t *)vdata_dst.data;
+	auto src_data = vdata_src.data;
+	auto dst_data = vdata_dst.data;
 
 	// create result vector
 	result.SetVectorType(VectorType::FLAT_VECTOR);
@@ -166,6 +166,6 @@ void CoreScalarFunctions::RegisterIterativeLengthBidirectionalScalarFunction(Dat
 	                       IterativeLengthFunctionData::IterativeLengthBind));
 }
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

@@ -1,8 +1,6 @@
 #include "duckpgq/core/utils/duckpgq_bitmap.hpp"
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 DuckPGQBitmap::DuckPGQBitmap(size_t size) {
 	bitmap.resize((size + 63) / 64, 0);
@@ -19,5 +17,5 @@ bool DuckPGQBitmap::test(size_t index) const {
 void DuckPGQBitmap::reset() {
 	fill(bitmap.begin(), bitmap.end(), 0);
 }
-} // namespace core
-} // namespace duckpgq
+
+} // namespace duckdb

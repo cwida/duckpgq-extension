@@ -10,9 +10,9 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckpgq/common.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 struct LocalClusteringCoefficientFunctionData final : FunctionData {
 	ClientContext &context;
@@ -27,5 +27,5 @@ struct LocalClusteringCoefficientFunctionData final : FunctionData {
 	bool Equals(const FunctionData &other_p) const override;
 };
 
-} // namespace core
-} // namespace duckpgq
+
+} // namespace duckdb

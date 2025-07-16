@@ -5,13 +5,13 @@
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 static void DeleteCsrFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &func_expr = (BoundFunctionExpression &)state.expr;
-	auto &info = (CSRFunctionData &)*func_expr.bind_info;
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<CSRFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
@@ -29,6 +29,6 @@ void CoreScalarFunctions::RegisterCSRDeletionScalarFunction(DatabaseInstance &db
 	                                                   DeleteCsrFunction, CSRFunctionData::CSRBind));
 }
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

@@ -7,9 +7,9 @@
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 static bool IterativeLength(int64_t v_size, int64_t *v, vector<int64_t> &e, vector<std::bitset<LANE_LIMIT>> &seen,
                             vector<std::bitset<LANE_LIMIT>> &visit, vector<std::bitset<LANE_LIMIT>> &next) {
@@ -156,6 +156,6 @@ void CoreScalarFunctions::RegisterIterativeLengthScalarFunction(DatabaseInstance
 	                   LogicalType::BIGINT, IterativeLengthFunction, IterativeLengthFunctionData::IterativeLengthBind));
 }
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

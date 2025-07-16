@@ -2,9 +2,9 @@
 
 #include "duckpgq/common.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 BoundStatement duckpgq_bind(ClientContext &context, Binder &binder, OperatorExtensionInfo *info,
                             SQLStatement &statement);
@@ -23,6 +23,6 @@ struct DuckPGQOperatorExtension : public OperatorExtension {
 	}
 };
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

@@ -31,9 +31,7 @@
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 namespace {
 
@@ -1088,6 +1086,4 @@ void CoreTableFunctions::RegisterMatchTableFunction(DatabaseInstance &db) {
 	ExtensionUtil::RegisterFunction(db, PGQMatchFunction());
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

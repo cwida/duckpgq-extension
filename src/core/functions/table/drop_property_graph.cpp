@@ -6,8 +6,7 @@
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include "duckdb/main/connection_manager.hpp"
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
 
 unique_ptr<FunctionData> DropPropertyGraphFunction::DropPropertyGraphBind(ClientContext &context,
                                                                           TableFunctionBindInput &,
@@ -64,6 +63,5 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(ClientContext &context, Ta
 void CoreTableFunctions::RegisterDropPropertyGraphTableFunction(DatabaseInstance &db) {
 	ExtensionUtil::RegisterFunction(db, DropPropertyGraphFunction());
 }
-} // namespace core
 
-} // namespace duckpgq
+} // namespace duckdb

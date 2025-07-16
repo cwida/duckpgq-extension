@@ -9,8 +9,8 @@
 #include <atomic>
 #include <vector>
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
+
 
 // Helper function to find the root of a node with path compression
 static int64_t FindTreeRoot(std::vector<int64_t> &forest, int64_t node) {
@@ -35,11 +35,11 @@ static void Link(std::vector<int64_t> &forest, int64_t nodeA, int64_t nodeB) {
 }
 
 static void WeaklyConnectedComponentFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &func_expr = (BoundFunctionExpression &)state.expr;
-	auto &info = (WeaklyConnectedComponentFunctionData &)*func_expr.bind_info;
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<WeaklyConnectedComponentFunctionData>();
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
-	auto csr_entry = duckpgq_state->csr_list.find((uint64_t)info.csr_id);
+	auto csr_entry = duckpgq_state->csr_list.find(uint64_t(info.csr_id));
 	if (csr_entry == duckpgq_state->csr_list.end()) {
 		throw ConstraintException("CSR not found. Is the graph populated?");
 	}
@@ -57,7 +57,7 @@ static void WeaklyConnectedComponentFunction(DataChunk &args, ExpressionState &s
 	auto &src = args.data[1];
 	UnifiedVectorFormat vdata_src;
 	src.ToUnifiedFormat(args.size(), vdata_src);
-	auto src_data = (int64_t *)vdata_src.data;
+	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
 	ValidityMask &result_validity = FlatVector::Validity(result);
 
 	// Create result vector
@@ -114,5 +114,5 @@ void CoreScalarFunctions::RegisterWeaklyConnectedComponentScalarFunction(Databas
 	                       WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentBind));
 }
 
-} // namespace core
-} // namespace duckpgq
+
+} // namespace duckdb

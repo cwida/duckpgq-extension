@@ -2,9 +2,7 @@
 
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id)
     : context(context), csr_id(csr_id) {
@@ -31,7 +29,7 @@ unique_ptr<FunctionData> WeaklyConnectedComponentFunctionData::Copy() const {
 }
 
 bool WeaklyConnectedComponentFunctionData::Equals(const FunctionData &other_p) const {
-	auto &other = (const WeaklyConnectedComponentFunctionData &)other_p;
+	auto &other = other_p.Cast<WeaklyConnectedComponentFunctionData>();
 	if (csr_id != other.csr_id) {
 		return false;
 	}
@@ -41,6 +39,4 @@ bool WeaklyConnectedComponentFunctionData::Equals(const FunctionData &other_p) c
 	return true;
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

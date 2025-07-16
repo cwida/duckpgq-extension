@@ -2,9 +2,7 @@
 #include "duckdb/main/extension_util.hpp"
 #include <duckpgq/core/pragma/duckpgq_pragma.hpp>
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 static string PragmaShowPropertyGraphs(ClientContext &context, const FunctionParameters &parameters) {
 	return "SELECT DISTINCT property_graph from __duckpgq_internal";
@@ -21,6 +19,4 @@ void CorePGQPragma::RegisterShowPropertyGraphs(DatabaseInstance &instance) {
 	ExtensionUtil::RegisterFunction(instance, pragma_func);
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

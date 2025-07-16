@@ -6,8 +6,8 @@
 #include <duckpgq/core/utils/duckpgq_bitmap.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
+
 
 static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = (BoundFunctionExpression &)state.expr;
@@ -120,5 +120,5 @@ void CoreScalarFunctions::RegisterPageRankScalarFunction(DatabaseInstance &db) {
 	                                                   PageRankFunctionData::PageRankBind));
 }
 
-} // namespace core
-} // namespace duckpgq
+
+} // namespace duckdb

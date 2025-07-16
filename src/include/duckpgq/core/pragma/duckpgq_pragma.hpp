@@ -8,9 +8,9 @@
 #pragma once
 #include "duckpgq/common.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 //! Class to register the PRAGMA create_inbox function
 class CorePGQPragma {
@@ -26,6 +26,6 @@ private:
 	static void RegisterCreateVertexTable(DatabaseInstance &instance);
 };
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

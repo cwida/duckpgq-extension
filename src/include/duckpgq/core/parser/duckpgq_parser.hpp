@@ -3,9 +3,9 @@
 
 #include <duckpgq_state.hpp>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 struct CorePGQParser {
 	static void Register(DatabaseInstance &db) {
@@ -55,6 +55,6 @@ struct DuckPGQParseData : ParserExtensionParseData {
 	}
 };
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

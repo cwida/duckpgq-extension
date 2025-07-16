@@ -6,8 +6,8 @@
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include "duckdb/parser/tableref/basetableref.hpp"
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
+
 
 // Main binding function
 unique_ptr<TableRef>
@@ -40,5 +40,5 @@ void CoreTableFunctions::RegisterWeaklyConnectedComponentTableFunction(DatabaseI
 	ExtensionUtil::RegisterFunction(db, WeaklyConnectedComponentFunction());
 }
 
-} // namespace core
-} // namespace duckpgq
+
+} // namespace duckdb

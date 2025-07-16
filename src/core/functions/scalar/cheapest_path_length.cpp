@@ -7,9 +7,7 @@
 
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 template <typename T, int16_t lane_limit>
 static int16_t InitialiseBellmanFord(const DataChunk &args, int64_t input_size, const UnifiedVectorFormat &vdata_src,
@@ -138,8 +136,8 @@ void TemplatedBellmanFord(CSR *csr, DataChunk &args, int64_t input_size, Vector 
 }
 
 static void CheapestPathLengthFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &func_expr = (BoundFunctionExpression &)state.expr;
-	auto &info = (CheapestPathLengthFunctionData &)*func_expr.bind_info;
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<CheapestPathLengthFunctionData>();
 	int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
@@ -149,11 +147,11 @@ static void CheapestPathLengthFunction(DataChunk &args, ExpressionState &state, 
 	UnifiedVectorFormat vdata_src, vdata_target;
 	src.ToUnifiedFormat(args.size(), vdata_src);
 
-	auto src_data = (int64_t *)vdata_src.data;
+	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
 
 	auto &target = args.data[3];
 	target.ToUnifiedFormat(args.size(), vdata_target);
-	auto target_data = (int64_t *)vdata_target.data;
+	auto target_data = reinterpret_cast<int64_t *>(vdata_target.data);
 	if (csr->w.empty()) {
 		TemplatedBellmanFord<double>(csr, args, input_size, result, vdata_src, src_data, vdata_target, target_data,
 		                             csr->w_double);
@@ -174,6 +172,6 @@ void CoreScalarFunctions::RegisterCheapestPathLengthScalarFunction(DatabaseInsta
 	                       CheapestPathLengthFunctionData::CheapestPathLengthBind));
 }
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

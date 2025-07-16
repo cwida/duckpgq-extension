@@ -1,9 +1,9 @@
 #pragma once
 #include "duckpgq_state.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 #define LANE_LIMIT         512
 #define VISIT_SIZE_DIVISOR 2
@@ -19,6 +19,6 @@ unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &ed
 unique_ptr<BaseTableRef> CreateBaseTableRef(const string &table_name, const string &alias = "");
 unique_ptr<ColumnRefExpression> CreateColumnRefExpression(const string &column_name, const string &table_name = "",
                                                           const string &alias = "");
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

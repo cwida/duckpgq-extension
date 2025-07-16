@@ -14,7 +14,7 @@ public:
 	static void InitializeInternalTable(ClientContext &context);
 	void QueryEnd() override;
 	CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name);
-	duckpgq::core::CSR *GetCSR(int32_t id);
+	CSR *GetCSR(int32_t id);
 
 	void RetrievePropertyGraphs(const shared_ptr<Connection> &context);
 	void ProcessPropertyGraphs(unique_ptr<MaterializedQueryResult> &property_graphs, bool is_vertex);
@@ -31,7 +31,7 @@ public:
 	case_insensitive_map_t<unique_ptr<CreateInfo>> registered_property_graphs;
 
 	//! Used to build the CSR data structures required for path-finding queries
-	std::unordered_map<int32_t, unique_ptr<duckpgq::core::CSR>> csr_list;
+	std::unordered_map<int32_t, unique_ptr<CSR>> csr_list;
 	std::mutex csr_lock;
 	std::unordered_set<int32_t> csr_to_delete;
 };

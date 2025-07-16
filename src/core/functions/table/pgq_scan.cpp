@@ -10,9 +10,9 @@
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq_extension.hpp>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 static void ScanCSREFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto state = &data_p.global_state->Cast<CSRScanState>();
@@ -300,6 +300,6 @@ void CoreTableFunctions::RegisterScanTableFunctions(DatabaseInstance &db) {
 	                                                  ScanPGEColFunction, PGScanEColData::ScanPGEColBind,
 	                                                  CSRScanState::Init));
 }
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

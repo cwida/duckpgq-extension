@@ -5,9 +5,9 @@
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 enum class CSRWType : int32_t {
 	// possible weight types of a csr
@@ -17,8 +17,8 @@ enum class CSRWType : int32_t {
 };
 
 static void GetCsrWTypeFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &func_expr = (BoundFunctionExpression &)state.expr;
-	auto &info = (CSRFunctionData &)*func_expr.bind_info;
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<CSRFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
@@ -46,6 +46,6 @@ void CoreScalarFunctions::RegisterGetCSRWTypeScalarFunction(DatabaseInstance &db
 	                                                   GetCsrWTypeFunction, CSRFunctionData::CSRBind));
 }
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

@@ -22,9 +22,7 @@
 
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info, const std::string &query) {
 	Parser parser;
@@ -191,6 +189,4 @@ void CorePGQParser::RegisterPGQParserExtension(DatabaseInstance &db) {
 	config.parser_extensions.push_back(DuckPGQParserExtension());
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

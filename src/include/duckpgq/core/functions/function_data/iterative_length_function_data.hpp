@@ -10,8 +10,8 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckpgq/common.hpp"
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
+
 
 struct IterativeLengthFunctionData final : FunctionData {
 	ClientContext &context;
@@ -26,5 +26,5 @@ struct IterativeLengthFunctionData final : FunctionData {
 	bool Equals(const FunctionData &other_p) const override;
 };
 
-} // namespace core
-} // namespace duckpgq
+
+} // namespace duckdb

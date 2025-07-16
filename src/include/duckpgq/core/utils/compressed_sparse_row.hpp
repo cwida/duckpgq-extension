@@ -20,9 +20,7 @@
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckpgq/common.hpp"
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 class CSR {
 public:
@@ -49,7 +47,7 @@ public:
 };
 
 struct CSRFunctionData : FunctionData {
-	CSRFunctionData(ClientContext &context, int32_t id, LogicalType weight_type);
+	CSRFunctionData(ClientContext &context, int32_t id, const LogicalType &weight_type);
 	unique_ptr<FunctionData> Copy() const override;
 	bool Equals(const FunctionData &other_p) const override;
 	static unique_ptr<FunctionData> CSRVertexBind(ClientContext &context, ScalarFunction &bound_function,
@@ -88,6 +86,5 @@ void SetupSelectNode(unique_ptr<SelectNode> &select_node, const shared_ptr<Prope
 unique_ptr<SubqueryRef> CreateCountCTESubquery();
 unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable();
 unique_ptr<SubqueryExpression> GetCountEdgeTable(const shared_ptr<PropertyGraphTable> &edge_table);
-} // namespace core
 
-} // namespace duckpgq
+} // namespace duckdb

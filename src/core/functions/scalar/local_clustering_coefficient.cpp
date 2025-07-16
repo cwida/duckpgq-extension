@@ -6,13 +6,11 @@
 
 #include <duckpgq/core/functions/scalar.hpp>
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &func_expr = (BoundFunctionExpression &)state.expr;
-	auto &info = (LocalClusteringCoefficientFunctionData &)*func_expr.bind_info;
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<LocalClusteringCoefficientFunctionData>();
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
 	auto csr_entry = duckpgq_state->csr_list.find((uint64_t)info.csr_id);
@@ -30,7 +28,7 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
 	auto &src = args.data[1];
 	UnifiedVectorFormat vdata_src;
 	src.ToUnifiedFormat(args.size(), vdata_src);
-	auto src_data = (int64_t *)vdata_src.data;
+	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
 
 	ValidityMask &result_validity = FlatVector::Validity(result);
 	// create result vector
@@ -81,6 +79,6 @@ void CoreScalarFunctions::RegisterLocalClusteringCoefficientScalarFunction(Datab
 	                       LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientBind));
 }
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

@@ -11,9 +11,9 @@
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckpgq/common.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 class SummarizePropertyGraphFunction : public TableFunction {
 public:
@@ -58,6 +58,6 @@ public:
 	                                                              TableFunctionBindInput &input);
 };
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb
