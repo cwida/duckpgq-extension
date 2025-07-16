@@ -12,7 +12,6 @@
 
 namespace duckdb {
 
-
 class DuckPGQBitmap {
 public:
 	explicit DuckPGQBitmap(size_t size);
@@ -23,6 +22,5 @@ public:
 private:
 	vector<uint64_t> bitmap;
 };
-
 
 } // namespace duckdb

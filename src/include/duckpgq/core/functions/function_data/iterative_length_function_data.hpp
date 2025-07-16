@@ -12,7 +12,6 @@
 
 namespace duckdb {
 
-
 struct IterativeLengthFunctionData final : FunctionData {
 	ClientContext &context;
 	int32_t csr_id;
@@ -25,6 +24,5 @@ struct IterativeLengthFunctionData final : FunctionData {
 	unique_ptr<FunctionData> Copy() const override;
 	bool Equals(const FunctionData &other_p) const override;
 };
-
 
 } // namespace duckdb

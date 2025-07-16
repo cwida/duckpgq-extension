@@ -10,7 +10,6 @@
 
 namespace duckdb {
 
-
 class WeaklyConnectedComponentFunction : public TableFunction {
 public:
 	WeaklyConnectedComponentFunction() {
@@ -51,6 +50,5 @@ struct WeaklyConnectedComponentScanState : GlobalTableFunctionState {
 
 	bool finished = false;
 };
-
 
 } // namespace duckdb

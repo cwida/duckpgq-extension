@@ -79,6 +79,4 @@ void CoreScalarFunctions::RegisterLocalClusteringCoefficientScalarFunction(Datab
 	                       LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientBind));
 }
 
-
-
 } // namespace duckdb

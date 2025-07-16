@@ -10,8 +10,6 @@
 
 namespace duckdb {
 
-
-
 //! Class to register the PRAGMA create_inbox function
 class CorePGQPragma {
 public:
@@ -25,7 +23,5 @@ private:
 	static void RegisterShowPropertyGraphs(DatabaseInstance &instance);
 	static void RegisterCreateVertexTable(DatabaseInstance &instance);
 };
-
-
 
 } // namespace duckdb

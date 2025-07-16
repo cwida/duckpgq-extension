@@ -3,8 +3,6 @@
 
 namespace duckdb {
 
-
-
 struct CoreTableFunctions {
 	static void Register(DatabaseInstance &db) {
 		RegisterCreatePropertyGraphTableFunction(db);
@@ -29,6 +27,5 @@ private:
 	static void RegisterPageRankTableFunction(DatabaseInstance &db);
 	static void RegisterSummarizePropertyGraphTableFunction(DatabaseInstance &db);
 };
-
 
 } // namespace duckdb

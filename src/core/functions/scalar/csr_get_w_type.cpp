@@ -7,8 +7,6 @@
 
 namespace duckdb {
 
-
-
 enum class CSRWType : int32_t {
 	// possible weight types of a csr
 	UNWEIGHTED,   //! unweighted
@@ -45,7 +43,5 @@ void CoreScalarFunctions::RegisterGetCSRWTypeScalarFunction(DatabaseInstance &db
 	ExtensionUtil::RegisterFunction(db, ScalarFunction("csr_get_w_type", {LogicalType::INTEGER}, LogicalType::INTEGER,
 	                                                   GetCsrWTypeFunction, CSRFunctionData::CSRBind));
 }
-
-
 
 } // namespace duckdb

@@ -8,7 +8,6 @@
 
 namespace duckdb {
 
-
 static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
 	auto &info = func_expr.bind_info->Cast<PageRankFunctionData>();
@@ -119,6 +118,5 @@ void CoreScalarFunctions::RegisterPageRankScalarFunction(DatabaseInstance &db) {
 	                                                   LogicalType::DOUBLE, PageRankFunction,
 	                                                   PageRankFunctionData::PageRankBind));
 }
-
 
 } // namespace duckdb

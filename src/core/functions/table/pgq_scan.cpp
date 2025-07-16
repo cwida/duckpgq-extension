@@ -12,8 +12,6 @@
 
 namespace duckdb {
 
-
-
 static void ScanCSREFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto state = &data_p.global_state->Cast<CSRScanState>();
 
@@ -300,6 +298,5 @@ void CoreTableFunctions::RegisterScanTableFunctions(DatabaseInstance &db) {
 	                                                  ScanPGEColFunction, PGScanEColData::ScanPGEColBind,
 	                                                  CSRScanState::Init));
 }
-
 
 } // namespace duckdb

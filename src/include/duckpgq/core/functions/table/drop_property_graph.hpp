@@ -15,8 +15,6 @@
 
 namespace duckdb {
 
-
-
 class DropPropertyGraphFunction : public TableFunction {
 public:
 	DropPropertyGraphFunction() {
@@ -45,7 +43,5 @@ public:
 
 	static void DropPropertyGraphFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output);
 };
-
-
 
 } // namespace duckdb

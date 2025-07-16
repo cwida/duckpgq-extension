@@ -4,8 +4,6 @@
 
 namespace duckdb {
 
-
-
 BoundStatement duckpgq_bind(ClientContext &context, Binder &binder, OperatorExtensionInfo *info,
                             SQLStatement &statement);
 
@@ -22,7 +20,5 @@ struct DuckPGQOperatorExtension : public OperatorExtension {
 		throw InternalException("DuckPGQ operator should not be serialized");
 	}
 };
-
-
 
 } // namespace duckdb

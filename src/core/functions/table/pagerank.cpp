@@ -8,7 +8,6 @@
 
 namespace duckdb {
 
-
 // Main binding function
 unique_ptr<TableRef> PageRankFunction::PageRankBindReplace(ClientContext &context, TableFunctionBindInput &input) {
 	auto pg_name = StringUtil::Lower(StringValue::Get(input.inputs[0]));
@@ -37,6 +36,5 @@ unique_ptr<TableRef> PageRankFunction::PageRankBindReplace(ClientContext &contex
 void CoreTableFunctions::RegisterPageRankTableFunction(DatabaseInstance &db) {
 	ExtensionUtil::RegisterFunction(db, PageRankFunction());
 }
-
 
 } // namespace duckdb

@@ -15,7 +15,6 @@
 
 namespace duckdb {
 
-
 unique_ptr<ParsedExpression> GetTableNameConstantExpression(const string &table_name, const string &alias) {
 	auto table_name_column = make_uniq<ConstantExpression>(Value(table_name));
 	table_name_column->alias = alias;
@@ -342,7 +341,5 @@ SummarizePropertyGraphFunction::SummarizePropertyGraphBindReplace(ClientContext 
 void CoreTableFunctions::RegisterSummarizePropertyGraphTableFunction(DatabaseInstance &db) {
 	ExtensionUtil::RegisterFunction(db, SummarizePropertyGraphFunction());
 }
-
-
 
 } // namespace duckdb
