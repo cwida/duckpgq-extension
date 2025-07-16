@@ -10,8 +10,8 @@ namespace duckdb {
 
 
 static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &func_expr = (BoundFunctionExpression &)state.expr;
-	auto &info = (PageRankFunctionData &)*func_expr.bind_info;
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<PageRankFunctionData>();
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
 	// Locate the CSR representation of the graph
@@ -24,7 +24,7 @@ static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &re
 		throw ConstraintException("Need to initialize CSR before running PageRank.");
 	}
 
-	int64_t *v = (int64_t *)duckpgq_state->csr_list[info.csr_id]->v;
+	int64_t *v = reinterpret_cast<int64_t *>(duckpgq_state->csr_list[info.csr_id]->v);
 	vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
 	size_t v_size = duckpgq_state->csr_list[info.csr_id]->vsize;
 

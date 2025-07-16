@@ -10,8 +10,6 @@
 
 namespace duckdb {
 
-
-
 static bool IterativeLength2(int64_t v_size, int64_t *V, vector<int64_t> &E, vector<std::bitset<LANE_LIMIT>> &seen,
                              vector<std::bitset<LANE_LIMIT>> &visit, vector<std::bitset<LANE_LIMIT>> &next) {
 	std::bitset<LANE_LIMIT> change;
@@ -33,14 +31,14 @@ static bool IterativeLength2(int64_t v_size, int64_t *V, vector<int64_t> &E, vec
 }
 
 static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &func_expr = (BoundFunctionExpression &)state.expr;
-	auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<IterativeLengthFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
 	D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
 	int64_t v_size = args.data[1].GetValue(0).GetValue<int64_t>();
-	int64_t *v = (int64_t *)duckpgq_state->csr_list[info.csr_id]->v;
+	int64_t *v = reinterpret_cast<int64_t *>(duckpgq_state->csr_list[info.csr_id]->v);
 	vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
 
 	// get src and dst vectors for searches
@@ -50,8 +48,8 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Ve
 	UnifiedVectorFormat vdata_dst;
 	src.ToUnifiedFormat(args.size(), vdata_src);
 	dst.ToUnifiedFormat(args.size(), vdata_dst);
-	auto src_data = (int64_t *)vdata_src.data;
-	auto dst_data = (int64_t *)vdata_dst.data;
+	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
+	auto dst_data = reinterpret_cast<int64_t *>(vdata_dst.data);
 
 	// create result vector
 	result.SetVectorType(VectorType::FLAT_VECTOR);
