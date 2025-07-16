@@ -22,8 +22,6 @@
 
 namespace duckdb {
 
-
-
 struct PGQMatchFunction : public TableFunction {
 public:
 	PGQMatchFunction() {
@@ -141,7 +139,5 @@ public:
 	CheckColumnBinding(const CreatePropertyGraphInfo &pg_table, const MatchExpression &ref,
 	                   const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_to_vertex_and_edge_tables);
 };
-
-
 
 } // namespace duckdb

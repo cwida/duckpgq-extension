@@ -14,7 +14,6 @@
 
 namespace duckdb {
 
-
 class CreatePropertyGraphFunction : public TableFunction {
 public:
 	CreatePropertyGraphFunction() {
@@ -65,7 +64,5 @@ public:
 
 	static void CreatePropertyGraphFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output);
 };
-
-
 
 } // namespace duckdb

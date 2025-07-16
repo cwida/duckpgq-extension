@@ -16,8 +16,6 @@
 
 namespace duckdb {
 
-
-
 struct CSRScanVData : TableFunctionData {
 public:
 	static unique_ptr<FunctionData> ScanCSRVBind(ClientContext &context, TableFunctionBindInput &input,
@@ -185,7 +183,5 @@ public:
 	idx_t csr_e_offset;
 	idx_t csr_w_offset;
 };
-
-
 
 } // namespace duckdb

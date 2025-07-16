@@ -10,8 +10,6 @@
 
 namespace duckdb {
 
-
-
 typedef enum { NO_ARRAY, ARRAY, INTERMEDIATE } msbfs_modes_t;
 
 static int16_t InitialiseBfs(idx_t curr_batch, idx_t size, data_ptr_t src_data, const SelectionVector *src_sel,
@@ -265,7 +263,5 @@ void CoreScalarFunctions::RegisterReachabilityScalarFunction(DatabaseInstance &d
 	                                                   LogicalType::BOOLEAN, ReachabilityFunction,
 	                                                   IterativeLengthFunctionData::IterativeLengthBind));
 }
-
-
 
 } // namespace duckdb

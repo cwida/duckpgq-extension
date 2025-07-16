@@ -11,7 +11,6 @@
 
 namespace duckdb {
 
-
 // Helper function to find the root of a node with path compression
 static int64_t FindTreeRoot(std::vector<int64_t> &forest, int64_t node) {
 	while (true) {
@@ -113,6 +112,5 @@ void CoreScalarFunctions::RegisterWeaklyConnectedComponentScalarFunction(Databas
 	                       LogicalType::BIGINT, WeaklyConnectedComponentFunction,
 	                       WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentBind));
 }
-
 
 } // namespace duckdb

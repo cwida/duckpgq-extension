@@ -7,8 +7,6 @@
 
 namespace duckdb {
 
-
-
 static void DeleteCsrFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
 	auto &info = func_expr.bind_info->Cast<CSRFunctionData>();
@@ -28,7 +26,5 @@ void CoreScalarFunctions::RegisterCSRDeletionScalarFunction(DatabaseInstance &db
 	ExtensionUtil::RegisterFunction(db, ScalarFunction("delete_csr", {LogicalType::INTEGER}, LogicalType::BOOLEAN,
 	                                                   DeleteCsrFunction, CSRFunctionData::CSRBind));
 }
-
-
 
 } // namespace duckdb

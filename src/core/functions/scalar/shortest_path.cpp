@@ -10,8 +10,6 @@
 
 namespace duckdb {
 
-
-
 static bool IterativeLength(int64_t v_size, int64_t *V, vector<int64_t> &E, vector<int64_t> &edge_ids,
                             vector<std::vector<int64_t>> &parents_v, vector<std::vector<int64_t>> &parents_e,
                             vector<std::bitset<LANE_LIMIT>> &seen, vector<std::bitset<LANE_LIMIT>> &visit,
@@ -220,7 +218,5 @@ void CoreScalarFunctions::RegisterShortestPathScalarFunction(DatabaseInstance &d
 	                       LogicalType::LIST(LogicalType::BIGINT), ShortestPathFunction,
 	                       IterativeLengthFunctionData::IterativeLengthBind));
 }
-
-
 
 } // namespace duckdb

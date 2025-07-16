@@ -5,8 +5,6 @@
 
 namespace duckdb {
 
-
-
 class LocalClusteringCoefficientFunction : public TableFunction {
 public:
 	LocalClusteringCoefficientFunction() {
@@ -48,7 +46,5 @@ struct LocalClusteringCoefficientScanState : GlobalTableFunctionState {
 
 	bool finished = false;
 };
-
-
 
 } // namespace duckdb

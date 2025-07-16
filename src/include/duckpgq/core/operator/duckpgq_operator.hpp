@@ -4,7 +4,6 @@
 
 namespace duckdb {
 
-
 struct CorePGQOperator {
 	static void Register(DatabaseInstance &db) {
 		RegisterPGQBindOperator(db);
@@ -13,7 +12,5 @@ struct CorePGQOperator {
 private:
 	static void RegisterPGQBindOperator(DatabaseInstance &db);
 };
-
-
 
 } // namespace duckdb

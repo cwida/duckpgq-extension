@@ -4,7 +4,6 @@
 
 namespace duckdb {
 
-
 unique_ptr<FunctionData>
 CheapestPathLengthFunctionData::CheapestPathLengthBind(ClientContext &context, ScalarFunction &bound_function,
                                                        vector<unique_ptr<Expression>> &arguments) {

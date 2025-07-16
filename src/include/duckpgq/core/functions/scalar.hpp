@@ -3,8 +3,6 @@
 
 namespace duckdb {
 
-
-
 struct CoreScalarFunctions {
 	static void Register(DatabaseInstance &db) {
 		RegisterCheapestPathLengthScalarFunction(db);
@@ -35,7 +33,5 @@ private:
 	static void RegisterWeaklyConnectedComponentScalarFunction(DatabaseInstance &db);
 	static void RegisterPageRankScalarFunction(DatabaseInstance &db);
 };
-
-
 
 } // namespace duckdb

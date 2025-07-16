@@ -13,8 +13,6 @@
 
 namespace duckdb {
 
-
-
 class SummarizePropertyGraphFunction : public TableFunction {
 public:
 	SummarizePropertyGraphFunction() {
@@ -57,7 +55,5 @@ public:
 	static unique_ptr<TableRef> SummarizePropertyGraphBindReplace(ClientContext &context,
 	                                                              TableFunctionBindInput &input);
 };
-
-
 
 } // namespace duckdb

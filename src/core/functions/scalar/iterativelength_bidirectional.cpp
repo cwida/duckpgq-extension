@@ -9,8 +9,6 @@
 
 namespace duckdb {
 
-
-
 static bool IterativeLengthBidirectional(int64_t v_size, int64_t *V, vector<int64_t> &E,
                                          vector<std::bitset<LANE_LIMIT>> &seen, vector<std::bitset<LANE_LIMIT>> &visit,
                                          vector<std::bitset<LANE_LIMIT>> &next) {
@@ -165,7 +163,5 @@ void CoreScalarFunctions::RegisterIterativeLengthBidirectionalScalarFunction(Dat
 	                       LogicalType::BIGINT, IterativeLengthBidirectionalFunction,
 	                       IterativeLengthFunctionData::IterativeLengthBind));
 }
-
-
 
 } // namespace duckdb

@@ -8,7 +8,6 @@
 
 namespace duckdb {
 
-
 // Main binding function
 unique_ptr<TableRef>
 WeaklyConnectedComponentFunction::WeaklyConnectedComponentBindReplace(ClientContext &context,
@@ -39,6 +38,5 @@ WeaklyConnectedComponentFunction::WeaklyConnectedComponentBindReplace(ClientCont
 void CoreTableFunctions::RegisterWeaklyConnectedComponentTableFunction(DatabaseInstance &db) {
 	ExtensionUtil::RegisterFunction(db, WeaklyConnectedComponentFunction());
 }
-
 
 } // namespace duckdb

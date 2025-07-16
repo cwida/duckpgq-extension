@@ -30,6 +30,4 @@ struct WeaklyConnectedComponentFunctionData final : FunctionData {
 	bool Equals(const FunctionData &other_p) const override;
 };
 
-
-
 } // namespace duckdb

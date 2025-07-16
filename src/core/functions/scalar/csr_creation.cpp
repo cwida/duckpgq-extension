@@ -11,8 +11,6 @@
 
 namespace duckdb {
 
-
-
 static void CsrInitializeVertex(DuckPGQState &context, int32_t id, int64_t v_size) {
 	lock_guard<mutex> csr_init_lock(context.csr_lock);
 
@@ -216,7 +214,5 @@ void CoreScalarFunctions::RegisterCSRCreationScalarFunctions(DatabaseInstance &d
 	ExtensionUtil::RegisterFunction(db, GetCSREdgeFunction());
 	ExtensionUtil::RegisterFunction(db, GetCSRVertexFunction());
 }
-
-
 
 } // namespace duckdb

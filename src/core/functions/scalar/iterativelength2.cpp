@@ -141,6 +141,4 @@ void CoreScalarFunctions::RegisterIterativeLength2ScalarFunction(DatabaseInstanc
 	                       IterativeLengthFunctionData::IterativeLengthBind));
 }
 
-
-
 } // namespace duckdb

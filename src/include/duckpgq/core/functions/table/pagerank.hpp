@@ -10,7 +10,6 @@
 
 namespace duckdb {
 
-
 class PageRankFunction : public TableFunction {
 public:
 	PageRankFunction() {
@@ -49,6 +48,5 @@ struct PageRankScanState : GlobalTableFunctionState {
 
 	bool finished = false;
 };
-
 
 } // namespace duckdb

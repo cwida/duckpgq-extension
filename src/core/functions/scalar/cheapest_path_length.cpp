@@ -172,6 +172,4 @@ void CoreScalarFunctions::RegisterCheapestPathLengthScalarFunction(DatabaseInsta
 	                       CheapestPathLengthFunctionData::CheapestPathLengthBind));
 }
 
-
-
 } // namespace duckdb
