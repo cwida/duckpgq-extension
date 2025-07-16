@@ -12,9 +12,9 @@
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 class DescribePropertyGraphFunction : public TableFunction {
 public:
@@ -45,6 +45,6 @@ public:
 	static void DescribePropertyGraphFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output);
 };
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

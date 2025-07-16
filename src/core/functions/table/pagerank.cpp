@@ -6,8 +6,8 @@
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include "duckdb/parser/tableref/basetableref.hpp"
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
+
 
 // Main binding function
 unique_ptr<TableRef> PageRankFunction::PageRankBindReplace(ClientContext &context, TableFunctionBindInput &input) {
@@ -38,5 +38,5 @@ void CoreTableFunctions::RegisterPageRankTableFunction(DatabaseInstance &db) {
 	ExtensionUtil::RegisterFunction(db, PageRankFunction());
 }
 
-} // namespace core
-} // namespace duckpgq
+
+} // namespace duckdb

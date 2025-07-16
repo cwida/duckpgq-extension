@@ -14,9 +14,9 @@
 
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 struct CSRScanVData : TableFunctionData {
 public:
@@ -186,6 +186,6 @@ public:
 	idx_t csr_w_offset;
 };
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

@@ -9,9 +9,8 @@
 
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
 string CSR::ToString() const {
 	std::ostringstream result;
 
@@ -57,7 +56,7 @@ string CSR::ToString() const {
 	return result.str();
 }
 
-CSRFunctionData::CSRFunctionData(ClientContext &context, int32_t id, LogicalType weight_type)
+CSRFunctionData::CSRFunctionData(ClientContext &context, int32_t id, const LogicalType &weight_type)
     : context(context), id(id), weight_type(std::move(weight_type)) {
 }
 
@@ -66,7 +65,7 @@ unique_ptr<FunctionData> CSRFunctionData::Copy() const {
 }
 
 bool CSRFunctionData::Equals(const FunctionData &other_p) const {
-	auto &other = (const CSRFunctionData &)other_p;
+	auto &other = dynamic_cast<const CSRFunctionData &>(other_p);
 	return id == other.id && weight_type == other.weight_type;
 }
 
@@ -607,6 +606,4 @@ unique_ptr<SubqueryRef> CreateCountCTESubquery() {
 	return make_uniq<SubqueryRef>(std::move(temp_cte_select_statement), "__x");
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

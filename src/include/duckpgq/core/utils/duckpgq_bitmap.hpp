@@ -10,8 +10,8 @@
 #include "duckpgq/common.hpp"
 #include "duckdb/common/vector.hpp"
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
+
 
 class DuckPGQBitmap {
 public:
@@ -24,5 +24,5 @@ private:
 	vector<uint64_t> bitmap;
 };
 
-} // namespace core
-} // namespace duckpgq
+
+} // namespace duckdb

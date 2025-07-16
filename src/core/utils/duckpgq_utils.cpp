@@ -10,9 +10,8 @@
 #include "duckdb/parser/expression/columnref_expression.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
 // Function to get DuckPGQState from ClientContext
 shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context, bool throw_not_found_error) {
 	auto lookup = context.registered_state->Get<DuckPGQState>("duckpgq");
@@ -118,5 +117,5 @@ unique_ptr<ColumnRefExpression> CreateColumnRefExpression(const string &column_n
 	}
 	return column_ref;
 }
-} // namespace core
-} // namespace duckpgq
+
+} // namespace duckdb

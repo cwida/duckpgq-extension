@@ -1,9 +1,9 @@
 #pragma once
 #include "duckpgq/common.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 struct CoreScalarFunctions {
 	static void Register(DatabaseInstance &db) {
@@ -36,6 +36,6 @@ private:
 	static void RegisterPageRankScalarFunction(DatabaseInstance &db);
 };
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

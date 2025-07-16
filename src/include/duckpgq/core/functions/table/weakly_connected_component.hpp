@@ -8,8 +8,8 @@
 
 #include "duckpgq/common.hpp"
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
+
 
 class WeaklyConnectedComponentFunction : public TableFunction {
 public:
@@ -52,5 +52,5 @@ struct WeaklyConnectedComponentScanState : GlobalTableFunctionState {
 	bool finished = false;
 };
 
-} // namespace core
-} // namespace duckpgq
+
+} // namespace duckdb

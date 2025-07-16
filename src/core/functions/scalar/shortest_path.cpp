@@ -8,9 +8,9 @@
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 static bool IterativeLength(int64_t v_size, int64_t *V, vector<int64_t> &E, vector<int64_t> &edge_ids,
                             vector<std::vector<int64_t>> &parents_v, vector<std::vector<int64_t>> &parents_e,
@@ -44,8 +44,8 @@ static bool IterativeLength(int64_t v_size, int64_t *V, vector<int64_t> &E, vect
 }
 
 static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &func_expr = (BoundFunctionExpression &)state.expr;
-	auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<IterativeLengthFunctionData>();
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
 	D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
@@ -71,8 +71,8 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 	src.ToUnifiedFormat(args.size(), vdata_src);
 	target.ToUnifiedFormat(args.size(), vdata_dst);
 
-	auto src_data = (int64_t *)vdata_src.data;
-	auto dst_data = (int64_t *)vdata_dst.data;
+	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
+	auto dst_data = reinterpret_cast<int64_t *>(vdata_dst.data);
 
 	result.SetVectorType(VectorType::FLAT_VECTOR);
 	auto result_data = FlatVector::GetData<list_entry_t>(result);
@@ -221,6 +221,6 @@ void CoreScalarFunctions::RegisterShortestPathScalarFunction(DatabaseInstance &d
 	                       IterativeLengthFunctionData::IterativeLengthBind));
 }
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

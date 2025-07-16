@@ -3,9 +3,7 @@
 
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientFunctionData(ClientContext &context, int32_t csr_id)
     : context(context), csr_id(csr_id) {
@@ -28,10 +26,8 @@ unique_ptr<FunctionData> LocalClusteringCoefficientFunctionData::Copy() const {
 }
 
 bool LocalClusteringCoefficientFunctionData::Equals(const FunctionData &other_p) const {
-	auto &other = (const LocalClusteringCoefficientFunctionData &)other_p;
+	auto &other = other_p.Cast<LocalClusteringCoefficientFunctionData>();
 	return other.csr_id == csr_id;
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

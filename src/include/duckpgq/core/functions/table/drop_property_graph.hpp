@@ -13,9 +13,9 @@
 
 #include <duckdb/parser/parsed_data/drop_property_graph_info.hpp>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 class DropPropertyGraphFunction : public TableFunction {
 public:
@@ -46,6 +46,6 @@ public:
 	static void DropPropertyGraphFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output);
 };
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

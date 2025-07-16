@@ -2,9 +2,7 @@
 
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 // Constructor
 PageRankFunctionData::PageRankFunctionData(ClientContext &ctx, int32_t csr)
@@ -41,7 +39,7 @@ unique_ptr<FunctionData> PageRankFunctionData::Copy() const {
 
 // Equals method
 bool PageRankFunctionData::Equals(const FunctionData &other_p) const {
-	auto &other = (const PageRankFunctionData &)other_p;
+	auto &other = other_p.Cast<PageRankFunctionData>();
 	if (csr_id != other.csr_id) {
 		return false;
 	}
@@ -68,6 +66,5 @@ bool PageRankFunctionData::Equals(const FunctionData &other_p) const {
 	}
 	return true;
 }
-} // namespace core
 
-} // namespace duckpgq
+} // namespace duckdb

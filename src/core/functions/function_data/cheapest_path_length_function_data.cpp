@@ -2,9 +2,8 @@
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
 
 unique_ptr<FunctionData>
 CheapestPathLengthFunctionData::CheapestPathLengthBind(ClientContext &context, ScalarFunction &bound_function,
@@ -38,10 +37,8 @@ unique_ptr<FunctionData> CheapestPathLengthFunctionData::Copy() const {
 }
 
 bool CheapestPathLengthFunctionData::Equals(const FunctionData &other_p) const {
-	auto &other = (const CheapestPathLengthFunctionData &)other_p;
+	auto &other = other_p.Cast<CheapestPathLengthFunctionData>();
 	return other.csr_id == csr_id;
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

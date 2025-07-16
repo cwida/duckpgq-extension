@@ -8,8 +8,7 @@
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_extension.hpp>
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
 
 unique_ptr<FunctionData> DescribePropertyGraphFunction::DescribePropertyGraphBind(ClientContext &context,
                                                                                   TableFunctionBindInput &input,
@@ -164,6 +163,4 @@ void CoreTableFunctions::RegisterDescribePropertyGraphTableFunction(DatabaseInst
 	ExtensionUtil::RegisterFunction(db, DescribePropertyGraphFunction());
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

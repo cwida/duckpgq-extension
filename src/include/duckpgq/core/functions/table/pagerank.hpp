@@ -8,8 +8,8 @@
 
 #include "duckpgq/common.hpp"
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
+
 
 class PageRankFunction : public TableFunction {
 public:
@@ -50,5 +50,5 @@ struct PageRankScanState : GlobalTableFunctionState {
 	bool finished = false;
 };
 
-} // namespace core
-} // namespace duckpgq
+
+} // namespace duckdb

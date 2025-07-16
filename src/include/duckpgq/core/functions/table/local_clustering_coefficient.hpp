@@ -3,9 +3,9 @@
 #include "duckpgq/common.hpp"
 #include "duckdb/function/table_function.hpp"
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 class LocalClusteringCoefficientFunction : public TableFunction {
 public:
@@ -49,6 +49,6 @@ struct LocalClusteringCoefficientScanState : GlobalTableFunctionState {
 	bool finished = false;
 };
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

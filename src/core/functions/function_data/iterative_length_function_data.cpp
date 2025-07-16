@@ -4,16 +4,14 @@
 
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 unique_ptr<FunctionData> IterativeLengthFunctionData::Copy() const {
 	return make_uniq<IterativeLengthFunctionData>(context, csr_id);
 }
 
 bool IterativeLengthFunctionData::Equals(const FunctionData &other_p) const {
-	auto &other = (const IterativeLengthFunctionData &)other_p;
+	auto &other = other_p.Cast<IterativeLengthFunctionData>();
 	return other.csr_id == csr_id;
 }
 
@@ -31,6 +29,4 @@ unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(Client
 	return make_uniq<IterativeLengthFunctionData>(context, csr_id);
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

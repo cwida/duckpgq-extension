@@ -8,9 +8,9 @@
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 static bool IterativeLength2(int64_t v_size, int64_t *V, vector<int64_t> &E, vector<std::bitset<LANE_LIMIT>> &seen,
                              vector<std::bitset<LANE_LIMIT>> &visit, vector<std::bitset<LANE_LIMIT>> &next) {
@@ -143,6 +143,6 @@ void CoreScalarFunctions::RegisterIterativeLength2ScalarFunction(DatabaseInstanc
 	                       IterativeLengthFunctionData::IterativeLengthBind));
 }
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

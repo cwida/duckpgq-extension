@@ -5,9 +5,7 @@
 #include "duckpgq/core/operator/duckpgq_operator.hpp"
 #include <duckpgq_state.hpp>
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 BoundStatement duckpgq_bind(ClientContext &context, Binder &binder, OperatorExtensionInfo *info,
                             SQLStatement &statement) {
@@ -32,6 +30,4 @@ void CorePGQOperator::RegisterPGQBindOperator(DatabaseInstance &db) {
 	config.operator_extensions.push_back(make_uniq<DuckPGQOperatorExtension>());
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

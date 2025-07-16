@@ -11,9 +11,7 @@
 #include <duckpgq/core/functions/table.hpp>
 #include <duckdb/parser/tableref/table_function_ref.hpp>
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 // Main binding function
 unique_ptr<TableRef>
@@ -46,6 +44,4 @@ void CoreTableFunctions::RegisterLocalClusteringCoefficientTableFunction(Databas
 	ExtensionUtil::RegisterFunction(db, LocalClusteringCoefficientFunction());
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

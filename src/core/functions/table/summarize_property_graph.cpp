@@ -13,8 +13,8 @@
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
+
 
 unique_ptr<ParsedExpression> GetTableNameConstantExpression(const string &table_name, const string &alias) {
 	auto table_name_column = make_uniq<ConstantExpression>(Value(table_name));
@@ -343,6 +343,6 @@ void CoreTableFunctions::RegisterSummarizePropertyGraphTableFunction(DatabaseIns
 	ExtensionUtil::RegisterFunction(db, SummarizePropertyGraphFunction());
 }
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

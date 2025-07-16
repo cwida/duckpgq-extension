@@ -10,8 +10,8 @@
 #include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
 #include "duckdb/catalog/catalog.hpp"
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
+
 void CreatePropertyGraphFunction::CheckPropertyGraphTableLabels(const shared_ptr<PropertyGraphTable> &pg_table,
                                                                 optional_ptr<TableCatalogEntry> &table) {
 	if (!pg_table->discriminator.empty()) {
@@ -412,6 +412,5 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 void CoreTableFunctions::RegisterCreatePropertyGraphTableFunction(DatabaseInstance &db) {
 	ExtensionUtil::RegisterFunction(db, CreatePropertyGraphFunction());
 }
-} // namespace core
 
-} // namespace duckpgq
+} // namespace duckdb

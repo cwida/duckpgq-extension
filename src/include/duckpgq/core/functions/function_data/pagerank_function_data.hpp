@@ -10,8 +10,8 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckpgq/common.hpp"
 
-namespace duckpgq {
-namespace core {
+namespace duckdb {
+
 struct PageRankFunctionData final : FunctionData {
 	ClientContext &context;
 	int32_t csr_id;
@@ -33,6 +33,6 @@ struct PageRankFunctionData final : FunctionData {
 	bool Equals(const FunctionData &other_p) const override;
 };
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

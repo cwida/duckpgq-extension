@@ -20,9 +20,9 @@
 
 #include <duckdb/parser/tableref/matchref.hpp>
 
-namespace duckpgq {
+namespace duckdb {
 
-namespace core {
+
 
 struct PGQMatchFunction : public TableFunction {
 public:
@@ -142,6 +142,6 @@ public:
 	                   const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_to_vertex_and_edge_tables);
 };
 
-} // namespace core
 
-} // namespace duckpgq
+
+} // namespace duckdb

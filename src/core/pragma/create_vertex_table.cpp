@@ -2,9 +2,7 @@
 #include "duckdb/main/extension_util.hpp"
 #include <duckpgq/core/pragma/duckpgq_pragma.hpp>
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 static string PragmaCreateVertexTable(ClientContext &context, const FunctionParameters &parameters) {
 	if (parameters.values.size() != 5) {
@@ -40,6 +38,4 @@ void CorePGQPragma::RegisterCreateVertexTable(duckdb::DatabaseInstance &instance
 	ExtensionUtil::RegisterFunction(instance, pragma_func);
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

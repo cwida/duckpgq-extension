@@ -177,7 +177,7 @@ CreatePropertyGraphInfo *DuckPGQState::GetPropertyGraph(const string &pg_name) {
 	return reinterpret_cast<CreatePropertyGraphInfo *>(pg_table_entry->second.get());
 }
 
-duckpgq::core::CSR *DuckPGQState::GetCSR(int32_t id) {
+CSR *DuckPGQState::GetCSR(int32_t id) {
 	auto csr_entry = csr_list.find(id);
 	if (csr_entry == csr_list.end()) {
 		throw ConstraintException("CSR not found with ID %d", id);
