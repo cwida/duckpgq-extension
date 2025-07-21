@@ -1,5 +1,3 @@
-#include "duckdb/common/fstream.hpp"
-#include "duckdb/main/client_data.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckpgq/common.hpp"
@@ -84,13 +82,13 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 	vector<std::vector<int64_t>> parents_e(v_size, std::vector<int64_t>(LANE_LIMIT, -1));
 
 	// maps lane to search number
-	int16_t lane_to_num[LANE_LIMIT];
+	int64_t lane_to_num[LANE_LIMIT];
 	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
 		lane_to_num[lane] = -1; // inactive
 	}
 	int64_t total_len = 0;
 
-	idx_t started_searches = 0;
+	int64_t started_searches = 0;
 	while (started_searches < args.size()) {
 
 		// empty visit vectors
