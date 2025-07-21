@@ -12,7 +12,7 @@
 namespace duckdb {
 
 // Helper function to find the root of a node with path compression
-static int64_t FindTreeRoot(std::vector<int64_t> &forest, int64_t node) {
+const static int64_t FindTreeRoot(std::vector<int64_t> &forest, int64_t node) {
 	while (true) {
 		int64_t parent = forest[node];
 		if (parent == node) {
@@ -24,7 +24,7 @@ static int64_t FindTreeRoot(std::vector<int64_t> &forest, int64_t node) {
 }
 
 // Helper function to link two nodes in the same connected component
-static void Link(std::vector<int64_t> &forest, int64_t nodeA, int64_t nodeB) {
+const static void Link(std::vector<int64_t> &forest, int64_t nodeA, int64_t nodeB) {
 	int64_t rootA = FindTreeRoot(forest, nodeA);
 	int64_t rootB = FindTreeRoot(forest, nodeB);
 
