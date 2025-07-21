@@ -23,13 +23,13 @@ static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &re
 		throw ConstraintException("Need to initialize CSR before running PageRank.");
 	}
 
-	int64_t *v = reinterpret_cast<int64_t *>(duckpgq_state->csr_list[info.csr_id]->v);
+	auto *v = reinterpret_cast<int64_t *>(duckpgq_state->csr_list[info.csr_id]->v);
 	vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
 	size_t v_size = duckpgq_state->csr_list[info.csr_id]->vsize;
 
 	// State initialization (only once)
 	if (!info.state_initialized) {
-		info.rank.resize(v_size, 1.0 / v_size); // Initial rank for each node
+		info.rank.resize(v_size, 1.0 / static_cast<double>(v_size)); // Initial rank for each node
 		info.temp_rank.resize(v_size,
 		                      0.0);        // Temporary storage for ranks during iteration
 		info.damping_factor = 0.85;        // Typical damping factor
@@ -64,7 +64,7 @@ static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &re
 			}
 
 			// Apply damping factor and handle dangling node ranks
-			double correction_factor = total_dangling_rank / v_size;
+			double correction_factor = total_dangling_rank / static_cast<double>(v_size);
 			double max_delta = 0.0;
 			for (size_t i = 0; i < v_size; i++) {
 				info.temp_rank[i] =
@@ -85,7 +85,7 @@ static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &re
 	auto &src = args.data[1];
 	UnifiedVectorFormat vdata_src;
 	src.ToUnifiedFormat(args.size(), vdata_src);
-	auto src_data = (int64_t *)vdata_src.data;
+	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
 
 	// Create result vector
 	ValidityMask &result_validity = FlatVector::Validity(result);
