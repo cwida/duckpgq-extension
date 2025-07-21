@@ -42,14 +42,13 @@ static void ScanCSREFunction(ClientContext &context, TableFunctionInput &data_p,
 }
 
 static void ScanCSRPtrFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-	bool &gstate = ((CSRScanState &)*data_p.global_state).finished;
-
-	if (gstate) {
+	auto &gstate = data_p.global_state->Cast<CSRScanState>();
+	if (gstate.finished) {
 		output.SetCardinality(0);
 		return;
 	}
 
-	gstate = true;
+	gstate.finished = true;
 
 	auto duckpgq_state = GetDuckPGQState(context);
 	auto csr_id = data_p.bind_data->Cast<CSRScanPtrData>().csr_id;
@@ -59,27 +58,27 @@ static void ScanCSRPtrFunction(ClientContext &context, TableFunctionInput &data_
 	auto result_data = FlatVector::GetData<uint64_t>(output.data[0]);
 	// now set the result vector
 	// the first element is the address of the vertex array
-	result_data[0] = (uint64_t)(csr->v);
+	result_data[0] = reinterpret_cast<uint64_t>(csr->v);
 	// the second element is the address of the edge array
-	result_data[1] = (uint64_t)(&(csr->e));
+	result_data[1] = reinterpret_cast<uint64_t>(&csr->e);
 	// here we check the type of the weight array
 	// and set the third and fifth element
 	// the third element is the address of the weight array
 	// the fifth element is the type of the weight array
 	// 0 if the weights are integres, 1 if they are doubles, and 2 for unweighted
-	if (csr->w.size()) {
-		result_data[2] = (uint64_t)(&(csr->w));
-		result_data[4] = (uint64_t)(0);
-	} else if (csr->w_double.size()) {
-		result_data[2] = (uint64_t)(&(csr->w_double));
-		result_data[4] = (uint64_t)(1);
+	if (csr->w.empty()) {
+		result_data[2] = reinterpret_cast<uint64_t>(&csr->w);
+		result_data[4] = static_cast<uint64_t>(0);
+	} else if (csr->w_double.empty()) {
+		result_data[2] = reinterpret_cast<uint64_t>(&csr->w_double);
+		result_data[4] = static_cast<uint64_t>(1);
 	} else {
-		result_data[2] = (uint64_t)(0);
-		result_data[4] = (uint64_t)(2);
+		result_data[2] = static_cast<uint64_t>(0);
+		result_data[4] = static_cast<uint64_t>(2);
 	}
 	// we also need the number of elements in the vertex array, since its C-array
 	// not a vector.
-	result_data[3] = (uint64_t)(csr->vsize);
+	result_data[3] = static_cast<uint64_t>(csr->vsize);
 }
 
 static void ScanCSRVFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
@@ -154,14 +153,14 @@ static void ScanCSRWFunction(ClientContext &context, TableFunctionInput &data_p,
 }
 
 static void ScanPGVTableFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-	bool &gstate = ((CSRScanState &)*data_p.global_state).finished;
+	auto &gstate = data_p.global_state->Cast<CSRScanState>();
 
-	if (gstate) {
+	if (gstate.finished) {
 		output.SetCardinality(0);
 		return;
 	}
 
-	gstate = true;
+	gstate.finished = true;
 
 	auto duckpgq_state = GetDuckPGQState(context);
 	auto pg_name = data_p.bind_data->Cast<PGScanVTableData>().pg_name;
@@ -178,14 +177,14 @@ static void ScanPGVTableFunction(ClientContext &context, TableFunctionInput &dat
 }
 
 static void ScanPGETableFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-	bool &gstate = ((CSRScanState &)*data_p.global_state).finished;
+	auto &gstate = data_p.global_state->Cast<CSRScanState>();
 
-	if (gstate) {
+	if (gstate.finished) {
 		output.SetCardinality(0);
 		return;
 	}
 
-	gstate = true;
+	gstate.finished = true;
 
 	auto duckpgq_state = GetDuckPGQState(context);
 	auto pg_name = data_p.bind_data->Cast<PGScanETableData>().pg_name;
@@ -211,14 +210,14 @@ shared_ptr<PropertyGraphTable> find_table_entry(const vector<shared_ptr<Property
 }
 
 static void ScanPGVColFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-	bool &gstate = ((CSRScanState &)*data_p.global_state).finished;
+	auto &gstate = data_p.global_state->Cast<CSRScanState>();
 
-	if (gstate) {
+	if (gstate.finished) {
 		output.SetCardinality(0);
 		return;
 	}
 
-	gstate = true;
+	gstate.finished = true;
 
 	auto duckpgq_state = GetDuckPGQState(context);
 	auto scan_v_col_data = data_p.bind_data->Cast<PGScanVColData>();
@@ -239,14 +238,14 @@ static void ScanPGVColFunction(ClientContext &context, TableFunctionInput &data_
 }
 
 static void ScanPGEColFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-	bool &gstate = ((CSRScanState &)*data_p.global_state).finished;
+	auto &gstate = data_p.global_state->Cast<CSRScanState>();
 
-	if (gstate) {
+	if (gstate.finished) {
 		output.SetCardinality(0);
 		return;
 	}
 
-	gstate = true;
+	gstate.finished = true;
 
 	auto duckpgq_state = GetDuckPGQState(context);
 	auto pg_scan_e_col_data = data_p.bind_data->Cast<PGScanEColData>();
