@@ -71,7 +71,7 @@ statement error
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
 ----
-Parser Error: PGQ expected an arrow instead of *< operator. at or near "*<"
+Parser Error: syntax error at or near "*<"
 
 statement error
 -FROM GRAPH_TABLE(testgraph

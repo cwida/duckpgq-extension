@@ -62,7 +62,6 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state,
   }
   auto &csr = csr_entry->second;
 
-
   if (!csr->initialized_v) {
     throw ConstraintException(
         "Need to initialize CSR before doing shortest path");

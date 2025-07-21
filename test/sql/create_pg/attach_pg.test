@@ -15,19 +15,33 @@ select count(*) from bluesky.follows;
 statement error
 -create or replace property graph stations vertex tables (stations.stations)
 ----
-Invalid Error: Catalog 'stations' does not exist!
+Invalid Error: Table with name stations does not exist
+
+statement error
+-create or replace property graph stations vertex tables (nonexistingschema.account)
+    edge tables (nonexistingschema.follows source key (source) references nonexistingschema.account (did)
+        destination key (destination) references nonexistingschema.account (did))
+----
+Invalid Error: Table with name account does not exist
 
 statement error
 -create or replace property graph stations vertex tables (bluesky.account)
-    edge tables (nonexistingcatalog.follows source key (source) references bluesky.account (did)
+    edge tables (nonexistingschema.follows source key (source) references bluesky.account (did)
         destination key (destination) references bluesky.account (did))
 ----
-Invalid Error: Catalog 'nonexistingcatalog' does not exist!
+Invalid Error: Table with name follows does not exist
+
+statement error
+-create or replace property graph stations vertex tables (bluesky.account)
+    edge tables (bluesky.follows source key (source) references nonexistingschema.account (did)
+        destination key (destination) references nonexistingschema.account (did))
+----
+Invalid Error: Table 'nonexistingschema.account' not found in the property graph stations.
 
 statement error
 -create or replace property graph stations vertex tables (bluesky.tabledoesnotexist)
 ----
-Invalid Error: Table bluesky.tabledoesnotexist not found
+Invalid Error: Table with name tabledoesnotexist does not exist
 
 statement ok con1
 -CREATE OR REPLACE PROPERTY GRAPH bluesky
@@ -113,19 +127,10 @@ did:plc:g5gf5ho5yn3n5anprzf45hvm	0.103670634
 did:plc:cwcykfexwbxozuxhpuud63qa	0.35714287
 did:plc:c5ccfcya6zez3rhry6gluup4	0.07952872
 
-query II con1
-from weakly_connected_component(bluesky, account, follows) limit 10;
+query I con1
+select count(*) as c from weakly_connected_component(bluesky, account, follows) group by componentId order by componentid;
 ----
-did:plc:rsfoi33e4iya2rd7jw52nfmo	0
-did:plc:btsulrw4wcqdai23fkl5qwm5	0
-did:plc:z72i7hdynmk6r22z27h6tvur	0
-did:plc:twcatus5xoa7jaeysmrhzcpv	0
-did:plc:wptnzi6wyzqltbenxapqa5qd	0
-did:plc:edglm4muiyzty2snc55ysuqx	0
-did:plc:sc6ieuzeygvm55vv2bjubkgt	0
-did:plc:g5gf5ho5yn3n5anprzf45hvm	0
-did:plc:cwcykfexwbxozuxhpuud63qa	0
-did:plc:c5ccfcya6zez3rhry6gluup4	0
+8921
 
 query II con1
 from pagerank(bluesky, account, follows) limit 10;
@@ -151,4 +156,22 @@ from pagerank(bluesky, bluesky.account, follows) limit 10;
 ----
 Invalid Error: Label 'bluesky.account' not found. Did you mean the vertex label 'account'?
 
+statement ok
+-CREATE PROPERTY GRAPH pg VERTEX TABLES (bluesky.account PROPERTIES (displayName));
 
+# Query on unspecified columns in the graph throws error.
+statement error
+-SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (acc.displayName, acc.handle));
+----
+Binder Error: Property acc.handle is never registered!
+
+# Columns to query is only allowed to be <column> or <table>.<column>, which we cannot prefix catalog or schema.
+statement error
+-SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (bluesky.main.acc.displayName));
+----
+Binder Error: Property bluesky.main.acc.displayName is never registered!
+
+statement error
+-SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (main.acc.displayName));
+----
+Binder Error: Property main.acc.displayName is never registered!

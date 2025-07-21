@@ -90,7 +90,7 @@ statement error
     COLUMNS (p, a.name as name, b.name as b_name)
     ) study;
 ----
-Binder Error: Referenced column "p" not found in FROM clause!
+Binder Error: Property p is never registered
 
 
 query III

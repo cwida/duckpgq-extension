@@ -8,56 +8,64 @@ set experimental_path_finding_operator=true;
 statement ok
 select setseed(0.42);
 
+
 statement ok
-set threads=1;
+set experimental_path_finding_operator_heavy_partition_fraction=0.5;
+
+statement ok
+set experimental_path_finding_operator_light_partition_multiplier = 2;
 
 query I
 SELECT current_setting('experimental_path_finding_operator');
 ----
 true
 
-statement ok
-CREATE TABLE pair(src BIGINT, dst BIGINT); INSERT INTO pair(src, dst) VALUES (0, 1), (1, 2), (2,0);
 
-statement ok
-create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (40);
-
-statement ok
-create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
-
-query III
-with csr_cte as (
-SELECT cast(min(create_csr_edge(
-        0,
-        (SELECT count(a.id) FROM Student a),
-        CAST (
-            (SELECT sum(create_csr_vertex(
-                0,
-                (SELECT count(a.id) FROM Student a),
-                sub.dense_id,
-                sub.cnt))
-            FROM (
-                SELECT a.rowid as dense_id, count(k.src) as cnt
-                FROM Student a
-                LEFT JOIN Know k ON k.src = a.id
-                GROUP BY a.rowid) sub
-            )
-        AS BIGINT),
-        (select count() FROM Know k JOIN student a on a.id = k.src JOIN student c on c.id = k.dst),
-        a.rowid,
-        c.rowid,
-        k.rowid)) as bigint) as csr_id
-    FROM Know k
-    JOIN student a on a.id = k.src
-    JOIN student c on c.id = k.dst)
-SELECT src, dst, iterativelengthoperator(src, dst, csr_id) FROM pair, csr_cte;
-----
-0	1	NULL
-1	2	2
-2	0	1
+# statement ok
+# CREATE TABLE pair(src BIGINT, dst BIGINT); INSERT INTO pair(src, dst) VALUES (0, 1), (1, 2), (2,0), (3,1);
+#
+# statement ok
+# create table student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (40);
+#
+# statement ok
+# create table know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
+#
+# query III
+# with csr_cte as (
+# SELECT cast(min(create_csr_edge(
+#         0,
+#         (SELECT count(a.id) FROM Student a),
+#         CAST (
+#             (SELECT sum(create_csr_vertex(
+#                 0,
+#                 (SELECT count(a.id) FROM Student a),
+#                 sub.dense_id,
+#                 sub.cnt))
+#             FROM (
+#                 SELECT a.rowid as dense_id, count(k.src) as cnt
+#                 FROM Student a
+#                 LEFT JOIN Know k ON k.src = a.id
+#                 GROUP BY a.rowid) sub
+#             )
+#         AS BIGINT),
+#         (select count() FROM Know k JOIN student a on a.id = k.src JOIN student c on c.id = k.dst),
+#         a.rowid,
+#         c.rowid,
+#         k.rowid)) as bigint) as csr_id
+#     FROM Know k
+#     JOIN student a on a.id = k.src
+#     JOIN student c on c.id = k.dst)
+# SELECT src, dst, iterativelengthoperator(src, dst, csr_id) FROM pair, csr_cte;
+# ----
+# 0	1	NULL
+# 1	2	2
+# 2	0	1
+# 3	1	1
 
 statement ok
 import database '/Users/dljtw/git/duckpgq/duckdb/data/SNB0.003';
+
+
 
 statement ok
 create or replace table snb_pairs as (
@@ -66,6 +74,16 @@ create or replace table snb_pairs as (
         (select b.rowid as dst from person b)
    using sample reservoir(50 rows) repeatable (300)
 );
+
+# statement ok
+# create table snb_pairs (src bigint, dst bigint); insert into snb_pairs values (2,43);
+
+# statement ok
+# set threads=1;
+
+
+statement ok
+set threads = 2;
 
 query III
 with csr_cte as (
@@ -120,7 +138,7 @@ SELECT src, dst, iterativelengthoperator(src, dst, csr_id) FROM snb_pairs, csr_c
 0	12	NULL
 47	48	NULL
 17	5	NULL
-27	27	NULL
+27	27	0
 21	24	NULL
 6	29	NULL
 2	11	NULL

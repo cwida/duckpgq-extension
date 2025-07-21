@@ -13,6 +13,7 @@
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
+#include "local_csr/local_csr_state.hpp"
 
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
 
@@ -20,6 +21,7 @@ namespace duckpgq {
 
 namespace core {
 class BFSState; // Forward declaration
+class LocalCSRState; // Forward declaration
 
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 
@@ -71,7 +73,7 @@ public:
 
   bool IsSink() const override { return true; }
   bool ParallelSink() const override { return true; }
-
+  void LogPartitionMetrics(const std::vector<idx_t>& edges_per_partition, idx_t total_vertices, idx_t total_edges);
   void BuildPipelines(Pipeline &current, MetaPipeline &meta_pipeline) override;
 };
 
@@ -88,18 +90,20 @@ public:
 
 };
 
-
-
 class PathFindingGlobalSinkState : public GlobalSinkState {
 public:
   PathFindingGlobalSinkState(ClientContext &context,
                          const PhysicalPathFinding &op);
 
   void Sink(DataChunk &input, PathFindingLocalSinkState &lstate);
-
+  void CreateThreadLocalCSRs();
+  void PartitionGraph(idx_t start_vertex, idx_t end_vertex);
+  void LogPartitionMetrics(const std::vector<idx_t>& edges_per_partition, idx_t total_vertices, idx_t total_edges);
   // pairs is a 2-column table with src and dst
   unique_ptr<ColumnDataCollection> global_pairs;
   unique_ptr<ColumnDataCollection> global_csr_column_data;
+  vector<shared_ptr<LocalCSR>> local_csrs; // Each thread gets one LocalCSR
+  std::vector<std::pair<idx_t, idx_t>> partition_ranges;
   ColumnDataScanState global_scan_state;
   idx_t result_scan_idx;
   vector<shared_ptr<BFSState>> bfs_states;
@@ -109,6 +113,7 @@ public:
   string mode;
   ClientContext &context_;
   idx_t num_threads;
+  shared_ptr<LocalCSRState> local_csr_state;
 };
 
 } // namespace core

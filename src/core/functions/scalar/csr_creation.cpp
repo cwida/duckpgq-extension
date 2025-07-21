@@ -4,7 +4,6 @@
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 #include <cmath>
-#include <duckpgq/core/functions/function_data/csr_function_data.hpp>
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
@@ -31,7 +30,7 @@ static void CsrInitializeVertex(DuckPGQState &context, int32_t id,
     csr->v = new std::atomic<int64_t>[v_size + 2];
     csr->vsize = v_size + 2;
 
-    for (idx_t i = 0; i < (idx_t)v_size + 1; i++) {
+    for (idx_t i = 0; i < (idx_t)v_size + 2; i++) {
       csr->v[i] = 0;
     }
     csr->initialized_v = true;
@@ -128,7 +127,8 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
   auto &func_expr = (BoundFunctionExpression &)state.expr;
   auto &info = (CSRFunctionData &)*func_expr.bind_info;
 
-  auto duckpgq_state = info.context.registered_state->Get<DuckPGQState>("duckpgq");
+  auto duckpgq_state =
+      info.context.registered_state->Get<DuckPGQState>("duckpgq");
   if (!duckpgq_state) {
     //! Wondering how you can get here if the extension wasn't loaded, but
     //! leaving this check in anyways
@@ -140,8 +140,9 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state,
   int64_t edge_size = args.data[2].GetValue(0).GetValue<int64_t>();
   int64_t edge_size_count = args.data[3].GetValue(0).GetValue<int64_t>();
   if (edge_size != edge_size_count) {
-      duckpgq_state->csr_to_delete.insert(info.id);
-      throw ConstraintException("Non-unique vertices detected. Make sure all vertices are unique for path-finding queries.");
+    duckpgq_state->csr_to_delete.insert(info.id);
+    throw ConstraintException("Non-unique vertices detected. Make sure all "
+                              "vertices are unique for path-finding queries.");
   }
 
   auto csr_entry = duckpgq_state->csr_list.find(info.id);
@@ -225,24 +226,25 @@ ScalarFunctionSet GetCSREdgeFunction() {
 
   //! No edge weight
   set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
-                                  LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT,
-                                  LogicalType::BIGINT, LogicalType::BIGINT},
-                                 LogicalType::INTEGER, CreateCsrEdgeFunction,
-                                 CSRFunctionData::CSREdgeBind));
-
-  //! Integer for edge weight
-  set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
-                                  LogicalType::BIGINT,  LogicalType::BIGINT, LogicalType::BIGINT,
+                                  LogicalType::BIGINT, LogicalType::BIGINT,
                                   LogicalType::BIGINT, LogicalType::BIGINT,
                                   LogicalType::BIGINT},
                                  LogicalType::INTEGER, CreateCsrEdgeFunction,
                                  CSRFunctionData::CSREdgeBind));
 
+  //! Integer for edge weight
+  set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
+                                  LogicalType::BIGINT, LogicalType::BIGINT,
+                                  LogicalType::BIGINT, LogicalType::BIGINT,
+                                  LogicalType::BIGINT, LogicalType::BIGINT},
+                                 LogicalType::INTEGER, CreateCsrEdgeFunction,
+                                 CSRFunctionData::CSREdgeBind));
+
   //! Double for edge weight
   set.AddFunction(ScalarFunction({LogicalType::INTEGER, LogicalType::BIGINT,
-                                  LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT,
                                   LogicalType::BIGINT, LogicalType::BIGINT,
-                                  LogicalType::DOUBLE},
+                                  LogicalType::BIGINT, LogicalType::BIGINT,
+                                  LogicalType::BIGINT, LogicalType::DOUBLE},
                                  LogicalType::INTEGER, CreateCsrEdgeFunction,
                                  CSRFunctionData::CSREdgeBind));
 
@@ -252,7 +254,8 @@ ScalarFunctionSet GetCSREdgeFunction() {
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreScalarFunctions::RegisterCSRCreationScalarFunctions(DatabaseInstance &db) {
+void CoreScalarFunctions::RegisterCSRCreationScalarFunctions(
+    DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(db, GetCSREdgeFunction());
   ExtensionUtil::RegisterFunction(db, GetCSRVertexFunction());
 }

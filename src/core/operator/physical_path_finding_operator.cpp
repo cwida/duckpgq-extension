@@ -10,10 +10,12 @@
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
-#include <thread>
-#include <duckpgq_state.hpp>
-#include <duckpgq/core/operator/event/iterative_length_event.hpp>
+#include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
+#include <duckpgq/core/operator/local_csr/local_csr_event.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
+#include <duckpgq_state.hpp>
+#include <fstream>
+#include <thread>
 
 namespace duckpgq {
 
@@ -41,10 +43,7 @@ PathFindingLocalSinkState::PathFindingLocalSinkState(ClientContext &context, con
 
 void PathFindingLocalSinkState::Sink(DataChunk &input, idx_t child) {
   if (child == 1) {
-    // Add the tasks (src, dst) to sink
-    // Optimizations: Eliminate duplicate sources/destinations
-    //   - For example: group by source, list(destination)
-    local_pairs.Append(input);
+   local_pairs.Append(input);
   }
 }
 
@@ -68,8 +67,8 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context,
 void PathFindingGlobalSinkState::Sink(DataChunk &input, PathFindingLocalSinkState &lstate) {
   if (child == 0) {
     // CSR phase
-    csr_id = input.GetValue(0, 0).GetValue<int64_t>();
     auto duckpgq_state = GetDuckPGQState(context_);
+    csr_id = input.GetValue(0, 0).GetValue<int64_t>();
     csr = duckpgq_state->GetCSR(csr_id);
   } else {
     // path-finding phase
@@ -126,8 +125,12 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
   // Check if we have to do anything for CSR child
   if (gstate.child == 0) {
     ++gstate.child;
+    auto local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
+    gstate.local_csr_state = local_csr_state;
+    event.InsertEvent(make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, *this, context));
     return SinkFinalizeType::READY;
   }
+
   if (gstate.global_pairs->Count() == 0) {
     return SinkFinalizeType::READY;
   }
@@ -137,10 +140,17 @@ PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
     auto current_chunk = make_shared_ptr<DataChunk>();
     current_chunk->Initialize(context, gstate.global_pairs->Types());
     gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
-    auto bfs_state = make_shared_ptr<BFSState>(current_chunk, gstate.csr, gstate.num_threads, mode, context);
-    bfs_state->ScheduleBFSBatch(pipeline, event, this);
-    gstate.bfs_states.push_back(std::move(bfs_state));
-  }
+    if (gstate.mode == "iterativelength") {
+      auto bfs_state = make_shared_ptr<IterativeLengthState>(current_chunk, gstate.local_csr_state->partition_csrs, gstate.num_threads, context, gstate.csr->vsize);
+      bfs_state->ScheduleBFSBatch(pipeline, event, this);
+      gstate.bfs_states.push_back(std::move(bfs_state));
+    } else if (gstate.mode == "shortestpath") {
+      // TODO(dtenwolde) implement also for shortest path
+      throw NotImplementedException("Shortest path operator has not been implemented yet.");
+    } else {
+      throw InvalidInputException("Unknown mode specified %s", gstate.mode);
+    }
+    }
 
   // Move to the next input child
   ++gstate.child;
@@ -208,8 +218,6 @@ PhysicalPathFinding::GetLocalSourceState(ExecutionContext &context,
 SourceResultType PhysicalPathFinding::GetData(ExecutionContext &context, DataChunk &result,
                              OperatorSourceInput &input) const {
   auto &pf_sink = sink_state->Cast<PathFindingGlobalSinkState>();
-  // pf_sink.global_bfs_state->path_finding_result->SetCardinality(pf_sink.global_bfs_state->pairs->Count());
-  // pf_sink.global_bfs_state->path_finding_result->Print();
   // If there are no pairs, we're done
   if (pf_sink.global_pairs->Count() == 0) {
     return SourceResultType::FINISHED;

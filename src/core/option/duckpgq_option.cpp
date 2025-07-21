@@ -16,6 +16,18 @@ int32_t GetPathFindingTaskSize(ClientContext &context) {
   return value.GetValue<int32_t>();
 }
 
+int32_t GetLightPartitionMultiplier(ClientContext &context) {
+  Value value;
+  context.TryGetCurrentSetting("experimental_path_finding_operator_light_partition_multiplier", value);
+  return value.GetValue<int32_t>();
+}
+
+double_t GetHeavyPartitionFraction(ClientContext &context) {
+  Value value;
+  context.TryGetCurrentSetting("experimental_path_finding_operator_heavy_partition_fraction", value);
+  return value.GetValue<double_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -38,7 +50,27 @@ void CorePGQOptions::RegisterPathFindingTaskSize(
     "Number of vertices processed per thread at a time", LogicalType::INTEGER, Value(256));
 }
 
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingLightPartitionMultiplier(
+    DatabaseInstance &db) {
+  auto &config = DBConfig::GetConfig(db);
 
+  config.AddExtensionOption("experimental_path_finding_operator_light_partition_multiplier",
+    "Multiplier used for the light partitions of the local CSR partitioning", LogicalType::INTEGER, Value(1));
+}
+
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingHeavyPartitionFraction(
+    DatabaseInstance &db) {
+  auto &config = DBConfig::GetConfig(db);
+
+  config.AddExtensionOption("experimental_path_finding_operator_heavy_partition_fraction",
+    "Fraction of edges part of the heavy partitions for the local CSR partitioning", LogicalType::DOUBLE, Value(0.75));
+}
 
 } // namespace core
 } // namespace duckpgq

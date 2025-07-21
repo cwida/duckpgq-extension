@@ -21,7 +21,6 @@ struct DuckPGQOperatorExtension : public OperatorExtension {
   }
 };
 
-
 } // namespace core
 
 } // namespace duckpgq

@@ -2,7 +2,6 @@
 #include "duckpgq/common.hpp"
 #include <duckpgq_extension.hpp>
 
-#include <duckpgq/core/functions/function_data/csr_function_data.hpp>
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
@@ -46,13 +45,11 @@ static void GetCsrWTypeFunction(DataChunk &args, ExpressionState &state,
 void CoreScalarFunctions::RegisterGetCSRWTypeScalarFunction(
     DatabaseInstance &db) {
   ExtensionUtil::RegisterFunction(
-      db,
-      ScalarFunction("csr_get_w_type", {LogicalType::INTEGER},
-                                 LogicalType::INTEGER, GetCsrWTypeFunction,
-                                 CSRFunctionData::CSRBind));
+      db, ScalarFunction("csr_get_w_type", {LogicalType::INTEGER},
+                         LogicalType::INTEGER, GetCsrWTypeFunction,
+                         CSRFunctionData::CSRBind));
 }
 
 } // namespace core
 
 } // namespace duckpgq
-

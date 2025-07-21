@@ -12,6 +12,7 @@ unique_ptr<FunctionData> CheapestPathLengthFunctionData::CheapestPathLengthBind(
   auto csr_id = GetCSRId(arguments[0], context);
   auto duckpgq_state = GetDuckPGQState(context);
   CSR *csr = duckpgq_state->GetCSR(csr_id);
+  duckpgq_state->csr_to_delete.insert(csr_id);
 
   if (!(csr->initialized_v && csr->initialized_e && csr->initialized_w)) {
     throw ConstraintException(

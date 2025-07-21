@@ -12,8 +12,10 @@ static void LoadInternal(DatabaseInstance &instance) {
   duckpgq::core::CoreModule::Register(instance);
   auto &config = DBConfig::GetConfig(instance);
   config.extension_callbacks.push_back(make_uniq<DuckpgqExtensionCallback>());
-  for (auto &connection : ConnectionManager::Get(instance).GetConnectionList()) {
-    connection->registered_state->Insert("duckpgq", make_shared_ptr<DuckPGQState>(connection));
+  for (auto &connection :
+       ConnectionManager::Get(instance).GetConnectionList()) {
+    connection->registered_state->Insert(
+        "duckpgq", make_shared_ptr<DuckPGQState>(connection));
   }
 }
 
@@ -21,17 +23,17 @@ void DuckpgqExtension::Load(DuckDB &db) { LoadInternal(*db.instance); }
 
 std::string DuckpgqExtension::Name() { return "duckpgq"; }
 
-} // namespace duckpgq
+} // namespace duckdb
 
 extern "C" {
 
-  DUCKDB_EXTENSION_API void duckpgq_init(DatabaseInstance &db) {
-    LoadInternal(db);
-  }
+DUCKDB_EXTENSION_API void duckpgq_init(DatabaseInstance &db) {
+  LoadInternal(db);
+}
 
-  DUCKDB_EXTENSION_API const char *duckpgq_version() {
-    return DuckDB::LibraryVersion();
-  }
+DUCKDB_EXTENSION_API const char *duckpgq_version() {
+  return DuckDB::LibraryVersion();
+}
 }
 
 #ifndef DUCKDB_EXTENSION_MAIN

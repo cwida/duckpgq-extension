@@ -1,5 +1,7 @@
 #include "duckpgq/core/functions/function_data/pagerank_function_data.hpp"
 
+#include <duckpgq/core/utils/duckpgq_utils.hpp>
+
 namespace duckpgq {
 
 namespace core {
@@ -20,6 +22,8 @@ PageRankFunctionData::PageRankBind(ClientContext &context,
 
   int32_t csr_id = ExpressionExecutor::EvaluateScalar(context, *arguments[0])
                        .GetValue<int32_t>();
+  auto duckpgq_state = GetDuckPGQState(context);
+  duckpgq_state->csr_to_delete.insert(csr_id);
 
   return make_uniq<PageRankFunctionData>(context, csr_id);
 }
@@ -35,7 +39,7 @@ unique_ptr<FunctionData> PageRankFunctionData::Copy() const {
   result->state_initialized = state_initialized;
   result->converged = converged;
   // Note: state_lock is not copied as mutexes are not copyable
-  return result;
+  return std::move(result);
 }
 
 // Equals method

@@ -1,14 +1,14 @@
 #pragma once
 #include "duckpgq/common.hpp"
 
+#include <duckpgq_state.hpp>
+
 namespace duckpgq {
 
 namespace core {
 
 struct CorePGQParser {
-  static void Register(DatabaseInstance &db) {
-    RegisterPGQParserExtension(db);
-  }
+  static void Register(DatabaseInstance &db) { RegisterPGQParserExtension(db); }
 
 private:
   static void RegisterPGQParserExtension(DatabaseInstance &db);
@@ -26,8 +26,14 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info,
                                        ClientContext &,
                                        unique_ptr<ParserExtensionParseData>);
 
+ParserExtensionPlanResult duckpgq_find_select_statement(
+  SQLStatement *statement, DuckPGQState &duckpgq_state);
+
 ParserExtensionPlanResult
-duckpgq_handle_statement(unique_ptr<SQLStatement> &statement);
+duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state);
+
+void duckpgq_find_match_function(TableRef *table_ref,
+                                 DuckPGQState &duckpgq_state);
 
 struct DuckPGQParserExtension : ParserExtension {
   DuckPGQParserExtension() : ParserExtension() {
@@ -50,7 +56,6 @@ struct DuckPGQParseData : ParserExtensionParseData {
   explicit DuckPGQParseData(unique_ptr<SQLStatement> statement)
       : statement(std::move(statement)) {}
 };
-
 
 } // namespace core
 

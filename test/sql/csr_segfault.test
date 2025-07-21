@@ -1,0 +1,71 @@
+
+
+require duckpgq
+
+statement ok
+create or replace table student(id bigint); insert into student from range(0, 5000);
+
+statement ok
+CREATE or replace TABLE know(src BIGINT, dst BIGINT); insert into know select s.id as src, s2.id as dst from student s positional join student s2;
+
+statement ok
+-CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+    Student
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+    );
+
+statement ok
+SELECT  CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Student a),
+            CAST (
+                (SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Student a),
+                            sub.dense_id,
+                            sub.cnt)
+                            )
+                FROM (
+                    SELECT a.rowid as dense_id, count(k.src) as cnt
+                    FROM Student a
+                    LEFT JOIN Know k ON k.src = a.id
+                    GROUP BY a.rowid) sub
+                )
+            AS BIGINT),
+            (select count() FROM Know k JOIN student a on a.id = k.src JOIN student c on c.id = k.dst),
+            a.rowid,
+            c.rowid,
+            k.rowid) as temp
+    FROM Know k
+    JOIN student a on a.id = k.src
+    JOIN student c on c.id = k.dst;
+
+query I
+SELECT count(csrv) FROM get_csr_v(0);
+----
+5002
+
+query I
+SELECT count(csre) FROM get_csr_e(0);
+----
+5000
+
+statement ok
+COPY (SELECT csrv FROM get_csr_v(0)) TO '__TEST_DIR__/v.csv';
+
+statement ok
+COPY (SELECT csre FROM get_csr_e(0)) TO '__TEST_DIR__/e.csv';
+
+query I
+SELECT count(*) FROM read_csv('__TEST_DIR__/v.csv');
+----
+5002
+
+query I
+SELECT count(*) FROM read_csv('__TEST_DIR__/e.csv');
+----
+5000

@@ -41,7 +41,6 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state,
   auto &info = (IterativeLengthFunctionData &)*func_expr.bind_info;
   auto duckpgq_state = GetDuckPGQState(info.context);
 
-
   D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
 
   if ((uint64_t)info.csr_id + 1 > duckpgq_state->csr_list.size()) {

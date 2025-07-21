@@ -11,8 +11,7 @@ statement error
 -CREATE PROPERTY GRAPH pg4
 VERTEX TABLES (tabledoesnotexist);
 ----
-Invalid Error: Table main.tabledoesnotexist not found
-
+Invalid Error: Table with name tabledoesnotexist does not exist
 
 statement ok
 CREATE TABLE Student(id BIGINT, name VARCHAR);
@@ -24,7 +23,7 @@ EDGE TABLES (edgetabledoesnotexist SOURCE KEY (id) REFERENCES Student (id)
                                     DESTINATION KEY (id) REFERENCES Student (id)
             );
 ----
-Invalid Error: Table main.edgetabledoesnotexist not found
+Invalid Error: Table with name edgetabledoesnotexist does not exist
 
 statement ok
 CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
@@ -50,6 +49,24 @@ EDGE TABLES (
             DESTINATION KEY ( dst ) REFERENCES Student ( id )
             PROPERTIES ( createDate ) LABEL Knows
     )
+
+query I
+-SELECT count(id)
+FROM
+  GRAPH_TABLE (PG 
+    MATCH p = (s1:Person)-[k:Knows]->(s2:Person WHERE s2.name='Daniel') 
+    COLUMNS (s1.id));
+----
+0
+
+query I
+-SELECT count(id)
+FROM
+  GRAPH_TABLE (PG 
+    MATCH p = (s1:Person)-[k:Knows]->(s2:Person WHERE s2.name='Peter') 
+    COLUMNS (s1.id));
+----
+3
 
 # Error as property graph pg already exists
 statement error

@@ -29,7 +29,6 @@ unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(
   return make_uniq<IterativeLengthFunctionData>(context, "", csr_id);
 }
 
-
 } // namespace core
 
-} //namespace duckpgq
+} // namespace duckpgq
