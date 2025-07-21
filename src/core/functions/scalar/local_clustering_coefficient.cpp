@@ -63,7 +63,9 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
 			}
 		}
 
-		float local_result = static_cast<float>(count) / (number_of_edges * (number_of_edges - 1));
+		const float num_edges_float = static_cast<float>(number_of_edges);
+		float local_result = static_cast<float>(count) / (num_edges_float * (num_edges_float - 1.0f));
+
 		result_data[n] = local_result;
 	}
 	duckpgq_state->csr_to_delete.insert(info.csr_id);
