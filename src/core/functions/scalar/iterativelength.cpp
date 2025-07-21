@@ -75,12 +75,12 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state, Vec
 	vector<std::bitset<LANE_LIMIT>> visit2(v_size);
 
 	// maps lane to search number
-	short lane_to_num[LANE_LIMIT];
+	int64_t lane_to_num[LANE_LIMIT];
 	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
 		lane_to_num[lane] = -1; // inactive
 	}
 
-	idx_t started_searches = 0;
+	int64_t started_searches = 0;
 	while (started_searches < args.size()) {
 
 		// empty visit vectors
