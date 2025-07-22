@@ -1,7 +1,6 @@
 # name: test/sql/with_clause.test
 # description: Testing queries where PGQ statement inside WITH statement
-# group: [duckpgq_sql]
-
+# group: [sql]
 
 require duckpgq
 

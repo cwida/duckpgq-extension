@@ -1,4 +1,5 @@
-
+# name: test/sql/path_finding/parser_arrow_kleene.test
+# group: [path_finding]
 
 require duckpgq
 

@@ -1,6 +1,6 @@
 # name: test/sql/duckdb_columns.test
 # description: Testing that normal duckdb queries do not interfere
-# group: [duckpgq_sql]
+# group: [sql]
 
 require duckpgq
 

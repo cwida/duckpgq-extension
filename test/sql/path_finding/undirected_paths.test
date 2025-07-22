@@ -1,6 +1,6 @@
 # name: test/sql/path_finding/undirected_paths.test
 # description: Testing undirected path-finding
-# group: [duckpgq_sql_path_finding]
+# group: [path_finding]
 
 require duckpgq
 

@@ -1,6 +1,6 @@
 # name: test/sql/snb/bi.test
 # description: Testing the SNB bi queries
-# group: [duckpgq_sql_snb]
+# group: [snb]
 
 require duckpgq
 

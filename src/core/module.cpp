@@ -7,18 +7,14 @@
 #include "duckpgq/core/parser/duckpgq_parser.hpp"
 #include "duckpgq/core/pragma/duckpgq_pragma.hpp"
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 void CoreModule::Register(DatabaseInstance &db) {
-  CoreTableFunctions::Register(db);
-  CoreScalarFunctions::Register(db);
-  CorePGQParser::Register(db);
-  CorePGQPragma::Register(db);
-  CorePGQOperator::Register(db);
+	CoreTableFunctions::Register(db);
+	CoreScalarFunctions::Register(db);
+	CorePGQParser::Register(db);
+	CorePGQPragma::Register(db);
+	CorePGQOperator::Register(db);
 }
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

@@ -1,6 +1,6 @@
-# name: test/sql/create_pg/all_properties.test
+# name: test/sql/create_pg/create_pg_multiple_connections.test
 # description: Testing the creation of property graphs across multiple connections
-# group: [duckpgq_sql_create_pg_multiple_connections]
+# group: [create_pg]
 
 require duckpgq
 

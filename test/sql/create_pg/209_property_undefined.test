@@ -1,3 +1,5 @@
+# name: test/sql/create_pg/209_property_undefined.test
+# group: [create_pg]
 
 require duckpgq
 

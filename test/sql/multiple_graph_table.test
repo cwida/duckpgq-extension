@@ -1,6 +1,6 @@
 # name: test/sql/multiple_graph_table.test
 # description: Testing multiple graph tables in a single query
-# group: [duckpgq_sql]
+# group: [sql]
 
 require duckpgq
 

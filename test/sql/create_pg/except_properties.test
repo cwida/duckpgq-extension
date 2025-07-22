@@ -1,6 +1,6 @@
 # name: test/sql/create_pg/except_properties.test
 # description: Testing the except properties
-# group: [duckpgq_sql_create_pg]
+# group: [create_pg]
 
 #statement ok
 #pragma enable_verification

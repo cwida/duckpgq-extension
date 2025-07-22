@@ -1,15 +1,11 @@
 #pragma once
 #include "duckpgq/common.hpp"
 
-namespace duckpgq {
-
-namespace core {
+namespace duckdb {
 
 struct CoreModule {
 public:
-  static void Register(DatabaseInstance &db);
+	static void Register(DatabaseInstance &db);
 };
 
-} // namespace core
-
-} // namespace duckpgq
+} // namespace duckdb

@@ -1,4 +1,5 @@
-
+# name: test/sql/create_pg/create_if_not_exists.test
+# group: [create_pg]
 
 require duckpgq
 

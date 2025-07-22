@@ -1,6 +1,6 @@
 # name: test/sql/create_pg/create_pg_with_pk_fk.test
 # description: Testing create with predefined primary and foreign keys
-# group: [duckpgq_sql_create_pg]
+# group: [create_pg]
 
 require duckpgq
 
