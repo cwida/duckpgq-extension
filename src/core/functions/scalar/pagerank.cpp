@@ -67,8 +67,8 @@ static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &re
 			double correction_factor = total_dangling_rank / static_cast<double>(v_size);
 			double max_delta = 0.0;
 			for (size_t i = 0; i < v_size; i++) {
-				info.temp_rank[i] =
-				    (1 - info.damping_factor) / static_cast<double>(v_size) + info.damping_factor * (info.temp_rank[i] + correction_factor);
+				info.temp_rank[i] = (1 - info.damping_factor) / static_cast<double>(v_size) +
+				                    info.damping_factor * (info.temp_rank[i] + correction_factor);
 				max_delta = std::max(max_delta, std::abs(info.temp_rank[i] - info.rank[i]));
 			}
 
