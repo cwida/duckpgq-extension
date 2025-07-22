@@ -25,9 +25,9 @@ static void GetCsrWTypeFunction(DataChunk &args, ExpressionState &state, Vector 
 	int32_t flag;
 	if (!csr->initialized_w) {
 		flag = static_cast<int32_t>(CSRWType::UNWEIGHTED);
-	} else if (csr->w.size()) {
+	} else if (csr->w.empty()) {
 		flag = static_cast<int32_t>(CSRWType::INTWEIGHT);
-	} else if (csr->w_double.size()) {
+	} else if (csr->w_double.empty()) {
 		flag = static_cast<int32_t>(CSRWType::DOUBLEWEIGHT);
 	} else {
 		throw InternalException("Corrupted weight vector");

@@ -83,15 +83,15 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Ve
 			lane_to_num[lane] = -1;
 			while (started_searches < args.size()) {
 				int64_t search_num = started_searches++;
-				int64_t src_pos = vdata_src.sel->get_index(search_num);
-				int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+				auto src_pos = vdata_src.sel->get_index(search_num);
+				auto dst_pos = vdata_dst.sel->get_index(search_num);
 				if (!vdata_src.validity.RowIsValid(src_pos)) {
 					result_validity.SetInvalid(search_num);
-					result_data[search_num] = (uint64_t)-1; // no path
+					result_data[search_num] = static_cast<uint64_t>(-1); // no path
 				} else if (src_data[src_pos] == dst_data[dst_pos]) {
-					result_data[search_num] = (uint64_t)0; // path of length 0 does not require a search
+					result_data[search_num] = 0; // path of length 0 does not require a search
 				} else {
-					visit1[src_data[src_pos]][lane] = 1;
+					visit1[src_data[src_pos]][lane] = true;
 					lane_to_num[lane] = search_num; // active lane
 					active++;
 					break;
@@ -108,7 +108,7 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Ve
 			for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
 				int64_t search_num = lane_to_num[lane];
 				if (search_num >= 0) { // active lane
-					int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+					auto dst_pos = vdata_dst.sel->get_index(search_num);
 					if ((iter & 1) ? visit2[dst_data[dst_pos]][lane] : visit1[dst_data[dst_pos]][lane]) {
 						result_data[search_num] = iter; /* found at iter => iter = path length */
 						lane_to_num[lane] = -1;         // mark inactive
