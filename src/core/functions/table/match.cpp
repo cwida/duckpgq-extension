@@ -725,8 +725,8 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 			} else {
 				shortest_path_function->alias = column_alias;
 			}
-			original_ref.column_list.erase(original_ref.column_list.begin() + idx_i);
-			original_ref.column_list.insert(original_ref.column_list.begin() + idx_i,
+			original_ref.column_list.erase(original_ref.column_list.begin() + static_cast<int64_t>(idx_i));
+			original_ref.column_list.insert(original_ref.column_list.begin() + static_cast<int64_t>(idx_i),
 			                                std::move(shortest_path_function));
 		} else if (parsed_ref->function_name == "path_length") {
 			auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table, subpath.path_variable,
@@ -741,8 +741,8 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 			auto path_length_function = make_uniq<FunctionExpression>("//", std::move(div_children));
 			path_length_function->alias =
 			    column_alias.empty() ? "path_length(" + subpath.path_variable + ")" : column_alias;
-			original_ref.column_list.erase(original_ref.column_list.begin() + idx_i);
-			original_ref.column_list.insert(original_ref.column_list.begin() + idx_i, std::move(path_length_function));
+			original_ref.column_list.erase(original_ref.column_list.begin() + static_cast<int64_t>(idx_i));
+			original_ref.column_list.insert(original_ref.column_list.begin() + static_cast<int64_t>(idx_i), std::move(path_length_function));
 		} else if (parsed_ref->function_name == "vertices" || parsed_ref->function_name == "edges") {
 			auto list_slice_children = vector<unique_ptr<ParsedExpression>>();
 			auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table, subpath.path_variable,
@@ -765,8 +765,8 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 			} else {
 				list_slice->alias = column_alias.empty() ? "edges(" + subpath.path_variable + ")" : column_alias;
 			}
-			original_ref.column_list.erase(original_ref.column_list.begin() + idx_i);
-			original_ref.column_list.insert(original_ref.column_list.begin() + idx_i, std::move(list_slice));
+			original_ref.column_list.erase(original_ref.column_list.begin() + static_cast<int64_t>(idx_i));
+			original_ref.column_list.insert(original_ref.column_list.begin() + static_cast<int64_t>(idx_i), std::move(list_slice));
 		}
 	}
 }
