@@ -1,6 +1,6 @@
 # name: test/sql/create_pg/describe_pg.test
 # description: Testing the describe property graph syntax
-# group: [duckpgq_sql_create_pg]
+# group: [create_pg]
 
 require duckpgq
 

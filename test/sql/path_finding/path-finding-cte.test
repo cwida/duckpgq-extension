@@ -1,6 +1,6 @@
 # name: test/sql/path_finding/path-finding-cte.test
 # description: Testing the optimization to move the shortest path function to a materialized CTE
-# group: [duckpgq_sql_path_finding]
+# group: [path_finding]
 
 require duckpgq
 

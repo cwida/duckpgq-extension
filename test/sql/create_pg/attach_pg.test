@@ -1,6 +1,6 @@
 # name: test/sql/create_pg/attach_pg.test
 # description: Testing create property graph with an attached database
-# group: [duckpgq_sql_create_pg]
+# group: [create_pg]
 
 require duckpgq
 

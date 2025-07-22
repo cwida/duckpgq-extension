@@ -9,34 +9,31 @@
 namespace duckdb {
 
 static void LoadInternal(DatabaseInstance &instance) {
-  duckpgq::core::CoreModule::Register(instance);
-  // for (auto &connection :
-  //      ConnectionManager::Get(instance).GetConnectionList()) {
-  //   connection->registered_state->Insert(
-  //       "duckpgq", make_shared_ptr<DuckPGQState>());
-  // }
+	CoreModule::Register(instance);
 
-  // Fill in extension load information.
-  std::string description =
-      StringUtil::Format("Adds support for SQL/PGQ and graph algorithms.");
-  ExtensionUtil::RegisterExtension(instance, /*name=*/"duckpgq",
-                                   ExtensionLoadedInfo{std::move(description)});
+	// Fill in extension load information.
+	std::string description = StringUtil::Format("Adds support for SQL/PGQ and graph algorithms.");
+	ExtensionUtil::RegisterExtension(instance, /*name=*/"duckpgq", ExtensionLoadedInfo {std::move(description)});
 }
 
-void DuckpgqExtension::Load(DuckDB &db) { LoadInternal(*db.instance); }
+void DuckpgqExtension::Load(DuckDB &db) {
+	LoadInternal(*db.instance);
+}
 
-std::string DuckpgqExtension::Name() { return "duckpgq"; }
+std::string DuckpgqExtension::Name() {
+	return "duckpgq";
+}
 
 } // namespace duckdb
 
 extern "C" {
 
-DUCKDB_EXTENSION_API void duckpgq_init(DatabaseInstance &db) {
-  LoadInternal(db);
+DUCKDB_EXTENSION_API void duckpgq_init(duckdb::DatabaseInstance &db) {
+	LoadInternal(db);
 }
 
 DUCKDB_EXTENSION_API const char *duckpgq_version() {
-  return DuckDB::LibraryVersion();
+	return duckdb::DuckDB::LibraryVersion();
 }
 }
 

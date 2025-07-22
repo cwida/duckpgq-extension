@@ -1,6 +1,6 @@
 # name: test/sql/optional_columns.test
 # description: Testing the optional columns syntax improvement
-# group: [duckpgq_sql]
+# group: [sql]
 
 require duckpgq
 

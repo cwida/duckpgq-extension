@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' && github.sha || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -22,18 +22,17 @@ jobs:
 
   duckdb-stable-build:
     name: Build extension binaries
-    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.3.1
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.3.2
     with:
-      duckdb_version: v1.3.1
-      ci_tools_version: v1.3.1
+      duckdb_version: v1.3.2
+      ci_tools_version: v1.3.2
       extension_name: duckpgq
 
-  duckdb-stable-deploy:
-    name: Deploy extension binaries
-    needs: duckdb-stable-build
-    uses: ./.github/workflows/_extension_deploy.yml
-    secrets: inherit
+  code-quality-check:
+    name: Code Quality Check
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@main
     with:
-      duckdb_version: v1.3.1
+      duckdb_version: v1.3.2
+      ci_tools_version: main
       extension_name: duckpgq
-      deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
+      format_checks: 'format;tidy'

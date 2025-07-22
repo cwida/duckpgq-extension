@@ -1,6 +1,6 @@
 # name: test/sql/pattern_matching/path_modes.test
 # description: Testing the path modes, most have not been implemented yet
-# group: [duckpgq_sql_pattern_matching]
+# group: [pattern_matching]
 
 #statement ok
 #pragma enable_verification

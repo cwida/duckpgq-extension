@@ -1,3 +1,5 @@
+# name: test/sql/pragma/show_property_graphs.test
+# group: [pragma]
 
 require duckpgq
 

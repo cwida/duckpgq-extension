@@ -1,6 +1,6 @@
 # name: test/sql/create_pg/create_property_graph.test
 # description: Testing the creation of property graphs
-# group: [duckpgq_sql_create_pg]
+# group: [create_pg]
 
 require duckpgq
 

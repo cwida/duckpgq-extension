@@ -1,6 +1,6 @@
 # name: test/sql/scalar/delete_csr.test
 # description: Testing the delete csr UDF
-# group: [duckpgq_sql_scalar]
+# group: [scalar]
 
 require duckpgq
 
