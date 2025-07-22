@@ -57,7 +57,7 @@ string CSR::ToString() const {
 }
 
 CSRFunctionData::CSRFunctionData(ClientContext &context, int32_t id, const LogicalType &weight_type)
-    : context(context), id(id), weight_type(std::move(weight_type)) {
+    : context(context), id(id), weight_type(weight_type) {
 }
 
 unique_ptr<FunctionData> CSRFunctionData::Copy() const {

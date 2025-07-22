@@ -56,7 +56,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 	}
 	int64_t v_size = args.data[1].GetValue(0).GetValue<int64_t>();
 
-	auto *v = (int64_t *)csr->v;
+	auto *v = reinterpret_cast<int64_t *>(csr->v);
 	vector<int64_t> &e = csr->e;
 	vector<int64_t> &edge_ids = csr->edge_ids;
 
@@ -86,7 +86,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
 		lane_to_num[lane] = -1; // inactive
 	}
-	int64_t total_len = 0;
+	uint64_t total_len = 0;
 
 	int64_t started_searches = 0;
 	while (started_searches < args.size()) {
@@ -107,7 +107,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 			lane_to_num[lane] = -1;
 			while (started_searches < args.size()) {
 				int64_t search_num = started_searches++;
-				int64_t src_pos = vdata_src.sel->get_index(search_num);
+				auto src_pos = vdata_src.sel->get_index(search_num);
 				if (!vdata_src.validity.RowIsValid(src_pos)) {
 					result_validity.SetInvalid(search_num);
 				} else {
@@ -135,7 +135,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 				int64_t search_num = lane_to_num[lane];
 				if (search_num >= 0) { // active lane
 					//! Check if dst for a source has been seen
-					int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+					auto dst_pos = vdata_dst.sel->get_index(search_num);
 					if (seen[dst_data[dst_pos]][lane]) {
 						finished_searches++;
 					}
@@ -153,8 +153,8 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 			}
 
 			//! Searches that have stopped have found a path
-			int64_t src_pos = vdata_src.sel->get_index(search_num);
-			int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+			auto src_pos = vdata_src.sel->get_index(search_num);
+			auto dst_pos = vdata_dst.sel->get_index(search_num);
 			if (src_data[src_pos] == dst_data[dst_pos]) { // Source == destination
 				unique_ptr<Vector> output = make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
 				ListVector::PushBack(*output, src_data[src_pos]);

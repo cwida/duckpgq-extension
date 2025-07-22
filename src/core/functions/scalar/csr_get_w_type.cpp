@@ -25,11 +25,11 @@ static void GetCsrWTypeFunction(DataChunk &args, ExpressionState &state, Vector 
 	auto csr = duckpgq_state->GetCSR(info.id);
 	int32_t flag;
 	if (!csr->initialized_w) {
-		flag = (int32_t)CSRWType::UNWEIGHTED;
+		flag = static_cast<int32_t>(CSRWType::UNWEIGHTED);
 	} else if (csr->w.size()) {
-		flag = (int32_t)CSRWType::INTWEIGHT;
+		flag = static_cast<int32_t>(CSRWType::INTWEIGHT);
 	} else if (csr->w_double.size()) {
-		flag = (int32_t)CSRWType::DOUBLEWEIGHT;
+		flag = static_cast<int32_t>(CSRWType::DOUBLEWEIGHT);
 	} else {
 		throw InternalException("Corrupted weight vector");
 	}
