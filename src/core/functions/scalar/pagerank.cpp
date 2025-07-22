@@ -14,7 +14,7 @@ static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &re
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
 	// Locate the CSR representation of the graph
-	auto csr_entry = duckpgq_state->csr_list.find((uint64_t)info.csr_id);
+	auto csr_entry = duckpgq_state->csr_list.find(info.csr_id);
 	if (csr_entry == duckpgq_state->csr_list.end()) {
 		throw ConstraintException("CSR not found. Is the graph populated?");
 	}
@@ -50,10 +50,10 @@ static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &re
 			double total_dangling_rank = 0.0; // For dangling nodes
 
 			for (size_t i = 0; i < v_size; i++) {
-				int64_t start_edge = v[i];
-				int64_t end_edge = (i + 1 < v_size) ? v[i + 1] : e.size(); // Adjust end_edge
+				auto start_edge = v[i];
+				auto end_edge = (i + 1 < v_size) ? v[i + 1] : e.size(); // Adjust end_edge
 				if (end_edge > start_edge) {
-					double rank_contrib = info.rank[i] / (end_edge - start_edge);
+					double rank_contrib = info.rank[i] / static_cast<double_t>(end_edge - start_edge);
 					for (int64_t j = start_edge; j < end_edge; j++) {
 						int64_t neighbor = e[j];
 						info.temp_rank[neighbor] += rank_contrib;
@@ -68,7 +68,7 @@ static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &re
 			double max_delta = 0.0;
 			for (size_t i = 0; i < v_size; i++) {
 				info.temp_rank[i] =
-				    (1 - info.damping_factor) / v_size + info.damping_factor * (info.temp_rank[i] + correction_factor);
+				    (1 - info.damping_factor) / static_cast<double>(v_size) + info.damping_factor * (info.temp_rank[i] + correction_factor);
 				max_delta = std::max(max_delta, std::abs(info.temp_rank[i] - info.rank[i]));
 			}
 
@@ -100,7 +100,7 @@ static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &re
 			continue; // Skip invalid rows
 		}
 		auto node_id = src_data[id_pos];
-		if (node_id < 0 || node_id >= (int64_t)v_size) {
+		if (node_id < 0 || node_id >= v_size) {
 			result_validity.SetInvalid(i);
 			continue;
 		}

@@ -48,7 +48,7 @@ static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionStat
 
 	D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
 	int64_t v_size = args.data[1].GetValue(0).GetValue<int64_t>();
-	int64_t *v = (int64_t *)duckpgq_state->csr_list[info.csr_id]->v;
+	int64_t *v = reinterpret_cast<int64_t *>(duckpgq_state->csr_list[info.csr_id]->v);
 	vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
 
 	// get src and dst vectors for searches
@@ -97,13 +97,13 @@ static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionStat
 			lane_to_num[lane] = -1;
 			while (started_searches < args.size()) {
 				int64_t search_num = started_searches++;
-				int64_t src_pos = vdata_src.sel->get_index(search_num);
-				int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+				auto src_pos = vdata_src.sel->get_index(search_num);
+				auto dst_pos = vdata_dst.sel->get_index(search_num);
 				if (!vdata_src.validity.RowIsValid(src_pos)) {
 					result_validity.SetInvalid(search_num);
-					result_data[search_num] = (uint64_t)-1; // no path
+					result_data[search_num] = -1; // no path
 				} else if (src_data[src_pos] == dst_data[dst_pos]) {
-					result_data[search_num] = (uint64_t)0; // path of length 0 does not require a search
+					result_data[search_num] = 0; // path of length 0 does not require a search
 				} else {
 					src_visit1[src_data[src_pos]][lane] = true;
 					dst_visit1[dst_data[dst_pos]][lane] = true;
