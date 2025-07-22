@@ -43,7 +43,7 @@ statement error
   COLUMNS (path_length(p), vertices(p), v2.x)
 );
 ----
-Constraint Error: Non-unique vertices detected. Make sure all vertices are unique for path-finding queries.
+Constraint Error: Non-existent/non-unique vertices detected. Make sure all vertices referred by edge tables exist and are unique for path-finding queries.
 
 # ANY SHORTEST v-[e]->{1,2}(v) also fails with "INTERNAL Error: Attempted to access index 1 within vector of size 1"
 statement error
@@ -52,7 +52,7 @@ statement error
   COLUMNS (path_length(p), vertices(p), v2.x)
 );
 ----
-Constraint Error: Non-unique vertices detected. Make sure all vertices are unique for path-finding queries.
+Constraint Error: Non-existent/non-unique vertices detected. Make sure all vertices referred by edge tables exist and are unique for path-finding queries.
 
 statement ok
 CREATE TABLE v2 (x VARCHAR);INSERT INTO v2 VALUES ('a'), ('b'), ('c'), ('c'), ('b');
@@ -78,9 +78,9 @@ statement error
   COLUMNS (path_length(p), vertices(p), v2.x)
 );
 ----
-Constraint Error: Non-unique vertices detected. Make sure all vertices are unique for path-finding queries.
+Constraint Error: Non-existent/non-unique vertices detected. Make sure all vertices referred by edge tables exist and are unique for path-finding queries.
 
 statement error
 from weakly_connected_component(g2, v2, e2);
 ----
-Constraint Error: Non-unique vertices detected. Make sure all vertices are unique for path-finding queries.
+Constraint Error: Non-existent/non-unique vertices detected. Make sure all vertices referred by edge tables exist and are unique for path-finding queries.
