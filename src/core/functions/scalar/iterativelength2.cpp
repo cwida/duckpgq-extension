@@ -87,7 +87,7 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Ve
 				auto dst_pos = vdata_dst.sel->get_index(search_num);
 				if (!vdata_src.validity.RowIsValid(src_pos)) {
 					result_validity.SetInvalid(search_num);
-					result_data[search_num] = static_cast<uint64_t>(-1); // no path
+					result_data[search_num] = -1; // no path
 				} else if (src_data[src_pos] == dst_data[dst_pos]) {
 					result_data[search_num] = 0; // path of length 0 does not require a search
 				} else {

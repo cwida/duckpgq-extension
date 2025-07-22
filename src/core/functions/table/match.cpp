@@ -9,7 +9,6 @@
 #include "duckdb/parser/tableref/basetableref.hpp"
 
 #include "duckdb/parser/expression/function_expression.hpp"
-#include "duckdb/parser/expression/subquery_expression.hpp"
 #include "duckdb/parser/expression/cast_expression.hpp"
 #include "duckdb/parser/expression/between_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
@@ -26,7 +25,6 @@
 
 #include "duckdb/parser/property_graph_table.hpp"
 #include "duckdb/parser/subpath_element.hpp"
-#include <cmath>
 #include <duckdb/common/enums/set_operation_type.hpp>
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
@@ -727,7 +725,7 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 			} else {
 				shortest_path_function->alias = column_alias;
 			}
-			original_ref.column_list.erase(original_ref.column_list.begin() + idx_i);
+			original_ref.column_list.erase(std::next(original_ref.column_list.begin(), idx_i));
 			original_ref.column_list.insert(original_ref.column_list.begin() + idx_i,
 			                                std::move(shortest_path_function));
 		} else if (parsed_ref->function_name == "path_length") {
