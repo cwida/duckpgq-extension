@@ -725,7 +725,7 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 			} else {
 				shortest_path_function->alias = column_alias;
 			}
-			original_ref.column_list.erase(std::next(original_ref.column_list.begin(), idx_i));
+			original_ref.column_list.erase(original_ref.column_list.begin() + idx_i);
 			original_ref.column_list.insert(original_ref.column_list.begin() + idx_i,
 			                                std::move(shortest_path_function));
 		} else if (parsed_ref->function_name == "path_length") {
