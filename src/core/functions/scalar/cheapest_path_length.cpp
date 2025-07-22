@@ -52,7 +52,7 @@ bool UpdateLanes(vector<vector<T>> &dists, T v, T n, T weight) {
 template <typename T, int16_t lane_limit>
 int16_t TemplatedBatchBellmanFord(CSR *csr, DataChunk &args, int64_t input_size, UnifiedVectorFormat &vdata_src,
                                   int64_t *src_data, const UnifiedVectorFormat &vdata_target, int64_t *target_data,
-                                  std::vector<T> weight_array, int16_t result_size, T *result_data,
+                                  const std::vector<T> &weight_array, int16_t result_size, T *result_data,
                                   ValidityMask &result_validity) {
 	vector<vector<T>> dists;
 	int16_t curr_batch_size =
@@ -91,7 +91,7 @@ int16_t TemplatedBatchBellmanFord(CSR *csr, DataChunk &args, int64_t input_size,
 template <typename T>
 void TemplatedBellmanFord(CSR *csr, DataChunk &args, int64_t input_size, Vector &result, UnifiedVectorFormat &vdata_src,
                           int64_t *src_data, const UnifiedVectorFormat &vdata_target, int64_t *target_data,
-                          std::vector<T> weight_array) {
+                          const std::vector<T> &weight_array) {
 	idx_t result_size = 0;
 	result.SetVectorType(VectorType::FLAT_VECTOR);
 	auto result_data = FlatVector::GetData<T>(result);

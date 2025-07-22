@@ -38,7 +38,7 @@ static void WeaklyConnectedComponentFunction(DataChunk &args, ExpressionState &s
 	auto &info = func_expr.bind_info->Cast<WeaklyConnectedComponentFunctionData>();
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
-	auto csr_entry = duckpgq_state->csr_list.find(uint64_t(info.csr_id));
+	auto csr_entry = duckpgq_state->csr_list.find(info.csr_id);
 	if (csr_entry == duckpgq_state->csr_list.end()) {
 		throw ConstraintException("CSR not found. Is the graph populated?");
 	}
@@ -48,7 +48,7 @@ static void WeaklyConnectedComponentFunction(DataChunk &args, ExpressionState &s
 	}
 
 	// Retrieve CSR data
-	int64_t *v = (int64_t *)duckpgq_state->csr_list[info.csr_id]->v;
+	int64_t *v = reinterpret_cast<int64_t *>(duckpgq_state->csr_list[info.csr_id]->v);
 	vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
 	size_t v_size = duckpgq_state->csr_list[info.csr_id]->vsize;
 

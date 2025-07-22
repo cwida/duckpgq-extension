@@ -15,7 +15,7 @@ typedef enum { NO_ARRAY, ARRAY, INTERMEDIATE } msbfs_modes_t;
 static int16_t InitialiseBfs(idx_t curr_batch, idx_t size, data_ptr_t src_data, const SelectionVector *src_sel,
                              const ValidityMask &src_validity, vector<std::bitset<LANE_LIMIT>> &seen,
                              vector<std::bitset<LANE_LIMIT>> &visit, vector<std::bitset<LANE_LIMIT>> &visit_next,
-                             unordered_map<int64_t, pair<int16_t, vector<int64_t>>> &lane_map) {
+                             unordered_map<int64_t, pair<int16_t, vector<idx_t>>> &lane_map) {
 	int16_t lanes = 0;
 	int16_t curr_batch_size = 0;
 
@@ -197,7 +197,7 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state, Vector
 		vector<std::bitset<LANE_LIMIT>> visit_next(input_size);
 
 		//! mapping of src_value ->  (bfs_num/lane, vector of indices in src_data)
-		unordered_map<int64_t, pair<int16_t, vector<int64_t>>> lane_map;
+		unordered_map<int64_t, pair<int16_t, vector<idx_t>>> lane_map;
 		auto curr_batch_size = InitialiseBfs(result_size, args.size(), src_data, vdata_src.sel, vdata_src.validity,
 		                                     seen, visit, visit_next, lane_map);
 		int mode = 0;
