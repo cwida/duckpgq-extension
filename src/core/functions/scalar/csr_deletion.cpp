@@ -22,9 +22,9 @@ static void DeleteCsrFunction(DataChunk &args, ExpressionState &state, Vector &r
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreScalarFunctions::RegisterCSRDeletionScalarFunction(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(db, ScalarFunction("delete_csr", {LogicalType::INTEGER}, LogicalType::BOOLEAN,
-	                                                   DeleteCsrFunction, CSRFunctionData::CSRBind));
+void CoreScalarFunctions::RegisterCSRDeletionScalarFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(ScalarFunction("delete_csr", {LogicalType::INTEGER}, LogicalType::BOOLEAN,
+	                                       DeleteCsrFunction, CSRFunctionData::CSRBind));
 }
 
 } // namespace duckdb

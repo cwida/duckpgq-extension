@@ -33,8 +33,8 @@ unique_ptr<TableRef> PageRankFunction::PageRankBindReplace(ClientContext &contex
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreTableFunctions::RegisterPageRankTableFunction(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(db, PageRankFunction());
+void CoreTableFunctions::RegisterPageRankTableFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(PageRankFunction());
 }
 
 } // namespace duckdb

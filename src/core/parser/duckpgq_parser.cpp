@@ -184,7 +184,8 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *, ClientContext &con
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CorePGQParser::RegisterPGQParserExtension(DatabaseInstance &db) {
+void CorePGQParser::RegisterPGQParserExtension(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
 	auto &config = DBConfig::GetConfig(db);
 	config.parser_extensions.push_back(DuckPGQParserExtension());
 }

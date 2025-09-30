@@ -1080,10 +1080,8 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreTableFunctions::RegisterMatchTableFunction(DatabaseInstance &db) {
-	// TableFunctionSet match_set("duckpgq_match");
-	// match_set.AddFunction(PGQMatchFunction());
-	ExtensionUtil::RegisterFunction(db, PGQMatchFunction());
+void CoreTableFunctions::RegisterMatchTableFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(PGQMatchFunction());
 }
 
 } // namespace duckdb

@@ -60,8 +60,8 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(ClientContext &context, Ta
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreTableFunctions::RegisterDropPropertyGraphTableFunction(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(db, DropPropertyGraphFunction());
+void CoreTableFunctions::RegisterDropPropertyGraphTableFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(DropPropertyGraphFunction());
 }
 
 } // namespace duckdb

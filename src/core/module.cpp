@@ -9,12 +9,12 @@
 
 namespace duckdb {
 
-void CoreModule::Register(DatabaseInstance &db) {
-	CoreTableFunctions::Register(db);
-	CoreScalarFunctions::Register(db);
-	CorePGQParser::Register(db);
-	CorePGQPragma::Register(db);
-	CorePGQOperator::Register(db);
+void CoreModule::Register(ExtensionLoader &loader) {
+	CoreTableFunctions::Register(loader);
+	CoreScalarFunctions::Register(loader);
+	CorePGQParser::Register(loader);
+	CorePGQPragma::Register(loader);
+	CorePGQOperator::Register(loader);
 }
 
 } // namespace duckdb

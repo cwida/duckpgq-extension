@@ -210,9 +210,9 @@ ScalarFunctionSet GetCSREdgeFunction() {
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreScalarFunctions::RegisterCSRCreationScalarFunctions(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(db, GetCSREdgeFunction());
-	ExtensionUtil::RegisterFunction(db, GetCSRVertexFunction());
+void CoreScalarFunctions::RegisterCSRCreationScalarFunctions(ExtensionLoader &loader) {
+	loader.RegisterFunction(GetCSREdgeFunction());
+	loader.RegisterFunction(GetCSRVertexFunction());
 }
 
 } // namespace duckdb

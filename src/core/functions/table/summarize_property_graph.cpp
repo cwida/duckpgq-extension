@@ -338,8 +338,8 @@ SummarizePropertyGraphFunction::SummarizePropertyGraphBindReplace(ClientContext 
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreTableFunctions::RegisterSummarizePropertyGraphTableFunction(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(db, SummarizePropertyGraphFunction());
+void CoreTableFunctions::RegisterSummarizePropertyGraphTableFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(SummarizePropertyGraphFunction());
 }
 
 } // namespace duckdb

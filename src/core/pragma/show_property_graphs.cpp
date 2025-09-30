@@ -1,5 +1,4 @@
 #include "duckdb/function/pragma_function.hpp"
-#include "duckdb/main/extension_util.hpp"
 #include <duckpgq/core/pragma/duckpgq_pragma.hpp>
 
 namespace duckdb {
@@ -8,7 +7,7 @@ static string PragmaShowPropertyGraphs(ClientContext &context, const FunctionPar
 	return "SELECT DISTINCT property_graph from __duckpgq_internal";
 }
 
-void CorePGQPragma::RegisterShowPropertyGraphs(DatabaseInstance &instance) {
+void CorePGQPragma::RegisterShowPropertyGraphs(ExtensionLoader &loader) {
 	// Define the pragma function
 	auto pragma_func = PragmaFunction::PragmaCall("show_property_graphs",   // Name of the pragma
 	                                              PragmaShowPropertyGraphs, // Query substitution function
@@ -16,7 +15,7 @@ void CorePGQPragma::RegisterShowPropertyGraphs(DatabaseInstance &instance) {
 	);
 
 	// Register the pragma function
-	ExtensionUtil::RegisterFunction(instance, pragma_func);
+	loader.RegisterFunction(pragma_func);
 }
 
 } // namespace duckdb

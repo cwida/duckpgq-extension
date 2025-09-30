@@ -133,9 +133,9 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Ve
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreScalarFunctions::RegisterIterativeLength2ScalarFunction(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(
-	    db, ScalarFunction("iterativelength2",
+void CoreScalarFunctions::RegisterIterativeLength2ScalarFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(
+	    ScalarFunction("iterativelength2",
 	                       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
 	                       LogicalType::BIGINT, IterativeLength2Function,
 	                       IterativeLengthFunctionData::IterativeLengthBind));

@@ -6,12 +6,12 @@
 namespace duckdb {
 
 struct CorePGQParser {
-	static void Register(DatabaseInstance &db) {
-		RegisterPGQParserExtension(db);
+	static void Register(ExtensionLoader &loader) {
+		RegisterPGQParserExtension(loader);
 	}
 
 private:
-	static void RegisterPGQParserExtension(DatabaseInstance &db);
+	static void RegisterPGQParserExtension(ExtensionLoader &loader);
 };
 
 struct DuckPGQParserExtensionInfo : ParserExtensionInfo {

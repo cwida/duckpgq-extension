@@ -1,5 +1,4 @@
 #include "duckdb/function/pragma_function.hpp"
-#include "duckdb/main/extension_util.hpp"
 #include <duckpgq/core/pragma/duckpgq_pragma.hpp>
 
 namespace duckdb {
@@ -22,7 +21,7 @@ static string PragmaCreateVertexTable(ClientContext &context, const FunctionPara
 	return result_query;
 }
 
-void CorePGQPragma::RegisterCreateVertexTable(duckdb::DatabaseInstance &instance) {
+void CorePGQPragma::RegisterCreateVertexTable(ExtensionLoader &loader) {
 	// Define the pragma function
 	auto pragma_func = PragmaFunction::PragmaCall("create_vertex_table",   // Name of the pragma
 	                                              PragmaCreateVertexTable, // Query substitution function
@@ -35,7 +34,7 @@ void CorePGQPragma::RegisterCreateVertexTable(duckdb::DatabaseInstance &instance
 	                                              });
 
 	// Register the pragma function
-	ExtensionUtil::RegisterFunction(instance, pragma_func);
+	loader.RegisterFunction(pragma_func);
 }
 
 } // namespace duckdb

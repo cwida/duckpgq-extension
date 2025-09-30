@@ -4,28 +4,28 @@
 namespace duckdb {
 
 struct CoreTableFunctions {
-	static void Register(DatabaseInstance &db) {
-		RegisterCreatePropertyGraphTableFunction(db);
-		RegisterMatchTableFunction(db);
-		RegisterDropPropertyGraphTableFunction(db);
-		RegisterDescribePropertyGraphTableFunction(db);
-		RegisterLocalClusteringCoefficientTableFunction(db);
-		RegisterScanTableFunctions(db);
-		RegisterSummarizePropertyGraphTableFunction(db);
-		RegisterWeaklyConnectedComponentTableFunction(db);
-		RegisterPageRankTableFunction(db);
+	static void Register(ExtensionLoader &loader) {
+		RegisterCreatePropertyGraphTableFunction(loader);
+		RegisterMatchTableFunction(loader);
+		RegisterDropPropertyGraphTableFunction(loader);
+		RegisterDescribePropertyGraphTableFunction(loader);
+		RegisterLocalClusteringCoefficientTableFunction(loader);
+		RegisterScanTableFunctions(loader);
+		RegisterSummarizePropertyGraphTableFunction(loader);
+		RegisterWeaklyConnectedComponentTableFunction(loader);
+		RegisterPageRankTableFunction(loader);
 	}
 
 private:
-	static void RegisterCreatePropertyGraphTableFunction(DatabaseInstance &db);
-	static void RegisterMatchTableFunction(DatabaseInstance &db);
-	static void RegisterDropPropertyGraphTableFunction(DatabaseInstance &db);
-	static void RegisterDescribePropertyGraphTableFunction(DatabaseInstance &db);
-	static void RegisterLocalClusteringCoefficientTableFunction(DatabaseInstance &db);
-	static void RegisterScanTableFunctions(DatabaseInstance &db);
-	static void RegisterWeaklyConnectedComponentTableFunction(DatabaseInstance &db);
-	static void RegisterPageRankTableFunction(DatabaseInstance &db);
-	static void RegisterSummarizePropertyGraphTableFunction(DatabaseInstance &db);
+	static void RegisterCreatePropertyGraphTableFunction(ExtensionLoader &loader);
+	static void RegisterMatchTableFunction(ExtensionLoader &loader);
+	static void RegisterDropPropertyGraphTableFunction(ExtensionLoader &loader);
+	static void RegisterDescribePropertyGraphTableFunction(ExtensionLoader &loader);
+	static void RegisterLocalClusteringCoefficientTableFunction(ExtensionLoader &loader);
+	static void RegisterScanTableFunctions(ExtensionLoader &loader);
+	static void RegisterWeaklyConnectedComponentTableFunction(ExtensionLoader &loader);
+	static void RegisterPageRankTableFunction(ExtensionLoader &loader);
+	static void RegisterSummarizePropertyGraphTableFunction(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

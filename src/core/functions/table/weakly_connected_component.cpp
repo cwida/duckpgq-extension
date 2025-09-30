@@ -35,8 +35,8 @@ WeaklyConnectedComponentFunction::WeaklyConnectedComponentBindReplace(ClientCont
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreTableFunctions::RegisterWeaklyConnectedComponentTableFunction(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(db, WeaklyConnectedComponentFunction());
+void CoreTableFunctions::RegisterWeaklyConnectedComponentTableFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(WeaklyConnectedComponentFunction());
 }
 
 } // namespace duckdb

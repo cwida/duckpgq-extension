@@ -256,8 +256,8 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state, Vector
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreScalarFunctions::RegisterReachabilityScalarFunction(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(db, ScalarFunction("reachability",
+void CoreScalarFunctions::RegisterReachabilityScalarFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(ScalarFunction("reachability",
 	                                                   {LogicalType::INTEGER, LogicalType::BOOLEAN, LogicalType::BIGINT,
 	                                                    LogicalType::BIGINT, LogicalType::BIGINT},
 	                                                   LogicalType::BOOLEAN, ReachabilityFunction,

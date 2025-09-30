@@ -14,14 +14,14 @@ namespace duckdb {
 class CorePGQPragma {
 public:
 	//! Register the PRAGMA function
-	static void Register(DatabaseInstance &instance) {
-		RegisterShowPropertyGraphs(instance);
-		RegisterCreateVertexTable(instance);
+	static void Register(ExtensionLoader &loader) {
+		RegisterShowPropertyGraphs(loader);
+		RegisterCreateVertexTable(loader);
 	}
 
 private:
-	static void RegisterShowPropertyGraphs(DatabaseInstance &instance);
-	static void RegisterCreateVertexTable(DatabaseInstance &instance);
+	static void RegisterShowPropertyGraphs(ExtensionLoader &loader);
+	static void RegisterCreateVertexTable(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

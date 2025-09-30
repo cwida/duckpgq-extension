@@ -409,8 +409,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreTableFunctions::RegisterCreatePropertyGraphTableFunction(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(db, CreatePropertyGraphFunction());
+void CoreTableFunctions::RegisterCreatePropertyGraphTableFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(CreatePropertyGraphFunction());
 }
 
 } // namespace duckdb

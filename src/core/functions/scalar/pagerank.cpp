@@ -113,8 +113,8 @@ static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &re
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreScalarFunctions::RegisterPageRankScalarFunction(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(db, ScalarFunction("pagerank", {LogicalType::INTEGER, LogicalType::BIGINT},
+void CoreScalarFunctions::RegisterPageRankScalarFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(ScalarFunction("pagerank", {LogicalType::INTEGER, LogicalType::BIGINT},
 	                                                   LogicalType::DOUBLE, PageRankFunction,
 	                                                   PageRankFunctionData::PageRankBind));
 }

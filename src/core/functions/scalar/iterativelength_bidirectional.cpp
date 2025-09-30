@@ -156,9 +156,9 @@ static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionStat
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreScalarFunctions::RegisterIterativeLengthBidirectionalScalarFunction(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(
-	    db, ScalarFunction("iterativelengthbidirectional",
+void CoreScalarFunctions::RegisterIterativeLengthBidirectionalScalarFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(
+	    ScalarFunction("iterativelengthbidirectional",
 	                       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
 	                       LogicalType::BIGINT, IterativeLengthBidirectionalFunction,
 	                       IterativeLengthFunctionData::IterativeLengthBind));

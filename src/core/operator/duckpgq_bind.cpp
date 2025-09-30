@@ -25,7 +25,8 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder, OperatorExte
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CorePGQOperator::RegisterPGQBindOperator(DatabaseInstance &db) {
+void CorePGQOperator::RegisterPGQBindOperator(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
 	auto &config = DBConfig::GetConfig(db);
 	config.operator_extensions.push_back(make_uniq<DuckPGQOperatorExtension>());
 }

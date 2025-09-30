@@ -40,8 +40,8 @@ LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(Client
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
-void CoreTableFunctions::RegisterLocalClusteringCoefficientTableFunction(DatabaseInstance &db) {
-	ExtensionUtil::RegisterFunction(db, LocalClusteringCoefficientFunction());
+void CoreTableFunctions::RegisterLocalClusteringCoefficientTableFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(LocalClusteringCoefficientFunction());
 }
 
 } // namespace duckdb
