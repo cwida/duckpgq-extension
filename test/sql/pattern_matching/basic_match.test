@@ -294,15 +294,16 @@ query II
     MATCH
     (a:PERSON)-[k:knows]->(b:person)
     COLUMNS (a.*)
-    ) study;
+    ) p
+ORDER BY p.id, p.name;
 ----
 0	Daniel
 0	Daniel
 0	Daniel
-3	Peter
 1	Tavneet
 1	Tavneet
 2	Gabor
+3	Peter
 4	David
 
 query I
@@ -310,16 +311,16 @@ query I
     MATCH
     (a:PERSON)-[k:knows]->(b:person)
     COLUMNS (a)
-    ) study;
+    );
 ----
 {'id': 0, 'name': Daniel}
-{'id': 0, 'name': Daniel}
-{'id': 0, 'name': Daniel}
-{'id': 3, 'name': Peter}
-{'id': 1, 'name': Tavneet}
 {'id': 1, 'name': Tavneet}
 {'id': 2, 'name': Gabor}
+{'id': 3, 'name': Peter}
 {'id': 4, 'name': David}
+{'id': 0, 'name': Daniel}
+{'id': 1, 'name': Tavneet}
+{'id': 0, 'name': Daniel}
 
 query III
 -FROM GRAPH_TABLE (pg
