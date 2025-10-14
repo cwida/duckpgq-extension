@@ -34,6 +34,7 @@ LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(Client
 
 	auto result = make_uniq<SubqueryRef>(std::move(subquery));
 	result->alias = "lcc";
+	// input.ref.alias = "lcc";
 	return std::move(result);
 }
 //------------------------------------------------------------------------------
