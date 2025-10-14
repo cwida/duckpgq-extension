@@ -11,6 +11,16 @@ CREATE TABLE VariedStudent(id BIGINT, name VARCHAR);INSERT INTO VariedStudent VA
 statement ok
 CREATE TABLE VariedKnow(src BIGINT, dst BIGINT);INSERT INTO VariedKnow VALUES (0,1), (0,2), (0,3), (1,2), (2,3), (3,4), (4,5);
 
+query II
+SELECT * FROM (WITH edges_cte AS (SELECT src_table.rowid AS src, dst_table.rowid AS dst, VariedKnow.rowid AS edges FROM VariedKnow INNER JOIN VariedStudent AS src_table ON ((VariedKnow.src = src_table.id)) INNER JOIN VariedStudent AS dst_table ON ((VariedKnow.dst = dst_table.id))), csr_cte AS (SELECT create_csr_edge(0, (SELECT count(VariedStudent.id) FROM VariedStudent AS VariedStudent), CAST((SELECT multiply(2, sum(create_csr_vertex(0, (SELECT count(VariedStudent.id) FROM VariedStudent AS VariedStudent), sub.dense_id, sub.cnt))) FROM (SELECT dense_id, count(outgoing_edges) AS cnt FROM ((SELECT VariedStudent.rowid AS dense_id, VariedKnow.src AS outgoing_edges, VariedKnow.dst AS incoming_edges FROM VariedKnow INNER JOIN VariedStudent ON ((VariedKnow.src = VariedStudent.id))) UNION BY NAME (SELECT VariedStudent.rowid AS dense_id, VariedKnow.dst AS outgoing_edges, VariedKnow.src AS incoming_edges FROM VariedKnow INNER JOIN VariedStudent ON ((VariedKnow.dst = VariedStudent.id)))) AS unique_edges GROUP BY dense_id) AS sub) AS BIGINT), (SELECT multiply(2, count()) FROM ((SELECT src, dst FROM edges_cte) UNION BY NAME (SELECT dst AS src, src AS dst FROM edges_cte))), src, dst, edge) AS "temp" FROM (SELECT src, dst, any_value(edges) AS edge FROM ((SELECT src, dst, edges FROM edges_cte) UNION ALL (SELECT dst, src, edges FROM edges_cte)) GROUP BY src, dst))SELECT VariedStudent.id, "add"(__x."temp", local_clustering_coefficient(0, VariedStudent.rowid)) AS local_clustering_coefficient FROM VariedStudent CROSS JOIN (SELECT multiply(0, count(csr_cte."temp")) AS "temp" FROM csr_cte) AS __x) AS lcc;
+----
+0	0.6666667
+1	1.0
+2	0.6666667
+3	0.33333334
+4	0.0
+5	0.0
+
 statement ok
 -CREATE PROPERTY GRAPH varied_pg_label_a
 VERTEX TABLES (

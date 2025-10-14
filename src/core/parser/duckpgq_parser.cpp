@@ -94,23 +94,32 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement,
 		}
 	}
 
-	// Collect CTE keys
-	vector<string> cte_keys;
+	CommonTableExpressionMap *cte_map = nullptr;
 	if (node) {
-		cte_keys = node->cte_map.map.Keys();
+		cte_map = &node->cte_map;
 	} else if (cte_node) {
-		cte_keys = cte_node->cte_map.map.Keys();
+		cte_map = &cte_node->cte_map;
 	}
-	for (auto &key : cte_keys) {
-		auto cte = node->cte_map.map.find(key);
-		auto cte_select_statement = dynamic_cast<SelectStatement *>(cte->second->query.get());
-		if (cte_select_statement == nullptr) {
-			continue; // Skip non-select statements
+
+	if (!cte_map) {
+		return {};
+	}
+
+	for (auto const& kv_pair : cte_map->map) {
+		auto const& cte = kv_pair.second;
+
+		auto *cte_select_statement = dynamic_cast<SelectStatement *>(cte->query.get());
+		if (!cte_select_statement) {
+			continue;
 		}
-		auto cte_node = dynamic_cast<SelectNode *>(cte_select_statement->node.get());
-		if (cte_node) {
-			duckpgq_find_match_function(cte_node->from_table.get(), duckpgq_state);
+
+		auto *select_node = dynamic_cast<SelectNode *>(cte_select_statement->node.get());
+		if (!select_node) {
+			continue; // The SelectStatement has no SelectNode, skip.
 		}
+
+		// If we get here, we know select_node is valid.
+		duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
 	}
 	if (node) {
 		duckpgq_find_match_function(node->from_table.get(), duckpgq_state);
