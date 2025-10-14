@@ -105,8 +105,8 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement,
 		return {};
 	}
 
-	for (auto const& kv_pair : cte_map->map) {
-		auto const& cte = kv_pair.second;
+	for (auto const &kv_pair : cte_map->map) {
+		auto const &cte = kv_pair.second;
 
 		auto *cte_select_statement = dynamic_cast<SelectStatement *>(cte->query.get());
 		if (!cte_select_statement) {

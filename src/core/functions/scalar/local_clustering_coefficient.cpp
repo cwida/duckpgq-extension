@@ -75,10 +75,9 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
 // Register functions
 //------------------------------------------------------------------------------
 void CoreScalarFunctions::RegisterLocalClusteringCoefficientScalarFunction(ExtensionLoader &loader) {
-	loader.RegisterFunction(
-	    ScalarFunction("local_clustering_coefficient", {LogicalType::INTEGER, LogicalType::BIGINT},
-	                       LogicalType::FLOAT, LocalClusteringCoefficientFunction,
-	                       LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientBind));
+	loader.RegisterFunction(ScalarFunction("local_clustering_coefficient", {LogicalType::INTEGER, LogicalType::BIGINT},
+	                                       LogicalType::FLOAT, LocalClusteringCoefficientFunction,
+	                                       LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientBind));
 }
 
 } // namespace duckdb

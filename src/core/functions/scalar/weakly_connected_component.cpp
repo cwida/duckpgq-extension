@@ -107,10 +107,9 @@ static void WeaklyConnectedComponentFunction(DataChunk &args, ExpressionState &s
 // Register functions
 //------------------------------------------------------------------------------
 void CoreScalarFunctions::RegisterWeaklyConnectedComponentScalarFunction(ExtensionLoader &loader) {
-	loader.RegisterFunction(
-	    ScalarFunction("weakly_connected_component", {LogicalType::INTEGER, LogicalType::BIGINT},
-	                       LogicalType::BIGINT, WeaklyConnectedComponentFunction,
-	                       WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentBind));
+	loader.RegisterFunction(ScalarFunction("weakly_connected_component", {LogicalType::INTEGER, LogicalType::BIGINT},
+	                                       LogicalType::BIGINT, WeaklyConnectedComponentFunction,
+	                                       WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentBind));
 }
 
 } // namespace duckdb

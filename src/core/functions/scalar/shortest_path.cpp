@@ -210,11 +210,10 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 // Register functions
 //------------------------------------------------------------------------------
 void CoreScalarFunctions::RegisterShortestPathScalarFunction(ExtensionLoader &loader) {
-	loader.RegisterFunction(
-	    ScalarFunction("shortestpath",
-	                       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-	                       LogicalType::LIST(LogicalType::BIGINT), ShortestPathFunction,
-	                       IterativeLengthFunctionData::IterativeLengthBind));
+	loader.RegisterFunction(ScalarFunction(
+	    "shortestpath", {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+	    LogicalType::LIST(LogicalType::BIGINT), ShortestPathFunction,
+	    IterativeLengthFunctionData::IterativeLengthBind));
 }
 
 } // namespace duckdb

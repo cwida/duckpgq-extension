@@ -157,11 +157,10 @@ static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionStat
 // Register functions
 //------------------------------------------------------------------------------
 void CoreScalarFunctions::RegisterIterativeLengthBidirectionalScalarFunction(ExtensionLoader &loader) {
-	loader.RegisterFunction(
-	    ScalarFunction("iterativelengthbidirectional",
-	                       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-	                       LogicalType::BIGINT, IterativeLengthBidirectionalFunction,
-	                       IterativeLengthFunctionData::IterativeLengthBind));
+	loader.RegisterFunction(ScalarFunction(
+	    "iterativelengthbidirectional",
+	    {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT}, LogicalType::BIGINT,
+	    IterativeLengthBidirectionalFunction, IterativeLengthFunctionData::IterativeLengthBind));
 }
 
 } // namespace duckdb

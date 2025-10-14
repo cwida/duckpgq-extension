@@ -134,11 +134,9 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Ve
 // Register functions
 //------------------------------------------------------------------------------
 void CoreScalarFunctions::RegisterIterativeLength2ScalarFunction(ExtensionLoader &loader) {
-	loader.RegisterFunction(
-	    ScalarFunction("iterativelength2",
-	                       {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-	                       LogicalType::BIGINT, IterativeLength2Function,
-	                       IterativeLengthFunctionData::IterativeLengthBind));
+	loader.RegisterFunction(ScalarFunction(
+	    "iterativelength2", {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+	    LogicalType::BIGINT, IterativeLength2Function, IterativeLengthFunctionData::IterativeLengthBind));
 }
 
 } // namespace duckdb
