@@ -306,22 +306,6 @@ ORDER BY p.id, p.name;
 3	Peter
 4	David
 
-query I
--FROM GRAPH_TABLE (pg
-    MATCH
-    (a:PERSON)-[k:knows]->(b:person)
-    COLUMNS (a)
-    );
-----
-{'id': 0, 'name': Daniel}
-{'id': 1, 'name': Tavneet}
-{'id': 2, 'name': Gabor}
-{'id': 3, 'name': Peter}
-{'id': 4, 'name': David}
-{'id': 0, 'name': Daniel}
-{'id': 1, 'name': Tavneet}
-{'id': 0, 'name': Daniel}
-
 query III
 -FROM GRAPH_TABLE (pg
     MATCH

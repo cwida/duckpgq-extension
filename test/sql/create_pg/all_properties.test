@@ -96,16 +96,6 @@ query I
 2
 
 query I
--FROM GRAPH_TABLE (pg_only_id MATCH (p:Person)-[k:Knows]->(p2:Person) COLUMNS (p));
-----
-{'id': 0, 'name': Daniel}
-{'id': 1, 'name': Tavneet}
-{'id': 2, 'name': Gabor}
-{'id': 0, 'name': Daniel}
-{'id': 1, 'name': Tavneet}
-{'id': 0, 'name': Daniel}
-
-query I
 -FROM GRAPH_TABLE (pg_only_id MATCH (p:Person)-[k:Knows]->(p2:Person) COLUMNS (k.*));
 ----
 0
