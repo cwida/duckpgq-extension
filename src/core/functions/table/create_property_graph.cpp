@@ -1,5 +1,6 @@
 #include "duckpgq/core/functions/table/create_property_graph.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
 #include "duckdb/parser/constraints/foreign_key_constraint.hpp"
 #include "duckdb/parser/statement/create_statement.hpp"
 #include "duckpgq/common.hpp"
@@ -7,7 +8,6 @@
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include "duckdb/main/connection_manager.hpp"
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
-#include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
 #include "duckdb/catalog/catalog.hpp"
 
 namespace duckdb {
@@ -186,14 +186,14 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 			CheckPropertyGraphTableColumns(vertex_table, table);
 			CheckPropertyGraphTableLabels(vertex_table, table);
 		} catch (CatalogException &e) {
-			auto table =
-			    Catalog::GetEntry<ViewCatalogEntry>(context, vertex_table->catalog_name, vertex_table->schema_name,
-			                                        vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
-			if (table) {
-				throw Exception(ExceptionType::INVALID, "Found a view with name " + vertex_table->table_name +
-				                                            ". Creating property graph tables over views is "
-				                                            "currently not supported.");
-			}
+			// auto table =
+			//     Catalog::GetEntry<ViewCatalogEntry>(context, vertex_table->catalog_name, vertex_table->schema_name,
+			//                                         vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
+			// if (table) {
+			// 	throw Exception(ExceptionType::INVALID, "Found a view with name " + vertex_table->table_name +
+			// 	                                            ". Creating property graph tables over views is "
+			// 	                                            "currently not supported.");
+			// }
 			throw Exception(ExceptionType::INVALID, e.what());
 		} catch (BinderException &e) {
 			throw Exception(ExceptionType::INVALID, "Catalog '" + vertex_table->catalog_name + "' does not exist!");
@@ -246,13 +246,13 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 			// Validate primary keys in the destination table
 			ValidatePrimaryKeyInTable(context, edge_table->destination_pg_table, edge_table->destination_pk);
 		} catch (CatalogException &e) {
-			auto table = Catalog::GetEntry<ViewCatalogEntry>(context, edge_table->catalog_name, edge_table->schema_name,
-			                                                 edge_table->table_name, OnEntryNotFound::RETURN_NULL);
-			if (table) {
-				throw Exception(ExceptionType::INVALID, "Found a view with name " + edge_table->table_name +
-				                                            ". Creating property graph tables over views is "
-				                                            "currently not supported.");
-			}
+			// auto table = Catalog::GetEntry<ViewCatalogEntry>(context, edge_table->catalog_name, edge_table->schema_name,
+			//                                                  edge_table->table_name, OnEntryNotFound::RETURN_NULL);
+			// if (table) {
+			// 	throw Exception(ExceptionType::INVALID, "Found a view with name " + edge_table->table_name +
+			// 	                                            ". Creating property graph tables over views is "
+			// 	                                            "currently not supported.");
+			// }
 			throw Exception(ExceptionType::INVALID, e.what());
 		} catch (BinderException &e) {
 			throw Exception(ExceptionType::INVALID, "Catalog '" + edge_table->catalog_name + "' does not exist!");
