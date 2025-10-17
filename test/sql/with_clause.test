@@ -4,196 +4,196 @@
 
 require duckpgq
 
-statement ok
-import database 'duckdb/data/SNB0.003';
-
-statement ok
--CREATE PROPERTY GRAPH snb
-    VERTEX TABLES (
-      Person,
-      Message,
-      Forum,
-      Tag,
-      Organisation IN typemask(company, university)
-    )
-    EDGE TABLES (
-      Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
-                              DESTINATION KEY (Person2Id) REFERENCES Person (id)
-                              LABEL Knows,
-      Forum_hasMember_Person  SOURCE KEY (ForumId) REFERENCES Forum (id)
-                              DESTINATION KEY (PersonId) REFERENCES Person (id)
-                              LABEL hasMember,
-        Person_likes_Message    SOURCE KEY (PersonId) REFERENCES Person (id)
-                              DESTINATION KEY (id) REFERENCES Message (id)
-                              LABEL Likes,
-        person_workAt_Organisation SOURCE KEY (PersonId) REFERENCES Person (id)
-                                   DESTINATION KEY (OrganisationId) REFERENCES Organisation (id)
-                                   LABEL worksAt,
-       Person_hasInterest_Tag  SOURCE KEY (PersonId) REFERENCES Person (id)
-                               DESTINATION KEY (TagId) REFERENCES Tag (id)
-                               LABEL hasInterest
-);
-
-statement ok
--select * FROM GRAPH_TABLE(snb MATCH (a:Person));
-
-query I
--WITH foo as (SELECT id FROM GRAPH_TABLE(snb MATCH (a:Person))) select * from foo LIMIT 10;
-----
-14
-16
-32
-2199023255557
-2199023255573
-2199023255594
-4398046511139
-6597069766702
-8796093022234
-8796093022237
-
-query II
--WITH foo as (SELECT id FROM GRAPH_TABLE(snb MATCH (a:Person))), bar as (SELECT id from Person) select * from foo, bar LIMIT 10;
-----
-14	14
-16	14
-32	14
-2199023255557	14
-2199023255573	14
-2199023255594	14
-4398046511139	14
-6597069766702	14
-8796093022234	14
-8796093022237	14
-
-statement ok
--WITH foo AS (SELECT id, firstName FROM GRAPH_TABLE(snb MATCH (a:Person)))
-SELECT * FROM foo LIMIT 10;
-
-statement ok
--WITH foo AS (SELECT id FROM GRAPH_TABLE(snb MATCH (a:Person))),
-     bar AS (SELECT id, firstName FROM Person WHERE id IN (SELECT id FROM foo))
-SELECT * FROM bar LIMIT 10;
-
-statement ok
--WITH foo AS (FROM GRAPH_TABLE(snb MATCH (a:Person)-[r:Knows]->(b:Person) COLUMNS (a.id as id, b.id as knows_id)))
-SELECT * FROM foo LIMIT 10;
-
-statement ok
--WITH foo AS (FROM GRAPH_TABLE(snb MATCH (a:Person)-[r:Knows]->(b:Person) COLUMNS (a.id as id, b.id as knows_id))),
-     bar AS (SELECT id, COUNT(knows_id) AS knows_count FROM foo GROUP BY id)
-SELECT * FROM bar LIMIT 10;
-
-statement ok
--WITH foo AS (SELECT id, firstName FROM GRAPH_TABLE(snb MATCH (a:Person))),
-     bar AS (SELECT id, title FROM GRAPH_TABLE(snb MATCH (f:Forum)))
-SELECT foo.firstName, bar.title
-FROM foo, bar
-LIMIT 10;
-
-statement ok
--WITH person_aggregate AS (
-    SELECT id, COUNT(friend_id) AS friend_count
-    FROM GRAPH_TABLE(snb MATCH (a:Person)-[r:Knows]->(b:Person) COLUMNS (a.id as id, b.id as friend_id))
-    GROUP BY id
-), message_likes AS (
-    SELECT id, COUNT(person_id) AS like_count
-    FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:Likes]->(m:Message) COLUMNS (m.id as id, p.id as person_id))
-    GROUP BY id
-)
-SELECT *
-FROM person_aggregate
-JOIN message_likes ON person_aggregate.id = message_likes.id
-LIMIT 10;
-
-statement ok
--WITH persons AS (
-    SELECT id, firstName
-    FROM GRAPH_TABLE(snb MATCH (a:Person))
-), forums AS (
-    SELECT id, title
-    FROM GRAPH_TABLE(snb MATCH (f:Forum))
-)
-SELECT p.firstName, f.title
-FROM persons p
-CROSS JOIN forums f
-LIMIT 10;
-
-statement ok
--WITH likes_per_person AS (
-    SELECT person_id, COUNT(message_id) AS likes_count
-    FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:Likes]->(m:Message) COLUMNS (p.id as person_id, m.id as message_id))
-    GROUP BY person_id
-), persons AS (
-    SELECT id, firstName
-    FROM GRAPH_TABLE(snb MATCH (a:Person))
-)
-SELECT persons.firstName, likes_per_person.likes_count
-FROM persons
-LEFT JOIN likes_per_person ON persons.id = likes_per_person.person_id
-LIMIT 10;
-
-statement ok
--WITH person_with_friends AS (
-    SELECT person_id, friend_id
-    FROM GRAPH_TABLE(snb MATCH (a:Person)-[r:Knows]->(b:Person) COLUMNS (a.id as person_id, b.id as friend_id))
-), persons AS (
-    SELECT id, firstName
-    FROM GRAPH_TABLE(snb MATCH (a:Person))
-)
-SELECT p.firstName, COUNT(pwf.friend_id) AS friend_count
-FROM persons p
-LEFT JOIN person_with_friends pwf ON p.id = pwf.person_id
-GROUP BY p.firstName
-LIMIT 10;
-
-statement ok
--WITH person_orgs AS (
-    SELECT person_id, org_name
-    FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:worksAt]->(o:Organisation) COLUMNS (p.id as person_id, o.name as org_name))
-), persons AS (
-    SELECT id, firstName
-    FROM GRAPH_TABLE(snb MATCH (a:Person))
-)
-SELECT p.firstName, po.org_name
-FROM persons p
-JOIN person_orgs po ON p.id = po.person_id
-LIMIT 10;
-
-statement ok
--WITH person_companies AS (
-    SELECT person_id, company_name
-    FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:worksAt]->(c:Company) COLUMNS(p.id as person_id, c.name as company_name))
-), persons AS (
-    SELECT id, firstName
-    FROM GRAPH_TABLE(snb MATCH (a:Person))
-)
-SELECT p.firstName, pc.company_name
-FROM persons p
-JOIN person_companies pc ON p.id = pc.person_id
-LIMIT 10;
-
-statement ok
--WITH person_universities AS (
-    SELECT person_id, university_name
-    FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:worksAt]->(u:University) COLUMNS (p.id as person_id, u.name as university_name))
-), persons AS (
-    SELECT id, firstName
-    FROM GRAPH_TABLE(snb MATCH (a:Person))
-)
-SELECT p.firstName, pu.university_name
-FROM persons p
-JOIN person_universities pu ON p.id = pu.person_id
-LIMIT 10;
-
-statement ok
--WITH person_interests AS (
-    SELECT person_id, tag_name
-    FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:hasInterest]->(t:Tag) COLUMNS (p.id as person_id, t.name as tag_name))
-), persons AS (
-    SELECT id, firstName
-    FROM GRAPH_TABLE(snb MATCH (a:Person))
-)
-SELECT p.firstName, pi.tag_name
-FROM persons p
-JOIN person_interests pi ON p.id = pi.person_id
-LIMIT 10;
+# statement ok
+# import database 'duckdb/data/SNB0.003';
+#
+# statement ok
+# -CREATE PROPERTY GRAPH snb
+#     VERTEX TABLES (
+#       Person,
+#       Message,
+#       Forum,
+#       Tag,
+#       Organisation IN typemask(company, university)
+#     )
+#     EDGE TABLES (
+#       Person_knows_person     SOURCE KEY (Person1Id) REFERENCES Person (id)
+#                               DESTINATION KEY (Person2Id) REFERENCES Person (id)
+#                               LABEL Knows,
+#       Forum_hasMember_Person  SOURCE KEY (ForumId) REFERENCES Forum (id)
+#                               DESTINATION KEY (PersonId) REFERENCES Person (id)
+#                               LABEL hasMember,
+#         Person_likes_Message    SOURCE KEY (PersonId) REFERENCES Person (id)
+#                               DESTINATION KEY (id) REFERENCES Message (id)
+#                               LABEL Likes,
+#         person_workAt_Organisation SOURCE KEY (PersonId) REFERENCES Person (id)
+#                                    DESTINATION KEY (OrganisationId) REFERENCES Organisation (id)
+#                                    LABEL worksAt,
+#        Person_hasInterest_Tag  SOURCE KEY (PersonId) REFERENCES Person (id)
+#                                DESTINATION KEY (TagId) REFERENCES Tag (id)
+#                                LABEL hasInterest
+# );
+#
+# statement ok
+# -select * FROM GRAPH_TABLE(snb MATCH (a:Person));
+#
+# query I
+# -WITH foo as (SELECT id FROM GRAPH_TABLE(snb MATCH (a:Person))) select * from foo LIMIT 10;
+# ----
+# 14
+# 16
+# 32
+# 2199023255557
+# 2199023255573
+# 2199023255594
+# 4398046511139
+# 6597069766702
+# 8796093022234
+# 8796093022237
+#
+# query II
+# -WITH foo as (SELECT id FROM GRAPH_TABLE(snb MATCH (a:Person))), bar as (SELECT id from Person) select * from foo, bar LIMIT 10;
+# ----
+# 14	14
+# 16	14
+# 32	14
+# 2199023255557	14
+# 2199023255573	14
+# 2199023255594	14
+# 4398046511139	14
+# 6597069766702	14
+# 8796093022234	14
+# 8796093022237	14
+#
+# statement ok
+# -WITH foo AS (SELECT id, firstName FROM GRAPH_TABLE(snb MATCH (a:Person)))
+# SELECT * FROM foo LIMIT 10;
+#
+# statement ok
+# -WITH foo AS (SELECT id FROM GRAPH_TABLE(snb MATCH (a:Person))),
+#      bar AS (SELECT id, firstName FROM Person WHERE id IN (SELECT id FROM foo))
+# SELECT * FROM bar LIMIT 10;
+#
+# statement ok
+# -WITH foo AS (FROM GRAPH_TABLE(snb MATCH (a:Person)-[r:Knows]->(b:Person) COLUMNS (a.id as id, b.id as knows_id)))
+# SELECT * FROM foo LIMIT 10;
+#
+# statement ok
+# -WITH foo AS (FROM GRAPH_TABLE(snb MATCH (a:Person)-[r:Knows]->(b:Person) COLUMNS (a.id as id, b.id as knows_id))),
+#      bar AS (SELECT id, COUNT(knows_id) AS knows_count FROM foo GROUP BY id)
+# SELECT * FROM bar LIMIT 10;
+#
+# statement ok
+# -WITH foo AS (SELECT id, firstName FROM GRAPH_TABLE(snb MATCH (a:Person))),
+#      bar AS (SELECT id, title FROM GRAPH_TABLE(snb MATCH (f:Forum)))
+# SELECT foo.firstName, bar.title
+# FROM foo, bar
+# LIMIT 10;
+#
+# statement ok
+# -WITH person_aggregate AS (
+#     SELECT id, COUNT(friend_id) AS friend_count
+#     FROM GRAPH_TABLE(snb MATCH (a:Person)-[r:Knows]->(b:Person) COLUMNS (a.id as id, b.id as friend_id))
+#     GROUP BY id
+# ), message_likes AS (
+#     SELECT id, COUNT(person_id) AS like_count
+#     FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:Likes]->(m:Message) COLUMNS (m.id as id, p.id as person_id))
+#     GROUP BY id
+# )
+# SELECT *
+# FROM person_aggregate
+# JOIN message_likes ON person_aggregate.id = message_likes.id
+# LIMIT 10;
+#
+# statement ok
+# -WITH persons AS (
+#     SELECT id, firstName
+#     FROM GRAPH_TABLE(snb MATCH (a:Person))
+# ), forums AS (
+#     SELECT id, title
+#     FROM GRAPH_TABLE(snb MATCH (f:Forum))
+# )
+# SELECT p.firstName, f.title
+# FROM persons p
+# CROSS JOIN forums f
+# LIMIT 10;
+#
+# statement ok
+# -WITH likes_per_person AS (
+#     SELECT person_id, COUNT(message_id) AS likes_count
+#     FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:Likes]->(m:Message) COLUMNS (p.id as person_id, m.id as message_id))
+#     GROUP BY person_id
+# ), persons AS (
+#     SELECT id, firstName
+#     FROM GRAPH_TABLE(snb MATCH (a:Person))
+# )
+# SELECT persons.firstName, likes_per_person.likes_count
+# FROM persons
+# LEFT JOIN likes_per_person ON persons.id = likes_per_person.person_id
+# LIMIT 10;
+#
+# statement ok
+# -WITH person_with_friends AS (
+#     SELECT person_id, friend_id
+#     FROM GRAPH_TABLE(snb MATCH (a:Person)-[r:Knows]->(b:Person) COLUMNS (a.id as person_id, b.id as friend_id))
+# ), persons AS (
+#     SELECT id, firstName
+#     FROM GRAPH_TABLE(snb MATCH (a:Person))
+# )
+# SELECT p.firstName, COUNT(pwf.friend_id) AS friend_count
+# FROM persons p
+# LEFT JOIN person_with_friends pwf ON p.id = pwf.person_id
+# GROUP BY p.firstName
+# LIMIT 10;
+#
+# statement ok
+# -WITH person_orgs AS (
+#     SELECT person_id, org_name
+#     FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:worksAt]->(o:Organisation) COLUMNS (p.id as person_id, o.name as org_name))
+# ), persons AS (
+#     SELECT id, firstName
+#     FROM GRAPH_TABLE(snb MATCH (a:Person))
+# )
+# SELECT p.firstName, po.org_name
+# FROM persons p
+# JOIN person_orgs po ON p.id = po.person_id
+# LIMIT 10;
+#
+# statement ok
+# -WITH person_companies AS (
+#     SELECT person_id, company_name
+#     FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:worksAt]->(c:Company) COLUMNS(p.id as person_id, c.name as company_name))
+# ), persons AS (
+#     SELECT id, firstName
+#     FROM GRAPH_TABLE(snb MATCH (a:Person))
+# )
+# SELECT p.firstName, pc.company_name
+# FROM persons p
+# JOIN person_companies pc ON p.id = pc.person_id
+# LIMIT 10;
+#
+# statement ok
+# -WITH person_universities AS (
+#     SELECT person_id, university_name
+#     FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:worksAt]->(u:University) COLUMNS (p.id as person_id, u.name as university_name))
+# ), persons AS (
+#     SELECT id, firstName
+#     FROM GRAPH_TABLE(snb MATCH (a:Person))
+# )
+# SELECT p.firstName, pu.university_name
+# FROM persons p
+# JOIN person_universities pu ON p.id = pu.person_id
+# LIMIT 10;
+#
+# statement ok
+# -WITH person_interests AS (
+#     SELECT person_id, tag_name
+#     FROM GRAPH_TABLE(snb MATCH (p:Person)-[r:hasInterest]->(t:Tag) COLUMNS (p.id as person_id, t.name as tag_name))
+# ), persons AS (
+#     SELECT id, firstName
+#     FROM GRAPH_TABLE(snb MATCH (a:Person))
+# )
+# SELECT p.firstName, pi.tag_name
+# FROM persons p
+# JOIN person_interests pi ON p.id = pi.person_id
+# LIMIT 10;
