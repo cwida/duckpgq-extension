@@ -290,8 +290,8 @@ void PGQMatchFunction::EdgeTypeAny(const shared_ptr<PropertyGraphTable> &edge_ta
 	auto union_node = make_uniq<SetOperationNode>();
 	union_node->setop_type = SetOperationType::UNION;
 	union_node->setop_all = true;
-	union_node->children.push_back(std::move(src_dst_select_node));
-	union_node->children.push_back(std::move(dst_src_select_node));
+	union_node->left = std::move(src_dst_select_node);
+	union_node->right = std::move(dst_src_select_node);
 	auto union_select = make_uniq<SelectStatement>();
 	union_select->node = std::move(union_node);
 	// (SELECT src, dst, * from edge_table UNION ALL SELECT dst, src, * from
