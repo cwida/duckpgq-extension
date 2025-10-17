@@ -9,7 +9,7 @@ cd ..
 cd duckdb
 
 TAG_NAME="$1"
-REMOTE_NAME="origin" # Explicitly define the target remote
+REMOTE_NAME="cwida" # Explicitly define the target remote
 
 echo "--- Updating tag '$TAG_NAME' on remote '$REMOTE_NAME' ---"
 

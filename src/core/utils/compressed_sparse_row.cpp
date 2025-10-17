@@ -298,8 +298,8 @@ unique_ptr<SubqueryExpression> CreateUndirectedCSRVertexSubquery(const shared_pt
 
 	auto union_all_node = make_uniq<SetOperationNode>();
 	union_all_node->setop_type = SetOperationType::UNION_BY_NAME;
-	union_all_node->left = std::move(unique_edges_select_node);
-	union_all_node->right = std::move(unique_edges_select_node_reverse);
+	union_all_node->children.push_back(std::move(unique_edges_select_node));
+	union_all_node->children.push_back(std::move(unique_edges_select_node_reverse));
 
 	auto subquery_select_statement = make_uniq<SelectStatement>();
 	subquery_select_statement->node = std::move(union_all_node);
@@ -454,8 +454,8 @@ unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<Pr
 	dst_src_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("src"));
 	dst_src_select_node->select_list.push_back(make_uniq<ColumnRefExpression>("edges"));
 
-	outer_union_all_node->left = std::move(src_dst_select_node);
-	outer_union_all_node->right = std::move(dst_src_select_node);
+	outer_union_all_node->children.push_back(std::move(src_dst_select_node));
+	outer_union_all_node->children.push_back(std::move(dst_src_select_node));
 
 	auto outer_union_select_statement = make_uniq<SelectStatement>();
 	outer_union_select_statement->node = std::move(outer_union_all_node);
@@ -500,8 +500,8 @@ unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable() {
 	auto union_by_name_node = make_uniq<SetOperationNode>();
 	union_by_name_node->setop_all = false;
 	union_by_name_node->setop_type = SetOperationType::UNION_BY_NAME;
-	union_by_name_node->left = std::move(src_dst_select_node);
-	union_by_name_node->right = std::move(dst_src_select_node);
+	union_by_name_node->children.push_back(std::move(src_dst_select_node));
+	union_by_name_node->children.push_back(std::move(dst_src_select_node));
 	inner_select_statement->node = std::move(union_by_name_node);
 	auto inner_from_subquery = make_uniq<SubqueryRef>(std::move(inner_select_statement));
 	count_edges_select_node->from_table = std::move(inner_from_subquery);
