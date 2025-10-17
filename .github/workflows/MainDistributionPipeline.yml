@@ -30,6 +30,7 @@ jobs:
       duckdb_tag: v1.4.1
 
 
+
   code-quality-check:
     name: Code Quality Check
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@v1.4.1
