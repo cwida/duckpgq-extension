@@ -27,7 +27,9 @@ jobs:
       duckdb_version: v1.4.1
       ci_tools_version: v1.4.1
       extension_name: duckpgq
-      duckdb_tag: v1.4.1
+      override_duckdb_repository: 'cwida/duckdb-pgq'
+      override_ref: v1.4.1
+
 
   code-quality-check:
     name: Code Quality Check
