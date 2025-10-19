@@ -34,28 +34,45 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info, const std::s
 	    make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(std::move(parser.statements[0])));
 }
 
-void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_state) {
-	// TODO(dtenwolde) add support for other style of tableRef (e.g. PivotRef)
-	if (auto table_function_ref = dynamic_cast<TableFunctionRef *>(table_ref)) {
-		// Handle TableFunctionRef case
-		auto function = dynamic_cast<FunctionExpression *>(table_function_ref->function.get());
-		if (function->function_name != "duckpgq_match") {
-			return;
+void duckpgq_find_match_function(unique_ptr<TableRef> &table_ref, DuckPGQState &duckpgq_state) {
+	switch (table_ref->type) {
+		case TableReferenceType::BASE_TABLE: {
+			auto &table_function_ref = table_ref->Cast<TableFunctionRef>();
+			auto &function = table_function_ref.function->Cast<FunctionExpression>();
+			if (function.function_name != "duckpgq_match") {
+				return;
+			}
+			table_function_ref.alias = function.children[0]->Cast<MatchExpression>().alias;
+			int32_t match_index = duckpgq_state.match_index++;
+			duckpgq_state.transform_expression[match_index] = std::move(function.children[0]);
+			function.children.pop_back();
+			auto function_identifier = make_uniq<ConstantExpression>(Value::CreateValue(match_index));
+			function.children.push_back(std::move(function_identifier));
 		}
-		table_function_ref->alias = function->children[0]->Cast<MatchExpression>().alias;
-		int32_t match_index = duckpgq_state.match_index++;
-		duckpgq_state.transform_expression[match_index] = std::move(function->children[0]);
-		function->children.pop_back();
-		auto function_identifier = make_uniq<ConstantExpression>(Value::CreateValue(match_index));
-		function->children.push_back(std::move(function_identifier));
-	} else if (auto join_ref = dynamic_cast<JoinRef *>(table_ref)) {
-		// Handle JoinRef case
-		duckpgq_find_match_function(join_ref->left.get(), duckpgq_state);
-		duckpgq_find_match_function(join_ref->right.get(), duckpgq_state);
-	} else if (auto subquery_ref = dynamic_cast<SubqueryRef *>(table_ref)) {
-		// Handle SubqueryRef case
-		auto subquery = subquery_ref->subquery.get();
-		duckpgq_find_select_statement(subquery, duckpgq_state);
+			break;
+		case TableReferenceType::SUBQUERY:
+			// Handle SubqueryRef case
+			auto subquery = table_ref->Cast<SubqueryRef>;
+			duckpgq_find_select_statement(subquery, duckpgq_state);
+			break;
+		case TableReferenceType::JOIN:
+			// Handle JoinRef case
+			auto &join_ref = table_ref->Cast<JoinRef>();
+			duckpgq_find_match_function(join_ref.left.get(), duckpgq_state);
+			duckpgq_find_match_function(join_ref.right.get(), duckpgq_state);
+			break;
+		case TableReferenceType::TABLE_FUNCTION:
+		case TableReferenceType::EXPRESSION_LIST:
+		case TableReferenceType::CTE:
+		case TableReferenceType::EMPTY_FROM:
+		case TableReferenceType::PIVOT:
+		case TableReferenceType::SHOW_REF:
+		case TableReferenceType::COLUMN_DATA:
+		case TableReferenceType::DELIM_GET:
+		case TableReferenceType::BOUND_TABLE_REF:
+		case TableReferenceType::INVALID:
+		default:
+			throw BinderException("MATCH statement is not yet supported in this table reference type");
 	}
 }
 
@@ -83,8 +100,18 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement,
 		if (node.from_table->type == TableReferenceType::SHOW_REF) {
 			duckpgq_parse_showref(node.from_table, duckpgq_state);
 		}
-	} else if (select_statement.node->type == QueryNodeType::CTE_NODE) {
+		for (const auto &cte_kv : node.cte_map.map) {
+			auto &cte = cte_kv.second;
+			if (cte->query->type != StatementType::SELECT_STATEMENT) {
+				continue;
+			}
+			auto &select_statement = cte->query->Cast<SelectStatement>();
+			auto &select_node = select_statement.node->Cast<SelectNode>();
+			duckpgq_find_match_function(select_node.from_table, duckpgq_state);
 
+		}
+	} else if (select_statement.node->type == QueryNodeType::CTE_NODE) {
+		auto &cte_node = select_statement.node->Cast<CTENode>();
 	}
 
 	CommonTableExpressionMap *cte_map = nullptr;
