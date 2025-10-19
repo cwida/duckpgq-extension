@@ -59,39 +59,32 @@ void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_stat
 	}
 }
 
-ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
-	const auto select_statement = dynamic_cast<SelectStatement *>(statement);
-	auto node = dynamic_cast<SelectNode *>(select_statement->node.get());
-	CTENode *cte_node = nullptr;
-
-	// Check if node is not a SelectNode
-	if (!node) {
-		// Attempt to cast to CTENode
-		cte_node = dynamic_cast<CTENode *>(select_statement->node.get());
-		if (cte_node) {
-			// Get the child node as a SelectNode if cte_node is valid
-			node = dynamic_cast<SelectNode *>(cte_node->child.get());
-		}
+ParserExtensionPlanResult duckpgq_parse_showref(unique_ptr<TableRef> &table_ref, DuckPGQState &duckpgq_state) {
+	auto &describe_node = table_ref->Cast<ShowRef>();
+	ParserExtensionPlanResult result;
+	result.requires_valid_transaction = true;
+	result.return_type = StatementReturnType::QUERY_RESULT;
+	if (describe_node.show_type == ShowType::SUMMARY) {
+		result.function = SummarizePropertyGraphFunction();
+		result.parameters.push_back(Value(describe_node.table_name));
+		return result;
 	}
+	if (describe_node.show_type == ShowType::DESCRIBE) {
+		result.function = DescribePropertyGraphFunction();
+		return result;
+	}
+	throw BinderException("Unknown show type %s found.", describe_node.show_type);
+}
 
-	// Check if node is a ShowRef
-	if (node) {
-		const auto describe_node = dynamic_cast<ShowRef *>(node->from_table.get());
-		if (describe_node) {
-			ParserExtensionPlanResult result;
-			result.requires_valid_transaction = true;
-			result.return_type = StatementReturnType::QUERY_RESULT;
-			if (describe_node->show_type == ShowType::SUMMARY) {
-				result.function = SummarizePropertyGraphFunction();
-				result.parameters.push_back(Value(describe_node->table_name));
-				return result;
-			}
-			if (describe_node->show_type == ShowType::DESCRIBE) {
-				result.function = DescribePropertyGraphFunction();
-				return result;
-			}
-			throw BinderException("Unknown show type %s found.", describe_node->show_type);
+ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
+	auto &select_statement = statement->Cast<SelectStatement>();
+	if (select_statement.node->type == QueryNodeType::SELECT_NODE) {
+		auto &node = select_statement.node->Cast<SelectNode>();
+		if (node.from_table->type == TableReferenceType::SHOW_REF) {
+			duckpgq_parse_showref(node.from_table, duckpgq_state);
 		}
+	} else if (select_statement.node->type == QueryNodeType::CTE_NODE) {
+
 	}
 
 	CommonTableExpressionMap *cte_map = nullptr;
