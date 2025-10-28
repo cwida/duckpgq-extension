@@ -101,7 +101,7 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SelectStatement &stateme
 	if (statement.node->type == QueryNodeType::SELECT_NODE) {
 		auto &node = statement.node->Cast<SelectNode>();
 		if (node.from_table->type == TableReferenceType::SHOW_REF) {
-			duckpgq_parse_showref(node.from_table, duckpgq_state);
+			return duckpgq_parse_showref(node.from_table, duckpgq_state);
 		}
 		for (const auto &cte_kv : node.cte_map.map) {
 			auto &cte = cte_kv.second;
