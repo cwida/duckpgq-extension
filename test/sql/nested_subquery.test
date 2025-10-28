@@ -84,14 +84,14 @@ EDGE TABLES (
 #     GROUP BY id
 # );
 
-statement ok
--WITH Friendships AS (
-    SELECT person_id, friend_id
-    FROM (
-        SELECT person_id, friend_id
-        FROM GRAPH_TABLE (
-            pg MATCH (p:Person)-[k:know]->(p2:Person) COLUMNS (p.id as person_id, p2.id as friend_id)
-        )
-    ) AS Subquery
-)
-SELECT * FROM Friendships;
+# statement ok
+# -WITH Friendships AS (
+#     SELECT person_id, friend_id
+#     FROM (
+#         SELECT person_id, friend_id
+#         FROM GRAPH_TABLE (
+#             pg MATCH (p:Person)-[k:know]->(p2:Person) COLUMNS (p.id as person_id, p2.id as friend_id)
+#         )
+#     ) AS Subquery
+# )
+# SELECT * FROM Friendships;

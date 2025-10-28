@@ -48,8 +48,8 @@ void duckpgq_find_match_function(unique_ptr<TableRef> &table_ref, DuckPGQState &
 			function.children.pop_back();
 			auto function_identifier = make_uniq<ConstantExpression>(Value::CreateValue(match_index));
 			function.children.push_back(std::move(function_identifier));
-		}
 			break;
+		}
 		case TableReferenceType::SUBQUERY: {
 			// Handle SubqueryRef case
 			auto &subquery = table_ref->Cast<SubqueryRef>();
@@ -115,43 +115,21 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SelectStatement &stateme
 		duckpgq_find_match_function(node.from_table, duckpgq_state);
 	} else if (statement.node->type == QueryNodeType::CTE_NODE) {
 		auto &cte_node = statement.node->Cast<CTENode>();
-		if (cte_node.child->type == QueryNodeType::SELECT_NODE) {
-			auto &node = cte_node.child->Cast<SelectNode>();
-			duckpgq_find_match_function(node.from_table, duckpgq_state);
+		if (cte_node.child->type != QueryNodeType::SELECT_NODE) {
+			return {};
 		}
+		auto &select_node = cte_node.child->Cast<SelectNode>();
+		for (const auto &cte_kv : select_node.cte_map.map) {
+			auto &cte = cte_kv.second;
+			if (cte->query->type != StatementType::SELECT_STATEMENT) {
+				continue;
+			}
+			auto &cte_select_statement = cte->query->Cast<SelectStatement>();
+			auto &cte_select_node = cte_select_statement.node->Cast<SelectNode>();
+			duckpgq_find_match_function(cte_select_node.from_table, duckpgq_state);
+		}
+		duckpgq_find_match_function(select_node.from_table, duckpgq_state);
 	}
-	// CommonTableExpressionMap *cte_map = nullptr;
-	// if (node) {
-	// 	cte_map = &node->cte_map;
-	// } else if (cte_node) {
-	// 	cte_map = &cte_node->cte_map;
-	// }
-	//
-	// if (!cte_map) {
-	// 	return {};
-	// }
-	//
-	// for (auto const &kv_pair : cte_map->map) {
-	// 	auto const &cte = kv_pair.second;
-	//
-	// 	auto *cte_select_statement = dynamic_cast<SelectStatement *>(cte->query.get());
-	// 	if (!cte_select_statement) {
-	// 		continue;
-	// 	}
-	//
-	// 	auto *select_node = dynamic_cast<SelectNode *>(cte_select_statement->node.get());
-	// 	if (!select_node) {
-	// 		continue; // The SelectStatement has no SelectNode, skip.
-	// 	}
-	//
-	// 	// If we get here, we know select_node is valid.
-	// 	duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
-	// }
-	// if (node) {
-	// 	duckpgq_find_match_function(node->from_table.get(), duckpgq_state);
-	// } else {
-	// 	throw Exception(ExceptionType::INTERNAL, "node is a nullptr.");
-	// }
 	return {};
 }
 
