@@ -24,11 +24,11 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info, const std::s
 ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext &,
                                        unique_ptr<ParserExtensionParseData>);
 
-ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement, DuckPGQState &duckpgq_state);
+ParserExtensionPlanResult duckpgq_find_select_statement(SelectStatement &statement, DuckPGQState &duckpgq_state);
 
-ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state);
+ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement &statement, DuckPGQState &duckpgq_state);
 
-void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_state);
+void duckpgq_find_match_function(unique_ptr<TableRef> &table_ref, DuckPGQState &duckpgq_state);
 
 struct DuckPGQParserExtension : ParserExtension {
 	DuckPGQParserExtension() : ParserExtension() {
