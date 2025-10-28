@@ -64,6 +64,8 @@ void duckpgq_find_match_function(unique_ptr<TableRef> &table_ref, DuckPGQState &
 			break;
 		}
 		case TableReferenceType::BASE_TABLE:
+			// A base table will never contain a duckpgq_match table function
+			break;
 		case TableReferenceType::EXPRESSION_LIST:
 		case TableReferenceType::CTE:
 		case TableReferenceType::EMPTY_FROM:
