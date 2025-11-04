@@ -83,7 +83,7 @@ EDGE TABLES (
 #     )
 #     GROUP BY id
 # );
-
+#
 # statement ok
 # -WITH Friendships AS (
 #     SELECT person_id, friend_id

@@ -6,6 +6,8 @@
 #include "duckdb/parser/expression/star_expression.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
+#include "duckdb/parser/query_node/cte_node.hpp"
+#include "duckdb/parser/query_node/select_node.hpp"
 
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
@@ -403,12 +405,7 @@ unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGrap
 }
 
 // Function to create the CTE for the Undirected CSR
-unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
-                                                             const unique_ptr<SelectNode> &select_node) {
-	if (select_node->cte_map.map.find("edges_cte") == select_node->cte_map.map.end()) {
-		select_node->cte_map.map["edges_cte"] = MakeEdgesCTE(edge_table);
-	}
-
+unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table) {
 	auto csr_edge_id_constant = make_uniq<ConstantExpression>(Value::INTEGER(0));
 	auto count_create_edge_select =
 	    GetCountTable(edge_table->source_pg_table, edge_table->source_reference, edge_table->source_pk[0]);

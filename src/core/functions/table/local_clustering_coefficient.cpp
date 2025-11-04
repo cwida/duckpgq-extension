@@ -3,6 +3,7 @@
 #include "duckpgq_extension.hpp"
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
 
+#include "duckdb/parser/query_node/cte_node.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
@@ -27,14 +28,18 @@ LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(Client
 
 	auto select_node = CreateSelectNode(edge_pg_entry, "local_clustering_coefficient", "local_clustering_coefficient");
 
-	select_node->cte_map.map["csr_cte"] = CreateUndirectedCSRCTE(edge_pg_entry, select_node);
-
+	auto cte_node = make_uniq<CTENode>();
+	cte_node->ctename = "csr_cte";
+	cte_node->cte_map.map["csr_cte"] = CreateUndirectedCSRCTE(edge_pg_entry);
+	auto edges_cte_node = make_uniq<CTENode>();
+	edges_cte_node->cte_map.map["edges_cte"] = MakeEdgesCTE(edge_pg_entry);
+	edges_cte_node->query = std::move(select_node);
+	cte_node->query = std::move(edges_cte_node);
 	auto subquery = make_uniq<SelectStatement>();
-	subquery->node = std::move(select_node);
+	subquery->node = std::move(cte_node);
 
 	auto result = make_uniq<SubqueryRef>(std::move(subquery));
 	result->alias = "lcc";
-	// input.ref.alias = "lcc";
 	return std::move(result);
 }
 //------------------------------------------------------------------------------
