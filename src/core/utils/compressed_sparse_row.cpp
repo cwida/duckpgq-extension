@@ -6,6 +6,8 @@
 #include "duckdb/parser/expression/star_expression.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
+#include "duckdb/parser/query_node/cte_node.hpp"
+#include "duckdb/parser/query_node/select_node.hpp"
 
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
@@ -393,7 +395,6 @@ unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGrap
 	    make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, std::move(edge_to_ref), std::move(dst_cid_ref));
 
 	select_node->from_table = std::move(second_join_ref);
-
 	auto select_statement = make_uniq<SelectStatement>();
 	select_statement->node = std::move(select_node);
 
@@ -403,12 +404,7 @@ unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGrap
 }
 
 // Function to create the CTE for the Undirected CSR
-unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
-                                                             const unique_ptr<SelectNode> &select_node) {
-	if (select_node->cte_map.map.find("edges_cte") == select_node->cte_map.map.end()) {
-		select_node->cte_map.map["edges_cte"] = MakeEdgesCTE(edge_table);
-	}
-
+unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table) {
 	auto csr_edge_id_constant = make_uniq<ConstantExpression>(Value::INTEGER(0));
 	auto count_create_edge_select =
 	    GetCountTable(edge_table->source_pg_table, edge_table->source_reference, edge_table->source_pk[0]);
@@ -464,7 +460,6 @@ unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<Pr
 	auto outer_select_edges_select_statement = make_uniq<SelectStatement>();
 	outer_select_edges_select_statement->node = std::move(outer_select_edges_node);
 	outer_select_node->from_table = make_uniq<SubqueryRef>(std::move(outer_select_edges_select_statement));
-
 	auto outer_select_statement = make_uniq<SelectStatement>();
 	outer_select_statement->node = std::move(outer_select_node);
 	auto info = make_uniq<CommonTableExpressionInfo>();

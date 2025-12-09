@@ -22,7 +22,8 @@ WeaklyConnectedComponentFunction::WeaklyConnectedComponentBindReplace(ClientCont
 
 	auto select_node = CreateSelectNode(edge_pg_entry, "weakly_connected_component", "componentId");
 
-	select_node->cte_map.map["csr_cte"] = CreateUndirectedCSRCTE(edge_pg_entry, select_node);
+	select_node->cte_map.map["edges_cte"] = MakeEdgesCTE(edge_pg_entry);
+	select_node->cte_map.map["csr_cte"] = CreateUndirectedCSRCTE(edge_pg_entry);
 
 	auto subquery = make_uniq<SelectStatement>();
 	subquery->node = std::move(select_node);
