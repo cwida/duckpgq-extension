@@ -355,7 +355,7 @@ unique_ptr<SelectNode> CreateOuterSelectNode(unique_ptr<FunctionExpression> crea
 }
 
 // Function to create the CTE for the edges
-unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_table) {
+unique_ptr<SelectNode> MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_table) {
 	std::vector<unique_ptr<ParsedExpression>> select_expression;
 	auto src_col_ref = make_uniq<ColumnRefExpression>("rowid", "src_table");
 	src_col_ref->alias = "src";
@@ -396,16 +396,18 @@ unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGrap
 
 	select_node->from_table = std::move(second_join_ref);
 
-	auto select_statement = make_uniq<SelectStatement>();
-	select_statement->node = std::move(select_node);
-
-	auto result = make_uniq<CommonTableExpressionInfo>();
-	result->query = std::move(select_statement);
-	return result;
+	return select_node;
+	// auto select_statement = make_uniq<SelectStatement>();
+	// select_statement->node = std::move(select_node);
+	//
+	// auto result = make_uniq<CommonTableExpressionInfo>();
+	// result->query = std::move(select_statement);
+	// Printer::Print(result->query->ToString());
+	// return result;
 }
 
 // Function to create the CTE for the Undirected CSR
-unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table) {
+unique_ptr<SelectNode> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table) {
 	auto csr_edge_id_constant = make_uniq<ConstantExpression>(Value::INTEGER(0));
 	auto count_create_edge_select =
 	    GetCountTable(edge_table->source_pg_table, edge_table->source_reference, edge_table->source_pk[0]);
@@ -461,12 +463,12 @@ unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<Pr
 	auto outer_select_edges_select_statement = make_uniq<SelectStatement>();
 	outer_select_edges_select_statement->node = std::move(outer_select_edges_node);
 	outer_select_node->from_table = make_uniq<SubqueryRef>(std::move(outer_select_edges_select_statement));
-
-	auto outer_select_statement = make_uniq<SelectStatement>();
-	outer_select_statement->node = std::move(outer_select_node);
-	auto info = make_uniq<CommonTableExpressionInfo>();
-	info->query = std::move(outer_select_statement);
-	return info;
+	return outer_select_node;
+	// auto outer_select_statement = make_uniq<SelectStatement>();
+	// outer_select_statement->node = std::move(outer_select_node);
+	// auto info = make_uniq<CommonTableExpressionInfo>();
+	// info->query = std::move(outer_select_statement);
+	// return info;
 }
 
 unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable() {

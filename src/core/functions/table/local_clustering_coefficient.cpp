@@ -30,11 +30,12 @@ LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(Client
 
 	auto cte_node = make_uniq<CTENode>();
 	cte_node->ctename = "csr_cte";
-	cte_node->cte_map.map["csr_cte"] = CreateUndirectedCSRCTE(edge_pg_entry);
+	cte_node->query = CreateUndirectedCSRCTE(edge_pg_entry);
 	auto edges_cte_node = make_uniq<CTENode>();
-	edges_cte_node->cte_map.map["edges_cte"] = MakeEdgesCTE(edge_pg_entry);
-	edges_cte_node->query = std::move(select_node);
-	cte_node->query = std::move(edges_cte_node);
+	edges_cte_node->ctename = "edges_cte";
+	edges_cte_node->query = MakeEdgesCTE(edge_pg_entry);
+	edges_cte_node->child = std::move(select_node);
+	cte_node->child = std::move(edges_cte_node);
 	auto subquery = make_uniq<SelectStatement>();
 	subquery->node = std::move(cte_node);
 
