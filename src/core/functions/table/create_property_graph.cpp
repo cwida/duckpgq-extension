@@ -189,11 +189,12 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 		} catch (CatalogException &e) {
 			EntryLookupInfo view_info(CatalogType::VIEW_ENTRY, vertex_table->table_name, QueryErrorContext());
 
-			auto entry = Catalog::GetEntry(context, vertex_table->catalog_name, vertex_table->schema_name, view_info, OnEntryNotFound::RETURN_NULL);
+			auto entry = Catalog::GetEntry(context, vertex_table->catalog_name, vertex_table->schema_name, view_info,
+			                               OnEntryNotFound::RETURN_NULL);
 			if (entry) {
 				throw Exception(ExceptionType::INVALID, "Found a view with name " + vertex_table->table_name +
-														". Creating property graph tables over views is "
-														"currently not supported.");
+				                                            ". Creating property graph tables over views is "
+				                                            "currently not supported.");
 			}
 			throw Exception(ExceptionType::INVALID, e.what());
 		} catch (BinderException &e) {
@@ -249,11 +250,12 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 		} catch (CatalogException &e) {
 			EntryLookupInfo view_info(CatalogType::VIEW_ENTRY, edge_table->table_name, QueryErrorContext());
 
-			auto entry = Catalog::GetEntry(context, edge_table->catalog_name, edge_table->schema_name, view_info, OnEntryNotFound::RETURN_NULL);
+			auto entry = Catalog::GetEntry(context, edge_table->catalog_name, edge_table->schema_name, view_info,
+			                               OnEntryNotFound::RETURN_NULL);
 			if (entry) {
 				throw Exception(ExceptionType::INVALID, "Found a view with name " + edge_table->table_name +
-														". Creating property graph tables over views is "
-														"currently not supported.");
+				                                            ". Creating property graph tables over views is "
+				                                            "currently not supported.");
 			}
 
 			throw Exception(ExceptionType::INVALID, e.what());
