@@ -290,8 +290,8 @@ void PGQMatchFunction::EdgeTypeAny(const shared_ptr<PropertyGraphTable> &edge_ta
 	auto union_node = make_uniq<SetOperationNode>();
 	union_node->setop_type = SetOperationType::UNION;
 	union_node->setop_all = true;
-	union_node->left = std::move(src_dst_select_node);
-	union_node->right = std::move(dst_src_select_node);
+	union_node->children.push_back(std::move(src_dst_select_node));
+	union_node->children.push_back(std::move(dst_src_select_node));
 	auto union_select = make_uniq<SelectStatement>();
 	union_select->node = std::move(union_node);
 	// (SELECT src, dst, * from edge_table UNION ALL SELECT dst, src, * from
@@ -497,12 +497,14 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
 				if (final_select_node->cte_map.map.find("cte1") == final_select_node->cte_map.map.end()) {
 					edge_element = reinterpret_cast<PathElement *>(edge_subpath->path_list[0].get());
 					if (edge_element->match_type == PGQMatchType::MATCH_EDGE_RIGHT) {
+
 						final_select_node->cte_map.map["cte1"] = CreateDirectedCSRCTE(
 						    FindGraphTable(edge_element->label, pg_table), previous_vertex_element->variable_binding,
 						    edge_element->variable_binding, next_vertex_element->variable_binding);
 					} else if (edge_element->match_type == PGQMatchType::MATCH_EDGE_ANY) {
-						// final_select_node->cte_map.map["cte1"] =
-						//     CreateUndirectedCSRCTE(FindGraphTable(edge_element->label, pg_table), final_select_node);
+						final_select_node->cte_map.map["edges_cte"] = MakeEdgesCTE(FindGraphTable(edge_element->label, pg_table));
+						final_select_node->cte_map.map["cte1"] =
+						    CreateUndirectedCSRCTE(FindGraphTable(edge_element->label, pg_table));
 					} else {
 						throw NotImplementedException("Cannot do shortest path for edge type %s",
 						                              edge_element->match_type == PGQMatchType::MATCH_EDGE_LEFT
@@ -663,7 +665,8 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 			select_node->cte_map.map["cte1"] =
 			    CreateDirectedCSRCTE(edge_table, prev_binding, edge_binding, next_binding);
 		} else if (edge_type == PGQMatchType::MATCH_EDGE_ANY) {
-			// select_node->cte_map.map["cte1"] = CreateUndirectedCSRCTE(edge_table, select_node);
+			select_node->cte_map.map["edges_cte"] = MakeEdgesCTE(edge_table);
+			select_node->cte_map.map["cte1"] = CreateUndirectedCSRCTE(edge_table);
 		} else {
 			throw NotImplementedException("Cannot do shortest path for edge type %s",
 			                              edge_type == PGQMatchType::MATCH_EDGE_LEFT ? "MATCH_EDGE_LEFT"

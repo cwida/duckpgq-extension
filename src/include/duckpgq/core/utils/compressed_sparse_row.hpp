@@ -63,13 +63,13 @@ struct CSRFunctionData : FunctionData {
 };
 
 // CSR BindReplace functions
-unique_ptr<SelectNode> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table);
+unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table);
 unique_ptr<CommonTableExpressionInfo> CreateDirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
                                                            const string &prev_binding, const string &edge_binding,
                                                            const string &next_binding);
 
 // Helper functions
-unique_ptr<SelectNode> MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_table);
+unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_table);
 unique_ptr<SubqueryExpression> CreateDirectedCSRVertexSubquery(const shared_ptr<PropertyGraphTable> &edge_table,
                                                                const string &binding);
 unique_ptr<SubqueryExpression> CreateUndirectedCSRVertexSubquery(const shared_ptr<PropertyGraphTable> &edge_table,
