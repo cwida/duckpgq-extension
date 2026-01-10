@@ -24,8 +24,6 @@ public:
 
 public:
 	unique_ptr<ParserExtensionParseData> parse_data;
-	unordered_map<int32_t, unique_ptr<ParsedExpression>> transform_expression;
-	int32_t match_index = 0;
 
 	//! Property graphs that are registered
 	case_insensitive_map_t<unique_ptr<CreateInfo>> registered_property_graphs;

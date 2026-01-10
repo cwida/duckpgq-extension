@@ -34,32 +34,24 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info, const std::s
 	    make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(std::move(parser.statements[0])));
 }
 
-void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_state) {
-	// TODO(dtenwolde) add support for other style of tableRef (e.g. PivotRef)
+void duckpgq_find_match_function(TableRef *table_ref) {
+	// Serialization is now done directly in TransformMatch (duckdb/src/parser/transform/tableref/transform_match.cpp)
+	// This function now just handles traversal for any additional processing
 	if (auto table_function_ref = dynamic_cast<TableFunctionRef *>(table_ref)) {
-		// Handle TableFunctionRef case
-		auto function = dynamic_cast<FunctionExpression *>(table_function_ref->function.get());
-		if (function->function_name != "duckpgq_match") {
-			return;
-		}
-		table_function_ref->alias = function->children[0]->Cast<MatchExpression>().alias;
-		int32_t match_index = duckpgq_state.match_index++;
-		duckpgq_state.transform_expression[match_index] = std::move(function->children[0]);
-		function->children.pop_back();
-		auto function_identifier = make_uniq<ConstantExpression>(Value::CreateValue(match_index));
-		function->children.push_back(std::move(function_identifier));
+		// No additional processing needed - serialization already done in TransformMatch
+		return;
 	} else if (auto join_ref = dynamic_cast<JoinRef *>(table_ref)) {
-		// Handle JoinRef case
-		duckpgq_find_match_function(join_ref->left.get(), duckpgq_state);
-		duckpgq_find_match_function(join_ref->right.get(), duckpgq_state);
+		// Handle JoinRef case - recursively traverse
+		duckpgq_find_match_function(join_ref->left.get());
+		duckpgq_find_match_function(join_ref->right.get());
 	} else if (auto subquery_ref = dynamic_cast<SubqueryRef *>(table_ref)) {
 		// Handle SubqueryRef case
 		auto subquery = subquery_ref->subquery.get();
-		duckpgq_find_select_statement(subquery, duckpgq_state);
+		duckpgq_find_select_statement(subquery);
 	}
 }
 
-ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
+ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement) {
 	const auto select_statement = dynamic_cast<SelectStatement *>(statement);
 	auto node = dynamic_cast<SelectNode *>(select_statement->node.get());
 	CTENode *cte_node = nullptr;
@@ -119,19 +111,19 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement,
 		}
 
 		// If we get here, we know select_node is valid.
-		duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
+		duckpgq_find_match_function(select_node->from_table.get());
 	}
 	if (node) {
-		duckpgq_find_match_function(node->from_table.get(), duckpgq_state);
+		duckpgq_find_match_function(node->from_table.get());
 	} else {
 		throw Exception(ExceptionType::INTERNAL, "node is a nullptr.");
 	}
 	return {};
 }
 
-ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
+ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement) {
 	if (statement->type == StatementType::SELECT_STATEMENT) {
-		auto result = duckpgq_find_select_statement(statement, duckpgq_state);
+		auto result = duckpgq_find_select_statement(statement);
 		if (result.function.bind == nullptr) {
 			throw Exception(ExceptionType::BINDER, "use duckpgq_bind instead");
 		}
@@ -148,7 +140,7 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
 			return result;
 		}
 		const auto create_table = reinterpret_cast<CreateTableInfo *>(create_statement.info.get());
-		duckpgq_handle_statement(create_table->query.get(), duckpgq_state);
+		duckpgq_handle_statement(create_table->query.get());
 	}
 	if (statement->type == StatementType::DROP_STATEMENT) {
 		ParserExtensionPlanResult result;
@@ -159,17 +151,17 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
 	}
 	if (statement->type == StatementType::EXPLAIN_STATEMENT) {
 		auto &explain_statement = statement->Cast<ExplainStatement>();
-		duckpgq_handle_statement(explain_statement.stmt.get(), duckpgq_state);
+		duckpgq_handle_statement(explain_statement.stmt.get());
 	}
 	if (statement->type == StatementType::COPY_STATEMENT) {
 		const auto &copy_statement = statement->Cast<CopyStatement>();
 		const auto select_node = dynamic_cast<SelectNode *>(copy_statement.info->select_statement.get());
-		duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
+		duckpgq_find_match_function(select_node->from_table.get());
 		throw Exception(ExceptionType::BINDER, "use duckpgq_bind instead");
 	}
 	if (statement->type == StatementType::INSERT_STATEMENT) {
 		const auto &insert_statement = statement->Cast<InsertStatement>();
-		duckpgq_handle_statement(insert_statement.select_statement.get(), duckpgq_state);
+		duckpgq_handle_statement(insert_statement.select_statement.get());
 	}
 
 	throw Exception(ExceptionType::NOT_IMPLEMENTED,
@@ -187,7 +179,7 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *, ClientContext &con
 	}
 
 	auto statement = duckpgq_parse_data->statement.get();
-	return duckpgq_handle_statement(statement, *duckpgq_state);
+	return duckpgq_handle_statement(statement);
 }
 
 //------------------------------------------------------------------------------

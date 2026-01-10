@@ -29,6 +29,9 @@
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
+#include "duckdb/common/serializer/binary_deserializer.hpp"
+#include "duckdb/common/serializer/memory_stream.hpp"
+
 namespace duckdb {
 
 namespace {
@@ -952,8 +955,21 @@ void PGQMatchFunction::CheckColumnBinding(
 unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, TableFunctionBindInput &bind_input) {
 	auto duckpgq_state = GetDuckPGQState(context);
 
-	auto match_index = bind_input.inputs[0].GetValue<int32_t>();
-	auto *ref = dynamic_cast<MatchExpression *>(duckpgq_state->transform_expression[match_index].get());
+	// Validate input
+	if (bind_input.inputs.empty() || bind_input.inputs[0].IsNull()) {
+		throw BinderException("duckpgq_match requires a match expression");
+	}
+
+	// Deserialize MatchExpression from BLOB
+	auto blob_value = bind_input.inputs[0].GetValueUnsafe<string>();
+	MemoryStream stream(reinterpret_cast<data_ptr_t>(const_cast<char *>(blob_value.data())), blob_value.size());
+	auto parsed_expression = BinaryDeserializer::Deserialize<ParsedExpression>(stream);
+
+	auto *ref = dynamic_cast<MatchExpression *>(parsed_expression.get());
+	if (!ref) {
+		throw BinderException("duckpgq_match: failed to deserialize match expression");
+	}
+
 	auto *pg_table = duckpgq_state->GetPropertyGraph(ref->pg_name);
 
 	vector<unique_ptr<ParsedExpression>> conditions;
