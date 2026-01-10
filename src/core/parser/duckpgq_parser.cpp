@@ -9,6 +9,8 @@
 #include <duckdb/parser/statement/copy_statement.hpp>
 #include <duckdb/parser/statement/create_statement.hpp>
 #include <duckdb/parser/statement/insert_statement.hpp>
+#include <duckdb/parser/statement/prepare_statement.hpp>
+#include <duckdb/parser/statement/execute_statement.hpp>
 #include <duckpgq/core/functions/table/create_property_graph.hpp>
 #include <duckpgq_state.hpp>
 
@@ -170,6 +172,16 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
 	if (statement->type == StatementType::INSERT_STATEMENT) {
 		const auto &insert_statement = statement->Cast<InsertStatement>();
 		duckpgq_handle_statement(insert_statement.select_statement.get(), duckpgq_state);
+	}
+	if (statement->type == StatementType::PREPARE_STATEMENT) {
+		auto &prepare_statement = statement->Cast<PrepareStatement>();
+		// Recursively handle the inner statement (e.g., SELECT with GRAPH_TABLE)
+		return duckpgq_handle_statement(prepare_statement.statement.get(), duckpgq_state);
+	}
+	if (statement->type == StatementType::EXECUTE_STATEMENT) {
+		// EXECUTE is handled by DuckDB core after the prepared statement is created
+		// We just need to avoid the NOT_IMPLEMENTED error
+		throw Exception(ExceptionType::BINDER, "use duckpgq_bind instead");
 	}
 
 	throw Exception(ExceptionType::NOT_IMPLEMENTED,
