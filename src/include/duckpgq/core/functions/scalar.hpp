@@ -10,6 +10,7 @@ struct CoreScalarFunctions {
 		RegisterCSRDeletionScalarFunction(loader);
 		RegisterGetCSRWTypeScalarFunction(loader);
 		RegisterIterativeLengthScalarFunction(loader);
+		RegisterIterativeLengthBoundedScalarFunction(loader);
 		RegisterIterativeLength2ScalarFunction(loader);
 		RegisterIterativeLengthBidirectionalScalarFunction(loader);
 		RegisterLocalClusteringCoefficientScalarFunction(loader);
@@ -25,6 +26,7 @@ private:
 	static void RegisterCSRDeletionScalarFunction(ExtensionLoader &loader);
 	static void RegisterGetCSRWTypeScalarFunction(ExtensionLoader &loader);
 	static void RegisterIterativeLengthScalarFunction(ExtensionLoader &loader);
+	static void RegisterIterativeLengthBoundedScalarFunction(ExtensionLoader &loader);
 	static void RegisterIterativeLength2ScalarFunction(ExtensionLoader &loader);
 	static void RegisterIterativeLengthBidirectionalScalarFunction(ExtensionLoader &loader);
 	static void RegisterLocalClusteringCoefficientScalarFunction(ExtensionLoader &loader);

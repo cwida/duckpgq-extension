@@ -143,6 +143,146 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state, Vec
 	duckpgq_state->csr_to_delete.insert(info.csr_id);
 }
 
+static bool IterativeLengthBoundedStep(int64_t v_size, int64_t *v, vector<int64_t> &e,
+                                       vector<std::bitset<LANE_LIMIT>> &visit,
+                                       vector<std::bitset<LANE_LIMIT>> &next) {
+	bool change = false;
+	for (auto i = 0; i < v_size; i++) {
+		next[i] = 0;
+	}
+	for (auto i = 0; i < v_size; i++) {
+		if (visit[i].any()) {
+			for (auto offset = v[i]; offset < v[i + 1]; offset++) {
+				auto n = e[offset];
+				next[n] = next[n] | visit[i];
+			}
+		}
+	}
+	for (auto i = 0; i < v_size; i++) {
+		change |= next[i].any();
+	}
+	return change;
+}
+
+static void IterativeLengthBoundedFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.bind_info->Cast<IterativeLengthFunctionData>();
+	auto duckpgq_state = GetDuckPGQState(info.context);
+
+	D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
+
+	if (info.csr_id + 1 > duckpgq_state->csr_list.size()) {
+		throw ConstraintException("Invalid ID");
+	}
+	auto csr_entry = duckpgq_state->csr_list.find(info.csr_id);
+	if (csr_entry == duckpgq_state->csr_list.end()) {
+		throw ConstraintException("Need to initialize CSR before doing shortest path");
+	}
+
+	if (!csr_entry->second->initialized_v) {
+		throw ConstraintException("Need to initialize CSR before doing shortest path");
+	}
+	int64_t v_size = args.data[1].GetValue(0).GetValue<int64_t>();
+	int64_t *v = reinterpret_cast<int64_t *>(duckpgq_state->csr_list[info.csr_id]->v);
+	vector<int64_t> &e = duckpgq_state->csr_list[info.csr_id]->e;
+	int64_t lower_limit = args.data[4].GetValue(0).GetValue<int64_t>();
+	int64_t upper_limit = args.data[5].GetValue(0).GetValue<int64_t>();
+
+	if (lower_limit < 0) {
+		lower_limit = 0;
+	}
+	if (upper_limit < lower_limit) {
+		result.SetVectorType(VectorType::FLAT_VECTOR);
+		auto result_data = FlatVector::GetData<bool>(result);
+		for (idx_t row = 0; row < args.size(); row++) {
+			result_data[row] = false;
+		}
+		return;
+	}
+
+	// get src and dst vectors for searches
+	auto &src = args.data[2];
+	auto &dst = args.data[3];
+	UnifiedVectorFormat vdata_src;
+	UnifiedVectorFormat vdata_dst;
+	src.ToUnifiedFormat(args.size(), vdata_src);
+	dst.ToUnifiedFormat(args.size(), vdata_dst);
+	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
+	auto dst_data = reinterpret_cast<int64_t *>(vdata_dst.data);
+
+	ValidityMask &result_validity = FlatVector::Validity(result);
+
+	// create result vector
+	result.SetVectorType(VectorType::FLAT_VECTOR);
+	auto result_data = FlatVector::GetData<bool>(result);
+
+	// create temp SIMD arrays
+	vector<std::bitset<LANE_LIMIT>> visit1(v_size);
+	vector<std::bitset<LANE_LIMIT>> visit2(v_size);
+
+	// maps lane to search number
+	int64_t lane_to_num[LANE_LIMIT];
+	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+		lane_to_num[lane] = -1; // inactive
+	}
+
+	int64_t started_searches = 0;
+	while (started_searches < args.size()) {
+		for (auto i = 0; i < v_size; i++) {
+			visit1[i] = 0;
+		}
+
+		uint64_t active = 0;
+		for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+			lane_to_num[lane] = -1;
+			while (started_searches < args.size()) {
+				int64_t search_num = started_searches++;
+				auto src_pos = vdata_src.sel->get_index(search_num);
+				auto dst_pos = vdata_dst.sel->get_index(search_num);
+				if (!vdata_src.validity.RowIsValid(src_pos)) {
+					result_validity.SetInvalid(search_num);
+					result_data[search_num] = false;
+				} else if (src_data[src_pos] == dst_data[dst_pos] && lower_limit <= 0) {
+					result_data[search_num] = true;
+				} else {
+					visit1[src_data[src_pos]][lane] = true;
+					lane_to_num[lane] = search_num;
+					active++;
+					break;
+				}
+			}
+		}
+
+		for (int64_t iter = 1; active && iter <= upper_limit; iter++) {
+			if (!IterativeLengthBoundedStep(v_size, v, e, (iter & 1) ? visit1 : visit2, (iter & 1) ? visit2 : visit1)) {
+				break;
+			}
+			if (iter >= lower_limit) {
+				for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+					int64_t search_num = lane_to_num[lane];
+					if (search_num >= 0) {
+						auto dst_pos = vdata_dst.sel->get_index(search_num);
+						if ((iter & 1) ? visit2[dst_data[dst_pos]][lane] : visit1[dst_data[dst_pos]][lane]) {
+							result_data[search_num] = true;
+							lane_to_num[lane] = -1;
+							active--;
+						}
+					}
+				}
+			}
+		}
+
+		for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+			int64_t search_num = lane_to_num[lane];
+			if (search_num >= 0) {
+				result_data[search_num] = false;
+				lane_to_num[lane] = -1;
+			}
+		}
+	}
+	duckpgq_state->csr_to_delete.insert(info.csr_id);
+}
+
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
@@ -150,6 +290,14 @@ void CoreScalarFunctions::RegisterIterativeLengthScalarFunction(ExtensionLoader 
 	loader.RegisterFunction(ScalarFunction(
 	    "iterativelength", {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
 	    LogicalType::BIGINT, IterativeLengthFunction, IterativeLengthFunctionData::IterativeLengthBind));
+}
+
+void CoreScalarFunctions::RegisterIterativeLengthBoundedScalarFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(ScalarFunction(
+	    "iterativelengthbounded",
+	    {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT,
+	     LogicalType::BIGINT},
+	    LogicalType::BOOLEAN, IterativeLengthBoundedFunction, IterativeLengthFunctionData::IterativeLengthBind));
 }
 
 } // namespace duckdb

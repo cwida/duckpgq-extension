@@ -1,0 +1,34 @@
+# name: test/sql/path_finding/bounded_shortest_path.test
+# description: Ensure bounded shortest path returns paths within bounds even if shorter paths exist
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+CREATE TABLE Point(id BIGINT); INSERT INTO Point VALUES (0), (1), (2), (3);
+
+statement ok
+CREATE TABLE know(src BIGINT, dst BIGINT); INSERT INTO know VALUES (0, 1), (0, 2), (2, 3), (3, 1);
+
+statement ok
+-CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+    Point PROPERTIES ( id ) LABEL Pnt
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Point ( id )
+            DESTINATION KEY ( dst ) REFERENCES Point ( id )
+            LABEL Knows
+    );
+
+# Shortest path 0->1 has length 1, but query bounds are {2,3}
+# Path 0->2->3->1 has length 3, which is within bounds
+# Should return the path 0->2->3->1, not empty!
+query I
+-FROM GRAPH_TABLE (pg
+    MATCH
+    p = ANY SHORTEST (a:Pnt WHERE a.id = 0)-[k:knows]->{2,3}(b:Pnt WHERE b.id = 1)
+    COLUMNS (element_id(p))
+    ) x;
+----
+[0, 0, 1]
