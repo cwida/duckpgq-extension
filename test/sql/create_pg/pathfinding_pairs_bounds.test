@@ -1,0 +1,50 @@
+# name: test/sql/create_pg/pathfinding_pairs_bounds.test
+# description: Verify pathfinding pairs filtering and bounds handling
+# group: [create_pg]
+
+require duckpgq
+
+statement ok
+CREATE TABLE node(id BIGINT);
+
+statement ok
+INSERT INTO node VALUES (0), (1), (2), (3);
+
+statement ok
+CREATE TABLE edge(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO edge VALUES (0, 1), (1, 2), (2, 3), (0, 2);
+
+statement ok
+-CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+    node LABEL V
+    )
+EDGE TABLES (
+    edge SOURCE KEY (src) REFERENCES node (id)
+         DESTINATION KEY (dst) REFERENCES node (id)
+         LABEL E
+    );
+
+query III
+-FROM GRAPH_TABLE (pg
+    MATCH p = ANY SHORTEST (a:V WHERE a.id IN (0, 1))-[e:E]->{1,2}(b:V WHERE b.id IN (2, 3))
+    COLUMNS (a.id as src, b.id as dst, path_length(p))
+    ) result
+    ORDER BY src, dst;
+----
+0	2	1
+0	3	2
+1	2	1
+1	3	2
+
+query III
+-FROM GRAPH_TABLE (pg
+    MATCH p = ANY SHORTEST (a:V WHERE a.id IN (0, 1))-[e:E]->{2,2}(b:V WHERE b.id IN (2, 3))
+    COLUMNS (a.id as src, b.id as dst, path_length(p))
+    ) result
+    ORDER BY src, dst;
+----
+0	3	2
+1	3	2

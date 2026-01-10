@@ -87,10 +87,15 @@ public:
 	static PathElement *HandleNestedSubPath(unique_ptr<PathReference> &path_reference,
 	                                        vector<unique_ptr<ParsedExpression>> &conditions, idx_t element_idx);
 
-	static unique_ptr<ParsedExpression> AddPathQuantifierCondition(const string &prev_binding,
-	                                                               const string &next_binding,
-	                                                               const shared_ptr<PropertyGraphTable> &edge_table,
-	                                                               const SubPath *subpath);
+	static unique_ptr<ParsedExpression>
+	AddPathQuantifierCondition(unique_ptr<ParsedExpression> src_row_id, unique_ptr<ParsedExpression> dst_row_id,
+	                           const string &count_table_alias, const shared_ptr<PropertyGraphTable> &edge_table,
+	                           const SubPath *subpath);
+
+	static unique_ptr<CommonTableExpressionInfo>
+	CreatePathFindingPairsCTE(const shared_ptr<PropertyGraphTable> &edge_table, PathElement *previous_vertex_element,
+	                          PathElement *next_vertex_element,
+	                          vector<unique_ptr<ParsedExpression>> &pair_conditions);
 
 	static unique_ptr<TableRef> MatchBindReplace(ClientContext &context, TableFunctionBindInput &input);
 
