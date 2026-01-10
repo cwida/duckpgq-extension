@@ -1,0 +1,86 @@
+# name: test/sql/cte_union_match.test
+# description: Regression tests for MATCH in CTEs and UNION (issue #276)
+# group: [duckpgq]
+
+require duckpgq
+
+# Setup
+statement ok
+CREATE TABLE Person(id BIGINT, name VARCHAR);
+
+statement ok
+INSERT INTO Person VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor');
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows VALUES (0, 1), (1, 2), (0, 2);
+
+statement ok
+-CREATE PROPERTY GRAPH pg
+VERTEX TABLES (Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES Person (id)
+                   DESTINATION KEY (dst) REFERENCES Person (id));
+
+# Test 1: GRAPH_TABLE in CTE
+query I
+-WITH person_ids AS (
+    FROM GRAPH_TABLE(pg MATCH (p:Person) COLUMNS (p.id))
+)
+SELECT COUNT(*) FROM person_ids;
+----
+3
+
+# Test 2: Multiple CTEs with GRAPH_TABLE
+query I
+-WITH graph_people AS (
+    FROM GRAPH_TABLE(pg MATCH (p:Person) COLUMNS (p.id))
+), filtered_people AS (
+    SELECT id FROM graph_people WHERE id >= 1
+)
+SELECT COUNT(*) FROM filtered_people;
+----
+2
+
+# Test 3: UNION ALL with GRAPH_TABLE
+query I
+-(SELECT id FROM GRAPH_TABLE(pg MATCH (p:Person) COLUMNS (p.id))
+ UNION ALL
+ SELECT id FROM GRAPH_TABLE(pg MATCH (p:Person) COLUMNS (p.id)))
+ORDER BY id;
+----
+0
+0
+1
+1
+2
+2
+
+# Test 4: CTE with GRAPH_TABLE + main query GRAPH_TABLE
+query II
+-WITH friends AS (
+    FROM GRAPH_TABLE(pg MATCH (a:Person)-[k:knows]->(b:Person)
+                     COLUMNS (a.id as src, b.id as dst))
+)
+SELECT f.src, g.dst
+FROM friends f,
+     GRAPH_TABLE(pg MATCH (x:Person)-[k:knows]->(y:Person)
+                 COLUMNS (x.id as src, y.id as dst)) g
+WHERE f.src = g.src
+ORDER BY f.src, g.dst
+LIMIT 3;
+----
+0	1
+0	1
+0	2
+
+# Test 5: UNION with different GRAPH_TABLE patterns
+query I
+-(SELECT id FROM GRAPH_TABLE(pg MATCH (a:Person) COLUMNS (a.id)) WHERE id = 0
+ UNION
+ SELECT id FROM GRAPH_TABLE(pg MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (b.id)) WHERE id = 2)
+ORDER BY id;
+----
+0
+2
