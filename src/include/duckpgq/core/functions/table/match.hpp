@@ -26,7 +26,7 @@ struct PGQMatchFunction : public TableFunction {
 public:
 	PGQMatchFunction() {
 		name = "duckpgq_match";
-		arguments.push_back(LogicalType::INTEGER);
+		arguments.push_back(LogicalType::BLOB);
 		bind_replace = MatchBindReplace;
 	}
 
