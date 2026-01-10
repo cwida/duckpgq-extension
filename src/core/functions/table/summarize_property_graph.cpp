@@ -18,7 +18,7 @@ namespace duckdb {
 unique_ptr<ParsedExpression> GetTableNameConstantExpression(const string &table_name, const string &alias) {
 	auto table_name_column = make_uniq<ConstantExpression>(Value(table_name));
 	table_name_column->alias = alias;
-	return table_name_column;
+	return std::move(table_name_column);
 }
 
 unique_ptr<ParsedExpression> GetFunctionExpression(const string &aggregate_function, const string &alias,
@@ -30,19 +30,19 @@ unique_ptr<ParsedExpression> GetFunctionExpression(const string &aggregate_funct
 	}
 	auto agg_function = make_uniq<FunctionExpression>(aggregate_function, std::move(max_children));
 	agg_function->alias = alias + (is_in_degree ? "_in_degree" : "_out_degree");
-	return agg_function;
+	return std::move(agg_function);
 }
 
 unique_ptr<ParsedExpression> GetConstantNullExpressionWithAlias(const string &alias) {
 	auto result = make_uniq<ConstantExpression>(Value());
 	result->alias = alias;
-	return result;
+	return std::move(result);
 }
 
 unique_ptr<ParsedExpression> IsVertexTableConstantExpression(bool is_vertex_table, const string &alias) {
 	auto result = make_uniq<ConstantExpression>(Value(is_vertex_table));
 	result->alias = alias;
-	return result;
+	return std::move(result);
 }
 unique_ptr<ParsedExpression> GetTableCount(const string &alias) {
 	vector<unique_ptr<ParsedExpression>> children;
@@ -69,7 +69,7 @@ SummarizePropertyGraphFunction::GetDistinctCount(const shared_ptr<PropertyGraphT
 	select_statement->node = std::move(select_node);
 	result->subquery = std::move(select_statement);
 	result->alias = alias;
-	return result;
+	return std::move(result);
 }
 
 unique_ptr<ParsedExpression> SummarizePropertyGraphFunction::GetIsolatedNodes(shared_ptr<PropertyGraphTable> &pg_table,
@@ -110,7 +110,7 @@ unique_ptr<ParsedExpression> SummarizePropertyGraphFunction::GetIsolatedNodes(sh
 	select_statement->node = std::move(select_node);
 	result->subquery = std::move(select_statement);
 	result->alias = alias;
-	return result;
+	return std::move(result);
 }
 
 unique_ptr<SubqueryRef>
@@ -170,7 +170,7 @@ unique_ptr<ParsedExpression> SummarizePropertyGraphFunction::GetDegreeStatistics
 	select_statement->node = std::move(select_node);
 	result->subquery = std::move(select_statement);
 	result->alias = aggregate_function + "_" + (is_in_degree ? "in_degree" : "out_degree");
-	return result;
+	return std::move(result);
 }
 
 unique_ptr<CommonTableExpressionInfo>

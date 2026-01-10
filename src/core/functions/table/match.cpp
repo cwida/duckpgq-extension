@@ -635,20 +635,16 @@ PGQMatchFunction::AddPathQuantifierCondition(const string &prev_binding, const s
 	pathfinding_children.push_back(std::move(src_row_id));
 	pathfinding_children.push_back(std::move(dst_row_id));
 
-	auto reachability_function = make_uniq<FunctionExpression>("iterativelength", std::move(pathfinding_children));
-
-	auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
-
-	vector<unique_ptr<ParsedExpression>> addition_children;
-	addition_children.push_back(std::move(cte_col_ref));
-	addition_children.push_back(std::move(reachability_function));
-
-	auto addition_function = make_uniq<FunctionExpression>("add", std::move(addition_children));
+	// Push bounds directly into the UDF to handle cases where shortest path
+	// is outside bounds but a longer path within bounds exists (issue #67)
 	auto lower_limit = make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(subpath->lower)));
 	auto upper_limit = make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(subpath->upper)));
-	auto between_expression =
-	    make_uniq<BetweenExpression>(std::move(addition_function), std::move(lower_limit), std::move(upper_limit));
-	return std::move(between_expression);
+	pathfinding_children.push_back(std::move(lower_limit));
+	pathfinding_children.push_back(std::move(upper_limit));
+
+	auto reachability_function =
+	    make_uniq<FunctionExpression>("iterativelengthbounded", std::move(pathfinding_children));
+	return std::move(reachability_function);
 }
 
 void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
