@@ -20,6 +20,10 @@
 
 #include <duckdb/parser/tableref/matchref.hpp>
 
+#include "duckdb/parser/query_node/select_node.hpp"
+#include "duckdb/parser/tableref/joinref.hpp"
+#include "duckdb/parser/tableref/subqueryref.hpp"
+
 namespace duckdb {
 
 struct PGQMatchFunction : public TableFunction {

@@ -4,8 +4,8 @@
 #include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/star_expression.hpp"
-#include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
+#include "duckdb/parser/tableref/basetableref.hpp"
 
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
@@ -602,7 +602,6 @@ unique_ptr<SubqueryRef> CreateCountCTESubquery() {
 
 	auto temp_cte_select_statement = make_uniq<SelectStatement>();
 	temp_cte_select_statement->node = std::move(temp_cte_select_node);
-
 	return make_uniq<SubqueryRef>(std::move(temp_cte_select_statement), "__x");
 }
 
