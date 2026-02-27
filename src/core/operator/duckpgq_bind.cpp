@@ -4,6 +4,7 @@
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
 #include "duckpgq/core/operator/duckpgq_operator.hpp"
 #include <duckpgq_state.hpp>
+#include "duckdb/main/extension_callback_manager.hpp"
 
 #include "duckdb/planner/operator_extension.hpp"
 
