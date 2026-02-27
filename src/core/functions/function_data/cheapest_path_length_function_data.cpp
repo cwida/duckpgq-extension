@@ -7,7 +7,6 @@ namespace duckdb {
 unique_ptr<FunctionData>
 CheapestPathLengthFunctionData::CheapestPathLengthBind(ClientContext &context, ScalarFunction &bound_function,
                                                        vector<unique_ptr<Expression>> &arguments) {
-
 	if (!arguments[0]->IsFoldable()) {
 		throw InvalidInputException("Id must be constant.");
 	}

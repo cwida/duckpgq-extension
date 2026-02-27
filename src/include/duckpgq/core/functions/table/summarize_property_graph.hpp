@@ -9,6 +9,7 @@
 #pragma once
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
+#include "duckdb/parser/tableref/subqueryref.hpp"
 #include "duckpgq/common.hpp"
 
 namespace duckdb {

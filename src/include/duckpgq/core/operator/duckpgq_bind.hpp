@@ -1,5 +1,6 @@
 #pragma once
 
+#include "duckdb/planner/operator/logical_extension_operator.hpp"
 #include "duckpgq/common.hpp"
 
 namespace duckdb {

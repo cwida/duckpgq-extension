@@ -1,5 +1,6 @@
 #pragma once
 #include "duckpgq_state.hpp"
+#include "duckdb/parser/expression/columnref_expression.hpp"
 
 namespace duckdb {
 

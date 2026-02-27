@@ -4,6 +4,9 @@
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
 #include "duckpgq/core/operator/duckpgq_operator.hpp"
 #include <duckpgq_state.hpp>
+#include "duckdb/main/extension_callback_manager.hpp"
+
+#include "duckdb/planner/operator_extension.hpp"
 
 namespace duckdb {
 
@@ -27,8 +30,8 @@ BoundStatement duckpgq_bind(ClientContext &context, Binder &binder, OperatorExte
 //------------------------------------------------------------------------------
 void CorePGQOperator::RegisterPGQBindOperator(ExtensionLoader &loader) {
 	auto &db = loader.GetDatabaseInstance();
-	auto &config = DBConfig::GetConfig(db);
-	config.operator_extensions.push_back(make_uniq<DuckPGQOperatorExtension>());
+	auto &manager = ExtensionCallbackManager::Get(db);
+	manager.Register(make_shared_ptr<DuckPGQOperatorExtension>());
 }
 
 } // namespace duckdb
