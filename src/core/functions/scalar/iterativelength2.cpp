@@ -70,7 +70,6 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Ve
 
 	int64_t started_searches = 0;
 	while (started_searches < args.size()) {
-
 		// empty visit vectors
 		for (auto i = 0; i < v_size; i++) {
 			seen[i] = 0;

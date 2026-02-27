@@ -189,10 +189,8 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 			CheckPropertyGraphTableLabels(vertex_table, table);
 		} catch (CatalogException &e) {
 			auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
-			auto table = catalog.GetEntry(context,
-								CatalogType::VIEW_ENTRY,
-							   vertex_table->schema_name,
-							   vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
+			auto table = catalog.GetEntry(context, CatalogType::VIEW_ENTRY, vertex_table->schema_name,
+			                              vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
 			if (table) {
 				throw Exception(ExceptionType::INVALID, "Found a view with name " + vertex_table->table_name +
 				                                            ". Creating property graph tables over views is "
@@ -252,7 +250,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 		} catch (CatalogException &e) {
 			auto &catalog = Catalog::GetCatalog(context, edge_table->catalog_name);
 			auto table = catalog.GetEntry(context, CatalogType::VIEW_ENTRY, edge_table->schema_name,
-			                                                 edge_table->table_name, OnEntryNotFound::RETURN_NULL);
+			                              edge_table->table_name, OnEntryNotFound::RETURN_NULL);
 			if (table) {
 				throw Exception(ExceptionType::INVALID, "Found a view with name " + edge_table->table_name +
 				                                            ". Creating property graph tables over views is "

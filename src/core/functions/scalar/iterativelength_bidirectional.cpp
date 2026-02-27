@@ -82,7 +82,6 @@ static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionStat
 
 	int64_t started_searches = 0;
 	while (started_searches < args.size()) {
-
 		// empty visit vectors
 		for (auto i = 0; i < v_size; i++) {
 			src_seen[i] = 0;

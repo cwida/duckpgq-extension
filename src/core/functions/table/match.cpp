@@ -259,7 +259,6 @@ void PGQMatchFunction::EdgeTypeAny(const shared_ptr<PropertyGraphTable> &edge_ta
                                    const string &prev_binding, const string &next_binding,
                                    vector<unique_ptr<ParsedExpression>> &conditions,
                                    unique_ptr<TableRef> &from_clause) {
-
 	// START SELECT src, dst, * from edge_table
 	auto src_dst_select_node = make_uniq<SelectNode>();
 
@@ -623,7 +622,6 @@ void PGQMatchFunction::AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_t
 unique_ptr<ParsedExpression>
 PGQMatchFunction::AddPathQuantifierCondition(const string &prev_binding, const string &next_binding,
                                              const shared_ptr<PropertyGraphTable> &edge_table, const SubPath *subpath) {
-
 	auto src_row_id = make_uniq<ColumnRefExpression>("rowid", prev_binding);
 	auto dst_row_id = make_uniq<ColumnRefExpression>("rowid", next_binding);
 	auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER(0));
