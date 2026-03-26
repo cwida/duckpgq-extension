@@ -13,6 +13,7 @@
 #include <duckpgq_state.hpp>
 
 #include "duckdb/parser/query_node/cte_node.hpp"
+#include "duckdb/parser/query_node/set_operation_node.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include <duckpgq/core/functions/table/describe_property_graph.hpp>
 #include <duckpgq/core/functions/table/drop_property_graph.hpp>
@@ -60,23 +61,51 @@ void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_stat
 	}
 }
 
-ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
-	const auto select_statement = dynamic_cast<SelectStatement *>(statement);
-	auto node = dynamic_cast<SelectNode *>(select_statement->node.get());
-	CTENode *cte_node = nullptr;
+// Recursively traverse a QueryNode tree, finding and processing all MATCH expressions.
+// Handles SelectNode, CTENode, and SetOperationNode (UNION/INTERSECT/EXCEPT).
+static void duckpgq_traverse_query_node(QueryNode *query_node, DuckPGQState &duckpgq_state) {
+	if (!query_node) {
+		return;
+	}
 
-	// Check if node is not a SelectNode
-	if (!node) {
-		// Attempt to cast to CTENode
-		cte_node = dynamic_cast<CTENode *>(select_statement->node.get());
-		if (cte_node) {
-			// Get the child node as a SelectNode if cte_node is valid
-			node = dynamic_cast<SelectNode *>(cte_node->child.get());
+	// All QueryNode types can have CTEs — process them first
+	for (auto const &kv_pair : query_node->cte_map.map) {
+		auto const &cte = kv_pair.second;
+		auto *cte_select_statement = dynamic_cast<SelectStatement *>(cte->query.get());
+		if (cte_select_statement) {
+			duckpgq_traverse_query_node(cte_select_statement->node.get(), duckpgq_state);
 		}
 	}
 
-	// Check if node is a ShowRef
-	if (node) {
+	if (auto *select_node = dynamic_cast<SelectNode *>(query_node)) {
+		if (select_node->from_table) {
+			duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
+		}
+	} else if (auto *cte_node = dynamic_cast<CTENode *>(query_node)) {
+		duckpgq_traverse_query_node(cte_node->child.get(), duckpgq_state);
+	} else if (auto *setop_node = dynamic_cast<SetOperationNode *>(query_node)) {
+		for (auto &child : setop_node->children) {
+			duckpgq_traverse_query_node(child.get(), duckpgq_state);
+		}
+	}
+}
+
+ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
+	const auto select_statement = dynamic_cast<SelectStatement *>(statement);
+	if (!select_statement) {
+		return {};
+	}
+	auto *query_node = select_statement->node.get();
+
+	// Check for ShowRef (DESCRIBE / SUMMARY property graph) — only applies to SelectNode
+	auto *node = dynamic_cast<SelectNode *>(query_node);
+	if (!node) {
+		auto *cte_node = dynamic_cast<CTENode *>(query_node);
+		if (cte_node) {
+			node = dynamic_cast<SelectNode *>(cte_node->child.get());
+		}
+	}
+	if (node && node->from_table) {
 		const auto describe_node = dynamic_cast<ShowRef *>(node->from_table.get());
 		if (describe_node) {
 			ParserExtensionPlanResult result;
@@ -95,38 +124,8 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement,
 		}
 	}
 
-	CommonTableExpressionMap *cte_map = nullptr;
-	if (node) {
-		cte_map = &node->cte_map;
-	} else if (cte_node) {
-		cte_map = &cte_node->cte_map;
-	}
-
-	if (!cte_map) {
-		return {};
-	}
-
-	for (auto const &kv_pair : cte_map->map) {
-		auto const &cte = kv_pair.second;
-
-		auto *cte_select_statement = dynamic_cast<SelectStatement *>(cte->query.get());
-		if (!cte_select_statement) {
-			continue;
-		}
-
-		auto *select_node = dynamic_cast<SelectNode *>(cte_select_statement->node.get());
-		if (!select_node) {
-			continue; // The SelectStatement has no SelectNode, skip.
-		}
-
-		// If we get here, we know select_node is valid.
-		duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
-	}
-	if (node) {
-		duckpgq_find_match_function(node->from_table.get(), duckpgq_state);
-	} else {
-		throw Exception(ExceptionType::INTERNAL, "node is a nullptr.");
-	}
+	// Recursively find and process all MATCH expressions in the query tree
+	duckpgq_traverse_query_node(query_node, duckpgq_state);
 	return {};
 }
 

@@ -1,0 +1,81 @@
+# name: test/sql/union_graph_table.test
+# description: Regression test for UNION/EXCEPT with GRAPH_TABLE (fixes #249 and #276)
+# group: [sql]
+
+require duckpgq
+
+statement ok
+CREATE TABLE Student(id BIGINT, name VARCHAR);INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17);
+
+statement ok
+-CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+    Student
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+    );
+
+# UNION ALL of two GRAPH_TABLE queries (previously caused SIGSEGV)
+query I
+-FROM GRAPH_TABLE(pg MATCH (a:Student WHERE a.id = 0) COLUMNS (a.name))
+UNION ALL
+FROM GRAPH_TABLE(pg MATCH (a:Student WHERE a.id = 1) COLUMNS (a.name));
+----
+Daniel
+Tavneet
+
+# UNION (deduplicated)
+query I
+-FROM GRAPH_TABLE(pg MATCH (a:Student WHERE a.id = 0) COLUMNS (a.name))
+UNION
+FROM GRAPH_TABLE(pg MATCH (a:Student WHERE a.id = 0) COLUMNS (a.name));
+----
+Daniel
+
+# EXCEPT with GRAPH_TABLE
+query I
+-FROM GRAPH_TABLE(pg MATCH (a:Student) COLUMNS (a.name))
+EXCEPT
+FROM GRAPH_TABLE(pg MATCH (a:Student WHERE a.id = 0) COLUMNS (a.name));
+----
+David
+Gabor
+Peter
+Tavneet
+
+# CTE wrapping GRAPH_TABLE with UNION in outer query
+query I
+-WITH friends AS (
+    FROM GRAPH_TABLE(pg
+        MATCH (a:Student WHERE a.name = 'Daniel')-[k:know]->(b:Student)
+        COLUMNS (b.name)
+    )
+)
+SELECT * FROM friends
+UNION ALL
+FROM GRAPH_TABLE(pg MATCH (a:Student WHERE a.id = 4) COLUMNS (a.name));
+----
+Tavneet
+Gabor
+Peter
+David
+
+# Multiple CTEs both using GRAPH_TABLE
+query II
+-WITH cte1 AS (
+    FROM GRAPH_TABLE(pg MATCH (a:Student WHERE a.id = 0) COLUMNS (a.id, a.name))
+),
+cte2 AS (
+    FROM GRAPH_TABLE(pg MATCH (a:Student WHERE a.id = 1) COLUMNS (a.id, a.name))
+)
+SELECT * FROM cte1
+UNION ALL
+SELECT * FROM cte2;
+----
+0	Daniel
+1	Tavneet
