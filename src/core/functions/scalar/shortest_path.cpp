@@ -6,6 +6,8 @@
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
+#include "duckdb/common/vector/list_vector.hpp"
+
 namespace duckdb {
 
 static bool IterativeLength(int64_t v_size, int64_t *V, vector<int64_t> &E, vector<int64_t> &edge_ids,
@@ -67,8 +69,8 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 	src.ToUnifiedFormat(args.size(), vdata_src);
 	target.ToUnifiedFormat(args.size(), vdata_dst);
 
-	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
-	auto dst_data = reinterpret_cast<int64_t *>(vdata_dst.data);
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
+	auto dst_data = reinterpret_cast<const int64_t *>(vdata_dst.data);
 
 	result.SetVectorType(VectorType::FLAT_VECTOR);
 	auto result_data = FlatVector::GetData<list_entry_t>(result);

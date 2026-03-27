@@ -21,6 +21,7 @@
 #include <duckpgq/core/functions/table/summarize_property_graph.hpp>
 
 #include "duckdb/main/extension_callback_manager.hpp"
+#include "duckdb/parser/query_node/insert_query_node.hpp"
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
 
 namespace duckdb {
@@ -170,7 +171,7 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
 	}
 	if (statement->type == StatementType::INSERT_STATEMENT) {
 		const auto &insert_statement = statement->Cast<InsertStatement>();
-		duckpgq_handle_statement(insert_statement.select_statement.get(), duckpgq_state);
+		duckpgq_handle_statement(insert_statement.node->select_statement.get(), duckpgq_state);
 	}
 
 	throw Exception(ExceptionType::NOT_IMPLEMENTED,

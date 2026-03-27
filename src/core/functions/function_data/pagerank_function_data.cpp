@@ -2,6 +2,8 @@
 
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
+#include "duckdb/execution/expression_executor.hpp"
+
 namespace duckdb {
 
 // Constructor

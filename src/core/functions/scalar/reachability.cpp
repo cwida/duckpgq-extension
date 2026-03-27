@@ -12,7 +12,7 @@ namespace duckdb {
 
 typedef enum { NO_ARRAY, ARRAY, INTERMEDIATE } msbfs_modes_t;
 
-static int16_t InitialiseBfs(idx_t curr_batch, idx_t size, data_ptr_t src_data, const SelectionVector *src_sel,
+static int16_t InitialiseBfs(idx_t curr_batch, idx_t size, const_data_ptr_t src_data, const SelectionVector *src_sel,
                              const ValidityMask &src_validity, vector<std::bitset<LANE_LIMIT>> &seen,
                              vector<std::bitset<LANE_LIMIT>> &visit, vector<std::bitset<LANE_LIMIT>> &visit_next,
                              unordered_map<int64_t, pair<int16_t, vector<idx_t>>> &lane_map) {
