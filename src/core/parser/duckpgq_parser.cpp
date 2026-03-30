@@ -13,6 +13,7 @@
 #include <duckpgq_state.hpp>
 
 #include "duckdb/parser/query_node/cte_node.hpp"
+#include "duckdb/parser/query_node/set_operation_node.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include <duckpgq/core/functions/table/describe_property_graph.hpp>
 #include <duckpgq/core/functions/table/drop_property_graph.hpp>
@@ -34,6 +35,54 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info, const std::s
 	}
 	return ParserExtensionParseResult(
 	    make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(std::move(parser.statements[0])));
+}
+
+// Recursively traverse a QueryNode tree, finding and processing all MATCH expressions.
+// Handles SelectNode, CTENode, and SetOperationNode (UNION/INTERSECT/EXCEPT).
+static void duckpgq_traverse_query_node(QueryNode *query_node, DuckPGQState &duckpgq_state) {
+	if (!query_node) {
+		return;
+	}
+
+	// All QueryNode types can have CTEs — process them first
+	for (auto const &kv_pair : query_node->cte_map.map) {
+		auto const &cte = kv_pair.second;
+		auto *cte_select_statement = dynamic_cast<SelectStatement *>(cte->query.get());
+		if (cte_select_statement) {
+			duckpgq_traverse_query_node(cte_select_statement->node.get(), duckpgq_state);
+		}
+	}
+
+	switch (query_node->type) {
+	case QueryNodeType::SELECT_NODE: {
+		auto &select_node = query_node->Cast<SelectNode>();
+		if (select_node.from_table) {
+			duckpgq_find_match_function(select_node.from_table.get(), duckpgq_state);
+		}
+		break;
+	}
+	case QueryNodeType::CTE_NODE: {
+		auto &cte_node = query_node->Cast<CTENode>();
+		duckpgq_traverse_query_node(cte_node.child.get(), duckpgq_state);
+		break;
+	}
+	case QueryNodeType::SET_OPERATION_NODE: {
+		auto &setop_node = query_node->Cast<SetOperationNode>();
+		for (auto &child : setop_node.children) {
+			duckpgq_traverse_query_node(child.get(), duckpgq_state);
+		}
+		break;
+	}
+	case QueryNodeType::INSERT_QUERY_NODE: {
+		auto &insert_node = query_node->Cast<InsertQueryNode>();
+		if (insert_node.select_statement) {
+			duckpgq_traverse_query_node(insert_node.select_statement->node.get(), duckpgq_state);
+		}
+		break;
+	}
+	default:
+		break;
+	}
 }
 
 void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_state) {
@@ -63,22 +112,24 @@ void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_stat
 
 ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement, DuckPGQState &duckpgq_state) {
 	const auto select_statement = dynamic_cast<SelectStatement *>(statement);
-	auto node = dynamic_cast<SelectNode *>(select_statement->node.get());
-	CTENode *cte_node = nullptr;
+	if (!select_statement) {
+		return {};
+	}
+	auto *query_node = select_statement->node.get();
 
-	// Check if node is not a SelectNode
-	if (!node) {
-		// Attempt to cast to CTENode
-		cte_node = dynamic_cast<CTENode *>(select_statement->node.get());
-		if (cte_node) {
-			// Get the child node as a SelectNode if cte_node is valid
-			node = dynamic_cast<SelectNode *>(cte_node->child.get());
+	// Check for ShowRef (DESCRIBE / SUMMARY property graph) — only applies to SelectNode.
+	// A CTENode wrapping a SelectNode is also checked for the DESCRIBE/SUMMARY case.
+	SelectNode *show_check_node = nullptr;
+	if (query_node->type == QueryNodeType::SELECT_NODE) {
+		show_check_node = &query_node->Cast<SelectNode>();
+	} else if (query_node->type == QueryNodeType::CTE_NODE) {
+		auto &cte_node = query_node->Cast<CTENode>();
+		if (cte_node.child && cte_node.child->type == QueryNodeType::SELECT_NODE) {
+			show_check_node = &cte_node.child->Cast<SelectNode>();
 		}
 	}
-
-	// Check if node is a ShowRef
-	if (node) {
-		const auto describe_node = dynamic_cast<ShowRef *>(node->from_table.get());
+	if (show_check_node && show_check_node->from_table) {
+		const auto describe_node = dynamic_cast<ShowRef *>(show_check_node->from_table.get());
 		if (describe_node) {
 			ParserExtensionPlanResult result;
 			result.requires_valid_transaction = true;
@@ -96,38 +147,8 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement,
 		}
 	}
 
-	CommonTableExpressionMap *cte_map = nullptr;
-	if (node) {
-		cte_map = &node->cte_map;
-	} else if (cte_node) {
-		cte_map = &cte_node->cte_map;
-	}
-
-	if (!cte_map) {
-		return {};
-	}
-
-	for (auto const &kv_pair : cte_map->map) {
-		auto const &cte = kv_pair.second;
-
-		auto *cte_select_statement = dynamic_cast<SelectStatement *>(cte->query.get());
-		if (!cte_select_statement) {
-			continue;
-		}
-
-		auto *select_node = dynamic_cast<SelectNode *>(cte_select_statement->node.get());
-		if (!select_node) {
-			continue; // The SelectStatement has no SelectNode, skip.
-		}
-
-		// If we get here, we know select_node is valid.
-		duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
-	}
-	if (node) {
-		duckpgq_find_match_function(node->from_table.get(), duckpgq_state);
-	} else {
-		throw Exception(ExceptionType::INTERNAL, "node is a nullptr.");
-	}
+	// Recursively find and process all MATCH expressions in the query tree
+	duckpgq_traverse_query_node(query_node, duckpgq_state);
 	return {};
 }
 
