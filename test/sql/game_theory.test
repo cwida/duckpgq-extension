@@ -1,0 +1,354 @@
+# name: test/sql/game_theory.test
+# description: Game theory graph problems using SQL/PGQ
+# group: [examples]
+
+# These examples show how SQL/PGQ maps to classic game theory graph problems:
+# coalition detection, trust propagation, and information cascades.
+# Each section is self-contained and can be run independently.
+
+require duckpgq
+
+# ============================================================
+# PART 1: COALITION DETECTION VIA TRIANGLE ENUMERATION
+#
+# In game theory, a coalition is a group of agents that agree to
+# cooperate. The minimal stable coalition in a graph is a triangle:
+# three agents where every pair has a mutual agreement.
+#
+# We model this as a directed graph where a->b means "a agrees with b".
+# A mutual agreement requires both a->b and b->a.
+# A triangle (3-clique) is found by matching the cycle a->b->c->a.
+# ============================================================
+
+statement ok
+CREATE TABLE Agent(id BIGINT, name VARCHAR, payoff DOUBLE);
+
+statement ok
+INSERT INTO Agent VALUES
+    (0, 'Alice',  10.0),
+    (1, 'Bob',    12.0),
+    (2, 'Carol',   8.0),
+    (3, 'Dave',   15.0),
+    (4, 'Eve',     6.0);
+
+statement ok
+CREATE TABLE agrees(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO agrees VALUES
+    (0, 1), (1, 0),
+    (0, 2), (2, 0),
+    (1, 2), (2, 1),
+    (1, 3), (3, 1),
+    (2, 3), (3, 2),
+    (3, 4);
+
+statement ok
+-CREATE PROPERTY GRAPH coalition_graph
+VERTEX TABLES (
+    Agent PROPERTIES (id, name, payoff) LABEL Agent
+)
+EDGE TABLES (
+    agrees SOURCE KEY (src) REFERENCES Agent (id)
+           DESTINATION KEY (dst) REFERENCES Agent (id)
+           LABEL Agrees
+);
+
+# Find 3-member coalitions (triangles). The id ordering constraint
+# (a.id < b.id < c.id) ensures each triangle is reported exactly once
+# rather than all 6 rotations.
+query III
+-SELECT t.a_name, t.b_name, t.c_name
+FROM GRAPH_TABLE (coalition_graph
+    MATCH
+    (a:Agent)-[e1:Agrees]->(b:Agent)-[e2:Agrees]->(c:Agent)-[e3:Agrees]->(a:Agent)
+    WHERE a.id < b.id AND b.id < c.id
+    COLUMNS (a.name AS a_name, b.name AS b_name, c.name AS c_name)
+) t
+ORDER BY t.a_name, t.b_name, t.c_name;
+----
+Alice	Bob	Carol
+Bob	Carol	Dave
+
+# Count how many coalitions each agent participates in.
+# Agents with coalition_count = 0 are not part of any stable coalition.
+query II
+-SELECT t.member, COUNT(*) AS coalition_count
+FROM GRAPH_TABLE (coalition_graph
+    MATCH
+    (a:Agent)-[e1:Agrees]->(b:Agent)-[e2:Agrees]->(c:Agent)-[e3:Agrees]->(a:Agent)
+    WHERE a.id < b.id AND b.id < c.id
+    COLUMNS (a.name AS member)
+) t
+GROUP BY t.member
+UNION ALL
+-SELECT t.member, COUNT(*) AS coalition_count
+FROM GRAPH_TABLE (coalition_graph
+    MATCH
+    (a:Agent)-[e1:Agrees]->(b:Agent)-[e2:Agrees]->(c:Agent)-[e3:Agrees]->(a:Agent)
+    WHERE a.id < b.id AND b.id < c.id
+    COLUMNS (b.name AS member)
+) t
+GROUP BY t.member
+UNION ALL
+-SELECT t.member, COUNT(*) AS coalition_count
+FROM GRAPH_TABLE (coalition_graph
+    MATCH
+    (a:Agent)-[e1:Agrees]->(b:Agent)-[e2:Agrees]->(c:Agent)-[e3:Agrees]->(a:Agent)
+    WHERE a.id < b.id AND b.id < c.id
+    COLUMNS (c.name AS member)
+) t
+GROUP BY t.member
+ORDER BY member;
+----
+Alice	1
+Bob	2
+Carol	2
+Dave	1
+
+# Agents completely outside any coalition (no triangle membership).
+# Join back to Agent table to find agents with zero triangle participation.
+query I
+SELECT a.name
+FROM Agent a
+WHERE a.name NOT IN (
+    SELECT t.member FROM (
+        -SELECT t2.member
+        FROM GRAPH_TABLE (coalition_graph
+            MATCH
+            (a2:Agent)-[e1:Agrees]->(b2:Agent)-[e2:Agrees]->(c2:Agent)-[e3:Agrees]->(a2:Agent)
+            WHERE a2.id < b2.id AND b2.id < c2.id
+            COLUMNS (a2.name AS member)
+        ) t2
+        UNION ALL
+        -SELECT t2.member
+        FROM GRAPH_TABLE (coalition_graph
+            MATCH
+            (a2:Agent)-[e1:Agrees]->(b2:Agent)-[e2:Agrees]->(c2:Agent)-[e3:Agrees]->(a2:Agent)
+            WHERE a2.id < b2.id AND b2.id < c2.id
+            COLUMNS (b2.name AS member)
+        ) t2
+        UNION ALL
+        -SELECT t2.member
+        FROM GRAPH_TABLE (coalition_graph
+            MATCH
+            (a2:Agent)-[e1:Agrees]->(b2:Agent)-[e2:Agrees]->(c2:Agent)-[e3:Agrees]->(a2:Agent)
+            WHERE a2.id < b2.id AND b2.id < c2.id
+            COLUMNS (c2.name AS member)
+        ) t2
+    ) t
+)
+ORDER BY a.name;
+----
+Eve
+
+statement ok
+-DROP PROPERTY GRAPH coalition_graph;
+
+# ============================================================
+# PART 2: TRUST PROPAGATION VIA SHORTEST PATHS
+#
+# Trust networks model how much one agent trusts another through
+# chains of relationships. The shortest (fewest-hop) path gives
+# the highest-quality trust route, since each intermediary dilutes
+# trust. path_length() reports the hop count.
+#
+# Key insight: ANY SHORTEST finds the minimum-hop path from a
+# source to all reachable destinations in one sweep, equivalent
+# to a breadth-first traversal from the source.
+# ============================================================
+
+statement ok
+CREATE TABLE Actor(id BIGINT, name VARCHAR);
+
+statement ok
+INSERT INTO Actor VALUES
+    (0, 'Alice'),
+    (1, 'Bob'),
+    (2, 'Carol'),
+    (3, 'Dave'),
+    (4, 'Eve');
+
+statement ok
+CREATE TABLE trusts(src BIGINT, dst BIGINT, strength DOUBLE);
+
+statement ok
+INSERT INTO trusts VALUES
+    (0, 1, 0.9),
+    (1, 2, 0.8),
+    (2, 3, 0.7),
+    (0, 3, 0.3),
+    (1, 4, 0.6),
+    (4, 3, 0.85);
+
+statement ok
+-CREATE PROPERTY GRAPH trust_graph
+VERTEX TABLES (
+    Actor PROPERTIES (id, name) LABEL Actor
+)
+EDGE TABLES (
+    trusts SOURCE KEY (src) REFERENCES Actor (id)
+           DESTINATION KEY (dst) REFERENCES Actor (id)
+           PROPERTIES (strength)
+           LABEL Trusts
+);
+
+# Find the shortest trust chain from Alice to every reachable actor.
+# hops = 0 is Alice herself, hops = 1 is direct trust, etc.
+# Alice -> Dave directly has hops=1 (via weak 0.3 edge);
+# Alice -> Bob -> Carol has hops=2.
+query III
+-FROM GRAPH_TABLE (trust_graph
+    MATCH
+    p = ANY SHORTEST (src:Actor WHERE src.name = 'Alice')-[t:Trusts]-> *(dst:Actor)
+    COLUMNS (src.name AS from_actor, dst.name AS to_actor, path_length(p) AS hops)
+) trust_paths
+ORDER BY hops, to_actor;
+----
+Alice	Alice	0
+Alice	Bob	1
+Alice	Dave	1
+Alice	Carol	2
+Alice	Eve	2
+
+# Direct trust relationships only (1 hop from Alice).
+# These are the agents Alice can evaluate without intermediaries.
+query II
+-FROM GRAPH_TABLE (trust_graph
+    MATCH
+    (src:Actor WHERE src.name = 'Alice')-[t:Trusts]->{1,1}(dst:Actor)
+    COLUMNS (src.name AS from_actor, dst.name AS to_actor)
+) direct_trust
+ORDER BY to_actor;
+----
+Alice	Bob
+Alice	Dave
+
+# Agents reachable within 2 hops — Alice's extended trust neighborhood.
+query II
+-FROM GRAPH_TABLE (trust_graph
+    MATCH
+    (src:Actor WHERE src.name = 'Alice')-[t:Trusts]->{1,2}(dst:Actor)
+    COLUMNS (src.name AS from_actor, dst.name AS to_actor)
+) extended_trust
+ORDER BY to_actor;
+----
+Alice	Bob
+Alice	Carol
+Alice	Dave
+Alice	Eve
+
+statement ok
+-DROP PROPERTY GRAPH trust_graph;
+
+# ============================================================
+# PART 3: INFORMATION CASCADE VIA REACHABILITY
+#
+# Information cascades model how a belief, behavior, or signal
+# spreads through a network. Starting from a seed agent, the
+# cascade propagates along directed influence edges.
+#
+# SQL/PGQ makes cascade analysis straightforward:
+# - {1,k} quantifiers capture k-hop wave fronts
+# - ANY SHORTEST * captures the full transitive closure
+# - path_length() tells you at which wave an agent was reached
+# ============================================================
+
+statement ok
+CREATE TABLE Player(id BIGINT, name VARCHAR);
+
+statement ok
+INSERT INTO Player VALUES
+    (0, 'Seed'),
+    (1, 'Alpha'),
+    (2, 'Beta'),
+    (3, 'Gamma'),
+    (4, 'Delta'),
+    (5, 'Epsilon'),
+    (6, 'Isolated');
+
+statement ok
+CREATE TABLE influences(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO influences VALUES
+    (0, 1),
+    (0, 2),
+    (1, 3),
+    (2, 3),
+    (3, 4),
+    (4, 5),
+    (6, 5);
+
+statement ok
+-CREATE PROPERTY GRAPH cascade_graph
+VERTEX TABLES (
+    Player PROPERTIES (id, name) LABEL Player
+)
+EDGE TABLES (
+    influences SOURCE KEY (src) REFERENCES Player (id)
+               DESTINATION KEY (dst) REFERENCES Player (id)
+               LABEL Influences
+);
+
+# Wave 1: agents directly influenced by Seed.
+query II
+-FROM GRAPH_TABLE (cascade_graph
+    MATCH
+    (seed:Player WHERE seed.name = 'Seed')-[e:Influences]->{1,1}(reached:Player)
+    COLUMNS (seed.name AS seed_name, reached.name AS wave_1)
+) w1
+ORDER BY wave_1;
+----
+Seed	Alpha
+Seed	Beta
+
+# Wave 2 front: agents first reached at exactly 2 hops.
+# Gamma is reachable via Alpha and via Beta — the cascade converges.
+query II
+-FROM GRAPH_TABLE (cascade_graph
+    MATCH
+    (seed:Player WHERE seed.name = 'Seed')-[e:Influences]->{2,2}(reached:Player)
+    COLUMNS (seed.name AS seed_name, reached.name AS wave_2_front)
+) w2
+ORDER BY wave_2_front;
+----
+Seed	Gamma
+
+# Full cascade extent with wave number for each agent.
+# path_length() gives the minimum wave at which information arrives.
+query III
+-FROM GRAPH_TABLE (cascade_graph
+    MATCH
+    p = ANY SHORTEST (seed:Player WHERE seed.name = 'Seed')-[e:Influences]-> *(reached:Player)
+    COLUMNS (seed.name AS seed_name, reached.name AS agent, path_length(p) AS wave)
+) cascade
+WHERE cascade.wave > 0
+ORDER BY wave, agent;
+----
+Seed	Alpha	1
+Seed	Beta	1
+Seed	Gamma	2
+Seed	Delta	3
+Seed	Epsilon	4
+
+# Agents not reachable from Seed: information never arrives.
+# Join to Player table since the MATCH only returns reachable nodes.
+query I
+SELECT p.name
+FROM Player p
+WHERE p.name NOT IN (
+    -SELECT reached.agent
+    FROM GRAPH_TABLE (cascade_graph
+        MATCH
+        p2 = ANY SHORTEST (seed:Player WHERE seed.name = 'Seed')-[e:Influences]-> *(reached:Player)
+        COLUMNS (reached.name AS agent)
+    ) reached
+)
+AND p.name <> 'Seed'
+ORDER BY p.name;
+----
+Isolated
+
+statement ok
+-DROP PROPERTY GRAPH cascade_graph;
