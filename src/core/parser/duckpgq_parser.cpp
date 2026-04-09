@@ -21,7 +21,7 @@
 #include <duckdb/parser/tableref/matchref.hpp>
 #include <duckpgq/core/functions/table/summarize_property_graph.hpp>
 
-#include "duckdb/main/extension_callback_manager.hpp"
+#include "duckdb/main/config.hpp"
 #include "duckdb/parser/query_node/insert_query_node.hpp"
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
 
@@ -218,8 +218,8 @@ ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *, ClientContext &con
 //------------------------------------------------------------------------------
 void CorePGQParser::RegisterPGQParserExtension(ExtensionLoader &loader) {
 	auto &db = loader.GetDatabaseInstance();
-	auto &manager = ExtensionCallbackManager::Get(db);
-	manager.Register(DuckPGQParserExtension());
+	auto &config = DBConfig::GetConfig(db);
+	ParserExtension::Register(config, DuckPGQParserExtension());
 }
 
 } // namespace duckdb
