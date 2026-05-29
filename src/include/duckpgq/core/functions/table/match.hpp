@@ -119,6 +119,14 @@ public:
 	                           const shared_ptr<PropertyGraphTable> &edge_table, CreatePropertyGraphInfo &pg_table,
 	                           SubPath *subpath, PGQMatchType edge_type);
 
+	static bool CanExpandBoundedSubpath(const shared_ptr<PropertyGraphTable> &edge_table, SubPath *subpath,
+	                                    PGQMatchType edge_type, const unique_ptr<SelectNode> &select_node);
+
+	static void AddBoundedPathExpansion(const shared_ptr<PropertyGraphTable> &edge_table, SubPath *subpath,
+	                                    const string &prev_binding, const string &edge_binding,
+	                                    const string &next_binding, vector<unique_ptr<ParsedExpression>> &conditions,
+	                                    unique_ptr<TableRef> &from_clause, int32_t &extra_alias_counter);
+
 	static void AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
 	                         const shared_ptr<PropertyGraphTable> &previous_vertex_table,
 	                         const shared_ptr<PropertyGraphTable> &next_vertex_table, PGQMatchType edge_type,

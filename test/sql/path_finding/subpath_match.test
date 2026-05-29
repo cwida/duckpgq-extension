@@ -107,10 +107,12 @@ FROM GRAPH_TABLE (pg
     WHERE a.name = 'Peter'
     COLUMNS (a.name as a_name, b.name as b_name)
     ) study
+ORDER BY study.a_name, study.b_name
 ----
 Peter	Daniel
-Peter	Tavneet
 Peter	Gabor
+Peter	Peter
+Peter	Tavneet
 
 statement error
 -SELECT study.a_name, study.b_name

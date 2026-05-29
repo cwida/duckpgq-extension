@@ -1,5 +1,6 @@
 #include "duckpgq/core/functions/function_data/weakly_connected_component_function_data.hpp"
 
+#include "duckdb/execution/expression_executor.hpp"
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
 namespace duckdb {

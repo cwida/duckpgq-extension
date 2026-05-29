@@ -12,7 +12,7 @@ namespace duckdb {
 
 typedef enum { NO_ARRAY, ARRAY, INTERMEDIATE } msbfs_modes_t;
 
-static int16_t InitialiseBfs(idx_t curr_batch, idx_t size, data_ptr_t src_data, const SelectionVector *src_sel,
+static int16_t InitialiseBfs(idx_t curr_batch, idx_t size, const int64_t *src_data, const SelectionVector *src_sel,
                              const ValidityMask &src_validity, vector<std::bitset<LANE_LIMIT>> &seen,
                              vector<std::bitset<LANE_LIMIT>> &visit, vector<std::bitset<LANE_LIMIT>> &visit_next,
                              unordered_map<int64_t, pair<int16_t, vector<idx_t>>> &lane_map) {
@@ -174,11 +174,11 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state, Vector
 	UnifiedVectorFormat vdata_src, vdata_target;
 	src.ToUnifiedFormat(args.size(), vdata_src);
 
-	auto src_data = vdata_src.data;
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
 
 	auto &target = args.data[4];
 	target.ToUnifiedFormat(args.size(), vdata_target);
-	auto target_data = vdata_target.data;
+	auto target_data = reinterpret_cast<const int64_t *>(vdata_target.data);
 
 	idx_t result_size = 0;
 	vector<int64_t> visit_list;

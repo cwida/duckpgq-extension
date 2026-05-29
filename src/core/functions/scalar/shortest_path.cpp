@@ -1,5 +1,6 @@
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/common/vector/list_vector.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/functions/function_data/iterative_length_function_data.hpp"
 
@@ -67,8 +68,8 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 	src.ToUnifiedFormat(args.size(), vdata_src);
 	target.ToUnifiedFormat(args.size(), vdata_dst);
 
-	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
-	auto dst_data = reinterpret_cast<int64_t *>(vdata_dst.data);
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
+	auto dst_data = reinterpret_cast<const int64_t *>(vdata_dst.data);
 
 	result.SetVectorType(VectorType::FLAT_VECTOR);
 	auto result_data = FlatVector::GetData<list_entry_t>(result);

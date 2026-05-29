@@ -13,6 +13,8 @@
 #include <duckpgq_state.hpp>
 
 #include "duckdb/parser/query_node/cte_node.hpp"
+#include "duckdb/parser/query_node/insert_query_node.hpp"
+#include "duckdb/parser/query_node/set_operation_node.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include <duckpgq/core/functions/table/describe_property_graph.hpp>
 #include <duckpgq/core/functions/table/drop_property_graph.hpp>
@@ -36,6 +38,9 @@ ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info, const std::s
 }
 
 void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_state) {
+	if (!table_ref) {
+		return;
+	}
 	// TODO(dtenwolde) add support for other style of tableRef (e.g. PivotRef)
 	if (auto table_function_ref = dynamic_cast<TableFunctionRef *>(table_ref)) {
 		// Handle TableFunctionRef case
@@ -57,6 +62,38 @@ void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_stat
 		// Handle SubqueryRef case
 		auto subquery = subquery_ref->subquery.get();
 		duckpgq_find_select_statement(subquery, duckpgq_state);
+	}
+}
+
+void duckpgq_find_query_node(QueryNode *query_node, DuckPGQState &duckpgq_state) {
+	if (auto select_node = dynamic_cast<SelectNode *>(query_node)) {
+		for (auto const &kv_pair : select_node->cte_map.map) {
+			auto const &cte = kv_pair.second;
+			auto *cte_select_statement = dynamic_cast<SelectStatement *>(cte->query.get());
+			if (!cte_select_statement) {
+				continue;
+			}
+			duckpgq_find_query_node(cte_select_statement->node.get(), duckpgq_state);
+		}
+		duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
+		return;
+	}
+	if (auto cte_node = dynamic_cast<CTENode *>(query_node)) {
+		for (auto const &kv_pair : cte_node->cte_map.map) {
+			auto const &cte = kv_pair.second;
+			auto *cte_select_statement = dynamic_cast<SelectStatement *>(cte->query.get());
+			if (!cte_select_statement) {
+				continue;
+			}
+			duckpgq_find_query_node(cte_select_statement->node.get(), duckpgq_state);
+		}
+		duckpgq_find_query_node(cte_node->child.get(), duckpgq_state);
+		return;
+	}
+	if (auto set_operation_node = dynamic_cast<SetOperationNode *>(query_node)) {
+		for (auto &child : set_operation_node->children) {
+			duckpgq_find_query_node(child.get(), duckpgq_state);
+		}
 	}
 }
 
@@ -103,30 +140,11 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement,
 	}
 
 	if (!cte_map) {
+		duckpgq_find_query_node(select_statement->node.get(), duckpgq_state);
 		return {};
 	}
 
-	for (auto const &kv_pair : cte_map->map) {
-		auto const &cte = kv_pair.second;
-
-		auto *cte_select_statement = dynamic_cast<SelectStatement *>(cte->query.get());
-		if (!cte_select_statement) {
-			continue;
-		}
-
-		auto *select_node = dynamic_cast<SelectNode *>(cte_select_statement->node.get());
-		if (!select_node) {
-			continue; // The SelectStatement has no SelectNode, skip.
-		}
-
-		// If we get here, we know select_node is valid.
-		duckpgq_find_match_function(select_node->from_table.get(), duckpgq_state);
-	}
-	if (node) {
-		duckpgq_find_match_function(node->from_table.get(), duckpgq_state);
-	} else {
-		throw Exception(ExceptionType::INTERNAL, "node is a nullptr.");
-	}
+	duckpgq_find_query_node(select_statement->node.get(), duckpgq_state);
 	return {};
 }
 
@@ -149,7 +167,9 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
 			return result;
 		}
 		const auto create_table = reinterpret_cast<CreateTableInfo *>(create_statement.info.get());
-		duckpgq_handle_statement(create_table->query.get(), duckpgq_state);
+		if (create_table->query) {
+			return duckpgq_handle_statement(create_table->query.get(), duckpgq_state);
+		}
 	}
 	if (statement->type == StatementType::DROP_STATEMENT) {
 		ParserExtensionPlanResult result;
@@ -160,7 +180,7 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
 	}
 	if (statement->type == StatementType::EXPLAIN_STATEMENT) {
 		auto &explain_statement = statement->Cast<ExplainStatement>();
-		duckpgq_handle_statement(explain_statement.stmt.get(), duckpgq_state);
+		return duckpgq_handle_statement(explain_statement.stmt.get(), duckpgq_state);
 	}
 	if (statement->type == StatementType::COPY_STATEMENT) {
 		const auto &copy_statement = statement->Cast<CopyStatement>();
@@ -170,7 +190,7 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
 	}
 	if (statement->type == StatementType::INSERT_STATEMENT) {
 		const auto &insert_statement = statement->Cast<InsertStatement>();
-		duckpgq_handle_statement(insert_statement.select_statement.get(), duckpgq_state);
+		return duckpgq_handle_statement(insert_statement.node->select_statement.get(), duckpgq_state);
 	}
 
 	throw Exception(ExceptionType::NOT_IMPLEMENTED,

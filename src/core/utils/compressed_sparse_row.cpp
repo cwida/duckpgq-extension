@@ -226,8 +226,9 @@ unique_ptr<SubqueryExpression> CreateDirectedCSRVertexSubquery(const shared_ptr<
 
 	auto dense_id_colref = make_uniq<ColumnRefExpression>("dense_id");
 	inner_select_node->groups.group_expressions.push_back(std::move(dense_id_colref));
-	GroupingSet grouping_set = {0};
-	inner_select_node->groups.grouping_sets.push_back(grouping_set);
+	GroupingSet grouping_set;
+	grouping_set.insert(ProjectionIndex(0));
+	inner_select_node->groups.grouping_sets.push_back(std::move(grouping_set));
 
 	inner_select_statement->node = std::move(inner_select_node);
 
@@ -288,8 +289,9 @@ unique_ptr<SubqueryExpression> CreateUndirectedCSRVertexSubquery(const shared_pt
 
 	auto dense_id_colref = make_uniq<ColumnRefExpression>("dense_id");
 	inner_select_node->groups.group_expressions.push_back(std::move(dense_id_colref));
-	GroupingSet grouping_set = {0};
-	inner_select_node->groups.grouping_sets.push_back(grouping_set);
+	GroupingSet grouping_set;
+	grouping_set.insert(ProjectionIndex(0));
+	inner_select_node->groups.grouping_sets.push_back(std::move(grouping_set));
 
 	unique_ptr<SelectNode> unique_edges_select_node, unique_edges_select_node_reverse;
 
@@ -338,8 +340,10 @@ unique_ptr<SelectNode> CreateOuterSelectEdgesNode() {
 
 	outer_select_edges_node->groups.group_expressions.push_back(make_uniq<ColumnRefExpression>("src"));
 	outer_select_edges_node->groups.group_expressions.push_back(make_uniq<ColumnRefExpression>("dst"));
-	GroupingSet outer_grouping_set = {0, 1};
-	outer_select_edges_node->groups.grouping_sets.push_back(outer_grouping_set);
+	GroupingSet outer_grouping_set;
+	outer_grouping_set.insert(ProjectionIndex(0));
+	outer_grouping_set.insert(ProjectionIndex(1));
+	outer_select_edges_node->groups.grouping_sets.push_back(std::move(outer_grouping_set));
 
 	return outer_select_edges_node;
 }

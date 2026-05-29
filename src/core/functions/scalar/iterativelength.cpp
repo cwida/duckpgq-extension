@@ -60,8 +60,8 @@ static void IterativeLengthFunction(DataChunk &args, ExpressionState &state, Vec
 	UnifiedVectorFormat vdata_dst;
 	src.ToUnifiedFormat(args.size(), vdata_src);
 	dst.ToUnifiedFormat(args.size(), vdata_dst);
-	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
-	auto dst_data = reinterpret_cast<int64_t *>(vdata_dst.data);
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
+	auto dst_data = reinterpret_cast<const int64_t *>(vdata_dst.data);
 
 	ValidityMask &result_validity = FlatVector::Validity(result);
 

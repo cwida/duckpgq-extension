@@ -51,9 +51,9 @@ bool UpdateLanes(vector<vector<T>> &dists, T v, T n, T weight) {
 
 template <typename T, int16_t lane_limit>
 int16_t TemplatedBatchBellmanFord(CSR *csr, DataChunk &args, int64_t input_size, UnifiedVectorFormat &vdata_src,
-                                  int64_t *src_data, const UnifiedVectorFormat &vdata_target, int64_t *target_data,
-                                  const std::vector<T> &weight_array, int16_t result_size, T *result_data,
-                                  ValidityMask &result_validity) {
+                                  const int64_t *src_data, const UnifiedVectorFormat &vdata_target,
+                                  const int64_t *target_data, const std::vector<T> &weight_array, int16_t result_size,
+                                  T *result_data, ValidityMask &result_validity) {
 	vector<vector<T>> dists;
 	int16_t curr_batch_size =
 	    InitialiseBellmanFord<T, lane_limit>(args, input_size, vdata_src, src_data, result_size, dists);
@@ -90,7 +90,7 @@ int16_t TemplatedBatchBellmanFord(CSR *csr, DataChunk &args, int64_t input_size,
 
 template <typename T>
 void TemplatedBellmanFord(CSR *csr, DataChunk &args, int64_t input_size, Vector &result, UnifiedVectorFormat &vdata_src,
-                          int64_t *src_data, const UnifiedVectorFormat &vdata_target, int64_t *target_data,
+                          const int64_t *src_data, const UnifiedVectorFormat &vdata_target, const int64_t *target_data,
                           const std::vector<T> &weight_array) {
 	idx_t result_size = 0;
 	result.SetVectorType(VectorType::FLAT_VECTOR);
@@ -147,11 +147,11 @@ static void CheapestPathLengthFunction(DataChunk &args, ExpressionState &state, 
 	UnifiedVectorFormat vdata_src, vdata_target;
 	src.ToUnifiedFormat(args.size(), vdata_src);
 
-	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
 
 	auto &target = args.data[3];
 	target.ToUnifiedFormat(args.size(), vdata_target);
-	auto target_data = reinterpret_cast<int64_t *>(vdata_target.data);
+	auto target_data = reinterpret_cast<const int64_t *>(vdata_target.data);
 	if (csr->w.empty()) {
 		TemplatedBellmanFord<double>(csr, args, input_size, result, vdata_src, src_data, vdata_target, target_data,
 		                             csr->w_double);

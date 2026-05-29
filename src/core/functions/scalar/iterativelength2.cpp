@@ -48,8 +48,8 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Ve
 	UnifiedVectorFormat vdata_dst;
 	src.ToUnifiedFormat(args.size(), vdata_src);
 	dst.ToUnifiedFormat(args.size(), vdata_dst);
-	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
-	auto dst_data = reinterpret_cast<int64_t *>(vdata_dst.data);
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
+	auto dst_data = reinterpret_cast<const int64_t *>(vdata_dst.data);
 
 	// create result vector
 	result.SetVectorType(VectorType::FLAT_VECTOR);
