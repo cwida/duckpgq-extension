@@ -127,7 +127,7 @@ SummarizePropertyGraphFunction::CreateGroupBySubquery(const shared_ptr<PropertyG
 	GroupByNode grouping_node;
 	grouping_node.group_expressions.push_back(make_uniq<ColumnRefExpression>(degree_column));
 	GroupingSet grouping_set;
-	grouping_set.insert(ProjectionIndex(0));
+	grouping_set.insert(0);
 	grouping_node.grouping_sets.push_back(std::move(grouping_set));
 	select_node->groups = std::move(grouping_node);
 	auto select_statement = make_uniq<SelectStatement>();

@@ -6,7 +6,7 @@
 #include <duckpgq/core/functions/scalar.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-#include "duckdb/common/vector/list_vector.hpp"
+#include "duckdb/common/types/vector.hpp"
 
 namespace duckdb {
 

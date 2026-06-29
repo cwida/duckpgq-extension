@@ -245,7 +245,7 @@ create table schema1.e (
     dst BIGINT REFERENCES v(id)
 );
 ----
-Catalog Error: Table with name v does not exist!
+Binder Error: Creating foreign keys across different schemas or catalogs is not supported
 
 statement ok
 create table schema2.e (

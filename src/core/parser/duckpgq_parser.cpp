@@ -22,7 +22,6 @@
 #include <duckpgq/core/functions/table/summarize_property_graph.hpp>
 
 #include "duckdb/main/config.hpp"
-#include "duckdb/parser/query_node/insert_query_node.hpp"
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
 
 namespace duckdb {
@@ -70,13 +69,6 @@ static void duckpgq_traverse_query_node(QueryNode *query_node, DuckPGQState &duc
 		auto &setop_node = query_node->Cast<SetOperationNode>();
 		for (auto &child : setop_node.children) {
 			duckpgq_traverse_query_node(child.get(), duckpgq_state);
-		}
-		break;
-	}
-	case QueryNodeType::INSERT_QUERY_NODE: {
-		auto &insert_node = query_node->Cast<InsertQueryNode>();
-		if (insert_node.select_statement) {
-			duckpgq_traverse_query_node(insert_node.select_statement->node.get(), duckpgq_state);
 		}
 		break;
 	}
@@ -192,7 +184,7 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
 	}
 	if (statement->type == StatementType::INSERT_STATEMENT) {
 		const auto &insert_statement = statement->Cast<InsertStatement>();
-		duckpgq_handle_statement(insert_statement.node->select_statement.get(), duckpgq_state);
+		duckpgq_handle_statement(insert_statement.select_statement.get(), duckpgq_state);
 	}
 
 	throw Exception(ExceptionType::NOT_IMPLEMENTED,
