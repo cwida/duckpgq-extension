@@ -16,7 +16,16 @@ define RUN_EXTENSION_TEST
 		exit 127; \
 	fi; \
 	echo "$$test_binary" "$(TESTS_BASE_DIRECTORY)*"; \
-	"$$test_binary" "$(TESTS_BASE_DIRECTORY)*"
+	ls -l "$$test_binary"; \
+	case "$(DUCKDB_PLATFORM)" in \
+		windows_amd64|windows_arm64) \
+			win_test_binary=$$(cygpath -w "$$test_binary" 2>/dev/null || echo "$$test_binary"); \
+			cmd.exe /c "$$win_test_binary" "$(TESTS_BASE_DIRECTORY)*"; \
+			;; \
+		*) \
+			"$$test_binary" "$(TESTS_BASE_DIRECTORY)*"; \
+			;; \
+	esac
 endef
 
 test_release_internal:
