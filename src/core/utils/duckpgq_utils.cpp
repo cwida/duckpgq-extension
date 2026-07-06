@@ -64,21 +64,21 @@ unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &ed
 	std::vector<unique_ptr<ParsedExpression>> select_expression;
 
 	select_expression.emplace_back(
-	    make_uniq<ColumnRefExpression>(edge_pg_entry->source_pk[0], edge_pg_entry->source_reference));
+	    make_uniq<ColumnRefExpression>(Identifier(edge_pg_entry->source_pk[0]), Identifier(edge_pg_entry->source_reference)));
 
 	auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
 
 	vector<unique_ptr<ParsedExpression>> function_children;
 	function_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
-	function_children.push_back(make_uniq<ColumnRefExpression>("rowid", edge_pg_entry->source_reference));
-	auto function = make_uniq<FunctionExpression>(function_name, std::move(function_children));
+	function_children.push_back(make_uniq<ColumnRefExpression>(Identifier("rowid"), Identifier(edge_pg_entry->source_reference)));
+	auto function = make_uniq<FunctionExpression>(Identifier(function_name), std::move(function_children));
 
 	std::vector<unique_ptr<ParsedExpression>> addition_children;
 	addition_children.emplace_back(std::move(cte_col_ref));
 	addition_children.emplace_back(std::move(function));
 
 	auto addition_function = make_uniq<FunctionExpression>("add", std::move(addition_children));
-	addition_function->alias = function_alias;
+	addition_function->SetAlias(Identifier(function_alias));
 	select_expression.emplace_back(std::move(addition_function));
 	select_node->select_list = std::move(select_expression);
 
@@ -97,9 +97,9 @@ unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &ed
 
 unique_ptr<BaseTableRef> CreateBaseTableRef(const string &table_name, const string &alias) {
 	auto base_table_ref = make_uniq<BaseTableRef>();
-	base_table_ref->table_name = table_name;
+	base_table_ref->SetTable(Identifier(table_name));
 	if (!alias.empty()) {
-		base_table_ref->alias = alias;
+		base_table_ref->alias = Identifier(alias);
 	}
 	return base_table_ref;
 }
@@ -108,12 +108,12 @@ unique_ptr<ColumnRefExpression> CreateColumnRefExpression(const string &column_n
                                                           const string &alias) {
 	unique_ptr<ColumnRefExpression> column_ref;
 	if (table_name.empty()) {
-		column_ref = make_uniq<ColumnRefExpression>(column_name);
+		column_ref = make_uniq<ColumnRefExpression>(Identifier(column_name));
 	} else {
-		column_ref = make_uniq<ColumnRefExpression>(column_name, table_name);
+		column_ref = make_uniq<ColumnRefExpression>(Identifier(column_name), Identifier(table_name));
 	}
 	if (!alias.empty()) {
-		column_ref->alias = alias;
+		column_ref->SetAlias(Identifier(alias));
 	}
 	return column_ref;
 }

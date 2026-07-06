@@ -27,13 +27,13 @@ LocalClusteringCoefficientFunction::LocalClusteringCoefficientBindReplace(Client
 
 	auto select_node = CreateSelectNode(edge_pg_entry, "local_clustering_coefficient", "local_clustering_coefficient");
 
-	select_node->cte_map.map["csr_cte"] = CreateUndirectedCSRCTE(edge_pg_entry, select_node);
+	select_node->cte_map.map[Identifier("csr_cte")] = CreateUndirectedCSRCTE(edge_pg_entry, select_node);
 
 	auto subquery = make_uniq<SelectStatement>();
 	subquery->node = std::move(select_node);
 
 	auto result = make_uniq<SubqueryRef>(std::move(subquery));
-	result->alias = "lcc";
+	result->alias = Identifier("lcc");
 	// input.ref.alias = "lcc";
 	return std::move(result);
 }

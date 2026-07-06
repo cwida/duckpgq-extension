@@ -32,7 +32,7 @@ static bool IterativeLength2(int64_t v_size, int64_t *V, vector<int64_t> &E, vec
 
 static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
-	auto &info = func_expr.bind_info->Cast<IterativeLengthFunctionData>();
+	auto &info = func_expr.BindInfo()->Cast<IterativeLengthFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
@@ -46,16 +46,16 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Ve
 	auto &dst = args.data[3];
 	UnifiedVectorFormat vdata_src;
 	UnifiedVectorFormat vdata_dst;
-	src.ToUnifiedFormat(args.size(), vdata_src);
-	dst.ToUnifiedFormat(args.size(), vdata_dst);
-	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
-	auto dst_data = reinterpret_cast<int64_t *>(vdata_dst.data);
+	src.ToUnifiedFormat(vdata_src);
+	dst.ToUnifiedFormat(vdata_dst);
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
+	auto dst_data = reinterpret_cast<const int64_t *>(vdata_dst.data);
 
 	// create result vector
 	result.SetVectorType(VectorType::FLAT_VECTOR);
-	auto result_data = FlatVector::GetData<int64_t>(result);
+	auto result_data = FlatVector::GetDataMutable<int64_t>(result);
 
-	ValidityMask &result_validity = FlatVector::Validity(result);
+	ValidityMask &result_validity = FlatVector::ValidityMutable(result);
 
 	// create temp SIMD arrays
 	vector<std::bitset<LANE_LIMIT>> seen(v_size);

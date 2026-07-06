@@ -18,8 +18,7 @@ struct IterativeLengthFunctionData final : FunctionData {
 
 	IterativeLengthFunctionData(ClientContext &context, int32_t csr_id) : context(context), csr_id(csr_id) {
 	}
-	static unique_ptr<FunctionData> IterativeLengthBind(ClientContext &context, ScalarFunction &bound_function,
-	                                                    vector<unique_ptr<Expression>> &arguments);
+	static unique_ptr<FunctionData> IterativeLengthBind(BindScalarFunctionInput &input);
 
 	unique_ptr<FunctionData> Copy() const override;
 	bool Equals(const FunctionData &other_p) const override;

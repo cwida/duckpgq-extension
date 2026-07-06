@@ -51,8 +51,8 @@ bool UpdateLanes(vector<vector<T>> &dists, T v, T n, T weight) {
 
 template <typename T, int16_t lane_limit>
 int16_t TemplatedBatchBellmanFord(CSR *csr, DataChunk &args, int64_t input_size, UnifiedVectorFormat &vdata_src,
-                                  int64_t *src_data, const UnifiedVectorFormat &vdata_target, int64_t *target_data,
-                                  const std::vector<T> &weight_array, int16_t result_size, T *result_data,
+                                  const int64_t *src_data, const UnifiedVectorFormat &vdata_target,
+                                  const int64_t *target_data, const std::vector<T> &weight_array, int16_t result_size, T *result_data,
                                   ValidityMask &result_validity) {
 	vector<vector<T>> dists;
 	int16_t curr_batch_size =
@@ -90,12 +90,12 @@ int16_t TemplatedBatchBellmanFord(CSR *csr, DataChunk &args, int64_t input_size,
 
 template <typename T>
 void TemplatedBellmanFord(CSR *csr, DataChunk &args, int64_t input_size, Vector &result, UnifiedVectorFormat &vdata_src,
-                          int64_t *src_data, const UnifiedVectorFormat &vdata_target, int64_t *target_data,
+                          const int64_t *src_data, const UnifiedVectorFormat &vdata_target, const int64_t *target_data,
                           const std::vector<T> &weight_array) {
 	idx_t result_size = 0;
 	result.SetVectorType(VectorType::FLAT_VECTOR);
-	auto result_data = FlatVector::GetData<T>(result);
-	auto &result_validity = FlatVector::Validity(result);
+	auto result_data = FlatVector::GetDataMutable<T>(result);
+	auto &result_validity = FlatVector::ValidityMutable(result);
 	vector<vector<T>> final_dists(input_size, std::vector<T>(args.size(), std::numeric_limits<T>::max() / 2));
 
 	while (result_size < args.size()) {
@@ -137,7 +137,7 @@ void TemplatedBellmanFord(CSR *csr, DataChunk &args, int64_t input_size, Vector 
 
 static void CheapestPathLengthFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
-	auto &info = func_expr.bind_info->Cast<CheapestPathLengthFunctionData>();
+	auto &info = func_expr.BindInfo()->Cast<CheapestPathLengthFunctionData>();
 	int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
@@ -145,13 +145,13 @@ static void CheapestPathLengthFunction(DataChunk &args, ExpressionState &state, 
 	auto &src = args.data[2];
 
 	UnifiedVectorFormat vdata_src, vdata_target;
-	src.ToUnifiedFormat(args.size(), vdata_src);
+	src.ToUnifiedFormat(vdata_src);
 
-	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
 
 	auto &target = args.data[3];
-	target.ToUnifiedFormat(args.size(), vdata_target);
-	auto target_data = reinterpret_cast<int64_t *>(vdata_target.data);
+	target.ToUnifiedFormat(vdata_target);
+	auto target_data = reinterpret_cast<const int64_t *>(vdata_target.data);
 	if (csr->w.empty()) {
 		TemplatedBellmanFord<double>(csr, args, input_size, result, vdata_src, src_data, vdata_target, target_data,
 		                             csr->w_double);

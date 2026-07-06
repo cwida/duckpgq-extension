@@ -10,7 +10,7 @@ namespace duckdb {
 
 static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
-	auto &info = func_expr.bind_info->Cast<LocalClusteringCoefficientFunctionData>();
+	auto &info = func_expr.BindInfo()->Cast<LocalClusteringCoefficientFunctionData>();
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
 	auto csr_entry = duckpgq_state->csr_list.find(info.csr_id);
@@ -27,13 +27,13 @@ static void LocalClusteringCoefficientFunction(DataChunk &args, ExpressionState 
 	// get src and dst vectors for searches
 	auto &src = args.data[1];
 	UnifiedVectorFormat vdata_src;
-	src.ToUnifiedFormat(args.size(), vdata_src);
-	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
+	src.ToUnifiedFormat(vdata_src);
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
 
-	ValidityMask &result_validity = FlatVector::Validity(result);
+	ValidityMask &result_validity = FlatVector::ValidityMutable(result);
 	// create result vector
 	result.SetVectorType(VectorType::FLAT_VECTOR);
-	auto result_data = FlatVector::GetData<float>(result);
+	auto result_data = FlatVector::GetDataMutable<float>(result);
 
 	DuckPGQBitmap neighbors(v_size);
 

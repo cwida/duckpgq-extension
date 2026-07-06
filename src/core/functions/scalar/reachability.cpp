@@ -12,7 +12,7 @@ namespace duckdb {
 
 typedef enum { NO_ARRAY, ARRAY, INTERMEDIATE } msbfs_modes_t;
 
-static int16_t InitialiseBfs(idx_t curr_batch, idx_t size, data_ptr_t src_data, const SelectionVector *src_sel,
+static int16_t InitialiseBfs(idx_t curr_batch, idx_t size, const_data_ptr_t src_data, const SelectionVector *src_sel,
                              const ValidityMask &src_validity, vector<std::bitset<LANE_LIMIT>> &seen,
                              vector<std::bitset<LANE_LIMIT>> &visit, vector<std::bitset<LANE_LIMIT>> &visit_next,
                              unordered_map<int64_t, pair<int16_t, vector<idx_t>>> &lane_map) {
@@ -164,7 +164,7 @@ static int FindMode(int mode, size_t visit_list_len, size_t visit_limit, size_t 
 
 static void ReachabilityFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
-	auto &info = func_expr.bind_info->Cast<IterativeLengthFunctionData>();
+	auto &info = func_expr.BindInfo()->Cast<IterativeLengthFunctionData>();
 
 	bool is_variant = args.data[1].GetValue(0).GetValue<bool>();
 	int64_t input_size = args.data[2].GetValue(0).GetValue<int64_t>();
@@ -172,12 +172,12 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state, Vector
 	auto &src = args.data[3];
 
 	UnifiedVectorFormat vdata_src, vdata_target;
-	src.ToUnifiedFormat(args.size(), vdata_src);
+	src.ToUnifiedFormat(vdata_src);
 
 	auto src_data = vdata_src.data;
 
 	auto &target = args.data[4];
-	target.ToUnifiedFormat(args.size(), vdata_target);
+	target.ToUnifiedFormat(vdata_target);
 	auto target_data = vdata_target.data;
 
 	idx_t result_size = 0;
@@ -186,7 +186,7 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state, Vector
 	size_t num_nodes_to_visit = 0;
 	result.SetVectorType(VectorType::FLAT_VECTOR);
 
-	auto result_data = FlatVector::GetData<bool>(result);
+	auto result_data = FlatVector::GetDataMutable<bool>(result);
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
 	CSR *csr = duckpgq_state->GetCSR(info.csr_id);

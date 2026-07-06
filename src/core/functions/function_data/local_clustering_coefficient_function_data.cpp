@@ -9,8 +9,10 @@ LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientFunctionData(C
     : context(context), csr_id(csr_id) {
 }
 
-unique_ptr<FunctionData> LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientBind(
-    ClientContext &context, ScalarFunction &bound_function, vector<unique_ptr<Expression>> &arguments) {
+unique_ptr<FunctionData>
+LocalClusteringCoefficientFunctionData::LocalClusteringCoefficientBind(BindScalarFunctionInput &input) {
+	auto &context = input.GetClientContext();
+	auto &arguments = input.GetArguments();
 	if (!arguments[0]->IsFoldable()) {
 		throw InvalidInputException("Id must be constant.");
 	}

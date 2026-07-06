@@ -13,14 +13,49 @@
 
 namespace duckdb {
 
+static Identifier PGQIdentifier(const string &value) {
+	return Identifier(value);
+}
+
+static void BindPropertyGraphTable(ClientContext &context, const shared_ptr<PropertyGraphTable> &table) {
+	auto catalog = PGQIdentifier(table->catalog_name);
+	auto schema = PGQIdentifier(table->schema_name);
+	Binder::BindSchemaOrCatalog(context, catalog, schema);
+	table->catalog_name = catalog.GetIdentifierName();
+	table->schema_name = schema.GetIdentifierName();
+}
+
+static void BindPropertyGraphReference(ClientContext &context, string &catalog_name, string &schema_name) {
+	auto catalog = PGQIdentifier(catalog_name);
+	auto schema = PGQIdentifier(schema_name);
+	Binder::BindSchemaOrCatalog(context, catalog, schema);
+	catalog_name = catalog.GetIdentifierName();
+	schema_name = schema.GetIdentifierName();
+}
+
+static optional_ptr<TableCatalogEntry> GetPropertyGraphTable(ClientContext &context,
+                                                             const shared_ptr<PropertyGraphTable> &table) {
+	return Catalog::GetEntry<TableCatalogEntry>(
+	    context, QualifiedName(PGQIdentifier(table->catalog_name), PGQIdentifier(table->schema_name),
+	                           PGQIdentifier(table->table_name)),
+	    OnEntryNotFound::RETURN_NULL);
+}
+
+static optional_ptr<CatalogEntry> GetPropertyGraphView(ClientContext &context,
+                                                       const shared_ptr<PropertyGraphTable> &table) {
+	auto &catalog = Catalog::GetCatalog(context, PGQIdentifier(table->catalog_name));
+	return catalog.GetEntry(context, CatalogType::VIEW_ENTRY, PGQIdentifier(table->schema_name),
+	                        PGQIdentifier(table->table_name), OnEntryNotFound::RETURN_NULL);
+}
+
 void CreatePropertyGraphFunction::CheckPropertyGraphTableLabels(const shared_ptr<PropertyGraphTable> &pg_table,
                                                                 optional_ptr<TableCatalogEntry> &table) {
 	if (!pg_table->discriminator.empty()) {
-		if (!table->ColumnExists(pg_table->discriminator)) {
+		if (!table->ColumnExists(PGQIdentifier(pg_table->discriminator))) {
 			throw Exception(ExceptionType::INVALID,
 			                "Column " + pg_table->discriminator + " not found in table " + pg_table->table_name);
 		}
-		auto &column = table->GetColumn(pg_table->discriminator);
+		auto &column = table->GetColumn(PGQIdentifier(pg_table->discriminator));
 		if (!(column.GetType() == LogicalType::BIGINT || column.GetType() == LogicalType::INTEGER)) {
 			throw Exception(ExceptionType::INVALID, "The discriminator column " + pg_table->discriminator +
 			                                            " of table " + pg_table->table_name +
@@ -37,7 +72,7 @@ void CreatePropertyGraphFunction::CheckPropertyGraphTableColumns(const shared_pt
 
 	if (pg_table->all_columns) {
 		for (auto &except_column : pg_table->except_columns) {
-			if (!table->ColumnExists(except_column)) {
+			if (!table->ColumnExists(PGQIdentifier(except_column))) {
 				throw Exception(ExceptionType::INVALID,
 				                "EXCEPT column " + except_column + " not found in table " + pg_table->table_name);
 			}
@@ -55,7 +90,7 @@ void CreatePropertyGraphFunction::CheckPropertyGraphTableColumns(const shared_pt
 	}
 
 	for (auto &column : pg_table->column_names) {
-		if (!table->ColumnExists(column)) {
+		if (!table->ColumnExists(PGQIdentifier(column))) {
 			throw Exception(ExceptionType::INVALID, "Column " + column + " not found in table " + pg_table->table_name);
 		}
 	}
@@ -93,8 +128,8 @@ void CreatePropertyGraphFunction::ValidateKeys(shared_ptr<PropertyGraphTable> &e
 					                                            " KEY <primary key> REFERENCES " + reference +
 					                                            " <foreign key>`");
 				}
-				pk_columns = fk_constraint.pk_columns;
-				fk_columns = fk_constraint.fk_columns;
+				pk_columns = IdentifiersToStrings(fk_constraint.pk_columns);
+				fk_columns = IdentifiersToStrings(fk_constraint.fk_columns);
 			}
 		}
 
@@ -116,7 +151,7 @@ void CreatePropertyGraphFunction::ValidateForeignKeyColumns(shared_ptr<PropertyG
                                                             const vector<string> &fk_columns,
                                                             optional_ptr<TableCatalogEntry> &table) {
 	for (const auto &fk : fk_columns) {
-		if (!table->ColumnExists(fk)) {
+		if (!table->ColumnExists(PGQIdentifier(fk))) {
 			throw Exception(ExceptionType::INVALID,
 			                "Foreign key " + fk + " does not exist in table " + edge_table->table_name);
 		}
@@ -136,14 +171,13 @@ void CreatePropertyGraphFunction::ValidateVertexTableRegistration(shared_ptr<Pro
 void CreatePropertyGraphFunction::ValidatePrimaryKeyInTable(ClientContext &context,
                                                             shared_ptr<PropertyGraphTable> &pg_table,
                                                             const vector<string> &pk_columns) {
-	auto table = Catalog::GetEntry<TableCatalogEntry>(context, pg_table->catalog_name, pg_table->schema_name,
-	                                                  pg_table->table_name, OnEntryNotFound::RETURN_NULL);
+	auto table = GetPropertyGraphTable(context, pg_table);
 	if (!table) {
 		throw Exception(ExceptionType::INVALID, "Table with name " + pg_table->table_name + " does not exist");
 	}
 
 	for (const auto &pk : pk_columns) {
-		if (!table->ColumnExists(pk)) {
+		if (!table->ColumnExists(PGQIdentifier(pk))) {
 			throw Exception(ExceptionType::INVALID,
 			                "Primary key " + pk + " does not exist in table " + pg_table->table_name);
 		}
@@ -176,11 +210,9 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 	case_insensitive_set_t v_table_names;
 	for (auto &vertex_table : info->vertex_tables) {
 		try {
-			Binder::BindSchemaOrCatalog(context, vertex_table->catalog_name, vertex_table->schema_name);
+			BindPropertyGraphTable(context, vertex_table);
 
-			auto table =
-			    Catalog::GetEntry<TableCatalogEntry>(context, vertex_table->catalog_name, vertex_table->schema_name,
-			                                         vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
+			auto table = GetPropertyGraphTable(context, vertex_table);
 			if (!table) {
 				throw Exception(ExceptionType::INVALID,
 				                "Table with name " + vertex_table->table_name + " does not exist");
@@ -188,9 +220,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 			CheckPropertyGraphTableColumns(vertex_table, table);
 			CheckPropertyGraphTableLabels(vertex_table, table);
 		} catch (CatalogException &e) {
-			auto &catalog = Catalog::GetCatalog(context, vertex_table->catalog_name);
-			auto table = catalog.GetEntry(context, CatalogType::VIEW_ENTRY, vertex_table->schema_name,
-			                              vertex_table->table_name, OnEntryNotFound::RETURN_NULL);
+			auto table = GetPropertyGraphView(context, vertex_table);
 			if (table) {
 				throw Exception(ExceptionType::INVALID, "Found a view with name " + vertex_table->table_name +
 				                                            ". Creating property graph tables over views is "
@@ -208,18 +238,16 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 
 	for (auto &edge_table : info->edge_tables) {
 		try {
-			Binder::BindSchemaOrCatalog(context, edge_table->catalog_name, edge_table->schema_name);
-			auto table =
-			    Catalog::GetEntry<TableCatalogEntry>(context, edge_table->catalog_name, edge_table->schema_name,
-			                                         edge_table->table_name, OnEntryNotFound::RETURN_NULL);
+			BindPropertyGraphTable(context, edge_table);
+			auto table = GetPropertyGraphTable(context, edge_table);
 			if (!table) {
 				throw Exception(ExceptionType::INVALID,
 				                "Table with name " + edge_table->table_name + " does not exist");
 			}
 			CheckPropertyGraphTableColumns(edge_table, table);
 			CheckPropertyGraphTableLabels(edge_table, table);
-			Binder::BindSchemaOrCatalog(context, edge_table->source_catalog, edge_table->source_schema);
-			Binder::BindSchemaOrCatalog(context, edge_table->destination_catalog, edge_table->destination_schema);
+			BindPropertyGraphReference(context, edge_table->source_catalog, edge_table->source_schema);
+			BindPropertyGraphReference(context, edge_table->destination_catalog, edge_table->destination_schema);
 
 			auto &table_constraints = table->GetConstraints();
 
@@ -248,9 +276,7 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 			// Validate primary keys in the destination table
 			ValidatePrimaryKeyInTable(context, edge_table->destination_pg_table, edge_table->destination_pk);
 		} catch (CatalogException &e) {
-			auto &catalog = Catalog::GetCatalog(context, edge_table->catalog_name);
-			auto table = catalog.GetEntry(context, CatalogType::VIEW_ENTRY, edge_table->schema_name,
-			                              edge_table->table_name, OnEntryNotFound::RETURN_NULL);
+			auto table = GetPropertyGraphView(context, edge_table);
 			if (table) {
 				throw Exception(ExceptionType::INVALID, "Found a view with name " + edge_table->table_name +
 				                                            ". Creating property graph tables over views is "

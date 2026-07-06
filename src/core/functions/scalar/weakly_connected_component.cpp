@@ -35,7 +35,7 @@ const static void Link(std::vector<int64_t> &forest, int64_t nodeA, int64_t node
 
 static void WeaklyConnectedComponentFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
-	auto &info = func_expr.bind_info->Cast<WeaklyConnectedComponentFunctionData>();
+	auto &info = func_expr.BindInfo()->Cast<WeaklyConnectedComponentFunctionData>();
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
 	auto csr_entry = duckpgq_state->csr_list.find(info.csr_id);
@@ -55,13 +55,13 @@ static void WeaklyConnectedComponentFunction(DataChunk &args, ExpressionState &s
 	// Get source vector for searches
 	auto &src = args.data[1];
 	UnifiedVectorFormat vdata_src;
-	src.ToUnifiedFormat(args.size(), vdata_src);
-	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
-	ValidityMask &result_validity = FlatVector::Validity(result);
+	src.ToUnifiedFormat(vdata_src);
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
+	ValidityMask &result_validity = FlatVector::ValidityMutable(result);
 
 	// Create result vector
 	result.SetVectorType(VectorType::FLAT_VECTOR);
-	auto result_data = FlatVector::GetData<int64_t>(result);
+	auto result_data = FlatVector::GetDataMutable<int64_t>(result);
 
 	if (!info.state_initialized) {
 		std::lock_guard<std::mutex> guard(info.initialize_lock); // Thread safety

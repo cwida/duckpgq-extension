@@ -1,4 +1,4 @@
-#include "duckdb/common/vector_operations/quaternary_executor.hpp"
+#include "duckdb/common/vector_operations/generic_executor.hpp"
 #include "duckdb/main/client_data.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckpgq/common.hpp"
@@ -85,7 +85,7 @@ static void CsrInitializeWeight(DuckPGQState &context, int32_t id, int64_t e_siz
 
 static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
-	auto &info = func_expr.bind_info->Cast<CSRFunctionData>();
+	auto &info = func_expr.BindInfo()->Cast<CSRFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 	int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
@@ -111,7 +111,7 @@ static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state, Vec
 
 static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
-	auto &info = func_expr.bind_info->Cast<CSRFunctionData>();
+	auto &info = func_expr.BindInfo()->Cast<CSRFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context, true);
 
@@ -143,28 +143,59 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vecto
 	if (!csr_entry->second->initialized_w) {
 		CsrInitializeWeight(*duckpgq_state, info.id, edge_size, weight_type);
 	}
+	UnifiedVectorFormat src_data, dst_data, edge_id_data, weight_data;
+	args.data[4].ToUnifiedFormat(src_data);
+	args.data[5].ToUnifiedFormat(dst_data);
+	args.data[6].ToUnifiedFormat(edge_id_data);
+	args.data[7].ToUnifiedFormat(weight_data);
+	result.SetVectorType(VectorType::FLAT_VECTOR);
+	auto result_data = FlatVector::GetDataMutable<int32_t>(result);
+	auto &result_validity = FlatVector::ValidityMutable(result);
+	auto src_values = reinterpret_cast<const int64_t *>(src_data.data);
+	auto dst_values = reinterpret_cast<const int64_t *>(dst_data.data);
+	auto edge_id_values = reinterpret_cast<const int64_t *>(edge_id_data.data);
 	if (weight_type == PhysicalType::INT64) {
-		QuaternaryExecutor::Execute<int64_t, int64_t, int64_t, int64_t, int32_t>(
-		    args.data[4], args.data[5], args.data[6], args.data[7], result, args.size(),
-		    [&](int64_t src, int64_t dst, int64_t edge_id, int64_t weight) {
-			    auto pos = ++csr_entry->second->v[src + 1];
-			    csr_entry->second->e[(int64_t)pos - 1] = dst;
-			    csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id;
-			    csr_entry->second->w[(int64_t)pos - 1] = weight;
-			    return weight;
-		    });
+		auto weight_values = reinterpret_cast<const int64_t *>(weight_data.data);
+		for (idx_t i = 0; i < args.size(); i++) {
+			auto src_idx = src_data.sel->get_index(i);
+			auto dst_idx = dst_data.sel->get_index(i);
+			auto edge_id_idx = edge_id_data.sel->get_index(i);
+			auto weight_idx = weight_data.sel->get_index(i);
+			if (!src_data.validity.RowIsValid(src_idx) || !dst_data.validity.RowIsValid(dst_idx) ||
+			    !edge_id_data.validity.RowIsValid(edge_id_idx) || !weight_data.validity.RowIsValid(weight_idx)) {
+				result_validity.SetInvalid(i);
+				continue;
+			}
+			auto src = src_values[src_idx];
+			auto pos = ++csr_entry->second->v[src + 1];
+			auto weight = weight_values[weight_idx];
+			csr_entry->second->e[(int64_t)pos - 1] = dst_values[dst_idx];
+			csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id_values[edge_id_idx];
+			csr_entry->second->w[(int64_t)pos - 1] = weight;
+			result_data[i] = static_cast<int32_t>(weight);
+		}
 		return;
 	}
 
-	QuaternaryExecutor::Execute<int64_t, int64_t, int64_t, double_t, int32_t>(
-	    args.data[4], args.data[5], args.data[6], args.data[7], result, args.size(),
-	    [&](int64_t src, int64_t dst, int64_t edge_id, double_t weight) {
-		    auto pos = ++csr_entry->second->v[src + 1];
-		    csr_entry->second->e[(int64_t)pos - 1] = dst;
-		    csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id;
-		    csr_entry->second->w_double[(int64_t)pos - 1] = weight;
-		    return weight;
-	    });
+	auto weight_values = reinterpret_cast<const double_t *>(weight_data.data);
+	for (idx_t i = 0; i < args.size(); i++) {
+		auto src_idx = src_data.sel->get_index(i);
+		auto dst_idx = dst_data.sel->get_index(i);
+		auto edge_id_idx = edge_id_data.sel->get_index(i);
+		auto weight_idx = weight_data.sel->get_index(i);
+		if (!src_data.validity.RowIsValid(src_idx) || !dst_data.validity.RowIsValid(dst_idx) ||
+		    !edge_id_data.validity.RowIsValid(edge_id_idx) || !weight_data.validity.RowIsValid(weight_idx)) {
+			result_validity.SetInvalid(i);
+			continue;
+		}
+		auto src = src_values[src_idx];
+		auto pos = ++csr_entry->second->v[src + 1];
+		auto weight = weight_values[weight_idx];
+		csr_entry->second->e[(int64_t)pos - 1] = dst_values[dst_idx];
+		csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id_values[edge_id_idx];
+		csr_entry->second->w_double[(int64_t)pos - 1] = weight;
+		result_data[i] = static_cast<int32_t>(weight);
+	}
 }
 
 ScalarFunctionSet GetCSRVertexFunction() {

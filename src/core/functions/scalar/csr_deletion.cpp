@@ -9,7 +9,7 @@ namespace duckdb {
 
 static void DeleteCsrFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
-	auto &info = func_expr.bind_info->Cast<CSRFunctionData>();
+	auto &info = func_expr.BindInfo()->Cast<CSRFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 

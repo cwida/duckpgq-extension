@@ -1,4 +1,5 @@
 add_subdirectory(core)
+add_subdirectory(parser)
 
 set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/duckpgq_extension.cpp

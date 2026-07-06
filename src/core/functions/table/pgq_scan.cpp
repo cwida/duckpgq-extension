@@ -55,7 +55,7 @@ static void ScanCSRPtrFunction(ClientContext &context, TableFunctionInput &data_
 	CSR *csr = duckpgq_state->GetCSR(csr_id);
 	output.SetCardinality(5);
 	output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
-	auto result_data = FlatVector::GetData<uint64_t>(output.data[0]);
+	auto result_data = FlatVector::GetDataMutable<uint64_t>(output.data[0]);
 	// now set the result vector
 	// the first element is the address of the vertex array
 	result_data[0] = reinterpret_cast<uint64_t>(csr->v);
@@ -167,7 +167,7 @@ static void ScanPGVTableFunction(ClientContext &context, TableFunctionInput &dat
 	auto pg = duckpgq_state->GetPropertyGraph(pg_name);
 
 	output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
-	auto vtables = FlatVector::GetData<string_t>(output.data[0]);
+	auto vtables = FlatVector::GetDataMutable<string_t>(output.data[0]);
 	idx_t size = 0;
 	for (auto &ele : pg->vertex_tables) {
 		vtables[size] = string_t(ele->table_name.c_str(), ele->table_name.size());
@@ -191,7 +191,7 @@ static void ScanPGETableFunction(ClientContext &context, TableFunctionInput &dat
 	auto pg = duckpgq_state->GetPropertyGraph(pg_name);
 
 	output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
-	auto etables = FlatVector::GetData<string_t>(output.data[0]);
+	auto etables = FlatVector::GetDataMutable<string_t>(output.data[0]);
 	idx_t size = 0;
 	for (auto &ele : pg->edge_tables) {
 		etables[size] = string_t(ele->table_name.c_str(), ele->table_name.size());
@@ -228,7 +228,7 @@ static void ScanPGVColFunction(ClientContext &context, TableFunctionInput &data_
 	auto table_entry = find_table_entry(pg->vertex_tables, table_name);
 
 	output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
-	auto colsdata = FlatVector::GetData<string_t>(output.data[0]);
+	auto colsdata = FlatVector::GetDataMutable<string_t>(output.data[0]);
 	idx_t size = 0;
 	for (auto &ele : table_entry->column_names) {
 		colsdata[size] = string_t(ele.c_str(), ele.size());
@@ -256,7 +256,7 @@ static void ScanPGEColFunction(ClientContext &context, TableFunctionInput &data_
 	auto table_entry = find_table_entry(pg->edge_tables, table_name);
 
 	output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
-	auto colsdata = FlatVector::GetData<string_t>(output.data[0]);
+	auto colsdata = FlatVector::GetDataMutable<string_t>(output.data[0]);
 	idx_t size = 0;
 	for (auto &ele : table_entry->column_names) {
 		colsdata[size] = string_t(ele.c_str(), ele.size());

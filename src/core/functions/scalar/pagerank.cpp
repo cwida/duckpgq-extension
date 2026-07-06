@@ -10,7 +10,7 @@ namespace duckdb {
 
 static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
-	auto &info = func_expr.bind_info->Cast<PageRankFunctionData>();
+	auto &info = func_expr.BindInfo()->Cast<PageRankFunctionData>();
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
 	// Locate the CSR representation of the graph
@@ -84,13 +84,13 @@ static void PageRankFunction(DataChunk &args, ExpressionState &state, Vector &re
 	// Get the source vector for the current DataChunk
 	auto &src = args.data[1];
 	UnifiedVectorFormat vdata_src;
-	src.ToUnifiedFormat(args.size(), vdata_src);
-	auto src_data = reinterpret_cast<int64_t *>(vdata_src.data);
+	src.ToUnifiedFormat(vdata_src);
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
 
 	// Create result vector
-	ValidityMask &result_validity = FlatVector::Validity(result);
+	ValidityMask &result_validity = FlatVector::ValidityMutable(result);
 	result.SetVectorType(VectorType::FLAT_VECTOR);
-	auto result_data = FlatVector::GetData<double_t>(result);
+	auto result_data = FlatVector::GetDataMutable<double_t>(result);
 
 	// Output the PageRank value corresponding to each source ID in the DataChunk
 	for (idx_t i = 0; i < args.size(); i++) {

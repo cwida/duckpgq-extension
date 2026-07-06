@@ -8,7 +8,11 @@
 #include <duckdb/parser/parser.hpp>
 #include <duckdb/parser/statement/copy_statement.hpp>
 #include <duckdb/parser/statement/create_statement.hpp>
+#include <duckdb/parser/statement/extension_statement.hpp>
 #include <duckdb/parser/statement/insert_statement.hpp>
+#include <duckpgq/third_party/duckdb_peg_parser/peg/matcher.hpp>
+#include <duckpgq/third_party/duckdb_peg_parser/peg/tokenizer/parser_tokenizer.hpp>
+#include <duckpgq/third_party/duckdb_peg_parser/peg/transformer/peg_transformer.hpp>
 #include <duckpgq/core/functions/table/create_property_graph.hpp>
 #include <duckpgq_state.hpp>
 
@@ -25,15 +29,60 @@
 
 namespace duckdb {
 
-ParserOverrideResult duckpgq_parser_override(ParserExtensionInfo *info, const string &query, ParserOptions &options) {
-	ParserOptions duckpgq_options = options;
-	duckpgq_options.extensions = nullptr;
-	duckpgq_options.parser_override_setting = AllowParserOverride::DEFAULT_OVERRIDE;
+static bool DuckPGQShouldWrapStatement(const unique_ptr<SQLStatement> &statement) {
+	if (statement->type != StatementType::CREATE_STATEMENT) {
+		return false;
+	}
+	auto &create_statement = statement->Cast<CreateStatement>();
+	return dynamic_cast<CreatePropertyGraphInfo *>(create_statement.info.get()) != nullptr;
+}
 
+static unique_ptr<SQLStatement> DuckPGQWrapStatement(unique_ptr<SQLStatement> statement) {
+	auto parse_data = make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(std::move(statement));
+	return make_uniq<ExtensionStatement>(DuckPGQParserExtension(), std::move(parse_data));
+}
+
+ParserOverrideResult duckpgq_parser_override(ParserExtensionInfo *info, const string &query, ParserOptions &options) {
 	try {
-		Parser parser(duckpgq_options);
-		parser.ParseQuery(query);
-		return ParserOverrideResult(std::move(parser.statements));
+		auto normalized_query = Parser::NormalizeSQLString(query);
+		vector<duckpgq_peg::MatcherToken> tokens;
+		duckpgq_peg::ParserTokenizer tokenizer(normalized_query, tokens);
+		tokenizer.TokenizeInput();
+
+		static duckpgq_peg::ParserCache duckpgq_parser_cache;
+		auto matcher = duckpgq_parser_cache.GetMatcher();
+		auto transformer_factory = duckpgq_parser_cache.GetTransformerFactory();
+
+		vector<unique_ptr<SQLStatement>> statements;
+		idx_t token_cursor = 0;
+		while (token_cursor < tokens.size()) {
+			auto statement = transformer_factory->TransformTopLevelStatement(
+			    tokens, options, matcher->TopLevelStatementMatcher(), token_cursor);
+			if (statement) {
+				if (DuckPGQShouldWrapStatement(statement)) {
+					statement = DuckPGQWrapStatement(std::move(statement));
+				}
+				statements.push_back(std::move(statement));
+			}
+		}
+
+		if (!statements.empty()) {
+			for (idx_t i = 0; i + 1 < statements.size(); i++) {
+				statements[i]->stmt_length = statements[i + 1]->stmt_location - statements[i]->stmt_location;
+			}
+			statements.back()->stmt_length = normalized_query.size() - statements.back()->stmt_location;
+			for (auto &statement : statements) {
+				statement->query = normalized_query.substr(statement->stmt_location, statement->stmt_length);
+				statement->stmt_location = 0;
+				statement->stmt_length = statement->query.size();
+				if (statement->type == StatementType::CREATE_STATEMENT) {
+					auto &create = statement->Cast<CreateStatement>();
+					create.info->sql = statement->query;
+				}
+			}
+		}
+
+		return ParserOverrideResult(std::move(statements));
 	} catch (std::exception &ex) {
 		return ParserOverrideResult(ex);
 	}
@@ -44,15 +93,16 @@ void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_stat
 	if (auto table_function_ref = dynamic_cast<TableFunctionRef *>(table_ref)) {
 		// Handle TableFunctionRef case
 		auto function = dynamic_cast<FunctionExpression *>(table_function_ref->function.get());
-		if (function->function_name != "duckpgq_match") {
+		if (function->FunctionName() != "duckpgq_match") {
 			return;
 		}
-		table_function_ref->alias = function->children[0]->Cast<MatchExpression>().alias;
+		auto &arguments = function->GetArgumentsMutable();
+		table_function_ref->alias = Identifier(arguments[0].GetExpressionMutable()->Cast<MatchExpression>().alias);
 		int32_t match_index = duckpgq_state.match_index++;
-		duckpgq_state.transform_expression[match_index] = std::move(function->children[0]);
-		function->children.pop_back();
+		duckpgq_state.transform_expression[match_index] = std::move(arguments[0].GetExpressionMutable());
+		arguments.pop_back();
 		auto function_identifier = make_uniq<ConstantExpression>(Value::CreateValue(match_index));
-		function->children.push_back(std::move(function_identifier));
+		arguments.emplace_back(std::move(function_identifier));
 	} else if (auto join_ref = dynamic_cast<JoinRef *>(table_ref)) {
 		// Handle JoinRef case
 		duckpgq_find_match_function(join_ref->left.get(), duckpgq_state);
@@ -88,7 +138,7 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement,
 			result.return_type = StatementReturnType::QUERY_RESULT;
 			if (describe_node->show_type == ShowType::SUMMARY) {
 				result.function = SummarizePropertyGraphFunction();
-				result.parameters.push_back(Value(describe_node->table_name));
+				result.parameters.push_back(Value(describe_node->GetTableName().GetIdentifierName()));
 				return result;
 			}
 			if (describe_node->show_type == ShowType::DESCRIBE) {
@@ -113,14 +163,9 @@ ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement,
 	for (auto const &kv_pair : cte_map->map) {
 		auto const &cte = kv_pair.second;
 
-		auto *cte_select_statement = dynamic_cast<SelectStatement *>(cte->query.get());
-		if (!cte_select_statement) {
-			continue;
-		}
-
-		auto *select_node = dynamic_cast<SelectNode *>(cte_select_statement->node.get());
+		auto *select_node = dynamic_cast<SelectNode *>(cte->query_node.get());
 		if (!select_node) {
-			continue; // The SelectStatement has no SelectNode, skip.
+			continue;
 		}
 
 		// If we get here, we know select_node is valid.
@@ -174,7 +219,7 @@ ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, Duck
 	}
 	if (statement->type == StatementType::INSERT_STATEMENT) {
 		const auto &insert_statement = statement->Cast<InsertStatement>();
-		duckpgq_handle_statement(insert_statement.select_statement.get(), duckpgq_state);
+		duckpgq_handle_statement(insert_statement.node->select_statement.get(), duckpgq_state);
 	}
 
 	throw Exception(ExceptionType::NOT_IMPLEMENTED,

@@ -26,8 +26,7 @@ struct PageRankFunctionData final : FunctionData {
 
 	PageRankFunctionData(ClientContext &context, int32_t csr_id);
 	PageRankFunctionData(ClientContext &context, int32_t csr_id, const vector<int64_t> &componentId);
-	static unique_ptr<FunctionData> PageRankBind(ClientContext &context, ScalarFunction &bound_function,
-	                                             vector<unique_ptr<Expression>> &arguments);
+	static unique_ptr<FunctionData> PageRankBind(BindScalarFunctionInput &input);
 
 	unique_ptr<FunctionData> Copy() const override;
 	bool Equals(const FunctionData &other_p) const override;

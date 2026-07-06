@@ -5,8 +5,10 @@
 namespace duckdb {
 
 unique_ptr<FunctionData>
-CheapestPathLengthFunctionData::CheapestPathLengthBind(ClientContext &context, ScalarFunction &bound_function,
-                                                       vector<unique_ptr<Expression>> &arguments) {
+CheapestPathLengthFunctionData::CheapestPathLengthBind(BindScalarFunctionInput &input) {
+	auto &context = input.GetClientContext();
+	auto &bound_function = input.GetBoundFunction();
+	auto &arguments = input.GetArguments();
 	if (!arguments[0]->IsFoldable()) {
 		throw InvalidInputException("Id must be constant.");
 	}
@@ -22,9 +24,9 @@ CheapestPathLengthFunctionData::CheapestPathLengthBind(ClientContext &context, S
 	}
 
 	if (csr->w.empty()) {
-		bound_function.return_type = LogicalType::DOUBLE;
+		bound_function.SetReturnType(LogicalType::DOUBLE);
 	} else {
-		bound_function.return_type = LogicalType::BIGINT;
+		bound_function.SetReturnType(LogicalType::BIGINT);
 	}
 
 	return make_uniq<CheapestPathLengthFunctionData>(context, csr_id);

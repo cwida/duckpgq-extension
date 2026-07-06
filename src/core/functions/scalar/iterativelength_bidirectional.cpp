@@ -42,7 +42,7 @@ static std::bitset<LANE_LIMIT> InterSectFronteers(int64_t v_size, vector<std::bi
 
 static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
-	auto &info = func_expr.bind_info->Cast<IterativeLengthFunctionData>();
+	auto &info = func_expr.BindInfo()->Cast<IterativeLengthFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
@@ -56,15 +56,15 @@ static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionStat
 	auto &dst = args.data[3];
 	UnifiedVectorFormat vdata_src;
 	UnifiedVectorFormat vdata_dst;
-	src.ToUnifiedFormat(args.size(), vdata_src);
-	dst.ToUnifiedFormat(args.size(), vdata_dst);
+	src.ToUnifiedFormat(vdata_src);
+	dst.ToUnifiedFormat(vdata_dst);
 	auto src_data = vdata_src.data;
 	auto dst_data = vdata_dst.data;
 
 	// create result vector
 	result.SetVectorType(VectorType::FLAT_VECTOR);
-	ValidityMask &result_validity = FlatVector::Validity(result);
-	auto result_data = FlatVector::GetData<int64_t>(result);
+	ValidityMask &result_validity = FlatVector::ValidityMutable(result);
+	auto result_data = FlatVector::GetDataMutable<int64_t>(result);
 
 	// create temp SIMD arrays
 	vector<std::bitset<LANE_LIMIT>> src_seen(v_size);

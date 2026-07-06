@@ -15,9 +15,9 @@ bool IterativeLengthFunctionData::Equals(const FunctionData &other_p) const {
 	return other.csr_id == csr_id;
 }
 
-unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(ClientContext &context,
-                                                                          ScalarFunction &bound_function,
-                                                                          vector<unique_ptr<Expression>> &arguments) {
+unique_ptr<FunctionData> IterativeLengthFunctionData::IterativeLengthBind(BindScalarFunctionInput &input) {
+	auto &context = input.GetClientContext();
+	auto &arguments = input.GetArguments();
 	if (!arguments[0]->IsFoldable()) {
 		throw InvalidInputException("Id must be constant.");
 	}

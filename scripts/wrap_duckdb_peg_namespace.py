@@ -5,16 +5,47 @@ from pathlib import Path
 
 
 SOURCE_SUFFIXES = {".cpp", ".hpp", ".h"}
+VENDORED_INCLUDE_PREFIX = "duckpgq/third_party/duckdb_peg_parser/peg/"
 
 
 def wrap_file(path: Path) -> bool:
     text = path.read_text()
+    text = text.replace('"duckdb/parser/peg/', f'"{VENDORED_INCLUDE_PREFIX}')
+    text = text.replace("<duckdb/parser/peg/", f"<{VENDORED_INCLUDE_PREFIX}")
+    text = text.replace(
+        "EnumUtil::ToString(frame.state)",
+        '(frame.state == TransformFrameState::INITIALIZE ? "INITIALIZE" : "WAITING")',
+    )
+    text = text.replace(
+        "\tstatic vector<GenericCopyOption> TransformAttachOptions(PEGTransformer &transformer, const vector<GenericCopyOption> &generic_copy_option_list);\n"
+        "\tstatic unique_ptr<TransformResultValue> TransformCallStatementInternal",
+        "\tstatic vector<GenericCopyOption> TransformAttachOptions(PEGTransformer &transformer, const vector<GenericCopyOption> &generic_copy_option_list);\n"
+        "\tstatic void SplitGenericOptions(const vector<GenericCopyOption> &options_in,\n"
+        "\t                                case_insensitive_map_t<unique_ptr<ParsedExpression>> &parsed_options,\n"
+        "\t                                unordered_map<string, Value> &options, const char *statement_name);\n"
+        "\tstatic unique_ptr<TransformResultValue> TransformCallStatementInternal",
+    )
+    text = text.replace(
+        "shared_ptr<PEGMatcher> PEGMatcher::Get(DatabaseInstance &db) {\n"
+        "\tauto &parser_cache = db.GetParserCache();\n"
+        "\treturn parser_cache.GetMatcher();\n"
+        "}",
+        "shared_ptr<PEGMatcher> PEGMatcher::Get(DatabaseInstance &db) {\n"
+        "\t(void)db;\n"
+        "\treturn make_shared_ptr<PEGMatcher>();\n"
+        "}",
+    )
+
     if "namespace duckpgq_peg" in text:
+        path.write_text(text)
         return False
     if "namespace duckdb {" not in text:
+        path.write_text(text)
         return False
     if "} // namespace duckdb" not in text:
         raise RuntimeError(f"Cannot safely wrap namespace in {path}: missing namespace close comment")
+
+    text = text.replace("struct QualifiedName;", "using duckdb::QualifiedName;")
 
     updated = text.replace(
         "namespace duckdb {\n",

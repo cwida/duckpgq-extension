@@ -25,9 +25,10 @@ unique_ptr<FunctionData> DescribePropertyGraphFunction::DescribePropertyGraphBin
 	auto select_node = dynamic_cast<SelectNode *>(statement->node.get());
 	auto show_ref = dynamic_cast<ShowRef *>(select_node->from_table.get());
 
-	auto pg_table = duckpgq_state->registered_property_graphs.find(show_ref->table_name);
+	auto property_graph_name = show_ref->GetTableName().GetIdentifierName();
+	auto pg_table = duckpgq_state->registered_property_graphs.find(property_graph_name);
 	if (pg_table == duckpgq_state->registered_property_graphs.end()) {
-		throw Exception(ExceptionType::INVALID, "Property graph " + show_ref->table_name + " does not exist.");
+		throw Exception(ExceptionType::INVALID, "Property graph " + property_graph_name + " does not exist.");
 	}
 	auto property_graph = dynamic_cast<CreatePropertyGraphInfo *>(pg_table->second.get());
 	names.emplace_back("property_graph");

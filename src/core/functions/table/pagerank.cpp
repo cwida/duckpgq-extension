@@ -20,13 +20,13 @@ unique_ptr<TableRef> PageRankFunction::PageRankBindReplace(ClientContext &contex
 
 	auto select_node = CreateSelectNode(edge_pg_entry, "pagerank", "pagerank");
 
-	select_node->cte_map.map["csr_cte"] = CreateDirectedCSRCTE(edge_pg_entry, "src", "edge", "dst");
+	select_node->cte_map.map[Identifier("csr_cte")] = CreateDirectedCSRCTE(edge_pg_entry, "src", "edge", "dst");
 
 	auto subquery = make_uniq<SelectStatement>();
 	subquery->node = std::move(select_node);
 
 	auto result = make_uniq<SubqueryRef>(std::move(subquery));
-	result->alias = "pagerank";
+	result->alias = Identifier("pagerank");
 	return std::move(result);
 }
 

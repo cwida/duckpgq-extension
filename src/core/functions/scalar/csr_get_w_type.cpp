@@ -15,7 +15,7 @@ enum class CSRWType : int32_t {
 
 static void GetCsrWTypeFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
-	auto &info = func_expr.bind_info->Cast<CSRFunctionData>();
+	auto &info = func_expr.BindInfo()->Cast<CSRFunctionData>();
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 

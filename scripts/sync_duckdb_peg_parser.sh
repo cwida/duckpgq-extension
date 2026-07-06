@@ -38,6 +38,17 @@ cp -R "${DUCKDB_DIR}/src/parser/peg" "${UPSTREAM_DIR}/src/parser/peg"
 cp -R "${DUCKDB_DIR}/src/include/duckdb/parser/peg" "${UPSTREAM_DIR}/src/include/duckdb/parser/peg"
 cp -R "${DUCKDB_DIR}/scripts/parser" "${UPSTREAM_DIR}/scripts/parser"
 
+mkdir -p "${UPSTREAM_DIR}/src/include/duckpgq/third_party/duckdb_peg_parser"
+mv "${UPSTREAM_DIR}/src/include/duckdb/parser/peg" \
+	"${UPSTREAM_DIR}/src/include/duckpgq/third_party/duckdb_peg_parser/peg"
+rmdir "${UPSTREAM_DIR}/src/include/duckdb/parser" "${UPSTREAM_DIR}/src/include/duckdb" 2>/dev/null || true
+
+rm -f "${UPSTREAM_DIR}/src/parser/peg/autocomplete_core.cpp"
+rm -f "${UPSTREAM_DIR}/src/parser/peg/sql_formatter.cpp"
+rm -f "${UPSTREAM_DIR}/src/include/duckpgq/third_party/duckdb_peg_parser/peg/autocomplete_catalog_provider.hpp"
+rm -f "${UPSTREAM_DIR}/src/include/duckpgq/third_party/duckdb_peg_parser/peg/autocomplete_extension.hpp"
+rm -f "${UPSTREAM_DIR}/src/include/duckpgq/third_party/duckdb_peg_parser/peg/sql_formatter.hpp"
+
 git -C "${DUCKDB_DIR}" rev-parse HEAD > "${BASE_FILE}"
 
 python3 "${SCRIPT_DIR}/wrap_duckdb_peg_namespace.py" "${UPSTREAM_DIR}"

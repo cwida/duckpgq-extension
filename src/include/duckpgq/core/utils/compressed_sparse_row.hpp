@@ -50,12 +50,9 @@ struct CSRFunctionData : FunctionData {
 	CSRFunctionData(ClientContext &context, int32_t id, const LogicalType &weight_type);
 	unique_ptr<FunctionData> Copy() const override;
 	bool Equals(const FunctionData &other_p) const override;
-	static unique_ptr<FunctionData> CSRVertexBind(ClientContext &context, ScalarFunction &bound_function,
-	                                              vector<unique_ptr<Expression>> &arguments);
-	static unique_ptr<FunctionData> CSREdgeBind(ClientContext &context, ScalarFunction &bound_function,
-	                                            vector<unique_ptr<Expression>> &arguments);
-	static unique_ptr<FunctionData> CSRBind(ClientContext &context, ScalarFunction &bound_function,
-	                                        vector<unique_ptr<Expression>> &arguments);
+	static unique_ptr<FunctionData> CSRVertexBind(BindScalarFunctionInput &input);
+	static unique_ptr<FunctionData> CSREdgeBind(BindScalarFunctionInput &input);
+	static unique_ptr<FunctionData> CSRBind(BindScalarFunctionInput &input);
 
 	ClientContext &context;
 	const int32_t id;

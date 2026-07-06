@@ -23,8 +23,7 @@ struct WeaklyConnectedComponentFunctionData final : FunctionData {
 
 	WeaklyConnectedComponentFunctionData(ClientContext &context, int32_t csr_id);
 
-	static unique_ptr<FunctionData> WeaklyConnectedComponentBind(ClientContext &context, ScalarFunction &bound_function,
-	                                                             vector<unique_ptr<Expression>> &arguments);
+	static unique_ptr<FunctionData> WeaklyConnectedComponentBind(BindScalarFunctionInput &input);
 
 	unique_ptr<FunctionData> Copy() const override;
 	bool Equals(const FunctionData &other_p) const override;

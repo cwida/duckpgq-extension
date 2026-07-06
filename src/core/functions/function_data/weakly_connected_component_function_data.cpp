@@ -1,5 +1,7 @@
 #include "duckpgq/core/functions/function_data/weakly_connected_component_function_data.hpp"
 
+#include "duckdb/execution/expression_executor.hpp"
+
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
 namespace duckdb {
@@ -10,8 +12,9 @@ WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentFunctionData(Clien
 	state_initialized = false;
 }
 
-unique_ptr<FunctionData> WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentBind(
-    ClientContext &context, ScalarFunction &bound_function, vector<unique_ptr<Expression>> &arguments) {
+unique_ptr<FunctionData> WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentBind(BindScalarFunctionInput &input) {
+	auto &context = input.GetClientContext();
+	auto &arguments = input.GetArguments();
 	if (!arguments[0]->IsFoldable()) {
 		throw InvalidInputException("Id must be constant.");
 	}

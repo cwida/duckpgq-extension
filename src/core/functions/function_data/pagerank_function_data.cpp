@@ -1,5 +1,7 @@
 #include "duckpgq/core/functions/function_data/pagerank_function_data.hpp"
 
+#include "duckdb/execution/expression_executor.hpp"
+
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
 namespace duckdb {
@@ -10,8 +12,9 @@ PageRankFunctionData::PageRankFunctionData(ClientContext &ctx, int32_t csr)
       state_initialized(false), converged(false) {
 }
 
-unique_ptr<FunctionData> PageRankFunctionData::PageRankBind(ClientContext &context, ScalarFunction &bound_function,
-                                                            vector<unique_ptr<Expression>> &arguments) {
+unique_ptr<FunctionData> PageRankFunctionData::PageRankBind(BindScalarFunctionInput &input) {
+	auto &context = input.GetClientContext();
+	auto &arguments = input.GetArguments();
 	if (!arguments[0]->IsFoldable()) {
 		throw InvalidInputException("Id must be constant.");
 	}
