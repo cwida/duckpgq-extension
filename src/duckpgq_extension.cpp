@@ -5,10 +5,21 @@
 #include "duckpgq/core/module.hpp"
 #include <duckpgq_extension_callback.hpp>
 #include "duckdb/main/connection_manager.hpp"
+#include "duckdb/main/settings.hpp"
 
 namespace duckdb {
 
+static void EnableParserOverrideFallback(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	Settings::Set<AllowParserOverrideExtensionSetting>(db, SetScope::GLOBAL, Value("FALLBACK"));
+
+	for (auto &context : ConnectionManager::Get(db).GetConnectionList()) {
+		Settings::Set<AllowParserOverrideExtensionSetting>(*context, SetScope::SESSION, Value("FALLBACK"));
+	}
+}
+
 static void LoadInternal(ExtensionLoader &loader) {
+	EnableParserOverrideFallback(loader);
 	CoreModule::Register(loader);
 }
 
