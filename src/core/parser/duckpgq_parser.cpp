@@ -25,14 +25,18 @@
 
 namespace duckdb {
 
-ParserExtensionParseResult duckpgq_parse(ParserExtensionInfo *info, const std::string &query) {
-	Parser parser;
-	parser.ParseQuery((query[0] == '-') ? query.substr(1, query.length()) : query);
-	if (parser.statements.size() != 1) {
-		throw Exception(ExceptionType::PARSER, "More than one statement detected, please only give one.");
+ParserOverrideResult duckpgq_parser_override(ParserExtensionInfo *info, const string &query, ParserOptions &options) {
+	ParserOptions duckpgq_options = options;
+	duckpgq_options.extensions = nullptr;
+	duckpgq_options.parser_override_setting = AllowParserOverride::DEFAULT_OVERRIDE;
+
+	try {
+		Parser parser(duckpgq_options);
+		parser.ParseQuery(query);
+		return ParserOverrideResult(std::move(parser.statements));
+	} catch (std::exception &ex) {
+		return ParserOverrideResult(ex);
 	}
-	return ParserExtensionParseResult(
-	    make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(std::move(parser.statements[0])));
 }
 
 void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_state) {
