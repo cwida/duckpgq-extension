@@ -12,7 +12,8 @@ WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentFunctionData(Clien
 	state_initialized = false;
 }
 
-unique_ptr<FunctionData> WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentBind(BindScalarFunctionInput &input) {
+unique_ptr<FunctionData>
+WeaklyConnectedComponentFunctionData::WeaklyConnectedComponentBind(BindScalarFunctionInput &input) {
 	auto &context = input.GetClientContext();
 	auto &arguments = input.GetArguments();
 	if (!arguments[0]->IsFoldable()) {

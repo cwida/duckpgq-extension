@@ -63,14 +63,15 @@ unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &ed
 	auto select_node = make_uniq<SelectNode>();
 	std::vector<unique_ptr<ParsedExpression>> select_expression;
 
-	select_expression.emplace_back(
-	    make_uniq<ColumnRefExpression>(Identifier(edge_pg_entry->source_pk[0]), Identifier(edge_pg_entry->source_reference)));
+	select_expression.emplace_back(make_uniq<ColumnRefExpression>(Identifier(edge_pg_entry->source_pk[0]),
+	                                                              Identifier(edge_pg_entry->source_reference)));
 
 	auto cte_col_ref = make_uniq<ColumnRefExpression>("temp", "__x");
 
 	vector<unique_ptr<ParsedExpression>> function_children;
 	function_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(0)));
-	function_children.push_back(make_uniq<ColumnRefExpression>(Identifier("rowid"), Identifier(edge_pg_entry->source_reference)));
+	function_children.push_back(
+	    make_uniq<ColumnRefExpression>(Identifier("rowid"), Identifier(edge_pg_entry->source_reference)));
 	auto function = make_uniq<FunctionExpression>(Identifier(function_name), std::move(function_children));
 
 	std::vector<unique_ptr<ParsedExpression>> addition_children;

@@ -120,9 +120,9 @@ unique_ptr<JoinRef> CreateJoin(const string &fk_column, const string &pk_column,
 	auto join = make_uniq<JoinRef>(JoinRefType::REGULAR);
 	join->left = fk_table->CreateBaseTableRef();
 	join->right = pk_table->CreateBaseTableRef();
-	join->condition = make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL,
-	                                                  CSRColumnRef(fk_column, fk_table->table_name),
-	                                                  CSRColumnRef(pk_column, pk_table->table_name));
+	join->condition =
+	    make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, CSRColumnRef(fk_column, fk_table->table_name),
+	                                    CSRColumnRef(pk_column, pk_table->table_name));
 	return join;
 }
 
@@ -542,8 +542,7 @@ unique_ptr<SubqueryExpression> GetCountEdgeTable(const shared_ptr<PropertyGraphT
 	second_join->left = std::move(first_join);
 	second_join->right = edge_table->destination_pg_table->CreateBaseTableRef("dst");
 	second_join->condition = make_uniq<ComparisonExpression>(
-	    ExpressionType::COMPARE_EQUAL,
-	    CSRColumnRef(edge_table->destination_fk[0], edge_table->table_name),
+	    ExpressionType::COMPARE_EQUAL, CSRColumnRef(edge_table->destination_fk[0], edge_table->table_name),
 	    CSRColumnRef(edge_table->destination_pk[0], "dst"));
 	outer_select_node->from_table = std::move(second_join);
 	outer_select_statement->node = std::move(outer_select_node);

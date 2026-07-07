@@ -28,7 +28,6 @@ string DropPropertyGraphInfo::ToString() const {
 void DropPropertyGraphInfo::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty<string>(100, "property_graph_name", property_graph_name);
 	serializer.WriteProperty<bool>(101, "missing_ok", missing_ok);
-
 }
 
 unique_ptr<DropInfo> DropPropertyGraphInfo::Deserialize(Deserializer &deserializer) {

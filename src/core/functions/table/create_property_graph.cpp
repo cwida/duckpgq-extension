@@ -35,10 +35,11 @@ static void BindPropertyGraphReference(ClientContext &context, string &catalog_n
 
 static optional_ptr<TableCatalogEntry> GetPropertyGraphTable(ClientContext &context,
                                                              const shared_ptr<PropertyGraphTable> &table) {
-	return Catalog::GetEntry<TableCatalogEntry>(
-	    context, QualifiedName(PGQIdentifier(table->catalog_name), PGQIdentifier(table->schema_name),
-	                           PGQIdentifier(table->table_name)),
-	    OnEntryNotFound::RETURN_NULL);
+	return Catalog::GetEntry<TableCatalogEntry>(context,
+	                                            QualifiedName(PGQIdentifier(table->catalog_name),
+	                                                          PGQIdentifier(table->schema_name),
+	                                                          PGQIdentifier(table->table_name)),
+	                                            OnEntryNotFound::RETURN_NULL);
 }
 
 static optional_ptr<CatalogEntry> GetPropertyGraphView(ClientContext &context,

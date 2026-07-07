@@ -116,9 +116,9 @@ unique_ptr<ParsedExpression> SummarizePropertyGraphFunction::GetIsolatedNodes(sh
 	join_ref->left = std::move(source_table_ref);
 	join_ref->right = std::move(edge_table_ref);
 
-	join_ref->condition = make_uniq<ComparisonExpression>(
-	    ExpressionType::COMPARE_EQUAL, PGQColumnRef(pk_reference, table_reference),
-	    PGQColumnRef(fk_reference, pg_table->table_name));
+	join_ref->condition =
+	    make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, PGQColumnRef(pk_reference, table_reference),
+	                                    PGQColumnRef(fk_reference, pg_table->table_name));
 
 	select_node->from_table = std::move(join_ref);
 
@@ -184,8 +184,8 @@ unique_ptr<ParsedExpression> SummarizePropertyGraphFunction::GetDegreeStatistics
 	result->GetSubqueryTypeMutable() = SubqueryType::SCALAR;
 	auto select_statement = make_uniq<SelectStatement>();
 	auto select_node = make_uniq<SelectNode>();
-	select_node->select_list.push_back(
-	    make_uniq<ColumnRefExpression>(PGQIdentifier(aggregate_function + "_" + (is_in_degree ? "in_degree" : "out_degree"))));
+	select_node->select_list.push_back(make_uniq<ColumnRefExpression>(
+	    PGQIdentifier(aggregate_function + "_" + (is_in_degree ? "in_degree" : "out_degree"))));
 	auto cte_table_ref = make_uniq<BaseTableRef>();
 	cte_table_ref->SetTable(PGQIdentifier(is_in_degree ? "in_degrees" : "out_degrees"));
 	select_node->from_table = std::move(cte_table_ref);
@@ -225,8 +225,8 @@ SummarizePropertyGraphFunction::CreateVertexTableCTE(const shared_ptr<PropertyGr
 	select_node->select_list.push_back(GetConstantNullExpressionWithAlias("q25_out_degree"));
 	select_node->select_list.push_back(GetConstantNullExpressionWithAlias("q50_out_degree"));
 	select_node->select_list.push_back(GetConstantNullExpressionWithAlias("q75_out_degree"));
-	select_node->from_table = GetBaseTableRef(vertex_table->catalog_name, vertex_table->schema_name,
-	                                          vertex_table->table_name);
+	select_node->from_table =
+	    GetBaseTableRef(vertex_table->catalog_name, vertex_table->schema_name, vertex_table->table_name);
 	select_statement->node = std::move(select_node);
 	cte_info->query_node = std::move(select_statement->node);
 	return cte_info;
@@ -273,7 +273,8 @@ SummarizePropertyGraphFunction::CreateEdgeTableCTE(shared_ptr<PropertyGraphTable
 	select_node->select_list.push_back(GetDegreeStatistics("q50", false));
 	select_node->select_list.push_back(GetDegreeStatistics("q75", false));
 
-	select_node->from_table = GetBaseTableRef(edge_table->catalog_name, edge_table->schema_name, edge_table->table_name);
+	select_node->from_table =
+	    GetBaseTableRef(edge_table->catalog_name, edge_table->schema_name, edge_table->table_name);
 	select_statement->node = std::move(select_node);
 	cte_info->query_node = std::move(select_statement->node);
 	return cte_info;

@@ -4,8 +4,7 @@
 
 namespace duckdb {
 
-unique_ptr<FunctionData>
-CheapestPathLengthFunctionData::CheapestPathLengthBind(BindScalarFunctionInput &input) {
+unique_ptr<FunctionData> CheapestPathLengthFunctionData::CheapestPathLengthBind(BindScalarFunctionInput &input) {
 	auto &context = input.GetClientContext();
 	auto &bound_function = input.GetBoundFunction();
 	auto &arguments = input.GetArguments();

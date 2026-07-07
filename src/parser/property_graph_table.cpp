@@ -6,12 +6,10 @@ namespace duckdb {
 
 PropertyGraphTable::PropertyGraphTable() = default;
 
-PropertyGraphTable::PropertyGraphTable(string table_name_p, vector<string> column_names_p,
-		vector<string> labels_p, string catalog_p, string schema_p)
-    : table_name(std::move(table_name_p)),
-		column_names(std::move(column_names_p)), sub_labels(std::move(labels_p)),
-		catalog_name(std::move(catalog_p)), schema_name(std::move(schema_p)) {
-
+PropertyGraphTable::PropertyGraphTable(string table_name_p, vector<string> column_names_p, vector<string> labels_p,
+                                       string catalog_p, string schema_p)
+    : table_name(std::move(table_name_p)), column_names(std::move(column_names_p)), sub_labels(std::move(labels_p)),
+      catalog_name(std::move(catalog_p)), schema_name(std::move(schema_p)) {
 #ifdef DEBUG
 	for (auto &col_name : column_names) {
 		D_ASSERT(!col_name.empty());
@@ -26,8 +24,8 @@ PropertyGraphTable::PropertyGraphTable(string table_name_p, vector<string> colum
 PropertyGraphTable::PropertyGraphTable(string table_name_p, string table_name_alias_p, vector<string> column_names_p,
                                        vector<string> labels_p, string catalog_p, string schema_p)
     : table_name(std::move(table_name_p)), table_name_alias(std::move(table_name_alias_p)),
-      column_names(std::move(column_names_p)), sub_labels(std::move(labels_p)),
-		catalog_name(std::move(catalog_p)), schema_name(std::move(schema_p)) {
+      column_names(std::move(column_names_p)), sub_labels(std::move(labels_p)), catalog_name(std::move(catalog_p)),
+      schema_name(std::move(schema_p)) {
 #ifdef DEBUG
 	for (auto &col_name : column_names) {
 		D_ASSERT(!col_name.empty());
@@ -43,8 +41,8 @@ PropertyGraphTable::PropertyGraphTable(string table_name_p, string table_name_al
 }
 
 string PropertyGraphTable::ToString() const {
-	string result = (catalog_name.empty() ? "" : catalog_name + ".") + (schema_name.empty() ? "" : schema_name + ".")
-	+ table_name + " " + (table_name_alias.empty() ? "" : "AS " + table_name_alias);
+	string result = (catalog_name.empty() ? "" : catalog_name + ".") + (schema_name.empty() ? "" : schema_name + ".") +
+	                table_name + " " + (table_name_alias.empty() ? "" : "AS " + table_name_alias);
 	if (!is_vertex_table) {
 		result += " SOURCE KEY (";
 		for (idx_t i = 0; i < source_fk.size(); i++) {
@@ -88,9 +86,11 @@ string PropertyGraphTable::ToString() const {
 
 		for (idx_t i = 0; i < column_names.size(); i++) {
 			if (i != column_names.size() - 1) {
-				result += column_names[i] + ", "; // + (column_aliases[i].empty() ? "" : "AS " + column_aliases[i]) + ", ";
+				result +=
+				    column_names[i] + ", "; // + (column_aliases[i].empty() ? "" : "AS " + column_aliases[i]) + ", ";
 			} else {
-				result += column_names[i] + ") ";  // + (column_aliases[i].empty() ? "" : "AS " + column_aliases[i]) + ") ";
+				result +=
+				    column_names[i] + ") "; // + (column_aliases[i].empty() ? "" : "AS " + column_aliases[i]) + ") ";
 			}
 		}
 	}
@@ -110,7 +110,6 @@ string PropertyGraphTable::ToString() const {
 }
 
 bool PropertyGraphTable::Equals(const PropertyGraphTable *other_p) const {
-
 	auto other = (PropertyGraphTable *)other_p;
 	if (catalog_name != other->catalog_name) {
 		return false;
@@ -269,7 +268,6 @@ void PropertyGraphTable::Serialize(Serializer &serializer) const {
 
 		serializer.WriteProperty(122, "source_pg_table", source_pg_table);
 		serializer.WriteProperty(123, "destination_pg_table", destination_pg_table);
-
 	}
 }
 
@@ -309,7 +307,7 @@ shared_ptr<PropertyGraphTable> PropertyGraphTable::Deserialize(Deserializer &des
 	return pg_table;
 }
 
-bool PropertyGraphTable::IsSourceTable(const string& table_name) {
+bool PropertyGraphTable::IsSourceTable(const string &table_name) {
 	return StringUtil::Lower(this->source_reference) == StringUtil::Lower(table_name);
 }
 

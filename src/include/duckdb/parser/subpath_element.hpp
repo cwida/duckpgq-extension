@@ -9,7 +9,6 @@ namespace duckdb {
 enum class PGQPathMode : uint8_t { NONE, WALK, SIMPLE, TRAIL, ACYCLIC };
 
 class SubPath : public PathReference {
-
 public:
 	vector<unique_ptr<PathReference>> path_list;
 

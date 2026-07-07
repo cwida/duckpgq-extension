@@ -512,7 +512,8 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
 				if (next_vertex_subpath) {
 					path_finding_conditions.push_back(std::move(next_vertex_subpath->where_clause));
 				}
-				if (final_select_node->cte_map.map.find(PGQIdentifier("cte1")) == final_select_node->cte_map.map.end()) {
+				if (final_select_node->cte_map.map.find(PGQIdentifier("cte1")) ==
+				    final_select_node->cte_map.map.end()) {
 					edge_element = reinterpret_cast<PathElement *>(edge_subpath->path_list[0].get());
 					if (edge_element->match_type == PGQMatchType::MATCH_EDGE_RIGHT) {
 						final_select_node->cte_map.map[PGQIdentifier("cte1")] = CreateDirectedCSRCTE(
@@ -545,12 +546,10 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
 					}
 
 					conditions.push_back(make_uniq<ComparisonExpression>(
-					    ExpressionType::COMPARE_EQUAL,
-					    PGQColumnRef("src_rowid", shortest_path_cte_name),
+					    ExpressionType::COMPARE_EQUAL, PGQColumnRef("src_rowid", shortest_path_cte_name),
 					    PGQColumnRef("rowid", previous_vertex_element->variable_binding)));
 					conditions.push_back(make_uniq<ComparisonExpression>(
-					    ExpressionType::COMPARE_EQUAL,
-					    PGQColumnRef("dst_rowid", shortest_path_cte_name),
+					    ExpressionType::COMPARE_EQUAL, PGQColumnRef("dst_rowid", shortest_path_cte_name),
 					    PGQColumnRef("rowid", next_vertex_element->variable_binding)));
 				}
 				auto shortest_path_ref = PGQColumnRef("path", shortest_path_cte_name);
@@ -724,7 +723,8 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 		if (parsed_ref->GetArgumentsMutable().empty()) {
 			continue;
 		}
-		auto column_ref = dynamic_cast<ColumnRefExpression *>(parsed_ref->GetArgumentsMutable()[0].GetExpressionMutable().get());
+		auto column_ref =
+		    dynamic_cast<ColumnRefExpression *>(parsed_ref->GetArgumentsMutable()[0].GetExpressionMutable().get());
 		if (column_ref == nullptr) {
 			continue;
 		}
@@ -1039,8 +1039,8 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 				if (function_ref->GetArgumentsMutable().empty()) {
 					continue;
 				}
-				column_ref =
-				    dynamic_cast<ColumnRefExpression *>(function_ref->GetArgumentsMutable()[0].GetExpressionMutable().get());
+				column_ref = dynamic_cast<ColumnRefExpression *>(
+				    function_ref->GetArgumentsMutable()[0].GetExpressionMutable().get());
 				if (column_ref == nullptr) {
 					continue;
 				}
@@ -1076,10 +1076,9 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 				}
 			}
 
-			auto selected_col_exprs =
-			    relation_name.empty()
-			        ? GetColRefExprFromPg(alias_to_vertex_and_edge_tables)
-			        : GetColRefExprFromPg(alias_to_vertex_and_edge_tables, relation_name.GetIdentifierName());
+			auto selected_col_exprs = relation_name.empty() ? GetColRefExprFromPg(alias_to_vertex_and_edge_tables)
+			                                                : GetColRefExprFromPg(alias_to_vertex_and_edge_tables,
+			                                                                      relation_name.GetIdentifierName());
 
 			// Fallback to star expression if cannot figure out the columns to query.
 			if (selected_col_exprs.empty()) {
