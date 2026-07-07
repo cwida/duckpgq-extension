@@ -9,17 +9,17 @@
 
 namespace duckdb {
 
-static void EnableParserOverrideFallback(ExtensionLoader &loader) {
+static void EnableParserOverride(ExtensionLoader &loader) {
 	auto &db = loader.GetDatabaseInstance();
-	Settings::Set<AllowParserOverrideExtensionSetting>(db, SetScope::GLOBAL, Value("FALLBACK"));
+	Settings::Set<AllowParserOverrideExtensionSetting>(db, SetScope::GLOBAL, Value("STRICT"));
 
 	for (auto &context : ConnectionManager::Get(db).GetConnectionList()) {
-		Settings::Set<AllowParserOverrideExtensionSetting>(*context, SetScope::SESSION, Value("FALLBACK"));
+		Settings::Set<AllowParserOverrideExtensionSetting>(*context, SetScope::SESSION, Value("STRICT"));
 	}
 }
 
 static void LoadInternal(ExtensionLoader &loader) {
-	EnableParserOverrideFallback(loader);
+	EnableParserOverride(loader);
 	CoreModule::Register(loader);
 }
 

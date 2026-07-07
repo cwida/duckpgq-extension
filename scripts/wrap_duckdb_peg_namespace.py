@@ -7,6 +7,32 @@ from pathlib import Path
 SOURCE_SUFFIXES = {".cpp", ".hpp", ".h"}
 VENDORED_INCLUDE_PREFIX = "duckpgq/third_party/duckdb_peg_parser/peg/"
 
+PGQ_TRANSFORMER_INCLUDE = '#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"'
+
+PGQ_TRANSFORMER_TYPES = """struct PropertyGraphProperties {
+\tvector<Identifier> columns;
+\tbool all_columns = false;
+\tbool no_columns = false;
+};
+
+struct PropertyGraphSubLabels {
+\tIdentifier discriminator;
+\tvector<Identifier> labels;
+};
+
+struct PropertyGraphLabel {
+\tIdentifier main_label;
+\toptional<PropertyGraphSubLabels> sub_labels;
+};
+
+struct PropertyGraphTableReference {
+\tunique_ptr<BaseTableRef> table;
+\tvector<Identifier> foreign_keys;
+\tvector<Identifier> primary_keys;
+};
+
+"""
+
 
 def wrap_file(path: Path) -> bool:
     text = path.read_text()
@@ -35,6 +61,16 @@ def wrap_file(path: Path) -> bool:
         "\treturn make_shared_ptr<PEGMatcher>();\n"
         "}",
     )
+
+    if path.name == "peg_transformer.hpp":
+        if PGQ_TRANSFORMER_INCLUDE not in text:
+            text = text.replace(
+                '#include "duckdb/parser/tableref/pivotref.hpp"\n',
+                '#include "duckdb/parser/tableref/pivotref.hpp"\n'
+                f"{PGQ_TRANSFORMER_INCLUDE}\n",
+            )
+        if "struct PropertyGraphProperties" not in text:
+            text = text.replace("struct PEGTransformerState {\n", PGQ_TRANSFORMER_TYPES + "struct PEGTransformerState {\n")
 
     if "namespace duckpgq_peg" in text:
         path.write_text(text)

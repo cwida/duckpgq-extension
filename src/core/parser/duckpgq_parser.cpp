@@ -26,9 +26,15 @@
 #include <duckpgq/core/functions/table/summarize_property_graph.hpp>
 
 #include "duckdb/main/extension_callback_manager.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
 
 namespace duckdb {
+
+static bool DuckPGQQuery(const string &query) {
+	auto lower_query = StringUtil::Lower(query);
+	return lower_query.find("property graph") != string::npos || lower_query.find("graph_table") != string::npos;
+}
 
 static bool DuckPGQShouldWrapStatement(const unique_ptr<SQLStatement> &statement) {
 	if (statement->type == StatementType::CREATE_STATEMENT) {
@@ -97,7 +103,10 @@ ParserOverrideResult duckpgq_parser_override(ParserExtensionInfo *info, const st
 
 		return ParserOverrideResult(std::move(statements));
 	} catch (std::exception &ex) {
-		return ParserOverrideResult(ex);
+		if (DuckPGQQuery(query)) {
+			return ParserOverrideResult(ex);
+		}
+		return ParserOverrideResult();
 	}
 }
 

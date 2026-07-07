@@ -4,7 +4,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]:-${(%):-%x}}" )" >/dev/null 2>&1 && pwd )"
 REPO_ROOT="$( cd "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd )"
-UPSTREAM_DIR="${REPO_ROOT}/third_party/duckdb_peg_parser/upstream"
+VENDOR_DIR="${DUCKPGQ_PEG_VENDOR_DIR:-${REPO_ROOT}/third_party/duckdb_peg_parser}"
+UPSTREAM_DIR="${VENDOR_DIR}/upstream"
 VENDORED_INCLUDE_DIR="${UPSTREAM_DIR}/src/include/duckpgq/third_party/duckdb_peg_parser/peg"
 DUCKDB_INCLUDE_DIR="${UPSTREAM_DIR}/src/include/duckdb/parser/peg"
 PYTHON="${PYTHON:-python3}"

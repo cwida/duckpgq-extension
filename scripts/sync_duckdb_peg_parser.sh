@@ -54,10 +54,14 @@ git -C "${DUCKDB_DIR}" rev-parse HEAD > "${BASE_FILE}"
 python3 "${SCRIPT_DIR}/wrap_duckdb_peg_namespace.py" "${UPSTREAM_DIR}"
 
 if compgen -G "${PATCH_DIR}/*.patch" >/dev/null; then
-	git -C "${REPO_ROOT}" apply --3way "${PATCH_DIR}"/*.patch
+	git -C "${UPSTREAM_DIR}" apply "${PATCH_DIR}"/*.patch
 	echo "Applied PEG parser patches from ${PATCH_DIR}"
 else
 	echo "No PEG parser patches found in ${PATCH_DIR}"
+fi
+
+if [ "${DUCKPGQ_PEG_REGENERATE:-1}" != "0" ]; then
+	DUCKPGQ_PEG_VENDOR_DIR="${VENDOR_DIR}" bash "${SCRIPT_DIR}/regenerate_duckdb_peg_parser.sh"
 fi
 
 echo "Synced DuckDB PEG parser from $(cat "${BASE_FILE}")"
