@@ -1593,8 +1593,42 @@ overrides:
     by_value: true
   GraphPathPattern:
     type: "unique_ptr<PathPattern>"
+  GraphPathVariable:
+    type: "Identifier"
+    by_value: true
+  GraphPathSearchPrefix:
+    type: "string"
+    by_value: true
+  GraphAllShortestPrefix:
+    type: "string"
+    by_value: true
+  GraphAnyShortestPrefix:
+    type: "string"
+    by_value: true
+  GraphPathModePrefix:
+    type: "string"
+    by_value: true
+  GraphWalkPathMode:
+    type: "string"
+    by_value: true
+  GraphTrailPathMode:
+    type: "string"
+    by_value: true
+  GraphSimplePathMode:
+    type: "string"
+    by_value: true
+  GraphAcyclicPathMode:
+    type: "string"
+    by_value: true
+  GraphPathSequence:
+    type: "unique_ptr<PathPattern>"
   GraphEdgeVertexPattern:
     type: "vector<unique_ptr<PathReference>>"
+    by_value: true
+  GraphQuantifiedEdgePattern:
+    type: "unique_ptr<PathReference>"
+  GraphEdgeQuantifier:
+    type: "string"
     by_value: true
   GraphVertexPattern:
     type: "unique_ptr<PathElement>"

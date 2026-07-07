@@ -60,6 +60,30 @@ static unique_ptr<ColumnRefExpression> PGQColumnRef(const string &table_name, co
 static bool PGQNormalizeStructExtract(unique_ptr<ParsedExpression> &expression,
                                       const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map);
 
+static void PGQCheckPathModeSupport(const PathReference &path_reference);
+
+static void PGQCheckPathModeSupport(const PathPattern &path_pattern) {
+	if (path_pattern.all && path_pattern.shortest) {
+		throw NotImplementedException("ALL SHORTEST has not been implemented yet.");
+	}
+	for (auto &path_reference : path_pattern.path_elements) {
+		PGQCheckPathModeSupport(*path_reference);
+	}
+}
+
+static void PGQCheckPathModeSupport(const PathReference &path_reference) {
+	if (path_reference.path_reference_type != PGQPathReferenceType::SUBPATH) {
+		return;
+	}
+	auto &subpath = reinterpret_cast<const SubPath &>(path_reference);
+	if (subpath.path_mode != PGQPathMode::NONE && subpath.path_mode != PGQPathMode::WALK) {
+		throw NotImplementedException("Path modes other than WALK have not been implemented yet.");
+	}
+	for (auto &child : subpath.path_list) {
+		PGQCheckPathModeSupport(*child);
+	}
+}
+
 static void PGQNormalizeGraphElementRefs(unique_ptr<ParsedExpression> &expression,
                                          const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
 	if (!expression) {
@@ -1073,6 +1097,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	int32_t extra_alias_counter = 0;
 	for (idx_t idx_i = 0; idx_i < ref->path_patterns.size(); idx_i++) {
 		auto &path_pattern = ref->path_patterns[idx_i];
+		PGQCheckPathModeSupport(*path_pattern);
 		// Check if the element is PathElement or a Subpath with potentially many
 		// items
 		ProcessPathList(path_pattern->path_elements, conditions, final_select_node, alias_map, *pg_table,

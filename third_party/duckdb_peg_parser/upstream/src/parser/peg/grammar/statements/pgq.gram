@@ -23,8 +23,20 @@ GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' GraphPathPattern Wh
 GraphTableKeyword <- GraphTableSpacedKeyword / GraphTableUnderscoreKeyword
 GraphTableUnderscoreKeyword <- Identifier
 GraphTableSpacedKeyword <- 'GRAPH' 'TABLE'
-GraphPathPattern <- GraphVertexPattern GraphEdgeVertexPattern*
-GraphEdgeVertexPattern <- GraphEdgePattern GraphVertexPattern
+GraphPathPattern <- GraphPathVariable? GraphPathSearchPrefix? GraphPathModePrefix? GraphPathSequence
+GraphPathVariable <- Identifier '='
+GraphPathSearchPrefix <- GraphAllShortestPrefix / GraphAnyShortestPrefix
+GraphAllShortestPrefix <- 'ALL' 'SHORTEST'
+GraphAnyShortestPrefix <- 'ANY' 'SHORTEST'
+GraphPathModePrefix <- GraphWalkPathMode / GraphTrailPathMode / GraphSimplePathMode / GraphAcyclicPathMode
+GraphWalkPathMode <- 'WALK'
+GraphTrailPathMode <- 'TRAIL'
+GraphSimplePathMode <- 'SIMPLE'
+GraphAcyclicPathMode <- 'ACYCLIC'
+GraphPathSequence <- GraphVertexPattern GraphEdgeVertexPattern*
+GraphEdgeVertexPattern <- GraphQuantifiedEdgePattern GraphVertexPattern
+GraphQuantifiedEdgePattern <- GraphEdgePattern GraphEdgeQuantifier?
+GraphEdgeQuantifier <- '*'
 GraphVertexPattern <- '(' Identifier GraphTableLabel? ')'
 GraphEdgePattern <- GraphEdgeLeftEndpoint GraphEdgeBody GraphEdgeRightEndpoint
 GraphEdgeLeftEndpoint <- GraphEdgeLeftArrow / GraphEdgeDash

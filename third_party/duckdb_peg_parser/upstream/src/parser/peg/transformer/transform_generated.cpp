@@ -7593,6 +7593,92 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphTableSpace
 unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphPathPatternInternal(
     PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list_pr = parse_result.Cast<ListParseResult>();
+	optional<Identifier> graph_path_variable {};
+	auto &graph_path_variable_opt = list_pr.GetChild(0).Cast<OptionalParseResult>();
+	if (graph_path_variable_opt.HasResult()) {
+		auto graph_path_variable_value = transformer.Transform<Identifier>(graph_path_variable_opt.GetResult());
+		graph_path_variable = std::move(graph_path_variable_value);
+	}
+	optional<string> graph_path_search_prefix {};
+	auto &graph_path_search_prefix_opt = list_pr.GetChild(1).Cast<OptionalParseResult>();
+	if (graph_path_search_prefix_opt.HasResult()) {
+		auto graph_path_search_prefix_value = transformer.Transform<string>(graph_path_search_prefix_opt.GetResult());
+		graph_path_search_prefix = std::move(graph_path_search_prefix_value);
+	}
+	optional<string> graph_path_mode_prefix {};
+	auto &graph_path_mode_prefix_opt = list_pr.GetChild(2).Cast<OptionalParseResult>();
+	if (graph_path_mode_prefix_opt.HasResult()) {
+		auto graph_path_mode_prefix_value = transformer.Transform<string>(graph_path_mode_prefix_opt.GetResult());
+		graph_path_mode_prefix = std::move(graph_path_mode_prefix_value);
+	}
+	auto graph_path_sequence = transformer.Transform<unique_ptr<PathPattern>>(list_pr.GetChild(3));
+	auto result = TransformGraphPathPattern(transformer, std::move(graph_path_variable), std::move(graph_path_search_prefix), std::move(graph_path_mode_prefix), std::move(graph_path_sequence));
+	return make_uniq<TypedTransformResult<unique_ptr<PathPattern>>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphPathVariableInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	auto identifier = list_pr.GetChild(0).Cast<IdentifierParseResult>().identifier;
+	auto result = TransformGraphPathVariable(transformer, identifier);
+	return make_uniq<TypedTransformResult<Identifier>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphPathSearchPrefixInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	auto &choice_pr = list_pr.Child<ChoiceParseResult>(0);
+	auto result = transformer.Transform<string>(choice_pr.GetResult());
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphAllShortestPrefixInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto result = TransformGraphAllShortestPrefix(transformer);
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphAnyShortestPrefixInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto result = TransformGraphAnyShortestPrefix(transformer);
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphPathModePrefixInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	auto &choice_pr = list_pr.Child<ChoiceParseResult>(0);
+	auto result = transformer.Transform<string>(choice_pr.GetResult());
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphWalkPathModeInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto result = TransformGraphWalkPathMode(transformer);
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphTrailPathModeInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto result = TransformGraphTrailPathMode(transformer);
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphSimplePathModeInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto result = TransformGraphSimplePathMode(transformer);
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphAcyclicPathModeInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto result = TransformGraphAcyclicPathMode(transformer);
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphPathSequenceInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
 	auto graph_vertex_pattern = transformer.Transform<unique_ptr<PathElement>>(list_pr.GetChild(0));
 	optional<vector<vector<unique_ptr<PathReference>>>> graph_edge_vertex_pattern {};
 	auto &graph_edge_vertex_pattern_opt = list_pr.GetChild(1).Cast<OptionalParseResult>();
@@ -7605,17 +7691,37 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphPathPatter
 		}
 		graph_edge_vertex_pattern = std::move(graph_edge_vertex_pattern_value);
 	}
-	auto result = TransformGraphPathPattern(transformer, std::move(graph_vertex_pattern), std::move(graph_edge_vertex_pattern));
+	auto result = TransformGraphPathSequence(transformer, std::move(graph_vertex_pattern), std::move(graph_edge_vertex_pattern));
 	return make_uniq<TypedTransformResult<unique_ptr<PathPattern>>>(std::move(result));
 }
 
 unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphEdgeVertexPatternInternal(
     PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list_pr = parse_result.Cast<ListParseResult>();
-	auto graph_edge_pattern = transformer.Transform<unique_ptr<PathElement>>(list_pr.GetChild(0));
+	auto graph_quantified_edge_pattern = transformer.Transform<unique_ptr<PathReference>>(list_pr.GetChild(0));
 	auto graph_vertex_pattern = transformer.Transform<unique_ptr<PathElement>>(list_pr.GetChild(1));
-	auto result = TransformGraphEdgeVertexPattern(transformer, std::move(graph_edge_pattern), std::move(graph_vertex_pattern));
+	auto result = TransformGraphEdgeVertexPattern(transformer, std::move(graph_quantified_edge_pattern), std::move(graph_vertex_pattern));
 	return make_uniq<TypedTransformResult<vector<unique_ptr<PathReference>>>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphQuantifiedEdgePatternInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	auto graph_edge_pattern = transformer.Transform<unique_ptr<PathElement>>(list_pr.GetChild(0));
+	optional<string> graph_edge_quantifier {};
+	auto &graph_edge_quantifier_opt = list_pr.GetChild(1).Cast<OptionalParseResult>();
+	if (graph_edge_quantifier_opt.HasResult()) {
+		auto graph_edge_quantifier_value = transformer.Transform<string>(graph_edge_quantifier_opt.GetResult());
+		graph_edge_quantifier = std::move(graph_edge_quantifier_value);
+	}
+	auto result = TransformGraphQuantifiedEdgePattern(transformer, std::move(graph_edge_pattern), std::move(graph_edge_quantifier));
+	return make_uniq<TypedTransformResult<unique_ptr<PathReference>>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphEdgeQuantifierInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto result = TransformGraphEdgeQuantifier(transformer);
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
 }
 
 unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphVertexPatternInternal(
@@ -10861,7 +10967,19 @@ void PEGTransformerFactory::RegisterGenerated() {
 		{"GraphTableUnderscoreKeyword", &PEGTransformerFactory::TransformGraphTableUnderscoreKeywordInternal},
 		{"GraphTableSpacedKeyword", &PEGTransformerFactory::TransformGraphTableSpacedKeywordInternal},
 		{"GraphPathPattern", &PEGTransformerFactory::TransformGraphPathPatternInternal},
+		{"GraphPathVariable", &PEGTransformerFactory::TransformGraphPathVariableInternal},
+		{"GraphPathSearchPrefix", &PEGTransformerFactory::TransformGraphPathSearchPrefixInternal},
+		{"GraphAllShortestPrefix", &PEGTransformerFactory::TransformGraphAllShortestPrefixInternal},
+		{"GraphAnyShortestPrefix", &PEGTransformerFactory::TransformGraphAnyShortestPrefixInternal},
+		{"GraphPathModePrefix", &PEGTransformerFactory::TransformGraphPathModePrefixInternal},
+		{"GraphWalkPathMode", &PEGTransformerFactory::TransformGraphWalkPathModeInternal},
+		{"GraphTrailPathMode", &PEGTransformerFactory::TransformGraphTrailPathModeInternal},
+		{"GraphSimplePathMode", &PEGTransformerFactory::TransformGraphSimplePathModeInternal},
+		{"GraphAcyclicPathMode", &PEGTransformerFactory::TransformGraphAcyclicPathModeInternal},
+		{"GraphPathSequence", &PEGTransformerFactory::TransformGraphPathSequenceInternal},
 		{"GraphEdgeVertexPattern", &PEGTransformerFactory::TransformGraphEdgeVertexPatternInternal},
+		{"GraphQuantifiedEdgePattern", &PEGTransformerFactory::TransformGraphQuantifiedEdgePatternInternal},
+		{"GraphEdgeQuantifier", &PEGTransformerFactory::TransformGraphEdgeQuantifierInternal},
 		{"GraphVertexPattern", &PEGTransformerFactory::TransformGraphVertexPatternInternal},
 		{"GraphEdgePattern", &PEGTransformerFactory::TransformGraphEdgePatternInternal},
 		{"GraphEdgeLeftEndpoint", &PEGTransformerFactory::TransformGraphEdgeLeftEndpointInternal},

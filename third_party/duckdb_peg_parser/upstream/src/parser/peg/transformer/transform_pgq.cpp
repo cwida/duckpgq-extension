@@ -287,7 +287,73 @@ string PEGTransformerFactory::TransformGraphTableSpacedKeyword(PEGTransformer &t
 	return "graph table";
 }
 
+static PGQPathMode PGQPathModeFromPrefix(const string &path_mode_prefix) {
+	if (StringUtil::CIEquals(path_mode_prefix, "walk")) {
+		return PGQPathMode::WALK;
+	}
+	if (StringUtil::CIEquals(path_mode_prefix, "trail")) {
+		return PGQPathMode::TRAIL;
+	}
+	if (StringUtil::CIEquals(path_mode_prefix, "simple")) {
+		return PGQPathMode::SIMPLE;
+	}
+	if (StringUtil::CIEquals(path_mode_prefix, "acyclic")) {
+		return PGQPathMode::ACYCLIC;
+	}
+	throw ParserException("Unsupported graph path mode");
+}
+
 unique_ptr<PathPattern> PEGTransformerFactory::TransformGraphPathPattern(
+    PEGTransformer &transformer, optional<Identifier> graph_path_variable,
+    optional<string> graph_path_search_prefix, optional<string> graph_path_mode_prefix,
+    unique_ptr<PathPattern> graph_path_sequence) {
+	auto result = std::move(graph_path_sequence);
+	if (graph_path_search_prefix) {
+		result->shortest = true;
+		result->all = StringUtil::CIEquals(*graph_path_search_prefix, "all shortest");
+	}
+	if (!graph_path_variable && !graph_path_mode_prefix) {
+		return result;
+	}
+	auto subpath = make_uniq<SubPath>(PGQPathReferenceType::SUBPATH);
+	subpath->path_variable = graph_path_variable ? PGQIdentifierName(*graph_path_variable) : string();
+	if (graph_path_mode_prefix) {
+		subpath->path_mode = PGQPathModeFromPrefix(*graph_path_mode_prefix);
+	}
+	subpath->path_list = std::move(result->path_elements);
+	result->path_elements.push_back(std::move(subpath));
+	return result;
+}
+
+Identifier PEGTransformerFactory::TransformGraphPathVariable(PEGTransformer &transformer, const Identifier &identifier) {
+	return identifier;
+}
+
+string PEGTransformerFactory::TransformGraphAllShortestPrefix(PEGTransformer &transformer) {
+	return "all shortest";
+}
+
+string PEGTransformerFactory::TransformGraphAnyShortestPrefix(PEGTransformer &transformer) {
+	return "any shortest";
+}
+
+string PEGTransformerFactory::TransformGraphWalkPathMode(PEGTransformer &transformer) {
+	return "walk";
+}
+
+string PEGTransformerFactory::TransformGraphTrailPathMode(PEGTransformer &transformer) {
+	return "trail";
+}
+
+string PEGTransformerFactory::TransformGraphSimplePathMode(PEGTransformer &transformer) {
+	return "simple";
+}
+
+string PEGTransformerFactory::TransformGraphAcyclicPathMode(PEGTransformer &transformer) {
+	return "acyclic";
+}
+
+unique_ptr<PathPattern> PEGTransformerFactory::TransformGraphPathSequence(
     PEGTransformer &transformer, unique_ptr<PathElement> graph_vertex_pattern,
     optional<vector<vector<unique_ptr<PathReference>>>> graph_edge_vertex_pattern) {
 	auto result = make_uniq<PathPattern>();
@@ -303,11 +369,28 @@ unique_ptr<PathPattern> PEGTransformerFactory::TransformGraphPathPattern(
 }
 
 vector<unique_ptr<PathReference>> PEGTransformerFactory::TransformGraphEdgeVertexPattern(
-    PEGTransformer &transformer, unique_ptr<PathElement> graph_edge_pattern, unique_ptr<PathElement> graph_vertex_pattern) {
+    PEGTransformer &transformer, unique_ptr<PathReference> graph_quantified_edge_pattern,
+    unique_ptr<PathElement> graph_vertex_pattern) {
 	vector<unique_ptr<PathReference>> result;
-	result.push_back(std::move(graph_edge_pattern));
+	result.push_back(std::move(graph_quantified_edge_pattern));
 	result.push_back(std::move(graph_vertex_pattern));
 	return result;
+}
+
+unique_ptr<PathReference> PEGTransformerFactory::TransformGraphQuantifiedEdgePattern(
+    PEGTransformer &transformer, unique_ptr<PathElement> graph_edge_pattern, optional<string> graph_edge_quantifier) {
+	if (!graph_edge_quantifier) {
+		return std::move(graph_edge_pattern);
+	}
+	auto result = make_uniq<SubPath>(PGQPathReferenceType::SUBPATH);
+	result->path_list.push_back(std::move(graph_edge_pattern));
+	result->lower = 1;
+	result->upper = NumericLimits<int64_t>::Maximum();
+	return std::move(result);
+}
+
+string PEGTransformerFactory::TransformGraphEdgeQuantifier(PEGTransformer &transformer) {
+	return "*";
 }
 
 unique_ptr<PathElement> PEGTransformerFactory::TransformGraphVertexPattern(PEGTransformer &transformer,
