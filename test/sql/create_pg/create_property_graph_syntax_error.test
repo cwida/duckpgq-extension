@@ -1,0 +1,10 @@
+# name: test/sql/create_pg/create_property_graph_syntax_error.test
+# description: Testing property graph parser syntax errors
+# group: [create_pg]
+
+require duckpgq
+
+statement error
+CREATE PROPERTY GRAPH snb;
+----
+Parser Error: syntax error at or near ";"
