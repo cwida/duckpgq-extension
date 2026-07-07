@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "duckdb/common/identifier.hpp"
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
@@ -36,7 +37,7 @@ public:
 
 	vector<string> except_columns;
 
-	vector<string> sub_labels;
+	vector<Identifier> sub_labels;
 	string main_label;
 
 	string catalog_name;

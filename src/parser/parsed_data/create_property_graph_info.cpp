@@ -17,7 +17,7 @@ unique_ptr<CreateInfo> CreatePropertyGraphInfo::Copy() const {
 	for (auto &vertex_table : vertex_tables) {
 		auto copied_vertex_table = vertex_table->Copy();
 		for (auto &label : copied_vertex_table->sub_labels) {
-			result->label_map[label] = copied_vertex_table;
+			result->label_map[label.GetIdentifierName()] = copied_vertex_table;
 		}
 		result->label_map[copied_vertex_table->main_label] = copied_vertex_table;
 		result->vertex_tables.push_back(std::move(copied_vertex_table));
@@ -25,7 +25,7 @@ unique_ptr<CreateInfo> CreatePropertyGraphInfo::Copy() const {
 	for (auto &edge_table : edge_tables) {
 		auto copied_edge_table = edge_table->Copy();
 		for (auto &label : copied_edge_table->sub_labels) {
-			result->label_map[label] = copied_edge_table;
+			result->label_map[label.GetIdentifierName()] = copied_edge_table;
 		}
 		result->label_map[copied_edge_table->main_label] = copied_edge_table;
 		result->edge_tables.push_back(std::move(copied_edge_table));

@@ -67,7 +67,7 @@ void DuckPGQState::ProcessPropertyGraphs(unique_ptr<MaterializedQueryResult> &pr
 			table->discriminator = discriminator;
 			auto sublabels = ListValue::GetChildren(chunk->GetValue(11, i));
 			for (const auto &sublabel : sublabels) {
-				table->sub_labels.push_back(sublabel.GetValue<string>());
+				table->sub_labels.emplace_back(sublabel.GetValue<string>());
 			}
 		}
 
@@ -142,7 +142,7 @@ void DuckPGQState::RegisterPropertyGraph(const shared_ptr<PropertyGraphTable> &t
 
 	if (!table->discriminator.empty()) {
 		for (const auto &label : table->sub_labels) {
-			pg_info.label_map[label] = table;
+			pg_info.label_map[label.GetIdentifierName()] = table;
 		}
 	}
 

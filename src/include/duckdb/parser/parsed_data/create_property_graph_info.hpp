@@ -183,10 +183,10 @@ public:
 			}
 
 			for (const auto &sub_label : pg_table->sub_labels) {
-				auto distance_sub_label = LevenshteinDistance(label, sub_label);
+				auto distance_sub_label = LevenshteinDistance(label, sub_label.GetIdentifierName());
 				if (distance_sub_label < min_distance) {
 					min_distance = distance_sub_label;
-					closest_label = sub_label;
+					closest_label = sub_label.GetIdentifierName();
 				}
 			}
 		}

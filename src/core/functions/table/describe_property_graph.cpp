@@ -92,7 +92,7 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(ClientContext &con
 			output.SetValue(10, vector_idx, Value(vertex_table->discriminator));
 			vector<Value> sub_labels;
 			for (const auto &label : vertex_table->sub_labels) {
-				sub_labels.push_back(Value(label));
+				sub_labels.push_back(Value(label.GetIdentifierName()));
 			}
 			output.SetValue(11, vector_idx, Value::LIST(LogicalType::VARCHAR, sub_labels));
 		} else {
@@ -138,7 +138,7 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(ClientContext &con
 			output.SetValue(10, vector_idx, Value(edge_table->discriminator));
 			vector<Value> sub_labels;
 			for (const auto &label : edge_table->sub_labels) {
-				sub_labels.push_back(Value(label));
+				sub_labels.push_back(Value(label.GetIdentifierName()));
 			}
 			output.SetValue(11, vector_idx, Value::LIST(LogicalType::VARCHAR, sub_labels));
 		} else {

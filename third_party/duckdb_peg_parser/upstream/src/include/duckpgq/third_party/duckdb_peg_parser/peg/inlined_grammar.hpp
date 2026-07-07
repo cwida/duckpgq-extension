@@ -1486,7 +1486,7 @@ const char INLINED_PEG_GRAMMAR[] = {
 	"DestinationTableReference <- 'DESTINATION' BaseTableName\n"
 	"PropertyGraphKeyReference <- 'KEY' Parens(List(ColId)) 'REFERENCES' BaseTableName Parens(List(ColId))\n"
 	"DropPropertyGraph <- 'PROPERTY' 'GRAPH' IfExists? QualifiedName\n"
-	"GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' GraphPathPattern WhereClause? 'COLUMNS' '(' TargetList ')' ')'\n"
+	"GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' GraphPathPattern WhereClause? 'COLUMNS' '(' TargetList ')' ')' TableAlias?\n"
 	"GraphTableKeyword <- GraphTableSpacedKeyword / GraphTableUnderscoreKeyword\n"
 	"GraphTableUnderscoreKeyword <- Identifier\n"
 	"GraphTableSpacedKeyword <- 'GRAPH' 'TABLE'\n"

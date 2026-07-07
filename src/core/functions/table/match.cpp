@@ -14,6 +14,7 @@
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/comparison_expression.hpp"
 #include "duckdb/parser/expression/conjunction_expression.hpp"
+#include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/parser/expression/star_expression.hpp"
 
 #include "duckdb/parser/query_node/set_operation_node.hpp"
@@ -54,6 +55,85 @@ static unique_ptr<ColumnRefExpression> PGQColumnRef(const string &table_name, co
 	column_names.push_back(PGQIdentifier(table_name));
 	column_names.push_back(PGQIdentifier(column_name));
 	return make_uniq<ColumnRefExpression>(std::move(column_names));
+}
+
+static bool PGQNormalizeStructExtract(unique_ptr<ParsedExpression> &expression,
+                                      const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map);
+
+static void PGQNormalizeGraphElementRefs(unique_ptr<ParsedExpression> &expression,
+                                         const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
+	if (!expression) {
+		return;
+	}
+	if (PGQNormalizeStructExtract(expression, alias_map)) {
+		return;
+	}
+	switch (expression->GetExpressionClass()) {
+	case ExpressionClass::OPERATOR: {
+		auto &op = expression->Cast<OperatorExpression>();
+		for (auto &child : op.GetChildrenMutable()) {
+			PGQNormalizeGraphElementRefs(child, alias_map);
+		}
+		break;
+	}
+	case ExpressionClass::COMPARISON: {
+		auto &comparison = expression->Cast<ComparisonExpression>();
+		PGQNormalizeGraphElementRefs(comparison.LeftMutable(), alias_map);
+		PGQNormalizeGraphElementRefs(comparison.RightMutable(), alias_map);
+		break;
+	}
+	case ExpressionClass::CONJUNCTION: {
+		auto &conjunction = expression->Cast<ConjunctionExpression>();
+		for (auto &child : conjunction.GetChildrenMutable()) {
+			PGQNormalizeGraphElementRefs(child, alias_map);
+		}
+		break;
+	}
+	case ExpressionClass::FUNCTION: {
+		auto &function = expression->Cast<FunctionExpression>();
+		for (auto &argument : function.GetArgumentsMutable()) {
+			PGQNormalizeGraphElementRefs(argument.GetExpressionMutable(), alias_map);
+		}
+		PGQNormalizeGraphElementRefs(function.FilterMutable(), alias_map);
+		break;
+	}
+	case ExpressionClass::BETWEEN: {
+		auto &between = expression->Cast<BetweenExpression>();
+		PGQNormalizeGraphElementRefs(between.InputMutable(), alias_map);
+		PGQNormalizeGraphElementRefs(between.LowerBoundMutable(), alias_map);
+		PGQNormalizeGraphElementRefs(between.UpperBoundMutable(), alias_map);
+		break;
+	}
+	default:
+		break;
+	}
+}
+
+static bool PGQNormalizeStructExtract(unique_ptr<ParsedExpression> &expression,
+                                      const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
+	if (expression->GetExpressionClass() != ExpressionClass::OPERATOR) {
+		return false;
+	}
+	auto &op = expression->Cast<OperatorExpression>();
+	if (op.GetExpressionType() != ExpressionType::STRUCT_EXTRACT) {
+		return false;
+	}
+	auto &children = op.GetChildrenMutable();
+	if (children.size() != 2 || children[0]->GetExpressionClass() != ExpressionClass::COLUMN_REF ||
+	    children[1]->GetExpressionClass() != ExpressionClass::CONSTANT) {
+		return false;
+	}
+	auto &alias_ref = children[0]->Cast<ColumnRefExpression>();
+	if (alias_ref.ColumnNames().size() != 1) {
+		return false;
+	}
+	auto alias = alias_ref.GetColumnName().GetIdentifierName();
+	if (alias_map.find(alias) == alias_map.end()) {
+		return false;
+	}
+	auto &field = children[1]->Cast<ConstantExpression>().GetValue();
+	expression = PGQColumnRef(alias, field.GetValue<string>(), true);
+	return true;
 }
 
 namespace {
@@ -150,11 +230,17 @@ shared_ptr<PropertyGraphTable> PGQMatchFunction::FindGraphTable(const string &la
 
 void PGQMatchFunction::CheckInheritance(const shared_ptr<PropertyGraphTable> &tableref, PathElement *element,
                                         vector<unique_ptr<ParsedExpression>> &conditions) {
-	if (tableref->main_label == element->label) {
+	if (StringUtil::CIEquals(tableref->main_label, element->label)) {
 		return;
+	}
+	if (tableref->discriminator.empty()) {
+		throw BinderException("Label %s is not a sublabel of %s", element->label, tableref->main_label);
 	}
 	auto constant_expression_two = make_uniq<ConstantExpression>(Value::INTEGER(2));
 	const auto itr = std::find(tableref->sub_labels.begin(), tableref->sub_labels.end(), element->label);
+	if (itr == tableref->sub_labels.end()) {
+		throw BinderException("Label %s is not a sublabel of %s", element->label, tableref->main_label);
+	}
 
 	const auto idx_of_label = std::distance(tableref->sub_labels.begin(), itr);
 	auto constant_expression_idx_label =
@@ -1007,12 +1093,17 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		}
 	}
 
+	// Maps from graph element alias to table, including vertex and edge tables.
+	auto alias_to_vertex_and_edge_tables = PopulateGraphTableAliasMap(*pg_table, *ref);
+
+	for (auto &column : ref->column_list) {
+		PGQNormalizeGraphElementRefs(column, alias_to_vertex_and_edge_tables);
+	}
 	if (ref->where_clause) {
+		PGQNormalizeGraphElementRefs(ref->where_clause, alias_to_vertex_and_edge_tables);
 		conditions.push_back(std::move(ref->where_clause));
 	}
 
-	// Maps from table alias to table, including vertex and edge tables.
-	auto alias_to_vertex_and_edge_tables = PopulateGraphTableAliasMap(*pg_table, *ref);
 	CheckColumnBinding(*pg_table, *ref, alias_to_vertex_and_edge_tables);
 
 	std::vector<unique_ptr<ParsedExpression>> final_column_list;

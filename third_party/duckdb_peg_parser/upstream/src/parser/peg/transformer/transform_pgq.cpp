@@ -24,6 +24,15 @@ static vector<string> PGQIdentifierNames(const vector<Identifier> &identifiers) 
 	return result;
 }
 
+static vector<Identifier> PGQIdentifiers(const vector<Identifier> &identifiers) {
+	vector<Identifier> result;
+	result.reserve(identifiers.size());
+	for (auto &identifier : identifiers) {
+		result.push_back(identifier);
+	}
+	return result;
+}
+
 static void PGQApplyBaseTableName(PropertyGraphTable &table, const BaseTableRef &base_table_name) {
 	auto &qualified_name = base_table_name.GetQualifiedName();
 	table.catalog_name = PGQIdentifierName(qualified_name.Catalog());
@@ -52,7 +61,7 @@ static void PGQApplyLabel(PropertyGraphTable &table, const optional<PropertyGrap
 		table.main_label = PGQIdentifierName(label->main_label);
 		if (label->sub_labels) {
 			table.discriminator = PGQIdentifierName(label->sub_labels->discriminator);
-			table.sub_labels = PGQIdentifierNames(label->sub_labels->labels);
+			table.sub_labels = PGQIdentifiers(label->sub_labels->labels);
 		}
 	} else {
 		table.main_label = table.table_name_alias.empty() ? table.table_name : table.table_name_alias;
@@ -128,13 +137,13 @@ unique_ptr<CreateStatement> PEGTransformerFactory::TransformCreatePropertyGraphS
 	for (auto &vertex_table : info->vertex_tables) {
 		info->label_map[vertex_table->main_label] = vertex_table;
 		for (auto &label : vertex_table->sub_labels) {
-			info->label_map[label] = vertex_table;
+			info->label_map[label.GetIdentifierName()] = vertex_table;
 		}
 	}
 	for (auto &edge_table : info->edge_tables) {
 		info->label_map[edge_table->main_label] = edge_table;
 		for (auto &label : edge_table->sub_labels) {
-			info->label_map[label] = edge_table;
+			info->label_map[label.GetIdentifierName()] = edge_table;
 		}
 	}
 	result->info = std::move(info);
@@ -240,7 +249,7 @@ PropertyGraphTableReference PEGTransformerFactory::TransformPropertyGraphKeyRefe
 unique_ptr<TableRef> PEGTransformerFactory::TransformGraphTableRef(
     PEGTransformer &transformer, string graph_table_keyword, const QualifiedName &qualified_name,
     unique_ptr<PathPattern> graph_path_pattern, optional<unique_ptr<ParsedExpression>> where_clause,
-    vector<unique_ptr<ParsedExpression>> target_list) {
+    vector<unique_ptr<ParsedExpression>> target_list, const optional<TableAlias> &table_alias) {
 	if (!StringUtil::CIEquals(graph_table_keyword, "graph_table") &&
 	    !StringUtil::CIEquals(graph_table_keyword, "graph table")) {
 		throw ParserException("Expected GRAPH_TABLE or GRAPH TABLE");
@@ -248,7 +257,7 @@ unique_ptr<TableRef> PEGTransformerFactory::TransformGraphTableRef(
 
 	auto match_expression = make_uniq<MatchExpression>();
 	match_expression->pg_name = PGQIdentifierName(qualified_name.Name());
-	match_expression->alias = "graph_table";
+	match_expression->alias = table_alias ? table_alias->name.GetIdentifierName() : "graph_table";
 	match_expression->where_clause = std::move(where_clause).value_or(nullptr);
 	match_expression->column_list = std::move(target_list);
 	match_expression->path_patterns.push_back(std::move(graph_path_pattern));
@@ -258,6 +267,10 @@ unique_ptr<TableRef> PEGTransformerFactory::TransformGraphTableRef(
 
 	auto result = make_uniq<TableFunctionRef>();
 	result->function = make_uniq<FunctionExpression>(Identifier("duckpgq_match"), std::move(arguments));
+	if (table_alias) {
+		result->alias = table_alias->name;
+		result->column_name_alias = table_alias->column_name_alias;
+	}
 	return std::move(result);
 }
 

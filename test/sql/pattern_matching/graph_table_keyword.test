@@ -50,3 +50,13 @@ FROM GRAPH_TABLE (
 ORDER BY person, friend;
 ----
 Daniel	Tavneet
+
+query II
+SELECT gt.person, gt.friend
+FROM GRAPH_TABLE (
+    pg MATCH (p:Person)-[k:Knows]->(q:Person)
+    COLUMNS (p.name AS person, q.name AS friend)
+) AS gt
+ORDER BY gt.person, gt.friend;
+----
+Daniel	Tavneet
