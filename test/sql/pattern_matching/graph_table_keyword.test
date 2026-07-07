@@ -1,0 +1,23 @@
+# name: test/sql/pattern_matching/graph_table_keyword.test
+# description: Testing GRAPH_TABLE and GRAPH TABLE spelling
+# group: [pattern_matching]
+
+require duckpgq
+
+statement ok
+CREATE TABLE Student(id BIGINT, name VARCHAR);INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet');
+
+statement ok
+CREATE PROPERTY GRAPH pg VERTEX TABLES (Student PROPERTIES (id, name) LABEL Person);
+
+query I
+SELECT id FROM GRAPH TABLE (pg MATCH (Person) COLUMNS (Person.id as id)) ORDER BY id;
+----
+0
+1
+
+query I
+SELECT id FROM GRAPH_TABLE (pg MATCH (Person) COLUMNS (Person.id as id)) ORDER BY id;
+----
+0
+1

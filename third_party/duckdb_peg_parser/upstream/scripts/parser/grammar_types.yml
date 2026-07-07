@@ -546,6 +546,7 @@ TableRef:
     - TablePivotClause
     - TablePivotClauseBody
     - InnerTableRef
+    - GraphTableRef
     - TableFunction
     - TableFunctionLateralOpt
     - TableFunctionAliasColon
@@ -1577,6 +1578,18 @@ overrides:
     by_value: true
   PropertyGraphKeyReference:
     type: "PropertyGraphTableReference"
+    by_value: true
+  GraphTableLabel:
+    type: "Identifier"
+    by_value: true
+  GraphTableKeyword:
+    type: "string"
+    by_value: true
+  GraphTableUnderscoreKeyword:
+    type: "string"
+    by_value: true
+  GraphTableSpacedKeyword:
+    type: "string"
     by_value: true
   # create_index.gram
   RelOption: "pair<Identifier, unique_ptr<ParsedExpression>>"

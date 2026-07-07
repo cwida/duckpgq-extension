@@ -1424,7 +1424,7 @@ DistinctAll <- 'ALL'
 DistinctOn <- 'DISTINCT' DistinctOnTargets?
 DistinctOnTargets <- 'ON' Parens(List(Expression))
 
-InnerTableRef <- ValuesRef / TableFunction / TableSubquery / BaseTableRef / ParensTableRef
+InnerTableRef <- GraphTableRef / ValuesRef / TableFunction / TableSubquery / BaseTableRef / ParensTableRef
 
 TableRef <- InnerTableRef JoinOrPivot*
 TableSubquery <- Lateral? SubqueryReference TableAlias?
@@ -1604,6 +1604,12 @@ DestinationTableReference <- 'DESTINATION' BaseTableName
 PropertyGraphKeyReference <- 'KEY' Parens(List(ColId)) 'REFERENCES' BaseTableName Parens(List(ColId))
 
 DropPropertyGraph <- 'PROPERTY' 'GRAPH' IfExists? QualifiedName
+
+GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' '(' Identifier GraphTableLabel? ')' 'COLUMNS' '(' TargetList ')' ')'
+GraphTableKeyword <- GraphTableSpacedKeyword / GraphTableUnderscoreKeyword
+GraphTableUnderscoreKeyword <- Identifier
+GraphTableSpacedKeyword <- 'GRAPH' 'TABLE'
+GraphTableLabel <- ':' ColId
 
 DeleteStatement <- WithClause? 'DELETE' 'FROM' TargetOptAlias DeleteUsingClause? WhereClause? ReturningClause?
 TruncateStatement <- 'TRUNCATE' 'TABLE'? BaseTableName

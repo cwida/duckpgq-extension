@@ -33,10 +33,14 @@ namespace duckdb {
 
 static bool DuckPGQQuery(const string &query) {
 	auto lower_query = StringUtil::Lower(query);
-	return lower_query.find("property graph") != string::npos || lower_query.find("graph_table") != string::npos;
+	return lower_query.find("property graph") != string::npos || lower_query.find("graph_table") != string::npos ||
+	       lower_query.find("graph table") != string::npos;
 }
 
-static bool DuckPGQShouldWrapStatement(const unique_ptr<SQLStatement> &statement) {
+static bool DuckPGQShouldWrapStatement(const unique_ptr<SQLStatement> &statement, bool pgq_query) {
+	if (pgq_query && statement->type == StatementType::SELECT_STATEMENT) {
+		return true;
+	}
 	if (statement->type == StatementType::CREATE_STATEMENT) {
 		auto &create_statement = statement->Cast<CreateStatement>();
 		if (create_statement.info->type != CatalogType::INVALID) {
@@ -71,6 +75,7 @@ ParserOverrideResult duckpgq_parser_override(ParserExtensionInfo *info, const st
 		static duckpgq_peg::ParserCache duckpgq_parser_cache;
 		auto matcher = duckpgq_parser_cache.GetMatcher();
 		auto transformer_factory = duckpgq_parser_cache.GetTransformerFactory();
+		auto pgq_query = DuckPGQQuery(query);
 
 		vector<unique_ptr<SQLStatement>> statements;
 		idx_t token_cursor = 0;
@@ -78,7 +83,7 @@ ParserOverrideResult duckpgq_parser_override(ParserExtensionInfo *info, const st
 			auto statement = transformer_factory->TransformTopLevelStatement(
 			    tokens, options, matcher->TopLevelStatementMatcher(), token_cursor);
 			if (statement) {
-				if (DuckPGQShouldWrapStatement(statement)) {
+				if (DuckPGQShouldWrapStatement(statement, pgq_query)) {
 					statement = DuckPGQWrapStatement(std::move(statement));
 				}
 				statements.push_back(std::move(statement));

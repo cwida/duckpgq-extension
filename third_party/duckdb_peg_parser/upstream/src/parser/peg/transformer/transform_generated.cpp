@@ -7545,6 +7545,53 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformDropPropertyGra
 	return make_uniq<TypedTransformResult<unique_ptr<DropStatement>>>(std::move(result));
 }
 
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphTableRefInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	auto graph_table_keyword = transformer.Transform<string>(list_pr.GetChild(0));
+	auto qualified_name = transformer.Transform<QualifiedName>(list_pr.GetChild(2));
+	auto identifier = list_pr.GetChild(5).Cast<IdentifierParseResult>().identifier;
+	optional<Identifier> graph_table_label {};
+	auto &graph_table_label_opt = list_pr.GetChild(6).Cast<OptionalParseResult>();
+	if (graph_table_label_opt.HasResult()) {
+		auto graph_table_label_value = transformer.Transform<Identifier>(graph_table_label_opt.GetResult());
+		graph_table_label = std::move(graph_table_label_value);
+	}
+	auto target_list = transformer.Transform<vector<unique_ptr<ParsedExpression>>>(list_pr.GetChild(10));
+	auto result = TransformGraphTableRef(transformer, std::move(graph_table_keyword), qualified_name, identifier, std::move(graph_table_label), std::move(target_list));
+	return make_uniq<TypedTransformResult<unique_ptr<TableRef>>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphTableKeywordInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	auto &choice_pr = list_pr.Child<ChoiceParseResult>(0);
+	auto result = transformer.Transform<string>(choice_pr.GetResult());
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphTableUnderscoreKeywordInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	auto identifier = list_pr.GetChild(0).Cast<IdentifierParseResult>().identifier;
+	auto result = TransformGraphTableUnderscoreKeyword(transformer, identifier);
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphTableSpacedKeywordInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto result = TransformGraphTableSpacedKeyword(transformer);
+	return make_uniq<TypedTransformResult<string>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphTableLabelInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	auto col_id = transformer.Transform<Identifier>(list_pr.GetChild(1));
+	auto result = TransformGraphTableLabel(transformer, col_id);
+	return make_uniq<TypedTransformResult<Identifier>>(std::move(result));
+}
+
 unique_ptr<TransformResultValue> PEGTransformerFactory::TransformPivotOnInternal(
     PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list_pr = parse_result.Cast<ListParseResult>();
@@ -10703,6 +10750,11 @@ void PEGTransformerFactory::RegisterGenerated() {
 		{"DestinationTableReference", &PEGTransformerFactory::TransformDestinationTableReferenceInternal},
 		{"PropertyGraphKeyReference", &PEGTransformerFactory::TransformPropertyGraphKeyReferenceInternal},
 		{"DropPropertyGraph", &PEGTransformerFactory::TransformDropPropertyGraphInternal},
+		{"GraphTableRef", &PEGTransformerFactory::TransformGraphTableRefInternal},
+		{"GraphTableKeyword", &PEGTransformerFactory::TransformGraphTableKeywordInternal},
+		{"GraphTableUnderscoreKeyword", &PEGTransformerFactory::TransformGraphTableUnderscoreKeywordInternal},
+		{"GraphTableSpacedKeyword", &PEGTransformerFactory::TransformGraphTableSpacedKeywordInternal},
+		{"GraphTableLabel", &PEGTransformerFactory::TransformGraphTableLabelInternal},
 		{"PivotOn", &PEGTransformerFactory::TransformPivotOnInternal},
 		{"PivotUsing", &PEGTransformerFactory::TransformPivotUsingInternal},
 		{"PivotColumnList", &PEGTransformerFactory::TransformPivotColumnListInternal},

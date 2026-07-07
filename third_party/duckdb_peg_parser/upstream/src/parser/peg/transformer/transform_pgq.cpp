@@ -1,7 +1,12 @@
 #include "duckpgq/third_party/duckdb_peg_parser/peg/transformer/peg_transformer.hpp"
 #include "duckdb/common/string_util.hpp"
+#include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/path_element.hpp"
+#include "duckdb/parser/path_pattern.hpp"
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 #include "duckdb/parser/parsed_data/drop_property_graph_info.hpp"
+#include "duckdb/parser/tableref/matchref.hpp"
+#include "duckdb/parser/tableref/table_function_ref.hpp"
 
 namespace duckdb {
 namespace duckpgq_peg {
@@ -230,6 +235,52 @@ PropertyGraphTableReference PEGTransformerFactory::TransformPropertyGraphKeyRefe
 	result.table = std::move(base_table_name);
 	result.primary_keys = col_id_1;
 	return result;
+}
+
+unique_ptr<TableRef> PEGTransformerFactory::TransformGraphTableRef(
+    PEGTransformer &transformer, string graph_table_keyword, const QualifiedName &qualified_name,
+    const Identifier &identifier, optional<Identifier> graph_table_label, vector<unique_ptr<ParsedExpression>> target_list) {
+	if (!StringUtil::CIEquals(graph_table_keyword, "graph_table") &&
+	    !StringUtil::CIEquals(graph_table_keyword, "graph table")) {
+		throw ParserException("Expected GRAPH_TABLE or GRAPH TABLE");
+	}
+
+	auto match_expression = make_uniq<MatchExpression>();
+	match_expression->pg_name = PGQIdentifierName(qualified_name.Name());
+	match_expression->alias = "graph_table";
+	match_expression->column_list = std::move(target_list);
+
+	auto path_pattern = make_uniq<PathPattern>();
+	auto path_element = make_uniq<PathElement>(PGQPathReferenceType::PATH_ELEMENT);
+	path_element->match_type = PGQMatchType::MATCH_VERTEX;
+	path_element->variable_binding = PGQIdentifierName(identifier);
+	path_element->label = graph_table_label ? PGQIdentifierName(*graph_table_label) : path_element->variable_binding;
+	path_pattern->path_elements.push_back(std::move(path_element));
+	match_expression->path_patterns.push_back(std::move(path_pattern));
+
+	vector<FunctionArgument> arguments;
+	arguments.emplace_back(std::move(match_expression));
+
+	auto result = make_uniq<TableFunctionRef>();
+	result->function = make_uniq<FunctionExpression>(Identifier("duckpgq_match"), std::move(arguments));
+	return std::move(result);
+}
+
+string PEGTransformerFactory::TransformGraphTableUnderscoreKeyword(PEGTransformer &transformer,
+                                                                   const Identifier &identifier) {
+	auto result = PGQIdentifierName(identifier);
+	if (!StringUtil::CIEquals(result, "graph_table")) {
+		throw ParserException("Expected GRAPH_TABLE");
+	}
+	return result;
+}
+
+string PEGTransformerFactory::TransformGraphTableSpacedKeyword(PEGTransformer &transformer) {
+	return "graph table";
+}
+
+Identifier PEGTransformerFactory::TransformGraphTableLabel(PEGTransformer &transformer, const Identifier &col_id) {
+	return col_id;
 }
 
 } // namespace duckpgq_peg

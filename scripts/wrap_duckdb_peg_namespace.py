@@ -9,7 +9,7 @@ VENDORED_INCLUDE_PREFIX = "duckpgq/third_party/duckdb_peg_parser/peg/"
 
 PGQ_TRANSFORMER_INCLUDE = '#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"'
 
-PGQ_TRANSFORMER_TYPES = """struct PropertyGraphProperties {
+PGQ_PROPERTY_GRAPH_TRANSFORMER_TYPES = """struct PropertyGraphProperties {
 \tvector<Identifier> columns;
 \tbool all_columns = false;
 \tbool no_columns = false;
@@ -32,6 +32,8 @@ struct PropertyGraphTableReference {
 };
 
 """
+
+PGQ_TRANSFORMER_TYPES = PGQ_PROPERTY_GRAPH_TRANSFORMER_TYPES
 
 
 def wrap_file(path: Path) -> bool:
