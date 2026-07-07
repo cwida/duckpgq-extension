@@ -172,6 +172,7 @@ DropStatement:
   by_value: true
   rules:
     - DropEntries
+    - DropPropertyGraph
     - DropTable
     - DropTableFunction
     - DropFunction

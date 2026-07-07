@@ -4,11 +4,11 @@
 
 namespace duckdb {
 
-CreatePropertyGraphInfo::CreatePropertyGraphInfo() : CreateInfo(CatalogType::VIEW_ENTRY) {
+CreatePropertyGraphInfo::CreatePropertyGraphInfo() : CreateInfo(CatalogType::INVALID) {
 }
 
 CreatePropertyGraphInfo::CreatePropertyGraphInfo(string property_graph_name)
-    : CreateInfo(CatalogType::VIEW_ENTRY), property_graph_name(std::move(property_graph_name)) {
+    : CreateInfo(CatalogType::INVALID), property_graph_name(std::move(property_graph_name)) {
 }
 
 unique_ptr<CreateInfo> CreatePropertyGraphInfo::Copy() const {

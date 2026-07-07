@@ -7531,6 +7531,20 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformPropertyGraphKe
 	return make_uniq<TypedTransformResult<PropertyGraphTableReference>>(std::move(result));
 }
 
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformDropPropertyGraphInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	optional<bool> if_exists {};
+	auto &if_exists_opt = list_pr.GetChild(2).Cast<OptionalParseResult>();
+	if (if_exists_opt.HasResult()) {
+		auto if_exists_value = transformer.Transform<bool>(if_exists_opt.GetResult());
+		if_exists = if_exists_value;
+	}
+	auto qualified_name = transformer.Transform<QualifiedName>(list_pr.GetChild(3));
+	auto result = TransformDropPropertyGraph(transformer, if_exists, qualified_name);
+	return make_uniq<TypedTransformResult<unique_ptr<DropStatement>>>(std::move(result));
+}
+
 unique_ptr<TransformResultValue> PEGTransformerFactory::TransformPivotOnInternal(
     PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list_pr = parse_result.Cast<ListParseResult>();
@@ -10688,6 +10702,7 @@ void PEGTransformerFactory::RegisterGenerated() {
 		{"DestinationKeyFullReference", &PEGTransformerFactory::TransformDestinationKeyFullReferenceInternal},
 		{"DestinationTableReference", &PEGTransformerFactory::TransformDestinationTableReferenceInternal},
 		{"PropertyGraphKeyReference", &PEGTransformerFactory::TransformPropertyGraphKeyReferenceInternal},
+		{"DropPropertyGraph", &PEGTransformerFactory::TransformDropPropertyGraphInternal},
 		{"PivotOn", &PEGTransformerFactory::TransformPivotOnInternal},
 		{"PivotUsing", &PEGTransformerFactory::TransformPivotUsingInternal},
 		{"PivotColumnList", &PEGTransformerFactory::TransformPivotColumnListInternal},

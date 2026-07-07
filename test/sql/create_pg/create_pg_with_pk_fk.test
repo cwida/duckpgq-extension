@@ -282,6 +282,13 @@ statement ok
 VERTEX TABLES (a, b)
 EDGE TABLES (edge_ab SOURCE a DESTINATION b);
 
+query IIIIII
+-SELECT source_table, source_pk, source_fk, destination_table, destination_pk, destination_fk
+FROM __duckpgq_internal
+WHERE property_graph = 'g_relationship' AND table_name = 'edge_ab';
+----
+a	[id]	[src]	b	[id]	[dst]
+
 statement ok
 INSERT INTO a VALUES (1, 'Vertex A');
 

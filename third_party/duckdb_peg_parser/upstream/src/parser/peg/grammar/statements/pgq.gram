@@ -16,3 +16,5 @@ DestinationKeyReference <- DestinationKeyFullReference / DestinationTableReferen
 DestinationKeyFullReference <- 'DESTINATION' PropertyGraphKeyReference
 DestinationTableReference <- 'DESTINATION' BaseTableName
 PropertyGraphKeyReference <- 'KEY' Parens(List(ColId)) 'REFERENCES' BaseTableName Parens(List(ColId))
+
+DropPropertyGraph <- 'PROPERTY' 'GRAPH' IfExists? QualifiedName

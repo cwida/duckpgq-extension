@@ -5,10 +5,12 @@
 namespace duckdb {
 
 DropPropertyGraphInfo::DropPropertyGraphInfo() : DropInfo() {
+	type = CatalogType::INVALID;
 }
 
 DropPropertyGraphInfo::DropPropertyGraphInfo(string property_graph_name, bool missing_ok)
     : DropInfo(), property_graph_name(std::move(property_graph_name)), missing_ok(missing_ok) {
+	type = CatalogType::INVALID;
 }
 
 unique_ptr<DropInfo> DropPropertyGraphInfo::Copy() const {

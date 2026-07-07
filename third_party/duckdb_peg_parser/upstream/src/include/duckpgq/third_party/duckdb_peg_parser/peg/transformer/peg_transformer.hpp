@@ -1851,6 +1851,8 @@ public:
 	static PropertyGraphTableReference TransformDestinationTableReference(PEGTransformer &transformer, unique_ptr<BaseTableRef> base_table_name);
 	static unique_ptr<TransformResultValue> TransformPropertyGraphKeyReferenceInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static PropertyGraphTableReference TransformPropertyGraphKeyReference(PEGTransformer &transformer, const vector<Identifier> &col_id, unique_ptr<BaseTableRef> base_table_name, const vector<Identifier> &col_id_1);
+	static unique_ptr<TransformResultValue> TransformDropPropertyGraphInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static unique_ptr<DropStatement> TransformDropPropertyGraph(PEGTransformer &transformer, const optional<bool> &if_exists, const QualifiedName &qualified_name);
 	static unique_ptr<TransformResultValue> TransformPivotOnInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static vector<PivotColumn> TransformPivotOn(PEGTransformer &transformer, vector<PivotColumn> pivot_column_list);
 	static unique_ptr<TransformResultValue> TransformPivotUsingInternal(PEGTransformer &transformer, ParseResult &parse_result);

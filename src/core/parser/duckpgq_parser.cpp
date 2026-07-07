@@ -20,6 +20,7 @@
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include <duckpgq/core/functions/table/describe_property_graph.hpp>
 #include <duckpgq/core/functions/table/drop_property_graph.hpp>
+#include <duckdb/parser/parsed_data/drop_property_graph_info.hpp>
 
 #include <duckdb/parser/tableref/matchref.hpp>
 #include <duckpgq/core/functions/table/summarize_property_graph.hpp>
@@ -30,11 +31,23 @@
 namespace duckdb {
 
 static bool DuckPGQShouldWrapStatement(const unique_ptr<SQLStatement> &statement) {
-	if (statement->type != StatementType::CREATE_STATEMENT) {
-		return false;
+	if (statement->type == StatementType::CREATE_STATEMENT) {
+		auto &create_statement = statement->Cast<CreateStatement>();
+		if (create_statement.info->type != CatalogType::INVALID) {
+			return false;
+		}
+		create_statement.info->Cast<CreatePropertyGraphInfo>();
+		return true;
 	}
-	auto &create_statement = statement->Cast<CreateStatement>();
-	return dynamic_cast<CreatePropertyGraphInfo *>(create_statement.info.get()) != nullptr;
+	if (statement->type == StatementType::DROP_STATEMENT) {
+		auto &drop_statement = statement->Cast<DropStatement>();
+		if (drop_statement.info->type != CatalogType::INVALID) {
+			return false;
+		}
+		drop_statement.info->Cast<DropPropertyGraphInfo>();
+		return true;
+	}
+	return false;
 }
 
 static unique_ptr<SQLStatement> DuckPGQWrapStatement(unique_ptr<SQLStatement> statement) {

@@ -1,6 +1,7 @@
 DropStatement <- 'DROP' DropEntries DropBehavior?
 
 DropEntries <-
+	DropPropertyGraph /
 	DropTable /
 	DropTableFunction /
 	DropFunction /
