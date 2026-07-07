@@ -239,7 +239,7 @@ PropertyGraphTableReference PEGTransformerFactory::TransformPropertyGraphKeyRefe
 
 unique_ptr<TableRef> PEGTransformerFactory::TransformGraphTableRef(
     PEGTransformer &transformer, string graph_table_keyword, const QualifiedName &qualified_name,
-    const Identifier &identifier, optional<Identifier> graph_table_label, vector<unique_ptr<ParsedExpression>> target_list) {
+    unique_ptr<PathPattern> graph_path_pattern, vector<unique_ptr<ParsedExpression>> target_list) {
 	if (!StringUtil::CIEquals(graph_table_keyword, "graph_table") &&
 	    !StringUtil::CIEquals(graph_table_keyword, "graph table")) {
 		throw ParserException("Expected GRAPH_TABLE or GRAPH TABLE");
@@ -249,14 +249,7 @@ unique_ptr<TableRef> PEGTransformerFactory::TransformGraphTableRef(
 	match_expression->pg_name = PGQIdentifierName(qualified_name.Name());
 	match_expression->alias = "graph_table";
 	match_expression->column_list = std::move(target_list);
-
-	auto path_pattern = make_uniq<PathPattern>();
-	auto path_element = make_uniq<PathElement>(PGQPathReferenceType::PATH_ELEMENT);
-	path_element->match_type = PGQMatchType::MATCH_VERTEX;
-	path_element->variable_binding = PGQIdentifierName(identifier);
-	path_element->label = graph_table_label ? PGQIdentifierName(*graph_table_label) : path_element->variable_binding;
-	path_pattern->path_elements.push_back(std::move(path_element));
-	match_expression->path_patterns.push_back(std::move(path_pattern));
+	match_expression->path_patterns.push_back(std::move(graph_path_pattern));
 
 	vector<FunctionArgument> arguments;
 	arguments.emplace_back(std::move(match_expression));
@@ -277,6 +270,78 @@ string PEGTransformerFactory::TransformGraphTableUnderscoreKeyword(PEGTransforme
 
 string PEGTransformerFactory::TransformGraphTableSpacedKeyword(PEGTransformer &transformer) {
 	return "graph table";
+}
+
+unique_ptr<PathPattern> PEGTransformerFactory::TransformGraphPathPattern(
+    PEGTransformer &transformer, unique_ptr<PathElement> graph_vertex_pattern,
+    optional<vector<vector<unique_ptr<PathReference>>>> graph_edge_vertex_pattern) {
+	auto result = make_uniq<PathPattern>();
+	result->path_elements.push_back(std::move(graph_vertex_pattern));
+	if (graph_edge_vertex_pattern) {
+		for (auto &edge_vertex : *graph_edge_vertex_pattern) {
+			for (auto &path_reference : edge_vertex) {
+				result->path_elements.push_back(std::move(path_reference));
+			}
+		}
+	}
+	return result;
+}
+
+vector<unique_ptr<PathReference>> PEGTransformerFactory::TransformGraphEdgeVertexPattern(
+    PEGTransformer &transformer, unique_ptr<PathElement> graph_edge_pattern, unique_ptr<PathElement> graph_vertex_pattern) {
+	vector<unique_ptr<PathReference>> result;
+	result.push_back(std::move(graph_edge_pattern));
+	result.push_back(std::move(graph_vertex_pattern));
+	return result;
+}
+
+unique_ptr<PathElement> PEGTransformerFactory::TransformGraphVertexPattern(PEGTransformer &transformer,
+                                                                           const Identifier &identifier,
+                                                                           optional<Identifier> graph_table_label) {
+	auto result = make_uniq<PathElement>(PGQPathReferenceType::PATH_ELEMENT);
+	result->match_type = PGQMatchType::MATCH_VERTEX;
+	result->variable_binding = PGQIdentifierName(identifier);
+	result->label = graph_table_label ? PGQIdentifierName(*graph_table_label) : result->variable_binding;
+	return result;
+}
+
+unique_ptr<PathElement> PEGTransformerFactory::TransformGraphEdgePattern(PEGTransformer &transformer,
+                                                                         string graph_edge_left_endpoint,
+                                                                         unique_ptr<PathElement> graph_edge_body,
+                                                                         string graph_edge_right_endpoint) {
+	if (graph_edge_left_endpoint == "-" && graph_edge_right_endpoint == "->") {
+		graph_edge_body->match_type = PGQMatchType::MATCH_EDGE_RIGHT;
+	} else if (graph_edge_left_endpoint == "<-" && graph_edge_right_endpoint == "-") {
+		graph_edge_body->match_type = PGQMatchType::MATCH_EDGE_LEFT;
+	} else if (graph_edge_left_endpoint == "-" && graph_edge_right_endpoint == "-") {
+		graph_edge_body->match_type = PGQMatchType::MATCH_EDGE_ANY;
+	} else if (graph_edge_left_endpoint == "<-" && graph_edge_right_endpoint == "->") {
+		graph_edge_body->match_type = PGQMatchType::MATCH_EDGE_LEFT_RIGHT;
+	} else {
+		throw ParserException("Unsupported graph edge direction");
+	}
+	return graph_edge_body;
+}
+
+unique_ptr<PathElement> PEGTransformerFactory::TransformGraphEdgeBody(PEGTransformer &transformer,
+                                                                      const Identifier &identifier,
+                                                                      optional<Identifier> graph_table_label) {
+	auto result = make_uniq<PathElement>(PGQPathReferenceType::PATH_ELEMENT);
+	result->variable_binding = PGQIdentifierName(identifier);
+	result->label = graph_table_label ? PGQIdentifierName(*graph_table_label) : result->variable_binding;
+	return result;
+}
+
+string PEGTransformerFactory::TransformGraphEdgeLeftArrow(PEGTransformer &transformer) {
+	return "<-";
+}
+
+string PEGTransformerFactory::TransformGraphEdgeRightArrow(PEGTransformer &transformer) {
+	return "->";
+}
+
+string PEGTransformerFactory::TransformGraphEdgeDash(PEGTransformer &transformer) {
+	return "-";
 }
 
 Identifier PEGTransformerFactory::TransformGraphTableLabel(PEGTransformer &transformer, const Identifier &col_id) {

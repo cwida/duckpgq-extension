@@ -59,6 +59,11 @@
 #include "duckdb/parser/statement/insert_statement.hpp"
 #include "duckdb/parser/statement/merge_into_statement.hpp"
 #include "duckdb/parser/tableref/pivotref.hpp"
+#include "duckdb/parser/path_element.hpp"
+#include "duckdb/parser/path_pattern.hpp"
+#include "duckdb/parser/path_reference.hpp"
+#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
+
 #include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
 
 namespace duckdb {
@@ -1859,12 +1864,30 @@ public:
 	static unique_ptr<TransformResultValue> TransformDropPropertyGraphInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static unique_ptr<DropStatement> TransformDropPropertyGraph(PEGTransformer &transformer, const optional<bool> &if_exists, const QualifiedName &qualified_name);
 	static unique_ptr<TransformResultValue> TransformGraphTableRefInternal(PEGTransformer &transformer, ParseResult &parse_result);
-	static unique_ptr<TableRef> TransformGraphTableRef(PEGTransformer &transformer, string graph_table_keyword, const QualifiedName &qualified_name, const Identifier &identifier, optional<Identifier> graph_table_label, vector<unique_ptr<ParsedExpression>> target_list);
+	static unique_ptr<TableRef> TransformGraphTableRef(PEGTransformer &transformer, string graph_table_keyword, const QualifiedName &qualified_name, unique_ptr<PathPattern> graph_path_pattern, vector<unique_ptr<ParsedExpression>> target_list);
 	static unique_ptr<TransformResultValue> TransformGraphTableKeywordInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static unique_ptr<TransformResultValue> TransformGraphTableUnderscoreKeywordInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static string TransformGraphTableUnderscoreKeyword(PEGTransformer &transformer, const Identifier &identifier);
 	static unique_ptr<TransformResultValue> TransformGraphTableSpacedKeywordInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static string TransformGraphTableSpacedKeyword(PEGTransformer &transformer);
+	static unique_ptr<TransformResultValue> TransformGraphPathPatternInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static unique_ptr<PathPattern> TransformGraphPathPattern(PEGTransformer &transformer, unique_ptr<PathElement> graph_vertex_pattern, optional<vector<vector<unique_ptr<PathReference>>>> graph_edge_vertex_pattern);
+	static unique_ptr<TransformResultValue> TransformGraphEdgeVertexPatternInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static vector<unique_ptr<PathReference>> TransformGraphEdgeVertexPattern(PEGTransformer &transformer, unique_ptr<PathElement> graph_edge_pattern, unique_ptr<PathElement> graph_vertex_pattern);
+	static unique_ptr<TransformResultValue> TransformGraphVertexPatternInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static unique_ptr<PathElement> TransformGraphVertexPattern(PEGTransformer &transformer, const Identifier &identifier, optional<Identifier> graph_table_label);
+	static unique_ptr<TransformResultValue> TransformGraphEdgePatternInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static unique_ptr<PathElement> TransformGraphEdgePattern(PEGTransformer &transformer, string graph_edge_left_endpoint, unique_ptr<PathElement> graph_edge_body, string graph_edge_right_endpoint);
+	static unique_ptr<TransformResultValue> TransformGraphEdgeLeftEndpointInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static unique_ptr<TransformResultValue> TransformGraphEdgeRightEndpointInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static unique_ptr<TransformResultValue> TransformGraphEdgeLeftArrowInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static string TransformGraphEdgeLeftArrow(PEGTransformer &transformer);
+	static unique_ptr<TransformResultValue> TransformGraphEdgeRightArrowInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static string TransformGraphEdgeRightArrow(PEGTransformer &transformer);
+	static unique_ptr<TransformResultValue> TransformGraphEdgeDashInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static string TransformGraphEdgeDash(PEGTransformer &transformer);
+	static unique_ptr<TransformResultValue> TransformGraphEdgeBodyInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static unique_ptr<PathElement> TransformGraphEdgeBody(PEGTransformer &transformer, const Identifier &identifier, optional<Identifier> graph_table_label);
 	static unique_ptr<TransformResultValue> TransformGraphTableLabelInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static Identifier TransformGraphTableLabel(PEGTransformer &transformer, const Identifier &col_id);
 	static unique_ptr<TransformResultValue> TransformPivotOnInternal(PEGTransformer &transformer, ParseResult &parse_result);

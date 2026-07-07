@@ -7,7 +7,11 @@ from pathlib import Path
 SOURCE_SUFFIXES = {".cpp", ".hpp", ".h"}
 VENDORED_INCLUDE_PREFIX = "duckpgq/third_party/duckdb_peg_parser/peg/"
 
-PGQ_TRANSFORMER_INCLUDE = '#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"'
+PGQ_TRANSFORMER_INCLUDE = """#include "duckdb/parser/path_element.hpp"
+#include "duckdb/parser/path_pattern.hpp"
+#include "duckdb/parser/path_reference.hpp"
+#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
+"""
 
 PGQ_PROPERTY_GRAPH_TRANSFORMER_TYPES = """struct PropertyGraphProperties {
 \tvector<Identifier> columns;
@@ -65,7 +69,7 @@ def wrap_file(path: Path) -> bool:
     )
 
     if path.name == "peg_transformer.hpp":
-        if PGQ_TRANSFORMER_INCLUDE not in text:
+        if '#include "duckdb/parser/path_element.hpp"' not in text:
             text = text.replace(
                 '#include "duckdb/parser/tableref/pivotref.hpp"\n',
                 '#include "duckdb/parser/tableref/pivotref.hpp"\n'

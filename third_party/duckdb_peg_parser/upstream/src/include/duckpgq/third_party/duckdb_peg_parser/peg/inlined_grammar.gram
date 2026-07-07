@@ -1605,10 +1605,20 @@ PropertyGraphKeyReference <- 'KEY' Parens(List(ColId)) 'REFERENCES' BaseTableNam
 
 DropPropertyGraph <- 'PROPERTY' 'GRAPH' IfExists? QualifiedName
 
-GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' '(' Identifier GraphTableLabel? ')' 'COLUMNS' '(' TargetList ')' ')'
+GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' GraphPathPattern 'COLUMNS' '(' TargetList ')' ')'
 GraphTableKeyword <- GraphTableSpacedKeyword / GraphTableUnderscoreKeyword
 GraphTableUnderscoreKeyword <- Identifier
 GraphTableSpacedKeyword <- 'GRAPH' 'TABLE'
+GraphPathPattern <- GraphVertexPattern GraphEdgeVertexPattern*
+GraphEdgeVertexPattern <- GraphEdgePattern GraphVertexPattern
+GraphVertexPattern <- '(' Identifier GraphTableLabel? ')'
+GraphEdgePattern <- GraphEdgeLeftEndpoint GraphEdgeBody GraphEdgeRightEndpoint
+GraphEdgeLeftEndpoint <- GraphEdgeLeftArrow / GraphEdgeDash
+GraphEdgeRightEndpoint <- GraphEdgeRightArrow / GraphEdgeDash
+GraphEdgeLeftArrow <- '<' '-'
+GraphEdgeRightArrow <- '->'
+GraphEdgeDash <- '-'
+GraphEdgeBody <- '[' Identifier GraphTableLabel? ']'
 GraphTableLabel <- ':' ColId
 
 DeleteStatement <- WithClause? 'DELETE' 'FROM' TargetOptAlias DeleteUsingClause? WhereClause? ReturningClause?

@@ -1591,6 +1591,32 @@ overrides:
   GraphTableSpacedKeyword:
     type: "string"
     by_value: true
+  GraphPathPattern:
+    type: "unique_ptr<PathPattern>"
+  GraphEdgeVertexPattern:
+    type: "vector<unique_ptr<PathReference>>"
+    by_value: true
+  GraphVertexPattern:
+    type: "unique_ptr<PathElement>"
+  GraphEdgePattern:
+    type: "unique_ptr<PathElement>"
+  GraphEdgeBody:
+    type: "unique_ptr<PathElement>"
+  GraphEdgeLeftEndpoint:
+    type: "string"
+    by_value: true
+  GraphEdgeRightEndpoint:
+    type: "string"
+    by_value: true
+  GraphEdgeLeftArrow:
+    type: "string"
+    by_value: true
+  GraphEdgeRightArrow:
+    type: "string"
+    by_value: true
+  GraphEdgeDash:
+    type: "string"
+    by_value: true
   # create_index.gram
   RelOption: "pair<Identifier, unique_ptr<ParsedExpression>>"
   # create_table.gram
