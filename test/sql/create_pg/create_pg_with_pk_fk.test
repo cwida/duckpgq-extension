@@ -21,7 +21,7 @@ create table e (
 );
 
 statement error
--create property graph g
+create property graph g
 vertex tables (v)
 edge tables (e source v destination v);
 ----
@@ -47,19 +47,19 @@ statement ok
 INSERT INTO e2 VALUES (1, 1, 2);
 
 statement error
--create property graph g
+create property graph g
 vertex tables (v)
 edge tables (e2 source v destination w);
 ----
 Invalid Error: Table 'w' not found in the property graph g.
 
 statement ok
--create property graph g
+create property graph g
 vertex tables (v, w)
 edge tables (e2 source v destination w);
 
 query II
--FROM GRAPH_TABLE (g MATCH (v:v)-[e2:e2]->(w:w) COLUMNS (v.id, w.id));
+FROM GRAPH_TABLE (g MATCH (v:v)-[e2:e2]->(w:w) COLUMNS (v.id, w.id));
 ----
 1	2
 
@@ -86,7 +86,7 @@ CREATE TABLE b (
 );
 
 statement error
--CREATE PROPERTY GRAPH g2 VERTEX TABLES (a) EDGE TABLES (b SOURCE a DESTINATION a);
+CREATE PROPERTY GRAPH g2 VERTEX TABLES (a) EDGE TABLES (b SOURCE a DESTINATION a);
 ----
 Invalid Error: No primary key - foreign key relationship found in b with SOURCE table a
 
@@ -104,7 +104,7 @@ CREATE TABLE b_pk (
 );
 
 statement ok
--CREATE PROPERTY GRAPH g2 VERTEX TABLES (a_pk) EDGE TABLES (b_pk SOURCE a_pk DESTINATION a_pk);
+CREATE PROPERTY GRAPH g2 VERTEX TABLES (a_pk) EDGE TABLES (b_pk SOURCE a_pk DESTINATION a_pk);
 
 statement ok
 CREATE TABLE x (
@@ -120,27 +120,27 @@ CREATE TABLE y (
 );
 
 statement error
--CREATE PROPERTY GRAPH g3
+CREATE PROPERTY GRAPH g3
 VERTEX TABLES (x)
 EDGE TABLES (y SOURCE x DESTINATION x);
 ----
 Invalid Error: Multiple primary key - foreign key relationships detected between y and x. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES x <foreign key>`
 
 statement error
--CREATE PROPERTY GRAPH g3
+CREATE PROPERTY GRAPH g3
 VERTEX TABLES (x)
 EDGE TABLES (y SOURCE KEY (src) REFERENCES x (id) DESTINATION x);
 ----
 Invalid Error: Multiple primary key - foreign key relationships detected between y and x. Please explicitly define the primary key and foreign key columns using `DESTINATION KEY <primary key> REFERENCES x <foreign key>`
 
 statement ok
--CREATE PROPERTY GRAPH g3_explicit
+CREATE PROPERTY GRAPH g3_explicit
 VERTEX TABLES (x)
 EDGE TABLES (y SOURCE KEY (src) REFERENCES x (id)
                              DESTINATION KEY (dst) REFERENCES x (id));
 
 query I
--FROM GRAPH_TABLE (g3_explicit MATCH (x:x)-[y:y]->(x:x) COLUMNS (x.id));
+FROM GRAPH_TABLE (g3_explicit MATCH (x:x)-[y:y]->(x:x) COLUMNS (x.id));
 ----
 
 statement ok
@@ -157,14 +157,14 @@ CREATE TABLE n (
 );
 
 statement error
--CREATE PROPERTY GRAPH g4
+CREATE PROPERTY GRAPH g4
 VERTEX TABLES (m)
 EDGE TABLES (n SOURCE m DESTINATION m);
 ----
 Invalid Error: The primary key for the SOURCE table m is not defined in the edge table n
 
 statement error
--CREATE PROPERTY GRAPH g4
+CREATE PROPERTY GRAPH g4
 VERTEX TABLES (m)
 EDGE TABLES (n SOURCE KEY (src) REFERENCES m DESTINATION m);
 ----
@@ -224,7 +224,7 @@ CREATE TABLE vertex_b (
 );
 
 statement ok
--CREATE PROPERTY GRAPH g11
+CREATE PROPERTY GRAPH g11
 VERTEX TABLES (vertex_b);
 
 statement ok
@@ -240,21 +240,21 @@ CREATE TABLE edge_a (
 );
 
 statement error
--CREATE PROPERTY GRAPH g10
+CREATE PROPERTY GRAPH g10
 VERTEX TABLES (node_a)
 EDGE TABLES (edge_a);
 ----
 Parser Error: syntax error at or near ")"
 
 statement error
--CREATE PROPERTY GRAPH g10
+CREATE PROPERTY GRAPH g10
 VERTEX TABLES (node_a)
 EDGE TABLES (edge_a SOURCE node_a DESTINATION KEY (dst) REFERENCES node_a (id));
 ----
 Invalid Error: Multiple primary key - foreign key relationships detected between edge_a and node_a. Please explicitly define the primary key and foreign key columns using `SOURCE KEY <primary key> REFERENCES node_a <foreign key>`
 
 statement ok
--CREATE PROPERTY GRAPH g10
+CREATE PROPERTY GRAPH g10
 VERTEX TABLES (node_a)
 EDGE TABLES (edge_a SOURCE KEY (src) REFERENCES node_a (id) DESTINATION KEY (dst) REFERENCES node_a (id));
 
@@ -278,12 +278,12 @@ CREATE TABLE edge_ab (
 );
 
 statement ok
--CREATE PROPERTY GRAPH g_relationship
+CREATE PROPERTY GRAPH g_relationship
 VERTEX TABLES (a, b)
 EDGE TABLES (edge_ab SOURCE a DESTINATION b);
 
 query IIIIII
--SELECT source_table, source_pk, source_fk, destination_table, destination_pk, destination_fk
+SELECT source_table, source_pk, source_fk, destination_table, destination_pk, destination_fk
 FROM __duckpgq_internal
 WHERE property_graph = 'g_relationship' AND table_name = 'edge_ab';
 ----
@@ -299,6 +299,6 @@ statement ok
 INSERT INTO edge_ab VALUES (1, 1, 2);
 
 query II
--FROM GRAPH_TABLE (g_relationship MATCH (a:a)-[edge_ab:edge_ab]->(b:b) COLUMNS (a.id, b.id));
+FROM GRAPH_TABLE (g_relationship MATCH (a:a)-[edge_ab:edge_ab]->(b:b) COLUMNS (a.id, b.id));
 ----
 1	2

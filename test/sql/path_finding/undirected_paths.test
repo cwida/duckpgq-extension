@@ -11,7 +11,7 @@ statement ok
 CREATE TABLE know(src BIGINT, dst BIGINT, id BIGINT);INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17), (2, 4, 18);
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student
     )
@@ -21,7 +21,7 @@ EDGE TABLES (
     );
 
 query III
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     o = ANY SHORTEST (a:Student WHERE a.id = 0)-[e:know]- *(b:Student)
     COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
@@ -35,7 +35,7 @@ query III
 0	4	2
 
 query III
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     o = ANY SHORTEST (a:Student WHERE a.id = 4)-[e:know]- *(b:Student)
     COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
@@ -49,7 +49,7 @@ query III
 4	4	0
 
 statement error
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     o = ANY SHORTEST (a:Student WHERE a.id = 4)<-[e:know]- *(b:Student)
     COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
@@ -59,7 +59,7 @@ statement error
 Cannot do shortest path for edge type MATCH_EDGE_LEFT
 
 statement error
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     o = ANY SHORTEST (a:Student WHERE a.id = 4)<-[e:know]-> *(b:Student)
     COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
@@ -69,7 +69,7 @@ statement error
 Cannot do shortest path for edge type MATCH_EDGE_LEFT_RIGHT
 
 query II
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     (a:Student WHERE a.id = 4)-[e:know]-{0,1}(b:Student)
     COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
@@ -80,7 +80,7 @@ query II
 4	3
 
 query III
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     o = ANY SHORTEST (a:Student WHERE a.id = 999)-[e:know]- *(b:Student)
     COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
@@ -89,7 +89,7 @@ query III
 ----
 
 query III
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     o = ANY SHORTEST (a:Student)-[e:know]- *(b:Student)
     COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
@@ -123,7 +123,7 @@ query III
 4	4	0
 
 query III
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     o = ANY SHORTEST (a:Student WHERE a.id = 3)-[e:know]- *(b:Student WHERE b.id = 3)
     COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
@@ -133,7 +133,7 @@ query III
 3	3	0
 
 query III
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     o = ANY SHORTEST (a:Student WHERE a.id = 0)-[e:know]- *(b:Student WHERE b.id = 5)
     COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
@@ -142,7 +142,7 @@ query III
 ----
 
 query III
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     o = ANY SHORTEST (a:Student WHERE a.id = 0)-[e:know]-{0,2}(b:Student)
     COLUMNS (a.id as a_id, b.id as b_id, path_length(o))

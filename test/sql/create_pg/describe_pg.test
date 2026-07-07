@@ -8,7 +8,7 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person LABEL Person
     )
@@ -19,13 +19,13 @@ EDGE TABLES (
     );
 
 query IIIIIIIIIIIIII
--DESCRIBE PROPERTY GRAPH snb;
+DESCRIBE PROPERTY GRAPH snb;
 ----
 snb	Person	person	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
 snb	Person_knows_person	knows	0	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	NULL	NULL	NULL	(empty)
 
 statement ok
--CREATE OR REPLACE PROPERTY GRAPH snb
+CREATE OR REPLACE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person LABEL Person,
     Forum LABEL Forum,
@@ -68,7 +68,7 @@ EDGE TABLES (
     );
 
 query IIIIIIIIIIIIII
--DESCRIBE PROPERTY GRAPH snb;
+DESCRIBE PROPERTY GRAPH snb;
 ----
 snb	Message	message	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
 snb	City	city	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	(empty)
@@ -91,7 +91,7 @@ snb	Person_knows_person	knows	0	Person	[id]	[Person1Id]	Person	[id]	[Person2Id]	
 
 
 statement error
--DESCRIBE PROPERTY GRAPH pgdoesnotexist;
+DESCRIBE PROPERTY GRAPH pgdoesnotexist;
 ----
 Invalid Error: Property graph pgdoesnotexist does not exist.
 
@@ -100,14 +100,14 @@ statement ok con1
 attach 'duckdb/data/bluesky/bluesky.duckdb';
 
 statement ok
--CREATE OR REPLACE PROPERTY GRAPH bluesky
+CREATE OR REPLACE PROPERTY GRAPH bluesky
             VERTEX TABLES (bluesky.account LABEL account)
             EDGE TABLES (bluesky.follows    SOURCE KEY (source) REFERENCES bluesky.account (did)
                                             DESTINATION KEY (destination) REFERENCES bluesky.account (did)
             LABEL follows);
 
 query IIIIIIIIIIIIII
--DESCRIBE PROPERTY GRAPH bluesky;
+DESCRIBE PROPERTY GRAPH bluesky;
 ----
 bluesky	account	account	1	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	bluesky	(empty)
 bluesky	follows	follows	0	account	[did]	[source]	account	[did]	[destination]	NULL	NULL	bluesky	(empty)

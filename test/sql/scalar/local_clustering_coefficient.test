@@ -12,7 +12,7 @@ statement ok
 CREATE TABLE NoEdgeKnow(src BIGINT, dst BIGINT);
 
 statement ok
--CREATE PROPERTY GRAPH no_edge_pg
+CREATE PROPERTY GRAPH no_edge_pg
 VERTEX TABLES (
     IsolatedStudent
     )
@@ -35,7 +35,7 @@ statement ok
 CREATE TABLE EmptyKnow(src BIGINT, dst BIGINT);
 
 statement ok
--CREATE PROPERTY GRAPH empty_pg
+CREATE PROPERTY GRAPH empty_pg
 VERTEX TABLES (
     EmptyStudent
     )
@@ -58,7 +58,7 @@ statement ok
 CREATE TABLE Foo(id BIGINT);INSERT INTO Foo VALUES (0), (1), (2), (3), (4);
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student,
     Foo
@@ -115,7 +115,7 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person
     )
@@ -187,7 +187,7 @@ statement ok
 CREATE TABLE SelfLoopKnow(src BIGINT, dst BIGINT);INSERT INTO SelfLoopKnow VALUES (0,0), (1,1), (2,2);
 
 statement ok
--CREATE PROPERTY GRAPH self_loop_pg
+CREATE PROPERTY GRAPH self_loop_pg
 VERTEX TABLES (
     SelfLoopStudent
     )
@@ -211,7 +211,7 @@ statement ok
 CREATE TABLE DisconnectedKnow(src BIGINT, dst BIGINT);INSERT INTO DisconnectedKnow VALUES (0,1), (2,3);
 
 statement ok
--CREATE PROPERTY GRAPH disconnected_pg
+CREATE PROPERTY GRAPH disconnected_pg
 VERTEX TABLES (
     DisconnectedStudent
     )
@@ -237,7 +237,7 @@ statement ok
 CREATE TABLE VariedKnow(src BIGINT, dst BIGINT);INSERT INTO VariedKnow VALUES (0,1), (0,2), (0,3), (1,2), (2,3), (3,4), (4,5);
 
 statement ok
--CREATE PROPERTY GRAPH varied_pg
+CREATE PROPERTY GRAPH varied_pg
 VERTEX TABLES (
     VariedStudent
     )

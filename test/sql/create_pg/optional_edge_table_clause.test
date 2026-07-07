@@ -8,18 +8,18 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (Message, person);
 
 
 statement ok
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (m:Message)
     COLUMNS (*)
     ) tmp
 
 statement error
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (p:Person)-[k:Knows]->(p2:Person)
     COLUMNS (*)
     ) tmp

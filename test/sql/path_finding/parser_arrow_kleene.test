@@ -10,7 +10,7 @@ statement ok
 CREATE TABLE edges (src INTEGER, dst INTEGER);
 
 statement ok
--CREATE PROPERTY GRAPH testgraph
+CREATE PROPERTY GRAPH testgraph
   	VERTEX TABLES (
 	    nodes LABEL N
 	)
@@ -21,102 +21,102 @@ statement ok
 );
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]->*(n2:N) COLUMNS (n1.*, n2.*));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]->*(n2:N) COLUMNS (n1.*, n2.*));
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]-> *(n2:N) COLUMNS (n1.*, n2.*));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]-> *(n2:N) COLUMNS (n1.*, n2.*));
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]- > *(n2:N) COLUMNS (n1.*, n2.*));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]- > *(n2:N) COLUMNS (n1.*, n2.*));
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] - > *(n2:N) COLUMNS (n1.*, n2.*));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] - > *(n2:N) COLUMNS (n1.*, n2.*));
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] -> *(n2:N) COLUMNS (n1.*, n2.*));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] -> *(n2:N) COLUMNS (n1.*, n2.*));
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]< -> *(n2:N) COLUMNS (n1.*, n2.*));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]< -> *(n2:N) COLUMNS (n1.*, n2.*));
 ----
 Parser Error: syntax error at or near "<"
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] /-> *(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] /-> *(n2:N));
 ----
 Parser Error: syntax error at or near "/->"
 
 # Not yet supported
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-> *(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-> *(n2:N));
 ----
 Constraint Error: All patterns must bind to a label
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[]-> *(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[]-> *(n2:N));
 ----
 Constraint Error: All patterns must bind to a label
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[]- > *(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[]- > *(n2:N));
 ----
 Constraint Error: All patterns must bind to a label
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e2:E] > *(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e2:E] > *(n2:N));
 ----
 Parser Error: syntax error at or near ">"
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]*(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]*(n2:N));
 ----
 Parser Error: syntax error at or near "*"
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]- > *(n2:N) COLUMNS (n1.*, n2.*));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]- > *(n2:N) COLUMNS (n1.*, n2.*));
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]<- *(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]<- *(n2:N));
 ----
 Parser Error: syntax error at or near "<"
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-> *(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-> *(n2:N));
 ----
 Constraint Error: All patterns must bind to a label
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< - > *(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< - > *(n2:N));
 ----
 Constraint Error: All patterns must bind to a label
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<- *(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<- *(n2:N));
 ----
 Constraint Error: All patterns must bind to a label
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< - *(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< - *(n2:N));
 ----
 Constraint Error: All patterns must bind to a label
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< -*(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< -*(n2:N));
 ----
 Constraint Error: All patterns must bind to a label
 
 statement error
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< -?(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< -?(n2:N));
 ----
 Constraint Error: All patterns must bind to a label
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E]-?(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E]-?(n2:N));
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E] - ?(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E] - ?(n2:N));
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E] -> ?(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E] -> ?(n2:N));
 
 statement ok
--FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E] - >?(n2:N));
+FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E] - >?(n2:N));

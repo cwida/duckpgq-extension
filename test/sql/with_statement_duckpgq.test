@@ -8,11 +8,11 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb_projected
+CREATE PROPERTY GRAPH snb_projected
 VERTEX TABLES (Message);
 
 query IIIIIII
--WITH message_count AS (
+WITH message_count AS (
     SELECT count(*) as m_count
     FROM Message m
     WHERE m.creationDate < '2010-05-27 11:16:36.013'
@@ -38,7 +38,7 @@ ORDER BY year DESC, isComment ASC, lengthCategory ASC;
 
 
 query II
--FROM GRAPH_TABLE (snb_projected
+FROM GRAPH_TABLE (snb_projected
     MATCH (m:message)
     COLUMNS (m.id)
     ) tmp, (SELECT id from message limit 1)
@@ -56,7 +56,7 @@ LIMIT 10;
 962072674315	618475290624
 
 query II
--FROM (SELECT id from message limit 1), GRAPH_TABLE (snb_projected
+FROM (SELECT id from message limit 1), GRAPH_TABLE (snb_projected
     MATCH (m:message)
     COLUMNS (m.id)
     ) tmp

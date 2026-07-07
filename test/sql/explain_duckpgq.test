@@ -8,7 +8,7 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person LABEL Person,
     Forum LABEL Forum,
@@ -52,7 +52,7 @@ EDGE TABLES (
 
 #IC 2
 statement ok
--EXPLAIN FROM GRAPH_TABLE (snb
+EXPLAIN FROM GRAPH_TABLE (snb
     MATCH (a:Person WHERE a.id = 17592186044461)-[k:knows]-(b:Person)<-[au:hasAuthor]-(m:message WHERE m.creationDate < '2010-10-16')
     COLUMNS (a.id, a.firstName, a.lastName, m.id as messageId, coalesce(m.imageFile, m.content), m.creationDate)
     ) tmp
@@ -61,7 +61,7 @@ statement ok
 
 #IC 2
 statement ok
--EXPLAIN ANALYZE FROM GRAPH_TABLE (snb
+EXPLAIN ANALYZE FROM GRAPH_TABLE (snb
     MATCH (a:Person WHERE a.id = 17592186044461)-[k:knows]-(b:Person)<-[au:hasAuthor]-(m:message WHERE m.creationDate < '2010-10-16')
     COLUMNS (a.id, a.firstName, a.lastName, m.id as messageId, coalesce(m.imageFile, m.content), m.creationDate)
     ) tmp

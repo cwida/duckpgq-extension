@@ -1864,7 +1864,7 @@ public:
 	static unique_ptr<TransformResultValue> TransformDropPropertyGraphInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static unique_ptr<DropStatement> TransformDropPropertyGraph(PEGTransformer &transformer, const optional<bool> &if_exists, const QualifiedName &qualified_name);
 	static unique_ptr<TransformResultValue> TransformGraphTableRefInternal(PEGTransformer &transformer, ParseResult &parse_result);
-	static unique_ptr<TableRef> TransformGraphTableRef(PEGTransformer &transformer, string graph_table_keyword, const QualifiedName &qualified_name, unique_ptr<PathPattern> graph_path_pattern, vector<unique_ptr<ParsedExpression>> target_list);
+	static unique_ptr<TableRef> TransformGraphTableRef(PEGTransformer &transformer, string graph_table_keyword, const QualifiedName &qualified_name, unique_ptr<PathPattern> graph_path_pattern, optional<unique_ptr<ParsedExpression>> where_clause, vector<unique_ptr<ParsedExpression>> target_list);
 	static unique_ptr<TransformResultValue> TransformGraphTableKeywordInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static unique_ptr<TransformResultValue> TransformGraphTableUnderscoreKeywordInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static string TransformGraphTableUnderscoreKeyword(PEGTransformer &transformer, const Identifier &identifier);

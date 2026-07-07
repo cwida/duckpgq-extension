@@ -13,7 +13,7 @@ statement ok
 INSERT INTO nodes VALUES (1), (2), (3);
 
 statement ok
--CREATE PROPERTY GRAPH testgraph
+CREATE PROPERTY GRAPH testgraph
   	VERTEX TABLES (
 	    nodes LABEL N
 	)
@@ -24,7 +24,7 @@ statement ok
 );
 
 query IIIII
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]->*(n2:N)
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
@@ -34,21 +34,21 @@ query IIIII
 3	3	[2]	[]	0
 
 query IIIII
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]->+(n2:N)
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
 ----
 
 query IIIII
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]->{1,3}(n2:N)
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
 ----
 
 query IIIII
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]->{0,3}(n2:N)
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
@@ -58,7 +58,7 @@ query IIIII
 3	3	[2]	[]	0
 
 query IIIII
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]->{,3}(n2:N)
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
@@ -69,7 +69,7 @@ query IIIII
 
 
 statement error
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)*<-[e:E]->(n2:N)
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
@@ -77,7 +77,7 @@ statement error
 Parser Error: syntax error at or near "*<"
 
 statement error
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)*-[e:E]->(n2:N)
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
@@ -85,7 +85,7 @@ statement error
 Parser Error: syntax error at or near "*"
 
 statement error
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]->{3,1}(n2:N)
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
@@ -93,7 +93,7 @@ statement error
 Constraint Error: Lower bound greater than upper bound
 
 query IIIII
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]->{,}(n2:N)
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
@@ -103,14 +103,14 @@ query IIIII
 3	3	[2]	[]	0
 
 query IIIII
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]->{1,1}(n2:N)
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
 ----
 
 statement error
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]->*(n2:N
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );

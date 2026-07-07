@@ -10,7 +10,7 @@ statement ok
 CREATE TABLE e (x1 VARCHAR, x2 VARCHAR);INSERT INTO e VALUES ('a', 'b');
 
 statement ok
--CREATE PROPERTY GRAPH g
+CREATE PROPERTY GRAPH g
 VERTEX TABLES (
     v
 )
@@ -23,7 +23,7 @@ EDGE TABLES (
 # v-[e]->(v) has no error:
 # Output has duplicate `x` records with the value `b` returned as expected. They can be distinguished by rowid in vertices()
 statement ok
--FROM GRAPH_TABLE(g
+FROM GRAPH_TABLE(g
   MATCH p =(v1:v)-[e:e]->(v2:v)
   COLUMNS (vertices(p), v2.x)
 );
@@ -31,14 +31,14 @@ statement ok
 # ANY SHORTEST v-[e]->(v) has no error:
 # Output again has duplicate `x` records are returned as expected
 statement ok
--FROM GRAPH_TABLE(g
+FROM GRAPH_TABLE(g
   MATCH p = ANY SHORTEST (v1:v)-[e:e]->(v2:v)
   COLUMNS (path_length(p), vertices(p), v2.x)
 );
 
 ## ANY SHORTEST v-[e]-> +(v) fails with "INTERNAL Error: Attempted to access index 1 within vector of size 1"
 statement error
--FROM GRAPH_TABLE(g
+FROM GRAPH_TABLE(g
   MATCH p = ANY SHORTEST (v1:v)-[e:e]-> +(v2:v)
   COLUMNS (path_length(p), vertices(p), v2.x)
 );
@@ -47,7 +47,7 @@ Constraint Error: Non-existent/non-unique vertices detected. Make sure all verti
 
 # ANY SHORTEST v-[e]->{1,2}(v) also fails with "INTERNAL Error: Attempted to access index 1 within vector of size 1"
 statement error
--FROM GRAPH_TABLE(g
+FROM GRAPH_TABLE(g
   MATCH p = ANY SHORTEST (v1:v)-[e:e]->{1,2}(v2:v)
   COLUMNS (path_length(p), vertices(p), v2.x)
 );
@@ -61,7 +61,7 @@ statement ok
 CREATE TABLE e2 (x1 VARCHAR, x2 VARCHAR);INSERT INTO e2 VALUES ('a', 'b'), ('b', 'c');
 
 statement ok
--CREATE PROPERTY GRAPH g2
+CREATE PROPERTY GRAPH g2
 VERTEX TABLES (
     v2
 )
@@ -73,7 +73,7 @@ EDGE TABLES (
 
 # ANY SHORTEST v-[e]->{1,2}(v) also fails with "INTERNAL Error: Attempted to access index 1 within vector of size 1"
 statement error
--FROM GRAPH_TABLE(g2
+FROM GRAPH_TABLE(g2
   MATCH p = ANY SHORTEST (v1:v2)-[e:e2]->{1,2}(v2:v2)
   COLUMNS (path_length(p), vertices(p), v2.x)
 );

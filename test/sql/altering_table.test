@@ -32,7 +32,7 @@ statement ok
 INSERT INTO StudyAt VALUES (0, 0), (1, 0), (2, 1), (3, 1), (4, 1);
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student PROPERTIES ( id, name ) LABEL Person,
     School LABEL SCHOOL
@@ -47,7 +47,7 @@ EDGE TABLES (
     );
 
 statement ok
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     (a:Person)-[s:StudyAt]->(b:School)
     WHERE a.name = 'Daniel'
@@ -58,7 +58,7 @@ statement ok
 ALTER TABLE student RENAME id TO jd;
 
 statement error
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     (a:Person)-[s:StudyAt]->(b:School)
     WHERE a.name = 'Daniel'

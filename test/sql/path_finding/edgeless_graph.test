@@ -13,7 +13,7 @@ statement ok
 INSERT INTO nodes VALUES (1), (2), (3);
 
 statement ok
--CREATE PROPERTY GRAPH testgraph
+CREATE PROPERTY GRAPH testgraph
   	VERTEX TABLES (
 	    nodes LABEL N
 	)
@@ -24,7 +24,7 @@ statement ok
 );
 
 query IIIII
--FROM GRAPH_TABLE(testgraph
+FROM GRAPH_TABLE(testgraph
       MATCH p = ANY SHORTEST (n1:N)-[e:E]-> * (n2:N)
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );

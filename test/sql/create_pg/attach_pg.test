@@ -13,38 +13,38 @@ select count(*) from bluesky.follows;
 19566
 
 statement error
--create or replace property graph stations vertex tables (stations.stations)
+create or replace property graph stations vertex tables (stations.stations)
 ----
 Invalid Error: Table with name stations does not exist
 
 statement error
--create or replace property graph stations vertex tables (nonexistingschema.account)
+create or replace property graph stations vertex tables (nonexistingschema.account)
     edge tables (nonexistingschema.follows source key (source) references nonexistingschema.account (did)
         destination key (destination) references nonexistingschema.account (did))
 ----
 Invalid Error: Table with name account does not exist
 
 statement error
--create or replace property graph stations vertex tables (bluesky.account)
+create or replace property graph stations vertex tables (bluesky.account)
     edge tables (nonexistingschema.follows source key (source) references bluesky.account (did)
         destination key (destination) references bluesky.account (did))
 ----
 Invalid Error: Table with name follows does not exist
 
 statement error
--create or replace property graph stations vertex tables (bluesky.account)
+create or replace property graph stations vertex tables (bluesky.account)
     edge tables (bluesky.follows source key (source) references nonexistingschema.account (did)
         destination key (destination) references nonexistingschema.account (did))
 ----
 Invalid Error: Table 'nonexistingschema.account' not found in the property graph stations.
 
 statement error
--create or replace property graph stations vertex tables (bluesky.tabledoesnotexist)
+create or replace property graph stations vertex tables (bluesky.tabledoesnotexist)
 ----
 Invalid Error: Table with name tabledoesnotexist does not exist
 
 statement ok con1
--CREATE OR REPLACE PROPERTY GRAPH bluesky
+CREATE OR REPLACE PROPERTY GRAPH bluesky
             VERTEX TABLES (bluesky.account LABEL account)
             EDGE TABLES (bluesky.follows    SOURCE KEY (source) REFERENCES bluesky.account (did)
                                             DESTINATION KEY (destination) REFERENCES bluesky.account (did)
@@ -55,7 +55,7 @@ SELECT * FROM bluesky.account;
 
 
 statement ok con1
--FROM GRAPH_TABLE (bluesky MATCH (a:account));
+FROM GRAPH_TABLE (bluesky MATCH (a:account));
 
 query I
 select count(*) from bluesky.account;
@@ -63,16 +63,16 @@ select count(*) from bluesky.account;
 8921
 
 statement ok con2
--FROM GRAPH_TABLE (bluesky MATCH (a:account));
+FROM GRAPH_TABLE (bluesky MATCH (a:account));
 
 statement ok con2
--FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account));
+FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account));
 
 statement ok con1
--FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account));
+FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account));
 
 query II con1
--FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
+FROM GRAPH_TABLE (bluesky MATCH (a:account)-[f:follows]->(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
 ----
 did:plc:23df55poeztue4terk3s5ain	did:plc:274qq3cgl4vrrofdg77balfw
 did:plc:23df55poeztue4terk3s5ain	did:plc:2ktpgfwt7cc2osldzh6uyww5
@@ -86,7 +86,7 @@ did:plc:23df55poeztue4terk3s5ain	did:plc:6k63663icgdybm5evgszxjn2
 did:plc:23df55poeztue4terk3s5ain	did:plc:7562tstpez4aexd75ttshl3z
 
 query II con1
--FROM GRAPH_TABLE (bluesky MATCH (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->{1,3}(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
+FROM GRAPH_TABLE (bluesky MATCH (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->{1,3}(b:account) COLUMNS (a.did as a_id, b.did as b_id)) ORDER BY a_id, b_id LIMIT 10;
 ----
 did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:224f4aj5p5vgk7tpcc4lltgx
 did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:225ihm6x4pkgdpbmvfpxyicf
@@ -100,7 +100,7 @@ did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:22u3xlfdxqxyzva2fsljotcy
 did:plc:7qqkrwwec4qeujs6hthlgpbe	did:plc:23df55poeztue4terk3s5ain
 
 query III con1
--FROM GRAPH_TABLE (bluesky MATCH p = ANY SHORTEST (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->*(b:account)
+FROM GRAPH_TABLE (bluesky MATCH p = ANY SHORTEST (a:account where a.did='did:plc:7qqkrwwec4qeujs6hthlgpbe')-[f:follows]->*(b:account)
                     COLUMNS (element_id(p) as path, a.did as a_id, b.did as b_id))
 ORDER BY a_id, b_id
 LIMIT 10;
@@ -161,21 +161,21 @@ from pagerank(bluesky, bluesky.account, follows) limit 10;
 Invalid Error: Label 'bluesky.account' not found. Did you mean the vertex label 'account'?
 
 statement ok
--CREATE PROPERTY GRAPH pg VERTEX TABLES (bluesky.account PROPERTIES (displayName));
+CREATE PROPERTY GRAPH pg VERTEX TABLES (bluesky.account PROPERTIES (displayName));
 
 # Query on unspecified columns in the graph throws error.
 statement error
--SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (acc.displayName, acc.handle));
+SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (acc.displayName, acc.handle));
 ----
 Binder Error: Property acc.handle is never registered!
 
 # Columns to query is only allowed to be <column> or <table>.<column>, which we cannot prefix catalog or schema.
 statement error
--SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (bluesky.main.acc.displayName));
+SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (bluesky.main.acc.displayName));
 ----
 Binder Error: Property bluesky.main.acc.displayName is never registered!
 
 statement error
--SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (main.acc.displayName));
+SELECT * FROM GRAPH_TABLE (pg MATCH (acc:account) COLUMNS (main.acc.displayName));
 ----
 Binder Error: Property main.acc.displayName is never registered!

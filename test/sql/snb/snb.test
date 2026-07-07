@@ -8,7 +8,7 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person LABEL Person,
     Forum LABEL Forum,
@@ -51,7 +51,7 @@ EDGE TABLES (
     );
 
 query III
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (p:Person)-[w:workAt_Organisation]->(u:University)
     COLUMNS (p.id as p_id, u.id as u_id, u.type as u_type)
     ) tmp
@@ -71,7 +71,7 @@ query III
 
 #IC 2
 query IIIIII
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (a:Person WHERE a.id = 17592186044461)-[k:knows]-(b:Person)<-[au:hasAuthor]-(m:message WHERE m.creationDate < '2010-10-16')
     COLUMNS (a.id, a.firstName, a.lastName, m.id as messageId, coalesce(m.imageFile, m.content), m.creationDate)
     ) tmp
@@ -104,7 +104,7 @@ query IIIIII
 # person1Id 17592186044461
 # person2Id 35184372088856
 query III
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH p = ANY SHORTEST (a:Person WHERE a.id = 17592186044461)-[k:knows]-> *(b:Person where b.id = 35184372088856)
     COLUMNS (path_length(p), a.id as a_id, b.id as b_id)
     ) tmp LIMIT 20
@@ -114,7 +114,7 @@ query III
 # IS 1
 # personId 17592186044461
 query IIIIIIII
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (a:person where a.id = 17592186044461)
     COLUMNS(firstName, lastName, birthday, locationIP, browserUsed, LocationCityId, gender, creationDate)
     ) tmp;
@@ -124,7 +124,7 @@ Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:4
 # IS3. Friends of a Person
 # set personId 17592186044461
 query IIII
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (a:person WHERE a.id = 17592186044461)-[k:knows]-(b:person)
     COLUMNS (b.id, b.firstname, b.lastname, k.creationDate)
     ) tmp
@@ -137,7 +137,7 @@ query IIII
 # IS4. Content of a message
 # set messageId 824633720985
 query II
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (m:message WHERE m.id = 824633720985)
     COLUMNS ( coalesce(imageFile, content, ''), creationDate)
     ) tmp;
@@ -147,7 +147,7 @@ photo824633720985.jpg	2012-01-12 00:17:04.151+00
 # IS5. Creator of a message
 # messageId 824633720985
 query III
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (m:message where m.id = 824633720985)-[au:hasAuthor]->(p:person)
     COLUMNS (p.id, p.firstName, p.lastName)
     ) tmp;
@@ -158,7 +158,7 @@ query III
 # IS7. Replies of a message
 #set messageId 618475290624
 query IIIIII
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (replyAuthor:person)<-[au2:hasAuthor]-(c:message where c.ParentMessageId is not null)-[r:replyOf]->(m:message where m.id = 618475290624)-[au:hasAuthor]->(messageAuthor:person),
     (replyAuthor:person)-[k:knows]-(messageAuthor:person)
     COLUMNS (c.id,c.content,c.creationDate, replyAuthor.id, replyAuthor.firstName, replyAuthor.lastName)
@@ -171,7 +171,7 @@ query IIIIII
 # IS7. Replies of a message
 #set messageId 618475290624
 query IIIII
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (replyAuthor:person)<-[au2:hasAuthor]-(c:message where c.ParentMessageId is not null)-[r:replyOf]->(m:message where m.id = 618475290624)-[au:hasAuthor]->(messageAuthor:person),
     (replyAuthor:person)-[k:knows]-(messageAuthor:person)
     COLUMNS (c.id,c.content,c.creationDate, replyAuthor.id % 10, replyAuthor.firstName || replyAuthor.lastName)
@@ -182,7 +182,7 @@ query IIIII
 962072674305	yes	2012-07-08 23:48:41.63+00	1	AlimGuliyev
 
 statement ok
--EXPLAIN ANALYZE COPY (FROM GRAPH_TABLE (snb
+EXPLAIN ANALYZE COPY (FROM GRAPH_TABLE (snb
 MATCH p = ANY SHORTEST (a:Person WHERE a.id = 19791209309999)-[k:knows]-> *(b:Person where b.id = 30786325579519)
 COLUMNS (path_length(p), a.id as a_id, b.id as b_id)
 ) tmp LIMIT 20) TO '__TEST_DIR__/ic13-ea.txt';

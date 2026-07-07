@@ -8,7 +8,7 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person LABEL Person,
     Forum LABEL Forum,
@@ -51,7 +51,7 @@ EDGE TABLES (
     );
 
 statement ok
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
       MATCH (personA:Person)-[kAB:Knows where kAB.creationDate BETWEEN '2012-10-04' AND '2013-01-16']-
       (personB:Person)-[kBC:Knows where kBC.creationDate BETWEEN '2012-10-04' AND '2013-01-16']-
       (personC:Person)-[kCA:Knows where kCA.creationDate BETWEEN '2012-10-04' AND '2013-01-16']

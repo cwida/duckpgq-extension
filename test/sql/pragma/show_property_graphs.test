@@ -7,7 +7,7 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person LABEL Person,
     Forum LABEL Forum,
@@ -55,7 +55,7 @@ pragma show_property_graphs;
 snb
 
 statement ok
--drop property graph snb;
+drop property graph snb;
 
 query I
 pragma show_property_graphs;

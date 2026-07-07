@@ -24,7 +24,7 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person,
     Organisation IN typemask(company, university)
@@ -39,7 +39,7 @@ EDGE TABLES (
    );
 
 statement error
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (a:Kind)
     COLUMNS (*)
     );
@@ -47,7 +47,7 @@ statement error
 Binder Error: The label kind is not registered in property graph snb
 
 statement error
--FROM GRAPH_TABLE (abc
+FROM GRAPH_TABLE (abc
     MATCH (a:Kind)
     COLUMNS (*)
     );

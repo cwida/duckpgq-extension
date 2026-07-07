@@ -8,7 +8,7 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person
     )
@@ -19,7 +19,7 @@ EDGE TABLES (
 
 
 query II
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
     COLUMNS (p.firstname, p2.firstname)
     )
@@ -37,7 +37,7 @@ Miguel	Celso
 Miguel	Ali
 
 query II
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
     COLUMNS (p.firstname, p2.firstname)
     ) tmp
@@ -56,7 +56,7 @@ Miguel	Ali
 
 # Be a bit more explicit
 query II
--SELECT tmp.p_firstname, tmp.p2_firstname
+SELECT tmp.p_firstname, tmp.p2_firstname
 FROM GRAPH_TABLE (snb
     MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
     COLUMNS (p.firstname as p_firstname, p2.firstname as p2_firstname)
@@ -77,7 +77,7 @@ Miguel	Ali
 
 # Be a bit more explicit
 query II
--SELECT unnamed_subquery.p_firstname, unnamed_subquery.p2_firstname
+SELECT unnamed_subquery.p_firstname, unnamed_subquery.p2_firstname
 FROM GRAPH_TABLE (snb
     MATCH (p:Person)-[k:Person_knows_Person]->(p2:Person)
     COLUMNS (p.firstname as p_firstname, p2.firstname as p2_firstname)

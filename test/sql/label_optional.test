@@ -22,7 +22,7 @@ SELECT * FROM (WITH edges_cte AS (SELECT src_table.rowid AS src, dst_table.rowid
 5	0.0
 
 statement ok
--CREATE PROPERTY GRAPH varied_pg_label_a
+CREATE PROPERTY GRAPH varied_pg_label_a
 VERTEX TABLES (
     VariedStudent label a
     )
@@ -55,7 +55,7 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person,
     Organisation IN typemask(company, university)
@@ -70,7 +70,7 @@ EDGE TABLES (
    );
 
 query III
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (p:Person)-[w:workAt_Organisation]->(u:University)
     COLUMNS (p.id as p_id, u.id as u_id, u.type)
     ) tmp
@@ -90,7 +90,7 @@ query III
 
 
 query II
--FROM GRAPH_TABLE (snb
+FROM GRAPH_TABLE (snb
     MATCH (p:Person)-[k:knows]->(p2:Person)
     COLUMNS (p.id as p_id, p2.id as p2_id)
     ) tmp

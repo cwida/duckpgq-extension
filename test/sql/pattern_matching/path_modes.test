@@ -32,7 +32,7 @@ statement ok
 INSERT INTO StudyAt VALUES (0, 0), (1, 0), (2, 1), (3, 1), (4, 1);
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student PROPERTIES ( id, name ) LABEL Person,
     School LABEL SCHOOL
@@ -63,7 +63,7 @@ EDGE TABLES (
 #    ) study;
 
 statement error
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     p = ALL SHORTEST (a:Person)-[k:knows]-> *(b:Person)
     WHERE a.name = 'Daniel'
@@ -73,7 +73,7 @@ statement error
 Not implemented Error: ALL SHORTEST has not been implemented yet.
 
 statement error
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     p = ANY SHORTEST TRAIL (a:Person)-[k:knows]-> *(b:Person)
     WHERE a.name = 'Daniel'
@@ -83,7 +83,7 @@ statement error
 Not implemented Error: Path modes other than WALK have not been implemented yet.
 
 statement error
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     p = ANY SHORTEST ACYCLIC (a:Person)-[k:knows]-> *(b:Person)
     WHERE a.name = 'Daniel'
@@ -105,7 +105,7 @@ Not implemented Error: Path modes other than WALK have not been implemented yet.
 
 
 statement error
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     p = ANY SHORTEST SIMPLE (a:Person)-[k:knows]-> *(b:Person)
     WHERE a.name = 'Daniel'

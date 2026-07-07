@@ -38,7 +38,7 @@ statement ok
 INSERT INTO Organisation (SELECT * from university union select * from company);
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Person LABEL Person,
     Organisation LABEL Organisation IN mask(university, company)
@@ -50,7 +50,7 @@ EDGE TABLES (
     );
 
 query IIII
--SELECT *
+SELECT *
 FROM GRAPH_TABLE(pg
     MATCH (p:Person)-[w:worksAt]->(u:organisation)
     COLUMNS (p.id, p.name, u.id, u.name)
@@ -66,7 +66,7 @@ FROM GRAPH_TABLE(pg
 4	David	3	CWI
 
 query IIIIIII
--SELECT *
+SELECT *
 FROM GRAPH_TABLE(pg
     MATCH (p:Person)-[w:worksAt]->(u:organisation)
     COLUMNS (p.*, u.*, w.*)
@@ -82,7 +82,7 @@ FROM GRAPH_TABLE(pg
 4	David	3	2	CWI	3	4
 
 query IIIII
--SELECT *
+SELECT *
 FROM GRAPH_TABLE(pg
     MATCH (p:Person)-[w:worksAt]->(u:ORGANISATION)
     COLUMNS (p.id, p.name, u.id, u.name, u.mask)
@@ -98,7 +98,7 @@ FROM GRAPH_TABLE(pg
 4	David	3	CWI	2
 
 query IIIII
--FROM GRAPH_TABLE(pg
+FROM GRAPH_TABLE(pg
     MATCH (p:Person)-[w:worksAt]->(u:university)
     COLUMNS (p.id, p.name, u.id, u.name, u.mask)
     ) result
@@ -107,7 +107,7 @@ query IIIII
 3	Peter	0	VU	1
 
 query IIIII
--SELECT *
+SELECT *
 FROM GRAPH_TABLE(pg
     MATCH (p:Person)-[w:worksAt]->(u:company)
     COLUMNS (p.id, p.name, u.id, u.name, u.mask)
@@ -122,7 +122,7 @@ FROM GRAPH_TABLE(pg
 
 # Should work with different capitalization
 query IIII
--SELECT *
+SELECT *
 FROM GRAPH_TABLE(pg
     MATCH (p:Person)-[w:worksAt]->(u:COMPANY)
     COLUMNS (p.id, p.name, u.id, u.name)
@@ -136,7 +136,7 @@ FROM GRAPH_TABLE(pg
 1	Tavneet	2	EY
 
 query IIII
--SELECT *
+SELECT *
 FROM GRAPH_TABLE(pg
     MATCH (p:organisation)<-[w:WORKSAT]-(u:person)
     COLUMNS (p.id, p.name, u.id, u.name)
@@ -152,7 +152,7 @@ FROM GRAPH_TABLE(pg
 3	CWI	4	David
 
 query IIII
--SELECT *
+SELECT *
 FROM GRAPH_TABLE(pg
     MATCH (u:university)<-[w:worksAt]-(p:person)
     COLUMNS (p.id, p.name, u.name, u.mask)
@@ -162,7 +162,7 @@ FROM GRAPH_TABLE(pg
 3	Peter	VU	1
 
 statement ok
--drop property graph pg;
+drop property graph pg;
 
 statement ok
 drop table person;
@@ -195,7 +195,7 @@ INSERT INTO Know VALUES (1,2,'2023-09-01',2),   (1,4,'2022-10-15',10),
                         (4,3,'2015-03-08',20),  (3,2,'2022-10-30',10);
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
   Person  PROPERTIES (id, name, birthDate) LABEL Person IN msk (student, TA),
   College PROPERTIES (id, college)         LABEL College )
@@ -208,7 +208,7 @@ EDGE TABLES (
         PROPERTIES (classYear)             LABEL studiesAt );
 
 query III
--FROM GRAPH_TABLE (pg MATCH (a:Student) COLUMNS(*)) tmp;
+FROM GRAPH_TABLE (pg MATCH (a:Student) COLUMNS(*)) tmp;
 ----
 1	Ana	2000-10-01
 2	Bo	2000-01-10
@@ -216,7 +216,7 @@ query III
 2	Jo	2001-01-01
 
 query III
--FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS(*)) tmp;
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS(*)) tmp;
 ----
 1	Ana	2000-10-01
 2	Bo	2000-01-10
@@ -224,6 +224,6 @@ query III
 2	Jo	2001-01-01
 
 query III
--FROM GRAPH_TABLE (pg MATCH (a:TA) COLUMNS(*)) tmp;
+FROM GRAPH_TABLE (pg MATCH (a:TA) COLUMNS(*)) tmp;
 ----
 2	Bo	2000-01-10

@@ -10,7 +10,7 @@ statement ok con1
 create table person_knows_person(person1id bigint, person2id bigint);
 
 statement ok con1
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person
   )
@@ -22,25 +22,25 @@ EDGE TABLES (
   );
 
 statement ok con1
--FROM GRAPH_TABLE(snb
+FROM GRAPH_TABLE(snb
     MATCH (a:Person WHERE a.firstName = 'Jan')-[k:Knows]->(b:Person)
     COLUMNS (b.firstName)
 );
 
 statement ok con2
--FROM GRAPH_TABLE(snb
+FROM GRAPH_TABLE(snb
     MATCH (a:Person WHERE a.firstName = 'Bob')-[k:Knows]->(b:Person)
     COLUMNS (b.firstName)
 );
 
 statement ok con2
--FROM GRAPH_TABLE(snb
+FROM GRAPH_TABLE(snb
     MATCH (a:Person WHERE a.firstName = 'Bob')-[k:Knows]->(b:Person)
     COLUMNS (b.FIRSTNAME)
 );
 
 statement error con2
--FROM GRAPH_TABLE(snb
+FROM GRAPH_TABLE(snb
     MATCH (a:Person WHERE a.firstName = 'Bob')-[k:Knows]->(b:Person)
     COLUMNS (b.nonregisteredproperty)
 );

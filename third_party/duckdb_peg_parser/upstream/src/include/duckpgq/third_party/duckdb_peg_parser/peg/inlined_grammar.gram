@@ -1605,7 +1605,7 @@ PropertyGraphKeyReference <- 'KEY' Parens(List(ColId)) 'REFERENCES' BaseTableNam
 
 DropPropertyGraph <- 'PROPERTY' 'GRAPH' IfExists? QualifiedName
 
-GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' GraphPathPattern 'COLUMNS' '(' TargetList ')' ')'
+GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' GraphPathPattern WhereClause? 'COLUMNS' '(' TargetList ')' ')'
 GraphTableKeyword <- GraphTableSpacedKeyword / GraphTableUnderscoreKeyword
 GraphTableUnderscoreKeyword <- Identifier
 GraphTableSpacedKeyword <- 'GRAPH' 'TABLE'

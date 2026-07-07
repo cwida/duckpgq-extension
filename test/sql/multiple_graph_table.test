@@ -17,7 +17,7 @@ statement ok
 CREATE TABLE StudyAt(personId BIGINT, schoolId BIGINT);INSERT INTO StudyAt VALUES (0, 0), (1, 0), (2, 1), (3, 1), (4, 1);
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student,
     School
@@ -30,7 +30,7 @@ EDGE TABLES (
     );
 
 query II
--select a.id, b.id FROM GRAPH_TABLE(pg MATCH (a:student)) a, GRAPH_TABLE(pg MATCH (b:student)) b;
+select a.id, b.id FROM GRAPH_TABLE(pg MATCH (a:student)) a, GRAPH_TABLE(pg MATCH (b:student)) b;
 ----
 0	0
 1	0
@@ -59,7 +59,7 @@ query II
 4	4
 
 query II
--select unnamed_subquery.id, unnamed_subquery2.id FROM GRAPH_TABLE(pg MATCH (a:student)), GRAPH_TABLE(pg MATCH (b:student));
+select unnamed_subquery.id, unnamed_subquery2.id FROM GRAPH_TABLE(pg MATCH (a:student)), GRAPH_TABLE(pg MATCH (b:student));
 ----
 0	0
 1	0
@@ -89,7 +89,7 @@ query II
 
 
 query IIIIII
--select a.id, a.name, unnamed_subquery.b_id, unnamed_subquery.b_name, unnamed_subquery.C_id, unnamed_subquery.c_name
+select a.id, a.name, unnamed_subquery.b_id, unnamed_subquery.b_name, unnamed_subquery.C_id, unnamed_subquery.c_name
 FROM GRAPH_TABLE(pg MATCH (a:student)) a,
     GRAPH_TABLE(pg
         MATCH (b:student)-[r:know]->(c:student)
@@ -138,7 +138,7 @@ FROM GRAPH_TABLE(pg MATCH (a:student)) a,
 4	David	4	David	3	Peter
 
 query II
--select unnamed_subquery.id, unnamed_subquery2.id
+select unnamed_subquery.id, unnamed_subquery2.id
 FROM GRAPH_TABLE(pg MATCH (a:student)), (select 1 as id);
 ----
 0	1
@@ -162,7 +162,7 @@ city2name VARCHAR
 
 
 statement ok
--CREATE PROPERTY GRAPH citymap
+CREATE PROPERTY GRAPH citymap
 VERTEX TABLES (
 cities PROPERTIES (name,lat,lon) LABEL city
 )
@@ -173,5 +173,5 @@ LABEL adjacent
 );
 
 statement ok
--select * from GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g1, GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g2;
+select * from GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g1, GRAPH_TABLE (citymap MATCH (s:city)-[r:adjacent]->(t:city)) g2;
 

@@ -7551,8 +7551,14 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphTableRefIn
 	auto graph_table_keyword = transformer.Transform<string>(list_pr.GetChild(0));
 	auto qualified_name = transformer.Transform<QualifiedName>(list_pr.GetChild(2));
 	auto graph_path_pattern = transformer.Transform<unique_ptr<PathPattern>>(list_pr.GetChild(4));
-	auto target_list = transformer.Transform<vector<unique_ptr<ParsedExpression>>>(list_pr.GetChild(7));
-	auto result = TransformGraphTableRef(transformer, std::move(graph_table_keyword), qualified_name, std::move(graph_path_pattern), std::move(target_list));
+	optional<unique_ptr<ParsedExpression>> where_clause {};
+	auto &where_clause_opt = list_pr.GetChild(5).Cast<OptionalParseResult>();
+	if (where_clause_opt.HasResult()) {
+		auto where_clause_value = transformer.Transform<unique_ptr<ParsedExpression>>(where_clause_opt.GetResult());
+		where_clause = std::move(where_clause_value);
+	}
+	auto target_list = transformer.Transform<vector<unique_ptr<ParsedExpression>>>(list_pr.GetChild(8));
+	auto result = TransformGraphTableRef(transformer, std::move(graph_table_keyword), qualified_name, std::move(graph_path_pattern), std::move(where_clause), std::move(target_list));
 	return make_uniq<TypedTransformResult<unique_ptr<TableRef>>>(std::move(result));
 }
 

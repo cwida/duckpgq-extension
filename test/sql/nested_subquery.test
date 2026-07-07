@@ -16,7 +16,7 @@ statement ok
 CREATE TABLE StudyAt(personId BIGINT, schoolId BIGINT);INSERT INTO StudyAt VALUES (0, 0), (1, 0), (2, 1), (3, 1), (4, 1);
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student PROPERTIES ( id, name ) LABEL Person,
     School LABEL SCHOOL
@@ -30,10 +30,10 @@ EDGE TABLES (
 
 
 statement ok
--select * from (select id, id_1 from graph_table ( pg match (p:person)-[k:know]->(p2:person) columns (p.id, p2.id)));
+select * from (select id, id_1 from graph_table ( pg match (p:person)-[k:know]->(p2:person) columns (p.id, p2.id)));
 
 statement ok
--SELECT id, friend_id
+SELECT id, friend_id
 FROM (
     SELECT id, friend_id
     FROM GRAPH_TABLE (
@@ -42,7 +42,7 @@ FROM (
 );
 
 statement ok
--SELECT id, friend_id
+SELECT id, friend_id
 FROM (
     SELECT id, friend_id
     FROM GRAPH_TABLE (
@@ -52,7 +52,7 @@ FROM (
 );
 
 statement ok
--SELECT Student.name, friend_id
+SELECT Student.name, friend_id
 FROM Student
 JOIN (
     SELECT student_id, friend_id
@@ -63,7 +63,7 @@ JOIN (
 ON Student.id = subquery.student_id;
 
 statement ok
--SELECT id, nested_friend_id
+SELECT id, nested_friend_id
 FROM (
     SELECT id, friend_id AS nested_friend_id
     FROM (
@@ -75,7 +75,7 @@ FROM (
 );
 
 statement ok
--SELECT id, friend_count
+SELECT id, friend_count
 FROM (
     SELECT id, COUNT(friend_id) AS friend_count
     FROM GRAPH_TABLE (
@@ -85,7 +85,7 @@ FROM (
 );
 
 statement ok
--WITH Friendships AS (
+WITH Friendships AS (
     SELECT person_id, friend_id
     FROM (
         SELECT person_id, friend_id

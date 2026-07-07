@@ -10,7 +10,7 @@ statement ok
 CREATE or replace TABLE know(src BIGINT, dst BIGINT); insert into know select s.id as src, s2.id as dst from student s positional join student s2;
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student
     )

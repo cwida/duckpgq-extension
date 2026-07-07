@@ -19,7 +19,7 @@ statement ok
 CREATE TABLE WorksAt(person_id BIGINT, company_id BIGINT);
 
 statement ok
--CREATE PROPERTY GRAPH work_graph
+CREATE PROPERTY GRAPH work_graph
     VERTEX TABLES (
       Person,
       Company
@@ -31,7 +31,7 @@ statement ok
     );
 
 statement ok
--CREATE PROPERTY GRAPH enriched_graph
+CREATE PROPERTY GRAPH enriched_graph
     VERTEX TABLES (
       Person PROPERTIES (id, name),
       Company PROPERTIES (id, name)
@@ -47,7 +47,7 @@ statement ok
 CREATE TABLE Friendship(person1_id BIGINT, person2_id BIGINT, since DATE);
 
 statement ok
--CREATE PROPERTY GRAPH social_graph
+CREATE PROPERTY GRAPH social_graph
     VERTEX TABLES (
       Person
     )
@@ -59,7 +59,7 @@ statement ok
     );
 
 statement ok
--CREATE OR REPLACE PROPERTY GRAPH external_graph
+CREATE OR REPLACE PROPERTY GRAPH external_graph
     VERTEX TABLES (
       test_schema.Person,
       test_schema.Company
@@ -71,7 +71,7 @@ statement ok
     );
 
 statement ok
--CREATE OR REPLACE PROPERTY GRAPH memory_graph
+CREATE OR REPLACE PROPERTY GRAPH memory_graph
     VERTEX TABLES (
       memory.test_schema.Person,
       memory.test_schema.Company
@@ -83,7 +83,7 @@ statement ok
     );
 
 statement error
--CREATE PROPERTY GRAPH invalid_graph
+CREATE PROPERTY GRAPH invalid_graph
     VERTEX TABLES (
       nonexistent_schema.Person
     )
@@ -120,7 +120,7 @@ statement ok
 CREATE TABLE Friendship(person1_id BIGINT, person2_id BIGINT, since DATE);
 
 statement ok
--CREATE PROPERTY GRAPH cross_schema_graph
+CREATE PROPERTY GRAPH cross_schema_graph
     VERTEX TABLES (
       schema1.Person,
       schema2.Company
@@ -132,7 +132,7 @@ statement ok
     );
 
 statement ok
--CREATE PROPERTY GRAPH memory_inclusive_graph
+CREATE PROPERTY GRAPH memory_inclusive_graph
     VERTEX TABLES (
       schema1.Person
     )
@@ -144,7 +144,7 @@ statement ok
     );
 
 statement ok
--CREATE PROPERTY GRAPH fully_qualified_graph
+CREATE PROPERTY GRAPH fully_qualified_graph
     VERTEX TABLES (
       schema1.Person,
       schema2.Company
@@ -162,7 +162,7 @@ statement ok
 SET search_path = schema2;
 
 statement error
--CREATE PROPERTY GRAPH search_path_graph
+CREATE PROPERTY GRAPH search_path_graph
     VERTEX TABLES (
       Person, -- Should resolve to schema1.Person
       Company
@@ -176,7 +176,7 @@ statement error
 Invalid Error: Table with name Person does not exist
 
 statement ok
--CREATE PROPERTY GRAPH search_path_graph
+CREATE PROPERTY GRAPH search_path_graph
     VERTEX TABLES (
       schema1.Person, -- Should resolve to schema1.Person
       Company
@@ -201,7 +201,7 @@ CREATE PROPERTY GRAPH invalid_schema_graph
 Invalid Error: Table 'nonexistent_schema.Company' not found in the property graph invalid_schema_graph.
 
 statement error
--CREATE PROPERTY GRAPH conflicting_schemas
+CREATE PROPERTY GRAPH conflicting_schemas
     VERTEX TABLES (
       schema1.Person,
       schema2.Person  -- Duplicate table name in different schema
@@ -255,7 +255,7 @@ create table schema2.e (
 );
 
 statement error
--create property graph g
+create property graph g
 vertex tables (schema2.v)
 edge tables (schema2.e source schema2.v destination schema2.v);
 ----
@@ -278,7 +278,7 @@ create table schema2.e2 (
 );
 
 statement ok
--create property graph g
+create property graph g
 vertex tables (v,w)
 edge tables (e2 source v destination w);
 
@@ -289,7 +289,7 @@ statement ok
 CREATE TABLE Person (id bigint); CREATE TABLE Person_knows_person (person1id bigint, person2id bigint);
 
 statement ok
--CREATE OR REPLACE PROPERTY GRAPH snb
+CREATE OR REPLACE PROPERTY GRAPH snb
     VERTEX TABLES (
       Person
     )
@@ -303,10 +303,10 @@ statement ok
 
 
 statement ok
--FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));
+FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));
 
 statement ok
--CREATE OR REPLACE PROPERTY GRAPH snb
+CREATE OR REPLACE PROPERTY GRAPH snb
   VERTEX TABLES (
     myschema.Person
   )
@@ -317,10 +317,10 @@ statement ok
   );
 
 statement ok
--FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));
+FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));
 
 statement ok
--CREATE OR REPLACE PROPERTY GRAPH snb
+CREATE OR REPLACE PROPERTY GRAPH snb
   VERTEX TABLES (
     memory.myschema.Person
   )
@@ -331,4 +331,4 @@ statement ok
   );
 
 statement ok
--FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));
+FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person));

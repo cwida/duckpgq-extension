@@ -11,7 +11,7 @@ statement ok
 CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT); INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17);
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student LABEL person
     )
@@ -22,7 +22,7 @@ EDGE TABLES (
     );
 
 statement error
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
     MATCH
     p = ANY SHORTEST 5 WALK (a:Person)-[k:knows]-> *(b:Person)
     WHERE a.name = 'Daniel'
@@ -33,7 +33,7 @@ Parser Error: syntax error at or near "5"
 
 
 statement error
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
         MATCH
         p =  SHORTEST 5 (a:Person)-[k:knows]-> *(b:Person)
         WHERE a.name = 'Daniel');
@@ -41,7 +41,7 @@ statement error
 Not implemented Error: TopK has not been implemented yet.
 
 statement error
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
         MATCH
         p =  SHORTEST 5 WALK (a:Person)-[k:knows]-> *(b:Person)
         WHERE a.name = 'Daniel');
@@ -49,7 +49,7 @@ statement error
 Not implemented Error: TopK has not been implemented yet.
 
 statement error
--FROM GRAPH_TABLE (pg
+FROM GRAPH_TABLE (pg
         MATCH
         p =  ANY SHORTEST 5 WALK (a:Person)-[k:knows]-> *(b:Person)
         WHERE a.name = 'Daniel');

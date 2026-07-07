@@ -8,7 +8,7 @@ require duckpgq
 #pragma enable_verification
 
 statement error
--CREATE PROPERTY GRAPH pg4
+CREATE PROPERTY GRAPH pg4
 VERTEX TABLES (tabledoesnotexist);
 ----
 Invalid Error: Table with name tabledoesnotexist does not exist
@@ -17,7 +17,7 @@ statement ok
 CREATE TABLE Student(id BIGINT, name VARCHAR);
 
 statement error
--CREATE PROPERTY GRAPH pg4
+CREATE PROPERTY GRAPH pg4
 VERTEX TABLES (Student)
 EDGE TABLES (edgetabledoesnotexist SOURCE KEY (id) REFERENCES Student (id)
                                     DESTINATION KEY (id) REFERENCES Student (id)
@@ -39,7 +39,7 @@ INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (1,2, 14), (1,3, 15), (
 
 # Vertex table with alias
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student PROPERTIES ( id, name ) LABEL Person,
     School as school_alias PROPERTIES ( school_id, school_name ) LABEL School IN School_kind (Hogeschool, University)
@@ -51,7 +51,7 @@ EDGE TABLES (
     )
 
 query I
--SELECT count(id)
+SELECT count(id)
 FROM
   GRAPH_TABLE (PG 
     MATCH p = (s1:Person)-[k:Knows]->(s2:Person WHERE s2.name='Daniel') 
@@ -60,7 +60,7 @@ FROM
 0
 
 query I
--SELECT count(id)
+SELECT count(id)
 FROM
   GRAPH_TABLE (PG 
     MATCH p = (s1:Person)-[k:Knows]->(s2:Person WHERE s2.name='Peter') 
@@ -70,7 +70,7 @@ FROM
 
 # Error as property graph pg already exists
 statement error
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student PROPERTIES ( id, name ) LABEL Person,
     School PROPERTIES ( school_id, school_name) LABEL School IN School_kind (Hogeschool, University)
@@ -85,7 +85,7 @@ Invalid Error: Property graph table with name pg already exists
 
 # Alias for the vertex table
 statement ok
--CREATE PROPERTY GRAPH pg1
+CREATE PROPERTY GRAPH pg1
 VERTEX TABLES (
     Student as Student_alias PROPERTIES ( id as id_alias, name ) LABEL Person
     )
@@ -97,7 +97,7 @@ EDGE TABLES (
 
 # Alias for the vertex table
 statement ok
--CREATE PROPERTY GRAPH pg2
+CREATE PROPERTY GRAPH pg2
 VERTEX TABLES (
     Student as Student_alias PROPERTIES ( id as id_alias, name ) LABEL Person
     )
@@ -109,7 +109,7 @@ EDGE TABLES (
 
 # Missing the keyword IN between Person and Person_alias
 statement error
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student PROPERTIES ( id as id, name ) LABEL Person Person_alias Person2_alias,
     )
@@ -123,7 +123,7 @@ Parser Error: syntax error at or near "Person_alias"
 
 # Duplicate labels
 statement error
--CREATE PROPERTY GRAPH pg2
+CREATE PROPERTY GRAPH pg2
 VERTEX TABLES (
     Student PROPERTIES ( id, name ) LABEL Person,
     School as school_alias PROPERTIES ( school_id, school_name) LABEL School IN School_kind (University, Hogeschool, University)
@@ -138,7 +138,7 @@ Constraint Error: Label university is not unique, make sure all labels are uniqu
 
 # Should fail as ( * ) is not allowed in the PROPERTIES list, in this case, PROPERTIES ( * ) should be omitted
 statement error
--CREATE PROPERTY GRAPH pg3
+CREATE PROPERTY GRAPH pg3
 VERTEX TABLES (
     Student PROPERTIES ( * ) LABEL Person,
     School PROPERTIES ( * ) LABEL School IN School_kind (Hogeschool, University)
@@ -154,7 +154,7 @@ Parser Error: syntax error at or near "*"
 
 # Should fail since the edge table references vertex tables that do not exist
 statement error
--CREATE PROPERTY GRAPH pg3
+CREATE PROPERTY GRAPH pg3
 VERTEX TABLES (
     School  LABEL School IN School_kind (Hogeschool, University)
     )
@@ -168,7 +168,7 @@ Invalid Error: Table 'Student' not found in the property graph pg3.
 
 # Should fail since the edge table references vertex tables that do not exist
 statement error
--CREATE PROPERTY GRAPH pg3
+CREATE PROPERTY GRAPH pg3
 VERTEX TABLES (
     School  LABEL School IN School_kind (Hogeschool, University)
     )
@@ -183,7 +183,7 @@ Invalid Error: Table 'Student__' not found in the property graph pg3.
 
 # Check duplicate labels
 statement error
--CREATE PROPERTY GRAPH pg4
+CREATE PROPERTY GRAPH pg4
 VERTEX TABLES (
     School  LABEL School IN School_kind (Hogeschool, Hogeschool),
     Student
@@ -199,7 +199,7 @@ Constraint Error: Label hogeschool is not unique, make sure all labels are uniqu
 
 # Check duplicate labels with case insenstitivity
 statement error
--CREATE PROPERTY GRAPH pg4
+CREATE PROPERTY GRAPH pg4
 VERTEX TABLES (
     School  LABEL School IN School_kind (HOGESCHOOL, University),
     Student LABEL Hogeschool

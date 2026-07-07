@@ -7,7 +7,7 @@ statement ok
 import database 'duckdb/data/SNB0.003';
 
 statement ok
--CREATE PROPERTY GRAPH snb
+CREATE PROPERTY GRAPH snb
 VERTEX TABLES (
     Person LABEL Person
     )
@@ -24,7 +24,7 @@ Person	1	NULL	NULL	50	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NUL
 Person_knows_person	0	Person	Person	NULL	83	28	29	22	21	2.8620689655172415	1	10	1	2	3	2.9642857142857144	1	13	1	2	4
 
 statement ok
--CREATE PROPERTY GRAPH snb1
+CREATE PROPERTY GRAPH snb1
 VERTEX TABLES (
     Person LABEL Person,
     Message LABEL Message
@@ -51,7 +51,7 @@ Person_knows_person	false	Person	Person	NULL	83	28	29	22	21	2.8620689655172415	1
 Person_likes_Message	false	Person	Message	NULL	492	48	234	2	3426	2.1025641025641026	1	41	1	1	1	10.25	1	57	2	6	15
 
 statement ok
--CREATE PROPERTY GRAPH snb2
+CREATE PROPERTY GRAPH snb2
 VERTEX TABLES (
     Person LABEL Person
 );

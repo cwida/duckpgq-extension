@@ -17,7 +17,7 @@ statement ok
 CREATE TABLE StudyAt(personId BIGINT, schoolId BIGINT); INSERT INTO StudyAt VALUES (0, 0), (1, 0), (2, 1), (3, 1), (4, 1);
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student PROPERTIES ( id, name ) LABEL Person,
     School LABEL SCHOOL
@@ -32,7 +32,7 @@ EDGE TABLES (
     );
 
 statement ok
--WITH cte1 AS (
+WITH cte1 AS (
     SELECT  CREATE_CSR_EDGE(
             0,
             (SELECT count(a.id) FROM Student a),

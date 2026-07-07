@@ -23,7 +23,7 @@ statement ok
 INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17), (2, 4, 18);
 
 statement ok
--CREATE PROPERTY GRAPH pg
+CREATE PROPERTY GRAPH pg
 VERTEX TABLES (
     Student PROPERTIES ( id, name ) LABEL Person
     )
@@ -34,7 +34,7 @@ EDGE TABLES (
     );
 
 query II
--SELECT study.a_id, study.name
+SELECT study.a_id, study.name
 FROM GRAPH_TABLE (pg
     MATCH
     (a:Person WHERE a.id = 0)
@@ -44,7 +44,7 @@ FROM GRAPH_TABLE (pg
 0	Daniel
 
 query II
--SELECT study.a_id, study.b_id
+SELECT study.a_id, study.b_id
 FROM GRAPH_TABLE (pg
    MATCH
    (a:Person)-[k:Knows WHERE k.id = 10]->(b:Person)
@@ -89,7 +89,7 @@ FROM GRAPH_TABLE (pg
 #Peter	David
 
 statement error
--SELECT study.a_name, study.b_name
+SELECT study.a_name, study.b_name
 FROM GRAPH_TABLE (pg
     MATCH
     (a:Person WHERE a.name = 'Peter')-[k:Knows]-> *(b:Person)
@@ -100,7 +100,7 @@ Constraint Error: ALL unbounded with path mode WALK is not possible as this coul
 
 
 query II
--SELECT study.a_name, study.b_name
+SELECT study.a_name, study.b_name
 FROM GRAPH_TABLE (pg
     MATCH
     (a:Person)-[k:Knows]->{1,2}(b:Person)
@@ -113,7 +113,7 @@ Peter	Tavneet
 Peter	Gabor
 
 statement error
--SELECT study.a_name, study.b_name
+SELECT study.a_name, study.b_name
 FROM GRAPH_TABLE (pg
     MATCH
     (a:Person)-[k:Knows]-> +(b:Person)

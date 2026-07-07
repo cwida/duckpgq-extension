@@ -239,7 +239,8 @@ PropertyGraphTableReference PEGTransformerFactory::TransformPropertyGraphKeyRefe
 
 unique_ptr<TableRef> PEGTransformerFactory::TransformGraphTableRef(
     PEGTransformer &transformer, string graph_table_keyword, const QualifiedName &qualified_name,
-    unique_ptr<PathPattern> graph_path_pattern, vector<unique_ptr<ParsedExpression>> target_list) {
+    unique_ptr<PathPattern> graph_path_pattern, optional<unique_ptr<ParsedExpression>> where_clause,
+    vector<unique_ptr<ParsedExpression>> target_list) {
 	if (!StringUtil::CIEquals(graph_table_keyword, "graph_table") &&
 	    !StringUtil::CIEquals(graph_table_keyword, "graph table")) {
 		throw ParserException("Expected GRAPH_TABLE or GRAPH TABLE");
@@ -248,6 +249,7 @@ unique_ptr<TableRef> PEGTransformerFactory::TransformGraphTableRef(
 	auto match_expression = make_uniq<MatchExpression>();
 	match_expression->pg_name = PGQIdentifierName(qualified_name.Name());
 	match_expression->alias = "graph_table";
+	match_expression->where_clause = std::move(where_clause).value_or(nullptr);
 	match_expression->column_list = std::move(target_list);
 	match_expression->path_patterns.push_back(std::move(graph_path_pattern));
 
