@@ -68,25 +68,6 @@ TopUniqueConstraint <- 'UNIQUE' ColumnIdList
 TopForeignKeyConstraint <- 'FOREIGN' 'KEY' ColumnIdList ForeignKeyConstraint
 ColumnIdList <- Parens(List(ColId))
 
-CreatePropertyGraphStmt <- 'PROPERTY' 'GRAPH' IfNotExists? QualifiedName VertexTablesClause EdgeTablesClause?
-VertexTablesClause <- 'VERTEX' 'TABLES' Parens(List(PropertyGraphVertexTable))
-EdgeTablesClause <- 'EDGE' 'TABLES' Parens(List(PropertyGraphEdgeTable))
-PropertyGraphVertexTable <- BaseTableName TableAliasAs? PropertyGraphProperties? PropertyGraphLabel?
-PropertyGraphEdgeTable <- BaseTableName TableAliasAs? SourceKeyReference DestinationKeyReference PropertyGraphProperties? PropertyGraphLabel?
-PropertyGraphProperties <- PropertyGraphAllProperties / PropertyGraphNoProperties / PropertyGraphPropertyList
-PropertyGraphAllProperties <- 'ALL' 'PROPERTIES'
-PropertyGraphNoProperties <- 'NO' 'PROPERTIES'
-PropertyGraphPropertyList <- 'PROPERTIES' Parens(List(ColId))
-PropertyGraphLabel <- 'LABEL' ColId PropertyGraphSubLabels?
-PropertyGraphSubLabels <- 'IN' Identifier Parens(List(ColId))
-SourceKeyReference <- SourceKeyFullReference / SourceTableReference
-SourceKeyFullReference <- 'SOURCE' PropertyGraphKeyReference
-SourceTableReference <- 'SOURCE' BaseTableName
-DestinationKeyReference <- DestinationKeyFullReference / DestinationTableReference
-DestinationKeyFullReference <- 'DESTINATION' PropertyGraphKeyReference
-DestinationTableReference <- 'DESTINATION' BaseTableName
-PropertyGraphKeyReference <- 'KEY' Parens(List(ColId)) 'REFERENCES' BaseTableName Parens(List(ColId))
-
 PlainIdentifier <- !ReservedKeyword <[a-z_]i[a-z0-9_]i*>
 QuotedIdentifier <- '"' [^"]* '"'
 DottedIdentifier <- Identifier DotColLabel*
