@@ -3,7 +3,7 @@
 #include "duckdb/common/common.hpp"
 #include "duckdb/parser/common_table_expression_info.hpp"
 #include "duckdb/parser/expression/subquery_expression.hpp"
-#include "duckdb/parser/property_graph_table.hpp"
+#include "duckpgq/parser/property_graph_table.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/tableref.hpp"

@@ -8,12 +8,13 @@
 
 #pragma once
 #include "duckdb/function/function.hpp"
+#include "duckdb/function/scalar_function.hpp"
 
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/subquery_expression.hpp"
 #include "duckdb/parser/query_node/set_operation_node.hpp"
 
-#include "duckdb/parser/property_graph_table.hpp"
+#include "duckpgq/parser/property_graph_table.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"

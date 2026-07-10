@@ -1,7 +1,7 @@
 
-#include "duckdb/parser/path_element.hpp"
-#include "duckdb/parser/path_reference.hpp"
-#include "duckdb/parser/subpath_element.hpp"
+#include "duckpgq/parser/path_element.hpp"
+#include "duckpgq/parser/path_reference.hpp"
+#include "duckpgq/parser/subpath_element.hpp"
 
 namespace duckdb {
 

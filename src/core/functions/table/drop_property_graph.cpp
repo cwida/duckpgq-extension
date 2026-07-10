@@ -1,6 +1,6 @@
 #include "duckpgq/core/functions/table/drop_property_graph.hpp"
 
-#include "duckdb/parser/parsed_data/drop_property_graph_info.hpp"
+#include "duckpgq/parser/parsed_data/drop_property_graph_info.hpp"
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>

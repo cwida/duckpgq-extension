@@ -1,7 +1,7 @@
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
-#include "duckdb/parser/path_element.hpp"
-#include "duckdb/parser/path_reference.hpp"
+#include "duckpgq/parser/path_element.hpp"
+#include "duckpgq/parser/path_reference.hpp"
 
 namespace duckdb {
 

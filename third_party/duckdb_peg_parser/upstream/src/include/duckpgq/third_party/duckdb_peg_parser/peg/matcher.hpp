@@ -9,7 +9,7 @@
 #pragma once
 
 #include "duckdb/common/string_util.hpp"
-#include "duckdb/common/identifier.hpp"
+#include "duckpgq/parser/identifier.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/common/reference_map.hpp"
 #include "duckdb/main/client_context.hpp"

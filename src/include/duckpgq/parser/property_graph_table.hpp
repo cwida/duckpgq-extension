@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //                         DuckPGQ
 //
-// duckdb/parser/property_graph_table.hpp
+// duckpgq/parser/property_graph_table.hpp
 //
 //
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
-#include "duckdb/common/identifier.hpp"
+#include "duckpgq/parser/identifier.hpp"
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/common/serializer/serializer.hpp"

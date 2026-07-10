@@ -1,9 +1,9 @@
 #include "duckpgq/core/functions/table/pgq_scan.hpp"
 #include "duckdb/common/types.hpp"
 #include "duckdb/function/table_function.hpp"
-#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
+#include <duckpgq/parser/parsed_data/create_property_graph_info.hpp>
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
-#include "duckdb/parser/property_graph_table.hpp"
+#include "duckpgq/parser/property_graph_table.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
 #include <cstdint>

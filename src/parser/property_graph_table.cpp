@@ -1,6 +1,6 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types/hash.hpp"
-#include "duckdb/parser/property_graph_table.hpp"
+#include "duckpgq/parser/property_graph_table.hpp"
 
 namespace duckdb {
 

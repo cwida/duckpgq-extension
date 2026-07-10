@@ -59,12 +59,10 @@
 #include "duckdb/parser/statement/insert_statement.hpp"
 #include "duckdb/parser/statement/merge_into_statement.hpp"
 #include "duckdb/parser/tableref/pivotref.hpp"
-#include "duckdb/parser/path_element.hpp"
-#include "duckdb/parser/path_pattern.hpp"
-#include "duckdb/parser/path_reference.hpp"
-#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
-
-#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
+#include "duckpgq/parser/path_element.hpp"
+#include "duckpgq/parser/path_pattern.hpp"
+#include "duckpgq/parser/path_reference.hpp"
+#include <duckpgq/parser/parsed_data/create_property_graph_info.hpp>
 
 namespace duckdb {
 namespace duckpgq_peg {
