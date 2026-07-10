@@ -780,8 +780,8 @@ PGQMatchFunction::AddPathQuantifierCondition(const string &prev_binding, const s
 	auto addition_function = make_uniq<FunctionExpression>("add", std::move(addition_children));
 	auto lower_limit = make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(subpath->lower)));
 	if (subpath->upper == NumericLimits<int64_t>::Maximum()) {
-		return make_uniq<ComparisonExpression>(ExpressionType::COMPARE_GREATERTHANOREQUALTO, std::move(addition_function),
-		                                       std::move(lower_limit));
+		return make_uniq<ComparisonExpression>(ExpressionType::COMPARE_GREATERTHANOREQUALTO,
+		                                       std::move(addition_function), std::move(lower_limit));
 	}
 	auto upper_limit = make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(subpath->upper)));
 	auto between_expression =
