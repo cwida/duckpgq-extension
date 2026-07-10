@@ -4,13 +4,12 @@
 
 #include "duckpgq/core/functions/table/describe_property_graph.hpp"
 #include "duckpgq/core/functions/table/drop_property_graph.hpp"
-#include "duckdb/common/sql_identifier.hpp"
+#include "duckpgq/core/utils/duckpgq_sql.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
-#include "duckdb/parser/parser.hpp"
-#include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/parser/expression/columnref_expression.hpp"
+#include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 
 namespace duckdb {
@@ -60,59 +59,32 @@ shared_ptr<PropertyGraphTable> ValidateSourceNodeAndEdgeTable(CreatePropertyGrap
 	return edge_pg_entry;
 }
 
-static string DuckPGQSQLIdentifier(const string &identifier) {
-	return SQLIdentifier::ToString(identifier);
-}
-
-static string DuckPGQSQLQualifiedTableName(const PropertyGraphTable &table) {
-	string result;
-	if (!table.catalog_name.empty()) {
-		result += DuckPGQSQLIdentifier(table.catalog_name) + ".";
-	}
-	if (!table.schema_name.empty()) {
-		result += DuckPGQSQLIdentifier(table.schema_name) + ".";
-	}
-	result += DuckPGQSQLIdentifier(table.table_name);
-	return result;
-}
-
-static string DuckPGQSQLTableRef(const PropertyGraphTable &table, const string &alias = "") {
-	auto result = DuckPGQSQLQualifiedTableName(table);
-	if (!alias.empty()) {
-		result += " AS " + DuckPGQSQLIdentifier(alias);
-	}
-	return result;
-}
-
-static string DuckPGQSQLColumn(const string &column_name, const string &table_name = "") {
-	if (table_name.empty()) {
-		return DuckPGQSQLIdentifier(column_name);
-	}
-	return DuckPGQSQLIdentifier(table_name) + "." + DuckPGQSQLIdentifier(column_name);
-}
-
-static unique_ptr<SelectStatement> DuckPGQParseSelect(const string &query) {
-	Parser parser;
-	parser.ParseQuery(query);
-	if (parser.statements.size() != 1 || parser.statements[0]->type != StatementType::SELECT_STATEMENT) {
-		throw ParserException("Expected a single SELECT statement while building DuckPGQ query");
-	}
-	return unique_ptr_cast<SQLStatement, SelectStatement>(std::move(parser.statements[0]));
-}
-
 // Function to create the SELECT node
 unique_ptr<SelectNode> CreateSelectNode(const shared_ptr<PropertyGraphTable> &edge_pg_entry,
                                         const string &function_name, const string &function_alias) {
 	std::ostringstream query;
-	query << "SELECT " << DuckPGQSQLColumn(edge_pg_entry->source_pk[0], edge_pg_entry->source_reference) << ", add("
-	      << DuckPGQSQLColumn("temp", "__x") << ", " << DuckPGQSQLIdentifier(function_name) << "(0, "
-	      << DuckPGQSQLColumn("rowid", edge_pg_entry->source_reference) << ")) AS "
-	      << DuckPGQSQLIdentifier(function_alias) << " FROM "
-	      << DuckPGQSQLTableRef(*edge_pg_entry->source_pg_table, edge_pg_entry->source_reference)
+	query << "SELECT " << DuckPGQSQL::Column(edge_pg_entry->source_pk[0], edge_pg_entry->source_reference) << ", add("
+	      << DuckPGQSQL::Column("temp", "__x") << ", " << DuckPGQSQL::Identifier(function_name) << "(0, "
+	      << DuckPGQSQL::Column("rowid", edge_pg_entry->source_reference) << ")) AS "
+	      << DuckPGQSQL::Identifier(function_alias) << " FROM "
+	      << DuckPGQSQL::TableRef(*edge_pg_entry->source_pg_table, edge_pg_entry->source_reference)
 	      << " CROSS JOIN (SELECT multiply(0, count(csr_cte.temp)) AS temp FROM csr_cte) AS __x";
 
-	auto select_statement = DuckPGQParseSelect(query.str());
+	auto select_statement = DuckPGQSQL::ParseSelect(query.str());
 	return unique_ptr_cast<QueryNode, SelectNode>(std::move(select_statement->node));
+}
+
+unique_ptr<TableRef> CreateTableFunctionSubquery(unique_ptr<SelectNode> select_node,
+                                                 unique_ptr<CommonTableExpressionInfo> cte, const string &cte_name,
+                                                 const string &alias) {
+	select_node->cte_map.map[Identifier(cte_name)] = std::move(cte);
+
+	auto subquery = make_uniq<SelectStatement>();
+	subquery->node = std::move(select_node);
+
+	auto result = make_uniq<SubqueryRef>(std::move(subquery));
+	result->alias = Identifier(alias);
+	return std::move(result);
 }
 
 unique_ptr<BaseTableRef> CreateBaseTableRef(const string &table_name, const string &alias) {

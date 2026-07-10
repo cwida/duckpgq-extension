@@ -1,10 +1,8 @@
 #include "duckpgq/core/functions/table/pagerank.hpp"
 #include "duckdb/function/table_function.hpp"
-#include "duckdb/parser/tableref/subqueryref.hpp"
 
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
-#include "duckdb/parser/tableref/basetableref.hpp"
 
 namespace duckdb {
 
@@ -20,14 +18,8 @@ unique_ptr<TableRef> PageRankFunction::PageRankBindReplace(ClientContext &contex
 
 	auto select_node = CreateSelectNode(edge_pg_entry, "pagerank", "pagerank");
 
-	select_node->cte_map.map[Identifier("csr_cte")] = CreateDirectedCSRCTE(edge_pg_entry, "src", "edge", "dst");
-
-	auto subquery = make_uniq<SelectStatement>();
-	subquery->node = std::move(select_node);
-
-	auto result = make_uniq<SubqueryRef>(std::move(subquery));
-	result->alias = Identifier("pagerank");
-	return std::move(result);
+	return CreateTableFunctionSubquery(
+	    std::move(select_node), CreateDirectedCSRCTE(edge_pg_entry, "src", "edge", "dst"), "csr_cte", "pagerank");
 }
 
 //------------------------------------------------------------------------------
