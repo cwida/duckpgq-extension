@@ -1857,7 +1857,10 @@ public:
 	static unique_ptr<TransformResultValue> TransformPropertyGraphPropertyAliasInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static Identifier TransformPropertyGraphPropertyAlias(PEGTransformer &transformer, const Identifier &col_id);
 	static unique_ptr<TransformResultValue> TransformPropertyGraphLabelInternal(PEGTransformer &transformer, ParseResult &parse_result);
-	static PropertyGraphLabel TransformPropertyGraphLabel(PEGTransformer &transformer, const Identifier &col_id, optional<PropertyGraphSubLabels> property_graph_sub_labels);
+	static unique_ptr<TransformResultValue> TransformPropertyGraphExplicitLabelInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static PropertyGraphLabel TransformPropertyGraphExplicitLabel(PEGTransformer &transformer, const Identifier &col_id, optional<PropertyGraphSubLabels> property_graph_sub_labels);
+	static unique_ptr<TransformResultValue> TransformPropertyGraphImplicitLabelInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static PropertyGraphLabel TransformPropertyGraphImplicitLabel(PEGTransformer &transformer, PropertyGraphSubLabels property_graph_sub_labels);
 	static unique_ptr<TransformResultValue> TransformPropertyGraphSubLabelsInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static PropertyGraphSubLabels TransformPropertyGraphSubLabels(PEGTransformer &transformer, const Identifier &identifier, const vector<Identifier> &col_id);
 	static unique_ptr<TransformResultValue> TransformSourceKeyReferenceInternal(PEGTransformer &transformer, ParseResult &parse_result);

@@ -61,7 +61,7 @@ static void PGQApplyProperties(PropertyGraphTable &table, const optional<Propert
 }
 
 static void PGQApplyLabel(PropertyGraphTable &table, const optional<PropertyGraphLabel> &label) {
-	if (label) {
+	if (label && !label->main_label.GetIdentifierName().empty()) {
 		table.main_label = PGQIdentifierName(label->main_label);
 		if (label->sub_labels) {
 			table.discriminator = PGQIdentifierName(label->sub_labels->discriminator);
@@ -69,6 +69,10 @@ static void PGQApplyLabel(PropertyGraphTable &table, const optional<PropertyGrap
 		}
 	} else {
 		table.main_label = table.table_name_alias.empty() ? table.table_name : table.table_name_alias;
+	}
+	if (label && label->main_label.GetIdentifierName().empty() && label->sub_labels) {
+		table.discriminator = PGQIdentifierName(label->sub_labels->discriminator);
+		table.sub_labels = PGQIdentifiers(label->sub_labels->labels);
 	}
 }
 
@@ -243,9 +247,21 @@ Identifier PEGTransformerFactory::TransformPropertyGraphPropertyAlias(PEGTransfo
 }
 
 PropertyGraphLabel PEGTransformerFactory::TransformPropertyGraphLabel(
+    PEGTransformer &transformer, PropertyGraphLabel property_graph_explicit_label) {
+	return property_graph_explicit_label;
+}
+
+PropertyGraphLabel PEGTransformerFactory::TransformPropertyGraphExplicitLabel(
     PEGTransformer &transformer, const Identifier &col_id, optional<PropertyGraphSubLabels> property_graph_sub_labels) {
 	PropertyGraphLabel result;
 	result.main_label = col_id;
+	result.sub_labels = std::move(property_graph_sub_labels);
+	return result;
+}
+
+PropertyGraphLabel PEGTransformerFactory::TransformPropertyGraphImplicitLabel(
+    PEGTransformer &transformer, PropertyGraphSubLabels property_graph_sub_labels) {
+	PropertyGraphLabel result;
 	result.sub_labels = std::move(property_graph_sub_labels);
 	return result;
 }

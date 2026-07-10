@@ -1567,6 +1567,12 @@ overrides:
   PropertyGraphLabel:
     type: "PropertyGraphLabel"
     by_value: true
+  PropertyGraphExplicitLabel:
+    type: "PropertyGraphLabel"
+    by_value: true
+  PropertyGraphImplicitLabel:
+    type: "PropertyGraphLabel"
+    by_value: true
   PropertyGraphSubLabels:
     type: "PropertyGraphSubLabels"
     by_value: true

@@ -11,7 +11,9 @@ PropertyGraphNoProperties <- 'NO' 'PROPERTIES'
 PropertyGraphPropertyList <- 'PROPERTIES' Parens(List(PropertyGraphProperty))
 PropertyGraphProperty <- ColId PropertyGraphPropertyAlias?
 PropertyGraphPropertyAlias <- 'AS' ColId
-PropertyGraphLabel <- 'LABEL' ColId PropertyGraphSubLabels?
+PropertyGraphLabel <- PropertyGraphExplicitLabel / PropertyGraphImplicitLabel
+PropertyGraphExplicitLabel <- 'LABEL' ColId PropertyGraphSubLabels?
+PropertyGraphImplicitLabel <- PropertyGraphSubLabels
 PropertyGraphSubLabels <- 'IN' Identifier Parens(List(ColId))
 SourceKeyReference <- SourceKeyFullReference / SourceTableReference
 SourceKeyFullReference <- 'SOURCE' PropertyGraphKeyReference

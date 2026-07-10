@@ -7486,6 +7486,14 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformPropertyGraphPr
 unique_ptr<TransformResultValue> PEGTransformerFactory::TransformPropertyGraphLabelInternal(
     PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list_pr = parse_result.Cast<ListParseResult>();
+	auto &choice_pr = list_pr.Child<ChoiceParseResult>(0);
+	auto result = transformer.Transform<PropertyGraphLabel>(choice_pr.GetResult());
+	return make_uniq<TypedTransformResult<PropertyGraphLabel>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformPropertyGraphExplicitLabelInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
 	auto col_id = transformer.Transform<Identifier>(list_pr.GetChild(1));
 	optional<PropertyGraphSubLabels> property_graph_sub_labels {};
 	auto &property_graph_sub_labels_opt = list_pr.GetChild(2).Cast<OptionalParseResult>();
@@ -7493,7 +7501,15 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformPropertyGraphLa
 		auto property_graph_sub_labels_value = transformer.Transform<PropertyGraphSubLabels>(property_graph_sub_labels_opt.GetResult());
 		property_graph_sub_labels = std::move(property_graph_sub_labels_value);
 	}
-	auto result = TransformPropertyGraphLabel(transformer, col_id, std::move(property_graph_sub_labels));
+	auto result = TransformPropertyGraphExplicitLabel(transformer, col_id, std::move(property_graph_sub_labels));
+	return make_uniq<TypedTransformResult<PropertyGraphLabel>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformPropertyGraphImplicitLabelInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	auto property_graph_sub_labels = transformer.Transform<PropertyGraphSubLabels>(list_pr.GetChild(0));
+	auto result = TransformPropertyGraphImplicitLabel(transformer, std::move(property_graph_sub_labels));
 	return make_uniq<TypedTransformResult<PropertyGraphLabel>>(std::move(result));
 }
 
@@ -11091,6 +11107,8 @@ void PEGTransformerFactory::RegisterGenerated() {
 		{"PropertyGraphProperty", &PEGTransformerFactory::TransformPropertyGraphPropertyInternal},
 		{"PropertyGraphPropertyAlias", &PEGTransformerFactory::TransformPropertyGraphPropertyAliasInternal},
 		{"PropertyGraphLabel", &PEGTransformerFactory::TransformPropertyGraphLabelInternal},
+		{"PropertyGraphExplicitLabel", &PEGTransformerFactory::TransformPropertyGraphExplicitLabelInternal},
+		{"PropertyGraphImplicitLabel", &PEGTransformerFactory::TransformPropertyGraphImplicitLabelInternal},
 		{"PropertyGraphSubLabels", &PEGTransformerFactory::TransformPropertyGraphSubLabelsInternal},
 		{"SourceKeyReference", &PEGTransformerFactory::TransformSourceKeyReferenceInternal},
 		{"SourceKeyFullReference", &PEGTransformerFactory::TransformSourceKeyFullReferenceInternal},
