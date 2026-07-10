@@ -1,0 +1,27 @@
+CREATE TABLE City(id INTEGER, "name" VARCHAR, url VARCHAR, "type" VARCHAR, PartOfPlaceId INTEGER);;
+CREATE TABLE "Comment"(creationDate TIMESTAMP_MS NOT NULL, id BIGINT NOT NULL, locationIP VARCHAR NOT NULL, browserUsed VARCHAR NOT NULL, "content" VARCHAR NOT NULL, length INTEGER NOT NULL, CreatorPersonId BIGINT NOT NULL, LocationCountryId INTEGER NOT NULL, ParentPostId BIGINT, ParentCommentId BIGINT);;
+CREATE TABLE Comment_hasTag_Tag(creationDate TIMESTAMP_MS NOT NULL, CommentId BIGINT NOT NULL, TagId INTEGER NOT NULL);;
+CREATE TABLE Country(id INTEGER, "name" VARCHAR, url VARCHAR, "type" VARCHAR, PartOfPlaceId INTEGER);;
+CREATE TABLE Forum(creationDate TIMESTAMP_MS NOT NULL, id BIGINT NOT NULL, title VARCHAR NOT NULL, ModeratorPersonId BIGINT NOT NULL);;
+CREATE TABLE Forum_hasMember_Person(creationDate TIMESTAMP_MS NOT NULL, ForumId BIGINT NOT NULL, PersonId BIGINT NOT NULL);;
+CREATE TABLE Forum_hasTag_Tag(creationDate TIMESTAMP_MS NOT NULL, ForumId BIGINT NOT NULL, TagId INTEGER NOT NULL);;
+CREATE TABLE Message(creationDate TIMESTAMP_MS, id BIGINT, imageFile VARCHAR, locationIP VARCHAR, browserUsed VARCHAR, "language" VARCHAR, "content" VARCHAR, length INTEGER, CreatorPersonId BIGINT, LocationCountryId BIGINT, ParentMessageId BIGINT);;
+CREATE TABLE Message_hasAuthor_Person(creationDate TIMESTAMP_MS, messageId BIGINT, PersonId BIGINT);;
+CREATE TABLE Message_hasTag_Tag(creationDate TIMESTAMP_MS, id BIGINT, TagId INTEGER);;
+CREATE TABLE Message_replyOf_Message(creationDate TIMESTAMP_MS, messageId BIGINT, ParentMessageId BIGINT);;
+CREATE TABLE Organisation(id INTEGER NOT NULL, "type" VARCHAR NOT NULL, "name" VARCHAR NOT NULL, url VARCHAR NOT NULL, LocationPlaceId INTEGER NOT NULL, typemask INTEGER);;
+CREATE TABLE Person(creationDate TIMESTAMP_MS NOT NULL, id BIGINT NOT NULL, firstName VARCHAR NOT NULL, lastName VARCHAR NOT NULL, gender VARCHAR NOT NULL, birthday DATE NOT NULL, locationIP VARCHAR NOT NULL, browserUsed VARCHAR NOT NULL, LocationCityId INTEGER NOT NULL, "language" VARCHAR NOT NULL, email VARCHAR NOT NULL);;
+CREATE TABLE Person_hasInterest_Tag(creationDate TIMESTAMP_MS NOT NULL, PersonId BIGINT NOT NULL, TagId INTEGER NOT NULL);;
+CREATE TABLE Person_knows_Person(creationDate TIMESTAMP_MS NOT NULL, Person1Id BIGINT NOT NULL, Person2Id BIGINT NOT NULL);;
+CREATE TABLE Person_likes_Comment(creationDate TIMESTAMP_MS NOT NULL, PersonId BIGINT NOT NULL, CommentId BIGINT NOT NULL);;
+CREATE TABLE Person_likes_Message(creationDate TIMESTAMP_MS, PersonId BIGINT, id BIGINT);;
+CREATE TABLE Person_likes_Post(creationDate TIMESTAMP_MS NOT NULL, PersonId BIGINT NOT NULL, PostId BIGINT NOT NULL);;
+CREATE TABLE Person_studyAt_University(creationDate TIMESTAMP_MS NOT NULL, PersonId BIGINT NOT NULL, UniversityId BIGINT NOT NULL, classYear INTEGER NOT NULL);;
+CREATE TABLE Person_workAt_Company(creationDate TIMESTAMP_MS NOT NULL, PersonId BIGINT NOT NULL, CompanyId BIGINT NOT NULL, workFrom INTEGER NOT NULL);;
+CREATE TABLE person_workAt_Organisation(creationDate TIMESTAMP_MS, PersonId BIGINT, OrganisationId BIGINT, workFrom INTEGER);;
+CREATE TABLE Place(id INTEGER NOT NULL, "name" VARCHAR NOT NULL, url VARCHAR NOT NULL, "type" VARCHAR NOT NULL, PartOfPlaceId INTEGER);;
+CREATE TABLE Post(creationDate TIMESTAMP_MS NOT NULL, id BIGINT NOT NULL, imageFile VARCHAR, locationIP VARCHAR NOT NULL, browserUsed VARCHAR NOT NULL, "language" VARCHAR, "content" VARCHAR, length INTEGER NOT NULL, CreatorPersonId BIGINT NOT NULL, ContainerForumId BIGINT NOT NULL, LocationCountryId BIGINT NOT NULL);;
+CREATE TABLE Post_hasTag_Tag(creationDate TIMESTAMP_MS NOT NULL, PostId BIGINT NOT NULL, TagId INTEGER NOT NULL);;
+CREATE TABLE Tag(id INTEGER NOT NULL, "name" VARCHAR NOT NULL, url VARCHAR NOT NULL, TypeTagClassId INTEGER NOT NULL);;
+CREATE TABLE TagClass(id INTEGER NOT NULL, "name" VARCHAR NOT NULL, url VARCHAR NOT NULL, SubclassOfTagClassId INTEGER);;
+
