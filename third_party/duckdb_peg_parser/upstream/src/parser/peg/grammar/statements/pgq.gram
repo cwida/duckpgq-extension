@@ -25,12 +25,13 @@ PropertyGraphKeyReference <- 'KEY' Parens(List(ColId)) 'REFERENCES' BaseTableNam
 
 DropPropertyGraph <- 'PROPERTY' 'GRAPH' IfExists? QualifiedName
 
-GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' GraphPathPattern WhereClause? GraphTableColumnsClause? ')' TableAlias?
+GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' GraphPathPatternList WhereClause? GraphTableColumnsClause? ')' TableAlias?
 GraphTableColumnsClause <- 'COLUMNS' '(' TargetList ')'
 GraphTableKeyword <- GraphTableSpacedKeyword / GraphTableUnderscoreKeyword
 GraphTableUnderscoreKeyword <- Identifier
 GraphTableSpacedKeyword <- 'GRAPH' 'TABLE'
 GraphPathPattern <- GraphPathVariable? GraphPathSearchPrefix? GraphPathModePrefix? GraphPathSequence
+GraphPathPatternList <- List(GraphPathPattern)
 GraphPathVariable <- Identifier '='
 GraphPathSearchPrefix <- GraphAllShortestPrefix / GraphAnyShortestPrefix / GraphTopKShortestPrefix
 GraphAllShortestPrefix <- 'ALL' 'SHORTEST'
@@ -59,4 +60,4 @@ GraphEdgeRightArrow <- '->'
 GraphEdgeSpacedRightArrow <- '-' '>'
 GraphEdgeDash <- '-'
 GraphEdgeBody <- '[' Identifier GraphTableLabel? WhereClause? ']'
-GraphTableLabel <- ':' ColId
+GraphTableLabel <- (':' / 'IS') ColId

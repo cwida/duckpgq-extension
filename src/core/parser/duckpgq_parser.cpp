@@ -38,11 +38,25 @@ static bool DuckPGQQuery(const string &query) {
 }
 
 static bool DuckPGQShouldWrapStatement(const unique_ptr<SQLStatement> &statement, bool pgq_query) {
-	if (pgq_query && statement->type == StatementType::SELECT_STATEMENT) {
-		return true;
+	if (pgq_query) {
+		switch (statement->type) {
+		case StatementType::SELECT_STATEMENT:
+		case StatementType::EXPLAIN_STATEMENT:
+		case StatementType::COPY_STATEMENT:
+		case StatementType::INSERT_STATEMENT:
+			return true;
+		default:
+			break;
+		}
 	}
 	if (statement->type == StatementType::CREATE_STATEMENT) {
 		auto &create_statement = statement->Cast<CreateStatement>();
+		if (pgq_query) {
+			auto create_table = dynamic_cast<CreateTableInfo *>(create_statement.info.get());
+			if (create_table && create_table->query) {
+				return true;
+			}
+		}
 		if (create_statement.info->type != CatalogType::INVALID) {
 			return false;
 		}

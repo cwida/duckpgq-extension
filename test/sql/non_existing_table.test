@@ -46,7 +46,7 @@ FROM GRAPH_TABLE (snb
     COLUMNS (*)
     );
 ----
-Binder Error: The label kind is not registered in property graph snb
+Binder Error: The label Kind is not registered in property graph snb
 
 statement error
 FROM GRAPH_TABLE (abc

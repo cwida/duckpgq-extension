@@ -25,26 +25,12 @@ EDGE TABLES (
    );
 
 query IIIIIIIIIII
-FROM GRAPH_TABLE (snb MATCH (p:Person)) limit 1;
+FROM GRAPH_TABLE (snb MATCH (p:Person)) ORDER BY id limit 1;
 ----
-1166	1984-03-11	Firefox	2010-01-03 23:10:31.499+00	Hossein14@hotmail.com	Hossein	male	14	Forouhar	77.245.239.11	fa;ku;en
+1166	1984-03-11	Firefox	2010-01-03 15:10:31.499	Hossein14@hotmail.com	Hossein	male	14	fa;ku;en	Forouhar	77.245.239.11
 
 query I
-FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id)) limit 10;
-----
-14
-16
-32
-2199023255557
-2199023255573
-2199023255594
-4398046511139
-6597069766702
-8796093022234
-8796093022237
-
-query I
-SELECT p_id FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id,)) limit 10;
+FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id)) ORDER BY id limit 10;
 ----
 14
 16
@@ -58,7 +44,21 @@ SELECT p_id FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id,)) limi
 8796093022237
 
 query I
-FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id)) limit 10;
+SELECT p_id FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id,)) ORDER BY p_id limit 10;
+----
+14
+16
+32
+2199023255557
+2199023255573
+2199023255594
+4398046511139
+6597069766702
+8796093022234
+8796093022237
+
+query I
+FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id)) ORDER BY p_id limit 10;
 ----
 14
 16
@@ -72,7 +72,7 @@ FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id as p_id)) limit 10;
 8796093022237
 
 query II
-FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id, p.firstname as first_name)) limit 10;
+FROM GRAPH_TABLE (snb MATCH (p:Person) COLUMNS (p.id, p.firstname as first_name)) ORDER BY id limit 10;
 ----
 14	Hossein
 16	Jan

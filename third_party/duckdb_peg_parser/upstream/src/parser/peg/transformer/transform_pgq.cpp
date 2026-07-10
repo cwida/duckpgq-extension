@@ -246,11 +246,6 @@ Identifier PEGTransformerFactory::TransformPropertyGraphPropertyAlias(PEGTransfo
 	return col_id;
 }
 
-PropertyGraphLabel PEGTransformerFactory::TransformPropertyGraphLabel(
-    PEGTransformer &transformer, PropertyGraphLabel property_graph_explicit_label) {
-	return property_graph_explicit_label;
-}
-
 PropertyGraphLabel PEGTransformerFactory::TransformPropertyGraphExplicitLabel(
     PEGTransformer &transformer, const Identifier &col_id, optional<PropertyGraphSubLabels> property_graph_sub_labels) {
 	PropertyGraphLabel result;
@@ -301,7 +296,7 @@ PropertyGraphTableReference PEGTransformerFactory::TransformPropertyGraphKeyRefe
 
 unique_ptr<TableRef> PEGTransformerFactory::TransformGraphTableRef(
     PEGTransformer &transformer, string graph_table_keyword, const QualifiedName &qualified_name,
-    unique_ptr<PathPattern> graph_path_pattern, optional<unique_ptr<ParsedExpression>> where_clause,
+    vector<unique_ptr<PathPattern>> graph_path_pattern_list, optional<unique_ptr<ParsedExpression>> where_clause,
     optional<vector<unique_ptr<ParsedExpression>>> graph_table_columns_clause, const optional<TableAlias> &table_alias) {
 	if (!StringUtil::CIEquals(graph_table_keyword, "graph_table") &&
 	    !StringUtil::CIEquals(graph_table_keyword, "graph table")) {
@@ -315,15 +310,19 @@ unique_ptr<TableRef> PEGTransformerFactory::TransformGraphTableRef(
 	if (graph_table_columns_clause) {
 		match_expression->column_list = std::move(*graph_table_columns_clause);
 	} else {
-		for (auto &path_reference : graph_path_pattern->path_elements) {
-			auto path_element = dynamic_cast<PathElement *>(path_reference.get());
-			if (!path_element || path_element->match_type != PGQMatchType::MATCH_VERTEX) {
-				continue;
+		for (auto &path_pattern : graph_path_pattern_list) {
+			for (auto &path_reference : path_pattern->path_elements) {
+				auto path_element = dynamic_cast<PathElement *>(path_reference.get());
+				if (!path_element || path_element->match_type != PGQMatchType::MATCH_VERTEX) {
+					continue;
+				}
+				match_expression->column_list.push_back(make_uniq<StarExpression>(Identifier(path_element->variable_binding)));
 			}
-			match_expression->column_list.push_back(make_uniq<StarExpression>(Identifier(path_element->variable_binding)));
 		}
 	}
-	match_expression->path_patterns.push_back(std::move(graph_path_pattern));
+	for (auto &path_pattern : graph_path_pattern_list) {
+		match_expression->path_patterns.push_back(std::move(path_pattern));
+	}
 
 	vector<FunctionArgument> arguments;
 	arguments.emplace_back(std::move(match_expression));
@@ -394,6 +393,11 @@ unique_ptr<PathPattern> PEGTransformerFactory::TransformGraphPathPattern(
 	subpath->path_list = std::move(result->path_elements);
 	result->path_elements.push_back(std::move(subpath));
 	return result;
+}
+
+vector<unique_ptr<PathPattern>> PEGTransformerFactory::TransformGraphPathPatternList(
+    PEGTransformer &transformer, vector<unique_ptr<PathPattern>> graph_path_pattern) {
+	return graph_path_pattern;
 }
 
 Identifier PEGTransformerFactory::TransformGraphPathVariable(PEGTransformer &transformer, const Identifier &identifier) {

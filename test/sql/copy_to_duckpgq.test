@@ -73,7 +73,7 @@ CREATE TABLE result as (FROM GRAPH_TABLE (snb
 query IIIIIIII
 SELECT * FROM result;
 ----
-Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595+00
+Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-11 19:46:47.595
 
 statement ok
 INSERT INTO result (FROM GRAPH_TABLE (snb
@@ -84,5 +84,5 @@ INSERT INTO result (FROM GRAPH_TABLE (snb
 query IIIIIIII
 SELECT * FROM result;
 ----
-Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595+00
-Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-12 02:46:47.595+00
+Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-11 19:46:47.595
+Ali	Abouba	1987-05-29	41.203.147.168	Internet Explorer	1264	male	2011-05-11 19:46:47.595

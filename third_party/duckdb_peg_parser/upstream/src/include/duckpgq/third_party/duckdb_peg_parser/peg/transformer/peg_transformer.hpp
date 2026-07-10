@@ -1178,6 +1178,8 @@ public:
 	static vector<unique_ptr<TableRef>> TransformDeleteUsingClause(PEGTransformer &transformer, vector<unique_ptr<TableRef>> table_ref);
 	static unique_ptr<TransformResultValue> TransformDescribeStatementInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static unique_ptr<SelectStatement> TransformDescribeStatement(PEGTransformer &transformer, unique_ptr<QueryNode> child);
+	static unique_ptr<TransformResultValue> TransformDescribePropertyGraphInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static unique_ptr<QueryNode> TransformDescribePropertyGraph(PEGTransformer &transformer, const ShowType &describe_rule, const QualifiedName &qualified_name);
 	static unique_ptr<TransformResultValue> TransformShowSelectInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static unique_ptr<QueryNode> TransformShowSelect(PEGTransformer &transformer, const ShowType &show_or_describe_or_summarize, unique_ptr<SelectStatement> select_statement_internal);
 	static unique_ptr<TransformResultValue> TransformShowAllTablesInternal(PEGTransformer &transformer, ParseResult &parse_result);
@@ -1876,7 +1878,7 @@ public:
 	static unique_ptr<TransformResultValue> TransformDropPropertyGraphInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static unique_ptr<DropStatement> TransformDropPropertyGraph(PEGTransformer &transformer, const optional<bool> &if_exists, const QualifiedName &qualified_name);
 	static unique_ptr<TransformResultValue> TransformGraphTableRefInternal(PEGTransformer &transformer, ParseResult &parse_result);
-	static unique_ptr<TableRef> TransformGraphTableRef(PEGTransformer &transformer, string graph_table_keyword, const QualifiedName &qualified_name, unique_ptr<PathPattern> graph_path_pattern, optional<unique_ptr<ParsedExpression>> where_clause, optional<vector<unique_ptr<ParsedExpression>>> graph_table_columns_clause, const optional<TableAlias> &table_alias);
+	static unique_ptr<TableRef> TransformGraphTableRef(PEGTransformer &transformer, string graph_table_keyword, const QualifiedName &qualified_name, vector<unique_ptr<PathPattern>> graph_path_pattern_list, optional<unique_ptr<ParsedExpression>> where_clause, optional<vector<unique_ptr<ParsedExpression>>> graph_table_columns_clause, const optional<TableAlias> &table_alias);
 	static unique_ptr<TransformResultValue> TransformGraphTableColumnsClauseInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static vector<unique_ptr<ParsedExpression>> TransformGraphTableColumnsClause(PEGTransformer &transformer, vector<unique_ptr<ParsedExpression>> target_list);
 	static unique_ptr<TransformResultValue> TransformGraphTableKeywordInternal(PEGTransformer &transformer, ParseResult &parse_result);
@@ -1886,6 +1888,8 @@ public:
 	static string TransformGraphTableSpacedKeyword(PEGTransformer &transformer);
 	static unique_ptr<TransformResultValue> TransformGraphPathPatternInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static unique_ptr<PathPattern> TransformGraphPathPattern(PEGTransformer &transformer, optional<Identifier> graph_path_variable, optional<string> graph_path_search_prefix, optional<string> graph_path_mode_prefix, unique_ptr<PathPattern> graph_path_sequence);
+	static unique_ptr<TransformResultValue> TransformGraphPathPatternListInternal(PEGTransformer &transformer, ParseResult &parse_result);
+	static vector<unique_ptr<PathPattern>> TransformGraphPathPatternList(PEGTransformer &transformer, vector<unique_ptr<PathPattern>> graph_path_pattern);
 	static unique_ptr<TransformResultValue> TransformGraphPathVariableInternal(PEGTransformer &transformer, ParseResult &parse_result);
 	static Identifier TransformGraphPathVariable(PEGTransformer &transformer, const Identifier &identifier);
 	static unique_ptr<TransformResultValue> TransformGraphPathSearchPrefixInternal(PEGTransformer &transformer, ParseResult &parse_result);

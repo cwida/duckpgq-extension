@@ -26,4 +26,4 @@ FROM GRAPH_TABLE (snb
     COLUMNS (*)
     ) tmp
 ----
-Binder Error: The label knows is not registered in property graph snb
+Binder Error: The label Knows is not registered in property graph snb

@@ -3499,6 +3499,15 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformDescribeStateme
 	return make_uniq<TypedTransformResult<unique_ptr<SelectStatement>>>(std::move(result));
 }
 
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformDescribePropertyGraphInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	auto describe_rule = transformer.Transform<ShowType>(list_pr.GetChild(0));
+	auto qualified_name = transformer.Transform<QualifiedName>(list_pr.GetChild(3));
+	auto result = TransformDescribePropertyGraph(transformer, describe_rule, qualified_name);
+	return make_uniq<TypedTransformResult<unique_ptr<QueryNode>>>(std::move(result));
+}
+
 unique_ptr<TransformResultValue> PEGTransformerFactory::TransformShowSelectInternal(
     PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list_pr = parse_result.Cast<ListParseResult>();
@@ -7614,7 +7623,7 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphTableRefIn
 	auto &list_pr = parse_result.Cast<ListParseResult>();
 	auto graph_table_keyword = transformer.Transform<string>(list_pr.GetChild(0));
 	auto qualified_name = transformer.Transform<QualifiedName>(list_pr.GetChild(2));
-	auto graph_path_pattern = transformer.Transform<unique_ptr<PathPattern>>(list_pr.GetChild(4));
+	auto graph_path_pattern_list = transformer.Transform<vector<unique_ptr<PathPattern>>>(list_pr.GetChild(4));
 	optional<unique_ptr<ParsedExpression>> where_clause {};
 	auto &where_clause_opt = list_pr.GetChild(5).Cast<OptionalParseResult>();
 	if (where_clause_opt.HasResult()) {
@@ -7633,7 +7642,7 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphTableRefIn
 		auto table_alias_value = transformer.Transform<TableAlias>(table_alias_opt.GetResult());
 		table_alias = table_alias_value;
 	}
-	auto result = TransformGraphTableRef(transformer, std::move(graph_table_keyword), qualified_name, std::move(graph_path_pattern), std::move(where_clause), std::move(graph_table_columns_clause), table_alias);
+	auto result = TransformGraphTableRef(transformer, std::move(graph_table_keyword), qualified_name, std::move(graph_path_pattern_list), std::move(where_clause), std::move(graph_table_columns_clause), table_alias);
 	return make_uniq<TypedTransformResult<unique_ptr<TableRef>>>(std::move(result));
 }
 
@@ -7691,6 +7700,19 @@ unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphPathPatter
 	auto graph_path_sequence = transformer.Transform<unique_ptr<PathPattern>>(list_pr.GetChild(3));
 	auto result = TransformGraphPathPattern(transformer, std::move(graph_path_variable), std::move(graph_path_search_prefix), std::move(graph_path_mode_prefix), std::move(graph_path_sequence));
 	return make_uniq<TypedTransformResult<unique_ptr<PathPattern>>>(std::move(result));
+}
+
+unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphPathPatternListInternal(
+    PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list_pr = parse_result.Cast<ListParseResult>();
+	vector<unique_ptr<PathPattern>> graph_path_pattern;
+	auto graph_path_pattern_items = ExtractParseResultsFromList(list_pr.GetChild(0));
+	for (auto &graph_path_pattern_item : graph_path_pattern_items) {
+		auto graph_path_pattern_value = transformer.Transform<unique_ptr<PathPattern>>(graph_path_pattern_item.get());
+		graph_path_pattern.push_back(std::move(graph_path_pattern_value));
+	}
+	auto result = TransformGraphPathPatternList(transformer, std::move(graph_path_pattern));
+	return make_uniq<TypedTransformResult<vector<unique_ptr<PathPattern>>>>(std::move(result));
 }
 
 unique_ptr<TransformResultValue> PEGTransformerFactory::TransformGraphPathVariableInternal(
@@ -10721,6 +10743,7 @@ void PEGTransformerFactory::RegisterGenerated() {
 		{"TargetOptAlias", &PEGTransformerFactory::TransformTargetOptAliasInternal},
 		{"DeleteUsingClause", &PEGTransformerFactory::TransformDeleteUsingClauseInternal},
 		{"DescribeStatement", &PEGTransformerFactory::TransformDescribeStatementInternal},
+		{"DescribePropertyGraph", &PEGTransformerFactory::TransformDescribePropertyGraphInternal},
 		{"ShowSelect", &PEGTransformerFactory::TransformShowSelectInternal},
 		{"ShowAllTables", &PEGTransformerFactory::TransformShowAllTablesInternal},
 		{"ShowQualifiedName", &PEGTransformerFactory::TransformShowQualifiedNameInternal},
@@ -11124,6 +11147,7 @@ void PEGTransformerFactory::RegisterGenerated() {
 		{"GraphTableUnderscoreKeyword", &PEGTransformerFactory::TransformGraphTableUnderscoreKeywordInternal},
 		{"GraphTableSpacedKeyword", &PEGTransformerFactory::TransformGraphTableSpacedKeywordInternal},
 		{"GraphPathPattern", &PEGTransformerFactory::TransformGraphPathPatternInternal},
+		{"GraphPathPatternList", &PEGTransformerFactory::TransformGraphPathPatternListInternal},
 		{"GraphPathVariable", &PEGTransformerFactory::TransformGraphPathVariableInternal},
 		{"GraphPathSearchPrefix", &PEGTransformerFactory::TransformGraphPathSearchPrefixInternal},
 		{"GraphAllShortestPrefix", &PEGTransformerFactory::TransformGraphAllShortestPrefixInternal},

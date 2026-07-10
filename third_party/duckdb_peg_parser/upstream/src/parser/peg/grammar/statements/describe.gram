@@ -1,5 +1,6 @@
-DescribeStatement <- ShowTables / ShowSelect / ShowAllTables / ShowQualifiedName
+DescribeStatement <- DescribePropertyGraph / ShowTables / ShowSelect / ShowAllTables / ShowQualifiedName
 
+DescribePropertyGraph <- DescribeRule 'PROPERTY' 'GRAPH' QualifiedName
 ShowSelect <- ShowOrDescribeOrSummarize SelectStatementInternal
 ShowAllTables <- ShowOrDescribe 'ALL' 'TABLES'
 ShowQualifiedName <- ShowOrDescribeOrSummarize DescribeTarget?

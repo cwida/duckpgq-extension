@@ -40,7 +40,7 @@ statement ok
 select * FROM GRAPH_TABLE(snb MATCH (a:Person));
 
 query I
-WITH foo as (SELECT id FROM GRAPH_TABLE(snb MATCH (a:Person))) select * from foo LIMIT 10;
+WITH foo as (SELECT id FROM GRAPH_TABLE(snb MATCH (a:Person))) select * from foo ORDER BY id LIMIT 10;
 ----
 14
 16
@@ -54,18 +54,18 @@ WITH foo as (SELECT id FROM GRAPH_TABLE(snb MATCH (a:Person))) select * from foo
 8796093022237
 
 query II
-WITH foo as (SELECT id FROM GRAPH_TABLE(snb MATCH (a:Person))), bar as (SELECT id from Person) select * from foo, bar LIMIT 10;
+WITH foo as (SELECT id FROM GRAPH_TABLE(snb MATCH (a:Person))), bar as (SELECT id from Person) select * from foo, bar ORDER BY foo.id, bar.id LIMIT 10;
 ----
 14	14
-16	14
-32	14
-2199023255557	14
-2199023255573	14
-2199023255594	14
-4398046511139	14
-6597069766702	14
-8796093022234	14
-8796093022237	14
+14	16
+14	32
+14	2199023255557
+14	2199023255573
+14	2199023255594
+14	4398046511139
+14	6597069766702
+14	8796093022234
+14	8796093022237
 
 statement ok
 WITH foo AS (SELECT id, firstName FROM GRAPH_TABLE(snb MATCH (a:Person)))

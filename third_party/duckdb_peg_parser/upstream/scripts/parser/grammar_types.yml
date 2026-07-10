@@ -130,6 +130,7 @@ QueryNode:
   type: "unique_ptr<QueryNode>"
   by_value: true
   rules:
+    - DescribePropertyGraph
     - ShowSelect
     - ShowTables
     - ShowAllTables
@@ -1614,6 +1615,9 @@ overrides:
     by_value: true
   GraphPathPattern:
     type: "unique_ptr<PathPattern>"
+  GraphPathPatternList:
+    type: "vector<unique_ptr<PathPattern>>"
+    by_value: true
   GraphPathVariable:
     type: "Identifier"
     by_value: true

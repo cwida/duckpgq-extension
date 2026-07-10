@@ -24,7 +24,7 @@ EDGE TABLES (
 statement error
 FROM GRAPH_TABLE(snb MATCH (a:Person)-[w:workAt_Organisation]->(u:University)) limit 10;
 ----
-Binder Error: The label university is not registered in property graph snb
+Binder Error: The label University is not registered in property graph snb
 
 statement ok
 CREATE OR REPLACE PROPERTY GRAPH snb
