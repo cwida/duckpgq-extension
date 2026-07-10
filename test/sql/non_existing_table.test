@@ -6,6 +6,8 @@
 
 require duckpgq
 
+require parquet
+
 # https://github.com/cwida/duckpgq-extension/issues/96
 statement error
 select * from table_that_does_not_exist;
@@ -21,7 +23,7 @@ SELECT b from test;
 Binder Error: Referenced column "b" not found in FROM clause!
 
 statement ok
-import database 'duckdb/data/SNB0.003';
+import database 'data/SNB0.003';
 
 statement ok
 CREATE PROPERTY GRAPH snb

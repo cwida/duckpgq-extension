@@ -4,6 +4,8 @@
 
 require duckpgq
 
+require parquet
+
 statement ok
 CREATE TABLE Student(id BIGINT, name VARCHAR);INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
 
@@ -206,7 +208,7 @@ select id, componentId from weakly_connected_component(pg_no_edge_table, student
 Invalid Error: Label 'non_existent_edge' not found in the property graph for a edge table.
 
 statement ok
-import database 'duckdb/data/SNB0.003';
+import database 'data/SNB0.003';
 
 statement ok
 CREATE PROPERTY GRAPH snb

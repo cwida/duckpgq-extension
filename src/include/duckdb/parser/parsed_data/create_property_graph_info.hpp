@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <vector>
 #include "duckdb/catalog/catalog_entry/column_dependency_manager.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb/common/unordered_set.hpp"
 #include "duckdb/parser/column_definition.hpp"
 #include "duckdb/parser/column_list.hpp"
@@ -195,7 +196,7 @@ public:
 		if (min_distance < std::numeric_limits<size_t>::max() && error_not_found) {
 			throw Exception(ExceptionType::INVALID, "Label '" + label + "' not found. Did you mean the " +
 			                                            (is_vertex_table ? "vertex" : "edge") + " label '" +
-			                                            closest_label + "'?");
+			                                            StringUtil::Lower(closest_label) + "'?");
 		}
 
 		// If no match is found and error_not_found is true, throw an error

@@ -4,6 +4,8 @@
 
 require duckpgq
 
+require parquet
+
 # Test with a graph having no edges
 statement ok
 CREATE TABLE IsolatedStudent(id BIGINT, name VARCHAR);INSERT INTO IsolatedStudent VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie');
@@ -112,7 +114,7 @@ select local_clustering_coefficient from local_clustering_coefficient(pg, studen
 Invalid Error: Exact label 'foo' found, but it is not a edge table.
 
 statement ok
-import database 'duckdb/data/SNB0.003';
+import database 'data/SNB0.003';
 
 statement ok
 CREATE PROPERTY GRAPH snb
@@ -125,7 +127,7 @@ EDGE TABLES (
                             LABEL Knows);
 
 query II
-select id, local_clustering_coefficient from local_clustering_coefficient(snb, person, knows);
+select id, local_clustering_coefficient from local_clustering_coefficient(snb, person, knows) order by id;
 ----
 14	0.33333334
 16	0.5

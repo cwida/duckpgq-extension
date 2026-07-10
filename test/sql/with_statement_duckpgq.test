@@ -4,8 +4,10 @@
 
 require duckpgq
 
+require parquet
+
 statement ok
-import database 'duckdb/data/SNB0.003';
+import database 'data/SNB0.003';
 
 statement ok
 CREATE PROPERTY GRAPH snb_projected

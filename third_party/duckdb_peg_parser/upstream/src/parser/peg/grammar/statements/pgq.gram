@@ -3,10 +3,14 @@ VertexTablesClause <- 'VERTEX' 'TABLES' Parens(List(PropertyGraphVertexTable))
 EdgeTablesClause <- 'EDGE' 'TABLES' Parens(List(PropertyGraphEdgeTable))
 PropertyGraphVertexTable <- BaseTableName TableAliasAs? PropertyGraphProperties? PropertyGraphLabel?
 PropertyGraphEdgeTable <- BaseTableName TableAliasAs? SourceKeyReference DestinationKeyReference PropertyGraphProperties? PropertyGraphLabel?
-PropertyGraphProperties <- PropertyGraphAllProperties / PropertyGraphNoProperties / PropertyGraphPropertyList
+PropertyGraphProperties <- PropertyGraphAllColumnsExcept / PropertyGraphAllColumns / PropertyGraphAllProperties / PropertyGraphNoProperties / PropertyGraphPropertyList
+PropertyGraphAllColumns <- 'PROPERTIES' 'ARE'? 'ALL' 'COLUMNS'
+PropertyGraphAllColumnsExcept <- 'PROPERTIES' 'ARE'? 'ALL' 'COLUMNS' 'EXCEPT' Parens(List(ColId))
 PropertyGraphAllProperties <- 'ALL' 'PROPERTIES'
 PropertyGraphNoProperties <- 'NO' 'PROPERTIES'
-PropertyGraphPropertyList <- 'PROPERTIES' Parens(List(ColId))
+PropertyGraphPropertyList <- 'PROPERTIES' Parens(List(PropertyGraphProperty))
+PropertyGraphProperty <- ColId PropertyGraphPropertyAlias?
+PropertyGraphPropertyAlias <- 'AS' ColId
 PropertyGraphLabel <- 'LABEL' ColId PropertyGraphSubLabels?
 PropertyGraphSubLabels <- 'IN' Identifier Parens(List(ColId))
 SourceKeyReference <- SourceKeyFullReference / SourceTableReference
@@ -19,30 +23,38 @@ PropertyGraphKeyReference <- 'KEY' Parens(List(ColId)) 'REFERENCES' BaseTableNam
 
 DropPropertyGraph <- 'PROPERTY' 'GRAPH' IfExists? QualifiedName
 
-GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' GraphPathPattern WhereClause? 'COLUMNS' '(' TargetList ')' ')' TableAlias?
+GraphTableRef <- GraphTableKeyword '(' QualifiedName 'MATCH' GraphPathPattern WhereClause? GraphTableColumnsClause? ')' TableAlias?
+GraphTableColumnsClause <- 'COLUMNS' '(' TargetList ')'
 GraphTableKeyword <- GraphTableSpacedKeyword / GraphTableUnderscoreKeyword
 GraphTableUnderscoreKeyword <- Identifier
 GraphTableSpacedKeyword <- 'GRAPH' 'TABLE'
 GraphPathPattern <- GraphPathVariable? GraphPathSearchPrefix? GraphPathModePrefix? GraphPathSequence
 GraphPathVariable <- Identifier '='
-GraphPathSearchPrefix <- GraphAllShortestPrefix / GraphAnyShortestPrefix
+GraphPathSearchPrefix <- GraphAllShortestPrefix / GraphAnyShortestPrefix / GraphTopKShortestPrefix
 GraphAllShortestPrefix <- 'ALL' 'SHORTEST'
 GraphAnyShortestPrefix <- 'ANY' 'SHORTEST'
+GraphTopKShortestPrefix <- 'SHORTEST' NumberLiteral
 GraphPathModePrefix <- GraphWalkPathMode / GraphTrailPathMode / GraphSimplePathMode / GraphAcyclicPathMode
 GraphWalkPathMode <- 'WALK'
 GraphTrailPathMode <- 'TRAIL'
 GraphSimplePathMode <- 'SIMPLE'
 GraphAcyclicPathMode <- 'ACYCLIC'
-GraphPathSequence <- GraphVertexPattern GraphEdgeVertexPattern*
-GraphEdgeVertexPattern <- GraphQuantifiedEdgePattern GraphVertexPattern
+GraphPathSequence <- GraphVertexReference GraphEdgeVertexPattern*
+GraphEdgeVertexPattern <- GraphQuantifiedEdgePattern GraphVertexReference
 GraphQuantifiedEdgePattern <- GraphEdgePattern GraphEdgeQuantifier?
-GraphEdgeQuantifier <- '*'
-GraphVertexPattern <- '(' Identifier GraphTableLabel? ')'
+GraphEdgeQuantifier <- GraphStarQuantifier / GraphPlusQuantifier / GraphQuestionQuantifier / GraphFixedQuantifier / GraphRangeQuantifier
+GraphStarQuantifier <- '*'
+GraphPlusQuantifier <- '+'
+GraphQuestionQuantifier <- '?'
+GraphFixedQuantifier <- '{' NumberLiteral '}'
+GraphRangeQuantifier <- '{' NumberLiteral? ',' NumberLiteral? '}'
+GraphVertexReference <- '(' Identifier GraphTableLabel? WhereClause? ')'
 GraphEdgePattern <- GraphEdgeLeftEndpoint GraphEdgeBody GraphEdgeRightEndpoint
 GraphEdgeLeftEndpoint <- GraphEdgeLeftArrow / GraphEdgeDash
-GraphEdgeRightEndpoint <- GraphEdgeRightArrow / GraphEdgeDash
+GraphEdgeRightEndpoint <- GraphEdgeSpacedRightArrow / GraphEdgeRightArrow / GraphEdgeDash
 GraphEdgeLeftArrow <- '<' '-'
 GraphEdgeRightArrow <- '->'
+GraphEdgeSpacedRightArrow <- '-' '>'
 GraphEdgeDash <- '-'
-GraphEdgeBody <- '[' Identifier GraphTableLabel? ']'
+GraphEdgeBody <- '[' Identifier GraphTableLabel? WhereClause? ']'
 GraphTableLabel <- ':' ColId

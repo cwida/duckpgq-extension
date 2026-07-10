@@ -1543,6 +1543,12 @@ overrides:
   PropertyGraphProperties:
     type: "PropertyGraphProperties"
     by_value: true
+  PropertyGraphAllColumns:
+    type: "PropertyGraphProperties"
+    by_value: true
+  PropertyGraphAllColumnsExcept:
+    type: "PropertyGraphProperties"
+    by_value: true
   PropertyGraphAllProperties:
     type: "PropertyGraphProperties"
     by_value: true
@@ -1551,6 +1557,12 @@ overrides:
     by_value: true
   PropertyGraphPropertyList:
     type: "PropertyGraphProperties"
+    by_value: true
+  PropertyGraphProperty:
+    type: "Identifier"
+    by_value: true
+  PropertyGraphPropertyAlias:
+    type: "Identifier"
     by_value: true
   PropertyGraphLabel:
     type: "PropertyGraphLabel"
@@ -1591,6 +1603,9 @@ overrides:
   GraphTableSpacedKeyword:
     type: "string"
     by_value: true
+  GraphTableColumnsClause:
+    type: "vector<unique_ptr<ParsedExpression>>"
+    by_value: true
   GraphPathPattern:
     type: "unique_ptr<PathPattern>"
   GraphPathVariable:
@@ -1603,6 +1618,9 @@ overrides:
     type: "string"
     by_value: true
   GraphAnyShortestPrefix:
+    type: "string"
+    by_value: true
+  GraphTopKShortestPrefix:
     type: "string"
     by_value: true
   GraphPathModePrefix:
@@ -1630,12 +1648,27 @@ overrides:
   GraphEdgeQuantifier:
     type: "string"
     by_value: true
-  GraphVertexPattern:
-    type: "unique_ptr<PathElement>"
+  GraphStarQuantifier:
+    type: "string"
+    by_value: true
+  GraphPlusQuantifier:
+    type: "string"
+    by_value: true
+  GraphQuestionQuantifier:
+    type: "string"
+    by_value: true
+  GraphFixedQuantifier:
+    type: "string"
+    by_value: true
+  GraphRangeQuantifier:
+    type: "string"
+    by_value: true
+  GraphVertexReference:
+    type: "unique_ptr<PathReference>"
   GraphEdgePattern:
-    type: "unique_ptr<PathElement>"
+    type: "unique_ptr<PathReference>"
   GraphEdgeBody:
-    type: "unique_ptr<PathElement>"
+    type: "unique_ptr<PathReference>"
   GraphEdgeLeftEndpoint:
     type: "string"
     by_value: true
@@ -1646,6 +1679,9 @@ overrides:
     type: "string"
     by_value: true
   GraphEdgeRightArrow:
+    type: "string"
+    by_value: true
+  GraphEdgeSpacedRightArrow:
     type: "string"
     by_value: true
   GraphEdgeDash:

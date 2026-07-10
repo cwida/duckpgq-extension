@@ -49,6 +49,11 @@ static optional_ptr<CatalogEntry> GetPropertyGraphView(ClientContext &context,
 	                        PGQIdentifier(table->table_name), OnEntryNotFound::RETURN_NULL);
 }
 
+static void ThrowMissingVertexReference(CreatePropertyGraphInfo &info, const string &catalog_name,
+                                        const string &schema_name, const string &table_name) {
+	info.GetTableByName(catalog_name, schema_name, table_name);
+}
+
 void CreatePropertyGraphFunction::CheckPropertyGraphTableLabels(const shared_ptr<PropertyGraphTable> &pg_table,
                                                                 optional_ptr<TableCatalogEntry> &table) {
 	if (!pg_table->discriminator.empty()) {
@@ -266,12 +271,20 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 			ValidateForeignKeyColumns(edge_table, edge_table->destination_fk, table);
 
 			// Validate source table registration
+			if (!edge_table->source_pg_table) {
+				ThrowMissingVertexReference(*info, edge_table->source_catalog, edge_table->source_schema,
+				                            edge_table->source_reference);
+			}
 			ValidateVertexTableRegistration(edge_table->source_pg_table, v_table_names);
 
 			// Validate primary keys in the source table
 			ValidatePrimaryKeyInTable(context, edge_table->source_pg_table, edge_table->source_pk);
 
 			// Validate destination table registration
+			if (!edge_table->destination_pg_table) {
+				ThrowMissingVertexReference(*info, edge_table->destination_catalog, edge_table->destination_schema,
+				                            edge_table->destination_reference);
+			}
 			ValidateVertexTableRegistration(edge_table->destination_pg_table, v_table_names);
 
 			// Validate primary keys in the destination table

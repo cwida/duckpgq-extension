@@ -60,18 +60,21 @@ static unique_ptr<ColumnRefExpression> PGQColumnRef(const string &table_name, co
 static bool PGQNormalizeStructExtract(unique_ptr<ParsedExpression> &expression,
                                       const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map);
 
-static void PGQCheckPathModeSupport(const PathReference &path_reference);
+static void PGQCheckPathModeSupport(const PathReference &path_reference, bool shortest);
 
 static void PGQCheckPathModeSupport(const PathPattern &path_pattern) {
 	if (path_pattern.all && path_pattern.shortest) {
 		throw NotImplementedException("ALL SHORTEST has not been implemented yet.");
 	}
+	if (path_pattern.topk) {
+		throw NotImplementedException("TopK has not been implemented yet.");
+	}
 	for (auto &path_reference : path_pattern.path_elements) {
-		PGQCheckPathModeSupport(*path_reference);
+		PGQCheckPathModeSupport(*path_reference, path_pattern.shortest);
 	}
 }
 
-static void PGQCheckPathModeSupport(const PathReference &path_reference) {
+static void PGQCheckPathModeSupport(const PathReference &path_reference, bool shortest) {
 	if (path_reference.path_reference_type != PGQPathReferenceType::SUBPATH) {
 		return;
 	}
@@ -79,8 +82,13 @@ static void PGQCheckPathModeSupport(const PathReference &path_reference) {
 	if (subpath.path_mode != PGQPathMode::NONE && subpath.path_mode != PGQPathMode::WALK) {
 		throw NotImplementedException("Path modes other than WALK have not been implemented yet.");
 	}
+	if (!shortest && subpath.upper == NumericLimits<int64_t>::Maximum() &&
+	    (subpath.path_mode == PGQPathMode::NONE || subpath.path_mode == PGQPathMode::WALK)) {
+		throw ConstraintException("ALL unbounded with path mode WALK is not possible as this could lead to infinite "
+		                          "results. Consider specifying an upper bound or path mode other than WALK");
+	}
 	for (auto &child : subpath.path_list) {
-		PGQCheckPathModeSupport(*child);
+		PGQCheckPathModeSupport(*child, shortest);
 	}
 }
 
@@ -771,6 +779,10 @@ PGQMatchFunction::AddPathQuantifierCondition(const string &prev_binding, const s
 
 	auto addition_function = make_uniq<FunctionExpression>("add", std::move(addition_children));
 	auto lower_limit = make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(subpath->lower)));
+	if (subpath->upper == NumericLimits<int64_t>::Maximum()) {
+		return make_uniq<ComparisonExpression>(ExpressionType::COMPARE_GREATERTHANOREQUALTO, std::move(addition_function),
+		                                       std::move(lower_limit));
+	}
 	auto upper_limit = make_uniq<ConstantExpression>(Value::INTEGER(static_cast<int32_t>(subpath->upper)));
 	auto between_expression =
 	    make_uniq<BetweenExpression>(std::move(addition_function), std::move(lower_limit), std::move(upper_limit));
