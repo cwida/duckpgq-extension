@@ -9,7 +9,6 @@
 #pragma once
 #include "duckdb/function/function.hpp"
 
-#include "duckdb/parser/expression/cast_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/subquery_expression.hpp"
 #include "duckdb/parser/query_node/set_operation_node.hpp"
@@ -72,14 +71,8 @@ unique_ptr<SubqueryExpression> CreateDirectedCSRVertexSubquery(const shared_ptr<
                                                                const string &binding);
 unique_ptr<SubqueryExpression> CreateUndirectedCSRVertexSubquery(const shared_ptr<PropertyGraphTable> &edge_table,
                                                                  const string &binding);
-unique_ptr<SelectNode> CreateOuterSelectEdgesNode();
-unique_ptr<SelectNode> CreateOuterSelectNode(unique_ptr<FunctionExpression> create_csr_edge_function);
-unique_ptr<JoinRef> GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
-                               const string &prev_binding, const string &next_binding);
 unique_ptr<SubqueryExpression> GetCountTable(const shared_ptr<PropertyGraphTable> &table, const string &table_alias,
                                              const string &primary_key);
-void SetupSelectNode(unique_ptr<SelectNode> &select_node, const shared_ptr<PropertyGraphTable> &edge_table,
-                     bool reverse = false);
 unique_ptr<SubqueryRef> CreateCountCTESubquery();
 unique_ptr<SubqueryExpression> GetCountUndirectedEdgeTable();
 unique_ptr<SubqueryExpression> GetCountEdgeTable(const shared_ptr<PropertyGraphTable> &edge_table);
