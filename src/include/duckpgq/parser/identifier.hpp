@@ -104,7 +104,7 @@ inline bool operator!=(const char *a, const Identifier &b) {
 	return !(a == b);
 }
 inline bool operator<(const Identifier &a, const Identifier &b) {
-	return StringUtil::CILessThan::Operation(a.GetIdentifierName(), b.GetIdentifierName());
+	return StringUtil::Lower(a.GetIdentifierName()) < StringUtil::Lower(b.GetIdentifierName());
 }
 inline string operator+(const Identifier &a, const string &b) {
 	return a.GetIdentifierName() + b;

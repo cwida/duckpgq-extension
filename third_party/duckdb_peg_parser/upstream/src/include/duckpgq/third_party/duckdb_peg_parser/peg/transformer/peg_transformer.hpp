@@ -35,7 +35,6 @@
 #include "duckpgq/third_party/duckdb_peg_parser/peg/ast/trigger_table_referencing_info.hpp"
 #include "duckpgq/third_party/duckdb_peg_parser/peg/ast/window_frame.hpp"
 #include "duckdb/function/macro_function.hpp"
-#include "duckdb/common/optional.hpp"
 #include "duckdb/parser/query_node/set_operation_node.hpp"
 #include "duckdb/parser/parser_options.hpp"
 #include "duckdb/common/stack_checker.hpp"
@@ -63,8 +62,10 @@
 #include "duckpgq/parser/path_pattern.hpp"
 #include "duckpgq/parser/path_reference.hpp"
 #include <duckpgq/parser/parsed_data/create_property_graph_info.hpp>
+#include <optional>
 
 namespace duckdb {
+using std::optional;
 namespace duckpgq_peg {
 
 // Forward declare
