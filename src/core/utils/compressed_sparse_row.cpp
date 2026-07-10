@@ -190,8 +190,8 @@ static string CSRCountUndirectedEdgeTableSQL() {
 
 static string CSRDirectedCSRVertexSQL(const PropertyGraphTable &edge_table, const string &prev_binding) {
 	std::ostringstream query;
-	query << "SELECT sum(create_csr_vertex(0, (" << CSRCountTableSQL(*edge_table.source_pg_table, prev_binding,
-	                                                               edge_table.source_pk[0])
+	query << "SELECT sum(create_csr_vertex(0, ("
+	      << CSRCountTableSQL(*edge_table.source_pg_table, prev_binding, edge_table.source_pk[0])
 	      << "), sub.dense_id, sub.cnt)) FROM (SELECT " << CSRColumn("rowid", prev_binding) << " AS dense_id, count("
 	      << CSRColumn(edge_table.source_fk[0], edge_table.table_name) << ") AS cnt FROM "
 	      << CSRTableRef(*edge_table.source_pg_table, prev_binding) << " LEFT JOIN " << CSRTableRef(edge_table)
@@ -206,14 +206,14 @@ static string CSRUniqueEdgesSQL(const PropertyGraphTable &edge_table, bool rever
 	if (!reverse) {
 		query << CSRColumn(edge_table.source_fk[0], edge_table.table_name) << " AS outgoing_edges, "
 		      << CSRColumn(edge_table.destination_fk[0], edge_table.table_name) << " AS incoming_edges FROM "
-		      << CSRTableRef(edge_table) << " INNER JOIN " << CSRTableRef(*edge_table.source_pg_table)
-		      << " ON " << CSRColumn(edge_table.source_fk[0], edge_table.table_name) << " = "
+		      << CSRTableRef(edge_table) << " INNER JOIN " << CSRTableRef(*edge_table.source_pg_table) << " ON "
+		      << CSRColumn(edge_table.source_fk[0], edge_table.table_name) << " = "
 		      << CSRColumn(edge_table.source_pk[0], edge_table.source_reference);
 	} else {
 		query << CSRColumn(edge_table.destination_fk[0], edge_table.table_name) << " AS outgoing_edges, "
 		      << CSRColumn(edge_table.source_fk[0], edge_table.table_name) << " AS incoming_edges FROM "
-		      << CSRTableRef(edge_table) << " INNER JOIN " << CSRTableRef(*edge_table.source_pg_table)
-		      << " ON " << CSRColumn(edge_table.destination_fk[0], edge_table.table_name) << " = "
+		      << CSRTableRef(edge_table) << " INNER JOIN " << CSRTableRef(*edge_table.source_pg_table) << " ON "
+		      << CSRColumn(edge_table.destination_fk[0], edge_table.table_name) << " = "
 		      << CSRColumn(edge_table.source_pk[0], edge_table.source_reference);
 	}
 	return query.str();
@@ -221,8 +221,8 @@ static string CSRUniqueEdgesSQL(const PropertyGraphTable &edge_table, bool rever
 
 static string CSRUndirectedCSRVertexSQL(const PropertyGraphTable &edge_table, const string &binding) {
 	std::ostringstream query;
-	query << "SELECT multiply(2, sum(create_csr_vertex(0, (" << CSRCountTableSQL(*edge_table.source_pg_table, binding,
-	                                                                            edge_table.source_pk[0])
+	query << "SELECT multiply(2, sum(create_csr_vertex(0, ("
+	      << CSRCountTableSQL(*edge_table.source_pg_table, binding, edge_table.source_pk[0])
 	      << "), sub.dense_id, sub.cnt))) FROM (SELECT dense_id, count(outgoing_edges) AS cnt FROM ("
 	      << CSRUniqueEdgesSQL(edge_table, false) << " UNION BY NAME " << CSRUniqueEdgesSQL(edge_table, true)
 	      << ") unique_edges GROUP BY dense_id) sub";
@@ -250,9 +250,9 @@ unique_ptr<SubqueryExpression> CreateUndirectedCSRVertexSubquery(const shared_pt
 unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_table) {
 	std::ostringstream query;
 	query << "SELECT " << CSRColumn("rowid", "src_table") << " AS src, " << CSRColumn("rowid", "dst_table")
-	      << " AS dst, " << CSRColumn("rowid", edge_table->table_name) << " AS edges FROM "
-	      << CSRTableRef(*edge_table) << " INNER JOIN " << CSRTableRef(*edge_table->source_pg_table, "src_table")
-	      << " ON " << CSRColumn(edge_table->source_fk[0], edge_table->table_name) << " = "
+	      << " AS dst, " << CSRColumn("rowid", edge_table->table_name) << " AS edges FROM " << CSRTableRef(*edge_table)
+	      << " INNER JOIN " << CSRTableRef(*edge_table->source_pg_table, "src_table") << " ON "
+	      << CSRColumn(edge_table->source_fk[0], edge_table->table_name) << " = "
 	      << CSRColumn(edge_table->source_pk[0], "src_table") << " INNER JOIN "
 	      << CSRTableRef(*edge_table->destination_pg_table, "dst_table") << " ON "
 	      << CSRColumn(edge_table->destination_fk[0], edge_table->table_name) << " = "
@@ -270,8 +270,8 @@ unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<Pr
 	std::ostringstream query;
 	query << "SELECT create_csr_edge(0, ("
 	      << CSRCountTableSQL(*edge_table->source_pg_table, edge_table->source_reference, edge_table->source_pk[0])
-	      << "), CAST((" << CSRUndirectedCSRVertexSQL(*edge_table, edge_table->source_reference)
-	      << ") AS BIGINT), (" << CSRCountUndirectedEdgeTableSQL() << "), src, dst, edge) AS temp FROM ("
+	      << "), CAST((" << CSRUndirectedCSRVertexSQL(*edge_table, edge_table->source_reference) << ") AS BIGINT), ("
+	      << CSRCountUndirectedEdgeTableSQL() << "), src, dst, edge) AS temp FROM ("
 	      << "SELECT src, dst, any_value(edges) AS edge FROM ("
 	      << "SELECT src, dst, edges FROM edges_cte UNION ALL SELECT dst, src, edges FROM edges_cte"
 	      << ") GROUP BY src, dst)";
@@ -291,9 +291,9 @@ unique_ptr<CommonTableExpressionInfo> CreateDirectedCSRCTE(const shared_ptr<Prop
                                                            const string &prev_binding, const string &edge_binding,
                                                            const string &next_binding) {
 	std::ostringstream query;
-	query << "SELECT create_csr_edge(0, (" << CSRCountTableSQL(*edge_table->source_pg_table, prev_binding,
-	                                                         edge_table->source_pk[0])
-	      << "), CAST((" << CSRDirectedCSRVertexSQL(*edge_table, prev_binding) << ") AS BIGINT), ("
+	query << "SELECT create_csr_edge(0, ("
+	      << CSRCountTableSQL(*edge_table->source_pg_table, prev_binding, edge_table->source_pk[0]) << "), CAST(("
+	      << CSRDirectedCSRVertexSQL(*edge_table, prev_binding) << ") AS BIGINT), ("
 	      << CSRCountEdgeTableSQL(*edge_table) << "), " << CSRColumn("rowid", prev_binding) << ", "
 	      << CSRColumn("rowid", next_binding) << ", " << CSRColumn("rowid", edge_binding) << ") AS temp FROM "
 	      << CSRTableRef(*edge_table, edge_binding) << " INNER JOIN "

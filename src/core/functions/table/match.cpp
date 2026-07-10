@@ -1,12 +1,14 @@
 #include <duckpgq_extension.hpp>
 #include "duckpgq/core/functions/table/match.hpp"
 
+#include "duckdb/common/sql_identifier.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
+#include "duckdb/parser/parser.hpp"
+#include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/tableref/matchref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
-#include "duckdb/parser/tableref/basetableref.hpp"
 
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/cast_expression.hpp"
@@ -16,8 +18,6 @@
 #include "duckdb/parser/expression/conjunction_expression.hpp"
 #include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/parser/expression/star_expression.hpp"
-
-#include "duckdb/parser/query_node/set_operation_node.hpp"
 
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/common/enums/subquery_type.hpp"
@@ -40,10 +40,6 @@ static void SetExpressionAlias(ParsedExpression &expr, const string &alias) {
 	expr.SetAlias(PGQIdentifier(alias));
 }
 
-static void SetTableName(BaseTableRef &ref, const string &table_name) {
-	ref.SetTable(PGQIdentifier(table_name));
-}
-
 static unique_ptr<ColumnRefExpression> PGQColumnRef(const string &column_name, const string &table_name) {
 	return make_uniq<ColumnRefExpression>(PGQIdentifier(column_name), PGQIdentifier(table_name));
 }
@@ -55,6 +51,74 @@ static unique_ptr<ColumnRefExpression> PGQColumnRef(const string &table_name, co
 	column_names.push_back(PGQIdentifier(table_name));
 	column_names.push_back(PGQIdentifier(column_name));
 	return make_uniq<ColumnRefExpression>(std::move(column_names));
+}
+
+static string PGQSQLIdentifier(const string &identifier) {
+	return SQLIdentifier::ToString(identifier);
+}
+
+static string PGQSQLQualifiedTableName(const PropertyGraphTable &table) {
+	string result;
+	if (!table.catalog_name.empty()) {
+		result += PGQSQLIdentifier(table.catalog_name) + ".";
+	}
+	if (!table.schema_name.empty()) {
+		result += PGQSQLIdentifier(table.schema_name) + ".";
+	}
+	result += PGQSQLIdentifier(table.table_name);
+	return result;
+}
+
+static string PGQSQLTableRef(const PropertyGraphTable &table, const string &alias = "") {
+	auto result = PGQSQLQualifiedTableName(table);
+	if (!alias.empty()) {
+		result += " AS " + PGQSQLIdentifier(alias);
+	}
+	return result;
+}
+
+static string PGQSQLColumn(const string &column_name, const string &table_name = "") {
+	if (table_name.empty()) {
+		return PGQSQLIdentifier(column_name);
+	}
+	return PGQSQLIdentifier(table_name) + "." + PGQSQLIdentifier(column_name);
+}
+
+static string PGQSQLCountTable(const PropertyGraphTable &table, const string &table_alias, const string &primary_key) {
+	std::ostringstream query;
+	query << "SELECT count(" << PGQSQLColumn(primary_key, table_alias) << ") FROM "
+	      << PGQSQLTableRef(table, table_alias);
+	return query.str();
+}
+
+static unique_ptr<SelectStatement> PGQParseSelect(const string &query) {
+	Parser parser;
+	parser.ParseQuery(query);
+	if (parser.statements.size() != 1 || parser.statements[0]->type != StatementType::SELECT_STATEMENT) {
+		throw ParserException("Expected a single SELECT statement while building DuckPGQ MATCH query");
+	}
+	return unique_ptr_cast<SQLStatement, SelectStatement>(std::move(parser.statements[0]));
+}
+
+static unique_ptr<SubqueryRef> PGQParseSubqueryRef(const string &query, const string &alias = "") {
+	return make_uniq<SubqueryRef>(PGQParseSelect(query), PGQIdentifier(alias));
+}
+
+static unique_ptr<TableRef> PGQParseFromTableRef(const string &table_ref_sql) {
+	auto statement = PGQParseSelect("SELECT * FROM " + table_ref_sql);
+	auto &select_node = statement->node->Cast<SelectNode>();
+	return std::move(select_node.from_table);
+}
+
+static void PGQAppendCrossJoin(unique_ptr<TableRef> &from_clause, unique_ptr<TableRef> new_ref) {
+	if (from_clause) {
+		auto join = make_uniq<JoinRef>(JoinRefType::CROSS);
+		join->left = std::move(from_clause);
+		join->right = std::move(new_ref);
+		from_clause = std::move(join);
+	} else {
+		from_clause = std::move(new_ref);
+	}
 }
 
 static bool PGQNormalizeStructExtract(unique_ptr<ParsedExpression> &expression,
@@ -362,86 +426,23 @@ SubPath *PGQMatchFunction::GetSubPath(const unique_ptr<PathReference> &path_refe
 }
 
 unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
-	//! BEGIN OF (SELECT count(cte1.temp) as temp * 0 from cte1) __x
-
-	auto temp_cte_select_node = make_uniq<SelectNode>();
-
-	auto cte_table_ref = make_uniq<BaseTableRef>();
-
-	SetTableName(*cte_table_ref, "cte1");
-	temp_cte_select_node->from_table = std::move(cte_table_ref);
-	vector<unique_ptr<ParsedExpression>> children;
-	children.push_back(make_uniq<ColumnRefExpression>("temp", "cte1"));
-
-	auto count_function = make_uniq<FunctionExpression>("count", std::move(children));
-
-	auto zero = make_uniq<ConstantExpression>(Value::INTEGER(0));
-
-	vector<unique_ptr<ParsedExpression>> multiply_children;
-
-	multiply_children.push_back(std::move(zero));
-	multiply_children.push_back(std::move(count_function));
-	auto multiply_function = make_uniq<FunctionExpression>("multiply", std::move(multiply_children));
-	SetExpressionAlias(*multiply_function, "temp");
-	temp_cte_select_node->select_list.push_back(std::move(multiply_function));
-	auto temp_cte_select_statement = make_uniq<SelectStatement>();
-	temp_cte_select_statement->node = std::move(temp_cte_select_node);
-
-	auto temp_cte_select_subquery = make_uniq<SubqueryRef>(std::move(temp_cte_select_statement), "__x");
-	//! END OF (SELECT count(cte1.temp) * 0 as temp from cte1) __x
-	return temp_cte_select_subquery;
+	return PGQParseSubqueryRef("SELECT multiply(0, count(cte1.temp)) AS temp FROM cte1", "__x");
 }
 
 void PGQMatchFunction::EdgeTypeAny(const shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
                                    const string &prev_binding, const string &next_binding,
                                    vector<unique_ptr<ParsedExpression>> &conditions,
                                    unique_ptr<TableRef> &from_clause) {
-	// START SELECT src, dst, * from edge_table
-	auto src_dst_select_node = make_uniq<SelectNode>();
-
-	auto edge_left_ref = edge_table->CreateBaseTableRef(edge_binding);
-	src_dst_select_node->from_table = std::move(edge_left_ref);
-	auto src_dst_children = vector<unique_ptr<ParsedExpression>>();
-	src_dst_children.push_back(PGQColumnRef(edge_table->source_fk[0], edge_binding));
-	src_dst_children.push_back(PGQColumnRef(edge_table->destination_fk[0], edge_binding));
-	src_dst_children.push_back(make_uniq<StarExpression>());
-
-	src_dst_select_node->select_list = std::move(src_dst_children);
-	// END SELECT src, dst, * from edge_table
-
-	// START SELECT dst, src, * from edge_table
-	auto dst_src_select_node = make_uniq<SelectNode>();
-
-	auto edge_right_ref = edge_table->CreateBaseTableRef(edge_binding);
-	auto dst_src_children = vector<unique_ptr<ParsedExpression>>();
-	dst_src_select_node->from_table = std::move(edge_right_ref);
-
-	dst_src_children.push_back(PGQColumnRef(edge_table->destination_fk[0], edge_binding));
-	dst_src_children.push_back(PGQColumnRef(edge_table->source_fk[0], edge_binding));
-	dst_src_children.push_back(make_uniq<StarExpression>());
-
-	dst_src_select_node->select_list = std::move(dst_src_children);
-	// END SELECT dst, src, * from edge_table
-
-	auto union_node = make_uniq<SetOperationNode>();
-	union_node->setop_type = SetOperationType::UNION;
-	union_node->setop_all = true;
-	union_node->children.push_back(std::move(src_dst_select_node));
-	union_node->children.push_back(std::move(dst_src_select_node));
-	auto union_select = make_uniq<SelectStatement>();
-	union_select->node = std::move(union_node);
-	// (SELECT src, dst, * from edge_table UNION ALL SELECT dst, src, * from
-	// edge_table)
-	auto union_subquery = make_uniq<SubqueryRef>(std::move(union_select));
-	union_subquery->alias = PGQIdentifier(edge_binding);
-	if (from_clause) {
-		auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
-		from_join->left = std::move(from_clause);
-		from_join->right = std::move(union_subquery);
-		from_clause = std::move(from_join);
-	} else {
-		from_clause = std::move(union_subquery);
-	}
+	std::ostringstream query;
+	query << "SELECT " << PGQSQLColumn(edge_table->source_fk[0], edge_binding) << " AS "
+	      << PGQSQLIdentifier(edge_table->source_fk[0]) << ", "
+	      << PGQSQLColumn(edge_table->destination_fk[0], edge_binding) << " AS "
+	      << PGQSQLIdentifier(edge_table->destination_fk[0]) << ", * FROM " << PGQSQLTableRef(*edge_table, edge_binding)
+	      << " UNION ALL SELECT " << PGQSQLColumn(edge_table->destination_fk[0], edge_binding) << " AS "
+	      << PGQSQLIdentifier(edge_table->source_fk[0]) << ", " << PGQSQLColumn(edge_table->source_fk[0], edge_binding)
+	      << " AS " << PGQSQLIdentifier(edge_table->destination_fk[0]) << ", * FROM "
+	      << PGQSQLTableRef(*edge_table, edge_binding);
+	PGQAppendCrossJoin(from_clause, PGQParseSubqueryRef(query.str(), edge_binding));
 	// (a) src.key = edge.src
 	auto src_left_expr =
 	    CreateMatchJoinExpression(edge_table->source_pk, edge_table->source_fk, prev_binding, edge_binding);
@@ -531,58 +532,28 @@ unique_ptr<CommonTableExpressionInfo>
 PGQMatchFunction::GenerateShortestPathCTE(CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
                                           PathElement *previous_vertex_element, PathElement *next_vertex_element,
                                           vector<unique_ptr<ParsedExpression>> &path_finding_conditions) {
-	auto cte_info = make_uniq<CommonTableExpressionInfo>();
-	auto select_statement = make_uniq<SelectStatement>();
-	auto select_node = make_uniq<SelectNode>();
-
 	auto edge_element = GetPathElement(edge_subpath->path_list[0]);
 	auto edge_table = FindGraphTable(edge_element->label, pg_table);
-
-	auto src_row_id = PGQColumnRef("rowid", previous_vertex_element->variable_binding);
-	auto dst_row_id = PGQColumnRef("rowid", next_vertex_element->variable_binding);
-	auto csr_id = make_uniq<ConstantExpression>(Value::INTEGER(0));
-
-	vector<unique_ptr<ParsedExpression>> pathfinding_children;
-	pathfinding_children.push_back(std::move(csr_id));
-	pathfinding_children.push_back(std::move(GetCountTable(
-	    edge_table->source_pg_table, previous_vertex_element->variable_binding, edge_table->source_pk[0])));
-	pathfinding_children.push_back(std::move(src_row_id));
-	pathfinding_children.push_back(std::move(dst_row_id));
-
-	auto shortest_path_function = make_uniq<FunctionExpression>("shortestpath", std::move(pathfinding_children));
-	SetExpressionAlias(*shortest_path_function, "path");
-	select_node->select_list.push_back(std::move(shortest_path_function));
-	auto src_rowid_outer_select = PGQColumnRef("rowid", previous_vertex_element->variable_binding);
-	SetExpressionAlias(*src_rowid_outer_select, "src_rowid");
-	select_node->select_list.push_back(std::move(src_rowid_outer_select));
-	auto dst_rowid_outer_select = PGQColumnRef("rowid", next_vertex_element->variable_binding);
-	SetExpressionAlias(*dst_rowid_outer_select, "dst_rowid");
-	select_node->select_list.push_back(std::move(dst_rowid_outer_select));
-
-	auto src_tableref = edge_table->source_pg_table->CreateBaseTableRef();
-	src_tableref->alias = PGQIdentifier(previous_vertex_element->variable_binding);
-	auto dst_tableref = edge_table->destination_pg_table->CreateBaseTableRef();
-	dst_tableref->alias = PGQIdentifier(next_vertex_element->variable_binding);
-	auto first_cross_join_ref = make_uniq<JoinRef>(JoinRefType::CROSS);
-	first_cross_join_ref->left = std::move(src_tableref);
-	first_cross_join_ref->right = std::move(dst_tableref);
-	auto temp_cte_select_subquery = CreateCountCTESubquery();
-
-	auto second_cross_join_ref = make_uniq<JoinRef>(JoinRefType::CROSS);
-	second_cross_join_ref->left = std::move(first_cross_join_ref);
-	second_cross_join_ref->right = std::move(temp_cte_select_subquery);
-
-	select_node->from_table = std::move(second_cross_join_ref);
-	vector<unique_ptr<ParsedExpression>> count_children;
-	count_children.push_back(make_uniq<ColumnRefExpression>("temp", "cte1"));
-	auto count_function = make_uniq<FunctionExpression>("count", std::move(count_children));
 
 	path_finding_conditions.push_back(AddPathQuantifierCondition(
 	    previous_vertex_element->variable_binding, next_vertex_element->variable_binding, edge_table, edge_subpath));
 
-	select_node->where_clause = CreateWhereClause(path_finding_conditions);
+	std::ostringstream query;
+	query << "SELECT shortestpath(0, ("
+	      << PGQSQLCountTable(*edge_table->source_pg_table, previous_vertex_element->variable_binding,
+	                          edge_table->source_pk[0])
+	      << "), " << PGQSQLColumn("rowid", previous_vertex_element->variable_binding) << ", "
+	      << PGQSQLColumn("rowid", next_vertex_element->variable_binding) << ") AS path, "
+	      << PGQSQLColumn("rowid", previous_vertex_element->variable_binding) << " AS src_rowid, "
+	      << PGQSQLColumn("rowid", next_vertex_element->variable_binding) << " AS dst_rowid FROM "
+	      << PGQSQLTableRef(*edge_table->source_pg_table, previous_vertex_element->variable_binding) << " CROSS JOIN "
+	      << PGQSQLTableRef(*edge_table->destination_pg_table, next_vertex_element->variable_binding)
+	      << " CROSS JOIN (SELECT multiply(0, count(cte1.temp)) AS temp FROM cte1) AS __x";
 
-	select_statement->node = std::move(select_node);
+	auto select_statement = PGQParseSelect(query.str());
+	auto &select_node = select_statement->node->Cast<SelectNode>();
+	select_node.where_clause = CreateWhereClause(path_finding_conditions);
+	auto cte_info = make_uniq<CommonTableExpressionInfo>();
 	cte_info->query_node = std::move(select_statement->node);
 	return cte_info;
 }
@@ -652,16 +623,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
 				    final_select_node->cte_map.map.end()) {
 					final_select_node->cte_map.map[PGQIdentifier(shortest_path_cte_name)] = GenerateShortestPathCTE(
 					    pg_table, edge_subpath, previous_vertex_element, next_vertex_element, path_finding_conditions);
-					auto cte_shortest_path_ref = make_uniq<BaseTableRef>();
-					SetTableName(*cte_shortest_path_ref, shortest_path_cte_name);
-					if (!final_select_node->from_table) {
-						final_select_node->from_table = std::move(cte_shortest_path_ref);
-					} else {
-						auto join_ref = make_uniq<JoinRef>(JoinRefType::CROSS);
-						join_ref->left = std::move(final_select_node->from_table);
-						join_ref->right = std::move(cte_shortest_path_ref);
-						final_select_node->from_table = std::move(join_ref);
-					}
+					PGQAppendCrossJoin(final_select_node->from_table, PGQParseFromTableRef(shortest_path_cte_name));
 
 					conditions.push_back(make_uniq<ComparisonExpression>(
 					    ExpressionType::COMPARE_EQUAL, PGQColumnRef("src_rowid", shortest_path_cte_name),
@@ -812,16 +774,7 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 		return;
 	}
 	auto temp_cte_select_subquery = CreateCountCTESubquery();
-	if (select_node->from_table) {
-		// create a cross join since there is already something in the
-		// from clause
-		auto from_join = make_uniq<JoinRef>(JoinRefType::CROSS);
-		from_join->left = std::move(select_node->from_table);
-		from_join->right = std::move(temp_cte_select_subquery);
-		select_node->from_table = std::move(from_join);
-	} else {
-		select_node->from_table = std::move(temp_cte_select_subquery);
-	}
+	PGQAppendCrossJoin(select_node->from_table, std::move(temp_cte_select_subquery));
 	//! END
 	//! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
 
@@ -1118,16 +1071,8 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 
 	// Go through all aliases encountered
 	for (auto &table_alias_entry : alias_map) {
-		auto table_ref = table_alias_entry.second->CreateBaseTableRef();
-		table_ref->alias = PGQIdentifier(table_alias_entry.first);
-		if (final_select_node->from_table) {
-			auto new_root = make_uniq<JoinRef>(JoinRefType::CROSS);
-			new_root->left = std::move(final_select_node->from_table);
-			new_root->right = std::move(table_ref);
-			final_select_node->from_table = std::move(new_root);
-		} else {
-			final_select_node->from_table = std::move(table_ref);
-		}
+		auto table_ref = PGQParseFromTableRef(PGQSQLTableRef(*table_alias_entry.second, table_alias_entry.first));
+		PGQAppendCrossJoin(final_select_node->from_table, std::move(table_ref));
 	}
 
 	// Maps from graph element alias to table, including vertex and edge tables.
