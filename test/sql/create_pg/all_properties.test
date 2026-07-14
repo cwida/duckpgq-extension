@@ -65,7 +65,7 @@ FROM GRAPH_TABLE (pg_only_id MATCH (p:Person)-[k:Knows]->(p2:Person) COLUMNS (p.
 Binder Error: Property p2.name is never registered!
 
 
-query III
+query III rowsort
 FROM GRAPH_TABLE (pg_only_id MATCH p = any shortest (p:Person)-[k:Knows]->*(p2:Person) COLUMNS (p.id as id, p2.id as friend_id, vertices(p)));
 ----
 0	0	[0]
