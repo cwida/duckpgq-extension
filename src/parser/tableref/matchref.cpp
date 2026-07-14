@@ -33,11 +33,11 @@ string MatchExpression::ToString() const {
 	result += "\nCOLUMNS (";
 	for (idx_t i = 0; i < column_list.size(); i++) {
 		if (column_list[i]->GetExpressionType() == ExpressionType::STAR) {
-			auto &star = (StarExpression &)*column_list[i];
+			auto &star = column_list[i]->Cast<StarExpression>();
 			result += star.ToString();
 			break;
 		} else if (column_list[i]->GetExpressionType() == ExpressionType::COLUMN_REF) {
-			auto &column = (ColumnRefExpression &)*column_list[i];
+			auto &column = column_list[i]->Cast<ColumnRefExpression>();
 			result += (i > 0 ? ", " : "") + column.ToString() +
 			          (column.GetAlias().empty() ? "" : " AS " + column.GetAlias().GetIdentifierName());
 		} else {

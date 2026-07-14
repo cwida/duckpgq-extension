@@ -67,10 +67,12 @@ public:
 
 		// Initialize the first row and column
 		d[0][0] = 0;
-		for (size_t i = 1; i <= len1; ++i)
+		for (size_t i = 1; i <= len1; ++i) {
 			d[i][0] = i;
-		for (size_t i = 1; i <= len2; ++i)
+		}
+		for (size_t i = 1; i <= len2; ++i) {
 			d[0][i] = i;
+		}
 
 		// Compute the Levenshtein distance
 		for (size_t i = 1; i <= len1; ++i) {

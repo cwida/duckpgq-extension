@@ -9,7 +9,10 @@ bool PathElement::Equals(const PathReference *other_p) const {
 	if (!PathReference::Equals(other_p)) {
 		return false;
 	}
-	auto other = (PathElement *)other_p;
+	auto other = dynamic_cast<const PathElement *>(other_p);
+	if (!other) {
+		return false;
+	}
 	if (match_type != other->match_type) {
 		return false;
 	}
