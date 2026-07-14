@@ -9,7 +9,7 @@
 #pragma once
 
 #include "duckdb/common/string_util.hpp"
-#include "duckdb/common/identifier.hpp"
+#include "duckpgq/parser/identifier.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/common/reference_map.hpp"
 #include "duckdb/main/client_context.hpp"
@@ -237,11 +237,17 @@ struct PEGMatcher {
 		return *top_level_statement_matcher;
 	}
 
+	void SetProgramMatcher(Matcher &matcher) {
+		program_matcher = matcher;
+	}
+	void SetTopLevelStatementMatcher(Matcher &matcher) {
+		top_level_statement_matcher = matcher;
+	}
+
 	static shared_ptr<PEGMatcher> Get(ClientContext &context);
 	static shared_ptr<PEGMatcher> Get(DatabaseInstance &db);
 
 private:
-	friend struct ParserCache;
 	optional_ptr<Matcher> program_matcher;
 	optional_ptr<Matcher> top_level_statement_matcher;
 };

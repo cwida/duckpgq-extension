@@ -20,9 +20,9 @@
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include <duckpgq/core/functions/table/describe_property_graph.hpp>
 #include <duckpgq/core/functions/table/drop_property_graph.hpp>
-#include <duckdb/parser/parsed_data/drop_property_graph_info.hpp>
+#include <duckpgq/parser/parsed_data/drop_property_graph_info.hpp>
 
-#include <duckdb/parser/tableref/matchref.hpp>
+#include <duckpgq/parser/tableref/matchref.hpp>
 #include <duckpgq/core/functions/table/summarize_property_graph.hpp>
 
 #include "duckdb/main/extension_callback_manager.hpp"

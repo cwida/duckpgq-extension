@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckDB
 //
-// duckdb/parser/parsed_data/create_property_graph_info.hpp
+// duckpgq/parser/parsed_data/create_property_graph_info.hpp
 //
 //
 //===----------------------------------------------------------------------===//
@@ -17,7 +17,7 @@
 #include "duckdb/parser/column_list.hpp"
 #include "duckdb/parser/constraint.hpp"
 #include "duckdb/parser/parsed_data/create_info.hpp"
-#include "duckdb/parser/property_graph_table.hpp"
+#include "duckpgq/parser/property_graph_table.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/catalog/catalog_entry.hpp"
 
@@ -67,10 +67,12 @@ public:
 
 		// Initialize the first row and column
 		d[0][0] = 0;
-		for (size_t i = 1; i <= len1; ++i)
+		for (size_t i = 1; i <= len1; ++i) {
 			d[i][0] = i;
-		for (size_t i = 1; i <= len2; ++i)
+		}
+		for (size_t i = 1; i <= len2; ++i) {
 			d[0][i] = i;
+		}
 
 		// Compute the Levenshtein distance
 		for (size_t i = 1; i <= len1; ++i) {

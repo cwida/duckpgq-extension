@@ -1,10 +1,8 @@
 #include "duckpgq/core/functions/table/weakly_connected_component.hpp"
 #include "duckdb/function/table_function.hpp"
-#include "duckdb/parser/tableref/subqueryref.hpp"
 
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
-#include "duckdb/parser/tableref/basetableref.hpp"
 
 namespace duckdb {
 
@@ -22,14 +20,8 @@ WeaklyConnectedComponentFunction::WeaklyConnectedComponentBindReplace(ClientCont
 
 	auto select_node = CreateSelectNode(edge_pg_entry, "weakly_connected_component", "componentId");
 
-	select_node->cte_map.map[Identifier("csr_cte")] = CreateUndirectedCSRCTE(edge_pg_entry, select_node);
-
-	auto subquery = make_uniq<SelectStatement>();
-	subquery->node = std::move(select_node);
-
-	auto result = make_uniq<SubqueryRef>(std::move(subquery));
-	result->alias = Identifier("wcc");
-	return std::move(result);
+	auto cte = CreateUndirectedCSRCTE(edge_pg_entry, select_node);
+	return CreateTableFunctionSubquery(std::move(select_node), std::move(cte), "csr_cte", "wcc");
 }
 
 //------------------------------------------------------------------------------

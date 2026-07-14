@@ -1,6 +1,6 @@
 #pragma once
 
-#include "duckdb/common/identifier.hpp"
+#include "duckpgq/parser/identifier.hpp"
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/string.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"

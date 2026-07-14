@@ -130,8 +130,7 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vecto
 	}
 	if (info.weight_type == LogicalType::SQLNULL) {
 		TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
-		    args.data[4], args.data[5], args.data[6], result, args.size(),
-		    [&](int64_t src, int64_t dst, int64_t edge_id) {
+		    args.data[4], args.data[5], args.data[6], result, [&](int64_t src, int64_t dst, int64_t edge_id) {
 			    auto pos = ++csr_entry->second->v[src + 1];
 			    csr_entry->second->e[(int64_t)pos - 1] = dst;
 			    csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id;

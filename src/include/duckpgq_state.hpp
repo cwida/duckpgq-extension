@@ -5,7 +5,7 @@
 
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 #include "duckdb/parser/parser_extension.hpp"
-#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
+#include <duckpgq/parser/parsed_data/create_property_graph_info.hpp>
 
 namespace duckdb {
 

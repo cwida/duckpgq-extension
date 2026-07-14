@@ -1,7 +1,7 @@
 #pragma once
 
 #include "duckdb/common/common.hpp"
-#include "duckdb/parser/path_reference.hpp"
+#include "duckpgq/parser/path_reference.hpp"
 
 namespace duckdb {
 

@@ -4,11 +4,11 @@
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/star_expression.hpp"
-#include "duckdb/parser/path_element.hpp"
-#include "duckdb/parser/path_pattern.hpp"
-#include "duckdb/parser/parsed_data/create_property_graph_info.hpp"
-#include "duckdb/parser/parsed_data/drop_property_graph_info.hpp"
-#include "duckdb/parser/tableref/matchref.hpp"
+#include "duckpgq/parser/path_element.hpp"
+#include "duckpgq/parser/path_pattern.hpp"
+#include <duckpgq/parser/parsed_data/create_property_graph_info.hpp>
+#include "duckpgq/parser/parsed_data/drop_property_graph_info.hpp"
+#include "duckpgq/parser/tableref/matchref.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
 
 namespace duckdb {

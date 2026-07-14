@@ -1,6 +1,6 @@
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
-#include "duckdb/parser/parsed_data/drop_property_graph_info.hpp"
+#include "duckpgq/parser/parsed_data/drop_property_graph_info.hpp"
 
 namespace duckdb {
 
@@ -16,13 +16,6 @@ DropPropertyGraphInfo::DropPropertyGraphInfo(string property_graph_name, bool mi
 unique_ptr<DropInfo> DropPropertyGraphInfo::Copy() const {
 	auto result = make_uniq<DropPropertyGraphInfo>(property_graph_name, missing_ok);
 	return std::move(result);
-}
-
-string DropPropertyGraphInfo::ToString() const {
-	string result = "-DROP PROPERTY GRAPH ";
-	result += missing_ok ? "IF EXISTS " : "";
-	result += property_graph_name;
-	return result;
 }
 
 void DropPropertyGraphInfo::Serialize(Serializer &serializer) const {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "duckdb/common/vector.hpp"
-#include "duckdb/parser/path_pattern.hpp"
+#include "duckpgq/parser/path_pattern.hpp"
 #include "duckdb/parser/tableref.hpp"
 #include "duckdb/common/enums/expression_type.hpp"
 
