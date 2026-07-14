@@ -1476,12 +1476,12 @@ shared_ptr<PEGMatcher> ParserCache::GetMatcher() {
 	buffer << t.rdbuf();
 	auto grammar_string = buffer.str();
 
-	new_matcher->program_matcher = factory.CreateMatcher(grammar_string.c_str(), "Program");
+	new_matcher->SetProgramMatcher(factory.CreateMatcher(grammar_string.c_str(), "Program"));
 #else
-	new_matcher->program_matcher = factory.CreateMatcher(const_char_ptr_cast(INLINED_PEG_GRAMMAR), "Program");
+	new_matcher->SetProgramMatcher(factory.CreateMatcher(const_char_ptr_cast(INLINED_PEG_GRAMMAR), "Program"));
 #endif
 	// TopLevelStatement is referenced by Program, so it has already been built and cached.
-	new_matcher->top_level_statement_matcher = factory.GetMatcher("TopLevelStatement");
+	new_matcher->SetTopLevelStatementMatcher(factory.GetMatcher("TopLevelStatement"));
 	std::unique_lock<std::mutex> lock(mutex);
 	if (!matcher) {
 		matcher = std::move(new_matcher);
