@@ -32,8 +32,6 @@ struct DropPropertyGraphInfo : public DropInfo {
 public:
 	unique_ptr<DropInfo> Copy() const override;
 
-	string ToString() const;
-
 	//! Serializes a blob into a CreatePropertyGraphInfo
 	void Serialize(Serializer &serializer) const override;
 	//! Deserializes a blob back into a CreatePropertyGraphInfo

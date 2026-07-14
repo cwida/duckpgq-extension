@@ -76,84 +76,86 @@ void DescribePropertyGraphFunction::DescribePropertyGraphFunc(ClientContext &con
 		return;
 	}
 	auto pg_info = bind_data.describe_pg_info;
+	const auto output_size = pg_info->vertex_tables.size() + pg_info->edge_tables.size();
+	output.SetChildCardinality(output_size);
 	idx_t vector_idx = 0;
 	for (const auto &vertex_table : pg_info->vertex_tables) {
-		output.SetValue(0, vector_idx, Value(pg_info->property_graph_name));
-		output.SetValue(1, vector_idx, Value(vertex_table->table_name));
-		output.SetValue(2, vector_idx, Value(vertex_table->main_label));
-		output.SetValue(3, vector_idx, Value(vertex_table->is_vertex_table));
-		output.SetValue(4, vector_idx, Value());
-		output.SetValue(5, vector_idx, Value());
-		output.SetValue(6, vector_idx, Value());
-		output.SetValue(7, vector_idx, Value());
-		output.SetValue(8, vector_idx, Value());
-		output.SetValue(9, vector_idx, Value());
+		output.data[0].SetValue(vector_idx, Value(pg_info->property_graph_name));
+		output.data[1].SetValue(vector_idx, Value(vertex_table->table_name));
+		output.data[2].SetValue(vector_idx, Value(vertex_table->main_label));
+		output.data[3].SetValue(vector_idx, Value(vertex_table->is_vertex_table));
+		output.data[4].SetValue(vector_idx, Value());
+		output.data[5].SetValue(vector_idx, Value());
+		output.data[6].SetValue(vector_idx, Value());
+		output.data[7].SetValue(vector_idx, Value());
+		output.data[8].SetValue(vector_idx, Value());
+		output.data[9].SetValue(vector_idx, Value());
 		if (!vertex_table->discriminator.empty()) {
-			output.SetValue(10, vector_idx, Value(vertex_table->discriminator));
+			output.data[10].SetValue(vector_idx, Value(vertex_table->discriminator));
 			vector<Value> sub_labels;
 			for (const auto &label : vertex_table->sub_labels) {
 				sub_labels.push_back(Value(label.GetIdentifierName()));
 			}
-			output.SetValue(11, vector_idx, Value::LIST(LogicalType::VARCHAR, sub_labels));
+			output.data[11].SetValue(vector_idx, Value::LIST(LogicalType::VARCHAR, sub_labels));
 		} else {
-			output.SetValue(10, vector_idx, Value());
-			output.SetValue(11, vector_idx, Value());
+			output.data[10].SetValue(vector_idx, Value());
+			output.data[11].SetValue(vector_idx, Value());
 		}
 		if (vertex_table->catalog_name.empty()) {
-			output.SetValue(12, vector_idx, Value());
+			output.data[12].SetValue(vector_idx, Value());
 		} else {
-			output.SetValue(12, vector_idx, Value(vertex_table->catalog_name));
+			output.data[12].SetValue(vector_idx, Value(vertex_table->catalog_name));
 		}
-		output.SetValue(13, vector_idx, Value(vertex_table->schema_name));
+		output.data[13].SetValue(vector_idx, Value(vertex_table->schema_name));
 		vector_idx++;
 	}
 	for (const auto &edge_table : pg_info->edge_tables) {
-		output.SetValue(0, vector_idx, Value(pg_info->property_graph_name));
-		output.SetValue(1, vector_idx, Value(edge_table->table_name));
-		output.SetValue(2, vector_idx, Value(edge_table->main_label));
-		output.SetValue(3, vector_idx, Value(edge_table->is_vertex_table));
-		output.SetValue(4, vector_idx, Value(edge_table->source_reference));
+		output.data[0].SetValue(vector_idx, Value(pg_info->property_graph_name));
+		output.data[1].SetValue(vector_idx, Value(edge_table->table_name));
+		output.data[2].SetValue(vector_idx, Value(edge_table->main_label));
+		output.data[3].SetValue(vector_idx, Value(edge_table->is_vertex_table));
+		output.data[4].SetValue(vector_idx, Value(edge_table->source_reference));
 		vector<Value> source_pk_list;
 		for (const auto &col : edge_table->source_pk) {
 			source_pk_list.push_back(Value(col));
 		}
-		output.SetValue(5, vector_idx, Value::LIST(LogicalType::VARCHAR, source_pk_list));
+		output.data[5].SetValue(vector_idx, Value::LIST(LogicalType::VARCHAR, source_pk_list));
 		vector<Value> source_fk_list;
 		for (const auto &col : edge_table->source_fk) {
 			source_fk_list.push_back(Value(col));
 		}
-		output.SetValue(6, vector_idx, Value::LIST(LogicalType::VARCHAR, source_fk_list));
-		output.SetValue(7, vector_idx, Value(edge_table->destination_reference));
+		output.data[6].SetValue(vector_idx, Value::LIST(LogicalType::VARCHAR, source_fk_list));
+		output.data[7].SetValue(vector_idx, Value(edge_table->destination_reference));
 		vector<Value> destination_pk_list;
 		for (const auto &col : edge_table->destination_pk) {
 			destination_pk_list.push_back(Value(col));
 		}
-		output.SetValue(8, vector_idx, Value::LIST(LogicalType::VARCHAR, destination_pk_list));
+		output.data[8].SetValue(vector_idx, Value::LIST(LogicalType::VARCHAR, destination_pk_list));
 		vector<Value> destination_fk_list;
 		for (const auto &col : edge_table->destination_fk) {
 			destination_fk_list.push_back(Value(col));
 		}
-		output.SetValue(9, vector_idx, Value::LIST(LogicalType::VARCHAR, destination_fk_list));
+		output.data[9].SetValue(vector_idx, Value::LIST(LogicalType::VARCHAR, destination_fk_list));
 		if (!edge_table->discriminator.empty()) {
-			output.SetValue(10, vector_idx, Value(edge_table->discriminator));
+			output.data[10].SetValue(vector_idx, Value(edge_table->discriminator));
 			vector<Value> sub_labels;
 			for (const auto &label : edge_table->sub_labels) {
 				sub_labels.push_back(Value(label.GetIdentifierName()));
 			}
-			output.SetValue(11, vector_idx, Value::LIST(LogicalType::VARCHAR, sub_labels));
+			output.data[11].SetValue(vector_idx, Value::LIST(LogicalType::VARCHAR, sub_labels));
 		} else {
-			output.SetValue(10, vector_idx, Value());
-			output.SetValue(11, vector_idx, Value());
+			output.data[10].SetValue(vector_idx, Value());
+			output.data[11].SetValue(vector_idx, Value());
 		}
 		if (edge_table->catalog_name.empty()) {
-			output.SetValue(12, vector_idx, Value());
+			output.data[12].SetValue(vector_idx, Value());
 		} else {
-			output.SetValue(12, vector_idx, Value(edge_table->catalog_name));
+			output.data[12].SetValue(vector_idx, Value(edge_table->catalog_name));
 		}
-		output.SetValue(13, vector_idx, Value(edge_table->schema_name));
+		output.data[13].SetValue(vector_idx, Value(edge_table->schema_name));
 		vector_idx++;
 	}
-	output.SetCardinality(vector_idx);
+	output.CheckCardinality(vector_idx);
 	data.done = true;
 }
 

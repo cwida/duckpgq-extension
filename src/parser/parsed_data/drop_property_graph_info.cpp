@@ -18,13 +18,6 @@ unique_ptr<DropInfo> DropPropertyGraphInfo::Copy() const {
 	return std::move(result);
 }
 
-string DropPropertyGraphInfo::ToString() const {
-	string result = "-DROP PROPERTY GRAPH ";
-	result += missing_ok ? "IF EXISTS " : "";
-	result += property_graph_name;
-	return result;
-}
-
 void DropPropertyGraphInfo::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty<string>(100, "property_graph_name", property_graph_name);
 	serializer.WriteProperty<bool>(101, "missing_ok", missing_ok);

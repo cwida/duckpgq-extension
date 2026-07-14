@@ -16,7 +16,7 @@ static void ScanCSREFunction(ClientContext &context, TableFunctionInput &data_p,
 	auto state = &data_p.global_state->Cast<CSRScanState>();
 
 	if (state->finished) {
-		output.SetCardinality(0);
+		output.SetChildCardinality(0);
 		return;
 	}
 
@@ -28,7 +28,7 @@ static void ScanCSREFunction(ClientContext &context, TableFunctionInput &data_p,
 	                        ? DEFAULT_STANDARD_VECTOR_SIZE
 	                        : csr->e.size() - state->csr_e_offset;
 
-	output.SetCardinality(vector_size);
+	output.SetChildCardinality(vector_size);
 	output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
 	for (idx_t idx_i = 0; idx_i < vector_size; idx_i++) {
 		output.data[0].SetValue(idx_i, Value(csr->e[state->csr_e_offset + idx_i]));
@@ -44,7 +44,7 @@ static void ScanCSREFunction(ClientContext &context, TableFunctionInput &data_p,
 static void ScanCSRPtrFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &gstate = data_p.global_state->Cast<CSRScanState>();
 	if (gstate.finished) {
-		output.SetCardinality(0);
+		output.SetChildCardinality(0);
 		return;
 	}
 
@@ -53,7 +53,7 @@ static void ScanCSRPtrFunction(ClientContext &context, TableFunctionInput &data_
 	auto duckpgq_state = GetDuckPGQState(context);
 	auto csr_id = data_p.bind_data->Cast<CSRScanPtrData>().csr_id;
 	CSR *csr = duckpgq_state->GetCSR(csr_id);
-	output.SetCardinality(5);
+	output.SetChildCardinality(5);
 	output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
 	auto result_data = FlatVector::GetDataMutable<uint64_t>(output.data[0]);
 	// now set the result vector
@@ -85,7 +85,7 @@ static void ScanCSRVFunction(ClientContext &context, TableFunctionInput &data_p,
 	auto state = &data_p.global_state->Cast<CSRScanState>();
 
 	if (state->finished) {
-		output.SetCardinality(0);
+		output.SetChildCardinality(0);
 		return;
 	}
 
@@ -97,7 +97,7 @@ static void ScanCSRVFunction(ClientContext &context, TableFunctionInput &data_p,
 	                        ? DEFAULT_STANDARD_VECTOR_SIZE
 	                        : csr->vsize - state->csr_v_offset;
 
-	output.SetCardinality(vector_size);
+	output.SetChildCardinality(vector_size);
 	output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
 	for (idx_t idx_i = 0; idx_i < vector_size; idx_i++) {
 		output.data[0].SetValue(idx_i, Value(csr->v[state->csr_v_offset + idx_i]));
@@ -114,7 +114,7 @@ static void ScanCSRWFunction(ClientContext &context, TableFunctionInput &data_p,
 	auto state = &data_p.global_state->Cast<CSRScanState>();
 
 	if (state->finished) {
-		output.SetCardinality(0);
+		output.SetChildCardinality(0);
 		return;
 	}
 
@@ -133,7 +133,7 @@ static void ScanCSRWFunction(ClientContext &context, TableFunctionInput &data_p,
 	idx_t vector_size = state->csr_w_offset + DEFAULT_STANDARD_VECTOR_SIZE <= w_size ? DEFAULT_STANDARD_VECTOR_SIZE
 	                                                                                 : w_size - state->csr_w_offset;
 
-	output.SetCardinality(vector_size);
+	output.SetChildCardinality(vector_size);
 	output.data[0].SetVectorType(VectorType::FLAT_VECTOR);
 	if (csr_scanw_data.is_double) {
 		for (idx_t idx_i = 0; idx_i < vector_size; idx_i++) {
@@ -156,7 +156,7 @@ static void ScanPGVTableFunction(ClientContext &context, TableFunctionInput &dat
 	auto &gstate = data_p.global_state->Cast<CSRScanState>();
 
 	if (gstate.finished) {
-		output.SetCardinality(0);
+		output.SetChildCardinality(0);
 		return;
 	}
 
@@ -173,14 +173,14 @@ static void ScanPGVTableFunction(ClientContext &context, TableFunctionInput &dat
 		vtables[size] = string_t(ele->table_name.c_str(), ele->table_name.size());
 		size++;
 	}
-	output.SetCardinality(size);
+	output.SetChildCardinality(size);
 }
 
 static void ScanPGETableFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &gstate = data_p.global_state->Cast<CSRScanState>();
 
 	if (gstate.finished) {
-		output.SetCardinality(0);
+		output.SetChildCardinality(0);
 		return;
 	}
 
@@ -197,7 +197,7 @@ static void ScanPGETableFunction(ClientContext &context, TableFunctionInput &dat
 		etables[size] = string_t(ele->table_name.c_str(), ele->table_name.size());
 		size++;
 	}
-	output.SetCardinality(size);
+	output.SetChildCardinality(size);
 }
 
 shared_ptr<PropertyGraphTable> find_table_entry(const vector<shared_ptr<PropertyGraphTable>> &vec, string &table_name) {
@@ -213,7 +213,7 @@ static void ScanPGVColFunction(ClientContext &context, TableFunctionInput &data_
 	auto &gstate = data_p.global_state->Cast<CSRScanState>();
 
 	if (gstate.finished) {
-		output.SetCardinality(0);
+		output.SetChildCardinality(0);
 		return;
 	}
 
@@ -234,14 +234,14 @@ static void ScanPGVColFunction(ClientContext &context, TableFunctionInput &data_
 		colsdata[size] = string_t(ele.c_str(), ele.size());
 		size++;
 	}
-	output.SetCardinality(size);
+	output.SetChildCardinality(size);
 }
 
 static void ScanPGEColFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &gstate = data_p.global_state->Cast<CSRScanState>();
 
 	if (gstate.finished) {
-		output.SetCardinality(0);
+		output.SetChildCardinality(0);
 		return;
 	}
 
@@ -262,7 +262,7 @@ static void ScanPGEColFunction(ClientContext &context, TableFunctionInput &data_
 		colsdata[size] = string_t(ele.c_str(), ele.size());
 		size++;
 	}
-	output.SetCardinality(size);
+	output.SetChildCardinality(size);
 }
 
 //------------------------------------------------------------------------------
