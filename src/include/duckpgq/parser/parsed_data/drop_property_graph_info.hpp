@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckDB
 //
-// duckdb/parser/parsed_data/drop_property_graph_info.hpp
+// duckpgq/parser/parsed_data/drop_property_graph_info.hpp
 //
 //
 //===----------------------------------------------------------------------===//
@@ -14,7 +14,7 @@
 #include "duckdb/parser/column_list.hpp"
 #include "duckdb/parser/constraint.hpp"
 #include "duckdb/parser/parsed_data/create_info.hpp"
-#include "duckdb/parser/property_graph_table.hpp"
+#include "duckpgq/parser/property_graph_table.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/catalog/catalog_entry.hpp"
 #include "duckdb/parser/parsed_data/drop_info.hpp"
@@ -31,8 +31,6 @@ struct DropPropertyGraphInfo : public DropInfo {
 
 public:
 	unique_ptr<DropInfo> Copy() const override;
-
-	string ToString() const;
 
 	//! Serializes a blob into a CreatePropertyGraphInfo
 	void Serialize(Serializer &serializer) const override;

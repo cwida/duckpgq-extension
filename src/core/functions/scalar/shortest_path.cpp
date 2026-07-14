@@ -158,7 +158,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 			if (src_data[src_pos] == dst_data[dst_pos]) { // Source == destination
 				unique_ptr<Vector> output = make_uniq<Vector>(LogicalType::LIST(LogicalType::BIGINT));
 				ListVector::PushBack(*output, src_data[src_pos]);
-				ListVector::Append(result, ListVector::GetEntry(*output), ListVector::GetListSize(*output));
+				ListVector::Append(result, ListVector::GetChild(*output), ListVector::GetListSize(*output));
 				result_data[search_num].length = ListVector::GetListSize(*output);
 				result_data[search_num].offset = total_len;
 				total_len += result_data[search_num].length;
@@ -199,7 +199,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 
 			result_data[search_num].length = ListVector::GetListSize(*output);
 			result_data[search_num].offset = total_len;
-			ListVector::Append(result, ListVector::GetEntry(*output), ListVector::GetListSize(*output));
+			ListVector::Append(result, ListVector::GetChild(*output), ListVector::GetListSize(*output));
 			total_len += result_data[search_num].length;
 		}
 	}

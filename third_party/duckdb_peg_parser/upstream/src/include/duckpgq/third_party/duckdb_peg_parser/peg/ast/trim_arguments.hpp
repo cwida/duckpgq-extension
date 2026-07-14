@@ -1,9 +1,10 @@
 #pragma once
 
-#include "duckdb/common/optional.hpp"
 #include "duckdb/parser/parsed_expression.hpp"
+#include <optional>
 
 namespace duckdb {
+using std::optional;
 namespace duckpgq_peg {
 
 struct TrimArguments {

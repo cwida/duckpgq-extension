@@ -1,0 +1,5 @@
+# DuckDB is the CMake project, while this repository is the editor/worktree root.
+# The extension template's `make clangd` target writes the complete compilation
+# database here, including DuckDB and extension sources.
+CompileFlags:
+  CompilationDatabase: .cache/clangd/debug

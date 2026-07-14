@@ -1,7 +1,7 @@
 #pragma once
 #include "duckdb/common/string.hpp"
 
-#include "duckdb/common/identifier.hpp"
+#include "duckpgq/parser/identifier.hpp"
 namespace duckdb {
 namespace duckpgq_peg {
 struct TriggerTableReferencingInfo {

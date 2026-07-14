@@ -5,7 +5,7 @@
 #include "duckdb/parser/parsed_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 
-#include "duckdb/common/identifier.hpp"
+#include "duckpgq/parser/identifier.hpp"
 namespace duckdb {
 namespace duckpgq_peg {
 

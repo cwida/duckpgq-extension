@@ -1,13 +1,13 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types/hash.hpp"
-#include "duckdb/parser/property_graph_table.hpp"
+#include "duckpgq/parser/property_graph_table.hpp"
 
 namespace duckdb {
 
 PropertyGraphTable::PropertyGraphTable() = default;
 
-PropertyGraphTable::PropertyGraphTable(string table_name_p, vector<string> column_names_p, vector<string> labels_p,
-                                       string catalog_p, string schema_p)
+PropertyGraphTable::PropertyGraphTable(string table_name_p, vector<string> column_names_p,
+                                       const vector<string> &labels_p, string catalog_p, string schema_p)
     : table_name(std::move(table_name_p)), column_names(std::move(column_names_p)),
       sub_labels(StringsToIdentifiers(labels_p)), catalog_name(std::move(catalog_p)), schema_name(std::move(schema_p)) {
 #ifdef DEBUG
@@ -22,7 +22,7 @@ PropertyGraphTable::PropertyGraphTable(string table_name_p, vector<string> colum
 }
 
 PropertyGraphTable::PropertyGraphTable(string table_name_p, string table_name_alias_p, vector<string> column_names_p,
-                                       vector<string> labels_p, string catalog_p, string schema_p)
+                                       const vector<string> &labels_p, string catalog_p, string schema_p)
     : table_name(std::move(table_name_p)), table_name_alias(std::move(table_name_alias_p)),
       column_names(std::move(column_names_p)), sub_labels(StringsToIdentifiers(labels_p)),
       catalog_name(std::move(catalog_p)), schema_name(std::move(schema_p)) {
@@ -110,7 +110,7 @@ string PropertyGraphTable::ToString() const {
 }
 
 bool PropertyGraphTable::Equals(const PropertyGraphTable *other_p) const {
-	auto other = (PropertyGraphTable *)other_p;
+	auto other = other_p;
 	if (catalog_name != other->catalog_name) {
 		return false;
 	}

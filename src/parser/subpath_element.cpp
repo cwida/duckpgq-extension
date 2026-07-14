@@ -1,6 +1,6 @@
-#include "duckdb/parser/subpath_element.hpp"
-#include "duckdb/parser/path_element.hpp"
-#include "duckdb/parser/path_reference.hpp"
+#include "duckpgq/parser/subpath_element.hpp"
+#include "duckpgq/parser/path_element.hpp"
+#include "duckpgq/parser/path_reference.hpp"
 
 namespace duckdb {
 
@@ -27,7 +27,10 @@ bool SubPath::Equals(const PathReference *other_p) const {
 	if (!PathReference::Equals(other_p)) {
 		return false;
 	}
-	auto other = (SubPath *)other_p;
+	auto other = dynamic_cast<const SubPath *>(other_p);
+	if (!other) {
+		return false;
+	}
 	if (path_list.size() != other->path_list.size()) {
 		return false;
 	}

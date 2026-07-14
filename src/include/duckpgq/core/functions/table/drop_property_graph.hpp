@@ -11,7 +11,7 @@
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/statement/drop_statement.hpp"
 
-#include <duckdb/parser/parsed_data/drop_property_graph_info.hpp>
+#include <duckpgq/parser/parsed_data/drop_property_graph_info.hpp>
 
 namespace duckdb {
 

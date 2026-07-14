@@ -1,14 +1,14 @@
 //===----------------------------------------------------------------------===//
 //                         DuckPGQ
 //
-// duckdb/parser/property_graph_table.hpp
+// duckpgq/parser/property_graph_table.hpp
 //
 //
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
-#include "duckdb/common/identifier.hpp"
+#include "duckpgq/parser/identifier.hpp"
 #include "duckdb/common/common.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
@@ -23,10 +23,10 @@ public:
 	//! Used for Copy
 	PropertyGraphTable();
 	//! Specify both the column and table name
-	PropertyGraphTable(string table_name, vector<string> column_name, vector<string> label, string catalog_name = "",
-	                   string schema = DEFAULT_SCHEMA);
+	PropertyGraphTable(string table_name, vector<string> column_name, const vector<string> &label,
+	                   string catalog_name = "", string schema = DEFAULT_SCHEMA);
 	//! Specify both the column and table name with alias
-	PropertyGraphTable(string table_name, string table_alias, vector<string> column_name, vector<string> label,
+	PropertyGraphTable(string table_name, string table_alias, vector<string> column_name, const vector<string> &label,
 	                   string catalog_name = "", string schema = DEFAULT_SCHEMA);
 	string table_name;
 	string table_name_alias;

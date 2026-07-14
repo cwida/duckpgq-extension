@@ -2,7 +2,7 @@
 #pragma once
 
 #include "duckdb/parser/parsed_expression.hpp"
-#include "duckdb/parser/path_reference.hpp"
+#include "duckpgq/parser/path_reference.hpp"
 
 namespace duckdb {
 
