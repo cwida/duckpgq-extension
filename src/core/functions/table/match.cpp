@@ -376,7 +376,11 @@ void PGQMatchFunction::EdgeTypeAny(const shared_ptr<PropertyGraphTable> &edge_ta
 	      << DuckPGQSQL::Identifier(edge_table->source_fk[0]) << ", "
 	      << DuckPGQSQL::Column(edge_table->source_fk[0], edge_binding) << " AS "
 	      << DuckPGQSQL::Identifier(edge_table->destination_fk[0]) << ", * FROM "
-	      << DuckPGQSQL::TableRef(*edge_table, edge_binding);
+	      << DuckPGQSQL::TableRef(*edge_table, edge_binding)
+	      // A self-loop (src = dst) binds identically in both orientations, so the
+	      // reversed arm must skip it to return it exactly once (issue #314).
+	      << " WHERE " << DuckPGQSQL::Column(edge_table->source_fk[0], edge_binding) << " <> "
+	      << DuckPGQSQL::Column(edge_table->destination_fk[0], edge_binding);
 	PGQAppendCrossJoin(from_clause, DuckPGQSQL::ParseSubqueryRef(query.str(), edge_binding));
 	// (a) src.key = edge.src
 	auto src_left_expr =

@@ -1,0 +1,53 @@
+# name: test/sql/pattern_matching/undirected_self_loop.test
+# description: Self-loop edges must bind exactly once in undirected edge patterns (issue #314)
+# group: [pattern_matching]
+
+require duckpgq
+
+statement ok
+CREATE TABLE Person(id BIGINT, name VARCHAR);INSERT INTO Person VALUES (0, 'Ana'), (1, 'Bob');
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);INSERT INTO knows VALUES (1, 1), (0, 1);
+
+statement ok
+CREATE PROPERTY GRAPH selfloop_pg
+VERTEX TABLES (
+    Person
+    )
+EDGE TABLES (
+    knows   SOURCE KEY ( src ) REFERENCES Person ( id )
+            DESTINATION KEY ( dst ) REFERENCES Person ( id )
+    );
+
+# The regular edge (0,1) binds once per orientation; the self-loop (1,1) binds
+# identically in both orientations, so it must appear exactly once.
+query II
+SELECT a_id, b_id FROM GRAPH_TABLE (selfloop_pg
+    MATCH (a:Person)-[k:knows]-(b:Person)
+    COLUMNS (a.id AS a_id, b.id AS b_id)
+    ) ORDER BY a_id, b_id;
+----
+0	1
+1	0
+1	1
+
+# Same with distinct variable names for both endpoints (issue #314 comment).
+query II
+SELECT p_id, p2_id FROM GRAPH_TABLE (selfloop_pg
+    MATCH (p:Person)-[k:knows]-(p2:Person)
+    WHERE p.id = 1 AND p2.id = 1
+    COLUMNS (p.id AS p_id, p2.id AS p2_id)
+    ) ORDER BY p_id, p2_id;
+----
+1	1
+
+# Directed matching is unaffected.
+query II
+SELECT a_id, b_id FROM GRAPH_TABLE (selfloop_pg
+    MATCH (a:Person)-[k:knows]->(b:Person)
+    COLUMNS (a.id AS a_id, b.id AS b_id)
+    ) ORDER BY a_id, b_id;
+----
+0	1
+1	1
