@@ -3,6 +3,7 @@ import argparse
 import csv
 import json
 import re
+import statistics
 import subprocess
 import sys
 import time
@@ -279,6 +280,51 @@ FROM (
 """
 
 
+def recursive_sql(attached_db, pair_count, threads, max_depth):
+    pairs = f"ldbc.benchmark_pairs_{pair_count}"
+    return f"""
+WITH RECURSIVE
+pairs AS (
+    SELECT rowid::BIGINT AS pair_id, src, dst
+    FROM {pairs}
+),
+targets AS (
+    SELECT DISTINCT dst
+    FROM pairs
+),
+edges AS (
+    SELECT a.rowid::BIGINT AS src, c.rowid::BIGINT AS dst
+    FROM ldbc.person_knows_person k
+    JOIN ldbc.person a ON a.id = k.person1id
+    JOIN ldbc.person c ON c.id = k.person2id
+),
+dvr(here, there, len) USING KEY (here, there) AS (
+    SELECT edges.src, edges.dst, 1::BIGINT AS len
+    FROM edges
+    JOIN targets ON targets.dst = edges.dst
+    UNION ALL (
+        SELECT edges.src, dvr.there, dvr.len + 1 AS len
+        FROM dvr
+        JOIN edges ON edges.dst = dvr.here
+        LEFT JOIN recurring.dvr rec ON rec.here = edges.src AND rec.there = dvr.there
+        WHERE edges.src <> dvr.there
+          AND dvr.len < {max_depth}
+          AND dvr.len + 1 < coalesce(rec.len, 9223372036854775807)
+        ORDER BY len DESC
+    )
+),
+lengths AS (
+    SELECT pairs.pair_id,
+           CASE WHEN pairs.src = pairs.dst THEN 0 ELSE dvr.len END AS len
+    FROM pairs
+    LEFT JOIN dvr ON dvr.here = pairs.src AND dvr.there = pairs.dst
+)
+SELECT 'recursive' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
+       sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
+FROM lengths;
+"""
+
+
 def setup_sql(attached_db, threads):
     return f"""
 LOAD {sql_string(DUCKPGQ_EXTENSION)};
@@ -298,6 +344,79 @@ def parse_csv_row(output):
     return rows[0]
 
 
+def benchmark_modes(mode):
+    if mode == "both":
+        return ["operator", "scalar"]
+    if mode == "all":
+        return ["operator", "scalar", "recursive"]
+    return [mode]
+
+
+def mode_sql(mode, attached_db, pair_count, threads, benchmark_prefix, recursive_max_depth):
+    if mode == "operator":
+        return operator_sql(attached_db, pair_count, threads, benchmark_prefix)
+    if mode == "scalar":
+        return scalar_sql(attached_db, pair_count, threads)
+    if mode == "recursive":
+        return recursive_sql(attached_db, pair_count, threads, recursive_max_depth)
+    raise ValueError(f"Unsupported benchmark mode: {mode}")
+
+
+def verify_result_rows(results):
+    result_keys = ["pair_count", "reachable_count", "total_len", "min_len", "max_len"]
+    for repeat in sorted({row["repeat"] for row in results}):
+        rows = [row for row in results if row["repeat"] == repeat]
+        if len(rows) < 2:
+            continue
+        expected = {key: rows[0][key] for key in result_keys}
+        expected_mode = rows[0]["mode"]
+        for row in rows[1:]:
+            actual = {key: row[key] for key in result_keys}
+            if actual != expected:
+                raise RuntimeError(
+                    f"Benchmark result mismatch for repeat {repeat}: {expected_mode}={expected}, "
+                    f"{row['mode']}={actual}"
+                )
+
+
+def stdev(values):
+    return statistics.stdev(values) if len(values) > 1 else 0.0
+
+
+def summarize_results(results):
+    stats = []
+    modes = sorted({row["mode"] for row in results})
+    for mode in modes:
+        rows = [row for row in results if row["mode"] == mode]
+        setup_times = [float(row["setup_s"]) for row in rows]
+        query_times = [float(row["query_s"]) for row in rows]
+        total_times = [float(row["total_s"]) for row in rows]
+        stats.append(
+            {
+                "scale_factor": rows[0]["scale_factor"],
+                "mode": mode,
+                "threads": rows[0]["threads"],
+                "repeats": len(rows),
+                "recursive_max_depth": rows[0]["recursive_max_depth"],
+                "pair_count": rows[0]["pair_count"],
+                "reachable_count": rows[0]["reachable_count"],
+                "total_len": rows[0]["total_len"],
+                "min_len": rows[0]["min_len"],
+                "max_len": rows[0]["max_len"],
+                "setup_mean_s": f"{statistics.mean(setup_times):.6f}",
+                "setup_stdev_s": f"{stdev(setup_times):.6f}",
+                "query_mean_s": f"{statistics.mean(query_times):.6f}",
+                "query_stdev_s": f"{stdev(query_times):.6f}",
+                "query_min_s": f"{min(query_times):.6f}",
+                "query_max_s": f"{max(query_times):.6f}",
+                "total_mean_s": f"{statistics.mean(total_times):.6f}",
+                "total_stdev_s": f"{stdev(total_times):.6f}",
+                "database": rows[0]["database"],
+            }
+        )
+    return stats
+
+
 def run_benchmark(args):
     results_dir = DATA_ROOT / "results" / sf_name(args.scale_factor)
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -307,18 +426,17 @@ def run_benchmark(args):
     ensure_pair_table(args.scale_factor, args.pairs)
 
     results = []
-    modes = ["operator", "scalar"] if args.mode == "both" else [args.mode]
+    modes = benchmark_modes(args.mode)
     for repeat in range(1, args.repeats + 1):
         for mode in modes:
             prefix = results_dir / f"{mode}_pairs{args.pairs}_threads{args.threads}_repeat{repeat}"
-            query_sql = operator_sql(attached_db, args.pairs, args.threads, prefix) if mode == "operator" else scalar_sql(
-                attached_db, args.pairs, args.threads
-            )
+            query_sql = mode_sql(mode, attached_db, args.pairs, args.threads, prefix, args.recursive_max_depth)
             output, timers = run_duckdb_timed_script(setup_sql(attached_db, args.threads) + query_sql, args.timeout)
             row = parse_csv_row(output)
             row["scale_factor"] = args.scale_factor
             row["threads"] = args.threads
             row["repeat"] = repeat
+            row["recursive_max_depth"] = args.recursive_max_depth if mode == "recursive" else ""
             row["setup_s"] = f"{sum(timers[:-1]):.6f}"
             row["query_s"] = f"{timers[-1]:.6f}"
             row["total_s"] = f"{sum(timers):.6f}"
@@ -326,13 +444,18 @@ def run_benchmark(args):
             results.append(row)
             print(json.dumps(row, sort_keys=True))
 
-    result_path = results_dir / f"summary_pairs{args.pairs}_threads{args.threads}_{int(time.time())}.csv"
+    if args.verify:
+        verify_result_rows(results)
+
+    timestamp = int(time.time())
+    result_path = results_dir / f"summary_pairs{args.pairs}_threads{args.threads}_{timestamp}.csv"
     with result_path.open("w", newline="") as handle:
         fieldnames = [
             "scale_factor",
             "mode",
             "threads",
             "repeat",
+            "recursive_max_depth",
             "pair_count",
             "reachable_count",
             "total_len",
@@ -347,6 +470,37 @@ def run_benchmark(args):
         writer.writeheader()
         writer.writerows(results)
     print(f"Wrote summary: {result_path}")
+
+    stats = summarize_results(results)
+    stats_path = results_dir / f"stats_pairs{args.pairs}_threads{args.threads}_{timestamp}.csv"
+    with stats_path.open("w", newline="") as handle:
+        fieldnames = [
+            "scale_factor",
+            "mode",
+            "threads",
+            "repeats",
+            "recursive_max_depth",
+            "pair_count",
+            "reachable_count",
+            "total_len",
+            "min_len",
+            "max_len",
+            "setup_mean_s",
+            "setup_stdev_s",
+            "query_mean_s",
+            "query_stdev_s",
+            "query_min_s",
+            "query_max_s",
+            "total_mean_s",
+            "total_stdev_s",
+            "database",
+        ]
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(stats)
+    for row in stats:
+        print(json.dumps(row, sort_keys=True))
+    print(f"Wrote stats: {stats_path}")
 
 
 def main():
@@ -365,7 +519,9 @@ def main():
     run_parser.add_argument("--threads", type=int, default=4)
     run_parser.add_argument("--pairs", type=int, default=1024)
     run_parser.add_argument("--repeats", type=int, default=1)
-    run_parser.add_argument("--mode", choices=["operator", "scalar", "both"], default="both")
+    run_parser.add_argument("--mode", choices=["operator", "scalar", "recursive", "both", "all"], default="both")
+    run_parser.add_argument("--recursive-max-depth", type=int, default=8)
+    run_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
     run_parser.add_argument("--timeout", type=int, default=300)
     run_parser.set_defaults(func=run_benchmark)
 
