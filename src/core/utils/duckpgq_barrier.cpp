@@ -10,15 +10,15 @@
 
 namespace duckdb {
 
-Barrier::Barrier(std::size_t iCount)
-    : mThreshold(iCount), mCount(iCount), mGeneration(0) {}
+Barrier::Barrier(std::size_t iCount) : mThreshold(iCount), mCount(iCount), mGeneration(0) {
+}
 
 // Adds a custom log message
 void Barrier::LogMessage(idx_t worker_id, const std::string &message) {
-  std::lock_guard<std::mutex> logLock(logMutex);
-  std::ostringstream log;
-  log << "Thread " << worker_id << ": " << message;
-  timingLogs.push_back(log.str());
+	std::lock_guard<std::mutex> logLock(logMutex);
+	std::ostringstream log;
+	log << "Thread " << worker_id << ": " << message;
+	timingLogs.push_back(log.str());
 }
 
 // Writes collected timing logs to a file with a timestamp
@@ -55,32 +55,32 @@ void Barrier::LogMessage(idx_t worker_id, const std::string &message) {
 // }
 
 void Barrier::Wait(idx_t worker_id) {
-  auto start_time = std::chrono::high_resolution_clock::now(); // Start timing
+	auto start_time = std::chrono::high_resolution_clock::now(); // Start timing
 
-  std::unique_lock<std::mutex> lLock{mMutex};
-  auto lGen = mGeneration.load();
+	std::unique_lock<std::mutex> lLock {mMutex};
+	auto lGen = mGeneration.load();
 
-  auto thread_id_str = std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id()));
-  if (!--mCount) {
-    // Last thread to reach the barrier
-    mGeneration++;
-    mCount = mThreshold;
-    mCond.notify_all();  // Wake up all waiting threads
-  } else {
-    // Other threads wait for the generation to change
-    mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
-  }
+	auto thread_id_str = std::to_string(std::hash<std::thread::id> {}(std::this_thread::get_id()));
+	if (!--mCount) {
+		// Last thread to reach the barrier
+		mGeneration++;
+		mCount = mThreshold;
+		mCond.notify_all(); // Wake up all waiting threads
+	} else {
+		// Other threads wait for the generation to change
+		mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
+	}
 
-  auto end_time = std::chrono::high_resolution_clock::now(); // End timing
-  double duration = std::chrono::duration<double, std::micro>(end_time - start_time).count();
+	auto end_time = std::chrono::high_resolution_clock::now(); // End timing
+	double duration = std::chrono::duration<double, std::micro>(end_time - start_time).count();
 
-  // Store the timing information instead of printing immediately
-  // {
-    // std::lock_guard<std::mutex> logLock(logMutex);
-    // std::ostringstream log;
-    // log << "Thread " << worker_id << " waited for " << duration << " µs";
-    // timingLogs.push_back(log.str());
-  // }
+	// Store the timing information instead of printing immediately
+	// {
+	// std::lock_guard<std::mutex> logLock(logMutex);
+	// std::ostringstream log;
+	// log << "Thread " << worker_id << " waited for " << duration << " µs";
+	// timingLogs.push_back(log.str());
+	// }
 }
 
 } // namespace duckdb

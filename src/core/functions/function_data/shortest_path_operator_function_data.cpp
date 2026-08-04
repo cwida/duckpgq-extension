@@ -3,18 +3,16 @@
 
 namespace duckdb {
 
-unique_ptr<FunctionData>
-ShortestPathOperatorData::ShortestPathOperatorBind(
-    BindScalarFunctionInput &input) {
-  auto &context = input.GetClientContext();
-  return make_uniq<ShortestPathOperatorData>(context);
+unique_ptr<FunctionData> ShortestPathOperatorData::ShortestPathOperatorBind(BindScalarFunctionInput &input) {
+	auto &context = input.GetClientContext();
+	return make_uniq<ShortestPathOperatorData>(context);
 }
 unique_ptr<FunctionData> ShortestPathOperatorData::Copy() const {
-  return make_uniq<ShortestPathOperatorData>(context);
+	return make_uniq<ShortestPathOperatorData>(context);
 }
 
 bool ShortestPathOperatorData::Equals(const FunctionData &other_p) const {
-  return true;
+	return true;
 }
 
 } // namespace duckdb

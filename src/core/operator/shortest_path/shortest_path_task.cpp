@@ -18,13 +18,13 @@
 //     if (worker_id == 0) {
 //       for (idx_t n = 0; n < state->v_size; n++) {
 //         state->thread_assignment[n] = n % state->num_threads;
-     //   }
-     //   state->InitializeLanes();
-     // }
-     //
-     // barrier->Wait();
-     // do {
-     //   IterativePath();
+//   }
+//   state->InitializeLanes();
+// }
+//
+// barrier->Wait();
+// do {
+//   IterativePath();
 //
 //       // Synchronize after IterativePath
 //       barrier->Wait();

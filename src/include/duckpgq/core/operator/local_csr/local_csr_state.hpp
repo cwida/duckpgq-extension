@@ -7,26 +7,29 @@
 namespace duckdb {
 
 struct Partition {
-  idx_t start_bucket;
-  idx_t end_bucket; // exclusive
+	idx_t start_bucket;
+	idx_t end_bucket; // exclusive
 };
 
 class LocalCSRState {
 public:
-  LocalCSRState(ClientContext &context_p, CSR *csr, idx_t num_threads_p);
+	LocalCSRState(ClientContext &context_p, CSR *csr, idx_t num_threads_p);
 
 public:
-  CSR* global_csr;
-  ClientContext &context;
+	CSR *global_csr;
+	ClientContext &context;
 
-  idx_t num_threads;
-  idx_t tasks_scheduled;
+	idx_t num_threads;
+	idx_t tasks_scheduled;
 
-  unique_ptr<Barrier> barrier;
+	unique_ptr<Barrier> barrier;
 
-  std::vector<int64_t> statistics_chunks;
-  std::vector<shared_ptr<LocalCSR>> partition_csrs;
-  std::atomic<idx_t> partition_index;
+	std::vector<int64_t> statistics_chunks;
+	std::vector<shared_ptr<LocalCSR>> partition_csrs;
+	std::atomic<idx_t> partition_index;
+	bool benchmark_enabled;
+	string benchmark_output_prefix;
+	string benchmark_run_id;
 };
 
 } // namespace duckdb

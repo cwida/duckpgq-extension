@@ -9,23 +9,20 @@ namespace duckdb {
 
 class LocalCSRTask : public ExecutorTask {
 public:
-  LocalCSRTask(shared_ptr<Event> event_p, ClientContext &context,
-                           shared_ptr<LocalCSRState> &state,
-                           idx_t worker_id,
-                           const PhysicalOperator &op_p);
+	LocalCSRTask(shared_ptr<Event> event_p, ClientContext &context, shared_ptr<LocalCSRState> &state, idx_t worker_id,
+	             const PhysicalOperator &op_p);
 
-  TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
+	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
 
-  void CreateStatistics() const;
-  void DeterminePartitions() const;
-  void CountOutgoingEdgesPerPartition();
-  idx_t GetPartitionForVertex(idx_t vertex) const;
-  void CreateRunningSum() const;
-  void DistributeEdges();
+	void CreateStatistics() const;
+	void DeterminePartitions() const;
+	void CountOutgoingEdgesPerPartition();
+	idx_t GetPartitionForVertex(idx_t vertex) const;
+	void CreateRunningSum() const;
+	void DistributeEdges();
 
-  shared_ptr<LocalCSRState> &local_csr_state;
-  idx_t worker_id;
-
+	shared_ptr<LocalCSRState> &local_csr_state;
+	idx_t worker_id;
 };
 
 } // namespace duckdb

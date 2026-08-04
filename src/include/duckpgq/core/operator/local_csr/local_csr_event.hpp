@@ -7,15 +7,16 @@ namespace duckdb {
 
 class LocalCSREvent : public BasePipelineEvent {
 public:
-  LocalCSREvent(shared_ptr<LocalCSRState> local_csr_state_p, Pipeline &pipeline_p, const PhysicalPathFinding& op_p, ClientContext &context_p);
+	LocalCSREvent(shared_ptr<LocalCSRState> local_csr_state_p, Pipeline &pipeline_p, const PhysicalPathFinding &op_p,
+	              ClientContext &context_p);
 
-  void Schedule() override;
-  void FinishEvent() override;
+	void Schedule() override;
+	void FinishEvent() override;
 
 private:
-  ClientContext &context;
-  shared_ptr<LocalCSRState> local_csr_state;
-  const PhysicalPathFinding &op;
+	ClientContext &context;
+	shared_ptr<LocalCSRState> local_csr_state;
+	const PhysicalPathFinding &op;
 };
 
 } // namespace duckdb

@@ -10,19 +10,17 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckpgq/common.hpp"
 
-
 namespace duckdb {
 
 struct ShortestPathOperatorData final : FunctionData {
-  ClientContext &context;
+	ClientContext &context;
 
-  ShortestPathOperatorData(ClientContext &context)
-      : context(context) {}
-  static unique_ptr<FunctionData>
-  ShortestPathOperatorBind(BindScalarFunctionInput &input);
+	ShortestPathOperatorData(ClientContext &context) : context(context) {
+	}
+	static unique_ptr<FunctionData> ShortestPathOperatorBind(BindScalarFunctionInput &input);
 
-  unique_ptr<FunctionData> Copy() const override;
-  bool Equals(const FunctionData &other_p) const override;
+	unique_ptr<FunctionData> Copy() const override;
+	bool Equals(const FunctionData &other_p) const override;
 };
 
 } // namespace duckdb

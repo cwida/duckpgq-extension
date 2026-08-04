@@ -4,13 +4,12 @@
 namespace duckdb {
 
 struct CorePGQOptimizer {
-  static void Register(ExtensionLoader &loader) {
-    RegisterPathFindingOptimizerRule(loader);
-  }
+	static void Register(ExtensionLoader &loader) {
+		RegisterPathFindingOptimizerRule(loader);
+	}
 
 private:
-  static void RegisterPathFindingOptimizerRule(ExtensionLoader &loader);
+	static void RegisterPathFindingOptimizerRule(ExtensionLoader &loader);
 };
-
 
 } // namespace duckdb

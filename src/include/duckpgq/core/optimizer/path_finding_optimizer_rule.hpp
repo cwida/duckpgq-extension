@@ -8,21 +8,18 @@ namespace duckdb {
 
 class DuckpgqOptimizerExtension : public OptimizerExtension {
 public:
-  DuckpgqOptimizerExtension() {
-    pre_optimize_function = DuckpgqOptimizeFunction;
-    optimize_function = DuckpgqOptimizeFunction;
-  }
+	DuckpgqOptimizerExtension() {
+		pre_optimize_function = DuckpgqOptimizeFunction;
+		optimize_function = DuckpgqOptimizeFunction;
+	}
 
-  static bool InsertPathFindingOperator(LogicalOperator &op, ClientContext &context);
+	static bool InsertPathFindingOperator(LogicalOperator &op, ClientContext &context);
 
-  static void DuckpgqOptimizeFunction(OptimizerExtensionInput &input,
-                                     unique_ptr<LogicalOperator> &plan);
+	static void DuckpgqOptimizeFunction(OptimizerExtensionInput &input, unique_ptr<LogicalOperator> &plan);
 
-  static unique_ptr<LogicalPathFindingOperator> FindCSRAndPairs(
-      unique_ptr<LogicalOperator>& first_child,
-      unique_ptr<LogicalOperator>& second_child,
-      LogicalProjection& op_proj,
-      ClientContext &context);
+	static unique_ptr<LogicalPathFindingOperator> FindCSRAndPairs(unique_ptr<LogicalOperator> &first_child,
+	                                                              unique_ptr<LogicalOperator> &second_child,
+	                                                              LogicalProjection &op_proj, ClientContext &context);
 };
 
 } // namespace duckdb

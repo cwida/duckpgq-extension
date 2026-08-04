@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #pragma once
 
 #include "duckdb/parallel/base_pipeline_event.hpp"
@@ -17,14 +16,15 @@ namespace duckdb {
 
 class ShortestPathEvent : public BasePipelineEvent {
 public:
-  explicit ShortestPathEvent(shared_ptr<ShortestPathState> gbfs_state_p, Pipeline &pipeline_p, const PhysicalPathFinding& op_p);
+	explicit ShortestPathEvent(shared_ptr<ShortestPathState> gbfs_state_p, Pipeline &pipeline_p,
+	                           const PhysicalPathFinding &op_p);
 
-  void Schedule() override;
-  void FinishEvent() override;
+	void Schedule() override;
+	void FinishEvent() override;
 
 private:
-  shared_ptr<ShortestPathState> gbfs_state;
-  const PhysicalPathFinding &op;
+	shared_ptr<ShortestPathState> gbfs_state;
+	const PhysicalPathFinding &op;
 };
 
 } // namespace duckdb
