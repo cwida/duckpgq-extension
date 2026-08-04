@@ -15,6 +15,8 @@ struct CoreScalarFunctions {
 		RegisterLocalClusteringCoefficientScalarFunction(loader);
 		RegisterReachabilityScalarFunction(loader);
 		RegisterShortestPathScalarFunction(loader);
+		RegisterShortestPathOperatorScalarFunction(loader);
+		RegisterIterativeLengthOperatorScalarFunction(loader);
 		RegisterWeaklyConnectedComponentScalarFunction(loader);
 		RegisterPageRankScalarFunction(loader);
 	}
@@ -30,6 +32,8 @@ private:
 	static void RegisterLocalClusteringCoefficientScalarFunction(ExtensionLoader &loader);
 	static void RegisterReachabilityScalarFunction(ExtensionLoader &loader);
 	static void RegisterShortestPathScalarFunction(ExtensionLoader &loader);
+	static void RegisterShortestPathOperatorScalarFunction(ExtensionLoader &loader);
+	static void RegisterIterativeLengthOperatorScalarFunction(ExtensionLoader &loader);
 	static void RegisterWeaklyConnectedComponentScalarFunction(ExtensionLoader &loader);
 	static void RegisterPageRankScalarFunction(ExtensionLoader &loader);
 };

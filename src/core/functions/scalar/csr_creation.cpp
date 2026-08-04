@@ -134,7 +134,7 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vecto
 			    auto pos = ++csr_entry->second->v[src + 1];
 			    csr_entry->second->e[(int64_t)pos - 1] = dst;
 			    csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id;
-			    return 1;
+			    return info.id;
 		    });
 		return;
 	}
@@ -171,7 +171,7 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vecto
 			csr_entry->second->e[(int64_t)pos - 1] = dst_values[dst_idx];
 			csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id_values[edge_id_idx];
 			csr_entry->second->w[(int64_t)pos - 1] = weight;
-			result_data[i] = static_cast<int32_t>(weight);
+			result_data[i] = info.id;
 		}
 		return;
 	}
@@ -193,7 +193,7 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vecto
 		csr_entry->second->e[(int64_t)pos - 1] = dst_values[dst_idx];
 		csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id_values[edge_id_idx];
 		csr_entry->second->w_double[(int64_t)pos - 1] = weight;
-		result_data[i] = static_cast<int32_t>(weight);
+		result_data[i] = info.id;
 	}
 }
 

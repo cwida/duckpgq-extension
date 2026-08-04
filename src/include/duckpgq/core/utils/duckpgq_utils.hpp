@@ -9,6 +9,8 @@ namespace duckdb {
 
 #define LANE_LIMIT         512
 #define VISIT_SIZE_DIVISOR 2
+#define BUCKET_COUNT       256U
+#define BUCKET_MASK        (BUCKET_COUNT - 1)
 
 // Function to get DuckPGQState from ClientContext
 shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context, bool throw_error_not_found = false);
