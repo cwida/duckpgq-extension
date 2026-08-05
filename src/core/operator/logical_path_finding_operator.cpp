@@ -25,7 +25,7 @@ vector<ColumnBinding> LogicalPathFindingOperator::GetColumnBindings() {
 
 void LogicalPathFindingOperator::ResolveTypes() {
 	types = children[0]->types;
-	if (mode == "iterativelength") {
+	if (mode == "iterativelength" || mode == "bidirectionaliterativelength") {
 		types.push_back(LogicalType::BIGINT);
 	} else if (mode == "shortestpath") {
 		types.push_back(LogicalType::LIST(LogicalType::BIGINT));

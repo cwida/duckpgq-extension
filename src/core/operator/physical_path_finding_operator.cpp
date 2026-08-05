@@ -9,6 +9,7 @@
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
+#include <duckpgq/core/operator/iterative_length/bidirectional_iterative_length_state.hpp>
 #include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
 #include <duckpgq/core/operator/local_csr/local_csr_event.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
@@ -110,6 +111,9 @@ SinkFinalizeType PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 	if (gstate.child == 0) {
 		++gstate.child;
 		auto local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
+		if (gstate.mode == "bidirectionaliterativelength") {
+			local_csr_state->build_reverse_csr = true;
+		}
 		gstate.local_csr_state = local_csr_state;
 		event.InsertEvent(make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, *this, context));
 		return SinkFinalizeType::READY;
@@ -127,6 +131,12 @@ SinkFinalizeType PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 		if (gstate.mode == "iterativelength") {
 			auto bfs_state = make_shared_ptr<IterativeLengthState>(
 			    current_chunk, gstate.local_csr_state->partition_csrs, gstate.num_threads, context, gstate.csr->vsize);
+			bfs_state->ScheduleBFSBatch(pipeline, event, this);
+			gstate.bfs_states.push_back(std::move(bfs_state));
+		} else if (gstate.mode == "bidirectionaliterativelength") {
+			auto bfs_state = make_shared_ptr<BidirectionalIterativeLengthState>(
+			    current_chunk, gstate.local_csr_state->partition_csrs, gstate.local_csr_state->reverse_partition_csrs,
+			    gstate.num_threads, context, gstate.csr->vsize);
 			bfs_state->ScheduleBFSBatch(pipeline, event, this);
 			gstate.bfs_states.push_back(std::move(bfs_state));
 		} else if (gstate.mode == "shortestpath") {

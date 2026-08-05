@@ -274,6 +274,23 @@ FROM (
 """
 
 
+def bidirectional_operator_sql(options):
+    pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
+    reverse_value = "true" if options.build_reverse_csr else "false"
+    return f"""
+SET experimental_path_finding_operator_benchmark=true;
+SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benchmark_prefix)};
+SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
+{csr_cte("ldbc")}
+SELECT 'bidirectional_operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
+       sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
+FROM (
+    SELECT src, dst, bidirectionaliterativelengthoperator(src, dst, csr_id) AS len
+    FROM {pairs}, csr_cte
+);
+"""
+
+
 def csr_sql(options):
     return f"""
 {csr_cte("ldbc")}
@@ -370,13 +387,15 @@ def benchmark_modes(mode):
     if mode == "both":
         return ["operator", "scalar"]
     if mode == "all":
-        return ["operator", "scalar", "recursive"]
+        return ["operator", "bidirectional_operator", "scalar", "recursive"]
     return [mode]
 
 
 def mode_sql(mode, options):
     if mode == "operator":
         return operator_sql(options)
+    if mode == "bidirectional_operator":
+        return bidirectional_operator_sql(options)
     if mode == "csr":
         return csr_sql(options)
     if mode == "scalar":
@@ -644,7 +663,11 @@ def main():
     run_parser.add_argument("--threads", type=int, default=4)
     run_parser.add_argument("--pairs", type=int, default=1024)
     run_parser.add_argument("--repeats", type=int, default=1)
-    run_parser.add_argument("--mode", choices=["operator", "csr", "scalar", "recursive", "both", "all"], default="both")
+    run_parser.add_argument(
+        "--mode",
+        choices=["operator", "bidirectional_operator", "csr", "scalar", "recursive", "both", "all"],
+        default="both",
+    )
     run_parser.add_argument("--build-reverse-csr", action="store_true")
     run_parser.add_argument("--recursive-max-depth", type=int, default=8)
     run_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)

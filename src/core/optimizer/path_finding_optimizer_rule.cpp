@@ -22,7 +22,8 @@ static string GetPathFindingFunctionName(const Expression &expr) {
 	if (expr.GetExpressionClass() == ExpressionClass::BOUND_FUNCTION) {
 		auto &function_expr = expr.Cast<BoundFunctionExpression>();
 		auto function_name = function_expr.Function().GetName().GetIdentifierName();
-		if (function_name == "iterativelengthoperator" || function_name == "shortestpathoperator") {
+		if (function_name == "iterativelengthoperator" || function_name == "bidirectionaliterativelengthoperator" ||
+		    function_name == "shortestpathoperator") {
 			return function_name;
 		}
 	}
@@ -65,7 +66,7 @@ static bool ContainsCSRIdProjection(const LogicalOperator &op) {
 // Helper function to create the required BoundColumnRefExpression
 unique_ptr<Expression> CreateReplacementExpression(const Identifier &alias, const string &functionName,
                                                    TableIndex tableIndex, idx_t position) {
-	if (functionName == "iterativelengthoperator") {
+	if (functionName == "iterativelengthoperator" || functionName == "bidirectionaliterativelengthoperator") {
 		return make_uniq<BoundColumnRefExpression>(alias, LogicalType::BIGINT,
 		                                           ColumnBinding(tableIndex, ProjectionIndex(position)));
 	}
@@ -100,7 +101,13 @@ void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_
 			new_expressions.push_back(std::move(replacement_expr));
 			// Optionally, copy the original expression if it's needed elsewhere
 			function_expression = expr->Copy();
-			mode = function_name == "iterativelengthoperator" ? "iterativelength" : "shortestpath";
+			if (function_name == "iterativelengthoperator") {
+				mode = "iterativelength";
+			} else if (function_name == "bidirectionaliterativelengthoperator") {
+				mode = "bidirectionaliterativelength";
+			} else {
+				mode = "shortestpath";
+			}
 		} else {
 			// If no replacement is created, throw an internal exception
 			throw InternalException(
