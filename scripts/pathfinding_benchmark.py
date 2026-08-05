@@ -261,6 +261,15 @@ FROM (
 """
 
 
+def csr_sql(attached_db, pair_count, threads, benchmark_prefix):
+    return f"""
+{csr_cte("ldbc")}
+SELECT 'csr' AS mode, 0::BIGINT AS pair_count, NULL::BIGINT AS reachable_count,
+       NULL::BIGINT AS total_len, NULL::BIGINT AS min_len, NULL::BIGINT AS max_len
+FROM csr_cte;
+"""
+
+
 def scalar_sql(attached_db, pair_count, threads):
     pairs = f"ldbc.benchmark_pairs_{pair_count}"
     person = "ldbc.person"
@@ -355,6 +364,8 @@ def benchmark_modes(mode):
 def mode_sql(mode, attached_db, pair_count, threads, benchmark_prefix, recursive_max_depth):
     if mode == "operator":
         return operator_sql(attached_db, pair_count, threads, benchmark_prefix)
+    if mode == "csr":
+        return csr_sql(attached_db, pair_count, threads, benchmark_prefix)
     if mode == "scalar":
         return scalar_sql(attached_db, pair_count, threads)
     if mode == "recursive":
@@ -389,6 +400,7 @@ def summarize_results(results):
     for mode in modes:
         rows = [row for row in results if row["mode"] == mode]
         setup_times = [float(row["setup_s"]) for row in rows]
+        csr_build_times = [float(row["csr_build_s"]) for row in rows if row["csr_build_s"]]
         query_times = [float(row["query_s"]) for row in rows]
         total_times = [float(row["total_s"]) for row in rows]
         stats.append(
@@ -405,6 +417,8 @@ def summarize_results(results):
                 "max_len": rows[0]["max_len"],
                 "setup_mean_s": f"{statistics.mean(setup_times):.6f}",
                 "setup_stdev_s": f"{stdev(setup_times):.6f}",
+                "csr_build_mean_s": f"{statistics.mean(csr_build_times):.6f}" if csr_build_times else "",
+                "csr_build_stdev_s": f"{stdev(csr_build_times):.6f}" if csr_build_times else "",
                 "query_mean_s": f"{statistics.mean(query_times):.6f}",
                 "query_stdev_s": f"{stdev(query_times):.6f}",
                 "query_min_s": f"{min(query_times):.6f}",
@@ -437,8 +451,14 @@ def run_benchmark(args):
             row["threads"] = args.threads
             row["repeat"] = repeat
             row["recursive_max_depth"] = args.recursive_max_depth if mode == "recursive" else ""
-            row["setup_s"] = f"{sum(timers[:-1]):.6f}"
-            row["query_s"] = f"{timers[-1]:.6f}"
+            if mode == "csr":
+                row["setup_s"] = f"{sum(timers[:-1]):.6f}"
+                row["csr_build_s"] = f"{timers[-1]:.6f}"
+                row["query_s"] = f"{timers[-1]:.6f}"
+            else:
+                row["setup_s"] = f"{sum(timers[:-1]):.6f}"
+                row["csr_build_s"] = ""
+                row["query_s"] = f"{timers[-1]:.6f}"
             row["total_s"] = f"{sum(timers):.6f}"
             row["database"] = str(attached_db)
             results.append(row)
@@ -462,6 +482,7 @@ def run_benchmark(args):
             "min_len",
             "max_len",
             "setup_s",
+            "csr_build_s",
             "query_s",
             "total_s",
             "database",
@@ -487,6 +508,8 @@ def run_benchmark(args):
             "max_len",
             "setup_mean_s",
             "setup_stdev_s",
+            "csr_build_mean_s",
+            "csr_build_stdev_s",
             "query_mean_s",
             "query_stdev_s",
             "query_min_s",
@@ -519,7 +542,7 @@ def main():
     run_parser.add_argument("--threads", type=int, default=4)
     run_parser.add_argument("--pairs", type=int, default=1024)
     run_parser.add_argument("--repeats", type=int, default=1)
-    run_parser.add_argument("--mode", choices=["operator", "scalar", "recursive", "both", "all"], default="both")
+    run_parser.add_argument("--mode", choices=["operator", "csr", "scalar", "recursive", "both", "all"], default="both")
     run_parser.add_argument("--recursive-max-depth", type=int, default=8)
     run_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
     run_parser.add_argument("--timeout", type=int, default=300)
