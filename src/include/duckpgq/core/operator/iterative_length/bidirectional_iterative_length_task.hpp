@@ -25,10 +25,12 @@ private:
 	void UnReachableSet() const;
 
 	void Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit, std::vector<std::bitset<LANE_LIMIT>> &next,
-	             const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex);
+	             const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e,
+	             const std::vector<idx_t> &frontier_vertices, idx_t start_vertex);
 
 	void RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit, std::vector<std::bitset<LANE_LIMIT>> &next,
-	                const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex);
+	                const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e,
+	                const std::vector<idx_t> &frontier_vertices, idx_t start_vertex);
 
 private:
 	ClientContext &context;

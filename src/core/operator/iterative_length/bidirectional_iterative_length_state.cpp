@@ -1,6 +1,7 @@
 #include "duckpgq/core/operator/iterative_length/bidirectional_iterative_length_state.hpp"
 
 #include <duckpgq/core/operator/iterative_length/bidirectional_iterative_length_event.hpp>
+#include <algorithm>
 #include <fstream>
 
 namespace duckdb {
@@ -17,11 +18,16 @@ BidirectionalIterativeLengthState::BidirectionalIterativeLengthState(
 	dst_visit1 = vector<std::bitset<LANE_LIMIT>>(v_size);
 	dst_visit2 = vector<std::bitset<LANE_LIMIT>>(v_size);
 	worker_meet_masks = vector<std::bitset<LANE_LIMIT>>(num_threads);
+	worker_frontier_counts = vector<idx_t>(num_threads);
+	worker_frontier_vertices = vector<vector<idx_t>>(num_threads);
 	src_depth = 0;
 	dst_depth = 0;
+	src_frontier_size = 0;
+	dst_frontier_size = 0;
 	last_side_changed = false;
 	has_more_batches = false;
 	continue_search = false;
+	expand_source_next = true;
 }
 
 void BidirectionalIterativeLengthState::InitializeBidirectionalLanes() {
@@ -31,6 +37,11 @@ void BidirectionalIterativeLengthState::InitializeBidirectionalLanes() {
 	src_depth = 0;
 	dst_depth = 0;
 	last_side_changed = false;
+	src_frontier_size = 0;
+	dst_frontier_size = 0;
+	expand_source_next = true;
+	src_frontier_vertices.clear();
+	dst_frontier_vertices.clear();
 
 	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
 		lane_to_num[lane] = -1;
@@ -47,13 +58,23 @@ void BidirectionalIterativeLengthState::InitializeBidirectionalLanes() {
 				dst_visit1[dst[dst_pos]][lane] = true;
 				src_seen[src[src_pos]][lane] = true;
 				dst_seen[dst[dst_pos]][lane] = true;
+				src_frontier_vertices.push_back(src[src_pos]);
+				dst_frontier_vertices.push_back(dst[dst_pos]);
 				lane_to_num[lane] = search_num;
 				lane_active[lane] = true;
 				active++;
+				src_frontier_size++;
+				dst_frontier_size++;
 				break;
 			}
 		}
 	}
+	std::sort(src_frontier_vertices.begin(), src_frontier_vertices.end());
+	src_frontier_vertices.erase(std::unique(src_frontier_vertices.begin(), src_frontier_vertices.end()),
+	                            src_frontier_vertices.end());
+	std::sort(dst_frontier_vertices.begin(), dst_frontier_vertices.end());
+	dst_frontier_vertices.erase(std::unique(dst_frontier_vertices.begin(), dst_frontier_vertices.end()),
+	                            dst_frontier_vertices.end());
 }
 
 void BidirectionalIterativeLengthState::Clear() {
@@ -64,6 +85,11 @@ void BidirectionalIterativeLengthState::Clear() {
 	last_side_changed = false;
 	has_more_batches = false;
 	continue_search = false;
+	src_frontier_size = 0;
+	dst_frontier_size = 0;
+	expand_source_next = true;
+	src_frontier_vertices.clear();
+	dst_frontier_vertices.clear();
 	for (auto i = 0; i < v_size; i++) {
 		visit1[i] = 0;
 		visit2[i] = 0;
@@ -77,6 +103,12 @@ void BidirectionalIterativeLengthState::Clear() {
 	}
 	for (auto &meet_mask : worker_meet_masks) {
 		meet_mask.reset();
+	}
+	for (auto &frontier_count : worker_frontier_counts) {
+		frontier_count = 0;
+	}
+	for (auto &frontier_vertices : worker_frontier_vertices) {
+		frontier_vertices.clear();
 	}
 	lane_active.reset();
 	lane_completed.reset();

@@ -38,16 +38,9 @@ TaskExecutionResult BidirectionalIterativeLengthTask::ExecuteTask(TaskExecutionM
 		barrier->Wait(worker_id);
 
 		while (state->active > 0) {
-			ExpandSide(BidirectionalSearchSide::SOURCE);
-			if (worker_id == 0) {
-				state->continue_search = state->active > 0 && state->last_side_changed;
-			}
-			barrier->Wait(worker_id);
-			if (!state->continue_search) {
-				break;
-			}
-
-			ExpandSide(BidirectionalSearchSide::DESTINATION);
+			auto side = state->expand_source_next ? BidirectionalSearchSide::SOURCE
+			                                      : BidirectionalSearchSide::DESTINATION;
+			ExpandSide(side);
 			if (worker_id == 0) {
 				state->continue_search = state->active > 0 && state->last_side_changed;
 			}
@@ -78,6 +71,10 @@ void BidirectionalIterativeLengthTask::ExpandSide(BidirectionalSearchSide side) 
 	auto &side_seen = side == BidirectionalSearchSide::SOURCE ? state->src_seen : state->dst_seen;
 	auto &other_seen = side == BidirectionalSearchSide::SOURCE ? state->dst_seen : state->src_seen;
 	auto &side_depth = side == BidirectionalSearchSide::SOURCE ? state->src_depth : state->dst_depth;
+	auto &side_frontier_size =
+	    side == BidirectionalSearchSide::SOURCE ? state->src_frontier_size : state->dst_frontier_size;
+	auto &frontier_vertices =
+	    side == BidirectionalSearchSide::SOURCE ? state->src_frontier_vertices : state->dst_frontier_vertices;
 	auto &visit1 = side == BidirectionalSearchSide::SOURCE ? state->src_visit1 : state->dst_visit1;
 	auto &visit2 = side == BidirectionalSearchSide::SOURCE ? state->src_visit2 : state->dst_visit2;
 	auto &visit = side_depth % 2 == 0 ? visit1 : visit2;
@@ -90,6 +87,12 @@ void BidirectionalIterativeLengthTask::ExpandSide(BidirectionalSearchSide side) 
 		state->last_side_changed = false;
 		for (auto &meet_mask : state->worker_meet_masks) {
 			meet_mask.reset();
+		}
+		for (auto &frontier_count : state->worker_frontier_counts) {
+			frontier_count = 0;
+		}
+		for (auto &worker_frontier_vertices : state->worker_frontier_vertices) {
+			worker_frontier_vertices.clear();
 		}
 	}
 	barrier->Wait(worker_id);
@@ -124,7 +127,7 @@ void BidirectionalIterativeLengthTask::ExpandSide(BidirectionalSearchSide side) 
 			throw InternalException("Tried to reference nullptr for LocalCSR");
 		}
 		state->local_csr_lock.unlock();
-		RunExplore(visit, next, local_csr->v, local_csr->e, local_csr->GetVertexSize(), local_csr->start_vertex);
+		RunExplore(visit, next, local_csr->v, local_csr->e, frontier_vertices, local_csr->start_vertex);
 	}
 	barrier->Wait(worker_id);
 
@@ -148,15 +151,38 @@ void BidirectionalIterativeLengthTask::ExpandSide(BidirectionalSearchSide side) 
 
 	if (worker_id == 0) {
 		std::bitset<LANE_LIMIT> found_lanes;
+		idx_t frontier_size = 0;
 		for (const auto &meet_mask : state->worker_meet_masks) {
 			found_lanes |= meet_mask;
 		}
+		for (const auto &frontier_count : state->worker_frontier_counts) {
+			frontier_size += frontier_count;
+		}
+		frontier_vertices.clear();
+		for (const auto &worker_frontier_vertices : state->worker_frontier_vertices) {
+			frontier_vertices.insert(frontier_vertices.end(), worker_frontier_vertices.begin(),
+			                         worker_frontier_vertices.end());
+		}
+		side_frontier_size = frontier_size;
 		side_depth++;
 		state->last_side_changed = state->change;
 		CompleteFoundLanes(found_lanes, state->src_depth + state->dst_depth);
 		if (state->active == 0) {
 			state->last_side_changed = false;
+		} else {
+			frontier_size = 0;
+			auto write = frontier_vertices.begin();
+			for (auto vertex : frontier_vertices) {
+				next[vertex] &= state->lane_active;
+				if (next[vertex].any()) {
+					frontier_size += next[vertex].count();
+					*write++ = vertex;
+				}
+			}
+			frontier_vertices.erase(write, frontier_vertices.end());
+			side_frontier_size = frontier_size;
 		}
+		state->expand_source_next = state->src_frontier_size <= state->dst_frontier_size;
 	}
 	barrier->Wait(worker_id);
 }
@@ -166,6 +192,7 @@ void BidirectionalIterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_
                                                    std::vector<std::bitset<LANE_LIMIT>> &other_seen,
                                                    shared_ptr<LocalCSR> &local_csr) const {
 	std::bitset<LANE_LIMIT> found_lanes;
+	idx_t local_frontier_count = 0;
 	bool local_change = false;
 	for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
 		if (next[i].any()) {
@@ -174,6 +201,8 @@ void BidirectionalIterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_
 			if (next[i].any()) {
 				found_lanes |= next[i] & other_seen[i] & state->lane_active;
 				seen[i] |= next[i];
+				local_frontier_count += next[i].count();
+				state->worker_frontier_vertices[worker_id].push_back(i);
 				local_change = true;
 			}
 		}
@@ -184,6 +213,7 @@ void BidirectionalIterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_
 		state->change = true;
 	}
 	state->worker_meet_masks[worker_id] |= found_lanes;
+	state->worker_frontier_counts[worker_id] += local_frontier_count;
 }
 
 void BidirectionalIterativeLengthTask::CompleteFoundLanes(std::bitset<LANE_LIMIT> found_lanes,
@@ -222,8 +252,8 @@ void BidirectionalIterativeLengthTask::UnReachableSet() const {
 void BidirectionalIterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                                std::vector<std::bitset<LANE_LIMIT>> &next,
                                                const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e,
-                                               size_t v_size, idx_t start_vertex) {
-	for (auto i = 0; i < v_size; i++) {
+                                               const std::vector<idx_t> &frontier_vertices, idx_t start_vertex) {
+	for (const auto i : frontier_vertices) {
 		auto active_visit = visit[i] & state->lane_active;
 		if (active_visit.any()) {
 			auto start_edges = v[i].load(std::memory_order_relaxed);
@@ -238,14 +268,15 @@ void BidirectionalIterativeLengthTask::Explore(const std::vector<std::bitset<LAN
 
 void BidirectionalIterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                                   std::vector<std::bitset<LANE_LIMIT>> &next, const atomic<uint32_t> *v,
-                                                  const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex) {
+                                                  const std::vector<uint16_t> &e,
+                                                  const std::vector<idx_t> &frontier_vertices, idx_t start_vertex) {
 	if (!state->benchmark_enabled) {
-		Explore(visit, next, v, e, v_size, start_vertex);
+		Explore(visit, next, v, e, frontier_vertices, start_vertex);
 		return;
 	}
 
 	auto start_time = std::chrono::high_resolution_clock::now();
-	Explore(visit, next, v, e, v_size, start_vertex);
+	Explore(visit, next, v, e, frontier_vertices, start_vertex);
 	auto end_time = std::chrono::high_resolution_clock::now();
 	auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
 
@@ -263,7 +294,7 @@ void BidirectionalIterativeLengthTask::RunExplore(const std::vector<std::bitset<
 #endif
 
 	std::lock_guard<std::mutex> guard(state->log_mutex);
-	state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, v_size, e.size(),
+	state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, state->v_size, e.size(),
 	                                state->local_csrs.size(), state->src_depth + state->dst_depth);
 }
 

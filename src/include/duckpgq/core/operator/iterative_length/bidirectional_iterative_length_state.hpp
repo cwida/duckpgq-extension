@@ -31,11 +31,18 @@ public:
 	vector<bitset<LANE_LIMIT>> dst_visit2;
 
 	vector<bitset<LANE_LIMIT>> worker_meet_masks;
+	vector<idx_t> worker_frontier_counts;
+	vector<vector<idx_t>> worker_frontier_vertices;
+	vector<idx_t> src_frontier_vertices;
+	vector<idx_t> dst_frontier_vertices;
 	int64_t src_depth;
 	int64_t dst_depth;
+	idx_t src_frontier_size;
+	idx_t dst_frontier_size;
 	bool last_side_changed;
 	bool has_more_batches;
 	bool continue_search;
+	bool expand_source_next;
 };
 
 } // namespace duckdb
