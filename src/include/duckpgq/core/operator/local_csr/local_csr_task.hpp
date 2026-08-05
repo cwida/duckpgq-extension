@@ -14,12 +14,14 @@ public:
 
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
 
-	void CreateStatistics() const;
-	void DeterminePartitions() const;
-	void CountOutgoingEdgesPerPartition();
-	idx_t GetPartitionForVertex(idx_t vertex) const;
-	void CreateRunningSum() const;
-	void DistributeEdges();
+	void BuildLocalCSRs(bool reverse);
+	void CreateStatistics(bool reverse, std::vector<int64_t> &statistics_chunks) const;
+	void DeterminePartitions(std::vector<int64_t> &statistics_chunks,
+	                         std::vector<shared_ptr<LocalCSR>> &partition_csrs) const;
+	void CountOutgoingEdgesPerPartition(bool reverse, std::vector<shared_ptr<LocalCSR>> &partition_csrs);
+	idx_t GetPartitionForVertex(idx_t vertex, std::vector<shared_ptr<LocalCSR>> &partition_csrs) const;
+	void CreateRunningSum(std::vector<shared_ptr<LocalCSR>> &partition_csrs) const;
+	void DistributeEdges(bool reverse, std::vector<shared_ptr<LocalCSR>> &partition_csrs);
 
 	shared_ptr<LocalCSRState> &local_csr_state;
 	idx_t worker_id;

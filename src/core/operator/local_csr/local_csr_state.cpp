@@ -18,10 +18,12 @@ static string CreateLocalCSRBenchmarkRunId() {
 }
 
 LocalCSRState::LocalCSRState(ClientContext &context_p, CSR *csr_p, idx_t num_threads_p)
-    : context(context_p), num_threads(num_threads_p), statistics_chunks(BUCKET_COUNT, 0) {
+    : context(context_p), num_threads(num_threads_p), statistics_chunks(BUCKET_COUNT, 0),
+      reverse_statistics_chunks(BUCKET_COUNT, 0) {
 	global_csr = csr_p;
 	tasks_scheduled = 0;
 	partition_index = 0;
+	build_reverse_csr = GetPathFindingBuildReverseCSR(context);
 	benchmark_enabled = GetPathFindingBenchmarkOption(context);
 	benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
 	benchmark_run_id = CreateLocalCSRBenchmarkRunId();

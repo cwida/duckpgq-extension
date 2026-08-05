@@ -45,6 +45,12 @@ string GetPathFindingBenchmarkPrefix(ClientContext &context) {
 	return value.GetValue<string>();
 }
 
+bool GetPathFindingBuildReverseCSR(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_build_reverse_csr", value);
+	return value.GetValue<bool>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -126,6 +132,18 @@ void CorePGQOptions::RegisterPathFindingBenchmarkPrefix(ExtensionLoader &loader)
 	config.AddExtensionOption("experimental_path_finding_operator_benchmark_prefix",
 	                          "Prefix for experimental path-finding operator benchmark CSV files", LogicalType::VARCHAR,
 	                          Value("path_finding_operator"));
+}
+
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingBuildReverseCSR(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+
+	config.AddExtensionOption("experimental_path_finding_operator_build_reverse_csr",
+	                          "Build reverse local CSR partitions for path-finding operator experiments",
+	                          LogicalType::BOOLEAN, Value(false));
 }
 
 } // namespace duckdb

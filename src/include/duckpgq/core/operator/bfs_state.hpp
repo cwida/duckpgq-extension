@@ -5,6 +5,7 @@
 
 #include <duckpgq/core/utils/duckpgq_barrier.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
+#include <chrono>
 #include <thread>
 
 namespace duckdb {
@@ -47,6 +48,7 @@ public:
 	bool benchmark_lane_activity_enabled;
 	string benchmark_output_prefix;
 	string benchmark_run_id;
+	std::chrono::steady_clock::time_point phase_start_time;
 
 	std::vector<int64_t> thread_assignment;
 	UnifiedVectorFormat vdata_src;

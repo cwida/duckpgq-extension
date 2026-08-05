@@ -4,6 +4,8 @@
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 #include "duckpgq/core/utils/duckpgq_barrier.hpp"
 
+#include <chrono>
+
 namespace duckdb {
 
 struct Partition {
@@ -25,11 +27,18 @@ public:
 	unique_ptr<Barrier> barrier;
 
 	std::vector<int64_t> statistics_chunks;
+	std::vector<int64_t> reverse_statistics_chunks;
 	std::vector<shared_ptr<LocalCSR>> partition_csrs;
+	std::vector<shared_ptr<LocalCSR>> reverse_partition_csrs;
 	std::atomic<idx_t> partition_index;
+	bool build_reverse_csr;
 	bool benchmark_enabled;
 	string benchmark_output_prefix;
 	string benchmark_run_id;
+	std::chrono::steady_clock::time_point forward_start_time;
+	std::chrono::steady_clock::time_point forward_end_time;
+	std::chrono::steady_clock::time_point reverse_start_time;
+	std::chrono::steady_clock::time_point reverse_end_time;
 };
 
 } // namespace duckdb

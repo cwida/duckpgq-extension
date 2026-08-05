@@ -11,6 +11,7 @@ double_t GetHeavyPartitionFraction(ClientContext &context);
 bool GetPathFindingBenchmarkOption(ClientContext &context);
 bool GetPathFindingBenchmarkLaneActivityOption(ClientContext &context);
 string GetPathFindingBenchmarkPrefix(ClientContext &context);
+bool GetPathFindingBuildReverseCSR(ClientContext &context);
 
 struct CorePGQOptions {
 	static void Register(ExtensionLoader &loader) {
@@ -21,6 +22,7 @@ struct CorePGQOptions {
 		RegisterPathFindingBenchmark(loader);
 		RegisterPathFindingBenchmarkLaneActivity(loader);
 		RegisterPathFindingBenchmarkPrefix(loader);
+		RegisterPathFindingBuildReverseCSR(loader);
 	}
 
 private:
@@ -31,6 +33,7 @@ private:
 	static void RegisterPathFindingBenchmark(ExtensionLoader &loader);
 	static void RegisterPathFindingBenchmarkLaneActivity(ExtensionLoader &loader);
 	static void RegisterPathFindingBenchmarkPrefix(ExtensionLoader &loader);
+	static void RegisterPathFindingBuildReverseCSR(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

@@ -7,6 +7,7 @@ import statistics
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -17,6 +18,16 @@ GENERATOR_DUCKDB = GENERATOR_ROOT / "build" / "release" / "duckdb"
 GENERATOR_EXTENSION = GENERATOR_ROOT / "build" / "release" / "extension" / "ldbc_data_gen" / "ldbc_data_gen.duckdb_extension"
 BENCH_DUCKDB = REPO_ROOT / "build" / "release" / "duckdb"
 DUCKPGQ_EXTENSION = REPO_ROOT / "build" / "release" / "extension" / "duckpgq" / "duckpgq.duckdb_extension"
+
+
+@dataclass(frozen=True)
+class BenchmarkOptions:
+    attached_db: Path
+    pair_count: int
+    threads: int
+    benchmark_prefix: Path
+    recursive_max_depth: int
+    build_reverse_csr: bool
 
 
 def sql_string(value):
@@ -246,11 +257,13 @@ WITH csr_cte AS (
 """
 
 
-def operator_sql(attached_db, pair_count, threads, benchmark_prefix):
-    pairs = f"ldbc.benchmark_pairs_{pair_count}"
+def operator_sql(options):
+    pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
+    reverse_value = "true" if options.build_reverse_csr else "false"
     return f"""
 SET experimental_path_finding_operator_benchmark=true;
-SET experimental_path_finding_operator_benchmark_prefix={sql_string(benchmark_prefix)};
+SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benchmark_prefix)};
+SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
 {csr_cte("ldbc")}
 SELECT 'operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
@@ -261,7 +274,7 @@ FROM (
 """
 
 
-def csr_sql(attached_db, pair_count, threads, benchmark_prefix):
+def csr_sql(options):
     return f"""
 {csr_cte("ldbc")}
 SELECT 'csr' AS mode, 0::BIGINT AS pair_count, NULL::BIGINT AS reachable_count,
@@ -270,8 +283,8 @@ FROM csr_cte;
 """
 
 
-def scalar_sql(attached_db, pair_count, threads):
-    pairs = f"ldbc.benchmark_pairs_{pair_count}"
+def scalar_sql(options):
+    pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
     person = "ldbc.person"
     return f"""
 {csr_cte("ldbc")},
@@ -289,8 +302,8 @@ FROM (
 """
 
 
-def recursive_sql(attached_db, pair_count, threads, max_depth):
-    pairs = f"ldbc.benchmark_pairs_{pair_count}"
+def recursive_sql(options):
+    pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
     return f"""
 WITH RECURSIVE
 pairs AS (
@@ -317,7 +330,7 @@ dvr(here, there, len) USING KEY (here, there) AS (
         JOIN edges ON edges.dst = dvr.here
         LEFT JOIN recurring.dvr rec ON rec.here = edges.src AND rec.there = dvr.there
         WHERE edges.src <> dvr.there
-          AND dvr.len < {max_depth}
+          AND dvr.len < {options.recursive_max_depth}
           AND dvr.len + 1 < coalesce(rec.len, 9223372036854775807)
         ORDER BY len DESC
     )
@@ -334,12 +347,12 @@ FROM lengths;
 """
 
 
-def setup_sql(attached_db, threads):
+def setup_sql(options):
     return f"""
 LOAD {sql_string(DUCKPGQ_EXTENSION)};
-SET threads={threads};
+SET threads={options.threads};
 SET experimental_path_finding_operator=true;
-ATTACH {sql_string(attached_db)} AS ldbc;
+ATTACH {sql_string(options.attached_db)} AS ldbc;
 -- Initializes DuckPGQState and its internal catalog table outside the timed query.
 -- The CSR id is deliberately absent, so this does not build or retain graph state.
 SELECT delete_csr(2147483647) AS duckpgq_state_init;
@@ -361,15 +374,15 @@ def benchmark_modes(mode):
     return [mode]
 
 
-def mode_sql(mode, attached_db, pair_count, threads, benchmark_prefix, recursive_max_depth):
+def mode_sql(mode, options):
     if mode == "operator":
-        return operator_sql(attached_db, pair_count, threads, benchmark_prefix)
+        return operator_sql(options)
     if mode == "csr":
-        return csr_sql(attached_db, pair_count, threads, benchmark_prefix)
+        return csr_sql(options)
     if mode == "scalar":
-        return scalar_sql(attached_db, pair_count, threads)
+        return scalar_sql(options)
     if mode == "recursive":
-        return recursive_sql(attached_db, pair_count, threads, recursive_max_depth)
+        return recursive_sql(options)
     raise ValueError(f"Unsupported benchmark mode: {mode}")
 
 
@@ -392,6 +405,65 @@ def verify_result_rows(results):
 
 def stdev(values):
     return statistics.stdev(values) if len(values) > 1 else 0.0
+
+
+def phase_timing_path(benchmark_prefix):
+    return Path(str(benchmark_prefix) + "_phase_timing.csv")
+
+
+def read_phase_timing(benchmark_prefix):
+    path = phase_timing_path(benchmark_prefix)
+    result = {
+        "local_csr_forward_s": "",
+        "local_csr_reverse_s": "",
+        "bfs_s": "",
+        "bfs_batches": "",
+        "local_csr_forward_memory_bytes": "",
+        "local_csr_reverse_memory_bytes": "",
+    }
+    if not path.exists():
+        return result
+
+    local_csr_forward_ms = 0.0
+    local_csr_reverse_ms = 0.0
+    bfs_ms = 0.0
+    bfs_batches = 0
+    local_csr_forward_memory = ""
+    local_csr_reverse_memory = ""
+    with path.open(newline="") as handle:
+        for row in csv.DictReader(handle):
+            phase = row["Phase"]
+            time_ms = float(row["Time_ms"])
+            if phase == "local_csr_forward":
+                local_csr_forward_ms += time_ms
+                local_csr_forward_memory = row["MemoryBytes"]
+            elif phase == "local_csr_reverse":
+                local_csr_reverse_ms += time_ms
+                local_csr_reverse_memory = row["MemoryBytes"]
+            elif phase == "bfs_batch":
+                bfs_ms += time_ms
+                bfs_batches += 1
+
+    if local_csr_forward_ms:
+        result["local_csr_forward_s"] = f"{local_csr_forward_ms / 1000.0:.6f}"
+        result["local_csr_forward_memory_bytes"] = local_csr_forward_memory
+    if local_csr_reverse_ms:
+        result["local_csr_reverse_s"] = f"{local_csr_reverse_ms / 1000.0:.6f}"
+        result["local_csr_reverse_memory_bytes"] = local_csr_reverse_memory
+    if bfs_batches:
+        result["bfs_s"] = f"{bfs_ms / 1000.0:.6f}"
+        result["bfs_batches"] = bfs_batches
+    return result
+
+
+def mean_optional(rows, field):
+    values = [float(row[field]) for row in rows if row[field]]
+    return f"{statistics.mean(values):.6f}" if values else ""
+
+
+def stdev_optional(rows, field):
+    values = [float(row[field]) for row in rows if row[field]]
+    return f"{stdev(values):.6f}" if values else ""
 
 
 def summarize_results(results):
@@ -419,6 +491,12 @@ def summarize_results(results):
                 "setup_stdev_s": f"{stdev(setup_times):.6f}",
                 "csr_build_mean_s": f"{statistics.mean(csr_build_times):.6f}" if csr_build_times else "",
                 "csr_build_stdev_s": f"{stdev(csr_build_times):.6f}" if csr_build_times else "",
+                "local_csr_forward_mean_s": mean_optional(rows, "local_csr_forward_s"),
+                "local_csr_forward_stdev_s": stdev_optional(rows, "local_csr_forward_s"),
+                "local_csr_reverse_mean_s": mean_optional(rows, "local_csr_reverse_s"),
+                "local_csr_reverse_stdev_s": stdev_optional(rows, "local_csr_reverse_s"),
+                "bfs_mean_s": mean_optional(rows, "bfs_s"),
+                "bfs_stdev_s": stdev_optional(rows, "bfs_s"),
                 "query_mean_s": f"{statistics.mean(query_times):.6f}",
                 "query_stdev_s": f"{stdev(query_times):.6f}",
                 "query_min_s": f"{min(query_times):.6f}",
@@ -444,8 +522,19 @@ def run_benchmark(args):
     for repeat in range(1, args.repeats + 1):
         for mode in modes:
             prefix = results_dir / f"{mode}_pairs{args.pairs}_threads{args.threads}_repeat{repeat}"
-            query_sql = mode_sql(mode, attached_db, args.pairs, args.threads, prefix, args.recursive_max_depth)
-            output, timers = run_duckdb_timed_script(setup_sql(attached_db, args.threads) + query_sql, args.timeout)
+            phase_path = phase_timing_path(prefix)
+            if phase_path.exists():
+                phase_path.unlink()
+            options = BenchmarkOptions(
+                attached_db=attached_db,
+                pair_count=args.pairs,
+                threads=args.threads,
+                benchmark_prefix=prefix,
+                recursive_max_depth=args.recursive_max_depth,
+                build_reverse_csr=args.build_reverse_csr,
+            )
+            query_sql = mode_sql(mode, options)
+            output, timers = run_duckdb_timed_script(setup_sql(options) + query_sql, args.timeout)
             row = parse_csv_row(output)
             row["scale_factor"] = args.scale_factor
             row["threads"] = args.threads
@@ -460,6 +549,7 @@ def run_benchmark(args):
                 row["csr_build_s"] = ""
                 row["query_s"] = f"{timers[-1]:.6f}"
             row["total_s"] = f"{sum(timers):.6f}"
+            row.update(read_phase_timing(prefix))
             row["database"] = str(attached_db)
             results.append(row)
             print(json.dumps(row, sort_keys=True))
@@ -483,6 +573,12 @@ def run_benchmark(args):
             "max_len",
             "setup_s",
             "csr_build_s",
+            "local_csr_forward_s",
+            "local_csr_reverse_s",
+            "bfs_s",
+            "bfs_batches",
+            "local_csr_forward_memory_bytes",
+            "local_csr_reverse_memory_bytes",
             "query_s",
             "total_s",
             "database",
@@ -510,6 +606,12 @@ def run_benchmark(args):
             "setup_stdev_s",
             "csr_build_mean_s",
             "csr_build_stdev_s",
+            "local_csr_forward_mean_s",
+            "local_csr_forward_stdev_s",
+            "local_csr_reverse_mean_s",
+            "local_csr_reverse_stdev_s",
+            "bfs_mean_s",
+            "bfs_stdev_s",
             "query_mean_s",
             "query_stdev_s",
             "query_min_s",
@@ -543,6 +645,7 @@ def main():
     run_parser.add_argument("--pairs", type=int, default=1024)
     run_parser.add_argument("--repeats", type=int, default=1)
     run_parser.add_argument("--mode", choices=["operator", "csr", "scalar", "recursive", "both", "all"], default="both")
+    run_parser.add_argument("--build-reverse-csr", action="store_true")
     run_parser.add_argument("--recursive-max-depth", type=int, default=8)
     run_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
     run_parser.add_argument("--timeout", type=int, default=300)
