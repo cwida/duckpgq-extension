@@ -29,6 +29,7 @@ class BenchmarkOptions:
     recursive_max_depth: int
     build_reverse_csr: bool
     metrics_enabled: bool
+    push_pull_frontier_gate: int
 
 
 def sql_string(value):
@@ -294,6 +295,25 @@ FROM (
 """
 
 
+def pushpull_operator_sql(options):
+    pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
+    reverse_value = "true" if options.build_reverse_csr else "false"
+    metrics_value = "true" if options.metrics_enabled else "false"
+    return f"""
+SET experimental_path_finding_operator_benchmark={metrics_value};
+SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benchmark_prefix)};
+SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
+SET experimental_path_finding_operator_push_pull_frontier_gate={options.push_pull_frontier_gate};
+{csr_cte("ldbc")}
+SELECT 'pushpull_operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
+       sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
+FROM (
+    SELECT src, dst, pushpulliterativelengthoperator(src, dst, csr_id) AS len
+    FROM {pairs}, csr_cte
+);
+"""
+
+
 def csr_sql(options):
     return f"""
 {csr_cte("ldbc")}
@@ -390,9 +410,9 @@ def benchmark_modes(mode):
     if mode == "both":
         return ["operator", "scalar"]
     if mode == "operators":
-        return ["operator", "bidirectional_operator"]
+        return ["operator", "pushpull_operator", "bidirectional_operator"]
     if mode == "all":
-        return ["operator", "bidirectional_operator", "scalar", "recursive"]
+        return ["operator", "pushpull_operator", "bidirectional_operator", "scalar", "recursive"]
     return [mode]
 
 
@@ -401,6 +421,8 @@ def mode_sql(mode, options):
         return operator_sql(options)
     if mode == "bidirectional_operator":
         return bidirectional_operator_sql(options)
+    if mode == "pushpull_operator":
+        return pushpull_operator_sql(options)
     if mode == "csr":
         return csr_sql(options)
     if mode == "scalar":
@@ -437,6 +459,10 @@ def phase_timing_path(benchmark_prefix):
 
 def bidirectional_phase_detail_path(benchmark_prefix):
     return Path(str(benchmark_prefix) + "_bidirectional_phase_detail.csv")
+
+
+def pushpull_iteration_stats_path(benchmark_prefix):
+    return Path(str(benchmark_prefix) + "_pushpull_iteration_stats.csv")
 
 
 def read_phase_timing(benchmark_prefix):
@@ -557,6 +583,9 @@ def run_benchmark(args):
             bidirectional_phase_path = bidirectional_phase_detail_path(prefix)
             if bidirectional_phase_path.exists():
                 bidirectional_phase_path.unlink()
+            pushpull_iteration_path = pushpull_iteration_stats_path(prefix)
+            if pushpull_iteration_path.exists():
+                pushpull_iteration_path.unlink()
             options = BenchmarkOptions(
                 attached_db=attached_db,
                 pair_count=args.pairs,
@@ -565,6 +594,7 @@ def run_benchmark(args):
                 recursive_max_depth=args.recursive_max_depth,
                 build_reverse_csr=args.build_reverse_csr,
                 metrics_enabled=args.metrics,
+                push_pull_frontier_gate=args.push_pull_frontier_gate,
             )
             query_sql = mode_sql(mode, options)
             output, timers = run_duckdb_timed_script(setup_sql(options) + query_sql, args.timeout)
@@ -682,10 +712,26 @@ def main():
     run_parser.add_argument("--repeats", type=int, default=1)
     run_parser.add_argument(
         "--mode",
-        choices=["operator", "bidirectional_operator", "csr", "scalar", "recursive", "both", "operators", "all"],
+        choices=[
+            "operator",
+            "pushpull_operator",
+            "bidirectional_operator",
+            "csr",
+            "scalar",
+            "recursive",
+            "both",
+            "operators",
+            "all",
+        ],
         default="both",
     )
     run_parser.add_argument("--build-reverse-csr", action="store_true")
+    run_parser.add_argument(
+        "--push-pull-frontier-gate",
+        type=int,
+        default=20,
+        help="Use pull when frontier_vertices * gate is at least the vertex count.",
+    )
     run_parser.add_argument(
         "--metrics",
         action=argparse.BooleanOptionalAction,

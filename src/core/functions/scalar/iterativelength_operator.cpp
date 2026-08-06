@@ -15,6 +15,11 @@ static void BidirectionalIterativeLengthOperatorFunction(DataChunk &args, Expres
 	    "BidirectionalIterativeLengthOperatorFunction not implemented, should have gone to the operator instead.");
 }
 
+static void PushPullIterativeLengthOperatorFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	throw NotImplementedException(
+	    "PushPullIterativeLengthOperatorFunction not implemented, should have gone to the operator instead.");
+}
+
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
@@ -22,6 +27,13 @@ void CoreScalarFunctions::RegisterIterativeLengthOperatorScalarFunction(Extensio
 	loader.RegisterFunction(ScalarFunction(
 	    "iterativelengthoperator", {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT}, LogicalType::BIGINT,
 	    IterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
+}
+
+void CoreScalarFunctions::RegisterPushPullIterativeLengthOperatorScalarFunction(ExtensionLoader &loader) {
+	loader.RegisterFunction(ScalarFunction("pushpulliterativelengthoperator",
+	                                       {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+	                                       LogicalType::BIGINT, PushPullIterativeLengthOperatorFunction,
+	                                       ShortestPathOperatorData::ShortestPathOperatorBind));
 }
 
 void CoreScalarFunctions::RegisterBidirectionalIterativeLengthOperatorScalarFunction(ExtensionLoader &loader) {

@@ -51,6 +51,12 @@ bool GetPathFindingBuildReverseCSR(ClientContext &context) {
 	return value.GetValue<bool>();
 }
 
+int32_t GetPathFindingPushPullFrontierGate(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_push_pull_frontier_gate", value);
+	return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -144,6 +150,19 @@ void CorePGQOptions::RegisterPathFindingBuildReverseCSR(ExtensionLoader &loader)
 	config.AddExtensionOption("experimental_path_finding_operator_build_reverse_csr",
 	                          "Build reverse local CSR partitions for path-finding operator experiments",
 	                          LogicalType::BOOLEAN, Value(false));
+}
+
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingPushPullFrontierGate(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+
+	config.AddExtensionOption(
+	    "experimental_path_finding_operator_push_pull_frontier_gate",
+	    "Use pull in push/pull MS-BFS when frontier_vertices * gate is at least the vertex count",
+	    LogicalType::INTEGER, Value(20));
 }
 
 } // namespace duckdb

@@ -7,6 +7,11 @@ require duckpgq
 statement ok
 set experimental_path_finding_operator=true;
 
+query I
+SELECT delete_csr(2147483647);
+----
+false
+
 statement ok
 CREATE TABLE person(id BIGINT);
 
@@ -97,6 +102,39 @@ SELECT src, dst, bidirectionaliterativelengthoperator(src, dst, csr_id) AS len F
 3	8	3
 4	9	3
 
+query III
+with csr_cte as (
+SELECT cast(min(create_csr_edge(
+        0,
+        (SELECT count(a.id) FROM person a),
+        CAST (
+            (SELECT sum(create_csr_vertex(
+                0,
+                (SELECT count(a.id) FROM person a),
+                sub.dense_id,
+                sub.cnt))
+            FROM (
+                SELECT a.rowid as dense_id, count(k.person1id) as cnt
+                FROM person a
+                LEFT JOIN person_knows_person k ON k.person1id = a.id
+                GROUP BY a.rowid) sub
+            )
+        AS BIGINT),
+        (select count() FROM person_knows_person k JOIN person a on a.id = k.person1id JOIN person c on c.id = k.person2id),
+        a.rowid,
+        c.rowid,
+        k.rowid)) as bigint) as csr_id
+    FROM person_knows_person k
+    JOIN person a on a.id = k.person1id
+    JOIN person c on c.id = k.person2id)
+SELECT src, dst, pushpulliterativelengthoperator(src, dst, csr_id) AS len FROM pairs, csr_cte ORDER BY src, dst;
+----
+0	5	3
+1	6	3
+2	7	3
+3	8	3
+4	9	3
+
 statement ok
 CREATE TABLE directed_person(id BIGINT);
 
@@ -159,6 +197,39 @@ SELECT cast(min(create_csr_edge(
 SELECT count(*) AS pair_count, count(len) AS reachable_count, sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
 FROM (
     SELECT src, dst, bidirectionaliterativelengthoperator(src, dst, csr_id) AS len
+    FROM directed_pairs, csr_cte
+);
+----
+71	69	204	0	3
+
+query IIIII
+with csr_cte as (
+SELECT cast(min(create_csr_edge(
+        0,
+        (SELECT count(a.id) FROM directed_person a),
+        CAST (
+            (SELECT sum(create_csr_vertex(
+                0,
+                (SELECT count(a.id) FROM directed_person a),
+                sub.dense_id,
+                sub.cnt))
+            FROM (
+                SELECT a.rowid as dense_id, count(k.person1id) as cnt
+                FROM directed_person a
+                LEFT JOIN directed_knows k ON k.person1id = a.id
+                GROUP BY a.rowid) sub
+            )
+        AS BIGINT),
+        (select count() FROM directed_knows k JOIN directed_person a on a.id = k.person1id JOIN directed_person c on c.id = k.person2id),
+        a.rowid,
+        c.rowid,
+        k.rowid)) as bigint) as csr_id
+    FROM directed_knows k
+    JOIN directed_person a on a.id = k.person1id
+    JOIN directed_person c on c.id = k.person2id)
+SELECT count(*) AS pair_count, count(len) AS reachable_count, sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
+FROM (
+    SELECT src, dst, pushpulliterativelengthoperator(src, dst, csr_id) AS len
     FROM directed_pairs, csr_cte
 );
 ----
