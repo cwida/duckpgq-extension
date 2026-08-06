@@ -25,7 +25,11 @@ static size_t GetLocalCSREdgeCount(const std::vector<shared_ptr<LocalCSR>> &part
 static size_t GetLocalCSRMemory(const std::vector<shared_ptr<LocalCSR>> &partition_csrs) {
 	size_t memory = 0;
 	for (const auto &local_csr : partition_csrs) {
-		memory += local_csr->v_array_size * sizeof(std::atomic<uint32_t>);
+		if (local_csr->v) {
+			memory += local_csr->v_array_size * sizeof(std::atomic<uint32_t>);
+		}
+		memory += local_csr->source_vertices.capacity() * sizeof(uint32_t);
+		memory += local_csr->row_offsets.capacity() * sizeof(uint32_t);
 		memory += local_csr->e.capacity() * sizeof(uint16_t);
 	}
 	return memory;
@@ -97,14 +101,12 @@ static void WritePartitionStats(const LocalCSRState &state, ClientContext &conte
 		return;
 	}
 
-	size_t vertex_count = partition_csrs[0]->GetVertexSize();
-
 	auto heavy_partition_fraction = std::to_string(GetHeavyPartitionFraction(context));
 	auto light_partition_multiplier = std::to_string(GetLightPartitionMultiplier(context));
 
 	auto suffix = direction == "forward" ? "" : "_" + direction;
 	auto file_name = state.benchmark_output_prefix + suffix + "_partition_stats_" + state.benchmark_run_id + "_" +
-	                 std::to_string(vertex_count) + "_vertices_mphl_" + heavy_partition_fraction + "_" +
+	                 std::to_string(state.global_csr->vsize - 2) + "_vertices_mphl_" + heavy_partition_fraction + "_" +
 	                 light_partition_multiplier + ".csv";
 	std::ofstream outfile(file_name);
 	if (!outfile.is_open()) {
@@ -115,10 +117,16 @@ static void WritePartitionStats(const LocalCSRState &state, ClientContext &conte
 
 	idx_t partition_id = 0;
 	for (const auto &local_csr : partition_csrs) {
+		auto vertex_count = local_csr->GetVertexSize();
 		auto edge_count = local_csr->GetEdgeSize();
 		double edge_per_vertex = vertex_count > 0 ? static_cast<double>(edge_count) / vertex_count : 0.0;
 
-		size_t vertex_mem = local_csr->v_array_size * sizeof(std::atomic<uint32_t>);
+		size_t vertex_mem = 0;
+		if (local_csr->v) {
+			vertex_mem += local_csr->v_array_size * sizeof(std::atomic<uint32_t>);
+		}
+		vertex_mem += local_csr->source_vertices.capacity() * sizeof(uint32_t);
+		vertex_mem += local_csr->row_offsets.capacity() * sizeof(uint32_t);
 		size_t edge_mem = local_csr->e.capacity() * sizeof(uint16_t);
 		size_t total_mem = vertex_mem + edge_mem;
 

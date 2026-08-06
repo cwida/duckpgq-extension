@@ -35,12 +35,10 @@ private:
 	void TimedBarrier(idx_t batch_id, idx_t step_id, BidirectionalSearchSide side, const string &phase);
 
 	idx_t Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit, std::vector<std::bitset<LANE_LIMIT>> &next,
-	              const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e,
-	              const std::vector<idx_t> &frontier_vertices, idx_t start_vertex);
+	              const LocalCSR &local_csr, const std::vector<idx_t> &frontier_vertices);
 
 	idx_t RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit, std::vector<std::bitset<LANE_LIMIT>> &next,
-	                 const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e,
-	                 const std::vector<idx_t> &frontier_vertices, idx_t start_vertex);
+	                 const LocalCSR &local_csr, const std::vector<idx_t> &frontier_vertices);
 
 private:
 	ClientContext &context;

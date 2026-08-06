@@ -20,6 +20,9 @@
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include "duckpgq/common.hpp"
 
+#include <algorithm>
+#include <limits>
+
 namespace duckdb {
 
 class LocalCSR {
@@ -44,10 +47,70 @@ public:
 	string ToString() const;
 
 	size_t GetVertexSize() const {
-		return v_array_size - 2;
+		return sparse_rows_initialized ? source_vertices.size() : v_array_size - 2;
 	}
 	size_t GetEdgeSize() const {
 		return e.size();
+	}
+
+	void FinalizeSparseRows() {
+		if (sparse_rows_initialized) {
+			return;
+		}
+
+		auto source_count = v_array_size - 2;
+		source_vertices.clear();
+		row_offsets.clear();
+		source_vertices.reserve(std::min<size_t>(source_count, e.size()));
+		row_offsets.reserve(source_vertices.capacity() + 1);
+		row_offsets.push_back(0);
+
+		for (idx_t source = 0; source < source_count; source++) {
+			auto start_edges = v[source].load(std::memory_order_relaxed);
+			auto end_edges = v[source + 1].load(std::memory_order_relaxed);
+			if (start_edges == end_edges) {
+				continue;
+			}
+			source_vertices.push_back(static_cast<uint32_t>(source));
+			row_offsets.back() = start_edges;
+			row_offsets.push_back(end_edges);
+		}
+
+		delete[] v;
+		v = nullptr;
+		v_array_size = 0;
+		sparse_rows_initialized = true;
+	}
+
+	bool HasSparseRows() const {
+		return sparse_rows_initialized;
+	}
+
+	idx_t FindSparseRow(idx_t source_vertex) const {
+		auto entry = std::lower_bound(source_vertices.begin(), source_vertices.end(), static_cast<uint32_t>(source_vertex));
+		if (entry == source_vertices.end() || *entry != source_vertex) {
+			return std::numeric_limits<idx_t>::max();
+		}
+		return static_cast<idx_t>(entry - source_vertices.begin());
+	}
+
+	bool GetRowEdges(idx_t source_vertex, uint32_t &start_edges, uint32_t &end_edges) const {
+		if (sparse_rows_initialized) {
+			auto row_idx = FindSparseRow(source_vertex);
+			if (row_idx == std::numeric_limits<idx_t>::max()) {
+				return false;
+			}
+			start_edges = row_offsets[row_idx];
+			end_edges = row_offsets[row_idx + 1];
+			return start_edges != end_edges;
+		}
+
+		if (source_vertex + 1 >= v_array_size) {
+			return false;
+		}
+		start_edges = v[source_vertex].load(std::memory_order_relaxed);
+		end_edges = v[source_vertex + 1].load(std::memory_order_relaxed);
+		return start_edges != end_edges;
 	}
 
 	bool PartitioningDone(size_t partition_size) const {
@@ -57,11 +120,14 @@ public:
 	std::atomic<uint32_t> *v {};
 	size_t v_array_size;
 	std::vector<uint16_t> e;
+	std::vector<uint32_t> source_vertices;
+	std::vector<uint32_t> row_offsets;
 
 	idx_t start_vertex;
 	idx_t end_vertex;
 	bool initialized_v = false;
 	bool initialized_e = false;
+	bool sparse_rows_initialized = false;
 };
 
 class PullCSR {

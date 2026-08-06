@@ -114,6 +114,7 @@ SinkFinalizeType PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 		auto local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
 		if (gstate.mode == "bidirectionaliterativelength") {
 			local_csr_state->build_reverse_csr = true;
+			local_csr_state->finalize_sparse_rows = false;
 		}
 		if (gstate.mode == "pushpulliterativelength") {
 			local_csr_state->build_pull_csr = true;

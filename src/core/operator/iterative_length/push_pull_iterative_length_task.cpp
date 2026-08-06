@@ -186,21 +186,40 @@ void PushPullIterativeLengthTask::PushPullIterativeLength() {
 }
 
 idx_t PushPullIterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
-                                           std::vector<std::bitset<LANE_LIMIT>> &next, const std::atomic<uint32_t> *v,
-                                           const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex) {
+                                           std::vector<std::bitset<LANE_LIMIT>> &next, const LocalCSR &local_csr) {
 	idx_t explored_edges = 0;
 	const bool all_lanes_active = state->lane_active.all();
-	for (idx_t i = 0; i < v_size; i++) {
+	if (local_csr.HasSparseRows()) {
+		for (idx_t row_idx = 0; row_idx < local_csr.source_vertices.size(); row_idx++) {
+			auto source_vertex = local_csr.source_vertices[row_idx];
+			auto lanes = visit[source_vertex];
+			if (!all_lanes_active) {
+				lanes &= state->lane_active;
+			}
+			if (lanes.any()) {
+				auto start_edges = local_csr.row_offsets[row_idx];
+				auto end_edges = local_csr.row_offsets[row_idx + 1];
+				explored_edges += end_edges - start_edges;
+				for (auto offset = start_edges; offset < end_edges; offset++) {
+					auto n = local_csr.e[offset] + local_csr.start_vertex;
+					next[n] |= lanes;
+				}
+			}
+		}
+		return explored_edges;
+	}
+
+	for (idx_t i = 0; i < local_csr.GetVertexSize(); i++) {
 		auto lanes = visit[i];
 		if (!all_lanes_active) {
 			lanes &= state->lane_active;
 		}
 		if (lanes.any()) {
-			auto start_edges = v[i].load(std::memory_order_relaxed);
-			auto end_edges = v[i + 1].load(std::memory_order_relaxed);
+			auto start_edges = local_csr.v[i].load(std::memory_order_relaxed);
+			auto end_edges = local_csr.v[i + 1].load(std::memory_order_relaxed);
 			explored_edges += end_edges - start_edges;
 			for (auto offset = start_edges; offset < end_edges; offset++) {
-				auto n = e[offset] + start_vertex;
+				auto n = local_csr.e[offset] + local_csr.start_vertex;
 				next[n] |= lanes;
 			}
 		}
@@ -209,15 +228,14 @@ idx_t PushPullIterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LI
 }
 
 idx_t PushPullIterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
-                                              std::vector<std::bitset<LANE_LIMIT>> &next, const atomic<uint32_t> *v,
-                                              const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex) {
+                                              std::vector<std::bitset<LANE_LIMIT>> &next, const LocalCSR &local_csr) {
 	if (!state->benchmark_enabled) {
-		Explore(visit, next, v, e, v_size, start_vertex);
+		Explore(visit, next, local_csr);
 		return 0;
 	}
 
 	auto start_time = std::chrono::high_resolution_clock::now();
-	auto explored_edges = Explore(visit, next, v, e, v_size, start_vertex);
+	auto explored_edges = Explore(visit, next, local_csr);
 	auto end_time = std::chrono::high_resolution_clock::now();
 	auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
 
@@ -234,8 +252,9 @@ idx_t PushPullIterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE
 	}
 #endif
 
-	state->worker_timing_data[worker_id].emplace_back(thread_id, core_id, duration_ms, state->num_threads, v_size,
-	                                                  explored_edges, state->local_csrs.size(), state->iter);
+	state->worker_timing_data[worker_id].emplace_back(thread_id, core_id, duration_ms, state->num_threads,
+	                                                  local_csr.GetVertexSize(), explored_edges,
+	                                                  state->local_csrs.size(), state->iter);
 	return explored_edges;
 }
 
@@ -256,8 +275,7 @@ void PushPullIterativeLengthTask::Push(idx_t iteration) {
 		if (!local_csr) {
 			throw InternalException("Tried to reference nullptr for LocalCSR");
 		}
-		explored_edges += RunExplore(visit, next, local_csr->v, local_csr->e, local_csr->GetVertexSize(),
-		                             local_csr->start_vertex);
+		explored_edges += RunExplore(visit, next, *local_csr);
 		explored_vertices += local_csr->GetVertexSize();
 		explored_partitions++;
 	}

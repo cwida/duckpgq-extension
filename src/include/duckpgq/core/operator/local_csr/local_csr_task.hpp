@@ -28,6 +28,7 @@ public:
 	void CreatePullRunningSum(std::vector<shared_ptr<PullCSR>> &pull_partition_csrs) const;
 	void DistributeEdges(bool reverse, std::vector<shared_ptr<LocalCSR>> &partition_csrs);
 	void DistributePullEdges(std::vector<shared_ptr<PullCSR>> &pull_partition_csrs);
+	void FinalizeSparseRows(std::vector<shared_ptr<LocalCSR>> &partition_csrs) const;
 
 	shared_ptr<LocalCSRState> &local_csr_state;
 	idx_t worker_id;

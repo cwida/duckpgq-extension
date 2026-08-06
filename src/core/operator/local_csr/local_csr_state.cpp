@@ -25,6 +25,7 @@ LocalCSRState::LocalCSRState(ClientContext &context_p, CSR *csr_p, idx_t num_thr
 	partition_index = 0;
 	build_reverse_csr = GetPathFindingBuildReverseCSR(context);
 	build_pull_csr = false;
+	finalize_sparse_rows = true;
 	benchmark_enabled = GetPathFindingBenchmarkOption(context);
 	benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
 	benchmark_run_id = CreateLocalCSRBenchmarkRunId();

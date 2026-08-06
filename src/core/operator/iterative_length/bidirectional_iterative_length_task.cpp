@@ -206,8 +206,7 @@ void BidirectionalIterativeLengthTask::ExpandSide(BidirectionalSearchSide side) 
 			throw InternalException("Tried to reference nullptr for LocalCSR");
 		}
 		explored_partitions++;
-		explored_edges += RunExplore(visit, next, local_csr->v, local_csr->e, frontier_vertices,
-		                             local_csr->start_vertex);
+		explored_edges += RunExplore(visit, next, *local_csr, frontier_vertices);
 	}
 	if (state->benchmark_enabled) {
 		auto explore_end_time = std::chrono::high_resolution_clock::now();
@@ -511,21 +510,24 @@ void BidirectionalIterativeLengthTask::TimedBarrier(idx_t batch_id, idx_t step_i
 
 idx_t BidirectionalIterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
                                                std::vector<std::bitset<LANE_LIMIT>> &next,
-                                               const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e,
-                                               const std::vector<idx_t> &frontier_vertices, idx_t start_vertex) {
+                                               const LocalCSR &local_csr,
+                                               const std::vector<idx_t> &frontier_vertices) {
 	idx_t explored_edges = 0;
 	auto &candidate_words = state->worker_candidate_words[worker_id];
 	auto &dirty_candidate_words = state->worker_dirty_candidate_words[worker_id];
 	if (state->lane_active.all() && state->use_candidate_check) {
 		for (const auto i : frontier_vertices) {
 			if (visit[i].any()) {
-				auto start_edges = v[i].load(std::memory_order_relaxed);
-				auto end_edges = v[i + 1].load(std::memory_order_relaxed);
+				uint32_t start_edges;
+				uint32_t end_edges;
+				if (!local_csr.GetRowEdges(i, start_edges, end_edges)) {
+					continue;
+				}
 				if (state->benchmark_enabled) {
 					explored_edges += end_edges - start_edges;
 				}
 				for (auto offset = start_edges; offset < end_edges; offset++) {
-					auto n = e[offset] + start_vertex;
+					auto n = local_csr.e[offset] + local_csr.start_vertex;
 					auto word_idx = n / CANDIDATE_WORD_BITS;
 					auto word_mask = 1ULL << (n % CANDIDATE_WORD_BITS);
 					if (candidate_words[word_idx] == 0) {
@@ -539,13 +541,16 @@ idx_t BidirectionalIterativeLengthTask::Explore(const std::vector<std::bitset<LA
 	} else if (state->lane_active.all()) {
 		for (const auto i : frontier_vertices) {
 			if (visit[i].any()) {
-				auto start_edges = v[i].load(std::memory_order_relaxed);
-				auto end_edges = v[i + 1].load(std::memory_order_relaxed);
+				uint32_t start_edges;
+				uint32_t end_edges;
+				if (!local_csr.GetRowEdges(i, start_edges, end_edges)) {
+					continue;
+				}
 				if (state->benchmark_enabled) {
 					explored_edges += end_edges - start_edges;
 				}
 				for (auto offset = start_edges; offset < end_edges; offset++) {
-					auto n = e[offset] + start_vertex;
+					auto n = local_csr.e[offset] + local_csr.start_vertex;
 					next[n] |= visit[i];
 				}
 			}
@@ -554,13 +559,16 @@ idx_t BidirectionalIterativeLengthTask::Explore(const std::vector<std::bitset<LA
 		for (const auto i : frontier_vertices) {
 			auto active_visit = visit[i] & state->lane_active;
 			if (active_visit.any()) {
-				auto start_edges = v[i].load(std::memory_order_relaxed);
-				auto end_edges = v[i + 1].load(std::memory_order_relaxed);
+				uint32_t start_edges;
+				uint32_t end_edges;
+				if (!local_csr.GetRowEdges(i, start_edges, end_edges)) {
+					continue;
+				}
 				if (state->benchmark_enabled) {
 					explored_edges += end_edges - start_edges;
 				}
 				for (auto offset = start_edges; offset < end_edges; offset++) {
-					auto n = e[offset] + start_vertex;
+					auto n = local_csr.e[offset] + local_csr.start_vertex;
 					auto word_idx = n / CANDIDATE_WORD_BITS;
 					auto word_mask = 1ULL << (n % CANDIDATE_WORD_BITS);
 					if (candidate_words[word_idx] == 0) {
@@ -575,13 +583,16 @@ idx_t BidirectionalIterativeLengthTask::Explore(const std::vector<std::bitset<LA
 		for (const auto i : frontier_vertices) {
 			auto active_visit = visit[i] & state->lane_active;
 			if (active_visit.any()) {
-				auto start_edges = v[i].load(std::memory_order_relaxed);
-				auto end_edges = v[i + 1].load(std::memory_order_relaxed);
+				uint32_t start_edges;
+				uint32_t end_edges;
+				if (!local_csr.GetRowEdges(i, start_edges, end_edges)) {
+					continue;
+				}
 				if (state->benchmark_enabled) {
 					explored_edges += end_edges - start_edges;
 				}
 				for (auto offset = start_edges; offset < end_edges; offset++) {
-					auto n = e[offset] + start_vertex;
+					auto n = local_csr.e[offset] + local_csr.start_vertex;
 					next[n] |= active_visit;
 				}
 			}
@@ -591,16 +602,16 @@ idx_t BidirectionalIterativeLengthTask::Explore(const std::vector<std::bitset<LA
 }
 
 idx_t BidirectionalIterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
-                                                  std::vector<std::bitset<LANE_LIMIT>> &next, const atomic<uint32_t> *v,
-                                                  const std::vector<uint16_t> &e,
-                                                  const std::vector<idx_t> &frontier_vertices, idx_t start_vertex) {
+                                                  std::vector<std::bitset<LANE_LIMIT>> &next,
+                                                  const LocalCSR &local_csr,
+                                                  const std::vector<idx_t> &frontier_vertices) {
 	if (!state->benchmark_enabled) {
-		Explore(visit, next, v, e, frontier_vertices, start_vertex);
+		Explore(visit, next, local_csr, frontier_vertices);
 		return 0;
 	}
 
 	auto start_time = std::chrono::high_resolution_clock::now();
-	auto explored_edges = Explore(visit, next, v, e, frontier_vertices, start_vertex);
+	auto explored_edges = Explore(visit, next, local_csr, frontier_vertices);
 	auto end_time = std::chrono::high_resolution_clock::now();
 	auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
 
@@ -618,8 +629,8 @@ idx_t BidirectionalIterativeLengthTask::RunExplore(const std::vector<std::bitset
 #endif
 
 	std::lock_guard<std::mutex> guard(state->log_mutex);
-	state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, state->v_size, e.size(),
-	                                state->local_csrs.size(), state->src_depth + state->dst_depth);
+	state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, local_csr.GetVertexSize(),
+	                                local_csr.e.size(), state->local_csrs.size(), state->src_depth + state->dst_depth);
 	return explored_edges;
 }
 

@@ -55,6 +55,14 @@ void LocalCSRTask::BuildLocalCSRs(bool reverse) {
 	barrier->Wait(worker_id);
 	DistributeEdges(reverse, partition_csrs); // Phase 5
 	barrier->Wait(worker_id);
+	if (local_csr_state->finalize_sparse_rows) {
+		if (worker_id == 0) {
+			local_csr_state->partition_index = 0;
+		}
+		barrier->Wait(worker_id);
+		FinalizeSparseRows(partition_csrs);
+		barrier->Wait(worker_id);
+	}
 	if (worker_id == 0) {
 		if (reverse) {
 			local_csr_state->reverse_end_time = std::chrono::steady_clock::now();
@@ -127,6 +135,16 @@ void LocalCSRTask::DistributeEdges(bool reverse, std::vector<shared_ptr<LocalCSR
 			idx_t pos = offset.fetch_add(1);
 			csr.e[pos] = local_dst - csr.start_vertex;
 		}
+	}
+}
+
+void LocalCSRTask::FinalizeSparseRows(std::vector<shared_ptr<LocalCSR>> &partition_csrs) const {
+	while (true) {
+		idx_t partition_idx = local_csr_state->partition_index.fetch_add(1);
+		if (partition_idx >= partition_csrs.size()) {
+			break;
+		}
+		partition_csrs[partition_idx]->FinalizeSparseRows();
 	}
 }
 

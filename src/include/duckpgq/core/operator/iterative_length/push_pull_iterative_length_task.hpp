@@ -30,10 +30,10 @@ private:
 	void TimedBarrier(const char *phase, const char *mode, idx_t iteration);
 
 	idx_t Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit, std::vector<std::bitset<LANE_LIMIT>> &next,
-	              const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex);
+	              const LocalCSR &local_csr);
 
 	idx_t RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit, std::vector<std::bitset<LANE_LIMIT>> &next,
-	                 const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex);
+	                 const LocalCSR &local_csr);
 
 private:
 	ClientContext &context;

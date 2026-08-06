@@ -34,6 +34,7 @@ public:
 	std::atomic<idx_t> partition_index;
 	bool build_reverse_csr;
 	bool build_pull_csr;
+	bool finalize_sparse_rows;
 	bool benchmark_enabled;
 	string benchmark_output_prefix;
 	string benchmark_run_id;
