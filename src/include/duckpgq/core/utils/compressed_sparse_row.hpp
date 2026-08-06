@@ -64,6 +64,35 @@ public:
 	bool initialized_e = false;
 };
 
+class PullCSR {
+public:
+	explicit PullCSR(idx_t start_vertex_p, idx_t end_vertex_p)
+	    : start_vertex(start_vertex_p), end_vertex(end_vertex_p), offsets_size(end_vertex_p - start_vertex_p + 1) {
+		offsets = new std::atomic<uint32_t>[offsets_size]();
+	}
+
+	PullCSR(const PullCSR &) = delete;
+	PullCSR &operator=(const PullCSR &) = delete;
+
+	~PullCSR() {
+		delete[] offsets;
+	}
+
+	size_t GetVertexSize() const {
+		return offsets_size - 1;
+	}
+	size_t GetEdgeSize() const {
+		return predecessors.size();
+	}
+
+	std::atomic<uint32_t> *offsets {};
+	size_t offsets_size;
+	std::vector<uint32_t> predecessors;
+
+	idx_t start_vertex;
+	idx_t end_vertex;
+};
+
 class CSR {
 public:
 	CSR() = default;

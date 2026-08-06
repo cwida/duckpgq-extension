@@ -21,39 +21,71 @@ PushPullIterativeLengthTask::PushPullIterativeLengthTask(shared_ptr<Event> event
 
 TaskExecutionResult PushPullIterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 	auto &barrier = state->barrier;
-	while (state->started_searches < state->pairs->size()) {
-		barrier->Wait(worker_id);
+	while (true) {
+		if (worker_id == 0) {
+			state->has_more_batches = state->started_searches < state->pairs->size();
+		}
+		TimedBarrier("barrier_after_batch_decision", "batch", state->iter);
+		if (!state->has_more_batches) {
+			break;
+		}
 
 		if (worker_id == 0) {
+			state->current_batch++;
+			auto start_time = std::chrono::steady_clock::now();
 			state->InitializeLanes();
+			auto end_time = std::chrono::steady_clock::now();
+			auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+			RecordPhaseTiming("initialize_lanes", "batch", state->iter, 0, state->pairs->size(), 0, state->active, 0,
+			                  duration_ms);
 		}
-		barrier->Wait(worker_id);
+		TimedBarrier("barrier_after_initialize_lanes", "batch", state->iter);
 		do {
+			auto iteration = static_cast<idx_t>(state->iter);
 			PushPullIterativeLength();
-			barrier->Wait(worker_id);
+			TimedBarrier("barrier_before_reach_detect", state->use_pull ? "pull" : "push", iteration);
 			if (worker_id == 0) {
+				auto start_time = std::chrono::steady_clock::now();
 				ReachDetect();
+				auto end_time = std::chrono::steady_clock::now();
+				auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+				RecordPhaseTiming("reach_detect", state->use_pull ? "pull" : "push", iteration, 0, LANE_LIMIT, 0,
+				                  state->active, 0, duration_ms);
 			}
-			barrier->Wait(worker_id);
-		} while (state->change);
+			TimedBarrier("barrier_after_reach_detect", state->use_pull ? "pull" : "push", iteration);
+			if (worker_id == 0) {
+				state->continue_search = state->change;
+			}
+			TimedBarrier("barrier_after_search_decision", state->use_pull ? "pull" : "push", iteration);
+		} while (state->continue_search);
 		if (worker_id == 0) {
+			auto start_time = std::chrono::steady_clock::now();
 			UnReachableSet();
+			auto end_time = std::chrono::steady_clock::now();
+			auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+			RecordPhaseTiming("unreachable_set", "batch", state->iter, 0, LANE_LIMIT, 0, 0, 0, duration_ms);
 		}
 
-		barrier->Wait(worker_id);
+		TimedBarrier("barrier_before_clear_state", "batch", state->iter);
 		if (worker_id == 0) {
+			auto start_time = std::chrono::steady_clock::now();
 			state->Clear();
+			auto end_time = std::chrono::steady_clock::now();
+			auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+			RecordPhaseTiming("clear_state", "batch", state->iter, 0, static_cast<idx_t>(state->v_size) * 3, 0, 0, 0,
+			                  duration_ms);
 		}
-		barrier->Wait(worker_id);
+		TimedBarrier("barrier_after_clear_state", "batch", state->iter);
 	}
 
 	event->FinishTask();
 	return TaskExecutionResult::TASK_FINISHED;
 }
 
-idx_t PushPullIterativeLengthTask::CountFrontierVertices(const std::vector<std::bitset<LANE_LIMIT>> &visit) const {
+idx_t PushPullIterativeLengthTask::CountFrontierVertices(const std::vector<std::bitset<LANE_LIMIT>> &visit,
+                                                         idx_t start_vertex, idx_t end_vertex) const {
 	idx_t frontier_vertices = 0;
-	for (idx_t i = 0; i < state->v_size; i++) {
+	for (idx_t i = start_vertex; i < end_vertex; i++) {
 		if ((visit[i] & state->lane_active).any()) {
 			frontier_vertices++;
 		}
@@ -64,23 +96,59 @@ idx_t PushPullIterativeLengthTask::CountFrontierVertices(const std::vector<std::
 void PushPullIterativeLengthTask::PushPullIterativeLength() {
 	auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
 	auto &next = state->iter & 1 ? state->visit2 : state->visit1;
-	auto &barrier = state->barrier;
+	auto iteration = static_cast<idx_t>(state->iter);
+	const char *mode_name;
 
 	if (worker_id == 0) {
-		state->frontier_vertices = CountFrontierVertices(visit);
-		state->use_pull =
-		    state->frontier_vertices * state->pull_frontier_gate >= static_cast<idx_t>(state->v_size);
-		if (state->benchmark_enabled) {
-			state->iteration_stats.push_back({static_cast<idx_t>(state->iter), state->use_pull ? "pull" : "push",
-			                                  state->active, state->frontier_vertices, static_cast<idx_t>(state->v_size),
-			                                  state->pull_frontier_gate});
-		}
 		state->change = false;
 		state->partition_counter = 0;
 		state->local_csr_counter = 0;
+		state->pull_block_counter = 0;
 	}
-	barrier->Wait(worker_id);
+	TimedBarrier("barrier_before_frontier_count", "decide", iteration);
 
+	idx_t vertices_per_worker = (static_cast<idx_t>(state->v_size) + state->tasks_scheduled - 1) / state->tasks_scheduled;
+	idx_t vertex_start = worker_id * vertices_per_worker;
+	idx_t vertex_end = std::min(vertex_start + vertices_per_worker, static_cast<idx_t>(state->v_size));
+	auto frontier_count_start_time = std::chrono::steady_clock::now();
+	auto local_frontier_vertices = CountFrontierVertices(visit, vertex_start, vertex_end);
+	auto frontier_count_end_time = std::chrono::steady_clock::now();
+	state->frontier_count_by_worker[worker_id] = local_frontier_vertices;
+	RecordPhaseTiming("frontier_count", "decide", iteration, 0, vertex_end - vertex_start, 0, local_frontier_vertices,
+	                  0,
+	                  std::chrono::duration<double, std::milli>(frontier_count_end_time - frontier_count_start_time)
+	                      .count());
+
+	TimedBarrier("barrier_after_frontier_count", "decide", iteration);
+	if (worker_id == 0) {
+		idx_t total_frontier_vertices = 0;
+		auto decide_start_time = std::chrono::steady_clock::now();
+		for (idx_t i = 0; i < state->tasks_scheduled; i++) {
+			total_frontier_vertices += state->frontier_count_by_worker[i];
+		}
+		state->frontier_vertices = total_frontier_vertices;
+		state->use_pull =
+		    state->frontier_vertices * state->pull_frontier_gate >= static_cast<idx_t>(state->v_size);
+		auto decide_end_time = std::chrono::steady_clock::now();
+		if (state->benchmark_enabled) {
+			state->iteration_stats.push_back({state->current_batch, static_cast<idx_t>(state->iter),
+			                                  state->use_pull ? "pull" : "push",
+			                                  state->active, state->frontier_vertices, static_cast<idx_t>(state->v_size),
+			                                  state->pull_frontier_gate});
+		}
+		state->partition_counter = 0;
+		state->local_csr_counter = 0;
+		state->pull_block_counter = 0;
+		RecordPhaseTiming("choose_mode", state->use_pull ? "pull" : "push", iteration, 0, state->tasks_scheduled, 0,
+		                  state->frontier_vertices, 0,
+		                  std::chrono::duration<double, std::milli>(decide_end_time - decide_start_time).count());
+	}
+	TimedBarrier("barrier_after_choose_mode", state->use_pull ? "pull" : "push", iteration);
+	mode_name = state->use_pull ? "pull" : "push";
+
+	auto clear_start_time = std::chrono::steady_clock::now();
+	idx_t cleared_vertices = 0;
+	idx_t cleared_partitions = 0;
 	while (true) {
 		auto partition_idx = state->partition_counter.fetch_add(1);
 		if (partition_idx >= state->local_csrs.size()) {
@@ -89,20 +157,26 @@ void PushPullIterativeLengthTask::PushPullIterativeLength() {
 		auto &local_csr = state->local_csrs[partition_idx];
 		for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
 			next[i] = 0;
+			cleared_vertices++;
 		}
+		cleared_partitions++;
 	}
-	barrier->Wait(worker_id);
+	auto clear_end_time = std::chrono::steady_clock::now();
+	RecordPhaseTiming("clear_next", mode_name, iteration, cleared_partitions, cleared_vertices, 0, 0, 0,
+	                  std::chrono::duration<double, std::milli>(clear_end_time - clear_start_time).count());
+	TimedBarrier("barrier_after_clear_next", mode_name, iteration);
 
 	if (worker_id == 0) {
 		state->partition_counter = 0;
 		state->local_csr_counter = 0;
+		state->pull_block_counter = 0;
 	}
-	barrier->Wait(worker_id);
+	TimedBarrier("barrier_after_clear_counter_reset", mode_name, iteration);
 
 	if (state->use_pull) {
-		Pull();
+		Pull(iteration);
 	} else {
-		Push();
+		Push(iteration);
 	}
 
 	if (worker_id == 0) {
@@ -160,17 +234,19 @@ idx_t PushPullIterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE
 	}
 #endif
 
-	std::lock_guard<std::mutex> guard(state->log_mutex);
-	state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, v_size, explored_edges,
-	                                state->local_csrs.size(), state->iter);
+	state->worker_timing_data[worker_id].emplace_back(thread_id, core_id, duration_ms, state->num_threads, v_size,
+	                                                  explored_edges, state->local_csrs.size(), state->iter);
 	return explored_edges;
 }
 
-void PushPullIterativeLengthTask::Push() {
+void PushPullIterativeLengthTask::Push(idx_t iteration) {
 	auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
 	auto &next = state->iter & 1 ? state->visit2 : state->visit1;
-	auto &barrier = state->barrier;
 
+	auto explore_start_time = std::chrono::steady_clock::now();
+	idx_t explored_partitions = 0;
+	idx_t explored_vertices = 0;
+	idx_t explored_edges = 0;
 	while (true) {
 		auto partition_idx = state->local_csr_counter.fetch_add(1);
 		if (partition_idx >= state->local_csrs.size()) {
@@ -180,80 +256,123 @@ void PushPullIterativeLengthTask::Push() {
 		if (!local_csr) {
 			throw InternalException("Tried to reference nullptr for LocalCSR");
 		}
-		RunExplore(visit, next, local_csr->v, local_csr->e, local_csr->GetVertexSize(), local_csr->start_vertex);
+		explored_edges += RunExplore(visit, next, local_csr->v, local_csr->e, local_csr->GetVertexSize(),
+		                             local_csr->start_vertex);
+		explored_vertices += local_csr->GetVertexSize();
+		explored_partitions++;
 	}
+	auto explore_end_time = std::chrono::steady_clock::now();
+	RecordPhaseTiming("push_explore", "push", iteration, explored_partitions, explored_vertices, explored_edges, 0, 0,
+	                  std::chrono::duration<double, std::milli>(explore_end_time - explore_start_time).count());
 
-	barrier->Wait(worker_id);
+	TimedBarrier("barrier_after_push_explore", "push", iteration);
 	if (worker_id == 0) {
 		state->partition_counter = 0;
 	}
-	barrier->Wait(worker_id);
+	TimedBarrier("barrier_after_push_check_counter_reset", "push", iteration);
 
+	auto check_start_time = std::chrono::steady_clock::now();
+	idx_t checked_partitions = 0;
+	idx_t checked_vertices = 0;
+	idx_t candidate_vertices = 0;
+	idx_t changed_vertices = 0;
 	while (true) {
 		auto partition_idx = state->partition_counter.fetch_add(1);
 		if (partition_idx >= state->local_csrs.size()) {
 			break;
 		}
-		CheckChange(state->seen, next, state->local_csrs[partition_idx]);
+		idx_t local_candidates = 0;
+		changed_vertices += CheckChange(state->seen, next, state->local_csrs[partition_idx], local_candidates);
+		candidate_vertices += local_candidates;
+		checked_vertices += state->local_csrs[partition_idx]->end_vertex - state->local_csrs[partition_idx]->start_vertex;
+		checked_partitions++;
 	}
-	barrier->Wait(worker_id);
+	auto check_end_time = std::chrono::steady_clock::now();
+	RecordPhaseTiming("push_check", "push", iteration, checked_partitions, checked_vertices, 0, candidate_vertices,
+	                  changed_vertices,
+	                  std::chrono::duration<double, std::milli>(check_end_time - check_start_time).count());
+	TimedBarrier("barrier_after_push_check", "push", iteration);
 }
 
-void PushPullIterativeLengthTask::Pull() {
-	if (state->reverse_local_csrs.empty()) {
-		throw InternalException("Push/pull path finding requires reverse local CSR partitions.");
+void PushPullIterativeLengthTask::Pull(idx_t iteration) {
+	if (state->pull_local_csrs.empty()) {
+		throw InternalException("Push/pull path finding requires pull CSR partitions.");
 	}
 
 	auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
 	auto &next = state->iter & 1 ? state->visit2 : state->visit1;
-	auto vertices_per_worker =
-	    (static_cast<idx_t>(state->v_size) + state->tasks_scheduled - 1) / state->tasks_scheduled;
-	auto vertex_start = worker_id * vertices_per_worker;
-	auto vertex_end = std::min(vertex_start + vertices_per_worker, static_cast<idx_t>(state->v_size));
 	bool local_change = false;
 
-	for (idx_t vertex = vertex_start; vertex < vertex_end; vertex++) {
-		auto lanes = ~state->seen[vertex];
-		lanes &= state->lane_active;
-		if (!lanes.any()) {
-			continue;
+	auto pull_start_time = std::chrono::steady_clock::now();
+	idx_t pulled_partitions = 0;
+	idx_t scanned_vertices = 0;
+	idx_t scanned_edges = 0;
+	idx_t candidate_vertices = 0;
+	idx_t changed_vertices = 0;
+	while (true) {
+		auto block_idx = state->pull_block_counter.fetch_add(1);
+		if (block_idx >= static_cast<int64_t>(state->pull_blocks.size())) {
+			break;
+		}
+		auto &pull_block = state->pull_blocks[block_idx];
+
+		auto pull_csr = state->pull_local_csrs[pull_block.partition_idx].get();
+		if (!pull_csr) {
+			throw InternalException("Tried to reference nullptr for PullCSR");
 		}
 
-		std::bitset<LANE_LIMIT> found;
-		for (const auto &reverse_csr : state->reverse_local_csrs) {
-			auto start_edges = reverse_csr->v[vertex].load(std::memory_order_relaxed);
-			auto end_edges = reverse_csr->v[vertex + 1].load(std::memory_order_relaxed);
+		pulled_partitions++;
+		scanned_vertices += pull_block.local_end - pull_block.local_start;
+		for (idx_t local_vertex = pull_block.local_start; local_vertex < pull_block.local_end; local_vertex++) {
+			idx_t vertex = pull_csr->start_vertex + local_vertex;
+			auto lanes = ~state->seen[vertex];
+			lanes &= state->lane_active;
+			if (!lanes.any()) {
+				continue;
+			}
+			candidate_vertices++;
+
+			std::bitset<LANE_LIMIT> found;
+			auto start_edges = pull_csr->offsets[local_vertex].load(std::memory_order_relaxed);
+			auto end_edges = pull_csr->offsets[local_vertex + 1].load(std::memory_order_relaxed);
 			for (auto offset = start_edges; offset < end_edges; offset++) {
-				auto predecessor = reverse_csr->e[offset] + reverse_csr->start_vertex;
+				scanned_edges++;
+				auto predecessor = pull_csr->predecessors[offset];
 				found |= visit[predecessor] & lanes;
 				if ((found & lanes) == lanes) {
 					break;
 				}
 			}
-			if ((found & lanes) == lanes) {
-				break;
+
+			found &= lanes;
+			if (found.any()) {
+				next[vertex] = found;
+				state->seen[vertex] |= found;
+				local_change = true;
+				changed_vertices++;
 			}
 		}
-
-		found &= lanes;
-		if (found.any()) {
-			next[vertex] = found;
-			state->seen[vertex] |= found;
-			local_change = true;
-		}
 	}
+	auto pull_end_time = std::chrono::steady_clock::now();
+	RecordPhaseTiming("pull_scan", "pull", iteration, pulled_partitions, scanned_vertices, scanned_edges,
+	                  candidate_vertices, changed_vertices,
+	                  std::chrono::duration<double, std::milli>(pull_end_time - pull_start_time).count());
 
 	if (local_change) {
+		auto change_start_time = std::chrono::steady_clock::now();
 		std::lock_guard<std::mutex> lock(state->change_lock);
 		state->change = true;
+		auto change_end_time = std::chrono::steady_clock::now();
+		RecordPhaseTiming("set_change", "pull", iteration, 0, 0, 0, 0, 0,
+		                  std::chrono::duration<double, std::milli>(change_end_time - change_start_time).count());
 	}
-	state->barrier->Wait(worker_id);
+	TimedBarrier("barrier_after_pull", "pull", iteration);
 }
 
-void PushPullIterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen,
-                                              std::vector<std::bitset<LANE_LIMIT>> &next,
-                                              shared_ptr<LocalCSR> &local_csr) const {
-	bool local_change = false;
+idx_t PushPullIterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen,
+                                               std::vector<std::bitset<LANE_LIMIT>> &next,
+                                               shared_ptr<LocalCSR> &local_csr, idx_t &candidate_vertices) const {
+	idx_t changed_vertices = 0;
 	const bool all_lanes_active = state->lane_active.all();
 	for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
 		auto lanes = next[i];
@@ -264,13 +383,36 @@ void PushPullIterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT
 			lanes &= ~seen[i];
 			next[i] = lanes;
 			seen[i] |= lanes;
-			local_change |= lanes.any();
+			candidate_vertices++;
+			if (lanes.any()) {
+				changed_vertices++;
+			}
 		}
 	}
-	if (local_change) {
+	if (changed_vertices > 0) {
 		std::lock_guard<std::mutex> lock(state->change_lock);
 		state->change = true;
 	}
+	return changed_vertices;
+}
+
+void PushPullIterativeLengthTask::RecordPhaseTiming(const char *phase, const char *mode, idx_t iteration,
+                                                    idx_t partition_count, idx_t vertices, idx_t edges,
+                                                    idx_t candidates, idx_t changed_vertices, double time_ms) const {
+	if (!state->benchmark_enabled) {
+		return;
+	}
+	state->phase_timing_data[worker_id].push_back(
+	    {state->current_batch, iteration, mode, phase, worker_id, state->active, state->frontier_vertices,
+	     static_cast<idx_t>(state->v_size), partition_count, vertices, edges, candidates, changed_vertices, time_ms});
+}
+
+void PushPullIterativeLengthTask::TimedBarrier(const char *phase, const char *mode, idx_t iteration) {
+	auto start_time = std::chrono::steady_clock::now();
+	state->barrier->Wait(worker_id);
+	auto end_time = std::chrono::steady_clock::now();
+	RecordPhaseTiming(phase, mode, iteration, 0, 0, 0, 0, 0,
+	                  std::chrono::duration<double, std::milli>(end_time - start_time).count());
 }
 
 void PushPullIterativeLengthTask::ReachDetect() const {

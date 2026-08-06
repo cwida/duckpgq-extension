@@ -44,7 +44,7 @@ void PushPullIterativeLengthEvent::Schedule() {
 	gbfs_state->phase_start_time = std::chrono::steady_clock::now();
 	auto &context = pipeline->GetClientContext();
 	vector<shared_ptr<Task>> bfs_tasks;
-	idx_t num_partitions = std::max(gbfs_state->local_csrs.size(), gbfs_state->reverse_local_csrs.size());
+	idx_t num_partitions = std::max(gbfs_state->local_csrs.size(), gbfs_state->pull_local_csrs.size());
 	for (idx_t tnum = 0; tnum < std::min(gbfs_state->num_threads, num_partitions); tnum++) {
 		bfs_tasks.push_back(make_uniq<PushPullIterativeLengthTask>(shared_from_this(), context, gbfs_state, tnum, op));
 		gbfs_state->tasks_scheduled++;
@@ -71,6 +71,9 @@ void PushPullIterativeLengthEvent::FinishEvent() {
 
 	auto iteration_stats_file_name = gbfs_state->benchmark_output_prefix + "_pushpull_iteration_stats.csv";
 	gbfs_state->WriteIterationStats(iteration_stats_file_name);
+
+	auto phase_detail_file_name = gbfs_state->benchmark_output_prefix + "_pushpull_phase_detail.csv";
+	gbfs_state->WritePhaseTimingResults(phase_detail_file_name);
 }
 
 } // namespace duckdb

@@ -31,6 +31,23 @@ static size_t GetLocalCSRMemory(const std::vector<shared_ptr<LocalCSR>> &partiti
 	return memory;
 }
 
+static size_t GetPullCSREdgeCount(const std::vector<shared_ptr<PullCSR>> &pull_partition_csrs) {
+	size_t edge_count = 0;
+	for (const auto &pull_csr : pull_partition_csrs) {
+		edge_count += pull_csr->GetEdgeSize();
+	}
+	return edge_count;
+}
+
+static size_t GetPullCSRMemory(const std::vector<shared_ptr<PullCSR>> &pull_partition_csrs) {
+	size_t memory = 0;
+	for (const auto &pull_csr : pull_partition_csrs) {
+		memory += pull_csr->offsets_size * sizeof(std::atomic<uint32_t>);
+		memory += pull_csr->predecessors.capacity() * sizeof(uint32_t);
+	}
+	return memory;
+}
+
 static void AppendPhaseTiming(const LocalCSRState &state, const string &phase,
                               const std::vector<shared_ptr<LocalCSR>> &partition_csrs, double time_ms) {
 	if (!state.benchmark_enabled) {
@@ -51,6 +68,27 @@ static void AppendPhaseTiming(const LocalCSRState &state, const string &phase,
 	outfile << phase << "," << state.benchmark_run_id << "," << state.num_threads << ",0," << vertex_count << ","
 	        << GetLocalCSREdgeCount(partition_csrs) << "," << partition_csrs.size() << "," << time_ms << ","
 	        << GetLocalCSRMemory(partition_csrs) << "\n";
+}
+
+static void AppendPullPhaseTiming(const LocalCSRState &state, double time_ms) {
+	if (!state.benchmark_enabled) {
+		return;
+	}
+
+	auto file_name = state.benchmark_output_prefix + "_phase_timing.csv";
+	lock_guard<mutex> lock(local_csr_phase_timing_lock);
+	bool write_header = !std::filesystem::exists(file_name);
+	std::ofstream outfile(file_name, std::ios::app);
+	if (!outfile.is_open()) {
+		throw IOException("Could not open path-finding phase benchmark file \"%s\"", file_name);
+	}
+	if (write_header) {
+		outfile << "Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes\n";
+	}
+	auto vertex_count = state.global_csr->vsize - 2;
+	outfile << "local_csr_pull," << state.benchmark_run_id << "," << state.num_threads << ",0," << vertex_count << ","
+	        << GetPullCSREdgeCount(state.pull_partition_csrs) << "," << state.pull_partition_csrs.size() << ","
+	        << time_ms << "," << GetPullCSRMemory(state.pull_partition_csrs) << "\n";
 }
 
 static void WritePartitionStats(const LocalCSRState &state, ClientContext &context,
@@ -92,6 +130,42 @@ static void WritePartitionStats(const LocalCSRState &state, ClientContext &conte
 	}
 }
 
+static void WritePullPartitionStats(const LocalCSRState &state, ClientContext &context) {
+	if (state.pull_partition_csrs.empty()) {
+		return;
+	}
+
+	auto heavy_partition_fraction = std::to_string(GetHeavyPartitionFraction(context));
+	auto light_partition_multiplier = std::to_string(GetLightPartitionMultiplier(context));
+
+	auto file_name = state.benchmark_output_prefix + "_pull_partition_stats_" + state.benchmark_run_id + "_" +
+	                 std::to_string(state.global_csr->vsize - 2) + "_vertices_mphl_" + heavy_partition_fraction + "_" +
+	                 light_partition_multiplier + ".csv";
+	std::ofstream outfile(file_name);
+	if (!outfile.is_open()) {
+		throw IOException("Could not open path-finding partition benchmark file \"%s\"", file_name);
+	}
+	outfile << "PartitionID,StartVertex,EndVertex,VertexCount,EdgeCount,EdgePerVertex,VertexMemBytes,EdgeMemBytes,"
+	           "TotalMemBytes\n";
+
+	idx_t partition_id = 0;
+	for (const auto &pull_csr : state.pull_partition_csrs) {
+		auto vertex_count = pull_csr->GetVertexSize();
+		auto edge_count = pull_csr->GetEdgeSize();
+		double edge_per_vertex = vertex_count > 0 ? static_cast<double>(edge_count) / vertex_count : 0.0;
+
+		size_t vertex_mem = pull_csr->offsets_size * sizeof(std::atomic<uint32_t>);
+		size_t edge_mem = pull_csr->predecessors.capacity() * sizeof(uint32_t);
+		size_t total_mem = vertex_mem + edge_mem;
+
+		outfile << partition_id << "," << pull_csr->start_vertex << "," << pull_csr->end_vertex << "," << vertex_count
+		        << "," << edge_count << "," << edge_per_vertex << "," << vertex_mem << "," << edge_mem << ","
+		        << total_mem << "\n";
+
+		partition_id++;
+	}
+}
+
 LocalCSREvent::LocalCSREvent(shared_ptr<LocalCSRState> local_csr_state_p, Pipeline &pipeline_p,
                              const PhysicalPathFinding &op_p, ClientContext &context_p)
     : BasePipelineEvent(pipeline_p), local_csr_state(std::move(local_csr_state_p)), op(op_p), context(context_p) {
@@ -120,6 +194,10 @@ void LocalCSREvent::FinishEvent() {
 	          [](const shared_ptr<LocalCSR> &a, const shared_ptr<LocalCSR> &b) {
 		          return a->GetEdgeSize() > b->GetEdgeSize(); // Sort by edge count
 	          });
+	std::sort(local_csr_state->pull_partition_csrs.begin(), local_csr_state->pull_partition_csrs.end(),
+	          [](const shared_ptr<PullCSR> &a, const shared_ptr<PullCSR> &b) {
+		          return a->GetEdgeSize() > b->GetEdgeSize(); // Sort by edge count
+	          });
 
 	if (!local_csr_state->benchmark_enabled) {
 		return;
@@ -132,6 +210,11 @@ void LocalCSREvent::FinishEvent() {
 		AppendPhaseTiming(*local_csr_state, "local_csr_reverse", local_csr_state->reverse_partition_csrs,
 		                  ElapsedMs(local_csr_state->reverse_start_time, local_csr_state->reverse_end_time));
 		WritePartitionStats(*local_csr_state, context, local_csr_state->reverse_partition_csrs, "reverse");
+	}
+	if (local_csr_state->build_pull_csr) {
+		AppendPullPhaseTiming(*local_csr_state,
+		                      ElapsedMs(local_csr_state->pull_start_time, local_csr_state->pull_end_time));
+		WritePullPartitionStats(*local_csr_state, context);
 	}
 }
 

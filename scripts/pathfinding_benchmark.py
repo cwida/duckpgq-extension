@@ -465,25 +465,33 @@ def pushpull_iteration_stats_path(benchmark_prefix):
     return Path(str(benchmark_prefix) + "_pushpull_iteration_stats.csv")
 
 
+def pushpull_phase_detail_path(benchmark_prefix):
+    return Path(str(benchmark_prefix) + "_pushpull_phase_detail.csv")
+
+
 def read_phase_timing(benchmark_prefix):
     path = phase_timing_path(benchmark_prefix)
     result = {
         "local_csr_forward_s": "",
         "local_csr_reverse_s": "",
+        "local_csr_pull_s": "",
         "bfs_s": "",
         "bfs_batches": "",
         "local_csr_forward_memory_bytes": "",
         "local_csr_reverse_memory_bytes": "",
+        "local_csr_pull_memory_bytes": "",
     }
     if not path.exists():
         return result
 
     local_csr_forward_ms = 0.0
     local_csr_reverse_ms = 0.0
+    local_csr_pull_ms = 0.0
     bfs_ms = 0.0
     bfs_batches = 0
     local_csr_forward_memory = ""
     local_csr_reverse_memory = ""
+    local_csr_pull_memory = ""
     with path.open(newline="") as handle:
         for row in csv.DictReader(handle):
             phase = row["Phase"]
@@ -494,6 +502,9 @@ def read_phase_timing(benchmark_prefix):
             elif phase == "local_csr_reverse":
                 local_csr_reverse_ms += time_ms
                 local_csr_reverse_memory = row["MemoryBytes"]
+            elif phase == "local_csr_pull":
+                local_csr_pull_ms += time_ms
+                local_csr_pull_memory = row["MemoryBytes"]
             elif phase == "bfs_batch":
                 bfs_ms += time_ms
                 bfs_batches += 1
@@ -504,6 +515,9 @@ def read_phase_timing(benchmark_prefix):
     if local_csr_reverse_ms:
         result["local_csr_reverse_s"] = f"{local_csr_reverse_ms / 1000.0:.6f}"
         result["local_csr_reverse_memory_bytes"] = local_csr_reverse_memory
+    if local_csr_pull_ms:
+        result["local_csr_pull_s"] = f"{local_csr_pull_ms / 1000.0:.6f}"
+        result["local_csr_pull_memory_bytes"] = local_csr_pull_memory
     if bfs_batches:
         result["bfs_s"] = f"{bfs_ms / 1000.0:.6f}"
         result["bfs_batches"] = bfs_batches
@@ -550,6 +564,8 @@ def summarize_results(results):
                 "local_csr_forward_stdev_s": stdev_optional(rows, "local_csr_forward_s"),
                 "local_csr_reverse_mean_s": mean_optional(rows, "local_csr_reverse_s"),
                 "local_csr_reverse_stdev_s": stdev_optional(rows, "local_csr_reverse_s"),
+                "local_csr_pull_mean_s": mean_optional(rows, "local_csr_pull_s"),
+                "local_csr_pull_stdev_s": stdev_optional(rows, "local_csr_pull_s"),
                 "bfs_mean_s": mean_optional(rows, "bfs_s"),
                 "bfs_stdev_s": stdev_optional(rows, "bfs_s"),
                 "query_mean_s": f"{statistics.mean(query_times):.6f}",
@@ -586,6 +602,9 @@ def run_benchmark(args):
             pushpull_iteration_path = pushpull_iteration_stats_path(prefix)
             if pushpull_iteration_path.exists():
                 pushpull_iteration_path.unlink()
+            pushpull_phase_path = pushpull_phase_detail_path(prefix)
+            if pushpull_phase_path.exists():
+                pushpull_phase_path.unlink()
             options = BenchmarkOptions(
                 attached_db=attached_db,
                 pair_count=args.pairs,
@@ -640,10 +659,12 @@ def run_benchmark(args):
             "csr_build_s",
             "local_csr_forward_s",
             "local_csr_reverse_s",
+            "local_csr_pull_s",
             "bfs_s",
             "bfs_batches",
             "local_csr_forward_memory_bytes",
             "local_csr_reverse_memory_bytes",
+            "local_csr_pull_memory_bytes",
             "query_s",
             "total_s",
             "database",
@@ -676,6 +697,8 @@ def run_benchmark(args):
             "local_csr_forward_stdev_s",
             "local_csr_reverse_mean_s",
             "local_csr_reverse_stdev_s",
+            "local_csr_pull_mean_s",
+            "local_csr_pull_stdev_s",
             "bfs_mean_s",
             "bfs_stdev_s",
             "query_mean_s",
@@ -729,7 +752,7 @@ def main():
     run_parser.add_argument(
         "--push-pull-frontier-gate",
         type=int,
-        default=20,
+        default=2,
         help="Use pull when frontier_vertices * gate is at least the vertex count.",
     )
     run_parser.add_argument(

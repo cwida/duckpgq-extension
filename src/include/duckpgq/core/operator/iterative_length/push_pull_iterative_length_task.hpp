@@ -17,13 +17,17 @@ public:
 
 private:
 	void PushPullIterativeLength();
-	void Push();
-	void Pull();
+	void Push(idx_t iteration);
+	void Pull(idx_t iteration);
 	void ReachDetect() const;
-	void CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen, std::vector<std::bitset<LANE_LIMIT>> &next,
-	                 shared_ptr<LocalCSR> &local_csr) const;
+	idx_t CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen, std::vector<std::bitset<LANE_LIMIT>> &next,
+	                  shared_ptr<LocalCSR> &local_csr, idx_t &candidate_vertices) const;
 	void UnReachableSet() const;
-	idx_t CountFrontierVertices(const std::vector<std::bitset<LANE_LIMIT>> &visit) const;
+	idx_t CountFrontierVertices(const std::vector<std::bitset<LANE_LIMIT>> &visit, idx_t start_vertex,
+	                            idx_t end_vertex) const;
+	void RecordPhaseTiming(const char *phase, const char *mode, idx_t iteration, idx_t partition_count, idx_t vertices,
+	                       idx_t edges, idx_t candidates, idx_t changed_vertices, double time_ms) const;
+	void TimedBarrier(const char *phase, const char *mode, idx_t iteration);
 
 	idx_t Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit, std::vector<std::bitset<LANE_LIMIT>> &next,
 	              const std::atomic<uint32_t> *v, const std::vector<uint16_t> &e, size_t v_size, idx_t start_vertex);

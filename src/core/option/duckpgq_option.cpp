@@ -162,7 +162,7 @@ void CorePGQOptions::RegisterPathFindingPushPullFrontierGate(ExtensionLoader &lo
 	config.AddExtensionOption(
 	    "experimental_path_finding_operator_push_pull_frontier_gate",
 	    "Use pull in push/pull MS-BFS when frontier_vertices * gate is at least the vertex count",
-	    LogicalType::INTEGER, Value(20));
+	    LogicalType::INTEGER, Value(2));
 }
 
 } // namespace duckdb
