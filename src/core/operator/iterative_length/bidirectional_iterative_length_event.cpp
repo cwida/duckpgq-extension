@@ -68,6 +68,9 @@ void BidirectionalIterativeLengthEvent::FinishEvent() {
 	                 gbfs_state->benchmark_run_id + "_threads_" + std::to_string(gbfs_state->num_threads) + "_" +
 	                 heavy_partition_fraction + "_" + light_partition_multiplier + ".csv";
 	gbfs_state->WriteTimingResults(file_name);
+
+	auto phase_detail_file_name = gbfs_state->benchmark_output_prefix + "_bidirectional_phase_detail.csv";
+	gbfs_state->WritePhaseTimingResults(phase_detail_file_name);
 }
 
 } // namespace duckdb

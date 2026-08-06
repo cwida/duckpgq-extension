@@ -430,6 +430,10 @@ def phase_timing_path(benchmark_prefix):
     return Path(str(benchmark_prefix) + "_phase_timing.csv")
 
 
+def bidirectional_phase_detail_path(benchmark_prefix):
+    return Path(str(benchmark_prefix) + "_bidirectional_phase_detail.csv")
+
+
 def read_phase_timing(benchmark_prefix):
     path = phase_timing_path(benchmark_prefix)
     result = {
@@ -544,6 +548,9 @@ def run_benchmark(args):
             phase_path = phase_timing_path(prefix)
             if phase_path.exists():
                 phase_path.unlink()
+            bidirectional_phase_path = bidirectional_phase_detail_path(prefix)
+            if bidirectional_phase_path.exists():
+                bidirectional_phase_path.unlink()
             options = BenchmarkOptions(
                 attached_db=attached_db,
                 pair_count=args.pairs,

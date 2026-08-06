@@ -6,6 +6,8 @@
 
 namespace duckdb {
 
+static mutex bidirectional_phase_detail_timing_lock;
+
 BidirectionalIterativeLengthState::BidirectionalIterativeLengthState(
     const shared_ptr<DataChunk> &pairs_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
     std::vector<shared_ptr<LocalCSR>> &reverse_local_csrs_, idx_t num_threads_, ClientContext &context_, int64_t vsize_)
@@ -20,6 +22,13 @@ BidirectionalIterativeLengthState::BidirectionalIterativeLengthState(
 	worker_meet_masks = vector<std::bitset<LANE_LIMIT>>(num_threads);
 	worker_frontier_counts = vector<idx_t>(num_threads);
 	worker_frontier_vertices = vector<vector<idx_t>>(num_threads);
+	candidate_word_count = (v_size + 63) / 64;
+	worker_candidate_words = vector<vector<uint64_t>>(num_threads, vector<uint64_t>(candidate_word_count));
+	worker_dirty_candidate_words = vector<vector<idx_t>>(num_threads);
+	candidate_dirty_word_count = 0;
+	use_candidate_check = true;
+	current_batch_id = 0;
+	current_step_id = 0;
 	src_depth = 0;
 	dst_depth = 0;
 	src_frontier_size = 0;
@@ -32,6 +41,8 @@ BidirectionalIterativeLengthState::BidirectionalIterativeLengthState(
 
 void BidirectionalIterativeLengthState::InitializeBidirectionalLanes() {
 	auto &result_validity = FlatVector::ValidityMutable(pf_results->data[0]);
+	current_batch_id++;
+	current_step_id = 0;
 	active = 0;
 	lane_active.reset();
 	src_depth = 0;
@@ -40,6 +51,8 @@ void BidirectionalIterativeLengthState::InitializeBidirectionalLanes() {
 	src_frontier_size = 0;
 	dst_frontier_size = 0;
 	expand_source_next = true;
+	candidate_dirty_word_count = 0;
+	use_candidate_check = true;
 	src_frontier_vertices.clear();
 	dst_frontier_vertices.clear();
 
@@ -85,11 +98,20 @@ void BidirectionalIterativeLengthState::Clear() {
 	last_side_changed = false;
 	has_more_batches = false;
 	continue_search = false;
+	current_step_id = 0;
 	src_frontier_size = 0;
 	dst_frontier_size = 0;
 	expand_source_next = true;
+	candidate_dirty_word_count = 0;
+	use_candidate_check = true;
 	src_frontier_vertices.clear();
 	dst_frontier_vertices.clear();
+	for (idx_t worker = 0; worker < worker_dirty_candidate_words.size(); worker++) {
+		for (auto word_idx : worker_dirty_candidate_words[worker]) {
+			worker_candidate_words[worker][word_idx] = 0;
+		}
+		worker_dirty_candidate_words[worker].clear();
+	}
 	for (auto i = 0; i < v_size; i++) {
 		visit1[i] = 0;
 		visit2[i] = 0;
@@ -128,6 +150,27 @@ void BidirectionalIterativeLengthState::WriteTimingResults(const std::string &fi
 			file << std::get<0>(entry) << "," << std::get<1>(entry) << "," << std::get<2>(entry) << ","
 			     << std::get<3>(entry) << "," << std::get<4>(entry) << "," << std::get<5>(entry) << ","
 			     << std::get<6>(entry) << "," << std::get<7>(entry) << "\n";
+		}
+		file.close();
+	}
+}
+
+void BidirectionalIterativeLengthState::WritePhaseTimingResults(const std::string &filename) {
+	std::lock_guard<std::mutex> guard(bidirectional_phase_detail_timing_lock);
+	std::ofstream file(filename, std::ios::app);
+	if (file.is_open()) {
+		if (file.tellp() == 0) {
+			file << "Batch,RunID,Step,Side,Phase,WorkerID,ThreadCount,ActiveLanes,SrcDepth,DstDepth,SrcFrontierSize,"
+			        "DstFrontierSize,FrontierVertices,Partitions,Vertices,Edges,NewFrontierCount,CompletedLanes,"
+			        "Time_ms\n";
+		}
+		for (const auto &entry : bidirectional_phase_timing_data) {
+			file << entry.batch_id << "," << benchmark_run_id << "," << entry.step_id << "," << entry.side << ","
+			     << entry.phase << "," << entry.worker_id << "," << entry.thread_count << ","
+			     << entry.active_lanes << "," << entry.src_depth << "," << entry.dst_depth << ","
+			     << entry.src_frontier_size << "," << entry.dst_frontier_size << "," << entry.frontier_vertices
+			     << "," << entry.partitions << "," << entry.vertices << "," << entry.edges << ","
+			     << entry.new_frontier_count << "," << entry.completed_lanes << "," << entry.time_ms << "\n";
 		}
 		file.close();
 	}

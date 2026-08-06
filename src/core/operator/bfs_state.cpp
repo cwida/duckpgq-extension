@@ -17,8 +17,10 @@ namespace duckdb {
 static string CreateBenchmarkRunId() {
 	auto now = std::chrono::system_clock::now();
 	auto time_t_now = std::chrono::system_clock::to_time_t(now);
+	auto micros = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count() % 1000000;
 	std::stringstream ss;
-	ss << std::put_time(std::localtime(&time_t_now), "%Y-%m-%d_%H-%M-%S");
+	ss << std::put_time(std::localtime(&time_t_now), "%Y-%m-%d_%H-%M-%S") << "_" << std::setfill('0')
+	   << std::setw(6) << micros;
 	return ss.str();
 }
 
