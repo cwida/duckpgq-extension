@@ -20,6 +20,78 @@
 
 namespace duckdb {
 
+namespace {
+
+void ConfigureLocalCSRStateForMode(LocalCSRState &local_csr_state, const string &mode) {
+	if (mode == "bidirectionaliterativelength") {
+		local_csr_state.build_reverse_csr = true;
+		local_csr_state.finalize_sparse_rows = false;
+	} else if (mode == "pushpulliterativelength") {
+		local_csr_state.build_pull_csr = true;
+	}
+}
+
+shared_ptr<BFSState> CreateBFSStateForMode(const string &mode, const shared_ptr<DataChunk> &pairs,
+                                           LocalCSRState &local_csr_state, idx_t num_threads, ClientContext &context,
+                                           int64_t vsize) {
+	if (mode == "iterativelength") {
+		return make_shared_ptr<IterativeLengthState>(pairs, local_csr_state.partition_csrs, num_threads, context, vsize);
+	}
+	if (mode == "pushpulliterativelength") {
+		return make_shared_ptr<PushPullIterativeLengthState>(pairs, local_csr_state.partition_csrs,
+		                                                     local_csr_state.pull_partition_csrs, num_threads, context,
+		                                                     vsize);
+	}
+	if (mode == "bidirectionaliterativelength") {
+		return make_shared_ptr<BidirectionalIterativeLengthState>(
+		    pairs, local_csr_state.partition_csrs, local_csr_state.reverse_partition_csrs, num_threads, context, vsize);
+	}
+	if (mode == "shortestpath") {
+		// TODO(dtenwolde) implement also for shortest path
+		throw NotImplementedException("Shortest path operator has not been implemented yet.");
+	}
+	throw InvalidInputException("Unknown mode specified %s", mode);
+}
+
+void ScheduleBFSBatchForMode(PathFindingGlobalSinkState &gstate, const shared_ptr<DataChunk> &pairs, Pipeline &pipeline,
+                             Event &event, const PhysicalPathFinding *op, ClientContext &context) {
+	auto bfs_state =
+	    CreateBFSStateForMode(gstate.mode, pairs, *gstate.local_csr_state, gstate.num_threads, context, gstate.csr->vsize);
+	bfs_state->ScheduleBFSBatch(pipeline, event, op);
+	gstate.bfs_states.push_back(std::move(bfs_state));
+}
+
+SinkFinalizeType FinalizeCSRBuildPhase(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
+                                        const PhysicalPathFinding &op, ClientContext &context) {
+	++gstate.child;
+	auto local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
+	ConfigureLocalCSRStateForMode(*local_csr_state, gstate.mode);
+	gstate.local_csr_state = local_csr_state;
+	event.InsertEvent(make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, op, context));
+	return SinkFinalizeType::READY;
+}
+
+SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
+                                          const PhysicalPathFinding &op, ClientContext &context) {
+	if (gstate.global_pairs->Count() == 0) {
+		return SinkFinalizeType::READY;
+	}
+
+	while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
+		auto current_chunk = make_shared_ptr<DataChunk>();
+		current_chunk->Initialize(context, gstate.global_pairs->Types());
+		gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
+		ScheduleBFSBatchForMode(gstate, current_chunk, pipeline, event, &op, context);
+	}
+
+	++gstate.child;
+	auto duckpgq_state = GetDuckPGQState(context);
+	duckpgq_state->csr_to_delete.insert(gstate.csr_id);
+	return SinkFinalizeType::READY;
+}
+
+} // namespace
+
 PhysicalPathFinding::PhysicalPathFinding(PhysicalPlan &physical_plan, LogicalExtensionOperator &op,
                                          PhysicalOperator &pairs, PhysicalOperator &csr)
     : PhysicalComparisonJoin(physical_plan, op, TYPE, {}, JoinType::INNER, op.estimated_cardinality) {
@@ -47,7 +119,6 @@ void PathFindingLocalSinkState::Sink(DataChunk &input, idx_t child) {
 PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, const PhysicalPathFinding &op)
     : context_(context) {
 	global_pairs = make_uniq<ColumnDataCollection>(context, op.children[0].get().GetTypes());
-	global_csr_column_data = make_uniq<ColumnDataCollection>(context, op.children[1].get().GetTypes());
 
 	global_pairs->InitializeScan(global_scan_state);
 	result_scan_idx = 0;
@@ -103,65 +174,14 @@ SinkCombineResultType PhysicalPathFinding::Combine(ExecutionContext &context, Op
 SinkFinalizeType PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event, ClientContext &context,
                                                OperatorSinkFinalizeInput &input) const {
 	auto &gstate = input.global_state.Cast<PathFindingGlobalSinkState>();
-	auto duckpgq_state = GetDuckPGQState(context);
 	if (gstate.csr == nullptr) {
 		throw InternalException("CSR not initialized");
 	}
 
-	// Check if we have to do anything for CSR child
 	if (gstate.child == 0) {
-		++gstate.child;
-		auto local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
-		if (gstate.mode == "bidirectionaliterativelength") {
-			local_csr_state->build_reverse_csr = true;
-			local_csr_state->finalize_sparse_rows = false;
-		}
-		if (gstate.mode == "pushpulliterativelength") {
-			local_csr_state->build_pull_csr = true;
-		}
-		gstate.local_csr_state = local_csr_state;
-		event.InsertEvent(make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, *this, context));
-		return SinkFinalizeType::READY;
+		return FinalizeCSRBuildPhase(gstate, pipeline, event, *this, context);
 	}
-
-	if (gstate.global_pairs->Count() == 0) {
-		return SinkFinalizeType::READY;
-	}
-
-	while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
-		// Schedule the BFS Event for the current DataChunk
-		auto current_chunk = make_shared_ptr<DataChunk>();
-		current_chunk->Initialize(context, gstate.global_pairs->Types());
-		gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
-		if (gstate.mode == "iterativelength") {
-			auto bfs_state = make_shared_ptr<IterativeLengthState>(
-			    current_chunk, gstate.local_csr_state->partition_csrs, gstate.num_threads, context, gstate.csr->vsize);
-			bfs_state->ScheduleBFSBatch(pipeline, event, this);
-			gstate.bfs_states.push_back(std::move(bfs_state));
-		} else if (gstate.mode == "pushpulliterativelength") {
-			auto bfs_state = make_shared_ptr<PushPullIterativeLengthState>(
-			    current_chunk, gstate.local_csr_state->partition_csrs, gstate.local_csr_state->pull_partition_csrs,
-			    gstate.num_threads, context, gstate.csr->vsize);
-			bfs_state->ScheduleBFSBatch(pipeline, event, this);
-			gstate.bfs_states.push_back(std::move(bfs_state));
-		} else if (gstate.mode == "bidirectionaliterativelength") {
-			auto bfs_state = make_shared_ptr<BidirectionalIterativeLengthState>(
-			    current_chunk, gstate.local_csr_state->partition_csrs, gstate.local_csr_state->reverse_partition_csrs,
-			    gstate.num_threads, context, gstate.csr->vsize);
-			bfs_state->ScheduleBFSBatch(pipeline, event, this);
-			gstate.bfs_states.push_back(std::move(bfs_state));
-		} else if (gstate.mode == "shortestpath") {
-			// TODO(dtenwolde) implement also for shortest path
-			throw NotImplementedException("Shortest path operator has not been implemented yet.");
-		} else {
-			throw InvalidInputException("Unknown mode specified %s", gstate.mode);
-		}
-	}
-
-	// Move to the next input child
-	++gstate.child;
-	duckpgq_state->csr_to_delete.insert(gstate.csr_id);
-	return SinkFinalizeType::READY;
+	return FinalizePathFindingPhase(gstate, pipeline, event, *this, context);
 }
 
 InsertionOrderPreservingMap<string> PhysicalPathFinding::ParamsToString() const {
