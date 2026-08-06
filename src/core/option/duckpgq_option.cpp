@@ -57,6 +57,12 @@ int32_t GetPathFindingPushPullFrontierGate(ClientContext &context) {
 	return value.GetValue<int32_t>();
 }
 
+bool GetPathFindingDeduplicatePairs(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_deduplicate_pairs", value);
+	return value.GetValue<bool>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -163,6 +169,19 @@ void CorePGQOptions::RegisterPathFindingPushPullFrontierGate(ExtensionLoader &lo
 	    "experimental_path_finding_operator_push_pull_frontier_gate",
 	    "Use pull in push/pull MS-BFS when frontier_vertices * gate is at least the vertex count",
 	    LogicalType::INTEGER, Value(2));
+}
+
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingDeduplicatePairs(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+
+	config.AddExtensionOption(
+	    "experimental_path_finding_operator_deduplicate_pairs",
+	    "Deduplicate exact source/destination pairs inside each experimental path-finding operator batch",
+	    LogicalType::BOOLEAN, Value(false));
 }
 
 } // namespace duckdb

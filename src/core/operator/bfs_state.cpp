@@ -26,10 +26,10 @@ static string CreateBenchmarkRunId() {
 
 BFSState::BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
                    idx_t num_threads_, string mode_, ClientContext &context_, int64_t vsize_)
-    : batch(batch_), pairs(batch->pairs), local_csrs(local_csrs_), context(context_), num_threads(num_threads_),
+    : batch(batch_), pairs(batch->search_pairs), local_csrs(local_csrs_), context(context_), num_threads(num_threads_),
       mode(std::move(mode_)),
       v_size(vsize_), src_data(pairs->data[0]), dst_data(pairs->data[1]) {
-	LogicalType bfs_type = mode == "shortestpath" ? LogicalType::LIST(LogicalType::BIGINT) : LogicalType::BIGINT;
+	bfs_type = mode == "shortestpath" ? LogicalType::LIST(LogicalType::BIGINT) : LogicalType::BIGINT;
 	// Only have to initialize the current batch and state once.
 	total_pairs_processed = 0; // Initialize the total pairs processed
 	current_batch_path_list_len = 0;

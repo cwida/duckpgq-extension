@@ -169,6 +169,42 @@ INSERT INTO directed_pairs(src, dst) VALUES
 (0, 3), (0, 3), (0, 3), (0, 3), (0, 3), (0, 3), (0, 3), (0, 3), (0, 3),
 (0, 3), (0, 3), (0, 3), (0, 3);
 
+statement ok
+set experimental_path_finding_operator_deduplicate_pairs=true;
+
+query IIIII
+with csr_cte as (
+SELECT cast(min(create_csr_edge(
+        0,
+        (SELECT count(a.id) FROM directed_person a),
+        CAST (
+            (SELECT sum(create_csr_vertex(
+                0,
+                (SELECT count(a.id) FROM directed_person a),
+                sub.dense_id,
+                sub.cnt))
+            FROM (
+                SELECT a.rowid as dense_id, count(k.person1id) as cnt
+                FROM directed_person a
+                LEFT JOIN directed_knows k ON k.person1id = a.id
+                GROUP BY a.rowid) sub
+            )
+        AS BIGINT),
+        (select count() FROM directed_knows k JOIN directed_person a on a.id = k.person1id JOIN directed_person c on c.id = k.person2id),
+        a.rowid,
+        c.rowid,
+        k.rowid)) as bigint) as csr_id
+    FROM directed_knows k
+    JOIN directed_person a on a.id = k.person1id
+    JOIN directed_person c on c.id = k.person2id)
+SELECT count(*) AS pair_count, count(len) AS reachable_count, sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
+FROM (
+    SELECT src, dst, iterativelengthoperator(src, dst, csr_id) AS len
+    FROM directed_pairs, csr_cte
+);
+----
+71	69	204	0	3
+
 query IIIII
 with csr_cte as (
 SELECT cast(min(create_csr_edge(

@@ -13,6 +13,7 @@ bool GetPathFindingBenchmarkLaneActivityOption(ClientContext &context);
 string GetPathFindingBenchmarkPrefix(ClientContext &context);
 bool GetPathFindingBuildReverseCSR(ClientContext &context);
 int32_t GetPathFindingPushPullFrontierGate(ClientContext &context);
+bool GetPathFindingDeduplicatePairs(ClientContext &context);
 
 struct CorePGQOptions {
 	static void Register(ExtensionLoader &loader) {
@@ -25,6 +26,7 @@ struct CorePGQOptions {
 		RegisterPathFindingBenchmarkPrefix(loader);
 		RegisterPathFindingBuildReverseCSR(loader);
 		RegisterPathFindingPushPullFrontierGate(loader);
+		RegisterPathFindingDeduplicatePairs(loader);
 	}
 
 private:
@@ -37,6 +39,7 @@ private:
 	static void RegisterPathFindingBenchmarkPrefix(ExtensionLoader &loader);
 	static void RegisterPathFindingBuildReverseCSR(ExtensionLoader &loader);
 	static void RegisterPathFindingPushPullFrontierGate(ExtensionLoader &loader);
+	static void RegisterPathFindingDeduplicatePairs(ExtensionLoader &loader);
 };
 
 } // namespace duckdb
