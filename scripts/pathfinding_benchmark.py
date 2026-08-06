@@ -24,12 +24,14 @@ DUCKPGQ_EXTENSION = REPO_ROOT / "build" / "release" / "extension" / "duckpgq" / 
 class BenchmarkOptions:
     attached_db: Path
     pair_count: int
+    pair_table: str
     threads: int
     benchmark_prefix: Path
     recursive_max_depth: int
     build_reverse_csr: bool
     metrics_enabled: bool
     push_pull_frontier_gate: int
+    deduplicate_pairs: bool
 
 
 def sql_string(value):
@@ -260,13 +262,15 @@ WITH csr_cte AS (
 
 
 def operator_sql(options):
-    pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
+    pairs = f"ldbc.{options.pair_table}"
     reverse_value = "true" if options.build_reverse_csr else "false"
     metrics_value = "true" if options.metrics_enabled else "false"
+    dedupe_value = "true" if options.deduplicate_pairs else "false"
     return f"""
 SET experimental_path_finding_operator_benchmark={metrics_value};
 SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benchmark_prefix)};
 SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
+SET experimental_path_finding_operator_deduplicate_pairs={dedupe_value};
 {csr_cte("ldbc")}
 SELECT 'operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
@@ -278,13 +282,15 @@ FROM (
 
 
 def bidirectional_operator_sql(options):
-    pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
+    pairs = f"ldbc.{options.pair_table}"
     reverse_value = "true" if options.build_reverse_csr else "false"
     metrics_value = "true" if options.metrics_enabled else "false"
+    dedupe_value = "true" if options.deduplicate_pairs else "false"
     return f"""
 SET experimental_path_finding_operator_benchmark={metrics_value};
 SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benchmark_prefix)};
 SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
+SET experimental_path_finding_operator_deduplicate_pairs={dedupe_value};
 {csr_cte("ldbc")}
 SELECT 'bidirectional_operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
@@ -296,14 +302,16 @@ FROM (
 
 
 def pushpull_operator_sql(options):
-    pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
+    pairs = f"ldbc.{options.pair_table}"
     reverse_value = "true" if options.build_reverse_csr else "false"
     metrics_value = "true" if options.metrics_enabled else "false"
+    dedupe_value = "true" if options.deduplicate_pairs else "false"
     return f"""
 SET experimental_path_finding_operator_benchmark={metrics_value};
 SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benchmark_prefix)};
 SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
 SET experimental_path_finding_operator_push_pull_frontier_gate={options.push_pull_frontier_gate};
+SET experimental_path_finding_operator_deduplicate_pairs={dedupe_value};
 {csr_cte("ldbc")}
 SELECT 'pushpull_operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
@@ -324,7 +332,7 @@ FROM csr_cte;
 
 
 def scalar_sql(options):
-    pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
+    pairs = f"ldbc.{options.pair_table}"
     person = "ldbc.person"
     return f"""
 {csr_cte("ldbc")},
@@ -343,7 +351,7 @@ FROM (
 
 
 def recursive_sql(options):
-    pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
+    pairs = f"ldbc.{options.pair_table}"
     return f"""
 WITH RECURSIVE
 pairs AS (
@@ -477,6 +485,14 @@ def read_phase_timing(benchmark_prefix):
         "local_csr_pull_s": "",
         "bfs_s": "",
         "bfs_batches": "",
+        "dedupe_build_s": "",
+        "dedupe_scatter_s": "",
+        "dedupe_batches": "",
+        "dedupe_scatter_batches": "",
+        "dedupe_input_pairs": "",
+        "dedupe_unique_pairs": "",
+        "dedupe_duplicate_pairs": "",
+        "dedupe_remap_memory_bytes": "",
         "local_csr_forward_memory_bytes": "",
         "local_csr_reverse_memory_bytes": "",
         "local_csr_pull_memory_bytes": "",
@@ -489,6 +505,14 @@ def read_phase_timing(benchmark_prefix):
     local_csr_pull_ms = 0.0
     bfs_ms = 0.0
     bfs_batches = 0
+    dedupe_build_ms = 0.0
+    dedupe_scatter_ms = 0.0
+    dedupe_batches = 0
+    dedupe_scatter_batches = 0
+    dedupe_input_pairs = 0
+    dedupe_unique_pairs = 0
+    dedupe_duplicate_pairs = 0
+    dedupe_remap_memory = 0
     local_csr_forward_memory = ""
     local_csr_reverse_memory = ""
     local_csr_pull_memory = ""
@@ -508,6 +532,16 @@ def read_phase_timing(benchmark_prefix):
             elif phase == "bfs_batch":
                 bfs_ms += time_ms
                 bfs_batches += 1
+            elif phase == "dedupe_build":
+                dedupe_build_ms += time_ms
+                dedupe_batches += 1
+                dedupe_input_pairs += int(row["PairCount"])
+                dedupe_unique_pairs += int(row["EdgeCount"])
+                dedupe_duplicate_pairs += int(row["PartitionCount"])
+                dedupe_remap_memory += int(row["MemoryBytes"])
+            elif phase == "dedupe_scatter":
+                dedupe_scatter_ms += time_ms
+                dedupe_scatter_batches += 1
 
     if local_csr_forward_ms:
         result["local_csr_forward_s"] = f"{local_csr_forward_ms / 1000.0:.6f}"
@@ -521,6 +555,16 @@ def read_phase_timing(benchmark_prefix):
     if bfs_batches:
         result["bfs_s"] = f"{bfs_ms / 1000.0:.6f}"
         result["bfs_batches"] = bfs_batches
+    if dedupe_batches:
+        result["dedupe_build_s"] = f"{dedupe_build_ms / 1000.0:.6f}"
+        result["dedupe_batches"] = dedupe_batches
+        result["dedupe_input_pairs"] = dedupe_input_pairs
+        result["dedupe_unique_pairs"] = dedupe_unique_pairs
+        result["dedupe_duplicate_pairs"] = dedupe_duplicate_pairs
+        result["dedupe_remap_memory_bytes"] = dedupe_remap_memory
+    if dedupe_scatter_batches:
+        result["dedupe_scatter_s"] = f"{dedupe_scatter_ms / 1000.0:.6f}"
+        result["dedupe_scatter_batches"] = dedupe_scatter_batches
     return result
 
 
@@ -532,6 +576,11 @@ def mean_optional(rows, field):
 def stdev_optional(rows, field):
     values = [float(row[field]) for row in rows if row[field]]
     return f"{stdev(values):.6f}" if values else ""
+
+
+def mean_int_optional(rows, field):
+    values = [int(row[field]) for row in rows if row[field] != ""]
+    return f"{statistics.mean(values):.1f}" if values else ""
 
 
 def summarize_results(results):
@@ -550,8 +599,10 @@ def summarize_results(results):
                 "threads": rows[0]["threads"],
                 "repeats": len(rows),
                 "metrics_enabled": rows[0]["metrics_enabled"],
+                "deduplicate_pairs": rows[0]["deduplicate_pairs"],
                 "recursive_max_depth": rows[0]["recursive_max_depth"],
                 "pair_count": rows[0]["pair_count"],
+                "pair_table": rows[0]["pair_table"],
                 "reachable_count": rows[0]["reachable_count"],
                 "total_len": rows[0]["total_len"],
                 "min_len": rows[0]["min_len"],
@@ -568,6 +619,14 @@ def summarize_results(results):
                 "local_csr_pull_stdev_s": stdev_optional(rows, "local_csr_pull_s"),
                 "bfs_mean_s": mean_optional(rows, "bfs_s"),
                 "bfs_stdev_s": stdev_optional(rows, "bfs_s"),
+                "dedupe_build_mean_s": mean_optional(rows, "dedupe_build_s"),
+                "dedupe_build_stdev_s": stdev_optional(rows, "dedupe_build_s"),
+                "dedupe_scatter_mean_s": mean_optional(rows, "dedupe_scatter_s"),
+                "dedupe_scatter_stdev_s": stdev_optional(rows, "dedupe_scatter_s"),
+                "dedupe_input_pairs_mean": mean_int_optional(rows, "dedupe_input_pairs"),
+                "dedupe_unique_pairs_mean": mean_int_optional(rows, "dedupe_unique_pairs"),
+                "dedupe_duplicate_pairs_mean": mean_int_optional(rows, "dedupe_duplicate_pairs"),
+                "dedupe_remap_memory_bytes_mean": mean_int_optional(rows, "dedupe_remap_memory_bytes"),
                 "query_mean_s": f"{statistics.mean(query_times):.6f}",
                 "query_stdev_s": f"{stdev(query_times):.6f}",
                 "query_min_s": f"{min(query_times):.6f}",
@@ -586,7 +645,9 @@ def run_benchmark(args):
     attached_db = db_path(args.scale_factor)
     if not attached_db.exists():
         raise SystemExit(f"Missing benchmark database: {attached_db}. Run prepare first.")
-    ensure_pair_table(args.scale_factor, args.pairs)
+    pair_table = args.pair_table or f"benchmark_pairs_{args.pairs}"
+    if args.pair_table is None:
+        ensure_pair_table(args.scale_factor, args.pairs)
 
     results = []
     modes = benchmark_modes(args.mode)
@@ -608,12 +669,14 @@ def run_benchmark(args):
             options = BenchmarkOptions(
                 attached_db=attached_db,
                 pair_count=args.pairs,
+                pair_table=pair_table,
                 threads=args.threads,
                 benchmark_prefix=prefix,
                 recursive_max_depth=args.recursive_max_depth,
                 build_reverse_csr=args.build_reverse_csr,
                 metrics_enabled=args.metrics,
                 push_pull_frontier_gate=args.push_pull_frontier_gate,
+                deduplicate_pairs=args.deduplicate_pairs,
             )
             query_sql = mode_sql(mode, options)
             output, timers = run_duckdb_timed_script(setup_sql(options) + query_sql, args.timeout)
@@ -622,6 +685,8 @@ def run_benchmark(args):
             row["threads"] = args.threads
             row["repeat"] = repeat
             row["metrics_enabled"] = int(args.metrics)
+            row["deduplicate_pairs"] = int(args.deduplicate_pairs)
+            row["pair_table"] = pair_table
             row["recursive_max_depth"] = args.recursive_max_depth if mode == "recursive" else ""
             if mode == "csr":
                 row["setup_s"] = f"{sum(timers[:-1]):.6f}"
@@ -649,8 +714,10 @@ def run_benchmark(args):
             "threads",
             "repeat",
             "metrics_enabled",
+            "deduplicate_pairs",
             "recursive_max_depth",
             "pair_count",
+            "pair_table",
             "reachable_count",
             "total_len",
             "min_len",
@@ -662,6 +729,14 @@ def run_benchmark(args):
             "local_csr_pull_s",
             "bfs_s",
             "bfs_batches",
+            "dedupe_build_s",
+            "dedupe_scatter_s",
+            "dedupe_batches",
+            "dedupe_scatter_batches",
+            "dedupe_input_pairs",
+            "dedupe_unique_pairs",
+            "dedupe_duplicate_pairs",
+            "dedupe_remap_memory_bytes",
             "local_csr_forward_memory_bytes",
             "local_csr_reverse_memory_bytes",
             "local_csr_pull_memory_bytes",
@@ -683,8 +758,10 @@ def run_benchmark(args):
             "threads",
             "repeats",
             "metrics_enabled",
+            "deduplicate_pairs",
             "recursive_max_depth",
             "pair_count",
+            "pair_table",
             "reachable_count",
             "total_len",
             "min_len",
@@ -701,6 +778,14 @@ def run_benchmark(args):
             "local_csr_pull_stdev_s",
             "bfs_mean_s",
             "bfs_stdev_s",
+            "dedupe_build_mean_s",
+            "dedupe_build_stdev_s",
+            "dedupe_scatter_mean_s",
+            "dedupe_scatter_stdev_s",
+            "dedupe_input_pairs_mean",
+            "dedupe_unique_pairs_mean",
+            "dedupe_duplicate_pairs_mean",
+            "dedupe_remap_memory_bytes_mean",
             "query_mean_s",
             "query_stdev_s",
             "query_min_s",
@@ -732,6 +817,11 @@ def main():
     run_parser.add_argument("--scale-factor", required=True)
     run_parser.add_argument("--threads", type=int, default=4)
     run_parser.add_argument("--pairs", type=int, default=1024)
+    run_parser.add_argument(
+        "--pair-table",
+        default=None,
+        help="Override the benchmark pair table name. Defaults to benchmark_pairs_<pairs>.",
+    )
     run_parser.add_argument("--repeats", type=int, default=1)
     run_parser.add_argument(
         "--mode",
@@ -760,6 +850,12 @@ def main():
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Enable internal operator benchmark CSV metrics. Disabled by default for clean wall-clock timing.",
+    )
+    run_parser.add_argument(
+        "--deduplicate-pairs",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable exact source/destination pair deduplication inside path-finding operator batches.",
     )
     run_parser.add_argument("--recursive-max-depth", type=int, default=8)
     run_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)

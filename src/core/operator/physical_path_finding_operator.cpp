@@ -16,13 +16,38 @@
 #include <duckpgq/core/option/duckpgq_option.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_state.hpp>
+#include <chrono>
+#include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <thread>
 #include <unordered_map>
 
 namespace duckdb {
 
 namespace {
+
+static mutex path_finding_operator_phase_timing_lock;
+
+void AppendOperatorPhaseTiming(ClientContext &context, const string &phase, idx_t thread_count, idx_t pair_count,
+                               idx_t unique_count, idx_t duplicate_count, double time_ms, idx_t memory_bytes) {
+	if (!GetPathFindingBenchmarkOption(context)) {
+		return;
+	}
+
+	auto file_name = GetPathFindingBenchmarkPrefix(context) + "_phase_timing.csv";
+	lock_guard<mutex> lock(path_finding_operator_phase_timing_lock);
+	bool write_header = !std::filesystem::exists(file_name);
+	std::ofstream outfile(file_name, std::ios::app);
+	if (!outfile.is_open()) {
+		throw IOException("Could not open path-finding phase benchmark file \"%s\"", file_name);
+	}
+	if (write_header) {
+		outfile << "Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes\n";
+	}
+	outfile << phase << ",operator," << thread_count << "," << pair_count << ",0," << unique_count << ","
+	        << duplicate_count << "," << time_ms << "," << memory_bytes << "\n";
+}
 
 struct PairKey {
 	bool src_valid;
@@ -54,63 +79,8 @@ PairKey GetPairKey(const UnifiedVectorFormat &src_format, const UnifiedVectorFor
 	return {src_valid, dst_valid, src_valid ? src_data[src_idx] : 0, dst_valid ? dst_data[dst_idx] : 0};
 }
 
-shared_ptr<PathFindingBatch> CreatePathFindingBatch(ClientContext &context, const shared_ptr<DataChunk> &output_pairs,
-                                                    idx_t output_index) {
-	if (!GetPathFindingDeduplicatePairs(context)) {
-		return make_shared_ptr<PathFindingBatch>(output_pairs, output_pairs, vector<idx_t>(), output_index);
-	}
-
-	auto output_count = output_pairs->size();
-	std::unordered_map<PairKey, idx_t, PairKeyHash> unique_pair_to_row;
-	unique_pair_to_row.reserve(output_count);
-	vector<idx_t> output_to_search;
-	vector<idx_t> unique_source_rows;
-	unique_source_rows.reserve(output_count);
-
-	UnifiedVectorFormat src_format;
-	UnifiedVectorFormat dst_format;
-	output_pairs->data[0].ToUnifiedFormat(src_format);
-	output_pairs->data[1].ToUnifiedFormat(dst_format);
-	auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
-	auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
-
-	bool has_duplicates = false;
-	for (idx_t row = 0; row < output_count; row++) {
-		auto key = GetPairKey(src_format, dst_format, src_data, dst_data, row);
-		auto entry = unique_pair_to_row.find(key);
-		if (entry != unique_pair_to_row.end()) {
-			if (!has_duplicates) {
-				has_duplicates = true;
-				output_to_search.reserve(output_count);
-				for (idx_t previous_row = 0; previous_row < row; previous_row++) {
-					output_to_search.push_back(previous_row);
-				}
-			}
-			output_to_search.push_back(entry->second);
-			continue;
-		}
-
-		auto unique_row = unique_source_rows.size();
-		unique_pair_to_row.emplace(key, unique_row);
-		unique_source_rows.push_back(row);
-		if (has_duplicates) {
-			output_to_search.push_back(unique_row);
-		}
-	}
-
-	if (!has_duplicates) {
-		return make_shared_ptr<PathFindingBatch>(output_pairs, output_pairs, vector<idx_t>(), output_index);
-	}
-
-	auto search_pairs = make_shared_ptr<DataChunk>();
-	search_pairs->Initialize(context, output_pairs->GetTypes(), unique_source_rows.size());
-	for (idx_t search_row = 0; search_row < unique_source_rows.size(); search_row++) {
-		auto output_row = unique_source_rows[search_row];
-		search_pairs->data[0].SetValue(search_row, output_pairs->GetValue(0, output_row));
-		search_pairs->data[1].SetValue(search_row, output_pairs->GetValue(1, output_row));
-	}
-	search_pairs->SetChildCardinality(unique_source_rows.size());
-	return make_shared_ptr<PathFindingBatch>(output_pairs, search_pairs, std::move(output_to_search), output_index);
+shared_ptr<PathFindingBatch> CreatePathFindingBatch(const shared_ptr<DataChunk> &output_pairs, idx_t output_index) {
+	return make_shared_ptr<PathFindingBatch>(output_pairs, output_pairs, output_index);
 }
 
 PathFindingOperatorMode ParsePathFindingOperatorMode(const string &mode) {
@@ -171,6 +141,15 @@ void ScheduleBFSBatchForMode(PathFindingGlobalSinkState &gstate, const shared_pt
 	gstate.bfs_states.push_back(std::move(bfs_state));
 }
 
+void ScheduleIdentityPathFindingBatches(PathFindingGlobalSinkState &gstate,
+                                        const vector<shared_ptr<DataChunk>> &output_batches, Pipeline &pipeline,
+                                        Event &event, const PhysicalPathFinding &op, ClientContext &context) {
+	for (auto &output_batch : output_batches) {
+		auto batch = CreatePathFindingBatch(output_batch, gstate.next_batch_index++);
+		ScheduleBFSBatchForMode(gstate, batch, pipeline, event, &op, context);
+	}
+}
+
 SinkFinalizeType FinalizeCSRBuildPhase(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
                                         const PhysicalPathFinding &op, ClientContext &context) {
 	++gstate.child;
@@ -181,17 +160,116 @@ SinkFinalizeType FinalizeCSRBuildPhase(PathFindingGlobalSinkState &gstate, Pipel
 	return SinkFinalizeType::READY;
 }
 
+SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSinkState &gstate, Pipeline &pipeline,
+                                                            Event &event, const PhysicalPathFinding &op,
+                                                            ClientContext &context) {
+	auto start_time = std::chrono::steady_clock::now();
+	auto pair_types = gstate.global_pairs->Types();
+	std::unordered_map<PairKey, idx_t, PairKeyHash> unique_pair_to_row;
+	unique_pair_to_row.reserve(gstate.global_pairs->Count());
+	vector<std::pair<idx_t, idx_t>> unique_source_rows;
+	unique_source_rows.reserve(gstate.global_pairs->Count());
+
+	bool has_duplicates = false;
+	idx_t input_count = 0;
+	while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
+		auto current_chunk = make_shared_ptr<DataChunk>();
+		current_chunk->Initialize(context, pair_types);
+		gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
+
+		auto output_batch_idx = gstate.global_output_batches.size();
+		vector<idx_t> output_to_search;
+		output_to_search.reserve(current_chunk->size());
+
+		UnifiedVectorFormat src_format;
+		UnifiedVectorFormat dst_format;
+		current_chunk->data[0].ToUnifiedFormat(src_format);
+		current_chunk->data[1].ToUnifiedFormat(dst_format);
+		auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
+		auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
+
+		for (idx_t row = 0; row < current_chunk->size(); row++) {
+			auto key = GetPairKey(src_format, dst_format, src_data, dst_data, row);
+			auto entry = unique_pair_to_row.find(key);
+			if (entry != unique_pair_to_row.end()) {
+				output_to_search.push_back(entry->second);
+				has_duplicates = true;
+			} else {
+				auto unique_row = unique_source_rows.size();
+				unique_pair_to_row.emplace(key, unique_row);
+				unique_source_rows.emplace_back(output_batch_idx, row);
+				output_to_search.push_back(unique_row);
+			}
+			input_count++;
+		}
+
+		gstate.global_output_batches.push_back(current_chunk);
+		gstate.global_output_to_search.push_back(std::move(output_to_search));
+	}
+
+	auto duplicate_count = input_count - unique_source_rows.size();
+	idx_t remap_memory = 0;
+	if (has_duplicates) {
+		for (auto &mapping : gstate.global_output_to_search) {
+			remap_memory += mapping.capacity() * sizeof(idx_t);
+		}
+	}
+	auto build_end_time = std::chrono::steady_clock::now();
+	auto build_ms = std::chrono::duration<double, std::milli>(build_end_time - start_time).count();
+	AppendOperatorPhaseTiming(context, "dedupe_build", gstate.num_threads, input_count, unique_source_rows.size(),
+	                          duplicate_count, build_ms, remap_memory);
+
+	if (!has_duplicates) {
+		ScheduleIdentityPathFindingBatches(gstate, gstate.global_output_batches, pipeline, event, op, context);
+		gstate.global_output_batches.clear();
+		gstate.global_output_to_search.clear();
+		gstate.use_global_deduplication = false;
+		++gstate.child;
+		auto duckpgq_state = GetDuckPGQState(context);
+		duckpgq_state->csr_to_delete.insert(gstate.csr_id);
+		return SinkFinalizeType::READY;
+	}
+
+	gstate.use_global_deduplication = true;
+	idx_t unique_row = 0;
+	while (unique_row < unique_source_rows.size()) {
+		auto search_chunk = make_shared_ptr<DataChunk>();
+		search_chunk->Initialize(context, pair_types);
+		idx_t chunk_count = 0;
+		while (unique_row < unique_source_rows.size() && chunk_count < STANDARD_VECTOR_SIZE) {
+			auto source = unique_source_rows[unique_row];
+			auto &output_batch = *gstate.global_output_batches[source.first];
+			search_chunk->data[0].SetValue(chunk_count, output_batch.GetValue(0, source.second));
+			search_chunk->data[1].SetValue(chunk_count, output_batch.GetValue(1, source.second));
+			unique_row++;
+			chunk_count++;
+		}
+		search_chunk->SetChildCardinality(chunk_count);
+		auto batch = make_shared_ptr<PathFindingBatch>(search_chunk, search_chunk, gstate.next_batch_index++);
+		ScheduleBFSBatchForMode(gstate, batch, pipeline, event, &op, context);
+	}
+
+	++gstate.child;
+	auto duckpgq_state = GetDuckPGQState(context);
+	duckpgq_state->csr_to_delete.insert(gstate.csr_id);
+	return SinkFinalizeType::READY;
+}
+
 SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
                                           const PhysicalPathFinding &op, ClientContext &context) {
 	if (gstate.global_pairs->Count() == 0) {
 		return SinkFinalizeType::READY;
 	}
 
+	if (GetPathFindingDeduplicatePairs(context)) {
+		return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
+	}
+
 	while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
 		auto current_chunk = make_shared_ptr<DataChunk>();
 		current_chunk->Initialize(context, gstate.global_pairs->Types());
 		gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
-		auto batch = CreatePathFindingBatch(context, current_chunk, gstate.next_batch_index++);
+		auto batch = CreatePathFindingBatch(current_chunk, gstate.next_batch_index++);
 		ScheduleBFSBatchForMode(gstate, batch, pipeline, event, &op, context);
 	}
 
@@ -234,6 +312,8 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 	global_pairs->InitializeScan(global_scan_state);
 	result_scan_idx = 0;
 	next_batch_index = 0;
+	use_global_deduplication = false;
+	global_dedupe_results_initialized = false;
 
 	child = 0;
 	mode = op.mode;
@@ -355,24 +435,53 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 	if (pf_sink.global_pairs->Count() == 0) {
 		return SourceResultType::FINISHED;
 	}
+
+	if (pf_sink.use_global_deduplication) {
+		if (!pf_sink.global_dedupe_results_initialized) {
+			for (auto &state : pf_sink.bfs_states) {
+				state->pf_results->SetChildCardinality(state->pairs->size());
+			}
+			pf_sink.global_dedupe_results_initialized = true;
+		}
+
+		D_ASSERT(pf_sink.result_scan_idx < pf_sink.global_output_batches.size());
+		auto output_pairs = pf_sink.global_output_batches[pf_sink.result_scan_idx];
+		auto &output_to_search = pf_sink.global_output_to_search[pf_sink.result_scan_idx];
+		D_ASSERT(output_to_search.size() == output_pairs->size());
+
+		auto scatter_start = std::chrono::steady_clock::now();
+		auto output_results = make_shared_ptr<DataChunk>();
+		output_results->Initialize(context.client, {pf_sink.bfs_states[0]->bfs_type}, output_pairs->size());
+		output_results->SetChildCardinality(output_pairs->size());
+		for (idx_t output_row = 0; output_row < output_pairs->size(); output_row++) {
+			auto global_search_row = output_to_search[output_row];
+			auto search_batch_idx = global_search_row / STANDARD_VECTOR_SIZE;
+			auto search_row = global_search_row - search_batch_idx * STANDARD_VECTOR_SIZE;
+			D_ASSERT(search_batch_idx < pf_sink.bfs_states.size());
+			auto &search_state = pf_sink.bfs_states[search_batch_idx];
+			D_ASSERT(search_row < search_state->pf_results->size());
+			output_results->data[0].SetValue(output_row, search_state->pf_results->GetValue(0, search_row));
+		}
+		output_pairs->Fuse(*output_results);
+		result.Move(*output_pairs);
+		auto scatter_end = std::chrono::steady_clock::now();
+		auto scatter_ms = std::chrono::duration<double, std::milli>(scatter_end - scatter_start).count();
+		AppendOperatorPhaseTiming(context.client, "dedupe_scatter", pf_sink.num_threads, output_to_search.size(), 0,
+		                          0, scatter_ms, output_to_search.capacity() * sizeof(idx_t));
+
+		pf_sink.result_scan_idx++;
+		if (pf_sink.result_scan_idx == pf_sink.global_output_batches.size()) {
+			return SourceResultType::FINISHED;
+		}
+		return SourceResultType::HAVE_MORE_OUTPUT;
+	}
+
 	D_ASSERT(pf_sink.result_scan_idx < pf_sink.bfs_states.size());
 	auto current_state = pf_sink.bfs_states[pf_sink.result_scan_idx];
 	D_ASSERT(current_state->batch->output_index == pf_sink.result_scan_idx);
 	current_state->pf_results->SetChildCardinality(current_state->pairs->size());
-	if (current_state->batch->HasIdentityMapping()) {
-		current_state->batch->output_pairs->Fuse(*current_state->pf_results);
-		result.Move(*current_state->batch->output_pairs);
-	} else {
-		auto output_results = make_shared_ptr<DataChunk>();
-		output_results->Initialize(context.client, {current_state->bfs_type}, current_state->batch->OutputSize());
-		output_results->SetChildCardinality(current_state->batch->OutputSize());
-		for (idx_t output_row = 0; output_row < current_state->batch->OutputSize(); output_row++) {
-			auto search_row = current_state->batch->output_to_search[output_row];
-			output_results->data[0].SetValue(output_row, current_state->pf_results->GetValue(0, search_row));
-		}
-		current_state->batch->output_pairs->Fuse(*output_results);
-		result.Move(*current_state->batch->output_pairs);
-	}
+	current_state->batch->output_pairs->Fuse(*current_state->pf_results);
+	result.Move(*current_state->batch->output_pairs);
 
 	pf_sink.result_scan_idx++;
 	if (pf_sink.result_scan_idx == pf_sink.bfs_states.size()) {
