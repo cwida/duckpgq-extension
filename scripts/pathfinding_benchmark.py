@@ -28,6 +28,7 @@ class BenchmarkOptions:
     benchmark_prefix: Path
     recursive_max_depth: int
     build_reverse_csr: bool
+    metrics_enabled: bool
 
 
 def sql_string(value):
@@ -260,8 +261,9 @@ WITH csr_cte AS (
 def operator_sql(options):
     pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
     reverse_value = "true" if options.build_reverse_csr else "false"
+    metrics_value = "true" if options.metrics_enabled else "false"
     return f"""
-SET experimental_path_finding_operator_benchmark=true;
+SET experimental_path_finding_operator_benchmark={metrics_value};
 SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benchmark_prefix)};
 SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
 {csr_cte("ldbc")}
@@ -277,8 +279,9 @@ FROM (
 def bidirectional_operator_sql(options):
     pairs = f"ldbc.benchmark_pairs_{options.pair_count}"
     reverse_value = "true" if options.build_reverse_csr else "false"
+    metrics_value = "true" if options.metrics_enabled else "false"
     return f"""
-SET experimental_path_finding_operator_benchmark=true;
+SET experimental_path_finding_operator_benchmark={metrics_value};
 SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benchmark_prefix)};
 SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
 {csr_cte("ldbc")}
@@ -386,6 +389,8 @@ def parse_csv_row(output):
 def benchmark_modes(mode):
     if mode == "both":
         return ["operator", "scalar"]
+    if mode == "operators":
+        return ["operator", "bidirectional_operator"]
     if mode == "all":
         return ["operator", "bidirectional_operator", "scalar", "recursive"]
     return [mode]
@@ -504,6 +509,7 @@ def summarize_results(results):
                 "mode": mode,
                 "threads": rows[0]["threads"],
                 "repeats": len(rows),
+                "metrics_enabled": rows[0]["metrics_enabled"],
                 "recursive_max_depth": rows[0]["recursive_max_depth"],
                 "pair_count": rows[0]["pair_count"],
                 "reachable_count": rows[0]["reachable_count"],
@@ -558,6 +564,7 @@ def run_benchmark(args):
                 benchmark_prefix=prefix,
                 recursive_max_depth=args.recursive_max_depth,
                 build_reverse_csr=args.build_reverse_csr,
+                metrics_enabled=args.metrics,
             )
             query_sql = mode_sql(mode, options)
             output, timers = run_duckdb_timed_script(setup_sql(options) + query_sql, args.timeout)
@@ -565,6 +572,7 @@ def run_benchmark(args):
             row["scale_factor"] = args.scale_factor
             row["threads"] = args.threads
             row["repeat"] = repeat
+            row["metrics_enabled"] = int(args.metrics)
             row["recursive_max_depth"] = args.recursive_max_depth if mode == "recursive" else ""
             if mode == "csr":
                 row["setup_s"] = f"{sum(timers[:-1]):.6f}"
@@ -591,6 +599,7 @@ def run_benchmark(args):
             "mode",
             "threads",
             "repeat",
+            "metrics_enabled",
             "recursive_max_depth",
             "pair_count",
             "reachable_count",
@@ -622,6 +631,7 @@ def run_benchmark(args):
             "mode",
             "threads",
             "repeats",
+            "metrics_enabled",
             "recursive_max_depth",
             "pair_count",
             "reachable_count",
@@ -672,10 +682,16 @@ def main():
     run_parser.add_argument("--repeats", type=int, default=1)
     run_parser.add_argument(
         "--mode",
-        choices=["operator", "bidirectional_operator", "csr", "scalar", "recursive", "both", "all"],
+        choices=["operator", "bidirectional_operator", "csr", "scalar", "recursive", "both", "operators", "all"],
         default="both",
     )
     run_parser.add_argument("--build-reverse-csr", action="store_true")
+    run_parser.add_argument(
+        "--metrics",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable internal operator benchmark CSV metrics. Disabled by default for clean wall-clock timing.",
+    )
     run_parser.add_argument("--recursive-max-depth", type=int, default=8)
     run_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
     run_parser.add_argument("--timeout", type=int, default=300)
