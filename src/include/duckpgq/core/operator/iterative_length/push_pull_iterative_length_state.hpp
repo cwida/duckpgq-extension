@@ -43,7 +43,7 @@ struct PushPullPullBlock {
 
 class PushPullIterativeLengthState : public BFSState {
 public:
-	PushPullIterativeLengthState(const shared_ptr<DataChunk> &pairs_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
+	PushPullIterativeLengthState(const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
 	                             std::vector<shared_ptr<PullCSR>> &pull_local_csrs_, idx_t num_threads_,
 	                             ClientContext &context_, int64_t vsize_);
 

@@ -20,6 +20,13 @@ namespace duckdb {
 class BFSState;      // Forward declaration
 class LocalCSRState; // Forward declaration
 
+enum class PathFindingOperatorMode {
+	ITERATIVE_LENGTH,
+	PUSH_PULL_ITERATIVE_LENGTH,
+	BIDIRECTIONAL_ITERATIVE_LENGTH,
+	SHORTEST_PATH
+};
+
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 public:
 	PhysicalPathFinding(PhysicalPlan &physical_plan, LogicalExtensionOperator &op, PhysicalOperator &pairs,
@@ -90,11 +97,13 @@ public:
 	unique_ptr<ColumnDataCollection> global_pairs;
 	ColumnDataScanState global_scan_state;
 	idx_t result_scan_idx;
+	idx_t next_batch_index;
 	vector<shared_ptr<BFSState>> bfs_states;
 	CSR *csr;
 	int32_t csr_id;
 	size_t child;
 	string mode;
+	PathFindingOperatorMode path_finding_mode;
 	ClientContext &context_;
 	idx_t num_threads;
 	shared_ptr<LocalCSRState> local_csr_state;

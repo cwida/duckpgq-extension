@@ -9,9 +9,9 @@ namespace duckdb {
 static mutex bidirectional_phase_detail_timing_lock;
 
 BidirectionalIterativeLengthState::BidirectionalIterativeLengthState(
-    const shared_ptr<DataChunk> &pairs_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
+    const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
     std::vector<shared_ptr<LocalCSR>> &reverse_local_csrs_, idx_t num_threads_, ClientContext &context_, int64_t vsize_)
-    : BFSState(pairs_, local_csrs_, num_threads_, "bidirectionaliterativelength", context_, vsize_),
+    : BFSState(batch_, local_csrs_, num_threads_, "bidirectionaliterativelength", context_, vsize_),
       reverse_local_csrs(reverse_local_csrs_) {
 	src_seen = vector<std::bitset<LANE_LIMIT>>(v_size);
 	src_visit1 = vector<std::bitset<LANE_LIMIT>>(v_size);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckpgq/common.hpp"
+#include "duckpgq/core/operator/path_finding_batch.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 
 #include <duckpgq/core/utils/duckpgq_barrier.hpp>
@@ -13,7 +14,7 @@ class PhysicalPathFinding; // Forward declaration
 
 class BFSState : public enable_shared_from_this<BFSState> {
 public:
-	BFSState(const shared_ptr<DataChunk> &pairs_, std::vector<shared_ptr<LocalCSR>> &local_csrs_, idx_t num_threads_,
+	BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_, idx_t num_threads_,
 	         string mode_, ClientContext &context_, int64_t vsize_);
 
 	virtual ~BFSState();
@@ -24,6 +25,7 @@ public:
 	void CreateThreadLocalCSRs(); // Generates LocalCSRs
 
 	// Common members
+	shared_ptr<PathFindingBatch> batch;
 	shared_ptr<DataChunk> pairs;
 	std::vector<shared_ptr<LocalCSR>> local_csrs;
 	atomic<int64_t> partition_counter;

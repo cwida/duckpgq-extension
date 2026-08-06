@@ -30,7 +30,7 @@ struct BidirectionalPhaseTiming {
 
 class BidirectionalIterativeLengthState : public BFSState {
 public:
-	BidirectionalIterativeLengthState(const shared_ptr<DataChunk> &pairs_,
+	BidirectionalIterativeLengthState(const shared_ptr<PathFindingBatch> &batch_,
 	                                  std::vector<shared_ptr<LocalCSR>> &local_csrs_,
 	                                  std::vector<shared_ptr<LocalCSR>> &reverse_local_csrs_, idx_t num_threads_,
 	                                  ClientContext &context_, int64_t vsize_);
