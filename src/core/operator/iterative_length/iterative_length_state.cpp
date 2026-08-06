@@ -11,13 +11,14 @@ IterativeLengthState::IterativeLengthState(const shared_ptr<DataChunk> &pairs_,
                                            std::vector<shared_ptr<LocalCSR>> &local_csrs_, idx_t num_threads_,
                                            ClientContext &context_, int64_t vsize_)
     : BFSState(pairs_, local_csrs_, num_threads_, "iterativelength", context_, vsize_) {
-	// Additional IterativeLengthState-specific initialization here
+	worker_changed.resize(num_threads_, 0);
 }
 
 void IterativeLengthState::Clear() {
 	iter = 1;
 	active = 0;
 	change = false;
+	std::fill(worker_changed.begin(), worker_changed.end(), 0);
 	// empty visit vectors
 	for (auto i = 0; i < v_size; i++) {
 		visit1[i] = 0;

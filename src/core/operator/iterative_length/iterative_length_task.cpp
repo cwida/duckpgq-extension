@@ -22,18 +22,20 @@ IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p, ClientContex
 	explore_done = false;
 }
 
-void IterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen,
+bool IterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen,
                                       std::vector<std::bitset<LANE_LIMIT>> &next,
                                       shared_ptr<LocalCSR> &local_csr) const {
+	bool local_change = false;
 	for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
 		if (next[i].any()) {
 			next[i] &= ~seen[i];
 			seen[i] |= next[i];
-			if (!state->change && next[i].any()) {
-				state->change = true;
+			if (next[i].any()) {
+				local_change = true;
 			}
 		}
 	}
+	return local_change;
 }
 
 TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
@@ -180,43 +182,34 @@ void IterativeLengthTask::IterativeLength() {
 	auto &next = state->iter & 1 ? state->visit2 : state->visit1;
 	auto &barrier = state->barrier;
 	// Clear `next` array
-	while (state->partition_counter < state->local_csrs.size()) {
-		state->local_csr_lock.lock();
-		if (state->partition_counter >= state->local_csrs.size()) {
-			state->local_csr_lock.unlock();
+	while (true) {
+		auto partition_idx = state->partition_counter.fetch_add(1);
+		if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
 			break;
 		}
-		auto &local_csr = state->local_csrs[state->partition_counter++];
-		state->local_csr_lock.unlock();
+		auto &local_csr = state->local_csrs[partition_idx];
 		for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
 			next[i] = 0;
-			// visit[i] &= state->lane_active;
 		}
 	}
 	barrier->Wait(worker_id);
-	state->partition_counter = 0;
-	state->local_csr_counter = 0;
-	static std::atomic<int> finished_tasks(0);
+	if (worker_id == 0) {
+		state->partition_counter = 0;
+		state->local_csr_counter = 0;
+		state->change = false;
+		std::fill(state->worker_changed.begin(), state->worker_changed.end(), 0);
+	}
 	barrier->Wait(worker_id);
-	while (state->local_csr_counter < state->local_csrs.size()) {
-		state->local_csr_lock.lock();
-		if (state->local_csr_counter >= state->local_csrs.size()) {
-			state->local_csr_lock.unlock();
+	while (true) {
+		auto partition_idx = state->local_csr_counter.fetch_add(1);
+		if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
 			break;
 		}
-		auto local_csr = state->local_csrs[state->local_csr_counter++].get();
+		auto local_csr = state->local_csrs[partition_idx].get();
 		if (!local_csr) {
 			throw InternalException("Tried to reference nullptr for LocalCSR");
 		}
-		state->local_csr_lock.unlock();
 		RunExplore(visit, next, *local_csr);
-	}
-	state->change = false;
-	// Mark this thread as finished
-	finished_tasks.fetch_add(1);
-	// Last thread reaching here should reset the counter for the next iteration
-	if (finished_tasks.load() == state->tasks_scheduled) {
-		finished_tasks.store(0); // Reset for the next phase
 	}
 
 	if (worker_id == 0 && state->benchmark_lane_activity_enabled) {
@@ -224,19 +217,26 @@ void IterativeLengthTask::IterativeLength() {
 	}
 
 	barrier->Wait(worker_id);
-	while (state->partition_counter < state->local_csrs.size()) {
-		state->local_csr_lock.lock();
-		if (state->partition_counter < state->local_csrs.size()) {
-			auto &local_csr = state->local_csrs[state->partition_counter++];
-			state->local_csr_lock.unlock();
-			CheckChange(seen, next, local_csr);
-		} else {
-			state->local_csr_lock.unlock();
-			break; // Avoids reading invalid memory
+	bool local_change = false;
+	while (true) {
+		auto partition_idx = state->partition_counter.fetch_add(1);
+		if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
+			break;
 		}
+		auto &local_csr = state->local_csrs[partition_idx];
+		local_change |= CheckChange(seen, next, local_csr);
+	}
+	state->worker_changed[worker_id] = local_change ? 1 : 0;
+	barrier->Wait(worker_id);
+	if (worker_id == 0) {
+		bool any_change = false;
+		for (idx_t i = 0; i < state->tasks_scheduled; i++) {
+			any_change |= state->worker_changed[i] != 0;
+		}
+		state->change = any_change;
+		state->partition_counter = 0;
 	}
 	barrier->Wait(worker_id);
-	state->partition_counter = 0;
 }
 
 void IterativeLengthTask::ReachDetect() const {

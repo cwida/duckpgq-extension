@@ -18,6 +18,9 @@ public:
 
 	// Function to write timing results to a file
 	void WriteTimingResults(const std::string &filename);
+
+public:
+	vector<uint8_t> worker_changed;
 };
 
 } // namespace duckdb
