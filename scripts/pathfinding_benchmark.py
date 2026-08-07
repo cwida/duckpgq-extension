@@ -19,7 +19,7 @@ GENERATOR_EXTENSION = GENERATOR_ROOT / "build" / "release" / "extension" / "ldbc
 BENCH_DUCKDB = REPO_ROOT / "build" / "release" / "duckdb"
 DUCKPGQ_EXTENSION = REPO_ROOT / "build" / "release" / "extension" / "duckpgq" / "duckpgq.duckdb_extension"
 PAIR_SHAPES = ("random", "same_dst", "same_src")
-QUERY_PATTERNS = ("point_to_point", "sssp")
+QUERY_PATTERNS = ("point_to_point", "sssp", "all_pairs")
 
 
 @dataclass(frozen=True)
@@ -202,13 +202,17 @@ def pair_table_sql(pair_count):
     return pair_table_sql_for_shape(pair_count, "random")
 
 
-def pair_table_name(pair_count, pair_shape):
+def pair_table_name(pair_count, pair_shape, source_count=None, target_count=None):
     if pair_shape == "random":
         return f"benchmark_pairs_{pair_count}"
     if pair_shape == "same_dst":
         return f"benchmark_pairs_same_dst_{pair_count}"
     if pair_shape == "same_src":
         return f"benchmark_pairs_same_src_{pair_count}"
+    if pair_shape == "all_pairs":
+        if source_count is None or target_count is None:
+            raise ValueError("all_pairs requires source_count and target_count")
+        return f"benchmark_pairs_all_pairs_s{source_count}_t{target_count}"
     raise ValueError(f"Unsupported pair shape: {pair_shape}")
 
 
@@ -217,13 +221,15 @@ def generated_pair_shape(query_pattern, pair_shape):
         return pair_shape
     if query_pattern == "sssp":
         return "same_src"
+    if query_pattern == "all_pairs":
+        return "all_pairs"
     raise ValueError(f"Unsupported query pattern: {query_pattern}")
 
 
-def pair_table_sql_for_shape(pair_count, pair_shape):
+def pair_table_sql_for_shape(pair_count, pair_shape, source_count=None, target_count=None):
     if pair_shape == "random":
         return f"""
-CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape)} AS
+CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape, source_count, target_count)} AS
 WITH rows AS (
     SELECT range::BIGINT AS rn
     FROM range({pair_count})
@@ -238,7 +244,7 @@ FROM rows, n;
 """
     if pair_shape == "same_dst":
         return f"""
-CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape)} AS
+CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape, source_count, target_count)} AS
 WITH rows AS (
     SELECT range::BIGINT AS rn
     FROM range({pair_count})
@@ -253,7 +259,7 @@ FROM rows, n;
 """
     if pair_shape == "same_src":
         return f"""
-CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape)} AS
+CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape, source_count, target_count)} AS
 WITH rows AS (
     SELECT range::BIGINT AS rn
     FROM range({pair_count})
@@ -264,6 +270,29 @@ n AS (
 )
 SELECT 0::BIGINT AS src, ((rn * 104729 + 15485863) % vertex_count)::BIGINT AS dst
 FROM rows, n;
+"""
+    if pair_shape == "all_pairs":
+        if source_count is None:
+            source_count = pair_count
+        if target_count is None:
+            target_count = pair_count
+        return f"""
+CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape, source_count, target_count)} AS
+WITH srcs AS (
+    SELECT range::BIGINT AS src_rn
+    FROM range({source_count})
+),
+dsts AS (
+    SELECT range::BIGINT AS dst_rn
+    FROM range({target_count})
+),
+n AS (
+    SELECT count(*)::BIGINT AS vertex_count
+    FROM person
+)
+SELECT (src_rn % vertex_count)::BIGINT AS src,
+       (dst_rn % vertex_count)::BIGINT AS dst
+FROM srcs, dsts, n;
 """
     raise ValueError(f"Unsupported pair shape: {pair_shape}")
 
@@ -289,18 +318,19 @@ FROM pairs;
 """
 
 
-def ensure_pair_table(scale_factor, pair_count, pair_shape="random"):
+def ensure_pair_table(scale_factor, pair_count, pair_shape="random", source_count=None, target_count=None):
     out_db = db_path(scale_factor)
     if not out_db.exists():
         return
 
+    table_name = pair_table_name(pair_count, pair_shape, source_count, target_count)
     sql = f"""
-{pair_table_sql_for_shape(pair_count, pair_shape)}
-ANALYZE {pair_table_name(pair_count, pair_shape)};
+{pair_table_sql_for_shape(pair_count, pair_shape, source_count, target_count)}
+ANALYZE {table_name};
 """
-    print(f"Ensuring {sf_name(scale_factor)} {pair_table_name(pair_count, pair_shape)} exists")
+    print(f"Ensuring {sf_name(scale_factor)} {table_name} exists")
     _, elapsed = run_duckdb(BENCH_DUCKDB, out_db, sql)
-    print(f"Prepared {pair_table_name(pair_count, pair_shape)} for {sf_name(scale_factor)} in {elapsed:.2f}s")
+    print(f"Prepared {table_name} for {sf_name(scale_factor)} in {elapsed:.2f}s")
 
 
 def read_pair_profile(attached_db, pair_table):
@@ -836,11 +866,19 @@ def run_benchmark(args):
     if not attached_db.exists():
         raise SystemExit(f"Missing benchmark database: {attached_db}. Run prepare first.")
     generated_shape = generated_pair_shape(args.query_pattern, args.pair_shape)
+    source_count = args.source_count
+    target_count = args.target_count
+    pair_label = str(args.pairs)
+    if generated_shape == "all_pairs":
+        source_count = args.pairs if source_count is None else source_count
+        target_count = args.pairs if target_count is None else target_count
+        pair_label = f"{source_count}x{target_count}"
     pair_shape = "custom" if args.pair_table else generated_shape
-    pair_table = args.pair_table or pair_table_name(args.pairs, generated_shape)
+    pair_table = args.pair_table or pair_table_name(args.pairs, generated_shape, source_count, target_count)
     if args.pair_table is None:
-        ensure_pair_table(args.scale_factor, args.pairs, generated_shape)
+        ensure_pair_table(args.scale_factor, args.pairs, generated_shape, source_count, target_count)
     pair_profile = read_pair_profile(attached_db, pair_table)
+    actual_pair_count = int(pair_profile["pair_table_rows"])
 
     results = []
     modes = benchmark_modes(args.mode)
@@ -848,7 +886,7 @@ def run_benchmark(args):
         for mode in modes:
             prefix = (
                 results_dir
-                / f"{mode}_{args.query_pattern}_{pair_shape}_pairs{args.pairs}_threads{args.threads}_repeat{repeat}"
+                / f"{mode}_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_repeat{repeat}"
             )
             phase_path = phase_timing_path(prefix)
             if phase_path.exists():
@@ -865,7 +903,7 @@ def run_benchmark(args):
             options = BenchmarkOptions(
                 attached_db=attached_db,
                 query_pattern=args.query_pattern,
-                pair_count=args.pairs,
+                pair_count=actual_pair_count,
                 pair_table=pair_table,
                 threads=args.threads,
                 benchmark_prefix=prefix,
@@ -916,7 +954,7 @@ def run_benchmark(args):
         verify_result_rows(results)
 
     timestamp = int(time.time())
-    result_path = results_dir / f"summary_{args.query_pattern}_{pair_shape}_pairs{args.pairs}_threads{args.threads}_{timestamp}.csv"
+    result_path = results_dir / f"summary_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_{timestamp}.csv"
     with result_path.open("w", newline="") as handle:
         fieldnames = [
             "scale_factor",
@@ -977,7 +1015,7 @@ def run_benchmark(args):
     print(f"Wrote summary: {result_path}")
 
     stats = summarize_results(results)
-    stats_path = results_dir / f"stats_{args.query_pattern}_{pair_shape}_pairs{args.pairs}_threads{args.threads}_{timestamp}.csv"
+    stats_path = results_dir / f"stats_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_{timestamp}.csv"
     with stats_path.open("w", newline="") as handle:
         fieldnames = [
             "scale_factor",
@@ -1067,8 +1105,21 @@ def main():
         default="point_to_point",
         help=(
             "Benchmark pattern. point_to_point uses --pair-shape; sssp generates one source "
-            "with --pairs target vertices unless --pair-table is set."
+            "with --pairs target vertices; all_pairs generates a source_count x target_count "
+            "block, defaulting both counts to --pairs unless --pair-table is set."
         ),
+    )
+    run_parser.add_argument(
+        "--source-count",
+        type=int,
+        default=None,
+        help="For all_pairs, number of generated source vertices. Defaults to --pairs.",
+    )
+    run_parser.add_argument(
+        "--target-count",
+        type=int,
+        default=None,
+        help="For all_pairs, number of generated target vertices. Defaults to --pairs.",
     )
     run_parser.add_argument(
         "--pair-table",
