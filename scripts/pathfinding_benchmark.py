@@ -18,6 +18,7 @@ GENERATOR_DUCKDB = GENERATOR_ROOT / "build" / "release" / "duckdb"
 GENERATOR_EXTENSION = GENERATOR_ROOT / "build" / "release" / "extension" / "ldbc_data_gen" / "ldbc_data_gen.duckdb_extension"
 BENCH_DUCKDB = REPO_ROOT / "build" / "release" / "duckdb"
 DUCKPGQ_EXTENSION = REPO_ROOT / "build" / "release" / "extension" / "duckpgq" / "duckpgq.duckdb_extension"
+PAIR_SHAPES = ("random", "same_dst", "same_src")
 
 
 @dataclass(frozen=True)
@@ -194,8 +195,23 @@ ANALYZE;
 
 
 def pair_table_sql(pair_count):
-    return f"""
-CREATE TABLE IF NOT EXISTS benchmark_pairs_{pair_count} AS
+    return pair_table_sql_for_shape(pair_count, "random")
+
+
+def pair_table_name(pair_count, pair_shape):
+    if pair_shape == "random":
+        return f"benchmark_pairs_{pair_count}"
+    if pair_shape == "same_dst":
+        return f"benchmark_pairs_same_dst_{pair_count}"
+    if pair_shape == "same_src":
+        return f"benchmark_pairs_same_src_{pair_count}"
+    raise ValueError(f"Unsupported pair shape: {pair_shape}")
+
+
+def pair_table_sql_for_shape(pair_count, pair_shape):
+    if pair_shape == "random":
+        return f"""
+CREATE TABLE IF NOT EXISTS {pair_table_name(pair_count, pair_shape)} AS
 WITH srcs AS (
     SELECT rowid::BIGINT AS src, row_number() OVER (ORDER BY id)::BIGINT - 1 AS rn
     FROM person
@@ -209,20 +225,82 @@ n AS (
 SELECT src, ((rn * 104729 + 15485863) % vertex_count)::BIGINT AS dst
 FROM srcs, n;
 """
+    if pair_shape == "same_dst":
+        return f"""
+CREATE TABLE IF NOT EXISTS {pair_table_name(pair_count, pair_shape)} AS
+WITH srcs AS (
+    SELECT rowid::BIGINT AS src
+    FROM person
+    ORDER BY id
+    LIMIT {pair_count}
+),
+n AS (
+    SELECT count(*)::BIGINT AS vertex_count
+    FROM person
+)
+SELECT src, (15485863 % vertex_count)::BIGINT AS dst
+FROM srcs, n;
+"""
+    if pair_shape == "same_src":
+        return f"""
+CREATE TABLE IF NOT EXISTS {pair_table_name(pair_count, pair_shape)} AS
+WITH dsts AS (
+    SELECT row_number() OVER (ORDER BY id)::BIGINT - 1 AS rn
+    FROM person
+    ORDER BY id
+    LIMIT {pair_count}
+),
+n AS (
+    SELECT count(*)::BIGINT AS vertex_count
+    FROM person
+)
+SELECT 0::BIGINT AS src, ((rn * 104729 + 15485863) % vertex_count)::BIGINT AS dst
+FROM dsts, n;
+"""
+    raise ValueError(f"Unsupported pair shape: {pair_shape}")
 
 
-def ensure_pair_table(scale_factor, pair_count):
+def pair_profile_sql(pair_table):
+    return f"""
+WITH pairs AS (
+    SELECT src, dst
+    FROM {pair_table}
+),
+unique_pairs AS (
+    SELECT src, dst
+    FROM pairs
+    GROUP BY src, dst
+)
+SELECT count(*)::BIGINT AS pair_table_rows,
+       count(DISTINCT src)::BIGINT AS distinct_src_count,
+       count(DISTINCT dst)::BIGINT AS distinct_dst_count,
+       (SELECT count(*)::BIGINT FROM unique_pairs) AS unique_pair_count,
+       (count(*) - (SELECT count(*) FROM unique_pairs))::BIGINT AS duplicate_pair_count,
+       coalesce(sum(CASE WHEN src = dst THEN 1 ELSE 0 END), 0)::BIGINT AS self_pair_count
+FROM pairs;
+"""
+
+
+def ensure_pair_table(scale_factor, pair_count, pair_shape="random"):
     out_db = db_path(scale_factor)
     if not out_db.exists():
         return
 
     sql = f"""
-{pair_table_sql(pair_count)}
-ANALYZE benchmark_pairs_{pair_count};
+{pair_table_sql_for_shape(pair_count, pair_shape)}
+ANALYZE {pair_table_name(pair_count, pair_shape)};
 """
-    print(f"Ensuring {sf_name(scale_factor)} benchmark_pairs_{pair_count} exists")
+    print(f"Ensuring {sf_name(scale_factor)} {pair_table_name(pair_count, pair_shape)} exists")
     _, elapsed = run_duckdb(BENCH_DUCKDB, out_db, sql)
-    print(f"Prepared benchmark_pairs_{pair_count} for {sf_name(scale_factor)} in {elapsed:.2f}s")
+    print(f"Prepared {pair_table_name(pair_count, pair_shape)} for {sf_name(scale_factor)} in {elapsed:.2f}s")
+
+
+def read_pair_profile(attached_db, pair_table):
+    output, _ = run_duckdb(BENCH_DUCKDB, attached_db, pair_profile_sql(pair_table), quiet=True)
+    rows = list(csv.DictReader(output.splitlines()))
+    if len(rows) != 1:
+        raise RuntimeError(f"Expected one pair profile row for {pair_table}, got: {output}")
+    return rows[0]
 
 
 def prepare(args):
@@ -613,6 +691,13 @@ def summarize_results(results):
                 "recursive_max_depth": rows[0]["recursive_max_depth"],
                 "pair_count": rows[0]["pair_count"],
                 "pair_table": rows[0]["pair_table"],
+                "pair_shape": rows[0]["pair_shape"],
+                "pair_table_rows": rows[0]["pair_table_rows"],
+                "distinct_src_count": rows[0]["distinct_src_count"],
+                "distinct_dst_count": rows[0]["distinct_dst_count"],
+                "unique_pair_count": rows[0]["unique_pair_count"],
+                "duplicate_pair_count": rows[0]["duplicate_pair_count"],
+                "self_pair_count": rows[0]["self_pair_count"],
                 "reachable_count": rows[0]["reachable_count"],
                 "total_len": rows[0]["total_len"],
                 "min_len": rows[0]["min_len"],
@@ -655,9 +740,11 @@ def run_benchmark(args):
     attached_db = db_path(args.scale_factor)
     if not attached_db.exists():
         raise SystemExit(f"Missing benchmark database: {attached_db}. Run prepare first.")
-    pair_table = args.pair_table or f"benchmark_pairs_{args.pairs}"
+    pair_shape = "custom" if args.pair_table else args.pair_shape
+    pair_table = args.pair_table or pair_table_name(args.pairs, args.pair_shape)
     if args.pair_table is None:
-        ensure_pair_table(args.scale_factor, args.pairs)
+        ensure_pair_table(args.scale_factor, args.pairs, args.pair_shape)
+    pair_profile = read_pair_profile(attached_db, pair_table)
 
     results = []
     modes = benchmark_modes(args.mode)
@@ -703,6 +790,8 @@ def run_benchmark(args):
             row["threads_per_batch"] = args.threads_per_batch if mode == "operator" else ""
             row["max_concurrent_batches"] = args.max_concurrent_batches if mode == "operator" else ""
             row["pair_table"] = pair_table
+            row["pair_shape"] = pair_shape
+            row.update(pair_profile)
             row["recursive_max_depth"] = args.recursive_max_depth if mode == "recursive" else ""
             if mode == "csr":
                 row["setup_s"] = f"{sum(timers[:-1]):.6f}"
@@ -737,6 +826,13 @@ def run_benchmark(args):
             "recursive_max_depth",
             "pair_count",
             "pair_table",
+            "pair_shape",
+            "pair_table_rows",
+            "distinct_src_count",
+            "distinct_dst_count",
+            "unique_pair_count",
+            "duplicate_pair_count",
+            "self_pair_count",
             "reachable_count",
             "total_len",
             "min_len",
@@ -784,6 +880,13 @@ def run_benchmark(args):
             "recursive_max_depth",
             "pair_count",
             "pair_table",
+            "pair_shape",
+            "pair_table_rows",
+            "distinct_src_count",
+            "distinct_dst_count",
+            "unique_pair_count",
+            "duplicate_pair_count",
+            "self_pair_count",
             "reachable_count",
             "total_len",
             "min_len",
@@ -843,6 +946,12 @@ def main():
         "--pair-table",
         default=None,
         help="Override the benchmark pair table name. Defaults to benchmark_pairs_<pairs>.",
+    )
+    run_parser.add_argument(
+        "--pair-shape",
+        choices=PAIR_SHAPES,
+        default="random",
+        help="Generated pair table shape when --pair-table is not set.",
     )
     run_parser.add_argument("--repeats", type=int, default=1)
     run_parser.add_argument(

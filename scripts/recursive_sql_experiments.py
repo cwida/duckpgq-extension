@@ -7,7 +7,16 @@ import subprocess
 import time
 from pathlib import Path
 
-from pathfinding_benchmark import BENCH_DUCKDB, DATA_ROOT, db_path, ensure_pair_table, sf_name
+from pathfinding_benchmark import (
+    BENCH_DUCKDB,
+    DATA_ROOT,
+    PAIR_SHAPES,
+    db_path,
+    ensure_pair_table,
+    pair_table_name,
+    read_pair_profile,
+    sf_name,
+)
 
 
 def sql_string(value):
@@ -206,6 +215,7 @@ def main():
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--pairs", type=int, nargs="+", default=[1, 8, 32, 128])
     parser.add_argument("--pair-table")
+    parser.add_argument("--pair-shape", choices=PAIR_SHAPES, default="random")
     parser.add_argument("--max-depth", type=int, default=6)
     parser.add_argument("--variants", nargs="+", choices=sorted(VARIANTS), default=sorted(VARIANTS))
     parser.add_argument("--timeout", type=int, default=300)
@@ -217,9 +227,11 @@ def main():
     results_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for pair_count in args.pairs:
-        pair_table = args.pair_table or f"benchmark_pairs_{pair_count}"
+        pair_shape = "custom" if args.pair_table else args.pair_shape
+        pair_table = args.pair_table or pair_table_name(pair_count, args.pair_shape)
         if args.pair_table is None:
-            ensure_pair_table(args.scale_factor, pair_count)
+            ensure_pair_table(args.scale_factor, pair_count, args.pair_shape)
+        pair_profile = read_pair_profile(db_path(args.scale_factor), pair_table)
         for variant in args.variants:
             sql = setup_sql(args.scale_factor, args.threads) + VARIANTS[variant](pair_table, args.max_depth)
             started = time.perf_counter()
@@ -231,10 +243,12 @@ def main():
                 "pair_table": pair_table,
                 "duckdb_binary": str(BENCH_DUCKDB),
                 "requested_pairs": pair_count,
+                "pair_shape": pair_shape,
                 "max_depth": args.max_depth,
                 "query_s": f"{query_s:.6f}",
                 "elapsed_s": f"{elapsed_s:.6f}",
             })
+            row.update(pair_profile)
             rows.append(row)
             print(json.dumps(row, sort_keys=True))
 
@@ -245,6 +259,13 @@ def main():
             "threads",
             "requested_pairs",
             "pair_table",
+            "pair_shape",
+            "pair_table_rows",
+            "distinct_src_count",
+            "distinct_dst_count",
+            "unique_pair_count",
+            "duplicate_pair_count",
+            "self_pair_count",
             "duckdb_binary",
             "max_depth",
             "variant",
