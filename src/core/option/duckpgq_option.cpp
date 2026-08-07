@@ -87,6 +87,12 @@ int32_t GetPathFindingReverseOrientationRatio(ClientContext &context) {
 	return value.GetValue<int32_t>();
 }
 
+int32_t GetPathFindingSourceGroupRatio(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_source_group_ratio", value);
+	return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -258,6 +264,20 @@ void CorePGQOptions::RegisterPathFindingReverseOrientationRatio(ExtensionLoader 
 	    "experimental_path_finding_operator_reverse_orientation_ratio",
 	    "Use reverse MS-BFS for regular path-finding when estimated distinct_src >= ratio * estimated distinct_dst; "
 	    "values <= 0 disable adaptive reverse orientation",
+	    LogicalType::INTEGER, Value(4));
+}
+
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingSourceGroupRatio(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+
+	config.AddExtensionOption(
+	    "experimental_path_finding_operator_source_group_ratio",
+	    "Use source-grouped regular path-finding when pair_count >= ratio * oriented_distinct_source_count; "
+	    "values <= 0 disable adaptive source grouping",
 	    LogicalType::INTEGER, Value(4));
 }
 

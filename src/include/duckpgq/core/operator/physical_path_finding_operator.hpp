@@ -19,6 +19,7 @@
 namespace duckdb {
 class BFSState;      // Forward declaration
 class LocalCSRState; // Forward declaration
+class SourceGroupedIterativeLengthState;
 
 enum class PathFindingOperatorMode {
 	ITERATIVE_LENGTH,
@@ -110,9 +111,14 @@ public:
 	idx_t result_scan_idx;
 	idx_t next_batch_index;
 	vector<shared_ptr<BFSState>> bfs_states;
+	vector<shared_ptr<SourceGroupedIterativeLengthState>> source_group_states;
+	vector<std::pair<idx_t, idx_t>> source_group_output_refs;
+	vector<int64_t> source_group_sources;
+	vector<vector<shared_ptr<DataChunk>>> source_group_output_chunks;
 	vector<shared_ptr<DataChunk>> global_output_batches;
 	vector<vector<idx_t>> global_output_to_search;
 	bool use_global_deduplication;
+	bool use_source_grouping;
 	bool global_dedupe_results_initialized;
 	CSR *csr;
 	int32_t csr_id;

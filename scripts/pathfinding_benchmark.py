@@ -19,11 +19,13 @@ GENERATOR_EXTENSION = GENERATOR_ROOT / "build" / "release" / "extension" / "ldbc
 BENCH_DUCKDB = REPO_ROOT / "build" / "release" / "duckdb"
 DUCKPGQ_EXTENSION = REPO_ROOT / "build" / "release" / "extension" / "duckpgq" / "duckpgq.duckdb_extension"
 PAIR_SHAPES = ("random", "same_dst", "same_src")
+QUERY_PATTERNS = ("point_to_point", "sssp")
 
 
 @dataclass(frozen=True)
 class BenchmarkOptions:
     attached_db: Path
+    query_pattern: str
     pair_count: int
     pair_table: str
     threads: int
@@ -37,6 +39,7 @@ class BenchmarkOptions:
     threads_per_batch: int
     max_concurrent_batches: int
     reverse_orientation_ratio: int
+    source_group_ratio: int
 
 
 def sql_string(value):
@@ -209,54 +212,58 @@ def pair_table_name(pair_count, pair_shape):
     raise ValueError(f"Unsupported pair shape: {pair_shape}")
 
 
+def generated_pair_shape(query_pattern, pair_shape):
+    if query_pattern == "point_to_point":
+        return pair_shape
+    if query_pattern == "sssp":
+        return "same_src"
+    raise ValueError(f"Unsupported query pattern: {query_pattern}")
+
+
 def pair_table_sql_for_shape(pair_count, pair_shape):
     if pair_shape == "random":
         return f"""
-CREATE TABLE IF NOT EXISTS {pair_table_name(pair_count, pair_shape)} AS
-WITH srcs AS (
-    SELECT rowid::BIGINT AS src, row_number() OVER (ORDER BY id)::BIGINT - 1 AS rn
-    FROM person
-    ORDER BY id
-    LIMIT {pair_count}
+CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape)} AS
+WITH rows AS (
+    SELECT range::BIGINT AS rn
+    FROM range({pair_count})
 ),
 n AS (
     SELECT count(*)::BIGINT AS vertex_count
     FROM person
 )
-SELECT src, ((rn * 104729 + 15485863) % vertex_count)::BIGINT AS dst
-FROM srcs, n;
+SELECT (rn % vertex_count)::BIGINT AS src,
+       ((rn * 104729 + 15485863) % vertex_count)::BIGINT AS dst
+FROM rows, n;
 """
     if pair_shape == "same_dst":
         return f"""
-CREATE TABLE IF NOT EXISTS {pair_table_name(pair_count, pair_shape)} AS
-WITH srcs AS (
-    SELECT rowid::BIGINT AS src
-    FROM person
-    ORDER BY id
-    LIMIT {pair_count}
+CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape)} AS
+WITH rows AS (
+    SELECT range::BIGINT AS rn
+    FROM range({pair_count})
 ),
 n AS (
     SELECT count(*)::BIGINT AS vertex_count
     FROM person
 )
-SELECT src, (15485863 % vertex_count)::BIGINT AS dst
-FROM srcs, n;
+SELECT (rn % vertex_count)::BIGINT AS src,
+       (15485863 % vertex_count)::BIGINT AS dst
+FROM rows, n;
 """
     if pair_shape == "same_src":
         return f"""
-CREATE TABLE IF NOT EXISTS {pair_table_name(pair_count, pair_shape)} AS
-WITH dsts AS (
-    SELECT row_number() OVER (ORDER BY id)::BIGINT - 1 AS rn
-    FROM person
-    ORDER BY id
-    LIMIT {pair_count}
+CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape)} AS
+WITH rows AS (
+    SELECT range::BIGINT AS rn
+    FROM range({pair_count})
 ),
 n AS (
     SELECT count(*)::BIGINT AS vertex_count
     FROM person
 )
 SELECT 0::BIGINT AS src, ((rn * 104729 + 15485863) % vertex_count)::BIGINT AS dst
-FROM dsts, n;
+FROM rows, n;
 """
     raise ValueError(f"Unsupported pair shape: {pair_shape}")
 
@@ -358,6 +365,7 @@ SET experimental_path_finding_operator_grouped_batches={grouped_value};
 SET experimental_path_finding_operator_threads_per_batch={options.threads_per_batch};
 SET experimental_path_finding_operator_max_concurrent_batches={options.max_concurrent_batches};
 SET experimental_path_finding_operator_reverse_orientation_ratio={options.reverse_orientation_ratio};
+SET experimental_path_finding_operator_source_group_ratio={options.source_group_ratio};
 {csr_cte("ldbc")}
 SELECT 'operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
@@ -482,6 +490,48 @@ FROM lengths;
 """
 
 
+def recursive_sssp_sql(options):
+    pairs = f"ldbc.{options.pair_table}"
+    return f"""
+WITH RECURSIVE
+pairs AS (
+    SELECT rowid::BIGINT AS pair_id, src, dst
+    FROM {pairs}
+),
+sources AS (
+    SELECT DISTINCT src
+    FROM pairs
+),
+edges AS (
+    SELECT a.rowid::BIGINT AS src, c.rowid::BIGINT AS dst
+    FROM ldbc.person_knows_person k
+    JOIN ldbc.person a ON a.id = k.person1id
+    JOIN ldbc.person c ON c.id = k.person2id
+),
+reach(source, here, len) USING KEY (source, here) AS (
+    SELECT sources.src AS source, sources.src AS here, 0::BIGINT AS len
+    FROM sources
+    UNION ALL (
+        SELECT reach.source, edges.dst, reach.len + 1 AS len
+        FROM reach
+        JOIN edges ON edges.src = reach.here
+        LEFT JOIN recurring.reach rec ON rec.source = reach.source AND rec.here = edges.dst
+        WHERE reach.len < {options.recursive_max_depth}
+          AND reach.len + 1 < coalesce(rec.len, 9223372036854775807)
+        ORDER BY len DESC
+    )
+),
+lengths AS (
+    SELECT pairs.pair_id, reach.len
+    FROM pairs
+    LEFT JOIN reach ON reach.source = pairs.src AND reach.here = pairs.dst
+)
+SELECT 'recursive' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
+       sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
+FROM lengths;
+"""
+
+
 def setup_sql(options):
     return f"""
 LOAD {sql_string(DUCKPGQ_EXTENSION)};
@@ -523,8 +573,23 @@ def mode_sql(mode, options):
     if mode == "scalar":
         return scalar_sql(options)
     if mode == "recursive":
+        if options.query_pattern == "sssp":
+            return recursive_sssp_sql(options)
         return recursive_sql(options)
     raise ValueError(f"Unsupported benchmark mode: {mode}")
+
+
+def recursive_depth_hint(row, expected, actual):
+    if row["mode"] != "recursive" or row.get("recursive_max_depth", "") == "":
+        return ""
+
+    depth = int(row["recursive_max_depth"])
+    actual_max = int(actual["max_len"]) if actual["max_len"] else -1
+    expected_reachable = int(expected["reachable_count"]) if expected["reachable_count"] else 0
+    actual_reachable = int(actual["reachable_count"]) if actual["reachable_count"] else 0
+    if actual_max >= depth or actual_reachable < expected_reachable:
+        return f" Recursive SQL is capped by --recursive-max-depth={depth}; increase it for a fair comparison."
+    return ""
 
 
 def verify_result_rows(results):
@@ -538,9 +603,10 @@ def verify_result_rows(results):
         for row in rows[1:]:
             actual = {key: row[key] for key in result_keys}
             if actual != expected:
+                hint = recursive_depth_hint(row, expected, actual)
                 raise RuntimeError(
                     f"Benchmark result mismatch for repeat {repeat}: {expected_mode}={expected}, "
-                    f"{row['mode']}={actual}"
+                    f"{row['mode']}={actual}.{hint}"
                 )
 
 
@@ -580,6 +646,10 @@ def read_phase_timing(benchmark_prefix):
         "dedupe_unique_pairs": "",
         "dedupe_duplicate_pairs": "",
         "dedupe_remap_memory_bytes": "",
+        "source_group_build_s": "",
+        "source_group_bfs_s": "",
+        "source_group_count": "",
+        "source_group_output_chunks": "",
         "local_csr_forward_memory_bytes": "",
         "local_csr_reverse_memory_bytes": "",
         "local_csr_pull_memory_bytes": "",
@@ -600,6 +670,10 @@ def read_phase_timing(benchmark_prefix):
     dedupe_unique_pairs = 0
     dedupe_duplicate_pairs = 0
     dedupe_remap_memory = 0
+    source_group_build_ms = 0.0
+    source_group_bfs_ms = 0.0
+    source_group_count = 0
+    source_group_output_chunks = 0
     local_csr_forward_memory = ""
     local_csr_reverse_memory = ""
     local_csr_pull_memory = ""
@@ -629,6 +703,12 @@ def read_phase_timing(benchmark_prefix):
             elif phase == "dedupe_scatter":
                 dedupe_scatter_ms += time_ms
                 dedupe_scatter_batches += 1
+            elif phase == "source_group_build":
+                source_group_build_ms += time_ms
+                source_group_count += int(row["EdgeCount"])
+                source_group_output_chunks += int(row["PartitionCount"])
+            elif phase == "source_group_bfs":
+                source_group_bfs_ms += time_ms
 
     if local_csr_forward_ms:
         result["local_csr_forward_s"] = f"{local_csr_forward_ms / 1000.0:.6f}"
@@ -652,6 +732,12 @@ def read_phase_timing(benchmark_prefix):
     if dedupe_scatter_batches:
         result["dedupe_scatter_s"] = f"{dedupe_scatter_ms / 1000.0:.6f}"
         result["dedupe_scatter_batches"] = dedupe_scatter_batches
+    if source_group_count:
+        result["source_group_build_s"] = f"{source_group_build_ms / 1000.0:.6f}"
+        result["source_group_count"] = source_group_count
+        result["source_group_output_chunks"] = source_group_output_chunks
+    if source_group_bfs_ms:
+        result["source_group_bfs_s"] = f"{source_group_bfs_ms / 1000.0:.6f}"
     return result
 
 
@@ -685,12 +771,14 @@ def summarize_results(results):
                 "mode": mode,
                 "threads": rows[0]["threads"],
                 "repeats": len(rows),
+                "query_pattern": rows[0]["query_pattern"],
                 "metrics_enabled": rows[0]["metrics_enabled"],
                 "deduplicate_pairs": rows[0]["deduplicate_pairs"],
                 "grouped_batches": rows[0]["grouped_batches"],
                 "threads_per_batch": rows[0]["threads_per_batch"],
                 "max_concurrent_batches": rows[0]["max_concurrent_batches"],
                 "reverse_orientation_ratio": rows[0]["reverse_orientation_ratio"],
+                "source_group_ratio": rows[0]["source_group_ratio"],
                 "recursive_max_depth": rows[0]["recursive_max_depth"],
                 "pair_count": rows[0]["pair_count"],
                 "pair_table": rows[0]["pair_table"],
@@ -725,6 +813,10 @@ def summarize_results(results):
                 "dedupe_unique_pairs_mean": mean_int_optional(rows, "dedupe_unique_pairs"),
                 "dedupe_duplicate_pairs_mean": mean_int_optional(rows, "dedupe_duplicate_pairs"),
                 "dedupe_remap_memory_bytes_mean": mean_int_optional(rows, "dedupe_remap_memory_bytes"),
+                "source_group_build_mean_s": mean_optional(rows, "source_group_build_s"),
+                "source_group_bfs_mean_s": mean_optional(rows, "source_group_bfs_s"),
+                "source_group_count_mean": mean_int_optional(rows, "source_group_count"),
+                "source_group_output_chunks_mean": mean_int_optional(rows, "source_group_output_chunks"),
                 "query_mean_s": f"{statistics.mean(query_times):.6f}",
                 "query_stdev_s": f"{stdev(query_times):.6f}",
                 "query_min_s": f"{min(query_times):.6f}",
@@ -743,17 +835,21 @@ def run_benchmark(args):
     attached_db = db_path(args.scale_factor)
     if not attached_db.exists():
         raise SystemExit(f"Missing benchmark database: {attached_db}. Run prepare first.")
-    pair_shape = "custom" if args.pair_table else args.pair_shape
-    pair_table = args.pair_table or pair_table_name(args.pairs, args.pair_shape)
+    generated_shape = generated_pair_shape(args.query_pattern, args.pair_shape)
+    pair_shape = "custom" if args.pair_table else generated_shape
+    pair_table = args.pair_table or pair_table_name(args.pairs, generated_shape)
     if args.pair_table is None:
-        ensure_pair_table(args.scale_factor, args.pairs, args.pair_shape)
+        ensure_pair_table(args.scale_factor, args.pairs, generated_shape)
     pair_profile = read_pair_profile(attached_db, pair_table)
 
     results = []
     modes = benchmark_modes(args.mode)
     for repeat in range(1, args.repeats + 1):
         for mode in modes:
-            prefix = results_dir / f"{mode}_pairs{args.pairs}_threads{args.threads}_repeat{repeat}"
+            prefix = (
+                results_dir
+                / f"{mode}_{args.query_pattern}_{pair_shape}_pairs{args.pairs}_threads{args.threads}_repeat{repeat}"
+            )
             phase_path = phase_timing_path(prefix)
             if phase_path.exists():
                 phase_path.unlink()
@@ -768,6 +864,7 @@ def run_benchmark(args):
                 pushpull_phase_path.unlink()
             options = BenchmarkOptions(
                 attached_db=attached_db,
+                query_pattern=args.query_pattern,
                 pair_count=args.pairs,
                 pair_table=pair_table,
                 threads=args.threads,
@@ -781,6 +878,7 @@ def run_benchmark(args):
                 threads_per_batch=args.threads_per_batch,
                 max_concurrent_batches=args.max_concurrent_batches,
                 reverse_orientation_ratio=args.reverse_orientation_ratio,
+                source_group_ratio=args.source_group_ratio,
             )
             query_sql = mode_sql(mode, options)
             output, timers = run_duckdb_timed_script(setup_sql(options) + query_sql, args.timeout)
@@ -788,12 +886,14 @@ def run_benchmark(args):
             row["scale_factor"] = args.scale_factor
             row["threads"] = args.threads
             row["repeat"] = repeat
+            row["query_pattern"] = args.query_pattern
             row["metrics_enabled"] = int(args.metrics)
             row["deduplicate_pairs"] = int(args.deduplicate_pairs)
             row["grouped_batches"] = int(args.grouped_batches and mode == "operator")
             row["threads_per_batch"] = args.threads_per_batch if mode == "operator" else ""
             row["max_concurrent_batches"] = args.max_concurrent_batches if mode == "operator" else ""
             row["reverse_orientation_ratio"] = args.reverse_orientation_ratio if mode == "operator" else ""
+            row["source_group_ratio"] = args.source_group_ratio if mode == "operator" else ""
             row["pair_table"] = pair_table
             row["pair_shape"] = pair_shape
             row.update(pair_profile)
@@ -816,19 +916,21 @@ def run_benchmark(args):
         verify_result_rows(results)
 
     timestamp = int(time.time())
-    result_path = results_dir / f"summary_pairs{args.pairs}_threads{args.threads}_{timestamp}.csv"
+    result_path = results_dir / f"summary_{args.query_pattern}_{pair_shape}_pairs{args.pairs}_threads{args.threads}_{timestamp}.csv"
     with result_path.open("w", newline="") as handle:
         fieldnames = [
             "scale_factor",
             "mode",
             "threads",
             "repeat",
+            "query_pattern",
             "metrics_enabled",
             "deduplicate_pairs",
             "grouped_batches",
             "threads_per_batch",
             "max_concurrent_batches",
             "reverse_orientation_ratio",
+            "source_group_ratio",
             "recursive_max_depth",
             "pair_count",
             "pair_table",
@@ -858,6 +960,10 @@ def run_benchmark(args):
             "dedupe_unique_pairs",
             "dedupe_duplicate_pairs",
             "dedupe_remap_memory_bytes",
+            "source_group_build_s",
+            "source_group_bfs_s",
+            "source_group_count",
+            "source_group_output_chunks",
             "local_csr_forward_memory_bytes",
             "local_csr_reverse_memory_bytes",
             "local_csr_pull_memory_bytes",
@@ -871,19 +977,21 @@ def run_benchmark(args):
     print(f"Wrote summary: {result_path}")
 
     stats = summarize_results(results)
-    stats_path = results_dir / f"stats_pairs{args.pairs}_threads{args.threads}_{timestamp}.csv"
+    stats_path = results_dir / f"stats_{args.query_pattern}_{pair_shape}_pairs{args.pairs}_threads{args.threads}_{timestamp}.csv"
     with stats_path.open("w", newline="") as handle:
         fieldnames = [
             "scale_factor",
             "mode",
             "threads",
             "repeats",
+            "query_pattern",
             "metrics_enabled",
             "deduplicate_pairs",
             "grouped_batches",
             "threads_per_batch",
             "max_concurrent_batches",
             "reverse_orientation_ratio",
+            "source_group_ratio",
             "recursive_max_depth",
             "pair_count",
             "pair_table",
@@ -918,6 +1026,10 @@ def run_benchmark(args):
             "dedupe_unique_pairs_mean",
             "dedupe_duplicate_pairs_mean",
             "dedupe_remap_memory_bytes_mean",
+            "source_group_build_mean_s",
+            "source_group_bfs_mean_s",
+            "source_group_count_mean",
+            "source_group_output_chunks_mean",
             "query_mean_s",
             "query_stdev_s",
             "query_min_s",
@@ -949,6 +1061,15 @@ def main():
     run_parser.add_argument("--scale-factor", required=True)
     run_parser.add_argument("--threads", type=int, default=4)
     run_parser.add_argument("--pairs", type=int, default=1024)
+    run_parser.add_argument(
+        "--query-pattern",
+        choices=QUERY_PATTERNS,
+        default="point_to_point",
+        help=(
+            "Benchmark pattern. point_to_point uses --pair-shape; sssp generates one source "
+            "with --pairs target vertices unless --pair-table is set."
+        ),
+    )
     run_parser.add_argument(
         "--pair-table",
         default=None,
@@ -1018,6 +1139,12 @@ def main():
         type=int,
         default=4,
         help="Use reverse MS-BFS for operator mode when estimated distinct_src >= ratio * estimated distinct_dst; <= 0 disables it.",
+    )
+    run_parser.add_argument(
+        "--source-group-ratio",
+        type=int,
+        default=4,
+        help="Use source-grouped regular MS-BFS when pair_count >= ratio * oriented distinct source count; <= 0 disables it.",
     )
     run_parser.add_argument("--recursive-max-depth", type=int, default=8)
     run_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)

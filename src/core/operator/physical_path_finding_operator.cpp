@@ -19,6 +19,7 @@
 #include <duckpgq/core/option/duckpgq_option.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_state.hpp>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -51,6 +52,234 @@ void AppendOperatorPhaseTiming(ClientContext &context, const string &phase, idx_
 	outfile << phase << ",operator," << thread_count << "," << pair_count << ",0," << unique_count << ","
 	        << duplicate_count << "," << time_ms << "," << memory_bytes << "\n";
 }
+
+size_t GetLocalCSREdgeCount(const std::vector<shared_ptr<LocalCSR>> &partition_csrs) {
+	size_t edge_count = 0;
+	for (const auto &local_csr : partition_csrs) {
+		edge_count += local_csr->GetEdgeSize();
+	}
+	return edge_count;
+}
+
+} // namespace
+
+class SourceGroupedIterativeLengthState {
+public:
+	SourceGroupedIterativeLengthState(ClientContext &context_p, int64_t source_p,
+	                                  std::vector<shared_ptr<LocalCSR>> &local_csrs_p, idx_t num_threads_p,
+	                                  int64_t v_size_p)
+	    : context(context_p), source(source_p), local_csrs(local_csrs_p), num_threads(num_threads_p), v_size(v_size_p),
+	      distances(v_size, -1), seen(v_size), frontier(v_size), next(v_size), iter(1), change(false),
+	      tasks_scheduled(0) {
+		worker_changed.resize(num_threads, 0);
+		partition_counter = 0;
+		local_csr_counter = 0;
+		benchmark_enabled = GetPathFindingBenchmarkOption(context);
+		benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
+	}
+
+	void Initialize() {
+		if (source < 0 || source >= v_size) {
+			return;
+		}
+		seen[source].store(1, std::memory_order_relaxed);
+		frontier[source].store(1, std::memory_order_relaxed);
+		distances[source] = 0;
+		change = true;
+	}
+
+	int64_t Distance(int64_t target) const {
+		if (target < 0 || target >= v_size) {
+			return -1;
+		}
+		return distances[target];
+	}
+
+	ClientContext &context;
+	int64_t source;
+	std::vector<shared_ptr<LocalCSR>> local_csrs;
+	idx_t num_threads;
+	int64_t v_size;
+	vector<int64_t> distances;
+	vector<atomic<uint8_t>> seen;
+	vector<atomic<uint8_t>> frontier;
+	vector<atomic<uint8_t>> next;
+	vector<uint8_t> worker_changed;
+	atomic<int64_t> partition_counter;
+	atomic<int64_t> local_csr_counter;
+	unique_ptr<Barrier> barrier;
+	int64_t iter;
+	bool change;
+	idx_t tasks_scheduled;
+	bool benchmark_enabled;
+	string benchmark_output_prefix;
+	std::chrono::steady_clock::time_point phase_start_time;
+	vector<shared_ptr<DataChunk>> output_chunks;
+};
+
+namespace {
+
+class SourceGroupedIterativeLengthTask : public ExecutorTask {
+public:
+	SourceGroupedIterativeLengthTask(shared_ptr<Event> event_p, ClientContext &context,
+	                                 shared_ptr<SourceGroupedIterativeLengthState> state_p, idx_t worker_id_p,
+	                                 const PhysicalOperator &op_p)
+	    : ExecutorTask(context, std::move(event_p), op_p), state(std::move(state_p)), worker_id(worker_id_p) {
+	}
+
+	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
+		Execute();
+		event->FinishTask();
+		return TaskExecutionResult::TASK_FINISHED;
+	}
+
+private:
+	void Execute() {
+		auto &barrier = state->barrier;
+		if (worker_id == 0) {
+			state->Initialize();
+		}
+		barrier->Wait(worker_id);
+
+		while (state->change) {
+			while (true) {
+				auto partition_idx = state->partition_counter.fetch_add(1);
+				if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
+					break;
+				}
+				auto &local_csr = state->local_csrs[partition_idx];
+				for (auto vertex = local_csr->start_vertex; vertex < local_csr->end_vertex; vertex++) {
+					state->next[vertex].store(0, std::memory_order_relaxed);
+				}
+			}
+			barrier->Wait(worker_id);
+
+			if (worker_id == 0) {
+				state->partition_counter = 0;
+				state->local_csr_counter = 0;
+				state->change = false;
+				std::fill(state->worker_changed.begin(), state->worker_changed.end(), 0);
+			}
+			barrier->Wait(worker_id);
+
+			while (true) {
+				auto partition_idx = state->local_csr_counter.fetch_add(1);
+				if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
+					break;
+				}
+				auto &local_csr = *state->local_csrs[partition_idx];
+				if (local_csr.HasSparseRows()) {
+					for (idx_t row_idx = 0; row_idx < local_csr.source_vertices.size(); row_idx++) {
+						auto source_vertex = local_csr.source_vertices[row_idx];
+						if (!state->frontier[source_vertex].load(std::memory_order_relaxed)) {
+							continue;
+						}
+						auto start_edges = local_csr.row_offsets[row_idx];
+						auto end_edges = local_csr.row_offsets[row_idx + 1];
+						for (auto offset = start_edges; offset < end_edges; offset++) {
+							auto target = local_csr.e[offset] + local_csr.start_vertex;
+							if (!state->seen[target].load(std::memory_order_relaxed)) {
+								state->next[target].store(1, std::memory_order_relaxed);
+							}
+						}
+					}
+					continue;
+				}
+
+				for (idx_t vertex = 0; vertex < local_csr.GetVertexSize(); vertex++) {
+					if (!state->frontier[vertex].load(std::memory_order_relaxed)) {
+						continue;
+					}
+					auto start_edges = local_csr.v[vertex].load(std::memory_order_relaxed);
+					auto end_edges = local_csr.v[vertex + 1].load(std::memory_order_relaxed);
+					for (auto offset = start_edges; offset < end_edges; offset++) {
+						auto target = local_csr.e[offset] + local_csr.start_vertex;
+						if (!state->seen[target].load(std::memory_order_relaxed)) {
+							state->next[target].store(1, std::memory_order_relaxed);
+						}
+					}
+				}
+			}
+			barrier->Wait(worker_id);
+
+			bool local_change = false;
+			while (true) {
+				auto partition_idx = state->partition_counter.fetch_add(1);
+				if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
+					break;
+				}
+				auto &local_csr = state->local_csrs[partition_idx];
+				for (auto vertex = local_csr->start_vertex; vertex < local_csr->end_vertex; vertex++) {
+					if (state->next[vertex].load(std::memory_order_relaxed) &&
+					    !state->seen[vertex].load(std::memory_order_relaxed)) {
+						state->seen[vertex].store(1, std::memory_order_relaxed);
+						state->frontier[vertex].store(1, std::memory_order_relaxed);
+						state->distances[vertex] = state->iter;
+						local_change = true;
+					} else {
+						state->frontier[vertex].store(0, std::memory_order_relaxed);
+					}
+				}
+			}
+			state->worker_changed[worker_id] = local_change ? 1 : 0;
+			barrier->Wait(worker_id);
+
+			if (worker_id == 0) {
+				bool any_change = false;
+				for (idx_t worker = 0; worker < state->tasks_scheduled; worker++) {
+					any_change |= state->worker_changed[worker] != 0;
+				}
+				state->change = any_change;
+				state->partition_counter = 0;
+				state->iter++;
+			}
+			barrier->Wait(worker_id);
+		}
+	}
+
+	shared_ptr<SourceGroupedIterativeLengthState> state;
+	idx_t worker_id;
+};
+
+class SourceGroupedIterativeLengthEvent : public BasePipelineEvent {
+public:
+	SourceGroupedIterativeLengthEvent(shared_ptr<SourceGroupedIterativeLengthState> state_p, Pipeline &pipeline_p,
+	                                  const PhysicalPathFinding &op_p)
+	    : BasePipelineEvent(pipeline_p), state(std::move(state_p)), op(op_p) {
+	}
+
+	void Schedule() override {
+		state->phase_start_time = std::chrono::steady_clock::now();
+		auto &context = pipeline->GetClientContext();
+		vector<shared_ptr<Task>> tasks;
+		idx_t num_partitions = state->local_csrs.size();
+		for (idx_t worker = 0; worker < std::min(state->num_threads, num_partitions); worker++) {
+			tasks.push_back(
+			    make_uniq<SourceGroupedIterativeLengthTask>(shared_from_this(), context, state, worker, op));
+			state->tasks_scheduled++;
+		}
+		state->barrier = make_uniq<Barrier>(state->tasks_scheduled);
+		SetTasks(std::move(tasks));
+	}
+
+	void FinishEvent() override {
+		if (!state->benchmark_enabled) {
+			return;
+		}
+		auto phase_end_time = std::chrono::steady_clock::now();
+		auto time_ms = std::chrono::duration<double, std::milli>(phase_end_time - state->phase_start_time).count();
+		idx_t output_count = 0;
+		for (auto &chunk : state->output_chunks) {
+			output_count += chunk->size();
+		}
+		AppendOperatorPhaseTiming(state->context, "source_group_bfs", state->num_threads, output_count,
+		                          state->v_size - 2, state->local_csrs.size(), time_ms, 0);
+	}
+
+private:
+	shared_ptr<SourceGroupedIterativeLengthState> state;
+	const PhysicalPathFinding &op;
+};
 
 struct PairKey {
 	bool src_valid;
@@ -255,6 +484,22 @@ bool ShouldUseGroupedIterativeLengthBatches(PathFindingGlobalSinkState &gstate, 
 	       GetPathFindingGroupedBatches(context);
 }
 
+bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, ClientContext &context) {
+	auto ratio = GetPathFindingSourceGroupRatio(context);
+	if (gstate.path_finding_mode != PathFindingOperatorMode::ITERATIVE_LENGTH || ratio <= 0 ||
+	    gstate.pair_stats.null_pair_count > 0) {
+		return false;
+	}
+	auto distinct_search_sources = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
+	                                   ? gstate.pair_stats.distinct_dst_count
+	                                   : gstate.pair_stats.distinct_src_count;
+	if (distinct_search_sources == 0) {
+		return false;
+	}
+	return static_cast<double>(gstate.pair_stats.pair_count) >=
+	       static_cast<double>(ratio) * static_cast<double>(distinct_search_sources);
+}
+
 void SchedulePathFindingBatches(PathFindingGlobalSinkState &gstate, vector<shared_ptr<PathFindingBatch>> &batches,
                                 Pipeline &pipeline, Event &event, const PhysicalPathFinding &op,
                                 ClientContext &context) {
@@ -283,6 +528,39 @@ void SchedulePathFindingBatches(PathFindingGlobalSinkState &gstate, vector<share
 	event.InsertEvent(make_shared_ptr<GroupedIterativeLengthEvent>(std::move(iterative_states), workers_per_batch,
 	                                                               group_count, pipeline, op));
 }
+
+class SourceGroupedScheduleEvent : public BasePipelineEvent {
+public:
+	SourceGroupedScheduleEvent(PathFindingGlobalSinkState &gstate_p, Pipeline &pipeline_p,
+	                           const PhysicalPathFinding &op_p, ClientContext &context_p)
+	    : BasePipelineEvent(pipeline_p), gstate(gstate_p), op(op_p), context(context_p) {
+	}
+
+	void Schedule() override {
+	}
+
+	void FinishEvent() override {
+		auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
+		                           ? gstate.local_csr_state->reverse_partition_csrs
+		                           : gstate.local_csr_state->partition_csrs;
+		for (idx_t group_idx = 0; group_idx < gstate.source_group_sources.size(); group_idx++) {
+			auto state = make_shared_ptr<SourceGroupedIterativeLengthState>(
+			    context, gstate.source_group_sources[group_idx], partition_csrs, gstate.num_threads, gstate.csr->vsize);
+			state->output_chunks = std::move(gstate.source_group_output_chunks[group_idx]);
+			auto state_idx = gstate.source_group_states.size();
+			for (idx_t chunk_idx = 0; chunk_idx < state->output_chunks.size(); chunk_idx++) {
+				gstate.source_group_output_refs.emplace_back(state_idx, chunk_idx);
+			}
+			gstate.source_group_states.push_back(state);
+			InsertEvent(make_shared_ptr<SourceGroupedIterativeLengthEvent>(state, *pipeline, op));
+		}
+	}
+
+private:
+	PathFindingGlobalSinkState &gstate;
+	const PhysicalPathFinding &op;
+	ClientContext &context;
+};
 
 class PathFindingScheduleEvent : public BasePipelineEvent {
 public:
@@ -320,6 +598,102 @@ void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate, ve
 	event.InsertEvent(local_csr_event);
 	local_csr_event->InsertEvent(
 	    make_shared_ptr<PathFindingScheduleEvent>(std::move(batches), gstate, pipeline, op, context));
+}
+
+void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
+                                            const PhysicalPathFinding &op, ClientContext &context) {
+	auto local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
+	ConfigureLocalCSRStateForMode(*local_csr_state, gstate.path_finding_mode);
+	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
+		local_csr_state->build_forward_csr = false;
+		local_csr_state->build_reverse_csr = true;
+	}
+	gstate.local_csr_state = local_csr_state;
+
+	auto local_csr_event = make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, op, context);
+	event.InsertEvent(local_csr_event);
+	local_csr_event->InsertEvent(make_shared_ptr<SourceGroupedScheduleEvent>(gstate, pipeline, op, context));
+}
+
+struct SourceGroupBuildState {
+	int64_t source;
+	vector<shared_ptr<DataChunk>> output_chunks;
+	shared_ptr<DataChunk> current_chunk;
+	idx_t current_count = 0;
+};
+
+void AppendSourceGroupRow(ClientContext &context, SourceGroupBuildState &group, DataChunk &source_chunk, idx_t row) {
+	if (!group.current_chunk || group.current_count == STANDARD_VECTOR_SIZE) {
+		if (group.current_chunk) {
+			group.current_chunk->SetChildCardinality(group.current_count);
+			group.output_chunks.push_back(group.current_chunk);
+		}
+		group.current_chunk = make_shared_ptr<DataChunk>();
+		group.current_chunk->Initialize(context, source_chunk.GetTypes());
+		group.current_count = 0;
+	}
+	group.current_chunk->data[0].SetValue(group.current_count, source_chunk.GetValue(0, row));
+	group.current_chunk->data[1].SetValue(group.current_count, source_chunk.GetValue(1, row));
+	group.current_count++;
+}
+
+SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkState &gstate, Pipeline &pipeline,
+                                                       Event &event, const PhysicalPathFinding &op,
+                                                       ClientContext &context) {
+	auto start_time = std::chrono::steady_clock::now();
+	std::unordered_map<int64_t, idx_t> source_to_group;
+	vector<SourceGroupBuildState> groups;
+
+	for (auto &chunk : gstate.global_output_batches) {
+		UnifiedVectorFormat src_format;
+		UnifiedVectorFormat dst_format;
+		chunk->data[0].ToUnifiedFormat(src_format);
+		chunk->data[1].ToUnifiedFormat(dst_format);
+		auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
+		auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
+
+		for (idx_t row = 0; row < chunk->size(); row++) {
+			auto src_idx = src_format.sel->get_index(row);
+			auto dst_idx = dst_format.sel->get_index(row);
+			auto source = gstate.search_orientation == PathFindingSearchOrientation::REVERSE ? dst_data[dst_idx]
+			                                                                                 : src_data[src_idx];
+			auto entry = source_to_group.find(source);
+			if (entry == source_to_group.end()) {
+				auto group_idx = groups.size();
+				source_to_group.emplace(source, group_idx);
+				SourceGroupBuildState group;
+				group.source = source;
+				groups.push_back(std::move(group));
+				entry = source_to_group.find(source);
+			}
+			AppendSourceGroupRow(context, groups[entry->second], *chunk, row);
+		}
+	}
+
+	idx_t output_chunk_count = 0;
+	for (auto &group : groups) {
+		if (group.current_chunk) {
+			group.current_chunk->SetChildCardinality(group.current_count);
+			group.output_chunks.push_back(group.current_chunk);
+		}
+		output_chunk_count += group.output_chunks.size();
+		gstate.source_group_sources.push_back(group.source);
+		gstate.source_group_output_chunks.push_back(std::move(group.output_chunks));
+	}
+
+	auto end_time = std::chrono::steady_clock::now();
+	auto build_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+	AppendOperatorPhaseTiming(context, "source_group_build", gstate.num_threads, gstate.pair_stats.pair_count,
+	                          groups.size(), output_chunk_count, build_ms, 0);
+
+	gstate.global_output_batches.clear();
+	gstate.use_source_grouping = true;
+	ScheduleLocalCSRBuildThenSourceGrouped(gstate, pipeline, event, op, context);
+
+	++gstate.child;
+	auto duckpgq_state = GetDuckPGQState(context);
+	duckpgq_state->csr_to_delete.insert(gstate.csr_id);
+	return SinkFinalizeType::READY;
 }
 
 SinkFinalizeType FinalizeCSRIdPhase(PathFindingGlobalSinkState &gstate) {
@@ -447,11 +821,6 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 		return SinkFinalizeType::READY;
 	}
 
-	if (GetPathFindingDeduplicatePairs(context)) {
-		return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
-	}
-
-	vector<shared_ptr<PathFindingBatch>> batches;
 	PathFindingPairStats pair_stats;
 	HyperLogLog distinct_srcs;
 	HyperLogLog distinct_dsts;
@@ -460,16 +829,25 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 		current_chunk->Initialize(context, gstate.global_pairs->Types());
 		gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
 		AccumulatePairStats(*current_chunk, pair_stats, distinct_srcs, distinct_dsts);
-		auto batch = CreatePathFindingBatch(current_chunk, gstate.next_batch_index++);
-		batches.push_back(std::move(batch));
+		gstate.global_output_batches.push_back(current_chunk);
 	}
 	FinalizePairStats(gstate, pair_stats, distinct_srcs, distinct_dsts);
 	gstate.search_orientation = ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
+	if (ShouldUseSourceGroupedIterativeLength(gstate, context)) {
+		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
+	}
+
+	if (GetPathFindingDeduplicatePairs(context)) {
+		gstate.global_output_batches.clear();
+		gstate.global_pairs->InitializeScan(gstate.global_scan_state);
+		return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
+	}
+
 	vector<shared_ptr<PathFindingBatch>> oriented_batches;
-	oriented_batches.reserve(batches.size());
-	for (auto &batch : batches) {
+	oriented_batches.reserve(gstate.global_output_batches.size());
+	for (auto &output_batch : gstate.global_output_batches) {
 		oriented_batches.push_back(
-		    CreateOrientedPathFindingBatch(context, gstate.search_orientation, batch->output_pairs, batch->output_index));
+		    CreateOrientedPathFindingBatch(context, gstate.search_orientation, output_batch, gstate.next_batch_index++));
 	}
 	ScheduleLocalCSRBuildThenPathFinding(gstate, std::move(oriented_batches), pipeline, event, op, context);
 
@@ -513,6 +891,7 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 	result_scan_idx = 0;
 	next_batch_index = 0;
 	use_global_deduplication = false;
+	use_source_grouping = false;
 	global_dedupe_results_initialized = false;
 
 	child = 0;
@@ -635,6 +1014,49 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 	// If there are no pairs, we're done
 	if (pf_sink.global_pairs->Count() == 0) {
 		return SourceResultType::FINISHED;
+	}
+
+	if (pf_sink.use_source_grouping) {
+		D_ASSERT(pf_sink.result_scan_idx < pf_sink.source_group_output_refs.size());
+		auto output_ref = pf_sink.source_group_output_refs[pf_sink.result_scan_idx];
+		auto &source_group = pf_sink.source_group_states[output_ref.first];
+		auto output_pairs = source_group->output_chunks[output_ref.second];
+
+		auto output_results = make_shared_ptr<DataChunk>();
+		output_results->Initialize(context.client, {LogicalType::BIGINT}, output_pairs->size());
+		output_results->SetChildCardinality(output_pairs->size());
+		auto result_data = FlatVector::GetDataMutable<int64_t>(output_results->data[0]);
+		auto &result_validity = FlatVector::ValidityMutable(output_results->data[0]);
+
+		UnifiedVectorFormat src_format;
+		UnifiedVectorFormat dst_format;
+		output_pairs->data[0].ToUnifiedFormat(src_format);
+		output_pairs->data[1].ToUnifiedFormat(dst_format);
+		auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
+		auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
+
+		for (idx_t row = 0; row < output_pairs->size(); row++) {
+			auto src_idx = src_format.sel->get_index(row);
+			auto dst_idx = dst_format.sel->get_index(row);
+			auto target = pf_sink.search_orientation == PathFindingSearchOrientation::REVERSE ? src_data[src_idx]
+			                                                                                 : dst_data[dst_idx];
+			auto distance = source_group->Distance(target);
+			if (distance < 0) {
+				result_validity.SetInvalid(row);
+				result_data[row] = -1;
+			} else {
+				result_data[row] = distance;
+			}
+		}
+
+		output_pairs->Fuse(*output_results);
+		result.Move(*output_pairs);
+
+		pf_sink.result_scan_idx++;
+		if (pf_sink.result_scan_idx == pf_sink.source_group_output_refs.size()) {
+			return SourceResultType::FINISHED;
+		}
+		return SourceResultType::HAVE_MORE_OUTPUT;
 	}
 
 	if (pf_sink.use_global_deduplication) {
