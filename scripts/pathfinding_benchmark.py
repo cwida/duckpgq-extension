@@ -7,6 +7,7 @@ import statistics
 import subprocess
 import sys
 import time
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +21,22 @@ BENCH_DUCKDB = REPO_ROOT / "build" / "release" / "duckdb"
 DUCKPGQ_EXTENSION = REPO_ROOT / "build" / "release" / "extension" / "duckpgq" / "duckpgq.duckdb_extension"
 PAIR_SHAPES = ("random", "same_dst", "same_src")
 QUERY_PATTERNS = ("point_to_point", "sssp", "all_pairs")
+GRAPHALYTICS_DEFAULT_DATASETS = ("datagen-8_4-fb", "dota-league", "kgs", "graph500-22", "wiki-Talk", "cit-Patents")
+GRAPHALYTICS_DATASET_ALIASES = {
+    "cit-patents": "cit-Patents",
+    "cti-patents": "cit-Patents",
+    "wiki-talk": "wiki-Talk",
+}
+GRAPHALYTICS_DATASETS = {
+    "datagen-8_4-fb": {"nodes": "3M", "edges": "269M", "scale": "M", "size": "1.2 GB"},
+    "dota-league": {"nodes": "61k", "edges": "50M", "scale": "S", "size": "114.3 MB"},
+    "kgs": {"nodes": "832k", "edges": "17M", "scale": "XS", "size": "65.7 MB"},
+    "graph500-22": {"nodes": "2M", "edges": "64M", "scale": "S", "size": "202.4 MB"},
+    "wiki-Talk": {"nodes": "2M", "edges": "5M", "scale": "2XS", "size": "34.9 MB"},
+    "cit-Patents": {"nodes": "3M", "edges": "16M", "scale": "XS", "size": "119.1 MB"},
+    "example-directed": {"nodes": "10", "edges": "17", "scale": "-", "size": "1.0 KB"},
+}
+GRAPHALYTICS_PARQUET_BASE_URL = "https://datasets.ldbcouncil.org/graphalytics-parquet"
 
 
 @dataclass(frozen=True)
@@ -106,12 +123,33 @@ def sf_name(scale_factor):
     return f"sf{str(scale_factor).replace('.', '_')}"
 
 
+def graphalytics_name(dataset):
+    return GRAPHALYTICS_DATASET_ALIASES.get(dataset, dataset)
+
+
+def graphalytics_label(dataset):
+    return f"graphalytics_{graphalytics_name(dataset).replace('-', '_').replace('.', '_')}"
+
+
 def source_dir(scale_factor):
     return DATA_ROOT / "sources" / f"{sf_name(scale_factor)}-parquet"
 
 
 def db_path(scale_factor):
     return DATA_ROOT / "db" / f"ldbc_{sf_name(scale_factor)}.duckdb"
+
+
+def graphalytics_source_dir(dataset):
+    return DATA_ROOT / "graphalytics" / "sources" / graphalytics_name(dataset)
+
+
+def graphalytics_db_path(dataset):
+    return DATA_ROOT / "graphalytics" / "db" / f"{graphalytics_name(dataset)}.duckdb"
+
+
+def graphalytics_parquet_url(dataset, kind):
+    canonical = graphalytics_name(dataset)
+    return f"{GRAPHALYTICS_PARQUET_BASE_URL}/{canonical}-{kind}.parquet"
 
 
 def find_relation_path(base_dir, relation_name):
@@ -196,6 +234,98 @@ ANALYZE;
     print(f"Materializing {sf_name(scale_factor)} benchmark database at {out_db}")
     _, elapsed = run_duckdb(BENCH_DUCKDB, out_db, sql)
     print(f"Materialized {sf_name(scale_factor)} database in {elapsed:.2f}s")
+
+
+def download_graphalytics_file(dataset, kind, force):
+    canonical = graphalytics_name(dataset)
+    if canonical not in GRAPHALYTICS_DATASETS:
+        known = ", ".join(GRAPHALYTICS_DEFAULT_DATASETS)
+        raise SystemExit(f"Unsupported Graphalytics dataset: {dataset}. Initial supported set: {known}")
+
+    out_dir = graphalytics_source_dir(canonical)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{canonical}-{kind}.parquet"
+    if out_path.exists() and not force:
+        print(f"Graphalytics {canonical} {kind}.parquet already exists: {out_path}")
+        return out_path
+
+    url = graphalytics_parquet_url(canonical, kind)
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
+
+    print(f"Downloading {url}")
+    start = time.perf_counter()
+    request = urllib.request.Request(url, headers={"User-Agent": "curl/8.0"})
+    with urllib.request.urlopen(request) as response, tmp_path.open("wb") as handle:
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            handle.write(chunk)
+    tmp_path.replace(out_path)
+    elapsed = time.perf_counter() - start
+    print(f"Downloaded {out_path} in {elapsed:.2f}s")
+    return out_path
+
+
+def download_graphalytics_dataset(dataset, force):
+    vertex_path = download_graphalytics_file(dataset, "v", force)
+    edge_path = download_graphalytics_file(dataset, "e", force)
+    return vertex_path, edge_path
+
+
+def materialize_graphalytics_database(dataset, pair_count, force):
+    canonical = graphalytics_name(dataset)
+    stats = GRAPHALYTICS_DATASETS.get(canonical)
+    if stats is None:
+        known = ", ".join(GRAPHALYTICS_DEFAULT_DATASETS)
+        raise SystemExit(f"Unsupported Graphalytics dataset: {dataset}. Initial supported set: {known}")
+
+    out_db = graphalytics_db_path(canonical)
+    if out_db.exists() and not force:
+        print(f"Graphalytics {canonical} DuckDB database already exists: {out_db}")
+        ensure_pair_table_for_db(out_db, graphalytics_label(canonical), pair_count)
+        return
+    if out_db.exists():
+        out_db.unlink()
+
+    vertex_path, edge_path = download_graphalytics_dataset(canonical, force=False)
+    out_db.parent.mkdir(parents=True, exist_ok=True)
+    pair_table = pair_table_name(pair_count, "random")
+
+    sql = f"""
+CREATE TABLE person AS
+SELECT id::BIGINT AS id
+FROM read_parquet({sql_string(vertex_path)});
+
+CREATE TABLE person_knows_person AS
+SELECT source::BIGINT AS person1id, target::BIGINT AS person2id
+FROM read_parquet({sql_string(edge_path)});
+
+{pair_table_sql(pair_count)}
+
+CREATE TABLE benchmark_metadata AS
+SELECT *
+FROM (
+    VALUES
+        ('dataset_kind', 'graphalytics'),
+        ('dataset', {sql_string(canonical)}),
+        ('graphalytics_nodes', {sql_string(stats["nodes"])}),
+        ('graphalytics_edges', {sql_string(stats["edges"])}),
+        ('graphalytics_scale', {sql_string(stats["scale"])}),
+        ('graphalytics_package_size', {sql_string(stats["size"])}),
+        ('person_rows', (SELECT count(*)::VARCHAR FROM person)),
+        ('person_knows_person_rows', (SELECT count(*)::VARCHAR FROM person_knows_person)),
+        ('pair_table', {sql_string(pair_table)}),
+        ('pair_rows', (SELECT count(*)::VARCHAR FROM {pair_table}))
+) AS metadata(key, value);
+
+ANALYZE;
+"""
+    print(f"Materializing Graphalytics {canonical} benchmark database at {out_db}")
+    _, elapsed = run_duckdb(BENCH_DUCKDB, out_db, sql)
+    print(f"Materialized Graphalytics {canonical} database in {elapsed:.2f}s")
 
 
 def pair_table_sql(pair_count):
@@ -318,8 +448,7 @@ FROM pairs;
 """
 
 
-def ensure_pair_table(scale_factor, pair_count, pair_shape="random", source_count=None, target_count=None):
-    out_db = db_path(scale_factor)
+def ensure_pair_table_for_db(out_db, label, pair_count, pair_shape="random", source_count=None, target_count=None):
     if not out_db.exists():
         return
 
@@ -328,9 +457,13 @@ def ensure_pair_table(scale_factor, pair_count, pair_shape="random", source_coun
 {pair_table_sql_for_shape(pair_count, pair_shape, source_count, target_count)}
 ANALYZE {table_name};
 """
-    print(f"Ensuring {sf_name(scale_factor)} {table_name} exists")
+    print(f"Ensuring {label} {table_name} exists")
     _, elapsed = run_duckdb(BENCH_DUCKDB, out_db, sql)
-    print(f"Prepared {table_name} for {sf_name(scale_factor)} in {elapsed:.2f}s")
+    print(f"Prepared {table_name} for {label} in {elapsed:.2f}s")
+
+
+def ensure_pair_table(scale_factor, pair_count, pair_shape="random", source_count=None, target_count=None):
+    ensure_pair_table_for_db(db_path(scale_factor), sf_name(scale_factor), pair_count, pair_shape, source_count, target_count)
 
 
 def read_pair_profile(attached_db, pair_table):
@@ -342,9 +475,31 @@ def read_pair_profile(attached_db, pair_table):
 
 
 def prepare(args):
+    if args.graphalytics_datasets:
+        datasets = GRAPHALYTICS_DEFAULT_DATASETS if args.graphalytics_datasets == ["all"] else args.graphalytics_datasets
+        for dataset in datasets:
+            canonical = graphalytics_name(dataset)
+            download_graphalytics_dataset(canonical, args.force)
+            materialize_graphalytics_database(canonical, args.pairs, args.force)
+        return
+
     for scale_factor in args.scale_factors:
         generate_parquet(scale_factor, args.threads, args.force)
         materialize_database(scale_factor, args.pairs, args.force)
+
+
+def benchmark_target(args):
+    dataset = getattr(args, "dataset", None)
+    if dataset:
+        canonical = graphalytics_name(dataset)
+        if canonical not in GRAPHALYTICS_DATASETS:
+            known = ", ".join(GRAPHALYTICS_DEFAULT_DATASETS)
+            raise SystemExit(f"Unsupported Graphalytics dataset: {dataset}. Initial supported set: {known}")
+        return canonical, graphalytics_label(canonical), graphalytics_db_path(canonical)
+
+    if not args.scale_factor:
+        raise SystemExit("Missing --scale-factor for LDBC run, or pass --dataset for a Graphalytics run.")
+    return args.scale_factor, sf_name(args.scale_factor), db_path(args.scale_factor)
 
 
 def csr_cte(schema_prefix):
@@ -860,9 +1015,9 @@ def summarize_results(results):
 
 
 def run_benchmark(args):
-    results_dir = DATA_ROOT / "results" / sf_name(args.scale_factor)
+    target_value, target_label, attached_db = benchmark_target(args)
+    results_dir = DATA_ROOT / "results" / target_label
     results_dir.mkdir(parents=True, exist_ok=True)
-    attached_db = db_path(args.scale_factor)
     if not attached_db.exists():
         raise SystemExit(f"Missing benchmark database: {attached_db}. Run prepare first.")
     generated_shape = generated_pair_shape(args.query_pattern, args.pair_shape)
@@ -876,7 +1031,7 @@ def run_benchmark(args):
     pair_shape = "custom" if args.pair_table else generated_shape
     pair_table = args.pair_table or pair_table_name(args.pairs, generated_shape, source_count, target_count)
     if args.pair_table is None:
-        ensure_pair_table(args.scale_factor, args.pairs, generated_shape, source_count, target_count)
+        ensure_pair_table_for_db(attached_db, target_label, args.pairs, generated_shape, source_count, target_count)
     pair_profile = read_pair_profile(attached_db, pair_table)
     actual_pair_count = int(pair_profile["pair_table_rows"])
 
@@ -921,7 +1076,7 @@ def run_benchmark(args):
             query_sql = mode_sql(mode, options)
             output, timers = run_duckdb_timed_script(setup_sql(options) + query_sql, args.timeout)
             row = parse_csv_row(output)
-            row["scale_factor"] = args.scale_factor
+            row["scale_factor"] = target_value
             row["threads"] = args.threads
             row["repeat"] = repeat
             row["query_pattern"] = args.query_pattern
@@ -1090,13 +1245,27 @@ def main():
 
     prepare_parser = subcommands.add_parser("prepare")
     prepare_parser.add_argument("--scale-factors", nargs="+", default=["1", "3", "10"])
+    prepare_parser.add_argument(
+        "--graphalytics-datasets",
+        nargs="+",
+        default=None,
+        help=(
+            "Download and materialize Graphalytics datasets instead of LDBC scale factors. "
+            f"Use 'all' for: {', '.join(GRAPHALYTICS_DEFAULT_DATASETS)}."
+        ),
+    )
     prepare_parser.add_argument("--threads", type=int, default=8)
     prepare_parser.add_argument("--pairs", type=int, default=1024)
     prepare_parser.add_argument("--force", action="store_true")
     prepare_parser.set_defaults(func=prepare)
 
     run_parser = subcommands.add_parser("run")
-    run_parser.add_argument("--scale-factor", required=True)
+    run_parser.add_argument("--scale-factor", default=None)
+    run_parser.add_argument(
+        "--dataset",
+        default=None,
+        help="Run against a prepared Graphalytics dataset, e.g. wiki-Talk, kgs, graph500-22, cit-Patents.",
+    )
     run_parser.add_argument("--threads", type=int, default=4)
     run_parser.add_argument("--pairs", type=int, default=1024)
     run_parser.add_argument(
