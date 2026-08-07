@@ -6,6 +6,8 @@
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/parallel/base_pipeline_event.hpp"
+#include "duckdb/common/types/hash.hpp"
+#include "duckdb/common/types/hyperloglog.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
@@ -82,6 +84,42 @@ PairKey GetPairKey(const UnifiedVectorFormat &src_format, const UnifiedVectorFor
 
 shared_ptr<PathFindingBatch> CreatePathFindingBatch(const shared_ptr<DataChunk> &output_pairs, idx_t output_index) {
 	return make_shared_ptr<PathFindingBatch>(output_pairs, output_pairs, output_index);
+}
+
+void AccumulatePairStats(DataChunk &chunk, PathFindingPairStats &stats, HyperLogLog &distinct_srcs,
+                         HyperLogLog &distinct_dsts) {
+	UnifiedVectorFormat src_format;
+	UnifiedVectorFormat dst_format;
+	chunk.data[0].ToUnifiedFormat(src_format);
+	chunk.data[1].ToUnifiedFormat(dst_format);
+	auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
+	auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
+
+	for (idx_t row = 0; row < chunk.size(); row++) {
+		auto src_idx = src_format.sel->get_index(row);
+		auto dst_idx = dst_format.sel->get_index(row);
+		bool src_valid = src_format.validity.RowIsValid(src_idx);
+		bool dst_valid = dst_format.validity.RowIsValid(dst_idx);
+		stats.pair_count++;
+		if (!src_valid || !dst_valid) {
+			stats.null_pair_count++;
+			continue;
+		}
+		auto src = src_data[src_idx];
+		auto dst = dst_data[dst_idx];
+		distinct_srcs.InsertElement(Hash(src));
+		distinct_dsts.InsertElement(Hash(dst));
+		if (src == dst) {
+			stats.self_pair_count++;
+		}
+	}
+}
+
+void FinalizePairStats(PathFindingGlobalSinkState &gstate, PathFindingPairStats stats, const HyperLogLog &distinct_srcs,
+                       const HyperLogLog &distinct_dsts) {
+	stats.distinct_src_count = distinct_srcs.Count();
+	stats.distinct_dst_count = distinct_dsts.Count();
+	gstate.pair_stats = stats;
 }
 
 PathFindingOperatorMode ParsePathFindingOperatorMode(const string &mode) {
@@ -194,24 +232,42 @@ void SchedulePathFindingBatches(PathFindingGlobalSinkState &gstate, vector<share
 	                                                               group_count, pipeline, op));
 }
 
-void ScheduleIdentityPathFindingBatches(PathFindingGlobalSinkState &gstate,
-                                        const vector<shared_ptr<DataChunk>> &output_batches, Pipeline &pipeline,
-                                        Event &event, const PhysicalPathFinding &op, ClientContext &context) {
-	vector<shared_ptr<PathFindingBatch>> batches;
-	batches.reserve(output_batches.size());
-	for (auto &output_batch : output_batches) {
-		batches.push_back(CreatePathFindingBatch(output_batch, gstate.next_batch_index++));
+class PathFindingScheduleEvent : public BasePipelineEvent {
+public:
+	PathFindingScheduleEvent(vector<shared_ptr<PathFindingBatch>> batches_p, PathFindingGlobalSinkState &gstate_p,
+	                         Pipeline &pipeline_p, const PhysicalPathFinding &op_p, ClientContext &context_p)
+	    : BasePipelineEvent(pipeline_p), batches(std::move(batches_p)), gstate(gstate_p), op(op_p), context(context_p) {
 	}
-	SchedulePathFindingBatches(gstate, batches, pipeline, event, op, context);
-}
 
-SinkFinalizeType FinalizeCSRBuildPhase(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
-                                        const PhysicalPathFinding &op, ClientContext &context) {
-	++gstate.child;
+	void Schedule() override {
+	}
+
+	void FinishEvent() override {
+		SchedulePathFindingBatches(gstate, batches, *pipeline, *this, op, context);
+	}
+
+private:
+	vector<shared_ptr<PathFindingBatch>> batches;
+	PathFindingGlobalSinkState &gstate;
+	const PhysicalPathFinding &op;
+	ClientContext &context;
+};
+
+void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate, vector<shared_ptr<PathFindingBatch>> batches,
+                                          Pipeline &pipeline, Event &event, const PhysicalPathFinding &op,
+                                          ClientContext &context) {
 	auto local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
 	ConfigureLocalCSRStateForMode(*local_csr_state, gstate.path_finding_mode);
 	gstate.local_csr_state = local_csr_state;
-	event.InsertEvent(make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, op, context));
+
+	auto local_csr_event = make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, op, context);
+	event.InsertEvent(local_csr_event);
+	local_csr_event->InsertEvent(
+	    make_shared_ptr<PathFindingScheduleEvent>(std::move(batches), gstate, pipeline, op, context));
+}
+
+SinkFinalizeType FinalizeCSRIdPhase(PathFindingGlobalSinkState &gstate) {
+	++gstate.child;
 	return SinkFinalizeType::READY;
 }
 
@@ -224,6 +280,9 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 	unique_pair_to_row.reserve(gstate.global_pairs->Count());
 	vector<std::pair<idx_t, idx_t>> unique_source_rows;
 	unique_source_rows.reserve(gstate.global_pairs->Count());
+	PathFindingPairStats pair_stats;
+	HyperLogLog distinct_srcs;
+	HyperLogLog distinct_dsts;
 
 	bool has_duplicates = false;
 	idx_t input_count = 0;
@@ -231,6 +290,7 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 		auto current_chunk = make_shared_ptr<DataChunk>();
 		current_chunk->Initialize(context, pair_types);
 		gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
+		AccumulatePairStats(*current_chunk, pair_stats, distinct_srcs, distinct_dsts);
 
 		auto output_batch_idx = gstate.global_output_batches.size();
 		vector<idx_t> output_to_search;
@@ -261,6 +321,7 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 		gstate.global_output_batches.push_back(current_chunk);
 		gstate.global_output_to_search.push_back(std::move(output_to_search));
 	}
+	FinalizePairStats(gstate, pair_stats, distinct_srcs, distinct_dsts);
 
 	auto duplicate_count = input_count - unique_source_rows.size();
 	idx_t remap_memory = 0;
@@ -275,7 +336,12 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 	                          duplicate_count, build_ms, remap_memory);
 
 	if (!has_duplicates) {
-		ScheduleIdentityPathFindingBatches(gstate, gstate.global_output_batches, pipeline, event, op, context);
+		vector<shared_ptr<PathFindingBatch>> batches;
+		batches.reserve(gstate.global_output_batches.size());
+		for (auto &output_batch : gstate.global_output_batches) {
+			batches.push_back(CreatePathFindingBatch(output_batch, gstate.next_batch_index++));
+		}
+		ScheduleLocalCSRBuildThenPathFinding(gstate, std::move(batches), pipeline, event, op, context);
 		gstate.global_output_batches.clear();
 		gstate.global_output_to_search.clear();
 		gstate.use_global_deduplication = false;
@@ -304,7 +370,7 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 		auto batch = make_shared_ptr<PathFindingBatch>(search_chunk, search_chunk, gstate.next_batch_index++);
 		batches.push_back(std::move(batch));
 	}
-	SchedulePathFindingBatches(gstate, batches, pipeline, event, op, context);
+	ScheduleLocalCSRBuildThenPathFinding(gstate, std::move(batches), pipeline, event, op, context);
 
 	++gstate.child;
 	auto duckpgq_state = GetDuckPGQState(context);
@@ -323,14 +389,19 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	}
 
 	vector<shared_ptr<PathFindingBatch>> batches;
+	PathFindingPairStats pair_stats;
+	HyperLogLog distinct_srcs;
+	HyperLogLog distinct_dsts;
 	while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
 		auto current_chunk = make_shared_ptr<DataChunk>();
 		current_chunk->Initialize(context, gstate.global_pairs->Types());
 		gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
+		AccumulatePairStats(*current_chunk, pair_stats, distinct_srcs, distinct_dsts);
 		auto batch = CreatePathFindingBatch(current_chunk, gstate.next_batch_index++);
 		batches.push_back(std::move(batch));
 	}
-	SchedulePathFindingBatches(gstate, batches, pipeline, event, op, context);
+	FinalizePairStats(gstate, pair_stats, distinct_srcs, distinct_dsts);
+	ScheduleLocalCSRBuildThenPathFinding(gstate, std::move(batches), pipeline, event, op, context);
 
 	++gstate.child;
 	auto duckpgq_state = GetDuckPGQState(context);
@@ -431,7 +502,7 @@ SinkFinalizeType PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 	}
 
 	if (gstate.child == 0) {
-		return FinalizeCSRBuildPhase(gstate, pipeline, event, *this, context);
+		return FinalizeCSRIdPhase(gstate);
 	}
 	return FinalizePathFindingPhase(gstate, pipeline, event, *this, context);
 }

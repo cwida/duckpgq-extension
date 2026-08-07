@@ -27,6 +27,15 @@ enum class PathFindingOperatorMode {
 	SHORTEST_PATH
 };
 
+struct PathFindingPairStats {
+	idx_t pair_count = 0;
+	idx_t distinct_src_count = 0;
+	idx_t distinct_dst_count = 0;
+	idx_t null_pair_count = 0;
+	idx_t self_pair_count = 0;
+	bool distinct_counts_are_exact = false;
+};
+
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 public:
 	PhysicalPathFinding(PhysicalPlan &physical_plan, LogicalExtensionOperator &op, PhysicalOperator &pairs,
@@ -111,6 +120,7 @@ public:
 	ClientContext &context_;
 	idx_t num_threads;
 	shared_ptr<LocalCSRState> local_csr_state;
+	PathFindingPairStats pair_stats;
 };
 
 } // namespace duckdb
