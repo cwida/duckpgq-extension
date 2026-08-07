@@ -13,6 +13,12 @@ struct Partition {
 	idx_t end_bucket; // exclusive
 };
 
+struct LocalCSRSubphaseTiming {
+	bool reverse;
+	string phase;
+	double time_ms;
+};
+
 class LocalCSRState {
 public:
 	LocalCSRState(ClientContext &context_p, CSR *csr, idx_t num_threads_p);
@@ -31,6 +37,7 @@ public:
 	std::vector<shared_ptr<LocalCSR>> partition_csrs;
 	std::vector<shared_ptr<LocalCSR>> reverse_partition_csrs;
 	std::vector<shared_ptr<PullCSR>> pull_partition_csrs;
+	std::vector<LocalCSRSubphaseTiming> subphase_timings;
 	std::atomic<idx_t> partition_index;
 	bool build_forward_csr;
 	bool build_reverse_csr;

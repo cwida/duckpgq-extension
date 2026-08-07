@@ -95,6 +95,14 @@ static void AppendPullPhaseTiming(const LocalCSRState &state, double time_ms) {
 	        << time_ms << "," << GetPullCSRMemory(state.pull_partition_csrs) << "\n";
 }
 
+static void AppendSubphaseTimings(const LocalCSRState &state) {
+	for (const auto &timing : state.subphase_timings) {
+		auto &partition_csrs = timing.reverse ? state.reverse_partition_csrs : state.partition_csrs;
+		auto phase = string("local_csr_") + (timing.reverse ? "reverse_" : "forward_") + timing.phase;
+		AppendPhaseTiming(state, phase, partition_csrs, timing.time_ms);
+	}
+}
+
 static void WritePartitionStats(const LocalCSRState &state, ClientContext &context,
                                 const std::vector<shared_ptr<LocalCSR>> &partition_csrs, const string &direction) {
 	if (partition_csrs.empty()) {
@@ -230,6 +238,7 @@ void LocalCSREvent::FinishEvent() {
 		                      ElapsedMs(local_csr_state->pull_start_time, local_csr_state->pull_end_time));
 		WritePullPartitionStats(*local_csr_state, context);
 	}
+	AppendSubphaseTimings(*local_csr_state);
 }
 
 } // namespace duckdb

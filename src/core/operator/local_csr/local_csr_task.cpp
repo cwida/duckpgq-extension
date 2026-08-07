@@ -6,6 +6,20 @@
 
 namespace duckdb {
 
+namespace {
+
+static void RecordLocalCSRSubphase(LocalCSRState &state, bool reverse, const string &phase,
+                                   std::chrono::steady_clock::time_point start,
+                                   std::chrono::steady_clock::time_point end) {
+	if (!state.benchmark_enabled) {
+		return;
+	}
+	auto time_ms = std::chrono::duration<double, std::milli>(end - start).count();
+	state.subphase_timings.push_back({reverse, phase, time_ms});
+}
+
+} // namespace
+
 LocalCSRTask::LocalCSRTask(shared_ptr<Event> event_p, ClientContext &context, shared_ptr<LocalCSRState> &state,
                            idx_t worker_id_p, const PhysicalOperator &op_p)
     : ExecutorTask(context, std::move(event_p), op_p), local_csr_state(state), worker_id(worker_id_p) {
@@ -41,29 +55,59 @@ void LocalCSRTask::BuildLocalCSRs(bool reverse) {
 		}
 	}
 	barrier->Wait(worker_id);
+	auto subphase_start = std::chrono::steady_clock::now();
 	CreateStatistics(reverse, statistics_chunks); // Phase 1
 	barrier->Wait(worker_id);
+	if (worker_id == 0) {
+		RecordLocalCSRSubphase(*local_csr_state, reverse, "statistics", subphase_start,
+		                       std::chrono::steady_clock::now());
+	}
+	subphase_start = std::chrono::steady_clock::now();
 	if (worker_id == 0) {
 		DeterminePartitions(statistics_chunks, partition_csrs); // Phase 2
 	}
 	barrier->Wait(worker_id);
+	if (worker_id == 0) {
+		RecordLocalCSRSubphase(*local_csr_state, reverse, "determine_partitions", subphase_start,
+		                       std::chrono::steady_clock::now());
+	}
+	subphase_start = std::chrono::steady_clock::now();
 	CountOutgoingEdgesPerPartition(reverse, partition_csrs); // Phase 3
 	barrier->Wait(worker_id);
+	if (worker_id == 0) {
+		RecordLocalCSRSubphase(*local_csr_state, reverse, "count_edges", subphase_start,
+		                       std::chrono::steady_clock::now());
+	}
 	if (worker_id == 0) {
 		local_csr_state->partition_index = 0;
 	}
 	barrier->Wait(worker_id);
+	subphase_start = std::chrono::steady_clock::now();
 	CreateRunningSum(partition_csrs); // Phase 4
 	barrier->Wait(worker_id);
+	if (worker_id == 0) {
+		RecordLocalCSRSubphase(*local_csr_state, reverse, "running_sum", subphase_start,
+		                       std::chrono::steady_clock::now());
+	}
+	subphase_start = std::chrono::steady_clock::now();
 	DistributeEdges(reverse, partition_csrs); // Phase 5
 	barrier->Wait(worker_id);
+	if (worker_id == 0) {
+		RecordLocalCSRSubphase(*local_csr_state, reverse, "distribute_edges", subphase_start,
+		                       std::chrono::steady_clock::now());
+	}
 	if (local_csr_state->finalize_sparse_rows) {
 		if (worker_id == 0) {
 			local_csr_state->partition_index = 0;
 		}
 		barrier->Wait(worker_id);
+		subphase_start = std::chrono::steady_clock::now();
 		FinalizeSparseRows(partition_csrs);
 		barrier->Wait(worker_id);
+		if (worker_id == 0) {
+			RecordLocalCSRSubphase(*local_csr_state, reverse, "finalize_sparse_rows", subphase_start,
+			                       std::chrono::steady_clock::now());
+		}
 	}
 	if (worker_id == 0) {
 		if (reverse) {
