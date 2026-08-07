@@ -14,6 +14,9 @@ string GetPathFindingBenchmarkPrefix(ClientContext &context);
 bool GetPathFindingBuildReverseCSR(ClientContext &context);
 int32_t GetPathFindingPushPullFrontierGate(ClientContext &context);
 bool GetPathFindingDeduplicatePairs(ClientContext &context);
+bool GetPathFindingGroupedBatches(ClientContext &context);
+int32_t GetPathFindingThreadsPerBatch(ClientContext &context);
+int32_t GetPathFindingMaxConcurrentBatches(ClientContext &context);
 
 struct CorePGQOptions {
 	static void Register(ExtensionLoader &loader) {
@@ -27,6 +30,9 @@ struct CorePGQOptions {
 		RegisterPathFindingBuildReverseCSR(loader);
 		RegisterPathFindingPushPullFrontierGate(loader);
 		RegisterPathFindingDeduplicatePairs(loader);
+		RegisterPathFindingGroupedBatches(loader);
+		RegisterPathFindingThreadsPerBatch(loader);
+		RegisterPathFindingMaxConcurrentBatches(loader);
 	}
 
 private:
@@ -40,6 +46,9 @@ private:
 	static void RegisterPathFindingBuildReverseCSR(ExtensionLoader &loader);
 	static void RegisterPathFindingPushPullFrontierGate(ExtensionLoader &loader);
 	static void RegisterPathFindingDeduplicatePairs(ExtensionLoader &loader);
+	static void RegisterPathFindingGroupedBatches(ExtensionLoader &loader);
+	static void RegisterPathFindingThreadsPerBatch(ExtensionLoader &loader);
+	static void RegisterPathFindingMaxConcurrentBatches(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

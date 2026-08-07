@@ -63,6 +63,24 @@ bool GetPathFindingDeduplicatePairs(ClientContext &context) {
 	return value.GetValue<bool>();
 }
 
+bool GetPathFindingGroupedBatches(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_grouped_batches", value);
+	return value.GetValue<bool>();
+}
+
+int32_t GetPathFindingThreadsPerBatch(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_threads_per_batch", value);
+	return value.GetValue<int32_t>();
+}
+
+int32_t GetPathFindingMaxConcurrentBatches(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_max_concurrent_batches", value);
+	return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -182,6 +200,45 @@ void CorePGQOptions::RegisterPathFindingDeduplicatePairs(ExtensionLoader &loader
 	    "experimental_path_finding_operator_deduplicate_pairs",
 	    "Deduplicate exact source/destination pairs inside each experimental path-finding operator batch",
 	    LogicalType::BOOLEAN, Value(false));
+}
+
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingGroupedBatches(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+
+	config.AddExtensionOption(
+	    "experimental_path_finding_operator_grouped_batches",
+	    "Run regular MS-BFS batches with bounded concurrent worker groups instead of one event per batch",
+	    LogicalType::BOOLEAN, Value(false));
+}
+
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingThreadsPerBatch(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+
+	config.AddExtensionOption(
+	    "experimental_path_finding_operator_threads_per_batch",
+	    "Maximum number of DuckDB tasks assigned to each grouped regular MS-BFS batch; values <= 0 use all threads",
+	    LogicalType::INTEGER, Value(0));
+}
+
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingMaxConcurrentBatches(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+
+	config.AddExtensionOption(
+	    "experimental_path_finding_operator_max_concurrent_batches",
+	    "Maximum number of grouped regular MS-BFS batches admitted concurrently; values <= 0 derive from thread budget",
+	    LogicalType::INTEGER, Value(0));
 }
 
 } // namespace duckdb

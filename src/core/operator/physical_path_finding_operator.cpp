@@ -10,6 +10,7 @@
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
 #include <duckpgq/core/operator/iterative_length/bidirectional_iterative_length_state.hpp>
+#include <duckpgq/core/operator/iterative_length/grouped_iterative_length_event.hpp>
 #include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
 #include <duckpgq/core/operator/iterative_length/push_pull_iterative_length_state.hpp>
 #include <duckpgq/core/operator/local_csr/local_csr_event.hpp>
@@ -141,13 +142,67 @@ void ScheduleBFSBatchForMode(PathFindingGlobalSinkState &gstate, const shared_pt
 	gstate.bfs_states.push_back(std::move(bfs_state));
 }
 
+idx_t GetGroupedWorkersPerBatch(PathFindingGlobalSinkState &gstate, ClientContext &context) {
+	auto total_threads = std::max<idx_t>(1, gstate.num_threads);
+	auto configured_workers = GetPathFindingThreadsPerBatch(context);
+	auto workers_per_batch =
+	    configured_workers <= 0 ? total_threads : std::min<idx_t>(static_cast<idx_t>(configured_workers), total_threads);
+	auto partition_count = std::max<idx_t>(1, gstate.local_csr_state->partition_csrs.size());
+	return std::max<idx_t>(1, std::min(workers_per_batch, partition_count));
+}
+
+idx_t GetGroupedBatchCount(PathFindingGlobalSinkState &gstate, ClientContext &context, idx_t workers_per_batch,
+                           idx_t batch_count) {
+	auto total_threads = std::max<idx_t>(1, gstate.num_threads);
+	auto max_groups_from_threads = std::max<idx_t>(1, total_threads / workers_per_batch);
+	auto configured_groups = GetPathFindingMaxConcurrentBatches(context);
+	auto group_count = configured_groups <= 0
+	                       ? max_groups_from_threads
+	                       : std::min<idx_t>(static_cast<idx_t>(configured_groups), max_groups_from_threads);
+	return std::max<idx_t>(1, std::min(group_count, batch_count));
+}
+
+bool ShouldUseGroupedIterativeLengthBatches(PathFindingGlobalSinkState &gstate, ClientContext &context,
+                                            idx_t batch_count) {
+	return batch_count > 0 && gstate.path_finding_mode == PathFindingOperatorMode::ITERATIVE_LENGTH &&
+	       GetPathFindingGroupedBatches(context);
+}
+
+void SchedulePathFindingBatches(PathFindingGlobalSinkState &gstate, vector<shared_ptr<PathFindingBatch>> &batches,
+                                Pipeline &pipeline, Event &event, const PhysicalPathFinding &op,
+                                ClientContext &context) {
+	if (!ShouldUseGroupedIterativeLengthBatches(gstate, context, batches.size())) {
+		for (auto &batch : batches) {
+			ScheduleBFSBatchForMode(gstate, batch, pipeline, event, &op, context);
+		}
+		return;
+	}
+
+	auto workers_per_batch = GetGroupedWorkersPerBatch(gstate, context);
+	auto group_count = GetGroupedBatchCount(gstate, context, workers_per_batch, batches.size());
+	vector<shared_ptr<IterativeLengthState>> iterative_states;
+	iterative_states.reserve(batches.size());
+
+	for (auto &batch : batches) {
+		auto state = make_shared_ptr<IterativeLengthState>(batch, gstate.local_csr_state->partition_csrs,
+		                                                   workers_per_batch, context, gstate.csr->vsize);
+		iterative_states.push_back(state);
+		gstate.bfs_states.push_back(state);
+	}
+
+	event.InsertEvent(make_shared_ptr<GroupedIterativeLengthEvent>(std::move(iterative_states), workers_per_batch,
+	                                                               group_count, pipeline, op));
+}
+
 void ScheduleIdentityPathFindingBatches(PathFindingGlobalSinkState &gstate,
                                         const vector<shared_ptr<DataChunk>> &output_batches, Pipeline &pipeline,
                                         Event &event, const PhysicalPathFinding &op, ClientContext &context) {
+	vector<shared_ptr<PathFindingBatch>> batches;
+	batches.reserve(output_batches.size());
 	for (auto &output_batch : output_batches) {
-		auto batch = CreatePathFindingBatch(output_batch, gstate.next_batch_index++);
-		ScheduleBFSBatchForMode(gstate, batch, pipeline, event, &op, context);
+		batches.push_back(CreatePathFindingBatch(output_batch, gstate.next_batch_index++));
 	}
+	SchedulePathFindingBatches(gstate, batches, pipeline, event, op, context);
 }
 
 SinkFinalizeType FinalizeCSRBuildPhase(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
@@ -232,6 +287,7 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 
 	gstate.use_global_deduplication = true;
 	idx_t unique_row = 0;
+	vector<shared_ptr<PathFindingBatch>> batches;
 	while (unique_row < unique_source_rows.size()) {
 		auto search_chunk = make_shared_ptr<DataChunk>();
 		search_chunk->Initialize(context, pair_types);
@@ -246,8 +302,9 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 		}
 		search_chunk->SetChildCardinality(chunk_count);
 		auto batch = make_shared_ptr<PathFindingBatch>(search_chunk, search_chunk, gstate.next_batch_index++);
-		ScheduleBFSBatchForMode(gstate, batch, pipeline, event, &op, context);
+		batches.push_back(std::move(batch));
 	}
+	SchedulePathFindingBatches(gstate, batches, pipeline, event, op, context);
 
 	++gstate.child;
 	auto duckpgq_state = GetDuckPGQState(context);
@@ -265,13 +322,15 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 		return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
 	}
 
+	vector<shared_ptr<PathFindingBatch>> batches;
 	while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
 		auto current_chunk = make_shared_ptr<DataChunk>();
 		current_chunk->Initialize(context, gstate.global_pairs->Types());
 		gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
 		auto batch = CreatePathFindingBatch(current_chunk, gstate.next_batch_index++);
-		ScheduleBFSBatchForMode(gstate, batch, pipeline, event, &op, context);
+		batches.push_back(std::move(batch));
 	}
+	SchedulePathFindingBatches(gstate, batches, pipeline, event, op, context);
 
 	++gstate.child;
 	auto duckpgq_state = GetDuckPGQState(context);

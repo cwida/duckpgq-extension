@@ -1,6 +1,7 @@
 #include "duckpgq/core/operator/iterative_length/iterative_length_task.hpp"
+
 #include <duckdb/parallel/event.hpp>
-#include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
+#include <duckpgq/core/operator/iterative_length/iterative_length_kernel.hpp>
 #include <duckpgq/core/operator/physical_path_finding_operator.hpp>
 
 #include <chrono>
@@ -15,64 +16,23 @@
 
 namespace duckdb {
 
-IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p, ClientContext &context,
-                                         shared_ptr<IterativeLengthState> &state, idx_t worker_id,
-                                         const PhysicalOperator &op_p)
-    : ExecutorTask(context, std::move(event_p), op_p), context(context), state(state), worker_id(worker_id) {
-	explore_done = false;
-}
+namespace {
 
-bool IterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen,
-                                      std::vector<std::bitset<LANE_LIMIT>> &next,
-                                      shared_ptr<LocalCSR> &local_csr) const {
+bool CheckChange(IterativeLengthState &state, std::vector<std::bitset<LANE_LIMIT>> &seen,
+                 std::vector<std::bitset<LANE_LIMIT>> &next, shared_ptr<LocalCSR> &local_csr) {
 	bool local_change = false;
 	for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
 		if (next[i].any()) {
 			next[i] &= ~seen[i];
 			seen[i] |= next[i];
-			if (next[i].any()) {
-				local_change = true;
-			}
+			local_change |= next[i].any();
 		}
 	}
 	return local_change;
 }
 
-TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
-	auto &barrier = state->barrier;
-	while (state->started_searches < state->pairs->size()) {
-		barrier->Wait(worker_id);
-
-		if (worker_id == 0) {
-			state->InitializeLanes();
-		}
-		barrier->Wait(worker_id);
-		do {
-			IterativeLength();
-			barrier->Wait(worker_id);
-			if (worker_id == 0) {
-				ReachDetect();
-			}
-			barrier->Wait(worker_id);
-		} while (state->change);
-		if (worker_id == 0) {
-			UnReachableSet();
-		}
-
-		// Final synchronization before finishing
-		barrier->Wait(worker_id);
-		if (worker_id == 0) {
-			state->Clear();
-		}
-		barrier->Wait(worker_id);
-	}
-
-	event->FinishTask();
-	return TaskExecutionResult::TASK_FINISHED;
-}
-
-void IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
-                                  std::vector<std::bitset<LANE_LIMIT>> &next, const LocalCSR &local_csr) {
+void Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit, std::vector<std::bitset<LANE_LIMIT>> &next,
+             const LocalCSR &local_csr) {
 	if (local_csr.HasSparseRows()) {
 		for (idx_t row_idx = 0; row_idx < local_csr.source_vertices.size(); row_idx++) {
 			auto source_vertex = local_csr.source_vertices[row_idx];
@@ -100,10 +60,9 @@ void IterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &vi
 	}
 }
 
-// Wrapper function to call Explore and log data
-void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
-                                     std::vector<std::bitset<LANE_LIMIT>> &next, const LocalCSR &local_csr) {
-	if (!state->benchmark_enabled) {
+void RunExplore(IterativeLengthState &state, const std::vector<std::bitset<LANE_LIMIT>> &visit,
+                std::vector<std::bitset<LANE_LIMIT>> &next, const LocalCSR &local_csr) {
+	if (!state.benchmark_enabled) {
 		Explore(visit, next, local_csr);
 		return;
 	}
@@ -126,23 +85,23 @@ void IterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> 
 	}
 #endif
 
-	std::lock_guard<std::mutex> guard(state->log_mutex);
-	state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, local_csr.GetVertexSize(),
-	                                local_csr.e.size(), state->local_csrs.size(), state->iter);
+	std::lock_guard<std::mutex> guard(state.log_mutex);
+	state.timing_data.emplace_back(thread_id, core_id, duration_ms, state.num_threads, local_csr.GetVertexSize(),
+	                               local_csr.e.size(), state.local_csrs.size(), state.iter);
 }
 
-uint64_t get_word(const std::bitset<LANE_LIMIT> &b, int word_idx) {
+uint64_t GetWord(const std::bitset<LANE_LIMIT> &bitset, idx_t word_idx) {
 	uint64_t word = 0;
-	for (int i = 0; i < 64; ++i) {
+	for (idx_t i = 0; i < 64; ++i) {
 		auto bit_idx = word_idx * 64 + i;
-		if (bit_idx < LANE_LIMIT && b.test(bit_idx)) {
+		if (bit_idx < LANE_LIMIT && bitset.test(bit_idx)) {
 			word |= (1ULL << i);
 		}
 	}
 	return word;
 }
 
-static void WriteLaneActivity(IterativeLengthState &state, const std::vector<std::bitset<LANE_LIMIT>> &visit) {
+void WriteLaneActivity(IterativeLengthState &state, const std::vector<std::bitset<LANE_LIMIT>> &visit) {
 	auto file_name = state.benchmark_output_prefix + "_lane_activity_" + state.benchmark_run_id + ".csv";
 	std::ofstream outfile(file_name, std::ios_base::app);
 	if (!outfile.is_open()) {
@@ -155,15 +114,10 @@ static void WriteLaneActivity(IterativeLengthState &state, const std::vector<std
 	std::vector<int64_t> lane_activity(LANE_LIMIT, 0);
 	static constexpr idx_t WORD_COUNT = (LANE_LIMIT + 63) / 64;
 	for (idx_t v = 0; v < state.v_size; ++v) {
-		uint64_t words[WORD_COUNT];
 		for (idx_t word_idx = 0; word_idx < WORD_COUNT; word_idx++) {
-			words[word_idx] = get_word(visit[v], word_idx);
-		}
-
-		for (idx_t w = 0; w < WORD_COUNT; ++w) {
-			uint64_t word = words[w];
-			for (int bit = 0; bit < 64; ++bit) {
-				auto lane = w * 64 + bit;
+			auto word = GetWord(visit[v], word_idx);
+			for (idx_t bit = 0; bit < 64; ++bit) {
+				auto lane = word_idx * 64 + bit;
 				if (lane < LANE_LIMIT) {
 					lane_activity[lane] += (word >> bit) & 1;
 				}
@@ -176,105 +130,150 @@ static void WriteLaneActivity(IterativeLengthState &state, const std::vector<std
 	}
 }
 
-void IterativeLengthTask::IterativeLength() {
-	auto &seen = state->seen;
-	auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
-	auto &next = state->iter & 1 ? state->visit2 : state->visit1;
-	auto &barrier = state->barrier;
-	// Clear `next` array
+void RunIteration(IterativeLengthState &state, idx_t worker_id) {
+	auto &seen = state.seen;
+	auto &visit = state.iter & 1 ? state.visit1 : state.visit2;
+	auto &next = state.iter & 1 ? state.visit2 : state.visit1;
+	auto &barrier = state.barrier;
+
 	while (true) {
-		auto partition_idx = state->partition_counter.fetch_add(1);
-		if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
+		auto partition_idx = state.partition_counter.fetch_add(1);
+		if (partition_idx >= static_cast<int64_t>(state.local_csrs.size())) {
 			break;
 		}
-		auto &local_csr = state->local_csrs[partition_idx];
+		auto &local_csr = state.local_csrs[partition_idx];
 		for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
 			next[i] = 0;
 		}
 	}
 	barrier->Wait(worker_id);
+
 	if (worker_id == 0) {
-		state->partition_counter = 0;
-		state->local_csr_counter = 0;
-		state->change = false;
-		std::fill(state->worker_changed.begin(), state->worker_changed.end(), 0);
+		state.partition_counter = 0;
+		state.local_csr_counter = 0;
+		state.change = false;
+		std::fill(state.worker_changed.begin(), state.worker_changed.end(), 0);
 	}
 	barrier->Wait(worker_id);
+
 	while (true) {
-		auto partition_idx = state->local_csr_counter.fetch_add(1);
-		if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
+		auto partition_idx = state.local_csr_counter.fetch_add(1);
+		if (partition_idx >= static_cast<int64_t>(state.local_csrs.size())) {
 			break;
 		}
-		auto local_csr = state->local_csrs[partition_idx].get();
+		auto local_csr = state.local_csrs[partition_idx].get();
 		if (!local_csr) {
 			throw InternalException("Tried to reference nullptr for LocalCSR");
 		}
-		RunExplore(visit, next, *local_csr);
+		RunExplore(state, visit, next, *local_csr);
 	}
 
-	if (worker_id == 0 && state->benchmark_lane_activity_enabled) {
-		WriteLaneActivity(*state, visit);
+	if (worker_id == 0 && state.benchmark_lane_activity_enabled) {
+		WriteLaneActivity(state, visit);
 	}
 
 	barrier->Wait(worker_id);
 	bool local_change = false;
 	while (true) {
-		auto partition_idx = state->partition_counter.fetch_add(1);
-		if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
+		auto partition_idx = state.partition_counter.fetch_add(1);
+		if (partition_idx >= static_cast<int64_t>(state.local_csrs.size())) {
 			break;
 		}
-		auto &local_csr = state->local_csrs[partition_idx];
-		local_change |= CheckChange(seen, next, local_csr);
+		auto &local_csr = state.local_csrs[partition_idx];
+		local_change |= CheckChange(state, seen, next, local_csr);
 	}
-	state->worker_changed[worker_id] = local_change ? 1 : 0;
+	state.worker_changed[worker_id] = local_change ? 1 : 0;
 	barrier->Wait(worker_id);
+
 	if (worker_id == 0) {
 		bool any_change = false;
-		for (idx_t i = 0; i < state->tasks_scheduled; i++) {
-			any_change |= state->worker_changed[i] != 0;
+		for (idx_t i = 0; i < state.tasks_scheduled; i++) {
+			any_change |= state.worker_changed[i] != 0;
 		}
-		state->change = any_change;
-		state->partition_counter = 0;
+		state.change = any_change;
+		state.partition_counter = 0;
 	}
 	barrier->Wait(worker_id);
 }
 
-void IterativeLengthTask::ReachDetect() const {
-	auto result_data = FlatVector::GetDataMutable<int64_t>(state->pf_results->data[0]);
+void ReachDetect(IterativeLengthState &state) {
+	auto result_data = FlatVector::GetDataMutable<int64_t>(state.pf_results->data[0]);
 
-	// detect lanes that finished
-	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-		int64_t search_num = state->lane_to_num[lane];
-		if (search_num >= 0) { // active lane
-			int64_t dst_pos = state->vdata_dst.sel->get_index(search_num);
-			if (state->seen[state->dst[dst_pos]][lane]) {
-				result_data[search_num] = state->iter; /* found at iter => iter = path length */
-				state->lane_to_num[lane] = -1;         // mark inactive
-				state->active--;
-				state->lane_active[lane] = false;
+	for (idx_t lane = 0; lane < LANE_LIMIT; lane++) {
+		int64_t search_num = state.lane_to_num[lane];
+		if (search_num >= 0) {
+			int64_t dst_pos = state.vdata_dst.sel->get_index(search_num);
+			if (state.seen[state.dst[dst_pos]][lane]) {
+				result_data[search_num] = state.iter;
+				state.lane_to_num[lane] = -1;
+				state.active--;
+				state.lane_active[lane] = false;
 			}
 		}
 	}
-	if (state->active == 0) {
-		state->change = false;
+	if (state.active == 0) {
+		state.change = false;
 	}
-	// into the next iteration
-	state->iter++;
+	state.iter++;
 }
 
-void IterativeLengthTask::UnReachableSet() const {
-	auto result_data = FlatVector::GetDataMutable<int64_t>(state->pf_results->data[0]);
-	auto &result_validity = FlatVector::ValidityMutable(state->pf_results->data[0]);
+void UnReachableSet(IterativeLengthState &state) {
+	auto result_data = FlatVector::GetDataMutable<int64_t>(state.pf_results->data[0]);
+	auto &result_validity = FlatVector::ValidityMutable(state.pf_results->data[0]);
 
-	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-		int64_t search_num = state->lane_to_num[lane];
-		if (search_num >= 0) { // active lane
+	for (idx_t lane = 0; lane < LANE_LIMIT; lane++) {
+		int64_t search_num = state.lane_to_num[lane];
+		if (search_num >= 0) {
 			result_validity.SetInvalid(search_num);
-			result_data[search_num] = (int64_t)-1; /* no path */
-			state->lane_to_num[lane] = -1;         // mark inactive
-			state->lane_active[lane] = false;
+			result_data[search_num] = (int64_t)-1;
+			state.lane_to_num[lane] = -1;
+			state.lane_active[lane] = false;
 		}
 	}
+}
+
+} // namespace
+
+void ExecuteIterativeLengthBatch(IterativeLengthState &state, idx_t worker_id) {
+	auto &barrier = state.barrier;
+	while (state.started_searches < state.pairs->size()) {
+		barrier->Wait(worker_id);
+		if (worker_id == 0) {
+			state.InitializeLanes();
+		}
+		barrier->Wait(worker_id);
+
+		do {
+			RunIteration(state, worker_id);
+			barrier->Wait(worker_id);
+			if (worker_id == 0) {
+				ReachDetect(state);
+			}
+			barrier->Wait(worker_id);
+		} while (state.change);
+
+		if (worker_id == 0) {
+			UnReachableSet(state);
+		}
+
+		barrier->Wait(worker_id);
+		if (worker_id == 0) {
+			state.Clear();
+		}
+		barrier->Wait(worker_id);
+	}
+}
+
+IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p, ClientContext &context,
+                                         shared_ptr<IterativeLengthState> &state, idx_t worker_id,
+                                         const PhysicalOperator &op_p)
+    : ExecutorTask(context, std::move(event_p), op_p), context(context), state(state), worker_id(worker_id) {
+}
+
+TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
+	ExecuteIterativeLengthBatch(*state, worker_id);
+	event->FinishTask();
+	return TaskExecutionResult::TASK_FINISHED;
 }
 
 } // namespace duckdb
