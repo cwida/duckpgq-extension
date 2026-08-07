@@ -824,6 +824,7 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	PathFindingPairStats pair_stats;
 	HyperLogLog distinct_srcs;
 	HyperLogLog distinct_dsts;
+	gstate.global_pairs->InitializeScan(gstate.global_scan_state);
 	while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
 		auto current_chunk = make_shared_ptr<DataChunk>();
 		current_chunk->Initialize(context, gstate.global_pairs->Types());
@@ -936,7 +937,9 @@ SinkCombineResultType PhysicalPathFinding::Combine(ExecutionContext &context, Op
 	if (gstate.child == 0) {
 		return SinkCombineResultType::FINISHED;
 	}
-	gstate.global_pairs->Combine(lstate.local_pairs);
+	if (lstate.local_pairs.Count() > 0) {
+		gstate.global_pairs->Combine(lstate.local_pairs);
+	}
 	return SinkCombineResultType::FINISHED;
 }
 

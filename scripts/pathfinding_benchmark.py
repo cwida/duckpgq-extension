@@ -20,7 +20,8 @@ GENERATOR_EXTENSION = GENERATOR_ROOT / "build" / "release" / "extension" / "ldbc
 BENCH_DUCKDB = REPO_ROOT / "build" / "release" / "duckdb"
 DUCKPGQ_EXTENSION = REPO_ROOT / "build" / "release" / "extension" / "duckpgq" / "duckpgq.duckdb_extension"
 PAIR_SHAPES = ("random", "same_dst", "same_src")
-QUERY_PATTERNS = ("point_to_point", "sssp", "all_pairs")
+QUERY_PATTERNS = ("point_to_point", "sssp", "all_pairs", "graphalytics_bfs")
+GRAPHALYTICS_BFS_UNREACHABLE = 9223372036854775807
 GRAPHALYTICS_DEFAULT_DATASETS = ("datagen-8_4-fb", "dota-league", "kgs", "graph500-22", "wiki-Talk", "cit-Patents")
 GRAPHALYTICS_DATASET_ALIASES = {
     "cit-patents": "cit-Patents",
@@ -143,6 +144,10 @@ def graphalytics_source_dir(dataset):
     return DATA_ROOT / "graphalytics" / "sources" / graphalytics_name(dataset)
 
 
+def graphalytics_reference_dir(dataset):
+    return DATA_ROOT / "graphalytics" / "references" / graphalytics_name(dataset)
+
+
 def graphalytics_db_path(dataset):
     return DATA_ROOT / "graphalytics" / "db" / f"{graphalytics_name(dataset)}.duckdb"
 
@@ -150,6 +155,24 @@ def graphalytics_db_path(dataset):
 def graphalytics_parquet_url(dataset, kind):
     canonical = graphalytics_name(dataset)
     return f"{GRAPHALYTICS_PARQUET_BASE_URL}/{canonical}-{kind}.parquet"
+
+
+def graphalytics_package_url(dataset):
+    return f"https://datasets.ldbcouncil.org/graphalytics/{graphalytics_name(dataset)}.tar.zst"
+
+
+def graphalytics_properties_path(dataset):
+    canonical = graphalytics_name(dataset)
+    return graphalytics_reference_dir(canonical) / f"{canonical}.properties"
+
+
+def graphalytics_bfs_reference_path(dataset):
+    canonical = graphalytics_name(dataset)
+    return graphalytics_reference_dir(canonical) / f"{canonical}-BFS"
+
+
+def graphalytics_bfs_pair_table_name():
+    return "benchmark_pairs_graphalytics_bfs"
 
 
 def find_relation_path(base_dir, relation_name):
@@ -275,6 +298,106 @@ def download_graphalytics_dataset(dataset, force):
     return vertex_path, edge_path
 
 
+def download_url_to_file(url, out_path):
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
+
+    request = urllib.request.Request(url, headers={"User-Agent": "curl/8.0"})
+    with urllib.request.urlopen(request) as response, tmp_path.open("wb") as handle:
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            handle.write(chunk)
+    tmp_path.replace(out_path)
+
+
+def extract_graphalytics_archive_member(archive_path, member_name, out_path):
+    result = subprocess.run(
+        ["tar", "--zstd", "-xOf", str(archive_path), member_name],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        sys.stderr.write(result.stdout)
+        sys.stderr.write(result.stderr)
+        raise SystemExit(result.returncode)
+    out_path.write_text(result.stdout)
+
+
+def download_graphalytics_reference_files(dataset, force):
+    canonical = graphalytics_name(dataset)
+    if canonical not in GRAPHALYTICS_DATASETS:
+        known = ", ".join(GRAPHALYTICS_DEFAULT_DATASETS)
+        raise SystemExit(f"Unsupported Graphalytics dataset: {dataset}. Initial supported set: {known}")
+
+    ref_dir = graphalytics_reference_dir(canonical)
+    ref_dir.mkdir(parents=True, exist_ok=True)
+    properties_path = graphalytics_properties_path(canonical)
+    bfs_path = graphalytics_bfs_reference_path(canonical)
+    if properties_path.exists() and bfs_path.exists() and not force:
+        print(f"Graphalytics {canonical} properties/BFS reference already exist: {ref_dir}")
+        return properties_path, bfs_path
+
+    package_path = ref_dir / f"{canonical}.tar.zst"
+    url = graphalytics_package_url(canonical)
+    print(f"Downloading Graphalytics reference package {url}")
+    start = time.perf_counter()
+    download_url_to_file(url, package_path)
+    elapsed = time.perf_counter() - start
+    print(f"Downloaded reference package for {canonical} in {elapsed:.2f}s")
+
+    extract_graphalytics_archive_member(package_path, f"{canonical}.properties", properties_path)
+    extract_graphalytics_archive_member(package_path, f"{canonical}-BFS", bfs_path)
+    package_path.unlink()
+    return properties_path, bfs_path
+
+
+def read_graphalytics_properties(dataset):
+    canonical = graphalytics_name(dataset)
+    properties_path = graphalytics_properties_path(canonical)
+    if not properties_path.exists():
+        raise SystemExit(
+            f"Missing Graphalytics properties for {canonical}: {properties_path}. "
+            f"Run prepare --graphalytics-datasets {canonical} first."
+        )
+
+    properties = {}
+    for line in properties_path.read_text().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        properties[key.strip()] = value.strip()
+    return properties
+
+
+def graphalytics_bfs_source_vertex(dataset):
+    canonical = graphalytics_name(dataset)
+    properties = read_graphalytics_properties(canonical)
+    key = f"graph.{canonical}.bfs.source-vertex"
+    if key not in properties:
+        raise SystemExit(f"Graphalytics BFS source vertex not found in {graphalytics_properties_path(canonical)}")
+    return int(properties[key])
+
+
+def graphalytics_is_directed(dataset):
+    canonical = graphalytics_name(dataset)
+    properties = read_graphalytics_properties(canonical)
+    key = f"graph.{canonical}.directed"
+    if key not in properties:
+        raise SystemExit(f"Graphalytics directed flag not found in {graphalytics_properties_path(canonical)}")
+    return properties[key].lower() == "true"
+
+
+def graphalytics_has_weight_property(dataset):
+    canonical = graphalytics_name(dataset)
+    properties = read_graphalytics_properties(canonical)
+    return "weight" in properties.get(f"graph.{canonical}.edge-properties.names", "").split(",")
+
+
 def materialize_graphalytics_database(dataset, pair_count, force):
     canonical = graphalytics_name(dataset)
     stats = GRAPHALYTICS_DATASETS.get(canonical)
@@ -293,6 +416,21 @@ def materialize_graphalytics_database(dataset, pair_count, force):
     vertex_path, edge_path = download_graphalytics_dataset(canonical, force=False)
     out_db.parent.mkdir(parents=True, exist_ok=True)
     pair_table = pair_table_name(pair_count, "random")
+    directed = graphalytics_is_directed(canonical)
+    weight_expr = "weight::DOUBLE" if graphalytics_has_weight_property(canonical) else "1.0::DOUBLE"
+    edge_select_sql = f"""
+SELECT source::BIGINT AS person1id, target::BIGINT AS person2id, {weight_expr} AS weight
+FROM read_parquet({sql_string(edge_path)})
+"""
+    if not directed:
+        edge_select_sql = f"""
+SELECT source::BIGINT AS person1id, target::BIGINT AS person2id, {weight_expr} AS weight
+FROM read_parquet({sql_string(edge_path)})
+UNION ALL
+SELECT target::BIGINT AS person1id, source::BIGINT AS person2id, {weight_expr} AS weight
+FROM read_parquet({sql_string(edge_path)})
+WHERE source <> target
+"""
 
     sql = f"""
 CREATE TABLE person AS
@@ -300,8 +438,7 @@ SELECT id::BIGINT AS id
 FROM read_parquet({sql_string(vertex_path)});
 
 CREATE TABLE person_knows_person AS
-SELECT source::BIGINT AS person1id, target::BIGINT AS person2id
-FROM read_parquet({sql_string(edge_path)});
+{edge_select_sql};
 
 {pair_table_sql(pair_count)}
 
@@ -315,6 +452,7 @@ FROM (
         ('graphalytics_edges', {sql_string(stats["edges"])}),
         ('graphalytics_scale', {sql_string(stats["scale"])}),
         ('graphalytics_package_size', {sql_string(stats["size"])}),
+        ('graphalytics_directed', {sql_string(str(directed).lower())}),
         ('person_rows', (SELECT count(*)::VARCHAR FROM person)),
         ('person_knows_person_rows', (SELECT count(*)::VARCHAR FROM person_knows_person)),
         ('pair_table', {sql_string(pair_table)}),
@@ -353,6 +491,8 @@ def generated_pair_shape(query_pattern, pair_shape):
         return "same_src"
     if query_pattern == "all_pairs":
         return "all_pairs"
+    if query_pattern == "graphalytics_bfs":
+        return "graphalytics_bfs"
     raise ValueError(f"Unsupported query pattern: {query_pattern}")
 
 
@@ -466,6 +606,63 @@ def ensure_pair_table(scale_factor, pair_count, pair_shape="random", source_coun
     ensure_pair_table_for_db(db_path(scale_factor), sf_name(scale_factor), pair_count, pair_shape, source_count, target_count)
 
 
+def ensure_graphalytics_bfs_pair_table(attached_db, dataset):
+    canonical = graphalytics_name(dataset)
+    table_name = graphalytics_bfs_pair_table_name()
+    source_vertex = graphalytics_bfs_source_vertex(canonical)
+    sql = f"""
+CREATE OR REPLACE TABLE {table_name} AS
+WITH source_vertex AS (
+    SELECT rowid::BIGINT AS src
+    FROM person
+    WHERE id = {source_vertex}
+)
+SELECT source_vertex.src, person.rowid::BIGINT AS dst
+FROM source_vertex, person;
+ANALYZE {table_name};
+"""
+    print(f"Ensuring {graphalytics_label(canonical)} {table_name} exists for BFS source vertex {source_vertex}")
+    _, elapsed = run_duckdb(BENCH_DUCKDB, attached_db, sql)
+    print(f"Prepared {table_name} for {graphalytics_label(canonical)} in {elapsed:.2f}s")
+    return table_name, source_vertex
+
+
+def graphalytics_bfs_reference_profile(dataset):
+    canonical = graphalytics_name(dataset)
+    reference_path = graphalytics_bfs_reference_path(canonical)
+    if not reference_path.exists():
+        raise SystemExit(
+            f"Missing Graphalytics BFS reference for {canonical}: {reference_path}. "
+            f"Run prepare --graphalytics-datasets {canonical} first."
+        )
+    sql = f"""
+WITH reference AS (
+    SELECT vertex_id, distance
+    FROM read_csv(
+        {sql_string(reference_path)},
+        delim = ' ',
+        header = false,
+        columns = {{'vertex_id': 'BIGINT', 'distance': 'BIGINT'}}
+    )
+),
+reachable AS (
+    SELECT distance
+    FROM reference
+    WHERE distance <> {GRAPHALYTICS_BFS_UNREACHABLE}
+)
+SELECT (SELECT count(*)::BIGINT FROM reference) AS pair_count,
+       (SELECT count(*)::BIGINT FROM reachable) AS reachable_count,
+       (SELECT sum(distance)::BIGINT FROM reachable) AS total_len,
+       (SELECT min(distance)::BIGINT FROM reachable) AS min_len,
+       (SELECT max(distance)::BIGINT FROM reachable) AS max_len;
+"""
+    output, _ = run_duckdb(BENCH_DUCKDB, None, sql, quiet=True)
+    rows = list(csv.DictReader(output.splitlines()))
+    if len(rows) != 1:
+        raise RuntimeError(f"Expected one Graphalytics BFS reference profile row for {canonical}, got: {output}")
+    return rows[0]
+
+
 def read_pair_profile(attached_db, pair_table):
     output, _ = run_duckdb(BENCH_DUCKDB, attached_db, pair_profile_sql(pair_table), quiet=True)
     rows = list(csv.DictReader(output.splitlines()))
@@ -480,7 +677,8 @@ def prepare(args):
         for dataset in datasets:
             canonical = graphalytics_name(dataset)
             download_graphalytics_dataset(canonical, args.force)
-            materialize_graphalytics_database(canonical, args.pairs, args.force)
+            download_graphalytics_reference_files(canonical, args.force)
+            materialize_graphalytics_database(canonical, args.pairs, args.force or args.force_materialize)
         return
 
     for scale_factor in args.scale_factors:
@@ -758,7 +956,7 @@ def mode_sql(mode, options):
     if mode == "scalar":
         return scalar_sql(options)
     if mode == "recursive":
-        if options.query_pattern == "sssp":
+        if options.query_pattern == "sssp" or options.query_pattern == "graphalytics_bfs":
             return recursive_sssp_sql(options)
         return recursive_sql(options)
     raise ValueError(f"Unsupported benchmark mode: {mode}")
@@ -793,6 +991,16 @@ def verify_result_rows(results):
                     f"Benchmark result mismatch for repeat {repeat}: {expected_mode}={expected}, "
                     f"{row['mode']}={actual}.{hint}"
                 )
+
+
+def verify_graphalytics_bfs_result(row, reference_profile):
+    result_keys = ["pair_count", "reachable_count", "total_len", "min_len", "max_len"]
+    mismatches = [key for key in result_keys if str(row[key]) != str(reference_profile[key])]
+    if mismatches:
+        details = ", ".join(
+            f"{key}: observed={row[key]} reference={reference_profile[key]}" for key in mismatches
+        )
+        raise RuntimeError(f"Graphalytics BFS reference aggregate mismatch for {row['scale_factor']}: {details}")
 
 
 def stdev(values):
@@ -965,6 +1173,9 @@ def summarize_results(results):
                 "reverse_orientation_ratio": rows[0]["reverse_orientation_ratio"],
                 "source_group_ratio": rows[0]["source_group_ratio"],
                 "recursive_max_depth": rows[0]["recursive_max_depth"],
+                "graphalytics_algorithm": rows[0].get("graphalytics_algorithm", ""),
+                "graphalytics_source_vertex": rows[0].get("graphalytics_source_vertex", ""),
+                "graphalytics_reference_match": rows[0].get("graphalytics_reference_match", ""),
                 "pair_count": rows[0]["pair_count"],
                 "pair_table": rows[0]["pair_table"],
                 "pair_shape": rows[0]["pair_shape"],
@@ -1021,17 +1232,31 @@ def run_benchmark(args):
     if not attached_db.exists():
         raise SystemExit(f"Missing benchmark database: {attached_db}. Run prepare first.")
     generated_shape = generated_pair_shape(args.query_pattern, args.pair_shape)
-    source_count = args.source_count
-    target_count = args.target_count
-    pair_label = str(args.pairs)
-    if generated_shape == "all_pairs":
-        source_count = args.pairs if source_count is None else source_count
-        target_count = args.pairs if target_count is None else target_count
-        pair_label = f"{source_count}x{target_count}"
-    pair_shape = "custom" if args.pair_table else generated_shape
-    pair_table = args.pair_table or pair_table_name(args.pairs, generated_shape, source_count, target_count)
-    if args.pair_table is None:
-        ensure_pair_table_for_db(attached_db, target_label, args.pairs, generated_shape, source_count, target_count)
+    graphalytics_algorithm = ""
+    graphalytics_source_vertex = ""
+    graphalytics_reference_profile = None
+    if generated_shape == "graphalytics_bfs":
+        if not args.dataset:
+            raise SystemExit("--query-pattern graphalytics_bfs requires --dataset")
+        if args.pair_table is not None:
+            raise SystemExit("--query-pattern graphalytics_bfs generates its official pair table; do not pass --pair-table")
+        pair_table, graphalytics_source_vertex = ensure_graphalytics_bfs_pair_table(attached_db, target_value)
+        pair_shape = "graphalytics_bfs"
+        pair_label = "official_bfs"
+        graphalytics_algorithm = "bfs"
+        graphalytics_reference_profile = graphalytics_bfs_reference_profile(target_value)
+    else:
+        source_count = args.source_count
+        target_count = args.target_count
+        pair_label = str(args.pairs)
+        if generated_shape == "all_pairs":
+            source_count = args.pairs if source_count is None else source_count
+            target_count = args.pairs if target_count is None else target_count
+            pair_label = f"{source_count}x{target_count}"
+        pair_shape = "custom" if args.pair_table else generated_shape
+        pair_table = args.pair_table or pair_table_name(args.pairs, generated_shape, source_count, target_count)
+        if args.pair_table is None:
+            ensure_pair_table_for_db(attached_db, target_label, args.pairs, generated_shape, source_count, target_count)
     pair_profile = read_pair_profile(attached_db, pair_table)
     actual_pair_count = int(pair_profile["pair_table_rows"])
 
@@ -1089,6 +1314,9 @@ def run_benchmark(args):
             row["source_group_ratio"] = args.source_group_ratio if mode == "operator" else ""
             row["pair_table"] = pair_table
             row["pair_shape"] = pair_shape
+            row["graphalytics_algorithm"] = graphalytics_algorithm
+            row["graphalytics_source_vertex"] = graphalytics_source_vertex
+            row["graphalytics_reference_match"] = ""
             row.update(pair_profile)
             row["recursive_max_depth"] = args.recursive_max_depth if mode == "recursive" else ""
             if mode == "csr":
@@ -1102,6 +1330,9 @@ def run_benchmark(args):
             row["total_s"] = f"{sum(timers):.6f}"
             row.update(read_phase_timing(prefix))
             row["database"] = str(attached_db)
+            if graphalytics_reference_profile is not None:
+                verify_graphalytics_bfs_result(row, graphalytics_reference_profile)
+                row["graphalytics_reference_match"] = 1
             results.append(row)
             print(json.dumps(row, sort_keys=True))
 
@@ -1109,7 +1340,10 @@ def run_benchmark(args):
         verify_result_rows(results)
 
     timestamp = int(time.time())
-    result_path = results_dir / f"summary_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_{timestamp}.csv"
+    result_path = (
+        results_dir
+        / f"summary_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_mode{args.mode}_{timestamp}.csv"
+    )
     with result_path.open("w", newline="") as handle:
         fieldnames = [
             "scale_factor",
@@ -1125,6 +1359,9 @@ def run_benchmark(args):
             "reverse_orientation_ratio",
             "source_group_ratio",
             "recursive_max_depth",
+            "graphalytics_algorithm",
+            "graphalytics_source_vertex",
+            "graphalytics_reference_match",
             "pair_count",
             "pair_table",
             "pair_shape",
@@ -1170,7 +1407,10 @@ def run_benchmark(args):
     print(f"Wrote summary: {result_path}")
 
     stats = summarize_results(results)
-    stats_path = results_dir / f"stats_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_{timestamp}.csv"
+    stats_path = (
+        results_dir
+        / f"stats_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_mode{args.mode}_{timestamp}.csv"
+    )
     with stats_path.open("w", newline="") as handle:
         fieldnames = [
             "scale_factor",
@@ -1186,6 +1426,9 @@ def run_benchmark(args):
             "reverse_orientation_ratio",
             "source_group_ratio",
             "recursive_max_depth",
+            "graphalytics_algorithm",
+            "graphalytics_source_vertex",
+            "graphalytics_reference_match",
             "pair_count",
             "pair_table",
             "pair_shape",
@@ -1257,6 +1500,11 @@ def main():
     prepare_parser.add_argument("--threads", type=int, default=8)
     prepare_parser.add_argument("--pairs", type=int, default=1024)
     prepare_parser.add_argument("--force", action="store_true")
+    prepare_parser.add_argument(
+        "--force-materialize",
+        action="store_true",
+        help="For Graphalytics, rebuild the local DuckDB DB from existing downloads without forcing downloads.",
+    )
     prepare_parser.set_defaults(func=prepare)
 
     run_parser = subcommands.add_parser("run")
@@ -1275,7 +1523,8 @@ def main():
         help=(
             "Benchmark pattern. point_to_point uses --pair-shape; sssp generates one source "
             "with --pairs target vertices; all_pairs generates a source_count x target_count "
-            "block, defaulting both counts to --pairs unless --pair-table is set."
+            "block, defaulting both counts to --pairs; graphalytics_bfs uses the official "
+            "Graphalytics BFS source vertex and all target vertices."
         ),
     )
     run_parser.add_argument(
