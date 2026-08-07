@@ -32,6 +32,9 @@ class BenchmarkOptions:
     metrics_enabled: bool
     push_pull_frontier_gate: int
     deduplicate_pairs: bool
+    grouped_batches: bool
+    threads_per_batch: int
+    max_concurrent_batches: int
 
 
 def sql_string(value):
@@ -266,11 +269,15 @@ def operator_sql(options):
     reverse_value = "true" if options.build_reverse_csr else "false"
     metrics_value = "true" if options.metrics_enabled else "false"
     dedupe_value = "true" if options.deduplicate_pairs else "false"
+    grouped_value = "true" if options.grouped_batches else "false"
     return f"""
 SET experimental_path_finding_operator_benchmark={metrics_value};
 SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benchmark_prefix)};
 SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
 SET experimental_path_finding_operator_deduplicate_pairs={dedupe_value};
+SET experimental_path_finding_operator_grouped_batches={grouped_value};
+SET experimental_path_finding_operator_threads_per_batch={options.threads_per_batch};
+SET experimental_path_finding_operator_max_concurrent_batches={options.max_concurrent_batches};
 {csr_cte("ldbc")}
 SELECT 'operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
@@ -529,7 +536,7 @@ def read_phase_timing(benchmark_prefix):
             elif phase == "local_csr_pull":
                 local_csr_pull_ms += time_ms
                 local_csr_pull_memory = row["MemoryBytes"]
-            elif phase == "bfs_batch":
+            elif phase == "bfs_batch" or phase == "bfs_batch_grouped":
                 bfs_ms += time_ms
                 bfs_batches += 1
             elif phase == "dedupe_build":
@@ -600,6 +607,9 @@ def summarize_results(results):
                 "repeats": len(rows),
                 "metrics_enabled": rows[0]["metrics_enabled"],
                 "deduplicate_pairs": rows[0]["deduplicate_pairs"],
+                "grouped_batches": rows[0]["grouped_batches"],
+                "threads_per_batch": rows[0]["threads_per_batch"],
+                "max_concurrent_batches": rows[0]["max_concurrent_batches"],
                 "recursive_max_depth": rows[0]["recursive_max_depth"],
                 "pair_count": rows[0]["pair_count"],
                 "pair_table": rows[0]["pair_table"],
@@ -677,6 +687,9 @@ def run_benchmark(args):
                 metrics_enabled=args.metrics,
                 push_pull_frontier_gate=args.push_pull_frontier_gate,
                 deduplicate_pairs=args.deduplicate_pairs,
+                grouped_batches=args.grouped_batches,
+                threads_per_batch=args.threads_per_batch,
+                max_concurrent_batches=args.max_concurrent_batches,
             )
             query_sql = mode_sql(mode, options)
             output, timers = run_duckdb_timed_script(setup_sql(options) + query_sql, args.timeout)
@@ -686,6 +699,9 @@ def run_benchmark(args):
             row["repeat"] = repeat
             row["metrics_enabled"] = int(args.metrics)
             row["deduplicate_pairs"] = int(args.deduplicate_pairs)
+            row["grouped_batches"] = int(args.grouped_batches and mode == "operator")
+            row["threads_per_batch"] = args.threads_per_batch if mode == "operator" else ""
+            row["max_concurrent_batches"] = args.max_concurrent_batches if mode == "operator" else ""
             row["pair_table"] = pair_table
             row["recursive_max_depth"] = args.recursive_max_depth if mode == "recursive" else ""
             if mode == "csr":
@@ -715,6 +731,9 @@ def run_benchmark(args):
             "repeat",
             "metrics_enabled",
             "deduplicate_pairs",
+            "grouped_batches",
+            "threads_per_batch",
+            "max_concurrent_batches",
             "recursive_max_depth",
             "pair_count",
             "pair_table",
@@ -759,6 +778,9 @@ def run_benchmark(args):
             "repeats",
             "metrics_enabled",
             "deduplicate_pairs",
+            "grouped_batches",
+            "threads_per_batch",
+            "max_concurrent_batches",
             "recursive_max_depth",
             "pair_count",
             "pair_table",
@@ -856,6 +878,24 @@ def main():
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Enable exact source/destination pair deduplication inside path-finding operator batches.",
+    )
+    run_parser.add_argument(
+        "--grouped-batches",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable grouped regular MS-BFS scheduling with bounded worker groups.",
+    )
+    run_parser.add_argument(
+        "--threads-per-batch",
+        type=int,
+        default=0,
+        help="Maximum workers per grouped regular MS-BFS batch; <= 0 uses all query threads.",
+    )
+    run_parser.add_argument(
+        "--max-concurrent-batches",
+        type=int,
+        default=0,
+        help="Maximum grouped regular MS-BFS batches admitted concurrently; <= 0 derives from thread budget.",
     )
     run_parser.add_argument("--recursive-max-depth", type=int, default=8)
     run_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
