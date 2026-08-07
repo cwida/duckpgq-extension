@@ -2,6 +2,7 @@
 import argparse
 import csv
 import json
+import platform
 import re
 import statistics
 import subprocess
@@ -38,6 +39,36 @@ GRAPHALYTICS_DATASETS = {
     "example-directed": {"nodes": "10", "edges": "17", "scale": "-", "size": "1.0 KB"},
 }
 GRAPHALYTICS_PARQUET_BASE_URL = "https://datasets.ldbcouncil.org/graphalytics-parquet"
+DEFAULT_SYSTEM_NAME = "duckpgq"
+RUN_METADATA_FIELDS = [
+    "benchmark_run_id",
+    "benchmark_started_at",
+    "benchmark_system",
+    "benchmark_profile",
+    "benchmark_run_label",
+    "benchmark_notes",
+    "repo_commit",
+    "repo_branch",
+    "repo_dirty",
+    "host_platform",
+    "python_version",
+    "duckdb_binary",
+    "duckpgq_extension",
+]
+DATASET_METADATA_FIELDS = [
+    "dataset_metadata_dataset_kind",
+    "dataset_metadata_scale_factor",
+    "dataset_metadata_dataset",
+    "dataset_metadata_graphalytics_nodes",
+    "dataset_metadata_graphalytics_edges",
+    "dataset_metadata_graphalytics_scale",
+    "dataset_metadata_graphalytics_package_size",
+    "dataset_metadata_graphalytics_directed",
+    "dataset_metadata_person_rows",
+    "dataset_metadata_person_knows_person_rows",
+    "dataset_metadata_pair_table",
+    "dataset_metadata_pair_rows",
+]
 
 
 @dataclass(frozen=True)
@@ -118,6 +149,52 @@ def run_duckdb_timed_script(sql, timeout_s):
         raise RuntimeError("DuckDB did not emit a benchmark result row:\n" + output)
     csv_output = output_blocks[-1]
     return csv_output, timers
+
+
+def command_output(cmd):
+    result = subprocess.run(cmd, cwd=REPO_ROOT, text=True, capture_output=True)
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def git_metadata():
+    status = command_output(["git", "status", "--porcelain"])
+    return {
+        "repo_commit": command_output(["git", "rev-parse", "HEAD"]),
+        "repo_branch": command_output(["git", "branch", "--show-current"]),
+        "repo_dirty": int(bool(status)),
+    }
+
+
+def benchmark_run_metadata(args, started_at, run_id):
+    metadata = {
+        "benchmark_run_id": run_id,
+        "benchmark_started_at": started_at,
+        "benchmark_system": args.system_name,
+        "benchmark_profile": args.benchmark_profile,
+        "benchmark_run_label": args.run_label,
+        "benchmark_notes": args.notes,
+        "host_platform": platform.platform(),
+        "python_version": platform.python_version(),
+        "duckdb_binary": str(BENCH_DUCKDB),
+        "duckpgq_extension": str(DUCKPGQ_EXTENSION),
+    }
+    metadata.update(git_metadata())
+    return metadata
+
+
+def read_benchmark_metadata(attached_db):
+    sql = """
+SELECT key, value
+FROM benchmark_metadata
+ORDER BY key;
+"""
+    output, _ = run_duckdb(BENCH_DUCKDB, attached_db, sql, quiet=True)
+    metadata = {}
+    for row in csv.DictReader(output.splitlines()):
+        metadata[f"dataset_metadata_{row['key']}"] = row["value"]
+    return metadata
 
 
 def sf_name(scale_factor):
@@ -1158,7 +1235,8 @@ def summarize_results(results):
         csr_build_times = [float(row["csr_build_s"]) for row in rows if row["csr_build_s"]]
         query_times = [float(row["query_s"]) for row in rows]
         total_times = [float(row["total_s"]) for row in rows]
-        stats.append(
+        row_stats = {field: rows[0].get(field, "") for field in RUN_METADATA_FIELDS + DATASET_METADATA_FIELDS}
+        row_stats.update(
             {
                 "scale_factor": rows[0]["scale_factor"],
                 "mode": mode,
@@ -1222,6 +1300,7 @@ def summarize_results(results):
                 "database": rows[0]["database"],
             }
         )
+        stats.append(row_stats)
     return stats
 
 
@@ -1231,6 +1310,13 @@ def run_benchmark(args):
     results_dir.mkdir(parents=True, exist_ok=True)
     if not attached_db.exists():
         raise SystemExit(f"Missing benchmark database: {attached_db}. Run prepare first.")
+    started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    generated_run_id = (
+        f"{int(time.time())}_{args.system_name}_{target_label}_{args.query_pattern}_"
+        f"{args.mode}_threads{args.threads}"
+    )
+    run_metadata = benchmark_run_metadata(args, started_at, args.run_id or generated_run_id)
+    dataset_metadata = read_benchmark_metadata(attached_db)
     generated_shape = generated_pair_shape(args.query_pattern, args.pair_shape)
     graphalytics_algorithm = ""
     graphalytics_source_vertex = ""
@@ -1330,6 +1416,8 @@ def run_benchmark(args):
             row["total_s"] = f"{sum(timers):.6f}"
             row.update(read_phase_timing(prefix))
             row["database"] = str(attached_db)
+            row.update(run_metadata)
+            row.update(dataset_metadata)
             if graphalytics_reference_profile is not None:
                 verify_graphalytics_bfs_result(row, graphalytics_reference_profile)
                 row["graphalytics_reference_match"] = 1
@@ -1345,7 +1433,7 @@ def run_benchmark(args):
         / f"summary_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_mode{args.mode}_{timestamp}.csv"
     )
     with result_path.open("w", newline="") as handle:
-        fieldnames = [
+        fieldnames = RUN_METADATA_FIELDS + DATASET_METADATA_FIELDS + [
             "scale_factor",
             "mode",
             "threads",
@@ -1412,7 +1500,7 @@ def run_benchmark(args):
         / f"stats_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_mode{args.mode}_{timestamp}.csv"
     )
     with stats_path.open("w", newline="") as handle:
-        fieldnames = [
+        fieldnames = RUN_METADATA_FIELDS + DATASET_METADATA_FIELDS + [
             "scale_factor",
             "mode",
             "threads",
@@ -1551,6 +1639,19 @@ def main():
         help="Generated pair table shape when --pair-table is not set.",
     )
     run_parser.add_argument("--repeats", type=int, default=1)
+    run_parser.add_argument(
+        "--system-name",
+        default=DEFAULT_SYSTEM_NAME,
+        help="Logical system under test recorded in result metadata, e.g. duckpgq, kuzu, neo4j.",
+    )
+    run_parser.add_argument(
+        "--benchmark-profile",
+        default="exploratory",
+        help="Free-form profile recorded in result metadata, e.g. exploratory, paper, smoke.",
+    )
+    run_parser.add_argument("--run-label", default="", help="Optional human-readable run label recorded in metadata.")
+    run_parser.add_argument("--run-id", default=None, help="Optional stable run id. Defaults to a generated id.")
+    run_parser.add_argument("--notes", default="", help="Optional notes recorded in result metadata.")
     run_parser.add_argument(
         "--mode",
         choices=[
