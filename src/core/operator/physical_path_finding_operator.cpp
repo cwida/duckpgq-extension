@@ -938,6 +938,7 @@ SinkCombineResultType PhysicalPathFinding::Combine(ExecutionContext &context, Op
 		return SinkCombineResultType::FINISHED;
 	}
 	if (lstate.local_pairs.Count() > 0) {
+		lock_guard<mutex> pair_lock(gstate.global_pairs_lock);
 		gstate.global_pairs->Combine(lstate.local_pairs);
 	}
 	return SinkCombineResultType::FINISHED;

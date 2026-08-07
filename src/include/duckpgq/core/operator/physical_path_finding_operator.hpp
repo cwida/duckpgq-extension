@@ -107,6 +107,7 @@ public:
 	void Sink(DataChunk &input, PathFindingLocalSinkState &lstate);
 	// pairs is a 2-column table with src and dst
 	unique_ptr<ColumnDataCollection> global_pairs;
+	mutex global_pairs_lock;
 	ColumnDataScanState global_scan_state;
 	idx_t result_scan_idx;
 	idx_t next_batch_index;
