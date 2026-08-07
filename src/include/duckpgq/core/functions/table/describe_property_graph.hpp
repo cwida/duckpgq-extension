@@ -35,7 +35,7 @@ public:
 	};
 
 	static unique_ptr<FunctionData> DescribePropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
-	                                                          vector<LogicalType> &return_types, vector<string> &names);
+	                                                          vector<LogicalType> &return_types, vector<Identifier> &names);
 
 	static unique_ptr<GlobalTableFunctionState> DescribePropertyGraphInit(ClientContext &context,
 	                                                                      TableFunctionInitInput &input);

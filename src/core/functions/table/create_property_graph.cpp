@@ -205,7 +205,7 @@ void CreatePropertyGraphFunction::ValidatePrimaryKeyInTable(ClientContext &conte
 unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(ClientContext &context,
                                                                               TableFunctionBindInput &input,
                                                                               vector<LogicalType> &return_types,
-                                                                              vector<string> &names) {
+                                                                              vector<Identifier> &names) {
 	names.emplace_back("Success");
 	return_types.emplace_back(LogicalType::BOOLEAN);
 	auto duckpgq_state = GetDuckPGQState(context);

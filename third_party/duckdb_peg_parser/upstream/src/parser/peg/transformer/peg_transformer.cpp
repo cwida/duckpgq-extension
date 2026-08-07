@@ -272,7 +272,6 @@ unique_ptr<SQLStatement> PEGTransformer::CreatePivotStatement(unique_ptr<SQLStat
 		result->statements.push_back(std::move(enum_stmt));
 	}
 	result->stmt_location = statement->stmt_location;
-	result->stmt_length = statement->stmt_length;
 	statement->query = statement->ToString();
 	result->statements.push_back(std::move(statement));
 	return std::move(result);

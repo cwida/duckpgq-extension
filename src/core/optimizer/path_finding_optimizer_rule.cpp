@@ -43,9 +43,11 @@ static bool IsCSRIdProjection(const LogicalProjection &projection) {
 		if (expr->GetAlias() == "csr_id" || expr->GetName() == "csr_id") {
 			return true;
 		}
-		if (expr->GetExpressionType() == ExpressionType::OPERATOR_CAST &&
-		    expr->Cast<BoundCastExpression>().GetName() == "csr_id") {
-			return true;
+		if (BoundCastExpression::IsCast(*expr)) {
+			auto &cast_expr = expr->Cast<BoundFunctionExpression>();
+			if (BoundCastExpression::Child(cast_expr).GetName() == "csr_id") {
+				return true;
+			}
 		}
 	}
 	return false;

@@ -13,7 +13,7 @@ namespace duckdb {
 unique_ptr<FunctionData> DescribePropertyGraphFunction::DescribePropertyGraphBind(ClientContext &context,
                                                                                   TableFunctionBindInput &input,
                                                                                   vector<LogicalType> &return_types,
-                                                                                  vector<string> &names) {
+                                                                                  vector<Identifier> &names) {
 	auto duckpgq_state = GetDuckPGQState(context);
 
 	const auto duckpgq_parse_data = dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());

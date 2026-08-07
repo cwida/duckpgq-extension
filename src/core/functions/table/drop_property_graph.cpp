@@ -11,7 +11,7 @@ namespace duckdb {
 unique_ptr<FunctionData> DropPropertyGraphFunction::DropPropertyGraphBind(ClientContext &context,
                                                                           TableFunctionBindInput &,
                                                                           vector<LogicalType> &return_types,
-                                                                          vector<string> &names) {
+                                                                          vector<Identifier> &names) {
 	names.emplace_back("success");
 	return_types.emplace_back(LogicalType::VARCHAR);
 	auto duckpgq_state = GetDuckPGQState(context);
