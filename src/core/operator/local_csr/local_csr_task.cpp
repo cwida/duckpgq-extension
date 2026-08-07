@@ -12,7 +12,9 @@ LocalCSRTask::LocalCSRTask(shared_ptr<Event> event_p, ClientContext &context, sh
 }
 
 TaskExecutionResult LocalCSRTask::ExecuteTask(TaskExecutionMode mode) {
-	BuildLocalCSRs(false);
+	if (local_csr_state->build_forward_csr) {
+		BuildLocalCSRs(false);
+	}
 	if (local_csr_state->build_reverse_csr) {
 		BuildLocalCSRs(true);
 	}

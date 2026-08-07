@@ -192,16 +192,20 @@ void LocalCSREvent::Schedule() {
 
 void LocalCSREvent::FinishEvent() {
 	// Assume at least one partition exists
-	D_ASSERT(!local_csr_state->partition_csrs.empty());
+	D_ASSERT(!local_csr_state->partition_csrs.empty() || !local_csr_state->reverse_partition_csrs.empty());
 
-	std::sort(local_csr_state->partition_csrs.begin(), local_csr_state->partition_csrs.end(),
-	          [](const shared_ptr<LocalCSR> &a, const shared_ptr<LocalCSR> &b) {
-		          return a->GetEdgeSize() > b->GetEdgeSize(); // Sort by edge count
-	          });
-	std::sort(local_csr_state->reverse_partition_csrs.begin(), local_csr_state->reverse_partition_csrs.end(),
-	          [](const shared_ptr<LocalCSR> &a, const shared_ptr<LocalCSR> &b) {
-		          return a->GetEdgeSize() > b->GetEdgeSize(); // Sort by edge count
-	          });
+	if (local_csr_state->build_forward_csr) {
+		std::sort(local_csr_state->partition_csrs.begin(), local_csr_state->partition_csrs.end(),
+		          [](const shared_ptr<LocalCSR> &a, const shared_ptr<LocalCSR> &b) {
+			          return a->GetEdgeSize() > b->GetEdgeSize(); // Sort by edge count
+		          });
+	}
+	if (local_csr_state->build_reverse_csr) {
+		std::sort(local_csr_state->reverse_partition_csrs.begin(), local_csr_state->reverse_partition_csrs.end(),
+		          [](const shared_ptr<LocalCSR> &a, const shared_ptr<LocalCSR> &b) {
+			          return a->GetEdgeSize() > b->GetEdgeSize(); // Sort by edge count
+		          });
+	}
 	std::sort(local_csr_state->pull_partition_csrs.begin(), local_csr_state->pull_partition_csrs.end(),
 	          [](const shared_ptr<PullCSR> &a, const shared_ptr<PullCSR> &b) {
 		          return a->GetEdgeSize() > b->GetEdgeSize(); // Sort by edge count
@@ -211,9 +215,11 @@ void LocalCSREvent::FinishEvent() {
 		return;
 	}
 
-	AppendPhaseTiming(*local_csr_state, "local_csr_forward", local_csr_state->partition_csrs,
-	                  ElapsedMs(local_csr_state->forward_start_time, local_csr_state->forward_end_time));
-	WritePartitionStats(*local_csr_state, context, local_csr_state->partition_csrs, "forward");
+	if (local_csr_state->build_forward_csr) {
+		AppendPhaseTiming(*local_csr_state, "local_csr_forward", local_csr_state->partition_csrs,
+		                  ElapsedMs(local_csr_state->forward_start_time, local_csr_state->forward_end_time));
+		WritePartitionStats(*local_csr_state, context, local_csr_state->partition_csrs, "forward");
+	}
 	if (local_csr_state->build_reverse_csr) {
 		AppendPhaseTiming(*local_csr_state, "local_csr_reverse", local_csr_state->reverse_partition_csrs,
 		                  ElapsedMs(local_csr_state->reverse_start_time, local_csr_state->reverse_end_time));

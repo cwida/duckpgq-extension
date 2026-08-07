@@ -27,6 +27,8 @@ enum class PathFindingOperatorMode {
 	SHORTEST_PATH
 };
 
+enum class PathFindingSearchOrientation { FORWARD, REVERSE };
+
 struct PathFindingPairStats {
 	idx_t pair_count = 0;
 	idx_t distinct_src_count = 0;
@@ -117,6 +119,7 @@ public:
 	size_t child;
 	string mode;
 	PathFindingOperatorMode path_finding_mode;
+	PathFindingSearchOrientation search_orientation;
 	ClientContext &context_;
 	idx_t num_threads;
 	shared_ptr<LocalCSRState> local_csr_state;

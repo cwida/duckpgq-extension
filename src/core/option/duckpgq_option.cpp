@@ -81,6 +81,12 @@ int32_t GetPathFindingMaxConcurrentBatches(ClientContext &context) {
 	return value.GetValue<int32_t>();
 }
 
+int32_t GetPathFindingReverseOrientationRatio(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_reverse_orientation_ratio", value);
+	return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -239,6 +245,20 @@ void CorePGQOptions::RegisterPathFindingMaxConcurrentBatches(ExtensionLoader &lo
 	    "experimental_path_finding_operator_max_concurrent_batches",
 	    "Maximum number of grouped regular MS-BFS batches admitted concurrently; values <= 0 derive from thread budget",
 	    LogicalType::INTEGER, Value(0));
+}
+
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingReverseOrientationRatio(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+
+	config.AddExtensionOption(
+	    "experimental_path_finding_operator_reverse_orientation_ratio",
+	    "Use reverse MS-BFS for regular path-finding when estimated distinct_src >= ratio * estimated distinct_dst; "
+	    "values <= 0 disable adaptive reverse orientation",
+	    LogicalType::INTEGER, Value(4));
 }
 
 } // namespace duckdb

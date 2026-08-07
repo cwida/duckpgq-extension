@@ -36,6 +36,7 @@ class BenchmarkOptions:
     grouped_batches: bool
     threads_per_batch: int
     max_concurrent_batches: int
+    reverse_orientation_ratio: int
 
 
 def sql_string(value):
@@ -356,6 +357,7 @@ SET experimental_path_finding_operator_deduplicate_pairs={dedupe_value};
 SET experimental_path_finding_operator_grouped_batches={grouped_value};
 SET experimental_path_finding_operator_threads_per_batch={options.threads_per_batch};
 SET experimental_path_finding_operator_max_concurrent_batches={options.max_concurrent_batches};
+SET experimental_path_finding_operator_reverse_orientation_ratio={options.reverse_orientation_ratio};
 {csr_cte("ldbc")}
 SELECT 'operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
@@ -688,6 +690,7 @@ def summarize_results(results):
                 "grouped_batches": rows[0]["grouped_batches"],
                 "threads_per_batch": rows[0]["threads_per_batch"],
                 "max_concurrent_batches": rows[0]["max_concurrent_batches"],
+                "reverse_orientation_ratio": rows[0]["reverse_orientation_ratio"],
                 "recursive_max_depth": rows[0]["recursive_max_depth"],
                 "pair_count": rows[0]["pair_count"],
                 "pair_table": rows[0]["pair_table"],
@@ -777,6 +780,7 @@ def run_benchmark(args):
                 grouped_batches=args.grouped_batches,
                 threads_per_batch=args.threads_per_batch,
                 max_concurrent_batches=args.max_concurrent_batches,
+                reverse_orientation_ratio=args.reverse_orientation_ratio,
             )
             query_sql = mode_sql(mode, options)
             output, timers = run_duckdb_timed_script(setup_sql(options) + query_sql, args.timeout)
@@ -789,6 +793,7 @@ def run_benchmark(args):
             row["grouped_batches"] = int(args.grouped_batches and mode == "operator")
             row["threads_per_batch"] = args.threads_per_batch if mode == "operator" else ""
             row["max_concurrent_batches"] = args.max_concurrent_batches if mode == "operator" else ""
+            row["reverse_orientation_ratio"] = args.reverse_orientation_ratio if mode == "operator" else ""
             row["pair_table"] = pair_table
             row["pair_shape"] = pair_shape
             row.update(pair_profile)
@@ -823,6 +828,7 @@ def run_benchmark(args):
             "grouped_batches",
             "threads_per_batch",
             "max_concurrent_batches",
+            "reverse_orientation_ratio",
             "recursive_max_depth",
             "pair_count",
             "pair_table",
@@ -877,6 +883,7 @@ def run_benchmark(args):
             "grouped_batches",
             "threads_per_batch",
             "max_concurrent_batches",
+            "reverse_orientation_ratio",
             "recursive_max_depth",
             "pair_count",
             "pair_table",
@@ -1005,6 +1012,12 @@ def main():
         type=int,
         default=0,
         help="Maximum grouped regular MS-BFS batches admitted concurrently; <= 0 derives from thread budget.",
+    )
+    run_parser.add_argument(
+        "--reverse-orientation-ratio",
+        type=int,
+        default=4,
+        help="Use reverse MS-BFS for operator mode when estimated distinct_src >= ratio * estimated distinct_dst; <= 0 disables it.",
     )
     run_parser.add_argument("--recursive-max-depth", type=int, default=8)
     run_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)

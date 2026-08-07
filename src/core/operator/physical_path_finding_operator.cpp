@@ -86,6 +86,47 @@ shared_ptr<PathFindingBatch> CreatePathFindingBatch(const shared_ptr<DataChunk> 
 	return make_shared_ptr<PathFindingBatch>(output_pairs, output_pairs, output_index);
 }
 
+shared_ptr<PathFindingBatch> CreatePathFindingBatch(const shared_ptr<DataChunk> &output_pairs,
+                                                    const shared_ptr<DataChunk> &search_pairs, idx_t output_index) {
+	return make_shared_ptr<PathFindingBatch>(output_pairs, search_pairs, output_index);
+}
+
+shared_ptr<DataChunk> CreateReversedSearchPairs(ClientContext &context, DataChunk &output_pairs) {
+	auto search_pairs = make_shared_ptr<DataChunk>();
+	search_pairs->Initialize(context, output_pairs.GetTypes());
+	for (idx_t row = 0; row < output_pairs.size(); row++) {
+		search_pairs->data[0].SetValue(row, output_pairs.GetValue(1, row));
+		search_pairs->data[1].SetValue(row, output_pairs.GetValue(0, row));
+	}
+	search_pairs->SetChildCardinality(output_pairs.size());
+	return search_pairs;
+}
+
+bool ShouldUseReverseSearch(const PathFindingPairStats &stats, PathFindingOperatorMode mode, ClientContext &context) {
+	auto ratio = GetPathFindingReverseOrientationRatio(context);
+	if (mode != PathFindingOperatorMode::ITERATIVE_LENGTH || ratio <= 0 || stats.distinct_dst_count == 0) {
+		return false;
+	}
+	return static_cast<double>(stats.distinct_src_count) >=
+	       static_cast<double>(ratio) * static_cast<double>(stats.distinct_dst_count);
+}
+
+PathFindingSearchOrientation ChooseSearchOrientation(const PathFindingPairStats &stats, PathFindingOperatorMode mode,
+                                                     ClientContext &context) {
+	return ShouldUseReverseSearch(stats, mode, context) ? PathFindingSearchOrientation::REVERSE
+	                                                    : PathFindingSearchOrientation::FORWARD;
+}
+
+shared_ptr<PathFindingBatch> CreateOrientedPathFindingBatch(ClientContext &context,
+                                                            PathFindingSearchOrientation orientation,
+                                                            const shared_ptr<DataChunk> &output_pairs,
+                                                            idx_t output_index) {
+	if (orientation == PathFindingSearchOrientation::REVERSE) {
+		return CreatePathFindingBatch(output_pairs, CreateReversedSearchPairs(context, *output_pairs), output_index);
+	}
+	return CreatePathFindingBatch(output_pairs, output_index);
+}
+
 void AccumulatePairStats(DataChunk &chunk, PathFindingPairStats &stats, HyperLogLog &distinct_srcs,
                          HyperLogLog &distinct_dsts) {
 	UnifiedVectorFormat src_format;
@@ -153,11 +194,16 @@ void ConfigureLocalCSRStateForMode(LocalCSRState &local_csr_state, PathFindingOp
 }
 
 shared_ptr<BFSState> CreateBFSStateForMode(PathFindingOperatorMode mode, const shared_ptr<PathFindingBatch> &batch,
-                                           LocalCSRState &local_csr_state, idx_t num_threads, ClientContext &context,
-                                           int64_t vsize) {
+                                           PathFindingSearchOrientation orientation, LocalCSRState &local_csr_state,
+                                           idx_t num_threads, ClientContext &context, int64_t vsize) {
 	switch (mode) {
 	case PathFindingOperatorMode::ITERATIVE_LENGTH:
-		return make_shared_ptr<IterativeLengthState>(batch, local_csr_state.partition_csrs, num_threads, context, vsize);
+		if (orientation == PathFindingSearchOrientation::REVERSE) {
+			return make_shared_ptr<IterativeLengthState>(batch, local_csr_state.reverse_partition_csrs, num_threads,
+			                                             context, vsize);
+		}
+		return make_shared_ptr<IterativeLengthState>(batch, local_csr_state.partition_csrs, num_threads, context,
+		                                             vsize);
 	case PathFindingOperatorMode::PUSH_PULL_ITERATIVE_LENGTH:
 		return make_shared_ptr<PushPullIterativeLengthState>(batch, local_csr_state.partition_csrs,
 		                                                     local_csr_state.pull_partition_csrs, num_threads, context,
@@ -174,8 +220,8 @@ shared_ptr<BFSState> CreateBFSStateForMode(PathFindingOperatorMode mode, const s
 
 void ScheduleBFSBatchForMode(PathFindingGlobalSinkState &gstate, const shared_ptr<PathFindingBatch> &batch,
                              Pipeline &pipeline, Event &event, const PhysicalPathFinding *op, ClientContext &context) {
-	auto bfs_state = CreateBFSStateForMode(gstate.path_finding_mode, batch, *gstate.local_csr_state, gstate.num_threads,
-	                                       context, gstate.csr->vsize);
+	auto bfs_state = CreateBFSStateForMode(gstate.path_finding_mode, batch, gstate.search_orientation,
+	                                       *gstate.local_csr_state, gstate.num_threads, context, gstate.csr->vsize);
 	bfs_state->ScheduleBFSBatch(pipeline, event, op);
 	gstate.bfs_states.push_back(std::move(bfs_state));
 }
@@ -185,7 +231,10 @@ idx_t GetGroupedWorkersPerBatch(PathFindingGlobalSinkState &gstate, ClientContex
 	auto configured_workers = GetPathFindingThreadsPerBatch(context);
 	auto workers_per_batch =
 	    configured_workers <= 0 ? total_threads : std::min<idx_t>(static_cast<idx_t>(configured_workers), total_threads);
-	auto partition_count = std::max<idx_t>(1, gstate.local_csr_state->partition_csrs.size());
+	auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
+	                           ? gstate.local_csr_state->reverse_partition_csrs
+	                           : gstate.local_csr_state->partition_csrs;
+	auto partition_count = std::max<idx_t>(1, partition_csrs.size());
 	return std::max<idx_t>(1, std::min(workers_per_batch, partition_count));
 }
 
@@ -222,8 +271,11 @@ void SchedulePathFindingBatches(PathFindingGlobalSinkState &gstate, vector<share
 	iterative_states.reserve(batches.size());
 
 	for (auto &batch : batches) {
-		auto state = make_shared_ptr<IterativeLengthState>(batch, gstate.local_csr_state->partition_csrs,
-		                                                   workers_per_batch, context, gstate.csr->vsize);
+		auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
+		                           ? gstate.local_csr_state->reverse_partition_csrs
+		                           : gstate.local_csr_state->partition_csrs;
+		auto state =
+		    make_shared_ptr<IterativeLengthState>(batch, partition_csrs, workers_per_batch, context, gstate.csr->vsize);
 		iterative_states.push_back(state);
 		gstate.bfs_states.push_back(state);
 	}
@@ -258,6 +310,10 @@ void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate, ve
                                           ClientContext &context) {
 	auto local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
 	ConfigureLocalCSRStateForMode(*local_csr_state, gstate.path_finding_mode);
+	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
+		local_csr_state->build_forward_csr = false;
+		local_csr_state->build_reverse_csr = true;
+	}
 	gstate.local_csr_state = local_csr_state;
 
 	auto local_csr_event = make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, op, context);
@@ -322,6 +378,7 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 		gstate.global_output_to_search.push_back(std::move(output_to_search));
 	}
 	FinalizePairStats(gstate, pair_stats, distinct_srcs, distinct_dsts);
+	gstate.search_orientation = ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
 
 	auto duplicate_count = input_count - unique_source_rows.size();
 	idx_t remap_memory = 0;
@@ -339,7 +396,8 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 		vector<shared_ptr<PathFindingBatch>> batches;
 		batches.reserve(gstate.global_output_batches.size());
 		for (auto &output_batch : gstate.global_output_batches) {
-			batches.push_back(CreatePathFindingBatch(output_batch, gstate.next_batch_index++));
+			batches.push_back(
+			    CreateOrientedPathFindingBatch(context, gstate.search_orientation, output_batch, gstate.next_batch_index++));
 		}
 		ScheduleLocalCSRBuildThenPathFinding(gstate, std::move(batches), pipeline, event, op, context);
 		gstate.global_output_batches.clear();
@@ -361,8 +419,13 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 		while (unique_row < unique_source_rows.size() && chunk_count < STANDARD_VECTOR_SIZE) {
 			auto source = unique_source_rows[unique_row];
 			auto &output_batch = *gstate.global_output_batches[source.first];
-			search_chunk->data[0].SetValue(chunk_count, output_batch.GetValue(0, source.second));
-			search_chunk->data[1].SetValue(chunk_count, output_batch.GetValue(1, source.second));
+			if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
+				search_chunk->data[0].SetValue(chunk_count, output_batch.GetValue(1, source.second));
+				search_chunk->data[1].SetValue(chunk_count, output_batch.GetValue(0, source.second));
+			} else {
+				search_chunk->data[0].SetValue(chunk_count, output_batch.GetValue(0, source.second));
+				search_chunk->data[1].SetValue(chunk_count, output_batch.GetValue(1, source.second));
+			}
 			unique_row++;
 			chunk_count++;
 		}
@@ -401,7 +464,14 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 		batches.push_back(std::move(batch));
 	}
 	FinalizePairStats(gstate, pair_stats, distinct_srcs, distinct_dsts);
-	ScheduleLocalCSRBuildThenPathFinding(gstate, std::move(batches), pipeline, event, op, context);
+	gstate.search_orientation = ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
+	vector<shared_ptr<PathFindingBatch>> oriented_batches;
+	oriented_batches.reserve(batches.size());
+	for (auto &batch : batches) {
+		oriented_batches.push_back(
+		    CreateOrientedPathFindingBatch(context, gstate.search_orientation, batch->output_pairs, batch->output_index));
+	}
+	ScheduleLocalCSRBuildThenPathFinding(gstate, std::move(oriented_batches), pipeline, event, op, context);
 
 	++gstate.child;
 	auto duckpgq_state = GetDuckPGQState(context);
@@ -448,6 +518,7 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 	child = 0;
 	mode = op.mode;
 	path_finding_mode = ParsePathFindingOperatorMode(mode);
+	search_orientation = PathFindingSearchOrientation::FORWARD;
 	auto &scheduler = TaskScheduler::GetScheduler(context);
 	num_threads = scheduler.NumberOfThreads();
 }

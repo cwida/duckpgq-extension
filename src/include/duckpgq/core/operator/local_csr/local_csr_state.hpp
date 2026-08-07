@@ -32,6 +32,7 @@ public:
 	std::vector<shared_ptr<LocalCSR>> reverse_partition_csrs;
 	std::vector<shared_ptr<PullCSR>> pull_partition_csrs;
 	std::atomic<idx_t> partition_index;
+	bool build_forward_csr;
 	bool build_reverse_csr;
 	bool build_pull_csr;
 	bool finalize_sparse_rows;

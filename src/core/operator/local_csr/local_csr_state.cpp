@@ -23,6 +23,7 @@ LocalCSRState::LocalCSRState(ClientContext &context_p, CSR *csr_p, idx_t num_thr
 	global_csr = csr_p;
 	tasks_scheduled = 0;
 	partition_index = 0;
+	build_forward_csr = true;
 	build_reverse_csr = GetPathFindingBuildReverseCSR(context);
 	build_pull_csr = false;
 	finalize_sparse_rows = true;
