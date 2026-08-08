@@ -23,20 +23,99 @@ DUCKPGQ_EXTENSION = REPO_ROOT / "build" / "release" / "extension" / "duckpgq" / 
 PAIR_SHAPES = ("random", "same_dst", "same_src")
 QUERY_PATTERNS = ("point_to_point", "sssp", "all_pairs", "graphalytics_bfs")
 GRAPHALYTICS_BFS_UNREACHABLE = 9223372036854775807
-GRAPHALYTICS_DEFAULT_DATASETS = ("datagen-8_4-fb", "dota-league", "kgs", "graph500-22", "wiki-Talk", "cit-Patents")
+GRAPHALYTICS_CORE_DATASETS = ("datagen-8_4-fb", "dota-league", "kgs", "graph500-22", "wiki-Talk", "cit-Patents")
+GRAPHALYTICS_SMALL_DATASETS = (
+    "wiki-Talk",
+    "cit-Patents",
+    "kgs",
+    "dota-league",
+    "datagen-7_5-fb",
+    "datagen-7_6-fb",
+    "datagen-7_7-zf",
+    "datagen-7_8-zf",
+    "datagen-7_9-fb",
+    "graph500-22",
+)
+GRAPHALYTICS_MEDIUM_DATASETS = (
+    "datagen-8_0-fb",
+    "datagen-8_1-fb",
+    "datagen-8_2-zf",
+    "datagen-8_3-zf",
+    "datagen-8_4-fb",
+    "graph500-23",
+    "graph500-24",
+)
+GRAPHALYTICS_SMALL_EXTRA_DATASETS = tuple(dataset for dataset in GRAPHALYTICS_SMALL_DATASETS if dataset not in GRAPHALYTICS_CORE_DATASETS)
+GRAPHALYTICS_MEDIUM_EXTRA_DATASETS = tuple(dataset for dataset in GRAPHALYTICS_MEDIUM_DATASETS if dataset not in GRAPHALYTICS_CORE_DATASETS)
+GRAPHALYTICS_DEFAULT_DATASETS = GRAPHALYTICS_CORE_DATASETS
 GRAPHALYTICS_DATASET_ALIASES = {
     "cit-patents": "cit-Patents",
     "cti-patents": "cit-Patents",
     "wiki-talk": "wiki-Talk",
+    "twitter-mpi": "twitter_mpi",
 }
 GRAPHALYTICS_DATASETS = {
-    "datagen-8_4-fb": {"nodes": "3M", "edges": "269M", "scale": "M", "size": "1.2 GB"},
-    "dota-league": {"nodes": "61k", "edges": "50M", "scale": "S", "size": "114.3 MB"},
-    "kgs": {"nodes": "832k", "edges": "17M", "scale": "XS", "size": "65.7 MB"},
-    "graph500-22": {"nodes": "2M", "edges": "64M", "scale": "S", "size": "202.4 MB"},
-    "wiki-Talk": {"nodes": "2M", "edges": "5M", "scale": "2XS", "size": "34.9 MB"},
     "cit-Patents": {"nodes": "3M", "edges": "16M", "scale": "XS", "size": "119.1 MB"},
+    "com-friendster": {"nodes": "65M", "edges": "1B", "scale": "XL", "size": "6.7 GB"},
+    "datagen-7_5-fb": {"nodes": "633k", "edges": "34M", "scale": "S", "size": "162.3 MB"},
+    "datagen-7_6-fb": {"nodes": "754k", "edges": "42M", "scale": "S", "size": "200.0 MB"},
+    "datagen-7_7-zf": {"nodes": "13M", "edges": "32M", "scale": "S", "size": "434.5 MB"},
+    "datagen-7_8-zf": {"nodes": "16M", "edges": "41M", "scale": "S", "size": "544.3 MB"},
+    "datagen-7_9-fb": {"nodes": "1M", "edges": "85M", "scale": "S", "size": "401.2 MB"},
+    "datagen-8_0-fb": {"nodes": "1M", "edges": "107M", "scale": "M", "size": "502.5 MB"},
+    "datagen-8_1-fb": {"nodes": "2M", "edges": "134M", "scale": "M", "size": "625.4 MB"},
+    "datagen-8_2-zf": {"nodes": "43M", "edges": "106M", "scale": "M", "size": "1.4 GB"},
+    "datagen-8_3-zf": {"nodes": "53M", "edges": "130M", "scale": "M", "size": "1.7 GB"},
+    "datagen-8_4-fb": {"nodes": "3M", "edges": "269M", "scale": "M", "size": "1.2 GB"},
+    "datagen-8_5-fb": {"nodes": "4M", "edges": "332M", "scale": "L", "size": "1.5 GB"},
+    "datagen-8_6-fb": {"nodes": "5M", "edges": "421M", "scale": "L", "size": "1.9 GB"},
+    "datagen-8_7-zf": {"nodes": "145M", "edges": "340M", "scale": "L", "size": "4.6 GB"},
+    "datagen-8_8-zf": {"nodes": "168M", "edges": "413M", "scale": "L", "size": "5.3 GB"},
+    "datagen-8_9-fb": {"nodes": "10M", "edges": "848M", "scale": "L", "size": "3.7 GB"},
+    "datagen-9_0-fb": {"nodes": "12M", "edges": "1B", "scale": "XL", "size": "4.6 GB"},
+    "datagen-9_1-fb": {"nodes": "16M", "edges": "1B", "scale": "XL", "size": "5.8 GB"},
+    "datagen-9_2-zf": {"nodes": "434M", "edges": "1B", "scale": "XL", "size": "13.7 GB"},
+    "datagen-9_3-zf": {"nodes": "555M", "edges": "1B", "scale": "XL", "size": "17.4 GB"},
+    "datagen-9_4-fb": {"nodes": "29M", "edges": "2B", "scale": "XL", "size": "14.0 GB"},
+    "datagen-sf3k-fb": {"nodes": "33M", "edges": "2B", "scale": "XL", "size": "12.7 GB"},
+    "datagen-sf10k-fb": {"nodes": "100M", "edges": "9B", "scale": "2XL", "size": "40.5 GB"},
+    "dota-league": {"nodes": "61k", "edges": "50M", "scale": "S", "size": "114.3 MB"},
     "example-directed": {"nodes": "10", "edges": "17", "scale": "-", "size": "1.0 KB"},
+    "example-undirected": {"nodes": "9", "edges": "12", "scale": "-", "size": "1.0 KB"},
+    "graph500-22": {"nodes": "2M", "edges": "64M", "scale": "S", "size": "202.4 MB"},
+    "graph500-23": {"nodes": "4M", "edges": "129M", "scale": "M", "size": "410.6 MB"},
+    "graph500-24": {"nodes": "8M", "edges": "260M", "scale": "M", "size": "847.7 MB"},
+    "graph500-25": {"nodes": "17M", "edges": "523M", "scale": "L", "size": "1.7 GB"},
+    "graph500-26": {"nodes": "32M", "edges": "1B", "scale": "XL", "size": "3.4 GB"},
+    "graph500-27": {"nodes": "63M", "edges": "2B", "scale": "XL", "size": "7.1 GB"},
+    "graph500-28": {"nodes": "121M", "edges": "4B", "scale": "2XL", "size": "14.4 GB"},
+    "graph500-29": {"nodes": "232M", "edges": "8B", "scale": "2XL", "size": "29.6 GB"},
+    "graph500-30": {"nodes": "447M", "edges": "17B", "scale": "3XL", "size": "60.8 GB"},
+    "kgs": {"nodes": "832k", "edges": "17M", "scale": "XS", "size": "65.7 MB"},
+    "test-bfs-directed": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "test-bfs-undirected": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "test-cdlp-directed": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "test-cdlp-undirected": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "test-lcc-directed": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "test-lcc-undirected": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "test-pr-directed": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "test-pr-undirected": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "test-sssp-directed": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "test-sssp-undirected": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "test-wcc-directed": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "test-wcc-undirected": {"nodes": "<100", "edges": "<100", "scale": "-", "size": "<2.0 KB"},
+    "twitter_mpi": {"nodes": "52M", "edges": "1B", "scale": "XL", "size": "5.7 GB"},
+    "wiki-Talk": {"nodes": "2M", "edges": "5M", "scale": "2XS", "size": "34.9 MB"},
+}
+GRAPHALYTICS_DATASET_GROUPS = {
+    "core": GRAPHALYTICS_CORE_DATASETS,
+    "all": GRAPHALYTICS_CORE_DATASETS,
+    "small": GRAPHALYTICS_SMALL_DATASETS,
+    "small-extra": GRAPHALYTICS_SMALL_EXTRA_DATASETS,
+    "medium": GRAPHALYTICS_MEDIUM_DATASETS,
+    "medium-extra": GRAPHALYTICS_MEDIUM_EXTRA_DATASETS,
+    "small-medium": GRAPHALYTICS_SMALL_DATASETS + GRAPHALYTICS_MEDIUM_DATASETS,
+    "all-known": tuple(GRAPHALYTICS_DATASETS.keys()),
 }
 GRAPHALYTICS_PARQUET_BASE_URL = "https://datasets.ldbcouncil.org/graphalytics-parquet"
 DEFAULT_SYSTEM_NAME = "duckpgq"
@@ -203,6 +282,29 @@ def sf_name(scale_factor):
 
 def graphalytics_name(dataset):
     return GRAPHALYTICS_DATASET_ALIASES.get(dataset, dataset)
+
+
+def expand_graphalytics_datasets(datasets):
+    expanded = []
+    seen = set()
+    for dataset in datasets:
+        key = dataset.lower()
+        values = GRAPHALYTICS_DATASET_GROUPS.get(key)
+        if values is None:
+            values = (graphalytics_name(dataset),)
+        for value in values:
+            canonical = graphalytics_name(value)
+            if canonical not in GRAPHALYTICS_DATASETS:
+                groups = ", ".join(sorted(GRAPHALYTICS_DATASET_GROUPS))
+                known = ", ".join(GRAPHALYTICS_DATASETS)
+                raise SystemExit(
+                    f"Unsupported Graphalytics dataset or group: {value}. "
+                    f"Known groups: {groups}. Known datasets: {known}"
+                )
+            if canonical not in seen:
+                expanded.append(canonical)
+                seen.add(canonical)
+    return expanded
 
 
 def graphalytics_label(dataset):
@@ -750,7 +852,7 @@ def read_pair_profile(attached_db, pair_table):
 
 def prepare(args):
     if args.graphalytics_datasets:
-        datasets = GRAPHALYTICS_DEFAULT_DATASETS if args.graphalytics_datasets == ["all"] else args.graphalytics_datasets
+        datasets = expand_graphalytics_datasets(args.graphalytics_datasets)
         for dataset in datasets:
             canonical = graphalytics_name(dataset)
             download_graphalytics_dataset(canonical, args.force)
@@ -1570,6 +1672,38 @@ def run_benchmark(args):
     print(f"Wrote stats: {stats_path}")
 
 
+def sweep_graphalytics_bfs(args):
+    datasets = expand_graphalytics_datasets(args.datasets)
+    completed = 0
+    skipped = []
+    for dataset in datasets:
+        db_file = graphalytics_db_path(dataset)
+        if args.skip_missing and not db_file.exists():
+            print(f"Skipping {dataset}: missing {db_file}. Run prepare --graphalytics-datasets {dataset} first.")
+            skipped.append(dataset)
+            continue
+        for threads in args.threads:
+            run_args = argparse.Namespace(**vars(args))
+            run_args.scale_factor = None
+            run_args.dataset = dataset
+            run_args.threads = threads
+            run_args.pairs = 1024
+            run_args.query_pattern = "graphalytics_bfs"
+            run_args.source_count = None
+            run_args.target_count = None
+            run_args.pair_table = None
+            run_args.pair_shape = "random"
+            run_args.mode = "operator"
+            run_args.build_reverse_csr = False
+            run_args.run_id = f"{args.run_id}_{graphalytics_label(dataset)}_threads{threads}" if args.run_id else None
+            print(f"Running Graphalytics BFS sweep: dataset={dataset} threads={threads} repeats={args.repeats}")
+            run_benchmark(run_args)
+            completed += 1
+    print(f"Completed {completed} Graphalytics BFS sweep runs.")
+    if skipped:
+        print("Skipped missing datasets: " + ", ".join(skipped))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Prepare and smoke-run pathfinding benchmarks on LDBC Person knows Person data.")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -1582,7 +1716,8 @@ def main():
         default=None,
         help=(
             "Download and materialize Graphalytics datasets instead of LDBC scale factors. "
-            f"Use 'all' for: {', '.join(GRAPHALYTICS_DEFAULT_DATASETS)}."
+            "Groups: core/all, small, small-extra, medium, medium-extra, small-medium, all-known. "
+            f"'all' remains scoped to the core set: {', '.join(GRAPHALYTICS_DEFAULT_DATASETS)}."
         ),
     )
     prepare_parser.add_argument("--threads", type=int, default=8)
@@ -1720,6 +1855,58 @@ def main():
     run_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
     run_parser.add_argument("--timeout", type=int, default=300)
     run_parser.set_defaults(func=run_benchmark)
+
+    sweep_parser = subcommands.add_parser("sweep-graphalytics-bfs")
+    sweep_parser.add_argument(
+        "--datasets",
+        nargs="+",
+        default=["core"],
+        help=(
+            "Graphalytics datasets or groups to sweep. Groups: core/all, small, small-extra, medium, "
+            "medium-extra, small-medium, all-known. "
+            "Missing prepared DBs are skipped by default."
+        ),
+    )
+    sweep_parser.add_argument("--threads", type=int, nargs="+", default=[8, 16, 24, 32])
+    sweep_parser.add_argument("--repeats", type=int, default=3)
+    sweep_parser.add_argument(
+        "--skip-missing",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Skip datasets whose local DuckDB database has not been prepared.",
+    )
+    sweep_parser.add_argument(
+        "--metrics",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable internal operator benchmark CSV metrics. Disabled by default for clean wall-clock timing.",
+    )
+    sweep_parser.add_argument(
+        "--deduplicate-pairs",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable exact source/destination pair deduplication inside path-finding operator batches.",
+    )
+    sweep_parser.add_argument(
+        "--grouped-batches",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable grouped regular MS-BFS scheduling with bounded worker groups.",
+    )
+    sweep_parser.add_argument("--threads-per-batch", type=int, default=0)
+    sweep_parser.add_argument("--max-concurrent-batches", type=int, default=0)
+    sweep_parser.add_argument("--reverse-orientation-ratio", type=int, default=4)
+    sweep_parser.add_argument("--source-group-ratio", type=int, default=4)
+    sweep_parser.add_argument("--push-pull-frontier-gate", type=int, default=2)
+    sweep_parser.add_argument("--recursive-max-depth", type=int, default=64)
+    sweep_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
+    sweep_parser.add_argument("--timeout", type=int, default=1200)
+    sweep_parser.add_argument("--system-name", default=DEFAULT_SYSTEM_NAME)
+    sweep_parser.add_argument("--benchmark-profile", default="exploratory")
+    sweep_parser.add_argument("--run-label", default="graphalytics-bfs-sweep")
+    sweep_parser.add_argument("--run-id", default=None)
+    sweep_parser.add_argument("--notes", default="")
+    sweep_parser.set_defaults(func=sweep_graphalytics_bfs)
 
     args = parser.parse_args()
     args.func(args)
