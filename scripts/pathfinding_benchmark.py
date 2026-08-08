@@ -45,8 +45,17 @@ GRAPHALYTICS_MEDIUM_DATASETS = (
     "graph500-23",
     "graph500-24",
 )
+GRAPHALYTICS_LARGE_DATASETS = (
+    "datagen-8_5-fb",
+    "datagen-8_6-fb",
+    "datagen-8_7-zf",
+    "datagen-8_8-zf",
+    "datagen-8_9-fb",
+    "graph500-25",
+)
 GRAPHALYTICS_SMALL_EXTRA_DATASETS = tuple(dataset for dataset in GRAPHALYTICS_SMALL_DATASETS if dataset not in GRAPHALYTICS_CORE_DATASETS)
 GRAPHALYTICS_MEDIUM_EXTRA_DATASETS = tuple(dataset for dataset in GRAPHALYTICS_MEDIUM_DATASETS if dataset not in GRAPHALYTICS_CORE_DATASETS)
+GRAPHALYTICS_LARGE_EXTRA_DATASETS = tuple(dataset for dataset in GRAPHALYTICS_LARGE_DATASETS if dataset not in GRAPHALYTICS_CORE_DATASETS)
 GRAPHALYTICS_DEFAULT_DATASETS = GRAPHALYTICS_CORE_DATASETS
 GRAPHALYTICS_DATASET_ALIASES = {
     "cit-patents": "cit-Patents",
@@ -114,7 +123,11 @@ GRAPHALYTICS_DATASET_GROUPS = {
     "small-extra": GRAPHALYTICS_SMALL_EXTRA_DATASETS,
     "medium": GRAPHALYTICS_MEDIUM_DATASETS,
     "medium-extra": GRAPHALYTICS_MEDIUM_EXTRA_DATASETS,
+    "large": GRAPHALYTICS_LARGE_DATASETS,
+    "large-extra": GRAPHALYTICS_LARGE_EXTRA_DATASETS,
     "small-medium": GRAPHALYTICS_SMALL_DATASETS + GRAPHALYTICS_MEDIUM_DATASETS,
+    "medium-large": GRAPHALYTICS_MEDIUM_DATASETS + GRAPHALYTICS_LARGE_DATASETS,
+    "small-medium-large": GRAPHALYTICS_SMALL_DATASETS + GRAPHALYTICS_MEDIUM_DATASETS + GRAPHALYTICS_LARGE_DATASETS,
     "all-known": tuple(GRAPHALYTICS_DATASETS.keys()),
 }
 GRAPHALYTICS_PARQUET_BASE_URL = "https://datasets.ldbcouncil.org/graphalytics-parquet"
@@ -1716,7 +1729,8 @@ def main():
         default=None,
         help=(
             "Download and materialize Graphalytics datasets instead of LDBC scale factors. "
-            "Groups: core/all, small, small-extra, medium, medium-extra, small-medium, all-known. "
+            "Groups: core/all, small, small-extra, medium, medium-extra, large, large-extra, "
+            "small-medium, medium-large, small-medium-large, all-known. "
             f"'all' remains scoped to the core set: {', '.join(GRAPHALYTICS_DEFAULT_DATASETS)}."
         ),
     )
@@ -1863,7 +1877,7 @@ def main():
         default=["core"],
         help=(
             "Graphalytics datasets or groups to sweep. Groups: core/all, small, small-extra, medium, "
-            "medium-extra, small-medium, all-known. "
+            "medium-extra, large, large-extra, small-medium, medium-large, small-medium-large, all-known. "
             "Missing prepared DBs are skipped by default."
         ),
     )
