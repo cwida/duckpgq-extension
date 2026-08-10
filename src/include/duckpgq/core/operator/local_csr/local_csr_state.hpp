@@ -59,6 +59,9 @@ public:
 	bool build_pull_csr;
 	bool finalize_sparse_rows;
 	bool benchmark_enabled;
+	bool loaded_from_cache = false;
+	bool published_to_cache = false;
+	string cache_key;
 	string benchmark_output_prefix;
 	string benchmark_run_id;
 	std::chrono::steady_clock::time_point forward_start_time;

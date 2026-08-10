@@ -3,6 +3,7 @@
 #include "duckpgq/core/optimizer/duckpgq_optimizer.hpp"
 #include <duckdb/catalog/catalog_entry/duck_table_entry.hpp>
 #include <duckdb/planner/expression/bound_cast_expression.hpp>
+#include <duckdb/planner/expression/bound_constant_expression.hpp>
 #include <duckdb/planner/expression/bound_function_expression.hpp>
 #include <duckdb/planner/expression_iterator.hpp>
 #include <duckdb/planner/operator/logical_aggregate.hpp>
@@ -36,6 +37,40 @@ static string GetPathFindingFunctionName(const Expression &expr) {
 		result = GetPathFindingFunctionName(child);
 	});
 	return result;
+}
+
+static const BoundFunctionExpression *GetPathFindingFunction(const Expression &expr) {
+	if (expr.GetExpressionClass() == ExpressionClass::BOUND_FUNCTION) {
+		auto &function_expr = expr.Cast<BoundFunctionExpression>();
+		auto function_name = function_expr.Function().GetName().GetIdentifierName();
+		if (function_name == "iterativelengthoperator" || function_name == "pushpulliterativelengthoperator" ||
+		    function_name == "bidirectionaliterativelengthoperator" || function_name == "shortestpathoperator") {
+			return &function_expr;
+		}
+	}
+
+	const BoundFunctionExpression *result = nullptr;
+	ExpressionIterator::EnumerateChildren(expr, [&](const Expression &child) {
+		if (!result) {
+			result = GetPathFindingFunction(child);
+		}
+	});
+	return result;
+}
+
+static string GetPathFindingCacheKey(const Expression &expr) {
+	auto function_expr = GetPathFindingFunction(expr);
+	if (!function_expr || function_expr->GetChildren().size() < 4) {
+		return string();
+	}
+	if (function_expr->GetChildren()[3]->GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
+		throw BinderException("The path-finding cache key must be a constant VARCHAR");
+	}
+	auto &constant = function_expr->GetChildren()[3]->Cast<BoundConstantExpression>();
+	if (constant.GetValue().IsNull()) {
+		return string();
+	}
+	return constant.GetValue().GetValue<string>();
 }
 
 static bool IsCSRIdProjection(const LogicalProjection &projection) {
@@ -81,7 +116,7 @@ unique_ptr<Expression> CreateReplacementExpression(const Identifier &alias, cons
 }
 
 void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_expression, string &mode,
-                        vector<idx_t> &offsets) {
+                        vector<idx_t> &offsets, string &cache_key) {
 	// Create a temporary vector to hold the new expressions
 	vector<unique_ptr<Expression>> new_expressions;
 	new_expressions.reserve(op.expressions.size()); // Reserve space to avoid multiple reallocations
@@ -93,6 +128,13 @@ void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_
 			// Directly transfer the expression to the new vector if no replacement is needed
 			new_expressions.push_back(std::move(op.expressions[offset]));
 			continue;
+		}
+		auto expression_cache_key = GetPathFindingCacheKey(*expr);
+		if (!cache_key.empty() && !expression_cache_key.empty() && cache_key != expression_cache_key) {
+			throw BinderException("All path-finding expressions in a projection must use the same cache key");
+		}
+		if (!expression_cache_key.empty()) {
+			cache_key = std::move(expression_cache_key);
 		}
 
 		// Create the replacement expression
@@ -153,9 +195,10 @@ DuckpgqOptimizerExtension::FindCSRAndPairs(unique_ptr<LogicalOperator> &first_ch
 		unique_ptr<Expression> function_expression;
 		string path_finding_mode;
 		vector<idx_t> offsets;
-		ReplaceExpressions(op_proj, function_expression, path_finding_mode, offsets);
+		string cache_key;
+		ReplaceExpressions(op_proj, function_expression, path_finding_mode, offsets, cache_key);
 		return make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions, path_finding_mode,
-		                                             op_proj.table_index, offsets);
+		                                             op_proj.table_index, offsets, std::move(cache_key));
 	}
 	// Didn't find the CSR
 	return nullptr;

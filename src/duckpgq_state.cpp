@@ -187,4 +187,18 @@ CSR *DuckPGQState::GetCSR(int32_t id) {
 	return csr_entry->second.get();
 }
 
+shared_ptr<PartitionedCSRIndex> DuckPGQState::GetPartitionedCSR(const string &cache_key) {
+	lock_guard<mutex> lock(partitioned_csr_cache_lock);
+	auto entry = partitioned_csr_cache.find(cache_key);
+	if (entry == partitioned_csr_cache.end()) {
+		return nullptr;
+	}
+	return entry->second;
+}
+
+void DuckPGQState::PutPartitionedCSR(const string &cache_key, shared_ptr<PartitionedCSRIndex> index) {
+	lock_guard<mutex> lock(partitioned_csr_cache_lock);
+	partitioned_csr_cache[cache_key] = std::move(index);
+}
+
 } // namespace duckdb

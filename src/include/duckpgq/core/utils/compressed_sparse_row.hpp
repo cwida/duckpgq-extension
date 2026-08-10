@@ -162,6 +162,16 @@ public:
 	idx_t end_vertex;
 };
 
+//! A completed partitioned CSR layout. Instances are immutable after publication
+//! in the connection-local cache and can be shared by subsequent queries.
+struct PartitionedCSRIndex {
+	idx_t vertex_count = 0;
+	idx_t edge_count = 0;
+	std::vector<shared_ptr<LocalCSR>> forward_partitions;
+	std::vector<shared_ptr<LocalCSR>> reverse_partitions;
+	std::vector<shared_ptr<PullCSR>> pull_partitions;
+};
+
 class CSR {
 public:
 	CSR() = default;

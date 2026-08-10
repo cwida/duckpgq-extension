@@ -23,7 +23,9 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <mutex>
+#include <sstream>
 #include <thread>
 #include <unordered_map>
 
@@ -422,6 +424,81 @@ void ConfigureLocalCSRStateForMode(LocalCSRState &local_csr_state, PathFindingOp
 	}
 }
 
+string GetPartitionedCSRCacheKey(const PhysicalPathFinding &op, const PathFindingGlobalSinkState &gstate,
+                                 const LocalCSRState &local_csr_state, ClientContext &context) {
+	if (op.cache_key.empty()) {
+		return string();
+	}
+
+	std::ostringstream key;
+	key << std::setprecision(std::numeric_limits<double>::max_digits10);
+	key << "partitioned-csr-v1|graph=" << op.cache_key.size() << ":" << op.cache_key;
+	key << "|vertices=" << gstate.csr->vsize << "|edges=" << gstate.csr->e.size();
+	key << "|threads=" << local_csr_state.num_threads;
+	key << "|forward=" << local_csr_state.build_forward_csr;
+	key << "|reverse=" << local_csr_state.build_reverse_csr;
+	key << "|pull=" << local_csr_state.build_pull_csr;
+	key << "|sparse=" << local_csr_state.finalize_sparse_rows;
+	key << "|heavy_fraction=" << GetHeavyPartitionFraction(context);
+	key << "|light_multiplier=" << GetLightPartitionMultiplier(context);
+	return key.str();
+}
+
+bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, const PhysicalPathFinding &op,
+                           LocalCSRState &local_csr_state, ClientContext &context) {
+	local_csr_state.cache_key = GetPartitionedCSRCacheKey(op, gstate, local_csr_state, context);
+	if (local_csr_state.cache_key.empty()) {
+		return false;
+	}
+
+	auto start_time = std::chrono::steady_clock::now();
+	auto duckpgq_state = GetDuckPGQState(context);
+	auto cached_index = duckpgq_state->GetPartitionedCSR(local_csr_state.cache_key);
+	auto end_time = std::chrono::steady_clock::now();
+	auto lookup_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+	if (!cached_index || cached_index->vertex_count != gstate.csr->vsize ||
+	    cached_index->edge_count != gstate.csr->e.size()) {
+		AppendOperatorPhaseTiming(context, "partitioned_csr_cache_miss", gstate.num_threads,
+		                          gstate.pair_stats.pair_count, gstate.csr->e.size(), 0, lookup_ms, 0);
+		return false;
+	}
+
+	local_csr_state.partition_csrs = cached_index->forward_partitions;
+	local_csr_state.reverse_partition_csrs = cached_index->reverse_partitions;
+	local_csr_state.pull_partition_csrs = cached_index->pull_partitions;
+	local_csr_state.loaded_from_cache = true;
+	AppendOperatorPhaseTiming(context, "partitioned_csr_cache_hit", gstate.num_threads, gstate.pair_stats.pair_count,
+	                          gstate.csr->e.size(),
+	                          local_csr_state.partition_csrs.size() + local_csr_state.reverse_partition_csrs.size() +
+	                              local_csr_state.pull_partition_csrs.size(),
+	                          lookup_ms, 0);
+	return true;
+}
+
+void PublishPartitionedCSR(PathFindingGlobalSinkState &gstate, ClientContext &context) {
+	auto &local_csr_state = *gstate.local_csr_state;
+	if (local_csr_state.cache_key.empty() || local_csr_state.loaded_from_cache || local_csr_state.published_to_cache) {
+		return;
+	}
+
+	auto start_time = std::chrono::steady_clock::now();
+	auto index = make_shared_ptr<PartitionedCSRIndex>();
+	index->vertex_count = gstate.csr->vsize;
+	index->edge_count = gstate.csr->e.size();
+	index->forward_partitions = local_csr_state.partition_csrs;
+	index->reverse_partitions = local_csr_state.reverse_partition_csrs;
+	index->pull_partitions = local_csr_state.pull_partition_csrs;
+	GetDuckPGQState(context)->PutPartitionedCSR(local_csr_state.cache_key, std::move(index));
+	local_csr_state.published_to_cache = true;
+	auto end_time = std::chrono::steady_clock::now();
+	auto publish_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+	AppendOperatorPhaseTiming(context, "partitioned_csr_cache_publish", gstate.num_threads,
+	                          gstate.pair_stats.pair_count, gstate.csr->e.size(),
+	                          local_csr_state.partition_csrs.size() + local_csr_state.reverse_partition_csrs.size() +
+	                              local_csr_state.pull_partition_csrs.size(),
+	                          publish_ms, 0);
+}
+
 shared_ptr<BFSState> CreateBFSStateForMode(PathFindingOperatorMode mode, const shared_ptr<PathFindingBatch> &batch,
                                            PathFindingSearchOrientation orientation, LocalCSRState &local_csr_state,
                                            idx_t num_threads, ClientContext &context, int64_t vsize) {
@@ -540,6 +617,7 @@ public:
 	}
 
 	void FinishEvent() override {
+		PublishPartitionedCSR(gstate, context);
 		auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
 		                           ? gstate.local_csr_state->reverse_partition_csrs
 		                           : gstate.local_csr_state->partition_csrs;
@@ -573,6 +651,7 @@ public:
 	}
 
 	void FinishEvent() override {
+		PublishPartitionedCSR(gstate, context);
 		SchedulePathFindingBatches(gstate, batches, *pipeline, *this, op, context);
 	}
 
@@ -584,8 +663,8 @@ private:
 };
 
 void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate, vector<shared_ptr<PathFindingBatch>> batches,
-                                          Pipeline &pipeline, Event &event, const PhysicalPathFinding &op,
-                                          ClientContext &context) {
+	                                      Pipeline &pipeline, Event &event, const PhysicalPathFinding &op,
+	                                      ClientContext &context) {
 	auto local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
 	ConfigureLocalCSRStateForMode(*local_csr_state, gstate.path_finding_mode);
 	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
@@ -593,6 +672,10 @@ void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate, ve
 		local_csr_state->build_reverse_csr = true;
 	}
 	gstate.local_csr_state = local_csr_state;
+	if (TryLoadPartitionedCSR(gstate, op, *local_csr_state, context)) {
+		event.InsertEvent(make_shared_ptr<PathFindingScheduleEvent>(std::move(batches), gstate, pipeline, op, context));
+		return;
+	}
 
 	auto local_csr_event = make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, op, context);
 	event.InsertEvent(local_csr_event);
@@ -609,6 +692,10 @@ void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, 
 		local_csr_state->build_reverse_csr = true;
 	}
 	gstate.local_csr_state = local_csr_state;
+	if (TryLoadPartitionedCSR(gstate, op, *local_csr_state, context)) {
+		event.InsertEvent(make_shared_ptr<SourceGroupedScheduleEvent>(gstate, pipeline, op, context));
+		return;
+	}
 
 	auto local_csr_event = make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, op, context);
 	event.InsertEvent(local_csr_event);
@@ -869,6 +956,7 @@ PhysicalPathFinding::PhysicalPathFinding(PhysicalPlan &physical_plan, LogicalExt
 	estimated_cardinality = op.estimated_cardinality;
 	auto &path_finding_op = op.Cast<LogicalPathFindingOperator>();
 	mode = path_finding_op.mode;
+	cache_key = path_finding_op.cache_key;
 }
 
 //===--------------------------------------------------------------------===//
@@ -964,6 +1052,9 @@ SinkFinalizeType PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event,
 InsertionOrderPreservingMap<string> PhysicalPathFinding::ParamsToString() const {
 	InsertionOrderPreservingMap<string> result;
 	result["Mode"] = mode;
+	if (!cache_key.empty()) {
+		result["CSR Cache Key"] = cache_key;
+	}
 	SetEstimatedCardinality(result, estimated_cardinality);
 	return result;
 }

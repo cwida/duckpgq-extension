@@ -24,23 +24,36 @@ static void PushPullIterativeLengthOperatorFunction(DataChunk &args, ExpressionS
 // Register functions
 //------------------------------------------------------------------------------
 void CoreScalarFunctions::RegisterIterativeLengthOperatorScalarFunction(ExtensionLoader &loader) {
-	loader.RegisterFunction(ScalarFunction(
-	    "iterativelengthoperator", {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT}, LogicalType::BIGINT,
+	ScalarFunctionSet functions("iterativelengthoperator");
+	functions.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+	                                     LogicalType::BIGINT, IterativeLengthOperatorFunction,
+	                                     ShortestPathOperatorData::ShortestPathOperatorBind));
+	functions.AddFunction(ScalarFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR}, LogicalType::BIGINT,
 	    IterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
+	loader.RegisterFunction(functions);
 }
 
 void CoreScalarFunctions::RegisterPushPullIterativeLengthOperatorScalarFunction(ExtensionLoader &loader) {
-	loader.RegisterFunction(ScalarFunction("pushpulliterativelengthoperator",
-	                                       {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-	                                       LogicalType::BIGINT, PushPullIterativeLengthOperatorFunction,
-	                                       ShortestPathOperatorData::ShortestPathOperatorBind));
+	ScalarFunctionSet functions("pushpulliterativelengthoperator");
+	functions.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+	                                     LogicalType::BIGINT, PushPullIterativeLengthOperatorFunction,
+	                                     ShortestPathOperatorData::ShortestPathOperatorBind));
+	functions.AddFunction(ScalarFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR}, LogicalType::BIGINT,
+	    PushPullIterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
+	loader.RegisterFunction(functions);
 }
 
 void CoreScalarFunctions::RegisterBidirectionalIterativeLengthOperatorScalarFunction(ExtensionLoader &loader) {
-	loader.RegisterFunction(ScalarFunction("bidirectionaliterativelengthoperator",
-	                                       {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-	                                       LogicalType::BIGINT, BidirectionalIterativeLengthOperatorFunction,
-	                                       ShortestPathOperatorData::ShortestPathOperatorBind));
+	ScalarFunctionSet functions("bidirectionaliterativelengthoperator");
+	functions.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+	                                     LogicalType::BIGINT, BidirectionalIterativeLengthOperatorFunction,
+	                                     ShortestPathOperatorData::ShortestPathOperatorBind));
+	functions.AddFunction(ScalarFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR}, LogicalType::BIGINT,
+	    BidirectionalIterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
+	loader.RegisterFunction(functions);
 }
 
 } // namespace duckdb

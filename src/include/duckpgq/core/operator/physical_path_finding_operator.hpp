@@ -47,6 +47,7 @@ public:
 	static constexpr PhysicalOperatorType TYPE = PhysicalOperatorType::EXTENSION;
 	vector<unique_ptr<Expression>> expressions;
 	string mode; // "iterativelength" or "shortestpath"
+	string cache_key;
 
 public:
 	InsertionOrderPreservingMap<string> ParamsToString() const override;

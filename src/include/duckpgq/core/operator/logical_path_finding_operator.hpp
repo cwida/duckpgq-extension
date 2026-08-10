@@ -8,12 +8,13 @@ class LogicalPathFindingOperator : public LogicalExtensionOperator {
 public:
 	explicit LogicalPathFindingOperator(vector<unique_ptr<LogicalOperator>> &children_,
 	                                    vector<unique_ptr<Expression>> &expressions_, const string &mode_,
-	                                    TableIndex table_index_, vector<idx_t> &offsets_)
+	                                    TableIndex table_index_, vector<idx_t> &offsets_, string cache_key_)
 	    : LogicalExtensionOperator(std::move(expressions_)) {
 		children = std::move(children_);
 		mode = mode_;
 		table_index = table_index_;
 		offsets = offsets_;
+		cache_key = std::move(cache_key_);
 	}
 
 	void Serialize(Serializer &serializer) const override {
@@ -36,5 +37,6 @@ public:
 	string mode;
 	TableIndex table_index;
 	vector<idx_t> offsets;
+	string cache_key;
 };
 } // namespace duckdb
