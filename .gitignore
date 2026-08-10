@@ -8,3 +8,4 @@ testext
 __pycache__/
 .Rhistory
 .venv
+.kuzu_python/

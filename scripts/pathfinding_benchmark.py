@@ -4,6 +4,7 @@ import csv
 import json
 import platform
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -132,6 +133,7 @@ GRAPHALYTICS_DATASET_GROUPS = {
 }
 GRAPHALYTICS_PARQUET_BASE_URL = "https://datasets.ldbcouncil.org/graphalytics-parquet"
 DEFAULT_SYSTEM_NAME = "duckpgq"
+SYSTEMS = ("duckpgq", "kuzu")
 RUN_METADATA_FIELDS = [
     "benchmark_run_id",
     "benchmark_started_at",
@@ -243,6 +245,17 @@ def run_duckdb_timed_script(sql, timeout_s):
     return csv_output, timers
 
 
+def require_kuzu():
+    try:
+        import kuzu
+    except ImportError as exc:
+        raise SystemExit(
+            "The Kuzu Python package is required for --system kuzu. "
+            "Install it with `.venv/bin/python -m pip install kuzu` or `python3 -m pip install kuzu`."
+        ) from exc
+    return kuzu
+
+
 def command_output(cmd):
     result = subprocess.run(cmd, cwd=REPO_ROOT, text=True, capture_output=True)
     if result.returncode != 0:
@@ -269,8 +282,8 @@ def benchmark_run_metadata(args, started_at, run_id):
         "benchmark_notes": args.notes,
         "host_platform": platform.platform(),
         "python_version": platform.python_version(),
-        "duckdb_binary": str(BENCH_DUCKDB),
-        "duckpgq_extension": str(DUCKPGQ_EXTENSION),
+        "duckdb_binary": str(BENCH_DUCKDB) if getattr(args, "system", "duckpgq") == "duckpgq" else "",
+        "duckpgq_extension": str(DUCKPGQ_EXTENSION) if getattr(args, "system", "duckpgq") == "duckpgq" else "",
     }
     metadata.update(git_metadata())
     return metadata
@@ -287,6 +300,17 @@ ORDER BY key;
     for row in csv.DictReader(output.splitlines()):
         metadata[f"dataset_metadata_{row['key']}"] = row["value"]
     return metadata
+
+
+def read_kuzu_benchmark_metadata(dataset):
+    metadata_path = graphalytics_kuzu_metadata_path(dataset)
+    if not metadata_path.exists():
+        raise SystemExit(
+            f"Missing Kuzu benchmark metadata for {dataset}: {metadata_path}. "
+            f"Run prepare --system kuzu --graphalytics-datasets {dataset} first."
+        )
+    raw_metadata = json.loads(metadata_path.read_text())
+    return {f"dataset_metadata_{key}": value for key, value in raw_metadata.items()}
 
 
 def sf_name(scale_factor):
@@ -342,6 +366,14 @@ def graphalytics_reference_dir(dataset):
 
 def graphalytics_db_path(dataset):
     return DATA_ROOT / "graphalytics" / "db" / f"{graphalytics_name(dataset)}.duckdb"
+
+
+def graphalytics_kuzu_db_path(dataset):
+    return DATA_ROOT / "systems" / "kuzu" / "graphalytics" / f"{graphalytics_name(dataset)}.kuzu"
+
+
+def graphalytics_kuzu_metadata_path(dataset):
+    return graphalytics_kuzu_db_path(dataset).with_suffix(".metadata.json")
 
 
 def graphalytics_parquet_url(dataset, kind):
@@ -658,6 +690,86 @@ ANALYZE;
     print(f"Materialized Graphalytics {canonical} database in {elapsed:.2f}s")
 
 
+def kuzu_query_single_row(conn, query):
+    result = conn.execute(query)
+    if hasattr(result, "get_next"):
+        if not result.has_next():
+            raise RuntimeError(f"Kuzu query returned no rows: {query}")
+        return result.get_next()
+    rows = list(result)
+    if not rows:
+        raise RuntimeError(f"Kuzu query returned no rows: {query}")
+    return rows[0]
+
+
+def kuzu_row_get(row, index, default=None):
+    if isinstance(row, dict):
+        return list(row.values())[index] if index < len(row) else default
+    return row[index] if index < len(row) else default
+
+
+def materialize_graphalytics_kuzu_database(dataset, force):
+    kuzu = require_kuzu()
+    canonical = graphalytics_name(dataset)
+    stats = GRAPHALYTICS_DATASETS.get(canonical)
+    if stats is None:
+        known = ", ".join(GRAPHALYTICS_DEFAULT_DATASETS)
+        raise SystemExit(f"Unsupported Graphalytics dataset: {dataset}. Initial supported set: {known}")
+
+    out_db = graphalytics_kuzu_db_path(canonical)
+    metadata_path = graphalytics_kuzu_metadata_path(canonical)
+    if out_db.exists() and not force:
+        print(f"Graphalytics {canonical} Kuzu database already exists: {out_db}")
+        return
+    if out_db.exists():
+        if out_db.is_dir():
+            shutil.rmtree(out_db)
+        else:
+            out_db.unlink()
+
+    vertex_path, edge_path = download_graphalytics_dataset(canonical, force=False)
+    out_db.parent.mkdir(parents=True, exist_ok=True)
+    directed = graphalytics_is_directed(canonical)
+
+    print(f"Materializing Graphalytics {canonical} Kuzu database at {out_db}")
+    start = time.perf_counter()
+    db = kuzu.Database(str(out_db))
+    conn = kuzu.Connection(db)
+    conn.execute("CREATE NODE TABLE Person(id INT64 PRIMARY KEY)")
+    conn.execute("CREATE REL TABLE Knows(FROM Person TO Person)")
+    conn.execute(f"COPY Person FROM (LOAD FROM {sql_string(vertex_path)} RETURN id)")
+    conn.execute(f"COPY Knows FROM (LOAD FROM {sql_string(edge_path)} RETURN source, target)")
+    if not directed:
+        conn.execute(
+            f"""
+            COPY Knows FROM (
+                LOAD FROM {sql_string(edge_path)}
+                WHERE source <> target
+                RETURN target, source
+            )
+            """
+        )
+
+    person_rows = int(kuzu_row_get(kuzu_query_single_row(conn, "MATCH (p:Person) RETURN count(p.id)"), 0))
+    edge_rows = int(kuzu_row_get(kuzu_query_single_row(conn, "MATCH (:Person)-[e:Knows]->(:Person) RETURN count(e)"), 0))
+    metadata = {
+        "dataset_kind": "graphalytics",
+        "dataset": canonical,
+        "graphalytics_nodes": stats["nodes"],
+        "graphalytics_edges": stats["edges"],
+        "graphalytics_scale": stats["scale"],
+        "graphalytics_package_size": stats["size"],
+        "graphalytics_directed": str(directed).lower(),
+        "person_rows": str(person_rows),
+        "person_knows_person_rows": str(edge_rows),
+        "pair_table": graphalytics_bfs_pair_table_name(),
+        "pair_rows": str(person_rows),
+    }
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+    elapsed = time.perf_counter() - start
+    print(f"Materialized Graphalytics {canonical} Kuzu database in {elapsed:.2f}s")
+
+
 def pair_table_sql(pair_count):
     return pair_table_sql_for_shape(pair_count, "random")
 
@@ -864,13 +976,21 @@ def read_pair_profile(attached_db, pair_table):
 
 
 def prepare(args):
+    if args.system != "duckpgq" and not args.graphalytics_datasets:
+        raise SystemExit(f"prepare --system {args.system} currently supports only --graphalytics-datasets")
+
     if args.graphalytics_datasets:
         datasets = expand_graphalytics_datasets(args.graphalytics_datasets)
         for dataset in datasets:
             canonical = graphalytics_name(dataset)
             download_graphalytics_dataset(canonical, args.force)
             download_graphalytics_reference_files(canonical, args.force)
-            materialize_graphalytics_database(canonical, args.pairs, args.force or args.force_materialize)
+            if args.system == "duckpgq":
+                materialize_graphalytics_database(canonical, args.pairs, args.force or args.force_materialize)
+            elif args.system == "kuzu":
+                materialize_graphalytics_kuzu_database(canonical, args.force or args.force_materialize)
+            else:
+                raise SystemExit(f"Unsupported benchmark system: {args.system}")
         return
 
     for scale_factor in args.scale_factors:
@@ -892,12 +1012,20 @@ def benchmark_target(args):
     return args.scale_factor, sf_name(args.scale_factor), db_path(args.scale_factor)
 
 
-def csr_cte(schema_prefix):
+def csr_cte(schema_prefix, compact=False, validated_edges=False):
     person = f"{schema_prefix}.person"
     knows = f"{schema_prefix}.person_knows_person"
+    edge_function = "create_compact_csr_edge" if compact else "create_csr_edge"
+    edge_id_argument = "" if compact else ",\n        k.rowid"
+    edge_count = (
+        f"(SELECT count() FROM {knows})"
+        if validated_edges
+        else f"(SELECT count() FROM {knows} k JOIN {person} a ON a.id = k.person1id "
+        f"JOIN {person} c ON c.id = k.person2id)"
+    )
     return f"""
 WITH csr_cte AS (
-    SELECT cast(min(create_csr_edge(
+    SELECT cast(min({edge_function}(
         0,
         (SELECT count(a.id) FROM {person} a),
         CAST((
@@ -913,10 +1041,9 @@ WITH csr_cte AS (
                 GROUP BY a.rowid
             ) sub
         ) AS BIGINT),
-        (SELECT count() FROM {knows} k JOIN {person} a ON a.id = k.person1id JOIN {person} c ON c.id = k.person2id),
+        {edge_count},
         a.rowid,
-        c.rowid,
-        k.rowid
+        c.rowid{edge_id_argument}
     )) AS BIGINT) AS csr_id
     FROM {knows} k
     JOIN {person} a ON a.id = k.person1id
@@ -941,7 +1068,7 @@ SET experimental_path_finding_operator_threads_per_batch={options.threads_per_ba
 SET experimental_path_finding_operator_max_concurrent_batches={options.max_concurrent_batches};
 SET experimental_path_finding_operator_reverse_orientation_ratio={options.reverse_orientation_ratio};
 SET experimental_path_finding_operator_source_group_ratio={options.source_group_ratio};
-{csr_cte("ldbc")}
+{csr_cte("ldbc", compact=True, validated_edges=True)}
 SELECT 'operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
 FROM (
@@ -961,7 +1088,7 @@ SET experimental_path_finding_operator_benchmark={metrics_value};
 SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benchmark_prefix)};
 SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
 SET experimental_path_finding_operator_deduplicate_pairs={dedupe_value};
-{csr_cte("ldbc")}
+{csr_cte("ldbc", compact=True, validated_edges=True)}
 SELECT 'bidirectional_operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
 FROM (
@@ -982,7 +1109,7 @@ SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benc
 SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
 SET experimental_path_finding_operator_push_pull_frontier_gate={options.push_pull_frontier_gate};
 SET experimental_path_finding_operator_deduplicate_pairs={dedupe_value};
-{csr_cte("ldbc")}
+{csr_cte("ldbc", compact=True, validated_edges=True)}
 SELECT 'pushpull_operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
 FROM (
@@ -994,7 +1121,7 @@ FROM (
 
 def csr_sql(options):
     return f"""
-{csr_cte("ldbc")}
+{csr_cte("ldbc", compact=True, validated_edges=True)}
 SELECT 'csr' AS mode, 0::BIGINT AS pair_count, NULL::BIGINT AS reachable_count,
        NULL::BIGINT AS total_len, NULL::BIGINT AS min_len, NULL::BIGINT AS max_len
 FROM csr_cte;
@@ -1419,7 +1546,152 @@ def summarize_results(results):
     return stats
 
 
-def run_benchmark(args):
+def summary_fieldnames():
+    return RUN_METADATA_FIELDS + DATASET_METADATA_FIELDS + [
+        "scale_factor",
+        "mode",
+        "threads",
+        "repeat",
+        "query_pattern",
+        "metrics_enabled",
+        "deduplicate_pairs",
+        "grouped_batches",
+        "threads_per_batch",
+        "max_concurrent_batches",
+        "reverse_orientation_ratio",
+        "source_group_ratio",
+        "recursive_max_depth",
+        "graphalytics_algorithm",
+        "graphalytics_source_vertex",
+        "graphalytics_reference_match",
+        "pair_count",
+        "pair_table",
+        "pair_shape",
+        "pair_table_rows",
+        "distinct_src_count",
+        "distinct_dst_count",
+        "unique_pair_count",
+        "duplicate_pair_count",
+        "self_pair_count",
+        "reachable_count",
+        "total_len",
+        "min_len",
+        "max_len",
+        "setup_s",
+        "csr_build_s",
+        "local_csr_forward_s",
+        "local_csr_reverse_s",
+        "local_csr_pull_s",
+        "bfs_s",
+        "bfs_batches",
+        "dedupe_build_s",
+        "dedupe_scatter_s",
+        "dedupe_batches",
+        "dedupe_scatter_batches",
+        "dedupe_input_pairs",
+        "dedupe_unique_pairs",
+        "dedupe_duplicate_pairs",
+        "dedupe_remap_memory_bytes",
+        "source_group_build_s",
+        "source_group_bfs_s",
+        "source_group_count",
+        "source_group_output_chunks",
+        "local_csr_forward_memory_bytes",
+        "local_csr_reverse_memory_bytes",
+        "local_csr_pull_memory_bytes",
+        "query_s",
+        "total_s",
+        "database",
+    ]
+
+
+def stats_fieldnames():
+    return RUN_METADATA_FIELDS + DATASET_METADATA_FIELDS + [
+        "scale_factor",
+        "mode",
+        "threads",
+        "repeats",
+        "query_pattern",
+        "metrics_enabled",
+        "deduplicate_pairs",
+        "grouped_batches",
+        "threads_per_batch",
+        "max_concurrent_batches",
+        "reverse_orientation_ratio",
+        "source_group_ratio",
+        "recursive_max_depth",
+        "graphalytics_algorithm",
+        "graphalytics_source_vertex",
+        "graphalytics_reference_match",
+        "pair_count",
+        "pair_table",
+        "pair_shape",
+        "pair_table_rows",
+        "distinct_src_count",
+        "distinct_dst_count",
+        "unique_pair_count",
+        "duplicate_pair_count",
+        "self_pair_count",
+        "reachable_count",
+        "total_len",
+        "min_len",
+        "max_len",
+        "setup_mean_s",
+        "setup_stdev_s",
+        "csr_build_mean_s",
+        "csr_build_stdev_s",
+        "local_csr_forward_mean_s",
+        "local_csr_forward_stdev_s",
+        "local_csr_reverse_mean_s",
+        "local_csr_reverse_stdev_s",
+        "local_csr_pull_mean_s",
+        "local_csr_pull_stdev_s",
+        "bfs_mean_s",
+        "bfs_stdev_s",
+        "dedupe_build_mean_s",
+        "dedupe_build_stdev_s",
+        "dedupe_scatter_mean_s",
+        "dedupe_scatter_stdev_s",
+        "dedupe_input_pairs_mean",
+        "dedupe_unique_pairs_mean",
+        "dedupe_duplicate_pairs_mean",
+        "dedupe_remap_memory_bytes_mean",
+        "source_group_build_mean_s",
+        "source_group_bfs_mean_s",
+        "source_group_count_mean",
+        "source_group_output_chunks_mean",
+        "query_mean_s",
+        "query_stdev_s",
+        "query_min_s",
+        "query_max_s",
+        "total_mean_s",
+        "total_stdev_s",
+        "database",
+    ]
+
+
+def write_benchmark_outputs(results_dir, query_pattern, pair_shape, pair_label, mode_label, results):
+    timestamp = int(time.time())
+    result_path = results_dir / f"summary_{query_pattern}_{pair_shape}_pairs{pair_label}_threads{results[0]['threads']}_mode{mode_label}_{timestamp}.csv"
+    with result_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=summary_fieldnames())
+        writer.writeheader()
+        writer.writerows(results)
+    print(f"Wrote summary: {result_path}")
+
+    stats = summarize_results(results)
+    stats_path = results_dir / f"stats_{query_pattern}_{pair_shape}_pairs{pair_label}_threads{results[0]['threads']}_mode{mode_label}_{timestamp}.csv"
+    with stats_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=stats_fieldnames())
+        writer.writeheader()
+        writer.writerows(stats)
+    for row in stats:
+        print(json.dumps(row, sort_keys=True))
+    print(f"Wrote stats: {stats_path}")
+    return result_path, stats_path
+
+
+def run_duckpgq_benchmark(args):
     target_value, target_label, attached_db = benchmark_target(args)
     results_dir = DATA_ROOT / "results" / target_label
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -1542,157 +1814,156 @@ def run_benchmark(args):
     if args.verify:
         verify_result_rows(results)
 
-    timestamp = int(time.time())
-    result_path = (
-        results_dir
-        / f"summary_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_mode{args.mode}_{timestamp}.csv"
-    )
-    with result_path.open("w", newline="") as handle:
-        fieldnames = RUN_METADATA_FIELDS + DATASET_METADATA_FIELDS + [
-            "scale_factor",
-            "mode",
-            "threads",
-            "repeat",
-            "query_pattern",
-            "metrics_enabled",
-            "deduplicate_pairs",
-            "grouped_batches",
-            "threads_per_batch",
-            "max_concurrent_batches",
-            "reverse_orientation_ratio",
-            "source_group_ratio",
-            "recursive_max_depth",
-            "graphalytics_algorithm",
-            "graphalytics_source_vertex",
-            "graphalytics_reference_match",
-            "pair_count",
-            "pair_table",
-            "pair_shape",
-            "pair_table_rows",
-            "distinct_src_count",
-            "distinct_dst_count",
-            "unique_pair_count",
-            "duplicate_pair_count",
-            "self_pair_count",
-            "reachable_count",
-            "total_len",
-            "min_len",
-            "max_len",
-            "setup_s",
-            "csr_build_s",
-            "local_csr_forward_s",
-            "local_csr_reverse_s",
-            "local_csr_pull_s",
-            "bfs_s",
-            "bfs_batches",
-            "dedupe_build_s",
-            "dedupe_scatter_s",
-            "dedupe_batches",
-            "dedupe_scatter_batches",
-            "dedupe_input_pairs",
-            "dedupe_unique_pairs",
-            "dedupe_duplicate_pairs",
-            "dedupe_remap_memory_bytes",
-            "source_group_build_s",
-            "source_group_bfs_s",
-            "source_group_count",
-            "source_group_output_chunks",
-            "local_csr_forward_memory_bytes",
-            "local_csr_reverse_memory_bytes",
-            "local_csr_pull_memory_bytes",
-            "query_s",
-            "total_s",
-            "database",
-        ]
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(results)
-    print(f"Wrote summary: {result_path}")
+    write_benchmark_outputs(results_dir, args.query_pattern, pair_shape, pair_label, args.mode, results)
 
-    stats = summarize_results(results)
-    stats_path = (
-        results_dir
-        / f"stats_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_mode{args.mode}_{timestamp}.csv"
-    )
-    with stats_path.open("w", newline="") as handle:
-        fieldnames = RUN_METADATA_FIELDS + DATASET_METADATA_FIELDS + [
-            "scale_factor",
-            "mode",
-            "threads",
-            "repeats",
-            "query_pattern",
-            "metrics_enabled",
-            "deduplicate_pairs",
-            "grouped_batches",
-            "threads_per_batch",
-            "max_concurrent_batches",
-            "reverse_orientation_ratio",
-            "source_group_ratio",
-            "recursive_max_depth",
-            "graphalytics_algorithm",
-            "graphalytics_source_vertex",
-            "graphalytics_reference_match",
-            "pair_count",
-            "pair_table",
-            "pair_shape",
-            "pair_table_rows",
-            "distinct_src_count",
-            "distinct_dst_count",
-            "unique_pair_count",
-            "duplicate_pair_count",
-            "self_pair_count",
-            "reachable_count",
-            "total_len",
-            "min_len",
-            "max_len",
-            "setup_mean_s",
-            "setup_stdev_s",
-            "csr_build_mean_s",
-            "csr_build_stdev_s",
-            "local_csr_forward_mean_s",
-            "local_csr_forward_stdev_s",
-            "local_csr_reverse_mean_s",
-            "local_csr_reverse_stdev_s",
-            "local_csr_pull_mean_s",
-            "local_csr_pull_stdev_s",
-            "bfs_mean_s",
-            "bfs_stdev_s",
-            "dedupe_build_mean_s",
-            "dedupe_build_stdev_s",
-            "dedupe_scatter_mean_s",
-            "dedupe_scatter_stdev_s",
-            "dedupe_input_pairs_mean",
-            "dedupe_unique_pairs_mean",
-            "dedupe_duplicate_pairs_mean",
-            "dedupe_remap_memory_bytes_mean",
-            "source_group_build_mean_s",
-            "source_group_bfs_mean_s",
-            "source_group_count_mean",
-            "source_group_output_chunks_mean",
-            "query_mean_s",
-            "query_stdev_s",
-            "query_min_s",
-            "query_max_s",
-            "total_mean_s",
-            "total_stdev_s",
-            "database",
-        ]
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(stats)
-    for row in stats:
+
+def run_kuzu_graphalytics_bfs(args):
+    if not args.dataset:
+        raise SystemExit("--system kuzu currently requires --dataset")
+    if args.query_pattern != "graphalytics_bfs":
+        raise SystemExit("--system kuzu currently supports --query-pattern graphalytics_bfs")
+    if args.pair_table is not None:
+        raise SystemExit("--system kuzu graphalytics_bfs uses the official source/all-targets shape; do not pass --pair-table")
+
+    kuzu = require_kuzu()
+    target_value = graphalytics_name(args.dataset)
+    target_label = graphalytics_label(target_value)
+    db_path = graphalytics_kuzu_db_path(target_value)
+    if not db_path.exists():
+        raise SystemExit(f"Missing Kuzu benchmark database: {db_path}. Run prepare --system kuzu first.")
+
+    results_dir = DATA_ROOT / "results" / target_label
+    results_dir.mkdir(parents=True, exist_ok=True)
+    source_vertex = graphalytics_bfs_source_vertex(target_value)
+    reference_profile = graphalytics_bfs_reference_profile(target_value)
+    max_depth = min(args.recursive_max_depth, 30)
+    if args.verify and int(reference_profile["max_len"]) > max_depth:
+        raise SystemExit(
+            f"Kuzu shortest-path upper bound is capped at {max_depth}, but {target_value} "
+            f"reference max_len is {reference_profile['max_len']}."
+        )
+    dataset_metadata = read_kuzu_benchmark_metadata(target_value)
+    vertex_count = int(dataset_metadata["dataset_metadata_person_rows"])
+    pair_profile = {
+        "pair_table_rows": str(vertex_count),
+        "distinct_src_count": "1",
+        "distinct_dst_count": str(vertex_count),
+        "unique_pair_count": str(vertex_count),
+        "duplicate_pair_count": "0",
+        "self_pair_count": "1",
+    }
+
+    started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    generated_run_id = f"{int(time.time())}_{args.system_name}_{target_label}_{args.query_pattern}_native_threads{args.threads}"
+    run_metadata = benchmark_run_metadata(args, started_at, args.run_id or generated_run_id)
+    query = f"""
+MATCH (s:Person {{id: {source_vertex}}})-[e:Knows* SHORTEST 1..{max_depth}]->(d:Person)
+WHERE d.id <> {source_vertex}
+RETURN count(d.id), sum(length(e)), min(length(e)), max(length(e))
+"""
+
+    db = kuzu.Database(str(db_path), read_only=True)
+    conn = kuzu.Connection(db, num_threads=args.threads)
+    if hasattr(conn, "set_max_threads_for_exec"):
+        conn.set_max_threads_for_exec(args.threads)
+
+    results = []
+    for repeat in range(1, args.repeats + 1):
+        start = time.perf_counter()
+        output = kuzu_query_single_row(conn, query)
+        query_s = time.perf_counter() - start
+        reachable_without_source = int(kuzu_row_get(output, 0, 0) or 0)
+        total_without_source = int(kuzu_row_get(output, 1, 0) or 0)
+        min_without_source = kuzu_row_get(output, 2, None)
+        max_without_source = kuzu_row_get(output, 3, None)
+        reachable_count = reachable_without_source + 1
+        total_len = total_without_source
+        min_len = 0
+        max_len = int(max_without_source or 0)
+        if min_without_source is not None:
+            min_len = min(0, int(min_without_source))
+
+        row = {
+            "scale_factor": target_value,
+            "mode": "native",
+            "threads": args.threads,
+            "repeat": repeat,
+            "query_pattern": args.query_pattern,
+            "metrics_enabled": 0,
+            "deduplicate_pairs": 0,
+            "grouped_batches": 0,
+            "threads_per_batch": "",
+            "max_concurrent_batches": "",
+            "reverse_orientation_ratio": "",
+            "source_group_ratio": "",
+            "recursive_max_depth": max_depth,
+            "graphalytics_algorithm": "bfs",
+            "graphalytics_source_vertex": source_vertex,
+            "graphalytics_reference_match": "",
+            "pair_count": str(vertex_count),
+            "pair_table": graphalytics_bfs_pair_table_name(),
+            "pair_shape": "graphalytics_bfs",
+            "reachable_count": str(reachable_count),
+            "total_len": str(total_len),
+            "min_len": str(min_len),
+            "max_len": str(max_len),
+            "setup_s": "0.000000",
+            "csr_build_s": "",
+            "local_csr_forward_s": "",
+            "local_csr_reverse_s": "",
+            "local_csr_pull_s": "",
+            "bfs_s": "",
+            "bfs_batches": "",
+            "dedupe_build_s": "",
+            "dedupe_scatter_s": "",
+            "dedupe_batches": "",
+            "dedupe_scatter_batches": "",
+            "dedupe_input_pairs": "",
+            "dedupe_unique_pairs": "",
+            "dedupe_duplicate_pairs": "",
+            "dedupe_remap_memory_bytes": "",
+            "source_group_build_s": "",
+            "source_group_bfs_s": "",
+            "source_group_count": "",
+            "source_group_output_chunks": "",
+            "local_csr_forward_memory_bytes": "",
+            "local_csr_reverse_memory_bytes": "",
+            "local_csr_pull_memory_bytes": "",
+            "query_s": f"{query_s:.6f}",
+            "total_s": f"{query_s:.6f}",
+            "database": str(db_path),
+        }
+        row.update(pair_profile)
+        row.update(run_metadata)
+        row.update(dataset_metadata)
+        if args.verify:
+            verify_graphalytics_bfs_result(row, reference_profile)
+            row["graphalytics_reference_match"] = 1
+        results.append(row)
         print(json.dumps(row, sort_keys=True))
-    print(f"Wrote stats: {stats_path}")
+
+    write_benchmark_outputs(results_dir, args.query_pattern, "graphalytics_bfs", "official_bfs", "native", results)
+
+
+def run_benchmark(args):
+    args.system_name = args.system_name or args.system
+    if args.system == "duckpgq":
+        run_duckpgq_benchmark(args)
+    elif args.system == "kuzu":
+        run_kuzu_graphalytics_bfs(args)
+    else:
+        raise SystemExit(f"Unsupported benchmark system: {args.system}")
 
 
 def sweep_graphalytics_bfs(args):
+    args.system_name = args.system_name or args.system
     datasets = expand_graphalytics_datasets(args.datasets)
     completed = 0
     skipped = []
     for dataset in datasets:
-        db_file = graphalytics_db_path(dataset)
+        db_file = graphalytics_kuzu_db_path(dataset) if args.system == "kuzu" else graphalytics_db_path(dataset)
         if args.skip_missing and not db_file.exists():
-            print(f"Skipping {dataset}: missing {db_file}. Run prepare --graphalytics-datasets {dataset} first.")
+            print(f"Skipping {dataset}: missing {db_file}. Run prepare --system {args.system} --graphalytics-datasets {dataset} first.")
             skipped.append(dataset)
             continue
         for threads in args.threads:
@@ -1722,6 +1993,7 @@ def main():
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     prepare_parser = subcommands.add_parser("prepare")
+    prepare_parser.add_argument("--system", choices=SYSTEMS, default=DEFAULT_SYSTEM_NAME)
     prepare_parser.add_argument("--scale-factors", nargs="+", default=["1", "3", "10"])
     prepare_parser.add_argument(
         "--graphalytics-datasets",
@@ -1745,6 +2017,7 @@ def main():
     prepare_parser.set_defaults(func=prepare)
 
     run_parser = subcommands.add_parser("run")
+    run_parser.add_argument("--system", choices=SYSTEMS, default=DEFAULT_SYSTEM_NAME)
     run_parser.add_argument("--scale-factor", default=None)
     run_parser.add_argument(
         "--dataset",
@@ -1790,8 +2063,8 @@ def main():
     run_parser.add_argument("--repeats", type=int, default=1)
     run_parser.add_argument(
         "--system-name",
-        default=DEFAULT_SYSTEM_NAME,
-        help="Logical system under test recorded in result metadata, e.g. duckpgq, kuzu, neo4j.",
+        default=None,
+        help="Logical system under test recorded in result metadata. Defaults to --system.",
     )
     run_parser.add_argument(
         "--benchmark-profile",
@@ -1871,6 +2144,7 @@ def main():
     run_parser.set_defaults(func=run_benchmark)
 
     sweep_parser = subcommands.add_parser("sweep-graphalytics-bfs")
+    sweep_parser.add_argument("--system", choices=SYSTEMS, default=DEFAULT_SYSTEM_NAME)
     sweep_parser.add_argument(
         "--datasets",
         nargs="+",
@@ -1915,7 +2189,7 @@ def main():
     sweep_parser.add_argument("--recursive-max-depth", type=int, default=64)
     sweep_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
     sweep_parser.add_argument("--timeout", type=int, default=1200)
-    sweep_parser.add_argument("--system-name", default=DEFAULT_SYSTEM_NAME)
+    sweep_parser.add_argument("--system-name", default=None)
     sweep_parser.add_argument("--benchmark-profile", default="exploratory")
     sweep_parser.add_argument("--run-label", default="graphalytics-bfs-sweep")
     sweep_parser.add_argument("--run-id", default=None)

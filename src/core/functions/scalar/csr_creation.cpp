@@ -40,7 +40,8 @@ static void CsrInitializeVertex(DuckPGQState &context, int32_t id, int64_t v_siz
 	}
 }
 
-static void CsrInitializeEdge(DuckPGQState &context, int32_t id, int64_t v_size, int64_t e_size) {
+static void CsrInitializeEdge(DuckPGQState &context, int32_t id, int64_t v_size, int64_t e_size,
+                              bool store_edge_ids = true) {
 	const lock_guard<mutex> csr_init_lock(context.csr_lock);
 
 	auto csr_entry = context.csr_list.find(id);
@@ -49,7 +50,9 @@ static void CsrInitializeEdge(DuckPGQState &context, int32_t id, int64_t v_size,
 	}
 	try {
 		csr_entry->second->e.resize(e_size, 0);
-		csr_entry->second->edge_ids.resize(e_size, 0);
+		if (store_edge_ids) {
+			csr_entry->second->edge_ids.resize(e_size, 0);
+		}
 	} catch (std::bad_alloc const &) {
 		throw Exception(ExceptionType::INTERNAL, "Unable to initialize vector of size for csr edge table "
 		                                         "representation");
@@ -131,7 +134,7 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vecto
 	if (info.weight_type == LogicalType::SQLNULL) {
 		TernaryExecutor::Execute<int64_t, int64_t, int64_t, int32_t>(
 		    args.data[4], args.data[5], args.data[6], result, [&](int64_t src, int64_t dst, int64_t edge_id) {
-			    auto pos = ++csr_entry->second->v[src + 1];
+			    auto pos = csr_entry->second->v[src + 1].fetch_add(1, std::memory_order_relaxed) + 1;
 			    csr_entry->second->e[(int64_t)pos - 1] = dst;
 			    csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id;
 			    return info.id;
@@ -166,7 +169,7 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vecto
 				continue;
 			}
 			auto src = src_values[src_idx];
-			auto pos = ++csr_entry->second->v[src + 1];
+			auto pos = csr_entry->second->v[src + 1].fetch_add(1, std::memory_order_relaxed) + 1;
 			auto weight = weight_values[weight_idx];
 			csr_entry->second->e[(int64_t)pos - 1] = dst_values[dst_idx];
 			csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id_values[edge_id_idx];
@@ -188,13 +191,39 @@ static void CreateCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vecto
 			continue;
 		}
 		auto src = src_values[src_idx];
-		auto pos = ++csr_entry->second->v[src + 1];
+		auto pos = csr_entry->second->v[src + 1].fetch_add(1, std::memory_order_relaxed) + 1;
 		auto weight = weight_values[weight_idx];
 		csr_entry->second->e[(int64_t)pos - 1] = dst_values[dst_idx];
 		csr_entry->second->edge_ids[(int64_t)pos - 1] = edge_id_values[edge_id_idx];
 		csr_entry->second->w_double[(int64_t)pos - 1] = weight;
 		result_data[i] = info.id;
 	}
+}
+
+static void CreateCompactCsrEdgeFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &func_expr = state.expr.Cast<BoundFunctionExpression>();
+	auto &info = func_expr.BindInfo()->Cast<CSRFunctionData>();
+	auto duckpgq_state = GetDuckPGQState(info.context, true);
+
+	const auto vertex_size = args.data[1].GetValue(0).GetValue<int64_t>();
+	const auto edge_size = args.data[2].GetValue(0).GetValue<int64_t>();
+	const auto edge_size_count = args.data[3].GetValue(0).GetValue<int64_t>();
+	if (edge_size != edge_size_count) {
+		duckpgq_state->csr_to_delete.insert(info.id);
+		throw ConstraintException("Non-existent/non-unique vertices detected. Make sure all "
+		                          "vertices referred by edge tables exist and are unique for path-finding queries.");
+	}
+
+	auto csr_entry = duckpgq_state->csr_list.find(info.id);
+	if (!csr_entry->second->initialized_e) {
+		CsrInitializeEdge(*duckpgq_state, info.id, vertex_size, edge_size, false);
+	}
+	BinaryExecutor::Execute<int64_t, int64_t, int32_t>(
+	    args.data[4], args.data[5], result, args.size(), [&](int64_t src, int64_t dst) {
+		    auto pos = csr_entry->second->v[src + 1].fetch_add(1, std::memory_order_relaxed) + 1;
+		    csr_entry->second->e[(int64_t)pos - 1] = dst;
+		    return info.id;
+	    });
 }
 
 ScalarFunctionSet GetCSRVertexFunction() {
@@ -237,11 +266,21 @@ ScalarFunctionSet GetCSREdgeFunction() {
 	return set;
 }
 
+ScalarFunctionSet GetCompactCSREdgeFunction() {
+	ScalarFunctionSet set("create_compact_csr_edge");
+	set.AddFunction(ScalarFunction("create_compact_csr_edge",
+	                               {LogicalType::INTEGER, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT,
+	                                LogicalType::BIGINT, LogicalType::BIGINT},
+	                               LogicalType::INTEGER, CreateCompactCsrEdgeFunction, CSRFunctionData::CSREdgeBind));
+	return set;
+}
+
 //------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
 void CoreScalarFunctions::RegisterCSRCreationScalarFunctions(ExtensionLoader &loader) {
 	loader.RegisterFunction(GetCSREdgeFunction());
+	loader.RegisterFunction(GetCompactCSREdgeFunction());
 	loader.RegisterFunction(GetCSRVertexFunction());
 }
 
