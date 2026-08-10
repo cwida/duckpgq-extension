@@ -27,10 +27,13 @@ namespace duckdb {
 
 class LocalCSR {
 public:
-	explicit LocalCSR(idx_t start_vertex_p, idx_t end_vertex_p, size_t number_of_vertices)
+	explicit LocalCSR(idx_t start_vertex_p, idx_t end_vertex_p, size_t number_of_vertices,
+	                  bool initialize_vertex_array = true)
 	    : start_vertex(start_vertex_p), end_vertex(end_vertex_p), v_array_size(number_of_vertices + 2) {
-		v = new std::atomic<uint32_t>[v_array_size]();
-		initialized_v = true;
+		if (initialize_vertex_array) {
+			v = new std::atomic<uint32_t>[v_array_size]();
+			initialized_v = true;
+		}
 	}
 
 	~LocalCSR() {

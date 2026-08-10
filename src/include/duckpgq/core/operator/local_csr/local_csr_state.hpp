@@ -19,6 +19,20 @@ struct LocalCSRSubphaseTiming {
 	double time_ms;
 };
 
+struct LocalCSRBuildPartition {
+	vector<uint32_t> source_vertices;
+	vector<uint32_t> row_offsets;
+	vector<uint16_t> destinations;
+
+	void Append(idx_t source, idx_t destination) {
+		if (source_vertices.empty() || source_vertices.back() != source) {
+			source_vertices.push_back(NumericCast<uint32_t>(source));
+			row_offsets.push_back(NumericCast<uint32_t>(destinations.size()));
+		}
+		destinations.push_back(NumericCast<uint16_t>(destination));
+	}
+};
+
 class LocalCSRState {
 public:
 	LocalCSRState(ClientContext &context_p, CSR *csr, idx_t num_threads_p);
@@ -37,6 +51,7 @@ public:
 	std::vector<shared_ptr<LocalCSR>> partition_csrs;
 	std::vector<shared_ptr<LocalCSR>> reverse_partition_csrs;
 	std::vector<shared_ptr<PullCSR>> pull_partition_csrs;
+	std::vector<std::vector<LocalCSRBuildPartition>> forward_build_buffers;
 	std::vector<LocalCSRSubphaseTiming> subphase_timings;
 	std::atomic<idx_t> partition_index;
 	bool build_forward_csr;

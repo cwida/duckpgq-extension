@@ -40,6 +40,11 @@ TaskExecutionResult LocalCSRTask::ExecuteTask(TaskExecutionMode mode) {
 }
 
 void LocalCSRTask::BuildLocalCSRs(bool reverse) {
+	if (!reverse && local_csr_state->finalize_sparse_rows) {
+		BuildSparseForwardCSRs();
+		return;
+	}
+
 	auto &barrier = local_csr_state->barrier;
 	auto &statistics_chunks = reverse ? local_csr_state->reverse_statistics_chunks : local_csr_state->statistics_chunks;
 	auto &partition_csrs = reverse ? local_csr_state->reverse_partition_csrs : local_csr_state->partition_csrs;
@@ -117,6 +122,119 @@ void LocalCSRTask::BuildLocalCSRs(bool reverse) {
 		}
 	}
 	barrier->Wait(worker_id);
+}
+
+void LocalCSRTask::BuildSparseForwardCSRs() {
+	auto &barrier = local_csr_state->barrier;
+	auto &statistics_chunks = local_csr_state->statistics_chunks;
+	auto &partition_csrs = local_csr_state->partition_csrs;
+
+	if (worker_id == 0) {
+		std::fill(statistics_chunks.begin(), statistics_chunks.end(), 0);
+		partition_csrs.clear();
+		local_csr_state->forward_build_buffers.clear();
+		local_csr_state->partition_index = 0;
+		local_csr_state->forward_start_time = std::chrono::steady_clock::now();
+	}
+	barrier->Wait(worker_id);
+
+	auto subphase_start = std::chrono::steady_clock::now();
+	CreateStatistics(false, statistics_chunks);
+	barrier->Wait(worker_id);
+	if (worker_id == 0) {
+		RecordLocalCSRSubphase(*local_csr_state, false, "statistics", subphase_start, std::chrono::steady_clock::now());
+	}
+
+	subphase_start = std::chrono::steady_clock::now();
+	if (worker_id == 0) {
+		DeterminePartitions(statistics_chunks, partition_csrs, false);
+		local_csr_state->forward_build_buffers.resize(local_csr_state->tasks_scheduled);
+		for (auto &worker_buffers : local_csr_state->forward_build_buffers) {
+			worker_buffers.resize(partition_csrs.size());
+		}
+	}
+	barrier->Wait(worker_id);
+	if (worker_id == 0) {
+		RecordLocalCSRSubphase(*local_csr_state, false, "determine_partitions", subphase_start,
+		                       std::chrono::steady_clock::now());
+	}
+
+	subphase_start = std::chrono::steady_clock::now();
+	BufferForwardEdges(partition_csrs);
+	barrier->Wait(worker_id);
+	if (worker_id == 0) {
+		local_csr_state->partition_index = 0;
+		RecordLocalCSRSubphase(*local_csr_state, false, "buffer_edges", subphase_start,
+		                       std::chrono::steady_clock::now());
+	}
+	barrier->Wait(worker_id);
+
+	subphase_start = std::chrono::steady_clock::now();
+	MergeForwardBuffers(partition_csrs);
+	barrier->Wait(worker_id);
+	if (worker_id == 0) {
+		local_csr_state->forward_build_buffers.clear();
+		local_csr_state->forward_end_time = std::chrono::steady_clock::now();
+		RecordLocalCSRSubphase(*local_csr_state, false, "merge_buffers", subphase_start,
+		                       local_csr_state->forward_end_time);
+	}
+	barrier->Wait(worker_id);
+}
+
+void LocalCSRTask::BufferForwardEdges(std::vector<shared_ptr<LocalCSR>> &partition_csrs) {
+	auto &global_csr = *local_csr_state->global_csr;
+	auto &worker_buffers = local_csr_state->forward_build_buffers[worker_id];
+	const idx_t vertex_count = global_csr.vsize - 2;
+	const idx_t vertices_per_worker =
+	    (vertex_count + local_csr_state->tasks_scheduled - 1) / local_csr_state->tasks_scheduled;
+	const idx_t src_start = worker_id * vertices_per_worker;
+	const idx_t src_end = std::min(src_start + vertices_per_worker, vertex_count);
+
+	for (idx_t src = src_start; src < src_end; src++) {
+		const idx_t edge_start = global_csr.v[src];
+		const idx_t edge_end = global_csr.v[src + 1];
+		for (idx_t edge_idx = edge_start; edge_idx < edge_end; edge_idx++) {
+			const idx_t dst = global_csr.e[edge_idx];
+			const idx_t partition_idx = GetPartitionForVertex(dst, partition_csrs);
+			auto &partition = *partition_csrs[partition_idx];
+			worker_buffers[partition_idx].Append(src, dst - partition.start_vertex);
+		}
+	}
+}
+
+void LocalCSRTask::MergeForwardBuffers(std::vector<shared_ptr<LocalCSR>> &partition_csrs) {
+	while (true) {
+		const idx_t partition_idx = local_csr_state->partition_index.fetch_add(1);
+		if (partition_idx >= partition_csrs.size()) {
+			break;
+		}
+
+		auto &target = *partition_csrs[partition_idx];
+		idx_t source_count = 0;
+		idx_t edge_count = 0;
+		for (auto &worker_buffers : local_csr_state->forward_build_buffers) {
+			auto &source = worker_buffers[partition_idx];
+			source_count += source.source_vertices.size();
+			edge_count += source.destinations.size();
+		}
+
+		target.source_vertices.reserve(source_count);
+		target.row_offsets.reserve(source_count + 1);
+		target.e.reserve(edge_count);
+		for (auto &worker_buffers : local_csr_state->forward_build_buffers) {
+			auto &source = worker_buffers[partition_idx];
+			const auto edge_base = target.e.size();
+			target.source_vertices.insert(target.source_vertices.end(), source.source_vertices.begin(),
+			                              source.source_vertices.end());
+			for (auto offset : source.row_offsets) {
+				target.row_offsets.push_back(NumericCast<uint32_t>(edge_base + offset));
+			}
+			target.e.insert(target.e.end(), source.destinations.begin(), source.destinations.end());
+		}
+		target.row_offsets.push_back(NumericCast<uint32_t>(target.e.size()));
+		target.initialized_e = true;
+		target.sparse_rows_initialized = true;
+	}
 }
 
 void LocalCSRTask::BuildPullCSRs() {
@@ -263,10 +381,17 @@ void LocalCSRTask::CreatePullRunningSum(std::vector<shared_ptr<PullCSR>> &pull_p
 }
 
 idx_t LocalCSRTask::GetPartitionForVertex(idx_t vertex, std::vector<shared_ptr<LocalCSR>> &partition_csrs) const {
-	for (idx_t i = 0; i < partition_csrs.size(); i++) {
-		auto &csr = *partition_csrs[i];
-		if (vertex >= csr.start_vertex && vertex < csr.end_vertex) {
-			return i;
+	idx_t left = 0;
+	idx_t right = partition_csrs.size();
+	while (left < right) {
+		const idx_t mid = left + (right - left) / 2;
+		auto &csr = *partition_csrs[mid];
+		if (vertex < csr.start_vertex) {
+			right = mid;
+		} else if (vertex >= csr.end_vertex) {
+			left = mid + 1;
+		} else {
+			return mid;
 		}
 	}
 	throw OutOfRangeException("Vertex %llu not found in any partition", vertex);
@@ -367,7 +492,8 @@ void LocalCSRTask::CountIncomingEdgesPerPullPartition(std::vector<shared_ptr<Pul
 }
 
 void LocalCSRTask::DeterminePartitions(std::vector<int64_t> &statistics_chunks,
-                                       std::vector<shared_ptr<LocalCSR>> &partition_csrs) const {
+                                       std::vector<shared_ptr<LocalCSR>> &partition_csrs,
+                                       bool initialize_vertex_arrays) const {
 	const idx_t max_vertex = local_csr_state->global_csr->vsize;
 
 	// Get edge histogram across 256 chunks
@@ -402,14 +528,14 @@ void LocalCSRTask::DeterminePartitions(std::vector<int64_t> &statistics_chunks,
 		// If the vertex range exceeds UINT16_MAX, split into multiple subpartitions
 		while ((end_vertex - start_vertex) > UINT16_MAX) {
 			idx_t mid_vertex = start_vertex + UINT16_MAX;
-			auto csr = make_shared_ptr<LocalCSR>(start_vertex, mid_vertex, max_vertex);
+			auto csr = make_shared_ptr<LocalCSR>(start_vertex, mid_vertex, max_vertex, initialize_vertex_arrays);
 			partition_csrs.push_back(csr);
 			start_vertex = mid_vertex;
 		}
 
 		// Final partition covering the remainder
 		if (start_vertex < end_vertex) {
-			auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, max_vertex);
+			auto csr = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, max_vertex, initialize_vertex_arrays);
 			partition_csrs.push_back(csr);
 		}
 	};

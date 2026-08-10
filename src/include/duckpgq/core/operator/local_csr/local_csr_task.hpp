@@ -15,10 +15,14 @@ public:
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
 
 	void BuildLocalCSRs(bool reverse);
+	void BuildSparseForwardCSRs();
+	void BufferForwardEdges(std::vector<shared_ptr<LocalCSR>> &partition_csrs);
+	void MergeForwardBuffers(std::vector<shared_ptr<LocalCSR>> &partition_csrs);
 	void BuildPullCSRs();
 	void CreateStatistics(bool reverse, std::vector<int64_t> &statistics_chunks) const;
 	void DeterminePartitions(std::vector<int64_t> &statistics_chunks,
-	                         std::vector<shared_ptr<LocalCSR>> &partition_csrs) const;
+	                         std::vector<shared_ptr<LocalCSR>> &partition_csrs,
+	                         bool initialize_vertex_arrays = true) const;
 	void DeterminePullPartitions(std::vector<shared_ptr<PullCSR>> &pull_partition_csrs) const;
 	void CountOutgoingEdgesPerPartition(bool reverse, std::vector<shared_ptr<LocalCSR>> &partition_csrs);
 	void CountIncomingEdgesPerPullPartition(std::vector<shared_ptr<PullCSR>> &pull_partition_csrs);
