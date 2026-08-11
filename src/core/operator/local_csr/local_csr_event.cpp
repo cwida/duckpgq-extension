@@ -31,6 +31,11 @@ static size_t GetLocalCSRMemory(const std::vector<shared_ptr<LocalCSR>> &partiti
 		memory += local_csr->source_vertices.capacity() * sizeof(uint32_t);
 		memory += local_csr->row_offsets.capacity() * sizeof(uint32_t);
 		memory += local_csr->e.capacity() * sizeof(uint16_t);
+		for (const auto &segment : local_csr->segments) {
+			memory += segment.source_vertices.capacity() * sizeof(uint32_t);
+			memory += segment.row_offsets.capacity() * sizeof(uint32_t);
+			memory += segment.edges.capacity() * sizeof(uint16_t);
+		}
 	}
 	return memory;
 }
@@ -68,7 +73,7 @@ static void AppendPhaseTiming(const LocalCSRState &state, const string &phase,
 	if (write_header) {
 		outfile << "Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes\n";
 	}
-	auto vertex_count = state.global_csr->vsize - 2;
+	auto vertex_count = state.vsize - 2;
 	outfile << phase << "," << state.benchmark_run_id << "," << state.num_threads << ",0," << vertex_count << ","
 	        << GetLocalCSREdgeCount(partition_csrs) << "," << partition_csrs.size() << "," << time_ms << ","
 	        << GetLocalCSRMemory(partition_csrs) << "\n";
@@ -89,7 +94,7 @@ static void AppendPullPhaseTiming(const LocalCSRState &state, double time_ms) {
 	if (write_header) {
 		outfile << "Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes\n";
 	}
-	auto vertex_count = state.global_csr->vsize - 2;
+	auto vertex_count = state.vsize - 2;
 	outfile << "local_csr_pull," << state.benchmark_run_id << "," << state.num_threads << ",0," << vertex_count << ","
 	        << GetPullCSREdgeCount(state.pull_partition_csrs) << "," << state.pull_partition_csrs.size() << ","
 	        << time_ms << "," << GetPullCSRMemory(state.pull_partition_csrs) << "\n";
@@ -114,7 +119,7 @@ static void WritePartitionStats(const LocalCSRState &state, ClientContext &conte
 
 	auto suffix = direction == "forward" ? "" : "_" + direction;
 	auto file_name = state.benchmark_output_prefix + suffix + "_partition_stats_" + state.benchmark_run_id + "_" +
-	                 std::to_string(state.global_csr->vsize - 2) + "_vertices_mphl_" + heavy_partition_fraction + "_" +
+	                 std::to_string(state.vsize - 2) + "_vertices_mphl_" + heavy_partition_fraction + "_" +
 	                 light_partition_multiplier + ".csv";
 	std::ofstream outfile(file_name);
 	if (!outfile.is_open()) {
@@ -136,6 +141,11 @@ static void WritePartitionStats(const LocalCSRState &state, ClientContext &conte
 		vertex_mem += local_csr->source_vertices.capacity() * sizeof(uint32_t);
 		vertex_mem += local_csr->row_offsets.capacity() * sizeof(uint32_t);
 		size_t edge_mem = local_csr->e.capacity() * sizeof(uint16_t);
+		for (const auto &segment : local_csr->segments) {
+			vertex_mem += segment.source_vertices.capacity() * sizeof(uint32_t);
+			vertex_mem += segment.row_offsets.capacity() * sizeof(uint32_t);
+			edge_mem += segment.edges.capacity() * sizeof(uint16_t);
+		}
 		size_t total_mem = vertex_mem + edge_mem;
 
 		outfile << partition_id << "," << local_csr->start_vertex << "," << local_csr->end_vertex << "," << vertex_count
@@ -155,7 +165,7 @@ static void WritePullPartitionStats(const LocalCSRState &state, ClientContext &c
 	auto light_partition_multiplier = std::to_string(GetLightPartitionMultiplier(context));
 
 	auto file_name = state.benchmark_output_prefix + "_pull_partition_stats_" + state.benchmark_run_id + "_" +
-	                 std::to_string(state.global_csr->vsize - 2) + "_vertices_mphl_" + heavy_partition_fraction + "_" +
+	                 std::to_string(state.vsize - 2) + "_vertices_mphl_" + heavy_partition_fraction + "_" +
 	                 light_partition_multiplier + ".csv";
 	std::ofstream outfile(file_name);
 	if (!outfile.is_open()) {

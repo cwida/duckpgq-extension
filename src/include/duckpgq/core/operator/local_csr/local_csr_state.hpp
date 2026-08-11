@@ -31,14 +31,27 @@ struct LocalCSRBuildPartition {
 		}
 		destinations.push_back(NumericCast<uint16_t>(destination));
 	}
+
+	void Finalize() {
+		if (!source_vertices.empty() && row_offsets.size() == source_vertices.size()) {
+			row_offsets.push_back(NumericCast<uint32_t>(destinations.size()));
+		}
+	}
 };
 
 class LocalCSRState {
 public:
 	LocalCSRState(ClientContext &context_p, CSR *csr, idx_t num_threads_p);
+	LocalCSRState(ClientContext &context_p,
+	              std::vector<std::vector<LocalCSRBuildPartition>> &&streaming_build_buffers_p,
+	              idx_t vertex_count_p, idx_t edge_count_p, idx_t partition_width_p, idx_t num_threads_p);
 
 public:
 	CSR *global_csr;
+	idx_t vsize;
+	idx_t edge_count;
+	idx_t streaming_partition_width = 0;
+	bool streaming_endpoint_input = false;
 	ClientContext &context;
 
 	idx_t num_threads;

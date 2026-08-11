@@ -33,6 +33,21 @@ bool CheckChange(IterativeLengthState &state, std::vector<std::bitset<LANE_LIMIT
 
 void Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit, std::vector<std::bitset<LANE_LIMIT>> &next,
              const LocalCSR &local_csr) {
+	for (const auto &segment : local_csr.segments) {
+		for (idx_t row_idx = 0; row_idx < segment.source_vertices.size(); row_idx++) {
+			auto source_vertex = segment.source_vertices[row_idx];
+			if (!visit[source_vertex].any()) {
+				continue;
+			}
+			for (auto offset = segment.row_offsets[row_idx]; offset < segment.row_offsets[row_idx + 1]; offset++) {
+				auto target = segment.edges[offset] + local_csr.start_vertex;
+				next[target] |= visit[source_vertex];
+			}
+		}
+	}
+	if (!local_csr.segments.empty()) {
+		return;
+	}
 	if (local_csr.HasSparseRows()) {
 		for (idx_t row_idx = 0; row_idx < local_csr.source_vertices.size(); row_idx++) {
 			auto source_vertex = local_csr.source_vertices[row_idx];
@@ -87,7 +102,7 @@ void RunExplore(IterativeLengthState &state, const std::vector<std::bitset<LANE_
 
 	std::lock_guard<std::mutex> guard(state.log_mutex);
 	state.timing_data.emplace_back(thread_id, core_id, duration_ms, state.num_threads, local_csr.GetVertexSize(),
-	                               local_csr.e.size(), state.local_csrs.size(), state.iter);
+	                               local_csr.GetEdgeSize(), state.local_csrs.size(), state.iter);
 }
 
 uint64_t GetWord(const std::bitset<LANE_LIMIT> &bitset, idx_t word_idx) {

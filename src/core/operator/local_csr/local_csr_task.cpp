@@ -40,6 +40,13 @@ TaskExecutionResult LocalCSRTask::ExecuteTask(TaskExecutionMode mode) {
 }
 
 void LocalCSRTask::BuildLocalCSRs(bool reverse) {
+	if (local_csr_state->streaming_endpoint_input) {
+		if (reverse) {
+			throw InternalException("Streaming endpoint CSR cannot build reverse input");
+		}
+		BuildStreamingEndpointCSRs();
+		return;
+	}
 	if (!reverse && local_csr_state->finalize_sparse_rows) {
 		BuildSparseForwardCSRs();
 		return;
@@ -122,6 +129,56 @@ void LocalCSRTask::BuildLocalCSRs(bool reverse) {
 		}
 	}
 	barrier->Wait(worker_id);
+}
+
+void LocalCSRTask::BuildStreamingEndpointCSRs() {
+	auto &barrier = local_csr_state->barrier;
+	auto &partition_csrs = local_csr_state->partition_csrs;
+	if (worker_id == 0) {
+		partition_csrs.clear();
+		local_csr_state->forward_start_time = std::chrono::steady_clock::now();
+		PromoteStreamingEndpointBuffers(partition_csrs);
+	}
+	barrier->Wait(worker_id);
+	if (worker_id == 0) {
+		local_csr_state->forward_build_buffers.clear();
+		local_csr_state->forward_end_time = std::chrono::steady_clock::now();
+		RecordLocalCSRSubphase(*local_csr_state, false, "streaming_promote",
+		                       local_csr_state->forward_start_time,
+		                       local_csr_state->forward_end_time);
+	}
+	barrier->Wait(worker_id);
+}
+
+void LocalCSRTask::PromoteStreamingEndpointBuffers(std::vector<shared_ptr<LocalCSR>> &partition_csrs) {
+	idx_t partition_count = 0;
+	for (const auto &run : local_csr_state->forward_build_buffers) {
+		partition_count = std::max<idx_t>(partition_count, run.size());
+	}
+	partition_csrs.reserve(partition_count);
+	for (idx_t partition_idx = 0; partition_idx < partition_count; partition_idx++) {
+		auto start_vertex = partition_idx * local_csr_state->streaming_partition_width;
+		auto end_vertex = std::min(start_vertex + local_csr_state->streaming_partition_width,
+		                           local_csr_state->vsize);
+		auto target = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, local_csr_state->vsize, false);
+		target->initialized_e = true;
+		target->sparse_rows_initialized = true;
+		partition_csrs.push_back(std::move(target));
+	}
+
+	for (auto &run : local_csr_state->forward_build_buffers) {
+		for (idx_t partition_idx = 0; partition_idx < run.size(); partition_idx++) {
+			auto &buffer = run[partition_idx];
+			if (buffer.destinations.empty()) {
+				continue;
+			}
+			LocalCSRSegment segment;
+			segment.source_vertices = std::move(buffer.source_vertices);
+			segment.row_offsets = std::move(buffer.row_offsets);
+			segment.edges = std::move(buffer.destinations);
+			partition_csrs[partition_idx]->segments.push_back(std::move(segment));
+		}
+	}
 }
 
 void LocalCSRTask::BuildSparseForwardCSRs() {
@@ -494,7 +551,7 @@ void LocalCSRTask::CountIncomingEdgesPerPullPartition(std::vector<shared_ptr<Pul
 void LocalCSRTask::DeterminePartitions(std::vector<int64_t> &statistics_chunks,
                                        std::vector<shared_ptr<LocalCSR>> &partition_csrs,
                                        bool initialize_vertex_arrays) const {
-	const idx_t max_vertex = local_csr_state->global_csr->vsize;
+	const idx_t max_vertex = local_csr_state->vsize;
 
 	// Get edge histogram across 256 chunks
 	const auto &edge_histogram = statistics_chunks; // e.g., vector<idx_t> of size 256

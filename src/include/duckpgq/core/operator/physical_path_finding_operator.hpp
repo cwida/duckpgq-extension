@@ -15,6 +15,7 @@
 #include "local_csr/local_csr_state.hpp"
 
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
+#include <chrono>
 
 namespace duckdb {
 class BFSState;      // Forward declaration
@@ -42,12 +43,16 @@ struct PathFindingPairStats {
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 public:
 	PhysicalPathFinding(PhysicalPlan &physical_plan, LogicalExtensionOperator &op, PhysicalOperator &pairs,
-	                    PhysicalOperator &csr);
+	                    PhysicalOperator &csr, PhysicalOperator *counts = nullptr);
 
 	static constexpr PhysicalOperatorType TYPE = PhysicalOperatorType::EXTENSION;
 	vector<unique_ptr<Expression>> expressions;
 	string mode; // "iterativelength" or "shortestpath"
 	string cache_key;
+	bool edge_input;
+	bool precounted_edge_input;
+	idx_t precounted_vertex_count;
+	idx_t precounted_edge_count;
 
 public:
 	InsertionOrderPreservingMap<string> ParamsToString() const override;
@@ -96,9 +101,18 @@ class PathFindingLocalSinkState : public LocalSinkState {
 public:
 	PathFindingLocalSinkState(ClientContext &context, const PhysicalPathFinding &op);
 
-	void Sink(DataChunk &input, idx_t child);
+	void SinkPairs(DataChunk &input);
+	void SinkEndpoints(DataChunk &input);
 
 	ColumnDataCollection local_pairs;
+	ClientContext &context;
+	std::vector<LocalCSRBuildPartition> local_endpoint_partitions;
+	idx_t local_counted_endpoint_count = 0;
+	idx_t local_filled_endpoint_count = 0;
+	idx_t vertex_count = 0;
+	idx_t expected_edge_count = 0;
+	idx_t endpoint_partition_width = 0;
+	bool endpoint_metadata_initialized = false;
 };
 
 class PathFindingGlobalSinkState : public GlobalSinkState {
@@ -109,6 +123,8 @@ public:
 	// pairs is a 2-column table with src and dst
 	unique_ptr<ColumnDataCollection> global_pairs;
 	mutex global_pairs_lock;
+	mutex global_endpoints_lock;
+	mutex endpoint_init_lock;
 	ColumnDataScanState global_scan_state;
 	idx_t result_scan_idx;
 	idx_t next_batch_index;
@@ -122,6 +138,20 @@ public:
 	bool use_global_deduplication;
 	bool use_source_grouping;
 	bool global_dedupe_results_initialized;
+	bool edge_input;
+	bool precounted_edge_input;
+	std::vector<std::vector<LocalCSRBuildPartition>> endpoint_build_runs;
+	std::vector<shared_ptr<LocalCSR>> endpoint_partition_csrs;
+	idx_t counted_endpoint_count = 0;
+	idx_t endpoint_count = 0;
+	idx_t vertex_count = 0;
+	idx_t expected_edge_count = 0;
+	idx_t endpoint_partition_width = 0;
+	bool endpoint_counts_initialized = false;
+	bool endpoint_counts_finalized = false;
+	bool endpoint_build_started = false;
+	std::chrono::steady_clock::time_point endpoint_build_start;
+	std::chrono::steady_clock::time_point endpoint_fill_start;
 	CSR *csr;
 	int32_t csr_id;
 	size_t child;

@@ -25,6 +25,12 @@
 
 namespace duckdb {
 
+struct LocalCSRSegment {
+	std::vector<uint16_t> edges;
+	std::vector<uint32_t> source_vertices;
+	std::vector<uint32_t> row_offsets;
+};
+
 class LocalCSR {
 public:
 	explicit LocalCSR(idx_t start_vertex_p, idx_t end_vertex_p, size_t number_of_vertices,
@@ -53,7 +59,11 @@ public:
 		return sparse_rows_initialized ? source_vertices.size() : v_array_size - 2;
 	}
 	size_t GetEdgeSize() const {
-		return e.size();
+		size_t edge_count = e.size();
+		for (const auto &segment : segments) {
+			edge_count += segment.edges.size();
+		}
+		return edge_count;
 	}
 
 	void FinalizeSparseRows() {
@@ -64,8 +74,17 @@ public:
 		auto source_count = v_array_size - 2;
 		source_vertices.clear();
 		row_offsets.clear();
-		source_vertices.reserve(std::min<size_t>(source_count, e.size()));
-		row_offsets.reserve(source_vertices.capacity() + 1);
+		if (expected_sparse_row_count == DConstants::INVALID_INDEX) {
+			expected_sparse_row_count = 0;
+			for (idx_t source = 0; source < source_count; source++) {
+				if (v[source].load(std::memory_order_relaxed) !=
+				    v[source + 1].load(std::memory_order_relaxed)) {
+					expected_sparse_row_count++;
+				}
+			}
+		}
+		source_vertices.reserve(expected_sparse_row_count);
+		row_offsets.reserve(expected_sparse_row_count + 1);
 		row_offsets.push_back(0);
 
 		for (idx_t source = 0; source < source_count; source++) {
@@ -125,6 +144,8 @@ public:
 	std::vector<uint16_t> e;
 	std::vector<uint32_t> source_vertices;
 	std::vector<uint32_t> row_offsets;
+	idx_t expected_sparse_row_count = DConstants::INVALID_INDEX;
+	std::vector<LocalCSRSegment> segments;
 
 	idx_t start_vertex;
 	idx_t end_vertex;

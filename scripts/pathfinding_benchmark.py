@@ -171,6 +171,8 @@ class BenchmarkOptions:
     query_pattern: str
     pair_count: int
     pair_table: str
+    vertex_count: int
+    edge_count: int
     threads: int
     benchmark_prefix: Path
     recursive_max_depth: int
@@ -1068,8 +1070,48 @@ SET experimental_path_finding_operator_threads_per_batch={options.threads_per_ba
 SET experimental_path_finding_operator_max_concurrent_batches={options.max_concurrent_batches};
 SET experimental_path_finding_operator_reverse_orientation_ratio={options.reverse_orientation_ratio};
 SET experimental_path_finding_operator_source_group_ratio={options.source_group_ratio};
-{csr_cte("ldbc", compact=True, validated_edges=True)}
 SELECT 'operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
+       sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
+FROM (
+    SELECT src, dst, iterativelengthoperator(
+        src, dst,
+        struct_pack(src := pathfinding_count_src, dst := pathfinding_count_dst),
+        struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+        {options.vertex_count}::BIGINT, {options.edge_count}::BIGINT,
+        {sql_string(f"graph:{options.attached_db}")}) AS len
+    FROM {pairs},
+        (SELECT a.rowid::BIGINT AS pathfinding_count_src,
+                c.rowid::BIGINT AS pathfinding_count_dst
+         FROM ldbc.person_knows_person k
+         JOIN ldbc.person a ON a.id = k.person1id
+         JOIN ldbc.person c ON c.id = k.person2id) pathfinding_counts,
+        (SELECT a.rowid::BIGINT AS pathfinding_edge_src,
+                c.rowid::BIGINT AS pathfinding_edge_dst
+         FROM ldbc.person_knows_person k
+         JOIN ldbc.person a ON a.id = k.person1id
+         JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges
+);
+"""
+
+
+def legacy_operator_sql(options):
+    pairs = f"ldbc.{options.pair_table}"
+    reverse_value = "true" if options.build_reverse_csr else "false"
+    metrics_value = "true" if options.metrics_enabled else "false"
+    dedupe_value = "true" if options.deduplicate_pairs else "false"
+    grouped_value = "true" if options.grouped_batches else "false"
+    return f"""
+SET experimental_path_finding_operator_benchmark={metrics_value};
+SET experimental_path_finding_operator_benchmark_prefix={sql_string(options.benchmark_prefix)};
+SET experimental_path_finding_operator_build_reverse_csr={reverse_value};
+SET experimental_path_finding_operator_deduplicate_pairs={dedupe_value};
+SET experimental_path_finding_operator_grouped_batches={grouped_value};
+SET experimental_path_finding_operator_threads_per_batch={options.threads_per_batch};
+SET experimental_path_finding_operator_max_concurrent_batches={options.max_concurrent_batches};
+SET experimental_path_finding_operator_reverse_orientation_ratio={options.reverse_orientation_ratio};
+SET experimental_path_finding_operator_source_group_ratio={options.source_group_ratio};
+{csr_cte("ldbc", compact=True, validated_edges=True)}
+SELECT 'legacy_operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
 FROM (
     SELECT src, dst, iterativelengthoperator(src, dst, csr_id) AS len
@@ -1260,12 +1302,16 @@ def benchmark_modes(mode):
         return ["operator", "pushpull_operator", "bidirectional_operator"]
     if mode == "all":
         return ["operator", "pushpull_operator", "bidirectional_operator", "scalar", "recursive"]
+    if mode == "operator_comparison":
+        return ["operator", "legacy_operator"]
     return [mode]
 
 
 def mode_sql(mode, options):
     if mode == "operator":
         return operator_sql(options)
+    if mode == "legacy_operator":
+        return legacy_operator_sql(options)
     if mode == "bidirectional_operator":
         return bidirectional_operator_sql(options)
     if mode == "pushpull_operator":
@@ -1758,6 +1804,8 @@ def run_duckpgq_benchmark(args):
                 query_pattern=args.query_pattern,
                 pair_count=actual_pair_count,
                 pair_table=pair_table,
+                vertex_count=int(dataset_metadata["dataset_metadata_person_rows"]),
+                edge_count=int(dataset_metadata["dataset_metadata_person_knows_person_rows"]),
                 threads=args.threads,
                 benchmark_prefix=prefix,
                 recursive_max_depth=args.recursive_max_depth,
@@ -2078,6 +2126,7 @@ def main():
         "--mode",
         choices=[
             "operator",
+            "legacy_operator",
             "pushpull_operator",
             "bidirectional_operator",
             "csr",
@@ -2086,6 +2135,7 @@ def main():
             "both",
             "operators",
             "all",
+            "operator_comparison",
         ],
         default="both",
     )

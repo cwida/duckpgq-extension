@@ -16,6 +16,8 @@ public:
 
 	void BuildLocalCSRs(bool reverse);
 	void BuildSparseForwardCSRs();
+	void BuildStreamingEndpointCSRs();
+	void PromoteStreamingEndpointBuffers(std::vector<shared_ptr<LocalCSR>> &partition_csrs);
 	void BufferForwardEdges(std::vector<shared_ptr<LocalCSR>> &partition_csrs);
 	void MergeForwardBuffers(std::vector<shared_ptr<LocalCSR>> &partition_csrs);
 	void BuildPullCSRs();
