@@ -111,17 +111,11 @@ set experimental_path_finding_operator_benchmark_prefix='{TEST_DIR}/path_finding
 statement ok
 CREATE TEMP VIEW cached_path_lengths AS
 SELECT src, dst, iterativelengthoperator(
-	    src, dst,
-	    struct_pack(src := pathfinding_count_src, dst := pathfinding_count_dst),
-	    struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
-	    10::BIGINT, 20::BIGINT,
-	    'test-person-forward') AS len
+       src, dst,
+       struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+       10::BIGINT, 20::BIGINT,
+       'test-person-forward') AS len
 FROM pairs,
-    (SELECT a.rowid::BIGINT AS pathfinding_count_src,
-            c.rowid::BIGINT AS pathfinding_count_dst
-     FROM person_knows_person k
-     JOIN person a on a.id = k.person1id
-     JOIN person c on c.id = k.person2id) pathfinding_counts,
     (SELECT a.rowid::BIGINT AS pathfinding_edge_src,
             c.rowid::BIGINT AS pathfinding_edge_dst
      FROM person_knows_person k
@@ -189,14 +183,10 @@ SELECT count(*), count(len)
 FROM (
     SELECT src, dst, iterativelengthoperator(
         src, dst,
-        struct_pack(src := pathfinding_count_src, dst := pathfinding_count_dst),
         struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
         10::BIGINT, 0::BIGINT,
         'test-person-empty') AS len
     FROM pairs,
-        (SELECT 0::BIGINT AS pathfinding_count_src,
-                0::BIGINT AS pathfinding_count_dst
-         WHERE false) pathfinding_counts,
         (SELECT 0::BIGINT AS pathfinding_edge_src,
                 0::BIGINT AS pathfinding_edge_dst
          WHERE false) pathfinding_edges

@@ -11,7 +11,7 @@ public:
 	                                    TableIndex table_index_, vector<idx_t> &offsets_, string cache_key_,
 	                                    bool edge_input_, bool precounted_edge_input_ = false,
 	                                    idx_t precounted_vertex_count_ = 0, idx_t precounted_edge_count_ = 0,
-	                                    bool cached_partitioned_csr_input_ = false)
+	                                    bool cached_partitioned_csr_input_ = false, bool buffered_edge_input_ = false)
 	    : LogicalExtensionOperator(std::move(expressions_)) {
 		children = std::move(children_);
 		mode = mode_;
@@ -23,6 +23,7 @@ public:
 		precounted_vertex_count = precounted_vertex_count_;
 		precounted_edge_count = precounted_edge_count_;
 		cached_partitioned_csr_input = cached_partitioned_csr_input_;
+		buffered_edge_input = buffered_edge_input_;
 	}
 
 	void Serialize(Serializer &serializer) const override {
@@ -52,5 +53,6 @@ public:
 	idx_t precounted_vertex_count;
 	idx_t precounted_edge_count;
 	bool cached_partitioned_csr_input;
+	bool buffered_edge_input;
 };
 } // namespace duckdb

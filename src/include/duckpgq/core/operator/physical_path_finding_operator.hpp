@@ -21,6 +21,7 @@ namespace duckdb {
 class BFSState;      // Forward declaration
 class LocalCSRState; // Forward declaration
 class SourceGroupedIterativeLengthState;
+class PathFindingGlobalSinkState;
 
 enum class PathFindingOperatorMode {
 	ITERATIVE_LENGTH,
@@ -54,6 +55,7 @@ public:
 	idx_t precounted_vertex_count;
 	idx_t precounted_edge_count;
 	bool cached_partitioned_csr_input;
+	bool buffered_edge_input;
 
 public:
 	InsertionOrderPreservingMap<string> ParamsToString() const override;
@@ -104,8 +106,10 @@ public:
 
 	void SinkPairs(DataChunk &input);
 	void SinkEndpoints(DataChunk &input);
+	void SinkBufferedEndpoints(PathFindingGlobalSinkState &gstate, DataChunk &input);
 
 	ColumnDataCollection local_pairs;
+	ColumnDataCollection local_endpoints;
 	ClientContext &context;
 	std::vector<LocalCSRBuildPartition> local_endpoint_partitions;
 	idx_t local_counted_endpoint_count = 0;
@@ -142,6 +146,10 @@ public:
 	bool edge_input;
 	bool precounted_edge_input;
 	bool cached_partitioned_csr_input;
+	bool buffered_edge_input;
+	unique_ptr<ColumnDataCollection> endpoint_spool;
+	ColumnDataParallelScanState endpoint_spool_scan_state;
+	std::atomic<idx_t> filled_endpoint_count {0};
 	std::vector<std::vector<LocalCSRBuildPartition>> endpoint_build_runs;
 	std::vector<shared_ptr<LocalCSR>> endpoint_partition_csrs;
 	idx_t counted_endpoint_count = 0;

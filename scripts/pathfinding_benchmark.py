@@ -1085,16 +1085,10 @@ SELECT 'operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count
 FROM (
     SELECT src, dst, iterativelengthoperator(
         src, dst,
-        struct_pack(src := pathfinding_count_src, dst := pathfinding_count_dst),
         struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
         {options.vertex_count}::BIGINT, {options.edge_count}::BIGINT,
         {sql_string(f"graph:{options.attached_db}")}) AS len
     FROM {pairs},
-        (SELECT a.rowid::BIGINT AS pathfinding_count_src,
-                c.rowid::BIGINT AS pathfinding_count_dst
-         FROM ldbc.person_knows_person k
-         JOIN ldbc.person a ON a.id = k.person1id
-         JOIN ldbc.person c ON c.id = k.person2id) pathfinding_counts,
         (SELECT a.rowid::BIGINT AS pathfinding_edge_src,
                 c.rowid::BIGINT AS pathfinding_edge_dst
          FROM ldbc.person_knows_person k
@@ -1495,7 +1489,7 @@ def read_phase_timing(benchmark_prefix):
                 precount_scan_ms += time_ms
             elif phase == "precount_allocate":
                 precount_allocate_ms += time_ms
-            elif phase == "precount_fill":
+            elif phase == "precount_fill" or phase == "endpoint_spool_fill":
                 precount_fill_ms += time_ms
             elif phase == "precount_sparse_finalize":
                 precount_sparse_finalize_ms += time_ms

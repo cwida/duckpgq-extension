@@ -221,6 +221,65 @@ static unique_ptr<LogicalPathFindingOperator> FindPrecountedEdgesAndPairs(unique
 	    true, true, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value));
 }
 
+static unique_ptr<LogicalPathFindingOperator> FindBufferedEdgesAndPairs(unique_ptr<LogicalOperator> &root,
+                                                                        LogicalProjection &projection) {
+	const BoundFunctionExpression *path_function = nullptr;
+	for (const auto &expr : projection.expressions) {
+		path_function = GetPathFindingFunction(*expr);
+		if (path_function && path_function->GetChildren().size() == 6 &&
+		    path_function->GetChildren()[2]->GetReturnType().id() == LogicalTypeId::STRUCT) {
+			break;
+		}
+		path_function = nullptr;
+	}
+	if (!path_function) {
+		return nullptr;
+	}
+
+	auto vertex_count_value = GetConstantInt64(*path_function->GetChildren()[3], "Buffered path-finding vertex count");
+	auto edge_count_value = GetConstantInt64(*path_function->GetChildren()[4], "Buffered path-finding edge count");
+	if (vertex_count_value < 0 || static_cast<uint64_t>(vertex_count_value) > NumericLimits<uint32_t>::Maximum()) {
+		throw OutOfRangeException("Buffered path-finding vertex count is outside the supported uint32 range: %lld",
+		                          vertex_count_value);
+	}
+	if (edge_count_value < 0) {
+		throw OutOfRangeException("Buffered path-finding edge count cannot be negative: %lld", edge_count_value);
+	}
+
+	vector<unique_ptr<LogicalOperator>> inputs;
+	CollectPrecountedInputs(root, inputs);
+	if (inputs.size() != 2) {
+		throw BinderException("Buffered path finding expects pairs and one endpoint input");
+	}
+
+	idx_t pair_index = DConstants::INVALID_INDEX;
+	idx_t edge_index = DConstants::INVALID_INDEX;
+	for (idx_t input_idx = 0; input_idx < inputs.size(); input_idx++) {
+		if (ExpressionReferencesInput(*path_function->GetChildren()[2], *inputs[input_idx])) {
+			edge_index = input_idx;
+		} else if (ExpressionReferencesInput(*path_function->GetChildren()[0], *inputs[input_idx])) {
+			pair_index = input_idx;
+		}
+	}
+	if (pair_index == DConstants::INVALID_INDEX || edge_index == DConstants::INVALID_INDEX) {
+		throw BinderException("Could not identify buffered path-finding inputs");
+	}
+
+	vector<unique_ptr<LogicalOperator>> path_finding_children;
+	path_finding_children.push_back(std::move(inputs[pair_index]));
+	path_finding_children.push_back(std::move(inputs[edge_index]));
+	vector<unique_ptr<Expression>> path_finding_expressions;
+	unique_ptr<Expression> function_expression;
+	string mode;
+	vector<idx_t> offsets;
+	string cache_key;
+	ReplaceExpressions(projection, function_expression, mode, offsets, cache_key);
+	path_finding_expressions.push_back(std::move(function_expression));
+	return make_uniq<LogicalPathFindingOperator>(
+	    path_finding_children, path_finding_expressions, mode, projection.table_index, offsets, std::move(cache_key),
+	    true, false, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value), false, true);
+}
+
 static unique_ptr<LogicalPathFindingOperator> FindCachedPartitionedCSRAndPairs(unique_ptr<LogicalOperator> &root,
                                                                                LogicalProjection &projection) {
 	const BoundFunctionExpression *path_function = nullptr;
@@ -383,6 +442,9 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, C
 	auto &op_proj = op.Cast<LogicalProjection>();
 	if (op_proj.children.size() == 1) {
 		auto path_finding_operator = FindCachedPartitionedCSRAndPairs(op_proj.children[0], op_proj);
+		if (!path_finding_operator) {
+			path_finding_operator = FindBufferedEdgesAndPairs(op_proj.children[0], op_proj);
+		}
 		if (!path_finding_operator) {
 			path_finding_operator = FindPrecountedEdgesAndPairs(op_proj.children[0], op_proj);
 		}
