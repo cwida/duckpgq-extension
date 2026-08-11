@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import http.client
 import json
+import os
 import platform
 import re
 import shutil
+import socket
 import statistics
 import subprocess
 import sys
@@ -133,7 +136,11 @@ GRAPHALYTICS_DATASET_GROUPS = {
 }
 GRAPHALYTICS_PARQUET_BASE_URL = "https://datasets.ldbcouncil.org/graphalytics-parquet"
 DEFAULT_SYSTEM_NAME = "duckpgq"
-SYSTEMS = ("duckpgq", "kuzu")
+SYSTEMS = ("duckpgq", "kuzu", "neo4j")
+NEO4J_DEFAULT_IMAGE = os.environ.get("DUCKPGQ_NEO4J_IMAGE", "neo4j:2026.06.0")
+NEO4J_DEFAULT_HEAP = os.environ.get("DUCKPGQ_NEO4J_HEAP", "8G")
+NEO4J_DEFAULT_PAGECACHE = os.environ.get("DUCKPGQ_NEO4J_PAGECACHE", "2G")
+NEO4J_GDS_COMMUNITY_MAX_CONCURRENCY = 4
 RUN_METADATA_FIELDS = [
     "benchmark_run_id",
     "benchmark_started_at",
@@ -141,6 +148,7 @@ RUN_METADATA_FIELDS = [
     "benchmark_profile",
     "benchmark_run_label",
     "benchmark_notes",
+    "benchmark_system_runtime_version",
     "repo_commit",
     "repo_branch",
     "repo_dirty",
@@ -162,6 +170,12 @@ DATASET_METADATA_FIELDS = [
     "dataset_metadata_person_knows_person_rows",
     "dataset_metadata_pair_table",
     "dataset_metadata_pair_rows",
+    "dataset_metadata_system_name",
+    "dataset_metadata_system_version",
+    "dataset_metadata_system_variant",
+    "dataset_metadata_system_input_prepare_s",
+    "dataset_metadata_system_import_s",
+    "dataset_metadata_system_database_bytes",
 ]
 
 
@@ -263,6 +277,43 @@ def require_kuzu():
     return kuzu
 
 
+def require_docker():
+    docker = shutil.which("docker")
+    if docker is None:
+        raise SystemExit("Docker is required for --system neo4j, but the docker command was not found.")
+    result = subprocess.run(
+        [docker, "info", "--format", "{{.ServerVersion}}"],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        details = result.stderr.strip() or result.stdout.strip()
+        raise SystemExit(f"Docker is not available. Start Docker Desktop and retry. {details}")
+    return docker
+
+
+def run_checked_command(cmd, timeout_s=None):
+    start = time.perf_counter()
+    result = subprocess.run(
+        cmd,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=timeout_s,
+    )
+    elapsed = time.perf_counter() - start
+    if result.returncode != 0:
+        sys.stderr.write(result.stdout)
+        sys.stderr.write(result.stderr)
+        raise RuntimeError(f"Command failed with exit code {result.returncode}: {' '.join(cmd)}")
+    return result.stdout.strip(), elapsed
+
+
+def directory_size(path):
+    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+
+
 def command_output(cmd):
     result = subprocess.run(cmd, cwd=REPO_ROOT, text=True, capture_output=True)
     if result.returncode != 0:
@@ -287,6 +338,7 @@ def benchmark_run_metadata(args, started_at, run_id):
         "benchmark_profile": args.benchmark_profile,
         "benchmark_run_label": args.run_label,
         "benchmark_notes": args.notes,
+        "benchmark_system_runtime_version": "",
         "host_platform": platform.platform(),
         "python_version": platform.python_version(),
         "duckdb_binary": str(BENCH_DUCKDB) if getattr(args, "system", "duckpgq") == "duckpgq" else "",
@@ -315,6 +367,17 @@ def read_kuzu_benchmark_metadata(dataset):
         raise SystemExit(
             f"Missing Kuzu benchmark metadata for {dataset}: {metadata_path}. "
             f"Run prepare --system kuzu --graphalytics-datasets {dataset} first."
+        )
+    raw_metadata = json.loads(metadata_path.read_text())
+    return {f"dataset_metadata_{key}": value for key, value in raw_metadata.items()}
+
+
+def read_neo4j_benchmark_metadata(dataset):
+    metadata_path = graphalytics_neo4j_metadata_path(dataset)
+    if not metadata_path.exists():
+        raise SystemExit(
+            f"Missing Neo4j benchmark metadata for {dataset}: {metadata_path}. "
+            f"Run prepare --system neo4j --graphalytics-datasets {dataset} first."
         )
     raw_metadata = json.loads(metadata_path.read_text())
     return {f"dataset_metadata_{key}": value for key, value in raw_metadata.items()}
@@ -381,6 +444,41 @@ def graphalytics_kuzu_db_path(dataset):
 
 def graphalytics_kuzu_metadata_path(dataset):
     return graphalytics_kuzu_db_path(dataset).with_suffix(".metadata.json")
+
+
+def graphalytics_neo4j_root(dataset):
+    return DATA_ROOT / "systems" / "neo4j" / "graphalytics" / graphalytics_name(dataset)
+
+
+def graphalytics_neo4j_data_dir(dataset):
+    return graphalytics_neo4j_root(dataset) / "data"
+
+
+def graphalytics_neo4j_import_dir(dataset):
+    return graphalytics_neo4j_root(dataset) / "import"
+
+
+def graphalytics_neo4j_logs_dir(dataset):
+    return graphalytics_neo4j_root(dataset) / "logs"
+
+
+def graphalytics_neo4j_metadata_path(dataset):
+    return graphalytics_neo4j_root(dataset) / "metadata.json"
+
+
+def neo4j_plugins_dir(image):
+    image_label = re.sub(r"[^a-zA-Z0-9_.-]+", "_", image)
+    return DATA_ROOT / "systems" / "neo4j" / "plugins" / image_label
+
+
+def graphalytics_system_database_path(system, dataset):
+    if system == "duckpgq":
+        return graphalytics_db_path(dataset)
+    if system == "kuzu":
+        return graphalytics_kuzu_db_path(dataset)
+    if system == "neo4j":
+        return graphalytics_neo4j_metadata_path(dataset)
+    raise ValueError(f"Unsupported benchmark system: {system}")
 
 
 def graphalytics_parquet_url(dataset, kind):
@@ -777,6 +875,130 @@ def materialize_graphalytics_kuzu_database(dataset, force):
     print(f"Materialized Graphalytics {canonical} Kuzu database in {elapsed:.2f}s")
 
 
+def neo4j_image_version(image):
+    tag = image.rsplit(":", 1)[-1]
+    return tag.removesuffix("-community").removesuffix("-enterprise")
+
+
+def materialize_graphalytics_neo4j_database(dataset, threads, image, force):
+    docker = require_docker()
+    canonical = graphalytics_name(dataset)
+    stats = GRAPHALYTICS_DATASETS.get(canonical)
+    if stats is None:
+        known = ", ".join(GRAPHALYTICS_DEFAULT_DATASETS)
+        raise SystemExit(f"Unsupported Graphalytics dataset: {dataset}. Initial supported set: {known}")
+
+    root = graphalytics_neo4j_root(canonical)
+    data_dir = graphalytics_neo4j_data_dir(canonical)
+    import_dir = graphalytics_neo4j_import_dir(canonical)
+    logs_dir = graphalytics_neo4j_logs_dir(canonical)
+    metadata_path = graphalytics_neo4j_metadata_path(canonical)
+    if metadata_path.exists() and data_dir.exists() and not force:
+        print(f"Graphalytics {canonical} Neo4j database already exists: {data_dir}")
+        return
+    if root.exists():
+        shutil.rmtree(root)
+
+    vertex_path, edge_path = download_graphalytics_dataset(canonical, force=False)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    import_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    person_path = import_dir / "person.parquet"
+    knows_path = import_dir / "knows.parquet"
+    directed = graphalytics_is_directed(canonical)
+    edge_select_sql = f"""
+SELECT source::BIGINT AS ":START_ID(Person)", target::BIGINT AS ":END_ID(Person)"
+FROM read_parquet({sql_string(edge_path)})
+"""
+    if not directed:
+        edge_select_sql = f"""
+SELECT source::BIGINT AS ":START_ID(Person)", target::BIGINT AS ":END_ID(Person)"
+FROM read_parquet({sql_string(edge_path)})
+UNION ALL
+SELECT target::BIGINT AS ":START_ID(Person)", source::BIGINT AS ":END_ID(Person)"
+FROM read_parquet({sql_string(edge_path)})
+WHERE source <> target
+"""
+
+    transform_sql = f"""
+SET threads={threads};
+COPY (
+    SELECT id::BIGINT AS "id:ID(Person){{id-type:int}}"
+    FROM read_parquet({sql_string(vertex_path)})
+) TO {sql_string(person_path)} (FORMAT PARQUET, COMPRESSION ZSTD);
+COPY ({edge_select_sql})
+TO {sql_string(knows_path)} (FORMAT PARQUET, COMPRESSION ZSTD);
+"""
+    print(f"Preparing Neo4j Parquet input for Graphalytics {canonical}")
+    _, input_prepare_s = run_duckdb(BENCH_DUCKDB, None, transform_sql)
+
+    count_sql = f"""
+SELECT (SELECT count(*) FROM read_parquet({sql_string(person_path)})) AS person_rows,
+       (SELECT count(*) FROM read_parquet({sql_string(knows_path)})) AS edge_rows;
+"""
+    count_output, _ = run_duckdb(BENCH_DUCKDB, None, count_sql, quiet=True)
+    count_rows = list(csv.DictReader(count_output.splitlines()))
+    if len(count_rows) != 1:
+        raise RuntimeError(f"Expected one Neo4j input count row, got: {count_output}")
+    person_rows = int(count_rows[0]["person_rows"])
+    edge_rows = int(count_rows[0]["edge_rows"])
+
+    uid_gid = f"{os.getuid()}:{os.getgid()}"
+    import_cmd = [
+        docker,
+        "run",
+        "--rm",
+        "--user",
+        uid_gid,
+        "--volume",
+        f"{data_dir.resolve()}:/data",
+        "--volume",
+        f"{import_dir.resolve()}:/import:ro",
+        "--volume",
+        f"{logs_dir.resolve()}:/logs",
+        image,
+        "neo4j-admin",
+        "database",
+        "import",
+        "full",
+        "neo4j",
+        "--overwrite-destination=true",
+        "--input-type=parquet",
+        "--id-type=integer",
+        f"--threads={threads}",
+        "--nodes=Person=/import/person.parquet",
+        "--relationships=KNOWS=/import/knows.parquet",
+    ]
+    print(f"Bulk importing Graphalytics {canonical} into Neo4j at {data_dir}")
+    _, import_s = run_checked_command(import_cmd)
+    database_bytes = directory_size(data_dir)
+    metadata = {
+        "dataset_kind": "graphalytics",
+        "dataset": canonical,
+        "graphalytics_nodes": stats["nodes"],
+        "graphalytics_edges": stats["edges"],
+        "graphalytics_scale": stats["scale"],
+        "graphalytics_package_size": stats["size"],
+        "graphalytics_directed": str(directed).lower(),
+        "person_rows": str(person_rows),
+        "person_knows_person_rows": str(edge_rows),
+        "pair_table": graphalytics_bfs_pair_table_name(),
+        "pair_rows": str(person_rows),
+        "system_name": "neo4j",
+        "system_version": neo4j_image_version(image),
+        "system_variant": "community+gds-community",
+        "system_input_prepare_s": f"{input_prepare_s:.6f}",
+        "system_import_s": f"{import_s:.6f}",
+        "system_database_bytes": str(database_bytes),
+    }
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+    shutil.rmtree(import_dir)
+    print(
+        f"Materialized Graphalytics {canonical} Neo4j database: "
+        f"input={input_prepare_s:.2f}s import={import_s:.2f}s size={database_bytes} bytes"
+    )
+
+
 def pair_table_sql(pair_count):
     return pair_table_sql_for_shape(pair_count, "random")
 
@@ -996,6 +1218,13 @@ def prepare(args):
                 materialize_graphalytics_database(canonical, args.pairs, args.force or args.force_materialize)
             elif args.system == "kuzu":
                 materialize_graphalytics_kuzu_database(canonical, args.force or args.force_materialize)
+            elif args.system == "neo4j":
+                materialize_graphalytics_neo4j_database(
+                    canonical,
+                    args.threads,
+                    args.neo4j_image,
+                    args.force or args.force_materialize,
+                )
             else:
                 raise SystemExit(f"Unsupported benchmark system: {args.system}")
         return
@@ -1628,6 +1857,9 @@ def summarize_results(results):
                 "setup_stdev_s": f"{stdev(setup_times):.6f}",
                 "csr_build_mean_s": f"{statistics.mean(csr_build_times):.6f}" if csr_build_times else "",
                 "csr_build_stdev_s": f"{stdev(csr_build_times):.6f}" if csr_build_times else "",
+                "graph_projection_mean_s": mean_optional(rows, "graph_projection_s"),
+                "graph_projection_reported_mean_s": mean_optional(rows, "graph_projection_reported_s"),
+                "source_lookup_mean_s": mean_optional(rows, "source_lookup_s"),
                 "partitioned_csr_cache_lookup_mean_s": mean_optional(rows, "partitioned_csr_cache_lookup_s"),
                 "partitioned_csr_cache_hits_mean": mean_int_optional(rows, "partitioned_csr_cache_hits"),
                 "partitioned_csr_cache_misses_mean": mean_int_optional(rows, "partitioned_csr_cache_misses"),
@@ -1705,6 +1937,9 @@ def summary_fieldnames():
         "max_len",
         "setup_s",
         "csr_build_s",
+        "graph_projection_s",
+        "graph_projection_reported_s",
+        "source_lookup_s",
         "partitioned_csr_cache_lookup_s",
         "partitioned_csr_cache_hits",
         "partitioned_csr_cache_misses",
@@ -1775,6 +2010,9 @@ def stats_fieldnames():
         "setup_stdev_s",
         "csr_build_mean_s",
         "csr_build_stdev_s",
+        "graph_projection_mean_s",
+        "graph_projection_reported_mean_s",
+        "source_lookup_mean_s",
         "partitioned_csr_cache_lookup_mean_s",
         "partitioned_csr_cache_hits_mean",
         "partitioned_csr_cache_misses_mean",
@@ -1833,6 +2071,121 @@ def write_benchmark_outputs(results_dir, query_pattern, pair_shape, pair_label, 
         print(json.dumps(row, sort_keys=True))
     print(f"Wrote stats: {stats_path}")
     return result_path, stats_path
+
+
+def reserve_local_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def neo4j_http_query(connection, statement, parameters=None):
+    payload = json.dumps(
+        {"statements": [{"statement": statement, "parameters": parameters or {}}]}
+    )
+    connection.request(
+        "POST",
+        "/db/neo4j/tx/commit",
+        body=payload,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    response = connection.getresponse()
+    body = response.read().decode("utf-8")
+    if response.status != 200:
+        raise RuntimeError(f"Neo4j HTTP query failed with status {response.status}: {body}")
+    result = json.loads(body)
+    if result.get("errors"):
+        details = "; ".join(error.get("message", str(error)) for error in result["errors"])
+        raise RuntimeError(f"Neo4j query failed: {details}\nQuery:\n{statement}")
+    if not result.get("results"):
+        return [], []
+    query_result = result["results"][0]
+    rows = [entry["row"] for entry in query_result.get("data", [])]
+    return query_result.get("columns", []), rows
+
+
+def start_neo4j_server(dataset, args):
+    docker = require_docker()
+    canonical = graphalytics_name(dataset)
+    data_dir = graphalytics_neo4j_data_dir(canonical)
+    logs_dir = graphalytics_neo4j_logs_dir(canonical)
+    plugins_dir = neo4j_plugins_dir(args.neo4j_image)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    plugins_dir.mkdir(parents=True, exist_ok=True)
+    port = reserve_local_port()
+    slug = re.sub(r"[^a-z0-9_.-]+", "-", canonical.lower())
+    container_name = f"duckpgq-neo4j-{slug}-{os.getpid()}-{time.time_ns() % 1000000}"
+    uid_gid = f"{os.getuid()}:{os.getgid()}"
+    cmd = [
+        docker,
+        "run",
+        "--detach",
+        "--rm",
+        "--name",
+        container_name,
+        "--user",
+        uid_gid,
+        "--publish",
+        f"127.0.0.1:{port}:7474",
+        "--volume",
+        f"{data_dir.resolve()}:/data",
+        "--volume",
+        f"{logs_dir.resolve()}:/logs",
+        "--volume",
+        f"{plugins_dir.resolve()}:/plugins",
+        "--env",
+        "NEO4J_AUTH=none",
+        "--env",
+        'NEO4J_PLUGINS=["graph-data-science"]',
+        "--env",
+        "NEO4J_dbms_security_procedures_unrestricted=gds.*",
+        "--env",
+        "NEO4J_dbms_security_procedures_allowlist=gds.*",
+        "--env",
+        f"NEO4J_server_memory_heap_initial__size={args.neo4j_heap}",
+        "--env",
+        f"NEO4J_server_memory_heap_max__size={args.neo4j_heap}",
+        "--env",
+        f"NEO4J_server_memory_pagecache_size={args.neo4j_pagecache}",
+        args.neo4j_image,
+    ]
+    run_checked_command(cmd, timeout_s=args.timeout)
+
+    deadline = time.monotonic() + min(args.timeout, 300)
+    last_error = None
+    while time.monotonic() < deadline:
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=args.timeout)
+        try:
+            neo4j_http_query(connection, "RETURN 1 AS ready")
+            _, version_rows = neo4j_http_query(connection, "RETURN gds.version() AS version")
+            if len(version_rows) != 1:
+                raise RuntimeError(f"Expected one GDS version row, got {version_rows}")
+            return docker, container_name, connection, str(version_rows[0][0])
+        except (ConnectionError, OSError, http.client.HTTPException, RuntimeError) as exc:
+            last_error = exc
+            connection.close()
+            time.sleep(1)
+
+    logs = command_output([docker, "logs", container_name])
+    subprocess.run(
+        [docker, "stop", "--time", "30", container_name],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+    )
+    raise RuntimeError(f"Neo4j did not become ready: {last_error}\n{logs}")
+
+
+def stop_neo4j_server(docker, container_name, connection):
+    connection.close()
+    result = subprocess.run(
+        [docker, "stop", "--time", "30", container_name],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0 and "No such container" not in result.stderr:
+        sys.stderr.write(result.stderr)
 
 
 def run_duckpgq_benchmark(args):
@@ -2202,12 +2555,208 @@ RETURN count(d.id), sum(length(e)), min(length(e)), max(length(e))
     write_benchmark_outputs(results_dir, args.query_pattern, "graphalytics_bfs", "official_bfs", "native", results)
 
 
+def run_neo4j_graphalytics_bfs(args):
+    if not args.dataset:
+        raise SystemExit("--system neo4j currently requires --dataset")
+    if args.query_pattern != "graphalytics_bfs":
+        raise SystemExit("--system neo4j currently supports --query-pattern graphalytics_bfs")
+    if args.pair_table is not None:
+        raise SystemExit(
+            "--system neo4j graphalytics_bfs uses the official source/all-targets shape; "
+            "do not pass --pair-table"
+        )
+    if args.threads > args.neo4j_gds_max_concurrency:
+        raise SystemExit(
+            f"Neo4j GDS concurrency {args.threads} exceeds the configured limit "
+            f"{args.neo4j_gds_max_concurrency}. GDS Community is limited to "
+            f"{NEO4J_GDS_COMMUNITY_MAX_CONCURRENCY} threads."
+        )
+
+    target_value = graphalytics_name(args.dataset)
+    target_label = graphalytics_label(target_value)
+    data_dir = graphalytics_neo4j_data_dir(target_value)
+    metadata_path = graphalytics_neo4j_metadata_path(target_value)
+    if not data_dir.exists() or not metadata_path.exists():
+        raise SystemExit(
+            f"Missing Neo4j benchmark database: {data_dir}. "
+            "Run prepare --system neo4j first."
+        )
+
+    results_dir = DATA_ROOT / "results" / target_label
+    results_dir.mkdir(parents=True, exist_ok=True)
+    source_vertex = graphalytics_bfs_source_vertex(target_value)
+    reference_profile = graphalytics_bfs_reference_profile(target_value)
+    dataset_metadata = read_neo4j_benchmark_metadata(target_value)
+    vertex_count = int(dataset_metadata["dataset_metadata_person_rows"])
+    pair_profile = {
+        "pair_table_rows": str(vertex_count),
+        "distinct_src_count": "1",
+        "distinct_dst_count": str(vertex_count),
+        "unique_pair_count": str(vertex_count),
+        "duplicate_pair_count": "0",
+        "self_pair_count": "1",
+    }
+
+    started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    generated_run_id = (
+        f"{int(time.time())}_{args.system_name}_{target_label}_{args.query_pattern}_"
+        f"gds_delta_threads{args.threads}"
+    )
+    run_metadata = benchmark_run_metadata(args, started_at, args.run_id or generated_run_id)
+    docker = container_name = connection = None
+    try:
+        docker, container_name, connection, gds_version = start_neo4j_server(target_value, args)
+        run_metadata["benchmark_system_runtime_version"] = f"gds-{gds_version}"
+
+        source_start = time.perf_counter()
+        _, source_rows = neo4j_http_query(
+            connection,
+            "MATCH (source:Person {id: $source}) RETURN id(source) AS sourceNode",
+            {"source": source_vertex},
+        )
+        source_lookup_s = time.perf_counter() - source_start
+        if len(source_rows) != 1:
+            raise RuntimeError(
+                f"Expected one Neo4j source node for Graphalytics vertex {source_vertex}, "
+                f"got {len(source_rows)}"
+            )
+        source_node = int(source_rows[0][0])
+
+        projection_start = time.perf_counter()
+        _, projection_rows = neo4j_http_query(
+            connection,
+            """
+CALL gds.graph.project(
+    'graphalytics',
+    'Person',
+    {KNOWS: {orientation: 'NATURAL'}},
+    {readConcurrency: $concurrency}
+)
+YIELD nodeCount, relationshipCount, projectMillis
+RETURN nodeCount, relationshipCount, projectMillis
+""",
+            {"concurrency": args.threads},
+        )
+        graph_projection_s = time.perf_counter() - projection_start
+        if len(projection_rows) != 1:
+            raise RuntimeError(f"Expected one Neo4j GDS projection row, got {projection_rows}")
+        projected_nodes, projected_edges, project_millis = (int(value) for value in projection_rows[0])
+        expected_edges = int(dataset_metadata["dataset_metadata_person_knows_person_rows"])
+        if projected_nodes != vertex_count or projected_edges != expected_edges:
+            raise RuntimeError(
+                "Neo4j GDS projection count mismatch: "
+                f"nodes={projected_nodes}/{vertex_count}, edges={projected_edges}/{expected_edges}"
+            )
+
+        query = """
+CALL gds.allShortestPaths.delta.stream('graphalytics', {
+    sourceNode: $sourceNode,
+    concurrency: $concurrency,
+    delta: 1.0,
+    logProgress: false
+})
+YIELD totalCost
+RETURN count(*) AS reachable_count,
+       toInteger(sum(totalCost)) AS total_len,
+       toInteger(min(totalCost)) AS min_len,
+       toInteger(max(totalCost)) AS max_len
+"""
+        results = []
+        for repeat in range(1, args.repeats + 1):
+            start = time.perf_counter()
+            _, query_rows = neo4j_http_query(
+                connection,
+                query,
+                {"sourceNode": source_node, "concurrency": args.threads},
+            )
+            query_s = time.perf_counter() - start
+            if len(query_rows) != 1:
+                raise RuntimeError(f"Expected one Neo4j GDS result row, got {query_rows}")
+            reachable_count, total_len, min_len, max_len = query_rows[0]
+            first_setup_s = source_lookup_s + graph_projection_s if repeat == 1 else 0.0
+            row = {
+                "scale_factor": target_value,
+                "mode": "native_gds_delta",
+                "threads": args.threads,
+                "repeat": repeat,
+                "query_pattern": args.query_pattern,
+                "metrics_enabled": 0,
+                "deduplicate_pairs": 0,
+                "grouped_batches": 0,
+                "threads_per_batch": "",
+                "max_concurrent_batches": "",
+                "reverse_orientation_ratio": "",
+                "source_group_ratio": "",
+                "recursive_max_depth": "",
+                "graphalytics_algorithm": "unweighted_delta_sssp",
+                "graphalytics_source_vertex": source_vertex,
+                "graphalytics_reference_match": "",
+                "pair_count": str(vertex_count),
+                "pair_table": graphalytics_bfs_pair_table_name(),
+                "pair_shape": "graphalytics_bfs",
+                "reachable_count": str(int(reachable_count or 0)),
+                "total_len": str(int(total_len or 0)),
+                "min_len": str(int(min_len or 0)),
+                "max_len": str(int(max_len or 0)),
+                "setup_s": f"{first_setup_s:.6f}",
+                "graph_projection_s": f"{graph_projection_s:.6f}" if repeat == 1 else "",
+                "graph_projection_reported_s": f"{project_millis / 1000.0:.6f}" if repeat == 1 else "",
+                "source_lookup_s": f"{source_lookup_s:.6f}" if repeat == 1 else "",
+                "csr_build_s": "",
+                "local_csr_forward_s": "",
+                "local_csr_reverse_s": "",
+                "local_csr_pull_s": "",
+                "bfs_s": "",
+                "bfs_batches": "",
+                "dedupe_build_s": "",
+                "dedupe_scatter_s": "",
+                "dedupe_batches": "",
+                "dedupe_scatter_batches": "",
+                "dedupe_input_pairs": "",
+                "dedupe_unique_pairs": "",
+                "dedupe_duplicate_pairs": "",
+                "dedupe_remap_memory_bytes": "",
+                "source_group_build_s": "",
+                "source_group_bfs_s": "",
+                "source_group_count": "",
+                "source_group_output_chunks": "",
+                "local_csr_forward_memory_bytes": "",
+                "local_csr_reverse_memory_bytes": "",
+                "local_csr_pull_memory_bytes": "",
+                "query_s": f"{query_s:.6f}",
+                "total_s": f"{query_s + first_setup_s:.6f}",
+                "database": str(data_dir),
+            }
+            row.update(pair_profile)
+            row.update(run_metadata)
+            row.update(dataset_metadata)
+            if args.verify:
+                verify_graphalytics_bfs_result(row, reference_profile)
+                row["graphalytics_reference_match"] = 1
+            results.append(row)
+            print(json.dumps(row, sort_keys=True))
+
+        write_benchmark_outputs(
+            results_dir,
+            args.query_pattern,
+            "graphalytics_bfs",
+            "official_bfs",
+            "native_gds_delta",
+            results,
+        )
+    finally:
+        if docker is not None and container_name is not None and connection is not None:
+            stop_neo4j_server(docker, container_name, connection)
+
+
 def run_benchmark(args):
     args.system_name = args.system_name or args.system
     if args.system == "duckpgq":
         run_duckpgq_benchmark(args)
     elif args.system == "kuzu":
         run_kuzu_graphalytics_bfs(args)
+    elif args.system == "neo4j":
+        run_neo4j_graphalytics_bfs(args)
     else:
         raise SystemExit(f"Unsupported benchmark system: {args.system}")
 
@@ -2215,15 +2764,18 @@ def run_benchmark(args):
 def sweep_graphalytics_bfs(args):
     args.system_name = args.system_name or args.system
     datasets = expand_graphalytics_datasets(args.datasets)
+    thread_counts = args.threads
+    if thread_counts is None:
+        thread_counts = [1, 2, 4] if args.system == "neo4j" else [8, 16, 24, 32]
     completed = 0
     skipped = []
     for dataset in datasets:
-        db_file = graphalytics_kuzu_db_path(dataset) if args.system == "kuzu" else graphalytics_db_path(dataset)
+        db_file = graphalytics_system_database_path(args.system, dataset)
         if args.skip_missing and not db_file.exists():
             print(f"Skipping {dataset}: missing {db_file}. Run prepare --system {args.system} --graphalytics-datasets {dataset} first.")
             skipped.append(dataset)
             continue
-        for threads in args.threads:
+        for threads in thread_counts:
             run_args = argparse.Namespace(**vars(args))
             run_args.scale_factor = None
             run_args.dataset = dataset
@@ -2264,12 +2816,17 @@ def main():
         ),
     )
     prepare_parser.add_argument("--threads", type=int, default=8)
+    prepare_parser.add_argument(
+        "--neo4j-image",
+        default=NEO4J_DEFAULT_IMAGE,
+        help="Official Neo4j Docker image used for --system neo4j.",
+    )
     prepare_parser.add_argument("--pairs", type=int, default=1024)
     prepare_parser.add_argument("--force", action="store_true")
     prepare_parser.add_argument(
         "--force-materialize",
         action="store_true",
-        help="For Graphalytics, rebuild the local DuckDB DB from existing downloads without forcing downloads.",
+        help="For Graphalytics, rebuild the selected system database from existing downloads.",
     )
     prepare_parser.set_defaults(func=prepare)
 
@@ -2282,6 +2839,23 @@ def main():
         help="Run against a prepared Graphalytics dataset, e.g. wiki-Talk, kgs, graph500-22, cit-Patents.",
     )
     run_parser.add_argument("--threads", type=int, default=4)
+    run_parser.add_argument("--neo4j-image", default=NEO4J_DEFAULT_IMAGE)
+    run_parser.add_argument(
+        "--neo4j-heap",
+        default=NEO4J_DEFAULT_HEAP,
+        help="Neo4j JVM initial and maximum heap size, for example 8G.",
+    )
+    run_parser.add_argument(
+        "--neo4j-pagecache",
+        default=NEO4J_DEFAULT_PAGECACHE,
+        help="Neo4j native page cache size, for example 2G.",
+    )
+    run_parser.add_argument(
+        "--neo4j-gds-max-concurrency",
+        type=int,
+        default=NEO4J_GDS_COMMUNITY_MAX_CONCURRENCY,
+        help="Configured GDS concurrency limit. Community Edition is limited to 4.",
+    )
     run_parser.add_argument("--pairs", type=int, default=1024)
     run_parser.add_argument(
         "--query-pattern",
@@ -2415,13 +2989,28 @@ def main():
             "Missing prepared DBs are skipped by default."
         ),
     )
-    sweep_parser.add_argument("--threads", type=int, nargs="+", default=[8, 16, 24, 32])
+    sweep_parser.add_argument(
+        "--threads",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Defaults to 1 2 4 for Neo4j and 8 16 24 32 for other systems.",
+    )
+    sweep_parser.add_argument("--neo4j-image", default=NEO4J_DEFAULT_IMAGE)
+    sweep_parser.add_argument("--neo4j-heap", default=NEO4J_DEFAULT_HEAP)
+    sweep_parser.add_argument("--neo4j-pagecache", default=NEO4J_DEFAULT_PAGECACHE)
+    sweep_parser.add_argument(
+        "--neo4j-gds-max-concurrency",
+        type=int,
+        default=NEO4J_GDS_COMMUNITY_MAX_CONCURRENCY,
+        help="Configured GDS concurrency limit. Community Edition is limited to 4.",
+    )
     sweep_parser.add_argument("--repeats", type=int, default=3)
     sweep_parser.add_argument(
         "--skip-missing",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Skip datasets whose local DuckDB database has not been prepared.",
+        help="Skip datasets whose selected system database has not been prepared.",
     )
     sweep_parser.add_argument(
         "--metrics",
