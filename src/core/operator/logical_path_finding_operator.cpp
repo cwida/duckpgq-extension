@@ -8,16 +8,20 @@ namespace duckdb {
 
 PhysicalOperator &LogicalPathFindingOperator::CreatePlan(ClientContext &context,
                                                          duckdb::PhysicalPlanGenerator &generator) {
-	D_ASSERT(children.size() == 2 || children.size() == 3);
+	D_ASSERT(children.size() == 1 || children.size() == 2 || children.size() == 3);
 	estimated_cardinality = children[0]->EstimateCardinality(context);
 	auto &pairs = generator.CreatePlan(*children[0]);
+	if (cached_partitioned_csr_input) {
+		D_ASSERT(children.size() == 1);
+		return generator.Make<PhysicalPathFinding>(*this, pairs, nullptr, nullptr);
+	}
 	if (children.size() == 3) {
 		auto &counts = generator.CreatePlan(*children[1]);
 		auto &edges = generator.CreatePlan(*children[2]);
-		return generator.Make<PhysicalPathFinding>(*this, pairs, edges, &counts);
+		return generator.Make<PhysicalPathFinding>(*this, pairs, &edges, &counts);
 	}
 	auto &csr = generator.CreatePlan(*children[1]);
-	return generator.Make<PhysicalPathFinding>(*this, pairs, csr, nullptr);
+	return generator.Make<PhysicalPathFinding>(*this, pairs, &csr, nullptr);
 }
 
 vector<ColumnBinding> LogicalPathFindingOperator::GetColumnBindings() {
@@ -40,8 +44,7 @@ void LogicalPathFindingOperator::ResolveTypes() {
 	}
 }
 
-void LogicalPathFindingOperator::ResolveColumnBindings(ColumnBindingResolver &res,
-                                                       vector<ColumnBinding> &bindings) {
+void LogicalPathFindingOperator::ResolveColumnBindings(ColumnBindingResolver &res, vector<ColumnBinding> &bindings) {
 	for (auto &child : children) {
 		res.VisitOperator(*child);
 	}

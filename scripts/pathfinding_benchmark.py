@@ -208,7 +208,7 @@ def run_duckdb(binary, database, sql, quiet=False):
     return result.stdout.strip(), elapsed
 
 
-def run_duckdb_timed_script(sql, timeout_s):
+def run_duckdb_timed_script_outputs(sql, timeout_s):
     script = ".timer on\n" + sql.strip() + "\n"
     result = subprocess.run(
         [str(BENCH_DUCKDB), "-unsigned", "-csv"],
@@ -227,24 +227,29 @@ def run_duckdb_timed_script(sql, timeout_s):
         raise RuntimeError(output)
 
     timers = []
-    output_blocks = []
+    timed_outputs = []
     current_block = []
     for line in output.splitlines():
         match = re.match(r"Run Time \(s\): real ([0-9.]+)", line)
         if match:
-            timers.append(float(match.group(1)))
+            elapsed = float(match.group(1))
+            timers.append(elapsed)
             block = "\n".join(current_block).strip()
             if block:
-                output_blocks.append(block)
+                timed_outputs.append((block, elapsed))
             current_block = []
         elif line.strip():
             current_block.append(line)
     if not timers:
         raise RuntimeError("DuckDB did not emit any .timer output:\n" + output)
-    if not output_blocks:
+    if not timed_outputs:
         raise RuntimeError("DuckDB did not emit a benchmark result row:\n" + output)
-    csv_output = output_blocks[-1]
-    return csv_output, timers
+    return timed_outputs, timers
+
+
+def run_duckdb_timed_script(sql, timeout_s):
+    timed_outputs, timers = run_duckdb_timed_script_outputs(sql, timeout_s)
+    return timed_outputs[-1][0], timers
 
 
 def require_kuzu():
@@ -1054,8 +1059,7 @@ WITH csr_cte AS (
 """
 
 
-def operator_sql(options):
-    pairs = f"ldbc.{options.pair_table}"
+def operator_settings_sql(options):
     reverse_value = "true" if options.build_reverse_csr else "false"
     metrics_value = "true" if options.metrics_enabled else "false"
     dedupe_value = "true" if options.deduplicate_pairs else "false"
@@ -1070,6 +1074,12 @@ SET experimental_path_finding_operator_threads_per_batch={options.threads_per_ba
 SET experimental_path_finding_operator_max_concurrent_batches={options.max_concurrent_batches};
 SET experimental_path_finding_operator_reverse_orientation_ratio={options.reverse_orientation_ratio};
 SET experimental_path_finding_operator_source_group_ratio={options.source_group_ratio};
+"""
+
+
+def operator_sql(options):
+    pairs = f"ldbc.{options.pair_table}"
+    return operator_settings_sql(options) + f"""
 SELECT 'operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
 FROM (
@@ -1090,6 +1100,21 @@ FROM (
          FROM ldbc.person_knows_person k
          JOIN ldbc.person a ON a.id = k.person1id
          JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges
+);
+"""
+
+
+def cached_operator_sql(options):
+    pairs = f"ldbc.{options.pair_table}"
+    return operator_settings_sql(options) + f"""
+SELECT 'cached_operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
+       sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
+FROM (
+    SELECT src, dst, iterativelengthoperator(
+        src, dst,
+        {options.vertex_count}::BIGINT, {options.edge_count}::BIGINT,
+        {sql_string(f"graph:{options.attached_db}")}) AS len
+    FROM {pairs}
 );
 """
 
@@ -1391,6 +1416,15 @@ def pushpull_phase_detail_path(benchmark_prefix):
 def read_phase_timing(benchmark_prefix):
     path = phase_timing_path(benchmark_prefix)
     result = {
+        "partitioned_csr_cache_lookup_s": "",
+        "partitioned_csr_cache_hits": "",
+        "partitioned_csr_cache_misses": "",
+        "partitioned_csr_cache_publish_s": "",
+        "partitioned_csr_cache_publishes": "",
+        "precount_scan_s": "",
+        "precount_allocate_s": "",
+        "precount_fill_s": "",
+        "precount_sparse_finalize_s": "",
         "local_csr_forward_s": "",
         "local_csr_reverse_s": "",
         "local_csr_pull_s": "",
@@ -1435,11 +1469,37 @@ def read_phase_timing(benchmark_prefix):
     local_csr_forward_memory = ""
     local_csr_reverse_memory = ""
     local_csr_pull_memory = ""
+    cache_lookup_ms = 0.0
+    cache_hits = 0
+    cache_misses = 0
+    cache_publish_ms = 0.0
+    cache_publishes = 0
+    precount_scan_ms = 0.0
+    precount_allocate_ms = 0.0
+    precount_fill_ms = 0.0
+    precount_sparse_finalize_ms = 0.0
     with path.open(newline="") as handle:
         for row in csv.DictReader(handle):
             phase = row["Phase"]
             time_ms = float(row["Time_ms"])
-            if phase == "local_csr_forward":
+            if phase == "partitioned_csr_cache_hit":
+                cache_lookup_ms += time_ms
+                cache_hits += 1
+            elif phase == "partitioned_csr_cache_miss":
+                cache_lookup_ms += time_ms
+                cache_misses += 1
+            elif phase == "partitioned_csr_cache_publish":
+                cache_publish_ms += time_ms
+                cache_publishes += 1
+            elif phase == "precount_scan":
+                precount_scan_ms += time_ms
+            elif phase == "precount_allocate":
+                precount_allocate_ms += time_ms
+            elif phase == "precount_fill":
+                precount_fill_ms += time_ms
+            elif phase == "precount_sparse_finalize":
+                precount_sparse_finalize_ms += time_ms
+            elif phase == "local_csr_forward":
                 local_csr_forward_ms += time_ms
                 local_csr_forward_memory = row["MemoryBytes"]
             elif phase == "local_csr_reverse":
@@ -1468,6 +1528,21 @@ def read_phase_timing(benchmark_prefix):
             elif phase == "source_group_bfs":
                 source_group_bfs_ms += time_ms
 
+    if cache_hits or cache_misses:
+        result["partitioned_csr_cache_lookup_s"] = f"{cache_lookup_ms / 1000.0:.6f}"
+        result["partitioned_csr_cache_hits"] = cache_hits
+        result["partitioned_csr_cache_misses"] = cache_misses
+    if cache_publishes:
+        result["partitioned_csr_cache_publish_s"] = f"{cache_publish_ms / 1000.0:.6f}"
+        result["partitioned_csr_cache_publishes"] = cache_publishes
+    if precount_scan_ms:
+        result["precount_scan_s"] = f"{precount_scan_ms / 1000.0:.6f}"
+    if precount_allocate_ms:
+        result["precount_allocate_s"] = f"{precount_allocate_ms / 1000.0:.6f}"
+    if precount_fill_ms:
+        result["precount_fill_s"] = f"{precount_fill_ms / 1000.0:.6f}"
+    if precount_sparse_finalize_ms:
+        result["precount_sparse_finalize_s"] = f"{precount_sparse_finalize_ms / 1000.0:.6f}"
     if local_csr_forward_ms:
         result["local_csr_forward_s"] = f"{local_csr_forward_ms / 1000.0:.6f}"
         result["local_csr_forward_memory_bytes"] = local_csr_forward_memory
@@ -1500,17 +1575,17 @@ def read_phase_timing(benchmark_prefix):
 
 
 def mean_optional(rows, field):
-    values = [float(row[field]) for row in rows if row[field]]
+    values = [float(row[field]) for row in rows if row.get(field, "")]
     return f"{statistics.mean(values):.6f}" if values else ""
 
 
 def stdev_optional(rows, field):
-    values = [float(row[field]) for row in rows if row[field]]
+    values = [float(row[field]) for row in rows if row.get(field, "")]
     return f"{stdev(values):.6f}" if values else ""
 
 
 def mean_int_optional(rows, field):
-    values = [int(row[field]) for row in rows if row[field] != ""]
+    values = [int(row[field]) for row in rows if row.get(field, "") != ""]
     return f"{statistics.mean(values):.1f}" if values else ""
 
 
@@ -1559,6 +1634,17 @@ def summarize_results(results):
                 "setup_stdev_s": f"{stdev(setup_times):.6f}",
                 "csr_build_mean_s": f"{statistics.mean(csr_build_times):.6f}" if csr_build_times else "",
                 "csr_build_stdev_s": f"{stdev(csr_build_times):.6f}" if csr_build_times else "",
+                "partitioned_csr_cache_lookup_mean_s": mean_optional(rows, "partitioned_csr_cache_lookup_s"),
+                "partitioned_csr_cache_hits_mean": mean_int_optional(rows, "partitioned_csr_cache_hits"),
+                "partitioned_csr_cache_misses_mean": mean_int_optional(rows, "partitioned_csr_cache_misses"),
+                "partitioned_csr_cache_publish_mean_s": mean_optional(rows, "partitioned_csr_cache_publish_s"),
+                "partitioned_csr_cache_publishes_mean": mean_int_optional(
+                    rows, "partitioned_csr_cache_publishes"
+                ),
+                "precount_scan_mean_s": mean_optional(rows, "precount_scan_s"),
+                "precount_allocate_mean_s": mean_optional(rows, "precount_allocate_s"),
+                "precount_fill_mean_s": mean_optional(rows, "precount_fill_s"),
+                "precount_sparse_finalize_mean_s": mean_optional(rows, "precount_sparse_finalize_s"),
                 "local_csr_forward_mean_s": mean_optional(rows, "local_csr_forward_s"),
                 "local_csr_forward_stdev_s": stdev_optional(rows, "local_csr_forward_s"),
                 "local_csr_reverse_mean_s": mean_optional(rows, "local_csr_reverse_s"),
@@ -1625,6 +1711,15 @@ def summary_fieldnames():
         "max_len",
         "setup_s",
         "csr_build_s",
+        "partitioned_csr_cache_lookup_s",
+        "partitioned_csr_cache_hits",
+        "partitioned_csr_cache_misses",
+        "partitioned_csr_cache_publish_s",
+        "partitioned_csr_cache_publishes",
+        "precount_scan_s",
+        "precount_allocate_s",
+        "precount_fill_s",
+        "precount_sparse_finalize_s",
         "local_csr_forward_s",
         "local_csr_reverse_s",
         "local_csr_pull_s",
@@ -1686,6 +1781,15 @@ def stats_fieldnames():
         "setup_stdev_s",
         "csr_build_mean_s",
         "csr_build_stdev_s",
+        "partitioned_csr_cache_lookup_mean_s",
+        "partitioned_csr_cache_hits_mean",
+        "partitioned_csr_cache_misses_mean",
+        "partitioned_csr_cache_publish_mean_s",
+        "partitioned_csr_cache_publishes_mean",
+        "precount_scan_mean_s",
+        "precount_allocate_mean_s",
+        "precount_fill_mean_s",
+        "precount_sparse_finalize_mean_s",
         "local_csr_forward_mean_s",
         "local_csr_forward_stdev_s",
         "local_csr_reverse_mean_s",
@@ -1781,6 +1885,117 @@ def run_duckpgq_benchmark(args):
 
     results = []
     modes = benchmark_modes(args.mode)
+    if modes == ["cached_operator"]:
+        build_prefix = (
+            results_dir
+            / f"operator_build_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_repeat0"
+        )
+        warm_prefixes = [
+            results_dir
+            / f"cached_operator_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_repeat{repeat}"
+            for repeat in range(1, args.repeats + 1)
+        ]
+        prefixes = [build_prefix] + warm_prefixes
+        for prefix in prefixes:
+            for metric_path in (
+                phase_timing_path(prefix),
+                bidirectional_phase_detail_path(prefix),
+                pushpull_iteration_stats_path(prefix),
+                pushpull_phase_detail_path(prefix),
+            ):
+                if metric_path.exists():
+                    metric_path.unlink()
+
+        def cached_options(prefix):
+            return BenchmarkOptions(
+                attached_db=attached_db,
+                query_pattern=args.query_pattern,
+                pair_count=actual_pair_count,
+                pair_table=pair_table,
+                vertex_count=int(dataset_metadata["dataset_metadata_person_rows"]),
+                edge_count=int(dataset_metadata["dataset_metadata_person_knows_person_rows"]),
+                threads=args.threads,
+                benchmark_prefix=prefix,
+                recursive_max_depth=args.recursive_max_depth,
+                build_reverse_csr=args.build_reverse_csr,
+                metrics_enabled=args.metrics,
+                push_pull_frontier_gate=args.push_pull_frontier_gate,
+                deduplicate_pairs=args.deduplicate_pairs,
+                grouped_batches=args.grouped_batches,
+                threads_per_batch=args.threads_per_batch,
+                max_concurrent_batches=args.max_concurrent_batches,
+                reverse_orientation_ratio=args.reverse_orientation_ratio,
+                source_group_ratio=args.source_group_ratio,
+            )
+
+        build_options = cached_options(build_prefix)
+        warm_options = [cached_options(prefix) for prefix in warm_prefixes]
+        benchmark_sql = setup_sql(build_options) + operator_sql(build_options)
+        benchmark_sql += "".join(cached_operator_sql(options) for options in warm_options)
+        measured_count = args.repeats + 1
+        timed_outputs, timers = run_duckdb_timed_script_outputs(
+            benchmark_sql, args.timeout * measured_count
+        )
+        if len(timed_outputs) < measured_count:
+            raise RuntimeError(
+                f"Expected {measured_count} build/warm result rows, got {len(timed_outputs)}"
+            )
+        measured_outputs = timed_outputs[-measured_count:]
+        measured_query_s = sum(elapsed for _, elapsed in measured_outputs)
+        shared_setup_s = max(0.0, sum(timers) - measured_query_s)
+
+        for result_index, ((output, query_s), prefix) in enumerate(zip(measured_outputs, prefixes)):
+            mode = "operator_build" if result_index == 0 else "cached_operator"
+            repeat = result_index
+            row = parse_csv_row(output)
+            row["mode"] = mode
+            row["scale_factor"] = target_value
+            row["threads"] = args.threads
+            row["repeat"] = repeat
+            row["query_pattern"] = args.query_pattern
+            row["metrics_enabled"] = int(args.metrics)
+            row["deduplicate_pairs"] = int(args.deduplicate_pairs)
+            row["grouped_batches"] = int(args.grouped_batches)
+            row["threads_per_batch"] = args.threads_per_batch
+            row["max_concurrent_batches"] = args.max_concurrent_batches
+            row["reverse_orientation_ratio"] = args.reverse_orientation_ratio
+            row["source_group_ratio"] = args.source_group_ratio
+            row["pair_table"] = pair_table
+            row["pair_shape"] = pair_shape
+            row["graphalytics_algorithm"] = graphalytics_algorithm
+            row["graphalytics_source_vertex"] = graphalytics_source_vertex
+            row["graphalytics_reference_match"] = ""
+            row.update(pair_profile)
+            row["recursive_max_depth"] = ""
+            row["setup_s"] = f"{shared_setup_s:.6f}" if result_index == 0 else "0.000000"
+            row["query_s"] = f"{query_s:.6f}"
+            row["total_s"] = f"{query_s + (shared_setup_s if result_index == 0 else 0.0):.6f}"
+            phase_metrics = read_phase_timing(prefix)
+            row.update(phase_metrics)
+            row["csr_build_s"] = phase_metrics["local_csr_forward_s"] if result_index == 0 else ""
+            row["database"] = str(attached_db)
+            row.update(run_metadata)
+            row.update(dataset_metadata)
+            if graphalytics_reference_profile is not None:
+                verify_graphalytics_bfs_result(row, graphalytics_reference_profile)
+                row["graphalytics_reference_match"] = 1
+            results.append(row)
+            print(json.dumps(row, sort_keys=True))
+
+        if args.verify:
+            result_keys = ["pair_count", "reachable_count", "total_len", "min_len", "max_len"]
+            expected = {key: results[0][key] for key in result_keys}
+            for row in results[1:]:
+                actual = {key: row[key] for key in result_keys}
+                if actual != expected:
+                    raise RuntimeError(
+                        f"Cached operator result mismatch: operator_build={expected}, cached_operator={actual}"
+                    )
+        write_benchmark_outputs(
+            results_dir, args.query_pattern, pair_shape, pair_label, args.mode, results
+        )
+        return
+
     for repeat in range(1, args.repeats + 1):
         for mode in modes:
             prefix = (
@@ -2126,6 +2341,7 @@ def main():
         "--mode",
         choices=[
             "operator",
+            "cached_operator",
             "legacy_operator",
             "pushpull_operator",
             "bidirectional_operator",

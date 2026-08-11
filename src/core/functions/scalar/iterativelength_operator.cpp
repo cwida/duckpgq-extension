@@ -32,15 +32,17 @@ void CoreScalarFunctions::RegisterIterativeLengthOperatorScalarFunction(Extensio
 	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR}, LogicalType::BIGINT,
 	    IterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
 	functions.AddFunction(ScalarFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
+	    LogicalType::BIGINT, IterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
+	functions.AddFunction(ScalarFunction(
 	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT,
 	     LogicalType::BIGINT, LogicalType::VARCHAR},
 	    LogicalType::BIGINT, IterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
-	auto endpoint_type =
-	    LogicalType::STRUCT({{"src", LogicalType::BIGINT}, {"dst", LogicalType::BIGINT}});
+	auto endpoint_type = LogicalType::STRUCT({{"src", LogicalType::BIGINT}, {"dst", LogicalType::BIGINT}});
 	functions.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, endpoint_type, endpoint_type,
-	                                     LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
-	                                    LogicalType::BIGINT, IterativeLengthOperatorFunction,
-	                                    ShortestPathOperatorData::ShortestPathOperatorBind));
+	                                      LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
+	                                     LogicalType::BIGINT, IterativeLengthOperatorFunction,
+	                                     ShortestPathOperatorData::ShortestPathOperatorBind));
 	loader.RegisterFunction(functions);
 }
 

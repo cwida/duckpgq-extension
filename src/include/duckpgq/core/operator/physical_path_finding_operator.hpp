@@ -43,7 +43,7 @@ struct PathFindingPairStats {
 class PhysicalPathFinding : public PhysicalComparisonJoin {
 public:
 	PhysicalPathFinding(PhysicalPlan &physical_plan, LogicalExtensionOperator &op, PhysicalOperator &pairs,
-	                    PhysicalOperator &csr, PhysicalOperator *counts = nullptr);
+	                    PhysicalOperator *csr, PhysicalOperator *counts = nullptr);
 
 	static constexpr PhysicalOperatorType TYPE = PhysicalOperatorType::EXTENSION;
 	vector<unique_ptr<Expression>> expressions;
@@ -53,6 +53,7 @@ public:
 	bool precounted_edge_input;
 	idx_t precounted_vertex_count;
 	idx_t precounted_edge_count;
+	bool cached_partitioned_csr_input;
 
 public:
 	InsertionOrderPreservingMap<string> ParamsToString() const override;
@@ -140,6 +141,7 @@ public:
 	bool global_dedupe_results_initialized;
 	bool edge_input;
 	bool precounted_edge_input;
+	bool cached_partitioned_csr_input;
 	std::vector<std::vector<LocalCSRBuildPartition>> endpoint_build_runs;
 	std::vector<shared_ptr<LocalCSR>> endpoint_partition_csrs;
 	idx_t counted_endpoint_count = 0;

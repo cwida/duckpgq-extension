@@ -93,8 +93,8 @@ static int64_t GetConstantInt64(const Expression &expr, const string &descriptio
 
 static bool IsCSRIdProjection(const LogicalProjection &projection) {
 	for (const auto &expr : projection.expressions) {
-		if (expr->GetAlias() == "csr_id" || expr->GetName() == "csr_id" ||
-		    expr->GetAlias() == "pathfinding_edge_src" || expr->GetName() == "pathfinding_edge_src") {
+		if (expr->GetAlias() == "csr_id" || expr->GetName() == "csr_id" || expr->GetAlias() == "pathfinding_edge_src" ||
+		    expr->GetName() == "pathfinding_edge_src") {
 			return true;
 		}
 		if (BoundCastExpression::IsCast(*expr)) {
@@ -120,7 +120,7 @@ static bool ContainsCSRIdProjection(const LogicalOperator &op) {
 }
 
 void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_expression, string &mode,
-	                    vector<idx_t> &offsets, string &cache_key);
+                        vector<idx_t> &offsets, string &cache_key);
 
 static bool ProjectionContainsName(const LogicalProjection &projection, const string &name) {
 	for (const auto &expr : projection.expressions) {
@@ -131,14 +131,12 @@ static bool ProjectionContainsName(const LogicalProjection &projection, const st
 	return false;
 }
 
-static void CollectPrecountedInputs(unique_ptr<LogicalOperator> &op,
-	                                 vector<unique_ptr<LogicalOperator>> &inputs) {
+static void CollectPrecountedInputs(unique_ptr<LogicalOperator> &op, vector<unique_ptr<LogicalOperator>> &inputs) {
 	auto defines_count_input = op->type == LogicalOperatorType::LOGICAL_PROJECTION &&
 	                           ProjectionContainsName(op->Cast<LogicalProjection>(), "pathfinding_count_data");
 	auto defines_edge_input = op->type == LogicalOperatorType::LOGICAL_PROJECTION &&
 	                          ProjectionContainsName(op->Cast<LogicalProjection>(), "pathfinding_edge_data");
-	if (defines_count_input || defines_edge_input ||
-	    op->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
+	if (defines_count_input || defines_edge_input || op->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
 		inputs.push_back(std::move(op));
 		return;
 	}
@@ -155,14 +153,13 @@ static bool ExpressionReferencesInput(const Expression &expr, LogicalOperator &i
 		return std::find(bindings.begin(), bindings.end(), column_ref.Binding()) != bindings.end();
 	}
 	bool found = false;
-	ExpressionIterator::EnumerateChildren(expr, [&](const Expression &child) {
-		found = found || ExpressionReferencesInput(child, input);
-	});
+	ExpressionIterator::EnumerateChildren(
+	    expr, [&](const Expression &child) { found = found || ExpressionReferencesInput(child, input); });
 	return found;
 }
 
-static unique_ptr<LogicalPathFindingOperator>
-FindPrecountedEdgesAndPairs(unique_ptr<LogicalOperator> &root, LogicalProjection &projection) {
+static unique_ptr<LogicalPathFindingOperator> FindPrecountedEdgesAndPairs(unique_ptr<LogicalOperator> &root,
+                                                                          LogicalProjection &projection) {
 	const BoundFunctionExpression *path_function = nullptr;
 	for (const auto &expr : projection.expressions) {
 		path_function = GetPathFindingFunction(*expr);
@@ -177,10 +174,8 @@ FindPrecountedEdgesAndPairs(unique_ptr<LogicalOperator> &root, LogicalProjection
 	}
 	auto vertex_count_value =
 	    GetConstantInt64(*path_function->GetChildren()[4], "Pre-counted path-finding vertex count");
-	auto edge_count_value =
-	    GetConstantInt64(*path_function->GetChildren()[5], "Pre-counted path-finding edge count");
-	if (vertex_count_value < 0 ||
-	    static_cast<uint64_t>(vertex_count_value) > NumericLimits<uint32_t>::Maximum()) {
+	auto edge_count_value = GetConstantInt64(*path_function->GetChildren()[5], "Pre-counted path-finding edge count");
+	if (vertex_count_value < 0 || static_cast<uint64_t>(vertex_count_value) > NumericLimits<uint32_t>::Maximum()) {
 		throw OutOfRangeException("Pre-counted path-finding vertex count is outside the supported uint32 range: %lld",
 		                          vertex_count_value);
 	}
@@ -221,10 +216,50 @@ FindPrecountedEdgesAndPairs(unique_ptr<LogicalOperator> &root, LogicalProjection
 	string cache_key;
 	ReplaceExpressions(projection, function_expression, mode, offsets, cache_key);
 	path_finding_expressions.push_back(std::move(function_expression));
-	return make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions, mode,
-	                                             projection.table_index, offsets, std::move(cache_key), true, true,
-	                                             static_cast<idx_t>(vertex_count_value),
-	                                             static_cast<idx_t>(edge_count_value));
+	return make_uniq<LogicalPathFindingOperator>(
+	    path_finding_children, path_finding_expressions, mode, projection.table_index, offsets, std::move(cache_key),
+	    true, true, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value));
+}
+
+static unique_ptr<LogicalPathFindingOperator> FindCachedPartitionedCSRAndPairs(unique_ptr<LogicalOperator> &root,
+                                                                               LogicalProjection &projection) {
+	const BoundFunctionExpression *path_function = nullptr;
+	for (const auto &expr : projection.expressions) {
+		path_function = GetPathFindingFunction(*expr);
+		if (path_function && path_function->GetChildren().size() == 5) {
+			break;
+		}
+		path_function = nullptr;
+	}
+	if (!path_function) {
+		return nullptr;
+	}
+
+	auto vertex_count_value = GetConstantInt64(*path_function->GetChildren()[2], "Cached path-finding vertex count");
+	auto edge_count_value = GetConstantInt64(*path_function->GetChildren()[3], "Cached path-finding edge count");
+	if (vertex_count_value < 0 || static_cast<uint64_t>(vertex_count_value) > NumericLimits<uint32_t>::Maximum()) {
+		throw OutOfRangeException("Cached path-finding vertex count is outside the supported uint32 range: %lld",
+		                          vertex_count_value);
+	}
+	if (edge_count_value < 0) {
+		throw OutOfRangeException("Cached path-finding edge count cannot be negative: %lld", edge_count_value);
+	}
+
+	vector<unique_ptr<LogicalOperator>> path_finding_children;
+	path_finding_children.push_back(std::move(root));
+	vector<unique_ptr<Expression>> path_finding_expressions;
+	unique_ptr<Expression> function_expression;
+	string mode;
+	vector<idx_t> offsets;
+	string cache_key;
+	ReplaceExpressions(projection, function_expression, mode, offsets, cache_key);
+	if (cache_key.empty()) {
+		throw BinderException("Cache-only path finding requires a non-empty constant cache key");
+	}
+	path_finding_expressions.push_back(std::move(function_expression));
+	return make_uniq<LogicalPathFindingOperator>(
+	    path_finding_children, path_finding_expressions, mode, projection.table_index, offsets, std::move(cache_key),
+	    false, false, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value), true);
 }
 
 // Helper function to create the required BoundColumnRefExpression
@@ -347,7 +382,10 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, C
 	}
 	auto &op_proj = op.Cast<LogicalProjection>();
 	if (op_proj.children.size() == 1) {
-		auto path_finding_operator = FindPrecountedEdgesAndPairs(op_proj.children[0], op_proj);
+		auto path_finding_operator = FindCachedPartitionedCSRAndPairs(op_proj.children[0], op_proj);
+		if (!path_finding_operator) {
+			path_finding_operator = FindPrecountedEdgesAndPairs(op_proj.children[0], op_proj);
+		}
 		if (path_finding_operator) {
 			op.children.clear();
 			op.children.push_back(std::move(path_finding_operator));

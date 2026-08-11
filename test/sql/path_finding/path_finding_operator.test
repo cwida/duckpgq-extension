@@ -146,12 +146,42 @@ SELECT src, dst, len FROM cached_path_lengths ORDER BY src, dst;
 3	8	3
 4	9	3
 
+# The cache-only marker has no graph endpoint child. It must reuse the published PartitionCSR.
+statement ok
+CREATE TEMP VIEW cached_only_path_lengths AS
+SELECT src, dst, iterativelengthoperator(
+        src, dst,
+        10::BIGINT, 20::BIGINT,
+        'test-person-forward') AS len
+FROM pairs;
+
+query III
+SELECT src, dst, len FROM cached_only_path_lengths ORDER BY src, dst;
+----
+0	5	3
+1	6	3
+2	7	3
+3	8	3
+4	9	3
+
 query I
 SELECT count(*) > 0
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_benchmark_phase_timing.csv')
 WHERE Phase = 'partitioned_csr_cache_hit';
 ----
 true
+
+statement error
+SELECT sum(len)
+FROM (
+    SELECT iterativelengthoperator(
+        src, dst,
+        10::BIGINT, 20::BIGINT,
+        'test-person-cache-miss') AS len
+    FROM pairs
+);
+----
+Constraint Error: Cached PartitionCSR not found for cache key 'test-person-cache-miss'; build it before using the cache-only path
 
 # The metadata-driven count phase must also initialize an empty graph without receiving an endpoint chunk.
 query II
