@@ -28,6 +28,19 @@ namespace duckdb {
 
 struct PGQMatchFunction : public TableFunction {
 public:
+	struct PathFindingOperatorResult {
+		unique_ptr<ParsedExpression> source_expression;
+		unique_ptr<ParsedExpression> destination_expression;
+		unique_ptr<TableRef> endpoint_input;
+		string endpoint_alias;
+		string alias;
+		string cache_key;
+		idx_t vertex_count;
+		idx_t edge_count;
+		int64_t lower;
+		int64_t upper;
+	};
+
 	PGQMatchFunction() {
 		name = "duckpgq_match";
 		arguments.push_back(LogicalType::INTEGER);
@@ -118,7 +131,8 @@ public:
 	static void AddPathFinding(unique_ptr<SelectNode> &select_node, vector<unique_ptr<ParsedExpression>> &conditions,
 	                           const string &prev_binding, const string &edge_binding, const string &next_binding,
 	                           const shared_ptr<PropertyGraphTable> &edge_table, CreatePropertyGraphInfo &pg_table,
-	                           SubPath *subpath, PGQMatchType edge_type);
+	                           SubPath *subpath, PGQMatchType edge_type, ClientContext &context,
+	                           vector<PathFindingOperatorResult> &operator_results);
 
 	static void AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
 	                         const shared_ptr<PropertyGraphTable> &previous_vertex_table,
@@ -132,7 +146,8 @@ public:
 	                            vector<unique_ptr<ParsedExpression>> &conditions, unique_ptr<SelectNode> &select_node,
 	                            case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
 	                            CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
-	                            MatchExpression &original_ref);
+	                            MatchExpression &original_ref, ClientContext &context,
+	                            vector<PathFindingOperatorResult> &operator_results);
 
 	static void CheckNamedSubpath(SubPath &subpath, MatchExpression &original_ref, CreatePropertyGraphInfo &pg_table,
 	                              unique_ptr<SelectNode> &final_select_node,

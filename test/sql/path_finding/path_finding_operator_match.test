@@ -1,0 +1,90 @@
+# name: test/sql/path_finding/path_finding_operator_match.test
+# description: Test the physical path-finding operator through SQL/PGQ MATCH syntax
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+set experimental_path_finding_operator=true;
+
+statement ok
+set experimental_path_finding_operator_benchmark=true;
+
+statement ok
+set experimental_path_finding_operator_benchmark_prefix='{TEST_DIR}/path_finding_operator_match_syntax';
+
+statement ok
+CREATE TABLE match_person(id BIGINT);
+
+statement ok
+INSERT INTO match_person VALUES (100), (200), (300), (400), (500);
+
+statement ok
+CREATE TABLE match_knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO match_knows VALUES
+    (100, 200),
+    (100, 300),
+    (200, 300),
+    (200, 400),
+    (300, 400),
+    (300, 500);
+
+statement ok
+CREATE PROPERTY GRAPH operator_pg
+VERTEX TABLES (
+    match_person LABEL OperatorPerson
+)
+EDGE TABLES (
+    match_knows SOURCE KEY (src) REFERENCES match_person (id)
+                DESTINATION KEY (dst) REFERENCES match_person (id)
+                LABEL OperatorKnows
+);
+
+# The path is named but not projected. MATCH can use the distance operator.
+query II
+FROM GRAPH_TABLE(operator_pg
+    MATCH p = ANY SHORTEST
+        (a:OperatorPerson WHERE a.id = 100)-[k:OperatorKnows]->{1,2}(b:OperatorPerson)
+    COLUMNS (a.id AS src, b.id AS dst)
+)
+ORDER BY dst;
+----
+100	200
+100	300
+100	400
+100	500
+
+# Undirected syntax supplies both endpoint orientations to the same operator.
+query II
+FROM GRAPH_TABLE(operator_pg
+    MATCH p = ANY SHORTEST
+        (a:OperatorPerson WHERE a.id = 500)-[k:OperatorKnows]-{1,2}(b:OperatorPerson)
+    COLUMNS (a.id AS src, b.id AS dst)
+)
+ORDER BY dst;
+----
+500	100
+500	200
+500	300
+500	400
+
+# Projecting the path value keeps the scalar path-materialization fallback.
+query III
+FROM GRAPH_TABLE(operator_pg
+    MATCH p = ANY SHORTEST
+        (a:OperatorPerson WHERE a.id = 100)-[k:OperatorKnows]->*(b:OperatorPerson WHERE b.id = 500)
+    COLUMNS (path_length(p), a.id AS src, b.id AS dst)
+);
+----
+2	100	500
+
+# This phase is only written by the physical operator.
+query I
+SELECT count(*) >= 2
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
+WHERE Phase = 'pair_analysis_precompute'
+  AND PairCount = 5;
+----
+true
