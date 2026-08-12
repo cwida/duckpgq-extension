@@ -1,6 +1,7 @@
 #include "duckpgq/core/operator/physical_path_finding_operator.hpp"
 #include "duckpgq/common.hpp"
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
+#include <duckpgq/core/operator/partitioned_csr_cache.hpp>
 
 #include "duckdb/common/types/column/column_data_collection.hpp"
 #include "duckdb/execution/physical_operator.hpp"
@@ -61,13 +62,6 @@ size_t GetLocalCSREdgeCount(const std::vector<shared_ptr<LocalCSR>> &partition_c
 		edge_count += local_csr->GetEdgeSize();
 	}
 	return edge_count;
-}
-
-idx_t GetDirectEndpointPartitionWidth(idx_t vertex_count, idx_t num_threads, ClientContext &context) {
-	auto target_partition_count =
-	    std::max<idx_t>(1, num_threads) * (1 + std::max<int32_t>(1, GetLightPartitionMultiplier(context)));
-	auto partition_width = std::max<idx_t>(1, (vertex_count + 2 + target_partition_count - 1) / target_partition_count);
-	return std::min<idx_t>(partition_width, UINT16_MAX);
 }
 
 idx_t GetPathFindingVSize(const PathFindingGlobalSinkState &gstate) {
@@ -483,15 +477,16 @@ string GetPartitionedCSRCacheKey(const PhysicalPathFinding &op, const PathFindin
 	if (op.cache_key.empty()) {
 		return string();
 	}
+	if (gstate.cached_partitioned_csr_input || gstate.precounted_edge_input || gstate.buffered_edge_input) {
+		return GetBufferedPartitionedCSRCacheKey(context, op.cache_key, gstate.vertex_count,
+		                                         GetPathFindingEdgeCount(gstate), op.mode);
+	}
 
 	std::ostringstream key;
 	key << std::setprecision(std::numeric_limits<double>::max_digits10);
 	key << "partitioned-csr-v2|graph=" << op.cache_key.size() << ":" << op.cache_key;
 	key << "|vertices=" << GetPathFindingVSize(gstate) << "|edges=" << GetPathFindingEdgeCount(gstate);
-	key << "|input="
-	    << (gstate.cached_partitioned_csr_input || gstate.precounted_edge_input || gstate.buffered_edge_input
-	            ? "precounted-endpoints"
-	            : (gstate.edge_input ? "segmented-endpoints" : "global-csr"));
+	key << "|input=" << (gstate.edge_input ? "segmented-endpoints" : "global-csr");
 	if (gstate.cached_partitioned_csr_input || gstate.edge_input) {
 		key << "|partition_width=" << local_csr_state.streaming_partition_width;
 	}
@@ -761,7 +756,7 @@ void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
 	}
 	if (gstate.cached_partitioned_csr_input && gstate.endpoint_partition_width == 0) {
 		gstate.endpoint_partition_width =
-		    GetDirectEndpointPartitionWidth(gstate.vertex_count, gstate.num_threads, context);
+		    GetBufferedPartitionedCSRWidth(gstate.vertex_count, gstate.num_threads, context);
 	}
 	shared_ptr<LocalCSRState> local_csr_state;
 	if (gstate.cached_partitioned_csr_input || gstate.precounted_edge_input || gstate.buffered_edge_input) {
@@ -817,7 +812,7 @@ void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, 
 	}
 	if (gstate.cached_partitioned_csr_input && gstate.endpoint_partition_width == 0) {
 		gstate.endpoint_partition_width =
-		    GetDirectEndpointPartitionWidth(gstate.vertex_count, gstate.num_threads, context);
+		    GetBufferedPartitionedCSRWidth(gstate.vertex_count, gstate.num_threads, context);
 	}
 	shared_ptr<LocalCSRState> local_csr_state;
 	if (gstate.cached_partitioned_csr_input || gstate.precounted_edge_input || gstate.buffered_edge_input) {
@@ -1330,7 +1325,7 @@ void PathFindingLocalSinkState::SinkEndpoints(DataChunk &input) {
 	endpoint_metadata_initialized = true;
 	if (endpoint_partition_width == 0) {
 		auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
-		endpoint_partition_width = GetDirectEndpointPartitionWidth(vertex_count, thread_count, context);
+		endpoint_partition_width = GetBufferedPartitionedCSRWidth(vertex_count, thread_count, context);
 		auto partition_count = (vertex_count + 2 + endpoint_partition_width - 1) / endpoint_partition_width;
 		local_endpoint_partitions.resize(partition_count);
 	}
@@ -1366,7 +1361,7 @@ static void InitializePrecountedEndpointState(PathFindingGlobalSinkState &gstate
 	gstate.endpoint_build_start = std::chrono::steady_clock::now();
 	gstate.endpoint_build_started = true;
 	gstate.endpoint_partition_width =
-	    GetDirectEndpointPartitionWidth(gstate.vertex_count, gstate.num_threads, gstate.context_);
+	    GetBufferedPartitionedCSRWidth(gstate.vertex_count, gstate.num_threads, gstate.context_);
 	auto partition_count =
 	    (gstate.vertex_count + 2 + gstate.endpoint_partition_width - 1) / gstate.endpoint_partition_width;
 	gstate.endpoint_partition_csrs.reserve(partition_count);

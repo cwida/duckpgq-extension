@@ -67,6 +67,21 @@ FROM GRAPH_TABLE(operator_pg
 ----
 4
 
+# The second directed query uses a one-child cache-only plan.
+query I
+SELECT count(*)
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
+WHERE Phase = 'precount_scan';
+----
+1
+
+query I
+SELECT count(*)
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
+WHERE Phase = 'partitioned_csr_cache_hit';
+----
+1
+
 # Undirected syntax supplies both endpoint orientations to the same operator.
 query II
 FROM GRAPH_TABLE(operator_pg
