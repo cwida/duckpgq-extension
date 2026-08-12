@@ -117,13 +117,24 @@ FROM GRAPH_TABLE(operator_pg
 ----
 5	6	0	2
 
+# Multiple source values use the same path-length projection.
+query IIIII
+SELECT count(*), sum(len), min(len), max(len), count(DISTINCT src)
+FROM GRAPH_TABLE(operator_pg
+    MATCH p = ANY SHORTEST
+        (a:OperatorPerson WHERE a.id IN (100, 200))-[k:OperatorKnows]->*(b:OperatorPerson)
+    COLUMNS (a.id AS src, path_length(p) AS len)
+);
+----
+9	10	0	2	2
+
 # The projected path length must still use the operator and the cached CSR.
 query I
 SELECT count(*)
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
 WHERE Phase = 'partitioned_csr_cache_hit';
 ----
-3
+4
 
 # This phase is only written by the physical operator.
 query I
