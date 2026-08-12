@@ -753,6 +753,12 @@ void ScheduleBufferedEndpointFillThenSourceGrouped(PathFindingGlobalSinkState &g
 void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
                                           vector<shared_ptr<PathFindingBatch>> batches, Pipeline &pipeline,
                                           Event &event, const PhysicalPathFinding &op, ClientContext &context) {
+	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE &&
+	    (gstate.precounted_edge_input || gstate.buffered_edge_input)) {
+		throw NotImplementedException(
+		    "Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the "
+		    "forward orientation");
+	}
 	if (gstate.cached_partitioned_csr_input && gstate.endpoint_partition_width == 0) {
 		gstate.endpoint_partition_width =
 		    GetDirectEndpointPartitionWidth(gstate.vertex_count, gstate.num_threads, context);
@@ -803,6 +809,12 @@ void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
 
 void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
                                             const PhysicalPathFinding &op, ClientContext &context) {
+	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE &&
+	    (gstate.precounted_edge_input || gstate.buffered_edge_input)) {
+		throw NotImplementedException(
+		    "Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the "
+		    "forward orientation");
+	}
 	if (gstate.cached_partitioned_csr_input && gstate.endpoint_partition_width == 0) {
 		gstate.endpoint_partition_width =
 		    GetDirectEndpointPartitionWidth(gstate.vertex_count, gstate.num_threads, context);
@@ -1231,7 +1243,8 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	    gstate.pair_stats.distinct_src_count, gstate.pair_stats.distinct_dst_count,
 	    std::chrono::duration<double, std::milli>(analysis_end - analysis_start).count(), 0);
 	gstate.search_orientation = ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
-	if (ShouldUseSourceGroupedIterativeLength(gstate, context)) {
+	int64_t single_source;
+	if (ShouldUseSourceGroupedIterativeLength(gstate, context) && TryGetExactSingleSearchSource(gstate, single_source)) {
 		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
 	}
 
@@ -1239,6 +1252,10 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 		gstate.global_output_batches.clear();
 		gstate.global_pairs->InitializeScan(gstate.global_scan_state);
 		return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
+	}
+
+	if (ShouldUseSourceGroupedIterativeLength(gstate, context)) {
+		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
 	}
 
 	vector<shared_ptr<PathFindingBatch>> oriented_batches;

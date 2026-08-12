@@ -239,6 +239,29 @@ statement ok
 set experimental_path_finding_operator_source_group_ratio=4;
 
 statement ok
+CREATE TABLE single_destination_pairs AS
+SELECT range::BIGINT AS src, 5::BIGINT AS dst
+FROM range(5);
+
+statement error
+SELECT sum(len)
+FROM (
+    SELECT iterativelengthoperator(
+            src, dst,
+            struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+            10::BIGINT, 20::BIGINT,
+            'test-person-single-destination') AS len
+    FROM single_destination_pairs,
+        (SELECT a.rowid::BIGINT AS pathfinding_edge_src,
+                c.rowid::BIGINT AS pathfinding_edge_dst
+         FROM person_knows_person k
+         JOIN person a on a.id = k.person1id
+         JOIN person c on c.id = k.person2id) pathfinding_edges
+);
+----
+Not implemented Error: Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the forward orientation
+
+statement ok
 set experimental_path_finding_operator_benchmark_prefix='{TEST_DIR}/path_finding_operator_benchmark';
 
 statement error
@@ -343,6 +366,12 @@ INSERT INTO directed_pairs(src, dst) VALUES
 statement ok
 set experimental_path_finding_operator_deduplicate_pairs=true;
 
+statement ok
+set experimental_path_finding_operator_benchmark=true;
+
+statement ok
+set experimental_path_finding_operator_benchmark_prefix='{TEST_DIR}/path_finding_operator_dedupe_precedence';
+
 query IIIII
 with csr_cte as (
 SELECT cast(min(create_csr_edge(
@@ -375,6 +404,18 @@ FROM (
 );
 ----
 71	69	204	0	3
+
+query I
+SELECT count(*) > 0
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_dedupe_precedence_phase_timing.csv')
+WHERE Phase = 'dedupe_build'
+  AND PairCount = 71
+  AND EdgeCount = 4;
+----
+true
+
+statement ok
+set experimental_path_finding_operator_benchmark=false;
 
 query IIIII
 with csr_cte as (

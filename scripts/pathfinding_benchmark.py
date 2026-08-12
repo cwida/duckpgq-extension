@@ -2930,10 +2930,12 @@ def sweep_graphalytics_bfs(args):
             run_args.target_count = None
             run_args.pair_table = None
             run_args.pair_shape = "random"
-            run_args.mode = "operator"
             run_args.build_reverse_csr = False
             run_args.run_id = f"{args.run_id}_{graphalytics_label(dataset)}_threads{threads}" if args.run_id else None
-            print(f"Running Graphalytics BFS sweep: dataset={dataset} threads={threads} repeats={args.repeats}")
+            print(
+                f"Running Graphalytics BFS sweep: dataset={dataset} threads={threads} "
+                f"mode={run_args.mode} repeats={args.repeats}"
+            )
             run_benchmark(run_args)
             completed += 1
     print(f"Completed {completed} Graphalytics BFS sweep runs.")
@@ -3150,6 +3152,12 @@ def main():
         help="Configured GDS concurrency limit. Community Edition is limited to 4.",
     )
     sweep_parser.add_argument("--repeats", type=int, default=3)
+    sweep_parser.add_argument(
+        "--mode",
+        choices=("operator", "cached_operator"),
+        default="operator",
+        help="Run full operator queries or one CSR build followed by cached warm queries.",
+    )
     sweep_parser.add_argument(
         "--skip-missing",
         action=argparse.BooleanOptionalAction,
