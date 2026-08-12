@@ -174,7 +174,13 @@ DATASET_METADATA_FIELDS = [
     "dataset_metadata_system_version",
     "dataset_metadata_system_variant",
     "dataset_metadata_system_input_prepare_s",
+    "dataset_metadata_system_schema_s",
+    "dataset_metadata_system_vertex_import_s",
+    "dataset_metadata_system_edge_import_forward_s",
+    "dataset_metadata_system_edge_import_reverse_s",
     "dataset_metadata_system_import_s",
+    "dataset_metadata_system_validation_s",
+    "dataset_metadata_system_total_prepare_s",
     "dataset_metadata_system_database_bytes",
 ]
 CACHE_STUDY_FIELDS = [
@@ -321,6 +327,10 @@ def run_checked_command(cmd, timeout_s=None):
 
 def directory_size(path):
     return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+
+
+def path_size(path):
+    return directory_size(path) if path.is_dir() else path.stat().st_size
 
 
 def command_output(cmd):
@@ -822,7 +832,7 @@ def kuzu_row_get(row, index, default=None):
     return row[index] if index < len(row) else default
 
 
-def materialize_graphalytics_kuzu_database(dataset, force):
+def materialize_graphalytics_kuzu_database(dataset, threads, force):
     kuzu = require_kuzu()
     canonical = graphalytics_name(dataset)
     stats = GRAPHALYTICS_DATASETS.get(canonical)
@@ -845,15 +855,25 @@ def materialize_graphalytics_kuzu_database(dataset, force):
     out_db.parent.mkdir(parents=True, exist_ok=True)
     directed = graphalytics_is_directed(canonical)
 
-    print(f"Materializing Graphalytics {canonical} Kuzu database at {out_db}")
-    start = time.perf_counter()
+    print(f"Materializing Graphalytics {canonical} Kuzu database at {out_db} with {threads} threads")
+    total_start = time.perf_counter()
+    phase_start = time.perf_counter()
     db = kuzu.Database(str(out_db))
-    conn = kuzu.Connection(db)
+    conn = kuzu.Connection(db, num_threads=threads)
     conn.execute("CREATE NODE TABLE Person(id INT64 PRIMARY KEY)")
     conn.execute("CREATE REL TABLE Knows(FROM Person TO Person)")
+    schema_s = time.perf_counter() - phase_start
+
+    phase_start = time.perf_counter()
     conn.execute(f"COPY Person FROM (LOAD FROM {sql_string(vertex_path)} RETURN id)")
+    vertex_import_s = time.perf_counter() - phase_start
+
+    phase_start = time.perf_counter()
     conn.execute(f"COPY Knows FROM (LOAD FROM {sql_string(edge_path)} RETURN source, target)")
+    edge_import_forward_s = time.perf_counter() - phase_start
+    edge_import_reverse_s = 0.0
     if not directed:
+        phase_start = time.perf_counter()
         conn.execute(
             f"""
             COPY Knows FROM (
@@ -863,9 +883,17 @@ def materialize_graphalytics_kuzu_database(dataset, force):
             )
             """
         )
+        edge_import_reverse_s = time.perf_counter() - phase_start
 
+    import_s = schema_s + vertex_import_s + edge_import_forward_s + edge_import_reverse_s
+    phase_start = time.perf_counter()
     person_rows = int(kuzu_row_get(kuzu_query_single_row(conn, "MATCH (p:Person) RETURN count(p.id)"), 0))
     edge_rows = int(kuzu_row_get(kuzu_query_single_row(conn, "MATCH (:Person)-[e:Knows]->(:Person) RETURN count(e)"), 0))
+    validation_s = time.perf_counter() - phase_start
+    conn.close()
+    db.close()
+    total_prepare_s = time.perf_counter() - total_start
+    database_bytes = path_size(out_db)
     metadata = {
         "dataset_kind": "graphalytics",
         "dataset": canonical,
@@ -878,10 +906,27 @@ def materialize_graphalytics_kuzu_database(dataset, force):
         "person_knows_person_rows": str(edge_rows),
         "pair_table": graphalytics_bfs_pair_table_name(),
         "pair_rows": str(person_rows),
+        "system_name": "kuzu",
+        "system_version": getattr(kuzu, "__version__", ""),
+        "system_variant": f"persistent native graph storage, {threads} import threads",
+        "system_input_prepare_s": "0.000000",
+        "system_schema_s": f"{schema_s:.6f}",
+        "system_vertex_import_s": f"{vertex_import_s:.6f}",
+        "system_edge_import_forward_s": f"{edge_import_forward_s:.6f}",
+        "system_edge_import_reverse_s": f"{edge_import_reverse_s:.6f}",
+        "system_import_s": f"{import_s:.6f}",
+        "system_validation_s": f"{validation_s:.6f}",
+        "system_total_prepare_s": f"{total_prepare_s:.6f}",
+        "system_database_bytes": str(database_bytes),
     }
     metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
-    elapsed = time.perf_counter() - start
-    print(f"Materialized Graphalytics {canonical} Kuzu database in {elapsed:.2f}s")
+    print(
+        f"Materialized Graphalytics {canonical} Kuzu database: "
+        f"schema={schema_s:.2f}s vertices={vertex_import_s:.2f}s "
+        f"edges={edge_import_forward_s + edge_import_reverse_s:.2f}s "
+        f"validation={validation_s:.2f}s total={total_prepare_s:.2f}s "
+        f"size={database_bytes} bytes"
+    )
 
 
 def neo4j_image_version(image):
@@ -1226,7 +1271,11 @@ def prepare(args):
             if args.system == "duckpgq":
                 materialize_graphalytics_database(canonical, args.pairs, args.force or args.force_materialize)
             elif args.system == "kuzu":
-                materialize_graphalytics_kuzu_database(canonical, args.force or args.force_materialize)
+                materialize_graphalytics_kuzu_database(
+                    canonical,
+                    args.threads,
+                    args.force or args.force_materialize,
+                )
             elif args.system == "neo4j":
                 materialize_graphalytics_neo4j_database(
                     canonical,
