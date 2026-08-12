@@ -165,6 +165,82 @@ WHERE Phase = 'partitioned_csr_cache_hit';
 ----
 true
 
+# One exact source keeps the original pair chunks. It must preserve duplicate rows and input order.
+statement ok
+CREATE TABLE single_source_pairs(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO single_source_pairs VALUES
+(0, 5),
+(0, 1),
+(0, 5),
+(0, 0),
+(0, 3);
+
+statement ok
+set experimental_path_finding_operator_benchmark_prefix='{TEST_DIR}/path_finding_operator_single_source';
+
+statement ok
+set experimental_path_finding_operator_source_group_ratio=1;
+
+query III
+SELECT src, dst, iterativelengthoperator(
+        src, dst,
+        struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+        10::BIGINT, 20::BIGINT,
+        'test-person-single-source') AS len
+FROM single_source_pairs,
+    (SELECT a.rowid::BIGINT AS pathfinding_edge_src,
+            c.rowid::BIGINT AS pathfinding_edge_dst
+     FROM person_knows_person k
+     JOIN person a on a.id = k.person1id
+     JOIN person c on c.id = k.person2id) pathfinding_edges;
+----
+0	5	3
+0	1	1
+0	5	3
+0	0	0
+0	3	2
+
+query I
+SELECT count(*) > 0
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_single_source_phase_timing.csv')
+WHERE Phase = 'source_group_zero_copy'
+  AND PairCount = 5
+  AND EdgeCount = 1;
+----
+true
+
+query I
+SELECT count(*) > 0
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_single_source_phase_timing.csv')
+WHERE Phase = 'pair_analysis'
+  AND PairCount = 5;
+----
+true
+
+query I
+SELECT count(*) > 0
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_single_source_phase_timing.csv')
+WHERE Phase = 'source_group_bfs'
+  AND PairCount = 5;
+----
+true
+
+query I
+SELECT count(*) > 0
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_single_source_phase_timing.csv')
+WHERE Phase = 'source_group_scatter'
+  AND PairCount = 5;
+----
+true
+
+statement ok
+set experimental_path_finding_operator_source_group_ratio=4;
+
+statement ok
+set experimental_path_finding_operator_benchmark_prefix='{TEST_DIR}/path_finding_operator_benchmark';
+
 statement error
 SELECT sum(len)
 FROM (

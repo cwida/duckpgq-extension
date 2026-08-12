@@ -39,6 +39,12 @@ struct PathFindingPairStats {
 	idx_t null_pair_count = 0;
 	idx_t self_pair_count = 0;
 	bool distinct_counts_are_exact = false;
+	bool src_value_initialized = false;
+	bool dst_value_initialized = false;
+	bool all_src_equal = true;
+	bool all_dst_equal = true;
+	int64_t single_src = 0;
+	int64_t single_dst = 0;
 };
 
 class PhysicalPathFinding : public PhysicalComparisonJoin {
@@ -142,7 +148,11 @@ public:
 	vector<vector<idx_t>> global_output_to_search;
 	bool use_global_deduplication;
 	bool use_source_grouping;
+	bool source_group_zero_copy;
 	bool global_dedupe_results_initialized;
+	double source_group_scatter_ms = 0;
+	idx_t source_group_scatter_rows = 0;
+	idx_t source_group_scatter_chunks = 0;
 	bool edge_input;
 	bool precounted_edge_input;
 	bool cached_partitioned_csr_input;

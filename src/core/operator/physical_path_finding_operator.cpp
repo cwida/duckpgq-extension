@@ -421,6 +421,18 @@ void AccumulatePairStats(DataChunk &chunk, PathFindingPairStats &stats, HyperLog
 		}
 		auto src = src_data[src_idx];
 		auto dst = dst_data[dst_idx];
+		if (!stats.src_value_initialized) {
+			stats.src_value_initialized = true;
+			stats.single_src = src;
+		} else if (stats.single_src != src) {
+			stats.all_src_equal = false;
+		}
+		if (!stats.dst_value_initialized) {
+			stats.dst_value_initialized = true;
+			stats.single_dst = dst;
+		} else if (stats.single_dst != dst) {
+			stats.all_dst_equal = false;
+		}
 		distinct_srcs.InsertElement(Hash(src));
 		distinct_dsts.InsertElement(Hash(dst));
 		if (src == dst) {
@@ -626,6 +638,24 @@ bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, C
 	}
 	return static_cast<double>(gstate.pair_stats.pair_count) >=
 	       static_cast<double>(ratio) * static_cast<double>(distinct_search_sources);
+}
+
+bool TryGetExactSingleSearchSource(const PathFindingGlobalSinkState &gstate, int64_t &source) {
+	if (gstate.pair_stats.pair_count == 0 || gstate.pair_stats.null_pair_count != 0) {
+		return false;
+	}
+	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
+		if (!gstate.pair_stats.dst_value_initialized || !gstate.pair_stats.all_dst_equal) {
+			return false;
+		}
+		source = gstate.pair_stats.single_dst;
+		return true;
+	}
+	if (!gstate.pair_stats.src_value_initialized || !gstate.pair_stats.all_src_equal) {
+		return false;
+	}
+	source = gstate.pair_stats.single_src;
+	return true;
 }
 
 void SchedulePathFindingBatches(PathFindingGlobalSinkState &gstate, vector<shared_ptr<PathFindingBatch>> &batches,
@@ -961,6 +991,24 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
                                                        Event &event, const PhysicalPathFinding &op,
                                                        ClientContext &context) {
 	auto start_time = std::chrono::steady_clock::now();
+	int64_t single_source;
+	if (TryGetExactSingleSearchSource(gstate, single_source)) {
+		auto output_chunk_count = gstate.global_output_batches.size();
+		gstate.source_group_sources.push_back(single_source);
+		gstate.source_group_output_chunks.push_back(std::move(gstate.global_output_batches));
+		gstate.source_group_zero_copy = true;
+		gstate.use_source_grouping = true;
+		auto end_time = std::chrono::steady_clock::now();
+		auto build_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+		AppendOperatorPhaseTiming(context, "source_group_zero_copy", gstate.num_threads,
+		                          gstate.pair_stats.pair_count, 1, output_chunk_count, build_ms, 0);
+		ScheduleLocalCSRBuildThenSourceGrouped(gstate, pipeline, event, op, context);
+
+		++gstate.child;
+		MarkTransientGlobalCSRForDeletion(gstate, context);
+		return SinkFinalizeType::READY;
+	}
+
 	std::unordered_map<int64_t, idx_t> source_to_group;
 	vector<SourceGroupBuildState> groups;
 
@@ -1021,6 +1069,7 @@ SinkFinalizeType FinalizeCSRIdPhase(PathFindingGlobalSinkState &gstate) {
 }
 
 SinkFinalizeType FinalizeEndpointPairPhase(PathFindingGlobalSinkState &gstate, ClientContext &context) {
+	auto analysis_start = std::chrono::steady_clock::now();
 	PathFindingPairStats pair_stats;
 	HyperLogLog distinct_srcs;
 	HyperLogLog distinct_dsts;
@@ -1032,6 +1081,11 @@ SinkFinalizeType FinalizeEndpointPairPhase(PathFindingGlobalSinkState &gstate, C
 		AccumulatePairStats(current_chunk, pair_stats, distinct_srcs, distinct_dsts);
 	}
 	FinalizePairStats(gstate, pair_stats, distinct_srcs, distinct_dsts);
+	auto analysis_end = std::chrono::steady_clock::now();
+	AppendOperatorPhaseTiming(
+	    context, "pair_analysis_precompute", gstate.num_threads, gstate.pair_stats.pair_count,
+	    gstate.pair_stats.distinct_src_count, gstate.pair_stats.distinct_dst_count,
+	    std::chrono::duration<double, std::milli>(analysis_end - analysis_start).count(), 0);
 	gstate.search_orientation = ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
 	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
 		gstate.search_orientation = PathFindingSearchOrientation::FORWARD;
@@ -1158,6 +1212,7 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 		return SinkFinalizeType::READY;
 	}
 
+	auto analysis_start = std::chrono::steady_clock::now();
 	PathFindingPairStats pair_stats;
 	HyperLogLog distinct_srcs;
 	HyperLogLog distinct_dsts;
@@ -1170,6 +1225,11 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 		gstate.global_output_batches.push_back(current_chunk);
 	}
 	FinalizePairStats(gstate, pair_stats, distinct_srcs, distinct_dsts);
+	auto analysis_end = std::chrono::steady_clock::now();
+	AppendOperatorPhaseTiming(
+	    context, "pair_analysis", gstate.num_threads, gstate.pair_stats.pair_count,
+	    gstate.pair_stats.distinct_src_count, gstate.pair_stats.distinct_dst_count,
+	    std::chrono::duration<double, std::milli>(analysis_end - analysis_start).count(), 0);
 	gstate.search_orientation = ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
 	if (ShouldUseSourceGroupedIterativeLength(gstate, context)) {
 		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
@@ -1390,6 +1450,7 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 	next_batch_index = 0;
 	use_global_deduplication = false;
 	use_source_grouping = false;
+	source_group_zero_copy = false;
 	global_dedupe_results_initialized = false;
 	edge_input = op.edge_input;
 	precounted_edge_input = op.precounted_edge_input;
@@ -1701,14 +1762,16 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 	}
 
 	if (pf_sink.use_source_grouping) {
+		auto scatter_start = std::chrono::steady_clock::now();
 		D_ASSERT(pf_sink.result_scan_idx < pf_sink.source_group_output_refs.size());
 		auto output_ref = pf_sink.source_group_output_refs[pf_sink.result_scan_idx];
 		auto &source_group = pf_sink.source_group_states[output_ref.first];
 		auto output_pairs = source_group->output_chunks[output_ref.second];
 
+		auto output_size = output_pairs->size();
 		auto output_results = make_shared_ptr<DataChunk>();
-		output_results->Initialize(context.client, {LogicalType::BIGINT}, output_pairs->size());
-		output_results->SetChildCardinality(output_pairs->size());
+		output_results->Initialize(context.client, {LogicalType::BIGINT}, output_size);
+		output_results->SetChildCardinality(output_size);
 		auto result_data = FlatVector::GetDataMutable<int64_t>(output_results->data[0]);
 		auto &result_validity = FlatVector::ValidityMutable(output_results->data[0]);
 
@@ -1719,7 +1782,7 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 		auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
 		auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
 
-		for (idx_t row = 0; row < output_pairs->size(); row++) {
+		for (idx_t row = 0; row < output_size; row++) {
 			auto src_idx = src_format.sel->get_index(row);
 			auto dst_idx = dst_format.sel->get_index(row);
 			auto target = pf_sink.search_orientation == PathFindingSearchOrientation::REVERSE ? src_data[src_idx]
@@ -1735,9 +1798,17 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 
 		output_pairs->Fuse(*output_results);
 		result.Move(*output_pairs);
+		auto scatter_end = std::chrono::steady_clock::now();
+		pf_sink.source_group_scatter_ms +=
+		    std::chrono::duration<double, std::milli>(scatter_end - scatter_start).count();
+		pf_sink.source_group_scatter_rows += output_size;
+		pf_sink.source_group_scatter_chunks++;
 
 		pf_sink.result_scan_idx++;
 		if (pf_sink.result_scan_idx == pf_sink.source_group_output_refs.size()) {
+			AppendOperatorPhaseTiming(context.client, "source_group_scatter", pf_sink.num_threads,
+			                          pf_sink.source_group_scatter_rows, pf_sink.source_group_scatter_chunks,
+			                          pf_sink.source_group_zero_copy ? 1 : 0, pf_sink.source_group_scatter_ms, 0);
 			return SourceResultType::FINISHED;
 		}
 		return SourceResultType::HAVE_MORE_OUTPUT;

@@ -1624,6 +1624,48 @@ def phase_timing_path(benchmark_prefix):
     return Path(str(benchmark_prefix) + "_phase_timing.csv")
 
 
+def query_profile_path(benchmark_prefix):
+    return Path(str(benchmark_prefix) + "_query_profile.json")
+
+
+def query_profiling_sql(benchmark_prefix):
+    return f"""
+PRAGMA enable_profiling='json';
+PRAGMA profiling_output={sql_string(query_profile_path(benchmark_prefix))};
+"""
+
+
+def read_query_profile(benchmark_prefix):
+    result = {
+        "aggregation_cpu_s": "",
+        "profile_query_cpu_s": "",
+        "profile_query_wall_s": "",
+    }
+    path = query_profile_path(benchmark_prefix)
+    if not path.exists():
+        return result
+
+    with path.open() as handle:
+        profile = json.load(handle)
+
+    aggregate_types = {"UNGROUPED_AGGREGATE", "HASH_GROUP_BY", "PERFECT_HASH_GROUP_BY"}
+
+    def aggregate_time(operator):
+        if not isinstance(operator, dict):
+            return 0.0
+        total = float(operator.get("timing", 0.0)) if operator.get("type") in aggregate_types else 0.0
+        return total + sum(aggregate_time(child) for child in operator.get("children", []))
+
+    aggregation_cpu_s = sum(aggregate_time(operator) for operator in profile.get("operator", []))
+    query = profile.get("query", {})
+    result["aggregation_cpu_s"] = f"{aggregation_cpu_s:.6f}"
+    if "cpu_time" in query:
+        result["profile_query_cpu_s"] = f"{float(query['cpu_time']):.6f}"
+    if "total_time" in query:
+        result["profile_query_wall_s"] = f"{float(query['total_time']):.6f}"
+    return result
+
+
 def bidirectional_phase_detail_path(benchmark_prefix):
     return Path(str(benchmark_prefix) + "_bidirectional_phase_detail.csv")
 
@@ -1651,6 +1693,11 @@ def read_phase_timing(benchmark_prefix):
         "local_csr_forward_s": "",
         "local_csr_reverse_s": "",
         "local_csr_pull_s": "",
+        "pair_analysis_precompute_s": "",
+        "pair_analysis_materialize_s": "",
+        "pair_analysis_s": "",
+        "grouping_s": "",
+        "grouping_strategy": "",
         "bfs_s": "",
         "bfs_batches": "",
         "dedupe_build_s": "",
@@ -1663,8 +1710,13 @@ def read_phase_timing(benchmark_prefix):
         "dedupe_remap_memory_bytes": "",
         "source_group_build_s": "",
         "source_group_bfs_s": "",
+        "source_group_scatter_s": "",
+        "source_group_zero_copy": "",
         "source_group_count": "",
         "source_group_output_chunks": "",
+        "source_group_scatter_rows": "",
+        "source_group_scatter_chunks": "",
+        "scatter_s": "",
         "local_csr_forward_memory_bytes": "",
         "local_csr_reverse_memory_bytes": "",
         "local_csr_pull_memory_bytes": "",
@@ -1675,6 +1727,8 @@ def read_phase_timing(benchmark_prefix):
     local_csr_forward_ms = 0.0
     local_csr_reverse_ms = 0.0
     local_csr_pull_ms = 0.0
+    pair_analysis_precompute_ms = 0.0
+    pair_analysis_materialize_ms = 0.0
     bfs_ms = 0.0
     bfs_batches = 0
     dedupe_build_ms = 0.0
@@ -1687,8 +1741,12 @@ def read_phase_timing(benchmark_prefix):
     dedupe_remap_memory = 0
     source_group_build_ms = 0.0
     source_group_bfs_ms = 0.0
+    source_group_scatter_ms = 0.0
+    source_group_zero_copy = False
     source_group_count = 0
     source_group_output_chunks = 0
+    source_group_scatter_rows = 0
+    source_group_scatter_chunks = 0
     local_csr_forward_memory = ""
     local_csr_reverse_memory = ""
     local_csr_pull_memory = ""
@@ -1731,6 +1789,10 @@ def read_phase_timing(benchmark_prefix):
             elif phase == "local_csr_pull":
                 local_csr_pull_ms += time_ms
                 local_csr_pull_memory = row["MemoryBytes"]
+            elif phase == "pair_analysis_precompute":
+                pair_analysis_precompute_ms += time_ms
+            elif phase == "pair_analysis":
+                pair_analysis_materialize_ms += time_ms
             elif phase == "bfs_batch" or phase == "bfs_batch_grouped":
                 bfs_ms += time_ms
                 bfs_batches += 1
@@ -1748,8 +1810,17 @@ def read_phase_timing(benchmark_prefix):
                 source_group_build_ms += time_ms
                 source_group_count += int(row["EdgeCount"])
                 source_group_output_chunks += int(row["PartitionCount"])
+            elif phase == "source_group_zero_copy":
+                source_group_build_ms += time_ms
+                source_group_count += int(row["EdgeCount"])
+                source_group_output_chunks += int(row["PartitionCount"])
+                source_group_zero_copy = True
             elif phase == "source_group_bfs":
                 source_group_bfs_ms += time_ms
+            elif phase == "source_group_scatter":
+                source_group_scatter_ms += time_ms
+                source_group_scatter_rows += int(row["PairCount"])
+                source_group_scatter_chunks += int(row["EdgeCount"])
 
     if cache_hits or cache_misses:
         result["partitioned_csr_cache_lookup_s"] = f"{cache_lookup_ms / 1000.0:.6f}"
@@ -1775,8 +1846,16 @@ def read_phase_timing(benchmark_prefix):
     if local_csr_pull_ms:
         result["local_csr_pull_s"] = f"{local_csr_pull_ms / 1000.0:.6f}"
         result["local_csr_pull_memory_bytes"] = local_csr_pull_memory
+    pair_analysis_ms = pair_analysis_precompute_ms + pair_analysis_materialize_ms
+    if pair_analysis_precompute_ms:
+        result["pair_analysis_precompute_s"] = f"{pair_analysis_precompute_ms / 1000.0:.6f}"
+    if pair_analysis_materialize_ms:
+        result["pair_analysis_materialize_s"] = f"{pair_analysis_materialize_ms / 1000.0:.6f}"
+    if pair_analysis_ms:
+        result["pair_analysis_s"] = f"{pair_analysis_ms / 1000.0:.6f}"
+    if bfs_batches or source_group_bfs_ms:
+        result["bfs_s"] = f"{(bfs_ms + source_group_bfs_ms) / 1000.0:.6f}"
     if bfs_batches:
-        result["bfs_s"] = f"{bfs_ms / 1000.0:.6f}"
         result["bfs_batches"] = bfs_batches
     if dedupe_batches:
         result["dedupe_build_s"] = f"{dedupe_build_ms / 1000.0:.6f}"
@@ -1790,10 +1869,20 @@ def read_phase_timing(benchmark_prefix):
         result["dedupe_scatter_batches"] = dedupe_scatter_batches
     if source_group_count:
         result["source_group_build_s"] = f"{source_group_build_ms / 1000.0:.6f}"
+        result["source_group_zero_copy"] = int(source_group_zero_copy)
         result["source_group_count"] = source_group_count
         result["source_group_output_chunks"] = source_group_output_chunks
+        result["grouping_s"] = result["source_group_build_s"]
+        result["grouping_strategy"] = "zero_copy_single_source" if source_group_zero_copy else "source_hash"
     if source_group_bfs_ms:
         result["source_group_bfs_s"] = f"{source_group_bfs_ms / 1000.0:.6f}"
+    if source_group_scatter_rows:
+        result["source_group_scatter_s"] = f"{source_group_scatter_ms / 1000.0:.6f}"
+        result["source_group_scatter_rows"] = source_group_scatter_rows
+        result["source_group_scatter_chunks"] = source_group_scatter_chunks
+    scatter_ms = dedupe_scatter_ms + source_group_scatter_ms
+    if scatter_ms:
+        result["scatter_s"] = f"{scatter_ms / 1000.0:.6f}"
     return result
 
 
@@ -1877,6 +1966,11 @@ def summarize_results(results):
                 "local_csr_reverse_stdev_s": stdev_optional(rows, "local_csr_reverse_s"),
                 "local_csr_pull_mean_s": mean_optional(rows, "local_csr_pull_s"),
                 "local_csr_pull_stdev_s": stdev_optional(rows, "local_csr_pull_s"),
+                "pair_analysis_precompute_mean_s": mean_optional(rows, "pair_analysis_precompute_s"),
+                "pair_analysis_materialize_mean_s": mean_optional(rows, "pair_analysis_materialize_s"),
+                "pair_analysis_mean_s": mean_optional(rows, "pair_analysis_s"),
+                "grouping_mean_s": mean_optional(rows, "grouping_s"),
+                "grouping_strategy": rows[0].get("grouping_strategy", ""),
                 "bfs_mean_s": mean_optional(rows, "bfs_s"),
                 "bfs_stdev_s": stdev_optional(rows, "bfs_s"),
                 "dedupe_build_mean_s": mean_optional(rows, "dedupe_build_s"),
@@ -1889,8 +1983,16 @@ def summarize_results(results):
                 "dedupe_remap_memory_bytes_mean": mean_int_optional(rows, "dedupe_remap_memory_bytes"),
                 "source_group_build_mean_s": mean_optional(rows, "source_group_build_s"),
                 "source_group_bfs_mean_s": mean_optional(rows, "source_group_bfs_s"),
+                "source_group_scatter_mean_s": mean_optional(rows, "source_group_scatter_s"),
+                "source_group_zero_copy_mean": mean_int_optional(rows, "source_group_zero_copy"),
                 "source_group_count_mean": mean_int_optional(rows, "source_group_count"),
                 "source_group_output_chunks_mean": mean_int_optional(rows, "source_group_output_chunks"),
+                "source_group_scatter_rows_mean": mean_int_optional(rows, "source_group_scatter_rows"),
+                "source_group_scatter_chunks_mean": mean_int_optional(rows, "source_group_scatter_chunks"),
+                "scatter_mean_s": mean_optional(rows, "scatter_s"),
+                "aggregation_cpu_mean_s": mean_optional(rows, "aggregation_cpu_s"),
+                "profile_query_cpu_mean_s": mean_optional(rows, "profile_query_cpu_s"),
+                "profile_query_wall_mean_s": mean_optional(rows, "profile_query_wall_s"),
                 "query_mean_s": f"{statistics.mean(query_times):.6f}",
                 "query_stdev_s": f"{stdev(query_times):.6f}",
                 "query_min_s": f"{min(query_times):.6f}",
@@ -1952,6 +2054,11 @@ def summary_fieldnames():
         "local_csr_forward_s",
         "local_csr_reverse_s",
         "local_csr_pull_s",
+        "pair_analysis_precompute_s",
+        "pair_analysis_materialize_s",
+        "pair_analysis_s",
+        "grouping_s",
+        "grouping_strategy",
         "bfs_s",
         "bfs_batches",
         "dedupe_build_s",
@@ -1964,8 +2071,16 @@ def summary_fieldnames():
         "dedupe_remap_memory_bytes",
         "source_group_build_s",
         "source_group_bfs_s",
+        "source_group_scatter_s",
+        "source_group_zero_copy",
         "source_group_count",
         "source_group_output_chunks",
+        "source_group_scatter_rows",
+        "source_group_scatter_chunks",
+        "scatter_s",
+        "aggregation_cpu_s",
+        "profile_query_cpu_s",
+        "profile_query_wall_s",
         "local_csr_forward_memory_bytes",
         "local_csr_reverse_memory_bytes",
         "local_csr_pull_memory_bytes",
@@ -2028,6 +2143,11 @@ def stats_fieldnames():
         "local_csr_reverse_stdev_s",
         "local_csr_pull_mean_s",
         "local_csr_pull_stdev_s",
+        "pair_analysis_precompute_mean_s",
+        "pair_analysis_materialize_mean_s",
+        "pair_analysis_mean_s",
+        "grouping_mean_s",
+        "grouping_strategy",
         "bfs_mean_s",
         "bfs_stdev_s",
         "dedupe_build_mean_s",
@@ -2040,8 +2160,16 @@ def stats_fieldnames():
         "dedupe_remap_memory_bytes_mean",
         "source_group_build_mean_s",
         "source_group_bfs_mean_s",
+        "source_group_scatter_mean_s",
+        "source_group_zero_copy_mean",
         "source_group_count_mean",
         "source_group_output_chunks_mean",
+        "source_group_scatter_rows_mean",
+        "source_group_scatter_chunks_mean",
+        "scatter_mean_s",
+        "aggregation_cpu_mean_s",
+        "profile_query_cpu_mean_s",
+        "profile_query_wall_mean_s",
         "query_mean_s",
         "query_stdev_s",
         "query_min_s",
@@ -2246,6 +2374,7 @@ def run_duckpgq_benchmark(args):
         for prefix in prefixes:
             for metric_path in (
                 phase_timing_path(prefix),
+                query_profile_path(prefix),
                 bidirectional_phase_detail_path(prefix),
                 pushpull_iteration_stats_path(prefix),
                 pushpull_phase_detail_path(prefix),
@@ -2277,8 +2406,14 @@ def run_duckpgq_benchmark(args):
 
         build_options = cached_options(build_prefix)
         warm_options = [cached_options(prefix) for prefix in warm_prefixes]
-        benchmark_sql = setup_sql(build_options) + operator_sql(build_options)
-        benchmark_sql += "".join(cached_operator_sql(options) for options in warm_options)
+        benchmark_sql = setup_sql(build_options)
+        if args.metrics:
+            benchmark_sql += query_profiling_sql(build_prefix)
+        benchmark_sql += operator_sql(build_options)
+        for options in warm_options:
+            if args.metrics:
+                benchmark_sql += query_profiling_sql(options.benchmark_prefix)
+            benchmark_sql += cached_operator_sql(options)
         measured_count = args.repeats + 1
         timed_outputs, timers = run_duckdb_timed_script_outputs(
             benchmark_sql, args.timeout * measured_count
@@ -2319,6 +2454,7 @@ def run_duckpgq_benchmark(args):
             row["total_s"] = f"{query_s + (shared_setup_s if result_index == 0 else 0.0):.6f}"
             phase_metrics = read_phase_timing(prefix)
             row.update(phase_metrics)
+            row.update(read_query_profile(prefix))
             row["csr_build_s"] = phase_metrics["local_csr_forward_s"] if result_index == 0 else ""
             row["database"] = str(attached_db)
             row.update(run_metadata)
@@ -2352,6 +2488,9 @@ def run_duckpgq_benchmark(args):
             phase_path = phase_timing_path(prefix)
             if phase_path.exists():
                 phase_path.unlink()
+            profile_path = query_profile_path(prefix)
+            if profile_path.exists():
+                profile_path.unlink()
             bidirectional_phase_path = bidirectional_phase_detail_path(prefix)
             if bidirectional_phase_path.exists():
                 bidirectional_phase_path.unlink()
@@ -2382,7 +2521,11 @@ def run_duckpgq_benchmark(args):
                 source_group_ratio=args.source_group_ratio,
             )
             query_sql = mode_sql(mode, options)
-            output, timers = run_duckdb_timed_script(setup_sql(options) + query_sql, args.timeout)
+            benchmark_sql = setup_sql(options)
+            if args.metrics:
+                benchmark_sql += query_profiling_sql(prefix)
+            benchmark_sql += query_sql
+            output, timers = run_duckdb_timed_script(benchmark_sql, args.timeout)
             row = parse_csv_row(output)
             row["scale_factor"] = target_value
             row["threads"] = args.threads
@@ -2412,6 +2555,7 @@ def run_duckpgq_benchmark(args):
                 row["query_s"] = f"{timers[-1]:.6f}"
             row["total_s"] = f"{sum(timers):.6f}"
             row.update(read_phase_timing(prefix))
+            row.update(read_query_profile(prefix))
             row["database"] = str(attached_db)
             row.update(run_metadata)
             row.update(dataset_metadata)
