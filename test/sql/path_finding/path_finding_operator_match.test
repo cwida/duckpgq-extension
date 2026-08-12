@@ -56,6 +56,17 @@ ORDER BY dst;
 100	400
 100	500
 
+# An outer aggregate must not prune the operator marker from its projection.
+query I
+SELECT count(*)
+FROM GRAPH_TABLE(operator_pg
+    MATCH p = ANY SHORTEST
+        (a:OperatorPerson WHERE a.id = 100)-[k:OperatorKnows]->{1,2}(b:OperatorPerson)
+    COLUMNS (a.id AS src, b.id AS dst)
+);
+----
+4
+
 # Undirected syntax supplies both endpoint orientations to the same operator.
 query II
 FROM GRAPH_TABLE(operator_pg

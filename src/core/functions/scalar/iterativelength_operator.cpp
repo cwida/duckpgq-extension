@@ -5,6 +5,14 @@
 
 namespace duckdb {
 
+static ScalarFunction PathFindingMarkerFunction(vector<LogicalType> arguments, scalar_function_t function) {
+	auto result = ScalarFunction(std::move(arguments), LogicalType::BIGINT, std::move(function),
+	                             ShortestPathOperatorData::ShortestPathOperatorBind);
+	// The optimizer must replace this marker with the physical operator before execution.
+	result.SetStability(FunctionStability::VOLATILE);
+	return result;
+}
+
 static void IterativeLengthOperatorFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	throw NotImplementedException(
 	    "IterativeLengthOperatorFunction not implemented, should have gone to the operator instead.");
@@ -25,50 +33,47 @@ static void PushPullIterativeLengthOperatorFunction(DataChunk &args, ExpressionS
 //------------------------------------------------------------------------------
 void CoreScalarFunctions::RegisterIterativeLengthOperatorScalarFunction(ExtensionLoader &loader) {
 	ScalarFunctionSet functions("iterativelengthoperator");
-	functions.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-	                                     LogicalType::BIGINT, IterativeLengthOperatorFunction,
-	                                     ShortestPathOperatorData::ShortestPathOperatorBind));
-	functions.AddFunction(ScalarFunction(
-	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR}, LogicalType::BIGINT,
-	    IterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
-	functions.AddFunction(ScalarFunction(
+	functions.AddFunction(PathFindingMarkerFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT}, IterativeLengthOperatorFunction));
+	functions.AddFunction(PathFindingMarkerFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
+	    IterativeLengthOperatorFunction));
+	functions.AddFunction(PathFindingMarkerFunction(
 	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
-	    LogicalType::BIGINT, IterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
-	functions.AddFunction(ScalarFunction(
+	    IterativeLengthOperatorFunction));
+	functions.AddFunction(PathFindingMarkerFunction(
 	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT,
 	     LogicalType::BIGINT, LogicalType::VARCHAR},
-	    LogicalType::BIGINT, IterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
+	    IterativeLengthOperatorFunction));
 	auto endpoint_type = LogicalType::STRUCT({{"src", LogicalType::BIGINT}, {"dst", LogicalType::BIGINT}});
-	functions.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, endpoint_type, LogicalType::BIGINT,
-	                                      LogicalType::BIGINT, LogicalType::VARCHAR},
-	                                     LogicalType::BIGINT, IterativeLengthOperatorFunction,
-	                                     ShortestPathOperatorData::ShortestPathOperatorBind));
-	functions.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, endpoint_type, endpoint_type,
-	                                      LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
-	                                     LogicalType::BIGINT, IterativeLengthOperatorFunction,
-	                                     ShortestPathOperatorData::ShortestPathOperatorBind));
+	functions.AddFunction(PathFindingMarkerFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, endpoint_type, LogicalType::BIGINT, LogicalType::BIGINT,
+	     LogicalType::VARCHAR},
+	    IterativeLengthOperatorFunction));
+	functions.AddFunction(PathFindingMarkerFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, endpoint_type, endpoint_type, LogicalType::BIGINT,
+	     LogicalType::BIGINT, LogicalType::VARCHAR},
+	    IterativeLengthOperatorFunction));
 	loader.RegisterFunction(functions);
 }
 
 void CoreScalarFunctions::RegisterPushPullIterativeLengthOperatorScalarFunction(ExtensionLoader &loader) {
 	ScalarFunctionSet functions("pushpulliterativelengthoperator");
-	functions.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-	                                     LogicalType::BIGINT, PushPullIterativeLengthOperatorFunction,
-	                                     ShortestPathOperatorData::ShortestPathOperatorBind));
-	functions.AddFunction(ScalarFunction(
-	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR}, LogicalType::BIGINT,
-	    PushPullIterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
+	functions.AddFunction(PathFindingMarkerFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT}, PushPullIterativeLengthOperatorFunction));
+	functions.AddFunction(PathFindingMarkerFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
+	    PushPullIterativeLengthOperatorFunction));
 	loader.RegisterFunction(functions);
 }
 
 void CoreScalarFunctions::RegisterBidirectionalIterativeLengthOperatorScalarFunction(ExtensionLoader &loader) {
 	ScalarFunctionSet functions("bidirectionaliterativelengthoperator");
-	functions.AddFunction(ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
-	                                     LogicalType::BIGINT, BidirectionalIterativeLengthOperatorFunction,
-	                                     ShortestPathOperatorData::ShortestPathOperatorBind));
-	functions.AddFunction(ScalarFunction(
-	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR}, LogicalType::BIGINT,
-	    BidirectionalIterativeLengthOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind));
+	functions.AddFunction(PathFindingMarkerFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT}, BidirectionalIterativeLengthOperatorFunction));
+	functions.AddFunction(PathFindingMarkerFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
+	    BidirectionalIterativeLengthOperatorFunction));
 	loader.RegisterFunction(functions);
 }
 
