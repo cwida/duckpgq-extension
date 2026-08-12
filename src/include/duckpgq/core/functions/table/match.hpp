@@ -34,6 +34,8 @@ public:
 		unique_ptr<TableRef> endpoint_input;
 		string endpoint_alias;
 		string alias;
+		string path_variable;
+		string projected_alias;
 		string cache_key;
 		idx_t vertex_count;
 		idx_t edge_count;
@@ -131,7 +133,8 @@ public:
 	static void AddPathFinding(unique_ptr<SelectNode> &select_node, vector<unique_ptr<ParsedExpression>> &conditions,
 	                           const string &prev_binding, const string &edge_binding, const string &next_binding,
 	                           const shared_ptr<PropertyGraphTable> &edge_table, CreatePropertyGraphInfo &pg_table,
-	                           SubPath *subpath, PGQMatchType edge_type, ClientContext &context,
+	                           SubPath *subpath, PGQMatchType edge_type, const string &path_variable,
+	                           ClientContext &context,
 	                           vector<PathFindingOperatorResult> &operator_results);
 
 	static void AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
@@ -147,11 +150,13 @@ public:
 	                            case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
 	                            CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
 	                            MatchExpression &original_ref, ClientContext &context,
-	                            vector<PathFindingOperatorResult> &operator_results);
+	                            vector<PathFindingOperatorResult> &operator_results,
+	                            const string &path_variable, vector<SubPath *> &deferred_path_lengths);
 
 	static void CheckNamedSubpath(SubPath &subpath, MatchExpression &original_ref, CreatePropertyGraphInfo &pg_table,
 	                              unique_ptr<SelectNode> &final_select_node,
-	                              vector<unique_ptr<ParsedExpression>> &conditions);
+	                              vector<unique_ptr<ParsedExpression>> &conditions,
+	                              bool defer_path_length, vector<SubPath *> &deferred_path_lengths);
 
 	// Check whether columns to query are valid against the property graph, throws
 	// BinderException if error.

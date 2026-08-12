@@ -177,6 +177,15 @@ DATASET_METADATA_FIELDS = [
     "dataset_metadata_system_import_s",
     "dataset_metadata_system_database_bytes",
 ]
+CACHE_STUDY_FIELDS = [
+    "cache_state",
+    "sequence_query_count",
+    "cold_query_s",
+    "warm_mean_so_far_s",
+    "cumulative_query_s",
+    "amortized_query_s",
+    "reuse_speedup_vs_rebuild",
+]
 
 
 @dataclass(frozen=True)
@@ -1327,6 +1336,37 @@ FROM (
 """
 
 
+def sql_match_graph_setup_sql():
+    return """
+CREATE PROPERTY GRAPH pathfinding_benchmark_pg
+VERTEX TABLES (
+    ldbc.person PROPERTIES (id) LABEL Person
+)
+EDGE TABLES (
+    ldbc.person_knows_person
+        SOURCE KEY (person1id) REFERENCES ldbc.person (id)
+        DESTINATION KEY (person2id) REFERENCES ldbc.person (id)
+        LABEL Knows
+);
+"""
+
+
+def sql_match_graphalytics_bfs_sql(options, source_vertex):
+    return operator_settings_sql(options) + f"""
+SELECT 'sql_match_cache' AS mode,
+       {options.pair_count}::BIGINT AS pair_count,
+       count(*) AS reachable_count,
+       sum(len)::BIGINT AS total_len,
+       min(len)::BIGINT AS min_len,
+       max(len)::BIGINT AS max_len
+FROM GRAPH_TABLE(pathfinding_benchmark_pg
+    MATCH p = ANY SHORTEST
+        (a:Person WHERE a.id = {source_vertex})-[k:Knows]->*(b:Person)
+    COLUMNS (a.id AS src, b.id AS dst, path_length(p) AS len)
+);
+"""
+
+
 def cached_operator_sql(options):
     pairs = f"ldbc.{options.pair_table}"
     return operator_settings_sql(options) + f"""
@@ -2007,7 +2047,7 @@ def summarize_results(results):
 
 
 def summary_fieldnames():
-    return RUN_METADATA_FIELDS + DATASET_METADATA_FIELDS + [
+    return RUN_METADATA_FIELDS + DATASET_METADATA_FIELDS + CACHE_STUDY_FIELDS + [
         "scale_factor",
         "mode",
         "threads",
@@ -2181,7 +2221,7 @@ def stats_fieldnames():
 
 
 def write_benchmark_outputs(results_dir, query_pattern, pair_shape, pair_label, mode_label, results):
-    timestamp = int(time.time())
+    timestamp = time.time_ns()
     result_path = results_dir / f"summary_{query_pattern}_{pair_shape}_pairs{pair_label}_threads{results[0]['threads']}_mode{mode_label}_{timestamp}.csv"
     with result_path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=summary_fieldnames())
@@ -2199,6 +2239,75 @@ def write_benchmark_outputs(results_dir, query_pattern, pair_shape, pair_label, 
         print(json.dumps(row, sort_keys=True))
     print(f"Wrote stats: {stats_path}")
     return result_path, stats_path
+
+
+def write_cache_amortization_output(
+    results_dir, query_pattern, pair_shape, pair_label, mode_label, results, query_counts
+):
+    if not results:
+        raise ValueError("Cannot write an amortization curve without query results")
+
+    available_count = len(results)
+    selected_counts = sorted({count for count in query_counts if 0 < count <= available_count})
+    if not selected_counts:
+        raise ValueError("No amortization query count is within the measured sequence")
+
+    first = results[0]
+    query_times = [float(row["query_s"]) for row in results]
+    cold_s = query_times[0]
+    rows = []
+    for query_count in selected_counts:
+        cumulative_s = sum(query_times[:query_count])
+        warm_times = query_times[1:query_count]
+        warm_total_s = sum(warm_times)
+        row = {field: first.get(field, "") for field in RUN_METADATA_FIELDS + DATASET_METADATA_FIELDS}
+        row.update(
+            {
+                "scale_factor": first["scale_factor"],
+                "threads": first["threads"],
+                "query_pattern": first["query_pattern"],
+                "pair_shape": first["pair_shape"],
+                "pair_count": first["pair_count"],
+                "query_count": query_count,
+                "warm_query_count": len(warm_times),
+                "cold_query_s": f"{cold_s:.6f}",
+                "warm_total_s": f"{warm_total_s:.6f}",
+                "warm_mean_s": f"{statistics.mean(warm_times):.6f}" if warm_times else "",
+                "cumulative_query_s": f"{cumulative_s:.6f}",
+                "amortized_query_s": f"{cumulative_s / query_count:.6f}",
+                "reuse_speedup_vs_rebuild": f"{(cold_s * query_count) / cumulative_s:.6f}",
+            }
+        )
+        rows.append(row)
+
+    fieldnames = RUN_METADATA_FIELDS + DATASET_METADATA_FIELDS + [
+        "scale_factor",
+        "threads",
+        "query_pattern",
+        "pair_shape",
+        "pair_count",
+        "query_count",
+        "warm_query_count",
+        "cold_query_s",
+        "warm_total_s",
+        "warm_mean_s",
+        "cumulative_query_s",
+        "amortized_query_s",
+        "reuse_speedup_vs_rebuild",
+    ]
+    timestamp = time.time_ns()
+    output_path = results_dir / (
+        f"amortization_{query_pattern}_{pair_shape}_pairs{pair_label}_threads{first['threads']}_"
+        f"mode{mode_label}_{timestamp}.csv"
+    )
+    with output_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    for row in rows:
+        print(json.dumps(row, sort_keys=True))
+    print(f"Wrote amortization curve: {output_path}")
+    return output_path
 
 
 def reserve_local_port():
@@ -2360,15 +2469,27 @@ def run_duckpgq_benchmark(args):
 
     results = []
     modes = benchmark_modes(args.mode)
-    if modes == ["cached_operator"]:
+    if modes in (["cached_operator"], ["sql_match_cache"]):
+        sql_match_cache = modes == ["sql_match_cache"]
+        if sql_match_cache and generated_shape != "graphalytics_bfs":
+            raise SystemExit("--mode sql_match_cache currently requires --query-pattern graphalytics_bfs")
+        if args.repeats < 0:
+            raise SystemExit("--repeats cannot be negative")
+        if any(point < 1 for point in args.amortization_points):
+            raise SystemExit("--amortization-points values must be at least 1")
+        measured_count = args.repeats + 1
+        if sql_match_cache:
+            measured_count = max(measured_count, max(args.amortization_points))
         build_prefix = (
             results_dir
-            / f"operator_build_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_repeat0"
+            / f"{'sql_match_cold' if sql_match_cache else 'operator_build'}_{args.query_pattern}_"
+            f"{pair_shape}_pairs{pair_label}_threads{args.threads}_repeat0"
         )
         warm_prefixes = [
             results_dir
-            / f"cached_operator_{args.query_pattern}_{pair_shape}_pairs{pair_label}_threads{args.threads}_repeat{repeat}"
-            for repeat in range(1, args.repeats + 1)
+            / f"{'sql_match_warm' if sql_match_cache else 'cached_operator'}_{args.query_pattern}_"
+            f"{pair_shape}_pairs{pair_label}_threads{args.threads}_repeat{repeat}"
+            for repeat in range(1, measured_count)
         ]
         prefixes = [build_prefix] + warm_prefixes
         for prefix in prefixes:
@@ -2407,14 +2528,18 @@ def run_duckpgq_benchmark(args):
         build_options = cached_options(build_prefix)
         warm_options = [cached_options(prefix) for prefix in warm_prefixes]
         benchmark_sql = setup_sql(build_options)
-        if args.metrics:
-            benchmark_sql += query_profiling_sql(build_prefix)
-        benchmark_sql += operator_sql(build_options)
-        for options in warm_options:
+        if sql_match_cache:
+            benchmark_sql += sql_match_graph_setup_sql()
+        all_options = [build_options] + warm_options
+        for result_index, options in enumerate(all_options):
             if args.metrics:
                 benchmark_sql += query_profiling_sql(options.benchmark_prefix)
-            benchmark_sql += cached_operator_sql(options)
-        measured_count = args.repeats + 1
+            if sql_match_cache:
+                benchmark_sql += sql_match_graphalytics_bfs_sql(options, graphalytics_source_vertex)
+            elif result_index == 0:
+                benchmark_sql += operator_sql(options)
+            else:
+                benchmark_sql += cached_operator_sql(options)
         timed_outputs, timers = run_duckdb_timed_script_outputs(
             benchmark_sql, args.timeout * measured_count
         )
@@ -2426,8 +2551,14 @@ def run_duckpgq_benchmark(args):
         measured_query_s = sum(elapsed for _, elapsed in measured_outputs)
         shared_setup_s = max(0.0, sum(timers) - measured_query_s)
 
+        cumulative_query_s = 0.0
+        cold_query_s = measured_outputs[0][1]
+        warm_query_times = []
         for result_index, ((output, query_s), prefix) in enumerate(zip(measured_outputs, prefixes)):
-            mode = "operator_build" if result_index == 0 else "cached_operator"
+            if sql_match_cache:
+                mode = "sql_match_cold" if result_index == 0 else "sql_match_warm"
+            else:
+                mode = "operator_build" if result_index == 0 else "cached_operator"
             repeat = result_index
             row = parse_csv_row(output)
             row["mode"] = mode
@@ -2452,6 +2583,20 @@ def run_duckpgq_benchmark(args):
             row["setup_s"] = f"{shared_setup_s:.6f}" if result_index == 0 else "0.000000"
             row["query_s"] = f"{query_s:.6f}"
             row["total_s"] = f"{query_s + (shared_setup_s if result_index == 0 else 0.0):.6f}"
+            cumulative_query_s += query_s
+            if result_index > 0:
+                warm_query_times.append(query_s)
+            row["cache_state"] = "csr_cold" if result_index == 0 else "csr_warm"
+            row["sequence_query_count"] = result_index + 1
+            row["cold_query_s"] = f"{cold_query_s:.6f}"
+            row["warm_mean_so_far_s"] = (
+                f"{statistics.mean(warm_query_times):.6f}" if warm_query_times else ""
+            )
+            row["cumulative_query_s"] = f"{cumulative_query_s:.6f}"
+            row["amortized_query_s"] = f"{cumulative_query_s / (result_index + 1):.6f}"
+            row["reuse_speedup_vs_rebuild"] = (
+                f"{(cold_query_s * (result_index + 1)) / cumulative_query_s:.6f}"
+            )
             phase_metrics = read_phase_timing(prefix)
             row.update(phase_metrics)
             row.update(read_query_profile(prefix))
@@ -2459,7 +2604,17 @@ def run_duckpgq_benchmark(args):
             row["database"] = str(attached_db)
             row.update(run_metadata)
             row.update(dataset_metadata)
-            if graphalytics_reference_profile is not None:
+            if graphalytics_reference_profile is not None and sql_match_cache:
+                result_keys = ["pair_count", "reachable_count", "total_len", "min_len", "max_len"]
+                expected = {key: str(graphalytics_reference_profile[key]) for key in result_keys}
+                actual = {key: str(row[key]) for key in expected}
+                if actual != expected:
+                    raise RuntimeError(
+                        f"Graphalytics SQL MATCH reference mismatch for {target_value}: "
+                        f"observed={actual} reference={expected}"
+                    )
+                row["graphalytics_reference_match"] = 1
+            elif graphalytics_reference_profile is not None:
                 verify_graphalytics_bfs_result(row, graphalytics_reference_profile)
                 row["graphalytics_reference_match"] = 1
             results.append(row)
@@ -2477,6 +2632,16 @@ def run_duckpgq_benchmark(args):
         write_benchmark_outputs(
             results_dir, args.query_pattern, pair_shape, pair_label, args.mode, results
         )
+        if sql_match_cache:
+            write_cache_amortization_output(
+                results_dir,
+                args.query_pattern,
+                pair_shape,
+                pair_label,
+                args.mode,
+                results,
+                args.amortization_points,
+            )
         return
 
     for repeat in range(1, args.repeats + 1):
@@ -2895,6 +3060,22 @@ RETURN count(*) AS reachable_count,
 
 def run_benchmark(args):
     args.system_name = args.system_name or args.system
+    if args.trials < 1:
+        raise SystemExit("--trials must be at least 1")
+    if args.trials > 1:
+        if args.system != "duckpgq" or args.mode != "sql_match_cache":
+            raise SystemExit("--trials currently applies only to DuckPGQ --mode sql_match_cache")
+        target = args.dataset or sf_name(args.scale_factor)
+        trial_group = args.run_id or (
+            f"{int(time.time())}_{args.system_name}_{target}_{args.query_pattern}_"
+            f"{args.mode}_threads{args.threads}"
+        )
+        for trial in range(1, args.trials + 1):
+            trial_args = argparse.Namespace(**vars(args))
+            trial_args.trials = 1
+            trial_args.run_id = f"{trial_group}_trial{trial}"
+            run_benchmark(trial_args)
+        return
     if args.system == "duckpgq":
         run_duckpgq_benchmark(args)
     elif args.system == "kuzu":
@@ -3039,6 +3220,12 @@ def main():
     )
     run_parser.add_argument("--repeats", type=int, default=1)
     run_parser.add_argument(
+        "--trials",
+        type=int,
+        default=1,
+        help="Independent SQL MATCH cache sequences. Each trial starts a new DuckDB process.",
+    )
+    run_parser.add_argument(
         "--system-name",
         default=None,
         help="Logical system under test recorded in result metadata. Defaults to --system.",
@@ -3056,6 +3243,7 @@ def main():
         choices=[
             "operator",
             "cached_operator",
+            "sql_match_cache",
             "legacy_operator",
             "pushpull_operator",
             "bidirectional_operator",
@@ -3068,6 +3256,16 @@ def main():
             "operator_comparison",
         ],
         default="both",
+    )
+    run_parser.add_argument(
+        "--amortization-points",
+        type=int,
+        nargs="+",
+        default=[1, 2, 5, 10],
+        help=(
+            "Total query counts recorded by --mode sql_match_cache. The runner executes enough "
+            "warm queries to reach the largest point."
+        ),
     )
     run_parser.add_argument("--build-reverse-csr", action="store_true")
     run_parser.add_argument(
@@ -3153,10 +3351,26 @@ def main():
     )
     sweep_parser.add_argument("--repeats", type=int, default=3)
     sweep_parser.add_argument(
+        "--trials",
+        type=int,
+        default=1,
+        help="Independent SQL MATCH cache sequences per dataset and thread count.",
+    )
+    sweep_parser.add_argument(
         "--mode",
-        choices=("operator", "cached_operator"),
+        choices=("operator", "cached_operator", "sql_match_cache"),
         default="operator",
-        help="Run full operator queries or one CSR build followed by cached warm queries.",
+        help=(
+            "Run internal operator queries, internal cached queries, or end-to-end SQL MATCH "
+            "cold/warm queries."
+        ),
+    )
+    sweep_parser.add_argument(
+        "--amortization-points",
+        type=int,
+        nargs="+",
+        default=[1, 2, 5, 10],
+        help="Total query counts recorded by --mode sql_match_cache.",
     )
     sweep_parser.add_argument(
         "--skip-missing",

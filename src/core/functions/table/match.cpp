@@ -827,7 +827,8 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
                                       const string &edge_binding, const string &next_binding,
                                       const shared_ptr<PropertyGraphTable> &edge_table,
                                       CreatePropertyGraphInfo &pg_table, SubPath *subpath, PGQMatchType edge_type,
-                                      ClientContext &context, vector<PathFindingOperatorResult> &operator_results) {
+                                      const string &path_variable, ClientContext &context,
+                                      vector<PathFindingOperatorResult> &operator_results) {
 	if (select_node->cte_map.map.find("shortest_path_cte") != select_node->cte_map.map.end()) {
 		return;
 	}
@@ -851,8 +852,8 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 			    "__duckpgq_pair_dst_" + std::to_string(result_index), "DuckPGQ path-finding destination row ID");
 			operator_results.push_back({std::move(source_expression), std::move(destination_expression),
 			                            std::move(endpoints), std::move(endpoint_alias), std::move(result_alias),
-			                            std::move(cache_key), vertex_count, edge_count, subpath->lower,
-			                            subpath->upper});
+			                            path_variable, string(), std::move(cache_key), vertex_count, edge_count,
+			                            subpath->lower, subpath->upper});
 			return;
 		}
 	}
@@ -887,7 +888,8 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 
 void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &original_ref,
                                          CreatePropertyGraphInfo &pg_table, unique_ptr<SelectNode> &final_select_node,
-                                         vector<unique_ptr<ParsedExpression>> &conditions) {
+                                         vector<unique_ptr<ParsedExpression>> &conditions,
+                                         bool defer_path_length, vector<SubPath *> &deferred_path_lengths) {
 	for (idx_t idx_i = 0; idx_i < original_ref.column_list.size(); idx_i++) {
 		auto parsed_ref = dynamic_cast<FunctionExpression *>(original_ref.column_list[idx_i].get());
 		if (parsed_ref == nullptr) {
@@ -922,6 +924,13 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 			original_ref.column_list.insert(original_ref.column_list.begin() + static_cast<int64_t>(idx_i),
 			                                std::move(shortest_path_function));
 		} else if (parsed_ref->FunctionName() == "path_length") {
+			if (defer_path_length) {
+				if (std::find(deferred_path_lengths.begin(), deferred_path_lengths.end(), &subpath) ==
+				    deferred_path_lengths.end()) {
+					deferred_path_lengths.push_back(&subpath);
+				}
+				continue;
+			}
 			auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table, subpath.path_variable,
 			                                                        final_select_node, conditions);
 			auto path_len_children = vector<unique_ptr<ParsedExpression>>();
@@ -974,7 +983,8 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
                                        case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
                                        CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
                                        MatchExpression &original_ref, ClientContext &context,
-                                       vector<PathFindingOperatorResult> &operator_results) {
+                                       vector<PathFindingOperatorResult> &operator_results,
+                                       const string &path_variable, vector<SubPath *> &deferred_path_lengths) {
 	PathElement *previous_vertex_element = GetPathElement(path_list[0]);
 	if (!previous_vertex_element) {
 		const auto previous_vertex_subpath = reinterpret_cast<SubPath *>(path_list[0].get());
@@ -982,14 +992,16 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 			conditions.push_back(std::move(previous_vertex_subpath->where_clause));
 		}
 		if (!previous_vertex_subpath->path_variable.empty() && previous_vertex_subpath->path_list.size() > 1) {
-			CheckNamedSubpath(*previous_vertex_subpath, original_ref, pg_table, final_select_node, conditions);
+			CheckNamedSubpath(*previous_vertex_subpath, original_ref, pg_table, final_select_node, conditions,
+			                  GetPathFindingOption(context), deferred_path_lengths);
 		}
 		if (previous_vertex_subpath->path_list.size() == 1) {
 			previous_vertex_element = GetPathElement(previous_vertex_subpath->path_list[0]);
 		} else {
 			// Add the shortest path if the name is found in the column_list
 			ProcessPathList(previous_vertex_subpath->path_list, conditions, final_select_node, alias_map, pg_table,
-			                extra_alias_counter, original_ref, context, operator_results);
+			                extra_alias_counter, original_ref, context, operator_results,
+			                previous_vertex_subpath->path_variable, deferred_path_lengths);
 			return;
 		}
 	}
@@ -1034,7 +1046,7 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 				// Add the path-finding
 				AddPathFinding(final_select_node, conditions, previous_vertex_element->variable_binding,
 				               edge_element->variable_binding, next_vertex_element->variable_binding, edge_table,
-				               pg_table, edge_subpath, edge_element->match_type, context, operator_results);
+				               pg_table, edge_subpath, edge_element->match_type, path_variable, context, operator_results);
 			} else {
 				AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table, edge_element->match_type,
 				             edge_element->variable_binding, previous_vertex_element->variable_binding,
@@ -1155,6 +1167,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 
 	vector<unique_ptr<ParsedExpression>> conditions;
 	vector<PathFindingOperatorResult> operator_results;
+	vector<SubPath *> deferred_path_lengths;
 
 	auto final_select_node = make_uniq<SelectNode>();
 	case_insensitive_map_t<shared_ptr<PropertyGraphTable>> alias_map;
@@ -1166,7 +1179,16 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		// Check if the element is PathElement or a Subpath with potentially many
 		// items
 		ProcessPathList(path_pattern->path_elements, conditions, final_select_node, alias_map, *pg_table,
-		                extra_alias_counter, *ref, context, operator_results);
+		                extra_alias_counter, *ref, context, operator_results, string(), deferred_path_lengths);
+	}
+	for (auto *subpath : deferred_path_lengths) {
+		auto uses_operator = std::any_of(operator_results.begin(), operator_results.end(), [&](const auto &result) {
+			return StringUtil::CIEquals(result.path_variable, subpath->path_variable);
+		});
+		if (!uses_operator) {
+			CheckNamedSubpath(*subpath, *ref, *pg_table, final_select_node, conditions, false,
+			                  deferred_path_lengths);
+		}
 	}
 
 	// Go through all aliases encountered
@@ -1219,11 +1241,22 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 					continue;
 				}
 				auto &column_names = column_ref->ColumnNames();
-				if (named_subpaths.count(column_names[0].GetIdentifierName()) && column_names.size() == 1) {
+				if (column_names.size() == 1) {
 					auto path_name = column_names[0].GetIdentifierName();
-					final_column_list.emplace_back(DuckPGQSQL::ParseExpression(
-					    "len(" + DuckPGQSQL::Column(string("path"), path_name) + ") // 2", "path_length_" + path_name,
-					    "DuckPGQ MATCH path_length projection"));
+					for (auto &operator_result : operator_results) {
+						if (!StringUtil::CIEquals(operator_result.path_variable, path_name)) {
+							continue;
+						}
+						auto projection_alias = function_ref->GetAlias().GetIdentifierName();
+						if (projection_alias.empty()) {
+							projection_alias = "path_length(" + path_name + ")";
+						}
+						operator_result.projected_alias = projection_alias;
+						auto placeholder = DuckPGQSQL::ParseExpression(
+						    "NULL::BIGINT", projection_alias, "DuckPGQ MATCH path_length placeholder");
+						final_column_list.push_back(std::move(placeholder));
+						break;
+					}
 				}
 			} else {
 				final_column_list.push_back(std::move(expression));
@@ -1289,16 +1322,23 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	const string pair_source_alias = "__duckpgq_pair_src_0";
 	const string pair_destination_alias = "__duckpgq_pair_dst_0";
 
+	std::ostringstream path_length_sql;
+	path_length_sql << "iterativelengthoperator(" << DuckPGQSQL::Column(pair_source_alias, candidate_alias) << ", "
+	                << DuckPGQSQL::Column(pair_destination_alias, candidate_alias) << ", struct_pack(src := "
+	                << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_SRC), operator_result.endpoint_alias) << ", dst := "
+	                << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_DST), operator_result.endpoint_alias) << "), "
+	                << operator_result.vertex_count << "::BIGINT, " << operator_result.edge_count << "::BIGINT, "
+	                << DuckPGQSQL::StringLiteral(operator_result.cache_key) << ")";
+
 	std::ostringstream operator_query_sql;
-	operator_query_sql << "SELECT " << DuckPGQSQL::Identifier(candidate_alias) << ".*, iterativelengthoperator("
-	                   << DuckPGQSQL::Column(pair_source_alias, candidate_alias) << ", "
-	                   << DuckPGQSQL::Column(pair_destination_alias, candidate_alias) << ", struct_pack(src := "
-	                   << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_SRC), operator_result.endpoint_alias)
-	                   << ", dst := "
-	                   << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_DST), operator_result.endpoint_alias) << "), "
-	                   << operator_result.vertex_count << "::BIGINT, " << operator_result.edge_count << "::BIGINT, "
-	                   << DuckPGQSQL::StringLiteral(operator_result.cache_key) << ") AS "
-	                   << DuckPGQSQL::Identifier(operator_result.alias) << " FROM "
+	operator_query_sql << "SELECT " << DuckPGQSQL::Identifier(candidate_alias) << ".*";
+	if (operator_result.projected_alias.empty()) {
+		operator_query_sql << ", " << path_length_sql.str() << " AS " << DuckPGQSQL::Identifier(operator_result.alias);
+	} else {
+		operator_query_sql << " REPLACE (" << path_length_sql.str() << " AS "
+		                   << DuckPGQSQL::Identifier(operator_result.projected_alias) << ")";
+	}
+	operator_query_sql << " FROM "
 	                   << DuckPGQSQL::Identifier(candidate_alias) << ", "
 	                   << DuckPGQSQL::Identifier(operator_result.endpoint_alias);
 	auto operator_query = DuckPGQSQL::ParseSelect(operator_query_sql.str(), "DuckPGQ path-finding operator projection");
@@ -1310,12 +1350,11 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 
 	std::ostringstream outer_query_sql;
 	outer_query_sql << "SELECT * EXCLUDE (" << DuckPGQSQL::Identifier(pair_source_alias) << ", "
-	                << DuckPGQSQL::Identifier(pair_destination_alias) << ", ";
+	                << DuckPGQSQL::Identifier(pair_destination_alias);
 	for (idx_t result_idx = 0; result_idx < operator_results.size(); result_idx++) {
-		if (result_idx > 0) {
-			outer_query_sql << ", ";
+		if (operator_results[result_idx].projected_alias.empty()) {
+			outer_query_sql << ", " << DuckPGQSQL::Identifier(operator_results[result_idx].alias);
 		}
-		outer_query_sql << DuckPGQSQL::Identifier(operator_results[result_idx].alias);
 	}
 	outer_query_sql << ") FROM " << DuckPGQSQL::Identifier(string(PATH_FINDING_PAIRS_ALIAS)) << " WHERE ";
 	for (idx_t result_idx = 0; result_idx < operator_results.size(); result_idx++) {
@@ -1323,7 +1362,9 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 			outer_query_sql << " AND ";
 		}
 		auto &operator_result = operator_results[result_idx];
-		outer_query_sql << DuckPGQSQL::Column(operator_result.alias, string(PATH_FINDING_PAIRS_ALIAS));
+		auto &result_column = operator_result.projected_alias.empty() ? operator_result.alias
+		                                                          : operator_result.projected_alias;
+		outer_query_sql << DuckPGQSQL::Column(result_column, string(PATH_FINDING_PAIRS_ALIAS));
 		if (operator_result.upper == NumericLimits<int64_t>::Maximum()) {
 			outer_query_sql << " >= " << operator_result.lower;
 		} else {

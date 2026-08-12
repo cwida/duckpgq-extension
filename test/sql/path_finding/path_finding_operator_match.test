@@ -96,7 +96,7 @@ ORDER BY dst;
 500	300
 500	400
 
-# Projecting the path value keeps the scalar path-materialization fallback.
+# Projecting path length uses the BIGINT result from the physical operator.
 query III
 FROM GRAPH_TABLE(operator_pg
     MATCH p = ANY SHORTEST
@@ -105,6 +105,25 @@ FROM GRAPH_TABLE(operator_pg
 );
 ----
 2	100	500
+
+# Distance aggregates use the same optimized path-length result.
+query IIII
+SELECT count(*), sum(len), min(len), max(len)
+FROM GRAPH_TABLE(operator_pg
+    MATCH p = ANY SHORTEST
+        (a:OperatorPerson WHERE a.id = 100)-[k:OperatorKnows]->*(b:OperatorPerson)
+    COLUMNS (path_length(p) AS len)
+);
+----
+5	6	0	2
+
+# The projected path length must still use the operator and the cached CSR.
+query I
+SELECT count(*)
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
+WHERE Phase = 'partitioned_csr_cache_hit';
+----
+3
 
 # This phase is only written by the physical operator.
 query I
