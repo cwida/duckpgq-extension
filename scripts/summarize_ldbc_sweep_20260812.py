@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """Aggregate and plot the 12 August 2026 LDBC SNB pathfinding sweep."""
 
 import csv
