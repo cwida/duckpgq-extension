@@ -2,6 +2,7 @@
 import argparse
 import csv
 import os
+import statistics
 import tempfile
 from pathlib import Path
 
@@ -23,53 +24,75 @@ def read_csv(path):
         return list(csv.DictReader(handle))
 
 
-def phase_path(results_root, dataset):
+def current_phase_paths(results_root, dataset):
     label = dataset.replace("-", "_")
-    return (
-        results_root
-        / f"graphalytics_{label}"
-        / "sql_match_cold_graphalytics_bfs_graphalytics_bfs_"
-        "pairsofficial_bfs_threads8_repeat0_phase_timing.csv"
+    directory = results_root / f"graphalytics_{label}"
+    pattern = (
+        "operator_graphalytics_bfs_graphalytics_bfs_"
+        "pairsofficial_bfs_threads8_repeat*_phase_timing.csv"
     )
+    return sorted(directory.glob(pattern))
+
+
+def mean_phase(paths, phase):
+    rows = []
+    for path in paths:
+        phases = {row["Phase"]: row for row in read_csv(path)}
+        rows.append(phases[phase])
+    if not rows:
+        raise RuntimeError(f"No rows found for phase {phase}")
+    return {
+        "time_s": statistics.mean(float(row["Time_ms"]) / 1000 for row in rows),
+        "memory_bytes": statistics.mean(int(row["MemoryBytes"]) for row in rows),
+        "edge_count": int(rows[0]["EdgeCount"]),
+        "partition_count": int(rows[0]["PartitionCount"]),
+    }
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results-root", type=Path, required=True)
     parser.add_argument("--baseline-csv", type=Path, required=True)
+    parser.add_argument("--previous-radix-csv", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     baseline = {row["dataset"]: row for row in read_csv(args.baseline_csv)}
+    previous_radix = {row["dataset"]: row for row in read_csv(args.previous_radix_csv)}
     records = []
     for dataset in DATASETS:
-        phases = {row["Phase"]: row for row in read_csv(phase_path(args.results_root, dataset))}
-        partition_phase = phases["endpoint_radix_partition"]
-        build_phase = phases["endpoint_partition_build"]
-        total_phase = phases["local_csr_forward"]
-        edge_count = int(partition_phase["EdgeCount"])
+        paths = current_phase_paths(args.results_root, dataset)
+        partition = mean_phase(paths, "endpoint_radix_partition")
+        build = mean_phase(paths, "endpoint_partition_build")
+        total = mean_phase(paths, "local_csr_forward")
+        buffer_peak = mean_phase(paths, "csr_build_buffer_manager_peak_delta")
+        swap_peak = mean_phase(paths, "csr_build_buffer_manager_swap_peak_delta")
+        edge_count = partition["edge_count"]
         vertex_count = int(baseline[dataset]["vertices"])
-        endpoint_collection_gib = edge_count * 16 / GIB
-        final_csr_gib = int(total_phase["MemoryBytes"]) / GIB
-        active_dense_count_gib = 8 * (vertex_count + 2) * 4 / GIB
+        endpoint_gib = partition["memory_bytes"] / GIB
+        final_csr_gib = total["memory_bytes"] / GIB
+        active_dense_gib = 8 * (vertex_count + 2) * 4 / GIB
         records.append(
             {
                 "dataset": dataset,
                 "vertices": vertex_count,
                 "edges": edge_count,
-                "legacy_csr_s": float(baseline[dataset]["csr_total_s"]),
-                "radix_partition_s": float(partition_phase["Time_ms"]) / 1000,
-                "partition_csr_build_s": float(build_phase["Time_ms"]) / 1000,
-                "radix_csr_s": float(total_phase["Time_ms"]) / 1000,
-                "speedup": float(baseline[dataset]["csr_total_s"])
-                / (float(total_phase["Time_ms"]) / 1000),
-                "endpoint_collection_gib": endpoint_collection_gib,
-                "active_dense_count_gib": active_dense_count_gib,
+                "repeats": len(paths),
+                "logical_partitions": partition["partition_count"],
+                "buffered_csr_s": float(baseline[dataset]["csr_total_s"]),
+                "radix_16b_csr_s": float(previous_radix[dataset]["radix_csr_s"]),
+                "packed_8b_partition_s": partition["time_s"],
+                "packed_8b_build_s": build["time_s"],
+                "packed_8b_csr_s": total["time_s"],
+                "speedup_vs_buffered": float(baseline[dataset]["csr_total_s"]) / total["time_s"],
+                "speedup_vs_radix_16b": float(previous_radix[dataset]["radix_csr_s"]) / total["time_s"],
+                "packed_endpoint_gib": endpoint_gib,
+                "active_dense_count_gib": active_dense_gib,
                 "final_csr_gib": final_csr_gib,
-                "core_memory_upper_bound_gib": (
-                    endpoint_collection_gib + active_dense_count_gib + final_csr_gib
-                ),
+                "packed_core_estimate_gib": endpoint_gib + active_dense_gib + final_csr_gib,
+                "duckdb_buffer_peak_delta_gib": buffer_peak["memory_bytes"] / GIB,
+                "duckdb_swap_peak_delta_gib": swap_peak["memory_bytes"] / GIB,
             }
         )
 
@@ -82,7 +105,7 @@ def main():
     fallback_phases = {row["Phase"]: row for row in read_csv(fallback_path)}
     two_pass_s = float(fallback_phases["local_csr_forward"]["Time_ms"]) / 1000
 
-    csv_path = args.output_dir / "graph500_radix_csr_comparison.csv"
+    csv_path = args.output_dir / "graph500_packed_radix_csr_comparison.csv"
     with csv_path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(records[0]))
         writer.writeheader()
@@ -90,59 +113,37 @@ def main():
 
     labels = [row["dataset"] for row in records]
     x = np.arange(len(records))
-    width = 0.34
-    fig, axes = plt.subplots(1, 2, figsize=(13.2, 5.4))
-
-    axes[0].bar(
-        x - width / 2,
-        [row["legacy_csr_s"] for row in records],
-        width,
-        label="Previous buffered builder",
-        color="#b55d60",
+    width = 0.25
+    fig, axes = plt.subplots(1, 2, figsize=(13.4, 5.4))
+    variants = (
+        ("Previous buffered", "buffered_csr_s", "#b55d60"),
+        ("Radix, 16-byte endpoint", "radix_16b_csr_s", "#7d6aa5"),
+        ("Radix, 8-byte endpoint", "packed_8b_csr_s", "#34699a"),
     )
-    axes[0].bar(
-        x + width / 2,
-        [row["radix_csr_s"] for row in records],
-        width,
-        label="Radix-partitioned construction",
-        color="#34699a",
-    )
-    axes[0].scatter(
-        [2],
-        [two_pass_s],
-        marker="D",
-        s=55,
-        color="#e07a3f",
-        label="Two-pass fallback",
-        zorder=3,
-    )
+    for index, (name, key, color) in enumerate(variants):
+        axes[0].bar(x + (index - 1) * width, [row[key] for row in records], width, label=name, color=color)
     for index, row in enumerate(records):
         axes[0].text(
-            index + width / 2,
-            row["radix_csr_s"] + 0.8,
-            f'{row["speedup"]:.2f}x',
+            index + width,
+            row["packed_8b_csr_s"] + 0.8,
+            f'{row["speedup_vs_radix_16b"]:.2f}x',
             ha="center",
-            va="bottom",
             fontsize=9,
             fontweight="bold",
             color="#254f75",
         )
     axes[0].set_xticks(x, labels)
     axes[0].set_ylabel("CSR construction time (seconds)")
-    axes[0].set_title("End-to-end CSR construction")
+    axes[0].set_title("CSR construction by builder version")
     axes[0].grid(axis="y", alpha=0.2)
     axes[0].legend(frameon=False, fontsize=8)
 
+    largest = records[-1]
     old = baseline["graph500-25"]
-    phase_labels = ["Previous buffered", "Two-pass", "Radix-partitioned"]
+    previous = previous_radix["graph500-25"]
+    phase_labels = ["Previous\nbuffered", "Two-pass", "Radix\n16-byte", "Radix\n8-byte"]
     phase_values = [
-        [
-            float(old["count_scan_s"]),
-            float(old["allocate_s"]),
-            float(old["fill_s"]),
-            float(old["sparse_finalize_s"]),
-            0,
-        ],
+        [float(old["count_scan_s"]), float(old["allocate_s"]), float(old["fill_s"]), float(old["sparse_finalize_s"]), 0],
         [
             float(fallback_phases["precount_scan"]["Time_ms"]) / 1000,
             float(fallback_phases["precount_allocate"]["Time_ms"]) / 1000,
@@ -150,19 +151,14 @@ def main():
             float(fallback_phases["precount_sparse_finalize"]["Time_ms"]) / 1000,
             0,
         ],
-        [records[-1]["radix_partition_s"], 0, 0, 0, records[-1]["partition_csr_build_s"]],
+        [float(previous["radix_partition_s"]), 0, 0, 0, float(previous["partition_csr_build_s"])],
+        [largest["packed_8b_partition_s"], 0, 0, 0, largest["packed_8b_build_s"]],
     ]
-    phase_names = [
-        "Count scan or radix partition",
-        "Allocate",
-        "Endpoint fill",
-        "Sparse finalize",
-        "Partition CSR build",
-    ]
+    phase_names = ["Count scan or radix partition", "Allocate", "Endpoint fill", "Sparse finalize", "Partition CSR build"]
     colors = ["#68a9a2", "#b55d60", "#34699a", "#e07a3f", "#7d6aa5"]
-    bottom = np.zeros(3)
-    for phase_idx, (phase_name, color) in enumerate(zip(phase_names, colors)):
-        values = [row[phase_idx] for row in phase_values]
+    bottom = np.zeros(len(phase_labels))
+    for phase_index, (phase_name, color) in enumerate(zip(phase_names, colors)):
+        values = [row[phase_index] for row in phase_values]
         axes[1].bar(phase_labels, values, bottom=bottom, label=phase_name, color=color)
         bottom += values
     axes[1].set_ylabel("Time (seconds)")
@@ -170,123 +166,87 @@ def main():
     axes[1].grid(axis="y", alpha=0.2)
     axes[1].legend(frameon=False, fontsize=8)
 
-    fig.suptitle("Radix partitioning removes the graph500-25 CSR construction collapse", fontsize=14)
+    fig.suptitle("Packed endpoints reduce radix CSR construction time", fontsize=14)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    plot_path = args.output_dir / "graph500_radix_csr_comparison.png"
-    fig.savefig(plot_path, dpi=180)
-    fig.savefig(args.output_dir / "graph500_radix_csr_comparison.svg")
+    time_plot = args.output_dir / "graph500_packed_radix_csr_comparison.png"
+    fig.savefig(time_plot, dpi=180)
+    fig.savefig(args.output_dir / "graph500_packed_radix_csr_comparison.svg")
     plt.close(fig)
 
-    largest = records[-1]
-    previous_memory = [float(baseline[label]["minimum_core_transient_gib"]) for label in labels]
-    radix_memory = [row["core_memory_upper_bound_gib"] for row in records]
-    fig, axes = plt.subplots(1, 2, figsize=(13.2, 5.4))
-    axes[0].bar(
-        x - width / 2,
-        previous_memory,
-        width,
-        label="Previous buffered builder",
-        color="#b55d60",
-    )
-    axes[0].bar(
-        x + width / 2,
-        radix_memory,
-        width,
-        label="Radix-partitioned builder",
-        color="#34699a",
-    )
-    axes[0].axhline(28.7, color="#e07a3f", linestyle="--", linewidth=1.5, label="DuckDB limit (28.7 GiB)")
-    axes[0].axhline(36.0, color="#333333", linestyle=":", linewidth=1.5, label="Physical memory (36 GiB)")
+    previous_memory = [float(previous_radix[label]["core_memory_upper_bound_gib"]) for label in labels]
+    packed_memory = [row["packed_core_estimate_gib"] for row in records]
+    measured_buffer = [row["duckdb_buffer_peak_delta_gib"] for row in records]
+    fig, axes = plt.subplots(1, 2, figsize=(13.4, 5.4))
+    axes[0].bar(x - width / 2, previous_memory, width, label="Radix, 16-byte endpoint", color="#7d6aa5")
+    axes[0].bar(x + width / 2, packed_memory, width, label="Radix, 8-byte endpoint", color="#34699a")
+    axes[0].plot(x, measured_buffer, "o--", color="#e07a3f", label="DuckDB buffer-manager peak increase")
     axes[0].set_xticks(x, labels)
-    axes[0].set_ylabel("Estimated core construction state (GiB)")
-    axes[0].set_title("Memory bound by graph scale")
+    axes[0].set_ylabel("Memory (GiB)")
+    axes[0].set_title("Construction memory by graph scale")
     axes[0].grid(axis="y", alpha=0.2)
     axes[0].legend(frameon=False, fontsize=8)
-    for index, value in enumerate(radix_memory):
-        reduction = previous_memory[index] / value
-        axes[0].text(
-            index + width / 2,
-            value + 0.6,
-            f"{reduction:.2f}x lower",
-            ha="center",
-            va="bottom",
-            fontsize=9,
-            fontweight="bold",
-            color="#254f75",
-        )
 
-    largest_old = baseline["graph500-25"]
-    breakdown_labels = ["Previous buffered", "Radix-partitioned"]
+    breakdown_labels = ["Radix\n16-byte", "Radix\n8-byte"]
     breakdown = {
-        "Endpoint collection": [float(largest_old["endpoint_spool_gib"]), largest["endpoint_collection_gib"]],
-        "Dense count arrays": [float(largest_old["dense_count_gib"]), largest["active_dense_count_gib"]],
-        "Allocated CSR state": [float(largest_old["edge_payload_gib"]), largest["final_csr_gib"]],
+        "Endpoint collection": [float(previous["endpoint_collection_gib"]), largest["packed_endpoint_gib"]],
+        "Active dense counts": [float(previous["active_dense_count_gib"]), largest["active_dense_count_gib"]],
+        "Final CSR": [float(previous["final_csr_gib"]), largest["final_csr_gib"]],
     }
-    breakdown_colors = ["#68a9a2", "#b55d60", "#34699a"]
     bottom = np.zeros(2)
-    for (name, values), color in zip(breakdown.items(), breakdown_colors):
+    for (name, values), color in zip(breakdown.items(), ["#68a9a2", "#b55d60", "#34699a"]):
         axes[1].bar(breakdown_labels, values, bottom=bottom, label=name, color=color)
         bottom += values
-    axes[1].axhline(28.7, color="#e07a3f", linestyle="--", linewidth=1.5)
     axes[1].set_ylabel("Estimated core construction state (GiB)")
     axes[1].set_title("graph500-25 memory breakdown")
     axes[1].grid(axis="y", alpha=0.2)
     axes[1].legend(frameon=False, fontsize=8)
     for index, value in enumerate(bottom):
-        axes[1].text(index, value + 0.6, f"{value:.2f} GiB", ha="center", va="bottom", fontsize=9, fontweight="bold")
+        axes[1].text(index, value + 0.5, f"{value:.2f} GiB", ha="center", fontsize=9, fontweight="bold")
 
-    fig.suptitle("Radix partitioning bounds dense CSR count memory by active workers", fontsize=14)
+    fig.suptitle("Packed endpoints cut retained endpoint memory in half", fontsize=14)
     fig.text(
         0.5,
-        0.015,
-        "Core estimate only. DuckDB blocks, joins, query state, and operating-system memory are additional.",
+        0.012,
+        "The core estimate and DuckDB buffer-manager metric have different scopes. The metric excludes C++ heap memory.",
         ha="center",
         fontsize=9,
         color="#5f6368",
     )
     fig.tight_layout(rect=(0, 0.04, 1, 0.95))
-    memory_plot_path = args.output_dir / "graph500_radix_csr_memory.png"
-    fig.savefig(memory_plot_path, dpi=180)
-    fig.savefig(args.output_dir / "graph500_radix_csr_memory.svg")
+    memory_plot = args.output_dir / "graph500_packed_radix_csr_memory.png"
+    fig.savefig(memory_plot, dpi=180)
+    fig.savefig(args.output_dir / "graph500_packed_radix_csr_memory.svg")
     plt.close(fig)
 
-    report_path = args.output_dir / "graph500_radix_csr_comparison.md"
+    report_path = args.output_dir / "graph500_packed_radix_csr_comparison.md"
     lines = [
-        "# Radix-partitioned CSR construction",
+        "# Packed radix CSR construction",
         "",
-        "All runs use 8 threads and pass the official Graphalytics BFS distance checks.",
+        "All runs use 8 threads, three repeats, and the official Graphalytics BFS result checks.",
         "",
-        "| Dataset | Vertices | Directed endpoint rows | Legacy CSR | Radix CSR | Speedup | Endpoint collection | Active dense counts | Final CSR | Core upper bound |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Dataset | Logical partitions | Buffered CSR | Radix 16-byte | Radix 8-byte | Gain vs. 16-byte | Endpoint data | Final CSR | DuckDB buffer peak increase |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in records:
         lines.append(
-            f"| {row['dataset']} | {row['vertices']:,} | {row['edges']:,} | "
-            f"{row['legacy_csr_s']:.2f} s | {row['radix_csr_s']:.2f} s | {row['speedup']:.2f}x | "
-            f"{row['endpoint_collection_gib']:.2f} GiB | {row['active_dense_count_gib']:.2f} GiB | "
-            f"{row['final_csr_gib']:.2f} GiB | {row['core_memory_upper_bound_gib']:.2f} GiB |"
+            f"| {row['dataset']} | {row['logical_partitions']} | {row['buffered_csr_s']:.2f} s | "
+            f"{row['radix_16b_csr_s']:.2f} s | {row['packed_8b_csr_s']:.2f} s | "
+            f"{row['speedup_vs_radix_16b']:.2f}x | {row['packed_endpoint_gib']:.2f} GiB | "
+            f"{row['final_csr_gib']:.2f} GiB | {row['duckdb_buffer_peak_delta_gib']:.2f} GiB |"
         )
     lines.extend(
         [
             "",
-            "The new builder keeps endpoint rows in DuckDB radix partitions. A worker scans one destination "
-            "partition, creates one dense source-count array, fills a compact CSR partition, changes it to sparse "
-            "row metadata, and releases the endpoint partition.",
-            "",
-            f"For graph500-25, CSR construction decreased from {largest['legacy_csr_s']:.2f} seconds to "
-            f"{largest['radix_csr_s']:.2f} seconds. This is a {largest['speedup']:.2f}x speedup. The two-pass "
-            f"fallback took {two_pass_s:.2f} seconds, so radix construction is {two_pass_s / largest['radix_csr_s']:.2f}x faster.",
-            "",
-            "The result removes the dense `partition_count x vertex_count` count matrix. Dense count memory is "
-            "now bounded by the number of active CSR workers.",
-            "The core memory upper bound is the logical endpoint payload plus the final CSR plus one dense count "
-            "array per active worker. It does not include DuckDB block, query, or operating-system overhead.",
+            "Each retained endpoint is one 64-bit value. It contains the source row ID, destination partition, and local destination ID.",
+            "The logical CSR partition count is separate from the power-of-two radix bucket count. This avoids empty CSR partitions.",
+            "Workers build the largest logical partitions first. This lets large endpoint partitions be released earlier.",
+            "The DuckDB buffer-manager peak metric does not include the final CSR vectors or other normal C++ heap allocations.",
         ]
     )
     report_path.write_text("\n".join(lines) + "\n")
     print(csv_path)
-    print(plot_path)
-    print(memory_plot_path)
+    print(time_plot)
+    print(memory_plot)
     print(report_path)
 
 

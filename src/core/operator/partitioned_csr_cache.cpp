@@ -10,29 +10,40 @@
 
 namespace duckdb {
 
-idx_t GetBufferedPartitionedCSRRadixBits(idx_t vertex_count, idx_t thread_count, ClientContext &context) {
+static idx_t GetBufferedPartitionedCSRRequiredPartitionCount(idx_t vertex_count, idx_t thread_count,
+                                                             ClientContext &context) {
 	auto target_partition_count =
 	    std::max<idx_t>(1, thread_count) * (1 + std::max<int32_t>(1, GetLightPartitionMultiplier(context)));
 	auto minimum_partition_count = std::max<idx_t>(1, (vertex_count + 2 + UINT16_MAX - 1) / UINT16_MAX);
-	auto required_partition_count = std::max(target_partition_count, minimum_partition_count);
+	auto maximum_partition_count = RadixPartitioning::NumberOfPartitions(RadixPartitioning::MAX_RADIX_BITS);
+	if (minimum_partition_count > maximum_partition_count) {
+		throw OutOfRangeException(
+		    "Radix-partitioned endpoint construction supports at most %llu vertices with uint16 destinations",
+		    maximum_partition_count * UINT16_MAX);
+	}
+	return std::min(std::max(target_partition_count, minimum_partition_count), maximum_partition_count);
+}
+
+idx_t GetBufferedPartitionedCSRRadixBits(idx_t vertex_count, idx_t thread_count, ClientContext &context) {
+	auto required_partition_count =
+	    GetBufferedPartitionedCSRRequiredPartitionCount(vertex_count, thread_count, context);
 	idx_t radix_bits = 0;
 	idx_t partition_count = 1;
 	while (partition_count < required_partition_count && radix_bits < RadixPartitioning::MAX_RADIX_BITS) {
 		partition_count <<= 1;
 		radix_bits++;
 	}
-	if (partition_count < minimum_partition_count) {
-		throw OutOfRangeException(
-		    "Radix-partitioned endpoint construction supports at most %llu vertices with uint16 destinations",
-		    RadixPartitioning::NumberOfPartitions(RadixPartitioning::MAX_RADIX_BITS) * UINT16_MAX);
-	}
 	return radix_bits;
 }
 
 idx_t GetBufferedPartitionedCSRWidth(idx_t vertex_count, idx_t thread_count, ClientContext &context) {
-	auto radix_bits = GetBufferedPartitionedCSRRadixBits(vertex_count, thread_count, context);
-	auto partition_count = RadixPartitioning::NumberOfPartitions(radix_bits);
+	auto partition_count = GetBufferedPartitionedCSRRequiredPartitionCount(vertex_count, thread_count, context);
 	return std::max<idx_t>(1, (vertex_count + 2 + partition_count - 1) / partition_count);
+}
+
+idx_t GetBufferedPartitionedCSRLogicalPartitionCount(idx_t vertex_count, idx_t thread_count, ClientContext &context) {
+	auto partition_width = GetBufferedPartitionedCSRWidth(vertex_count, thread_count, context);
+	return std::max<idx_t>(1, (vertex_count + 2 + partition_width - 1) / partition_width);
 }
 
 string GetBufferedPartitionedCSRCacheKey(ClientContext &context, const string &base_cache_key, idx_t vertex_count,
@@ -58,10 +69,12 @@ string GetBufferedPartitionedCSRCacheKey(ClientContext &context, const string &b
 	auto partition_width = GetBufferedPartitionedCSRWidth(vertex_count, thread_count, context);
 	std::ostringstream key;
 	key << std::setprecision(std::numeric_limits<double>::max_digits10);
-	key << "partitioned-csr-v3|graph=" << base_cache_key.size() << ":" << base_cache_key;
+	key << "partitioned-csr-v4|graph=" << base_cache_key.size() << ":" << base_cache_key;
 	key << "|vertices=" << vertex_count + 2 << "|edges=" << edge_count;
 	key << "|input=" << (radix_partitioned_input ? "radix-partitioned-endpoints" : "precounted-endpoints");
 	key << "|partition_width=" << partition_width;
+	key << "|partition_count="
+	    << GetBufferedPartitionedCSRLogicalPartitionCount(vertex_count, thread_count, context);
 	key << "|threads=" << thread_count;
 	key << "|forward=" << build_forward;
 	key << "|reverse=" << build_reverse;

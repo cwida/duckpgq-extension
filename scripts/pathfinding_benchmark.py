@@ -1810,8 +1810,15 @@ def read_phase_timing(benchmark_prefix):
         "precount_sparse_finalize_s": "",
         "endpoint_radix_partition_s": "",
         "endpoint_radix_partition_memory_bytes": "",
+        "endpoint_logical_partition_count": "",
         "endpoint_partition_build_s": "",
         "endpoint_partition_build_memory_bytes": "",
+        "csr_build_buffer_manager_baseline_bytes": "",
+        "csr_build_buffer_manager_peak_bytes": "",
+        "csr_build_buffer_manager_peak_delta_bytes": "",
+        "csr_build_swap_baseline_bytes": "",
+        "csr_build_swap_peak_bytes": "",
+        "csr_build_swap_peak_delta_bytes": "",
         "local_csr_forward_s": "",
         "local_csr_reverse_s": "",
         "local_csr_pull_s": "",
@@ -1883,8 +1890,10 @@ def read_phase_timing(benchmark_prefix):
     precount_sparse_finalize_ms = 0.0
     endpoint_radix_partition_ms = 0.0
     endpoint_radix_partition_memory = ""
+    endpoint_logical_partition_count = ""
     endpoint_partition_build_ms = 0.0
     endpoint_partition_build_memory = ""
+    csr_memory_metrics = {}
     with path.open(newline="") as handle:
         for row in csv.DictReader(handle):
             phase = row["Phase"]
@@ -1909,9 +1918,12 @@ def read_phase_timing(benchmark_prefix):
             elif phase == "endpoint_radix_partition":
                 endpoint_radix_partition_ms += time_ms
                 endpoint_radix_partition_memory = row["MemoryBytes"]
+                endpoint_logical_partition_count = row["PartitionCount"]
             elif phase == "endpoint_partition_build":
                 endpoint_partition_build_ms += time_ms
                 endpoint_partition_build_memory = row["MemoryBytes"]
+            elif phase.startswith("csr_build_buffer_manager_"):
+                csr_memory_metrics[phase] = row["MemoryBytes"]
             elif phase == "local_csr_forward":
                 local_csr_forward_ms += time_ms
                 local_csr_forward_memory = row["MemoryBytes"]
@@ -1972,9 +1984,28 @@ def read_phase_timing(benchmark_prefix):
     if endpoint_radix_partition_ms:
         result["endpoint_radix_partition_s"] = f"{endpoint_radix_partition_ms / 1000.0:.6f}"
         result["endpoint_radix_partition_memory_bytes"] = endpoint_radix_partition_memory
+        result["endpoint_logical_partition_count"] = endpoint_logical_partition_count
     if endpoint_partition_build_ms:
         result["endpoint_partition_build_s"] = f"{endpoint_partition_build_ms / 1000.0:.6f}"
         result["endpoint_partition_build_memory_bytes"] = endpoint_partition_build_memory
+    result["csr_build_buffer_manager_baseline_bytes"] = csr_memory_metrics.get(
+        "csr_build_buffer_manager_baseline", ""
+    )
+    result["csr_build_buffer_manager_peak_bytes"] = csr_memory_metrics.get(
+        "csr_build_buffer_manager_peak", ""
+    )
+    result["csr_build_buffer_manager_peak_delta_bytes"] = csr_memory_metrics.get(
+        "csr_build_buffer_manager_peak_delta", ""
+    )
+    result["csr_build_swap_baseline_bytes"] = csr_memory_metrics.get(
+        "csr_build_buffer_manager_swap_baseline", ""
+    )
+    result["csr_build_swap_peak_bytes"] = csr_memory_metrics.get(
+        "csr_build_buffer_manager_swap_peak", ""
+    )
+    result["csr_build_swap_peak_delta_bytes"] = csr_memory_metrics.get(
+        "csr_build_buffer_manager_swap_peak_delta", ""
+    )
     if local_csr_forward_ms:
         result["local_csr_forward_s"] = f"{local_csr_forward_ms / 1000.0:.6f}"
         result["local_csr_forward_memory_bytes"] = local_csr_forward_memory
@@ -2102,9 +2133,26 @@ def summarize_results(results):
                 "endpoint_radix_partition_memory_bytes_mean": mean_int_optional(
                     rows, "endpoint_radix_partition_memory_bytes"
                 ),
+                "endpoint_logical_partition_count_mean": mean_int_optional(
+                    rows, "endpoint_logical_partition_count"
+                ),
                 "endpoint_partition_build_mean_s": mean_optional(rows, "endpoint_partition_build_s"),
                 "endpoint_partition_build_memory_bytes_mean": mean_int_optional(
                     rows, "endpoint_partition_build_memory_bytes"
+                ),
+                "csr_build_buffer_manager_baseline_bytes_mean": mean_int_optional(
+                    rows, "csr_build_buffer_manager_baseline_bytes"
+                ),
+                "csr_build_buffer_manager_peak_bytes_mean": mean_int_optional(
+                    rows, "csr_build_buffer_manager_peak_bytes"
+                ),
+                "csr_build_buffer_manager_peak_delta_bytes_mean": mean_int_optional(
+                    rows, "csr_build_buffer_manager_peak_delta_bytes"
+                ),
+                "csr_build_swap_baseline_bytes_mean": mean_int_optional(rows, "csr_build_swap_baseline_bytes"),
+                "csr_build_swap_peak_bytes_mean": mean_int_optional(rows, "csr_build_swap_peak_bytes"),
+                "csr_build_swap_peak_delta_bytes_mean": mean_int_optional(
+                    rows, "csr_build_swap_peak_delta_bytes"
                 ),
                 "local_csr_forward_mean_s": mean_optional(rows, "local_csr_forward_s"),
                 "local_csr_forward_stdev_s": stdev_optional(rows, "local_csr_forward_s"),
@@ -2199,8 +2247,15 @@ def summary_fieldnames():
         "precount_sparse_finalize_s",
         "endpoint_radix_partition_s",
         "endpoint_radix_partition_memory_bytes",
+        "endpoint_logical_partition_count",
         "endpoint_partition_build_s",
         "endpoint_partition_build_memory_bytes",
+        "csr_build_buffer_manager_baseline_bytes",
+        "csr_build_buffer_manager_peak_bytes",
+        "csr_build_buffer_manager_peak_delta_bytes",
+        "csr_build_swap_baseline_bytes",
+        "csr_build_swap_peak_bytes",
+        "csr_build_swap_peak_delta_bytes",
         "local_csr_forward_s",
         "local_csr_reverse_s",
         "local_csr_pull_s",
@@ -2289,8 +2344,15 @@ def stats_fieldnames():
         "precount_sparse_finalize_mean_s",
         "endpoint_radix_partition_mean_s",
         "endpoint_radix_partition_memory_bytes_mean",
+        "endpoint_logical_partition_count_mean",
         "endpoint_partition_build_mean_s",
         "endpoint_partition_build_memory_bytes_mean",
+        "csr_build_buffer_manager_baseline_bytes_mean",
+        "csr_build_buffer_manager_peak_bytes_mean",
+        "csr_build_buffer_manager_peak_delta_bytes_mean",
+        "csr_build_swap_baseline_bytes_mean",
+        "csr_build_swap_peak_bytes_mean",
+        "csr_build_swap_peak_delta_bytes_mean",
         "local_csr_forward_mean_s",
         "local_csr_forward_stdev_s",
         "local_csr_reverse_mean_s",

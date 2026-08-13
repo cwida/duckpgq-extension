@@ -82,6 +82,30 @@ WHERE Phase = 'endpoint_partition_build';
 ----
 1
 
+# The direct builder retains one packed 64-bit endpoint per graph edge and
+# creates only the logical destination partitions needed by this graph.
+query II
+SELECT MemoryBytes, PartitionCount
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
+WHERE Phase = 'endpoint_radix_partition';
+----
+48	7
+
+# Diagnostic runs record DuckDB buffer-manager and temporary-file peaks.
+query I
+SELECT count(*)
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
+WHERE Phase IN (
+    'csr_build_buffer_manager_baseline',
+    'csr_build_buffer_manager_peak',
+    'csr_build_buffer_manager_peak_delta',
+	'csr_build_buffer_manager_swap_baseline',
+	'csr_build_buffer_manager_swap_peak',
+	'csr_build_buffer_manager_swap_peak_delta'
+);
+----
+6
+
 query I
 SELECT count(*)
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')

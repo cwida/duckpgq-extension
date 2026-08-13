@@ -12,6 +12,7 @@
 #include "duckdb/common/types/hyperloglog.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
+#include "duckdb/storage/buffer_manager.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
 #include <duckpgq/core/operator/iterative_length/bidirectional_iterative_length_state.hpp>
 #include <duckpgq/core/operator/iterative_length/grouped_iterative_length_event.hpp>
@@ -27,6 +28,7 @@
 #include <fstream>
 #include <iomanip>
 #include <mutex>
+#include <numeric>
 #include <sstream>
 #include <thread>
 #include <unordered_map>
@@ -36,6 +38,50 @@ namespace duckdb {
 namespace {
 
 static mutex path_finding_operator_phase_timing_lock;
+
+static void UpdatePeak(std::atomic<idx_t> &peak, idx_t value) {
+	auto previous = peak.load(std::memory_order_relaxed);
+	while (previous < value &&
+	       !peak.compare_exchange_weak(previous, value, std::memory_order_relaxed, std::memory_order_relaxed)) {
+	}
+}
+
+static void SampleCSRBuildMemory(PathFindingGlobalSinkState &gstate) {
+	if (!GetPathFindingBenchmarkOption(gstate.context_)) {
+		return;
+	}
+	auto &buffer_manager = BufferManager::GetBufferManager(gstate.context_);
+	UpdatePeak(gstate.csr_build_buffer_peak_bytes, buffer_manager.GetUsedMemory());
+	UpdatePeak(gstate.csr_build_swap_peak_bytes, buffer_manager.GetUsedSwap());
+}
+
+static uint32_t UnpackPartitionedEndpointSource(hash_t endpoint, idx_t radix_bits);
+
+static hash_t PackPartitionedEndpoint(uint32_t source, idx_t partition_idx, uint16_t local_destination,
+	                                  idx_t radix_bits) {
+	D_ASSERT(radix_bits <= RadixPartitioning::MAX_RADIX_BITS);
+	auto source_low_bits = 32 - radix_bits;
+	auto source_low_mask = (hash_t(1) << source_low_bits) - 1;
+	hash_t result = local_destination;
+	result |= (static_cast<hash_t>(source) & source_low_mask) << 16;
+	result |= static_cast<hash_t>(partition_idx) << RadixPartitioning::Shift(radix_bits);
+	if (radix_bits > 0) {
+		result |= static_cast<hash_t>(source >> source_low_bits) << 48;
+	}
+	D_ASSERT(UnpackPartitionedEndpointSource(result, radix_bits) == source);
+	D_ASSERT(RadixPartitioning::ApplyMask(result, radix_bits) == partition_idx);
+	return result;
+}
+
+static uint32_t UnpackPartitionedEndpointSource(hash_t endpoint, idx_t radix_bits) {
+	auto source_low_bits = 32 - radix_bits;
+	auto source_low_mask = (hash_t(1) << source_low_bits) - 1;
+	auto source = static_cast<uint32_t>((endpoint >> 16) & source_low_mask);
+	if (radix_bits > 0) {
+		source |= static_cast<uint32_t>(endpoint >> 48) << source_low_bits;
+	}
+	return source;
+}
 
 void AppendOperatorPhaseTiming(ClientContext &context, const string &phase, idx_t thread_count, idx_t pair_count,
                                idx_t unique_count, idx_t duplicate_count, double time_ms, idx_t memory_bytes) {
@@ -882,15 +928,17 @@ static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, i
 		endpoint_partition->InitializeScan(count_scan);
 		endpoint_partition->InitializeScanChunk(count_scan, input);
 		while (endpoint_partition->Scan(count_scan, input)) {
-			UnifiedVectorFormat src_format;
-			input.data[0].ToUnifiedFormat(src_format);
-			auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
+			UnifiedVectorFormat endpoint_format;
+			input.data[0].ToUnifiedFormat(endpoint_format);
+			auto endpoint_data = UnifiedVectorFormat::GetData<hash_t>(endpoint_format);
 			for (idx_t row = 0; row < input.size(); row++) {
-				auto src = src_data[src_format.sel->get_index(row)];
-				if (src < 0 || static_cast<idx_t>(src) >= gstate.vertex_count) {
-					throw InternalException("Partitioned endpoint source is outside the vertex rowid range: %lld", src);
+				auto endpoint = endpoint_data[endpoint_format.sel->get_index(row)];
+				auto source = UnpackPartitionedEndpointSource(endpoint, gstate.endpoint_radix_bits);
+				if (static_cast<idx_t>(source) >= gstate.vertex_count ||
+				    RadixPartitioning::ApplyMask(endpoint, gstate.endpoint_radix_bits) != partition_idx) {
+					throw InternalException("Packed partitioned endpoint is outside its source or destination range");
 				}
-				csr_partition->v[static_cast<idx_t>(src) + 1].fetch_add(1, std::memory_order_relaxed);
+				csr_partition->v[static_cast<idx_t>(source) + 1].fetch_add(1, std::memory_order_relaxed);
 			}
 			endpoint_count += input.size();
 		}
@@ -907,6 +955,7 @@ static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, i
 	csr_partition->expected_sparse_row_count = sparse_row_count;
 	csr_partition->e.resize(NumericCast<idx_t>(running_sum));
 	csr_partition->initialized_e = true;
+	SampleCSRBuildMemory(gstate);
 
 	if (endpoint_partition) {
 		ColumnDataScanState fill_scan;
@@ -914,28 +963,25 @@ static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, i
 		endpoint_partition->InitializeScan(fill_scan);
 		endpoint_partition->InitializeScanChunk(fill_scan, input);
 		while (endpoint_partition->Scan(fill_scan, input)) {
-			UnifiedVectorFormat src_format;
-			UnifiedVectorFormat encoded_dst_format;
-			input.data[0].ToUnifiedFormat(src_format);
-			input.data[1].ToUnifiedFormat(encoded_dst_format);
-			auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
-			auto encoded_dst_data = UnifiedVectorFormat::GetData<hash_t>(encoded_dst_format);
+			UnifiedVectorFormat endpoint_format;
+			input.data[0].ToUnifiedFormat(endpoint_format);
+			auto endpoint_data = UnifiedVectorFormat::GetData<hash_t>(endpoint_format);
 			for (idx_t row = 0; row < input.size(); row++) {
-				auto src = src_data[src_format.sel->get_index(row)];
-				auto encoded_dst = encoded_dst_data[encoded_dst_format.sel->get_index(row)];
-				if (src < 0 || static_cast<idx_t>(src) >= gstate.vertex_count) {
-					throw InternalException("Partitioned endpoint source is outside the vertex rowid range: %lld", src);
-				}
-				if (RadixPartitioning::ApplyMask(encoded_dst, gstate.endpoint_radix_bits) != partition_idx ||
-				    (encoded_dst & UINT16_MAX) >= gstate.endpoint_partition_width) {
+				auto endpoint = endpoint_data[endpoint_format.sel->get_index(row)];
+				auto source = UnpackPartitionedEndpointSource(endpoint, gstate.endpoint_radix_bits);
+				auto local_destination = endpoint & UINT16_MAX;
+				if (static_cast<idx_t>(source) >= gstate.vertex_count ||
+				    RadixPartitioning::ApplyMask(endpoint, gstate.endpoint_radix_bits) != partition_idx ||
+				    local_destination >= gstate.endpoint_partition_width) {
 					throw InternalException(
-					    "Partitioned endpoint destination does not match its destination partition");
+					    "Packed partitioned endpoint does not match its source or destination partition");
 				}
-				auto position = csr_partition->v[static_cast<idx_t>(src) + 1].fetch_add(1, std::memory_order_relaxed);
+				auto position =
+				    csr_partition->v[static_cast<idx_t>(source) + 1].fetch_add(1, std::memory_order_relaxed);
 				if (position >= csr_partition->e.size()) {
 					throw InternalException("Partitioned endpoint cursor exceeded its allocated CSR partition");
 				}
-				csr_partition->e[position] = NumericCast<uint16_t>(encoded_dst & UINT16_MAX);
+				csr_partition->e[position] = NumericCast<uint16_t>(local_destination);
 			}
 		}
 	}
@@ -943,6 +989,7 @@ static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, i
 	csr_partition->FinalizeSparseRows();
 	gstate.endpoint_partition_csrs[partition_idx] = std::move(csr_partition);
 	endpoint_partition.reset();
+	SampleCSRBuildMemory(gstate);
 	return endpoint_count;
 }
 
@@ -956,10 +1003,11 @@ public:
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
 		idx_t built_count = 0;
 		while (true) {
-			auto partition_idx = gstate.next_endpoint_partition.fetch_add(1, std::memory_order_relaxed);
-			if (partition_idx >= gstate.endpoint_partition_csrs.size()) {
+			auto build_order_idx = gstate.next_endpoint_partition.fetch_add(1, std::memory_order_relaxed);
+			if (build_order_idx >= gstate.endpoint_partition_build_order.size()) {
 				break;
 			}
+			auto partition_idx = gstate.endpoint_partition_build_order[build_order_idx];
 			built_count += BuildCSRFromEndpointPartition(gstate, partition_idx);
 		}
 		gstate.built_endpoint_count.fetch_add(built_count, std::memory_order_relaxed);
@@ -1018,6 +1066,29 @@ public:
 		    std::chrono::duration<double, std::milli>(end_time - gstate.endpoint_build_start).count(), memory_bytes);
 		gstate.local_csr_state->partition_csrs = gstate.endpoint_partition_csrs;
 		gstate.endpoint_partition_data.reset();
+		SampleCSRBuildMemory(gstate);
+		auto buffer_peak = gstate.csr_build_buffer_peak_bytes.load(std::memory_order_relaxed);
+		auto swap_peak = gstate.csr_build_swap_peak_bytes.load(std::memory_order_relaxed);
+		AppendOperatorPhaseTiming(gstate.context_, "csr_build_buffer_manager_baseline", gstate.num_threads,
+		                          gstate.pair_stats.pair_count, gstate.endpoint_count,
+		                          gstate.endpoint_partition_csrs.size(), 0, gstate.csr_build_buffer_baseline_bytes);
+		AppendOperatorPhaseTiming(gstate.context_, "csr_build_buffer_manager_peak", gstate.num_threads,
+		                          gstate.pair_stats.pair_count, gstate.endpoint_count,
+		                          gstate.endpoint_partition_csrs.size(), 0, buffer_peak);
+		AppendOperatorPhaseTiming(
+		    gstate.context_, "csr_build_buffer_manager_peak_delta", gstate.num_threads, gstate.pair_stats.pair_count,
+		    gstate.endpoint_count, gstate.endpoint_partition_csrs.size(), 0,
+		    buffer_peak > gstate.csr_build_buffer_baseline_bytes ? buffer_peak - gstate.csr_build_buffer_baseline_bytes : 0);
+		AppendOperatorPhaseTiming(gstate.context_, "csr_build_buffer_manager_swap_peak", gstate.num_threads,
+		                          gstate.pair_stats.pair_count, gstate.endpoint_count,
+		                          gstate.endpoint_partition_csrs.size(), 0, swap_peak);
+		AppendOperatorPhaseTiming(gstate.context_, "csr_build_buffer_manager_swap_baseline", gstate.num_threads,
+		                          gstate.pair_stats.pair_count, gstate.endpoint_count,
+		                          gstate.endpoint_partition_csrs.size(), 0, gstate.csr_build_swap_baseline_bytes);
+		AppendOperatorPhaseTiming(
+		    gstate.context_, "csr_build_buffer_manager_swap_peak_delta", gstate.num_threads,
+		    gstate.pair_stats.pair_count, gstate.endpoint_count, gstate.endpoint_partition_csrs.size(), 0,
+		    swap_peak > gstate.csr_build_swap_baseline_bytes ? swap_peak - gstate.csr_build_swap_baseline_bytes : 0);
 	}
 
 private:
@@ -1476,7 +1547,7 @@ void PathFindingLocalSinkState::SinkBufferedEndpoints(PathFindingGlobalSinkState
 		local_endpoint_partition_data = gstate.endpoint_partition_data->CreateShared();
 		endpoint_partition_append_state = make_uniq<PartitionedColumnDataAppendState>();
 		local_endpoint_partition_data->InitializeAppendState(*endpoint_partition_append_state);
-		endpoint_partition_chunk.Initialize(context, {LogicalType::BIGINT, LogicalType::HASH});
+		endpoint_partition_chunk.Initialize(context, {LogicalType::HASH});
 	}
 
 	UnifiedVectorFormat src_format;
@@ -1487,8 +1558,7 @@ void PathFindingLocalSinkState::SinkBufferedEndpoints(PathFindingGlobalSinkState
 	auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
 	endpoint_partition_chunk.Reset();
 	endpoint_partition_chunk.SetChildCardinality(input.size());
-	auto output_src = FlatVector::Writer<int64_t>(endpoint_partition_chunk.data[0], input.size());
-	auto output_encoded_dst = FlatVector::Writer<hash_t>(endpoint_partition_chunk.data[1], input.size());
+	auto output_endpoint = FlatVector::Writer<hash_t>(endpoint_partition_chunk.data[0], input.size());
 	for (idx_t row = 0; row < input.size(); row++) {
 		auto src_idx = src_format.sel->get_index(row);
 		auto dst_idx = dst_format.sel->get_index(row);
@@ -1503,9 +1573,12 @@ void PathFindingLocalSinkState::SinkBufferedEndpoints(PathFindingGlobalSinkState
 		}
 		auto partition_idx = static_cast<idx_t>(dst) / gstate.endpoint_partition_width;
 		auto local_dst = static_cast<idx_t>(dst) - partition_idx * gstate.endpoint_partition_width;
-		output_src.WriteValue(src);
-		output_encoded_dst.WriteValue(
-		    (static_cast<hash_t>(partition_idx) << RadixPartitioning::Shift(gstate.endpoint_radix_bits)) | local_dst);
+		if (partition_idx >= gstate.endpoint_logical_partition_count || local_dst > UINT16_MAX) {
+			throw InternalException("Partitioned endpoint is outside the logical destination partition range");
+		}
+		output_endpoint.WriteValue(PackPartitionedEndpoint(NumericCast<uint32_t>(src), partition_idx,
+		                                                       NumericCast<uint16_t>(local_dst),
+		                                                       gstate.endpoint_radix_bits));
 	}
 	local_endpoint_partition_data->Append(*endpoint_partition_append_state, endpoint_partition_chunk);
 	local_counted_endpoint_count += input.size();
@@ -1574,11 +1647,21 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 	if (buffered_edge_input) {
 		endpoint_radix_bits = GetBufferedPartitionedCSRRadixBits(vertex_count, num_threads, context);
 		endpoint_partition_width = GetBufferedPartitionedCSRWidth(vertex_count, num_threads, context);
-		endpoint_partition_data = make_uniq<RadixPartitionedColumnData>(
-		    context, vector<LogicalType> {LogicalType::BIGINT, LogicalType::HASH}, endpoint_radix_bits, 1);
+		endpoint_logical_partition_count =
+		    GetBufferedPartitionedCSRLogicalPartitionCount(vertex_count, num_threads, context);
+		endpoint_partition_data = make_uniq<RadixPartitionedColumnData>(context,
+		                                                                     vector<LogicalType> {LogicalType::HASH},
+		                                                                     endpoint_radix_bits, 0);
 		// Ensure that an empty graph also has all destination partitions.
 		auto empty_partitions = endpoint_partition_data->CreateShared();
 		endpoint_partition_data->Combine(*empty_partitions);
+		if (GetPathFindingBenchmarkOption(context)) {
+			auto &buffer_manager = BufferManager::GetBufferManager(context);
+			csr_build_buffer_baseline_bytes = buffer_manager.GetUsedMemory();
+			csr_build_swap_baseline_bytes = buffer_manager.GetUsedSwap();
+			csr_build_buffer_peak_bytes.store(csr_build_buffer_baseline_bytes, std::memory_order_relaxed);
+			csr_build_swap_peak_bytes.store(csr_build_swap_baseline_bytes, std::memory_order_relaxed);
+		}
 	}
 	csr = nullptr;
 
@@ -1670,6 +1753,7 @@ SinkCombineResultType PhysicalPathFinding::Combine(ExecutionContext &context, Op
 				lstate.local_endpoint_partition_data.reset();
 				lstate.endpoint_partition_append_state.reset();
 			}
+			SampleCSRBuildMemory(gstate);
 			return SinkCombineResultType::FINISHED;
 		}
 		if (!lstate.endpoint_metadata_initialized) {
@@ -1759,15 +1843,28 @@ static void FinalizePartitionedEndpointInput(PathFindingGlobalSinkState &gstate,
 	}
 	auto partition_end = std::chrono::steady_clock::now();
 	auto &endpoint_partitions = gstate.endpoint_partition_data->GetPartitions();
+	if (endpoint_partitions.size() < gstate.endpoint_logical_partition_count) {
+		throw InternalException("Radix endpoint input has fewer buckets than logical CSR partitions");
+	}
 	// ColumnDataCollection::SizeInBytes counts a shared allocator once per segment.
 	// Report the logical endpoint payload so the metric does not multiply shared DuckDB blocks.
-	gstate.endpoint_partition_bytes = gstate.counted_endpoint_count * (sizeof(int64_t) + sizeof(hash_t));
+	gstate.endpoint_partition_bytes = gstate.counted_endpoint_count * sizeof(hash_t);
 	gstate.endpoint_partition_csrs.clear();
-	gstate.endpoint_partition_csrs.resize(endpoint_partitions.size());
+	gstate.endpoint_partition_csrs.resize(gstate.endpoint_logical_partition_count);
+	gstate.endpoint_partition_build_order.resize(gstate.endpoint_logical_partition_count);
+	std::iota(gstate.endpoint_partition_build_order.begin(), gstate.endpoint_partition_build_order.end(), 0);
+	std::stable_sort(gstate.endpoint_partition_build_order.begin(), gstate.endpoint_partition_build_order.end(),
+	                 [&](idx_t left, idx_t right) {
+		                 auto left_count = endpoint_partitions[left] ? endpoint_partitions[left]->Count() : 0;
+		                 auto right_count = endpoint_partitions[right] ? endpoint_partitions[right]->Count() : 0;
+		                 return left_count > right_count;
+	                 });
+	gstate.next_endpoint_partition.store(0, std::memory_order_relaxed);
 	gstate.endpoint_count = gstate.counted_endpoint_count;
+	SampleCSRBuildMemory(gstate);
 	AppendOperatorPhaseTiming(
 	    context, "endpoint_radix_partition", gstate.num_threads, gstate.pair_stats.pair_count, gstate.endpoint_count,
-	    endpoint_partitions.size(),
+	    gstate.endpoint_logical_partition_count,
 	    std::chrono::duration<double, std::milli>(partition_end - gstate.endpoint_build_start).count(),
 	    gstate.endpoint_partition_bytes);
 	gstate.endpoint_fill_start = partition_end;

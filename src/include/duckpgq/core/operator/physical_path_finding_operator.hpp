@@ -166,6 +166,7 @@ public:
 	unique_ptr<RadixPartitionedColumnData> endpoint_partition_data;
 	std::atomic<idx_t> next_endpoint_partition {0};
 	std::atomic<idx_t> built_endpoint_count {0};
+	std::vector<idx_t> endpoint_partition_build_order;
 	std::vector<std::vector<LocalCSRBuildPartition>> endpoint_build_runs;
 	std::vector<shared_ptr<LocalCSR>> endpoint_partition_csrs;
 	idx_t counted_endpoint_count = 0;
@@ -173,8 +174,13 @@ public:
 	idx_t vertex_count = 0;
 	idx_t expected_edge_count = 0;
 	idx_t endpoint_partition_width = 0;
+	idx_t endpoint_logical_partition_count = 0;
 	idx_t endpoint_radix_bits = 0;
 	idx_t endpoint_partition_bytes = 0;
+	idx_t csr_build_buffer_baseline_bytes = 0;
+	idx_t csr_build_swap_baseline_bytes = 0;
+	std::atomic<idx_t> csr_build_buffer_peak_bytes {0};
+	std::atomic<idx_t> csr_build_swap_peak_bytes {0};
 	bool endpoint_counts_initialized = false;
 	bool endpoint_counts_finalized = false;
 	bool endpoint_build_started = false;
