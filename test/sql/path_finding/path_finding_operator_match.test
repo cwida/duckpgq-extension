@@ -71,7 +71,14 @@ FROM GRAPH_TABLE(operator_pg
 query I
 SELECT count(*)
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
-WHERE Phase = 'precount_scan';
+WHERE Phase = 'endpoint_radix_partition';
+----
+1
+
+query I
+SELECT count(*)
+FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
+WHERE Phase = 'endpoint_partition_build';
 ----
 1
 

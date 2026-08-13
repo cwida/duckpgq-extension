@@ -9,6 +9,8 @@
 #pragma once
 #include "duckdb/execution/operator/join/physical_comparison_join.hpp"
 #include "duckdb/execution/physical_operator.hpp"
+#include "duckdb/common/types/column/partitioned_column_data.hpp"
+#include "duckdb/common/radix_partitioning.hpp"
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
@@ -115,7 +117,9 @@ public:
 	void SinkBufferedEndpoints(PathFindingGlobalSinkState &gstate, DataChunk &input);
 
 	ColumnDataCollection local_pairs;
-	ColumnDataCollection local_endpoints;
+	unique_ptr<PartitionedColumnData> local_endpoint_partition_data;
+	unique_ptr<PartitionedColumnDataAppendState> endpoint_partition_append_state;
+	DataChunk endpoint_partition_chunk;
 	ClientContext &context;
 	std::vector<LocalCSRBuildPartition> local_endpoint_partitions;
 	idx_t local_counted_endpoint_count = 0;
@@ -144,11 +148,13 @@ public:
 	vector<std::pair<idx_t, idx_t>> source_group_output_refs;
 	vector<int64_t> source_group_sources;
 	vector<vector<shared_ptr<DataChunk>>> source_group_output_chunks;
+	vector<vector<idx_t>> source_group_output_states;
 	vector<shared_ptr<DataChunk>> global_output_batches;
 	vector<vector<idx_t>> global_output_to_search;
 	bool use_global_deduplication;
 	bool use_source_grouping;
 	bool source_group_zero_copy;
+	bool source_group_preserve_output_order;
 	bool global_dedupe_results_initialized;
 	double source_group_scatter_ms = 0;
 	idx_t source_group_scatter_rows = 0;
@@ -157,9 +163,9 @@ public:
 	bool precounted_edge_input;
 	bool cached_partitioned_csr_input;
 	bool buffered_edge_input;
-	unique_ptr<ColumnDataCollection> endpoint_spool;
-	ColumnDataParallelScanState endpoint_spool_scan_state;
-	std::atomic<idx_t> filled_endpoint_count {0};
+	unique_ptr<RadixPartitionedColumnData> endpoint_partition_data;
+	std::atomic<idx_t> next_endpoint_partition {0};
+	std::atomic<idx_t> built_endpoint_count {0};
 	std::vector<std::vector<LocalCSRBuildPartition>> endpoint_build_runs;
 	std::vector<shared_ptr<LocalCSR>> endpoint_partition_csrs;
 	idx_t counted_endpoint_count = 0;
@@ -167,6 +173,8 @@ public:
 	idx_t vertex_count = 0;
 	idx_t expected_edge_count = 0;
 	idx_t endpoint_partition_width = 0;
+	idx_t endpoint_radix_bits = 0;
+	idx_t endpoint_partition_bytes = 0;
 	bool endpoint_counts_initialized = false;
 	bool endpoint_counts_finalized = false;
 	bool endpoint_build_started = false;

@@ -1385,6 +1385,33 @@ FROM (
 """
 
 
+def precounted_operator_sql(options):
+    pairs = f"ldbc.{options.pair_table}"
+    return operator_settings_sql(options) + f"""
+SELECT 'precounted_operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
+       sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
+FROM (
+    SELECT src, dst, iterativelengthoperator(
+        src, dst,
+        struct_pack(src := pathfinding_count_src, dst := pathfinding_count_dst),
+        struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+        {options.vertex_count}::BIGINT, {options.edge_count}::BIGINT,
+        {sql_string(f"graph:{options.attached_db}")}) AS len
+    FROM {pairs},
+        (SELECT a.rowid::BIGINT AS pathfinding_count_src,
+                c.rowid::BIGINT AS pathfinding_count_dst
+         FROM ldbc.person_knows_person k
+         JOIN ldbc.person a ON a.id = k.person1id
+         JOIN ldbc.person c ON c.id = k.person2id) pathfinding_counts,
+        (SELECT a.rowid::BIGINT AS pathfinding_edge_src,
+                c.rowid::BIGINT AS pathfinding_edge_dst
+         FROM ldbc.person_knows_person k
+         JOIN ldbc.person a ON a.id = k.person1id
+         JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges
+);
+"""
+
+
 def sql_match_graph_setup_sql():
     return """
 CREATE PROPERTY GRAPH pathfinding_benchmark_pg
@@ -1647,6 +1674,8 @@ def benchmark_modes(mode):
 def mode_sql(mode, options):
     if mode == "operator":
         return operator_sql(options)
+    if mode == "precounted_operator":
+        return precounted_operator_sql(options)
     if mode == "legacy_operator":
         return legacy_operator_sql(options)
     if mode == "bidirectional_operator":
@@ -1779,6 +1808,10 @@ def read_phase_timing(benchmark_prefix):
         "precount_allocate_s": "",
         "precount_fill_s": "",
         "precount_sparse_finalize_s": "",
+        "endpoint_radix_partition_s": "",
+        "endpoint_radix_partition_memory_bytes": "",
+        "endpoint_partition_build_s": "",
+        "endpoint_partition_build_memory_bytes": "",
         "local_csr_forward_s": "",
         "local_csr_reverse_s": "",
         "local_csr_pull_s": "",
@@ -1848,6 +1881,10 @@ def read_phase_timing(benchmark_prefix):
     precount_allocate_ms = 0.0
     precount_fill_ms = 0.0
     precount_sparse_finalize_ms = 0.0
+    endpoint_radix_partition_ms = 0.0
+    endpoint_radix_partition_memory = ""
+    endpoint_partition_build_ms = 0.0
+    endpoint_partition_build_memory = ""
     with path.open(newline="") as handle:
         for row in csv.DictReader(handle):
             phase = row["Phase"]
@@ -1869,6 +1906,12 @@ def read_phase_timing(benchmark_prefix):
                 precount_fill_ms += time_ms
             elif phase == "precount_sparse_finalize":
                 precount_sparse_finalize_ms += time_ms
+            elif phase == "endpoint_radix_partition":
+                endpoint_radix_partition_ms += time_ms
+                endpoint_radix_partition_memory = row["MemoryBytes"]
+            elif phase == "endpoint_partition_build":
+                endpoint_partition_build_ms += time_ms
+                endpoint_partition_build_memory = row["MemoryBytes"]
             elif phase == "local_csr_forward":
                 local_csr_forward_ms += time_ms
                 local_csr_forward_memory = row["MemoryBytes"]
@@ -1926,6 +1969,12 @@ def read_phase_timing(benchmark_prefix):
         result["precount_fill_s"] = f"{precount_fill_ms / 1000.0:.6f}"
     if precount_sparse_finalize_ms:
         result["precount_sparse_finalize_s"] = f"{precount_sparse_finalize_ms / 1000.0:.6f}"
+    if endpoint_radix_partition_ms:
+        result["endpoint_radix_partition_s"] = f"{endpoint_radix_partition_ms / 1000.0:.6f}"
+        result["endpoint_radix_partition_memory_bytes"] = endpoint_radix_partition_memory
+    if endpoint_partition_build_ms:
+        result["endpoint_partition_build_s"] = f"{endpoint_partition_build_ms / 1000.0:.6f}"
+        result["endpoint_partition_build_memory_bytes"] = endpoint_partition_build_memory
     if local_csr_forward_ms:
         result["local_csr_forward_s"] = f"{local_csr_forward_ms / 1000.0:.6f}"
         result["local_csr_forward_memory_bytes"] = local_csr_forward_memory
@@ -2049,6 +2098,14 @@ def summarize_results(results):
                 "precount_allocate_mean_s": mean_optional(rows, "precount_allocate_s"),
                 "precount_fill_mean_s": mean_optional(rows, "precount_fill_s"),
                 "precount_sparse_finalize_mean_s": mean_optional(rows, "precount_sparse_finalize_s"),
+                "endpoint_radix_partition_mean_s": mean_optional(rows, "endpoint_radix_partition_s"),
+                "endpoint_radix_partition_memory_bytes_mean": mean_int_optional(
+                    rows, "endpoint_radix_partition_memory_bytes"
+                ),
+                "endpoint_partition_build_mean_s": mean_optional(rows, "endpoint_partition_build_s"),
+                "endpoint_partition_build_memory_bytes_mean": mean_int_optional(
+                    rows, "endpoint_partition_build_memory_bytes"
+                ),
                 "local_csr_forward_mean_s": mean_optional(rows, "local_csr_forward_s"),
                 "local_csr_forward_stdev_s": stdev_optional(rows, "local_csr_forward_s"),
                 "local_csr_reverse_mean_s": mean_optional(rows, "local_csr_reverse_s"),
@@ -2140,6 +2197,10 @@ def summary_fieldnames():
         "precount_allocate_s",
         "precount_fill_s",
         "precount_sparse_finalize_s",
+        "endpoint_radix_partition_s",
+        "endpoint_radix_partition_memory_bytes",
+        "endpoint_partition_build_s",
+        "endpoint_partition_build_memory_bytes",
         "local_csr_forward_s",
         "local_csr_reverse_s",
         "local_csr_pull_s",
@@ -2226,6 +2287,10 @@ def stats_fieldnames():
         "precount_allocate_mean_s",
         "precount_fill_mean_s",
         "precount_sparse_finalize_mean_s",
+        "endpoint_radix_partition_mean_s",
+        "endpoint_radix_partition_memory_bytes_mean",
+        "endpoint_partition_build_mean_s",
+        "endpoint_partition_build_memory_bytes_mean",
         "local_csr_forward_mean_s",
         "local_csr_forward_stdev_s",
         "local_csr_reverse_mean_s",
@@ -3291,6 +3356,7 @@ def main():
         "--mode",
         choices=[
             "operator",
+            "precounted_operator",
             "cached_operator",
             "sql_match_cache",
             "legacy_operator",
@@ -3407,7 +3473,7 @@ def main():
     )
     sweep_parser.add_argument(
         "--mode",
-        choices=("operator", "cached_operator", "sql_match_cache"),
+        choices=("operator", "precounted_operator", "cached_operator", "sql_match_cache"),
         default="operator",
         help=(
             "Run internal operator queries, internal cached queries, or end-to-end SQL MATCH "

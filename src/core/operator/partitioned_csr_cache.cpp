@@ -1,6 +1,7 @@
 #include "duckpgq/core/operator/partitioned_csr_cache.hpp"
 
 #include "duckdb/parallel/task_scheduler.hpp"
+#include "duckdb/common/radix_partitioning.hpp"
 #include "duckpgq/core/option/duckpgq_option.hpp"
 
 #include <iomanip>
@@ -9,16 +10,33 @@
 
 namespace duckdb {
 
-idx_t GetBufferedPartitionedCSRWidth(idx_t vertex_count, idx_t thread_count, ClientContext &context) {
+idx_t GetBufferedPartitionedCSRRadixBits(idx_t vertex_count, idx_t thread_count, ClientContext &context) {
 	auto target_partition_count =
 	    std::max<idx_t>(1, thread_count) * (1 + std::max<int32_t>(1, GetLightPartitionMultiplier(context)));
-	auto partition_width = std::max<idx_t>(1, (vertex_count + 2 + target_partition_count - 1) /
-	                                               target_partition_count);
-	return std::min<idx_t>(partition_width, UINT16_MAX);
+	auto minimum_partition_count = std::max<idx_t>(1, (vertex_count + 2 + UINT16_MAX - 1) / UINT16_MAX);
+	auto required_partition_count = std::max(target_partition_count, minimum_partition_count);
+	idx_t radix_bits = 0;
+	idx_t partition_count = 1;
+	while (partition_count < required_partition_count && radix_bits < RadixPartitioning::MAX_RADIX_BITS) {
+		partition_count <<= 1;
+		radix_bits++;
+	}
+	if (partition_count < minimum_partition_count) {
+		throw OutOfRangeException(
+		    "Radix-partitioned endpoint construction supports at most %llu vertices with uint16 destinations",
+		    RadixPartitioning::NumberOfPartitions(RadixPartitioning::MAX_RADIX_BITS) * UINT16_MAX);
+	}
+	return radix_bits;
 }
 
-string GetBufferedPartitionedCSRCacheKey(ClientContext &context, const string &base_cache_key,
-                                         idx_t vertex_count, idx_t edge_count, const string &mode) {
+idx_t GetBufferedPartitionedCSRWidth(idx_t vertex_count, idx_t thread_count, ClientContext &context) {
+	auto radix_bits = GetBufferedPartitionedCSRRadixBits(vertex_count, thread_count, context);
+	auto partition_count = RadixPartitioning::NumberOfPartitions(radix_bits);
+	return std::max<idx_t>(1, (vertex_count + 2 + partition_count - 1) / partition_count);
+}
+
+string GetBufferedPartitionedCSRCacheKey(ClientContext &context, const string &base_cache_key, idx_t vertex_count,
+                                         idx_t edge_count, const string &mode, bool radix_partitioned_input) {
 	if (base_cache_key.empty()) {
 		return string();
 	}
@@ -40,9 +58,9 @@ string GetBufferedPartitionedCSRCacheKey(ClientContext &context, const string &b
 	auto partition_width = GetBufferedPartitionedCSRWidth(vertex_count, thread_count, context);
 	std::ostringstream key;
 	key << std::setprecision(std::numeric_limits<double>::max_digits10);
-	key << "partitioned-csr-v2|graph=" << base_cache_key.size() << ":" << base_cache_key;
+	key << "partitioned-csr-v3|graph=" << base_cache_key.size() << ":" << base_cache_key;
 	key << "|vertices=" << vertex_count + 2 << "|edges=" << edge_count;
-	key << "|input=precounted-endpoints";
+	key << "|input=" << (radix_partitioned_input ? "radix-partitioned-endpoints" : "precounted-endpoints");
 	key << "|partition_width=" << partition_width;
 	key << "|threads=" << thread_count;
 	key << "|forward=" << build_forward;
