@@ -26,6 +26,15 @@ SELECT CAST(current_setting('experimental_persist_csr') AS BOOLEAN)::INTEGER,
 statement ok
 SET experimental_path_finding_operator_light_partition_multiplier = 2;
 
+statement ok con2
+SET experimental_path_finding_operator = true;
+
+statement ok con2
+SET experimental_path_finding_operator_light_partition_multiplier = 2;
+
+statement ok con2
+SELECT delete_csr(2147483647);
+
 statement ok
 CREATE TABLE eager_vertex(id BIGINT);
 
@@ -39,12 +48,45 @@ statement ok
 INSERT INTO eager_edge VALUES (1, 2), (2, 3), (3, 4);
 
 statement ok
+CREATE TABLE eager_edge_reverse(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO eager_edge_reverse VALUES (4, 3), (3, 2), (2, 1);
+
+statement ok
+CREATE TABLE eager_other_vertex(id BIGINT);
+
+statement ok
+INSERT INTO eager_other_vertex VALUES (10), (20);
+
+statement ok
+CREATE TABLE eager_cross_edge(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO eager_cross_edge VALUES (1, 10), (2, 20);
+
+statement ok
+CREATE TABLE eager_empty_edge(src BIGINT, dst BIGINT);
+
+statement ok
 CREATE PROPERTY GRAPH eager_graph
-VERTEX TABLES (eager_vertex LABEL Vertex)
+VERTEX TABLES (
+    eager_vertex LABEL Vertex,
+    eager_other_vertex LABEL OtherVertex
+)
 EDGE TABLES (
     eager_edge SOURCE KEY (src) REFERENCES eager_vertex(id)
                DESTINATION KEY (dst) REFERENCES eager_vertex(id)
-               LABEL Edge
+               LABEL Edge,
+    eager_edge_reverse SOURCE KEY (src) REFERENCES eager_vertex(id)
+                       DESTINATION KEY (dst) REFERENCES eager_vertex(id)
+                       LABEL ReverseEdge,
+    eager_cross_edge SOURCE KEY (src) REFERENCES eager_vertex(id)
+                     DESTINATION KEY (dst) REFERENCES eager_other_vertex(id)
+                     LABEL CrossEdge,
+    eager_empty_edge SOURCE KEY (src) REFERENCES eager_vertex(id)
+                     DESTINATION KEY (dst) REFERENCES eager_vertex(id)
+                     LABEL EmptyEdge
 );
 
 statement ok
@@ -52,6 +94,44 @@ SET experimental_path_finding_operator = true;
 
 # A cache-only marker would fail if CREATE PROPERTY GRAPH had not published the CSR.
 query I
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'eager_graph|eager_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
+----
+3
+
+query I
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 0::BIGINT,
+    'eager_graph|eager_empty_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 0::BIGINT AS dst);
+----
+0
+
+# Heterogeneous edge tables are not eligible for the row-ID CSR and are skipped.
+statement error
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 2::BIGINT,
+    'eager_graph|eager_cross_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 1::BIGINT AS dst);
+----
+Constraint Error: Cached PartitionCSR not found for cache key 'eager_graph|eager_cross_edge|directed'; build it before using the cache-only path
+
+query I
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'eager_graph|eager_edge_reverse|directed'
+)
+FROM (SELECT 3::BIGINT AS src, 0::BIGINT AS dst);
+----
+3
+
+# Existing connections with matching construction settings receive the immutable index.
+query I con2
 SELECT iterativelengthoperator(
     src, dst, 4::BIGINT, 3::BIGINT,
     'eager_graph|eager_edge|directed'
