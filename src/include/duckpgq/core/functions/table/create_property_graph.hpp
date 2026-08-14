@@ -24,10 +24,15 @@ public:
 	}
 
 	struct CreatePropertyGraphBindData : public TableFunctionData {
-		explicit CreatePropertyGraphBindData(CreatePropertyGraphInfo *pg_info) : create_pg_info(pg_info) {
+		explicit CreatePropertyGraphBindData(CreatePropertyGraphInfo *pg_info, bool build_csr_on_create_p,
+		                                     vector<Value> eager_csr_settings_p)
+		    : create_pg_info(pg_info), build_csr_on_create(build_csr_on_create_p),
+		      eager_csr_settings(std::move(eager_csr_settings_p)) {
 		}
 
 		CreatePropertyGraphInfo *create_pg_info;
+		bool build_csr_on_create;
+		vector<Value> eager_csr_settings;
 	};
 
 	struct CreatePropertyGraphGlobalData : public GlobalTableFunctionState {

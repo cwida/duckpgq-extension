@@ -1,4 +1,7 @@
 #include "duckpgq/core/functions/table/create_property_graph.hpp"
+#include "duckpgq/core/operator/partitioned_csr_cache.hpp"
+#include "duckpgq/core/option/duckpgq_option.hpp"
+#include "duckpgq/core/utils/duckpgq_sql.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
 #include "duckdb/parser/constraints/foreign_key_constraint.hpp"
@@ -13,12 +16,83 @@
 
 namespace duckdb {
 
+static constexpr const char *EAGER_CSR_SETTINGS[] = {
+    "experimental_path_finding_operator_task_size",
+    "experimental_path_finding_operator_light_partition_multiplier",
+    "experimental_path_finding_operator_heavy_partition_fraction",
+    "experimental_path_finding_operator_benchmark",
+    "experimental_path_finding_operator_benchmark_lane_activity",
+    "experimental_path_finding_operator_benchmark_prefix",
+    "experimental_path_finding_operator_build_reverse_csr",
+    "experimental_path_finding_operator_push_pull_frontier_gate",
+    "experimental_path_finding_operator_deduplicate_pairs",
+    "experimental_path_finding_operator_grouped_batches",
+    "experimental_path_finding_operator_threads_per_batch",
+    "experimental_path_finding_operator_max_concurrent_batches",
+    "experimental_path_finding_operator_reverse_orientation_ratio",
+    "experimental_path_finding_operator_source_group_ratio",
+};
+
 static Identifier PGQIdentifier(const string &value) {
 	return Identifier(value);
 }
 
 static Identifier PGQIdentifier(const Identifier &value) {
 	return value;
+}
+
+static void ConfigureEagerCSRConnection(const vector<Value> &settings, Connection &connection) {
+	D_ASSERT(settings.size() == sizeof(EAGER_CSR_SETTINGS) / sizeof(EAGER_CSR_SETTINGS[0]));
+	for (idx_t setting_idx = 0; setting_idx < settings.size(); setting_idx++) {
+		auto result = connection.Query("SET " + string(EAGER_CSR_SETTINGS[setting_idx]) + " = " +
+		                               settings[setting_idx].ToSQLString());
+		if (result->HasError()) {
+			throw InvalidInputException("Could not configure eager CSR construction: %s", result->GetError());
+		}
+	}
+	auto result = connection.Query("SET experimental_path_finding_operator = true");
+	if (result->HasError()) {
+		throw InvalidInputException("Could not enable eager CSR construction: %s", result->GetError());
+	}
+}
+
+static void BuildEagerCSRIndexes(ClientContext &context, Connection &connection, const CreatePropertyGraphInfo &pg_info,
+                                 const vector<Value> &settings) {
+	ConfigureEagerCSRConnection(settings, connection);
+	for (const auto &edge_table : pg_info.edge_tables) {
+		idx_t vertex_count;
+		idx_t edge_count;
+		if (!GetDirectedPathFindingStorageCounts(context, *edge_table, vertex_count, edge_count)) {
+			continue;
+		}
+
+		auto base_cache_key = pg_info.property_graph_name + "|" + edge_table->FullTableName() + "|directed";
+		// The self-pair makes the path operator run and publish its CSR, while the traversal itself resolves
+		// immediately.
+		std::ostringstream query;
+		query << "SELECT iterativelengthoperator(__duckpgq_eager_pair.src, __duckpgq_eager_pair.dst, "
+		         "struct_pack(src := __duckpgq_eager_edges.pathfinding_edge_src, "
+		         "dst := __duckpgq_eager_edges.pathfinding_edge_dst), "
+		      << vertex_count << "::BIGINT, " << edge_count << "::BIGINT, " << DuckPGQSQL::StringLiteral(base_cache_key)
+		      << ") FROM (SELECT 0::BIGINT AS src, 0::BIGINT AS dst) __duckpgq_eager_pair, ("
+		      << GetDirectedPathFindingEndpointsSQL(*edge_table) << ") __duckpgq_eager_edges";
+		auto result = connection.Query(query.str());
+		if (result->HasError()) {
+			throw InvalidInputException("Could not eagerly build CSR for edge table '%s': %s",
+			                            edge_table->FullTableName(), result->GetError());
+		}
+
+		auto cache_key = GetBufferedPartitionedCSRCacheKey(*connection.context, base_cache_key, vertex_count,
+		                                                   edge_count, "iterativelength");
+		auto index = GetDuckPGQState(*connection.context)->GetPartitionedCSR(cache_key);
+		if (!index) {
+			throw InternalException("Eager CSR construction did not publish an index for edge table '%s'",
+			                        edge_table->FullTableName());
+		}
+		for (auto &local_client_context : ConnectionManager::Get(*context.db).GetConnectionList()) {
+			GetDuckPGQState(*local_client_context)->PutPartitionedCSR(cache_key, index);
+		}
+	}
 }
 
 static void BindPropertyGraphTable(ClientContext &context, const shared_ptr<PropertyGraphTable> &table) {
@@ -313,7 +387,17 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 			throw Exception(ExceptionType::INVALID, "Catalog '" + edge_table->catalog_name + "' does not exist!");
 		}
 	}
-	return make_uniq<CreatePropertyGraphBindData>(info);
+	vector<Value> eager_csr_settings;
+	auto build_csr_on_create = GetBuildCSROnCreateOption(context);
+	if (build_csr_on_create) {
+		eager_csr_settings.reserve(sizeof(EAGER_CSR_SETTINGS) / sizeof(EAGER_CSR_SETTINGS[0]));
+		for (const auto setting : EAGER_CSR_SETTINGS) {
+			Value value;
+			context.TryGetCurrentSetting(setting, value);
+			eager_csr_settings.push_back(std::move(value));
+		}
+	}
+	return make_uniq<CreatePropertyGraphBindData>(info, build_csr_on_create, std::move(eager_csr_settings));
 }
 
 unique_ptr<GlobalTableFunctionState>
@@ -458,6 +542,9 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 	auto insert_query = new_conn->Query(insert_info);
 	if (insert_query->HasError()) {
 		throw TransactionException(insert_query->GetError());
+	}
+	if (bind_data.build_csr_on_create) {
+		BuildEagerCSRIndexes(context, *new_conn, *pg_info, bind_data.eager_csr_settings);
 	}
 }
 

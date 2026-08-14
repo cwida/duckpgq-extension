@@ -3,10 +3,9 @@
 
 #include "duckpgq/core/utils/duckpgq_sql.hpp"
 #include "duckpgq/core/option/duckpgq_option.hpp"
+#include "duckpgq/core/operator/partitioned_csr_cache.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
-#include "duckdb/catalog/catalog.hpp"
-#include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckpgq/parser/tableref/matchref.hpp"
@@ -29,7 +28,6 @@
 
 #include "duckpgq/parser/property_graph_table.hpp"
 #include "duckpgq/parser/subpath_element.hpp"
-#include "duckdb/storage/data_table.hpp"
 #include <duckdb/common/enums/set_operation_type.hpp>
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
@@ -86,32 +84,11 @@ static string DuckPGQSQLCountTable(const PropertyGraphTable &table, const string
 	return query.str();
 }
 
-static optional_ptr<DuckTableEntry> GetDuckTableEntry(ClientContext &context, const PropertyGraphTable &table) {
-	auto entry = Catalog::GetEntry<TableCatalogEntry>(context,
-	                                                  QualifiedName(PGQIdentifier(table.catalog_name),
-	                                                                PGQIdentifier(table.schema_name),
-	                                                                PGQIdentifier(table.table_name)),
-	                                                  OnEntryNotFound::RETURN_NULL);
-	if (!entry || !entry->IsDuckTable()) {
-		return nullptr;
-	}
-	return &entry->Cast<DuckTableEntry>();
-}
-
 static bool GetPathFindingStorageCounts(ClientContext &context, const PropertyGraphTable &edge_table,
                                         PGQMatchType edge_type, idx_t &vertex_count, idx_t &edge_count) {
-	if (!edge_table.source_pg_table || !edge_table.destination_pg_table ||
-	    !edge_table.source_pg_table->SameTableIdentity(*edge_table.destination_pg_table)) {
+	if (!GetDirectedPathFindingStorageCounts(context, edge_table, vertex_count, edge_count)) {
 		return false;
 	}
-	auto vertex_entry = GetDuckTableEntry(context, *edge_table.source_pg_table);
-	auto edge_entry = GetDuckTableEntry(context, edge_table);
-	if (!vertex_entry || !edge_entry) {
-		return false;
-	}
-	// Row IDs can contain gaps after deletes. The next row ID is the required CSR range.
-	vertex_count = vertex_entry->GetStorage().GetNextRowId();
-	edge_count = edge_entry->GetStorage().GetTotalRows();
 	if (edge_type == PGQMatchType::MATCH_EDGE_ANY) {
 		if (edge_count > NumericLimits<idx_t>::Maximum() / 2) {
 			throw OutOfRangeException("Undirected path-finding edge count is too large");
@@ -121,45 +98,9 @@ static bool GetPathFindingStorageCounts(ClientContext &context, const PropertyGr
 	return true;
 }
 
-static string PathFindingEndpointJoin(const string &edge_alias, const PropertyGraphTable &vertex_table,
-                                      const string &vertex_alias, const vector<Identifier> &foreign_keys,
-                                      const vector<Identifier> &primary_keys) {
-	if (foreign_keys.size() != primary_keys.size()) {
-		throw BinderException("Vertex columns and edge columns size mismatch");
-	}
-	std::ostringstream result;
-	result << DuckPGQSQL::TableRef(vertex_table, vertex_alias) << " ON ";
-	for (idx_t key_idx = 0; key_idx < foreign_keys.size(); key_idx++) {
-		if (key_idx > 0) {
-			result << " AND ";
-		}
-		result << DuckPGQSQL::Column(foreign_keys[key_idx], edge_alias) << " = "
-		       << DuckPGQSQL::Column(primary_keys[key_idx], vertex_alias);
-	}
-	return result.str();
-}
-
-static string DirectedPathFindingEndpointsSQL(const PropertyGraphTable &edge_table) {
-	const string edge_alias = "__duckpgq_edge";
-	const string source_alias = "__duckpgq_source";
-	const string destination_alias = "__duckpgq_destination";
-	std::ostringstream query;
-	query << "SELECT CAST(" << DuckPGQSQL::Column(string("rowid"), source_alias) << " AS BIGINT) AS "
-	      << DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_SRC)) << ", CAST("
-	      << DuckPGQSQL::Column(string("rowid"), destination_alias) << " AS BIGINT) AS "
-	      << DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_DST)) << " FROM "
-	      << DuckPGQSQL::TableRef(edge_table, edge_alias) << " INNER JOIN "
-	      << PathFindingEndpointJoin(edge_alias, *edge_table.source_pg_table, source_alias, edge_table.source_fk,
-	                                 edge_table.source_pk)
-	      << " INNER JOIN "
-	      << PathFindingEndpointJoin(edge_alias, *edge_table.destination_pg_table, destination_alias,
-	                                 edge_table.destination_fk, edge_table.destination_pk);
-	return query.str();
-}
-
 static unique_ptr<SubqueryRef> CreatePathFindingEndpointSubquery(const PropertyGraphTable &edge_table,
                                                                  PGQMatchType edge_type, const string &alias) {
-	auto directed = DirectedPathFindingEndpointsSQL(edge_table);
+	auto directed = GetDirectedPathFindingEndpointsSQL(edge_table);
 	if (edge_type == PGQMatchType::MATCH_EDGE_RIGHT) {
 		return DuckPGQSQL::ParseSubqueryRef(directed, alias, "DuckPGQ path-finding endpoint input");
 	}

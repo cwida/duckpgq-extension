@@ -23,3 +23,39 @@ SELECT CAST(current_setting('experimental_persist_csr') AS BOOLEAN)::INTEGER,
 ----
 1	1
 
+statement ok
+SET experimental_path_finding_operator_light_partition_multiplier = 2;
+
+statement ok
+CREATE TABLE eager_vertex(id BIGINT);
+
+statement ok
+INSERT INTO eager_vertex VALUES (1), (2), (3), (4);
+
+statement ok
+CREATE TABLE eager_edge(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO eager_edge VALUES (1, 2), (2, 3), (3, 4);
+
+statement ok
+CREATE PROPERTY GRAPH eager_graph
+VERTEX TABLES (eager_vertex LABEL Vertex)
+EDGE TABLES (
+    eager_edge SOURCE KEY (src) REFERENCES eager_vertex(id)
+               DESTINATION KEY (dst) REFERENCES eager_vertex(id)
+               LABEL Edge
+);
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# A cache-only marker would fail if CREATE PROPERTY GRAPH had not published the CSR.
+query I
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'eager_graph|eager_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
+----
+3
