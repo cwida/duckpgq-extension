@@ -50,6 +50,17 @@ static void ConfigureEagerCSRConnection(const vector<Value> &settings, Connectio
 			throw InvalidInputException("Could not configure eager CSR construction: %s", result->GetError());
 		}
 	}
+	// CREATE PROPERTY GRAPH is still executing while this internal connection builds the CSR. The self-pair
+	// traversal only exists to drive construction and does not benefit from parallel BFS workers. Restricting
+	// that batch to one worker prevents its barrier from waiting for a scheduler slot held by the outer query;
+	// endpoint partitioning and CSR construction continue to use the configured DuckDB thread count.
+	for (const auto *statement : {"SET experimental_path_finding_operator_grouped_batches = true",
+	                              "SET experimental_path_finding_operator_threads_per_batch = 1"}) {
+		auto result = connection.Query(statement);
+		if (result->HasError()) {
+			throw InvalidInputException("Could not configure eager CSR construction: %s", result->GetError());
+		}
+	}
 	auto result = connection.Query("SET experimental_path_finding_operator = true");
 	if (result->HasError()) {
 		throw InvalidInputException("Could not enable eager CSR construction: %s", result->GetError());
