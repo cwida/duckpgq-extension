@@ -5,6 +5,8 @@
 namespace duckdb {
 
 bool GetPathFindingOption(ClientContext &context);
+bool GetPersistCSROption(ClientContext &context);
+bool GetBuildCSROnCreateOption(ClientContext &context);
 int32_t GetPathFindingTaskSize(ClientContext &context);
 int32_t GetLightPartitionMultiplier(ClientContext &context);
 double_t GetHeavyPartitionFraction(ClientContext &context);
@@ -23,6 +25,8 @@ int32_t GetPathFindingSourceGroupRatio(ClientContext &context);
 struct CorePGQOptions {
 	static void Register(ExtensionLoader &loader) {
 		RegisterExperimentalPathFindingOperator(loader);
+		RegisterPersistCSR(loader);
+		RegisterBuildCSROnCreate(loader);
 		RegisterPathFindingTaskSize(loader);
 		RegisterPathFindingLightPartitionMultiplier(loader);
 		RegisterPathFindingHeavyPartitionFraction(loader);
@@ -41,6 +45,8 @@ struct CorePGQOptions {
 
 private:
 	static void RegisterExperimentalPathFindingOperator(ExtensionLoader &loader);
+	static void RegisterPersistCSR(ExtensionLoader &loader);
+	static void RegisterBuildCSROnCreate(ExtensionLoader &loader);
 	static void RegisterPathFindingTaskSize(ExtensionLoader &loader);
 	static void RegisterPathFindingLightPartitionMultiplier(ExtensionLoader &loader);
 	static void RegisterPathFindingHeavyPartitionFraction(ExtensionLoader &loader);

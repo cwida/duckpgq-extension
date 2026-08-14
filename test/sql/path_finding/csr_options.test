@@ -1,0 +1,25 @@
+# name: test/sql/path_finding/csr_options.test
+# description: Test experimental CSR lifecycle settings
+# group: [path_finding]
+
+require duckpgq
+
+# CSR lifecycle behavior is opt-in.
+query II
+SELECT CAST(current_setting('experimental_persist_csr') AS BOOLEAN)::INTEGER,
+       CAST(current_setting('experimental_build_csr_on_create') AS BOOLEAN)::INTEGER;
+----
+0	0
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+SET experimental_build_csr_on_create = true;
+
+query II
+SELECT CAST(current_setting('experimental_persist_csr') AS BOOLEAN)::INTEGER,
+       CAST(current_setting('experimental_build_csr_on_create') AS BOOLEAN)::INTEGER;
+----
+1	1
+
