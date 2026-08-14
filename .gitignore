@@ -9,3 +9,4 @@ __pycache__/
 .Rhistory
 .venv
 .kuzu_python/
+paper/
