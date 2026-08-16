@@ -1,0 +1,53 @@
+# name: test/sql/path_finding/csr_trigger_ownership.test
+# description: CSR persistence never replaces a user-owned reserved trigger name
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+SET experimental_build_csr_on_create = true;
+
+statement ok
+CREATE TABLE ownership_vertex(id BIGINT);
+
+statement ok
+INSERT INTO ownership_vertex VALUES (1), (2);
+
+statement ok
+CREATE TABLE ownership_edge(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO ownership_edge VALUES (1, 2);
+
+statement ok
+CREATE TABLE ownership_audit(value BIGINT);
+
+statement ok
+CREATE TRIGGER __duckpgq_csr_invalidate_insert AFTER INSERT ON ownership_edge
+FOR EACH STATEMENT INSERT INTO ownership_audit VALUES (42);
+
+statement error
+CREATE PROPERTY GRAPH ownership_graph
+VERTEX TABLES (ownership_vertex LABEL Vertex)
+EDGE TABLES (
+    ownership_edge SOURCE KEY (src) REFERENCES ownership_vertex(id)
+                   DESTINATION KEY (dst) REFERENCES ownership_vertex(id)
+                   LABEL Edge
+);
+----
+reserved for CSR invalidation but is already user-owned
+
+# The colliding trigger is untouched and the failed persistence transaction publishes no partial artifact or owner.
+statement ok
+INSERT INTO ownership_edge VALUES (2, 1);
+
+query III
+SELECT
+    (SELECT count(*) FROM ownership_audit),
+    (SELECT count(*) FROM __duckpgq_csr_registry),
+    (SELECT count(*) FROM __duckpgq_csr_trigger_owners);
+----
+1	0	0

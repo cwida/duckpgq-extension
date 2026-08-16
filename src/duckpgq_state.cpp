@@ -203,4 +203,9 @@ void DuckPGQState::PutPartitionedCSR(const string &cache_key, shared_ptr<Partiti
 	partitioned_csr_cache[cache_key] = std::move(index);
 }
 
+void DuckPGQState::ErasePartitionedCSR(const string &cache_key) {
+	lock_guard<mutex> lock(partitioned_csr_cache_lock);
+	partitioned_csr_cache.erase(cache_key);
+}
+
 } // namespace duckdb

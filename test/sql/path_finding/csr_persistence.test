@@ -51,7 +51,20 @@ query I
 SELECT count(*)
 FROM __duckpgq_csr_dependencies;
 ----
-0
+2
+
+query I
+SELECT count(*)
+FROM __duckpgq_csr_trigger_owners;
+----
+6
+
+query I
+SELECT count(*)
+FROM duckdb_triggers()
+WHERE trigger_name LIKE '__duckpgq_csr_invalidate_%';
+----
+6
 
 query II
 SELECT count(*), sum(length(destinations))::BIGINT

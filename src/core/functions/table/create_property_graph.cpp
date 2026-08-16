@@ -71,6 +71,10 @@ static void ConfigureEagerCSRConnection(const vector<Value> &settings, Connectio
 static void BuildEagerCSRIndexes(ClientContext &context, Connection &connection, const CreatePropertyGraphInfo &pg_info,
                                  const vector<Value> &settings) {
 	ConfigureEagerCSRConnection(settings, connection);
+	// This connection is created after the property graph was copied into the pre-existing connection states.
+	// Register the just-created definition explicitly so persistence can resolve physical table dependencies while
+	// the eager operator publishes its CSR.
+	GetDuckPGQState(*connection.context)->registered_property_graphs[pg_info.property_graph_name] = pg_info.Copy();
 	for (const auto &edge_table : pg_info.edge_tables) {
 		idx_t vertex_count;
 		idx_t edge_count;

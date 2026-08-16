@@ -560,10 +560,25 @@ bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, const PhysicalPat
 	auto duckpgq_state = GetDuckPGQState(context);
 	auto cached_index = duckpgq_state->GetPartitionedCSR(local_csr_state.cache_key);
 	auto required_capabilities = GetRequiredPartitionedCSRCapabilities(local_csr_state);
+	if (cached_index && GetPersistCSROption(context) && cached_index->persisted_generation == 0) {
+		duckpgq_state->ErasePartitionedCSR(local_csr_state.cache_key);
+		cached_index.reset();
+	}
+	if (IsExplicitPartitionedCSRTransaction(context)) {
+		cached_index.reset();
+	}
+	if (cached_index && cached_index->persisted_generation > 0 &&
+	    !IsPersistedPartitionedCSRCurrent(context, local_csr_state.cache_key, *cached_index)) {
+		duckpgq_state->ErasePartitionedCSR(local_csr_state.cache_key);
+		cached_index.reset();
+	}
+	if (IsPartitionedCSRInvalidated(context, local_csr_state.cache_key)) {
+		cached_index.reset();
+	}
 	if ((!cached_index || cached_index->vertex_count != GetPathFindingVSize(gstate) ||
 	     cached_index->edge_count != GetPathFindingEdgeCount(gstate) ||
 	     !HasPartitionedCSRCapabilities(cached_index->capabilities, required_capabilities)) &&
-	    GetPersistCSROption(context)) {
+	    GetPersistCSROption(context) && !IsExplicitPartitionedCSRTransaction(context)) {
 		cached_index = TryLoadPersistedPartitionedCSR(context, local_csr_state.cache_key, GetPathFindingVSize(gstate),
 		                                              GetPathFindingEdgeCount(gstate), required_capabilities);
 		if (cached_index) {
@@ -598,6 +613,12 @@ void PublishPartitionedCSR(PathFindingGlobalSinkState &gstate, ClientContext &co
 	if (local_csr_state.cache_key.empty() || local_csr_state.loaded_from_cache || local_csr_state.published_to_cache) {
 		return;
 	}
+	// A CSR built in an explicit transaction reflects that transaction's snapshot. It is safe for this traversal,
+	// but publishing it could leak uncommitted rows or revalidate a generation after a newer committed mutation.
+	if (IsPartitionedCSRInvalidated(context, local_csr_state.cache_key) ||
+	    IsExplicitPartitionedCSRTransaction(context)) {
+		return;
+	}
 
 	auto start_time = std::chrono::steady_clock::now();
 	auto index = make_shared_ptr<PartitionedCSRIndex>();
@@ -608,7 +629,8 @@ void PublishPartitionedCSR(PathFindingGlobalSinkState &gstate, ClientContext &co
 	index->reverse_partitions = local_csr_state.reverse_partition_csrs;
 	index->pull_partitions = local_csr_state.pull_partition_csrs;
 	if (GetPersistCSROption(context)) {
-		PersistPartitionedCSR(context, local_csr_state.cache_key, *index);
+		index->persisted_generation =
+		    PersistPartitionedCSR(context, local_csr_state.cache_key, gstate.base_cache_key, *index);
 	}
 	GetDuckPGQState(context)->PutPartitionedCSR(local_csr_state.cache_key, std::move(index));
 	local_csr_state.published_to_cache = true;
@@ -1683,6 +1705,7 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 
 	child = 0;
 	mode = op.mode;
+	base_cache_key = op.cache_key;
 	path_finding_mode = ParsePathFindingOperatorMode(mode);
 	search_orientation = PathFindingSearchOrientation::FORWARD;
 }

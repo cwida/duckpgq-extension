@@ -17,6 +17,7 @@
 #include <duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp>
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
 #include <duckpgq/core/operator/partitioned_csr_cache.hpp>
+#include <duckpgq/core/operator/partitioned_csr_persistence.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_state.hpp>
@@ -224,9 +225,8 @@ static unique_ptr<LogicalPathFindingOperator> FindPrecountedEdgesAndPairs(unique
 	    true, true, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value));
 }
 
-static unique_ptr<LogicalPathFindingOperator> FindBufferedEdgesAndPairs(unique_ptr<LogicalOperator> &root,
-                                                                        LogicalProjection &projection,
-                                                                        ClientContext &context) {
+static unique_ptr<LogicalPathFindingOperator>
+FindBufferedEdgesAndPairs(unique_ptr<LogicalOperator> &root, LogicalProjection &projection, ClientContext &context) {
 	const BoundFunctionExpression *path_function = nullptr;
 	for (const auto &expr : projection.expressions) {
 		path_function = GetPathFindingFunction(*expr);
@@ -276,6 +276,18 @@ static unique_ptr<LogicalPathFindingOperator> FindBufferedEdgesAndPairs(unique_p
 	auto cache_hit = cached_index && cached_index->vertex_count == static_cast<idx_t>(vertex_count_value) + 2 &&
 	                 cached_index->edge_count == static_cast<idx_t>(edge_count_value) &&
 	                 HasPartitionedCSRCapabilities(cached_index->capabilities, PartitionedCSRCapabilities::FORWARD);
+	if (cache_hit && GetPersistCSROption(context) && cached_index->persisted_generation == 0) {
+		GetDuckPGQState(context)->ErasePartitionedCSR(full_cache_key);
+		cache_hit = false;
+	}
+	if (cache_hit && IsExplicitPartitionedCSRTransaction(context)) {
+		cache_hit = false;
+	}
+	if (cache_hit && cached_index->persisted_generation > 0 &&
+	    !IsPersistedPartitionedCSRCurrent(context, full_cache_key, *cached_index)) {
+		GetDuckPGQState(context)->ErasePartitionedCSR(full_cache_key);
+		cache_hit = false;
+	}
 
 	vector<unique_ptr<LogicalOperator>> path_finding_children;
 	path_finding_children.push_back(std::move(inputs[pair_index]));
@@ -293,10 +305,10 @@ static unique_ptr<LogicalPathFindingOperator> FindBufferedEdgesAndPairs(unique_p
 		function_expression->Cast<BoundFunctionExpression>().GetChildrenMutable().erase_at(2);
 	}
 	path_finding_expressions.push_back(std::move(function_expression));
-	return make_uniq<LogicalPathFindingOperator>(
-	    path_finding_children, path_finding_expressions, mode, projection.table_index, offsets, std::move(cache_key),
-	    !cache_hit, false, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value), cache_hit,
-	    !cache_hit);
+	return make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions, mode,
+	                                             projection.table_index, offsets, std::move(cache_key), !cache_hit,
+	                                             false, static_cast<idx_t>(vertex_count_value),
+	                                             static_cast<idx_t>(edge_count_value), cache_hit, !cache_hit);
 }
 
 static unique_ptr<LogicalPathFindingOperator> FindCachedPartitionedCSRAndPairs(unique_ptr<LogicalOperator> &root,
@@ -462,7 +474,7 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, C
 	if (op_proj.children.size() == 1) {
 		auto path_finding_operator = FindCachedPartitionedCSRAndPairs(op_proj.children[0], op_proj);
 		if (!path_finding_operator) {
-				path_finding_operator = FindBufferedEdgesAndPairs(op_proj.children[0], op_proj, context);
+			path_finding_operator = FindBufferedEdgesAndPairs(op_proj.children[0], op_proj, context);
 		}
 		if (!path_finding_operator) {
 			path_finding_operator = FindPrecountedEdgesAndPairs(op_proj.children[0], op_proj);

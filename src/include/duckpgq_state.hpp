@@ -19,6 +19,7 @@ public:
 	CSR *GetCSR(int32_t id);
 	shared_ptr<PartitionedCSRIndex> GetPartitionedCSR(const string &cache_key);
 	void PutPartitionedCSR(const string &cache_key, shared_ptr<PartitionedCSRIndex> index);
+	void ErasePartitionedCSR(const string &cache_key);
 
 	void RetrievePropertyGraphs(const shared_ptr<Connection> &context);
 	void ProcessPropertyGraphs(unique_ptr<MaterializedQueryResult> &property_graphs, bool is_vertex);

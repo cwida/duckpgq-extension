@@ -1,0 +1,194 @@
+# name: test/sql/path_finding/csr_lifecycle.test
+# description: Transactional invalidation, generation validation, trigger sharing, and property-graph cleanup
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+SET experimental_build_csr_on_create = true;
+
+statement ok
+CREATE TABLE lifecycle_vertex(id BIGINT, note VARCHAR);
+
+statement ok
+INSERT INTO lifecycle_vertex VALUES (1, 'a'), (2, 'b'), (3, 'c'), (4, 'd');
+
+statement ok
+CREATE TABLE lifecycle_edge_a(src BIGINT, dst BIGINT, note VARCHAR);
+
+statement ok
+INSERT INTO lifecycle_edge_a VALUES (1, 2, 'a'), (2, 3, 'b'), (3, 4, 'c');
+
+statement ok
+CREATE TABLE lifecycle_edge_b(src BIGINT, dst BIGINT, weight BIGINT);
+
+statement ok
+INSERT INTO lifecycle_edge_b VALUES (1, 3, 10), (3, 4, 20);
+
+statement ok
+CREATE PROPERTY GRAPH lifecycle_graph
+VERTEX TABLES (lifecycle_vertex LABEL Vertex)
+EDGE TABLES (
+    lifecycle_edge_a SOURCE KEY (src) REFERENCES lifecycle_vertex(id)
+                     DESTINATION KEY (dst) REFERENCES lifecycle_vertex(id)
+                     LABEL EdgeA,
+    lifecycle_edge_b SOURCE KEY (src) REFERENCES lifecycle_vertex(id)
+                     DESTINATION KEY (dst) REFERENCES lifecycle_vertex(id)
+                     LABEL EdgeB
+);
+
+# Two logical artifacts share one vertex dependency. Each physical table owns one trigger per DML event.
+query II
+SELECT count(*), count(DISTINCT catalog_name || '.' || schema_name || '.' || table_name)
+FROM __duckpgq_csr_dependencies;
+----
+4	3
+
+query I
+SELECT count(*) FROM __duckpgq_csr_trigger_owners;
+----
+9
+
+query TT rowsort
+SELECT table_name, columns::VARCHAR
+FROM duckdb_triggers()
+WHERE trigger_name = '__duckpgq_csr_invalidate_update';
+----
+lifecycle_edge_a	[dst, src]
+lifecycle_edge_b	[dst, src]
+lifecycle_vertex	[id]
+
+# Updates to non-structural property columns do not invalidate either artifact.
+statement ok
+UPDATE lifecycle_edge_a SET note = upper(note);
+
+statement ok
+UPDATE lifecycle_edge_b SET weight = weight + 1;
+
+statement ok
+UPDATE lifecycle_vertex SET note = upper(note);
+
+query II rowsort
+SELECT regexp_extract(logical_key, 'lifecycle_edge_[ab]'), valid::INTEGER
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%lifecycle_graph%';
+----
+lifecycle_edge_a	1
+lifecycle_edge_b	1
+
+# A structural edge update invalidates only the dependent artifact.
+statement ok
+UPDATE lifecycle_edge_a SET dst = 4 WHERE src = 2;
+
+query II rowsort
+SELECT regexp_extract(logical_key, 'lifecycle_edge_[ab]'), valid::INTEGER
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%lifecycle_graph%';
+----
+lifecycle_edge_a	0
+lifecycle_edge_b	1
+
+# MATCH must reject the stale in-memory generation, retain endpoint input, and publish generation 2.
+query II rowsort
+FROM GRAPH_TABLE(lifecycle_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:EdgeA]->{1,3}(b:Vertex)
+    COLUMNS (a.id AS src, b.id AS dst)
+)
+ORDER BY dst;
+----
+1	2
+1	4
+
+query II
+SELECT generation, valid::INTEGER
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%lifecycle_graph|lifecycle_edge_a|directed%';
+----
+2	1
+
+# The shared vertex-key dependency invalidates both edge artifacts, and rollback restores both registry rows.
+statement ok
+BEGIN TRANSACTION;
+
+statement ok
+UPDATE lifecycle_vertex SET id = id WHERE id = 1;
+
+query II rowsort
+SELECT regexp_extract(logical_key, 'lifecycle_edge_[ab]'), valid::INTEGER
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%lifecycle_graph%';
+----
+lifecycle_edge_a	0
+lifecycle_edge_b	0
+
+statement ok
+ROLLBACK;
+
+query II rowsort
+SELECT regexp_extract(logical_key, 'lifecycle_edge_[ab]'), valid::INTEGER
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%lifecycle_graph%';
+----
+lifecycle_edge_a	1
+lifecycle_edge_b	1
+
+# An uncommitted key update invalidates transaction-local reuse. The rebuilt CSR is usable by the query but is
+# neither persisted nor published, and rollback restores generation 2.
+statement ok
+BEGIN TRANSACTION;
+
+statement ok
+UPDATE lifecycle_edge_a SET dst = 3 WHERE src = 2;
+
+query I
+SELECT valid::INTEGER
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%lifecycle_graph|lifecycle_edge_a|directed%';
+----
+0
+
+query II rowsort
+FROM GRAPH_TABLE(lifecycle_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:EdgeA]->{1,3}(b:Vertex)
+    COLUMNS (a.id AS src, b.id AS dst)
+)
+ORDER BY dst;
+----
+1	2
+1	3
+1	4
+
+statement ok
+ROLLBACK;
+
+query II
+SELECT generation, valid::INTEGER
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%lifecycle_graph|lifecycle_edge_a|directed%';
+----
+2	1
+
+# Dropping the graph removes both artifacts and releases the shared vertex triggers only after the final dependency.
+statement ok
+DROP PROPERTY GRAPH lifecycle_graph;
+
+query III
+SELECT
+    (SELECT count(*) FROM __duckpgq_csr_registry),
+    (SELECT count(*) FROM __duckpgq_csr_dependencies),
+    (SELECT count(*) FROM __duckpgq_csr_trigger_owners);
+----
+0	0	0
+
+query I
+SELECT count(*) FROM duckdb_triggers() WHERE trigger_name LIKE '__duckpgq_csr_invalidate_%';
+----
+0

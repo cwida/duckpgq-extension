@@ -46,14 +46,16 @@ of using an invalid artifact. A cancelled or failed write cannot replace the las
 
 ## Format version 1
 
-Version 1 uses three reserved DuckDB tables:
+Version 1 uses four reserved DuckDB tables:
 
 - `__duckpgq_csr_registry` identifies the active immutable generation and records validity, format version, counts,
   capabilities, layout, and payload cardinalities;
 - `__duckpgq_csr_segments` stores ordered forward-CSR partition payloads, including partition ranges, sparse source
   rows, row offsets, local destinations, and optional streaming segments; and
-- `__duckpgq_csr_dependencies` maps artifacts to their physical vertex and edge tables. Dependency population and DML
-  invalidation are implemented in the subsequent lifecycle phases.
+- `__duckpgq_csr_dependencies` maps artifacts to physical vertex and edge tables plus their structural key columns;
+  and
+- `__duckpgq_csr_trigger_owners` records the exact invalidation triggers owned by DuckPGQ. Ownership is checked before
+  a trigger is reused, changed, or removed; a colliding or modified trigger fails closed and is never overwritten.
 
 All payload rows and the active registry update are written in one transaction. Payload rows from a generation that
 is not named by the registry are not visible to the codec. Version 1 persists only the forward capability, even when
@@ -70,3 +72,23 @@ Persisted construction uses a canonical target of 256 destination partitions; ti
 logical vertex ranges. This is a target rather than a cap: the partition count increases as needed to keep each local
 destination within `uint16`. The current 12-bit radix limit permits at most 4,096 physical partitions; graphs beyond
 that representation fail explicitly.
+
+## Invalidation and transaction lifecycle
+
+Each physical table has one owned `AFTER INSERT`, `AFTER DELETE`, and `AFTER UPDATE OF <structural keys>` trigger,
+regardless of how many persisted artifacts depend on it. Edge dependencies track the source and destination foreign
+keys; vertex dependencies track the referenced vertex keys. Insert and delete transition tables suppress invalidation
+when a statement affects no rows. DuckDB does not permit `UPDATE OF` together with transition tables, so a statement
+that names a structural key conservatively invalidates even if it affects no rows or assigns the old value. Updates
+that name only property columns do not invalidate.
+
+The trigger marks every dependent registry row invalid in the same transaction as the table mutation and evicts the
+affected key from all connection-local caches. Commit exposes the invalid registry state; rollback restores the prior
+valid generation. A query in an explicit transaction may build a CSR from its own snapshot for that query, but it
+cannot load a committed CSR or publish/persist the snapshot-local build. This prevents rollback from leaking a CSR
+made from uncommitted rows and prevents an older read snapshot from revalidating data after a newer commit.
+
+Every persisted in-memory index carries its registry generation. Both optimization and physical lookup validate that
+generation, validity flag, format, layout, counts, and capabilities before treating it as a cache hit. A mismatch is a
+cache miss, never a best-effort read. Dropping a property graph removes all of its registry generations, payload rows,
+dependencies, in-memory entries, and any owned table triggers whose dependency refcount reaches zero.
