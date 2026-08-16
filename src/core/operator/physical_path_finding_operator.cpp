@@ -519,38 +519,38 @@ void ConfigureLocalCSRStateForMode(LocalCSRState &local_csr_state, PathFindingOp
 	}
 }
 
-string GetPartitionedCSRCacheKey(const PhysicalPathFinding &op, const PathFindingGlobalSinkState &gstate,
-                                 const LocalCSRState &local_csr_state, ClientContext &context) {
+PartitionedCSRCapabilities GetRequiredPartitionedCSRCapabilities(const LocalCSRState &local_csr_state) {
+	auto result = PartitionedCSRCapabilities::NONE;
+	if (local_csr_state.build_forward_csr) {
+		result = result | PartitionedCSRCapabilities::FORWARD;
+	}
+	if (local_csr_state.build_reverse_csr) {
+		result = result | PartitionedCSRCapabilities::REVERSE;
+	}
+	if (local_csr_state.build_pull_csr) {
+		result = result | PartitionedCSRCapabilities::PULL;
+	}
+	return result;
+}
+
+string GetPartitionedCSRCacheKey(const PhysicalPathFinding &op, const PathFindingGlobalSinkState &gstate) {
 	if (op.cache_key.empty()) {
 		return string();
 	}
 	if (gstate.cached_partitioned_csr_input || gstate.precounted_edge_input || gstate.buffered_edge_input) {
-		return GetBufferedPartitionedCSRCacheKey(context, op.cache_key, gstate.vertex_count,
-		                                         GetPathFindingEdgeCount(gstate), op.mode,
-		                                         !gstate.precounted_edge_input);
+		return GetBufferedPartitionedCSRLogicalKey(op.cache_key, gstate.vertex_count, GetPathFindingEdgeCount(gstate));
 	}
 
 	std::ostringstream key;
-	key << std::setprecision(std::numeric_limits<double>::max_digits10);
-	key << "partitioned-csr-v2|graph=" << op.cache_key.size() << ":" << op.cache_key;
+	key << "partitioned-csr-logical-v1|graph=" << op.cache_key.size() << ":" << op.cache_key;
 	key << "|vertices=" << GetPathFindingVSize(gstate) << "|edges=" << GetPathFindingEdgeCount(gstate);
-	key << "|input=" << (gstate.edge_input ? "segmented-endpoints" : "global-csr");
-	if (gstate.cached_partitioned_csr_input || gstate.edge_input) {
-		key << "|partition_width=" << local_csr_state.streaming_partition_width;
-	}
-	key << "|threads=" << local_csr_state.num_threads;
-	key << "|forward=" << local_csr_state.build_forward_csr;
-	key << "|reverse=" << local_csr_state.build_reverse_csr;
-	key << "|pull=" << local_csr_state.build_pull_csr;
-	key << "|sparse=" << local_csr_state.finalize_sparse_rows;
-	key << "|heavy_fraction=" << GetHeavyPartitionFraction(context);
-	key << "|light_multiplier=" << GetLightPartitionMultiplier(context);
+	key << "|layout=" << (gstate.edge_input ? "segmented-endpoints" : "global-csr");
 	return key.str();
 }
 
 bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, const PhysicalPathFinding &op,
                            LocalCSRState &local_csr_state, ClientContext &context) {
-	local_csr_state.cache_key = GetPartitionedCSRCacheKey(op, gstate, local_csr_state, context);
+	local_csr_state.cache_key = GetPartitionedCSRCacheKey(op, gstate);
 	if (local_csr_state.cache_key.empty()) {
 		return false;
 	}
@@ -560,8 +560,10 @@ bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, const PhysicalPat
 	auto cached_index = duckpgq_state->GetPartitionedCSR(local_csr_state.cache_key);
 	auto end_time = std::chrono::steady_clock::now();
 	auto lookup_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+	auto required_capabilities = GetRequiredPartitionedCSRCapabilities(local_csr_state);
 	if (!cached_index || cached_index->vertex_count != GetPathFindingVSize(gstate) ||
-	    cached_index->edge_count != GetPathFindingEdgeCount(gstate)) {
+	    cached_index->edge_count != GetPathFindingEdgeCount(gstate) ||
+	    !HasPartitionedCSRCapabilities(cached_index->capabilities, required_capabilities)) {
 		AppendOperatorPhaseTiming(context, "partitioned_csr_cache_miss", gstate.num_threads,
 		                          gstate.pair_stats.pair_count, GetPathFindingEdgeCount(gstate), 0, lookup_ms, 0);
 		return false;
@@ -590,6 +592,7 @@ void PublishPartitionedCSR(PathFindingGlobalSinkState &gstate, ClientContext &co
 	auto index = make_shared_ptr<PartitionedCSRIndex>();
 	index->vertex_count = GetPathFindingVSize(gstate);
 	index->edge_count = GetPathFindingEdgeCount(gstate);
+	index->capabilities = GetRequiredPartitionedCSRCapabilities(local_csr_state);
 	index->forward_partitions = local_csr_state.partition_csrs;
 	index->reverse_partitions = local_csr_state.reverse_partition_csrs;
 	index->pull_partitions = local_csr_state.pull_partition_csrs;

@@ -270,12 +270,12 @@ static unique_ptr<LogicalPathFindingOperator> FindBufferedEdgesAndPairs(unique_p
 	}
 
 	auto base_cache_key = GetPathFindingCacheKey(*path_function);
-	auto full_cache_key = GetBufferedPartitionedCSRCacheKey(
-	    context, base_cache_key, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value),
-	    "iterativelength");
+	auto full_cache_key = GetBufferedPartitionedCSRLogicalKey(base_cache_key, static_cast<idx_t>(vertex_count_value),
+	                                                          static_cast<idx_t>(edge_count_value));
 	auto cached_index = full_cache_key.empty() ? nullptr : GetDuckPGQState(context)->GetPartitionedCSR(full_cache_key);
 	auto cache_hit = cached_index && cached_index->vertex_count == static_cast<idx_t>(vertex_count_value) + 2 &&
-	                 cached_index->edge_count == static_cast<idx_t>(edge_count_value);
+	                 cached_index->edge_count == static_cast<idx_t>(edge_count_value) &&
+	                 HasPartitionedCSRCapabilities(cached_index->capabilities, PartitionedCSRCapabilities::FORWARD);
 
 	vector<unique_ptr<LogicalOperator>> path_finding_children;
 	path_finding_children.push_back(std::move(inputs[pair_index]));

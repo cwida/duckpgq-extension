@@ -185,9 +185,25 @@ public:
 
 //! A completed partitioned CSR layout. Instances are immutable after publication
 //! in the connection-local cache and can be shared by subsequent queries.
+enum class PartitionedCSRCapabilities : uint8_t {
+	NONE = 0,
+	FORWARD = 1 << 0,
+	REVERSE = 1 << 1,
+	PULL = 1 << 2,
+};
+
+inline PartitionedCSRCapabilities operator|(PartitionedCSRCapabilities left, PartitionedCSRCapabilities right) {
+	return static_cast<PartitionedCSRCapabilities>(static_cast<uint8_t>(left) | static_cast<uint8_t>(right));
+}
+
+inline bool HasPartitionedCSRCapabilities(PartitionedCSRCapabilities available, PartitionedCSRCapabilities required) {
+	return (static_cast<uint8_t>(available) & static_cast<uint8_t>(required)) == static_cast<uint8_t>(required);
+}
+
 struct PartitionedCSRIndex {
 	idx_t vertex_count = 0;
 	idx_t edge_count = 0;
+	PartitionedCSRCapabilities capabilities = PartitionedCSRCapabilities::NONE;
 	std::vector<shared_ptr<LocalCSR>> forward_partitions;
 	std::vector<shared_ptr<LocalCSR>> reverse_partitions;
 	std::vector<shared_ptr<PullCSR>> pull_partitions;

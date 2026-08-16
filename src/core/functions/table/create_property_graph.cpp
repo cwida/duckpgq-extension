@@ -17,6 +17,7 @@
 namespace duckdb {
 
 static constexpr const char *EAGER_CSR_SETTINGS[] = {
+    "experimental_persist_csr",
     "experimental_path_finding_operator_task_size",
     "experimental_path_finding_operator_light_partition_multiplier",
     "experimental_path_finding_operator_heavy_partition_fraction",
@@ -93,10 +94,9 @@ static void BuildEagerCSRIndexes(ClientContext &context, Connection &connection,
 			                            edge_table->FullTableName(), result->GetError());
 		}
 
-		auto cache_key = GetBufferedPartitionedCSRCacheKey(*connection.context, base_cache_key, vertex_count,
-		                                                   edge_count, "iterativelength");
+		auto cache_key = GetBufferedPartitionedCSRLogicalKey(base_cache_key, vertex_count, edge_count);
 		auto index = GetDuckPGQState(*connection.context)->GetPartitionedCSR(cache_key);
-		if (!index) {
+		if (!index || !HasPartitionedCSRCapabilities(index->capabilities, PartitionedCSRCapabilities::FORWARD)) {
 			throw InternalException("Eager CSR construction did not publish an index for edge table '%s'",
 			                        edge_table->FullTableName());
 		}

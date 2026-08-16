@@ -2,15 +2,12 @@
 
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
-#include "duckdb/parallel/task_scheduler.hpp"
 #include "duckdb/common/radix_partitioning.hpp"
 #include "duckpgq/core/option/duckpgq_option.hpp"
 #include "duckpgq/core/utils/duckpgq_sql.hpp"
 #include "duckpgq/parser/property_graph_table.hpp"
 #include "duckdb/storage/data_table.hpp"
 
-#include <iomanip>
-#include <limits>
 #include <sstream>
 
 namespace duckdb {
@@ -78,8 +75,13 @@ string GetDirectedPathFindingEndpointsSQL(const PropertyGraphTable &edge_table) 
 
 static idx_t GetBufferedPartitionedCSRRequiredPartitionCount(idx_t vertex_count, idx_t thread_count,
                                                              ClientContext &context) {
+	// A persisted CSR must retain useful traversal parallelism regardless of how many
+	// workers happened to build it. Transient indexes keep the thread-tuned layout.
+	static constexpr idx_t PERSISTED_TARGET_PARTITION_COUNT = 256;
 	auto target_partition_count =
-	    std::max<idx_t>(1, thread_count) * (1 + std::max<int32_t>(1, GetLightPartitionMultiplier(context)));
+	    GetPersistCSROption(context)
+	        ? PERSISTED_TARGET_PARTITION_COUNT
+	        : std::max<idx_t>(1, thread_count) * (1 + std::max<int32_t>(1, GetLightPartitionMultiplier(context)));
 	auto minimum_partition_count = std::max<idx_t>(1, (vertex_count + 2 + UINT16_MAX - 1) / UINT16_MAX);
 	auto maximum_partition_count = RadixPartitioning::NumberOfPartitions(RadixPartitioning::MAX_RADIX_BITS);
 	if (minimum_partition_count > maximum_partition_count) {
@@ -112,41 +114,15 @@ idx_t GetBufferedPartitionedCSRLogicalPartitionCount(idx_t vertex_count, idx_t t
 	return std::max<idx_t>(1, (vertex_count + 2 + partition_width - 1) / partition_width);
 }
 
-string GetBufferedPartitionedCSRCacheKey(ClientContext &context, const string &base_cache_key, idx_t vertex_count,
-                                         idx_t edge_count, const string &mode, bool radix_partitioned_input) {
+string GetBufferedPartitionedCSRLogicalKey(const string &base_cache_key, idx_t vertex_count, idx_t edge_count) {
 	if (base_cache_key.empty()) {
 		return string();
 	}
 
-	bool build_forward = true;
-	bool build_reverse = false;
-	bool build_pull = false;
-	bool finalize_sparse_rows = true;
-	if (mode == "bidirectionaliterativelength") {
-		build_reverse = true;
-		finalize_sparse_rows = false;
-	} else if (mode == "pushpulliterativelength") {
-		build_pull = true;
-	} else if (mode != "iterativelength" && mode != "shortestpath") {
-		throw InvalidInputException("Unknown path-finding mode %s", mode);
-	}
-
-	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
-	auto partition_width = GetBufferedPartitionedCSRWidth(vertex_count, thread_count, context);
 	std::ostringstream key;
-	key << std::setprecision(std::numeric_limits<double>::max_digits10);
-	key << "partitioned-csr-v4|graph=" << base_cache_key.size() << ":" << base_cache_key;
+	key << "partitioned-csr-logical-v1|graph=" << base_cache_key.size() << ":" << base_cache_key;
 	key << "|vertices=" << vertex_count + 2 << "|edges=" << edge_count;
-	key << "|input=" << (radix_partitioned_input ? "radix-partitioned-endpoints" : "precounted-endpoints");
-	key << "|partition_width=" << partition_width;
-	key << "|partition_count=" << GetBufferedPartitionedCSRLogicalPartitionCount(vertex_count, thread_count, context);
-	key << "|threads=" << thread_count;
-	key << "|forward=" << build_forward;
-	key << "|reverse=" << build_reverse;
-	key << "|pull=" << build_pull;
-	key << "|sparse=" << finalize_sparse_rows;
-	key << "|heavy_fraction=" << GetHeavyPartitionFraction(context);
-	key << "|light_multiplier=" << GetLightPartitionMultiplier(context);
+	key << "|layout=destination-partitioned";
 	return key.str();
 }
 

@@ -124,7 +124,7 @@ void CorePGQOptions::RegisterPersistCSR(ExtensionLoader &loader) {
 	auto &config = DBConfig::GetConfig(db);
 
 	config.AddExtensionOption("experimental_persist_csr",
-	                          "Persist completed path-finding CSR indexes for reuse across database sessions",
+	                          "Load and persist completed path-finding CSR indexes across database sessions",
 	                          LogicalType::BOOLEAN, Value(false));
 }
 
@@ -136,8 +136,8 @@ void CorePGQOptions::RegisterBuildCSROnCreate(ExtensionLoader &loader) {
 	auto &config = DBConfig::GetConfig(db);
 
 	config.AddExtensionOption("experimental_build_csr_on_create",
-	                          "Build path-finding CSR indexes when a property graph is created", LogicalType::BOOLEAN,
-	                          Value(false));
+	                          "Eagerly build eligible path-finding CSR indexes when a property graph is created",
+	                          LogicalType::BOOLEAN, Value(false));
 }
 
 //------------------------------------------------------------------------------

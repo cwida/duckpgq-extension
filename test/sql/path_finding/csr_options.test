@@ -11,11 +11,36 @@ SELECT CAST(current_setting('experimental_persist_csr') AS BOOLEAN)::INTEGER,
 ----
 0	0
 
+# The lifecycle options are independent. Persistence does not imply eager construction.
 statement ok
 SET experimental_persist_csr = true;
 
+query II
+SELECT CAST(current_setting('experimental_persist_csr') AS BOOLEAN)::INTEGER,
+       CAST(current_setting('experimental_build_csr_on_create') AS BOOLEAN)::INTEGER;
+----
+1	0
+
 statement ok
 SET experimental_build_csr_on_create = true;
+
+query II
+SELECT CAST(current_setting('experimental_persist_csr') AS BOOLEAN)::INTEGER,
+       CAST(current_setting('experimental_build_csr_on_create') AS BOOLEAN)::INTEGER;
+----
+1	1
+
+statement ok
+SET experimental_persist_csr = false;
+
+query II
+SELECT CAST(current_setting('experimental_persist_csr') AS BOOLEAN)::INTEGER,
+       CAST(current_setting('experimental_build_csr_on_create') AS BOOLEAN)::INTEGER;
+----
+0	1
+
+statement ok
+SET experimental_persist_csr = true;
 
 statement ok
 SET threads = 8;
@@ -172,3 +197,48 @@ SELECT iterativelengthoperator(
 FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
 ----
 3
+
+# Logical CSR identity is independent of the query thread count (8-thread build, 1-thread reuse).
+statement ok
+SET threads = 1;
+
+query I
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'eager_graph|eager_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
+----
+3
+
+# Build a separate artifact with one thread, then consume it with eight threads.
+statement ok
+CREATE PROPERTY GRAPH eager_graph_single_thread
+VERTEX TABLES (eager_vertex LABEL Vertex)
+EDGE TABLES (
+    eager_edge SOURCE KEY (src) REFERENCES eager_vertex(id)
+               DESTINATION KEY (dst) REFERENCES eager_vertex(id)
+               LABEL Edge
+);
+
+statement ok
+SET threads = 8;
+
+query I
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'eager_graph_single_thread|eager_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
+----
+3
+
+# Persist-enabled builds use the same canonical physical partition count at one and eight threads.
+query I
+SELECT count(DISTINCT PartitionCount)
+FROM read_csv_auto('{TEST_DIR}/csr_options_eager_phase_timing.csv')
+WHERE Phase = 'local_csr_forward'
+  AND EdgeCount = 3
+  AND ThreadCount IN (1, 8);
+----
+1
