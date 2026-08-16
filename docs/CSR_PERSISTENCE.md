@@ -44,6 +44,21 @@ An incompatible, stale, partial, or corrupt generation is never published. If th
 query execution treats it as a cache miss and rebuilds the CSR. A cache-only execution path reports an error instead
 of using an invalid artifact. A cancelled or failed write cannot replace the last complete generation.
 
+## Format version 1
+
+Version 1 uses three reserved DuckDB tables:
+
+- `__duckpgq_csr_registry` identifies the active immutable generation and records validity, format version, counts,
+  capabilities, layout, and payload cardinalities;
+- `__duckpgq_csr_segments` stores ordered forward-CSR partition payloads, including partition ranges, sparse source
+  rows, row offsets, local destinations, and optional streaming segments; and
+- `__duckpgq_csr_dependencies` maps artifacts to their physical vertex and edge tables. Dependency population and DML
+  invalidation are implemented in the subsequent lifecycle phases.
+
+All payload rows and the active registry update are written in one transaction. Payload rows from a generation that
+is not named by the registry are not visible to the codec. Version 1 persists only the forward capability, even when
+the in-memory index also contains reverse or pull data.
+
 ## Thread-count invariant
 
 CSR identity and correctness are independent of the number of threads used to build, load, or traverse it. Thread
@@ -51,3 +66,7 @@ count and thread-derived partition geometry are physical execution details and m
 logical identity. For every supported graph and source vertex, changing `threads` may change timing but must not change
 the reached vertices or distances.
 
+Persisted construction uses a canonical target of 256 destination partitions; tiny graphs naturally materialize fewer
+logical vertex ranges. This is a target rather than a cap: the partition count increases as needed to keep each local
+destination within `uint16`. The current 12-bit radix limit permits at most 4,096 physical partitions; graphs beyond
+that representation fail explicitly.

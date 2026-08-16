@@ -1,0 +1,132 @@
+# name: test/sql/path_finding/csr_persistence.test
+# description: Persist and validate a versioned forward CSR across database restarts
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_persistence.db
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+SET experimental_build_csr_on_create = true;
+
+statement ok
+SET threads = 1;
+
+statement ok
+CREATE TABLE persist_vertex(id BIGINT);
+
+statement ok
+INSERT INTO persist_vertex VALUES (1), (2), (3), (4);
+
+statement ok
+CREATE TABLE persist_edge(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO persist_edge VALUES (1, 2), (2, 3), (3, 4);
+
+statement ok
+CREATE PROPERTY GRAPH persist_graph
+VERTEX TABLES (persist_vertex LABEL Vertex)
+EDGE TABLES (
+    persist_edge SOURCE KEY (src) REFERENCES persist_vertex(id)
+                 DESTINATION KEY (dst) REFERENCES persist_vertex(id)
+                 LABEL Edge
+);
+
+# The active generation is complete, versioned, and forward-only.
+query IIIIII
+SELECT generation, format_version, valid::INTEGER, vertex_count, edge_count, capabilities
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%persist_graph|persist_edge|directed%';
+----
+1	1	1	6	3	1
+
+query I
+SELECT count(*)
+FROM __duckpgq_csr_dependencies;
+----
+0
+
+query II
+SELECT count(*), sum(length(destinations))::BIGINT
+FROM __duckpgq_csr_segments
+WHERE logical_key LIKE '%persist_graph|persist_edge|directed%'
+  AND generation = 1;
+----
+6	3
+
+# An incomplete, unpublished generation is ignored by readers.
+statement ok
+INSERT INTO __duckpgq_csr_segments
+SELECT logical_key, generation + 1, csr_kind, partition_index, segment_index,
+       start_vertex, end_vertex, sparse_rows, source_vertices, row_offsets, destinations
+FROM __duckpgq_csr_segments
+WHERE logical_key LIKE '%persist_graph|persist_edge|directed%'
+  AND generation = 1
+LIMIT 1;
+
+statement ok
+CHECKPOINT;
+
+restart
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+SET threads = 8;
+
+# This cache-only path can succeed only by deserializing generation 1.
+query I
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'persist_graph|persist_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
+----
+3
+
+query I
+SELECT generation
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%persist_graph|persist_edge|directed%';
+----
+1
+
+# Corrupt an active base segment. It must be rejected after the in-memory cache is cleared.
+statement ok
+UPDATE __duckpgq_csr_segments
+SET row_offsets = [1::UINTEGER]
+WHERE logical_key LIKE '%persist_graph|persist_edge|directed%'
+  AND generation = 1
+  AND partition_index = 0
+  AND segment_index = 0;
+
+statement ok
+CHECKPOINT;
+
+restart
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement error
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'persist_graph|persist_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
+----
+Constraint Error: Cached PartitionCSR not found for cache key 'persist_graph|persist_edge|directed'; build it before using the cache-only path

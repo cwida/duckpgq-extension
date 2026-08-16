@@ -1,4 +1,5 @@
 #include "duckpgq_state.hpp"
+#include "duckpgq/core/operator/partitioned_csr_persistence.hpp"
 
 namespace duckdb {
 
@@ -29,6 +30,7 @@ void DuckPGQState::InitializeInternalTable(ClientContext &context) {
 	if (query->HasError()) {
 		throw TransactionException(query->GetError());
 	}
+	InitializePartitionedCSRPersistence(context);
 }
 
 void DuckPGQState::RetrievePropertyGraphs(const shared_ptr<Connection> &connection) {

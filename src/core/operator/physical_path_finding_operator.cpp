@@ -2,6 +2,7 @@
 #include "duckpgq/common.hpp"
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
 #include <duckpgq/core/operator/partitioned_csr_cache.hpp>
+#include <duckpgq/core/operator/partitioned_csr_persistence.hpp>
 
 #include "duckdb/common/types/column/column_data_collection.hpp"
 #include "duckdb/common/radix_partitioning.hpp"
@@ -58,7 +59,7 @@ static void SampleCSRBuildMemory(PathFindingGlobalSinkState &gstate) {
 static uint32_t UnpackPartitionedEndpointSource(hash_t endpoint, idx_t radix_bits);
 
 static hash_t PackPartitionedEndpoint(uint32_t source, idx_t partition_idx, uint16_t local_destination,
-	                                  idx_t radix_bits) {
+                                      idx_t radix_bits) {
 	D_ASSERT(radix_bits <= RadixPartitioning::MAX_RADIX_BITS);
 	auto source_low_bits = 32 - radix_bits;
 	auto source_low_mask = (hash_t(1) << source_low_bits) - 1;
@@ -558,9 +559,19 @@ bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, const PhysicalPat
 	auto start_time = std::chrono::steady_clock::now();
 	auto duckpgq_state = GetDuckPGQState(context);
 	auto cached_index = duckpgq_state->GetPartitionedCSR(local_csr_state.cache_key);
+	auto required_capabilities = GetRequiredPartitionedCSRCapabilities(local_csr_state);
+	if ((!cached_index || cached_index->vertex_count != GetPathFindingVSize(gstate) ||
+	     cached_index->edge_count != GetPathFindingEdgeCount(gstate) ||
+	     !HasPartitionedCSRCapabilities(cached_index->capabilities, required_capabilities)) &&
+	    GetPersistCSROption(context)) {
+		cached_index = TryLoadPersistedPartitionedCSR(context, local_csr_state.cache_key, GetPathFindingVSize(gstate),
+		                                              GetPathFindingEdgeCount(gstate), required_capabilities);
+		if (cached_index) {
+			duckpgq_state->PutPartitionedCSR(local_csr_state.cache_key, cached_index);
+		}
+	}
 	auto end_time = std::chrono::steady_clock::now();
 	auto lookup_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-	auto required_capabilities = GetRequiredPartitionedCSRCapabilities(local_csr_state);
 	if (!cached_index || cached_index->vertex_count != GetPathFindingVSize(gstate) ||
 	    cached_index->edge_count != GetPathFindingEdgeCount(gstate) ||
 	    !HasPartitionedCSRCapabilities(cached_index->capabilities, required_capabilities)) {
@@ -596,6 +607,9 @@ void PublishPartitionedCSR(PathFindingGlobalSinkState &gstate, ClientContext &co
 	index->forward_partitions = local_csr_state.partition_csrs;
 	index->reverse_partitions = local_csr_state.reverse_partition_csrs;
 	index->pull_partitions = local_csr_state.pull_partition_csrs;
+	if (GetPersistCSROption(context)) {
+		PersistPartitionedCSR(context, local_csr_state.cache_key, *index);
+	}
 	GetDuckPGQState(context)->PutPartitionedCSR(local_csr_state.cache_key, std::move(index));
 	local_csr_state.published_to_cache = true;
 	auto end_time = std::chrono::steady_clock::now();
@@ -1081,7 +1095,8 @@ public:
 		AppendOperatorPhaseTiming(
 		    gstate.context_, "csr_build_buffer_manager_peak_delta", gstate.num_threads, gstate.pair_stats.pair_count,
 		    gstate.endpoint_count, gstate.endpoint_partition_csrs.size(), 0,
-		    buffer_peak > gstate.csr_build_buffer_baseline_bytes ? buffer_peak - gstate.csr_build_buffer_baseline_bytes : 0);
+		    buffer_peak > gstate.csr_build_buffer_baseline_bytes ? buffer_peak - gstate.csr_build_buffer_baseline_bytes
+		                                                         : 0);
 		AppendOperatorPhaseTiming(gstate.context_, "csr_build_buffer_manager_swap_peak", gstate.num_threads,
 		                          gstate.pair_stats.pair_count, gstate.endpoint_count,
 		                          gstate.endpoint_partition_csrs.size(), 0, swap_peak);
@@ -1579,9 +1594,8 @@ void PathFindingLocalSinkState::SinkBufferedEndpoints(PathFindingGlobalSinkState
 		if (partition_idx >= gstate.endpoint_logical_partition_count || local_dst > UINT16_MAX) {
 			throw InternalException("Partitioned endpoint is outside the logical destination partition range");
 		}
-		output_endpoint.WriteValue(PackPartitionedEndpoint(NumericCast<uint32_t>(src), partition_idx,
-		                                                       NumericCast<uint16_t>(local_dst),
-		                                                       gstate.endpoint_radix_bits));
+		output_endpoint.WriteValue(PackPartitionedEndpoint(
+		    NumericCast<uint32_t>(src), partition_idx, NumericCast<uint16_t>(local_dst), gstate.endpoint_radix_bits));
 	}
 	local_endpoint_partition_data->Append(*endpoint_partition_append_state, endpoint_partition_chunk);
 	local_counted_endpoint_count += input.size();
@@ -1652,9 +1666,8 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 		endpoint_partition_width = GetBufferedPartitionedCSRWidth(vertex_count, num_threads, context);
 		endpoint_logical_partition_count =
 		    GetBufferedPartitionedCSRLogicalPartitionCount(vertex_count, num_threads, context);
-		endpoint_partition_data = make_uniq<RadixPartitionedColumnData>(context,
-		                                                                     vector<LogicalType> {LogicalType::HASH},
-		                                                                     endpoint_radix_bits, 0);
+		endpoint_partition_data = make_uniq<RadixPartitionedColumnData>(
+		    context, vector<LogicalType> {LogicalType::HASH}, endpoint_radix_bits, 0);
 		// Ensure that an empty graph also has all destination partitions.
 		auto empty_partitions = endpoint_partition_data->CreateShared();
 		endpoint_partition_data->Combine(*empty_partitions);
