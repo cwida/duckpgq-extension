@@ -43,8 +43,8 @@ class LocalCSRState {
 public:
 	LocalCSRState(ClientContext &context_p, CSR *csr, idx_t num_threads_p);
 	LocalCSRState(ClientContext &context_p,
-	              std::vector<std::vector<LocalCSRBuildPartition>> &&streaming_build_buffers_p,
-	              idx_t vertex_count_p, idx_t edge_count_p, idx_t partition_width_p, idx_t num_threads_p);
+	              std::vector<std::vector<LocalCSRBuildPartition>> &&streaming_build_buffers_p, idx_t vertex_count_p,
+	              idx_t edge_count_p, idx_t partition_width_p, idx_t num_threads_p);
 
 public:
 	CSR *global_csr;
@@ -74,6 +74,8 @@ public:
 	bool benchmark_enabled;
 	bool loaded_from_cache = false;
 	bool published_to_cache = false;
+	bool rebuild_timing_started = false;
+	uint64_t expected_persistence_generation = 0;
 	string cache_key;
 	string benchmark_output_prefix;
 	string benchmark_run_id;
@@ -83,6 +85,7 @@ public:
 	std::chrono::steady_clock::time_point reverse_end_time;
 	std::chrono::steady_clock::time_point pull_start_time;
 	std::chrono::steady_clock::time_point pull_end_time;
+	std::chrono::steady_clock::time_point rebuild_start_time;
 };
 
 } // namespace duckdb

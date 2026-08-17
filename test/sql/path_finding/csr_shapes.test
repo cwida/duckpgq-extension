@@ -1,0 +1,135 @@
+# name: test/sql/path_finding/csr_shapes.test
+# description: Persisted CSR coverage for empty, sparse, dense, disconnected, gapped-rowid, duplicate, and multi-edge graphs
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_shapes.db
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+SET experimental_build_csr_on_create = true;
+
+statement ok
+CREATE TABLE shape_vertex(id BIGINT);
+
+statement ok
+INSERT INTO shape_vertex VALUES (1), (2), (3), (4), (5), (6), (7), (8);
+
+# Leave a physical row-id gap, then append a replacement logical vertex.
+statement ok
+DELETE FROM shape_vertex WHERE id = 4;
+
+statement ok
+INSERT INTO shape_vertex VALUES (9);
+
+statement ok
+CREATE TABLE shape_empty(src BIGINT, dst BIGINT);
+
+statement ok
+CREATE TABLE shape_sparse(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO shape_sparse VALUES (1, 2), (2, 3), (3, 5), (6, 7);
+
+statement ok
+CREATE TABLE shape_dense(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO shape_dense
+SELECT s.id, d.id FROM shape_vertex s, shape_vertex d WHERE s.id <> d.id;
+
+statement ok
+CREATE TABLE shape_duplicate(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO shape_duplicate VALUES (1, 2), (1, 2), (2, 3), (5, 6), (7, 8);
+
+statement ok
+CREATE PROPERTY GRAPH shape_graph
+VERTEX TABLES (shape_vertex LABEL Vertex)
+EDGE TABLES (
+    shape_empty SOURCE KEY (src) REFERENCES shape_vertex(id)
+                DESTINATION KEY (dst) REFERENCES shape_vertex(id)
+                LABEL EmptyEdge,
+    shape_sparse SOURCE KEY (src) REFERENCES shape_vertex(id)
+                 DESTINATION KEY (dst) REFERENCES shape_vertex(id)
+                 LABEL SparseEdge,
+    shape_dense SOURCE KEY (src) REFERENCES shape_vertex(id)
+                DESTINATION KEY (dst) REFERENCES shape_vertex(id)
+                LABEL DenseEdge,
+    shape_duplicate SOURCE KEY (src) REFERENCES shape_vertex(id)
+                    DESTINATION KEY (dst) REFERENCES shape_vertex(id)
+                    LABEL DuplicateEdge
+);
+
+query II rowsort
+SELECT regexp_extract(logical_key, 'shape_(empty|sparse|dense|duplicate)'), edge_count
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%shape_graph%';
+----
+shape_dense	56
+shape_duplicate	5
+shape_empty	0
+shape_sparse	4
+
+statement ok
+CHECKPOINT;
+
+restart
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+query I
+SELECT iterativelengthoperator(
+    src, dst, 8::BIGINT, 0::BIGINT,
+    'shape_graph|shape_empty|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 0::BIGINT AS dst);
+----
+0
+
+query II rowsort
+FROM GRAPH_TABLE(shape_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:SparseEdge]->{1,4}(b:Vertex)
+    COLUMNS (b.id AS dst, path_length(p) AS distance)
+);
+----
+2	1
+3	2
+5	3
+
+query II rowsort
+FROM GRAPH_TABLE(shape_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:DenseEdge]->{1,2}(b:Vertex)
+    COLUMNS (b.id AS dst, path_length(p) AS distance)
+);
+----
+2	1
+3	1
+5	1
+6	1
+7	1
+8	1
+9	1
+
+query II rowsort
+FROM GRAPH_TABLE(shape_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:DuplicateEdge]->{1,3}(b:Vertex)
+    COLUMNS (b.id AS dst, path_length(p) AS distance)
+);
+----
+2	1
+3	2

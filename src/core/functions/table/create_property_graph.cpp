@@ -98,7 +98,7 @@ static void BuildEagerCSRIndexes(ClientContext &context, Connection &connection,
 			                            edge_table->FullTableName(), result->GetError());
 		}
 
-		auto cache_key = GetBufferedPartitionedCSRLogicalKey(base_cache_key, vertex_count, edge_count);
+		auto cache_key = GetBufferedPartitionedCSRLogicalKey(base_cache_key);
 		auto index = GetDuckPGQState(*connection.context)->GetPartitionedCSR(cache_key);
 		if (!index || !HasPartitionedCSRCapabilities(index->capabilities, PartitionedCSRCapabilities::FORWARD)) {
 			throw InternalException("Eager CSR construction did not publish an index for edge table '%s'",

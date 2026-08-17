@@ -1,6 +1,7 @@
 #include "duckpgq/core/operator/partitioned_csr_persistence.hpp"
 
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/exception/transaction_exception.hpp"
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/client_context_state.hpp"
@@ -15,6 +16,7 @@
 
 #include <limits>
 #include <set>
+#include <unordered_map>
 
 namespace duckdb {
 
@@ -27,6 +29,26 @@ static constexpr const char *INVALIDATION_STATE_KEY = "duckpgq_partitioned_csr_i
 static constexpr const char *INSERT_TRIGGER_NAME = "__duckpgq_csr_invalidate_insert";
 static constexpr const char *DELETE_TRIGGER_NAME = "__duckpgq_csr_invalidate_delete";
 static constexpr const char *UPDATE_TRIGGER_NAME = "__duckpgq_csr_invalidate_update";
+
+static mutex partitioned_csr_persist_lock;
+static unordered_map<string, weak_ptr<mutex>> partitioned_csr_key_locks;
+
+static shared_ptr<mutex> GetPartitionedCSRPersistLock(const string &logical_key) {
+	lock_guard<mutex> guard(partitioned_csr_persist_lock);
+	for (auto entry = partitioned_csr_key_locks.begin(); entry != partitioned_csr_key_locks.end();) {
+		if (entry->second.expired()) {
+			entry = partitioned_csr_key_locks.erase(entry);
+		} else {
+			entry++;
+		}
+	}
+	auto key_lock = partitioned_csr_key_locks[logical_key].lock();
+	if (!key_lock) {
+		key_lock = make_shared_ptr<mutex>();
+		partitioned_csr_key_locks[logical_key] = key_lock;
+	}
+	return key_lock;
+}
 
 class PartitionedCSRInvalidationState : public ClientContextState {
 public:
@@ -98,7 +120,10 @@ struct PhysicalTableIdentity {
 
 static void ThrowOnQueryError(const QueryResult &result, const string &operation) {
 	if (result.HasError()) {
-		throw IOException("Failed to %s: %s", operation, result.GetError());
+		if (result.GetErrorType() == ExceptionType::TRANSACTION) {
+			throw TransactionException("Failed to %s: %s", operation, result.GetError());
+		}
+		result.ThrowError("Failed to " + operation + ": ");
 	}
 }
 
@@ -414,7 +439,8 @@ static string CreateTriggerSQL(ClientContext &context, const PhysicalTableIdenti
 		    << DuckPGQSQL::Identifier(changed_rows);
 	}
 	sql << " FOR EACH STATEMENT UPDATE " << PersistenceTable(context, "__duckpgq_csr_registry")
-	    << " AS registry SET valid = duckpgq_mark_csr_invalid(registry.logical_key) FROM "
+	    << " AS registry SET valid = duckpgq_mark_csr_invalid(registry.logical_key), "
+	       "generation = registry.generation + 1 FROM "
 	    << PersistenceTable(context, "__duckpgq_csr_dependencies")
 	    << " AS dependency WHERE registry.logical_key = dependency.logical_key AND dependency.catalog_name = "
 	    << DuckPGQSQL::StringLiteral(table.catalog_name)
@@ -462,13 +488,13 @@ static void EnsureTrigger(ClientContext &context, Connection &connection, const 
 		return;
 	}
 	VerifyOwnedTrigger(table, trigger_name, *owner, actual);
-	if (owner->event == event && owner->columns == columns) {
+	auto trigger_sql = CreateTriggerSQL(context, table, trigger_name, event, columns);
+	if (owner->event == event && owner->columns == columns && owner->sql == trigger_sql) {
 		return;
 	}
 	auto table_sql = DuckPGQSQL::QualifiedTableName(table.catalog_name, table.schema_name, table.table_name);
 	ExecuteStatement(connection, "DROP TRIGGER " + DuckPGQSQL::Identifier(trigger_name) + " ON " + table_sql,
 	                 "replace owned CSR invalidation trigger");
-	auto trigger_sql = CreateTriggerSQL(context, table, trigger_name, event, columns);
 	ExecuteStatement(connection, trigger_sql, "recreate owned CSR invalidation trigger");
 	StoreTriggerOwner(connection, table, trigger_name, event, columns, trigger_sql);
 }
@@ -579,6 +605,25 @@ static uint64_t GetNextGeneration(Connection &connection, const string &logical_
 	return current_generation + 1;
 }
 
+uint64_t GetPartitionedCSRGeneration(ClientContext &context, const string &logical_key) {
+	if (logical_key.empty()) {
+		return 0;
+	}
+	try {
+		Connection connection(*context.db);
+		auto statement = connection.Prepare("SELECT generation FROM __duckpgq_csr_registry WHERE logical_key = ?");
+		if (statement->HasError()) {
+			return 0;
+		}
+		auto result = ExecutePrepared(*statement, {Value(logical_key)}, "read CSR generation token");
+		return result->RowCount() == 1 ? result->GetValue(0, 0).GetValue<uint64_t>() : 0;
+	} catch (const Exception &) {
+		return 0;
+	} catch (const std::exception &) {
+		return 0;
+	}
+}
+
 static void InsertSegment(PreparedStatement &statement, const string &logical_key, uint64_t generation,
                           idx_t partition_index, idx_t segment_index, idx_t start_vertex, idx_t end_vertex,
                           bool sparse_rows, const std::vector<uint32_t> &source_vertices,
@@ -600,16 +645,23 @@ static void InsertSegment(PreparedStatement &statement, const string &logical_ke
 }
 
 uint64_t PersistPartitionedCSR(ClientContext &context, const string &logical_key, const string &base_cache_key,
-                               const PartitionedCSRIndex &index) {
+                               uint64_t expected_generation, const PartitionedCSRIndex &index) {
 	if (logical_key.empty() || !ValidatePartitionedCSRIndex(index)) {
 		throw InvalidInputException("Refusing to persist an invalid or unidentified partitioned CSR");
 	}
 	auto resolved_dependencies = ResolveDependencies(context, base_cache_key);
+	auto key_lock = GetPartitionedCSRPersistLock(logical_key);
+	lock_guard<mutex> persist_guard(*key_lock);
 
 	Connection connection(*context.db);
 	ExecuteStatement(connection, "BEGIN TRANSACTION", "start CSR persistence transaction");
 	try {
-		auto generation = GetNextGeneration(connection, logical_key);
+		auto current_generation = GetNextGeneration(connection, logical_key) - 1;
+		if (current_generation != expected_generation) {
+			ExecuteStatement(connection, "ROLLBACK", "discard superseded CSR persistence transaction");
+			return 0;
+		}
+		auto generation = current_generation + 1;
 		set<PhysicalTableIdentity> affected_tables;
 		auto old_dependencies =
 		    connection.Prepare("SELECT DISTINCT catalog_name, schema_name, table_name FROM __duckpgq_csr_dependencies "

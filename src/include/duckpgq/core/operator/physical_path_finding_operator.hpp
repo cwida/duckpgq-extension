@@ -25,6 +25,11 @@ class LocalCSRState; // Forward declaration
 class SourceGroupedIterativeLengthState;
 class PathFindingGlobalSinkState;
 
+//! Appends one row to the optional path-finding phase timing file.
+//! Persistence and invalidation use the same sink as construction and traversal so benchmark runs can be reconciled.
+void AppendOperatorPhaseTiming(ClientContext &context, const string &phase, idx_t thread_count, idx_t pair_count,
+                               idx_t unique_count, idx_t duplicate_count, double time_ms, idx_t memory_bytes);
+
 enum class PathFindingOperatorMode {
 	ITERATIVE_LENGTH,
 	PUSH_PULL_ITERATIVE_LENGTH,

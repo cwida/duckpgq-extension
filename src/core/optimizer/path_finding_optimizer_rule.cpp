@@ -270,8 +270,7 @@ FindBufferedEdgesAndPairs(unique_ptr<LogicalOperator> &root, LogicalProjection &
 	}
 
 	auto base_cache_key = GetPathFindingCacheKey(*path_function);
-	auto full_cache_key = GetBufferedPartitionedCSRLogicalKey(base_cache_key, static_cast<idx_t>(vertex_count_value),
-	                                                          static_cast<idx_t>(edge_count_value));
+	auto full_cache_key = GetBufferedPartitionedCSRLogicalKey(base_cache_key);
 	auto cached_index = full_cache_key.empty() ? nullptr : GetDuckPGQState(context)->GetPartitionedCSR(full_cache_key);
 	auto cache_hit = cached_index && cached_index->vertex_count == static_cast<idx_t>(vertex_count_value) + 2 &&
 	                 cached_index->edge_count == static_cast<idx_t>(edge_count_value) &&
@@ -301,8 +300,10 @@ FindBufferedEdgesAndPairs(unique_ptr<LogicalOperator> &root, LogicalProjection &
 	string cache_key;
 	ReplaceExpressions(projection, function_expression, mode, offsets, cache_key);
 	if (cache_hit) {
-		// Keep both pair columns live, but remove the endpoint reference because its input was removed.
-		function_expression->Cast<BoundFunctionExpression>().GetChildrenMutable().erase_at(2);
+		// Keep the registered six-argument function shape serializable while removing the endpoint binding whose
+		// input was removed. The physical path-finding operator never evaluates this placeholder.
+		auto &function_children = function_expression->Cast<BoundFunctionExpression>().GetChildrenMutable();
+		function_children[2] = make_uniq<BoundConstantExpression>(Value(function_children[2]->GetReturnType()));
 	}
 	path_finding_expressions.push_back(std::move(function_expression));
 	return make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions, mode,

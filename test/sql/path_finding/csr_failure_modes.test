@@ -1,0 +1,126 @@
+# name: test/sql/path_finding/csr_failure_modes.test
+# description: Incompatible, missing, and corrupt persisted generations rebuild instead of publishing stale state
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_failure_modes.db
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+SET experimental_build_csr_on_create = true;
+
+statement ok
+CREATE TABLE failure_vertex(id BIGINT);
+
+statement ok
+INSERT INTO failure_vertex VALUES (1), (2), (3), (4);
+
+statement ok
+CREATE TABLE failure_format(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO failure_format VALUES (1, 2), (2, 3), (3, 4);
+
+statement ok
+CREATE TABLE failure_missing(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO failure_missing SELECT * FROM failure_format;
+
+statement ok
+CREATE TABLE failure_offsets(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO failure_offsets SELECT * FROM failure_format;
+
+statement ok
+CREATE PROPERTY GRAPH failure_graph
+VERTEX TABLES (failure_vertex LABEL Vertex)
+EDGE TABLES (
+    failure_format SOURCE KEY (src) REFERENCES failure_vertex(id)
+                   DESTINATION KEY (dst) REFERENCES failure_vertex(id)
+                   LABEL FormatEdge,
+    failure_missing SOURCE KEY (src) REFERENCES failure_vertex(id)
+                    DESTINATION KEY (dst) REFERENCES failure_vertex(id)
+                    LABEL MissingEdge,
+    failure_offsets SOURCE KEY (src) REFERENCES failure_vertex(id)
+                    DESTINATION KEY (dst) REFERENCES failure_vertex(id)
+                    LABEL OffsetEdge
+);
+
+statement ok
+UPDATE __duckpgq_csr_registry
+SET format_version = 999
+WHERE logical_key LIKE '%failure_format|directed%';
+
+statement ok
+DELETE FROM __duckpgq_csr_segments
+WHERE logical_key LIKE '%failure_missing|directed%'
+  AND generation = 1
+  AND partition_index = 0
+  AND segment_index = 0;
+
+statement ok
+UPDATE __duckpgq_csr_segments
+SET row_offsets = [1::UINTEGER]
+WHERE logical_key LIKE '%failure_offsets|directed%'
+  AND generation = 1
+  AND partition_index = 0
+  AND segment_index = 0;
+
+statement ok
+CHECKPOINT;
+
+restart
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+# All three invalid artifacts are rejected on reopen; graph input permits a safe rebuild.
+query I
+SELECT count(*)
+FROM GRAPH_TABLE(failure_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:FormatEdge]->{1,3}(b:Vertex)
+    COLUMNS (b.id AS dst)
+);
+----
+3
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE(failure_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:MissingEdge]->{1,3}(b:Vertex)
+    COLUMNS (b.id AS dst)
+);
+----
+3
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE(failure_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:OffsetEdge]->{1,3}(b:Vertex)
+    COLUMNS (b.id AS dst)
+);
+----
+3
+
+query III rowsort
+SELECT generation, valid::INTEGER, format_version
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%failure_graph%';
+----
+2	1	1
+2	1	1
+2	1	1

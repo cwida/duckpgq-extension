@@ -7,6 +7,11 @@
 #include "duckpgq/core/utils/duckpgq_sql.hpp"
 #include "duckpgq/parser/property_graph_table.hpp"
 #include "duckdb/storage/data_table.hpp"
+#include "duckdb/storage/table/row_group.hpp"
+#include "duckdb/storage/table/row_group_collection.hpp"
+#include "duckdb/storage/table/row_group_segment_tree.hpp"
+#include "duckdb/transaction/duck_transaction.hpp"
+#include "duckdb/transaction/local_storage.hpp"
 
 #include <sstream>
 
@@ -19,6 +24,19 @@ static optional_ptr<DuckTableEntry> GetDuckTableEntry(ClientContext &context, co
 		return nullptr;
 	}
 	return &entry->Cast<DuckTableEntry>();
+}
+
+static idx_t GetVisibleRowCount(ClientContext &context, DuckTableEntry &entry) {
+	auto &storage = entry.GetStorage();
+	auto &transaction = DuckTransaction::Get(context, storage.GetRowGroupCollection()->GetAttached());
+	auto row_groups = storage.GetRowGroupCollection()->GetRowGroups();
+	idx_t count = 0;
+	for (idx_t row_group_idx = 0; row_group_idx < row_groups->GetSegmentCount(); row_group_idx++) {
+		auto row_group = row_groups->GetSegmentByIndex(NumericCast<int64_t>(row_group_idx));
+		D_ASSERT(row_group);
+		count += row_group->GetNode().GetVisibleRowCount(transaction);
+	}
+	return count + transaction.GetLocalStorage().AddedRows(storage);
 }
 
 bool GetDirectedPathFindingStorageCounts(ClientContext &context, const PropertyGraphTable &edge_table,
@@ -34,7 +52,9 @@ bool GetDirectedPathFindingStorageCounts(ClientContext &context, const PropertyG
 	}
 	// Row IDs can contain gaps after deletes. The next row ID is the required CSR range.
 	vertex_count = vertex_entry->GetStorage().GetNextRowId();
-	edge_count = edge_entry->GetStorage().GetTotalRows();
+	// GetTotalRows includes committed delete slots. The operator needs the exact transaction-visible edge count both
+	// for allocation and for generation validation, especially after DELETE and in older read snapshots.
+	edge_count = GetVisibleRowCount(context, *edge_entry);
 	return true;
 }
 
@@ -114,14 +134,13 @@ idx_t GetBufferedPartitionedCSRLogicalPartitionCount(idx_t vertex_count, idx_t t
 	return std::max<idx_t>(1, (vertex_count + 2 + partition_width - 1) / partition_width);
 }
 
-string GetBufferedPartitionedCSRLogicalKey(const string &base_cache_key, idx_t vertex_count, idx_t edge_count) {
+string GetBufferedPartitionedCSRLogicalKey(const string &base_cache_key) {
 	if (base_cache_key.empty()) {
 		return string();
 	}
 
 	std::ostringstream key;
 	key << "partitioned-csr-logical-v1|graph=" << base_cache_key.size() << ":" << base_cache_key;
-	key << "|vertices=" << vertex_count + 2 << "|edges=" << edge_count;
 	key << "|layout=destination-partitioned";
 	return key.str();
 }

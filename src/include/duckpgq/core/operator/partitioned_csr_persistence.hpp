@@ -15,7 +15,10 @@ void InitializePartitionedCSRPersistence(ClientContext &context);
 //! Atomically writes a complete forward-CSR generation and makes it active.
 //! The supplied index is validated before any durable state is published.
 uint64_t PersistPartitionedCSR(ClientContext &context, const string &logical_key, const string &base_cache_key,
-                               const PartitionedCSRIndex &index);
+                               uint64_t expected_generation, const PartitionedCSRIndex &index);
+
+//! Returns the committed registry generation, or zero when the logical artifact does not exist.
+uint64_t GetPartitionedCSRGeneration(ClientContext &context, const string &logical_key);
 
 //! Loads and validates the active generation. Invalid, incomplete, incompatible,
 //! or count-mismatched artifacts are treated as a cache miss and are never published.

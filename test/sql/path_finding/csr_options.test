@@ -147,6 +147,23 @@ WHERE Phase = 'local_csr_forward'
 ----
 3
 
+# Eager persistence exposes distinct lookup, load attempt, rebuild, and durable-write phases for every eligible edge.
+query TI rowsort
+SELECT Phase, count(*)
+FROM read_csv_auto('{TEST_DIR}/csr_options_eager_phase_timing.csv')
+WHERE Phase IN (
+    'partitioned_csr_metadata_lookup',
+    'partitioned_csr_deserialize_load',
+    'partitioned_csr_rebuild',
+    'partitioned_csr_serialize_write'
+)
+GROUP BY Phase;
+----
+partitioned_csr_deserialize_load	3
+partitioned_csr_metadata_lookup	3
+partitioned_csr_rebuild	3
+partitioned_csr_serialize_write	3
+
 statement ok
 SET experimental_path_finding_operator = true;
 
@@ -242,3 +259,122 @@ WHERE Phase = 'local_csr_forward'
   AND ThreadCount IN (1, 8);
 ----
 1
+
+# Eager construction remains memory-only when persistence is disabled.
+statement ok
+DROP PROPERTY GRAPH eager_graph;
+
+statement ok
+DROP PROPERTY GRAPH eager_graph_single_thread;
+
+statement ok
+SET experimental_persist_csr = false;
+
+statement ok
+SET experimental_build_csr_on_create = true;
+
+statement ok
+CREATE PROPERTY GRAPH eager_memory_graph
+VERTEX TABLES (eager_vertex LABEL Vertex)
+EDGE TABLES (
+    eager_edge SOURCE KEY (src) REFERENCES eager_vertex(id)
+               DESTINATION KEY (dst) REFERENCES eager_vertex(id)
+               LABEL Edge
+);
+
+query I
+SELECT count(*) FROM __duckpgq_csr_registry WHERE logical_key LIKE '%eager_memory_graph%';
+----
+0
+
+query I
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'eager_memory_graph|eager_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
+----
+3
+
+statement ok
+DROP PROPERTY GRAPH eager_memory_graph;
+
+# Persistence alone is lazy: CREATE registers no artifact, and the first MATCH builds and persists it.
+statement ok
+SET experimental_build_csr_on_create = false;
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+CREATE PROPERTY GRAPH lazy_persist_graph
+VERTEX TABLES (eager_vertex LABEL Vertex)
+EDGE TABLES (
+    eager_edge SOURCE KEY (src) REFERENCES eager_vertex(id)
+               DESTINATION KEY (dst) REFERENCES eager_vertex(id)
+               LABEL Edge
+);
+
+query I
+SELECT count(*) FROM __duckpgq_csr_registry WHERE logical_key LIKE '%lazy_persist_graph%';
+----
+0
+
+query II rowsort
+FROM GRAPH_TABLE(lazy_persist_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:Edge]->{1,3}(b:Vertex)
+    COLUMNS (a.id AS src, b.id AS dst)
+)
+ORDER BY dst;
+----
+1	2
+1	3
+1	4
+
+query I
+SELECT count(*) FROM __duckpgq_csr_registry WHERE logical_key LIKE '%lazy_persist_graph%';
+----
+1
+
+statement ok
+DROP PROPERTY GRAPH lazy_persist_graph;
+
+# With both options disabled, the same lazy path publishes only to memory.
+statement ok
+SET experimental_persist_csr = false;
+
+statement ok
+CREATE PROPERTY GRAPH lazy_memory_graph
+VERTEX TABLES (eager_vertex LABEL Vertex)
+EDGE TABLES (
+    eager_edge SOURCE KEY (src) REFERENCES eager_vertex(id)
+               DESTINATION KEY (dst) REFERENCES eager_vertex(id)
+               LABEL Edge
+);
+
+query II rowsort
+FROM GRAPH_TABLE(lazy_memory_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:Edge]->{1,3}(b:Vertex)
+    COLUMNS (a.id AS src, b.id AS dst)
+)
+ORDER BY dst;
+----
+1	2
+1	3
+1	4
+
+query I
+SELECT count(*) FROM __duckpgq_csr_registry WHERE logical_key LIKE '%lazy_memory_graph%';
+----
+0
+
+query I
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'lazy_memory_graph|eager_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
+----
+3

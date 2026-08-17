@@ -1,0 +1,72 @@
+# name: test/sql/path_finding/csr_cancellation.test_slow
+# description: Cancelling a lazy CSR build never publishes a partial persisted generation
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+SET experimental_build_csr_on_create = false;
+
+statement ok
+SET threads = 8;
+
+statement ok
+CREATE TABLE cancel_vertex AS SELECT i::BIGINT AS id FROM range(1000000) t(i);
+
+statement ok
+CREATE TABLE cancel_edge AS
+SELECT i::BIGINT AS src, (i + 1)::BIGINT AS dst FROM range(999999) t(i);
+
+statement ok
+CREATE PROPERTY GRAPH cancel_graph
+VERTEX TABLES (cancel_vertex LABEL Vertex)
+EDGE TABLES (
+    cancel_edge SOURCE KEY (src) REFERENCES cancel_vertex(id)
+                DESTINATION KEY (dst) REFERENCES cancel_vertex(id)
+                LABEL Edge
+);
+
+statement ok
+SET max_execution_time = 1;
+
+statement error
+FROM GRAPH_TABLE(cancel_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 0)-[e:Edge]->{1,2}(b:Vertex WHERE b.id = 1)
+    COLUMNS (path_length(p) AS distance)
+);
+----
+<REGEX>:.*maximum execution time.*
+
+statement ok
+SET max_execution_time = 0;
+
+query II
+SELECT
+    (SELECT count(*) FROM __duckpgq_csr_registry WHERE logical_key LIKE '%cancel_graph%'),
+    (SELECT count(*) FROM __duckpgq_csr_segments WHERE logical_key LIKE '%cancel_graph%');
+----
+0	0
+
+# The next uncancelled query builds and publishes one complete generation.
+query I
+FROM GRAPH_TABLE(cancel_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 0)-[e:Edge]->{1,2}(b:Vertex WHERE b.id = 1)
+    COLUMNS (path_length(p) AS distance)
+);
+----
+1
+
+query II
+SELECT generation, valid::INTEGER
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%cancel_graph|cancel_edge|directed%';
+----
+1	1

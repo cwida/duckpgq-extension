@@ -1,0 +1,187 @@
+# name: test/sql/path_finding/csr_connections.test
+# description: Two-connection snapshot semantics and concurrent persisted-CSR reads versus mutation
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_connections.db
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+SET experimental_build_csr_on_create = true;
+
+statement ok
+CREATE TABLE connection_vertex(id BIGINT);
+
+statement ok
+INSERT INTO connection_vertex VALUES (1), (2), (3), (4);
+
+statement ok
+CREATE TABLE connection_edge(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO connection_edge VALUES (1, 2), (2, 3), (3, 4);
+
+statement ok
+CREATE PROPERTY GRAPH connection_graph
+VERTEX TABLES (connection_vertex LABEL Vertex)
+EDGE TABLES (
+    connection_edge SOURCE KEY (src) REFERENCES connection_vertex(id)
+                    DESTINATION KEY (dst) REFERENCES connection_vertex(id)
+                    LABEL Edge
+);
+
+statement ok
+CHECKPOINT;
+
+restart
+
+statement ok con1
+SET experimental_path_finding_operator = true;
+
+statement ok con1
+SET experimental_persist_csr = true;
+
+statement ok con1
+SET experimental_path_finding_operator_benchmark = true;
+
+statement ok con1
+SET experimental_path_finding_operator_benchmark_prefix = '{TEST_DIR}/csr_connections_con1';
+
+statement ok con2
+SET experimental_path_finding_operator = true;
+
+statement ok con2
+SET experimental_persist_csr = true;
+
+# Both connections independently deserialize and traverse the same immutable generation.
+query I con1
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'connection_graph|connection_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
+----
+3
+
+query I con2
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'connection_graph|connection_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
+----
+3
+
+# Establish an older read snapshot, then commit a structural mutation from the second connection.
+statement ok con1
+BEGIN TRANSACTION;
+
+query I con1
+SELECT count(*) FROM connection_edge;
+----
+3
+
+statement ok con2
+UPDATE connection_edge SET dst = 4 WHERE src = 2;
+
+query I con1
+SELECT dst FROM connection_edge WHERE src = 2;
+----
+3
+
+query IIII con1
+SELECT s.rowid, d.rowid, e.src, e.dst
+FROM connection_edge e
+JOIN connection_vertex s ON e.src = s.id
+JOIN connection_vertex d ON e.dst = d.id;
+----
+0	1	1	2
+1	2	2	3
+2	3	3	4
+
+# The old snapshot rebuilds locally and may not load or publish the newly invalid committed generation.
+query II con1
+FROM GRAPH_TABLE(connection_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:Edge]->{1,3}(b:Vertex)
+    COLUMNS (a.id AS src, b.id AS dst)
+);
+----
+1	2
+1	3
+1	4
+
+statement ok con1
+ROLLBACK;
+
+# A new snapshot observes the mutation; invalidation advances generation 2 and the rebuild publishes generation 3.
+query II con2
+FROM GRAPH_TABLE(connection_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:Edge]->{1,3}(b:Vertex)
+    COLUMNS (a.id AS src, b.id AS dst)
+);
+----
+1	2
+1	4
+
+query II con2
+SELECT generation, valid::INTEGER
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%connection_graph|connection_edge|directed%';
+----
+3	1
+
+# Exercise actual overlapping reader/mutator connections. Readers may observe either committed graph state,
+# but every query must finish without a deadlock, stale-pointer crash, or partial artifact publication.
+concurrentloop threadid 0 4
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+loop iteration 0 10
+
+onlyif threadid=0
+statement ok
+UPDATE connection_edge
+SET dst = CASE WHEN dst = 3 THEN 4 ELSE 3 END
+WHERE src = 2;
+
+onlyif threadid>=1
+statement ok
+SELECT count(*)
+FROM GRAPH_TABLE(connection_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:Edge]->{1,3}(b:Vertex)
+    COLUMNS (b.id AS dst)
+);
+
+endloop
+
+endloop
+
+query I
+SELECT (count(*) IN (2, 3))::INTEGER
+FROM GRAPH_TABLE(connection_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 1)-[e:Edge]->{1,3}(b:Vertex)
+    COLUMNS (b.id AS dst)
+);
+----
+1
+
+query I
+SELECT valid::INTEGER
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%connection_graph|connection_edge|directed%';
+----
+1

@@ -11,14 +11,12 @@
 
 namespace duckdb {
 
-static void CsrInitializeVertex(DuckPGQState &context, int32_t id, int64_t v_size) {
+static CSR *GetOrInitializeCSRVertex(DuckPGQState &context, int32_t id, int64_t v_size) {
 	lock_guard<mutex> csr_init_lock(context.csr_lock);
 
 	auto csr_entry = context.csr_list.find(id);
-	if (csr_entry != context.csr_list.end()) {
-		if (csr_entry->second->initialized_v) {
-			return;
-		}
+	if (csr_entry != context.csr_list.end() && csr_entry->second->initialized_v) {
+		return csr_entry->second.get();
 	}
 	try {
 		auto csr = make_uniq<CSR>();
@@ -34,6 +32,7 @@ static void CsrInitializeVertex(DuckPGQState &context, int32_t id, int64_t v_siz
 		}
 		csr->initialized_v = true;
 		context.csr_list[id] = std::move(csr);
+		return context.csr_list[id].get();
 	} catch (std::bad_alloc const &) {
 		throw Exception(ExceptionType::INTERNAL, "Unable to initialize vector of size for csr vertex table "
 		                                         "representation");
@@ -92,21 +91,12 @@ static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state, Vec
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 	int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
-	auto csr_entry = duckpgq_state->csr_list.find(info.id);
-
-	if (csr_entry == duckpgq_state->csr_list.end()) {
-		CsrInitializeVertex(*duckpgq_state, info.id, input_size);
-		csr_entry = duckpgq_state->csr_list.find(info.id);
-	} else {
-		if (!csr_entry->second->initialized_v) {
-			CsrInitializeVertex(*duckpgq_state, info.id, input_size);
-		}
-	}
+	auto csr = GetOrInitializeCSRVertex(*duckpgq_state, info.id, input_size);
 
 	BinaryExecutor::Execute<int64_t, int64_t, int64_t>(args.data[2], args.data[3], result, args.size(),
 	                                                   [&](int64_t src, int64_t cnt) {
 		                                                   int64_t edge_count = 0;
-		                                                   csr_entry->second->v[src + 2] = cnt;
+		                                                   csr->v[src + 2] = cnt;
 		                                                   edge_count = edge_count + cnt;
 		                                                   return edge_count;
 	                                                   });

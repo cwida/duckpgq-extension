@@ -1,0 +1,82 @@
+# name: test/sql/path_finding/csr_thread_matrix.test
+# description: Persisted CSR correctness across every supported build and reopen/query thread count
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_thread_matrix.db
+
+statement ok
+CREATE TABLE matrix_vertex(id BIGINT);
+
+statement ok
+INSERT INTO matrix_vertex VALUES (1), (2), (3), (4);
+
+statement ok
+CREATE TABLE matrix_edge(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO matrix_edge VALUES (1, 2), (2, 3), (3, 4);
+
+foreach build_threads 1 2 4 8 16
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+SET experimental_build_csr_on_create = true;
+
+statement ok
+SET threads = {build_threads};
+
+statement ok
+CREATE PROPERTY GRAPH matrix_graph_{build_threads}
+VERTEX TABLES (matrix_vertex LABEL Vertex)
+EDGE TABLES (
+    matrix_edge SOURCE KEY (src) REFERENCES matrix_vertex(id)
+                DESTINATION KEY (dst) REFERENCES matrix_vertex(id)
+                LABEL Edge
+);
+
+statement ok
+CHECKPOINT;
+
+foreach query_threads 1 2 4 8 16
+
+restart
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = true;
+
+statement ok
+SET threads = {query_threads};
+
+# Restart guarantees this is a persisted load, while the worker count controls traversal independently.
+query I
+SELECT iterativelengthoperator(
+    src, dst, 4::BIGINT, 3::BIGINT,
+    'matrix_graph_{build_threads}|matrix_edge|directed'
+)
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
+----
+3
+
+query II
+SELECT generation, valid::INTEGER
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%matrix_graph_{build_threads}|matrix_edge|directed%';
+----
+1	1
+
+endloop
+
+statement ok
+DROP PROPERTY GRAPH matrix_graph_{build_threads};
+
+endloop

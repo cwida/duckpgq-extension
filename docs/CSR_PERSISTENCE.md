@@ -65,8 +65,9 @@ the in-memory index also contains reverse or pull data.
 
 CSR identity and correctness are independent of the number of threads used to build, load, or traverse it. Thread
 count and thread-derived partition geometry are physical execution details and must not be part of the persisted
-logical identity. For every supported graph and source vertex, changing `threads` may change timing but must not change
-the reached vertices or distances.
+logical identity. Vertex and edge counts are also generation metadata rather than identity, so cardinality-changing
+DML invalidates and advances the same artifact. For every supported graph and source vertex, changing `threads` may
+change timing but must not change the reached vertices or distances.
 
 Persisted construction uses a canonical target of 256 destination partitions; tiny graphs naturally materialize fewer
 logical vertex ranges. This is a target rather than a cap: the partition count increases as needed to keep each local
@@ -82,13 +83,60 @@ when a statement affects no rows. DuckDB does not permit `UPDATE OF` together wi
 that names a structural key conservatively invalidates even if it affects no rows or assigns the old value. Updates
 that name only property columns do not invalidate.
 
-The trigger marks every dependent registry row invalid in the same transaction as the table mutation and evicts the
-affected key from all connection-local caches. Commit exposes the invalid registry state; rollback restores the prior
-valid generation. A query in an explicit transaction may build a CSR from its own snapshot for that query, but it
-cannot load a committed CSR or publish/persist the snapshot-local build. This prevents rollback from leaking a CSR
-made from uncommitted rows and prevents an older read snapshot from revalidating data after a newer commit.
+The trigger marks every dependent registry row invalid, advances its generation token in the same transaction as the
+table mutation, and evicts the affected key from all connection-local caches. Commit exposes the invalid registry
+state; rollback restores the prior valid generation. Builders capture the generation token before construction and
+publish only if it is still current, so a mutation racing a build cannot publish a stale snapshot. Concurrent builders
+for the same identity serialize the final write; a superseded builder keeps its immutable CSR query-local. A query in
+an explicit transaction may build a CSR from its own snapshot for that query, but it cannot load a committed CSR or
+publish/persist the snapshot-local build. This prevents rollback from leaking a CSR made from uncommitted rows and
+prevents an older read snapshot from revalidating data after a newer commit.
 
 Every persisted in-memory index carries its registry generation. Both optimization and physical lookup validate that
 generation, validity flag, format, layout, counts, and capabilities before treating it as a cache hit. A mismatch is a
 cache miss, never a best-effort read. Dropping a property graph removes all of its registry generations, payload rows,
 dependencies, in-memory entries, and any owned table triggers whose dependency refcount reaches zero.
+
+## Benchmark timing phases
+
+When `experimental_path_finding_operator_benchmark=true`, the phase timing CSV separates persistence lifecycle work
+from traversal work:
+
+- `partitioned_csr_metadata_lookup` measures the in-memory identity/generation lookup;
+- `partitioned_csr_deserialize_load` measures a persisted-generation load attempt, including validation;
+- `partitioned_csr_rebuild` measures construction after a cache miss and before persistence;
+- `partitioned_csr_serialize_write` measures the transactional durable generation write; and
+- `partitioned_csr_invalidation` measures the synchronous trigger action.
+
+The existing `partitioned_csr_cache_hit`, `partitioned_csr_cache_miss`, and `partitioned_csr_cache_publish` phases remain
+available for end-to-end cache accounting. Persistence-disabled paths never emit deserialize/load or serialize/write
+phases.
+
+## Local performance sweep
+
+`scripts/csr_persistence_benchmark.py` runs the P7 comparison without EC2 or downloads. Every trial clones an existing
+prepared DuckDB database, eagerly creates the property graph in one process, and reopens the database in a second
+process for the first and warm BFS. Because the existing benchmark files predate trigger-capable storage, the runner
+first copies the two graph tables once into a v2.0.0 benchmark base and leaves the source files untouched. This one-time
+conversion is recorded but excluded from CSR timings. It pairs two modes:
+
+- `persisted_canonical` builds the canonical layout, serializes it, and deserializes it after process restart; and
+- `transient_thread_tuned` disables persistence, so the restarted process builds the thread-tuned layout on its first
+  BFS.
+
+The paper-facing columns have non-overlapping meanings: `Load` is persisted metadata/deserialization or transient CSR
+construction, `Cold` is the remainder of the first end-to-end BFS, and `Warm` is a repeated BFS in the same process.
+`cold_total_s` remains available as `Load + Cold` without phase subtraction. Raw results also contain eager creation,
+serialization, phase counts, partition counts, process peak RSS, used database blocks, correctness checksums, and
+per-trial disk estimates. The generated environment file records the commit, dirty-tree hash, binary/extension hashes,
+machine resources, options, datasets, repetitions, and thread counts.
+
+The default local sweep covers SNB SF1 plus `wiki-Talk` and `kgs` at 1, 4, 8, and 16 threads with three repetitions:
+
+```shell
+python3 scripts/csr_persistence_benchmark.py
+```
+
+Results are written below the ignored `data/ldbc-pathfinding/results/csr_persistence` directory. Guardrail results for
+load-versus-rebuild time, warm traversal, disk amplification, and query RSS are recorded without failing the exploratory
+run; pass `--strict-guardrails` when those thresholds should gate automation.
