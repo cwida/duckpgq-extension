@@ -3,6 +3,10 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/exception/transaction_exception.hpp"
 #include "duckdb/common/types/value.hpp"
+#include "duckdb/common/vector/flat_vector.hpp"
+#include "duckdb/common/vector/list_vector.hpp"
+#include "duckdb/common/vector/string_vector.hpp"
+#include "duckdb/main/appender.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/client_context_state.hpp"
 #include "duckdb/main/connection.hpp"
@@ -14,6 +18,8 @@
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
 #include "duckpgq/parser/parsed_data/create_property_graph_info.hpp"
 
+#include <algorithm>
+#include <cstring>
 #include <limits>
 #include <set>
 #include <unordered_map>
@@ -29,6 +35,7 @@ static constexpr const char *INVALIDATION_STATE_KEY = "duckpgq_partitioned_csr_i
 static constexpr const char *INSERT_TRIGGER_NAME = "__duckpgq_csr_invalidate_insert";
 static constexpr const char *DELETE_TRIGGER_NAME = "__duckpgq_csr_invalidate_delete";
 static constexpr const char *UPDATE_TRIGGER_NAME = "__duckpgq_csr_invalidate_update";
+static constexpr idx_t PERSISTED_LOAD_PARTITION_BATCH_SIZE = 16;
 
 static mutex partitioned_csr_persist_lock;
 static unordered_map<string, weak_ptr<mutex>> partitioned_csr_key_locks;
@@ -142,33 +149,74 @@ static unique_ptr<MaterializedQueryResult> ExecutePrepared(PreparedStatement &st
 	return unique_ptr_cast<QueryResult, MaterializedQueryResult>(std::move(result));
 }
 
-template <class T, Value (*MAKE_VALUE)(T)>
-static Value NumericListValue(const LogicalType &type, const std::vector<T> &input) {
-	vector<Value> values;
-	values.reserve(input.size());
-	for (auto value : input) {
-		values.push_back(MAKE_VALUE(value));
+static const vector<LogicalType> PERSISTED_SEGMENT_TYPES {
+    LogicalType::VARCHAR,
+    LogicalType::UBIGINT,
+    LogicalType::UTINYINT,
+    LogicalType::UBIGINT,
+    LogicalType::UBIGINT,
+    LogicalType::UBIGINT,
+    LogicalType::UBIGINT,
+    LogicalType::BOOLEAN,
+    LogicalType::LIST(LogicalType::UINTEGER),
+    LogicalType::LIST(LogicalType::UINTEGER),
+    LogicalType::LIST(LogicalType::USMALLINT),
+};
+
+template <class T>
+static void SetNumericList(Vector &list_vector, const std::vector<T> &input) {
+	auto entries = FlatVector::GetDataMutable<list_entry_t>(list_vector);
+	entries[0] = list_entry_t(0, input.size());
+	ListVector::Reserve(list_vector, input.size());
+	auto &child = ListVector::GetChildMutable(list_vector);
+	if (!input.empty()) {
+		auto child_data = FlatVector::GetDataMutable<T>(child);
+		memcpy(child_data, input.data(), input.size() * sizeof(T));
 	}
-	return Value::LIST(type, std::move(values));
-}
-
-static Value UInt16ListValue(const std::vector<uint16_t> &input) {
-	return NumericListValue<uint16_t, Value::USMALLINT>(LogicalType::USMALLINT, input);
-}
-
-static Value UInt32ListValue(const std::vector<uint32_t> &input) {
-	return NumericListValue<uint32_t, Value::UINTEGER>(LogicalType::UINTEGER, input);
+	ListVector::SetListSize(list_vector, input.size());
 }
 
 template <class T>
-static std::vector<T> ReadNumericList(const Value &value) {
-	auto children = ListValue::GetChildren(value);
-	std::vector<T> result;
-	result.reserve(children.size());
-	for (const auto &child : children) {
-		result.push_back(child.GetValue<T>());
+static bool ReadScalar(Vector &vector, idx_t row_idx, T &result) {
+	UnifiedVectorFormat format;
+	vector.ToUnifiedFormat(format);
+	auto vector_idx = format.sel->get_index(row_idx);
+	if (!format.validity.RowIsValid(vector_idx)) {
+		return false;
 	}
-	return result;
+	result = format.GetData<T>()[vector_idx];
+	return true;
+}
+
+template <class T>
+static bool ReadNumericList(Vector &list_vector, idx_t row_idx, std::vector<T> &result) {
+	UnifiedVectorFormat list_format;
+	list_vector.ToUnifiedFormat(list_format);
+	auto list_idx = list_format.sel->get_index(row_idx);
+	if (!list_format.validity.RowIsValid(list_idx)) {
+		return false;
+	}
+	auto entry = list_format.GetData<list_entry_t>()[list_idx];
+	auto &child = ListVector::GetChild(list_vector);
+	UnifiedVectorFormat child_format;
+	child.ToUnifiedFormat(child_format);
+	result.resize(entry.length);
+	if (entry.length == 0) {
+		return true;
+	}
+	auto child_data = child_format.GetData<T>();
+	if (child_format.sel == FlatVector::IncrementalSelectionVector() && child_format.validity.CannotHaveNull()) {
+		memcpy(result.data(), child_data + entry.offset, entry.length * sizeof(T));
+		return true;
+	}
+	for (idx_t child_idx = 0; child_idx < entry.length; child_idx++) {
+		auto source_idx = child_format.sel->get_index(entry.offset + child_idx);
+		if (!child_format.validity.RowIsValid(source_idx)) {
+			return false;
+		}
+		result[child_idx] = child_data[source_idx];
+	}
+	return true;
 }
 
 static bool ValidateOffsets(const std::vector<uint32_t> &offsets, idx_t row_count, idx_t edge_count) {
@@ -624,24 +672,25 @@ uint64_t GetPartitionedCSRGeneration(ClientContext &context, const string &logic
 	}
 }
 
-static void InsertSegment(PreparedStatement &statement, const string &logical_key, uint64_t generation,
-                          idx_t partition_index, idx_t segment_index, idx_t start_vertex, idx_t end_vertex,
-                          bool sparse_rows, const std::vector<uint32_t> &source_vertices,
-                          const std::vector<uint32_t> &row_offsets, const std::vector<uint16_t> &destinations) {
-	vector<Value> values;
-	values.reserve(11);
-	values.emplace_back(logical_key);
-	values.push_back(Value::UBIGINT(generation));
-	values.push_back(Value::UTINYINT(FORWARD_CSR_KIND));
-	values.push_back(Value::UBIGINT(partition_index));
-	values.push_back(Value::UBIGINT(segment_index));
-	values.push_back(Value::UBIGINT(start_vertex));
-	values.push_back(Value::UBIGINT(end_vertex));
-	values.push_back(Value::BOOLEAN(sparse_rows));
-	values.push_back(UInt32ListValue(source_vertices));
-	values.push_back(UInt32ListValue(row_offsets));
-	values.push_back(UInt16ListValue(destinations));
-	ExecutePrepared(statement, std::move(values), "write CSR segment");
+static void AppendSegment(Appender &appender, const string &logical_key, uint64_t generation, idx_t partition_index,
+                          idx_t segment_index, idx_t start_vertex, idx_t end_vertex, bool sparse_rows,
+                          const std::vector<uint32_t> &source_vertices, const std::vector<uint32_t> &row_offsets,
+                          const std::vector<uint16_t> &destinations) {
+	DataChunk chunk;
+	chunk.Initialize(Allocator::DefaultAllocator(), PERSISTED_SEGMENT_TYPES, 1);
+	FlatVector::GetDataMutable<string_t>(chunk.data[0])[0] = StringVector::AddString(chunk.data[0], logical_key);
+	FlatVector::GetDataMutable<uint64_t>(chunk.data[1])[0] = generation;
+	FlatVector::GetDataMutable<uint8_t>(chunk.data[2])[0] = FORWARD_CSR_KIND;
+	FlatVector::GetDataMutable<uint64_t>(chunk.data[3])[0] = partition_index;
+	FlatVector::GetDataMutable<uint64_t>(chunk.data[4])[0] = segment_index;
+	FlatVector::GetDataMutable<uint64_t>(chunk.data[5])[0] = start_vertex;
+	FlatVector::GetDataMutable<uint64_t>(chunk.data[6])[0] = end_vertex;
+	FlatVector::GetDataMutable<bool>(chunk.data[7])[0] = sparse_rows;
+	SetNumericList<uint32_t>(chunk.data[8], source_vertices);
+	SetNumericList<uint32_t>(chunk.data[9], row_offsets);
+	SetNumericList<uint16_t>(chunk.data[10], destinations);
+	chunk.SetChildCardinality(1);
+	appender.AppendDataChunk(chunk);
 }
 
 uint64_t PersistPartitionedCSR(ClientContext &context, const string &logical_key, const string &base_cache_key,
@@ -676,11 +725,7 @@ uint64_t PersistPartitionedCSR(ClientContext &context, const string &logical_key
 			                        old_dependency_rows->GetValue(1, row_idx).GetValue<string>(),
 			                        old_dependency_rows->GetValue(2, row_idx).GetValue<string>()});
 		}
-		auto insert_segment =
-		    connection.Prepare("INSERT INTO __duckpgq_csr_segments VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-		if (insert_segment->HasError()) {
-			throw IOException("Failed to prepare CSR segment insertion: %s", insert_segment->GetError());
-		}
+		Appender segment_appender(connection, "__duckpgq_csr_segments", 16ULL * 1024ULL * 1024ULL);
 
 		idx_t segment_count = 0;
 		for (idx_t partition_idx = 0; partition_idx < index.forward_partitions.size(); partition_idx++) {
@@ -697,18 +742,19 @@ uint64_t PersistPartitionedCSR(ClientContext &context, const string &logical_key
 					row_offsets.push_back(partition.v[offset_idx].load(std::memory_order_relaxed));
 				}
 			}
-			InsertSegment(*insert_segment, logical_key, generation, partition_idx, 0, partition.start_vertex,
+			AppendSegment(segment_appender, logical_key, generation, partition_idx, 0, partition.start_vertex,
 			              partition.end_vertex, partition.sparse_rows_initialized, partition.source_vertices,
 			              row_offsets, partition.e);
 			segment_count++;
 			for (idx_t segment_idx = 0; segment_idx < partition.segments.size(); segment_idx++) {
 				auto &segment = partition.segments[segment_idx];
-				InsertSegment(*insert_segment, logical_key, generation, partition_idx, segment_idx + 1,
+				AppendSegment(segment_appender, logical_key, generation, partition_idx, segment_idx + 1,
 				              partition.start_vertex, partition.end_vertex, true, segment.source_vertices,
 				              segment.row_offsets, segment.edges);
 				segment_count++;
 			}
 		}
+		segment_appender.Close();
 
 		auto publish_registry = connection.Prepare(
 		    "INSERT INTO __duckpgq_csr_registry "
@@ -803,16 +849,24 @@ static shared_ptr<PartitionedCSRIndex> LoadPersistedPartitionedCSR(Connection &c
 	auto segment_statement = connection.Prepare(
 	    "SELECT csr_kind, partition_index, segment_index, start_vertex, end_vertex, sparse_rows, source_vertices, "
 	    "row_offsets, destinations FROM __duckpgq_csr_segments WHERE logical_key = ? AND generation = ? "
-	    "ORDER BY csr_kind, partition_index, segment_index");
+	    "AND partition_index >= ? AND partition_index < ?");
 	if (segment_statement->HasError()) {
 		return nullptr;
 	}
-	auto segments =
-	    ExecutePrepared(*segment_statement, {Value(logical_key), Value::UBIGINT(generation)}, "load CSR segments");
-	if (segments->RowCount() != expected_segment_count || expected_segment_count < partition_count) {
+	if (expected_segment_count < partition_count) {
 		return nullptr;
 	}
-
+	struct DecodedSegment {
+		uint8_t csr_kind;
+		uint64_t partition_idx;
+		uint64_t segment_idx;
+		uint64_t start_vertex;
+		uint64_t end_vertex;
+		bool sparse_rows;
+		std::vector<uint32_t> source_vertices;
+		std::vector<uint32_t> row_offsets;
+		std::vector<uint16_t> destinations;
+	};
 	auto result = make_shared_ptr<PartitionedCSRIndex>();
 	result->vertex_count = vertex_count;
 	result->edge_count = edge_count;
@@ -820,60 +874,90 @@ static shared_ptr<PartitionedCSRIndex> LoadPersistedPartitionedCSR(Connection &c
 	result->capabilities = capabilities;
 	idx_t current_partition = DConstants::INVALID_INDEX;
 	idx_t expected_segment_index = 0;
-	for (idx_t row_idx = 0; row_idx < segments->RowCount(); row_idx++) {
-		auto csr_kind = segments->GetValue(0, row_idx).GetValue<uint8_t>();
-		auto partition_idx = segments->GetValue(1, row_idx).GetValue<uint64_t>();
-		auto segment_idx = segments->GetValue(2, row_idx).GetValue<uint64_t>();
-		auto start_vertex = segments->GetValue(3, row_idx).GetValue<uint64_t>();
-		auto end_vertex = segments->GetValue(4, row_idx).GetValue<uint64_t>();
-		auto sparse_rows = segments->GetValue(5, row_idx).GetValue<bool>();
-		auto source_vertices = ReadNumericList<uint32_t>(segments->GetValue(6, row_idx));
-		auto row_offsets = ReadNumericList<uint32_t>(segments->GetValue(7, row_idx));
-		auto destinations = ReadNumericList<uint16_t>(segments->GetValue(8, row_idx));
-		if (csr_kind != FORWARD_CSR_KIND || partition_idx >= partition_count || start_vertex >= end_vertex ||
-		    end_vertex > vertex_count || end_vertex - start_vertex > UINT16_MAX) {
-			return nullptr;
-		}
-
-		if (partition_idx != current_partition) {
-			if (segment_idx != 0 || partition_idx != result->forward_partitions.size()) {
-				return nullptr;
-			}
-			current_partition = partition_idx;
-			expected_segment_index = 0;
-			auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, vertex_count, !sparse_rows);
-			partition->initialized_e = true;
-			partition->sparse_rows_initialized = sparse_rows;
-			partition->source_vertices = std::move(source_vertices);
-			partition->e = std::move(destinations);
-			if (sparse_rows) {
-				partition->row_offsets = std::move(row_offsets);
-			} else {
-				if (row_offsets.size() != partition->v_array_size) {
+	idx_t loaded_segment_count = 0;
+	for (idx_t partition_begin = 0; partition_begin < partition_count;
+	     partition_begin += PERSISTED_LOAD_PARTITION_BATCH_SIZE) {
+		auto partition_end = MinValue<idx_t>(partition_count, partition_begin + PERSISTED_LOAD_PARTITION_BATCH_SIZE);
+		vector<DecodedSegment> decoded_batch;
+		vector<Value> segment_parameters {Value(logical_key), Value::UBIGINT(generation),
+		                                  Value::UBIGINT(partition_begin), Value::UBIGINT(partition_end)};
+		auto segments = segment_statement->Execute(segment_parameters, true);
+		ThrowOnQueryError(*segments, "load CSR segments");
+		while (auto chunk = segments->Fetch()) {
+			for (idx_t row_idx = 0; row_idx < chunk->size(); row_idx++) {
+				if (loaded_segment_count + decoded_batch.size() >= expected_segment_count) {
 					return nullptr;
 				}
-				for (idx_t offset_idx = 0; offset_idx < row_offsets.size(); offset_idx++) {
-					partition->v[offset_idx].store(row_offsets[offset_idx], std::memory_order_relaxed);
+				DecodedSegment decoded;
+				if (!ReadScalar<uint8_t>(chunk->data[0], row_idx, decoded.csr_kind) ||
+				    !ReadScalar<uint64_t>(chunk->data[1], row_idx, decoded.partition_idx) ||
+				    !ReadScalar<uint64_t>(chunk->data[2], row_idx, decoded.segment_idx) ||
+				    !ReadScalar<uint64_t>(chunk->data[3], row_idx, decoded.start_vertex) ||
+				    !ReadScalar<uint64_t>(chunk->data[4], row_idx, decoded.end_vertex) ||
+				    !ReadScalar<bool>(chunk->data[5], row_idx, decoded.sparse_rows) ||
+				    !ReadNumericList<uint32_t>(chunk->data[6], row_idx, decoded.source_vertices) ||
+				    !ReadNumericList<uint32_t>(chunk->data[7], row_idx, decoded.row_offsets) ||
+				    !ReadNumericList<uint16_t>(chunk->data[8], row_idx, decoded.destinations)) {
+					return nullptr;
 				}
+				if (decoded.csr_kind != FORWARD_CSR_KIND || decoded.partition_idx < partition_begin ||
+				    decoded.partition_idx >= partition_end || decoded.start_vertex >= decoded.end_vertex ||
+				    decoded.end_vertex > vertex_count || decoded.end_vertex - decoded.start_vertex > UINT16_MAX) {
+					return nullptr;
+				}
+				decoded_batch.push_back(std::move(decoded));
 			}
-			result->forward_partitions.push_back(std::move(partition));
-		} else {
-			if (segment_idx != expected_segment_index + 1 || !sparse_rows) {
-				return nullptr;
-			}
-			auto &partition = *result->forward_partitions.back();
-			if (partition.start_vertex != start_vertex || partition.end_vertex != end_vertex) {
-				return nullptr;
-			}
-			LocalCSRSegment segment;
-			segment.source_vertices = std::move(source_vertices);
-			segment.row_offsets = std::move(row_offsets);
-			segment.edges = std::move(destinations);
-			partition.segments.push_back(std::move(segment));
 		}
-		expected_segment_index = segment_idx;
+		ThrowOnQueryError(*segments, "load CSR segments");
+		std::sort(decoded_batch.begin(), decoded_batch.end(),
+		          [](const DecodedSegment &left, const DecodedSegment &right) {
+			          return std::tie(left.csr_kind, left.partition_idx, left.segment_idx) <
+			                 std::tie(right.csr_kind, right.partition_idx, right.segment_idx);
+		          });
+		for (auto &decoded : decoded_batch) {
+			if (decoded.partition_idx != current_partition) {
+				if (decoded.segment_idx != 0 || decoded.partition_idx != result->forward_partitions.size()) {
+					return nullptr;
+				}
+				current_partition = decoded.partition_idx;
+				expected_segment_index = 0;
+				auto partition = make_shared_ptr<LocalCSR>(decoded.start_vertex, decoded.end_vertex, vertex_count,
+				                                           !decoded.sparse_rows);
+				partition->initialized_e = true;
+				partition->sparse_rows_initialized = decoded.sparse_rows;
+				partition->source_vertices = std::move(decoded.source_vertices);
+				partition->e = std::move(decoded.destinations);
+				if (decoded.sparse_rows) {
+					partition->row_offsets = std::move(decoded.row_offsets);
+				} else {
+					if (decoded.row_offsets.size() != partition->v_array_size) {
+						return nullptr;
+					}
+					for (idx_t offset_idx = 0; offset_idx < decoded.row_offsets.size(); offset_idx++) {
+						partition->v[offset_idx].store(decoded.row_offsets[offset_idx], std::memory_order_relaxed);
+					}
+				}
+				result->forward_partitions.push_back(std::move(partition));
+			} else {
+				if (decoded.segment_idx != expected_segment_index + 1 || !decoded.sparse_rows) {
+					return nullptr;
+				}
+				auto &partition = *result->forward_partitions.back();
+				if (partition.start_vertex != decoded.start_vertex || partition.end_vertex != decoded.end_vertex) {
+					return nullptr;
+				}
+				LocalCSRSegment segment;
+				segment.source_vertices = std::move(decoded.source_vertices);
+				segment.row_offsets = std::move(decoded.row_offsets);
+				segment.edges = std::move(decoded.destinations);
+				partition.segments.push_back(std::move(segment));
+			}
+			expected_segment_index = decoded.segment_idx;
+		}
+		loaded_segment_count += decoded_batch.size();
 	}
-	if (result->forward_partitions.size() != partition_count || !ValidatePartitionedCSRIndex(*result)) {
+	if (loaded_segment_count != expected_segment_count || result->forward_partitions.size() != partition_count ||
+	    !ValidatePartitionedCSRIndex(*result)) {
 		return nullptr;
 	}
 	return result;
