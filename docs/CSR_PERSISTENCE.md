@@ -147,5 +147,9 @@ python3 scripts/csr_persistence_benchmark.py
 ```
 
 Results are written below the ignored `data/ldbc-pathfinding/results/csr_persistence` directory. Guardrail results for
-load-versus-rebuild time, warm traversal, disk amplification, and query RSS are recorded without failing the exploratory
-run; pass `--strict-guardrails` when those thresholds should gate automation.
+load-versus-rebuild time, warm traversal, and disk amplification are recorded without failing the exploratory run; pass
+`--strict-guardrails` when those thresholds should gate automation. Peak query RSS remains in the raw and summarized
+results, but it is not compared with a fixed amplification threshold: persisted-table buffer-cache residency and
+allocator retention make whole-process RSS unsuitable for that purpose. Memory acceptance instead requires no
+unbounded growth across repeated loads, no OOM at the supported local graph sizes, and approximately equal live CSR
+memory after accounting for the persisted-table cache.

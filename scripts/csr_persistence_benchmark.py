@@ -505,17 +505,11 @@ def evaluate_guardrails(summary, args):
         metrics = {
             "load_ratio_vs_rebuild": persisted["paper_load_s_median"] / transient["paper_load_s_median"],
             "warm_regression": persisted["paper_warm_s_median"] / transient["paper_warm_s_median"] - 1,
-            "query_rss_amplification": (
-                persisted["query_peak_rss_bytes_median"] / transient["query_peak_rss_bytes_median"]
-                if transient["query_peak_rss_bytes_median"]
-                else None
-            ),
             "disk_amplification": persisted["disk_amplification_vs_two_int64_endpoints_median"],
         }
         limits = {
             "load_ratio_vs_rebuild": args.max_load_ratio,
             "warm_regression": args.max_warm_regression,
-            "query_rss_amplification": args.max_memory_amplification,
             "disk_amplification": args.max_disk_amplification,
         }
         for metric, value in metrics.items():
@@ -591,7 +585,6 @@ def parse_args():
     parser.add_argument("--max-load-ratio", type=float, default=1.0)
     parser.add_argument("--max-warm-regression", type=float, default=0.15)
     parser.add_argument("--max-disk-amplification", type=float, default=1.0)
-    parser.add_argument("--max-memory-amplification", type=float, default=1.25)
     parser.add_argument("--strict-guardrails", action="store_true")
     return parser.parse_args()
 
