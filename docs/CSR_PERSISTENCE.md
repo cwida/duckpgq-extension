@@ -69,10 +69,19 @@ logical identity. Vertex and edge counts are also generation metadata rather tha
 DML invalidates and advances the same artifact. For every supported graph and source vertex, changing `threads` may
 change timing but must not change the reached vertices or distances.
 
-Persisted construction uses a canonical target of 256 destination partitions; tiny graphs naturally materialize fewer
-logical vertex ranges. This is a target rather than a cap: the partition count increases as needed to keep each local
-destination within `uint16`. The current 12-bit radix limit permits at most 4,096 physical partitions; graphs beyond
-that representation fail explicitly.
+Persisted construction uses a deterministic adaptive policy. It targets 22 destination partitions to retain useful
+parallel traversal without the locality and allocation cost of the former fixed-256 target. The target was selected
+by the reproducible local 1/4/8/16-thread sweep as the smallest geometry that kept KGS warm traversal within 15% of
+the thread-tuned layout across that matrix. Tiny graphs naturally materialize fewer logical vertex ranges, while
+larger graphs increase beyond 22 whenever
+`ceil((vertex_count + 2) / UINT16_MAX)` requires it to keep each local destination within `uint16`. The policy never
+reads the build or query thread count. The current 12-bit radix limit permits at most 4,096 physical partitions;
+graphs beyond that representation fail explicitly.
+
+Persisted CSR storage remains experimental. No migration guarantee is provided for artifacts created by earlier
+geometry or format revisions; they may be discarded and rebuilt. P9 changes only construction, so registry
+`partition_count` plus each segment's `start_vertex` and `end_vertex` still describe the geometry of newly built
+artifacts.
 
 ## Invalidation and transaction lifecycle
 

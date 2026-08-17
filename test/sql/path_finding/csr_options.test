@@ -250,7 +250,7 @@ FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst);
 ----
 3
 
-# Persist-enabled builds use the same canonical physical partition count at one and eight threads.
+# Persist-enabled builds use the same deterministic physical partition count at one and eight threads.
 query I
 SELECT count(DISTINCT PartitionCount)
 FROM read_csv_auto('{TEST_DIR}/csr_options_eager_phase_timing.csv')
@@ -259,6 +259,53 @@ WHERE Phase = 'local_csr_forward'
   AND ThreadCount IN (1, 8);
 ----
 1
+
+# The adaptive persisted policy targets 22 ranges for a graph large enough to benefit,
+# rather than the former fixed target of 256, and remains independent of build threads.
+statement ok
+CREATE TABLE adaptive_vertex AS
+SELECT i::BIGINT AS id
+FROM range(1024) values(i);
+
+statement ok
+CREATE TABLE adaptive_edge AS
+SELECT i::BIGINT AS src, (i + 1)::BIGINT AS dst
+FROM range(1023) values(i);
+
+statement ok
+SET threads = 1;
+
+statement ok
+CREATE PROPERTY GRAPH adaptive_graph_t1
+VERTEX TABLES (adaptive_vertex LABEL Vertex)
+EDGE TABLES (
+    adaptive_edge SOURCE KEY (src) REFERENCES adaptive_vertex(id)
+                  DESTINATION KEY (dst) REFERENCES adaptive_vertex(id)
+                  LABEL Edge
+);
+
+query I
+SELECT partition_count
+FROM __duckpgq_csr_registry
+WHERE logical_key LIKE '%adaptive_graph_t1|adaptive_edge|directed%';
+----
+22
+
+query I
+SELECT max(end_vertex - start_vertex) <= 65535
+FROM __duckpgq_csr_segments
+WHERE logical_key LIKE '%adaptive_graph_t1|adaptive_edge|directed%';
+----
+true
+
+statement ok
+DROP PROPERTY GRAPH adaptive_graph_t1;
+
+statement ok
+DROP TABLE adaptive_edge;
+
+statement ok
+DROP TABLE adaptive_vertex;
 
 # Eager construction remains memory-only when persistence is disabled.
 statement ok
