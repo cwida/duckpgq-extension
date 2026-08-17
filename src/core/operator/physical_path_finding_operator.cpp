@@ -1428,7 +1428,10 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	PathFindingPairStats pair_stats;
 	HyperLogLog distinct_srcs;
 	HyperLogLog distinct_dsts;
-	gstate.global_pairs->InitializeScan(gstate.global_scan_state);
+	// These chunks remain live until BFS finishes and cannot reference the scan state's current buffer handles.
+	// Under memory pressure, a zero-copy scan can evict or reuse an earlier chunk's backing block, silently
+	// corrupting the retained source/destination pairs.
+	gstate.global_pairs->InitializeScan(gstate.global_scan_state, ColumnDataScanProperties::DISALLOW_ZERO_COPY);
 	while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
 		auto current_chunk = make_shared_ptr<DataChunk>();
 		current_chunk->Initialize(context, gstate.global_pairs->Types());
@@ -1450,7 +1453,7 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 
 	if (GetPathFindingDeduplicatePairs(context)) {
 		gstate.global_output_batches.clear();
-		gstate.global_pairs->InitializeScan(gstate.global_scan_state);
+		gstate.global_pairs->InitializeScan(gstate.global_scan_state, ColumnDataScanProperties::DISALLOW_ZERO_COPY);
 		return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
 	}
 

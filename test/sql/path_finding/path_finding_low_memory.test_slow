@@ -1,0 +1,55 @@
+# name: test/sql/path_finding/path_finding_low_memory.test_slow
+# description: Retained path-finding pair chunks remain valid when DuckDB evicts their collection blocks
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET threads = 4;
+
+statement ok
+SET memory_limit = '72MB';
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_persist_csr = false;
+
+statement ok
+CREATE TABLE low_memory_vertex AS
+SELECT i::BIGINT AS id
+FROM range(350000) t(i);
+
+# The generated distribution creates a large sparse partitioned CSR. Building it after the pair scan forces
+# DuckDB to reuse collection buffers under this memory limit, which exposed dangling zero-copy pair chunks.
+statement ok
+CREATE TABLE low_memory_edge AS
+SELECT (i % 350000)::BIGINT AS src,
+       ((i * 1009 + (i / 350000)::BIGINT * 9173 + 1) % 350000)::BIGINT AS dst
+FROM range(7000000) t(i);
+
+statement ok
+CREATE PROPERTY GRAPH low_memory_graph
+VERTEX TABLES (low_memory_vertex LABEL Vertex)
+EDGE TABLES (
+    low_memory_edge SOURCE KEY (src) REFERENCES low_memory_vertex(id)
+                    DESTINATION KEY (dst) REFERENCES low_memory_vertex(id)
+                    LABEL Edge
+);
+
+# The pre-fix operator silently returned a partial result here. The retained pair scan must own its vectors so
+# memory pressure yields either this complete checksum or an explicit allocation error, never corrupted pairs.
+query IIIII
+SELECT count(*)::BIGINT AS pair_count, count(len)::BIGINT AS reachable_count,
+       sum(len)::BIGINT AS total_len, min(len)::BIGINT AS min_len, max(len)::BIGINT AS max_len
+FROM GRAPH_TABLE(low_memory_graph
+    MATCH p = ANY SHORTEST
+        (a:Vertex WHERE a.id = 0)-[e:Edge]->*(b:Vertex)
+    COLUMNS (path_length(p) AS len)
+);
+----
+350000	350000	1670720	0	6
+
+statement ok
+RESET memory_limit;
