@@ -132,6 +132,7 @@ void DuckPGQState::ExtractListValues(const Value &list_value, vector<Identifier>
 
 void DuckPGQState::RegisterPropertyGraph(const shared_ptr<PropertyGraphTable> &table, const string &graph_name,
                                          bool is_vertex) {
+	lock_guard<mutex> guard(property_graph_lock);
 	// Ensure the property graph exists in the registry
 	if (registered_property_graphs.find(graph_name) == registered_property_graphs.end()) {
 		registered_property_graphs[graph_name] = make_uniq<CreatePropertyGraphInfo>(graph_name);
@@ -165,13 +166,17 @@ void DuckPGQState::QueryEnd() {
 	parse_data.reset();
 	transform_expression.clear();
 	match_index = 0; // Reset the index
-	for (const auto &csr_id : csr_to_delete) {
-		csr_list.erase(csr_id);
+	{
+		lock_guard<mutex> guard(csr_lock);
+		for (const auto &csr_id : csr_to_delete) {
+			csr_list.erase(csr_id);
+		}
 	}
 	csr_to_delete.clear();
 }
 
 CreatePropertyGraphInfo *DuckPGQState::GetPropertyGraph(const string &pg_name) {
+	lock_guard<mutex> guard(property_graph_lock);
 	auto pg_table_entry = registered_property_graphs.find(pg_name);
 	if (pg_table_entry == registered_property_graphs.end()) {
 		throw BinderException("Property graph %s does not exist", pg_name);
@@ -180,6 +185,7 @@ CreatePropertyGraphInfo *DuckPGQState::GetPropertyGraph(const string &pg_name) {
 }
 
 CSR *DuckPGQState::GetCSR(int32_t id) {
+	lock_guard<mutex> guard(csr_lock);
 	auto csr_entry = csr_list.find(id);
 	if (csr_entry == csr_list.end()) {
 		throw ConstraintException("CSR not found with ID %d", id);

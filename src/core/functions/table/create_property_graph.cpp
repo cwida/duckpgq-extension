@@ -217,12 +217,14 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 	}
 	auto statement = dynamic_cast<CreateStatement *>(duckpgq_parse_data->statement.get());
 	auto info = dynamic_cast<CreatePropertyGraphInfo *>(statement->info.get());
-	auto pg_table = duckpgq_state->registered_property_graphs.find(info->property_graph_name);
-
-	if (pg_table != duckpgq_state->registered_property_graphs.end() &&
-	    info->on_conflict == OnCreateConflict::ERROR_ON_CONFLICT) {
-		throw Exception(ExceptionType::INVALID,
-		                "Property graph table with name " + info->property_graph_name + " already exists");
+	{
+		lock_guard<mutex> guard(duckpgq_state->property_graph_lock);
+		auto pg_table = duckpgq_state->registered_property_graphs.find(info->property_graph_name);
+		if (pg_table != duckpgq_state->registered_property_graphs.end() &&
+		    info->on_conflict == OnCreateConflict::ERROR_ON_CONFLICT) {
+			throw Exception(ExceptionType::INVALID,
+			                "Property graph table with name " + info->property_graph_name + " already exists");
+		}
 	}
 
 	case_insensitive_set_t v_table_names;
@@ -328,7 +330,11 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 	auto duckpgq_state = GetDuckPGQState(context);
 
 	for (auto &local_client_context : ConnectionManager::Get(*context.db).GetConnectionList()) {
-		auto local_state = GetDuckPGQState(*local_client_context);
+		auto local_state = local_client_context->registered_state->Get<DuckPGQState>("duckpgq");
+		if (!local_state) {
+			continue;
+		}
+		lock_guard<mutex> guard(local_state->property_graph_lock);
 		local_state->registered_property_graphs[pg_info->property_graph_name] = pg_info->Copy();
 	}
 

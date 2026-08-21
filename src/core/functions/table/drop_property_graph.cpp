@@ -37,12 +37,15 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(ClientContext &context, Ta
 	auto pg_info = bind_data.drop_pg_info;
 	auto duckpgq_state = GetDuckPGQState(context);
 
-	auto registered_pg = duckpgq_state->registered_property_graphs.find(pg_info->property_graph_name);
-	if (registered_pg == duckpgq_state->registered_property_graphs.end()) {
-		if (pg_info->missing_ok) {
-			return; // Do nothing
+	{
+		lock_guard<mutex> guard(duckpgq_state->property_graph_lock);
+		auto registered_pg = duckpgq_state->registered_property_graphs.find(pg_info->property_graph_name);
+		if (registered_pg == duckpgq_state->registered_property_graphs.end()) {
+			if (pg_info->missing_ok) {
+				return; // Do nothing
+			}
+			throw BinderException("Property graph %s does not exist.", pg_info->property_graph_name);
 		}
-		throw BinderException("Property graph %s does not exist.", pg_info->property_graph_name);
 	}
 
 	for (auto &connection : ConnectionManager::Get(*context.db).GetConnectionList()) {
@@ -50,6 +53,7 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(ClientContext &context, Ta
 		if (!local_state) {
 			continue;
 		}
+		lock_guard<mutex> guard(local_state->property_graph_lock);
 		local_state->registered_property_graphs.erase(pg_info->property_graph_name);
 	}
 

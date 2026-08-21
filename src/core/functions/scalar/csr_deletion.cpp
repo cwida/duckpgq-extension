@@ -13,7 +13,11 @@ static void DeleteCsrFunction(DataChunk &args, ExpressionState &state, Vector &r
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
-	auto flag = duckpgq_state->csr_list.erase(info.id);
+	size_t flag;
+	{
+		lock_guard<mutex> guard(duckpgq_state->csr_lock);
+		flag = duckpgq_state->csr_list.erase(info.id);
+	}
 	result.SetVectorType(VectorType::CONSTANT_VECTOR);
 	auto result_data = ConstantVector::GetData<bool>(result);
 	result_data[0] = flag == 1;

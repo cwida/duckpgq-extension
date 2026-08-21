@@ -45,12 +45,7 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 	auto &info = func_expr.BindInfo()->Cast<IterativeLengthFunctionData>();
 	auto duckpgq_state = GetDuckPGQState(info.context);
 
-	D_ASSERT(duckpgq_state->csr_list[info.csr_id]);
-	auto csr_entry = duckpgq_state->csr_list.find(info.csr_id);
-	if (csr_entry == duckpgq_state->csr_list.end()) {
-		throw ConstraintException("Invalid ID");
-	}
-	auto &csr = csr_entry->second;
+	auto csr = duckpgq_state->GetCSR(info.csr_id);
 
 	if (!csr->initialized_v) {
 		throw ConstraintException("Need to initialize CSR before doing shortest path");

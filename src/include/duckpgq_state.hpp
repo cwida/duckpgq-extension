@@ -29,8 +29,11 @@ public:
 	unordered_map<int32_t, unique_ptr<ParsedExpression>> transform_expression;
 	int32_t match_index = 0;
 
-	//! Property graphs that are registered
+	//! Property graphs that are registered. Guarded by property_graph_lock: create/drop
+	//! propagate into every open connection's registry, so a foreign thread can mutate
+	//! this map while its owner reads it.
 	case_insensitive_map_t<unique_ptr<CreateInfo>> registered_property_graphs;
+	mutex property_graph_lock;
 
 	//! Used to build the CSR data structures required for path-finding queries
 	std::unordered_map<int32_t, unique_ptr<CSR>> csr_list;
