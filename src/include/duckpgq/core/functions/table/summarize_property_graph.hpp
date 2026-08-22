@@ -23,9 +23,10 @@ public:
 	}
 
 	struct SummarizePropertyGraphBindData : public TableFunctionData {
-		explicit SummarizePropertyGraphBindData(CreatePropertyGraphInfo *pg_info) : summarize_pg_info(pg_info) {
+		explicit SummarizePropertyGraphBindData(shared_ptr<CreatePropertyGraphInfo> pg_info)
+		    : summarize_pg_info(std::move(pg_info)) {
 		}
-		CreatePropertyGraphInfo *summarize_pg_info;
+		shared_ptr<CreatePropertyGraphInfo> summarize_pg_info;
 	};
 
 	struct SummarizePropertyGraphGlobalData : public GlobalTableFunctionState {

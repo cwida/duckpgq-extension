@@ -32,12 +32,14 @@ shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context, bool throw_not_
 }
 
 // Function to get PropertyGraphInfo from DuckPGQState
-CreatePropertyGraphInfo *GetPropertyGraphInfo(const shared_ptr<DuckPGQState> &duckpgq_state, const string &pg_name) {
+shared_ptr<CreatePropertyGraphInfo> GetPropertyGraphInfo(const shared_ptr<DuckPGQState> &duckpgq_state,
+                                                         const string &pg_name) {
+	lock_guard<mutex> guard(duckpgq_state->property_graph_lock);
 	auto property_graph = duckpgq_state->registered_property_graphs.find(pg_name);
 	if (property_graph == duckpgq_state->registered_property_graphs.end()) {
 		throw Exception(ExceptionType::INVALID, "Property graph " + pg_name + " not found");
 	}
-	return dynamic_cast<CreatePropertyGraphInfo *>(property_graph->second.get());
+	return shared_ptr_cast<CreateInfo, CreatePropertyGraphInfo>(property_graph->second);
 }
 
 // Function to validate the source node and edge table
