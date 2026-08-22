@@ -14,7 +14,7 @@ unique_ptr<TableRef> PageRankFunction::PageRankBindReplace(ClientContext &contex
 
 	auto duckpgq_state = GetDuckPGQState(context);
 	auto pg_info = GetPropertyGraphInfo(duckpgq_state, pg_name);
-	auto edge_pg_entry = ValidateSourceNodeAndEdgeTable(pg_info, node_table, edge_table);
+	auto edge_pg_entry = ValidateSourceNodeAndEdgeTable(pg_info.get(), node_table, edge_table);
 
 	auto select_node = CreateSelectNode(edge_pg_entry, "pagerank", "pagerank");
 

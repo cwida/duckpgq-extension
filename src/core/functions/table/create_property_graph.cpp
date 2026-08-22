@@ -335,7 +335,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 			continue;
 		}
 		lock_guard<mutex> guard(local_state->property_graph_lock);
-		local_state->registered_property_graphs[pg_info->property_graph_name] = pg_info->Copy();
+		local_state->registered_property_graphs[pg_info->property_graph_name] =
+		    shared_ptr<CreateInfo>(pg_info->Copy().release());
 	}
 
 	duckpgq_state->InitializeInternalTable(context);

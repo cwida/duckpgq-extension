@@ -31,7 +31,7 @@ unique_ptr<FunctionData> DescribePropertyGraphFunction::DescribePropertyGraphBin
 	if (pg_table == duckpgq_state->registered_property_graphs.end()) {
 		throw Exception(ExceptionType::INVALID, "Property graph " + property_graph_name + " does not exist.");
 	}
-	auto property_graph = dynamic_cast<CreatePropertyGraphInfo *>(pg_table->second.get());
+	auto property_graph = shared_ptr_cast<CreateInfo, CreatePropertyGraphInfo>(pg_table->second);
 	names.emplace_back("property_graph");
 	return_types.emplace_back(LogicalType::VARCHAR);
 	names.emplace_back("table_name");

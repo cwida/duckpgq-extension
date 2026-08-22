@@ -24,9 +24,10 @@ public:
 	}
 
 	struct DescribePropertyGraphBindData : public TableFunctionData {
-		explicit DescribePropertyGraphBindData(CreatePropertyGraphInfo *pg_info) : describe_pg_info(pg_info) {
+		explicit DescribePropertyGraphBindData(shared_ptr<CreatePropertyGraphInfo> pg_info)
+		    : describe_pg_info(std::move(pg_info)) {
 		}
-		CreatePropertyGraphInfo *describe_pg_info;
+		shared_ptr<CreatePropertyGraphInfo> describe_pg_info;
 	};
 
 	struct DescribePropertyGraphGlobalData : public GlobalTableFunctionState {
