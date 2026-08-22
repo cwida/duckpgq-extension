@@ -72,7 +72,7 @@ static unique_ptr<ColumnRefExpression> PGQColumnRef(const string &table_name, co
 static string DuckPGQSQLCountTable(const PropertyGraphTable &table, const string &table_alias,
                                    const Identifier &primary_key) {
 	std::ostringstream query;
-	query << "SELECT count(" << DuckPGQSQL::Column(primary_key, table_alias) << ") FROM "
+	query << "SELECT coalesce(max(" << DuckPGQSQL::Column(string("rowid"), table_alias) << ") + 1, 0) FROM "
 	      << DuckPGQSQL::TableRef(table, table_alias);
 	return query.str();
 }
