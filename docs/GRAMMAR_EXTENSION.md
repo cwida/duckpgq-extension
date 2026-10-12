@@ -1,8 +1,9 @@
 # SQL/PGQ grammar migration
 
-This branch targets the `GrammarExtension` API in the v2.0-cyanoptera DuckDB submodule. `CREATE PROPERTY GRAPH` and
-`GRAPH_TABLE` are migrated. The old copied/patched PEG parser and its sync, namespace-wrapper, and regeneration scripts
-have been removed. DuckDB itself is not patched, and the submodule points at upstream `duckdb/duckdb`.
+This branch targets the `GrammarExtension` API in the v2.0-cyanoptera DuckDB submodule. All SQL/PGQ syntax the
+extension supported before is migrated: `CREATE`, `DROP`, `DESCRIBE`/`SHOW`, and `SUMMARIZE PROPERTY GRAPH`, and
+`GRAPH_TABLE`. The old copied/patched PEG parser and its sync, namespace-wrapper, and regeneration scripts have been
+removed. DuckDB itself is not patched, and the submodule points at upstream `duckdb/duckdb`.
 
 ## Activation
 
@@ -56,7 +57,17 @@ new connections can reconstruct graphs created with aliased references.
 - Path variables, `ANY SHORTEST`, `ALL SHORTEST`, `SHORTEST k`, and the `WALK`/`TRAIL`/`SIMPLE`/`ACYCLIC` modes.
   Which of these the match rewrite can execute is unchanged from before the migration.
 
-The transform builds the existing `MatchExpression` and returns a native `TableFunctionRef` to `duckpgq_match`.
+### Graph-management statements
+
+- `DROP PROPERTY GRAPH [IF EXISTS] name` transforms to the existing `DropPropertyGraphInfo` inside an
+  `ExtensionStatement`, planned onto the `drop_property_graph` table function like CREATE.
+- `DESCRIBE`, `SHOW`, and `SUMMARIZE PROPERTY GRAPH name` join DuckDB's native `DescribeStatement` family and rewrite
+  to `SELECT * FROM describe_property_graph('name')` or `summarize_property_graph('name')`. They therefore also work
+  as subqueries, e.g. `FROM (DESCRIBE PROPERTY GRAPH g)`. `describe_property_graph` now takes the graph name as its
+  argument instead of reading parser state.
+
+The GRAPH_TABLE transform builds the existing `MatchExpression` and returns a native `TableFunctionRef` to
+`duckpgq_match`.
 The pattern travels in `TableFunctionRef::bind_info`, DuckDB's process-local slot that survives statement copies,
 so it is never bound as a scalar argument and prepared statements can be rebound. `duckpgq_match` takes no
 arguments and its `bind_replace` reads the pattern from `bind_input.ref.bind_info`, rewriting a copy of it.
@@ -68,9 +79,10 @@ The `.gram` files under `src/core/parser/grammar/` define the namespaced `DuckPG
 non-comment line. CMake embeds each file in a generated header under the build directory (`duckpgq_embed_grammar`
 in `src/core/parser/CMakeLists.txt`) and reconfigures when a `.gram` file changes. No generation script is required.
 
-`create_property_graph_grammar.cpp` and `graph_table_grammar.cpp` register their rules, attach handwritten transform
-callbacks with `SetTransformProcess`, and prepend their entry rule to the native `Statement` and `InnerTableRef`
-choices. `duckpgq_grammar_extension.cpp` combines them into the single `duckpgq` grammar extension. Built-in
+`create_property_graph_grammar.cpp`, `graph_table_grammar.cpp`, and `graph_management_grammar.cpp` register their
+rules, attach handwritten transform callbacks with `SetTransformProcess`, and prepend their entry rules to the native
+`Statement`, `InnerTableRef`, and `DescribeStatement` choices. `duckpgq_grammar_extension.cpp` combines them into the
+single `duckpgq` grammar extension. Built-in
 `QualifiedName`, `BaseTableName`, `TableAlias`, `ColId`, `Identifier`, `NumberLiteral`, `WhereClause`, `TargetList`,
 `Parens`, and `List` rules/transforms are reused rather than copied. Keyword literals that are not DuckDB keywords
 match by text, so no reserved words are added; the create-graph words are registered as unreserved keywords.
@@ -90,12 +102,10 @@ Build static/loadable extensions, the shell, and the test runner, then run:
 
 The focused suite verifies activation/reset and connection isolation, ordinary SQL coexistence, mixed statements,
 quoted/schema-qualified names, table/property aliases, property modes, labels, inferred/explicit references,
-conflict policies, the SQL `PREPARE` limitation, and syntax/semantic errors.
+conflict policies, the SQL `PREPARE` limitation, GRAPH_TABLE in every table-reference position, the graph-management
+statements, and syntax/semantic errors.
 
-The legacy tests remain in place as a checklist but assume automatic activation. With
-`SET active_grammar_extensions = ['duckpgq']` injected after `require duckpgq`, 51 of the 61 legacy files pass. The
-rest need `DROP` or `DESCRIBE PROPERTY GRAPH`, re-activate after opening another database or connection, or assert
-error text that changed in v2.0. `DROP`, `DESCRIBE`, and `SUMMARIZE PROPERTY GRAPH` are deliberately unavailable
-through the new grammar; their implementation code is retained for the next slice.
-
-Next, port the graph-management statements, then add activation to the legacy tests and make the full suite a gate.
+The full suite (`./build/release/test/unittest 'test/sql/*'`) passes. Every legacy test activates the grammar right
+after its `require` lines, once per connection it uses, because activation is connection-local. Expected
+parser-error messages in `parser_arrow_kleene.test` no longer pin the offending token, since DuckDB's tokenizer
+decides token boundaries (for example `/->` or `<->` are single operator tokens).

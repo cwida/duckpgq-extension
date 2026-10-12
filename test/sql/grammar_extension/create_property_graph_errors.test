@@ -81,8 +81,10 @@ CREATE PROPERTY GRAPH existing_graph VERTEX TABLES (v);
 ----
 already exists
 
-# Graph-management statements that are not migrated yet must not be silently accepted.
+statement ok
+DROP PROPERTY GRAPH existing_graph;
+
 statement error
 DROP PROPERTY GRAPH existing_graph;
 ----
-Parser Error
+does not exist

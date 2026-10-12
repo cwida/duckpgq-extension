@@ -16,8 +16,8 @@ namespace duckdb {
 
 class DescribePropertyGraphFunction : public TableFunction {
 public:
-	DescribePropertyGraphFunction() {
-		name = "describe_property_graph";
+	DescribePropertyGraphFunction()
+	    : TableFunction("describe_property_graph", {LogicalType::VARCHAR}, nullptr, nullptr) {
 		bind = DescribePropertyGraphBind;
 		init_global = DescribePropertyGraphInit;
 		function = DescribePropertyGraphFunc;

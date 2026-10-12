@@ -2,6 +2,7 @@
 
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/grammar_change.hpp"
+#include "duckdb/parser/peg/transformer/parse_result.hpp"
 #include "duckpgq/parser/tableref/matchref.hpp"
 
 namespace duckdb {
@@ -20,5 +21,12 @@ struct DuckPGQMatchInfo : TableFunctionInfo {
 void DuckPGQAddCreatePropertyGraphGrammar(vector<GrammarChange> &changes);
 //! Rules and transforms for GRAPH_TABLE path patterns.
 void DuckPGQAddGraphTableGrammar(vector<GrammarChange> &changes);
+//! Rules and transforms for DROP, DESCRIBE and SUMMARIZE PROPERTY GRAPH.
+void DuckPGQAddGraphManagementGrammar(vector<GrammarChange> &changes);
+
+//! A rule whose body is a single choice parses to a list holding that choice; return the chosen alternative.
+ParseResult &DuckPGQGetChoice(ParseResult &parse_result);
+//! Upper-cased concatenation of the keyword/operator tokens below a parse result, e.g. "<-" for '<' '-'.
+string DuckPGQLiteralText(ParseResult &parse_result);
 
 } // namespace duckdb

@@ -10,8 +10,8 @@ For user documentation, examples, and background, see [duckpgq.org](https://duck
 
 DuckPGQ is a research project and a work in progress. Feedback, bug reports, and contributions are welcome.
 
-This branch is migrating SQL/PGQ to DuckDB v2.0-cyanoptera's `GrammarExtension` framework. `CREATE PROPERTY GRAPH`
-and `GRAPH_TABLE` queries are supported; `DROP`, `DESCRIBE`, and `SUMMARIZE PROPERTY GRAPH` still need to be ported.
+This branch migrates SQL/PGQ to DuckDB v2.0-cyanoptera's `GrammarExtension` framework: `CREATE`, `DROP`, `DESCRIBE`
+and `SUMMARIZE PROPERTY GRAPH` plus `GRAPH_TABLE` queries, with no patched or vendored parser.
 See [the grammar migration notes](docs/GRAMMAR_EXTENSION.md) for activation, supported syntax, and focused tests.
 
 ## Installation
@@ -108,13 +108,8 @@ Run the SQL test suite:
 make test_release
 ```
 
-During the grammar migration, use the focused suite:
-
-```sh
-./build/release/test/unittest 'test/sql/grammar_extension/*'
-```
-
-The legacy suite includes syntax that has not yet been migrated, so it is not expected to pass in full on this branch.
+Every test activates the grammar explicitly, including on each named connection it uses. The focused grammar
+tests live under `test/sql/grammar_extension/`.
 
 Run a single SQL logic test:
 

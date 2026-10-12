@@ -16,16 +16,7 @@ unique_ptr<FunctionData> DescribePropertyGraphFunction::DescribePropertyGraphBin
                                                                                   vector<Identifier> &names) {
 	auto duckpgq_state = GetDuckPGQState(context);
 
-	const auto duckpgq_parse_data = dynamic_cast<DuckPGQParseData *>(duckpgq_state->parse_data.get());
-
-	if (!duckpgq_parse_data) {
-		return {};
-	}
-	auto statement = dynamic_cast<SelectStatement *>(duckpgq_parse_data->statement.get());
-	auto select_node = dynamic_cast<SelectNode *>(statement->node.get());
-	auto show_ref = dynamic_cast<ShowRef *>(select_node->from_table.get());
-
-	auto property_graph_name = show_ref->GetTableName().GetIdentifierName();
+	auto property_graph_name = input.inputs[0].GetValue<string>();
 	auto pg_table = duckpgq_state->registered_property_graphs.find(property_graph_name);
 	if (pg_table == duckpgq_state->registered_property_graphs.end()) {
 		throw Exception(ExceptionType::INVALID, "Property graph " + property_graph_name + " does not exist.");

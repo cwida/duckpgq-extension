@@ -16,6 +16,7 @@ public:
 		vector<GrammarChange> changes;
 		DuckPGQAddCreatePropertyGraphGrammar(changes);
 		DuckPGQAddGraphTableGrammar(changes);
+		DuckPGQAddGraphManagementGrammar(changes);
 		return changes;
 	}
 };

@@ -30,11 +30,15 @@ duckpgq_embed_grammar(
   DUCKPGQ_CREATE_PROPERTY_GRAPH_RULES)
 duckpgq_embed_grammar(graph_table.gram duckpgq_graph_table_grammar.hpp
                       DUCKPGQ_GRAPH_TABLE_RULES)
+duckpgq_embed_grammar(
+  graph_management.gram duckpgq_graph_management_grammar.hpp
+  DUCKPGQ_GRAPH_MANAGEMENT_RULES)
 
 set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/create_property_graph_grammar.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/duckpgq_grammar_extension.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/duckpgq_parser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/graph_management_grammar.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/graph_table_grammar.cpp
     ${EXTENSION_SOURCES}
     PARENT_SCOPE)

@@ -6,6 +6,10 @@ require duckpgq
 
 require parquet
 
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
 # Test with a graph having no edges
 statement ok
 CREATE TABLE IsolatedStudent(id BIGINT, name VARCHAR);INSERT INTO IsolatedStudent VALUES (0, 'Alice'), (1, 'Bob'), (2, 'Charlie');

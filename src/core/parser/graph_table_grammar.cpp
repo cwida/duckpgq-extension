@@ -14,15 +14,13 @@
 
 namespace duckdb {
 
-namespace {
-
 // A rule whose body is a single choice parses to a list holding that choice; return the chosen alternative.
-ParseResult &GetChoice(ParseResult &parse_result) {
+ParseResult &DuckPGQGetChoice(ParseResult &parse_result) {
 	return parse_result.Cast<ListParseResult>().Child<ChoiceParseResult>(0).GetResult();
 }
 
 // Concatenate the keyword/operator tokens below a parse result, e.g. "<-" for the sequence '<' '-'.
-void CollectLiteralText(ParseResult &parse_result, string &text) {
+static void CollectLiteralText(ParseResult &parse_result, string &text) {
 	switch (parse_result.type) {
 	case ParseResultType::KEYWORD:
 		text += parse_result.Cast<KeywordParseResult>().keyword;
@@ -47,11 +45,13 @@ void CollectLiteralText(ParseResult &parse_result, string &text) {
 	}
 }
 
-string LiteralText(ParseResult &parse_result) {
+string DuckPGQLiteralText(ParseResult &parse_result) {
 	string text;
 	CollectLiteralText(parse_result, text);
 	return StringUtil::Upper(text);
 }
+
+namespace {
 
 int64_t TransformNumber(PEGTransformer &transformer, ParseResult &parse_result) {
 	auto expression = transformer.Transform<unique_ptr<ParsedExpression>>(parse_result);
@@ -131,7 +131,7 @@ void ApplyQuantifier(PEGTransformer &transformer, optional_ptr<ParseResult> quan
 	auto unbounded = NumericLimits<int64_t>::Maximum();
 	string text = fused_quantifier;
 	if (quantifier) {
-		auto &choice = GetChoice(*quantifier);
+		auto &choice = DuckPGQGetChoice(*quantifier);
 		if (choice.Name() == "DuckPGQFixedQuantifier") {
 			auto fixed = TransformNumber(transformer, choice.Cast<ListParseResult>().GetChild(1));
 			subpath.lower = fixed;
@@ -149,7 +149,7 @@ void ApplyQuantifier(PEGTransformer &transformer, optional_ptr<ParseResult> quan
 			}
 			return;
 		}
-		text = LiteralText(choice);
+		text = DuckPGQLiteralText(choice);
 	}
 	subpath.lower = text == "+" ? 1 : 0;
 	subpath.upper = text == "?" ? 1 : unbounded;
@@ -159,22 +159,22 @@ void ApplyQuantifier(PEGTransformer &transformer, optional_ptr<ParseResult> quan
 unique_ptr<PathReference> TransformQuantifiedEdge(PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list = parse_result.Cast<ListParseResult>();
 	auto edge = TransformElement(transformer, list.GetChild(1), PGQMatchType::MATCH_EDGE_ANY);
-	auto left = LiteralText(list.GetChild(0));
+	auto left = DuckPGQLiteralText(list.GetChild(0));
 
 	// DuckPGQFusedTail / (DuckPGQEdgeRight DuckPGQQuantifier?)
-	auto &tail = GetChoice(list.GetChild(2));
+	auto &tail = DuckPGQGetChoice(list.GetChild(2));
 	string right;
 	string fused_quantifier;
 	optional_ptr<ParseResult> quantifier;
 	bool has_quantifier;
 	if (tail.Name() == "DuckPGQFusedTail") {
-		auto fused = LiteralText(tail);
+		auto fused = DuckPGQLiteralText(tail);
 		right = fused.substr(0, fused.size() - 1);
 		fused_quantifier = fused.substr(fused.size() - 1);
 		has_quantifier = true;
 	} else {
 		auto &tail_list = tail.Cast<ListParseResult>();
-		right = LiteralText(tail_list.GetChild(0));
+		right = DuckPGQLiteralText(tail_list.GetChild(0));
 		auto &optional_quantifier = tail_list.Child<OptionalParseResult>(1);
 		has_quantifier = optional_quantifier.HasResult();
 		if (has_quantifier) {
@@ -221,7 +221,7 @@ unique_ptr<PathPattern> TransformPathPattern(PEGTransformer &transformer, ParseR
 	auto pattern = TransformPathSequence(transformer, list.GetChild(3));
 	auto &prefix = list.Child<OptionalParseResult>(1);
 	if (prefix.HasResult()) {
-		auto &choice = GetChoice(prefix.GetResult());
+		auto &choice = DuckPGQGetChoice(prefix.GetResult());
 		pattern->shortest = true;
 		pattern->all = choice.Name() == "DuckPGQAllShortest";
 		if (choice.Name() == "DuckPGQTopKShortest") {
@@ -244,7 +244,7 @@ unique_ptr<PathPattern> TransformPathPattern(PEGTransformer &transformer, ParseR
 		subpath->path_variable = transformer.Transform<Identifier>(variable_list.GetChild(0)).GetIdentifierName();
 	}
 	if (mode.HasResult()) {
-		subpath->path_mode = PathModeFromText(LiteralText(mode.GetResult()));
+		subpath->path_mode = PathModeFromText(DuckPGQLiteralText(mode.GetResult()));
 	}
 	subpath->path_list = std::move(pattern->path_elements);
 	pattern->path_elements.clear();

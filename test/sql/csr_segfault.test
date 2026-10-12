@@ -3,6 +3,10 @@
 
 require duckpgq
 
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
 statement ok
 create or replace table student(id bigint); insert into student from range(0, 5000);
 
@@ -56,17 +60,17 @@ SELECT count(csre) FROM get_csr_e(0);
 5000
 
 statement ok
-COPY (SELECT csrv FROM get_csr_v(0)) TO '__TEST_DIR__/v.csv';
+COPY (SELECT csrv FROM get_csr_v(0)) TO '{TEST_DIR}/v.csv';
 
 statement ok
-COPY (SELECT csre FROM get_csr_e(0)) TO '__TEST_DIR__/e.csv';
+COPY (SELECT csre FROM get_csr_e(0)) TO '{TEST_DIR}/e.csv';
 
 query I
-SELECT count(*) FROM read_csv('__TEST_DIR__/v.csv');
+SELECT count(*) FROM read_csv('{TEST_DIR}/v.csv');
 ----
 5002
 
 query I
-SELECT count(*) FROM read_csv('__TEST_DIR__/e.csv');
+SELECT count(*) FROM read_csv('{TEST_DIR}/e.csv');
 ----
 5000
