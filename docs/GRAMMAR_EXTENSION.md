@@ -1,9 +1,8 @@
-# SQL/PGQ grammar migration
+# SQL/PGQ grammar extension
 
-This branch targets the `GrammarExtension` API in the v2.0-cyanoptera DuckDB submodule. All SQL/PGQ syntax the
-extension supported before is migrated: `CREATE`, `DROP`, `DESCRIBE`/`SHOW`, and `SUMMARIZE PROPERTY GRAPH`, and
-`GRAPH_TABLE`. The old copied/patched PEG parser and its sync, namespace-wrapper, and regeneration scripts have been
-removed. DuckDB itself is not patched, and the submodule points at upstream `duckdb/duckdb`.
+DuckPGQ adds its SQL/PGQ syntax through the `GrammarExtension` API of DuckDB v2.0-cyanoptera: `CREATE`, `DROP`,
+`DESCRIBE`/`SHOW`, and `SUMMARIZE PROPERTY GRAPH`, and `GRAPH_TABLE`. DuckDB itself is not patched, no parser code is
+vendored, and the submodule points at upstream `duckdb/duckdb`.
 
 ## Activation
 
@@ -39,8 +38,7 @@ its `SET` statement. SQL `PREPARE` is currently unavailable for extension statem
 - Existing create-graph binding, validation, metadata storage, and conflict policies.
 
 As before, the property-graph registry is keyed by the graph's unqualified name. Table/reference qualification is
-preserved. Temporary property graphs, vertex-key declarations, and arbitrary property expressions are not added by
-this migration.
+preserved. Temporary property graphs, vertex-key declarations, and arbitrary property expressions are not supported.
 
 Edge metadata stores resolved physical vertex names and qualification rather than statement-local aliases, so
 new connections can reconstruct graphs created with aliased references.
@@ -55,7 +53,7 @@ new connections can reconstruct graphs created with aliased references.
 - Quantifiers `*`, `+`, `?`, `{n}`, `{m,n}`, `{m,}`, `{,n}`, including the forms the tokenizer fuses with the arrow
   (`->*`, `->?`, `-*`, `-?`).
 - Path variables, `ANY SHORTEST`, `ALL SHORTEST`, `SHORTEST k`, and the `WALK`/`TRAIL`/`SIMPLE`/`ACYCLIC` modes.
-  Which of these the match rewrite can execute is unchanged from before the migration.
+  Which of these the match rewrite can execute is decided in the rewrite, not the grammar.
 
 ### Graph-management statements
 
@@ -92,7 +90,7 @@ The rule transforms to the existing `CreatePropertyGraphInfo`, wrapped in a nati
 extension is retained for planning only: no parser override or parse fallback is registered. DuckDB handles
 tokenization, statement boundaries, native SQL transforms, and syntax-error locations.
 
-## Verification and remaining migration
+## Verification
 
 Build static/loadable extensions, the shell, and the test runner, then run:
 

@@ -10,9 +10,9 @@ For user documentation, examples, and background, see [duckpgq.org](https://duck
 
 DuckPGQ is a research project and a work in progress. Feedback, bug reports, and contributions are welcome.
 
-This branch migrates SQL/PGQ to DuckDB v2.0-cyanoptera's `GrammarExtension` framework: `CREATE`, `DROP`, `DESCRIBE`
-and `SUMMARIZE PROPERTY GRAPH` plus `GRAPH_TABLE` queries, with no patched or vendored parser.
-See [the grammar migration notes](docs/GRAMMAR_EXTENSION.md) for activation, supported syntax, and focused tests.
+The SQL/PGQ syntax (`CREATE`, `DROP`, `DESCRIBE` and `SUMMARIZE PROPERTY GRAPH`, and `GRAPH_TABLE` queries) is
+provided through DuckDB's composable `GrammarExtension` API, so DuckPGQ needs no patched or vendored parser.
+See [the grammar notes](docs/GRAMMAR_EXTENSION.md) for activation, supported syntax, and how the grammar is wired in.
 
 ## Installation
 
