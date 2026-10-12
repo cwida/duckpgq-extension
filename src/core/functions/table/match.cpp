@@ -1,5 +1,6 @@
 #include <duckpgq_extension.hpp>
 #include "duckpgq/core/functions/table/match.hpp"
+#include "duckpgq/core/parser/duckpgq_grammar.hpp"
 
 #include "duckpgq/core/utils/duckpgq_sql.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -8,6 +9,7 @@
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckpgq/parser/tableref/matchref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
+#include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 
 #include "duckdb/parser/expression/function_expression.hpp"
@@ -1020,8 +1022,13 @@ void PGQMatchFunction::CheckColumnBinding(
 unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, TableFunctionBindInput &bind_input) {
 	auto duckpgq_state = GetDuckPGQState(context);
 
-	auto match_index = bind_input.inputs[0].GetValue<int32_t>();
-	auto *ref = dynamic_cast<MatchExpression *>(duckpgq_state->transform_expression[match_index].get());
+	auto match_info = dynamic_cast<DuckPGQMatchInfo *>(bind_input.ref.bind_info.get());
+	if (!match_info) {
+		throw BinderException("duckpgq_match can only be used through GRAPH_TABLE");
+	}
+	// Rewrite a copy: the expansion consumes the expression, and a prepared statement can be bound again.
+	auto match_expression = unique_ptr_cast<ParsedExpression, MatchExpression>(match_info->match->Copy());
+	auto *ref = match_expression.get();
 	auto *pg_table = duckpgq_state->GetPropertyGraph(ref->pg_name);
 
 	vector<unique_ptr<ParsedExpression>> conditions;

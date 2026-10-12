@@ -1,9 +1,0 @@
-// Generated from create_property_graph.gram by CMake. Edit the .gram file instead.
-#pragma once
-
-namespace duckdb {
-
-static constexpr const char *DUCKPGQ_CREATE_PROPERTY_GRAPH_RULES[] = {
-@DUCKPGQ_GRAMMAR_RULES@};
-
-} // namespace duckdb

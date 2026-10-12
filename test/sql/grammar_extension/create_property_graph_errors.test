@@ -81,13 +81,8 @@ CREATE PROPERTY GRAPH existing_graph VERTEX TABLES (v);
 ----
 already exists
 
-# Only CREATE is migrated in this first slice; do not silently accept legacy syntax.
+# Graph-management statements that are not migrated yet must not be silently accepted.
 statement error
 DROP PROPERTY GRAPH existing_graph;
-----
-Parser Error
-
-statement error
-SELECT * FROM GRAPH_TABLE(existing_graph MATCH (a:v));
 ----
 Parser Error

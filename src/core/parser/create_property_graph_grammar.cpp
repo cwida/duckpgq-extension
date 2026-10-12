@@ -1,6 +1,6 @@
+#include "duckpgq/core/parser/duckpgq_grammar.hpp"
 #include "duckpgq/core/parser/duckpgq_parser.hpp"
 
-#include "duckdb/parser/grammar_extension.hpp"
 #include "duckdb/parser/peg/transformer/peg_transformer.hpp"
 #include "duckdb/parser/statement/extension_statement.hpp"
 #include "duckpgq/parser/parsed_data/create_property_graph_info.hpp"
@@ -198,33 +198,21 @@ static arena_ptr<TransformProcess> StartGraphTableTransform(PEGTransformer &tran
 	return transformer.MakeProcess<FinalizeTransformProcess>(transformer, parse_result, TransformGraphTable);
 }
 
-class DuckPGQGrammarExtension final : public GrammarExtension {
-public:
-	DuckPGQGrammarExtension() : GrammarExtension("duckpgq", "SQL/PGQ CREATE PROPERTY GRAPH syntax") {
-	}
-
-	vector<GrammarChange> GetChanges() const override {
-		vector<GrammarChange> changes;
-		// New words remain usable as ordinary SQL identifiers outside their PGQ context.
-		for (auto keyword : {"ARE", "DESTINATION", "EDGE", "GRAPH", "PROPERTIES", "PROPERTY", "VERTEX"}) {
-			changes.push_back(GrammarChange::AddChoice("UnreservedKeyword", "'" + string(keyword) + "'"));
-		}
-		for (auto rule : DUCKPGQ_CREATE_PROPERTY_GRAPH_RULES) {
-			changes.push_back(GrammarChange::AddRule(rule));
-		}
-		changes.push_back(GrammarChange::SetTransformProcess("DuckPGQCreatePropertyGraph", StartCreateGraphTransform));
-		changes.push_back(GrammarChange::SetTransformProcess("DuckPGQVertexTable", StartGraphTableTransform));
-		changes.push_back(GrammarChange::SetTransformProcess("DuckPGQEdgeTable", StartGraphTableTransform));
-		// Return an ExtensionStatement directly, without intercepting ordinary CREATE statements.
-		changes.push_back(GrammarChange::PrependChoice("Statement", "DuckPGQCreatePropertyGraph"));
-		return changes;
-	}
-};
-
 } // namespace
 
-void CorePGQParser::RegisterPGQGrammarExtension(ExtensionLoader &loader) {
-	GrammarExtension::Register(loader.GetDatabaseInstance(), make_shared_ptr<DuckPGQGrammarExtension>());
+void DuckPGQAddCreatePropertyGraphGrammar(vector<GrammarChange> &changes) {
+	// New words remain usable as ordinary SQL identifiers outside their PGQ context.
+	for (auto keyword : {"ARE", "DESTINATION", "EDGE", "GRAPH", "PROPERTIES", "PROPERTY", "VERTEX"}) {
+		changes.push_back(GrammarChange::AddChoice("UnreservedKeyword", "'" + string(keyword) + "'"));
+	}
+	for (auto rule : DUCKPGQ_CREATE_PROPERTY_GRAPH_RULES) {
+		changes.push_back(GrammarChange::AddRule(rule));
+	}
+	changes.push_back(GrammarChange::SetTransformProcess("DuckPGQCreatePropertyGraph", StartCreateGraphTransform));
+	changes.push_back(GrammarChange::SetTransformProcess("DuckPGQVertexTable", StartGraphTableTransform));
+	changes.push_back(GrammarChange::SetTransformProcess("DuckPGQEdgeTable", StartGraphTableTransform));
+	// Return an ExtensionStatement directly, without intercepting ordinary CREATE statements.
+	changes.push_back(GrammarChange::PrependChoice("Statement", "DuckPGQCreatePropertyGraph"));
 }
 
 } // namespace duckdb

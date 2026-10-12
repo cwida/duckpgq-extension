@@ -10,8 +10,8 @@ For user documentation, examples, and background, see [duckpgq.org](https://duck
 
 DuckPGQ is a research project and a work in progress. Feedback, bug reports, and contributions are welcome.
 
-This branch is migrating SQL/PGQ to DuckDB v2.0-cyanoptera's `GrammarExtension` framework. The first slice supports
-`CREATE PROPERTY GRAPH` only; `GRAPH_TABLE`, `DROP`, `DESCRIBE`, and `SUMMARIZE PROPERTY GRAPH` still need to be ported.
+This branch is migrating SQL/PGQ to DuckDB v2.0-cyanoptera's `GrammarExtension` framework. `CREATE PROPERTY GRAPH`
+and `GRAPH_TABLE` queries are supported; `DROP`, `DESCRIBE`, and `SUMMARIZE PROPERTY GRAPH` still need to be ported.
 See [the grammar migration notes](docs/GRAMMAR_EXTENSION.md) for activation, supported syntax, and focused tests.
 
 ## Installation
@@ -51,7 +51,11 @@ EDGE TABLES (
         LABEL Knows
 );
 
--- Graph querying will return in a subsequent grammar migration slice.
+SELECT *
+FROM GRAPH_TABLE (snb
+    MATCH (a:Person)-[k:Knows]->(b:Person)
+    COLUMNS (a.id AS person, b.id AS friend)
+);
 ```
 
 ## Building From Source
@@ -104,7 +108,7 @@ Run the SQL test suite:
 make test_release
 ```
 
-During the create-only grammar migration, use the focused suite:
+During the grammar migration, use the focused suite:
 
 ```sh
 ./build/release/test/unittest 'test/sql/grammar_extension/*'
