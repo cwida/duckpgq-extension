@@ -12,9 +12,9 @@ namespace duckdb {
 
 class PageRankFunction : public TableFunction {
 public:
-	PageRankFunction() {
-		name = "pagerank";
-		arguments = {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR};
+	PageRankFunction()
+	    : TableFunction("pagerank", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, nullptr,
+	                    nullptr) {
 		bind_replace = PageRankBindReplace;
 	}
 

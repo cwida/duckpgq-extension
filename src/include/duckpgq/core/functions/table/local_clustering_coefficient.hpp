@@ -7,9 +7,9 @@ namespace duckdb {
 
 class LocalClusteringCoefficientFunction : public TableFunction {
 public:
-	LocalClusteringCoefficientFunction() {
-		name = "local_clustering_coefficient";
-		arguments = {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR};
+	LocalClusteringCoefficientFunction()
+	    : TableFunction("local_clustering_coefficient",
+	                    {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, nullptr, nullptr) {
 		bind_replace = LocalClusteringCoefficientBindReplace;
 	}
 

@@ -1,9 +1,12 @@
 set(DUCKPGQ_CREATE_GRAPH_GRAMMAR
     ${CMAKE_CURRENT_SOURCE_DIR}/grammar/create_property_graph.gram)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-                                      ${DUCKPGQ_CREATE_GRAPH_GRAMMAR})
+set_property(
+  DIRECTORY
+  APPEND
+  PROPERTY CMAKE_CONFIGURE_DEPENDS ${DUCKPGQ_CREATE_GRAPH_GRAMMAR})
 
-# Keep one rule per non-comment line; only embed the text, without interpreting PEG.
+# Keep one rule per non-comment line; only embed the text, without interpreting
+# PEG.
 file(STRINGS ${DUCKPGQ_CREATE_GRAPH_GRAMMAR} DUCKPGQ_GRAMMAR_LINES)
 set(DUCKPGQ_GRAMMAR_RULES "")
 foreach(DUCKPGQ_GRAMMAR_LINE IN LISTS DUCKPGQ_GRAMMAR_LINES)

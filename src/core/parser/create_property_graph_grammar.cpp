@@ -33,9 +33,9 @@ static void ApplyProperties(PEGTransformer &transformer, OptionalParseResult &pr
 	}
 	auto &choice = GetChoice(properties.GetResult());
 	auto &list = choice.Cast<ListParseResult>();
-	if (choice.name == "DuckPGQNoProperties") {
+	if (choice.Name() == "DuckPGQNoProperties") {
 		table.no_columns = true;
-	} else if (choice.name == "DuckPGQPropertyList") {
+	} else if (choice.Name() == "DuckPGQPropertyList") {
 		auto &items = PEGTransformerFactory::ExtractResultFromParens(list.GetChild(1));
 		for (auto &item : PEGTransformerFactory::ExtractParseResultsFromList(items)) {
 			auto &property = item.get().Cast<ListParseResult>();
@@ -49,7 +49,7 @@ static void ApplyProperties(PEGTransformer &transformer, OptionalParseResult &pr
 		}
 	} else {
 		table.all_columns = true;
-		if (choice.name == "DuckPGQAllColumnsExcept") {
+		if (choice.Name() == "DuckPGQAllColumnsExcept") {
 			table.except_columns = TransformParensList<Identifier>(transformer, list.GetChild(5));
 		}
 	}
@@ -68,7 +68,7 @@ static void ApplyLabel(PEGTransformer &transformer, OptionalParseResult &label, 
 	}
 	auto &choice = GetChoice(label.GetResult());
 	auto &list = choice.Cast<ListParseResult>();
-	if (choice.name == "DuckPGQExplicitLabel") {
+	if (choice.Name() == "DuckPGQExplicitLabel") {
 		table.main_label = transformer.Transform<Identifier>(list.GetChild(1));
 		auto &sub_labels = list.Child<OptionalParseResult>(2);
 		if (sub_labels.HasResult()) {
@@ -85,7 +85,7 @@ static void ApplyReference(PEGTransformer &transformer, ParseResult &parse_resul
 	unique_ptr<BaseTableRef> base_table;
 	auto &foreign_keys = source ? edge.source_fk : edge.destination_fk;
 	auto &primary_keys = source ? edge.source_pk : edge.destination_pk;
-	if (reference.name == "DuckPGQKeyReference") {
+	if (reference.Name() == "DuckPGQKeyReference") {
 		auto &list = reference.Cast<ListParseResult>();
 		foreign_keys = TransformParensList<Identifier>(transformer, list.GetChild(1));
 		base_table = transformer.Transform<unique_ptr<BaseTableRef>>(list.GetChild(3));
@@ -99,10 +99,10 @@ static void ApplyReference(PEGTransformer &transformer, ParseResult &parse_resul
 	(source ? edge.source_reference : edge.destination_reference) = name.Name();
 }
 
-static unique_ptr<TransformResultValue> TransformGraphTable(PEGTransformer &transformer, ParseResult &parse_result) {
+static arena_ptr<TransformResultValue> TransformGraphTable(PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list = parse_result.Cast<ListParseResult>();
 	auto table = make_shared_ptr<PropertyGraphTable>();
-	table->is_vertex_table = parse_result.name == "DuckPGQVertexTable";
+	table->is_vertex_table = parse_result.Name() == "DuckPGQVertexTable";
 	auto base_table = transformer.Transform<unique_ptr<BaseTableRef>>(list.GetChild(0));
 	auto &name = base_table->GetQualifiedName();
 	table->catalog_name = name.Catalog();
@@ -120,7 +120,7 @@ static unique_ptr<TransformResultValue> TransformGraphTable(PEGTransformer &tran
 	}
 	ApplyProperties(transformer, list.Child<OptionalParseResult>(properties_index), *table);
 	ApplyLabel(transformer, list.Child<OptionalParseResult>(properties_index + 1), *table);
-	return make_uniq<TypedTransformResult<shared_ptr<PropertyGraphTable>>>(std::move(table));
+	return transformer.MakeResult<shared_ptr<PropertyGraphTable>>(std::move(table));
 }
 
 static shared_ptr<PropertyGraphTable> FindVertexTable(const CreatePropertyGraphInfo &info, const Identifier &catalog,
@@ -150,7 +150,7 @@ static void RegisterLabels(CreatePropertyGraphInfo &info, const shared_ptr<Prope
 	}
 }
 
-static unique_ptr<TransformResultValue> TransformCreateGraph(PEGTransformer &transformer, ParseResult &parse_result) {
+static arena_ptr<TransformResultValue> TransformCreateGraph(PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list = parse_result.Cast<ListParseResult>();
 	auto or_replace = list.Child<OptionalParseResult>(1).HasResult();
 	auto if_not_exists = list.Child<OptionalParseResult>(4).HasResult();
@@ -187,15 +187,15 @@ static unique_ptr<TransformResultValue> TransformCreateGraph(PEGTransformer &tra
 	statement->info = std::move(info);
 	auto parse_data = make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(std::move(statement));
 	unique_ptr<SQLStatement> result = make_uniq<ExtensionStatement>(DuckPGQParserExtension(), std::move(parse_data));
-	return make_uniq<TypedTransformResult<unique_ptr<SQLStatement>>>(std::move(result));
+	return transformer.MakeResult<unique_ptr<SQLStatement>>(std::move(result));
 }
 
-static unique_ptr<TransformProcess> StartCreateGraphTransform(PEGTransformer &transformer, ParseResult &parse_result) {
-	return make_uniq<FinalizeTransformProcess>(transformer, parse_result, TransformCreateGraph);
+static arena_ptr<TransformProcess> StartCreateGraphTransform(PEGTransformer &transformer, ParseResult &parse_result) {
+	return transformer.MakeProcess<FinalizeTransformProcess>(transformer, parse_result, TransformCreateGraph);
 }
 
-static unique_ptr<TransformProcess> StartGraphTableTransform(PEGTransformer &transformer, ParseResult &parse_result) {
-	return make_uniq<FinalizeTransformProcess>(transformer, parse_result, TransformGraphTable);
+static arena_ptr<TransformProcess> StartGraphTableTransform(PEGTransformer &transformer, ParseResult &parse_result) {
+	return transformer.MakeProcess<FinalizeTransformProcess>(transformer, parse_result, TransformGraphTable);
 }
 
 class DuckPGQGrammarExtension final : public GrammarExtension {
