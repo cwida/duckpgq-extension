@@ -1,0 +1,6 @@
+# SQL/PGQ graph-management statements added to DuckDB's native grammar.
+# Keep each rule on one line; CMake embeds them in a header at configure time.
+
+DuckPGQDropPropertyGraph <- 'DROP' 'PROPERTY' 'GRAPH' IfExists? QualifiedName
+DuckPGQDescribePropertyGraph <- DuckPGQDescribeKeyword 'PROPERTY' 'GRAPH' QualifiedName
+DuckPGQDescribeKeyword <- 'DESCRIBE' / 'DESC' / 'SHOW' / 'SUMMARIZE'

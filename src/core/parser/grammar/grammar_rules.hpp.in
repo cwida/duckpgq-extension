@@ -1,0 +1,9 @@
+// Generated from @DUCKPGQ_GRAMMAR_SOURCE@ by CMake. Edit the .gram file instead.
+#pragma once
+
+namespace duckdb {
+
+static constexpr const char *@DUCKPGQ_GRAMMAR_ARRAY@[] = {
+@DUCKPGQ_GRAMMAR_RULES@};
+
+} // namespace duckdb

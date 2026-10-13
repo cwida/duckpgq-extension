@@ -7,9 +7,9 @@ namespace duckdb {
 
 class LocalClusteringCoefficientFunction : public TableFunction {
 public:
-	LocalClusteringCoefficientFunction() {
-		name = "local_clustering_coefficient";
-		arguments = {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR};
+	LocalClusteringCoefficientFunction()
+	    : TableFunction("local_clustering_coefficient",
+	                    {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, nullptr, nullptr) {
 		bind_replace = LocalClusteringCoefficientBindReplace;
 	}
 
@@ -21,7 +21,7 @@ struct LocalClusteringCoefficientData : TableFunctionData {
 	static unique_ptr<FunctionData> LocalClusteringCoefficientBind(ClientContext &context,
 	                                                               TableFunctionBindInput &input,
 	                                                               vector<LogicalType> &return_types,
-	                                                               vector<string> &names) {
+	                                                               vector<Identifier> &names) {
 		auto result = make_uniq<LocalClusteringCoefficientData>();
 		result->pg_name = StringValue::Get(input.inputs[0]);
 		result->node_table = StringValue::Get(input.inputs[1]);

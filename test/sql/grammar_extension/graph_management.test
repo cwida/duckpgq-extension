@@ -1,0 +1,72 @@
+# name: test/sql/grammar_extension/graph_management.test
+# description: DROP, DESCRIBE and SUMMARIZE PROPERTY GRAPH through DuckDB's composable GrammarExtension
+# group: [grammar_extension]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE v(id BIGINT PRIMARY KEY, name VARCHAR);
+
+statement ok
+INSERT INTO v VALUES (1, 'a'), (2, 'b');
+
+statement ok
+CREATE TABLE e(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO e VALUES (1, 2);
+
+statement ok
+CREATE PROPERTY GRAPH g VERTEX TABLES (v LABEL Node) EDGE TABLES (e SOURCE KEY (src) REFERENCES v (id) DESTINATION KEY (dst) REFERENCES v (id) LABEL Link);
+
+# DESCRIBE and SHOW rewrite to the describe_property_graph table function.
+query IIII
+SELECT property_graph, table_name, label, is_vertex_table FROM (DESCRIBE PROPERTY GRAPH g) ORDER BY table_name;
+----
+g	e	Link	false
+g	v	Node	true
+
+query I
+SELECT count(*) FROM (SHOW PROPERTY GRAPH g);
+----
+2
+
+# SUMMARIZE rewrites to summarize_property_graph.
+query II
+SELECT table_name, vertex_count FROM (SUMMARIZE PROPERTY GRAPH g) WHERE is_vertex_table ORDER BY table_name;
+----
+v	2
+
+statement error
+DESCRIBE PROPERTY GRAPH missing;
+----
+Property graph missing does not exist
+
+# Ordinary DESCRIBE and DROP still work.
+query I
+SELECT count(*) FROM (DESCRIBE v);
+----
+2
+
+statement ok
+DROP TABLE e;
+
+# DROP PROPERTY GRAPH with and without IF EXISTS.
+statement ok
+DROP PROPERTY GRAPH g;
+
+statement error
+DROP PROPERTY GRAPH g;
+----
+does not exist
+
+statement ok
+DROP PROPERTY GRAPH IF EXISTS g;
+
+statement error
+SELECT * FROM GRAPH_TABLE (g MATCH (n:Node));
+----
+does not exist

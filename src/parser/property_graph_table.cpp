@@ -325,6 +325,7 @@ shared_ptr<PropertyGraphTable> PropertyGraphTable::Copy() const {
 	for (auto &column_name : column_names) {
 		result->column_names.push_back(column_name);
 	}
+	result->column_aliases = column_aliases;
 	for (auto &except_column : except_columns) {
 		result->except_columns.push_back(except_column);
 	}

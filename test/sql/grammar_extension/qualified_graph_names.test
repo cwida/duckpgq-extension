@@ -1,0 +1,183 @@
+# name: test/sql/grammar_extension/qualified_graph_names.test
+# description: Property graphs record the catalog and schema they are created in, and qualified references must match
+# group: [grammar_extension]
+
+require duckpgq
+
+load {TEST_DIR}/qualified_graph_names.db
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Person(id BIGINT, name VARCHAR);
+
+statement ok
+INSERT INTO Person VALUES (1, 'a'), (2, 'b');
+
+statement ok
+CREATE TABLE Knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO Knows VALUES (1, 2);
+
+statement ok
+CREATE SCHEMA s1;
+
+statement ok
+CREATE SCHEMA "My Schema";
+
+# Unqualified graphs live in the default schema of the current catalog.
+statement ok
+CREATE PROPERTY GRAPH g VERTEX TABLES (Person LABEL Node);
+
+query III
+SELECT property_graph, graph_catalog, graph_schema FROM __duckpgq_internal WHERE property_graph = 'g';
+----
+g	qualified_graph_names	main
+
+query I
+SELECT count(*) FROM (DESCRIBE PROPERTY GRAPH main.g);
+----
+1
+
+query I
+SELECT count(*) FROM (DESC PROPERTY GRAPH qualified_graph_names.main.g);
+----
+1
+
+# A qualified graph is created in that schema and can be referenced with or without the qualifier.
+statement ok
+CREATE PROPERTY GRAPH s1.qg VERTEX TABLES (Person LABEL Node);
+
+query III
+SELECT property_graph, graph_catalog, graph_schema FROM __duckpgq_internal WHERE property_graph = 'qg';
+----
+qg	qualified_graph_names	s1
+
+query I
+SELECT count(*) FROM GRAPH_TABLE (s1.qg MATCH (n:Node));
+----
+2
+
+query I
+SELECT count(*) FROM GRAPH_TABLE (qualified_graph_names.s1.qg MATCH (n:Node));
+----
+2
+
+query I
+SELECT count(*) FROM GRAPH_TABLE (qg MATCH (n:Node));
+----
+2
+
+query I
+SELECT count(*) FROM (SHOW PROPERTY GRAPH s1.qg);
+----
+1
+
+query I
+SELECT count(*) FROM (SUMMARIZE PROPERTY GRAPH s1.qg);
+----
+1
+
+# A qualifier that does not match where the graph lives never resolves to it.
+statement error
+SELECT count(*) FROM GRAPH_TABLE (main.qg MATCH (n:Node));
+----
+Property graph main.qg does not exist
+
+statement error
+DESCRIBE PROPERTY GRAPH main.qg;
+----
+Property graph main.qg does not exist
+
+statement error
+SUMMARIZE PROPERTY GRAPH memory.s1.qg;
+----
+Property graph memory.s1.qg does not exist
+
+statement error
+DROP PROPERTY GRAPH main.qg;
+----
+Property graph main.qg does not exist
+
+statement ok
+DROP PROPERTY GRAPH IF EXISTS main.qg;
+
+query I
+SELECT count(*) FROM (DESCRIBE PROPERTY GRAPH s1.qg);
+----
+1
+
+# The schema must exist, and graph names stay unique per database.
+statement error
+CREATE PROPERTY GRAPH nosuchschema.g2 VERTEX TABLES (Person);
+----
+Schema with name nosuchschema does not exist
+
+statement error
+CREATE PROPERTY GRAPH main.qg VERTEX TABLES (Person);
+----
+already exists
+
+# Quoted qualifiers round-trip.
+statement ok
+CREATE PROPERTY GRAPH "My Schema"."Q G" VERTEX TABLES (Person LABEL Node);
+
+query I
+SELECT count(*) FROM GRAPH_TABLE ("My Schema"."Q G" MATCH (n:Node));
+----
+2
+
+statement error
+DESCRIBE PROPERTY GRAPH main."Q G";
+----
+does not exist
+
+# Edge references may use a vertex table alias; patterns on the graph work in the creating session.
+statement ok
+CREATE PROPERTY GRAPH aliased VERTEX TABLES (Person AS p) EDGE TABLES (Knows SOURCE KEY (src) REFERENCES p (id) DESTINATION KEY (dst) REFERENCES p (id) LABEL knows);
+
+query II
+SELECT a_id, b_id FROM GRAPH_TABLE (aliased MATCH (a:p)-[e:knows]->(b:p) COLUMNS (a.id AS a_id, b.id AS b_id));
+----
+1	2
+
+query II
+SELECT source_table, destination_table FROM __duckpgq_internal WHERE property_graph = 'aliased' AND NOT is_vertex_table;
+----
+Person	Person
+
+# The qualification survives a restart.
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+query I
+SELECT count(*) FROM GRAPH_TABLE (s1.qg MATCH (n:Node));
+----
+2
+
+query I
+SELECT count(*) FROM (DESCRIBE PROPERTY GRAPH "My Schema"."Q G");
+----
+1
+
+statement error
+DESCRIBE PROPERTY GRAPH main.qg;
+----
+Property graph main.qg does not exist
+
+query II
+SELECT a_id, b_id FROM GRAPH_TABLE (aliased MATCH (a:p)-[e:knows]->(b:p) COLUMNS (a.id AS a_id, b.id AS b_id));
+----
+1	2
+
+statement ok
+DROP PROPERTY GRAPH s1.qg;
+
+statement error
+SELECT count(*) FROM GRAPH_TABLE (qg MATCH (n:Node));
+----
+does not exist

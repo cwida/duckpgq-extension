@@ -36,7 +36,7 @@ public:
 	};
 
 	static unique_ptr<FunctionData> DropPropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
-	                                                      vector<LogicalType> &return_types, vector<string> &names);
+	                                                      vector<LogicalType> &return_types, vector<Identifier> &names);
 
 	static unique_ptr<GlobalTableFunctionState> DropPropertyGraphInit(ClientContext &context,
 	                                                                  TableFunctionInitInput &input);

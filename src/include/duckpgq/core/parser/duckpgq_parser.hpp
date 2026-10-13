@@ -8,10 +8,12 @@ namespace duckdb {
 struct CorePGQParser {
 	static void Register(ExtensionLoader &loader) {
 		RegisterPGQParserExtension(loader);
+		RegisterPGQGrammarExtension(loader);
 	}
 
 private:
 	static void RegisterPGQParserExtension(ExtensionLoader &loader);
+	static void RegisterPGQGrammarExtension(ExtensionLoader &loader);
 };
 
 struct DuckPGQParserExtensionInfo : ParserExtensionInfo {
@@ -19,20 +21,11 @@ struct DuckPGQParserExtensionInfo : ParserExtensionInfo {
 	~DuckPGQParserExtensionInfo() override = default;
 };
 
-ParserOverrideResult duckpgq_parser_override(ParserExtensionInfo *info, const string &query, ParserOptions &options);
-
 ParserExtensionPlanResult duckpgq_plan(ParserExtensionInfo *info, ClientContext &,
                                        unique_ptr<ParserExtensionParseData>);
 
-ParserExtensionPlanResult duckpgq_find_select_statement(SQLStatement *statement, DuckPGQState &duckpgq_state);
-
-ParserExtensionPlanResult duckpgq_handle_statement(SQLStatement *statement, DuckPGQState &duckpgq_state);
-
-void duckpgq_find_match_function(TableRef *table_ref, DuckPGQState &duckpgq_state);
-
 struct DuckPGQParserExtension : ParserExtension {
 	DuckPGQParserExtension() : ParserExtension() {
-		parser_override = duckpgq_parser_override;
 		plan_function = duckpgq_plan;
 		parser_info = make_shared_ptr<DuckPGQParserExtensionInfo>();
 	}

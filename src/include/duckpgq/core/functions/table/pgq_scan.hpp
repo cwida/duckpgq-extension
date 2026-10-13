@@ -19,7 +19,7 @@ namespace duckdb {
 struct CSRScanVData : TableFunctionData {
 public:
 	static unique_ptr<FunctionData> ScanCSRVBind(ClientContext &context, TableFunctionBindInput &input,
-	                                             vector<LogicalType> &return_types, vector<string> &names) {
+	                                             vector<LogicalType> &return_types, vector<Identifier> &names) {
 		auto result = make_uniq<CSRScanVData>();
 		result->csr_id = input.inputs[0].GetValue<int32_t>();
 		return_types.emplace_back(LogicalType::BIGINT);
@@ -34,7 +34,7 @@ public:
 struct CSRScanPtrData : public TableFunctionData {
 public:
 	static unique_ptr<FunctionData> ScanCSRPtrBind(ClientContext &context, TableFunctionBindInput &input,
-	                                               vector<LogicalType> &return_types, vector<string> &names) {
+	                                               vector<LogicalType> &return_types, vector<Identifier> &names) {
 		auto result = make_uniq<CSRScanPtrData>();
 		result->csr_id = input.inputs[0].GetValue<int32_t>();
 		return_types.emplace_back(LogicalType::UBIGINT);
@@ -49,7 +49,7 @@ public:
 struct CSRScanEData : public TableFunctionData {
 public:
 	static unique_ptr<FunctionData> ScanCSREBind(ClientContext &context, TableFunctionBindInput &input,
-	                                             vector<LogicalType> &return_types, vector<string> &names) {
+	                                             vector<LogicalType> &return_types, vector<Identifier> &names) {
 		auto result = make_uniq<CSRScanEData>();
 		result->csr_id = input.inputs[0].GetValue<int32_t>();
 		return_types.emplace_back(LogicalType::BIGINT);
@@ -64,7 +64,7 @@ public:
 struct CSRScanWData : public TableFunctionData {
 public:
 	static unique_ptr<FunctionData> ScanCSRWBind(ClientContext &context, TableFunctionBindInput &input,
-	                                             vector<LogicalType> &return_types, vector<string> &names) {
+	                                             vector<LogicalType> &return_types, vector<Identifier> &names) {
 		auto result = make_uniq<CSRScanWData>();
 		result->csr_id = input.inputs[0].GetValue<int32_t>();
 
@@ -91,7 +91,7 @@ public:
 struct CSRScanWDoubleData : public TableFunctionData {
 public:
 	static unique_ptr<FunctionData> ScanCSRWDoubleBind(ClientContext &context, TableFunctionBindInput &input,
-	                                                   vector<LogicalType> &return_types, vector<string> &names) {
+	                                                   vector<LogicalType> &return_types, vector<Identifier> &names) {
 		auto result = make_uniq<CSRScanWDoubleData>();
 		result->csr_id = input.inputs[0].GetValue<int32_t>();
 		return_types.emplace_back(LogicalType::DOUBLE);
@@ -106,7 +106,7 @@ public:
 struct PGScanVTableData : public TableFunctionData {
 public:
 	static unique_ptr<FunctionData> ScanPGVTableBind(ClientContext &context, TableFunctionBindInput &input,
-	                                                 vector<LogicalType> &return_types, vector<string> &names) {
+	                                                 vector<LogicalType> &return_types, vector<Identifier> &names) {
 		auto result = make_uniq<PGScanVTableData>();
 		result->pg_name = StringValue::Get(input.inputs[0]);
 		return_types.emplace_back(LogicalType::VARCHAR);
@@ -121,7 +121,7 @@ public:
 struct PGScanVColData : public TableFunctionData {
 public:
 	static unique_ptr<FunctionData> ScanPGVColBind(ClientContext &context, TableFunctionBindInput &input,
-	                                               vector<LogicalType> &return_types, vector<string> &names) {
+	                                               vector<LogicalType> &return_types, vector<Identifier> &names) {
 		auto result = make_uniq<PGScanVColData>();
 		result->pg_name = StringValue::Get(input.inputs[0]);
 		result->table_name = StringValue::Get(input.inputs[1]);
@@ -138,7 +138,7 @@ public:
 struct PGScanETableData : public TableFunctionData {
 public:
 	static unique_ptr<FunctionData> ScanPGETableBind(ClientContext &context, TableFunctionBindInput &input,
-	                                                 vector<LogicalType> &return_types, vector<string> &names) {
+	                                                 vector<LogicalType> &return_types, vector<Identifier> &names) {
 		auto result = make_uniq<PGScanETableData>();
 		result->pg_name = StringValue::Get(input.inputs[0]);
 		return_types.emplace_back(LogicalType::VARCHAR);
@@ -153,7 +153,7 @@ public:
 struct PGScanEColData : public TableFunctionData {
 public:
 	static unique_ptr<FunctionData> ScanPGEColBind(ClientContext &context, TableFunctionBindInput &input,
-	                                               vector<LogicalType> &return_types, vector<string> &names) {
+	                                               vector<LogicalType> &return_types, vector<Identifier> &names) {
 		auto result = make_uniq<PGScanEColData>();
 		result->pg_name = StringValue::Get(input.inputs[0]);
 		result->table_name = StringValue::Get(input.inputs[1]);

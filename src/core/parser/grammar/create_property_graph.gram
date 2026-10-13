@@ -1,0 +1,33 @@
+# SQL/PGQ CREATE PROPERTY GRAPH additions to DuckDB's native grammar.
+# Built-in rules are referenced directly; no DuckDB grammar is copied here.
+# Keep each rule on one line; CMake embeds them in a header at configure time.
+
+DuckPGQCreatePropertyGraph <- 'CREATE' OrReplace? 'PROPERTY' 'GRAPH' IfNotExists? QualifiedName DuckPGQVertexTables DuckPGQEdgeTables?
+
+# Vertex and edge tables.
+DuckPGQVertexTables <- 'VERTEX' 'TABLES' Parens(List(DuckPGQVertexTable))
+DuckPGQEdgeTables <- 'EDGE' 'TABLES' Parens(List(DuckPGQEdgeTable))
+DuckPGQVertexTable <- BaseTableName TableAliasAs? DuckPGQProperties? DuckPGQLabel?
+DuckPGQEdgeTable <- BaseTableName TableAliasAs? DuckPGQSourceReference DuckPGQDestinationReference DuckPGQProperties? DuckPGQLabel?
+
+# Property selection and aliases. Try EXCEPT before its ALL COLUMNS prefix.
+DuckPGQProperties <- DuckPGQAllColumnsExcept / DuckPGQAllColumns / DuckPGQAllProperties / DuckPGQNoProperties / DuckPGQPropertyList
+DuckPGQAllColumns <- 'PROPERTIES' 'ARE'? 'ALL' 'COLUMNS'
+DuckPGQAllColumnsExcept <- 'PROPERTIES' 'ARE'? 'ALL' 'COLUMNS' 'EXCEPT' Parens(List(ColId))
+DuckPGQAllProperties <- 'ALL' 'PROPERTIES'
+DuckPGQNoProperties <- 'NO' 'PROPERTIES'
+DuckPGQPropertyList <- 'PROPERTIES' Parens(List(DuckPGQProperty))
+DuckPGQProperty <- ColId DuckPGQPropertyAlias?
+DuckPGQPropertyAlias <- 'AS' ColId
+
+# Labels and discriminator sublabels.
+DuckPGQLabel <- DuckPGQExplicitLabel / DuckPGQImplicitLabel
+DuckPGQExplicitLabel <- 'LABEL' ColId DuckPGQSubLabels?
+DuckPGQImplicitLabel <- DuckPGQSubLabels
+DuckPGQSubLabels <- 'IN' Identifier Parens(List(ColId))
+
+# Edge endpoint references, with explicit or inferred keys.
+DuckPGQSourceReference <- 'SOURCE' DuckPGQReference
+DuckPGQDestinationReference <- 'DESTINATION' DuckPGQReference
+DuckPGQReference <- DuckPGQKeyReference / BaseTableName
+DuckPGQKeyReference <- 'KEY' Parens(List(ColId)) 'REFERENCES' BaseTableName Parens(List(ColId))

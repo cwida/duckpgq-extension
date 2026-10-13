@@ -3,6 +3,10 @@
 
 require duckpgq
 
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
 statement ok
 CREATE TABLE v (x VARCHAR);INSERT INTO v VALUES ('a'), ('b'), ('b');
 

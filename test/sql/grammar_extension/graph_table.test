@@ -1,0 +1,235 @@
+# name: test/sql/grammar_extension/graph_table.test
+# description: GRAPH_TABLE through DuckDB's composable GrammarExtension
+# group: [grammar_extension]
+
+require duckpgq
+
+statement ok
+CREATE TABLE Student(id BIGINT, name VARCHAR);
+
+statement ok
+INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT);
+
+statement ok
+INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17);
+
+statement ok
+CREATE TABLE School(name VARCHAR, Id BIGINT, Kind VARCHAR);
+
+statement ok
+INSERT INTO School VALUES ('VU', 0, 'University'), ('UVA', 1, 'University');
+
+statement ok
+CREATE TABLE StudyAt(personId BIGINT, schoolId BIGINT);
+
+statement ok
+INSERT INTO StudyAt VALUES (0, 0), (1, 0), (2, 1), (3, 1), (4, 1);
+
+# GRAPH_TABLE is only available once the grammar is active.
+statement error
+SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person));
+----
+Parser Error
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+    Student PROPERTIES (id, name) LABEL Person,
+    School LABEL SCHOOL
+)
+EDGE TABLES (
+    know SOURCE KEY (src) REFERENCES Student (id)
+         DESTINATION KEY (dst) REFERENCES Student (id)
+         LABEL Knows,
+    StudyAt SOURCE KEY (personId) REFERENCES Student (id)
+            DESTINATION KEY (schoolId) REFERENCES School (id)
+            LABEL StudyAt
+);
+
+# Directed edges with a pattern-level WHERE and explicit COLUMNS.
+query II
+SELECT a_name, b_name
+FROM GRAPH_TABLE (pg
+    MATCH (a:Person)-[k:Knows]->(b:Person)
+    WHERE k.createDate > 15
+    COLUMNS (a.name AS a_name, b.name AS b_name)
+)
+ORDER BY ALL;
+----
+David	Peter
+Gabor	Peter
+
+# Edge directions: left arrow, undirected, spaced right arrow, and the two-word GRAPH TABLE keyword.
+query I
+SELECT count(*) FROM GRAPH_TABLE (pg MATCH (a:Person)<-[k:Knows]-(b:Person));
+----
+8
+
+query I
+SELECT count(*) FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]-(b:Person));
+----
+16
+
+query I
+SELECT count(*) FROM GRAPH TABLE (pg MATCH (a:Person)-[k:Knows]- >(b:Person));
+----
+8
+
+query I
+SELECT count(*) FROM GRAPH_TABLE (pg MATCH (a:Person) - [k:Knows] -> (b:Person) COLUMNS (a.name));
+----
+8
+
+# IS as label separator and a vertex-local WHERE.
+query I
+SELECT b_name FROM GRAPH_TABLE (pg MATCH (a IS Person WHERE a.name = 'David')-[k IS Knows]->(b IS Person) COLUMNS (b.name AS b_name));
+----
+Peter
+
+# Without COLUMNS every vertex binding is exposed, including bindings wrapped by an element-local WHERE.
+query IIII
+SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person WHERE a.name = 'David')-[k:Knows]->(b:Person)) AS t(x, y, z, w);
+----
+4	David	3	Peter
+
+# Shortest paths with a path variable, bounded quantifier, and path functions.
+query II
+SELECT len, b_name
+FROM GRAPH_TABLE (pg
+    MATCH p = ANY SHORTEST (a:Person WHERE a.name = 'Daniel')-[k:Knows]->{1,3}(b:Person)
+    COLUMNS (path_length(p) AS len, b.name AS b_name)
+)
+ORDER BY ALL;
+----
+1	Gabor
+1	Peter
+1	Tavneet
+
+# Quantifier spellings, including the ones the tokenizer fuses with the arrow.
+statement ok
+SELECT * FROM GRAPH_TABLE (pg MATCH p = ANY SHORTEST (a:Person)-[k:Knows]->*(b:Person) COLUMNS (b.name));
+
+statement ok
+SELECT * FROM GRAPH_TABLE (pg MATCH p = ANY SHORTEST (a:Person)-[k:Knows]-> *(b:Person) COLUMNS (b.name));
+
+statement ok
+SELECT * FROM GRAPH_TABLE (pg MATCH p = ANY SHORTEST (a:Person)-[k:Knows]->+(b:Person) COLUMNS (b.name));
+
+statement ok
+SELECT * FROM GRAPH_TABLE (pg MATCH p = ANY SHORTEST (a:Person)-[k:Knows]-*(b:Person) COLUMNS (b.name));
+
+statement ok
+SELECT * FROM GRAPH_TABLE (pg MATCH p = ANY SHORTEST WALK (a:Person)-[k:Knows]->{1,3}(b:Person) COLUMNS (b.name));
+
+statement ok
+SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->?(b:Person) COLUMNS (b.name));
+
+statement ok
+SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->{2}(b:Person) COLUMNS (b.name));
+
+statement error
+SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->{3,1}(b:Person) COLUMNS (b.name));
+----
+Lower bound greater than upper bound
+
+# A quantifier needs an edge body, and an edge needs endpoints.
+statement error
+SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]*(b:Person));
+----
+Parser Error
+
+statement error
+SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-> *(b:Person));
+----
+Parser Error
+
+# Multiple path patterns.
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (pg
+    MATCH (a:Person)-[k:Knows]->(b:Person), (b:Person)-[s:StudyAt]->(c:School)
+    COLUMNS (a.name, c.name)
+);
+----
+8
+
+# GRAPH_TABLE is an ordinary table reference: CTEs, joins, views, CTAS, INSERT, EXPLAIN and prepared statements.
+query I
+WITH g AS (
+    SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person) COLUMNS (a.name AS a_name, b.name AS b_name))
+)
+SELECT count(*) FROM g JOIN Student s ON s.name = g.a_name;
+----
+8
+
+statement ok
+CREATE VIEW knows_view AS SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person) COLUMNS (a.name AS a_name));
+
+query I
+SELECT count(*) FROM knows_view;
+----
+8
+
+statement ok
+CREATE TABLE knows_copy AS SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person) COLUMNS (a.name AS a_name));
+
+statement ok
+INSERT INTO knows_copy SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person) COLUMNS (a.name AS a_name));
+
+query I
+SELECT count(*) FROM knows_copy;
+----
+16
+
+statement ok
+EXPLAIN SELECT count(*) FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person));
+
+# The parsed pattern travels with the statement, so copies made for prepared statements bind again.
+statement ok
+PREPARE recent AS SELECT count(*) FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person) WHERE k.createDate > ?);
+
+query I
+EXECUTE recent(15);
+----
+2
+
+query I
+EXECUTE recent(10);
+----
+7
+
+# Semantic errors are reported by the binder, not the parser.
+statement error
+SELECT * FROM duckpgq_match();
+----
+duckpgq_match can only be used through GRAPH_TABLE
+
+statement error
+SELECT * FROM GRAPH_TABLE (missing_graph MATCH (a:Person));
+----
+Property graph missing_graph does not exist
+
+statement error
+SELECT * FROM GRAPH_TABLE (pg MATCH (a:Nobody));
+----
+not registered in property graph pg
+
+# Activation is connection-local.
+statement error con1
+SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person));
+----
+Parser Error
+
+statement ok con1
+SET active_grammar_extensions = ['duckpgq'];
+
+query I con1
+SELECT count(*) FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person));
+----
+8

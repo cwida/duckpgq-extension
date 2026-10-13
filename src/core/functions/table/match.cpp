@@ -1,5 +1,6 @@
 #include <duckpgq_extension.hpp>
 #include "duckpgq/core/functions/table/match.hpp"
+#include "duckpgq/core/parser/duckpgq_grammar.hpp"
 
 #include "duckpgq/core/utils/duckpgq_sql.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -8,6 +9,7 @@
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckpgq/parser/tableref/matchref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
+#include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 
 #include "duckdb/parser/expression/function_expression.hpp"
@@ -194,7 +196,7 @@ static bool PGQNormalizeStructExtract(unique_ptr<ParsedExpression> &expression,
 	if (alias_map.find(alias) == alias_map.end()) {
 		return false;
 	}
-	auto &field = children[1]->Cast<ConstantExpression>().GetValue();
+	auto field = children[1]->Cast<ConstantExpression>().GetLiteral().ToValue();
 	expression = PGQColumnRef(alias, field.GetValue<string>(), true);
 	return true;
 }
@@ -799,7 +801,7 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 			auto path_len_children = vector<unique_ptr<ParsedExpression>>();
 			path_len_children.push_back(std::move(shortest_path_function));
 			auto path_len = make_uniq<FunctionExpression>("len", std::move(path_len_children));
-			auto constant_two = make_uniq<ConstantExpression>(Value::INTEGER(2));
+			auto constant_two = ConstantExpression::Integer(2);
 			vector<unique_ptr<ParsedExpression>> div_children;
 			div_children.push_back(std::move(path_len));
 			div_children.push_back(std::move(constant_two));
@@ -816,12 +818,12 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 			list_slice_children.push_back(std::move(shortest_path_function));
 
 			if (parsed_ref->FunctionName() == "vertices") {
-				list_slice_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(1)));
+				list_slice_children.push_back(ConstantExpression::Integer(1));
 			} else {
-				list_slice_children.push_back(make_uniq<ConstantExpression>(Value::INTEGER(2)));
+				list_slice_children.push_back(ConstantExpression::Integer(2));
 			}
-			auto slice_end = make_uniq<ConstantExpression>(Value::INTEGER(-1));
-			auto slice_step = make_uniq<ConstantExpression>(Value::INTEGER(2));
+			auto slice_end = ConstantExpression::Integer(-1);
+			auto slice_step = ConstantExpression::Integer(2);
 
 			list_slice_children.push_back(std::move(slice_end));
 			list_slice_children.push_back(std::move(slice_step));
@@ -1020,9 +1022,15 @@ void PGQMatchFunction::CheckColumnBinding(
 unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, TableFunctionBindInput &bind_input) {
 	auto duckpgq_state = GetDuckPGQState(context);
 
-	auto match_index = bind_input.inputs[0].GetValue<int32_t>();
-	auto *ref = dynamic_cast<MatchExpression *>(duckpgq_state->transform_expression[match_index].get());
-	auto *pg_table = duckpgq_state->GetPropertyGraph(ref->pg_name);
+	auto match_info = dynamic_cast<DuckPGQMatchInfo *>(bind_input.ref.bind_info.get());
+	if (!match_info) {
+		throw BinderException("duckpgq_match can only be used through GRAPH_TABLE");
+	}
+	// Rewrite a copy: the expansion consumes the expression, and a prepared statement can be bound again.
+	auto match_expression = unique_ptr_cast<ParsedExpression, MatchExpression>(match_info->match->Copy());
+	auto *ref = match_expression.get();
+	QualifiedName graph_name(Identifier(ref->pg_catalog), Identifier(ref->pg_schema), Identifier(ref->pg_name));
+	auto *pg_table = duckpgq_state->GetPropertyGraph(context, graph_name);
 
 	vector<unique_ptr<ParsedExpression>> conditions;
 

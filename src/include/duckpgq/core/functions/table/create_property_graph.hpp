@@ -44,7 +44,8 @@ public:
 	                                                         shared_ptr<PropertyGraphTable> &pg_table);
 
 	static unique_ptr<FunctionData> CreatePropertyGraphBind(ClientContext &context, TableFunctionBindInput &input,
-	                                                        vector<LogicalType> &return_types, vector<string> &names);
+	                                                        vector<LogicalType> &return_types,
+	                                                        vector<Identifier> &names);
 
 	static void ValidateVertexTableRegistration(shared_ptr<PropertyGraphTable> &pg_table,
 	                                            const case_insensitive_set_t &v_table_names);

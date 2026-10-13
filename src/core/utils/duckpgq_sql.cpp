@@ -85,7 +85,7 @@ string DuckPGQSQL::Column(const duckdb::Identifier &column_name, const duckdb::I
 }
 
 unique_ptr<SelectStatement> DuckPGQSQL::ParseSelect(const string &query, const string &context) {
-	Parser parser;
+	auto parser = Parser::GetBuiltinParser();
 	parser.ParseQuery(query);
 	if (parser.statements.size() != 1 || parser.statements[0]->type != StatementType::SELECT_STATEMENT) {
 		throw ParserException("Expected a single SELECT statement while building " + context);

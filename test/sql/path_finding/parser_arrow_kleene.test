@@ -3,6 +3,10 @@
 
 require duckpgq
 
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
 statement ok
 CREATE TABLE nodes (id INTEGER); INSERT INTO nodes VALUES (1), (2), (3);
 
@@ -38,38 +42,38 @@ FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] -> *(n2:N) COLUMNS (
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]< -> *(n2:N) COLUMNS (n1.*, n2.*));
 ----
-Parser Error: syntax error at or near "<"
+Parser Error: syntax error at or near
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] /-> *(n2:N));
 ----
-Parser Error: syntax error at or near "/"
+Parser Error: syntax error at or near
 
 # Not yet supported
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-> *(n2:N));
 ----
-Parser Error: syntax error at or near "->"
+Parser Error: syntax error at or near
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[]-> *(n2:N));
 ----
-Parser Error: syntax error at or near "]"
+Parser Error: syntax error at or near
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[]- > *(n2:N));
 ----
-Parser Error: syntax error at or near "]"
+Parser Error: syntax error at or near
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e2:E] > *(n2:N));
 ----
-Parser Error: syntax error at or near ">"
+Parser Error: syntax error at or near
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]*(n2:N));
 ----
-Parser Error: syntax error at or near "*"
+Parser Error: syntax error at or near
 
 statement ok
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]- > *(n2:N) COLUMNS (n1.*, n2.*));
@@ -77,37 +81,37 @@ FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]- > *(n2:N) COLUMNS (
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]<- *(n2:N));
 ----
-Parser Error: syntax error at or near "<"
+Parser Error: syntax error at or near
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-> *(n2:N));
 ----
-Parser Error: syntax error at or near "->"
+Parser Error: syntax error at or near
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< - > *(n2:N));
 ----
-Parser Error: syntax error at or near ">"
+Parser Error: syntax error at or near
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<- *(n2:N));
 ----
-Parser Error: syntax error at or near "*"
+Parser Error: syntax error at or near
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< - *(n2:N));
 ----
-Parser Error: syntax error at or near "*"
+Parser Error: syntax error at or near
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< -*(n2:N));
 ----
-Parser Error: syntax error at or near "*"
+Parser Error: syntax error at or near
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< -?(n2:N));
 ----
-Parser Error: syntax error at or near "?"
+Parser Error: syntax error at or near
 
 statement ok
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E]-?(n2:N));

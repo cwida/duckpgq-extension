@@ -16,9 +16,8 @@ namespace duckdb {
 
 class SummarizePropertyGraphFunction : public TableFunction {
 public:
-	SummarizePropertyGraphFunction() {
-		name = "summarize_property_graph";
-		arguments.push_back(LogicalType::VARCHAR);
+	SummarizePropertyGraphFunction()
+	    : TableFunction("summarize_property_graph", {LogicalType::VARCHAR}, nullptr, nullptr) {
 		bind_replace = SummarizePropertyGraphBindReplace;
 	}
 

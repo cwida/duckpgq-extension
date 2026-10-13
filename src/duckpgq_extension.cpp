@@ -3,23 +3,10 @@
 #include "duckpgq_extension.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/module.hpp"
-#include <duckpgq_extension_callback.hpp>
-#include "duckdb/main/connection_manager.hpp"
-#include "duckdb/main/settings.hpp"
 
 namespace duckdb {
 
-static void EnableParserOverride(ExtensionLoader &loader) {
-	auto &db = loader.GetDatabaseInstance();
-	Settings::Set<AllowParserOverrideExtensionSetting>(db, SetScope::GLOBAL, Value("STRICT"));
-
-	for (auto &context : ConnectionManager::Get(db).GetConnectionList()) {
-		Settings::Set<AllowParserOverrideExtensionSetting>(*context, SetScope::SESSION, Value("STRICT"));
-	}
-}
-
 static void LoadInternal(ExtensionLoader &loader) {
-	EnableParserOverride(loader);
 	CoreModule::Register(loader);
 }
 

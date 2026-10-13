@@ -28,9 +28,7 @@ namespace duckdb {
 
 struct PGQMatchFunction : public TableFunction {
 public:
-	PGQMatchFunction() {
-		name = "duckpgq_match";
-		arguments.push_back(LogicalType::INTEGER);
+	PGQMatchFunction() : TableFunction("duckpgq_match", vector<LogicalType>(), nullptr, nullptr) {
 		bind_replace = MatchBindReplace;
 	}
 
