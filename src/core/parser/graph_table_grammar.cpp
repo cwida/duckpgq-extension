@@ -270,8 +270,10 @@ void CollectVertexStars(PathReference &path_reference, vector<unique_ptr<ParsedE
 arena_ptr<TransformResultValue> TransformGraphTable(PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list = parse_result.Cast<ListParseResult>();
 	auto match = make_uniq<MatchExpression>();
-	// The property-graph registry is keyed by the unqualified graph name.
-	match->pg_name = transformer.Transform<QualifiedName>(list.GetChild(2)).Name().GetIdentifierName();
+	auto graph_name = transformer.Transform<QualifiedName>(list.GetChild(2));
+	match->pg_name = graph_name.Name().GetIdentifierName();
+	match->pg_catalog = graph_name.Catalog().GetIdentifierName();
+	match->pg_schema = graph_name.Schema().GetIdentifierName();
 	for (auto &item : PEGTransformerFactory::ExtractParseResultsFromList(list.GetChild(4))) {
 		match->path_patterns.push_back(TransformPathPattern(transformer, item.get()));
 	}

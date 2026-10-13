@@ -268,8 +268,8 @@ SummarizePropertyGraphFunction::SummarizePropertyGraphBindReplace(ClientContext 
                                                                   TableFunctionBindInput &bind_input) {
 	auto duckpgq_state = GetDuckPGQState(context);
 
-	string property_graph = bind_input.inputs[0].GetValue<string>();
-	auto pg_info = duckpgq_state->GetPropertyGraph(property_graph);
+	auto property_graph = QualifiedName::Parse(bind_input.inputs[0].GetValue<string>());
+	auto pg_info = duckpgq_state->GetPropertyGraph(context, property_graph);
 
 	if (pg_info->vertex_tables.size() == 1 && pg_info->edge_tables.empty()) {
 		// Special case where we don't want to create a union across the different

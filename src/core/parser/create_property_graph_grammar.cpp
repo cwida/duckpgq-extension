@@ -10,10 +10,6 @@ namespace duckdb {
 
 namespace {
 
-static ParseResult &GetChoice(ParseResult &parse_result) {
-	return parse_result.Cast<ListParseResult>().Child<ChoiceParseResult>(0).GetResult();
-}
-
 template <class T>
 static vector<T> TransformParensList(PEGTransformer &transformer, ParseResult &parse_result) {
 	vector<T> result;
@@ -29,7 +25,7 @@ static void ApplyProperties(PEGTransformer &transformer, OptionalParseResult &pr
 		table.all_columns = true;
 		return;
 	}
-	auto &choice = GetChoice(properties.GetResult());
+	auto &choice = DuckPGQGetChoice(properties.GetResult());
 	auto &list = choice.Cast<ListParseResult>();
 	if (choice.Name() == "DuckPGQNoProperties") {
 		table.no_columns = true;
@@ -64,7 +60,7 @@ static void ApplyLabel(PEGTransformer &transformer, OptionalParseResult &label, 
 	if (!label.HasResult()) {
 		return;
 	}
-	auto &choice = GetChoice(label.GetResult());
+	auto &choice = DuckPGQGetChoice(label.GetResult());
 	auto &list = choice.Cast<ListParseResult>();
 	if (choice.Name() == "DuckPGQExplicitLabel") {
 		table.main_label = transformer.Transform<Identifier>(list.GetChild(1));
@@ -79,7 +75,7 @@ static void ApplyLabel(PEGTransformer &transformer, OptionalParseResult &label, 
 
 static void ApplyReference(PEGTransformer &transformer, ParseResult &parse_result, PropertyGraphTable &edge,
                            bool source) {
-	auto &reference = GetChoice(parse_result.Cast<ListParseResult>().GetChild(1));
+	auto &reference = DuckPGQGetChoice(parse_result.Cast<ListParseResult>().GetChild(1));
 	unique_ptr<BaseTableRef> base_table;
 	auto &foreign_keys = source ? edge.source_fk : edge.destination_fk;
 	auto &primary_keys = source ? edge.source_pk : edge.destination_pk;
@@ -146,6 +142,16 @@ static shared_ptr<PropertyGraphTable> FindVertexTable(const CreatePropertyGraphI
 	return nullptr;
 }
 
+static void ResolveReference(const shared_ptr<PropertyGraphTable> &vertex, Identifier &catalog, Identifier &schema,
+                             Identifier &reference) {
+	if (!vertex) {
+		return; // left as written so the binder can report the unknown reference
+	}
+	catalog = vertex->catalog_name;
+	schema = vertex->schema_name;
+	reference = vertex->table_name;
+}
+
 static void RegisterLabels(CreatePropertyGraphInfo &info, const shared_ptr<PropertyGraphTable> &table) {
 	auto register_label = [&](const Identifier &label) {
 		auto name = label.GetIdentifierName();
@@ -189,6 +195,10 @@ static arena_ptr<TransformResultValue> TransformCreateGraph(PEGTransformer &tran
 		    FindVertexTable(*info, table->source_catalog, table->source_schema, table->source_reference);
 		table->destination_pg_table =
 		    FindVertexTable(*info, table->destination_catalog, table->destination_schema, table->destination_reference);
+		// A reference may use the vertex table's statement alias; the rest of the extension compares physical names.
+		ResolveReference(table->source_pg_table, table->source_catalog, table->source_schema, table->source_reference);
+		ResolveReference(table->destination_pg_table, table->destination_catalog, table->destination_schema,
+		                 table->destination_reference);
 		RegisterLabels(*info, table);
 	}
 	auto statement = make_uniq<CreateStatement>();
@@ -205,10 +215,7 @@ static arena_ptr<TransformProcess> StartCreateGraphTransform(PEGTransformer &tra
 } // namespace
 
 void DuckPGQAddCreatePropertyGraphGrammar(vector<GrammarChange> &changes) {
-	// New words remain usable as ordinary SQL identifiers outside their PGQ context.
-	for (auto keyword : {"ARE", "DESTINATION", "EDGE", "GRAPH", "PROPERTIES", "PROPERTY", "VERTEX"}) {
-		changes.push_back(GrammarChange::AddChoice("UnreservedKeyword", "'" + string(keyword) + "'"));
-	}
+	// Grammar literals that are not DuckDB keywords match by text, so no keywords need registering.
 	for (auto rule : DUCKPGQ_CREATE_PROPERTY_GRAPH_RULES) {
 		changes.push_back(GrammarChange::AddRule(rule));
 	}

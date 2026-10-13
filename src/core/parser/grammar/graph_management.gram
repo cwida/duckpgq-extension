@@ -3,4 +3,4 @@
 
 DuckPGQDropPropertyGraph <- 'DROP' 'PROPERTY' 'GRAPH' IfExists? QualifiedName
 DuckPGQDescribePropertyGraph <- DuckPGQDescribeKeyword 'PROPERTY' 'GRAPH' QualifiedName
-DuckPGQDescribeKeyword <- 'DESCRIBE' / 'SHOW' / 'SUMMARIZE'
+DuckPGQDescribeKeyword <- 'DESCRIBE' / 'DESC' / 'SHOW' / 'SUMMARIZE'

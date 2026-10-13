@@ -1,5 +1,9 @@
 #include "duckpgq_state.hpp"
 
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/main/database_manager.hpp"
+#include "duckdb/planner/binder.hpp"
+
 namespace duckdb {
 
 void DuckPGQState::InitializeInternalTable(ClientContext &context) {
@@ -24,24 +28,35 @@ void DuckPGQState::InitializeInternalTable(ClientContext &context) {
 	                               "destination_catalog varchar, "
 	                               "destination_schema varchar, "
 	                               "properties varchar[], "
-	                               "column_aliases varchar[]"
+	                               "column_aliases varchar[], "
+	                               "graph_catalog varchar, "
+	                               "graph_schema varchar"
 	                               ")");
 	if (query->HasError()) {
 		throw TransactionException(query->GetError());
+	}
+	// Databases written before graphs recorded their qualification only have the first 20 columns.
+	for (auto column : {"graph_catalog", "graph_schema"}) {
+		auto alter = connection->Query(
+		    StringUtil::Format("ALTER TABLE __duckpgq_internal ADD COLUMN IF NOT EXISTS %s VARCHAR", column));
+		if (alter->HasError()) {
+			throw TransactionException(alter->GetError());
+		}
 	}
 }
 
 void DuckPGQState::RetrievePropertyGraphs(const shared_ptr<Connection> &connection) {
 	// Retrieve and process vertex property graphs
 	auto vertex_property_graphs = connection->Query("SELECT * FROM __duckpgq_internal WHERE is_vertex_table");
-	ProcessPropertyGraphs(vertex_property_graphs, true);
+	ProcessPropertyGraphs(*connection->context, vertex_property_graphs, true);
 
 	// Retrieve and process edge property graphs
 	auto edge_property_graphs = connection->Query("SELECT * FROM __duckpgq_internal WHERE NOT is_vertex_table");
-	ProcessPropertyGraphs(edge_property_graphs, false);
+	ProcessPropertyGraphs(*connection->context, edge_property_graphs, false);
 }
 
-void DuckPGQState::ProcessPropertyGraphs(unique_ptr<QueryResult> &property_graphs, bool is_vertex) {
+void DuckPGQState::ProcessPropertyGraphs(ClientContext &context, unique_ptr<QueryResult> &property_graphs,
+                                         bool is_vertex) {
 	if (!property_graphs || property_graphs->HasError()) {
 		throw std::runtime_error("Failed to fetch property graphs or invalid result type.");
 	}
@@ -103,7 +118,21 @@ void DuckPGQState::ProcessPropertyGraphs(unique_ptr<QueryResult> &property_graph
 				PopulateEdgeSpecificFields(chunk, i, *table);
 			}
 
-			RegisterPropertyGraph(table, chunk->GetValue(0, i).GetValue<string>(), is_vertex);
+			// Rows written before graphs recorded their qualification resolve to the defaults.
+			Identifier graph_catalog;
+			Identifier graph_schema;
+			if (chunk->ColumnCount() > 21) {
+				auto catalog_value = chunk->GetValue(20, i);
+				auto schema_value = chunk->GetValue(21, i);
+				if (!catalog_value.IsNull()) {
+					graph_catalog = Identifier(catalog_value.GetValue<string>());
+				}
+				if (!schema_value.IsNull()) {
+					graph_schema = Identifier(schema_value.GetValue<string>());
+				}
+			}
+			QualifiedName graph_name(graph_catalog, graph_schema, Identifier(chunk->GetValue(0, i).GetValue<string>()));
+			RegisterPropertyGraph(table, ResolvePropertyGraphName(context, graph_name), is_vertex);
 		}
 	}
 }
@@ -125,14 +154,17 @@ void DuckPGQState::ExtractListValues(const Value &list_value, vector<Identifier>
 	}
 }
 
-void DuckPGQState::RegisterPropertyGraph(const shared_ptr<PropertyGraphTable> &table, const string &graph_name,
+void DuckPGQState::RegisterPropertyGraph(const shared_ptr<PropertyGraphTable> &table, const QualifiedName &graph_name,
                                          bool is_vertex) {
+	auto name = graph_name.Name().GetIdentifierName();
 	// Ensure the property graph exists in the registry
-	if (registered_property_graphs.find(graph_name) == registered_property_graphs.end()) {
-		registered_property_graphs[graph_name] = make_uniq<CreatePropertyGraphInfo>(graph_name);
+	if (registered_property_graphs.find(name) == registered_property_graphs.end()) {
+		auto info = make_uniq<CreatePropertyGraphInfo>(name);
+		info->SetQualifiedName(graph_name);
+		registered_property_graphs[name] = std::move(info);
 	}
 
-	auto &pg_info = registered_property_graphs[graph_name]->Cast<CreatePropertyGraphInfo>();
+	auto &pg_info = registered_property_graphs[name]->Cast<CreatePropertyGraphInfo>();
 	pg_info.label_map[table->main_label.GetIdentifierName()] = table;
 
 	if (!table->discriminator.empty()) {
@@ -162,6 +194,47 @@ void DuckPGQState::QueryEnd() {
 		csr_list.erase(csr_id);
 	}
 	csr_to_delete.clear();
+}
+
+QualifiedName DuckPGQState::ResolvePropertyGraphName(ClientContext &context, const QualifiedName &pg_name) {
+	auto resolved = pg_name;
+	// A lone qualifier ("x.g") is a schema unless x names a catalog, like DuckDB does for tables.
+	Binder::BindSchemaOrCatalog(context, resolved);
+	auto catalog = resolved.Catalog();
+	auto schema = resolved.Schema();
+	if (catalog.empty()) {
+		catalog = DatabaseManager::GetDefaultDatabase(context);
+	}
+	if (schema.empty()) {
+		schema = Identifier::DefaultSchema();
+	}
+	return QualifiedName(std::move(catalog), std::move(schema), resolved.Name());
+}
+
+optional_ptr<CreatePropertyGraphInfo> DuckPGQState::TryGetPropertyGraph(ClientContext &context,
+                                                                        const QualifiedName &pg_name) {
+	auto entry = registered_property_graphs.find(pg_name.Name().GetIdentifierName());
+	if (entry == registered_property_graphs.end()) {
+		return nullptr;
+	}
+	auto &info = entry->second->Cast<CreatePropertyGraphInfo>();
+	if (pg_name.Path().size() > 1) {
+		// Graph names are unique per database, but a qualifier must match where the graph was created.
+		auto requested = ResolvePropertyGraphName(context, pg_name);
+		auto &stored = info.GetQualifiedName();
+		if (requested.Catalog() != stored.Catalog() || requested.Schema() != stored.Schema()) {
+			return nullptr;
+		}
+	}
+	return &info;
+}
+
+CreatePropertyGraphInfo *DuckPGQState::GetPropertyGraph(ClientContext &context, const QualifiedName &pg_name) {
+	auto info = TryGetPropertyGraph(context, pg_name);
+	if (!info) {
+		throw BinderException("Property graph %s does not exist", pg_name.ToString());
+	}
+	return info.get();
 }
 
 CreatePropertyGraphInfo *DuckPGQState::GetPropertyGraph(const string &pg_name) {

@@ -9,8 +9,8 @@ namespace duckdb {
 
 class MatchExpression : public ParsedExpression {
 public:
-	// An extension-only placeholder, not a built-in parsed or bound expression.
-	// GRAPH_TABLE grammar is not registered in the create-only migration slice.
+	// An extension-only placeholder: the GRAPH_TABLE clause is carried in TableFunctionRef::bind_info and is never
+	// bound as an expression, so it needs no real expression class.
 	static constexpr const ExpressionClass TYPE = ExpressionClass::INVALID;
 
 public:
@@ -18,6 +18,9 @@ public:
 	}
 
 	string pg_name;
+	//! Catalog and schema the graph was referenced with; empty when unqualified.
+	string pg_catalog;
+	string pg_schema;
 	string alias;
 	vector<unique_ptr<PathPattern>> path_patterns;
 

@@ -1029,7 +1029,8 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	// Rewrite a copy: the expansion consumes the expression, and a prepared statement can be bound again.
 	auto match_expression = unique_ptr_cast<ParsedExpression, MatchExpression>(match_info->match->Copy());
 	auto *ref = match_expression.get();
-	auto *pg_table = duckpgq_state->GetPropertyGraph(ref->pg_name);
+	QualifiedName graph_name(Identifier(ref->pg_catalog), Identifier(ref->pg_schema), Identifier(ref->pg_name));
+	auto *pg_table = duckpgq_state->GetPropertyGraph(context, graph_name);
 
 	vector<unique_ptr<ParsedExpression>> conditions;
 

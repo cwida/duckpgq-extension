@@ -20,9 +20,11 @@ namespace {
 arena_ptr<TransformResultValue> TransformDropGraph(PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list = parse_result.Cast<ListParseResult>();
 	auto if_exists = list.Child<OptionalParseResult>(3).HasResult();
-	auto name = transformer.Transform<QualifiedName>(list.GetChild(4)).Name().GetIdentifierName();
+	auto graph_name = transformer.Transform<QualifiedName>(list.GetChild(4));
 	auto statement = make_uniq<DropStatement>();
-	statement->info = make_uniq<DropPropertyGraphInfo>(name, if_exists);
+	auto info = make_uniq<DropPropertyGraphInfo>(graph_name.Name().GetIdentifierName(), if_exists);
+	info->SetQualifiedName(graph_name);
+	statement->info = std::move(info);
 	// Planned by the parser extension, which maps it onto the drop_property_graph table function.
 	auto parse_data = make_uniq_base<ParserExtensionParseData, DuckPGQParseData>(std::move(statement));
 	unique_ptr<SQLStatement> result = make_uniq<ExtensionStatement>(DuckPGQParserExtension(), std::move(parse_data));
@@ -33,8 +35,8 @@ arena_ptr<TransformResultValue> TransformDropGraph(PEGTransformer &transformer, 
 arena_ptr<TransformResultValue> TransformDescribeGraph(PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list = parse_result.Cast<ListParseResult>();
 	auto keyword = DuckPGQLiteralText(list.GetChild(0));
-	auto name = transformer.Transform<QualifiedName>(list.GetChild(3)).Name().GetIdentifierName();
-	// Rewrite to a native SELECT over the existing table function: SELECT * FROM <function>('<graph>').
+	auto name = transformer.Transform<QualifiedName>(list.GetChild(3)).ToString();
+	// Rewrite to a native SELECT over the existing table function: SELECT * FROM <function>('<qualified graph>').
 	const char *function_name = keyword == "SUMMARIZE" ? "summarize_property_graph" : "describe_property_graph";
 	vector<unique_ptr<ParsedExpression>> arguments;
 	arguments.push_back(ConstantExpression::String(name));

@@ -56,7 +56,7 @@ bool MatchExpression::Equals(const BaseExpression &other_p) const {
 	}
 
 	auto &other = other_p.Cast<MatchExpression>();
-	if (pg_name != other.pg_name) {
+	if (pg_name != other.pg_name || pg_catalog != other.pg_catalog || pg_schema != other.pg_schema) {
 		return false;
 	}
 
@@ -102,6 +102,8 @@ bool MatchExpression::Equals(const BaseExpression &other_p) const {
 unique_ptr<ParsedExpression> MatchExpression::Copy() const {
 	auto copy = make_uniq<MatchExpression>();
 	copy->pg_name = pg_name;
+	copy->pg_catalog = pg_catalog;
+	copy->pg_schema = pg_schema;
 	copy->alias = alias;
 
 	for (auto &path : path_patterns) {
@@ -123,6 +125,8 @@ void MatchExpression::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty(102, "path_patterns", path_patterns);
 	serializer.WriteProperty(103, "column_list", column_list);
 	serializer.WriteProperty(104, "where_clause", where_clause);
+	serializer.WriteProperty(105, "pg_catalog", pg_catalog);
+	serializer.WriteProperty(106, "pg_schema", pg_schema);
 }
 
 unique_ptr<ParsedExpression> MatchExpression::Deserialize(Deserializer &deserializer) {
@@ -133,6 +137,8 @@ unique_ptr<ParsedExpression> MatchExpression::Deserialize(Deserializer &deserial
 	deserializer.ReadProperty(102, "path_patterns", result->path_patterns);
 	deserializer.ReadProperty(103, "column_list", result->column_list);
 	deserializer.ReadProperty(104, "where_clause", result->where_clause);
+	deserializer.ReadPropertyWithDefault(105, "pg_catalog", result->pg_catalog);
+	deserializer.ReadPropertyWithDefault(106, "pg_schema", result->pg_schema);
 	return std::move(result);
 }
 

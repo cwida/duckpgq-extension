@@ -217,6 +217,10 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 	}
 	auto statement = dynamic_cast<CreateStatement *>(duckpgq_parse_data->statement.get());
 	auto info = dynamic_cast<CreatePropertyGraphInfo *>(statement->info.get());
+	// Record where the graph lives so qualified references can be checked; the schema must exist like for a table.
+	auto graph_name = DuckPGQState::ResolvePropertyGraphName(context, info->GetQualifiedName());
+	Catalog::GetSchema(context, graph_name.Catalog(), graph_name.Schema());
+	info->SetQualifiedName(graph_name);
 	auto pg_table = duckpgq_state->registered_property_graphs.find(info->property_graph_name);
 
 	if (pg_table != duckpgq_state->registered_property_graphs.end() &&
@@ -354,6 +358,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 		}
 	}
 
+	auto graph_catalog = pg_info->GetQualifiedName().Catalog().GetIdentifierName();
+	auto graph_schema = pg_info->GetQualifiedName().Schema().GetIdentifierName();
 	string insert_info = "INSERT INTO __duckpgq_internal VALUES ";
 	for (const auto &v_table : pg_info->vertex_tables) {
 		insert_info += "(";
@@ -392,7 +398,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 		for (idx_t i = 0; i < v_table->column_aliases.size(); i++) {
 			insert_info += "'" + v_table->column_aliases[i] + (i == v_table->column_aliases.size() - 1 ? "'" : "', ");
 		}
-		insert_info += "]"; // End of column aliases
+		insert_info += "], "; // End of column aliases
+		insert_info += "'" + graph_catalog + "', '" + graph_schema + "'";
 		insert_info += "), ";
 	}
 
@@ -452,7 +459,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 		for (idx_t i = 0; i < e_table->column_aliases.size(); i++) {
 			insert_info += "'" + e_table->column_aliases[i] + (i == e_table->column_aliases.size() - 1 ? "'" : "', ");
 		}
-		insert_info += "]"; // End of column aliases
+		insert_info += "], "; // End of column aliases
+		insert_info += "'" + graph_catalog + "', '" + graph_schema + "'";
 		insert_info += "), ";
 	}
 	auto insert_query = new_conn->Query(insert_info);

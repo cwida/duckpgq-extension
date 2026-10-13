@@ -32,13 +32,17 @@ its `SET` statement. SQL `PREPARE` is currently unavailable for extension statem
 - A required non-empty `VERTEX TABLES (...)` clause and an optional non-empty `EDGE TABLES (...)` clause.
 - Quoted and qualified table names; `AS` table aliases; explicit labels and discriminator sublabels.
 - Omitted properties, `ALL PROPERTIES`, `NO PROPERTIES`, `PROPERTIES [ARE] ALL COLUMNS`,
-  `PROPERTIES [ARE] ALL COLUMNS EXCEPT (...)`, and explicit property lists with optional `AS` column aliases.
+  `PROPERTIES [ARE] ALL COLUMNS EXCEPT (...)`, and explicit property lists. An `AS` alias on a property is parsed
+  and stored, but the match rewrite does not yet resolve it: patterns must use the column name.
 - Explicit source/destination key references, including composite keys, or short references inferred from table
   primary/foreign-key constraints.
 - Existing create-graph binding, validation, metadata storage, and conflict policies.
 
-As before, the property-graph registry is keyed by the graph's unqualified name. Table/reference qualification is
-preserved. Temporary property graphs, vertex-key declarations, and arbitrary property expressions are not supported.
+Graph names are unique per database, and every graph records the catalog and schema it was created in (the
+current catalog and `main` when unqualified; the schema must exist). A qualified reference anywhere, in
+`GRAPH_TABLE`, `DROP`, `DESCRIBE`, or `SUMMARIZE`, must match that catalog and schema, so `DROP PROPERTY GRAPH
+other.g` can never remove `main.g`. Table/reference qualification is preserved. Temporary property graphs,
+vertex-key declarations, and arbitrary property expressions are not supported.
 
 Edge metadata stores resolved physical vertex names and qualification rather than statement-local aliases, so
 new connections can reconstruct graphs created with aliased references.
@@ -46,7 +50,9 @@ new connections can reconstruct graphs created with aliased references.
 ### GRAPH_TABLE
 
 - `GRAPH_TABLE (...)` and `GRAPH TABLE (...)` as a table reference anywhere DuckDB accepts one: FROM lists, joins,
-  CTEs, subqueries, views, `CREATE TABLE AS`, `INSERT ... SELECT`, `COPY`, `EXPLAIN`, and prepared statements.
+  CTEs, subqueries, `CREATE TABLE AS`, `INSERT ... SELECT`, `COPY`, `EXPLAIN`, and prepared statements. Views over
+  `GRAPH_TABLE` work in in-memory databases only: a file-backed database cannot serialize the pattern carried in
+  `bind_info` and rejects the `CREATE VIEW` at commit. The view's reader also needs the grammar active.
 - Path patterns with vertex and edge elements, `:label` or `IS label`, element-local and pattern-level `WHERE`, and
   an optional `COLUMNS (...)`. Without `COLUMNS`, every vertex binding's columns are exposed.
 - Edge directions `-[e]->`, `<-[e]-`, `-[e]-`, and the spaced spellings the old parser accepted.

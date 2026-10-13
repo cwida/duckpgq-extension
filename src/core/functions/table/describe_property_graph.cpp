@@ -16,12 +16,12 @@ unique_ptr<FunctionData> DescribePropertyGraphFunction::DescribePropertyGraphBin
                                                                                   vector<Identifier> &names) {
 	auto duckpgq_state = GetDuckPGQState(context);
 
-	auto property_graph_name = input.inputs[0].GetValue<string>();
-	auto pg_table = duckpgq_state->registered_property_graphs.find(property_graph_name);
-	if (pg_table == duckpgq_state->registered_property_graphs.end()) {
-		throw Exception(ExceptionType::INVALID, "Property graph " + property_graph_name + " does not exist.");
+	auto property_graph_name = QualifiedName::Parse(input.inputs[0].GetValue<string>());
+	auto property_graph = duckpgq_state->TryGetPropertyGraph(context, property_graph_name);
+	if (!property_graph) {
+		throw Exception(ExceptionType::INVALID,
+		                "Property graph " + property_graph_name.ToString() + " does not exist.");
 	}
-	auto property_graph = dynamic_cast<CreatePropertyGraphInfo *>(pg_table->second.get());
 	names.emplace_back("property_graph");
 	return_types.emplace_back(LogicalType::VARCHAR);
 	names.emplace_back("table_name");
@@ -51,7 +51,7 @@ unique_ptr<FunctionData> DescribePropertyGraphFunction::DescribePropertyGraphBin
 	names.emplace_back("schema");
 	return_types.emplace_back(LogicalType::VARCHAR);
 
-	return make_uniq<DescribePropertyGraphBindData>(property_graph);
+	return make_uniq<DescribePropertyGraphBindData>(property_graph.get());
 }
 
 unique_ptr<GlobalTableFunctionState>
