@@ -8,8 +8,6 @@
 
 namespace duckdb {
 
-DUCKDB_REGISTER_TRANSFORM_RESULT_TYPE("duckpgq.transform_result.PropertyGraphTable", shared_ptr<PropertyGraphTable>);
-
 namespace {
 
 static ParseResult &GetChoice(ParseResult &parse_result) {
@@ -99,7 +97,9 @@ static void ApplyReference(PEGTransformer &transformer, ParseResult &parse_resul
 	(source ? edge.source_reference : edge.destination_reference) = name.Name();
 }
 
-static arena_ptr<TransformResultValue> TransformGraphTable(PEGTransformer &transformer, ParseResult &parse_result) {
+// Called directly rather than through a registered transform: an extension-defined transform result type would
+// instantiate the dllimport-declared TypedTransformResult template, which does not link on Windows.
+static shared_ptr<PropertyGraphTable> TransformGraphTable(PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list = parse_result.Cast<ListParseResult>();
 	auto table = make_shared_ptr<PropertyGraphTable>();
 	table->is_vertex_table = parse_result.Name() == "DuckPGQVertexTable";
@@ -120,7 +120,17 @@ static arena_ptr<TransformResultValue> TransformGraphTable(PEGTransformer &trans
 	}
 	ApplyProperties(transformer, list.Child<OptionalParseResult>(properties_index), *table);
 	ApplyLabel(transformer, list.Child<OptionalParseResult>(properties_index + 1), *table);
-	return transformer.MakeResult<shared_ptr<PropertyGraphTable>>(std::move(table));
+	return table;
+}
+
+static vector<shared_ptr<PropertyGraphTable>> TransformGraphTables(PEGTransformer &transformer,
+                                                                   ParseResult &parse_result) {
+	vector<shared_ptr<PropertyGraphTable>> result;
+	auto &list = PEGTransformerFactory::ExtractResultFromParens(parse_result);
+	for (auto &item : PEGTransformerFactory::ExtractParseResultsFromList(list)) {
+		result.push_back(TransformGraphTable(transformer, item.get()));
+	}
+	return result;
 }
 
 static shared_ptr<PropertyGraphTable> FindVertexTable(const CreatePropertyGraphInfo &info, const Identifier &catalog,
@@ -166,12 +176,10 @@ static arena_ptr<TransformResultValue> TransformCreateGraph(PEGTransformer &tran
 	info->on_conflict = or_replace      ? OnCreateConflict::REPLACE_ON_CONFLICT
 	                    : if_not_exists ? OnCreateConflict::IGNORE_ON_CONFLICT
 	                                    : OnCreateConflict::ERROR_ON_CONFLICT;
-	info->vertex_tables = TransformParensList<shared_ptr<PropertyGraphTable>>(
-	    transformer, list.GetChild(6).Cast<ListParseResult>().GetChild(2));
+	info->vertex_tables = TransformGraphTables(transformer, list.GetChild(6).Cast<ListParseResult>().GetChild(2));
 	auto &edges = list.Child<OptionalParseResult>(7);
 	if (edges.HasResult()) {
-		info->edge_tables = TransformParensList<shared_ptr<PropertyGraphTable>>(
-		    transformer, edges.GetResult().Cast<ListParseResult>().GetChild(2));
+		info->edge_tables = TransformGraphTables(transformer, edges.GetResult().Cast<ListParseResult>().GetChild(2));
 	}
 	for (auto &table : info->vertex_tables) {
 		RegisterLabels(*info, table);
@@ -194,10 +202,6 @@ static arena_ptr<TransformProcess> StartCreateGraphTransform(PEGTransformer &tra
 	return transformer.MakeProcess<FinalizeTransformProcess>(transformer, parse_result, TransformCreateGraph);
 }
 
-static arena_ptr<TransformProcess> StartGraphTableTransform(PEGTransformer &transformer, ParseResult &parse_result) {
-	return transformer.MakeProcess<FinalizeTransformProcess>(transformer, parse_result, TransformGraphTable);
-}
-
 } // namespace
 
 void DuckPGQAddCreatePropertyGraphGrammar(vector<GrammarChange> &changes) {
@@ -209,8 +213,6 @@ void DuckPGQAddCreatePropertyGraphGrammar(vector<GrammarChange> &changes) {
 		changes.push_back(GrammarChange::AddRule(rule));
 	}
 	changes.push_back(GrammarChange::SetTransformProcess("DuckPGQCreatePropertyGraph", StartCreateGraphTransform));
-	changes.push_back(GrammarChange::SetTransformProcess("DuckPGQVertexTable", StartGraphTableTransform));
-	changes.push_back(GrammarChange::SetTransformProcess("DuckPGQEdgeTable", StartGraphTableTransform));
 	// Return an ExtensionStatement directly, without intercepting ordinary CREATE statements.
 	changes.push_back(GrammarChange::PrependChoice("Statement", "DuckPGQCreatePropertyGraph"));
 }
