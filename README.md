@@ -129,3 +129,5 @@ make tidy-check
 - Extension source lives in `src`.
 - Grammar integration lives under `src/core/parser` and extends DuckDB's native grammar without a vendored parser.
 - Maintenance notes for updating DuckDB or parser dependencies are in [docs/UPDATING.md](docs/UPDATING.md).
+- Aggregates over n:m joins are rewritten into factorized form by an optimizer extension, see
+  [docs/FACTORIZED_JOINS.md](docs/FACTORIZED_JOINS.md). Disable it with `SET duckpgq_factorized_joins = false;`.

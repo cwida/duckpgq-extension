@@ -1,4 +1,5 @@
 add_subdirectory(functions)
+add_subdirectory(optimizer)
 add_subdirectory(parser)
 add_subdirectory(pragma)
 add_subdirectory(utils)

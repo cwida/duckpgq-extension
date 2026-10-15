@@ -1,0 +1,164 @@
+# name: test/sql/factorized_join.test
+# description: Aggregates over n:m joins pre-aggregate the join sides that are only counted or summed
+# group: [sql]
+
+require duckpgq
+
+# Both tables have NULL keys and duplicate keys on every join column
+statement ok
+CREATE TABLE l AS SELECT i % 7 AS k, i % 5 AS k2, i AS v, CASE WHEN i % 3 = 0 THEN NULL ELSE i END AS nv, (i % 11)::DOUBLE / 4 AS d FROM range(1, 301) t(i);
+
+statement ok
+CREATE TABLE r AS SELECT i % 7 AS k, i % 5 AS k2, i * 2 AS w, CASE WHEN i % 4 = 0 THEN NULL ELSE i END AS nw FROM range(1, 201) t(i);
+
+statement ok
+INSERT INTO l VALUES (NULL, 0, 1000, 1000, 1.0), (NULL, 1, 1001, NULL, 2.0);
+
+statement ok
+INSERT INTO r VALUES (NULL, 0, 5000, 5000), (6, NULL, 5001, NULL);
+
+statement ok
+CREATE TABLE m AS SELECT i % 7 AS k, i % 3 AS g FROM range(1, 101) t(i);
+
+# Neither side is needed above the join, so both are pre-aggregated by the key
+query II
+EXPLAIN SELECT count(*) FROM l JOIN r USING (k);
+----
+physical_plan	<REGEX>:.*Hash Group By.*Hash Group By.*
+
+query I
+SELECT count(*) FROM l JOIN r USING (k);
+----
+8615
+
+# NULL keys never match
+query I
+SELECT count(*) FROM l JOIN r ON l.k = r.k AND l.k2 = r.k2;
+----
+1720
+
+query IIIIIIIII
+SELECT count(*), count(l.v), count(l.nv), count(r.nw), sum(l.v), sum(r.w), min(l.v), max(r.w), sum(l.d) FROM l JOIN r ON l.k = r.k;
+----
+8615	8615	5743	6429	1296493	1937959	1	5001	10703.0
+
+query III
+SELECT l.k, count(*), sum(r.w) FROM l JOIN r ON l.k = r.k GROUP BY l.k ORDER BY l.k;
+----
+0	1176	238728
+1	1247	246906
+2	1247	249400
+3	1247	251894
+4	1247	254388
+5	1204	239596
+6	1247	457047
+
+# Empty input: count is 0, the others are NULL
+query III
+SELECT count(*), sum(l.v), min(r.w) FROM l JOIN r ON l.k = r.k WHERE l.v > 10000;
+----
+0	NULL	NULL
+
+# Chains of joins
+query I
+SELECT count(*) FROM l JOIN r ON l.k = r.k JOIN m ON r.k = m.k;
+----
+123104
+
+query II
+SELECT m.g, count(*) FROM l JOIN r ON l.k = r.k JOIN m ON r.k = m.k GROUP BY m.g ORDER BY m.g;
+----
+0	40652
+1	41871
+2	40581
+
+query I
+SELECT count(*) FROM l JOIN r ON l.k = r.k JOIN m ON m.k = l.k WHERE m.g = 1;
+----
+41871
+
+query I
+SELECT count(*) FROM l JOIN (SELECT k FROM r UNION ALL SELECT k FROM r) r2 ON l.k = r2.k;
+----
+17230
+
+# Joins that are not inner equi-joins are left alone
+query I
+SELECT count(*) FROM l LEFT JOIN r ON l.k = r.k;
+----
+8617
+
+query I
+SELECT count(*) FROM l JOIN r ON l.k = r.k WHERE l.v < r.w;
+----
+5402
+
+query I
+SELECT count(*) FROM l JOIN r ON l.k = r.k AND l.v <> r.w;
+----
+8594
+
+# Aggregates that need the flattened rows are left alone
+query I
+SELECT count(DISTINCT l.k) FROM l JOIN r ON l.k = r.k;
+----
+7
+
+query I
+SELECT count(*) FROM (SELECT DISTINCT l.v FROM l JOIN r ON l.k = r.k);
+----
+300
+
+query I
+SELECT avg(l.v) FROM l JOIN r ON l.k = r.k;
+----
+150.4925130586187
+
+query I
+SELECT sum(l.v * r.w) FROM l JOIN r ON l.k = r.k;
+----
+292174723
+
+# Key expressions, HAVING, filters and projections between the aggregate and the join
+query I
+SELECT count(*) FROM l JOIN r ON l.k + 1 = r.k + 1;
+----
+8615
+
+query I
+SELECT l.k FROM l JOIN r ON l.k = r.k GROUP BY l.k HAVING count(*) > 1240 ORDER BY l.k;
+----
+1
+2
+3
+4
+6
+
+query I
+SELECT count(*) FROM l, r WHERE l.k = r.k AND r.w % 2 = 0;
+----
+8572
+
+query I
+SELECT count(*) FROM l JOIN r ON l.k = r.k WHERE l.nv IS NULL;
+----
+2872
+
+query I
+SELECT count(*) FROM (SELECT 1 AS x FROM l JOIN r ON l.k = r.k) t WHERE x = 1;
+----
+8615
+
+# Switching the rewrite off gives the same answers
+statement ok
+SET duckpgq_factorized_joins = false;
+
+query II
+EXPLAIN SELECT count(*) FROM l JOIN r USING (k);
+----
+physical_plan	<!REGEX>:.*Hash Group By.*
+
+query III
+SELECT count(*), sum(l.v), sum(r.w) FROM l JOIN r ON l.k = r.k;
+----
+8615	1296493	1937959
