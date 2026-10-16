@@ -632,8 +632,13 @@ bool FactorizedJoinOptimizer::SideCollapses(const LogicalComparisonJoin &join, i
 		// Without statistics the pre-aggregation costs at most about as much as the hash join build it replaces
 		return true;
 	}
+	// Pre-aggregating only pays for an n:m join. A side with many rows per matched key but a tiny other side
+	// (an edge table against a handful of filtered vertices) is served better by probing the small hash table,
+	// and a side whose key is unique gains nothing from being grouped; both show up as the other side having
+	// fewer than two rows per matched key.
 	auto rows = join.children[side]->estimated_cardinality;
-	return rows >= 2 * keys;
+	auto other_rows = join.children[1 - side]->estimated_cardinality;
+	return rows >= 2 * keys && other_rows >= 2 * keys;
 }
 
 //===--------------------------------------------------------------------===//
