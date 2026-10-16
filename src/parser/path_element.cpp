@@ -25,6 +25,9 @@ bool PathElement::Equals(const PathReference *other_p) const {
 	if (anonymous != other->anonymous) {
 		return false;
 	}
+	if (!PGQLabelExpression::Equals(label_expression, other->label_expression)) {
+		return false;
+	}
 
 	return true;
 }
@@ -34,6 +37,7 @@ void PathElement::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty(101, "label", label);
 	serializer.WriteProperty(102, "variable_binding", variable_binding);
 	serializer.WritePropertyWithDefault(103, "anonymous", anonymous, false);
+	serializer.WritePropertyWithDefault(104, "label_expression", label_expression);
 }
 
 unique_ptr<PathReference> PathElement::Deserialize(Deserializer &deserializer) {
@@ -44,6 +48,7 @@ unique_ptr<PathReference> PathElement::Deserialize(Deserializer &deserializer) {
 	deserializer.ReadProperty(101, "label", result->label);
 	deserializer.ReadProperty(102, "variable_binding", result->variable_binding);
 	result->anonymous = deserializer.ReadPropertyWithExplicitDefault<bool>(103, "anonymous", false);
+	result->label_expression = deserializer.ReadPropertyWithDefault<unique_ptr<PGQLabelExpression>>(104, "label_expression");
 	return std::move(result);
 }
 
@@ -54,12 +59,17 @@ unique_ptr<PathReference> PathElement::Copy() {
 	result->label = label;
 	result->variable_binding = variable_binding;
 	result->anonymous = anonymous;
+	if (label_expression) {
+		result->label_expression = label_expression->Copy();
+	}
 	return std::move(result);
 }
 
 string PathElement::FillerToString() const {
 	string result = anonymous ? "" : variable_binding;
-	if (!label.empty()) {
+	if (label_expression) {
+		result += ":" + label_expression->ToString();
+	} else if (!label.empty()) {
 		result += ":" + label;
 	}
 	return result;

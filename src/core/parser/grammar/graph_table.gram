@@ -36,4 +36,7 @@ DuckPGQRangeQuantifier <- '{' NumberLiteral? ',' NumberLiteral? '}'
 # the label and the element-local WHERE. An element without a variable is anonymous.
 DuckPGQVertex <- '(' Identifier? DuckPGQElementLabel? WhereClause? ')'
 DuckPGQEdgeBody <- '[' Identifier? DuckPGQElementLabel? WhereClause? ']'
-DuckPGQElementLabel <- (':' / 'IS') ColId
+DuckPGQElementLabel <- (':' / 'IS') DuckPGQLabelExpression
+
+# 10.8 <label expression>: label names combined with | (disjunction, G070).
+DuckPGQLabelExpression <- ColId ('|' ColId)*

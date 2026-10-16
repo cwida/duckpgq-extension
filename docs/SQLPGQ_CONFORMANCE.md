@@ -14,6 +14,7 @@ feature IDs they exercise. Each test file states the clause it is derived from.
 |---|---|
 | Default match mode (ID022) | `REPEATABLE ELEMENTS`. Vertices and edges may repeat within a match. |
 | Element identity | A graph element is a row of one vertex or edge table; `rowid` is its identity. Every element pattern therefore binds to exactly one table. |
+| Label expression spanning several tables | Standard: the element matches any element with a satisfying label set. DuckPGQ: NotImplementedException, because an element binds to one table. Within one table, sublabels are encoded in a discriminator column and the expression becomes a row filter. |
 | Element pattern without a label | Standard: matches any element. DuckPGQ: a named element whose variable is a registered label uses that label (historical reading, `(a)` is `(a:a)`); otherwise the table is inferred when exactly one vertex table, or exactly one edge table connecting the endpoint tables in the pattern's direction, exists. Anything else is a binder error. |
 | Tie-breaking in `ANY SHORTEST` | Whichever path the breadth-first search reaches first; not stable across runs. |
 | Edge tables with a `source` equal to the `destination` table | Undirected patterns `-[e]-` match each edge in both directions. |
@@ -43,7 +44,7 @@ grammar, rejected by the binder with a clear error), **no**.
 | G043 | Complete full edge patterns `<-[]->`, `~[]~`, `<~[]~`, `~[]~>` | partial | `<-[]->` only, and not with a quantifier |
 | G044, G045 | Abbreviated edge patterns `->`, `<-`, `-`, `<->` | yes | Anonymous edges; `~` undirected spellings are not accepted (no undirected edge tables) |
 | G046, G047 | Relaxed topological consistency | no | |
-| **G070** | Label disjunction `\|` | no | mandatory |
+| **G070** | Label disjunction `\|` | partial | Within one table's label set (main label and sublabels). A disjunction spanning several tables raises NotImplementedException |
 | G071, G072, G074, G075 | Label `&`, `!`, `%`, parentheses | no | |
 | **G073** | Individual label name | yes | Sublabels via `LABEL x IN column (a, b)` |
 | **G090** | Property reference | partial | Only bare column references are validated |
@@ -79,6 +80,7 @@ grammar, rejected by the binder with a clear error), **no**.
 
 Most recent first. Each entry names the commit's scope and the feature IDs it touched.
 
+- Label disjunction `:A|B` (10.8, G070, mandatory; issue #168) via a label-expression AST evaluated per table against the main label and discriminator-encoded sublabels. Adds `G070_label_disjunction.test`.
 - Abbreviated edge patterns `->`, `<-`, `-` and `<->`, with quantifiers (10.6, G044, G045). Adds `G044_abbreviated_edges.test`.
 - Anonymous vertex and edge patterns `()`, `(:L)`, `-[]->`, `-[:L]->` (10.6, G040, G042; issue #195). The label of an anonymous element is inferred when exactly one table fits; otherwise the binder names the candidates. Adds `G040_anonymous_elements.test`.
 - `?`, `{0,1}` and `{,1}` include the zero-length path. They were evaluated as a plain edge join, so `(a)-[e]->?(b)` never returned `a` itself. G037, G060.

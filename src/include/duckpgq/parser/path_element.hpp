@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb/common/common.hpp"
+#include "duckpgq/parser/label_expression.hpp"
 #include "duckpgq/parser/path_reference.hpp"
 
 namespace duckdb {
@@ -17,7 +18,11 @@ class PathElement : public PathReference {
 public:
 	PGQMatchType match_type;
 
+	//! The label the element binds to. For a compound label expression it is empty until the binder resolves it.
 	std::string label;
+
+	//! A compound <label expression> (10.8); null when the element has at most a single label name.
+	unique_ptr<PGQLabelExpression> label_expression;
 
 	std::string variable_binding;
 

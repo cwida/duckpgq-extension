@@ -316,22 +316,158 @@ string CreateReverseSelfLoopFilter(const PropertyGraphTable &edge_table, const s
 
 } // namespace
 
-static void PGQFlattenPathElements(vector<unique_ptr<PathReference>> &path_list, vector<PathElement *> &elements) {
-	for (auto &path_reference : path_list) {
-		if (path_reference->path_reference_type == PGQPathReferenceType::PATH_ELEMENT) {
-			elements.push_back(reinterpret_cast<PathElement *>(path_reference.get()));
-		} else {
-			PGQFlattenPathElements(reinterpret_cast<SubPath *>(path_reference.get())->path_list, elements);
-		}
-	}
-}
-
 static vector<string> PGQMainLabels(const vector<shared_ptr<PropertyGraphTable>> &tables) {
 	vector<string> labels;
 	for (auto &table : tables) {
 		labels.push_back(table->main_label.GetIdentifierName());
 	}
 	return labels;
+}
+
+struct PGQFlatElement {
+	PathElement *element;
+	//! True when the element sits inside a quantified subpath and is evaluated by path-finding.
+	bool quantified;
+};
+
+static void PGQFlattenPathElements(vector<unique_ptr<PathReference>> &path_list, vector<PGQFlatElement> &elements,
+                                   bool quantified = false) {
+	for (auto &path_reference : path_list) {
+		if (path_reference->path_reference_type == PGQPathReferenceType::PATH_ELEMENT) {
+			elements.push_back({reinterpret_cast<PathElement *>(path_reference.get()), quantified});
+		} else {
+			auto &subpath = *reinterpret_cast<SubPath *>(path_reference.get());
+			PGQFlattenPathElements(subpath.path_list, elements,
+			                       quantified || subpath.lower != 1 || subpath.upper != 1);
+		}
+	}
+}
+
+// The outcome of evaluating a label expression against one table: a constant, or a condition on the rows of the table.
+struct PGQLabelCondition {
+	static PGQLabelCondition Constant(bool value) {
+		PGQLabelCondition result;
+		result.constant = true;
+		result.value = value;
+		return result;
+	}
+	static PGQLabelCondition Condition(string sql) {
+		PGQLabelCondition result;
+		result.constant = false;
+		result.sql = std::move(sql);
+		return result;
+	}
+	bool IsFalse() const {
+		return constant && !value;
+	}
+	bool IsTrue() const {
+		return constant && value;
+	}
+
+	bool constant = true;
+	bool value = false;
+	string sql;
+};
+
+// A table carries its main label on every row and each sublabel on the rows whose discriminator has the sublabel's bit
+// set (CREATE PROPERTY GRAPH ... LABEL main IN discriminator (sub, ...)).
+static PGQLabelCondition PGQEvaluateLabelExpression(const PGQLabelExpression &expression,
+                                                    const PropertyGraphTable &table, const string &alias) {
+	switch (expression.type) {
+	case PGQLabelExpressionType::WILDCARD:
+		return PGQLabelCondition::Constant(true);
+	case PGQLabelExpressionType::LABEL: {
+		if (StringUtil::CIEquals(table.main_label.GetIdentifierName(), expression.label)) {
+			return PGQLabelCondition::Constant(true);
+		}
+		if (table.discriminator.empty()) {
+			return PGQLabelCondition::Constant(false);
+		}
+		for (idx_t i = 0; i < table.sub_labels.size(); i++) {
+			if (StringUtil::CIEquals(table.sub_labels[i].GetIdentifierName(), expression.label)) {
+				auto bit = std::to_string(static_cast<int64_t>(std::pow(2, i)));
+				return PGQLabelCondition::Condition("(" + DuckPGQSQL::Column(table.discriminator, alias) + " & " + bit +
+				                                    ") = " + bit);
+			}
+		}
+		return PGQLabelCondition::Constant(false);
+	}
+	case PGQLabelExpressionType::NEGATION: {
+		auto child = PGQEvaluateLabelExpression(*expression.children[0], table, alias);
+		if (child.constant) {
+			return PGQLabelCondition::Constant(!child.value);
+		}
+		return PGQLabelCondition::Condition("NOT (" + child.sql + ")");
+	}
+	case PGQLabelExpressionType::CONJUNCTION:
+	case PGQLabelExpressionType::DISJUNCTION: {
+		bool conjunction = expression.type == PGQLabelExpressionType::CONJUNCTION;
+		vector<string> parts;
+		for (auto &child_expression : expression.children) {
+			auto child = PGQEvaluateLabelExpression(*child_expression, table, alias);
+			if (child.constant) {
+				// FALSE decides a conjunction and TRUE a disjunction; the other constant is neutral.
+				if (child.value != conjunction) {
+					return child;
+				}
+				continue;
+			}
+			parts.push_back("(" + child.sql + ")");
+		}
+		if (parts.empty()) {
+			return PGQLabelCondition::Constant(conjunction);
+		}
+		return PGQLabelCondition::Condition(StringUtil::Join(parts, conjunction ? " AND " : " OR "));
+	}
+	}
+	throw InternalException("Unknown label expression type");
+}
+
+// Bind an element with a compound label expression (10.8). Because an element binds to exactly one table, the
+// expression must be satisfiable by the rows of exactly one vertex or edge table; a condition on that table's
+// discriminator column is added when the expression only holds for some of its rows.
+static void PGQBindLabelExpression(PGQFlatElement &flat, CreatePropertyGraphInfo &pg_table,
+                                   vector<unique_ptr<ParsedExpression>> &conditions) {
+	auto &element = *flat.element;
+	auto &expression = *element.label_expression;
+	vector<string> labels;
+	expression.CollectLabels(labels);
+	for (auto &label : labels) {
+		if (pg_table.label_map.find(label) == pg_table.label_map.end()) {
+			throw BinderException("The label %s is not registered in property graph %s", label,
+			                      pg_table.property_graph_name);
+		}
+	}
+	bool vertex = element.match_type == PGQMatchType::MATCH_VERTEX;
+	auto &tables = vertex ? pg_table.vertex_tables : pg_table.edge_tables;
+	vector<shared_ptr<PropertyGraphTable>> candidates;
+	PGQLabelCondition condition;
+	for (auto &table : tables) {
+		auto evaluated = PGQEvaluateLabelExpression(expression, *table, element.variable_binding);
+		if (evaluated.IsFalse()) {
+			continue;
+		}
+		candidates.push_back(table);
+		condition = evaluated;
+	}
+	if (candidates.empty()) {
+		throw BinderException("Label expression %s matches no %s table of property graph %s", expression.ToString(),
+		                      vertex ? "vertex" : "edge", pg_table.property_graph_name);
+	}
+	if (candidates.size() > 1) {
+		throw NotImplementedException("Label expression %s matches several tables (%s); an element pattern binds to "
+		                              "one table in DuckPGQ",
+		                              expression.ToString(), StringUtil::Join(PGQMainLabels(candidates), ", "));
+	}
+	if (!condition.IsTrue() && flat.quantified) {
+		throw NotImplementedException("Label expression %s selects part of table %s; sublabel filters on a "
+		                              "quantified edge are not supported",
+		                              expression.ToString(), candidates[0]->main_label.GetIdentifierName());
+	}
+	element.label = candidates[0]->main_label.GetIdentifierName();
+	if (!condition.IsTrue()) {
+		conditions.push_back(DuckPGQSQL::ParseExpression(condition.sql));
+	}
 }
 
 static bool PGQSameVertexTable(const shared_ptr<PropertyGraphTable> &reference,
@@ -343,9 +479,17 @@ static bool PGQSameVertexTable(const shared_ptr<PropertyGraphTable> &reference,
 // A named element whose variable is a registered label keeps the historical DuckPGQ reading (a) == (a:a).
 // Otherwise a vertex binds to the only vertex table, and an edge to the only edge table that connects its endpoint
 // tables in the pattern's direction; anything else is ambiguous, because every element binds to exactly one table.
-static void PGQResolveElementLabels(PathPattern &path_pattern, CreatePropertyGraphInfo &pg_table) {
+static void PGQResolveElementLabels(PathPattern &path_pattern, CreatePropertyGraphInfo &pg_table,
+                                    vector<unique_ptr<ParsedExpression>> &conditions) {
+	vector<PGQFlatElement> flat_elements;
+	PGQFlattenPathElements(path_pattern.path_elements, flat_elements);
 	vector<PathElement *> elements;
-	PGQFlattenPathElements(path_pattern.path_elements, elements);
+	for (auto &flat : flat_elements) {
+		if (flat.element->label_expression) {
+			PGQBindLabelExpression(flat, pg_table, conditions);
+		}
+		elements.push_back(flat.element);
+	}
 	for (auto element : elements) {
 		if (!element->label.empty() || element->match_type != PGQMatchType::MATCH_VERTEX) {
 			continue;
@@ -1155,7 +1299,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	int32_t extra_alias_counter = 0;
 	for (idx_t idx_i = 0; idx_i < ref->path_patterns.size(); idx_i++) {
 		auto &path_pattern = ref->path_patterns[idx_i];
-		PGQResolveElementLabels(*path_pattern, *pg_table);
+		PGQResolveElementLabels(*path_pattern, *pg_table, conditions);
 		PGQCheckPathModeSupport(*path_pattern);
 		// Check if the element is PathElement or a Subpath with potentially many
 		// items

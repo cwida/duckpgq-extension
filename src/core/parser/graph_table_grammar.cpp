@@ -7,6 +7,7 @@
 #include "duckdb/parser/peg/ast/table_alias.hpp"
 #include "duckdb/parser/peg/transformer/peg_transformer.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
+#include "duckpgq/parser/label_expression.hpp"
 #include "duckpgq/parser/path_element.hpp"
 #include "duckpgq/parser/path_pattern.hpp"
 #include "duckpgq/parser/subpath_element.hpp"
@@ -86,6 +87,24 @@ PathElement &GetSinglePathElement(PathReference &path_reference) {
 	return static_cast<PathElement &>(*subpath.path_list[0]);
 }
 
+// ColId ('|' ColId)*
+unique_ptr<PGQLabelExpression> TransformLabelExpression(PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &list = parse_result.Cast<ListParseResult>();
+	auto first = PGQLabelExpression::Label(transformer.Transform<Identifier>(list.GetChild(0)).GetIdentifierName());
+	auto &repeat = list.Child<OptionalParseResult>(1);
+	if (!repeat.HasResult()) {
+		return first;
+	}
+	auto result = make_uniq<PGQLabelExpression>(PGQLabelExpressionType::DISJUNCTION);
+	result->children.push_back(std::move(first));
+	for (auto &term : repeat.GetResult().Cast<RepeatParseResult>().GetChildren()) {
+		auto &pair = term.get().Cast<ListParseResult>();
+		result->children.push_back(
+		    PGQLabelExpression::Label(transformer.Transform<Identifier>(pair.GetChild(1)).GetIdentifierName()));
+	}
+	return result;
+}
+
 // '(' Identifier? DuckPGQElementLabel? WhereClause? ')' or '[' Identifier? DuckPGQElementLabel? WhereClause? ']'
 // An element without a variable is anonymous and gets a generated name; the binder infers a missing label.
 unique_ptr<PathReference> TransformElement(PEGTransformer &transformer, ParseResult &parse_result,
@@ -103,7 +122,12 @@ unique_ptr<PathReference> TransformElement(PEGTransformer &transformer, ParseRes
 	auto &label = list.Child<OptionalParseResult>(2);
 	if (label.HasResult()) {
 		auto &label_list = label.GetResult().Cast<ListParseResult>();
-		element->label = transformer.Transform<Identifier>(label_list.GetChild(1)).GetIdentifierName();
+		auto label_expression = TransformLabelExpression(transformer, label_list.GetChild(1));
+		if (label_expression->type == PGQLabelExpressionType::LABEL) {
+			element->label = label_expression->label;
+		} else {
+			element->label_expression = std::move(label_expression);
+		}
 	}
 	auto &where_clause = list.Child<OptionalParseResult>(3);
 	if (!where_clause.HasResult()) {
