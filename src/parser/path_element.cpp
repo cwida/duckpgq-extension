@@ -48,7 +48,8 @@ unique_ptr<PathReference> PathElement::Deserialize(Deserializer &deserializer) {
 	deserializer.ReadProperty(101, "label", result->label);
 	deserializer.ReadProperty(102, "variable_binding", result->variable_binding);
 	result->anonymous = deserializer.ReadPropertyWithExplicitDefault<bool>(103, "anonymous", false);
-	result->label_expression = deserializer.ReadPropertyWithDefault<unique_ptr<PGQLabelExpression>>(104, "label_expression");
+	result->label_expression =
+	    deserializer.ReadPropertyWithDefault<unique_ptr<PGQLabelExpression>>(104, "label_expression");
 	return std::move(result);
 }
 

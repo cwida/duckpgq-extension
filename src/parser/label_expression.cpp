@@ -11,7 +11,8 @@ unique_ptr<PGQLabelExpression> PGQLabelExpression::Label(const string &label) {
 }
 
 static string ChildToString(const PGQLabelExpression &parent, const PGQLabelExpression &child) {
-	bool compound = child.type == PGQLabelExpressionType::CONJUNCTION || child.type == PGQLabelExpressionType::DISJUNCTION;
+	bool compound =
+	    child.type == PGQLabelExpressionType::CONJUNCTION || child.type == PGQLabelExpressionType::DISJUNCTION;
 	if (compound && child.type != parent.type) {
 		return "(" + child.ToString() + ")";
 	}

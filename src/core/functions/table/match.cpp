@@ -304,8 +304,7 @@ static void PGQFlattenPathElements(vector<unique_ptr<PathReference>> &path_list,
 			elements.push_back({reinterpret_cast<PathElement *>(path_reference.get()), quantified});
 		} else {
 			auto &subpath = *reinterpret_cast<SubPath *>(path_reference.get());
-			PGQFlattenPathElements(subpath.path_list, elements,
-			                       quantified || subpath.lower != 1 || subpath.upper != 1);
+			PGQFlattenPathElements(subpath.path_list, elements, quantified || subpath.lower != 1 || subpath.upper != 1);
 		}
 	}
 }
@@ -497,7 +496,7 @@ static void PGQResolveElementLabels(PathPattern &path_pattern, CreatePropertyGra
 			                PGQSameVertexTable(edge_table->destination_pg_table, prev_table);
 			bool connects = element->match_type == PGQMatchType::MATCH_EDGE_RIGHT  ? forward
 			                : element->match_type == PGQMatchType::MATCH_EDGE_LEFT ? backward
-			                                                                        : forward || backward;
+			                                                                       : forward || backward;
 			if (connects) {
 				candidates.push_back(edge_table);
 			}
@@ -509,10 +508,11 @@ static void PGQResolveElementLabels(PathPattern &path_pattern, CreatePropertyGra
 			                      elements[i + 1]->label);
 		}
 		if (candidates.size() > 1) {
-			throw BinderException("Edge pattern %s has no label and is ambiguous: edge tables %s all connect %s and %s; "
-			                      "specify a label",
-			                      element->ToString(), StringUtil::Join(PGQMainLabels(candidates), ", "),
-			                      elements[i - 1]->label, elements[i + 1]->label);
+			throw BinderException(
+			    "Edge pattern %s has no label and is ambiguous: edge tables %s all connect %s and %s; "
+			    "specify a label",
+			    element->ToString(), StringUtil::Join(PGQMainLabels(candidates), ", "), elements[i - 1]->label,
+			    elements[i + 1]->label);
 		}
 		element->label = candidates[0]->main_label.GetIdentifierName();
 	}
@@ -738,9 +738,9 @@ static void PGQPathFindingEndpoints(PGQMatchType edge_type, const string &prev_b
 }
 
 static unique_ptr<CommonTableExpressionInfo> PGQCreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
-                                                            PGQMatchType edge_type, const string &prev_binding,
-                                                            const string &edge_binding, const string &next_binding,
-                                                            unique_ptr<SelectNode> &select_node) {
+                                                             PGQMatchType edge_type, const string &prev_binding,
+                                                             const string &edge_binding, const string &next_binding,
+                                                             unique_ptr<SelectNode> &select_node) {
 	switch (edge_type) {
 	case PGQMatchType::MATCH_EDGE_RIGHT:
 	case PGQMatchType::MATCH_EDGE_LEFT: {
@@ -834,10 +834,10 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
 				}
 				if (final_select_node->cte_map.map.find(Identifier("cte1")) == final_select_node->cte_map.map.end()) {
 					edge_element = reinterpret_cast<PathElement *>(edge_subpath->path_list[0].get());
-					final_select_node->cte_map.map[Identifier("cte1")] = PGQCreateCSRCTE(
-					    FindGraphTable(edge_element->label, pg_table), edge_element->match_type,
-					    previous_vertex_element->variable_binding, edge_element->variable_binding,
-					    next_vertex_element->variable_binding, final_select_node);
+					final_select_node->cte_map.map[Identifier("cte1")] =
+					    PGQCreateCSRCTE(FindGraphTable(edge_element->label, pg_table), edge_element->match_type,
+					                    previous_vertex_element->variable_binding, edge_element->variable_binding,
+					                    next_vertex_element->variable_binding, final_select_node);
 				}
 				string shortest_path_cte_name = "shortest_path_cte";
 				if (final_select_node->cte_map.map.find(PGQIdentifier(shortest_path_cte_name)) ==
@@ -1204,7 +1204,8 @@ PGQMatchFunction::PopulateGraphTableAliasMap(const CreatePropertyGraphInfo &pg_t
 // Find the property [name] among the properties exported by [table]; the index refers to column_names/column_aliases.
 static bool PGQFindProperty(const PropertyGraphTable &table, const string &name, idx_t &index) {
 	// Tables created without an explicit PROPERTIES clause export every column under its own name.
-	auto &exported = table.column_aliases.size() == table.column_names.size() ? table.column_aliases : table.column_names;
+	auto &exported =
+	    table.column_aliases.size() == table.column_names.size() ? table.column_aliases : table.column_names;
 	for (idx_t i = 0; i < exported.size(); i++) {
 		if (StringUtil::CIEquals(exported[i].GetIdentifierName(), name)) {
 			index = i;
@@ -1215,7 +1216,8 @@ static bool PGQFindProperty(const PropertyGraphTable &table, const string &name,
 }
 
 static string PGQExportedProperties(const PropertyGraphTable &table) {
-	auto &exported = table.column_aliases.size() == table.column_names.size() ? table.column_aliases : table.column_names;
+	auto &exported =
+	    table.column_aliases.size() == table.column_names.size() ? table.column_aliases : table.column_names;
 	if (exported.empty()) {
 		return "no properties";
 	}
@@ -1297,7 +1299,8 @@ static void PGQCheckSubpathPropertyReferences(vector<unique_ptr<PathReference>> 
 }
 
 void PGQMatchFunction::CheckColumnBinding(
-    MatchExpression &ref, const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_to_vertex_and_edge_tables) {
+    MatchExpression &ref,
+    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_to_vertex_and_edge_tables) {
 	for (auto &expression : ref.column_list) {
 		if (expression->GetExpressionClass() == ExpressionClass::COLUMN_REF) {
 			auto &column_ref = expression->Cast<ColumnRefExpression>();
