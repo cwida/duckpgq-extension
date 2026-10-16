@@ -86,19 +86,24 @@ PathElement &GetSinglePathElement(PathReference &path_reference) {
 	return static_cast<PathElement &>(*subpath.path_list[0]);
 }
 
-// '(' Identifier DuckPGQElementLabel? WhereClause? ')' or '[' Identifier DuckPGQElementLabel? WhereClause? ']'
+// '(' Identifier? DuckPGQElementLabel? WhereClause? ')' or '[' Identifier? DuckPGQElementLabel? WhereClause? ']'
+// An element without a variable is anonymous and gets a generated name; the binder infers a missing label.
 unique_ptr<PathReference> TransformElement(PEGTransformer &transformer, ParseResult &parse_result,
-                                           PGQMatchType match_type) {
+                                           PGQMatchType match_type, idx_t &anonymous_counter) {
 	auto &list = parse_result.Cast<ListParseResult>();
 	auto element = make_uniq<PathElement>(PGQPathReferenceType::PATH_ELEMENT);
 	element->match_type = match_type;
-	element->variable_binding = transformer.Transform<Identifier>(list.GetChild(1)).GetIdentifierName();
+	auto &variable = list.Child<OptionalParseResult>(1);
+	if (variable.HasResult()) {
+		element->variable_binding = transformer.Transform<Identifier>(variable.GetResult()).GetIdentifierName();
+	} else {
+		element->anonymous = true;
+		element->variable_binding = "__pgq_anonymous_" + std::to_string(anonymous_counter++);
+	}
 	auto &label = list.Child<OptionalParseResult>(2);
 	if (label.HasResult()) {
 		auto &label_list = label.GetResult().Cast<ListParseResult>();
 		element->label = transformer.Transform<Identifier>(label_list.GetChild(1)).GetIdentifierName();
-	} else {
-		element->label = element->variable_binding;
 	}
 	auto &where_clause = list.Child<OptionalParseResult>(3);
 	if (!where_clause.HasResult()) {
@@ -156,9 +161,10 @@ void ApplyQuantifier(PEGTransformer &transformer, optional_ptr<ParseResult> quan
 }
 
 // DuckPGQEdgeLeft DuckPGQEdgeBody DuckPGQEdgeTail
-unique_ptr<PathReference> TransformQuantifiedEdge(PEGTransformer &transformer, ParseResult &parse_result) {
+unique_ptr<PathReference> TransformQuantifiedEdge(PEGTransformer &transformer, ParseResult &parse_result,
+                                                  idx_t &anonymous_counter) {
 	auto &list = parse_result.Cast<ListParseResult>();
-	auto edge = TransformElement(transformer, list.GetChild(1), PGQMatchType::MATCH_EDGE_ANY);
+	auto edge = TransformElement(transformer, list.GetChild(1), PGQMatchType::MATCH_EDGE_ANY, anonymous_counter);
 	auto left = DuckPGQLiteralText(list.GetChild(0));
 
 	// DuckPGQFusedTail / (DuckPGQEdgeRight DuckPGQQuantifier?)
@@ -199,26 +205,30 @@ unique_ptr<PathReference> TransformQuantifiedEdge(PEGTransformer &transformer, P
 }
 
 // DuckPGQVertex DuckPGQEdgeVertex*
-unique_ptr<PathPattern> TransformPathSequence(PEGTransformer &transformer, ParseResult &parse_result) {
+unique_ptr<PathPattern> TransformPathSequence(PEGTransformer &transformer, ParseResult &parse_result,
+                                              idx_t &anonymous_counter) {
 	auto &list = parse_result.Cast<ListParseResult>();
 	auto pattern = make_uniq<PathPattern>();
-	pattern->path_elements.push_back(TransformElement(transformer, list.GetChild(0), PGQMatchType::MATCH_VERTEX));
+	pattern->path_elements.push_back(
+	    TransformElement(transformer, list.GetChild(0), PGQMatchType::MATCH_VERTEX, anonymous_counter));
 	auto &repeat = list.Child<OptionalParseResult>(1);
 	if (!repeat.HasResult()) {
 		return pattern;
 	}
 	for (auto &edge_vertex : repeat.GetResult().Cast<RepeatParseResult>().GetChildren()) {
 		auto &pair = edge_vertex.get().Cast<ListParseResult>();
-		pattern->path_elements.push_back(TransformQuantifiedEdge(transformer, pair.GetChild(0)));
-		pattern->path_elements.push_back(TransformElement(transformer, pair.GetChild(1), PGQMatchType::MATCH_VERTEX));
+		pattern->path_elements.push_back(TransformQuantifiedEdge(transformer, pair.GetChild(0), anonymous_counter));
+		pattern->path_elements.push_back(
+		    TransformElement(transformer, pair.GetChild(1), PGQMatchType::MATCH_VERTEX, anonymous_counter));
 	}
 	return pattern;
 }
 
 // DuckPGQPathVariable? DuckPGQSearchPrefix? DuckPGQPathMode? DuckPGQPathSequence
-unique_ptr<PathPattern> TransformPathPattern(PEGTransformer &transformer, ParseResult &parse_result) {
+unique_ptr<PathPattern> TransformPathPattern(PEGTransformer &transformer, ParseResult &parse_result,
+                                             idx_t &anonymous_counter) {
 	auto &list = parse_result.Cast<ListParseResult>();
-	auto pattern = TransformPathSequence(transformer, list.GetChild(3));
+	auto pattern = TransformPathSequence(transformer, list.GetChild(3), anonymous_counter);
 	auto &prefix = list.Child<OptionalParseResult>(1);
 	if (prefix.HasResult()) {
 		auto &choice = DuckPGQGetChoice(prefix.GetResult());
@@ -260,7 +270,7 @@ void CollectVertexStars(PathReference &path_reference, vector<unique_ptr<ParsedE
 		return;
 	}
 	auto &element = static_cast<PathElement &>(path_reference);
-	if (element.match_type == PGQMatchType::MATCH_VERTEX) {
+	if (element.match_type == PGQMatchType::MATCH_VERTEX && !element.anonymous) {
 		columns.push_back(make_uniq<StarExpression>(Identifier(element.variable_binding)));
 	}
 }
@@ -274,8 +284,9 @@ arena_ptr<TransformResultValue> TransformGraphTable(PEGTransformer &transformer,
 	match->pg_name = graph_name.Name().GetIdentifierName();
 	match->pg_catalog = graph_name.Catalog().GetIdentifierName();
 	match->pg_schema = graph_name.Schema().GetIdentifierName();
+	idx_t anonymous_counter = 0;
 	for (auto &item : PEGTransformerFactory::ExtractParseResultsFromList(list.GetChild(4))) {
-		match->path_patterns.push_back(TransformPathPattern(transformer, item.get()));
+		match->path_patterns.push_back(TransformPathPattern(transformer, item.get(), anonymous_counter));
 	}
 	auto &where_clause = list.Child<OptionalParseResult>(5);
 	if (where_clause.HasResult()) {

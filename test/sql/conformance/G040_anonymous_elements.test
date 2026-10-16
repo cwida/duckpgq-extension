@@ -1,0 +1,137 @@
+# name: test/sql/conformance/G040_anonymous_elements.test
+# description: 10.6 <element pattern filler>: every part is optional, so () and -[]-> are anonymous elements (G040, G042)
+# group: [conformance]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Person(id INT, name VARCHAR); INSERT INTO Person VALUES (1, 'A'), (2, 'B'), (3, 'C');
+
+statement ok
+CREATE TABLE School(id INT, name VARCHAR); INSERT INTO School VALUES (10, 'VU'), (11, 'UvA');
+
+statement ok
+CREATE TABLE knows(src INT, dst INT); INSERT INTO knows VALUES (1, 2), (2, 3);
+
+statement ok
+CREATE TABLE studyAt(pid INT, sid INT); INSERT INTO studyAt VALUES (1, 10), (2, 10), (3, 11);
+
+# A graph with one vertex table: anonymous vertices bind to it.
+statement ok
+CREATE PROPERTY GRAPH single
+VERTEX TABLES (Person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES Person (id) DESTINATION KEY (dst) REFERENCES Person (id) LABEL Knows);
+
+# A graph with two vertex tables and two edge tables.
+statement ok
+CREATE PROPERTY GRAPH pg
+VERTEX TABLES (Person LABEL Person, School LABEL School)
+EDGE TABLES (
+    knows SOURCE KEY (src) REFERENCES Person (id) DESTINATION KEY (dst) REFERENCES Person (id) LABEL Knows,
+    studyAt SOURCE KEY (pid) REFERENCES Person (id) DESTINATION KEY (sid) REFERENCES School (id) LABEL StudyAt
+);
+
+# Anonymous vertex with and without a label.
+query I
+FROM GRAPH_TABLE (single MATCH ()-[k:Knows]->(b:Person) COLUMNS (b.name)) ORDER BY 1;
+----
+B
+C
+
+query I
+FROM GRAPH_TABLE (pg MATCH (:Person)-[s:StudyAt]->(b:School) COLUMNS (b.name)) ORDER BY 1;
+----
+UvA
+VU
+VU
+
+# Anonymous edge with and without a label.
+query II
+FROM GRAPH_TABLE (single MATCH (a:Person)-[]->(b:Person) COLUMNS (a.name, b.name)) ORDER BY 1;
+----
+A	B
+B	C
+
+query II
+FROM GRAPH_TABLE (pg MATCH (a:Person)-[:Knows]->(b:Person) COLUMNS (a.name, b.name)) ORDER BY 1;
+----
+A	B
+B	C
+
+# Without COLUMNS, anonymous vertices are not exposed.
+query II
+FROM GRAPH_TABLE (single MATCH (a:Person)-[]->()) ORDER BY 1;
+----
+1	A
+2	B
+
+# Anonymous elements under a quantifier.
+query II
+FROM GRAPH_TABLE (single MATCH (a:Person)-[]->{1,2}(b:Person) COLUMNS (a.name, b.name)) ORDER BY 1, 2;
+----
+A	B
+A	C
+B	C
+
+query II
+FROM GRAPH_TABLE (single MATCH p = ANY SHORTEST ()-[]->*(b:Person) WHERE b.name = 'C' COLUMNS (b.name, path_length(p))) ORDER BY 2;
+----
+C	0
+C	1
+C	2
+
+# NOTE 88: anonymous symbols are not element variables, so several may appear in one pattern.
+query I
+FROM GRAPH_TABLE (single MATCH ()-[]->()-[]->() COLUMNS (1 AS one));
+----
+1
+
+# The edge table is inferred from the endpoint tables and the direction of the edge pattern.
+query II
+FROM GRAPH_TABLE (pg MATCH (a:Person)-[]->(b:School) COLUMNS (a.name, b.name)) ORDER BY 1;
+----
+A	VU
+B	VU
+C	UvA
+
+query II
+FROM GRAPH_TABLE (pg MATCH (a:School)<-[]-(b:Person) COLUMNS (a.name, b.name)) ORDER BY 1, 2;
+----
+UvA	C
+VU	A
+VU	B
+
+query II
+FROM GRAPH_TABLE (pg MATCH (a:Person)-[]-(b:Person) COLUMNS (a.name, b.name)) ORDER BY 1, 2;
+----
+A	B
+B	A
+B	C
+C	B
+
+# DuckPGQ binds each element to one table, so an anonymous element must be resolvable to exactly one table.
+statement error
+FROM GRAPH_TABLE (pg MATCH ()-[s:StudyAt]->(b:School) COLUMNS (b.name));
+----
+Binder Error: Vertex pattern () has no label and property graph pg has 2 vertex tables (Person, School); specify a label
+
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:School)-[]->(b:Person) COLUMNS (a.name, b.name));
+----
+Binder Error: Edge pattern -[]-> has no label and no edge table of property graph pg connects School and Person in that direction
+
+# Historical DuckPGQ reading: a named element without a label uses its variable as the label when one exists.
+query II
+FROM GRAPH_TABLE (pg MATCH (person)-[knows]->(b:Person) COLUMNS (person.name, b.name)) ORDER BY 1;
+----
+A	B
+B	C
+
+# An anonymous element cannot be referenced.
+statement error
+FROM GRAPH_TABLE (single MATCH (a:Person)-[]->(b:Person) COLUMNS (a.name, e.src));
+----
+Binder Error

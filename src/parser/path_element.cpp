@@ -22,6 +22,9 @@ bool PathElement::Equals(const PathReference *other_p) const {
 	if (variable_binding != other->variable_binding) {
 		return false;
 	}
+	if (anonymous != other->anonymous) {
+		return false;
+	}
 
 	return true;
 }
@@ -30,6 +33,7 @@ void PathElement::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty(100, "match_type", uint8_t(match_type));
 	serializer.WriteProperty(101, "label", label);
 	serializer.WriteProperty(102, "variable_binding", variable_binding);
+	serializer.WritePropertyWithDefault(103, "anonymous", anonymous, false);
 }
 
 unique_ptr<PathReference> PathElement::Deserialize(Deserializer &deserializer) {
@@ -39,6 +43,7 @@ unique_ptr<PathReference> PathElement::Deserialize(Deserializer &deserializer) {
 	result->match_type = PGQMatchType(match_type);
 	deserializer.ReadProperty(101, "label", result->label);
 	deserializer.ReadProperty(102, "variable_binding", result->variable_binding);
+	result->anonymous = deserializer.ReadPropertyWithExplicitDefault<bool>(103, "anonymous", false);
 	return std::move(result);
 }
 
@@ -48,28 +53,33 @@ unique_ptr<PathReference> PathElement::Copy() {
 	result->match_type = match_type;
 	result->label = label;
 	result->variable_binding = variable_binding;
+	result->anonymous = anonymous;
 	return std::move(result);
 }
-string PathElement::ToString() const {
-	string result = "";
-	switch (match_type) {
-	case PGQMatchType::MATCH_VERTEX:
-		result += "(" + variable_binding + ":" + label + ")";
-		break;
-	case PGQMatchType::MATCH_EDGE_ANY:
-		result += "-[" + variable_binding + ":" + label + "]-";
-		break;
-	case PGQMatchType::MATCH_EDGE_LEFT:
-		result += "<-[" + variable_binding + ":" + label + "]-";
-		break;
-	case PGQMatchType::MATCH_EDGE_RIGHT:
-		result += "-[" + variable_binding + ":" + label + "]->";
-		break;
-	case PGQMatchType::MATCH_EDGE_LEFT_RIGHT:
-		result += "<-[" + variable_binding + ":" + label + "]->";
-		break;
+
+string PathElement::FillerToString() const {
+	string result = anonymous ? "" : variable_binding;
+	if (!label.empty()) {
+		result += ":" + label;
 	}
 	return result;
+}
+
+string PathElement::ToString() const {
+	auto filler = FillerToString();
+	switch (match_type) {
+	case PGQMatchType::MATCH_VERTEX:
+		return "(" + filler + ")";
+	case PGQMatchType::MATCH_EDGE_ANY:
+		return "-[" + filler + "]-";
+	case PGQMatchType::MATCH_EDGE_LEFT:
+		return "<-[" + filler + "]-";
+	case PGQMatchType::MATCH_EDGE_RIGHT:
+		return "-[" + filler + "]->";
+	case PGQMatchType::MATCH_EDGE_LEFT_RIGHT:
+		return "<-[" + filler + "]->";
+	}
+	return "";
 }
 
 } // namespace duckdb

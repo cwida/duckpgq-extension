@@ -28,7 +28,8 @@ DuckPGQQuantifier <- DuckPGQFixedQuantifier / DuckPGQRangeQuantifier / '*' / '+'
 DuckPGQFixedQuantifier <- '{' NumberLiteral '}'
 DuckPGQRangeQuantifier <- '{' NumberLiteral? ',' NumberLiteral? '}'
 
-# Vertex and edge element bodies, with an optional label and element-local WHERE.
-DuckPGQVertex <- '(' Identifier DuckPGQElementLabel? WhereClause? ')'
-DuckPGQEdgeBody <- '[' Identifier DuckPGQElementLabel? WhereClause? ']'
+# Vertex and edge element bodies. Every part of the <element pattern filler> is optional (10.6): the variable,
+# the label and the element-local WHERE. An element without a variable is anonymous.
+DuckPGQVertex <- '(' Identifier? DuckPGQElementLabel? WhereClause? ')'
+DuckPGQEdgeBody <- '[' Identifier? DuckPGQElementLabel? WhereClause? ']'
 DuckPGQElementLabel <- (':' / 'IS') ColId
