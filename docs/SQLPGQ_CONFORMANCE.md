@@ -47,7 +47,7 @@ grammar, rejected by the binder with a clear error), **no**.
 | **G070** | Label disjunction `\|` | partial | Within one table's label set (main label and sublabels). A disjunction spanning several tables raises NotImplementedException |
 | G071, G072, G074, G075 | Label `&`, `!`, `%`, parentheses | partial | Same one-table restriction as G070. `!` and `%` usually match several tables unless combined with a main label |
 | **G073** | Individual label name | yes | Sublabels via `LABEL x IN column (a, b)` |
-| **G090** | Property reference | partial | Only bare column references are validated |
+| **G090** | Property reference | yes | Checked in every expression of `COLUMNS`, `WHERE` and element-local `WHERE`; `PROPERTIES (column AS property)` aliases resolve. Referencing a whole element (`COLUMNS (a)`) yields the row as a struct including unexported columns |
 | G004 | Path variables | yes | |
 | G005 | Path search prefix in a path pattern | partial | See selectors |
 | G006, G007 | `KEEP` | no | |
@@ -80,6 +80,7 @@ grammar, rejected by the binder with a clear error), **no**.
 
 Most recent first. Each entry names the commit's scope and the feature IDs it touched.
 
+- Property references are validated in every expression of `COLUMNS`, `WHERE` and element-local `WHERE` against the properties the element's table exports, with the exported names listed in the error (6.5, G090; issue #198). Property aliases from `PROPERTIES (column AS property)` now work in `GRAPH_TABLE`. Adds `G090_property_reference.test`.
 - Label conjunction `&`, negation `!`, wildcard `%` and parentheses with standard precedence (10.8, G071, G072, G074, G075). Adds `G071_label_expressions.test`.
 - Label disjunction `:A|B` (10.8, G070, mandatory; issue #168) via a label-expression AST evaluated per table against the main label and discriminator-encoded sublabels. Adds `G070_label_disjunction.test`.
 - Abbreviated edge patterns `->`, `<-`, `-` and `<->`, with quantifiers (10.6, G044, G045). Adds `G044_abbreviated_edges.test`.

@@ -1,0 +1,117 @@
+# name: test/sql/conformance/G090_property_reference.test
+# description: 6.5 <property reference>: element.property must name an exported property (G090); PROPERTIES aliases (G924)
+# group: [conformance]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Person(id BIGINT, name VARCHAR, secret VARCHAR); INSERT INTO Person VALUES (1, 'Daniel', 'x'), (2, 'Tavneet', 'y');
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT, since INT); INSERT INTO knows VALUES (1, 2, 2020);
+
+# Person exports id under the property name person_id and does not export secret; Knows exports nothing.
+statement ok
+CREATE PROPERTY GRAPH pg
+VERTEX TABLES (Person PROPERTIES (id AS person_id, name) LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES Person (id) DESTINATION KEY (dst) REFERENCES Person (id) NO PROPERTIES LABEL Knows);
+
+# A property alias is referenced by its property name and keeps that name as the output column.
+query II
+FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person) COLUMNS (a.person_id, b.name));
+----
+1	Tavneet
+
+query II
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (a.*)) ORDER BY 1;
+----
+1	Daniel
+2	Tavneet
+
+query I
+SELECT person_id FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (a.*)) ORDER BY 1;
+----
+1
+2
+
+query I
+FROM GRAPH_TABLE (pg MATCH (a:Person) WHERE a.person_id = 2 COLUMNS (a.name));
+----
+Tavneet
+
+query I
+FROM GRAPH_TABLE (pg MATCH (a:Person WHERE a.person_id = 2) COLUMNS (a.name));
+----
+Tavneet
+
+query II
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (upper(a.name) AS n, a.person_id + 1 AS next)) ORDER BY 1;
+----
+DANIEL	2
+TAVNEET	3
+
+# An unqualified property name resolves against the elements of the pattern.
+query I
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (name)) ORDER BY 1;
+----
+Daniel
+Tavneet
+
+# rowid is the element identity and always available.
+query I
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (a.rowid)) ORDER BY 1;
+----
+0
+1
+
+# The underlying column of an aliased property is not a property.
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (a.id));
+----
+Binder Error: Property a.id is never registered! Element a (label Person) exports properties person_id, name
+
+# A column left out of PROPERTIES is not a property, wherever it is referenced (issue #198).
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (a.secret));
+----
+Binder Error: Property a.secret is never registered!
+
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (upper(a.secret)));
+----
+Binder Error: Property a.secret is never registered!
+
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (count(*) FILTER (WHERE a.secret = 'x')));
+----
+Binder Error: Property a.secret is never registered!
+
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person) WHERE a.secret = 'x' COLUMNS (a.name));
+----
+Binder Error: Property a.secret is never registered!
+
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person WHERE a.secret = 'x') COLUMNS (a.name));
+----
+Binder Error: Property a.secret is never registered!
+
+# NO PROPERTIES exports nothing.
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person) COLUMNS (k.since));
+----
+Binder Error: Property k.since is never registered! Element k (label Knows) exports no properties
+
+# The qualifier must be an element variable of the pattern.
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (z.name));
+----
+Binder Error: Property z.name is never registered! z is not an element variable of the pattern
+
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (nothere));
+----
+Binder Error: Property nothere is never registered! No element of the pattern exports a property nothere

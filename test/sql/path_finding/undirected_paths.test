@@ -81,7 +81,7 @@ query II
 FROM GRAPH_TABLE (pg
     MATCH
     (a:Student WHERE a.id = 4)-[e:know]-{0,1}(b:Student)
-    COLUMNS (a.id as a_id, b.id as b_id, path_length(o))
+    COLUMNS (a.id as a_id, b.id as b_id)
     ) study
     ORDER BY a_id, b_id;
 ----

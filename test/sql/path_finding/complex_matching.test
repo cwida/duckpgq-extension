@@ -93,8 +93,7 @@ FROM GRAPH_TABLE (snb
     ) tmp
     limit 10;
 ----
-Catalog Error: Scalar Function with name element_id does not exist!
-Did you mean "element_at"?
+Binder Error: Property a is never registered!
 
 query III
 FROM GRAPH_TABLE (snb

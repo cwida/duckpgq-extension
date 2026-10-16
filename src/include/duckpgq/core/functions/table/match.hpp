@@ -136,10 +136,10 @@ public:
 	                              unique_ptr<SelectNode> &final_select_node,
 	                              vector<unique_ptr<ParsedExpression>> &conditions);
 
-	// Check whether columns to query are valid against the property graph, throws
-	// BinderException if error.
+	// Check every property reference in COLUMNS and WHERE against the properties the elements export
+	// (6.5 <property reference>), rewriting aliased properties to their columns. Throws BinderException on error.
 	static void
-	CheckColumnBinding(const CreatePropertyGraphInfo &pg_table, const MatchExpression &ref,
+	CheckColumnBinding(MatchExpression &ref,
 	                   const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_to_vertex_and_edge_tables);
 };
 

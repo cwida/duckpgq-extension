@@ -5,6 +5,7 @@
 #include "duckpgq/core/utils/duckpgq_sql.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
+#include "duckdb/parser/parsed_expression_iterator.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckpgq/parser/tableref/matchref.hpp"
@@ -203,47 +204,6 @@ static bool PGQNormalizeStructExtract(unique_ptr<ParsedExpression> &expression,
 
 namespace {
 
-// Get fully-qualified column names for the property graph [tbl], and insert
-// into set [col_names].
-void PopulateFullyQualifiedColName(const vector<shared_ptr<PropertyGraphTable>> &tbls,
-                                   const case_insensitive_map_t<vector<string>> &tbl_name_to_aliases,
-                                   case_insensitive_set_t &col_names) {
-	for (const auto &cur_tbl : tbls) {
-		for (const auto &cur_col : cur_tbl->column_names) {
-			// It's legal to query by `<col>` instead of `<table>.<col>`.
-			col_names.insert(cur_col.GetIdentifierName());
-
-			const auto &tbl_name = cur_tbl->table_name.GetIdentifierName();
-			auto iter = tbl_name_to_aliases.find(tbl_name);
-			// Prefer to use table alias specified in the statement, otherwise use
-			// table name.
-			if (iter == tbl_name_to_aliases.end()) {
-				col_names.insert(StringUtil::Format("%s.%s", tbl_name, cur_col.GetIdentifierName()));
-			} else {
-				const auto &all_aliases = iter->second;
-				for (const auto &cur_alias : all_aliases) {
-					col_names.insert(StringUtil::Format("%s.%s", cur_alias, cur_col.GetIdentifierName()));
-				}
-			}
-		}
-	}
-}
-
-// Get fully-qualified column names from property graph.
-case_insensitive_set_t
-GetFullyQualifiedColFromPg(const CreatePropertyGraphInfo &pg,
-                           const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
-	case_insensitive_map_t<vector<string>> relation_name_to_aliases;
-	for (const auto &entry : alias_map) {
-		relation_name_to_aliases[entry.second->table_name.GetIdentifierName()].emplace_back(entry.first);
-	}
-
-	case_insensitive_set_t col_names;
-	PopulateFullyQualifiedColName(pg.vertex_tables, relation_name_to_aliases, col_names);
-	PopulateFullyQualifiedColName(pg.edge_tables, relation_name_to_aliases, col_names);
-	return col_names;
-}
-
 // Get all fully-qualified column names from the given property graph [pg] for
 // the given relation [alias], only vertex table is selected.
 //
@@ -255,8 +215,12 @@ GetColRefExprFromPg(const case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
 	D_ASSERT(iter != alias_map.end());
 	const auto &tbl = iter->second;
 	registered_col_names.reserve(tbl->column_names.size());
-	for (const auto &cur_col : tbl->column_names) {
-		registered_col_names.emplace_back(PGQColumnRef(alias, cur_col, true));
+	for (idx_t i = 0; i < tbl->column_names.size(); i++) {
+		registered_col_names.emplace_back(PGQColumnRef(alias, tbl->column_names[i], true));
+		// PROPERTIES (column AS property): expose the column under its property name.
+		if (i < tbl->column_aliases.size() && tbl->column_aliases[i] != tbl->column_names[i]) {
+			registered_col_names.back()->SetAlias(tbl->column_aliases[i]);
+		}
 	}
 	return registered_col_names;
 }
@@ -273,8 +237,11 @@ GetColRefExprFromPg(const case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
 		const auto &tbl = alias_and_table.second;
 		// Skip edge table.
 		registered_col_names.reserve(registered_col_names.size() + tbl->column_names.size());
-		for (const auto &cur_col : tbl->column_names) {
-			registered_col_names.emplace_back(PGQColumnRef(alias, cur_col, true));
+		for (idx_t i = 0; i < tbl->column_names.size(); i++) {
+			registered_col_names.emplace_back(PGQColumnRef(alias, tbl->column_names[i], true));
+			if (i < tbl->column_aliases.size() && tbl->column_aliases[i] != tbl->column_names[i]) {
+				registered_col_names.back()->SetAlias(tbl->column_aliases[i]);
+			}
 		}
 	}
 	return registered_col_names;
@@ -1234,47 +1201,118 @@ PGQMatchFunction::PopulateGraphTableAliasMap(const CreatePropertyGraphInfo &pg_t
 	return alias_to_vertex_and_edge_tables;
 }
 
-void PGQMatchFunction::CheckColumnBinding(
-    const CreatePropertyGraphInfo &pg_table, const MatchExpression &ref,
-    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_to_vertex_and_edge_tables) {
-	// All fully-qualified column names for vertex tables and edge tables.
-	const auto all_fq_col_names = GetFullyQualifiedColFromPg(pg_table, alias_to_vertex_and_edge_tables);
+// Find the property [name] among the properties exported by [table]; the index refers to column_names/column_aliases.
+static bool PGQFindProperty(const PropertyGraphTable &table, const string &name, idx_t &index) {
+	// Tables created without an explicit PROPERTIES clause export every column under its own name.
+	auto &exported = table.column_aliases.size() == table.column_names.size() ? table.column_aliases : table.column_names;
+	for (idx_t i = 0; i < exported.size(); i++) {
+		if (StringUtil::CIEquals(exported[i].GetIdentifierName(), name)) {
+			index = i;
+			return true;
+		}
+	}
+	return false;
+}
 
+static string PGQExportedProperties(const PropertyGraphTable &table) {
+	auto &exported = table.column_aliases.size() == table.column_names.size() ? table.column_aliases : table.column_names;
+	if (exported.empty()) {
+		return "no properties";
+	}
+	return "properties " + StringUtil::Join(IdentifiersToStrings(exported), ", ");
+}
+
+// 6.5 <property reference> (G090): element.property must name a property the element's table exports. A property
+// exported under an alias (PROPERTIES (column AS property)) is rewritten to its column. Returns true when rewritten.
+static bool PGQCheckPropertyReference(ColumnRefExpression &column_ref,
+                                      const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
+	auto &names = column_ref.ColumnNamesMutable();
+	if (names.back().GetIdentifierName() == "rowid") {
+		// DuckDB binds rowid on every table; it is the element identity.
+		return false;
+	}
+	auto reference = StringUtil::Join(IdentifiersToStrings(names), ".");
+	if (names.size() == 1) {
+		auto &name = names[0].GetIdentifierName();
+		if (alias_map.find(name) != alias_map.end()) {
+			return false;
+		}
+		idx_t index;
+		for (auto &entry : alias_map) {
+			if (PGQFindProperty(*entry.second, name, index)) {
+				return false;
+			}
+		}
+		throw BinderException("Property %s is never registered! No element of the pattern exports a property %s",
+		                      reference, name);
+	}
+	auto &alias = names[0].GetIdentifierName();
+	if (alias == "shortest_path_cte") {
+		// Internal reference produced by the path-finding rewrite.
+		return false;
+	}
+	auto entry = alias_map.find(alias);
+	if (entry == alias_map.end()) {
+		throw BinderException("Property %s is never registered! %s is not an element variable of the pattern; "
+		                      "property references take the form element.property",
+		                      reference, alias);
+	}
+	auto &table = *entry->second;
+	auto &property = names[1].GetIdentifierName();
+	idx_t index;
+	if (!PGQFindProperty(table, property, index)) {
+		throw BinderException("Property %s is never registered! Element %s (label %s) exports %s", reference, alias,
+		                      table.main_label.GetIdentifierName(), PGQExportedProperties(table));
+	}
+	if (index < table.column_aliases.size() && table.column_aliases[index] != table.column_names[index]) {
+		names[1] = table.column_names[index];
+		return true;
+	}
+	return false;
+}
+
+static void PGQCheckPropertyReferences(ParsedExpression &expression,
+                                       const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
+	if (expression.GetExpressionClass() == ExpressionClass::COLUMN_REF) {
+		PGQCheckPropertyReference(expression.Cast<ColumnRefExpression>(), alias_map);
+		return;
+	}
+	ParsedExpressionIterator::EnumerateChildren(
+	    expression, [&](ParsedExpression &child) { PGQCheckPropertyReferences(child, alias_map); });
+}
+
+// Element-local WHERE clauses live on subpaths and are consumed by ProcessPathList, so they are checked beforehand.
+static void PGQCheckSubpathPropertyReferences(vector<unique_ptr<PathReference>> &path_list,
+                                              const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
+	for (auto &path_reference : path_list) {
+		if (path_reference->path_reference_type != PGQPathReferenceType::SUBPATH) {
+			continue;
+		}
+		auto &subpath = *reinterpret_cast<SubPath *>(path_reference.get());
+		if (subpath.where_clause) {
+			PGQCheckPropertyReferences(*subpath.where_clause, alias_map);
+		}
+		PGQCheckSubpathPropertyReferences(subpath.path_list, alias_map);
+	}
+}
+
+void PGQMatchFunction::CheckColumnBinding(
+    MatchExpression &ref, const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_to_vertex_and_edge_tables) {
 	for (auto &expression : ref.column_list) {
-		// TODO(hjiang): `ColumnRefExpression` alone is not enough, we could have
-		// more complicated expression.
-		//
-		// See issue for reference:
-		// https://github.com/cwida/duckpgq-extension/issues/198
-		auto *column_ref = dynamic_cast<ColumnRefExpression *>(expression.get());
-		if (column_ref == nullptr) {
-			continue;
-		}
-		auto column_names = IdentifiersToStrings(column_ref->ColumnNames());
-		// 'shortest_path_cte' is a special table populated by pgq.
-		if (column_names[0] == "shortest_path_cte") {
-			continue;
-		}
-		// 'rowid' is a column duckdb binds automatically.
-		if (column_names.back() == "rowid") {
-			continue;
-		}
-		if (column_names.size() == 1) {
-			bool single_alias = false;
-			for (const auto &alias : alias_to_vertex_and_edge_tables) {
-				if (alias.first == column_names[0]) {
-					single_alias = true;
-					break;
-				}
+		if (expression->GetExpressionClass() == ExpressionClass::COLUMN_REF) {
+			auto &column_ref = expression->Cast<ColumnRefExpression>();
+			auto property = column_ref.ColumnNames().back();
+			if (PGQCheckPropertyReference(column_ref, alias_to_vertex_and_edge_tables) &&
+			    expression->GetAlias().GetIdentifierName().empty()) {
+				// Keep the property name as the output column name after rewriting to the underlying column.
+				expression->SetAlias(property);
 			}
-			if (single_alias) {
-				continue;
-			}
+			continue;
 		}
-		const auto cur_fq_col_name = StringUtil::Join(column_names, /*separator=*/".");
-		if (all_fq_col_names.find(cur_fq_col_name) == all_fq_col_names.end()) {
-			throw BinderException("Property %s is never registered!", cur_fq_col_name);
-		}
+		PGQCheckPropertyReferences(*expression, alias_to_vertex_and_edge_tables);
+	}
+	if (ref.where_clause) {
+		PGQCheckPropertyReferences(*ref.where_clause, alias_to_vertex_and_edge_tables);
 	}
 }
 
@@ -1296,10 +1334,18 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	auto final_select_node = make_uniq<SelectNode>();
 	case_insensitive_map_t<shared_ptr<PropertyGraphTable>> alias_map;
 
+	for (auto &path_pattern : ref->path_patterns) {
+		PGQResolveElementLabels(*path_pattern, *pg_table, conditions);
+	}
+	// Maps from graph element alias to table, including vertex and edge tables.
+	auto alias_to_vertex_and_edge_tables = PopulateGraphTableAliasMap(*pg_table, *ref);
+	for (auto &path_pattern : ref->path_patterns) {
+		PGQCheckSubpathPropertyReferences(path_pattern->path_elements, alias_to_vertex_and_edge_tables);
+	}
+
 	int32_t extra_alias_counter = 0;
 	for (idx_t idx_i = 0; idx_i < ref->path_patterns.size(); idx_i++) {
 		auto &path_pattern = ref->path_patterns[idx_i];
-		PGQResolveElementLabels(*path_pattern, *pg_table, conditions);
 		PGQCheckPathModeSupport(*path_pattern);
 		// Check if the element is PathElement or a Subpath with potentially many
 		// items
@@ -1314,18 +1360,16 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		PGQAppendCrossJoin(final_select_node->from_table, std::move(table_ref));
 	}
 
-	// Maps from graph element alias to table, including vertex and edge tables.
-	auto alias_to_vertex_and_edge_tables = PopulateGraphTableAliasMap(*pg_table, *ref);
-
 	for (auto &column : ref->column_list) {
 		PGQNormalizeGraphElementRefs(column, alias_to_vertex_and_edge_tables);
 	}
 	if (ref->where_clause) {
 		PGQNormalizeGraphElementRefs(ref->where_clause, alias_to_vertex_and_edge_tables);
+	}
+	CheckColumnBinding(*ref, alias_to_vertex_and_edge_tables);
+	if (ref->where_clause) {
 		conditions.push_back(std::move(ref->where_clause));
 	}
-
-	CheckColumnBinding(*pg_table, *ref, alias_to_vertex_and_edge_tables);
 
 	std::vector<unique_ptr<ParsedExpression>> final_column_list;
 
