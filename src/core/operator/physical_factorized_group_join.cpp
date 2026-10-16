@@ -321,7 +321,7 @@ SinkFinalizeType PhysicalFactorizedGroupJoinSink::Finalize(Pipeline &pipeline, E
 PhysicalFactorizedGroupJoin::PhysicalFactorizedGroupJoin(
     PhysicalPlan &physical_plan, ClientContext &context, LogicalOperator &op, PhysicalOperator &left,
     PhysicalOperator &right, vector<vector<unique_ptr<Expression>>> keys_p, vector<unique_ptr<Expression>> weights_p,
-    Value directory_min_p, idx_t directory_range_p, idx_t estimated_cardinality)
+    const Value &directory_min_p, idx_t directory_range_p, idx_t estimated_cardinality)
     : PhysicalOperator(physical_plan, PhysicalOperatorType::EXTENSION, op.types, estimated_cardinality),
       keys(std::move(keys_p)), weights(std::move(weights_p)), directory_range(directory_range_p) {
 	if (directory_range > 0) {

@@ -42,7 +42,7 @@ public:
 	PhysicalFactorizedGroupJoin(PhysicalPlan &physical_plan, ClientContext &context, LogicalOperator &op,
 	                            PhysicalOperator &left, PhysicalOperator &right,
 	                            vector<vector<unique_ptr<Expression>>> keys, vector<unique_ptr<Expression>> weights,
-	                            Value directory_min, idx_t directory_range, idx_t estimated_cardinality);
+	                            const Value &directory_min, idx_t directory_range, idx_t estimated_cardinality);
 
 	//! Join keys per side, resolved against that side's input
 	vector<vector<unique_ptr<Expression>>> keys;
