@@ -1,0 +1,34 @@
+# SQL/PGQ GRAPH_TABLE additions to DuckDB's native grammar.
+# Built-in rules are referenced directly; no DuckDB grammar is copied here.
+# Keep each rule on one line; CMake embeds them in a header at configure time.
+
+DuckPGQGraphTable <- DuckPGQGraphTableKeyword '(' QualifiedName 'MATCH' List(DuckPGQPathPattern) WhereClause? DuckPGQColumns? ')' TableAlias?
+DuckPGQGraphTableKeyword <- 'GRAPH_TABLE' / ('GRAPH' 'TABLE')
+DuckPGQColumns <- 'COLUMNS' Parens(TargetList)
+
+# A path pattern: optional path variable, search prefix and path mode, then the element sequence.
+DuckPGQPathPattern <- DuckPGQPathVariable? DuckPGQSearchPrefix? DuckPGQPathMode? DuckPGQPathSequence
+DuckPGQPathVariable <- Identifier '='
+DuckPGQSearchPrefix <- DuckPGQAllShortest / DuckPGQAnyShortest / DuckPGQTopKShortest
+DuckPGQAllShortest <- 'ALL' 'SHORTEST'
+DuckPGQAnyShortest <- 'ANY' 'SHORTEST'
+DuckPGQTopKShortest <- 'SHORTEST' NumberLiteral
+DuckPGQPathMode <- 'WALK' / 'TRAIL' / 'SIMPLE' / 'ACYCLIC'
+DuckPGQPathSequence <- DuckPGQVertex DuckPGQEdgeVertex*
+DuckPGQEdgeVertex <- DuckPGQQuantifiedEdge DuckPGQVertex
+
+# Edges with optional quantifiers. The tokenizer reads "->*", "->?", "-*" and "-?" as one operator token, so those
+# fused endpoint/quantifier spellings are accepted as a unit.
+DuckPGQQuantifiedEdge <- DuckPGQEdgeLeft DuckPGQEdgeBody DuckPGQEdgeTail
+DuckPGQEdgeLeft <- ('<' '-') / '-'
+DuckPGQEdgeTail <- DuckPGQFusedTail / (DuckPGQEdgeRight DuckPGQQuantifier?)
+DuckPGQFusedTail <- '->*' / '->?' / '-*' / '-?'
+DuckPGQEdgeRight <- ('-' '>') / '->' / '-'
+DuckPGQQuantifier <- DuckPGQFixedQuantifier / DuckPGQRangeQuantifier / '*' / '+' / '?'
+DuckPGQFixedQuantifier <- '{' NumberLiteral '}'
+DuckPGQRangeQuantifier <- '{' NumberLiteral? ',' NumberLiteral? '}'
+
+# Vertex and edge element bodies, with an optional label and element-local WHERE.
+DuckPGQVertex <- '(' Identifier DuckPGQElementLabel? WhereClause? ')'
+DuckPGQEdgeBody <- '[' Identifier DuckPGQElementLabel? WhereClause? ']'
+DuckPGQElementLabel <- (':' / 'IS') ColId

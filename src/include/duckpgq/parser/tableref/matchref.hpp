@@ -9,13 +9,18 @@ namespace duckdb {
 
 class MatchExpression : public ParsedExpression {
 public:
-	static constexpr const ExpressionClass TYPE = ExpressionClass::BOUND_EXPRESSION;
+	// An extension-only placeholder: the GRAPH_TABLE clause is carried in TableFunctionRef::bind_info and is never
+	// bound as an expression, so it needs no real expression class.
+	static constexpr const ExpressionClass TYPE = ExpressionClass::INVALID;
 
 public:
-	MatchExpression() : ParsedExpression(ExpressionType::FUNCTION_REF, ExpressionClass::BOUND_EXPRESSION) {
+	MatchExpression() : ParsedExpression(ExpressionType::FUNCTION_REF, TYPE) {
 	}
 
 	string pg_name;
+	//! Catalog and schema the graph was referenced with; empty when unqualified.
+	string pg_catalog;
+	string pg_schema;
 	string alias;
 	vector<unique_ptr<PathPattern>> path_patterns;
 

@@ -1,1 +1,0 @@
-DetachStatement <- 'DETACH' Database? IfExists? CatalogName

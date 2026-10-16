@@ -1,2 +1,0 @@
-DeallocateStatement <- 'DEALLOCATE' DeallocatePrepare? Identifier
-DeallocatePrepare <- 'PREPARE'

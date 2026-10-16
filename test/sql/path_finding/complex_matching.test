@@ -6,6 +6,10 @@ require duckpgq
 
 require parquet
 
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
 statement ok
 import database 'data/SNB0.003';
 

@@ -1,3 +1,0 @@
-PrepareStatement <- 'PREPARE' Identifier TypeList? 'AS' Statement
-
-TypeList <- Parens(List(Type))

@@ -13,6 +13,7 @@ CreatePropertyGraphInfo::CreatePropertyGraphInfo(string property_graph_name)
 
 unique_ptr<CreateInfo> CreatePropertyGraphInfo::Copy() const {
 	auto result = make_uniq<CreatePropertyGraphInfo>(property_graph_name);
+	CopyProperties(*result);
 
 	for (auto &vertex_table : vertex_tables) {
 		auto copied_vertex_table = vertex_table->Copy();

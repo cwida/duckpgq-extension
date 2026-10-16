@@ -1,0 +1,214 @@
+# name: test/sql/grammar_extension/create_property_graph.test
+# description: CREATE PROPERTY GRAPH through DuckDB's composable GrammarExtension
+# group: [grammar_extension]
+
+require duckpgq
+
+# Loading registers the grammar, but does not activate it or force a parser override.
+query I
+SELECT len(current_setting('active_grammar_extensions'));
+----
+0
+
+statement error
+CREATE PROPERTY GRAPH inactive VERTEX TABLES (v);
+----
+Parser Error
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+# Ordinary SQL, including the new unreserved words, still uses the native parser.
+statement ok
+CREATE TABLE words(graph INTEGER, property INTEGER, vertex INTEGER, edge INTEGER, destination INTEGER, properties INTEGER, are INTEGER);
+
+statement ok
+INSERT INTO words VALUES (1, 2, 3, 4, 5, 6, 7);
+
+query I
+SELECT graph + property + vertex + edge + destination + properties + are FROM words;
+----
+28
+
+query I
+SELECT 'CREATE PROPERTY GRAPH; GRAPH_TABLE is just text';
+----
+CREATE PROPERTY GRAPH; GRAPH_TABLE is just text
+
+statement ok
+CREATE TABLE v(id BIGINT PRIMARY KEY, name VARCHAR, kind INTEGER);
+
+statement ok
+CREATE TABLE w(id BIGINT PRIMARY KEY);
+
+statement ok
+CREATE TABLE e(src BIGINT REFERENCES v(id), dst BIGINT REFERENCES w(id), weight INTEGER);
+
+# Omitted properties expose every column, and the edge clause is optional.
+statement ok
+CREATE PROPERTY GRAPH vertices_only VERTEX TABLES (v);
+
+query III
+SELECT table_name, label, properties FROM __duckpgq_internal WHERE property_graph = 'vertices_only';
+----
+v	v	[id, kind, name]
+
+# Explicit properties/aliases, discriminator sublabels, and explicit key references.
+statement ok
+CREATE PROPERTY GRAPH explicit_graph
+VERTEX TABLES (
+    v AS people PROPERTIES (id AS person_id, name, kind) LABEL Person IN kind (Student, Teacher),
+    w NO PROPERTIES LABEL Place
+)
+EDGE TABLES (
+    e AS links SOURCE KEY (src) REFERENCES people (id)
+               DESTINATION KEY (dst) REFERENCES w (id)
+               PROPERTIES (weight AS cost) LABEL Visits
+);
+
+query IIIII rowsort
+SELECT table_name, label, properties, column_aliases, sub_labels
+FROM __duckpgq_internal WHERE property_graph = 'explicit_graph';
+----
+e	Visits	[weight]	[cost]	NULL
+v	Person	[id, name, kind]	[person_id, name, kind]	[Student, Teacher]
+w	Place	[]	[]	NULL
+
+query IIIII
+SELECT source_table, source_fk, source_pk, destination_fk, destination_pk
+FROM __duckpgq_internal WHERE property_graph = 'explicit_graph' AND NOT is_vertex_table;
+----
+v	[src]	[id]	[dst]	[id]
+
+# Short references infer the existing PK/FK relationships.
+statement ok
+CREATE PROPERTY GRAPH inferred_graph
+VERTEX TABLES (v, w)
+EDGE TABLES (e SOURCE v DESTINATION w ALL PROPERTIES);
+
+query IIII
+SELECT source_fk, source_pk, destination_fk, destination_pk
+FROM __duckpgq_internal WHERE property_graph = 'inferred_graph' AND NOT is_vertex_table;
+----
+[src]	[id]	[dst]	[id]
+
+# All property spellings and an implicit main label with discriminator labels.
+statement ok
+CREATE PROPERTY GRAPH except_graph VERTEX TABLES (v PROPERTIES ARE ALL COLUMNS EXCEPT (kind) IN kind (Student, Teacher));
+
+query III
+SELECT label, properties, sub_labels FROM __duckpgq_internal WHERE property_graph = 'except_graph';
+----
+v	[id, name]	[Student, Teacher]
+
+statement ok
+CREATE PROPERTY GRAPH all_columns_graph VERTEX TABLES (v PROPERTIES ALL COLUMNS);
+
+statement ok
+CREATE PROPERTY GRAPH all_properties_graph VERTEX TABLES (v ALL PROPERTIES);
+
+query II
+SELECT count(*), min(properties::VARCHAR) FROM __duckpgq_internal WHERE property_graph IN ('all_columns_graph', 'all_properties_graph');
+----
+2	[id, kind, name]
+
+# Quoted/qualified names are handled by DuckDB's built-in identifier/table transforms.
+statement ok
+CREATE SCHEMA graph_schema;
+
+statement ok
+CREATE TABLE graph_schema."Vertex Table"("Vertex ID" BIGINT, "Display Name" VARCHAR);
+
+statement ok
+CREATE PROPERTY GRAPH "Quoted Graph" VERTEX TABLES (graph_schema."Vertex Table" PROPERTIES ("Vertex ID", "Display Name") LABEL "Vertex Label");
+
+query IIII
+SELECT table_name, label, schema, properties FROM __duckpgq_internal WHERE property_graph = 'Quoted Graph';
+----
+Vertex Table	Vertex Label	graph_schema	[Vertex ID, Display Name]
+
+# Composite keys, qualified references, and a qualified vertex reached through an alias.
+statement ok
+CREATE TABLE graph_schema.cv(a BIGINT, b BIGINT, PRIMARY KEY (a, b));
+
+statement ok
+CREATE TABLE graph_schema.ce(sa BIGINT, sb BIGINT, da BIGINT, db BIGINT);
+
+statement ok
+CREATE PROPERTY GRAPH graph_schema.composite_graph
+VERTEX TABLES (graph_schema.cv AS CompositeVertex)
+EDGE TABLES (graph_schema.ce
+    SOURCE KEY (sa, sb) REFERENCES graph_schema.cv (a, b)
+    DESTINATION KEY (da, db) REFERENCES CompositeVertex (a, b) NO PROPERTIES);
+
+query IIIIIII
+SELECT source_table, source_schema, source_fk, source_pk, destination_table, destination_schema, destination_pk
+FROM __duckpgq_internal WHERE property_graph = 'composite_graph' AND NOT is_vertex_table;
+----
+cv	graph_schema	[sa, sb]	[a, b]	cv	graph_schema	[a, b]
+
+# Multiple statements mix PGQ and standard SQL without intercepting the entire query.
+statement ok
+CREATE TABLE mixed(id BIGINT); /* PROPERTY GRAPH */ CREATE PROPERTY GRAPH mixed_graph VERTEX TABLES (mixed); INSERT INTO mixed VALUES (42);
+
+query I
+SELECT id FROM mixed;
+----
+42
+
+# DuckDB does not currently allow SQL PREPARE for extension statements.
+statement error
+PREPARE create_again AS CREATE PROPERTY GRAPH IF NOT EXISTS vertices_only VERTEX TABLES (v);
+----
+EXTENSION_STATEMENT is not a preparable statement
+
+# Conflict policies survive the parser/planner's AST copies.
+statement ok
+CREATE PROPERTY GRAPH IF NOT EXISTS vertices_only VERTEX TABLES (v);
+
+statement ok
+CREATE PROPERTY GRAPH IF NOT EXISTS vertices_only VERTEX TABLES (v);
+
+statement ok
+CREATE OR REPLACE PROPERTY GRAPH vertices_only VERTEX TABLES (v NO PROPERTIES LABEL Replacement);
+
+query II
+SELECT label, properties FROM __duckpgq_internal WHERE property_graph = 'vertices_only';
+----
+Replacement	[]
+
+# Activation is per connection, not global.
+query I other
+SELECT len(current_setting('active_grammar_extensions'));
+----
+0
+
+statement error other
+CREATE PROPERTY GRAPH other_graph VERTEX TABLES (v);
+----
+Parser Error
+
+statement ok other
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok other
+CREATE PROPERTY GRAPH other_graph VERTEX TABLES (v);
+
+statement ok
+RESET active_grammar_extensions;
+
+statement error
+CREATE PROPERTY GRAPH disabled_graph VERTEX TABLES (v);
+----
+Parser Error
+
+query I
+SELECT count(*) FROM v;
+----
+0
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE PROPERTY GRAPH reenabled_graph VERTEX TABLES (v);

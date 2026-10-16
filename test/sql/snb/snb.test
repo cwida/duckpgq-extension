@@ -6,6 +6,10 @@ require duckpgq
 
 require parquet
 
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
 statement ok
 import database 'data/SNB0.003';
 
@@ -187,4 +191,4 @@ statement ok
 EXPLAIN ANALYZE COPY (FROM GRAPH_TABLE (snb
 MATCH p = ANY SHORTEST (a:Person WHERE a.id = 19791209309999)-[k:knows]-> *(b:Person where b.id = 30786325579519)
 COLUMNS (path_length(p), a.id as a_id, b.id as b_id)
-) tmp LIMIT 20) TO '__TEST_DIR__/ic13-ea.txt';
+) tmp LIMIT 20) TO '{TEST_DIR}/ic13-ea.txt';

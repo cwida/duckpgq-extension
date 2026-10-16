@@ -12,9 +12,9 @@ namespace duckdb {
 
 class WeaklyConnectedComponentFunction : public TableFunction {
 public:
-	WeaklyConnectedComponentFunction() {
-		name = "weakly_connected_component";
-		arguments = {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR};
+	WeaklyConnectedComponentFunction()
+	    : TableFunction("weakly_connected_component",
+	                    {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, nullptr, nullptr) {
 		bind_replace = WeaklyConnectedComponentBindReplace;
 	}
 

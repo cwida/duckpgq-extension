@@ -16,21 +16,25 @@ public:
 	static void InitializeInternalTable(ClientContext &context);
 	void QueryEnd() override;
 	CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name);
+	//! Looks up a graph by name and, when the name is qualified, checks the catalog/schema it was created in.
+	CreatePropertyGraphInfo *GetPropertyGraph(ClientContext &context, const QualifiedName &pg_name);
+	optional_ptr<CreatePropertyGraphInfo> TryGetPropertyGraph(ClientContext &context, const QualifiedName &pg_name);
+	//! Fills in the default catalog and schema, deciding whether a lone qualifier is a schema or a catalog.
+	static QualifiedName ResolvePropertyGraphName(ClientContext &context, const QualifiedName &pg_name);
 	CSR *GetCSR(int32_t id);
 	shared_ptr<PartitionedCSRIndex> GetPartitionedCSR(const string &cache_key);
 	void PutPartitionedCSR(const string &cache_key, shared_ptr<PartitionedCSRIndex> index);
 	void ErasePartitionedCSR(const string &cache_key);
 
 	void RetrievePropertyGraphs(const shared_ptr<Connection> &context);
-	void ProcessPropertyGraphs(unique_ptr<MaterializedQueryResult> &property_graphs, bool is_vertex);
+	void ProcessPropertyGraphs(ClientContext &context, unique_ptr<QueryResult> &property_graphs, bool is_vertex);
 	void PopulateEdgeSpecificFields(unique_ptr<DataChunk> &chunk, idx_t row_idx, PropertyGraphTable &table);
 	static void ExtractListValues(const Value &list_value, vector<Identifier> &output);
-	void RegisterPropertyGraph(const shared_ptr<PropertyGraphTable> &table, const string &graph_name, bool is_vertex);
+	void RegisterPropertyGraph(const shared_ptr<PropertyGraphTable> &table, const QualifiedName &graph_name,
+	                           bool is_vertex);
 
 public:
 	unique_ptr<ParserExtensionParseData> parse_data;
-	unordered_map<int32_t, unique_ptr<ParsedExpression>> transform_expression;
-	int32_t match_index = 0;
 
 	//! Property graphs that are registered
 	case_insensitive_map_t<unique_ptr<CreateInfo>> registered_property_graphs;

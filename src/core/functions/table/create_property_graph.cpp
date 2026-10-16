@@ -306,6 +306,10 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 	}
 	auto statement = dynamic_cast<CreateStatement *>(duckpgq_parse_data->statement.get());
 	auto info = dynamic_cast<CreatePropertyGraphInfo *>(statement->info.get());
+	// Record where the graph lives so qualified references can be checked; the schema must exist like for a table.
+	auto graph_name = DuckPGQState::ResolvePropertyGraphName(context, info->GetQualifiedName());
+	Catalog::GetSchema(context, graph_name.Catalog(), graph_name.Schema());
+	info->SetQualifiedName(graph_name);
 	auto pg_table = duckpgq_state->registered_property_graphs.find(info->property_graph_name);
 
 	if (pg_table != duckpgq_state->registered_property_graphs.end() &&
@@ -438,8 +442,7 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 	if (retrieve_query->HasError()) {
 		throw TransactionException(retrieve_query->GetError());
 	}
-	auto &query_result = retrieve_query->Cast<MaterializedQueryResult>();
-	if (query_result.RowCount() > 0) {
+	if (retrieve_query->RowCount() > 0) {
 		if (pg_info->on_conflict == OnCreateConflict::ERROR_ON_CONFLICT) {
 			throw Exception(ExceptionType::INVALID,
 			                "Property graph " + pg_info->property_graph_name + " is already registered");
@@ -454,6 +457,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 		}
 	}
 
+	auto graph_catalog = pg_info->GetQualifiedName().Catalog().GetIdentifierName();
+	auto graph_schema = pg_info->GetQualifiedName().Schema().GetIdentifierName();
 	string insert_info = "INSERT INTO __duckpgq_internal VALUES ";
 	for (const auto &v_table : pg_info->vertex_tables) {
 		insert_info += "(";
@@ -492,7 +497,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 		for (idx_t i = 0; i < v_table->column_aliases.size(); i++) {
 			insert_info += "'" + v_table->column_aliases[i] + (i == v_table->column_aliases.size() - 1 ? "'" : "', ");
 		}
-		insert_info += "]"; // End of column aliases
+		insert_info += "], "; // End of column aliases
+		insert_info += "'" + graph_catalog + "', '" + graph_schema + "'";
 		insert_info += "), ";
 	}
 
@@ -502,7 +508,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 		insert_info += "'" + e_table->table_name + "', ";
 		insert_info += "'" + e_table->main_label + "', ";
 		insert_info += "false, "; // is_vertex_table
-		insert_info += "'" + e_table->source_reference + "', ";
+		// Persist physical vertex names: table aliases only exist in the CREATE statement.
+		insert_info += "'" + e_table->source_pg_table->table_name + "', ";
 		insert_info += "[";
 		for (const auto &source_pk : e_table->source_pk) {
 			insert_info += "'" + source_pk + "', ";
@@ -514,7 +521,7 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 		}
 		insert_info += "], ";
 
-		insert_info += "'" + e_table->destination_reference + "', ";
+		insert_info += "'" + e_table->destination_pg_table->table_name + "', ";
 		insert_info += "[";
 		for (const auto &destination_pk : e_table->destination_pk) {
 			insert_info += "'" + destination_pk + "', ";
@@ -538,10 +545,10 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 		}
 		insert_info += "'" + e_table->catalog_name + "', ";
 		insert_info += "'" + e_table->schema_name + "', ";
-		insert_info += "'" + e_table->source_catalog + "', ";
-		insert_info += "'" + e_table->source_schema + "', ";
-		insert_info += "'" + e_table->destination_catalog + "', ";
-		insert_info += "'" + e_table->destination_schema + "', ";
+		insert_info += "'" + e_table->source_pg_table->catalog_name + "', ";
+		insert_info += "'" + e_table->source_pg_table->schema_name + "', ";
+		insert_info += "'" + e_table->destination_pg_table->catalog_name + "', ";
+		insert_info += "'" + e_table->destination_pg_table->schema_name + "', ";
 		insert_info += "["; // Start of column names
 		for (idx_t i = 0; i < e_table->column_names.size(); i++) {
 			insert_info += "'" + e_table->column_names[i] + (i == e_table->column_names.size() - 1 ? "'" : "', ");
@@ -551,7 +558,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 		for (idx_t i = 0; i < e_table->column_aliases.size(); i++) {
 			insert_info += "'" + e_table->column_aliases[i] + (i == e_table->column_aliases.size() - 1 ? "'" : "', ");
 		}
-		insert_info += "]"; // End of column aliases
+		insert_info += "], "; // End of column aliases
+		insert_info += "'" + graph_catalog + "', '" + graph_schema + "'";
 		insert_info += "), ";
 	}
 	auto insert_query = new_conn->Query(insert_info);

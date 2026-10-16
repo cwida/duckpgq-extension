@@ -1,0 +1,90 @@
+# name: test/sql/grammar_extension/create_property_graph_errors.test
+# description: Native syntax and existing semantic validation for CREATE PROPERTY GRAPH
+# group: [grammar_extension]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE v(id BIGINT, name VARCHAR, kind INTEGER);
+
+statement ok
+CREATE TABLE e(src BIGINT, dst BIGINT);
+
+statement error
+CREATE PROPERTY GRAPH incomplete;
+----
+Parser Error
+
+statement error
+CREATE PROPERTY GRAPH empty_graph VERTEX TABLES ();
+----
+Parser Error
+
+statement error
+CREATE PROPERTY GRAPH bad_properties VERTEX TABLES (v PROPERTIES (*));
+----
+Parser Error
+
+statement error
+CREATE PROPERTY GRAPH missing_destination VERTEX TABLES (v) EDGE TABLES (e SOURCE KEY (src) REFERENCES v (id));
+----
+Parser Error
+
+statement error
+CREATE OR REPLACE PROPERTY GRAPH IF NOT EXISTS conflicts VERTEX TABLES (v);
+----
+Cannot specify both OR REPLACE and IF NOT EXISTS
+
+statement error
+CREATE PROPERTY GRAPH "" VERTEX TABLES (v);
+----
+zero-length delimited identifier
+
+statement error
+CREATE PROPERTY GRAPH duplicate_label VERTEX TABLES (v LABEL Person IN kind (Student, student));
+----
+Label student is not unique
+
+statement error
+CREATE PROPERTY GRAPH duplicate_table_label VERTEX TABLES (v LABEL Person, v AS other LABEL person);
+----
+Label person is not unique
+
+statement error
+CREATE PROPERTY GRAPH missing_table VERTEX TABLES (does_not_exist);
+----
+does_not_exist
+
+statement error
+CREATE PROPERTY GRAPH missing_column VERTEX TABLES (v PROPERTIES (does_not_exist));
+----
+Column does_not_exist not found
+
+statement error
+CREATE PROPERTY GRAPH missing_except VERTEX TABLES (v PROPERTIES ARE ALL COLUMNS EXCEPT (does_not_exist));
+----
+EXCEPT column does_not_exist not found
+
+statement error
+CREATE PROPERTY GRAPH missing_vertex VERTEX TABLES (v) EDGE TABLES (e SOURCE KEY (src) REFERENCES absent (id) DESTINATION KEY (dst) REFERENCES v (id));
+----
+Table 'absent' not found in the property graph
+
+statement ok
+CREATE PROPERTY GRAPH existing_graph VERTEX TABLES (v);
+
+statement error
+CREATE PROPERTY GRAPH existing_graph VERTEX TABLES (v);
+----
+already exists
+
+statement ok
+DROP PROPERTY GRAPH existing_graph;
+
+statement error
+DROP PROPERTY GRAPH existing_graph;
+----
+does not exist

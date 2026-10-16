@@ -38,12 +38,11 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(ClientContext &context, Ta
 	auto pg_info = bind_data.drop_pg_info;
 	auto duckpgq_state = GetDuckPGQState(context);
 
-	auto registered_pg = duckpgq_state->registered_property_graphs.find(pg_info->property_graph_name);
-	if (registered_pg == duckpgq_state->registered_property_graphs.end()) {
+	if (!duckpgq_state->TryGetPropertyGraph(context, pg_info->GetQualifiedName())) {
 		if (pg_info->missing_ok) {
 			return; // Do nothing
 		}
-		throw BinderException("Property graph %s does not exist.", pg_info->property_graph_name);
+		throw BinderException("Property graph %s does not exist.", pg_info->GetQualifiedName().ToString());
 	}
 	DropPartitionedCSRArtifacts(context, registered_pg->second->Cast<CreatePropertyGraphInfo>());
 
