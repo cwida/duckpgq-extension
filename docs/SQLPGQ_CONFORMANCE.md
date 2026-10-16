@@ -38,8 +38,8 @@ grammar, rejected by the binder with a clear error), **no**.
 | G002, G003 | `DIFFERENT EDGES`, explicit `REPEATABLE ELEMENTS` | no | |
 | **G034** | Path concatenation | yes | |
 | **G040** | Vertex pattern | partial | Variable name required; anonymous `()` not accepted |
-| **G042** | Basic full edge patterns `-[]->`, `<-[]-`, `-[]-` | partial | Variable name required |
-| G043 | Complete full edge patterns `<-[]->`, `~[]~`, `<~[]~`, `~[]~>` | partial | `<-[]->` only |
+| **G042** | Basic full edge patterns `-[]->`, `<-[]-`, `-[]-` | partial | Variable name required. All three directions work with quantifiers |
+| G043 | Complete full edge patterns `<-[]->`, `~[]~`, `<~[]~`, `~[]~>` | partial | `<-[]->` only, and not with a quantifier |
 | G044, G045 | Abbreviated edge patterns `->`, `<-`, `-`, `<->` | no | |
 | G046, G047 | Relaxed topological consistency | no | |
 | **G070** | Label disjunction `\|` | no | mandatory |
@@ -78,5 +78,6 @@ grammar, rejected by the binder with a clear error), **no**.
 
 Most recent first. Each entry names the commit's scope and the feature IDs it touched.
 
+- Left-pointing edges `<-[e]-` with a quantifier are evaluated along the edge direction (4.7.2); previously a NotImplementedException. Adds `G042_edge_direction.test`, which also pins the directed semantics of `-[e]->` with quantifiers (issue #284).
 - Quantifier bounds (10.7 SR 3): `{0,0}`, `{0}`, `{,0}` and `{3,1}` are syntax errors. G060, G061; closes #9.
 - Added this document and the `test/sql/conformance/` layout.

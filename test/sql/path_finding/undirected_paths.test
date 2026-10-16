@@ -52,7 +52,8 @@ FROM GRAPH_TABLE (pg
 4	3	1
 4	4	0
 
-statement error
+# Paths that end in vertex 4 following the edge direction.
+query III
 FROM GRAPH_TABLE (pg
     MATCH
     o = ANY SHORTEST (a:Student WHERE a.id = 4)<-[e:know]- *(b:Student)
@@ -60,7 +61,11 @@ FROM GRAPH_TABLE (pg
     ) study
     ORDER BY a_id, b_id;
 ----
-Cannot do shortest path for edge type MATCH_EDGE_LEFT
+4	0	2
+4	1	2
+4	2	1
+4	3	3
+4	4	0
 
 statement error
 FROM GRAPH_TABLE (pg
@@ -70,7 +75,7 @@ FROM GRAPH_TABLE (pg
     ) study
     ORDER BY a_id, b_id;
 ----
-Cannot do shortest path for edge type MATCH_EDGE_LEFT_RIGHT
+Path-finding over a <-[e]-> edge pattern is not supported
 
 query II
 FROM GRAPH_TABLE (pg

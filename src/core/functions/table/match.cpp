@@ -517,22 +517,56 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreateWhereClause(vector<unique_p
 	return where_clause;
 }
 
+// Path-finding runs along the edge direction. For a left-pointing edge pattern (a)<-[e]-(b) the search therefore starts
+// at the right endpoint and ends at the left one; the resulting path is reversed so it still reads from a to b.
+static void PGQPathFindingEndpoints(PGQMatchType edge_type, const string &prev_binding, const string &next_binding,
+                                    string &from_binding, string &to_binding) {
+	if (edge_type == PGQMatchType::MATCH_EDGE_LEFT) {
+		from_binding = next_binding;
+		to_binding = prev_binding;
+	} else {
+		from_binding = prev_binding;
+		to_binding = next_binding;
+	}
+}
+
+static unique_ptr<CommonTableExpressionInfo> PGQCreateCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
+                                                            PGQMatchType edge_type, const string &prev_binding,
+                                                            const string &edge_binding, const string &next_binding,
+                                                            unique_ptr<SelectNode> &select_node) {
+	switch (edge_type) {
+	case PGQMatchType::MATCH_EDGE_RIGHT:
+	case PGQMatchType::MATCH_EDGE_LEFT: {
+		string from_binding, to_binding;
+		PGQPathFindingEndpoints(edge_type, prev_binding, next_binding, from_binding, to_binding);
+		return CreateDirectedCSRCTE(edge_table, from_binding, edge_binding, to_binding);
+	}
+	case PGQMatchType::MATCH_EDGE_ANY:
+		return CreateUndirectedCSRCTE(edge_table, select_node);
+	default:
+		throw NotImplementedException("Path-finding over a <-[e]-> edge pattern is not supported");
+	}
+}
+
 unique_ptr<CommonTableExpressionInfo>
 PGQMatchFunction::GenerateShortestPathCTE(CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath,
                                           PathElement *previous_vertex_element, PathElement *next_vertex_element,
                                           vector<unique_ptr<ParsedExpression>> &path_finding_conditions) {
 	auto edge_element = GetPathElement(edge_subpath->path_list[0]);
 	auto edge_table = FindGraphTable(edge_element->label, pg_table);
+	string from_binding, to_binding;
+	PGQPathFindingEndpoints(edge_element->match_type, previous_vertex_element->variable_binding,
+	                        next_vertex_element->variable_binding, from_binding, to_binding);
+	bool reverse_path = edge_element->match_type == PGQMatchType::MATCH_EDGE_LEFT;
 
-	path_finding_conditions.push_back(AddPathQuantifierCondition(
-	    previous_vertex_element->variable_binding, next_vertex_element->variable_binding, edge_table, edge_subpath));
+	path_finding_conditions.push_back(AddPathQuantifierCondition(from_binding, to_binding, edge_table, edge_subpath));
 
 	std::ostringstream query;
-	query << "SELECT shortestpath(0, ("
+	query << "SELECT " << (reverse_path ? "list_reverse(" : "") << "shortestpath(0, ("
 	      << DuckPGQSQLCountTable(*edge_table->source_pg_table, previous_vertex_element->variable_binding,
 	                              edge_table->source_pk[0])
-	      << "), " << DuckPGQSQL::Column(string("rowid"), previous_vertex_element->variable_binding) << ", "
-	      << DuckPGQSQL::Column(string("rowid"), next_vertex_element->variable_binding) << ") AS path, "
+	      << "), " << DuckPGQSQL::Column(string("rowid"), from_binding) << ", "
+	      << DuckPGQSQL::Column(string("rowid"), to_binding) << ")" << (reverse_path ? ")" : "") << " AS path, "
 	      << DuckPGQSQL::Column(string("rowid"), previous_vertex_element->variable_binding) << " AS src_rowid, "
 	      << DuckPGQSQL::Column(string("rowid"), next_vertex_element->variable_binding) << " AS dst_rowid FROM "
 	      << DuckPGQSQL::TableRef(*edge_table->source_pg_table, previous_vertex_element->variable_binding)
@@ -593,19 +627,10 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
 				}
 				if (final_select_node->cte_map.map.find(Identifier("cte1")) == final_select_node->cte_map.map.end()) {
 					edge_element = reinterpret_cast<PathElement *>(edge_subpath->path_list[0].get());
-					if (edge_element->match_type == PGQMatchType::MATCH_EDGE_RIGHT) {
-						final_select_node->cte_map.map[Identifier("cte1")] = CreateDirectedCSRCTE(
-						    FindGraphTable(edge_element->label, pg_table), previous_vertex_element->variable_binding,
-						    edge_element->variable_binding, next_vertex_element->variable_binding);
-					} else if (edge_element->match_type == PGQMatchType::MATCH_EDGE_ANY) {
-						final_select_node->cte_map.map[Identifier("cte1")] =
-						    CreateUndirectedCSRCTE(FindGraphTable(edge_element->label, pg_table), final_select_node);
-					} else {
-						throw NotImplementedException("Cannot do shortest path for edge type %s",
-						                              edge_element->match_type == PGQMatchType::MATCH_EDGE_LEFT
-						                                  ? "MATCH_EDGE_LEFT"
-						                                  : "MATCH_EDGE_LEFT_RIGHT");
-					}
+					final_select_node->cte_map.map[Identifier("cte1")] = PGQCreateCSRCTE(
+					    FindGraphTable(edge_element->label, pg_table), edge_element->match_type,
+					    previous_vertex_element->variable_binding, edge_element->variable_binding,
+					    next_vertex_element->variable_binding, final_select_node);
 				}
 				string shortest_path_cte_name = "shortest_path_cte";
 				if (final_select_node->cte_map.map.find(PGQIdentifier(shortest_path_cte_name)) ==
@@ -731,16 +756,8 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 	//! START
 	//! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
 	if (select_node->cte_map.map.find("cte1") == select_node->cte_map.map.end()) {
-		if (edge_type == PGQMatchType::MATCH_EDGE_RIGHT) {
-			select_node->cte_map.map["cte1"] =
-			    CreateDirectedCSRCTE(edge_table, prev_binding, edge_binding, next_binding);
-		} else if (edge_type == PGQMatchType::MATCH_EDGE_ANY) {
-			select_node->cte_map.map["cte1"] = CreateUndirectedCSRCTE(edge_table, select_node);
-		} else {
-			throw NotImplementedException("Cannot do shortest path for edge type %s",
-			                              edge_type == PGQMatchType::MATCH_EDGE_LEFT ? "MATCH_EDGE_LEFT"
-			                                                                         : "MATCH_EDGE_LEFT_RIGHT");
-		}
+		select_node->cte_map.map["cte1"] =
+		    PGQCreateCSRCTE(edge_table, edge_type, prev_binding, edge_binding, next_binding, select_node);
 	}
 	if (select_node->cte_map.map.find("shortest_path_cte") != select_node->cte_map.map.end()) {
 		return;
@@ -753,7 +770,9 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 	//! START
 	//! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(c.id)
 	//!       from dst c, a.rowid, b.rowid) between lower and upper
-	conditions.push_back(AddPathQuantifierCondition(prev_binding, next_binding, edge_table, subpath));
+	string from_binding, to_binding;
+	PGQPathFindingEndpoints(edge_type, prev_binding, next_binding, from_binding, to_binding);
+	conditions.push_back(AddPathQuantifierCondition(from_binding, to_binding, edge_table, subpath));
 	//! END
 	//! WHERE __x.temp + iterativelength(<csr_id>, (SELECT count(s.id)
 	//! from src s, a.rowid, b.rowid) between lower and upper

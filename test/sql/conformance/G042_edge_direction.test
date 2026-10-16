@@ -1,0 +1,89 @@
+# name: test/sql/conformance/G042_edge_direction.test
+# description: 4.7.2 edge orientation and 10.6 full edge patterns, with and without quantifiers (G042, G035)
+# group: [conformance]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+# A directed chain 1 -> 2 -> 3.
+statement ok
+CREATE TABLE v(id INT); INSERT INTO v VALUES (1), (2), (3);
+
+statement ok
+CREATE TABLE e(src INT, dst INT); INSERT INTO e VALUES (1, 2), (2, 3);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (v LABEL V)
+EDGE TABLES (e SOURCE KEY (src) REFERENCES v (id) DESTINATION KEY (dst) REFERENCES v (id) LABEL E);
+
+# <full edge pointing right>: a is the source, b the destination.
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->(b:V) COLUMNS (a.id AS a, b.id AS b)) ORDER BY a, b;
+----
+1	2
+2	3
+
+# <full edge pointing left>: b is the source, a the destination.
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)<-[x:E]-(b:V) COLUMNS (a.id AS a, b.id AS b)) ORDER BY a, b;
+----
+2	1
+3	2
+
+# <full edge any direction>: each edge matches in both orientations.
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]-(b:V) COLUMNS (a.id AS a, b.id AS b)) ORDER BY a, b;
+----
+1	2
+2	1
+2	3
+3	2
+
+# The orientation is kept under a quantifier (issue #284).
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->{1,2}(b:V) COLUMNS (a.id AS a, b.id AS b)) ORDER BY a, b;
+----
+1	2
+1	3
+2	3
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->{1,2}(b:V) WHERE a.id = 3 COLUMNS (a.id AS a, b.id AS b));
+----
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)<-[x:E]-{1,2}(b:V) COLUMNS (a.id AS a, b.id AS b)) ORDER BY a, b;
+----
+2	1
+3	1
+3	2
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]-{1,2}(b:V) COLUMNS (a.id AS a, b.id AS b)) ORDER BY a, b;
+----
+1	2
+1	3
+2	1
+2	3
+3	1
+3	2
+
+# A left-pointing selective path still reads from a to b: element_id(p) lists a's rowid first.
+query IIII
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:V)<-[x:E]-*(b:V) WHERE a.id = 3
+    COLUMNS (a.id AS a, b.id AS b, element_id(p) AS elements, path_length(p) AS len)) ORDER BY b;
+----
+3	1	[2, 1, 1, 0, 0]	2
+3	2	[2, 1, 1]	1
+3	3	[2]	0
+
+query IIII
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:V)-[x:E]->*(b:V) WHERE a.id = 1
+    COLUMNS (a.id AS a, b.id AS b, element_id(p) AS elements, path_length(p) AS len)) ORDER BY b;
+----
+1	1	[0]	0
+1	2	[0, 0, 1]	1
+1	3	[0, 0, 1, 1, 2]	2
