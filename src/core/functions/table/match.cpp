@@ -392,6 +392,11 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreateMatchJoinExpression(vector<
 	return where_clause;
 }
 
+// A quantified edge is evaluated by path-finding unless it is exactly one edge: {0,1} and ? admit the zero-length path.
+static bool PGQNeedsPathFinding(const SubPath &subpath) {
+	return subpath.upper > 1 || subpath.lower == 0;
+}
+
 PathElement *PGQMatchFunction::GetPathElement(const unique_ptr<PathReference> &path_reference) {
 	if (path_reference->path_reference_type == PGQPathReferenceType::PATH_ELEMENT) {
 		return reinterpret_cast<PathElement *>(path_reference.get());
@@ -616,7 +621,7 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
 		auto edge_element = GetPathElement(path_list[idx_i]);
 		if (!edge_element) {
 			auto edge_subpath = reinterpret_cast<SubPath *>(path_list[idx_i].get());
-			if (edge_subpath->upper > 1) {
+			if (PGQNeedsPathFinding(*edge_subpath)) {
 				// (un)bounded shortest path
 				// Add the shortest path UDF as a CTE
 				if (previous_vertex_subpath) {
@@ -922,7 +927,7 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 			edge_element = GetPathElement(edge_subpath->path_list[0]);
 			auto edge_table = FindGraphTable(edge_element->label, pg_table);
 
-			if (edge_subpath->upper > 1) {
+			if (PGQNeedsPathFinding(*edge_subpath)) {
 				// Add the path-finding
 				AddPathFinding(final_select_node, conditions, previous_vertex_element->variable_binding,
 				               edge_element->variable_binding, next_vertex_element->variable_binding, edge_table,

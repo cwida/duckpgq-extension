@@ -87,6 +87,7 @@ FROM GRAPH_TABLE (pg
 ----
 4	2
 4	3
+4	4
 
 query III
 FROM GRAPH_TABLE (pg

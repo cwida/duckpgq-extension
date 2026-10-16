@@ -60,7 +60,7 @@ grammar, rejected by the binder with a clear error), **no**.
 | G020 | `SHORTEST k GROUP` | no | |
 | G030 to G033 | Path alternation `\|`, `\|+\|` | no | |
 | G035, G036 | Quantified paths and edges | partial | Edges only; bounds are a post-filter on the shortest length |
-| G037 | Questioned path primary `?` | partial | Treated as `{0,1}`; variables are not exposed as conditional singletons |
+| G037 | Questioned path primary `?` | partial | Evaluated as `{0,1}` including the zero-length path; variables are not exposed as conditional singletons |
 | G038, G048 to G051 | Parenthesised path patterns, subpath variables and modes | parse | |
 | G060, G061 | Bounded / unbounded quantifiers | yes | 10.7 SR 3 bounds checks: upper bound > 0, lower <= upper (issue #9) |
 | G039, G080 to G082 | Simplified path pattern expression `-/ /->` | no | |
@@ -78,6 +78,7 @@ grammar, rejected by the binder with a clear error), **no**.
 
 Most recent first. Each entry names the commit's scope and the feature IDs it touched.
 
+- `?`, `{0,1}` and `{,1}` include the zero-length path. They were evaluated as a plain edge join, so `(a)-[e]->?(b)` never returned `a` itself. G037, G060.
 - Left-pointing edges `<-[e]-` with a quantifier are evaluated along the edge direction (4.7.2); previously a NotImplementedException. Adds `G042_edge_direction.test`, which also pins the directed semantics of `-[e]->` with quantifiers (issue #284).
 - Quantifier bounds (10.7 SR 3): `{0,0}`, `{0}`, `{,0}` and `{3,1}` are syntax errors. G060, G061; closes #9.
 - Added this document and the `test/sql/conformance/` layout.

@@ -119,8 +119,13 @@ FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E]-?(n2:N));
 statement ok
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E] - ?(n2:N));
 
-statement ok
+# A bidirectional edge under a quantifier needs path-finding in both directions, which is not supported.
+statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E] -> ?(n2:N));
+----
+Path-finding over a <-[e]-> edge pattern is not supported
 
-statement ok
+statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E] - >?(n2:N));
+----
+Path-finding over a <-[e]-> edge pattern is not supported

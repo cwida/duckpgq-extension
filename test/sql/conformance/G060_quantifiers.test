@@ -39,6 +39,39 @@ ORDER BY b;
 1	3	2
 1	4	1
 
+# 10.7 GR: ? is {0,1}, which admits the zero-length path (G037).
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:V)-[x:E]->?(b:V) WHERE a.id = 1 COLUMNS (a.id AS a, b.id AS b, path_length(p) AS len))
+ORDER BY b;
+----
+1	1	0
+1	2	1
+1	4	1
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->{0,1}(b:V) WHERE a.id = 1 COLUMNS (a.id AS a, b.id AS b))
+ORDER BY b;
+----
+1	1
+1	2
+1	4
+
+# The zero-length path is included for left-pointing and undirected edges as well.
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)<-[x:E]-?(b:V) WHERE a.id = 2 COLUMNS (a.id AS a, b.id AS b))
+ORDER BY b;
+----
+2	1
+2	2
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]-?(b:V) WHERE a.id = 2 COLUMNS (a.id AS a, b.id AS b))
+ORDER BY b;
+----
+2	1
+2	2
+2	3
+
 # {n} is {n,n}.
 query II
 FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->{2}(b:V) COLUMNS (a.id AS a, b.id AS b));
@@ -58,6 +91,14 @@ query II
 FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:V)-[x:E]->{2,}(b:V) WHERE a.id = 1 COLUMNS (a.id AS a, b.id AS b));
 ----
 1	3
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->{,1}(b:V) WHERE a.id = 1 COLUMNS (a.id AS a, b.id AS b))
+ORDER BY b;
+----
+1	1
+1	2
+1	4
 
 # 10.7 SR 3a: the upper bound shall be greater than 0 (issue #9).
 statement error
