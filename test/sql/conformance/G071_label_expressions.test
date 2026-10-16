@@ -1,0 +1,126 @@
+# name: test/sql/conformance/G071_label_expressions.test
+# description: 10.8 <label expression>: conjunction &, negation !, wildcard % and parentheses (G071, G072, G074, G075)
+# group: [conformance]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Person(id BIGINT, name VARCHAR); INSERT INTO Person VALUES (1, 'Daniel'), (2, 'Tavneet'), (3, 'Gabor');
+
+# Organisation rows carry the sublabel university (bit 1) or company (bit 2); row 30 carries both.
+statement ok
+CREATE TABLE Organisation(id BIGINT, name VARCHAR, mask BIGINT); INSERT INTO Organisation VALUES (10, 'VU', 1), (11, 'UvA', 1), (20, 'CWI', 2), (30, 'Both', 3);
+
+statement ok
+CREATE TABLE worksAt(personId BIGINT, organisationId BIGINT, kind BIGINT); INSERT INTO worksAt VALUES (1, 20, 1), (2, 20, 2), (3, 10, 1);
+
+statement ok
+CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+    Person LABEL Person,
+    Organisation LABEL Organisation IN mask (university, company)
+)
+EDGE TABLES (
+    worksAt SOURCE KEY (personId) REFERENCES Person (id) DESTINATION KEY (organisationId) REFERENCES Organisation (id)
+            LABEL worksAt IN kind (employee, intern)
+);
+
+# Conjunction: both labels must hold.
+query I
+FROM GRAPH_TABLE (pg MATCH (o:university&company) COLUMNS (o.name)) ORDER BY 1;
+----
+Both
+
+query I
+FROM GRAPH_TABLE (pg MATCH (o:Organisation & company) COLUMNS (o.name)) ORDER BY 1;
+----
+Both
+CWI
+
+# Negation, with and without a space after the operator (the tokenizer fuses "&!").
+query I
+FROM GRAPH_TABLE (pg MATCH (o:Organisation&!university) COLUMNS (o.name)) ORDER BY 1;
+----
+CWI
+
+query I
+FROM GRAPH_TABLE (pg MATCH (o:Organisation & ! university) COLUMNS (o.name)) ORDER BY 1;
+----
+CWI
+
+query I
+FROM GRAPH_TABLE (pg MATCH (o:Organisation&!(university|company)) COLUMNS (o.name)) ORDER BY 1;
+----
+
+# Precedence: ! before &, & before |, parentheses override.
+query I
+FROM GRAPH_TABLE (pg MATCH (o:company|university&company) COLUMNS (o.name)) ORDER BY 1;
+----
+Both
+CWI
+
+query I
+FROM GRAPH_TABLE (pg MATCH (o:(company|university)&company) COLUMNS (o.name)) ORDER BY 1;
+----
+Both
+CWI
+
+query I
+FROM GRAPH_TABLE (pg MATCH (o:(university|company)&!company) COLUMNS (o.name)) ORDER BY 1;
+----
+UvA
+VU
+
+query I
+FROM GRAPH_TABLE (pg MATCH (o:Organisation&(university|!company&company)) COLUMNS (o.name)) ORDER BY 1;
+----
+Both
+UvA
+VU
+
+# The wildcard % matches every element; on an edge pattern between two vertex tables it selects the only edge table.
+query II
+FROM GRAPH_TABLE (pg MATCH (p:Person)-[w:%]->(o:Organisation) COLUMNS (p.name, o.name)) ORDER BY 1;
+----
+Daniel	CWI
+Gabor	VU
+Tavneet	CWI
+
+query II
+FROM GRAPH_TABLE (pg MATCH (p:Person)-[w:(%)]->(o:Organisation) COLUMNS (p.name, o.name)) ORDER BY 1;
+----
+Daniel	CWI
+Gabor	VU
+Tavneet	CWI
+
+# Negation and conjunction on edges.
+query II
+FROM GRAPH_TABLE (pg MATCH (p:Person)-[w:worksAt&!intern]->(o:Organisation) COLUMNS (p.name, o.name)) ORDER BY 1;
+----
+Daniel	CWI
+Gabor	VU
+
+query II
+FROM GRAPH_TABLE (pg MATCH (p:Person)-[w:!(employee)]->(o:Organisation) COLUMNS (p.name, o.name)) ORDER BY 1;
+----
+Tavneet	CWI
+
+# An expression no table can satisfy is an error rather than an empty result.
+statement error
+FROM GRAPH_TABLE (pg MATCH (o:Organisation&Person) COLUMNS (o.name));
+----
+Binder Error: Label expression Organisation&Person matches no vertex table of property graph pg
+
+# !university holds for every Person and for some Organisations: two tables, which DuckPGQ cannot bind to one element.
+statement error
+FROM GRAPH_TABLE (pg MATCH (o:!university) COLUMNS (o.name));
+----
+Not implemented Error: Label expression !university matches several tables (Person, Organisation); an element pattern binds to one table in DuckPGQ
+
+statement error
+FROM GRAPH_TABLE (pg MATCH (o:%) COLUMNS (o.name));
+----
+Not implemented Error: Label expression % matches several tables (Person, Organisation); an element pattern binds to one table in DuckPGQ

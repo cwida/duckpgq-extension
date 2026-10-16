@@ -87,22 +87,83 @@ PathElement &GetSinglePathElement(PathReference &path_reference) {
 	return static_cast<PathElement &>(*subpath.path_list[0]);
 }
 
-// ColId ('|' ColId)*
+unique_ptr<PGQLabelExpression> TransformLabelExpression(PEGTransformer &transformer, ParseResult &parse_result);
+
+unique_ptr<PGQLabelExpression> NegateLabelExpression(unique_ptr<PGQLabelExpression> child) {
+	auto result = make_uniq<PGQLabelExpression>(PGQLabelExpressionType::NEGATION);
+	result->children.push_back(std::move(child));
+	return result;
+}
+
+// ColId / '%' / Parens(DuckPGQLabelExpression)
+unique_ptr<PGQLabelExpression> TransformLabelPrimary(PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &choice = DuckPGQGetChoice(parse_result);
+	if (choice.type == ParseResultType::KEYWORD) {
+		return make_uniq<PGQLabelExpression>(PGQLabelExpressionType::WILDCARD);
+	}
+	if (choice.Name() == "ColId") {
+		return PGQLabelExpression::Label(transformer.Transform<Identifier>(choice).GetIdentifierName());
+	}
+	return TransformLabelExpression(transformer, PEGTransformerFactory::ExtractResultFromParens(choice));
+}
+
+// ('!' DuckPGQLabelFactor) / DuckPGQLabelPrimary
+unique_ptr<PGQLabelExpression> TransformLabelFactor(PEGTransformer &transformer, ParseResult &parse_result) {
+	auto &choice = DuckPGQGetChoice(parse_result);
+	if (choice.Name() == "DuckPGQLabelPrimary") {
+		return TransformLabelPrimary(transformer, choice);
+	}
+	return NegateLabelExpression(TransformLabelFactor(transformer, choice.Cast<ListParseResult>().GetChild(1)));
+}
+
+// Combine the operands of a conjunction or disjunction, or return the single operand as is.
+unique_ptr<PGQLabelExpression> CombineLabelExpressions(PGQLabelExpressionType type,
+                                                       vector<unique_ptr<PGQLabelExpression>> operands) {
+	if (operands.size() == 1) {
+		return std::move(operands[0]);
+	}
+	auto result = make_uniq<PGQLabelExpression>(type);
+	result->children = std::move(operands);
+	return result;
+}
+
+// DuckPGQLabelFactor DuckPGQLabelConjunct*; a fused "|!" before the term negates its first factor.
+unique_ptr<PGQLabelExpression> TransformLabelTerm(PEGTransformer &transformer, ParseResult &parse_result,
+                                                  bool negate_first) {
+	auto &list = parse_result.Cast<ListParseResult>();
+	vector<unique_ptr<PGQLabelExpression>> operands;
+	operands.push_back(TransformLabelFactor(transformer, list.GetChild(0)));
+	if (negate_first) {
+		operands[0] = NegateLabelExpression(std::move(operands[0]));
+	}
+	auto &repeat = list.Child<OptionalParseResult>(1);
+	if (repeat.HasResult()) {
+		for (auto &conjunct : repeat.GetResult().Cast<RepeatParseResult>().GetChildren()) {
+			auto &pair = conjunct.get().Cast<ListParseResult>();
+			auto factor = TransformLabelFactor(transformer, pair.GetChild(1));
+			if (DuckPGQLiteralText(pair.GetChild(0)) == "&!") {
+				factor = NegateLabelExpression(std::move(factor));
+			}
+			operands.push_back(std::move(factor));
+		}
+	}
+	return CombineLabelExpressions(PGQLabelExpressionType::CONJUNCTION, std::move(operands));
+}
+
+// DuckPGQLabelTerm DuckPGQLabelDisjunct*
 unique_ptr<PGQLabelExpression> TransformLabelExpression(PEGTransformer &transformer, ParseResult &parse_result) {
 	auto &list = parse_result.Cast<ListParseResult>();
-	auto first = PGQLabelExpression::Label(transformer.Transform<Identifier>(list.GetChild(0)).GetIdentifierName());
+	vector<unique_ptr<PGQLabelExpression>> operands;
+	operands.push_back(TransformLabelTerm(transformer, list.GetChild(0), false));
 	auto &repeat = list.Child<OptionalParseResult>(1);
-	if (!repeat.HasResult()) {
-		return first;
+	if (repeat.HasResult()) {
+		for (auto &disjunct : repeat.GetResult().Cast<RepeatParseResult>().GetChildren()) {
+			auto &pair = disjunct.get().Cast<ListParseResult>();
+			bool negate_first = DuckPGQLiteralText(pair.GetChild(0)) == "|!";
+			operands.push_back(TransformLabelTerm(transformer, pair.GetChild(1), negate_first));
+		}
 	}
-	auto result = make_uniq<PGQLabelExpression>(PGQLabelExpressionType::DISJUNCTION);
-	result->children.push_back(std::move(first));
-	for (auto &term : repeat.GetResult().Cast<RepeatParseResult>().GetChildren()) {
-		auto &pair = term.get().Cast<ListParseResult>();
-		result->children.push_back(
-		    PGQLabelExpression::Label(transformer.Transform<Identifier>(pair.GetChild(1)).GetIdentifierName()));
-	}
-	return result;
+	return CombineLabelExpressions(PGQLabelExpressionType::DISJUNCTION, std::move(operands));
 }
 
 // '(' Identifier? DuckPGQElementLabel? WhereClause? ')' or '[' Identifier? DuckPGQElementLabel? WhereClause? ']'

@@ -45,7 +45,7 @@ grammar, rejected by the binder with a clear error), **no**.
 | G044, G045 | Abbreviated edge patterns `->`, `<-`, `-`, `<->` | yes | Anonymous edges; `~` undirected spellings are not accepted (no undirected edge tables) |
 | G046, G047 | Relaxed topological consistency | no | |
 | **G070** | Label disjunction `\|` | partial | Within one table's label set (main label and sublabels). A disjunction spanning several tables raises NotImplementedException |
-| G071, G072, G074, G075 | Label `&`, `!`, `%`, parentheses | no | |
+| G071, G072, G074, G075 | Label `&`, `!`, `%`, parentheses | partial | Same one-table restriction as G070. `!` and `%` usually match several tables unless combined with a main label |
 | **G073** | Individual label name | yes | Sublabels via `LABEL x IN column (a, b)` |
 | **G090** | Property reference | partial | Only bare column references are validated |
 | G004 | Path variables | yes | |
@@ -80,6 +80,7 @@ grammar, rejected by the binder with a clear error), **no**.
 
 Most recent first. Each entry names the commit's scope and the feature IDs it touched.
 
+- Label conjunction `&`, negation `!`, wildcard `%` and parentheses with standard precedence (10.8, G071, G072, G074, G075). Adds `G071_label_expressions.test`.
 - Label disjunction `:A|B` (10.8, G070, mandatory; issue #168) via a label-expression AST evaluated per table against the main label and discriminator-encoded sublabels. Adds `G070_label_disjunction.test`.
 - Abbreviated edge patterns `->`, `<-`, `-` and `<->`, with quantifiers (10.6, G044, G045). Adds `G044_abbreviated_edges.test`.
 - Anonymous vertex and edge patterns `()`, `(:L)`, `-[]->`, `-[:L]->` (10.6, G040, G042; issue #195). The label of an anonymous element is inferred when exactly one table fits; otherwise the binder names the candidates. Adds `G040_anonymous_elements.test`.

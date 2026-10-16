@@ -38,5 +38,11 @@ DuckPGQVertex <- '(' Identifier? DuckPGQElementLabel? WhereClause? ')'
 DuckPGQEdgeBody <- '[' Identifier? DuckPGQElementLabel? WhereClause? ']'
 DuckPGQElementLabel <- (':' / 'IS') DuckPGQLabelExpression
 
-# 10.8 <label expression>: label names combined with | (disjunction, G070).
-DuckPGQLabelExpression <- ColId ('|' ColId)*
+# 10.8 <label expression>: ! binds tighter than &, which binds tighter than |; % is the wildcard. The tokenizer fuses
+# adjacent operator characters, so "|!" and "&!" are accepted as single tokens.
+DuckPGQLabelExpression <- DuckPGQLabelTerm DuckPGQLabelDisjunct*
+DuckPGQLabelDisjunct <- ('|' / '|!') DuckPGQLabelTerm
+DuckPGQLabelTerm <- DuckPGQLabelFactor DuckPGQLabelConjunct*
+DuckPGQLabelConjunct <- ('&' / '&!') DuckPGQLabelFactor
+DuckPGQLabelFactor <- ('!' DuckPGQLabelFactor) / DuckPGQLabelPrimary
+DuckPGQLabelPrimary <- ColId / '%' / Parens(DuckPGQLabelExpression)
