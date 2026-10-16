@@ -29,7 +29,7 @@ bool PathElement::Equals(const PathReference *other_p) const {
 void PathElement::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty(100, "match_type", uint8_t(match_type));
 	serializer.WriteProperty(101, "label", label);
-	serializer.WriteProperty(101, "variable_binding", variable_binding);
+	serializer.WriteProperty(102, "variable_binding", variable_binding);
 }
 
 unique_ptr<PathReference> PathElement::Deserialize(Deserializer &deserializer) {

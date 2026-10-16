@@ -65,7 +65,7 @@ unique_ptr<PathPattern> PathPattern::Copy() {
 		result->path_elements.push_back(path_element->Copy());
 	}
 
-	if (result->where_clause) {
+	if (where_clause) {
 		result->where_clause = where_clause->Copy();
 	}
 
