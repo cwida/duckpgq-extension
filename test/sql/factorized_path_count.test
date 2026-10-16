@@ -1,0 +1,120 @@
+# name: test/sql/factorized_path_count.test
+# description: Counting two-hop paths is rewritten into a degree product instead of enumerating every path
+# group: [sql]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+# random() is only reproducible single-threaded
+statement ok
+SET threads = 1;
+
+statement ok
+SELECT setseed(0.42);
+
+statement ok
+CREATE TABLE Person AS SELECT i AS id, 18 + (random() * 60)::INT AS age FROM range(1, 10001) t(i);
+
+# 10 random follows per person plus 50 hubs followed by 50-500 persons each
+statement ok
+CREATE TABLE Follows AS
+WITH hubs AS (
+    SELECT (1 + random() * 9999)::BIGINT AS hub, (50 + random() * 450)::INT AS n_followers FROM range(50)),
+regular AS (
+    SELECT (1 + random() * 9999)::BIGINT AS src, (1 + random() * 9999)::BIGINT AS dst FROM range(100000)),
+hub_edges AS (
+    SELECT (1 + random() * 9999)::BIGINT AS src, hub AS dst FROM hubs, range(hubs.n_followers))
+SELECT DISTINCT src, dst FROM (SELECT * FROM regular UNION ALL SELECT * FROM hub_edges) WHERE src <> dst;
+
+statement ok
+RESET threads;
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (Person)
+EDGE TABLES (Follows SOURCE KEY (src) REFERENCES Person (id) DESTINATION KEY (dst) REFERENCES Person (id) LABEL Follows);
+
+query I
+SELECT count(*) FROM Follows;
+----
+113199
+
+# The two-hop count is computed from the in- and out-degree of the middle vertex
+query II
+EXPLAIN SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)
+    COLUMNS (a.id AS a_id));
+----
+physical_plan	<REGEX>:.*Hash Group By.*Hash Group By.*
+
+query I
+SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)
+    COLUMNS (a.id AS a_id));
+----
+1276301
+
+# Filters on the middle and end vertex stay on their own side of the product
+query I
+SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)
+    WHERE b.age < 50 AND c.age > 25
+    COLUMNS (a.id AS a_id));
+----
+601549
+
+# Longer chains factorize per vertex
+query I
+SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)-[r3:Follows]->(d:Person)
+    COLUMNS (a.id AS a_id));
+----
+14392471
+
+# Grouping by the middle vertex keeps the grouped column and multiplies the sides
+query II
+SELECT b_id, count(*) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)
+    COLUMNS (b.id AS b_id))
+GROUP BY b_id ORDER BY 2 DESC, 1 LIMIT 3;
+----
+4814	8096
+8013	7973
+3210	6305
+
+# Sums and counts of one-sided columns are weighted by the multiplicity, min and max are unchanged
+query IIIIII
+SELECT count(*), sum(a_id), min(a_id), max(c_age), count(c_age), sum(c_age) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)
+    COLUMNS (a.id AS a_id, c.age AS c_age));
+----
+1276301	6374585343	1	78	1276301	61776316
+
+# A count over no paths is 0, not NULL
+query I
+SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)
+    WHERE b.age > 1000
+    COLUMNS (a.id AS a_id));
+----
+0
+
+# The rewrite can be switched off
+statement ok
+SET duckpgq_factorized_joins = false;
+
+query II
+EXPLAIN SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)
+    COLUMNS (a.id AS a_id));
+----
+physical_plan	<!REGEX>:.*Hash Group By.*
+
+query I
+SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)
+    COLUMNS (a.id AS a_id));
+----
+1276301
