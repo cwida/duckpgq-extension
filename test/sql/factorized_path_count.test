@@ -41,13 +41,34 @@ SELECT count(*) FROM Follows;
 ----
 113199
 
-# The two-hop count is computed from the in- and out-degree of the middle vertex
+# The two-hop count is computed from the in- and out-degree of the middle vertex, in one shared hash table
+query II
+EXPLAIN SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)
+    COLUMNS (a.id AS a_id));
+----
+physical_plan	<REGEX>:.*Factorized Group Join.*
+
+# Without the operator the same degrees are computed by two aggregates and a hash join
+statement ok
+SET duckpgq_factorized_join_operator = false;
+
 query II
 EXPLAIN SELECT count(*) FROM GRAPH_TABLE (g
     MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)
     COLUMNS (a.id AS a_id));
 ----
 physical_plan	<REGEX>:.*Hash Group By.*Hash Group By.*
+
+query I
+SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[r1:Follows]->(b:Person)-[r2:Follows]->(c:Person)
+    COLUMNS (a.id AS a_id));
+----
+1276301
+
+statement ok
+SET duckpgq_factorized_join_operator = true;
 
 query I
 SELECT count(*) FROM GRAPH_TABLE (g

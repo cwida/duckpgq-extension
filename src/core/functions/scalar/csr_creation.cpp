@@ -89,21 +89,30 @@ static void CreateCsrVertexFunction(DataChunk &args, ExpressionState &state, Vec
 
 	auto duckpgq_state = GetDuckPGQState(info.context);
 	int64_t input_size = args.data[1].GetValue(0).GetValue<int64_t>();
-	auto csr_entry = duckpgq_state->csr_list.find(info.id);
-
-	if (csr_entry == duckpgq_state->csr_list.end()) {
-		CsrInitializeVertex(*duckpgq_state, info.id, input_size);
-		csr_entry = duckpgq_state->csr_list.find(info.id);
-	} else {
-		if (!csr_entry->second->initialized_v) {
-			CsrInitializeVertex(*duckpgq_state, info.id, input_size);
+	// Other threads may be inserting into csr_list concurrently, so look the entry up under the lock; this runs
+	// once per chunk, not per row
+	CSR *csr = nullptr;
+	{
+		lock_guard<mutex> csr_lookup_lock(duckpgq_state->csr_lock);
+		auto csr_entry = duckpgq_state->csr_list.find(info.id);
+		if (csr_entry != duckpgq_state->csr_list.end() && csr_entry->second->initialized_v) {
+			csr = csr_entry->second.get();
 		}
+	}
+	if (!csr) {
+		CsrInitializeVertex(*duckpgq_state, info.id, input_size);
+		lock_guard<mutex> csr_lookup_lock(duckpgq_state->csr_lock);
+		auto csr_entry = duckpgq_state->csr_list.find(info.id);
+		if (csr_entry == duckpgq_state->csr_list.end() || !csr_entry->second) {
+			throw InternalException("CSR %d disappeared while it was being initialized", info.id);
+		}
+		csr = csr_entry->second.get();
 	}
 
 	BinaryExecutor::Execute<int64_t, int64_t, int64_t>(args.data[2], args.data[3], result, args.size(),
 	                                                   [&](int64_t src, int64_t cnt) {
 		                                                   int64_t edge_count = 0;
-		                                                   csr_entry->second->v[src + 2] = cnt;
+		                                                   csr->v[src + 2] = cnt;
 		                                                   edge_count = edge_count + cnt;
 		                                                   return edge_count;
 	                                                   });
