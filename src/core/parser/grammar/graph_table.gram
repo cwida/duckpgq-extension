@@ -18,8 +18,12 @@ DuckPGQPathSequence <- DuckPGQVertex DuckPGQEdgeVertex*
 DuckPGQEdgeVertex <- DuckPGQQuantifiedEdge DuckPGQVertex
 
 # Edges with optional quantifiers. The tokenizer reads "->*", "->?", "-*" and "-?" as one operator token, so those
-# fused endpoint/quantifier spellings are accepted as a unit.
-DuckPGQQuantifiedEdge <- DuckPGQEdgeLeft DuckPGQEdgeBody DuckPGQEdgeTail
+# fused endpoint/quantifier spellings are accepted as a unit. An abbreviated edge pattern (10.6, G044/G045) has no
+# body: -> <- - and <-> stand for an anonymous edge in that direction.
+DuckPGQQuantifiedEdge <- (DuckPGQEdgeLeft DuckPGQEdgeBody DuckPGQEdgeTail) / DuckPGQAbbreviatedEdge
+DuckPGQAbbreviatedEdge <- DuckPGQAbbreviatedFused / (DuckPGQAbbreviatedArrow DuckPGQQuantifier?)
+DuckPGQAbbreviatedFused <- '<-*' / '<-?' / ('<' '->*') / ('<' '->?') / ('<' '-*') / ('<' '-?') / DuckPGQFusedTail
+DuckPGQAbbreviatedArrow <- '<->' / ('<' '->') / ('<' '-' '>') / ('<' '-') / '->' / ('-' '>') / '-'
 DuckPGQEdgeLeft <- ('<' '-') / '-'
 DuckPGQEdgeTail <- DuckPGQFusedTail / (DuckPGQEdgeRight DuckPGQQuantifier?)
 DuckPGQFusedTail <- '->*' / '->?' / '-*' / '-?'

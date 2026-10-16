@@ -181,10 +181,61 @@ void ApplyQuantifier(PEGTransformer &transformer, optional_ptr<ParseResult> quan
 	subpath.upper = text == "?" ? 1 : unbounded;
 }
 
-// DuckPGQEdgeLeft DuckPGQEdgeBody DuckPGQEdgeTail
+PGQMatchType AbbreviatedEdgeDirection(const string &arrow) {
+	if (arrow == "<->") {
+		return PGQMatchType::MATCH_EDGE_LEFT_RIGHT;
+	}
+	if (arrow == "<-") {
+		return PGQMatchType::MATCH_EDGE_LEFT;
+	}
+	if (arrow == "->") {
+		return PGQMatchType::MATCH_EDGE_RIGHT;
+	}
+	return PGQMatchType::MATCH_EDGE_ANY;
+}
+
+// DuckPGQAbbreviatedFused / (DuckPGQAbbreviatedArrow DuckPGQQuantifier?): an anonymous edge without a body.
+unique_ptr<PathReference> TransformAbbreviatedEdge(PEGTransformer &transformer, ParseResult &parse_result,
+                                                   idx_t &anonymous_counter) {
+	auto edge = make_uniq<PathElement>(PGQPathReferenceType::PATH_ELEMENT);
+	edge->anonymous = true;
+	edge->variable_binding = "__pgq_anonymous_" + std::to_string(anonymous_counter++);
+
+	auto &choice = DuckPGQGetChoice(parse_result);
+	string fused_quantifier;
+	optional_ptr<ParseResult> quantifier;
+	bool has_quantifier;
+	if (choice.Name() == "DuckPGQAbbreviatedFused") {
+		auto fused = DuckPGQLiteralText(choice);
+		edge->match_type = AbbreviatedEdgeDirection(fused.substr(0, fused.size() - 1));
+		fused_quantifier = fused.substr(fused.size() - 1);
+		has_quantifier = true;
+	} else {
+		auto &list = choice.Cast<ListParseResult>();
+		edge->match_type = AbbreviatedEdgeDirection(DuckPGQLiteralText(list.GetChild(0)));
+		auto &optional_quantifier = list.Child<OptionalParseResult>(1);
+		has_quantifier = optional_quantifier.HasResult();
+		if (has_quantifier) {
+			quantifier = &optional_quantifier.GetResult();
+		}
+	}
+	if (!has_quantifier) {
+		return std::move(edge);
+	}
+	auto result = make_uniq<SubPath>(PGQPathReferenceType::SUBPATH);
+	result->path_list.push_back(std::move(edge));
+	ApplyQuantifier(transformer, quantifier, fused_quantifier, *result);
+	return std::move(result);
+}
+
+// (DuckPGQEdgeLeft DuckPGQEdgeBody DuckPGQEdgeTail) / DuckPGQAbbreviatedEdge
 unique_ptr<PathReference> TransformQuantifiedEdge(PEGTransformer &transformer, ParseResult &parse_result,
                                                   idx_t &anonymous_counter) {
-	auto &list = parse_result.Cast<ListParseResult>();
+	auto &choice = DuckPGQGetChoice(parse_result);
+	if (choice.Name() == "DuckPGQAbbreviatedEdge") {
+		return TransformAbbreviatedEdge(transformer, choice, anonymous_counter);
+	}
+	auto &list = choice.Cast<ListParseResult>();
 	auto edge = TransformElement(transformer, list.GetChild(1), PGQMatchType::MATCH_EDGE_ANY, anonymous_counter);
 	auto left = DuckPGQLiteralText(list.GetChild(0));
 

@@ -1,0 +1,118 @@
+# name: test/sql/conformance/G044_abbreviated_edges.test
+# description: 10.6 <abbreviated edge pattern>: ->, <-, - and <-> are anonymous edges (G044, G045)
+# group: [conformance]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+# A directed chain 1 -> 2 -> 3.
+statement ok
+CREATE TABLE v(id INT); INSERT INTO v VALUES (1), (2), (3);
+
+statement ok
+CREATE TABLE e(src INT, dst INT); INSERT INTO e VALUES (1, 2), (2, 3);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (v LABEL V)
+EDGE TABLES (e SOURCE KEY (src) REFERENCES v (id) DESTINATION KEY (dst) REFERENCES v (id) LABEL E);
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)->(b:V) COLUMNS (a.id AS a, b.id AS b)) ORDER BY a, b;
+----
+1	2
+2	3
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)<-(b:V) COLUMNS (a.id AS a, b.id AS b)) ORDER BY a, b;
+----
+2	1
+3	2
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-(b:V) COLUMNS (a.id AS a, b.id AS b)) ORDER BY a, b;
+----
+1	2
+2	1
+2	3
+3	2
+
+# <-> requires an edge in each direction; the chain has none.
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)<->(b:V) COLUMNS (a.id AS a, b.id AS b));
+----
+
+# Abbreviated edges concatenate like full ones.
+query III
+FROM GRAPH_TABLE (g MATCH (a:V)->(b:V)->(c:V) COLUMNS (a.id AS a, b.id AS b, c.id AS c));
+----
+1	2	3
+
+# REPEATABLE ELEMENTS: a and c may bind to the same vertex.
+query III
+FROM GRAPH_TABLE (g MATCH (a:V)<-(b:V)->(c:V) COLUMNS (a.id AS a, b.id AS b, c.id AS c)) ORDER BY b;
+----
+2	1	2
+3	2	3
+
+# Abbreviated edges take quantifiers, including the fused spellings ->* ->? <-* <-? -* -?.
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)->{1,2}(b:V) COLUMNS (a.id AS a, b.id AS b)) ORDER BY a, b;
+----
+1	2
+1	3
+2	3
+
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:V)->*(b:V) WHERE a.id = 1 COLUMNS (a.id AS a, b.id AS b, path_length(p) AS len)) ORDER BY b;
+----
+1	1	0
+1	2	1
+1	3	2
+
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:V)<-*(b:V) WHERE a.id = 3 COLUMNS (a.id AS a, b.id AS b, path_length(p) AS len)) ORDER BY b;
+----
+3	1	2
+3	2	1
+3	3	0
+
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:V)-*(b:V) WHERE a.id = 2 COLUMNS (a.id AS a, b.id AS b, path_length(p) AS len)) ORDER BY b;
+----
+2	1	1
+2	2	0
+2	3	1
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-?(b:V) WHERE a.id = 2 COLUMNS (a.id AS a, b.id AS b)) ORDER BY b;
+----
+2	1
+2	2
+2	3
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)<-?(b:V) WHERE a.id = 2 COLUMNS (a.id AS a, b.id AS b)) ORDER BY b;
+----
+2	1
+2	2
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)->?(b:V) WHERE a.id = 2 COLUMNS (a.id AS a, b.id AS b)) ORDER BY b;
+----
+2	2
+2	3
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V) -> {2} (b:V) COLUMNS (a.id AS a, b.id AS b));
+----
+1	3
+
+# Without COLUMNS only the named vertices are exposed.
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)->(b:V)) ORDER BY 1;
+----
+1	2
+2	3

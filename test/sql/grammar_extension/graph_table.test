@@ -138,16 +138,20 @@ SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->{3,1}(b:Person) COLUMN
 ----
 Quantifier {3,1}: the lower bound must not exceed the upper bound
 
-# A quantifier needs an edge body, and an edge needs endpoints.
+# A quantifier follows the edge, not its body.
 statement error
 SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]*(b:Person));
 ----
 Parser Error
 
+# An abbreviated edge pattern is an anonymous edge; unbounded under ALL it is rejected by the binder, not the parser.
 statement error
 SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-> *(b:Person));
 ----
-Parser Error
+unbounded
+
+statement ok
+SELECT * FROM GRAPH_TABLE (pg MATCH ANY SHORTEST (a:Person)-> *(b:Person));
 
 # Multiple path patterns.
 query I

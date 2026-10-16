@@ -49,11 +49,9 @@ FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E] /-> *(n2:N));
 ----
 Parser Error: syntax error at or near
 
-# Not yet supported
-statement error
+# Abbreviated edge pattern with a quantifier.
+statement ok
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-> *(n2:N));
-----
-Parser Error: syntax error at or near
 
 # Anonymous edge pattern: the single edge table is inferred.
 statement ok
@@ -80,35 +78,29 @@ FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)-[e:E]<- *(n2:N));
 ----
 Parser Error: syntax error at or near
 
+# <-> parses as an abbreviated bidirectional edge; path-finding over it is not supported.
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-> *(n2:N));
 ----
-Parser Error: syntax error at or near
+Path-finding over a <-[e]-> edge pattern is not supported
 
 statement error
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< - > *(n2:N));
 ----
-Parser Error: syntax error at or near
+Path-finding over a <-[e]-> edge pattern is not supported
 
-statement error
+# Abbreviated left-pointing edges with a quantifier; the grammar is token-based, so spaces are allowed.
+statement ok
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<- *(n2:N));
-----
-Parser Error: syntax error at or near
 
-statement error
+statement ok
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< - *(n2:N));
-----
-Parser Error: syntax error at or near
 
-statement error
+statement ok
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< -*(n2:N));
-----
-Parser Error: syntax error at or near
 
-statement error
+statement ok
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)< -?(n2:N));
-----
-Parser Error: syntax error at or near
 
 statement ok
 FROM GRAPH_TABLE (testgraph MATCH ANY SHORTEST (n1:N)<-[e1:E]-?(n2:N));
