@@ -12,7 +12,7 @@
 #include "duckdb/main/connection.hpp"
 #include "duckdb/main/connection_manager.hpp"
 #include "duckdb/main/database_manager.hpp"
-#include "duckdb/main/materialized_query_result.hpp"
+#include "duckdb/main/query_result.hpp"
 #include "duckdb/main/prepared_statement.hpp"
 #include "duckpgq/core/utils/duckpgq_sql.hpp"
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
@@ -139,14 +139,17 @@ static void ExecuteStatement(Connection &connection, const string &statement, co
 	ThrowOnQueryError(*result, operation);
 }
 
-static unique_ptr<MaterializedQueryResult> ExecutePrepared(PreparedStatement &statement, vector<Value> values,
-                                                           const string &operation) {
-	auto result = statement.Execute(values, false);
+static unique_ptr<QueryResult> ExecutePrepared(PreparedStatement &statement, vector<Value> values,
+                                               const string &operation) {
+	auto result = statement.Execute(values);
 	ThrowOnQueryError(*result, operation);
-	if (result->GetResultType() != QueryResultType::MATERIALIZED_RESULT) {
-		throw InternalException("Expected a materialized result while attempting to %s", operation);
-	}
-	return unique_ptr_cast<QueryResult, MaterializedQueryResult>(std::move(result));
+	// Materialize up front so that callers can read rows by position
+	result->Complete();
+	return result;
+}
+
+static Value ResultValue(QueryResult &result, idx_t column, idx_t row) {
+	return result.Collection().GetValue(column, row);
 }
 
 static const vector<LogicalType> PERSISTED_SEGMENT_TYPES {
@@ -427,8 +430,8 @@ static optional<TriggerRecord> FindTrigger(Connection &connection, const Physica
 		throw InternalException("Expected one trigger named '%s' on table '%s.%s.%s'", trigger_name, table.catalog_name,
 		                        table.schema_name, table.table_name);
 	}
-	return TriggerRecord {result->GetValue(0, 0).GetValue<string>(), ReadStringList(result->GetValue(1, 0)),
-	                      result->GetValue(2, 0).GetValue<string>(), result->GetValue(3, 0).GetValue<string>()};
+	return TriggerRecord {ResultValue(*result, 0, 0).GetValue<string>(), ReadStringList(ResultValue(*result, 1, 0)),
+	                      ResultValue(*result, 2, 0).GetValue<string>(), ResultValue(*result, 3, 0).GetValue<string>()};
 }
 
 static optional<TriggerRecord> FindTriggerOwner(Connection &connection, const PhysicalTableIdentity &table,
@@ -446,8 +449,8 @@ static optional<TriggerRecord> FindTriggerOwner(Connection &connection, const Ph
 	if (result->RowCount() == 0) {
 		return optional<TriggerRecord>();
 	}
-	return TriggerRecord {result->GetValue(0, 0).GetValue<string>(), ReadStringList(result->GetValue(1, 0)),
-	                      result->GetValue(2, 0).GetValue<string>(), result->GetValue(3, 0).GetValue<string>()};
+	return TriggerRecord {ResultValue(*result, 0, 0).GetValue<string>(), ReadStringList(ResultValue(*result, 1, 0)),
+	                      ResultValue(*result, 2, 0).GetValue<string>(), ResultValue(*result, 3, 0).GetValue<string>()};
 }
 
 static void VerifyOwnedTrigger(const PhysicalTableIdentity &table, const string &trigger_name,
@@ -583,7 +586,7 @@ static void RefreshOwnedTriggers(ClientContext &context, Connection &connection,
 	}
 	set<string> update_column_set;
 	for (idx_t row_idx = 0; row_idx < dependencies->RowCount(); row_idx++) {
-		for (const auto &column : ReadStringList(dependencies->GetValue(0, row_idx))) {
+		for (const auto &column : ReadStringList(ResultValue(*dependencies, 0, row_idx))) {
 			update_column_set.insert(column);
 		}
 	}
@@ -646,7 +649,7 @@ static uint64_t GetNextGeneration(Connection &connection, const string &logical_
 		throw IOException("Failed to prepare CSR generation lookup: %s", statement->GetError());
 	}
 	auto result = ExecutePrepared(*statement, {Value(logical_key)}, "look up CSR generation");
-	auto current_generation = result->GetValue(0, 0).GetValue<uint64_t>();
+	auto current_generation = ResultValue(*result, 0, 0).GetValue<uint64_t>();
 	if (current_generation == std::numeric_limits<uint64_t>::max()) {
 		throw OutOfRangeException("CSR generation counter exhausted for logical key '%s'", logical_key);
 	}
@@ -664,7 +667,7 @@ uint64_t GetPartitionedCSRGeneration(ClientContext &context, const string &logic
 			return 0;
 		}
 		auto result = ExecutePrepared(*statement, {Value(logical_key)}, "read CSR generation token");
-		return result->RowCount() == 1 ? result->GetValue(0, 0).GetValue<uint64_t>() : 0;
+		return result->RowCount() == 1 ? ResultValue(*result, 0, 0).GetValue<uint64_t>() : 0;
 	} catch (const Exception &) {
 		return 0;
 	} catch (const std::exception &) {
@@ -721,9 +724,9 @@ uint64_t PersistPartitionedCSR(ClientContext &context, const string &logical_key
 		auto old_dependency_rows =
 		    ExecutePrepared(*old_dependencies, {Value(logical_key)}, "look up old CSR dependencies");
 		for (idx_t row_idx = 0; row_idx < old_dependency_rows->RowCount(); row_idx++) {
-			affected_tables.insert({old_dependency_rows->GetValue(0, row_idx).GetValue<string>(),
-			                        old_dependency_rows->GetValue(1, row_idx).GetValue<string>(),
-			                        old_dependency_rows->GetValue(2, row_idx).GetValue<string>()});
+			affected_tables.insert({ResultValue(*old_dependency_rows, 0, row_idx).GetValue<string>(),
+			                        ResultValue(*old_dependency_rows, 1, row_idx).GetValue<string>(),
+			                        ResultValue(*old_dependency_rows, 2, row_idx).GetValue<string>()});
 		}
 		Appender segment_appender(connection, "__duckpgq_csr_segments", 16ULL * 1024ULL * 1024ULL);
 
@@ -826,15 +829,15 @@ static shared_ptr<PartitionedCSRIndex> LoadPersistedPartitionedCSR(Connection &c
 		return nullptr;
 	}
 
-	auto generation = registry->GetValue(0, 0).GetValue<uint64_t>();
-	auto valid = registry->GetValue(1, 0).GetValue<bool>();
-	auto format_version = registry->GetValue(2, 0).GetValue<uint32_t>();
-	auto vertex_count = registry->GetValue(3, 0).GetValue<uint64_t>();
-	auto edge_count = registry->GetValue(4, 0).GetValue<uint64_t>();
-	auto capabilities_value = registry->GetValue(5, 0).GetValue<uint8_t>();
-	auto layout = registry->GetValue(6, 0).GetValue<string>();
-	auto partition_count = registry->GetValue(7, 0).GetValue<uint64_t>();
-	auto expected_segment_count = registry->GetValue(8, 0).GetValue<uint64_t>();
+	auto generation = ResultValue(*registry, 0, 0).GetValue<uint64_t>();
+	auto valid = ResultValue(*registry, 1, 0).GetValue<bool>();
+	auto format_version = ResultValue(*registry, 2, 0).GetValue<uint32_t>();
+	auto vertex_count = ResultValue(*registry, 3, 0).GetValue<uint64_t>();
+	auto edge_count = ResultValue(*registry, 4, 0).GetValue<uint64_t>();
+	auto capabilities_value = ResultValue(*registry, 5, 0).GetValue<uint8_t>();
+	auto layout = ResultValue(*registry, 6, 0).GetValue<string>();
+	auto partition_count = ResultValue(*registry, 7, 0).GetValue<uint64_t>();
+	auto expected_segment_count = ResultValue(*registry, 8, 0).GetValue<uint64_t>();
 	if (!valid || format_version != PARTITIONED_CSR_FORMAT_VERSION || vertex_count != expected_vertex_count ||
 	    edge_count != expected_edge_count || layout != PERSISTED_LAYOUT || partition_count == 0 ||
 	    (capabilities_value & ~KNOWN_CAPABILITY_MASK) != 0) {
@@ -881,7 +884,7 @@ static shared_ptr<PartitionedCSRIndex> LoadPersistedPartitionedCSR(Connection &c
 		vector<DecodedSegment> decoded_batch;
 		vector<Value> segment_parameters {Value(logical_key), Value::UBIGINT(generation),
 		                                  Value::UBIGINT(partition_begin), Value::UBIGINT(partition_end)};
-		auto segments = segment_statement->Execute(segment_parameters, true);
+		auto segments = segment_statement->Execute(segment_parameters);
 		ThrowOnQueryError(*segments, "load CSR segments");
 		while (auto chunk = segments->Fetch()) {
 			for (idx_t row_idx = 0; row_idx < chunk->size(); row_idx++) {
@@ -997,13 +1000,13 @@ bool IsPersistedPartitionedCSRCurrent(ClientContext &context, const string &logi
 		if (result->RowCount() != 1) {
 			return false;
 		}
-		auto capabilities = result->GetValue(5, 0).GetValue<uint8_t>();
-		return result->GetValue(0, 0).GetValue<bool>() &&
-		       result->GetValue(1, 0).GetValue<uint64_t>() == index.persisted_generation &&
-		       result->GetValue(2, 0).GetValue<uint32_t>() == PARTITIONED_CSR_FORMAT_VERSION &&
-		       result->GetValue(3, 0).GetValue<uint64_t>() == index.vertex_count &&
-		       result->GetValue(4, 0).GetValue<uint64_t>() == index.edge_count &&
-		       result->GetValue(6, 0).GetValue<string>() == PERSISTED_LAYOUT &&
+		auto capabilities = ResultValue(*result, 5, 0).GetValue<uint8_t>();
+		return ResultValue(*result, 0, 0).GetValue<bool>() &&
+		       ResultValue(*result, 1, 0).GetValue<uint64_t>() == index.persisted_generation &&
+		       ResultValue(*result, 2, 0).GetValue<uint32_t>() == PARTITIONED_CSR_FORMAT_VERSION &&
+		       ResultValue(*result, 3, 0).GetValue<uint64_t>() == index.vertex_count &&
+		       ResultValue(*result, 4, 0).GetValue<uint64_t>() == index.edge_count &&
+		       ResultValue(*result, 6, 0).GetValue<string>() == PERSISTED_LAYOUT &&
 		       (capabilities & ~KNOWN_CAPABILITY_MASK) == 0 &&
 		       HasPartitionedCSRCapabilities(static_cast<PartitionedCSRCapabilities>(capabilities),
 		                                     PartitionedCSRCapabilities::FORWARD);
@@ -1046,9 +1049,8 @@ void DropPartitionedCSRArtifacts(ClientContext &context, const CreatePropertyGra
 		                                   "SELECT logical_key FROM __duckpgq_csr_dependencies UNION "
 		                                   "SELECT logical_key FROM __duckpgq_csr_segments");
 		ThrowOnQueryError(*key_result, "list property-graph CSR artifacts");
-		auto &materialized = key_result->Cast<MaterializedQueryResult>();
-		for (idx_t row_idx = 0; row_idx < materialized.RowCount(); row_idx++) {
-			auto logical_key = materialized.GetValue(0, row_idx).GetValue<string>();
+		for (idx_t row_idx = 0; row_idx < key_result->RowCount(); row_idx++) {
+			auto logical_key = ResultValue(*key_result, 0, row_idx).GetValue<string>();
 			if (LogicalKeyBelongsToPropertyGraph(logical_key, property_graph.property_graph_name)) {
 				logical_keys.push_back(std::move(logical_key));
 			}
@@ -1064,9 +1066,9 @@ void DropPartitionedCSRArtifacts(ClientContext &context, const CreatePropertyGra
 		for (const auto &logical_key : logical_keys) {
 			auto dependencies = ExecutePrepared(*find_dependencies, {Value(logical_key)}, "find CSR cleanup tables");
 			for (idx_t row_idx = 0; row_idx < dependencies->RowCount(); row_idx++) {
-				affected_tables.insert({dependencies->GetValue(0, row_idx).GetValue<string>(),
-				                        dependencies->GetValue(1, row_idx).GetValue<string>(),
-				                        dependencies->GetValue(2, row_idx).GetValue<string>()});
+				affected_tables.insert({ResultValue(*dependencies, 0, row_idx).GetValue<string>(),
+				                        ResultValue(*dependencies, 1, row_idx).GetValue<string>(),
+				                        ResultValue(*dependencies, 2, row_idx).GetValue<string>()});
 			}
 			ExecutePrepared(*delete_dependencies, {Value(logical_key)}, "delete CSR dependencies");
 			ExecutePrepared(*delete_segments, {Value(logical_key)}, "delete CSR segments");

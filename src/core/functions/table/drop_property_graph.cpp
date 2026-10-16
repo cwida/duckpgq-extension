@@ -38,13 +38,14 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(ClientContext &context, Ta
 	auto pg_info = bind_data.drop_pg_info;
 	auto duckpgq_state = GetDuckPGQState(context);
 
-	if (!duckpgq_state->TryGetPropertyGraph(context, pg_info->GetQualifiedName())) {
+	auto property_graph = duckpgq_state->TryGetPropertyGraph(context, pg_info->GetQualifiedName());
+	if (!property_graph) {
 		if (pg_info->missing_ok) {
 			return; // Do nothing
 		}
 		throw BinderException("Property graph %s does not exist.", pg_info->GetQualifiedName().ToString());
 	}
-	DropPartitionedCSRArtifacts(context, registered_pg->second->Cast<CreatePropertyGraphInfo>());
+	DropPartitionedCSRArtifacts(context, *property_graph);
 
 	for (auto &connection : ConnectionManager::Get(*context.db).GetConnectionList()) {
 		auto local_state = connection->registered_state->Get<DuckPGQState>("duckpgq");

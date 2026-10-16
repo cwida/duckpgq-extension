@@ -6,6 +6,10 @@ require duckpgq
 
 load {TEST_DIR}/csr_thread_matrix.db
 
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
 statement ok
 CREATE TABLE matrix_vertex(id BIGINT);
 
@@ -47,6 +51,9 @@ CHECKPOINT;
 foreach query_threads 1 2 4 8 16
 
 restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
 
 statement ok
 SET experimental_path_finding_operator = true;

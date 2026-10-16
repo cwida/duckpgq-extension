@@ -6,6 +6,10 @@ require duckpgq
 
 load {TEST_DIR}/csr_wal_replay.db
 
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
 statement ok
 SET wal_autocheckpoint = '1 TiB';
 
@@ -43,6 +47,9 @@ EDGE TABLES (
 restart
 
 statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
 SET wal_autocheckpoint = '1 TiB';
 
 statement ok
@@ -71,6 +78,9 @@ WHERE logical_key LIKE '%wal_graph|wal_edge|directed%';
 0
 
 restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
 
 statement ok
 SET experimental_path_finding_operator = true;

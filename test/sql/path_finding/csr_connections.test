@@ -6,6 +6,10 @@ require duckpgq
 
 load {TEST_DIR}/csr_connections.db
 
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
 statement ok
 SET experimental_path_finding_operator = true;
 
@@ -40,6 +44,15 @@ statement ok
 CHECKPOINT;
 
 restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con1
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con2
+SET active_grammar_extensions = ['duckpgq'];
 
 statement ok con1
 SET experimental_path_finding_operator = true;
@@ -141,6 +154,9 @@ WHERE logical_key LIKE '%connection_graph|connection_edge|directed%';
 # Exercise actual overlapping reader/mutator connections. Readers may observe either committed graph state,
 # but every query must finish without a deadlock, stale-pointer crash, or partial artifact publication.
 concurrentloop threadid 0 4
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
 
 statement ok
 SET experimental_path_finding_operator = true;
