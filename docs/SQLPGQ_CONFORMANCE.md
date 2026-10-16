@@ -14,6 +14,7 @@ feature IDs they exercise. Each test file states the clause it is derived from.
 |---|---|
 | Default match mode (ID022) | `REPEATABLE ELEMENTS`. Vertices and edges may repeat within a match. |
 | Element identity | A graph element is a row of one vertex or edge table; `rowid` is its identity. Every element pattern therefore binds to exactly one table. |
+| Element pattern without a label | Standard: matches any element. DuckPGQ: a named element whose variable is a registered label uses that label (historical reading, `(a)` is `(a:a)`); otherwise the table is inferred when exactly one vertex table, or exactly one edge table connecting the endpoint tables in the pattern's direction, exists. Anything else is a binder error. |
 | Tie-breaking in `ANY SHORTEST` | Whichever path the breadth-first search reaches first; not stable across runs. |
 | Edge tables with a `source` equal to the `destination` table | Undirected patterns `-[e]-` match each edge in both directions. |
 
@@ -37,8 +38,8 @@ grammar, rejected by the binder with a clear error), **no**.
 | **G001** | `REPEATABLE ELEMENTS` match mode | yes | Default; not spelled out in the grammar yet |
 | G002, G003 | `DIFFERENT EDGES`, explicit `REPEATABLE ELEMENTS` | no | |
 | **G034** | Path concatenation | yes | |
-| **G040** | Vertex pattern | partial | Variable name required; anonymous `()` not accepted |
-| **G042** | Basic full edge patterns `-[]->`, `<-[]-`, `-[]-` | partial | Variable name required. All three directions work with quantifiers |
+| **G040** | Vertex pattern | yes | Anonymous `()` binds to the only vertex table; with several vertex tables a label is required |
+| **G042** | Basic full edge patterns `-[]->`, `<-[]-`, `-[]-` | yes | Anonymous `-[]->` binds to the only edge table that connects its endpoints in that direction |
 | G043 | Complete full edge patterns `<-[]->`, `~[]~`, `<~[]~`, `~[]~>` | partial | `<-[]->` only, and not with a quantifier |
 | G044, G045 | Abbreviated edge patterns `->`, `<-`, `-`, `<->` | no | |
 | G046, G047 | Relaxed topological consistency | no | |
@@ -78,6 +79,7 @@ grammar, rejected by the binder with a clear error), **no**.
 
 Most recent first. Each entry names the commit's scope and the feature IDs it touched.
 
+- Anonymous vertex and edge patterns `()`, `(:L)`, `-[]->`, `-[:L]->` (10.6, G040, G042; issue #195). The label of an anonymous element is inferred when exactly one table fits; otherwise the binder names the candidates. Adds `G040_anonymous_elements.test`.
 - `?`, `{0,1}` and `{,1}` include the zero-length path. They were evaluated as a plain edge join, so `(a)-[e]->?(b)` never returned `a` itself. G037, G060.
 - Left-pointing edges `<-[e]-` with a quantifier are evaluated along the edge direction (4.7.2); previously a NotImplementedException. Adds `G042_edge_direction.test`, which also pins the directed semantics of `-[e]->` with quantifiers (issue #284).
 - Quantifier bounds (10.7 SR 3): `{0,0}`, `{0}`, `{,0}` and `{3,1}` are syntax errors. G060, G061; closes #9.
