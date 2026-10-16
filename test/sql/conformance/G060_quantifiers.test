@@ -1,0 +1,93 @@
+# name: test/sql/conformance/G060_quantifiers.test
+# description: 10.7 <graph pattern quantifier>: normalisation and bounds (G035, G036, G037, G060, G061)
+# group: [conformance]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+# A directed graph without cycles or parallel edges, so every vertex pair has at most one path and
+# ALL, ANY and ANY SHORTEST agree on the result: 1 -> 2 -> 3 and 1 -> 4.
+statement ok
+CREATE TABLE v(id INT); INSERT INTO v VALUES (1), (2), (3), (4);
+
+statement ok
+CREATE TABLE e(src INT, dst INT); INSERT INTO e VALUES (1, 2), (2, 3), (1, 4);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (v LABEL V)
+EDGE TABLES (e SOURCE KEY (src) REFERENCES v (id) DESTINATION KEY (dst) REFERENCES v (id) LABEL E);
+
+# 10.7 GR: * is {0,}, so the zero-length path from a vertex to itself is included.
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:V)-[x:E]->*(b:V) WHERE a.id = 1 COLUMNS (a.id AS a, b.id AS b, path_length(p) AS len))
+ORDER BY b;
+----
+1	1	0
+1	2	1
+1	3	2
+1	4	1
+
+# 10.7 GR: + is {1,}.
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:V)-[x:E]->+(b:V) WHERE a.id = 1 COLUMNS (a.id AS a, b.id AS b, path_length(p) AS len))
+ORDER BY b;
+----
+1	2	1
+1	3	2
+1	4	1
+
+# {n} is {n,n}.
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->{2}(b:V) COLUMNS (a.id AS a, b.id AS b));
+----
+1	3
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->{1,2}(b:V) WHERE a.id = 1 COLUMNS (a.id AS a, b.id AS b))
+ORDER BY b;
+----
+1	2
+1	3
+1	4
+
+# {n,} has no upper bound; {,m} has lower bound 0.
+query II
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:V)-[x:E]->{2,}(b:V) WHERE a.id = 1 COLUMNS (a.id AS a, b.id AS b));
+----
+1	3
+
+# 10.7 SR 3a: the upper bound shall be greater than 0 (issue #9).
+statement error
+FROM GRAPH_TABLE (g MATCH ANY SHORTEST (a:V)-[x:E]->{0,0}(b:V) COLUMNS (a.id, b.id));
+----
+Parser Error: Quantifier {0}: the upper bound must be greater than 0
+
+statement error
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->{0}(b:V) COLUMNS (a.id, b.id));
+----
+Parser Error: Quantifier {0}: the upper bound must be greater than 0
+
+statement error
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->{,0}(b:V) COLUMNS (a.id, b.id));
+----
+Parser Error: Quantifier {0}: the upper bound must be greater than 0
+
+# 10.7 SR 3b: the lower bound shall not exceed the upper bound.
+statement error
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->{3,1}(b:V) COLUMNS (a.id, b.id));
+----
+Parser Error: Quantifier {3,1}: the lower bound must not exceed the upper bound
+
+# 10.4 SR 14: an unbounded quantifier under ALL with path mode WALK is rejected.
+statement error
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->*(b:V) COLUMNS (a.id, b.id));
+----
+unbounded
+
+statement error
+FROM GRAPH_TABLE (g MATCH (a:V)-[x:E]->{2,}(b:V) COLUMNS (a.id, b.id));
+----
+unbounded

@@ -136,7 +136,7 @@ SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->{2}(b:Person) COLUMNS 
 statement error
 SELECT * FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->{3,1}(b:Person) COLUMNS (b.name));
 ----
-Lower bound greater than upper bound
+Quantifier {3,1}: the lower bound must not exceed the upper bound
 
 # A quantifier needs an edge body, and an edge needs endpoints.
 statement error

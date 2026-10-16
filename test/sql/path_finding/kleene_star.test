@@ -94,7 +94,7 @@ FROM GRAPH_TABLE(testgraph
       COLUMNS (n1.id, n2.id, element_id(p), edges(p) AS path_edges, path_length(p))
 );
 ----
-Constraint Error: Lower bound greater than upper bound
+Parser Error: Quantifier {3,1}: the lower bound must not exceed the upper bound
 
 query IIIII
 FROM GRAPH_TABLE(testgraph

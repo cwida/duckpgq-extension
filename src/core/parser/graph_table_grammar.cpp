@@ -126,6 +126,28 @@ PGQMatchType EdgeDirection(const string &left, const string &right) {
 	return PGQMatchType::MATCH_EDGE_ANY;
 }
 
+// 10.7 <graph pattern quantifier>: *, + and ? normalise to {0,}, {1,} and {0,1}; {n} to {n,n}; {n,} and {,m} to
+// {n,} and {0,m}. SR 3 requires the upper bound to be greater than zero and not smaller than the lower bound.
+void CheckQuantifierBounds(int64_t lower, int64_t upper, const string &text) {
+	if (lower < 0 || upper < 0) {
+		throw ParserException("Quantifier %s: bounds must be non-negative", text);
+	}
+	if (upper == 0) {
+		throw ParserException("Quantifier %s: the upper bound must be greater than 0", text);
+	}
+	if (lower > upper) {
+		throw ParserException("Quantifier %s: the lower bound must not exceed the upper bound", text);
+	}
+}
+
+string QuantifierText(int64_t lower, int64_t upper) {
+	auto unbounded = NumericLimits<int64_t>::Maximum();
+	if (lower == upper) {
+		return "{" + std::to_string(lower) + "}";
+	}
+	return "{" + std::to_string(lower) + "," + (upper == unbounded ? "" : std::to_string(upper)) + "}";
+}
+
 void ApplyQuantifier(PEGTransformer &transformer, optional_ptr<ParseResult> quantifier, const string &fused_quantifier,
                      SubPath &subpath) {
 	auto unbounded = NumericLimits<int64_t>::Maximum();
@@ -136,6 +158,7 @@ void ApplyQuantifier(PEGTransformer &transformer, optional_ptr<ParseResult> quan
 			auto fixed = TransformNumber(transformer, choice.Cast<ListParseResult>().GetChild(1));
 			subpath.lower = fixed;
 			subpath.upper = fixed;
+			CheckQuantifierBounds(subpath.lower, subpath.upper, QuantifierText(subpath.lower, subpath.upper));
 			return;
 		}
 		if (choice.Name() == "DuckPGQRangeQuantifier") {
@@ -144,9 +167,7 @@ void ApplyQuantifier(PEGTransformer &transformer, optional_ptr<ParseResult> quan
 			auto &upper = range.Child<OptionalParseResult>(3);
 			subpath.lower = lower.HasResult() ? TransformNumber(transformer, lower.GetResult()) : 0;
 			subpath.upper = upper.HasResult() ? TransformNumber(transformer, upper.GetResult()) : unbounded;
-			if (subpath.lower > subpath.upper) {
-				throw ConstraintException("Lower bound greater than upper bound");
-			}
+			CheckQuantifierBounds(subpath.lower, subpath.upper, QuantifierText(subpath.lower, subpath.upper));
 			return;
 		}
 		text = DuckPGQLiteralText(choice);

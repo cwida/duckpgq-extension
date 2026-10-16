@@ -62,7 +62,7 @@ grammar, rejected by the binder with a clear error), **no**.
 | G035, G036 | Quantified paths and edges | partial | Edges only; bounds are a post-filter on the shortest length |
 | G037 | Questioned path primary `?` | partial | Treated as `{0,1}`; variables are not exposed as conditional singletons |
 | G038, G048 to G051 | Parenthesised path patterns, subpath variables and modes | parse | |
-| G060, G061 | Bounded / unbounded quantifiers | partial | `{0,0}` is accepted but must be rejected (10.7 SR 3) |
+| G060, G061 | Bounded / unbounded quantifiers | yes | 10.7 SR 3 bounds checks: upper bound > 0, lower <= upper (issue #9) |
 | G039, G080 to G082 | Simplified path pattern expression `-/ /->` | no | |
 | G100 | `ELEMENT_ID` | partial | Path variables only |
 | G800 to G803 | `PATH_NAME`, `ELEMENT_NUMBER`, `PATH_LENGTH`, `MATCHNUM` | partial | `PATH_LENGTH` only |
@@ -78,4 +78,5 @@ grammar, rejected by the binder with a clear error), **no**.
 
 Most recent first. Each entry names the commit's scope and the feature IDs it touched.
 
+- Quantifier bounds (10.7 SR 3): `{0,0}`, `{0}`, `{,0}` and `{3,1}` are syntax errors. G060, G061; closes #9.
 - Added this document and the `test/sql/conformance/` layout.
