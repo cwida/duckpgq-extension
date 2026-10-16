@@ -33,6 +33,8 @@ enum class FactorizedAggregateKind : uint8_t { COUNT_STAR, COUNT, SUM, MIN_MAX }
 class FactorizedJoinOptimizer {
 public:
 	static constexpr const char *SETTING_NAME = "duckpgq_factorized_joins";
+	static constexpr const char *OPERATOR_SETTING_NAME = "duckpgq_factorized_join_operator";
+	static constexpr const char *DIRECTORY_SETTING_NAME = "duckpgq_factorized_join_directory";
 
 	FactorizedJoinOptimizer(ClientContext &context, Optimizer &optimizer);
 
@@ -47,6 +49,10 @@ private:
 	//! fewer rows; returns the multiplicity columns that were added to the output (empty when nothing changed)
 	vector<FactorizedMultiplicity> Factorize(unique_ptr<LogicalOperator> &op, const column_binding_set_t &required);
 	vector<FactorizedMultiplicity> FactorizeJoin(unique_ptr<LogicalOperator> &op, const column_binding_set_t &required);
+	//! Replaces a join whose two sides are both only counted by a FACTORIZED_GROUP_JOIN
+	vector<FactorizedMultiplicity> FactorizeBothSides(unique_ptr<LogicalOperator> &op,
+	                                                  const column_binding_set_t (&key_bindings)[2],
+	                                                  idx_t key_estimate);
 	vector<FactorizedMultiplicity> FactorizeProjection(unique_ptr<LogicalOperator> &op,
 	                                                   const column_binding_set_t &required);
 	vector<FactorizedMultiplicity> FactorizeFilter(unique_ptr<LogicalOperator> &op,
@@ -70,12 +76,18 @@ private:
 	//! Whether pre-aggregating `side` by the join keys is expected to shrink it
 	static bool SideCollapses(const LogicalComparisonJoin &join, idx_t side);
 	static idx_t EstimateKeyCount(const LogicalComparisonJoin &join);
+	//! Bounds of a single integer join key from the statistics of both sides; false when unknown or too wide
+	bool GetDirectoryBounds(const LogicalComparisonJoin &join, Value &directory_min, idx_t &directory_range) const;
 
 private:
 	ClientContext &context;
 	Optimizer &optimizer;
 	unique_ptr<LogicalOperator> *root = nullptr;
 	bool changed = false;
+	//! Use the dedicated operator instead of GROUP BY + hash join when both join sides collapse
+	bool use_operator = true;
+	//! Let the operator count into a dense array when the key bounds are known
+	bool use_directory = true;
 };
 
 struct CoreOptimizer {

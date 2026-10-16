@@ -1,9 +1,13 @@
 #include "duckpgq/core/optimizer/factorized_join_optimizer.hpp"
 
+#include "duckpgq/core/operator/logical_factorized_group_join.hpp"
+#include "duckpgq/core/operator/physical_factorized_group_join.hpp"
+
 #include "duckdb/function/builtin_function_lookup.hpp"
 #include "duckdb/function/function_binder.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/optimizer/column_binding_replacer.hpp"
+#include "duckdb/optimizer/column_lifetime_analyzer.hpp"
 #include "duckdb/optimizer/optimizer.hpp"
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/expression/bound_aggregate_expression.hpp"
@@ -17,6 +21,9 @@
 #include "duckdb/planner/operator/logical_comparison_join.hpp"
 #include "duckdb/planner/operator/logical_filter.hpp"
 #include "duckdb/planner/operator/logical_projection.hpp"
+#include "duckdb/parallel/task_scheduler.hpp"
+#include "duckdb/storage/buffer_manager.hpp"
+#include "duckdb/storage/statistics/numeric_stats.hpp"
 
 namespace duckdb {
 
@@ -25,8 +32,9 @@ namespace duckdb {
 //===--------------------------------------------------------------------===//
 
 static void CollectColumnBindings(const Expression &expr, column_binding_set_t &result) {
-	ExpressionIterator::VisitExpression<BoundColumnRefExpression>(
-	    expr, [&](const BoundColumnRefExpression &ref) { result.insert(ref.Binding()); });
+	vector<ColumnBinding> bindings;
+	ColumnLifetimeAnalyzer::ExtractColumnBindings(expr, bindings);
+	result.insert(bindings.begin(), bindings.end());
 }
 
 static column_binding_set_t ToBindingSet(const vector<ColumnBinding> &bindings) {
@@ -101,21 +109,6 @@ static unique_ptr<Expression> ColumnRef(const FactorizedMultiplicity &multiplici
 	return make_uniq<BoundColumnRefExpression>(multiplicity.type, multiplicity.binding);
 }
 
-static bool FitsInBigint(const LogicalType &type) {
-	switch (type.id()) {
-	case LogicalTypeId::TINYINT:
-	case LogicalTypeId::SMALLINT:
-	case LogicalTypeId::INTEGER:
-	case LogicalTypeId::BIGINT:
-	case LogicalTypeId::UTINYINT:
-	case LogicalTypeId::USMALLINT:
-	case LogicalTypeId::UINTEGER:
-		return true;
-	default:
-		return false;
-	}
-}
-
 static bool IsFloating(const LogicalType &type) {
 	return type.id() == LogicalTypeId::FLOAT || type.id() == LogicalTypeId::DOUBLE;
 }
@@ -134,6 +127,14 @@ void FactorizedJoinOptimizer::Optimize(OptimizerExtensionInput &input, unique_pt
 		return;
 	}
 	FactorizedJoinOptimizer factorizer(input.context, input.optimizer);
+	Value use_operator;
+	if (input.context.TryGetCurrentSetting(Identifier(OPERATOR_SETTING_NAME), use_operator)) {
+		factorizer.use_operator = BooleanValue::Get(use_operator);
+	}
+	Value use_directory;
+	if (input.context.TryGetCurrentSetting(Identifier(DIRECTORY_SETTING_NAME), use_directory)) {
+		factorizer.use_directory = BooleanValue::Get(use_directory);
+	}
 	factorizer.Run(plan);
 }
 
@@ -178,7 +179,7 @@ bool FactorizedJoinOptimizer::GetAggregateKind(const BoundAggregateExpression &a
 		kind = FactorizedAggregateKind::COUNT;
 		return true;
 	}
-	if (name == "sum" && (FitsInBigint(input_type) || IsFloating(input_type))) {
+	if (name == "sum" && (FactorizedKeyFitsInBigint(input_type) || IsFloating(input_type))) {
 		kind = FactorizedAggregateKind::SUM;
 		return true;
 	}
@@ -333,9 +334,8 @@ vector<FactorizedMultiplicity> FactorizedJoinOptimizer::Factorize(unique_ptr<Log
 }
 
 vector<FactorizedMultiplicity> FactorizedJoinOptimizer::VisitChildren(unique_ptr<LogicalOperator> &op) {
-	for (auto &child : op->children) {
-		VisitOperator(child);
-	}
+	// Not factorized itself; it may still be, or contain, an aggregate that can be
+	VisitOperator(op);
 	return {};
 }
 
@@ -419,6 +419,10 @@ vector<FactorizedMultiplicity> FactorizedJoinOptimizer::FactorizeJoin(unique_ptr
 		aggregate_side[side] = required_side[side].empty() && SideCollapses(join, side);
 	}
 
+	if (use_operator && aggregate_side[0] && aggregate_side[1]) {
+		return FactorizeBothSides(op, key_bindings, key_estimate);
+	}
+
 	vector<FactorizedMultiplicity> result;
 	for (idx_t side = 0; side < 2; side++) {
 		auto &child = join.children[side];
@@ -500,6 +504,51 @@ FactorizedJoinOptimizer::CreateKeyAggregate(unique_ptr<LogicalOperator> child, v
 	return aggregate;
 }
 
+vector<FactorizedMultiplicity>
+FactorizedJoinOptimizer::FactorizeBothSides(unique_ptr<LogicalOperator> &op,
+                                            const column_binding_set_t (&key_bindings)[2], idx_t key_estimate) {
+	auto &join = op->Cast<LogicalComparisonJoin>();
+	// Nothing above needs either side beyond its keys: aggregate both into one table and emit one row per key
+	unique_ptr<Expression> weights[2];
+	for (idx_t side = 0; side < 2; side++) {
+		auto inner = Factorize(join.children[side], key_bindings[side]);
+		if (!inner.empty()) {
+			weights[side] = MultiplicityProduct(inner);
+		}
+	}
+	// Only now copy the keys: factorizing a side may have rebound the conditions
+	Value directory_min;
+	idx_t directory_range = 0;
+	if (use_directory) {
+		GetDirectoryBounds(join, directory_min, directory_range);
+	}
+	vector<unique_ptr<Expression>> keys[2];
+	for (auto &condition : join.conditions) {
+		keys[0].push_back(condition.GetLHS().Copy());
+		keys[1].push_back(condition.GetRHS().Copy());
+	}
+	auto group_index = optimizer.binder.GenerateTableIndex();
+	auto aggregate_index = optimizer.binder.GenerateTableIndex();
+	auto group_join =
+	    make_uniq<LogicalFactorizedGroupJoin>(group_index, aggregate_index, std::move(keys[0]), std::move(keys[1]),
+	                                          std::move(weights[0]), std::move(weights[1]));
+	group_join->directory_min = directory_min;
+	group_join->directory_range = directory_range;
+	group_join->children.push_back(std::move(join.children[0]));
+	group_join->children.push_back(std::move(join.children[1]));
+	group_join->ResolveOperatorTypes();
+	if (key_estimate != DConstants::INVALID_INDEX) {
+		group_join->SetEstimatedCardinality(key_estimate);
+	}
+	vector<FactorizedMultiplicity> result;
+	for (idx_t side = 0; side < 2; side++) {
+		result.push_back(FactorizedMultiplicity {ColumnBinding(aggregate_index, ProjectionIndex(side)),
+		                                         group_join->multiplicity_types[side]});
+	}
+	op = std::move(group_join);
+	return result;
+}
+
 //===--------------------------------------------------------------------===//
 // Expressions
 //===--------------------------------------------------------------------===//
@@ -523,16 +572,7 @@ FactorizedJoinOptimizer::MultiplicityProduct(const vector<FactorizedMultiplicity
 
 unique_ptr<BoundAggregateExpression> FactorizedJoinOptimizer::BindAggregate(const string &name,
                                                                             vector<unique_ptr<Expression>> children) {
-	vector<LogicalType> types;
-	for (auto &child : children) {
-		types.push_back(child->GetReturnType());
-	}
-	auto function = TryGetBuiltinAggregateFunction(context, Identifier(name), types);
-	if (!function) {
-		return nullptr;
-	}
-	FunctionBinder function_binder(context);
-	return function_binder.BindAggregateFunction(std::move(function), std::move(children));
+	return BindFactorizedAggregate(context, name, std::move(children));
 }
 
 //===--------------------------------------------------------------------===//
@@ -553,14 +593,52 @@ idx_t FactorizedJoinOptimizer::EstimateKeyCount(const LogicalComparisonJoin &joi
 	return MaxValue<idx_t>(static_cast<idx_t>(keys), 1);
 }
 
+bool FactorizedJoinOptimizer::GetDirectoryBounds(const LogicalComparisonJoin &join, Value &directory_min,
+                                                 idx_t &directory_range) const {
+	if (join.conditions.size() != 1) {
+		return false;
+	}
+	auto &condition = join.conditions[0];
+	if (!FactorizedKeyFitsInBigint(condition.GetLHS().GetReturnType())) {
+		return false;
+	}
+	auto &left_stats = condition.GetLeftStats();
+	auto &right_stats = condition.GetRightStats();
+	if (!left_stats || !right_stats || !NumericStats::HasMinMax(*left_stats) ||
+	    !NumericStats::HasMinMax(*right_stats)) {
+		return false;
+	}
+	// Cover both sides completely, so that a key outside the directory can only mean unsound statistics
+	auto min = MinValue<int64_t>(NumericStats::Min(*left_stats).GetValue<int64_t>(),
+	                             NumericStats::Min(*right_stats).GetValue<int64_t>());
+	auto max = MaxValue<int64_t>(NumericStats::Max(*left_stats).GetValue<int64_t>(),
+	                             NumericStats::Max(*right_stats).GetValue<int64_t>());
+	auto range = static_cast<uint64_t>(max) - static_cast<uint64_t>(min) + 1;
+	// Every sinking thread of both sides holds private counters for the whole range, plus the two shared
+	// arrays; these are not tracked by the buffer manager, so keep the worst case to a small share of memory
+	auto threads = NumericCast<uint64_t>(TaskScheduler::GetScheduler(context).NumberOfThreads());
+	auto max_memory = BufferManager::GetBufferManager(context).GetMaxMemory();
+	if (range > (1ULL << 23) || range * sizeof(int64_t) * (2 * threads + 2) > max_memory / 16) {
+		return false;
+	}
+	directory_min = Value::BIGINT(min);
+	directory_range = range;
+	return true;
+}
+
 bool FactorizedJoinOptimizer::SideCollapses(const LogicalComparisonJoin &join, idx_t side) {
 	auto keys = EstimateKeyCount(join);
 	if (keys == DConstants::INVALID_INDEX) {
 		// Without statistics the pre-aggregation costs at most about as much as the hash join build it replaces
 		return true;
 	}
+	// Pre-aggregating only pays for an n:m join. A side with many rows per matched key but a tiny other side
+	// (an edge table against a handful of filtered vertices) is served better by probing the small hash table,
+	// and a side whose key is unique gains nothing from being grouped; both show up as the other side having
+	// fewer than two rows per matched key.
 	auto rows = join.children[side]->estimated_cardinality;
-	return rows >= 2 * keys;
+	auto other_rows = join.children[1 - side]->estimated_cardinality;
+	return rows >= 2 * keys && other_rows >= 2 * keys;
 }
 
 //===--------------------------------------------------------------------===//
@@ -572,6 +650,14 @@ void CoreOptimizer::Register(ExtensionLoader &loader) {
 	config.AddExtensionOption(Identifier(FactorizedJoinOptimizer::SETTING_NAME),
 	                          "Pre-aggregate join sides that are only counted or summed above the join, so that "
 	                          "path counts become degree products instead of enumerating every path",
+	                          LogicalType::BOOLEAN, Value::BOOLEAN(true));
+	config.AddExtensionOption(Identifier(FactorizedJoinOptimizer::OPERATOR_SETTING_NAME),
+	                          "Use the FACTORIZED_GROUP_JOIN operator when both sides of a join are only counted or "
+	                          "summed, instead of separate GROUP BY aggregates and a hash join",
+	                          LogicalType::BOOLEAN, Value::BOOLEAN(true));
+	config.AddExtensionOption(Identifier(FactorizedJoinOptimizer::DIRECTORY_SETTING_NAME),
+	                          "Let FACTORIZED_GROUP_JOIN count into a dense array indexed by the key when the key "
+	                          "bounds are known, instead of a hash table",
 	                          LogicalType::BOOLEAN, Value::BOOLEAN(true));
 	OptimizerExtension extension;
 	extension.optimize_function = FactorizedJoinOptimizer::Optimize;

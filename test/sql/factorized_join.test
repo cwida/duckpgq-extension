@@ -20,11 +20,78 @@ INSERT INTO r VALUES (NULL, 0, 5000, 5000), (6, NULL, 5001, NULL);
 statement ok
 CREATE TABLE m AS SELECT i % 7 AS k, i % 3 AS g FROM range(1, 101) t(i);
 
-# Neither side is needed above the join, so both are pre-aggregated by the key
+# Neither side is needed above the join, so both are aggregated by the key into one table; the key bounds are
+# known from the statistics, so the counts live in a dense directory
+query II
+EXPLAIN SELECT count(*) FROM l JOIN r USING (k);
+----
+physical_plan	<REGEX>:.*Factorized Group Join.*Lookup: DIRECTORY.*
+
+statement ok
+SET duckpgq_factorized_join_directory = false;
+
+query II
+EXPLAIN SELECT count(*) FROM l JOIN r USING (k);
+----
+physical_plan	<REGEX>:.*Factorized Group Join.*Lookup: HASH.*
+
+query I
+SELECT count(*) FROM l JOIN r USING (k);
+----
+8615
+
+statement ok
+SET duckpgq_factorized_join_directory = true;
+
+# Negative keys and keys of different widths work in the directory
+statement ok
+CREATE TABLE neg_l AS SELECT (i % 9) - 4 AS k, i AS v FROM range(1, 201) t(i);
+
+statement ok
+CREATE TABLE neg_r AS SELECT ((i % 9) - 4)::SMALLINT AS k, i AS w FROM range(1, 101) t(i);
+
+query II
+EXPLAIN SELECT count(*) FROM neg_l JOIN neg_r ON neg_l.k = neg_r.k;
+----
+physical_plan	<REGEX>:.*Lookup: DIRECTORY.*
+
+query III
+SELECT count(*), sum(neg_l.v), sum(neg_r.w) FROM neg_l JOIN neg_r ON neg_l.k = neg_r.k;
+----
+2223	223400	112223
+
+# A key domain that is too wide for a directory falls back to the hash table
+statement ok
+CREATE TABLE sparse_l AS SELECT (i % 7) * 1000000000 AS k FROM range(1, 301) t(i);
+
+statement ok
+CREATE TABLE sparse_r AS SELECT (i % 7) * 1000000000 AS k FROM range(1, 201) t(i);
+
+query II
+EXPLAIN SELECT count(*) FROM sparse_l JOIN sparse_r USING (k);
+----
+physical_plan	<REGEX>:.*Factorized Group Join.*Lookup: HASH.*
+
+query I
+SELECT count(*) FROM sparse_l JOIN sparse_r USING (k);
+----
+8572
+
+statement ok
+SET duckpgq_factorized_join_operator = false;
+
 query II
 EXPLAIN SELECT count(*) FROM l JOIN r USING (k);
 ----
 physical_plan	<REGEX>:.*Hash Group By.*Hash Group By.*
+
+query I
+SELECT count(*) FROM l JOIN r USING (k);
+----
+8615
+
+statement ok
+SET duckpgq_factorized_join_operator = true;
 
 query I
 SELECT count(*) FROM l JOIN r USING (k);
@@ -146,6 +213,56 @@ SELECT count(*) FROM l JOIN r ON l.k = r.k WHERE l.nv IS NULL;
 
 query I
 SELECT count(*) FROM (SELECT 1 AS x FROM l JOIN r ON l.k = r.k) t WHERE x = 1;
+----
+8615
+
+# Recursive CTEs re-run the operator's pipelines; every iteration must start from empty counts
+query II
+WITH RECURSIVE t(n, c) AS (
+    SELECT 1, 0::BIGINT
+    UNION ALL
+    SELECT n + 1, s.c FROM t, (SELECT count(*) AS c FROM l JOIN r USING (k)) s WHERE n < 4)
+SELECT * FROM t ORDER BY n;
+----
+1	0
+2	8615
+3	8615
+4	8615
+
+statement ok
+SET duckpgq_factorized_join_directory = false;
+
+query II
+WITH RECURSIVE t(n, c) AS (
+    SELECT 1, 0::BIGINT
+    UNION ALL
+    SELECT n + 1, s.c FROM t, (SELECT count(*) AS c FROM l JOIN r USING (k)) s WHERE n < 4)
+SELECT * FROM t ORDER BY n;
+----
+1	0
+2	8615
+3	8615
+4	8615
+
+statement ok
+SET duckpgq_factorized_join_directory = true;
+
+# Prepared statements re-execute the same plan
+statement ok
+PREPARE two_hop AS SELECT count(*) FROM l JOIN r USING (k) WHERE l.v > $1;
+
+query I
+EXECUTE two_hop(0);
+----
+8615
+
+query I
+EXECUTE two_hop(150);
+----
+4307
+
+query I
+EXECUTE two_hop(0);
 ----
 8615
 
