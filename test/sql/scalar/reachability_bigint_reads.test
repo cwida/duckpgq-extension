@@ -1,0 +1,188 @@
+# name: test/sql/scalar/reachability_bigint_reads.test
+# description: reachability and iterativelengthbidirectional read the BIGINT columns as int64 (not as bytes)
+# group: [scalar]
+
+require duckpgq
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE OR REPLACE TABLE Know(src BIGINT, dst BIGINT, w BIGINT);
+INSERT INTO Know VALUES (0, 1, 5), (0, 2, 2), (0, 3, 9), (3, 0, 1), (1, 2, 1), (1, 3, 1), (2, 3, 3), (4, 3, 4);
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE OR REPLACE TABLE Know(src BIGINT, dst BIGINT, w BIGINT);
+INSERT INTO Know VALUES (0, 1, 5), (0, 2, 2), (0, 3, 9), (3, 0, 1), (1, 2, 1), (1, 3, 1), (2, 3, 3), (4, 3, 4);
+CREATE OR REPLACE TABLE KnowU AS SELECT src, dst, w FROM Know UNION SELECT dst, src, w FROM Know;
+
+statement ok
+SELECT CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Student a),
+            CAST ((SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Student a),
+                            sub.dense_id,
+                            sub.cnt))
+                FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt
+                      FROM Student a LEFT JOIN KnowU k ON k.src = a.id
+                      GROUP BY a.rowid) sub) AS BIGINT),
+            (SELECT count() FROM KnowU k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+            a.rowid,
+            c.rowid,
+            k.rowid) AS temp
+    FROM KnowU k
+    JOIN Student a ON a.id = k.src
+    JOIN Student c ON c.id = k.dst;
+
+# iterativelengthbidirectional on the undirected graph (every vertex reachable, 4 via 3)
+query III rowsort
+SELECT a.id, b.id, iterativelengthbidirectional(0, (SELECT count(*) FROM Student), a.rowid, b.rowid) FROM Student a, Student b;
+----
+0	0	0
+0	1	1
+0	2	1
+0	3	1
+0	4	2
+1	0	1
+1	1	0
+1	2	1
+1	3	1
+1	4	2
+2	0	1
+2	1	1
+2	2	0
+2	3	1
+2	4	2
+3	0	1
+3	1	1
+3	2	1
+3	3	0
+3	4	1
+4	0	2
+4	1	2
+4	2	2
+4	3	1
+4	4	0
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE OR REPLACE TABLE Know(src BIGINT, dst BIGINT, w BIGINT);
+INSERT INTO Know VALUES (0, 1, 5), (0, 2, 2), (0, 3, 9), (3, 0, 1), (1, 2, 1), (1, 3, 1), (2, 3, 3), (4, 3, 4);
+
+statement ok
+SELECT CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Student a),
+            CAST ((SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Student a),
+                            sub.dense_id,
+                            sub.cnt))
+                FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt
+                      FROM Student a LEFT JOIN Know k ON k.src = a.id
+                      GROUP BY a.rowid) sub) AS BIGINT),
+            (SELECT count() FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+            a.rowid,
+            c.rowid,
+            k.rowid) AS temp
+    FROM Know k
+    JOIN Student a ON a.id = k.src
+    JOIN Student c ON c.id = k.dst;
+
+# reachability (is_variant = false): is the target reachable from the source
+query III rowsort
+SELECT a.id, b.id, reachability(0, false, (SELECT count(*) FROM Student), a.rowid, b.rowid) FROM Student a, Student b;
+----
+0	0	true
+0	1	true
+0	2	true
+0	3	true
+0	4	false
+1	0	true
+1	1	true
+1	2	true
+1	3	true
+1	4	false
+2	0	true
+2	1	true
+2	2	true
+2	3	true
+2	4	false
+3	0	true
+3	1	true
+3	2	true
+3	3	true
+3	4	false
+4	0	true
+4	1	true
+4	2	true
+4	3	true
+4	4	true
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE OR REPLACE TABLE Know(src BIGINT, dst BIGINT, w BIGINT);
+INSERT INTO Know VALUES (0, 1, 5), (0, 2, 2), (0, 3, 9), (3, 0, 1), (1, 2, 1), (1, 3, 1), (2, 3, 3), (4, 3, 4);
+
+statement ok
+SELECT CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Student a),
+            CAST ((SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Student a),
+                            sub.dense_id,
+                            sub.cnt))
+                FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt
+                      FROM Student a LEFT JOIN Know k ON k.src = a.id
+                      GROUP BY a.rowid) sub) AS BIGINT),
+            (SELECT count() FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+            a.rowid,
+            c.rowid,
+            k.rowid) AS temp
+    FROM Know k
+    JOIN Student a ON a.id = k.src
+    JOIN Student c ON c.id = k.dst;
+
+# reachability (is_variant = true): is the target reachable from the source
+query III rowsort
+SELECT a.id, b.id, reachability(0, true, (SELECT count(*) FROM Student), a.rowid, b.rowid) FROM Student a, Student b;
+----
+0	0	true
+0	1	true
+0	2	true
+0	3	true
+0	4	false
+1	0	true
+1	1	true
+1	2	true
+1	3	true
+1	4	false
+2	0	true
+2	1	true
+2	2	true
+2	3	true
+2	4	false
+3	0	true
+3	1	true
+3	2	true
+3	3	true
+3	4	false
+4	0	true
+4	1	true
+4	2	true
+4	3	true
+4	4	true

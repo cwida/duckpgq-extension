@@ -108,7 +108,8 @@ static void ShortestPathFunction(DataChunk &args, ExpressionState &state, Vector
 			while (started_searches < args.size()) {
 				int64_t search_num = started_searches++;
 				auto src_pos = vdata_src.sel->get_index(search_num);
-				if (!vdata_src.validity.RowIsValid(src_pos)) {
+				auto dst_pos_check = vdata_dst.sel->get_index(search_num);
+				if (!vdata_src.validity.RowIsValid(src_pos) || !vdata_dst.validity.RowIsValid(dst_pos_check)) {
 					result_validity.SetInvalid(search_num);
 				} else {
 					visit1[src_data[src_pos]][lane] = true;
