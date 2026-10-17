@@ -1,0 +1,170 @@
+# name: test/sql/scalar/null_destination.test
+# description: a NULL destination yields NULL for iterativelength, iterativelength2, iterativelengthbidirectional, shortestpath
+# group: [scalar]
+
+require duckpgq
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE OR REPLACE TABLE Know(src BIGINT, dst BIGINT, w BIGINT);
+INSERT INTO Know VALUES (0, 1, 5), (0, 2, 2), (0, 3, 9), (3, 0, 1), (1, 2, 1), (1, 3, 1), (2, 3, 3), (4, 3, 4);
+CREATE OR REPLACE TABLE KnowU AS SELECT src, dst, w FROM Know UNION SELECT dst, src, w FROM Know;
+
+# iterativelength: interleaved NULL sources and destinations
+statement ok
+SELECT CREATE_CSR_EDGE(0, (SELECT count(a.id) FROM Student a),
+    CAST ((SELECT sum(CREATE_CSR_VERTEX(0, (SELECT count(a.id) FROM Student a), sub.dense_id, sub.cnt))
+           FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt FROM Student a
+                 LEFT JOIN Know k ON k.src = a.id GROUP BY a.rowid) sub) AS BIGINT),
+    (SELECT count() FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+    a.rowid, c.rowid, k.rowid) AS temp
+    FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst;
+
+query III rowsort
+SELECT x, y, iterativelength(0, 5, x, y) FROM (VALUES (0::BIGINT, 1::BIGINT), (0::BIGINT, NULL::BIGINT), (NULL::BIGINT, 2::BIGINT), (1::BIGINT, 3::BIGINT), (4::BIGINT, NULL::BIGINT), (NULL::BIGINT, NULL::BIGINT), (NULL::BIGINT, 3::BIGINT), (2::BIGINT, 3::BIGINT)) t(x, y);
+----
+0	1	1
+0	NULL	NULL
+NULL	2	NULL
+1	3	1
+4	NULL	NULL
+NULL	NULL	NULL
+NULL	3	NULL
+2	3	1
+
+# iterativelength2: interleaved NULL sources and destinations
+statement ok
+SELECT CREATE_CSR_EDGE(0, (SELECT count(a.id) FROM Student a),
+    CAST ((SELECT sum(CREATE_CSR_VERTEX(0, (SELECT count(a.id) FROM Student a), sub.dense_id, sub.cnt))
+           FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt FROM Student a
+                 LEFT JOIN Know k ON k.src = a.id GROUP BY a.rowid) sub) AS BIGINT),
+    (SELECT count() FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+    a.rowid, c.rowid, k.rowid) AS temp
+    FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst;
+
+query III rowsort
+SELECT x, y, iterativelength2(0, 5, x, y) FROM (VALUES (0::BIGINT, 1::BIGINT), (0::BIGINT, NULL::BIGINT), (NULL::BIGINT, 2::BIGINT), (1::BIGINT, 3::BIGINT), (4::BIGINT, NULL::BIGINT), (NULL::BIGINT, NULL::BIGINT), (NULL::BIGINT, 3::BIGINT), (2::BIGINT, 3::BIGINT)) t(x, y);
+----
+0	1	1
+0	NULL	NULL
+NULL	2	NULL
+1	3	1
+4	NULL	NULL
+NULL	NULL	NULL
+NULL	3	NULL
+2	3	1
+
+# iterativelengthbidirectional (undirected CSR): interleaved NULL sources and destinations
+statement ok
+SELECT CREATE_CSR_EDGE(0, (SELECT count(a.id) FROM Student a),
+    CAST ((SELECT sum(CREATE_CSR_VERTEX(0, (SELECT count(a.id) FROM Student a), sub.dense_id, sub.cnt))
+           FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt FROM Student a
+                 LEFT JOIN KnowU k ON k.src = a.id GROUP BY a.rowid) sub) AS BIGINT),
+    (SELECT count() FROM KnowU k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+    a.rowid, c.rowid, k.rowid) AS temp
+    FROM KnowU k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst;
+
+query III rowsort
+SELECT x, y, iterativelengthbidirectional(0, 5, x, y) FROM (VALUES (0::BIGINT, 1::BIGINT), (0::BIGINT, NULL::BIGINT), (NULL::BIGINT, 2::BIGINT), (1::BIGINT, 3::BIGINT), (4::BIGINT, NULL::BIGINT), (NULL::BIGINT, NULL::BIGINT), (NULL::BIGINT, 3::BIGINT), (2::BIGINT, 3::BIGINT)) t(x, y);
+----
+0	1	1
+0	NULL	NULL
+NULL	2	NULL
+1	3	1
+4	NULL	NULL
+NULL	NULL	NULL
+NULL	3	NULL
+2	3	1
+
+# shortestpath (vertex, edge, vertex ids): interleaved NULL sources and destinations
+statement ok
+SELECT CREATE_CSR_EDGE(0, (SELECT count(a.id) FROM Student a),
+    CAST ((SELECT sum(CREATE_CSR_VERTEX(0, (SELECT count(a.id) FROM Student a), sub.dense_id, sub.cnt))
+           FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt FROM Student a
+                 LEFT JOIN Know k ON k.src = a.id GROUP BY a.rowid) sub) AS BIGINT),
+    (SELECT count() FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+    a.rowid, c.rowid, k.rowid) AS temp
+    FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst;
+
+query III rowsort
+SELECT x, y, shortestpath(0, 5, x, y) FROM (VALUES (0::BIGINT, 1::BIGINT), (0::BIGINT, NULL::BIGINT), (NULL::BIGINT, 2::BIGINT), (1::BIGINT, 3::BIGINT), (4::BIGINT, NULL::BIGINT), (NULL::BIGINT, NULL::BIGINT), (NULL::BIGINT, 3::BIGINT), (2::BIGINT, 3::BIGINT)) t(x, y);
+----
+0	1	[0, 0, 1]
+0	NULL	NULL
+NULL	2	NULL
+1	3	[1, 5, 3]
+4	NULL	NULL
+NULL	NULL	NULL
+NULL	3	NULL
+2	3	[2, 6, 3]
+
+# iterativelength: all rows NULL
+statement ok
+SELECT CREATE_CSR_EDGE(0, (SELECT count(a.id) FROM Student a),
+    CAST ((SELECT sum(CREATE_CSR_VERTEX(0, (SELECT count(a.id) FROM Student a), sub.dense_id, sub.cnt))
+           FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt FROM Student a
+                 LEFT JOIN Know k ON k.src = a.id GROUP BY a.rowid) sub) AS BIGINT),
+    (SELECT count() FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+    a.rowid, c.rowid, k.rowid) AS temp
+    FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst;
+
+query III
+SELECT x, y, iterativelength(0, 5, x, y) FROM (VALUES (NULL::BIGINT, NULL::BIGINT), (NULL::BIGINT, 2::BIGINT), (1::BIGINT, NULL::BIGINT)) t(x, y);
+----
+NULL	NULL	NULL
+NULL	2	NULL
+1	NULL	NULL
+
+# iterativelength2: all rows NULL
+statement ok
+SELECT CREATE_CSR_EDGE(0, (SELECT count(a.id) FROM Student a),
+    CAST ((SELECT sum(CREATE_CSR_VERTEX(0, (SELECT count(a.id) FROM Student a), sub.dense_id, sub.cnt))
+           FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt FROM Student a
+                 LEFT JOIN Know k ON k.src = a.id GROUP BY a.rowid) sub) AS BIGINT),
+    (SELECT count() FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+    a.rowid, c.rowid, k.rowid) AS temp
+    FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst;
+
+query III
+SELECT x, y, iterativelength2(0, 5, x, y) FROM (VALUES (NULL::BIGINT, NULL::BIGINT), (NULL::BIGINT, 2::BIGINT), (1::BIGINT, NULL::BIGINT)) t(x, y);
+----
+NULL	NULL	NULL
+NULL	2	NULL
+1	NULL	NULL
+
+# iterativelengthbidirectional (undirected CSR): all rows NULL
+statement ok
+SELECT CREATE_CSR_EDGE(0, (SELECT count(a.id) FROM Student a),
+    CAST ((SELECT sum(CREATE_CSR_VERTEX(0, (SELECT count(a.id) FROM Student a), sub.dense_id, sub.cnt))
+           FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt FROM Student a
+                 LEFT JOIN KnowU k ON k.src = a.id GROUP BY a.rowid) sub) AS BIGINT),
+    (SELECT count() FROM KnowU k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+    a.rowid, c.rowid, k.rowid) AS temp
+    FROM KnowU k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst;
+
+query III
+SELECT x, y, iterativelengthbidirectional(0, 5, x, y) FROM (VALUES (NULL::BIGINT, NULL::BIGINT), (NULL::BIGINT, 2::BIGINT), (1::BIGINT, NULL::BIGINT)) t(x, y);
+----
+NULL	NULL	NULL
+NULL	2	NULL
+1	NULL	NULL
+
+# shortestpath (vertex, edge, vertex ids): all rows NULL
+statement ok
+SELECT CREATE_CSR_EDGE(0, (SELECT count(a.id) FROM Student a),
+    CAST ((SELECT sum(CREATE_CSR_VERTEX(0, (SELECT count(a.id) FROM Student a), sub.dense_id, sub.cnt))
+           FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt FROM Student a
+                 LEFT JOIN Know k ON k.src = a.id GROUP BY a.rowid) sub) AS BIGINT),
+    (SELECT count() FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+    a.rowid, c.rowid, k.rowid) AS temp
+    FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst;
+
+query III
+SELECT x, y, shortestpath(0, 5, x, y) FROM (VALUES (NULL::BIGINT, NULL::BIGINT), (NULL::BIGINT, 2::BIGINT), (1::BIGINT, NULL::BIGINT)) t(x, y);
+----
+NULL	NULL	NULL
+NULL	2	NULL
+1	NULL	NULL
