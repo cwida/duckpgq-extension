@@ -58,8 +58,10 @@ static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionStat
 	UnifiedVectorFormat vdata_dst;
 	src.ToUnifiedFormat(vdata_src);
 	dst.ToUnifiedFormat(vdata_dst);
-	auto src_data = vdata_src.data;
-	auto dst_data = vdata_dst.data;
+	// The unified format exposes raw bytes; the BIGINT columns must be read as int64_t (indexing the byte pointer
+	// read one byte per element and made every comparison depend on neighbouring bytes).
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
+	auto dst_data = reinterpret_cast<const int64_t *>(vdata_dst.data);
 
 	// create result vector
 	result.SetVectorType(VectorType::FLAT_VECTOR);

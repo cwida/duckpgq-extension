@@ -1,0 +1,38 @@
+# name: test/sql/scalar/lazy_state_creation.test
+# description: the first CSR statements of a connection create the DuckPGQ state lazily, possibly from parallel threads
+# group: [scalar]
+
+require duckpgq
+
+statement ok
+CREATE OR REPLACE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE OR REPLACE TABLE Know(src BIGINT, dst BIGINT, w BIGINT);
+INSERT INTO Know VALUES (0, 1, 5), (0, 2, 2), (0, 3, 9), (3, 0, 1), (1, 2, 1), (1, 3, 1), (2, 3, 3), (4, 3, 4);
+
+statement ok
+SELECT CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Student a),
+            CAST ((SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Student a),
+                            sub.dense_id,
+                            sub.cnt))
+                FROM (SELECT a.rowid AS dense_id, count(k.src) AS cnt
+                      FROM Student a LEFT JOIN Know k ON k.src = a.id
+                      GROUP BY a.rowid) sub) AS BIGINT),
+            (SELECT count() FROM Know k JOIN Student a ON a.id = k.src JOIN Student c ON c.id = k.dst),
+            a.rowid,
+            c.rowid,
+            k.rowid) AS temp
+    FROM Know k
+    JOIN Student a ON a.id = k.src
+    JOIN Student c ON c.id = k.dst;
+
+query I
+SELECT iterativelength(0, 5, 0, 3);
+----
+1
