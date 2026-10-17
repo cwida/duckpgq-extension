@@ -58,8 +58,10 @@ static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionStat
 	UnifiedVectorFormat vdata_dst;
 	src.ToUnifiedFormat(vdata_src);
 	dst.ToUnifiedFormat(vdata_dst);
-	auto src_data = vdata_src.data;
-	auto dst_data = vdata_dst.data;
+	// The unified format exposes raw bytes; the BIGINT columns must be read as int64_t (indexing the byte pointer
+	// read one byte per element and made every comparison depend on neighbouring bytes).
+	auto src_data = reinterpret_cast<const int64_t *>(vdata_src.data);
+	auto dst_data = reinterpret_cast<const int64_t *>(vdata_dst.data);
 
 	// create result vector
 	result.SetVectorType(VectorType::FLAT_VECTOR);
@@ -98,7 +100,8 @@ static void IterativeLengthBidirectionalFunction(DataChunk &args, ExpressionStat
 				int64_t search_num = started_searches++;
 				auto src_pos = vdata_src.sel->get_index(search_num);
 				auto dst_pos = vdata_dst.sel->get_index(search_num);
-				if (!vdata_src.validity.RowIsValid(src_pos)) {
+				if (!vdata_src.validity.RowIsValid(src_pos) || !vdata_dst.validity.RowIsValid(dst_pos)) {
+					// a NULL source or destination has no path (the destination used to be read as its raw value)
 					result_validity.SetInvalid(search_num);
 					result_data[search_num] = -1; // no path
 				} else if (src_data[src_pos] == dst_data[dst_pos]) {
