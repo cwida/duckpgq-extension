@@ -1,4 +1,5 @@
 add_subdirectory(functions)
+add_subdirectory(index)
 add_subdirectory(operator)
 add_subdirectory(optimizer)
 add_subdirectory(option)
