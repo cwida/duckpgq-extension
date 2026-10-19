@@ -27,6 +27,7 @@
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 #include "duckdb/main/client_context.hpp"
+#include "duckdb/main/config.hpp"
 
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/common/enums/subquery_type.hpp"
@@ -427,6 +428,7 @@ void PGQMatchFunction::RecordVertexJoin(VertexJoinMap &vertex_joins, const strin
                                         const vector<Identifier> &vertex_keys, const string &edge_alias,
                                         const vector<Identifier> &edge_keys,
                                         const shared_ptr<PropertyGraphTable> &edge_table,
+                                        const shared_ptr<PropertyGraphTable> &referenced_vertex_table,
                                         vector<vector<Identifier>> backing_keys) {
 	if (vertex_keys.size() != edge_keys.size()) {
 		throw BinderException("Vertex columns and edge columns size mismatch");
@@ -434,6 +436,7 @@ void PGQMatchFunction::RecordVertexJoin(VertexJoinMap &vertex_joins, const strin
 	VertexEdgeKeyReference reference;
 	reference.edge_alias = edge_alias;
 	reference.edge_table = edge_table;
+	reference.referenced_vertex_table = referenced_vertex_table;
 	reference.edge_keys = edge_keys;
 	reference.vertex_keys = vertex_keys;
 	if (backing_keys.empty()) {
@@ -463,10 +466,10 @@ void PGQMatchFunction::EdgeTypeAny(const shared_ptr<PropertyGraphTable> &edge_ta
 	vector<vector<Identifier>> backing_keys {edge_table->source_fk, edge_table->destination_fk};
 	// (a) src.key = edge.src
 	RecordVertexJoin(vertex_joins, prev_binding, edge_table->source_pk, edge_binding, edge_table->source_fk, edge_table,
-	                 backing_keys);
+	                 edge_table->source_pg_table, backing_keys);
 	// (b) dst.key = edge.dst
 	RecordVertexJoin(vertex_joins, next_binding, edge_table->destination_pk, edge_binding, edge_table->destination_fk,
-	                 edge_table, backing_keys);
+	                 edge_table, edge_table->destination_pg_table, backing_keys);
 }
 
 void PGQMatchFunction::EdgeTypeLeft(const shared_ptr<PropertyGraphTable> &edge_table, const Identifier &next_table_name,
@@ -474,10 +477,10 @@ void PGQMatchFunction::EdgeTypeLeft(const shared_ptr<PropertyGraphTable> &edge_t
                                     const string &prev_binding, const string &next_binding,
                                     VertexJoinMap &vertex_joins) {
 	CheckEdgeTableConstraints(next_table_name, prev_table_name, edge_table);
-	RecordVertexJoin(vertex_joins, next_binding, edge_table->source_pk, edge_binding, edge_table->source_fk,
-	                 edge_table);
+	RecordVertexJoin(vertex_joins, next_binding, edge_table->source_pk, edge_binding, edge_table->source_fk, edge_table,
+	                 edge_table->source_pg_table);
 	RecordVertexJoin(vertex_joins, prev_binding, edge_table->destination_pk, edge_binding, edge_table->destination_fk,
-	                 edge_table);
+	                 edge_table, edge_table->destination_pg_table);
 }
 
 void PGQMatchFunction::EdgeTypeRight(const shared_ptr<PropertyGraphTable> &edge_table,
@@ -485,10 +488,10 @@ void PGQMatchFunction::EdgeTypeRight(const shared_ptr<PropertyGraphTable> &edge_
                                      const string &edge_binding, const string &prev_binding, const string &next_binding,
                                      VertexJoinMap &vertex_joins) {
 	CheckEdgeTableConstraints(prev_table_name, next_table_name, edge_table);
-	RecordVertexJoin(vertex_joins, prev_binding, edge_table->source_pk, edge_binding, edge_table->source_fk,
-	                 edge_table);
+	RecordVertexJoin(vertex_joins, prev_binding, edge_table->source_pk, edge_binding, edge_table->source_fk, edge_table,
+	                 edge_table->source_pg_table);
 	RecordVertexJoin(vertex_joins, next_binding, edge_table->destination_pk, edge_binding, edge_table->destination_fk,
-	                 edge_table);
+	                 edge_table, edge_table->destination_pg_table);
 }
 
 void PGQMatchFunction::EdgeTypeLeftRight(const shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
@@ -497,10 +500,10 @@ void PGQMatchFunction::EdgeTypeLeftRight(const shared_ptr<PropertyGraphTable> &e
                                          case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
                                          int32_t &extra_alias_counter) {
 	// One copy of the edge table per direction: edge_binding points from next to prev ...
-	RecordVertexJoin(vertex_joins, next_binding, edge_table->source_pk, edge_binding, edge_table->source_fk,
-	                 edge_table);
+	RecordVertexJoin(vertex_joins, next_binding, edge_table->source_pk, edge_binding, edge_table->source_fk, edge_table,
+	                 edge_table->source_pg_table);
 	RecordVertexJoin(vertex_joins, prev_binding, edge_table->destination_pk, edge_binding, edge_table->destination_fk,
-	                 edge_table);
+	                 edge_table, edge_table->destination_pg_table);
 
 	const auto additional_edge_alias = edge_binding + std::to_string(extra_alias_counter);
 	extra_alias_counter++;
@@ -509,9 +512,9 @@ void PGQMatchFunction::EdgeTypeLeftRight(const shared_ptr<PropertyGraphTable> &e
 
 	// ... and the additional alias from prev to next.
 	RecordVertexJoin(vertex_joins, prev_binding, edge_table->source_pk, additional_edge_alias, edge_table->source_fk,
-	                 edge_table);
+	                 edge_table, edge_table->source_pg_table);
 	RecordVertexJoin(vertex_joins, next_binding, edge_table->destination_pk, additional_edge_alias,
-	                 edge_table->destination_fk, edge_table);
+	                 edge_table->destination_fk, edge_table, edge_table->destination_pg_table);
 }
 
 PathElement *PGQMatchFunction::HandleNestedSubPath(unique_ptr<PathReference> &path_reference,
@@ -1084,7 +1087,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 
 	// Vertex-join elimination: at this point every expression of the translated query is either in the column list
 	// or in conditions, so the planner can see all references to each vertex variable.
-	VertexEliminationPlanner vertex_elimination(context, vertex_joins, alias_map);
+	VertexEliminationPlanner vertex_elimination(context, vertex_joins, alias_map, pg_table->verified);
 	vertex_elimination.Plan(ref->column_list, conditions);
 	vertex_elimination.RewriteReferences(ref->column_list, conditions);
 	vertex_elimination.EmitJoinConditions(conditions);
@@ -1186,28 +1189,27 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 //------------------------------------------------------------------------------
 // Vertex-join elimination
 //------------------------------------------------------------------------------
-void VertexJoinMap::AddReference(const string &vertex_alias, VertexEdgeKeyReference reference) {
+VertexJoinInfo &VertexJoinMap::GetOrCreate(const string &vertex_alias) {
 	auto entry = entries.find(vertex_alias);
 	if (entry == entries.end()) {
 		order.push_back(vertex_alias);
 		entry = entries.emplace(vertex_alias, VertexJoinInfo()).first;
 	}
-	entry->second.edge_references.push_back(std::move(reference));
+	return entry->second;
+}
+
+void VertexJoinMap::AddReference(const string &vertex_alias, VertexEdgeKeyReference reference) {
+	GetOrCreate(vertex_alias).edge_references.push_back(std::move(reference));
 }
 
 void VertexJoinMap::MarkRequired(const string &vertex_alias) {
-	auto entry = entries.find(vertex_alias);
-	if (entry == entries.end()) {
-		order.push_back(vertex_alias);
-		entry = entries.emplace(vertex_alias, VertexJoinInfo()).first;
-	}
-	entry->second.required = true;
+	GetOrCreate(vertex_alias).required = true;
 }
 
 VertexEliminationPlanner::VertexEliminationPlanner(
     ClientContext &context_p, VertexJoinMap &vertex_joins_p,
-    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map_p)
-    : context(context_p), vertex_joins(vertex_joins_p), alias_map(alias_map_p) {
+    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map_p, bool graph_verified_p)
+    : context(context_p), vertex_joins(vertex_joins_p), alias_map(alias_map_p), graph_verified(graph_verified_p) {
 	Value value;
 	if (context.TryGetCurrentSetting(Identifier(SETTING_NAME), value)) {
 		enabled = BooleanValue::Get(value);
@@ -1220,7 +1222,7 @@ bool VertexEliminationPlanner::IsEliminated(const string &vertex_alias) const {
 
 void VertexEliminationPlanner::Plan(const vector<unique_ptr<ParsedExpression>> &column_list,
                                     const vector<unique_ptr<ParsedExpression>> &conditions) {
-	if (!enabled || vertex_joins.entries.empty()) {
+	if (!enabled || !graph_verified || vertex_joins.entries.empty()) {
 		return;
 	}
 	for (auto &expression : column_list) {
@@ -1304,10 +1306,15 @@ void VertexEliminationPlanner::CollectReferences(const ParsedExpression &express
 		} else {
 			Disqualify(star.RelationName().GetIdentifierName());
 		}
+		// REPLACE / COLUMNS(...) expressions may reference other variables
+		ParsedExpressionIterator::EnumerateChildren(expression,
+		                                            [&](const ParsedExpression &child) { CollectReferences(child); });
 		return;
 	}
 	case ExpressionClass::SUBQUERY:
-		// A correlated subquery could reference anything.
+	case ExpressionClass::LAMBDA:
+		// A correlated subquery could reference anything, and a subquery alias or lambda parameter could shadow a
+		// vertex variable, so references inside them cannot be classified.
 		DisqualifyAll();
 		return;
 	default:
@@ -1324,11 +1331,7 @@ optional_ptr<TableCatalogEntry> VertexEliminationPlanner::LookupTable(const Prop
 	}
 	optional_ptr<TableCatalogEntry> result;
 	try {
-		result = Catalog::GetEntry<TableCatalogEntry>(context,
-		                                              QualifiedName(PGQIdentifier(table.catalog_name),
-		                                                            PGQIdentifier(table.schema_name),
-		                                                            PGQIdentifier(table.table_name)),
-		                                              OnEntryNotFound::RETURN_NULL);
+		result = GetPropertyGraphTableEntry(context, table);
 	} catch (CatalogException &) {
 		// Views and tables outside the catalog cannot be checked for constraints: keep the join.
 		result = nullptr;
@@ -1412,8 +1415,14 @@ bool VertexEliminationPlanner::TryPlanVertex(const string &vertex_alias, const V
 	}
 	auto &representative = info.edge_references[0];
 	auto &keys = representative.vertex_keys;
-	// Every incident edge must join on the same vertex key, and the key must be unique.
+	// Every incident edge must reference this vertex table (undirected and bidirectional edges are not checked
+	// against the labels when the pattern is translated; the join did that), join on the same vertex key, and the
+	// key must be unique.
 	for (auto &reference : info.edge_references) {
+		if (!reference.referenced_vertex_table ||
+		    !reference.referenced_vertex_table->SameTableIdentity(*table_entry->second)) {
+			return false;
+		}
 		if (!SameKeySet(reference.vertex_keys, keys)) {
 			return false;
 		}
@@ -1451,7 +1460,9 @@ bool VertexEliminationPlanner::TryPlanVertex(const string &vertex_alias, const V
 	for (auto &key : keys) {
 		auto position = KeyPosition(representative.vertex_keys, key);
 		result.representative_column[key.GetIdentifierName()] = representative.edge_keys[position];
-		auto &vertex_type = vertex_table->GetColumn(key).Type();
+		auto &vertex_column = vertex_table->GetColumn(key);
+		result.output_name[key.GetIdentifierName()] = vertex_column.Name();
+		auto &vertex_type = vertex_column.Type();
 		for (auto &backing : representative.backing_keys) {
 			auto &column = representative_table->GetColumn(backing[position]);
 			if (column.Type() != vertex_type) {
@@ -1499,17 +1510,22 @@ void VertexEliminationPlanner::RewriteExpression(unique_ptr<ParsedExpression> &e
 		                        names[0].GetIdentifierName(), names[1].GetIdentifierName(),
 		                        names[0].GetIdentifierName());
 	}
+	auto &key_name = names[1].GetIdentifierName();
 	unique_ptr<ParsedExpression> replacement =
 	    PGQColumnRef(replacement_column->second, plan->second.representative_alias);
-	auto cast_type = plan->second.cast_type.find(names[1].GetIdentifierName());
+	auto cast_type = plan->second.cast_type.find(key_name);
 	if (cast_type != plan->second.cast_type.end()) {
 		replacement = make_uniq<CastExpression>(cast_type->second, std::move(replacement));
 	}
+	// Reproduce the result column name the vertex column would have had. DuckDB names a column reference after the
+	// catalog column when it has no alias or an alias that only differs in case, so COLUMNS (v.ID) and
+	// COLUMNS (v.id AS ID) both yield the catalog spelling. (An alias that differs only in case from the *edge*
+	// column's name is still renamed by that rule; the join-based translation did not have that collision.)
+	auto &catalog_name = plan->second.output_name[key_name];
 	if (expression->HasAlias()) {
-		replacement->SetAlias(expression->GetAlias());
+		replacement->SetAlias(expression->GetAlias() == catalog_name ? catalog_name : expression->GetAlias());
 	} else if (preserve_name) {
-		// COLUMNS (v.id) must still produce a column called id.
-		replacement->SetAlias(names[1]);
+		replacement->SetAlias(catalog_name);
 	}
 	expression = std::move(replacement);
 }
@@ -1552,6 +1568,11 @@ void VertexEliminationPlanner::EmitJoinConditions(vector<unique_ptr<ParsedExpres
 //------------------------------------------------------------------------------
 void CoreTableFunctions::RegisterMatchTableFunction(ExtensionLoader &loader) {
 	loader.RegisterFunction(PGQMatchFunction());
+	auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
+	config.AddExtensionOption(Identifier(VertexEliminationPlanner::SETTING_NAME),
+	                          "Leave vertex tables out of the MATCH translation when the query only uses their key, "
+	                          "joining the incident edge tables to each other instead",
+	                          LogicalType::BOOLEAN, Value::BOOLEAN(true));
 }
 
 } // namespace duckdb

@@ -18,6 +18,10 @@ CREATE TABLE Tag(id BIGINT PRIMARY KEY, name VARCHAR);
 statement ok
 CREATE TABLE Category(id BIGINT PRIMARY KEY, name VARCHAR);
 
+# A second table whose ids overlap with Person
+statement ok
+CREATE TABLE Firm(id BIGINT PRIMARY KEY, name VARCHAR);
+
 statement ok
 CREATE TABLE Organisation(id BIGINT PRIMARY KEY, name VARCHAR, mask BIGINT);
 
@@ -57,6 +61,9 @@ statement ok
 INSERT INTO Category VALUES (100, 'Athlete'), (101, 'Artist');
 
 statement ok
+INSERT INTO Firm VALUES (2, 'CWI');
+
+statement ok
 INSERT INTO Organisation VALUES (200, 'VU', 1), (201, 'CWI', 2);
 
 statement ok
@@ -89,6 +96,7 @@ VERTEX TABLES (
     Person LABEL Person,
     Tag LABEL Tag,
     Category LABEL Category,
+    Firm LABEL Firm,
     Organisation LABEL Organisation IN mask(university, company),
     Flight LABEL Flight,
     Forum LABEL Forum
@@ -163,6 +171,45 @@ SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM GRAPH_TABLE (g
 id	BIGINT
 tagId	BIGINT
 personId	BIGINT
+
+# The result column is named as the catalog spells it, like the binder names a column reference without an alias
+# or with an alias that only differs in case. (DuckDB applies the same rule to the edge column: an alias that
+# differs only in case from the edge column's name, here tagId, is still spelled like that column.)
+query II
+SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (p.ID, t.id AS TheTag)));
+----
+id	BIGINT
+TheTag	BIGINT
+
+query II
+SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (t.Id AS ID)));
+----
+id	BIGINT
+
+statement ok
+SET duckpgq_vertex_join_elimination = false;
+
+query II
+SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (p.ID, t.id AS TheTag)));
+----
+id	BIGINT
+TheTag	BIGINT
+
+query II
+SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (t.Id AS ID)));
+----
+id	BIGINT
+
+statement ok
+SET duckpgq_vertex_join_elimination = true;
 
 # Key references inside expressions are rewritten as well
 query II
@@ -253,6 +300,33 @@ query II
 EXPLAIN SELECT * FROM GRAPH_TABLE (g
     MATCH (p:Person WHERE p.name = 'Alice')-[hi:hasInterest]->(t:Tag)
     COLUMNS (t.id));
+----
+physical_plan	<REGEX>:.*main\.Person.*
+
+# Not eliminated: references inside a lambda or a subquery are not classified, because an alias there could shadow
+# the vertex variable (DuckDB currently resolves the qualified p.id below to the Person table, not the parameter)
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (t.id, list_transform([{'id': 42}], lambda p: p.id) AS shadowed));
+----
+physical_plan	<REGEX>:.*main\.Person.*
+
+query II
+SELECT DISTINCT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (t.id, list_transform([{'id': 42}], lambda p: p.id) AS shadowed))
+ORDER BY ALL;
+----
+10	[1]
+10	[2]
+11	[3]
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    WHERE t.id IN (SELECT p.id FROM (VALUES (10)) p(id))
+    COLUMNS (t.id, p.id AS personId));
 ----
 physical_plan	<REGEX>:.*main\.Person.*
 
@@ -432,6 +506,24 @@ EXPLAIN SELECT * FROM GRAPH_TABLE (g
 ----
 physical_plan	<!REGEX>:.*main\.Person.*
 
+# Undirected and bidirectional edges accept any vertex label; when the vertex is not the table the edge references,
+# the join is what filters, so it stays
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]-(b:Firm)
+    COLUMNS (a.id, b.id));
+----
+physical_plan	<REGEX>:.*main\.Firm.*
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]-(b:Firm)
+    COLUMNS (a.id, b.id))
+ORDER BY ALL;
+----
+1	2
+3	2
+
 query II
 SELECT * FROM GRAPH_TABLE (g
     MATCH (a:Person)<-[k:knows]->(b:Person)
@@ -487,6 +579,15 @@ ORDER BY ALL;
 ----
 1	3
 3	1
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]-(b:Firm)
+    COLUMNS (a.id, b.id))
+ORDER BY ALL;
+----
+1	2
+3	2
 
 statement ok
 SET duckpgq_vertex_join_elimination = true;

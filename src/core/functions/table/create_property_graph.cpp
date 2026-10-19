@@ -40,11 +40,7 @@ static void BindPropertyGraphReference(ClientContext &context, Identifier &catal
 
 static optional_ptr<TableCatalogEntry> GetPropertyGraphTable(ClientContext &context,
                                                              const shared_ptr<PropertyGraphTable> &table) {
-	return Catalog::GetEntry<TableCatalogEntry>(context,
-	                                            QualifiedName(PGQIdentifier(table->catalog_name),
-	                                                          PGQIdentifier(table->schema_name),
-	                                                          PGQIdentifier(table->table_name)),
-	                                            OnEntryNotFound::RETURN_NULL);
+	return GetPropertyGraphTableEntry(context, *table);
 }
 
 static optional_ptr<CatalogEntry> GetPropertyGraphView(ClientContext &context,
@@ -321,11 +317,6 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 	return make_uniq<CreatePropertyGraphBindData>(info);
 }
 
-//! The property graph declares that every edge key references a vertex row (SOURCE KEY ... REFERENCES ...). SQL/PGQ
-//! calls an edge whose key matches no vertex an "incomplete edge" (ISO/IEC 9075-16, 9.5). Verify the declaration once,
-//! when the graph is created, so that the MATCH translation can rely on it (see VertexEliminationPlanner). Rows
-//! modified after creation are not re-checked.
-//! An edge with a NULL key component references nothing and is never matched; it is accepted.
 //! The check runs on a separate connection, so the table is named by the catalog entry it resolved to in the user's
 //! context (the property graph itself keeps an unqualified name when the search path resolved it).
 static string ResolvedTableRef(ClientContext &context, const shared_ptr<PropertyGraphTable> &table,
@@ -337,16 +328,59 @@ static string ResolvedTableRef(ClientContext &context, const shared_ptr<Property
 	return DuckPGQSQL::TableRef(entry->ParentCatalog().GetName(), entry->ParentSchema().name, entry->name, alias);
 }
 
-static void CheckEdgeKeysReferenceVertices(ClientContext &context, Connection &connection,
+//! Whether DuckDB itself enforces edge_keys -> vertex_table(vertex_keys) through a FOREIGN KEY constraint.
+static bool HasEnforcedForeignKey(const TableCatalogEntry &edge_entry, const vector<Identifier> &edge_keys,
+                                  const PropertyGraphTable &vertex_table, const vector<Identifier> &vertex_keys) {
+	for (auto &constraint : edge_entry.GetConstraints()) {
+		if (constraint->type != ConstraintType::FOREIGN_KEY) {
+			continue;
+		}
+		auto &foreign_key = constraint->Cast<ForeignKeyConstraint>();
+		if (foreign_key.info.type == ForeignKeyType::FK_TYPE_PRIMARY_KEY_TABLE ||
+		    foreign_key.info.table != vertex_table.table_name ||
+		    (!foreign_key.info.schema.empty() && !vertex_table.schema_name.empty() &&
+		     foreign_key.info.schema != vertex_table.schema_name) ||
+		    foreign_key.fk_columns.size() != edge_keys.size() || foreign_key.pk_columns.size() != edge_keys.size()) {
+			continue;
+		}
+		bool pairs_match = true;
+		for (idx_t i = 0; i < edge_keys.size() && pairs_match; i++) {
+			pairs_match = false;
+			for (idx_t j = 0; j < foreign_key.fk_columns.size(); j++) {
+				if (foreign_key.fk_columns[j] == edge_keys[i] && foreign_key.pk_columns[j] == vertex_keys[i]) {
+					pairs_match = true;
+					break;
+				}
+			}
+		}
+		if (pairs_match) {
+			return true;
+		}
+	}
+	return false;
+}
+
+//! The property graph declares that every edge key references a vertex row (SOURCE KEY ... REFERENCES ...). SQL/PGQ
+//! calls an edge whose key matches no vertex an "incomplete edge" (ISO/IEC 9075-16, 9.5). Verify the declaration once,
+//! when the graph is created, so that the MATCH translation can rely on it (see VertexEliminationPlanner). Rows
+//! modified after creation are not re-checked. An edge with a NULL key component references nothing and is never
+//! matched; it is accepted. A FOREIGN KEY constraint already guarantees the reference and skips the scan.
+//! Returns false when the data could not be inspected (tables that are not yet committed are invisible to the
+//! separate connection); the graph is then created unverified and the MATCH translation keeps the vertex joins.
+static bool CheckEdgeKeysReferenceVertices(ClientContext &context, Connection &connection,
                                            const shared_ptr<PropertyGraphTable> &edge_table_p, const string &side,
                                            const vector<Identifier> &edge_keys,
                                            const shared_ptr<PropertyGraphTable> &vertex_table_p,
                                            const vector<Identifier> &vertex_keys) {
 	if (edge_keys.empty() || edge_keys.size() != vertex_keys.size()) {
-		return;
+		return true;
 	}
 	auto &edge_table = *edge_table_p;
 	auto &vertex_table = *vertex_table_p;
+	auto edge_entry = GetPropertyGraphTable(context, edge_table_p);
+	if (edge_entry && HasEnforcedForeignKey(*edge_entry, edge_keys, vertex_table, vertex_keys)) {
+		return true;
+	}
 	vector<string> not_null;
 	vector<string> matches;
 	vector<string> projections;
@@ -363,15 +397,16 @@ static void CheckEdgeKeysReferenceVertices(ClientContext &context, Connection &c
 	      << StringUtil::Join(matches, " AND ") << ") LIMIT 1";
 	auto result = connection.Query(query.str());
 	if (result->HasError()) {
-		throw Exception(ExceptionType::INVALID,
-		                "Could not verify that the " + side + " key of edge table " + edge_table.table_name +
-		                    " references " + vertex_table.table_name + ": " + result->GetError() +
-		                    ". The check runs on a separate connection; tables created in an open transaction must be "
-		                    "committed before a property graph is created over them.");
+		if (result->GetErrorObject().Type() == ExceptionType::CATALOG) {
+			return false;
+		}
+		throw Exception(ExceptionType::INVALID, "Could not verify that the " + side + " key of edge table " +
+		                                            edge_table.table_name + " references " + vertex_table.table_name +
+		                                            ": " + result->GetError());
 	}
 	auto chunk = result->Fetch();
 	if (!chunk || chunk->size() == 0) {
-		return;
+		return true;
 	}
 	vector<string> values;
 	for (idx_t i = 0; i < edge_keys.size(); i++) {
@@ -396,25 +431,14 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 	auto pg_info = bind_data.create_pg_info;
 	auto duckpgq_state = GetDuckPGQState(context);
 
-	auto new_conn = make_shared_ptr<Connection>(*context.db);
-	for (auto &edge_table : pg_info->edge_tables) {
-		CheckEdgeKeysReferenceVertices(context, *new_conn, edge_table, "source", edge_table->source_fk,
-		                               edge_table->source_pg_table, edge_table->source_pk);
-		CheckEdgeKeysReferenceVertices(context, *new_conn, edge_table, "destination", edge_table->destination_fk,
-		                               edge_table->destination_pg_table, edge_table->destination_pk);
-	}
-
-	for (auto &local_client_context : ConnectionManager::Get(*context.db).GetConnectionList()) {
-		auto local_state = GetDuckPGQState(*local_client_context);
-		local_state->registered_property_graphs[pg_info->property_graph_name] = pg_info->Copy();
-	}
-
 	duckpgq_state->InitializeInternalTable(context);
+	auto new_conn = make_shared_ptr<Connection>(*context.db);
 	auto retrieve_query = new_conn->Query("SELECT * FROM __duckpgq_internal where property_graph = '" +
 	                                      pg_info->property_graph_name + "';");
 	if (retrieve_query->HasError()) {
 		throw TransactionException(retrieve_query->GetError());
 	}
+	bool replace_existing = false;
 	if (retrieve_query->RowCount() > 0) {
 		if (pg_info->on_conflict == OnCreateConflict::ERROR_ON_CONFLICT) {
 			throw Exception(ExceptionType::INVALID,
@@ -423,11 +447,29 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 		if (pg_info->on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
 			return; // Do nothing and silently return
 		}
-		if (pg_info->on_conflict == OnCreateConflict::REPLACE_ON_CONFLICT) {
-			// DELETE the old property graph and insert new one.
-			new_conn->Query("DELETE FROM __duckpgq_internal WHERE property_graph = '" + pg_info->property_graph_name +
-			                "';");
-		}
+		replace_existing = pg_info->on_conflict == OnCreateConflict::REPLACE_ON_CONFLICT;
+	}
+
+	// Verify the data before anything is registered, so that a failed CREATE leaves no trace and CREATE OR REPLACE
+	// keeps the previous definition.
+	pg_info->verified = true;
+	for (auto &edge_table : pg_info->edge_tables) {
+		pg_info->verified &=
+		    CheckEdgeKeysReferenceVertices(context, *new_conn, edge_table, "source", edge_table->source_fk,
+		                                   edge_table->source_pg_table, edge_table->source_pk);
+		pg_info->verified &=
+		    CheckEdgeKeysReferenceVertices(context, *new_conn, edge_table, "destination", edge_table->destination_fk,
+		                                   edge_table->destination_pg_table, edge_table->destination_pk);
+	}
+
+	for (auto &local_client_context : ConnectionManager::Get(*context.db).GetConnectionList()) {
+		auto local_state = GetDuckPGQState(*local_client_context);
+		local_state->registered_property_graphs[pg_info->property_graph_name] = pg_info->Copy();
+	}
+	if (replace_existing) {
+		// DELETE the old property graph and insert new one.
+		new_conn->Query("DELETE FROM __duckpgq_internal WHERE property_graph = '" + pg_info->property_graph_name +
+		                "';");
 	}
 
 	auto graph_catalog = pg_info->GetQualifiedName().Catalog().GetIdentifierName();
@@ -471,7 +513,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 			insert_info += "'" + v_table->column_aliases[i] + (i == v_table->column_aliases.size() - 1 ? "'" : "', ");
 		}
 		insert_info += "], "; // End of column aliases
-		insert_info += "'" + graph_catalog + "', '" + graph_schema + "'";
+		insert_info += "'" + graph_catalog + "', '" + graph_schema + "', ";
+		insert_info += pg_info->verified ? "true" : "false";
 		insert_info += "), ";
 	}
 
@@ -532,7 +575,8 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 			insert_info += "'" + e_table->column_aliases[i] + (i == e_table->column_aliases.size() - 1 ? "'" : "', ");
 		}
 		insert_info += "], "; // End of column aliases
-		insert_info += "'" + graph_catalog + "', '" + graph_schema + "'";
+		insert_info += "'" + graph_catalog + "', '" + graph_schema + "', ";
+		insert_info += pg_info->verified ? "true" : "false";
 		insert_info += "), ";
 	}
 	auto insert_query = new_conn->Query(insert_info);

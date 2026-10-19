@@ -104,9 +104,16 @@ EDGE TABLES (books SOURCE KEY (personId) REFERENCES Person (id)
                    DESTINATION KEY (carrier, number) REFERENCES Flight (carrier, number)
                    LABEL books);
 
-# CREATE OR REPLACE is checked as well
+# CREATE OR REPLACE is checked as well; IF NOT EXISTS on an existing graph does nothing and is not checked
 statement ok
 INSERT INTO books VALUES (1, 'XX', 9);
+
+statement ok
+CREATE PROPERTY GRAPH IF NOT EXISTS flights
+VERTEX TABLES (Person LABEL Person, Flight LABEL Flight)
+EDGE TABLES (books SOURCE KEY (personId) REFERENCES Person (id)
+                   DESTINATION KEY (carrier, number) REFERENCES Flight (carrier, number)
+                   LABEL books);
 
 statement error
 CREATE OR REPLACE PROPERTY GRAPH flights
@@ -116,3 +123,9 @@ EDGE TABLES (books SOURCE KEY (personId) REFERENCES Person (id)
                    LABEL books);
 ----
 Incomplete edge
+
+# The previous definition survives a failed CREATE OR REPLACE
+query I
+SELECT count(*) FROM GRAPH_TABLE (flights MATCH (p:Person)-[b:books]->(f:Flight) COLUMNS (p.id));
+----
+2
