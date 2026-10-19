@@ -13,19 +13,23 @@ static ScalarFunction PathFindingMarkerFunction(vector<LogicalType> arguments, s
 	return result;
 }
 
+[[noreturn]] static void ThrowMarkerReachedExecution(const char *function_name) {
+	throw NotImplementedException("%s is a planning marker that the path-finding optimizer rule did not replace: this "
+	                              "query shape is not supported by the path-finding operator. Set "
+	                              "experimental_path_finding_operator = false to use the SQL fallback.",
+	                              function_name);
+}
+
 static void IterativeLengthOperatorFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	throw NotImplementedException(
-	    "IterativeLengthOperatorFunction not implemented, should have gone to the operator instead.");
+	ThrowMarkerReachedExecution("iterativelengthoperator");
 }
 
 static void BidirectionalIterativeLengthOperatorFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	throw NotImplementedException(
-	    "BidirectionalIterativeLengthOperatorFunction not implemented, should have gone to the operator instead.");
+	ThrowMarkerReachedExecution("bidirectionaliterativelengthoperator");
 }
 
 static void PushPullIterativeLengthOperatorFunction(DataChunk &args, ExpressionState &state, Vector &result) {
-	throw NotImplementedException(
-	    "PushPullIterativeLengthOperatorFunction not implemented, should have gone to the operator instead.");
+	ThrowMarkerReachedExecution("pushpulliterativelengthoperator");
 }
 
 //------------------------------------------------------------------------------

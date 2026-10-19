@@ -1,0 +1,118 @@
+# name: test/sql/path_finding/path_finding_operator_planner.test
+# description: The path-finding optimizer rule replaces every marker regardless of the surrounding query shape
+# group: [path_finding]
+
+require duckpgq
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# A five-person chain 1 -> 2 -> 3 -> 4 -> 5.
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person VALUES (1), (2), (3), (4), (5);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows VALUES (1, 2), (2, 3), (3, 4), (4, 5);
+
+statement ok
+CREATE TABLE city(id BIGINT);
+
+statement ok
+INSERT INTO city VALUES (10), (20);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+# GRAPH_TABLE under a comma join: the marker sits in a projection below the cross product.
+query IIII
+SELECT t.s, t.d, t.l, c.id
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (a.id AS s, b.id AS d, path_length(p) AS l)) t, city c
+ORDER BY t.d, c.id;
+----
+1	1	0	10
+1	1	0	20
+1	2	1	10
+1	2	1	20
+1	3	2	10
+1	3	2	20
+1	4	3	10
+1	4	3	20
+1	5	4	10
+1	5	4	20
+
+# Nested subquery under a comma join.
+query III
+SELECT * FROM (SELECT d, l FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 2)-[k:Knows]->*(b:Person)
+                                             COLUMNS (b.id AS d, path_length(p) AS l))) t, (SELECT 1 AS one) o
+ORDER BY d;
+----
+2	0	1
+3	1	1
+4	2	1
+5	3	1
+
+# Three path queries in one UNION ALL: every marker is replaced.
+query II
+SELECT d, l FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person WHERE b.id = 5) COLUMNS (b.id AS d, path_length(p) AS l))
+UNION ALL
+SELECT d, l FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 2)-[k:Knows]->*(b:Person WHERE b.id = 5) COLUMNS (b.id AS d, path_length(p) AS l))
+UNION ALL
+SELECT d, l FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 3)-[k:Knows]->*(b:Person WHERE b.id = 5) COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY l;
+----
+5	2
+5	3
+5	4
+
+# path_length(p) projected twice: the length is computed once and both columns carry it.
+query IIII
+SELECT s, d, l1, l2
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (a.id AS s, b.id AS d, path_length(p) AS l1, path_length(p) AS l2))
+ORDER BY d;
+----
+1	1	0	0
+1	2	1	1
+1	3	2	2
+1	4	3	3
+1	5	4	4
+
+# path_length(p) without an alias and used in an outer filter.
+query II
+SELECT d, "path_length(p)"
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p)))
+WHERE "path_length(p)" >= 3
+ORDER BY d;
+----
+4	3
+5	4
+
+# Edge rows with a NULL key or a dangling reference are dropped by the endpoint join and do not fail the query.
+statement ok
+INSERT INTO knows VALUES (3, 99), (NULL, 2);
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+1	0
+2	1
+3	2
+4	3
+5	4

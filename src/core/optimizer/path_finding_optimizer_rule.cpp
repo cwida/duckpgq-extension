@@ -459,19 +459,26 @@ DuckpgqOptimizerExtension::FindCSRAndPairs(unique_ptr<LogicalOperator> &first_ch
 	return nullptr;
 }
 
-bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, ClientContext &context) {
-	unique_ptr<Expression> function_expression;
-	string mode;
-	vector<idx_t> offsets;
-	if (op.type != LogicalOperatorType::LOGICAL_PROJECTION) {
-		for (auto &child : op.children) {
-			if (InsertPathFindingOperator(*child, context)) {
-				return true;
-			}
+static idx_t CountPathFindingMarkers(const LogicalProjection &projection) {
+	idx_t count = 0;
+	for (const auto &expr : projection.expressions) {
+		if (!GetPathFindingFunctionName(*expr).empty()) {
+			count++;
 		}
+	}
+	return count;
+}
+
+//! Replaces the path-finding marker in this projection with the operator. Returns whether the plan changed.
+static bool TryReplaceProjection(LogicalProjection &op_proj, ClientContext &context) {
+	auto marker_count = CountPathFindingMarkers(op_proj);
+	if (marker_count == 0) {
 		return false;
 	}
-	auto &op_proj = op.Cast<LogicalProjection>();
+	if (marker_count > 1) {
+		throw BinderException("Only one path-finding function per SELECT list is supported; compute the path length "
+		                      "once and reuse the column");
+	}
 	if (op_proj.children.size() == 1) {
 		auto path_finding_operator = FindCachedPartitionedCSRAndPairs(op_proj.children[0], op_proj);
 		if (!path_finding_operator) {
@@ -481,44 +488,50 @@ bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, C
 			path_finding_operator = FindPrecountedEdgesAndPairs(op_proj.children[0], op_proj);
 		}
 		if (path_finding_operator) {
-			op.children.clear();
-			op.children.push_back(std::move(path_finding_operator));
+			op_proj.children.clear();
+			op_proj.children.push_back(std::move(path_finding_operator));
 			return true;
 		}
 	}
 
-	for (const auto &child : op_proj.children) {
-		vector<unique_ptr<LogicalOperator>> path_finding_children;
+	// Legacy marker over a global CSR id: the pairs and the CSR builder are the two sides of a cross product
+	for (auto &child : op_proj.children) {
 		if (child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
 			continue;
 		}
 		auto &get_join = child->Cast<LogicalCrossProduct>();
-		//! For now we assume this is enough to detect we have found a
-		//! path-finding query. Should be improved in the future
 		if (get_join.children.size() != 2) {
 			continue;
 		}
-
 		auto &left_child = get_join.children[0];
 		auto &right_child = get_join.children[1];
-		auto path_finding_operator = FindCSRAndPairs(left_child, right_child, op_proj, context);
-		if (path_finding_operator == nullptr) {
-			path_finding_operator = FindCSRAndPairs(right_child, left_child, op_proj, context);
+		auto path_finding_operator =
+		    DuckpgqOptimizerExtension::FindCSRAndPairs(left_child, right_child, op_proj, context);
+		if (!path_finding_operator) {
+			path_finding_operator = DuckpgqOptimizerExtension::FindCSRAndPairs(right_child, left_child, op_proj, context);
 		}
-		if (path_finding_operator != nullptr) {
-			op.children.clear();
-			op.children.push_back(std::move(path_finding_operator));
-			return true;
-		}
-
-		return false; // No path-finding operator found
-	}
-	for (auto &child : op.children) {
-		if (InsertPathFindingOperator(*child, context)) {
+		if (path_finding_operator) {
+			op_proj.children.clear();
+			op_proj.children.push_back(std::move(path_finding_operator));
 			return true;
 		}
 	}
 	return false;
+}
+
+bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, ClientContext &context) {
+	// Every projection in the plan may carry a marker (comma joins, subqueries, set operations), so the whole plan
+	// is visited and every marker is replaced; the children of a replaced projection are visited as well
+	bool changed = false;
+	if (op.type == LogicalOperatorType::LOGICAL_PROJECTION) {
+		changed = TryReplaceProjection(op.Cast<LogicalProjection>(), context);
+	}
+	for (auto &child : op.children) {
+		if (InsertPathFindingOperator(*child, context)) {
+			changed = true;
+		}
+	}
+	return changed;
 }
 
 void DuckpgqOptimizerExtension::DuckpgqOptimizeFunction(OptimizerExtensionInput &input,

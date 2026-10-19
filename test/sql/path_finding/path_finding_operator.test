@@ -247,7 +247,9 @@ CREATE TABLE single_destination_pairs AS
 SELECT range::BIGINT AS src, 5::BIGINT AS dst
 FROM range(5);
 
-statement error
+# Many sources for one destination would select the reverse search; endpoint inputs only build the forward CSR,
+# so the operator falls back to a forward search instead of failing.
+query I
 SELECT sum(len)
 FROM (
     SELECT iterativelengthoperator(
@@ -263,7 +265,7 @@ FROM (
          JOIN person c on c.id = k.person2id) pathfinding_edges
 );
 ----
-Not implemented Error: Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the forward orientation
+9
 
 statement ok
 set experimental_path_finding_operator_benchmark_prefix='{TEST_DIR}/path_finding_operator_benchmark';

@@ -9,6 +9,9 @@ namespace duckdb {
 class DuckpgqOptimizerExtension : public OptimizerExtension {
 public:
 	DuckpgqOptimizerExtension() {
+		// Markers emitted by MATCH are matched on the binder's plan shape, before DuckDB's optimizer reorders joins
+		// and filters. The post-optimize pass remains for the legacy global-CSR form, whose CSR builder lives in a
+		// CTE that is only inlined by the optimizer.
 		pre_optimize_function = DuckpgqOptimizeFunction;
 		optimize_function = DuckpgqOptimizeFunction;
 	}

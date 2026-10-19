@@ -438,6 +438,20 @@ PathFindingSearchOrientation ChooseSearchOrientation(const PathFindingPairStats 
 	                                                    : PathFindingSearchOrientation::FORWARD;
 }
 
+//! Only the legacy CSR inputs build reverse partitions; endpoint inputs and cached indexes are forward-only, so a
+//! reverse search would have nothing to traverse and the forward orientation is used instead
+static bool CanSearchInReverse(const PathFindingGlobalSinkState &gstate) {
+	return !(gstate.precounted_edge_input || gstate.buffered_edge_input || gstate.cached_partitioned_csr_input);
+}
+
+static PathFindingSearchOrientation ChooseSupportedSearchOrientation(const PathFindingGlobalSinkState &gstate,
+                                                                     ClientContext &context) {
+	if (!CanSearchInReverse(gstate)) {
+		return PathFindingSearchOrientation::FORWARD;
+	}
+	return ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
+}
+
 shared_ptr<PathFindingBatch> CreateOrientedPathFindingBatch(ClientContext &context,
                                                             PathFindingSearchOrientation orientation,
                                                             const shared_ptr<DataChunk> &output_pairs,
@@ -1169,8 +1183,11 @@ public:
 
 	void FinishEvent() override {
 		auto built_count = gstate.built_endpoint_count.load(std::memory_order_relaxed);
-		if (built_count != gstate.expected_edge_count) {
-			throw ConstraintException("Partitioned endpoint build expected %llu graph edges but received %llu",
+		// Edge rows with NULL keys or without a matching vertex are dropped by the endpoint join; more rows than the
+		// edge table has means a vertex key is not unique
+		if (built_count > gstate.expected_edge_count) {
+			throw ConstraintException("Partitioned endpoint build expected at most %llu graph edges but received %llu; "
+			                          "check vertex uniqueness",
 			                          gstate.expected_edge_count, built_count);
 		}
 		gstate.endpoint_count = built_count;
@@ -1403,7 +1420,7 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 		gstate.global_output_to_search.push_back(std::move(output_to_search));
 	}
 	FinalizePairStats(gstate, pair_stats, distinct_srcs, distinct_dsts);
-	gstate.search_orientation = ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
+	gstate.search_orientation = ChooseSupportedSearchOrientation(gstate, context);
 
 	auto duplicate_count = input_count - unique_source_rows.size();
 	idx_t remap_memory = 0;
@@ -1490,7 +1507,7 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	AppendOperatorPhaseTiming(context, "pair_analysis", gstate.num_threads, gstate.pair_stats.pair_count,
 	                          gstate.pair_stats.distinct_src_count, gstate.pair_stats.distinct_dst_count,
 	                          std::chrono::duration<double, std::milli>(analysis_end - analysis_start).count(), 0);
-	gstate.search_orientation = ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
+	gstate.search_orientation = ChooseSupportedSearchOrientation(gstate, context);
 	int64_t single_source;
 	if (ShouldUseSourceGroupedIterativeLength(gstate, context) &&
 	    TryGetExactSingleSearchSource(gstate, single_source)) {
@@ -1964,8 +1981,9 @@ static SinkFinalizeType FinalizePrecountedEndpointCounts(PathFindingGlobalSinkSt
 }
 
 static void FinalizePartitionedEndpointInput(PathFindingGlobalSinkState &gstate, ClientContext &context) {
-	if (gstate.counted_endpoint_count != gstate.expected_edge_count) {
-		throw ConstraintException("Partitioned endpoint input expected %llu graph edges but received %llu",
+	if (gstate.counted_endpoint_count > gstate.expected_edge_count) {
+		throw ConstraintException("Partitioned endpoint input expected at most %llu graph edges but received %llu; "
+		                          "check vertex uniqueness",
 		                          gstate.expected_edge_count, gstate.counted_endpoint_count);
 	}
 	if (!gstate.endpoint_build_started) {

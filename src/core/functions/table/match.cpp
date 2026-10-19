@@ -795,7 +795,7 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 			    "__duckpgq_pair_dst_" + std::to_string(result_index), "DuckPGQ path-finding destination row ID");
 			operator_results.push_back({std::move(source_expression), std::move(destination_expression),
 			                            std::move(endpoints), std::move(endpoint_alias), std::move(result_alias),
-			                            path_variable, string(), std::move(cache_key), vertex_count, edge_count,
+			                            path_variable, vector<string>(), std::move(cache_key), vertex_count, edge_count,
 			                            subpath->lower, subpath->upper});
 			return;
 		}
@@ -1200,7 +1200,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 						if (projection_alias.empty()) {
 							projection_alias = "path_length(" + path_name + ")";
 						}
-						operator_result.projected_alias = projection_alias;
+						operator_result.projected_aliases.push_back(projection_alias);
 						auto placeholder = DuckPGQSQL::ParseExpression(
 						    "NULL::BIGINT", projection_alias, "DuckPGQ MATCH path_length placeholder");
 						final_column_list.push_back(std::move(placeholder));
@@ -1279,14 +1279,10 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	                << operator_result.vertex_count << "::BIGINT, " << operator_result.edge_count << "::BIGINT, "
 	                << DuckPGQSQL::StringLiteral(operator_result.cache_key) << ")";
 
+	// The length is computed once under the hidden result alias; the outer query renames it to every projected alias
 	std::ostringstream operator_query_sql;
-	operator_query_sql << "SELECT " << DuckPGQSQL::Identifier(candidate_alias) << ".*";
-	if (operator_result.projected_alias.empty()) {
-		operator_query_sql << ", " << path_length_sql.str() << " AS " << DuckPGQSQL::Identifier(operator_result.alias);
-	} else {
-		operator_query_sql << " REPLACE (" << path_length_sql.str() << " AS "
-		                   << DuckPGQSQL::Identifier(operator_result.projected_alias) << ")";
-	}
+	operator_query_sql << "SELECT " << DuckPGQSQL::Identifier(candidate_alias) << ".*, " << path_length_sql.str()
+	                   << " AS " << DuckPGQSQL::Identifier(operator_result.alias);
 	operator_query_sql << " FROM "
 	                   << DuckPGQSQL::Identifier(candidate_alias) << ", "
 	                   << DuckPGQSQL::Identifier(operator_result.endpoint_alias);
@@ -1301,19 +1297,28 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	outer_query_sql << "SELECT * EXCLUDE (" << DuckPGQSQL::Identifier(pair_source_alias) << ", "
 	                << DuckPGQSQL::Identifier(pair_destination_alias);
 	for (idx_t result_idx = 0; result_idx < operator_results.size(); result_idx++) {
-		if (operator_results[result_idx].projected_alias.empty()) {
-			outer_query_sql << ", " << DuckPGQSQL::Identifier(operator_results[result_idx].alias);
+		outer_query_sql << ", " << DuckPGQSQL::Identifier(operator_results[result_idx].alias);
+	}
+	outer_query_sql << ")";
+	bool has_projected_alias = false;
+	for (idx_t result_idx = 0; result_idx < operator_results.size(); result_idx++) {
+		for (auto &projected_alias : operator_results[result_idx].projected_aliases) {
+			outer_query_sql << (has_projected_alias ? ", " : " REPLACE (")
+			                << DuckPGQSQL::Column(operator_results[result_idx].alias, string(PATH_FINDING_PAIRS_ALIAS))
+			                << " AS " << DuckPGQSQL::Identifier(projected_alias);
+			has_projected_alias = true;
 		}
 	}
-	outer_query_sql << ") FROM " << DuckPGQSQL::Identifier(string(PATH_FINDING_PAIRS_ALIAS)) << " WHERE ";
+	if (has_projected_alias) {
+		outer_query_sql << ")";
+	}
+	outer_query_sql << " FROM " << DuckPGQSQL::Identifier(string(PATH_FINDING_PAIRS_ALIAS)) << " WHERE ";
 	for (idx_t result_idx = 0; result_idx < operator_results.size(); result_idx++) {
 		if (result_idx > 0) {
 			outer_query_sql << " AND ";
 		}
 		auto &operator_result = operator_results[result_idx];
-		auto &result_column = operator_result.projected_alias.empty() ? operator_result.alias
-		                                                          : operator_result.projected_alias;
-		outer_query_sql << DuckPGQSQL::Column(result_column, string(PATH_FINDING_PAIRS_ALIAS));
+		outer_query_sql << DuckPGQSQL::Column(operator_result.alias, string(PATH_FINDING_PAIRS_ALIAS));
 		if (operator_result.upper == NumericLimits<int64_t>::Maximum()) {
 			outer_query_sql << " >= " << operator_result.lower;
 		} else {

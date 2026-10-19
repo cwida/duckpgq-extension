@@ -35,7 +35,8 @@ public:
 		string endpoint_alias;
 		string alias;
 		string path_variable;
-		string projected_alias;
+		//! Output aliases under which path_length(p) is projected; the length is computed once
+		vector<string> projected_aliases;
 		string cache_key;
 		idx_t vertex_count;
 		idx_t edge_count;
