@@ -74,12 +74,12 @@ void CollectEdges(ClientContext &context, DataChunk &key_chunk, Vector &row_id_v
 	}
 }
 
-//! Runs fn(begin, end) over [0, count) on up to thread_count threads and rethrows the first exception
+//! Runs fn(begin, end, thread_idx) over [0, count) on up to thread_count threads and rethrows the first exception
 template <class FUNC>
 void ParallelFor(idx_t count, idx_t thread_count, FUNC &&fn) {
 	thread_count = std::max<idx_t>(1, std::min(thread_count, count));
 	if (thread_count == 1) {
-		fn(idx_t(0), count);
+		fn(idx_t(0), count, idx_t(0));
 		return;
 	}
 	auto chunk = (count + thread_count - 1) / thread_count;
@@ -93,7 +93,7 @@ void ParallelFor(idx_t count, idx_t thread_count, FUNC &&fn) {
 		}
 		threads.emplace_back([&fn, &errors, thread_idx, begin, end]() {
 			try {
-				fn(begin, end);
+				fn(begin, end, thread_idx);
 			} catch (...) {
 				errors[thread_idx] = std::current_exception();
 			}
@@ -155,7 +155,7 @@ shared_ptr<CSRIndexDictionary> BuildDictionary(const vector<CSRIndexEdgeList> &l
 		dictionary->min_key = min_key;
 		auto word_count = (range + 63) / 64;
 		unique_ptr<std::atomic<uint64_t>[]> bits(new std::atomic<uint64_t>[word_count]());
-		ParallelFor(slices.size(), thread_count, [&](idx_t begin, idx_t end) {
+		ParallelFor(slices.size(), thread_count, [&](idx_t begin, idx_t end, idx_t) {
 			for (idx_t slice_idx = begin; slice_idx < end; slice_idx++) {
 				auto &slice = slices[slice_idx];
 				auto &list = lists[slice.list_idx];
@@ -177,12 +177,18 @@ shared_ptr<CSRIndexDictionary> BuildDictionary(const vector<CSRIndexEdgeList> &l
 			rank += PopCount(word);
 		}
 		dictionary->count = rank;
+		if (rank == range) {
+			// Every key in the range is a vertex: ids are offsets, the bitmap is not needed
+			dictionary->identity = true;
+			dictionary->bitmap.clear();
+			dictionary->word_rank.clear();
+		}
 		return dictionary;
 	}
 
 	// Sparse keys: gather, sort the pieces in parallel, merge, deduplicate
 	vector<int64_t> keys(total_edges * 2);
-	ParallelFor(slices.size(), thread_count, [&](idx_t begin, idx_t end) {
+	ParallelFor(slices.size(), thread_count, [&](idx_t begin, idx_t end, idx_t) {
 		for (idx_t slice_idx = begin; slice_idx < end; slice_idx++) {
 			auto &slice = slices[slice_idx];
 			auto &list = lists[slice.list_idx];
@@ -195,7 +201,7 @@ shared_ptr<CSRIndexDictionary> BuildDictionary(const vector<CSRIndexEdgeList> &l
 	});
 	auto piece_count = std::max<idx_t>(1, std::min<idx_t>(thread_count, keys.size() / 4096 + 1));
 	auto piece_size = (keys.size() + piece_count - 1) / piece_count;
-	ParallelFor(piece_count, thread_count, [&](idx_t begin, idx_t end) {
+	ParallelFor(piece_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
 		for (idx_t piece = begin; piece < end; piece++) {
 			auto first = std::min<idx_t>(keys.size(), piece * piece_size);
 			auto last = std::min<idx_t>(keys.size(), first + piece_size);
@@ -204,7 +210,7 @@ shared_ptr<CSRIndexDictionary> BuildDictionary(const vector<CSRIndexEdgeList> &l
 	});
 	for (idx_t width = piece_size; width < keys.size(); width *= 2) {
 		auto merge_count = (keys.size() + 2 * width - 1) / (2 * width);
-		ParallelFor(merge_count, thread_count, [&](idx_t begin, idx_t end) {
+		ParallelFor(merge_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
 			for (idx_t merge_idx = begin; merge_idx < end; merge_idx++) {
 				auto first = merge_idx * 2 * width;
 				auto middle = std::min<idx_t>(keys.size(), first + width);
@@ -306,6 +312,9 @@ idx_t CSRIndexDictionary::Lookup(int64_t key) const {
 			return DConstants::INVALID_INDEX;
 		}
 		auto offset = static_cast<uint64_t>(key) - static_cast<uint64_t>(min_key);
+		if (identity) {
+			return offset < count ? offset : DConstants::INVALID_INDEX;
+		}
 		auto word_idx = offset >> 6;
 		if (word_idx >= bitmap.size()) {
 			return DConstants::INVALID_INDEX;
@@ -328,6 +337,9 @@ int64_t CSRIndexDictionary::KeyOf(idx_t id) const {
 	D_ASSERT(id < count);
 	if (!dense) {
 		return sorted_keys[id];
+	}
+	if (identity) {
+		return min_key + NumericCast<int64_t>(id);
 	}
 	// The word whose rank range contains id, then the (id - rank)-th set bit of that word
 	auto word_entry = std::upper_bound(word_rank.begin(), word_rank.end(), NumericCast<uint32_t>(id));
@@ -402,94 +414,126 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 	epoch->dictionary = dictionary;
 	epoch->vertex_count = vertex_count;
 
-	// Map every edge (both directions when undirected) to dense ids, in parallel over slices of the edge lists
+	// The same destination-range partitioning the on-the-fly build uses
 	idx_t directions = undirected ? 2 : 1;
-	auto edge_count = total_edges * directions;
+	auto width = GetBufferedPartitionedCSRWidth(vertex_count, thread_count, context);
+	auto partition_count = std::max<idx_t>(1, (vertex_count + 2 + width - 1) / width);
+	epoch->partition_width = width;
+
+	// Pass 1: map every edge (both directions when undirected) to dense ids and bucket it by destination partition.
+	// Each thread appends to its own buckets, so there is no shared state and no per-vertex counter array.
+	struct BuildEdge {
+		uint32_t src;
+		uint16_t local_dst;
+		row_t row;
+	};
 	auto slices = MakeEdgeSlices(lists, directions);
-	vector<uint32_t> edge_src(edge_count);
-	vector<uint32_t> edge_dst(edge_count);
-	vector<row_t> edge_row(edge_count);
-	ParallelFor(slices.size(), thread_count, [&](idx_t begin, idx_t end) {
+	vector<vector<vector<BuildEdge>>> thread_buckets(thread_count, vector<vector<BuildEdge>>(partition_count));
+	ParallelFor(slices.size(), thread_count, [&](idx_t begin, idx_t end, idx_t thread_idx) {
+		auto &buckets = thread_buckets[thread_idx];
 		for (idx_t slice_idx = begin; slice_idx < end; slice_idx++) {
 			auto &slice = slices[slice_idx];
 			auto &list = lists[slice.list_idx];
-			auto out = slice.offset;
 			for (idx_t edge_idx = slice.begin; edge_idx < slice.end; edge_idx++) {
 				auto src = NumericCast<uint32_t>(dictionary->Lookup(list.src_keys[edge_idx]));
 				auto dst = NumericCast<uint32_t>(dictionary->Lookup(list.dst_keys[edge_idx]));
-				edge_src[out] = src;
-				edge_dst[out] = dst;
-				edge_row[out++] = list.row_ids[edge_idx];
+				auto row = list.row_ids[edge_idx];
+				buckets[dst / width].push_back({src, NumericCast<uint16_t>(dst % width), row});
 				if (undirected) {
-					edge_src[out] = dst;
-					edge_dst[out] = src;
-					edge_row[out++] = list.row_ids[edge_idx];
+					buckets[src / width].push_back({dst, NumericCast<uint16_t>(src % width), row});
 				}
 			}
 		}
 	});
-	// The edge lists are no longer needed; free them before allocating the CSR
 	lists.clear();
 
-	// The same destination-range partitioning the on-the-fly build uses
-	auto width = GetBufferedPartitionedCSRWidth(vertex_count, thread_count, context);
-	auto partition_count = std::max<idx_t>(1, (vertex_count + 2 + width - 1) / width);
-	epoch->partition_width = width;
+	// Pass 2: per partition, gather the thread buckets, radix-sort by source in cache, and emit the sparse rows,
+	// the destination offsets, and the row ids in one sweep
+	auto src_bits = idx_t(1);
+	while ((idx_t(1) << src_bits) < vertex_count + 2) {
+		src_bits++;
+	}
+	constexpr idx_t RADIX_BITS = 11;
+	constexpr idx_t RADIX_BUCKETS = idx_t(1) << RADIX_BITS;
+	auto radix_passes = (src_bits + RADIX_BITS - 1) / RADIX_BITS;
+
 	auto csr = make_shared_ptr<PartitionedCSRIndex>();
 	csr->vertex_count = vertex_count + 2;
 	csr->capabilities = PartitionedCSRCapabilities::FORWARD;
-	csr->forward_partitions.reserve(partition_count);
-	for (idx_t partition_idx = 0; partition_idx < partition_count; partition_idx++) {
-		auto start_vertex = partition_idx * width;
-		auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
-		csr->forward_partitions.push_back(make_shared_ptr<LocalCSR>(start_vertex, end_vertex, vertex_count, true));
-	}
+	csr->forward_partitions.resize(partition_count);
 	epoch->partition_row_ids.resize(partition_count);
-
-	// Count per source (stored at v[src + 1]) in parallel over the edges, prefix sum per partition in parallel over
-	// the partitions, then fill with v[src + 1] as the cursor: the layout the operator's own build produces
-	auto edge_chunks = (edge_count + EDGE_SLICE_SIZE - 1) / EDGE_SLICE_SIZE;
-	ParallelFor(edge_chunks, thread_count, [&](idx_t begin, idx_t end) {
-		for (idx_t edge_idx = begin * EDGE_SLICE_SIZE; edge_idx < std::min(edge_count, end * EDGE_SLICE_SIZE);
-		     edge_idx++) {
-			auto &partition = *csr->forward_partitions[edge_dst[edge_idx] / width];
-			partition.v[edge_src[edge_idx] + 1].fetch_add(1, std::memory_order_relaxed);
-		}
-	});
-	ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end) {
+	std::atomic<idx_t> total_edge_count {0};
+	ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+		vector<BuildEdge> edges;
+		vector<BuildEdge> scratch;
+		vector<idx_t> histogram(RADIX_BUCKETS);
 		for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
-			auto &partition = *csr->forward_partitions[partition_idx];
-			uint64_t running_sum = 0;
-			idx_t sparse_row_count = 0;
-			for (idx_t source = 0; source < partition.v_array_size; source++) {
-				auto count = partition.v[source].load(std::memory_order_relaxed);
-				partition.v[source].store(NumericCast<uint32_t>(running_sum), std::memory_order_relaxed);
-				running_sum += count;
-				sparse_row_count += count > 0;
+			idx_t partition_edges = 0;
+			for (auto &buckets : thread_buckets) {
+				partition_edges += buckets[partition_idx].size();
 			}
-			partition.expected_sparse_row_count = sparse_row_count;
-			partition.e.resize(NumericCast<idx_t>(running_sum));
-			partition.initialized_e = true;
-			epoch->partition_row_ids[partition_idx].resize(NumericCast<idx_t>(running_sum));
+			edges.clear();
+			edges.reserve(partition_edges);
+			for (auto &buckets : thread_buckets) {
+				auto &bucket = buckets[partition_idx];
+				edges.insert(edges.end(), bucket.begin(), bucket.end());
+				bucket.clear();
+				bucket.shrink_to_fit();
+			}
+			// LSD radix sort on the source id
+			scratch.resize(edges.size());
+			for (idx_t pass = 0; pass < radix_passes; pass++) {
+				auto shift = pass * RADIX_BITS;
+				std::fill(histogram.begin(), histogram.end(), 0);
+				for (auto &edge : edges) {
+					histogram[(edge.src >> shift) & (RADIX_BUCKETS - 1)]++;
+				}
+				idx_t offset = 0;
+				for (auto &count : histogram) {
+					auto next = offset + count;
+					count = offset;
+					offset = next;
+				}
+				for (auto &edge : edges) {
+					scratch[histogram[(edge.src >> shift) & (RADIX_BUCKETS - 1)]++] = edge;
+				}
+				std::swap(edges, scratch);
+			}
+			// Emit the partition: sparse rows over the sources that have edges
+			auto start_vertex = partition_idx * width;
+			auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
+			auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, vertex_count, false);
+			auto &row_ids = epoch->partition_row_ids[partition_idx];
+			partition->e.resize(edges.size());
+			row_ids.resize(edges.size());
+			partition->row_offsets.push_back(0);
+			uint32_t previous_src = 0;
+			bool have_row = false;
+			for (idx_t edge_idx = 0; edge_idx < edges.size(); edge_idx++) {
+				auto &edge = edges[edge_idx];
+				if (!have_row || edge.src != previous_src) {
+					partition->source_vertices.push_back(edge.src);
+					partition->row_offsets.back() = NumericCast<uint32_t>(edge_idx);
+					partition->row_offsets.push_back(NumericCast<uint32_t>(edges.size()));
+					previous_src = edge.src;
+					have_row = true;
+				}
+				partition->e[edge_idx] = edge.local_dst;
+				row_ids[edge_idx] = edge.row;
+			}
+			if (!have_row) {
+				partition->row_offsets.clear();
+			}
+			partition->expected_sparse_row_count = partition->source_vertices.size();
+			partition->v_array_size = 0;
+			partition->initialized_e = true;
+			partition->sparse_rows_initialized = true;
+			csr->forward_partitions[partition_idx] = std::move(partition);
+			total_edge_count.fetch_add(edges.size(), std::memory_order_relaxed);
 		}
 	});
-	ParallelFor(edge_chunks, thread_count, [&](idx_t begin, idx_t end) {
-		for (idx_t edge_idx = begin * EDGE_SLICE_SIZE; edge_idx < std::min(edge_count, end * EDGE_SLICE_SIZE);
-		     edge_idx++) {
-			auto partition_idx = edge_dst[edge_idx] / width;
-			auto &partition = *csr->forward_partitions[partition_idx];
-			auto position = partition.v[edge_src[edge_idx] + 1].fetch_add(1, std::memory_order_relaxed);
-			partition.e[position] = NumericCast<uint16_t>(edge_dst[edge_idx] - partition.start_vertex);
-			epoch->partition_row_ids[partition_idx][position] = edge_row[edge_idx];
-		}
-	});
-	ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end) {
-		for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
-			csr->forward_partitions[partition_idx]->FinalizeSparseRows();
-		}
-	});
-	csr->edge_count = edge_count;
-	epoch->edge_count = edge_count;
+	csr->edge_count = total_edge_count.load();
+	epoch->edge_count = csr->edge_count;
 	epoch->csr = std::move(csr);
 	return epoch;
 }

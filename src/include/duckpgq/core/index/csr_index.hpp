@@ -33,6 +33,8 @@ struct PropertyGraphTable;
 //! key spaces fall back to a sorted key array with binary search.
 struct CSRIndexDictionary {
 	bool dense = false;
+	//! Dense and every key in [min_key, min_key + count) is present: id = key - min_key, no bitmap needed
+	bool identity = false;
 	int64_t min_key = 0;
 	//! Dense: bit (key - min_key) is set when the key is a vertex; word_rank[w] = number of set bits before word w
 	vector<uint64_t> bitmap;
