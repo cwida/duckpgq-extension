@@ -662,8 +662,7 @@ void CoreOptimizer::Register(ExtensionLoader &loader) {
 	                          LogicalType::BOOLEAN, Value::BOOLEAN(true));
 	config.AddExtensionOption(Identifier(VertexEliminationPlanner::SETTING_NAME),
 	                          "Leave vertex tables out of the MATCH translation when the query only uses their key, "
-	                          "joining the incident edge tables to each other instead (see "
-	                          "docs/VERTEX_JOIN_ELIMINATION.md)",
+	                          "joining the incident edge tables to each other instead",
 	                          LogicalType::BOOLEAN, Value::BOOLEAN(true));
 	OptimizerExtension extension;
 	extension.optimize_function = FactorizedJoinOptimizer::Optimize;

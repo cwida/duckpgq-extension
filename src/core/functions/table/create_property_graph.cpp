@@ -323,7 +323,8 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 
 //! The property graph declares that every edge key references a vertex row (SOURCE KEY ... REFERENCES ...). SQL/PGQ
 //! calls an edge whose key matches no vertex an "incomplete edge" (ISO/IEC 9075-16, 9.5). Verify the declaration once,
-//! when the graph is created, so that the MATCH translation can rely on it (see docs/VERTEX_JOIN_ELIMINATION.md).
+//! when the graph is created, so that the MATCH translation can rely on it (see VertexEliminationPlanner). Rows
+//! modified after creation are not re-checked.
 //! An edge with a NULL key component references nothing and is never matched; it is accepted.
 //! The check runs on a separate connection, so the table is named by the catalog entry it resolved to in the user's
 //! context (the property graph itself keeps an unqualified name when the search path resolved it).

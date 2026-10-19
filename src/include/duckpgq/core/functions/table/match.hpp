@@ -67,7 +67,9 @@ struct VertexJoinMap {
 //! is unique, contributes nothing to the result. The edges incident to the vertex are joined to each other on their
 //! key columns instead, references to the vertex key are redirected to one of the edge keys, and the vertex table is
 //! left out of the FROM clause. CREATE PROPERTY GRAPH verifies that every edge key references a vertex row, which is
-//! what makes the join redundant. See docs/VERTEX_JOIN_ELIMINATION.md.
+//! what makes the join redundant; an edge made incomplete by later modifications is no longer dropped. A vertex is
+//! only eliminated when every reference to it is to its key, it is not a path-finding endpoint or label-inheritance
+//! check, all incident edges use the same key columns, and the key has a PRIMARY KEY or UNIQUE constraint.
 class VertexEliminationPlanner {
 public:
 	static constexpr const char *SETTING_NAME = "duckpgq_vertex_join_elimination";
