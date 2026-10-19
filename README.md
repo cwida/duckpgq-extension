@@ -133,3 +133,8 @@ make tidy-check
   [docs/FACTORIZED_JOINS.md](docs/FACTORIZED_JOINS.md). Disable it with `SET duckpgq_factorized_joins = false;`,
   or only its `FACTORIZED_GROUP_JOIN` operator with `SET duckpgq_factorized_join_operator = false;`, or
   the operator's dense-array counting with `SET duckpgq_factorized_join_directory = false;`.
+- `CREATE PROPERTY GRAPH` verifies that every edge key references an existing vertex row and fails with an
+  "Incomplete edge" error otherwise. This lets the `MATCH` translation leave out vertex tables that a query only
+  uses for their unique key, joining the incident edge tables to each other instead, see
+  [docs/VERTEX_JOIN_ELIMINATION.md](docs/VERTEX_JOIN_ELIMINATION.md). Disable the rewrite with
+  `SET duckpgq_vertex_join_elimination = false;`.
