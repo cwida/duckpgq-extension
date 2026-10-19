@@ -1,4 +1,5 @@
 #include "duckpgq/core/operator/physical_path_finding_operator.hpp"
+#include "duckpgq/core/utils/csr_build.hpp"
 #include "duckpgq/common.hpp"
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
 #include <duckpgq/core/operator/partitioned_csr_cache.hpp>
@@ -1113,55 +1114,27 @@ void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, 
 	local_csr_event->InsertEvent(make_shared_ptr<SourceGroupedScheduleEvent>(gstate, pipeline, op, context));
 }
 
+struct EndpointBuildEntry {
+	uint32_t src;
+	uint16_t local_dst;
+};
+
+//! Builds one destination-range partition from its radix-partitioned endpoints: one scan into an edge array,
+//! a radix sort by source in cache, and the sparse rows emitted in one sweep. No per-vertex counter array.
 static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, idx_t partition_idx) {
 	auto &endpoint_partitions = gstate.endpoint_partition_data->GetPartitions();
 	auto &endpoint_partition = endpoint_partitions[partition_idx];
 	auto start_vertex = partition_idx * gstate.endpoint_partition_width;
 	auto end_vertex = std::min(start_vertex + gstate.endpoint_partition_width, gstate.vertex_count + 2);
-	auto csr_partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, gstate.vertex_count, true);
 
-	idx_t endpoint_count = 0;
+	vector<EndpointBuildEntry> edges;
 	if (endpoint_partition) {
-		ColumnDataScanState count_scan;
+		edges.reserve(endpoint_partition->Count());
+		ColumnDataScanState scan;
 		DataChunk input;
-		endpoint_partition->InitializeScan(count_scan);
-		endpoint_partition->InitializeScanChunk(count_scan, input);
-		while (endpoint_partition->Scan(count_scan, input)) {
-			UnifiedVectorFormat endpoint_format;
-			input.data[0].ToUnifiedFormat(endpoint_format);
-			auto endpoint_data = UnifiedVectorFormat::GetData<hash_t>(endpoint_format);
-			for (idx_t row = 0; row < input.size(); row++) {
-				auto endpoint = endpoint_data[endpoint_format.sel->get_index(row)];
-				auto source = UnpackPartitionedEndpointSource(endpoint, gstate.endpoint_radix_bits);
-				if (static_cast<idx_t>(source) >= gstate.vertex_count ||
-				    RadixPartitioning::ApplyMask(endpoint, gstate.endpoint_radix_bits) != partition_idx) {
-					throw InternalException("Packed partitioned endpoint is outside its source or destination range");
-				}
-				csr_partition->v[static_cast<idx_t>(source) + 1].fetch_add(1, std::memory_order_relaxed);
-			}
-			endpoint_count += input.size();
-		}
-	}
-
-	uint64_t running_sum = 0;
-	idx_t sparse_row_count = 0;
-	for (idx_t source = 0; source < csr_partition->v_array_size; source++) {
-		auto count = csr_partition->v[source].load(std::memory_order_relaxed);
-		csr_partition->v[source].store(NumericCast<uint32_t>(running_sum), std::memory_order_relaxed);
-		running_sum += count;
-		sparse_row_count += count > 0;
-	}
-	csr_partition->expected_sparse_row_count = sparse_row_count;
-	csr_partition->e.resize(NumericCast<idx_t>(running_sum));
-	csr_partition->initialized_e = true;
-	SampleCSRBuildMemory(gstate);
-
-	if (endpoint_partition) {
-		ColumnDataScanState fill_scan;
-		DataChunk input;
-		endpoint_partition->InitializeScan(fill_scan);
-		endpoint_partition->InitializeScanChunk(fill_scan, input);
-		while (endpoint_partition->Scan(fill_scan, input)) {
+		endpoint_partition->InitializeScan(scan);
+		endpoint_partition->InitializeScanChunk(scan, input);
+		while (endpoint_partition->Scan(scan, input)) {
 			UnifiedVectorFormat endpoint_format;
 			input.data[0].ToUnifiedFormat(endpoint_format);
 			auto endpoint_data = UnifiedVectorFormat::GetData<hash_t>(endpoint_format);
@@ -1175,18 +1148,18 @@ static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, i
 					throw InternalException(
 					    "Packed partitioned endpoint does not match its source or destination partition");
 				}
-				auto position =
-				    csr_partition->v[static_cast<idx_t>(source) + 1].fetch_add(1, std::memory_order_relaxed);
-				if (position >= csr_partition->e.size()) {
-					throw InternalException("Partitioned endpoint cursor exceeded its allocated CSR partition");
-				}
-				csr_partition->e[position] = NumericCast<uint16_t>(local_destination);
+				edges.push_back({source, NumericCast<uint16_t>(local_destination)});
 			}
 		}
 	}
+	auto endpoint_count = edges.size();
+	SampleCSRBuildMemory(gstate);
 
-	csr_partition->FinalizeSparseRows();
-	gstate.endpoint_partition_csrs[partition_idx] = std::move(csr_partition);
+	vector<EndpointBuildEntry> scratch;
+	vector<idx_t> histogram;
+	CSRRadixSortBySource(edges, scratch, histogram, CSRSourceBits(gstate.vertex_count));
+	gstate.endpoint_partition_csrs[partition_idx] = CSREmitSparsePartition(
+	    start_vertex, end_vertex, gstate.vertex_count, edges, [](idx_t, const EndpointBuildEntry &) {});
 	endpoint_partition.reset();
 	SampleCSRBuildMemory(gstate);
 	return endpoint_count;

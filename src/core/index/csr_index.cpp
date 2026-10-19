@@ -1,6 +1,7 @@
 #include "duckpgq/core/index/csr_index.hpp"
 
 #include "duckpgq/core/operator/partitioned_csr_cache.hpp"
+#include "duckpgq/core/utils/csr_build.hpp"
 #include "duckpgq/parser/property_graph_table.hpp"
 
 #include "duckdb/catalog/catalog.hpp"
@@ -463,14 +464,7 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 
 	// Pass 2: per partition, gather the thread buckets, radix-sort by source in cache, and emit the sparse rows,
 	// the destination offsets, and the row ids in one sweep
-	auto src_bits = idx_t(1);
-	while ((idx_t(1) << src_bits) < vertex_count + 2) {
-		src_bits++;
-	}
-	constexpr idx_t RADIX_BITS = 11;
-	constexpr idx_t RADIX_BUCKETS = idx_t(1) << RADIX_BITS;
-	auto radix_passes = (src_bits + RADIX_BITS - 1) / RADIX_BITS;
-
+	auto src_bits = CSRSourceBits(vertex_count);
 	auto csr = make_shared_ptr<PartitionedCSRIndex>();
 	csr->vertex_count = vertex_count + 2;
 	csr->capabilities = PartitionedCSRCapabilities::FORWARD;
@@ -480,7 +474,7 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 	ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
 		vector<BuildEdge> edges;
 		vector<BuildEdge> scratch;
-		vector<idx_t> histogram(RADIX_BUCKETS);
+		vector<idx_t> histogram;
 		for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
 			idx_t partition_edges = 0;
 			for (auto &buckets : thread_buckets) {
@@ -494,55 +488,14 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 				bucket.clear();
 				bucket.shrink_to_fit();
 			}
-			// LSD radix sort on the source id
-			scratch.resize(edges.size());
-			for (idx_t pass = 0; pass < radix_passes; pass++) {
-				auto shift = pass * RADIX_BITS;
-				std::fill(histogram.begin(), histogram.end(), 0);
-				for (auto &edge : edges) {
-					histogram[(edge.src >> shift) & (RADIX_BUCKETS - 1)]++;
-				}
-				idx_t offset = 0;
-				for (auto &count : histogram) {
-					auto next = offset + count;
-					count = offset;
-					offset = next;
-				}
-				for (auto &edge : edges) {
-					scratch[histogram[(edge.src >> shift) & (RADIX_BUCKETS - 1)]++] = edge;
-				}
-				std::swap(edges, scratch);
-			}
-			// Emit the partition: sparse rows over the sources that have edges
+			CSRRadixSortBySource(edges, scratch, histogram, src_bits);
 			auto start_vertex = partition_idx * width;
 			auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
-			auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, vertex_count, false);
 			auto &row_ids = epoch->partition_row_ids[partition_idx];
-			partition->e.resize(edges.size());
 			row_ids.resize(edges.size());
-			partition->row_offsets.push_back(0);
-			uint32_t previous_src = 0;
-			bool have_row = false;
-			for (idx_t edge_idx = 0; edge_idx < edges.size(); edge_idx++) {
-				auto &edge = edges[edge_idx];
-				if (!have_row || edge.src != previous_src) {
-					partition->source_vertices.push_back(edge.src);
-					partition->row_offsets.back() = NumericCast<uint32_t>(edge_idx);
-					partition->row_offsets.push_back(NumericCast<uint32_t>(edges.size()));
-					previous_src = edge.src;
-					have_row = true;
-				}
-				partition->e[edge_idx] = edge.local_dst;
-				row_ids[edge_idx] = edge.row;
-			}
-			if (!have_row) {
-				partition->row_offsets.clear();
-			}
-			partition->expected_sparse_row_count = partition->source_vertices.size();
-			partition->v_array_size = 0;
-			partition->initialized_e = true;
-			partition->sparse_rows_initialized = true;
-			csr->forward_partitions[partition_idx] = std::move(partition);
+			csr->forward_partitions[partition_idx] =
+			    CSREmitSparsePartition(start_vertex, end_vertex, vertex_count, edges,
+			                           [&](idx_t position, const BuildEdge &edge) { row_ids[position] = edge.row; });
 			total_edge_count.fetch_add(edges.size(), std::memory_order_relaxed);
 		}
 	});
