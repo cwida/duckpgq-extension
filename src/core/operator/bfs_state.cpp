@@ -87,6 +87,9 @@ void BFSState::InitializeLanes() {
 			int64_t dst_pos = vdata_dst.sel->get_index(search_num);
 			if (!vdata_src.validity.RowIsValid(src_pos) || !vdata_dst.validity.RowIsValid(dst_pos)) {
 				result_validity.SetInvalid(search_num);
+			} else if (!IsVertexInRange(src[src_pos]) || !IsVertexInRange(dst[dst_pos])) {
+				// A pair endpoint outside the CSR cannot be reached; never index the lane arrays with it
+				result_validity.SetInvalid(search_num);
 			} else if (src[src_pos] == dst[dst_pos]) {
 				pf_results->data[0].SetValue(search_num, 0);
 			} else {

@@ -1,0 +1,39 @@
+# name: test/sql/path_finding/path_finding_operator_bounds.test
+# description: Pair endpoints outside the vertex range yield NULL instead of indexing past the BFS arrays
+# group: [path_finding]
+
+require duckpgq
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# Vertices 0..4 in a chain. Pairs reference vertex ids 99 and -1, which do not exist.
+statement ok
+CREATE TABLE bounds_edge AS SELECT range::BIGINT AS src, (range + 1)::BIGINT AS dst FROM range(4);
+
+statement ok
+CREATE TABLE bounds_pair(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO bounds_pair VALUES (0, 4), (0, 99), (99, 4), (-1, 2), (3, 3), (2, 0), (NULL, 1);
+
+query III
+SELECT p.src, p.dst, iterativelengthoperator(
+        p.src, p.dst,
+        struct_pack(src := e.src, dst := e.dst),
+        5::BIGINT, 4::BIGINT,
+        'bounds-test') AS len
+FROM bounds_pair p, bounds_edge e
+ORDER BY p.src NULLS LAST, p.dst;
+----
+-1	2	NULL
+0	4	4
+0	99	NULL
+2	0	NULL
+3	3	0
+99	4	NULL
+NULL	1	NULL

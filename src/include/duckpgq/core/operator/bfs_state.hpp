@@ -22,6 +22,10 @@ public:
 	//! Creates the event that runs this batch. The caller registers it with the executor.
 	virtual shared_ptr<Event> CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op);
 	void InitializeLanes();
+	//! Whether a pair endpoint can index the per-vertex lane arrays
+	bool IsVertexInRange(int64_t vertex) const {
+		return vertex >= 0 && vertex < v_size;
+	}
 	virtual void Clear();
 	void CreateThreadLocalCSRs(); // Generates LocalCSRs
 
