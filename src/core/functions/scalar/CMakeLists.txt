@@ -11,6 +11,7 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/pagerank.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/partitioned_csr_invalidation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/path_finding_strategy.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/csr_index_functions.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reachability.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/shortest_path_operator.cpp

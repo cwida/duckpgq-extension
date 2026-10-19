@@ -21,6 +21,7 @@ int32_t GetPathFindingThreadsPerBatch(ClientContext &context);
 int32_t GetPathFindingMaxConcurrentBatches(ClientContext &context);
 int32_t GetPathFindingReverseOrientationRatio(ClientContext &context);
 int32_t GetPathFindingSourceGroupRatio(ClientContext &context);
+double_t GetCSRIndexFoldRatio(ClientContext &context);
 
 struct CorePGQOptions {
 	static void Register(ExtensionLoader &loader) {
@@ -41,6 +42,7 @@ struct CorePGQOptions {
 		RegisterPathFindingMaxConcurrentBatches(loader);
 		RegisterPathFindingReverseOrientationRatio(loader);
 		RegisterPathFindingSourceGroupRatio(loader);
+		RegisterCSRIndexFoldRatio(loader);
 	}
 
 private:
@@ -61,6 +63,7 @@ private:
 	static void RegisterPathFindingMaxConcurrentBatches(ExtensionLoader &loader);
 	static void RegisterPathFindingReverseOrientationRatio(ExtensionLoader &loader);
 	static void RegisterPathFindingSourceGroupRatio(ExtensionLoader &loader);
+	static void RegisterCSRIndexFoldRatio(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

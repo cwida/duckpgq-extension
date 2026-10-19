@@ -33,6 +33,12 @@ int32_t GetLightPartitionMultiplier(ClientContext &context) {
 	return value.GetValue<int32_t>();
 }
 
+double_t GetCSRIndexFoldRatio(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("duckpgq_csr_index_fold_ratio", value);
+	return value.GetValue<double_t>();
+}
+
 double_t GetHeavyPartitionFraction(ClientContext &context) {
 	Value value;
 	context.TryGetCurrentSetting("experimental_path_finding_operator_heavy_partition_fraction", value);
@@ -315,6 +321,19 @@ void CorePGQOptions::RegisterPathFindingSourceGroupRatio(ExtensionLoader &loader
 	    "Use source-grouped regular path-finding when pair_count >= ratio * oriented_distinct_source_count; "
 	    "values <= 0 disable adaptive source grouping",
 	    LogicalType::INTEGER, Value(4));
+}
+
+//------------------------------------------------------------------------------
+// Register option
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterCSRIndexFoldRatio(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+
+	config.AddExtensionOption("duckpgq_csr_index_fold_ratio",
+	                          "A CSR index folds its change log into a new epoch when the log exceeds this fraction of "
+	                          "the epoch's edges; 0 disables automatic folding",
+	                          LogicalType::DOUBLE, Value(0.1));
 }
 
 } // namespace duckdb

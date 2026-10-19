@@ -1,0 +1,189 @@
+# name: test/sql/path_finding/csr_index_fold.test
+# description: A CSR index folds its change log into a new epoch, keeping the previous epoch for older transactions
+# group: [path_finding]
+
+require duckpgq
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con1
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con2
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok con1
+SET experimental_path_finding_operator = true;
+
+statement ok con2
+SET experimental_path_finding_operator = true;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(1, 101);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+# A chain 1 -> 2 -> ... -> 50
+statement ok
+INSERT INTO knows SELECT range, range + 1 FROM range(1, 50);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=0;tombstones=0
+
+# ---- Automatic fold: the default ratio is 10% of the epoch's 49 edges, so 5 inserts fold on the next read
+statement ok
+INSERT INTO knows SELECT range, range + 1 FROM range(50, 55);
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=5;tombstones=0
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+55
+
+# The previous epoch is kept for transactions that started before the fold; it lacks the five edges, so their
+# delta entries stay until a later fold retires it.
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=2;delta=5;tombstones=0
+
+# ---- With folding disabled the log accumulates; an explicit fold compacts it
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+INSERT INTO knows SELECT range, range + 1 FROM range(55, 70);
+
+statement ok
+DELETE FROM knows WHERE src = 10;
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+10
+
+# The original epoch is still retained, so the five entries from before the automatic fold are still needed too
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=2;delta=20;tombstones=1
+
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+# The oldest retained epoch now contains the first five edges, so their entries are gone; the newer entries remain
+# for it.
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=2;delta=15;tombstones=1
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+10
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+60
+
+# ---- A transaction that started before a fold keeps the epoch it can see
+statement ok con1
+BEGIN TRANSACTION;
+
+query I con1
+SELECT count(*) FROM knows;
+----
+68
+
+statement ok con2
+INSERT INTO knows VALUES (10, 11);
+
+query I con2
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I con1
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+10
+
+query I con2
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+70
+
+statement ok con1
+COMMIT;
+
+query I con1
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+70
+
+# A writing transaction cannot fold
+statement ok con2
+BEGIN TRANSACTION;
+
+statement ok con2
+INSERT INTO knows VALUES (70, 71);
+
+statement error con2
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+uncommitted changes
+
+statement ok con2
+ROLLBACK;
+
+# The operator agrees with the SQL rewrite
+statement ok
+SET experimental_path_finding_operator = false;
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+70

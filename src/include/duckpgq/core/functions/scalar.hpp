@@ -23,6 +23,7 @@ struct CoreScalarFunctions {
 		RegisterPageRankScalarFunction(loader);
 		RegisterPartitionedCSRInvalidationScalarFunction(loader);
 		RegisterPathFindingStrategyScalarFunction(loader);
+		RegisterCSRIndexScalarFunctions(loader);
 	}
 
 private:
@@ -44,6 +45,7 @@ private:
 	static void RegisterPageRankScalarFunction(ExtensionLoader &loader);
 	static void RegisterPartitionedCSRInvalidationScalarFunction(ExtensionLoader &loader);
 	static void RegisterPathFindingStrategyScalarFunction(ExtensionLoader &loader);
+	static void RegisterCSRIndexScalarFunctions(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

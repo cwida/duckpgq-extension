@@ -72,6 +72,8 @@ struct CSRIndexEdgeList {
 struct CSRIndexEpoch {
 	//! Rows committed before this bound are in the epoch
 	VisibilityBound bound;
+	//! Position in the index's sequence of epochs; later generations contain every row of earlier ones unless deleted
+	uint32_t generation = 0;
 	idx_t vertex_count = 0;
 	idx_t edge_count = 0;
 	//! Destination partition width used for the CSR layout
@@ -81,6 +83,9 @@ struct CSRIndexEpoch {
 	shared_ptr<PartitionedCSRIndex> csr;
 	//! Edge-table row id per edge position, per partition, aligned with the partition's edge array
 	vector<vector<row_t>> partition_row_ids;
+	//! Epoch position (partition << 32 | offset) of each tombstoned row, DConstants::INVALID_INDEX when the row is
+	//! not an edge of this epoch; filled lazily by readers, protected by the index lock
+	vector<idx_t> tombstone_positions;
 };
 
 //! An edge committed after the epoch was built (keys, since the vertex may be new) and its row id
@@ -88,6 +93,16 @@ struct CSRIndexDeltaEdge {
 	int64_t src_key;
 	int64_t dst_key;
 	row_t row;
+	//! Generation of the first epoch that contains this row (UINT32_MAX while no retained epoch does); epochs are
+	//! built from a superset of their predecessors' committed rows, so every later epoch contains it as well
+	uint32_t covered_epoch = NumericLimits<uint32_t>::Maximum();
+};
+
+//! A deleted row that may still be an edge of a retained epoch
+struct CSRIndexTombstone {
+	row_t row;
+	//! Generation of the first epoch built without this row (UINT32_MAX while every retained epoch has it)
+	uint32_t excluded_epoch = NumericLimits<uint32_t>::Maximum();
 };
 
 //! What one reader traverses: the shared epoch plus an overlay for the changes visible to its transaction.
@@ -160,6 +175,15 @@ public:
 	//! Sizes of the change log, for tests and the fold policy
 	idx_t DeltaSize() const;
 	idx_t TombstoneCount() const;
+	idx_t EpochCount() const;
+
+	//! Builds a new epoch at the transaction's bound and drops the change-log entries no retained epoch needs. The
+	//! transaction must not have uncommitted changes. Also run automatically by Snapshot when the change log exceeds
+	//! the fold ratio setting.
+	void Fold(ClientContext &context, DuckTransaction &transaction, DataTable &table) const;
+
+	//! Snapshot of the index for a table and index name, for the fold and stats functions
+	static optional_ptr<DuckTableEntry> FindTable(ClientContext &context, const string &table_name);
 
 public:
 	// BoundIndex interface
@@ -182,23 +206,32 @@ public:
 private:
 	shared_ptr<CSRIndexEpoch> RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
 	                                           DataTable &table) const;
-	//! Drops change-log entries that the epoch at `transaction`'s bound already accounts for
-	void CompactChangeLog(DuckTransaction &transaction, DataTable &table) const;
+	//! Stamps the change-log entries that the epoch built by `transaction` accounts for: delta rows it contains and
+	//! tombstoned rows it excludes. Uses the live transaction, so it does not depend on how long DuckDB keeps row
+	//! versions. Then installs the epoch and drops the entries no retained epoch needs any more.
+	void InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table,
+	                            shared_ptr<CSRIndexEpoch> epoch) const;
+	//! Drops change-log entries that every retained epoch already accounts for; the index lock must be held
+	void CompactChangeLogLocked() const;
 	//! Resolves the epoch positions of tombstoned rows [known_count, tombstone_count) by scanning the epoch's row ids
-	void ResolveTombstonePositions(const CSRIndexEpoch &epoch, idx_t tombstone_count) const;
+	void ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_count) const;
+	//! The newest retained epoch a reader at `bound` may traverse, or nullptr; the index lock must be held
+	shared_ptr<CSRIndexEpoch> EpochForLocked(VisibilityBound bound) const;
 	shared_ptr<CSRIndexSnapshot> BuildSnapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table,
 	                                           shared_ptr<CSRIndexEpoch> epoch, idx_t delta_count,
 	                                           idx_t tombstone_count) const;
 
 private:
 	bool undirected = false;
-	//! Readers take the index lock only to copy the epoch pointer and the change-log lengths
-	mutable shared_ptr<CSRIndexEpoch> epoch;
+	//! Retained epochs, oldest first; the newest serves current readers, older ones serve transactions that started
+	//! before a fold. Readers take the index lock only to copy an epoch pointer and the change-log lengths.
+	static constexpr idx_t MAX_RETAINED_EPOCHS = 2;
+	mutable vector<shared_ptr<CSRIndexEpoch>> epochs;
+	mutable uint32_t next_generation = 0;
 	mutable vector<CSRIndexDeltaEdge> delta;
-	mutable vector<row_t> tombstones;
-	//! Epoch position (partition << 32 | offset) of each tombstoned row, DConstants::INVALID_INDEX when the row is
-	//! a delta row; filled lazily, protected by the index lock
-	mutable vector<idx_t> tombstone_positions;
+	mutable vector<CSRIndexTombstone> tombstones;
+	//! One fold at a time
+	mutable mutex fold_lock;
 };
 
 //! Registration entry point called from the core module

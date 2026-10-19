@@ -1,6 +1,7 @@
 #include "duckpgq/core/index/csr_index.hpp"
 
 #include "duckpgq/core/operator/partitioned_csr_cache.hpp"
+#include "duckpgq/core/option/duckpgq_option.hpp"
 #include "duckpgq/core/utils/csr_build.hpp"
 #include "duckpgq/parser/property_graph_table.hpp"
 
@@ -510,10 +511,11 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 
 void CSRIndex::InstallEpoch(shared_ptr<CSRIndexEpoch> epoch_p) {
 	IndexLock l(*this);
-	epoch = std::move(epoch_p);
+	epoch_p->generation = next_generation++;
+	epochs.clear();
+	epochs.push_back(std::move(epoch_p));
 	delta.clear();
 	tombstones.clear();
-	tombstone_positions.clear();
 }
 
 shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
@@ -542,55 +544,94 @@ shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, Duc
 	return BuildEpoch(context, lists, undirected, transaction.view.visibility_bound);
 }
 
-void CSRIndex::CompactChangeLog(DuckTransaction &transaction, DataTable &table) const {
-	// Evaluate visibility outside the lock on a copy of the current prefix; entries appended meanwhile are kept
+void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table,
+                                      shared_ptr<CSRIndexEpoch> epoch_p) const {
+	// Decide, with the live transaction that built the epoch, which existing entries it accounts for. Entries appended
+	// after this point are stamped by a later epoch.
 	vector<CSRIndexDeltaEdge> delta_prefix;
-	vector<row_t> tombstone_prefix;
+	vector<CSRIndexTombstone> tombstone_prefix;
 	{
 		IndexLock l(*this);
 		delta_prefix = delta;
 		tombstone_prefix = tombstones;
 	}
-	// Delta rows visible at the epoch's bound are in the epoch; tombstoned rows that are not visible were excluded
-	vector<uint8_t> keep_delta(delta_prefix.size());
-	vector<uint8_t> keep_tombstone(tombstone_prefix.size());
+	vector<uint8_t> delta_covered(delta_prefix.size());
+	vector<uint8_t> tombstone_excluded(tombstone_prefix.size());
 	for (idx_t i = 0; i < delta_prefix.size(); i++) {
-		keep_delta[i] = !table.CanFetch(transaction, delta_prefix[i].row);
+		delta_covered[i] = table.CanFetch(transaction, delta_prefix[i].row);
 	}
 	for (idx_t i = 0; i < tombstone_prefix.size(); i++) {
-		keep_tombstone[i] = table.CanFetch(transaction, tombstone_prefix[i]);
+		tombstone_excluded[i] = !table.CanFetch(transaction, tombstone_prefix[i].row);
 	}
 	IndexLock l(*this);
-	vector<CSRIndexDeltaEdge> new_delta;
-	for (idx_t i = 0; i < delta.size(); i++) {
-		if (i >= keep_delta.size() || keep_delta[i]) {
-			new_delta.push_back(delta[i]);
+	auto generation = next_generation++;
+	epoch_p->generation = generation;
+	for (idx_t i = 0; i < delta_covered.size() && i < delta.size(); i++) {
+		if (delta_covered[i]) {
+			delta[i].covered_epoch = std::min(delta[i].covered_epoch, generation);
 		}
 	}
-	vector<row_t> new_tombstones;
-	for (idx_t i = 0; i < tombstones.size(); i++) {
-		if (i >= keep_tombstone.size() || keep_tombstone[i]) {
-			new_tombstones.push_back(tombstones[i]);
+	for (idx_t i = 0; i < tombstone_excluded.size() && i < tombstones.size(); i++) {
+		if (tombstone_excluded[i]) {
+			tombstones[i].excluded_epoch = std::min(tombstones[i].excluded_epoch, generation);
+		}
+	}
+	// Keep the previous epoch for transactions that started before this fold
+	epochs.push_back(std::move(epoch_p));
+	while (epochs.size() > MAX_RETAINED_EPOCHS) {
+		epochs.erase(epochs.begin());
+	}
+	CompactChangeLogLocked();
+}
+
+void CSRIndex::CompactChangeLogLocked() const {
+	if (epochs.empty()) {
+		return;
+	}
+	// An entry the oldest retained epoch accounts for is accounted for by every retained epoch
+	auto oldest_generation = epochs.front()->generation;
+	vector<CSRIndexDeltaEdge> new_delta;
+	for (auto &edge : delta) {
+		if (edge.covered_epoch > oldest_generation) {
+			new_delta.push_back(edge);
+		}
+	}
+	vector<CSRIndexTombstone> new_tombstones;
+	for (auto &tombstone : tombstones) {
+		if (tombstone.excluded_epoch > oldest_generation) {
+			new_tombstones.push_back(tombstone);
 		}
 	}
 	delta = std::move(new_delta);
 	tombstones = std::move(new_tombstones);
-	tombstone_positions.clear();
+	for (auto &epoch : epochs) {
+		epoch->tombstone_positions.clear();
+	}
 }
 
-void CSRIndex::ResolveTombstonePositions(const CSRIndexEpoch &epoch, idx_t tombstone_count) const {
+shared_ptr<CSRIndexEpoch> CSRIndex::EpochForLocked(VisibilityBound bound) const {
+	for (auto it = epochs.rbegin(); it != epochs.rend(); ++it) {
+		if (VisibilityBound::Min((*it)->bound, bound) == (*it)->bound) {
+			return *it;
+		}
+	}
+	return nullptr;
+}
+
+void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_count) const {
 	vector<row_t> pending;
 	idx_t known;
 	{
 		IndexLock l(*this);
-		known = tombstone_positions.size();
+		known = epoch.tombstone_positions.size();
 		if (known >= tombstone_count) {
 			return;
 		}
-		pending.assign(tombstones.begin() + NumericCast<int64_t>(known),
-		               tombstones.begin() + NumericCast<int64_t>(tombstone_count));
+		for (idx_t i = known; i < tombstone_count && i < tombstones.size(); i++) {
+			pending.push_back(tombstones[i].row);
+		}
 	}
-	// One scan over the epoch's row ids finds the positions of all pending rows; rows not found are delta rows
+	// One scan over the epoch's row ids finds the positions of all pending rows; rows not found are not epoch edges
 	std::unordered_map<row_t, idx_t> positions;
 	positions.reserve(pending.size());
 	for (auto row : pending) {
@@ -616,12 +657,12 @@ void CSRIndex::ResolveTombstonePositions(const CSRIndexEpoch &epoch, idx_t tombs
 		}
 	});
 	IndexLock l(*this);
-	if (tombstone_positions.size() != known) {
-		// Another reader resolved them meanwhile
+	if (epoch.tombstone_positions.size() != known) {
+		// Another reader resolved them meanwhile, or the log was compacted
 		return;
 	}
 	for (auto row : pending) {
-		tombstone_positions.push_back(positions[row]);
+		epoch.tombstone_positions.push_back(positions[row]);
 	}
 }
 
@@ -644,9 +685,12 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		vector<idx_t> positions;
 		{
 			IndexLock l(*this);
-			rows.assign(tombstones.begin(), tombstones.begin() + NumericCast<int64_t>(tombstone_count));
-			positions.assign(tombstone_positions.begin(),
-			                 tombstone_positions.begin() + NumericCast<int64_t>(tombstone_count));
+			tombstone_count = std::min<idx_t>(tombstone_count, epoch.tombstone_positions.size());
+			for (idx_t i = 0; i < tombstone_count; i++) {
+				rows.push_back(tombstones[i].row);
+			}
+			positions.assign(epoch.tombstone_positions.begin(),
+			                 epoch.tombstone_positions.begin() + NumericCast<int64_t>(tombstone_count));
 		}
 		snapshot->suppressed.resize(snapshot->partitions.size());
 		for (idx_t i = 0; i < tombstone_count; i++) {
@@ -668,6 +712,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	vector<CSRIndexDeltaEdge> delta_edges;
 	if (delta_count > 0) {
 		IndexLock l(*this);
+		delta_count = std::min<idx_t>(delta_count, delta.size());
 		delta_edges.assign(delta.begin(), delta.begin() + NumericCast<int64_t>(delta_count));
 	}
 	struct DeltaEntry {
@@ -761,41 +806,62 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	return snapshot;
 }
 
+void CSRIndex::Fold(ClientContext &context, DuckTransaction &transaction, DataTable &table) const {
+	if (transaction.ChangesMade()) {
+		throw InvalidInputException("A CSR index cannot be folded by a transaction with uncommitted changes");
+	}
+	lock_guard<mutex> fold_guard(fold_lock);
+	InstallEpochAndCompact(transaction, table, RebuildFromTable(context, transaction, table));
+}
+
 shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTransaction &transaction,
                                                 DataTable &table) const {
 	if (transaction.ChangesMade()) {
 		// The reader's own uncommitted writes are visible to it alone: build a private epoch from its view of the
-		// table (which includes them) and leave the shared epoch, which must only contain committed rows, untouched
+		// table (which includes them) and leave the shared epochs, which must only contain committed rows, untouched
 		return BuildSnapshot(context, transaction, table, RebuildFromTable(context, transaction, table), 0, 0);
 	}
+	auto bound = transaction.view.visibility_bound;
 	shared_ptr<CSRIndexEpoch> current;
+	bool have_epochs;
 	idx_t delta_count;
 	idx_t tombstone_count;
 	{
 		IndexLock l(*this);
-		current = epoch;
+		have_epochs = !epochs.empty();
+		current = EpochForLocked(bound);
 		delta_count = delta.size();
 		tombstone_count = tombstones.size();
 	}
-	if (!current) {
+	if (!have_epochs) {
 		// No epoch yet (index created before a restart, or never read): build one at this reader's snapshot
-		auto rebuilt = RebuildFromTable(context, transaction, table);
+		lock_guard<mutex> fold_guard(fold_lock);
+		bool still_empty;
 		{
 			IndexLock l(*this);
-			if (!epoch) {
-				epoch = rebuilt;
-			}
-			current = epoch;
+			still_empty = epochs.empty();
 		}
-		if (current == rebuilt) {
-			CompactChangeLog(transaction, table);
+		if (still_empty) {
+			InstallEpochAndCompact(transaction, table, RebuildFromTable(context, transaction, table));
 		}
 		IndexLock l(*this);
+		current = EpochForLocked(bound);
 		delta_count = delta.size();
 		tombstone_count = tombstones.size();
+	} else if (current && current == epochs.back()) {
+		// Current readers fold when the change log has grown past the configured fraction of the epoch
+		auto ratio = GetCSRIndexFoldRatio(context);
+		if (ratio > 0 && static_cast<double>(delta_count + tombstone_count) >
+		                     ratio * static_cast<double>(std::max<idx_t>(1, current->edge_count))) {
+			Fold(context, transaction, table);
+			IndexLock l(*this);
+			current = EpochForLocked(bound);
+			delta_count = delta.size();
+			tombstone_count = tombstones.size();
+		}
 	}
-	// The epoch must not contain rows this reader cannot see: epoch.bound <= reader.bound
-	if (VisibilityBound::Min(current->bound, transaction.view.visibility_bound) != current->bound) {
+	if (!current) {
+		// Every retained epoch is newer than this reader's snapshot
 		return nullptr;
 	}
 	return BuildSnapshot(context, transaction, table, current, delta_count, tombstone_count);
@@ -809,6 +875,11 @@ idx_t CSRIndex::DeltaSize() const {
 idx_t CSRIndex::TombstoneCount() const {
 	IndexLock l(*this);
 	return tombstones.size();
+}
+
+idx_t CSRIndex::EpochCount() const {
+	IndexLock l(*this);
+	return epochs.size();
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -875,6 +946,15 @@ string CSRIndex::FindForEdgeTable(ClientContext &context, const PropertyGraphTab
 		}
 	}
 	return string();
+}
+
+optional_ptr<DuckTableEntry> CSRIndex::FindTable(ClientContext &context, const string &table_name) {
+	auto qualified = QualifiedName::Parse(table_name);
+	auto entry = Catalog::GetEntry<TableCatalogEntry>(context, qualified, OnEntryNotFound::RETURN_NULL);
+	if (!entry || !entry->IsDuckTable()) {
+		return nullptr;
+	}
+	return &entry->Cast<DuckTableEntry>();
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::Resolve(ClientContext &context, const string &catalog, const string &schema,
@@ -984,7 +1064,8 @@ ErrorData CSRIndex::Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 		if (!src_valid[row] || !dst_valid[row]) {
 			continue;
 		}
-		delta.push_back({src_keys[row], dst_keys[row], row_data[row_format.sel->get_index(row)]});
+		delta.push_back({src_keys[row], dst_keys[row], row_data[row_format.sel->get_index(row)],
+		                 NumericLimits<uint32_t>::Maximum()});
 	}
 	return ErrorData();
 }
@@ -1002,7 +1083,7 @@ idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifi
 	auto row_data = UnifiedVectorFormat::GetData<row_t>(row_format);
 	for (idx_t row = 0; row < count; row++) {
 		// Whether the row is an epoch edge or a delta edge is resolved lazily by the readers
-		tombstones.push_back(row_data[row_format.sel->get_index(row)]);
+		tombstones.push_back({row_data[row_format.sel->get_index(row)], NumericLimits<uint32_t>::Maximum()});
 		if (deleted_sel) {
 			deleted_sel->set_index(row, row);
 		}
@@ -1012,10 +1093,9 @@ idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifi
 
 void CSRIndex::ResetStorage(IndexLock &l) {
 	l.AssertHeld(*this);
-	epoch.reset();
+	epochs.clear();
 	delta.clear();
 	tombstones.clear();
-	tombstone_positions.clear();
 }
 
 bool CSRIndex::MergeIndexes(IndexLock &, BoundIndex &) {
@@ -1027,20 +1107,19 @@ void CSRIndex::Vacuum(IndexLock &) {
 
 idx_t CSRIndex::GetInMemorySize(IndexLock &l) const {
 	l.AssertHeld(*this);
-	idx_t bytes = delta.size() * sizeof(CSRIndexDeltaEdge) + tombstones.size() * sizeof(row_t) +
-	              tombstone_positions.size() * sizeof(idx_t);
-	if (!epoch) {
-		return bytes;
-	}
-	bytes += epoch->dictionary->bitmap.size() * sizeof(uint64_t) +
-	         epoch->dictionary->word_rank.size() * sizeof(uint32_t) +
-	         epoch->dictionary->sorted_keys.size() * sizeof(int64_t);
-	for (auto &partition : epoch->csr->forward_partitions) {
-		bytes += partition->e.size() * sizeof(uint16_t) + partition->row_offsets.size() * sizeof(uint32_t) +
-		         partition->source_vertices.size() * sizeof(uint32_t);
-	}
-	for (auto &row_ids : epoch->partition_row_ids) {
-		bytes += row_ids.size() * sizeof(row_t);
+	idx_t bytes = delta.size() * sizeof(CSRIndexDeltaEdge) + tombstones.size() * sizeof(CSRIndexTombstone);
+	for (auto &epoch : epochs) {
+		bytes += epoch->tombstone_positions.size() * sizeof(idx_t);
+		bytes += epoch->dictionary->bitmap.size() * sizeof(uint64_t) +
+		         epoch->dictionary->word_rank.size() * sizeof(uint32_t) +
+		         epoch->dictionary->sorted_keys.size() * sizeof(int64_t);
+		for (auto &partition : epoch->csr->forward_partitions) {
+			bytes += partition->e.size() * sizeof(uint16_t) + partition->row_offsets.size() * sizeof(uint32_t) +
+			         partition->source_vertices.size() * sizeof(uint32_t);
+		}
+		for (auto &row_ids : epoch->partition_row_ids) {
+			bytes += row_ids.size() * sizeof(row_t);
+		}
 	}
 	return bytes;
 }
@@ -1050,13 +1129,15 @@ void CSRIndex::Verify(IndexLock &) {
 
 string CSRIndex::ToString(IndexLock &l, bool) {
 	l.AssertHeld(*this);
-	if (!epoch) {
+	if (epochs.empty()) {
 		return StringUtil::Format("CSR index (no epoch, %llu delta edges, %llu tombstones)", delta.size(),
 		                          tombstones.size());
 	}
-	return StringUtil::Format("CSR index: %llu vertices, %llu edges, %llu partitions%s, %llu delta edges, %llu tombstones",
-	                          epoch->vertex_count, epoch->edge_count, epoch->csr->forward_partitions.size(),
-	                          undirected ? ", undirected" : "", delta.size(), tombstones.size());
+	auto &epoch = *epochs.back();
+	return StringUtil::Format(
+	    "CSR index: %llu vertices, %llu edges, %llu partitions%s, %llu epochs, %llu delta edges, %llu tombstones",
+	    epoch.vertex_count, epoch.edge_count, epoch.csr->forward_partitions.size(), undirected ? ", undirected" : "",
+	    epochs.size(), delta.size(), tombstones.size());
 }
 
 void CSRIndex::VerifyAllocations(IndexLock &) {
