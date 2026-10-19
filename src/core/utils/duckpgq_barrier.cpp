@@ -1,86 +1,65 @@
-
 #include "duckpgq/core/utils/duckpgq_barrier.hpp"
 
-#include <duckpgq/common.hpp>
-#include <duckdb/common/typedefs.hpp>
-#include <iostream>
-#include <mutex>
-#include <fstream>
-#include <thread>
+#include "duckdb/common/exception.hpp"
+#include "duckdb/execution/executor.hpp"
+#include "duckdb/main/client_context.hpp"
+
+#include <chrono>
 
 namespace duckdb {
 
-Barrier::Barrier(std::size_t iCount) : mThreshold(iCount), mCount(iCount), mGeneration(0) {
+//! How long a waiter sleeps between checks of the abort condition
+static constexpr std::chrono::milliseconds BARRIER_POLL_INTERVAL {20};
+
+Barrier::Barrier(std::size_t count_p, std::function<bool()> should_abort_p)
+    : threshold(count_p), count(count_p), should_abort(std::move(should_abort_p)) {
 }
 
-// Adds a custom log message
-void Barrier::LogMessage(idx_t worker_id, const std::string &message) {
-	std::lock_guard<std::mutex> logLock(logMutex);
-	std::ostringstream log;
-	log << "Thread " << worker_id << ": " << message;
-	timingLogs.push_back(log.str());
-}
-
-// Writes collected timing logs to a file with a timestamp
-// void Barrier::PrintTimingLogs() {
-//   std::lock_guard<std::mutex> lock(logMutex);
-//
-//   if (timingLogs.empty()) {
-//     return; // No logs to write
-//   }
-//
-//   // Get the current timestamp for the filename
-//   auto now = std::chrono::system_clock::now();
-//   auto now_time_t = std::chrono::system_clock::to_time_t(now);
-//   std::ostringstream timestamp;
-//   timestamp << std::put_time(std::localtime(&now_time_t), "%Y-%m-%d_%H-%M-%S");
-//
-//   // Construct the log filename
-//   std::string log_filename = "barrier_logs_" + timestamp.str() + ".log";
-//
-//   // Open file stream for writing
-//   std::ofstream log_file(log_filename, std::ios::out | std::ios::app);
-//   if (!log_file) {
-//     std::cerr << "Error: Could not open log file: " << log_filename << std::endl;
-//     return;
-//   }
-//
-//   // Write logs to file
-//   for (const auto &entry : timingLogs) {
-//     log_file << entry << std::endl;
-//   }
-//
-//   log_file.close();
-//   timingLogs.clear(); // Clear logs after writing
-// }
-
-void Barrier::Wait(idx_t worker_id) {
-	auto start_time = std::chrono::high_resolution_clock::now(); // Start timing
-
-	std::unique_lock<std::mutex> lLock {mMutex};
-	auto lGen = mGeneration.load();
-
-	auto thread_id_str = std::to_string(std::hash<std::thread::id> {}(std::this_thread::get_id()));
-	if (!--mCount) {
-		// Last thread to reach the barrier
-		mGeneration++;
-		mCount = mThreshold;
-		mCond.notify_all(); // Wake up all waiting threads
-	} else {
-		// Other threads wait for the generation to change
-		mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
+void Barrier::Wait(idx_t) {
+	std::unique_lock<std::mutex> lock(mutex);
+	if (aborted) {
+		throw InterruptException();
 	}
+	auto arrival_generation = generation;
+	if (--count == 0) {
+		// Last worker to arrive: release everyone and reset for the next phase
+		generation++;
+		count = threshold;
+		condition.notify_all();
+		return;
+	}
+	while (true) {
+		condition.wait_for(lock, BARRIER_POLL_INTERVAL,
+		                   [&] { return arrival_generation != generation || aborted; });
+		if (aborted) {
+			throw InterruptException();
+		}
+		if (arrival_generation != generation) {
+			return;
+		}
+		if (should_abort && should_abort()) {
+			aborted = true;
+			condition.notify_all();
+			throw InterruptException();
+		}
+	}
+}
 
-	auto end_time = std::chrono::high_resolution_clock::now(); // End timing
-	double duration = std::chrono::duration<double, std::micro>(end_time - start_time).count();
+void Barrier::Abort() {
+	std::lock_guard<std::mutex> lock(mutex);
+	aborted = true;
+	condition.notify_all();
+}
 
-	// Store the timing information instead of printing immediately
-	// {
-	// std::lock_guard<std::mutex> logLock(logMutex);
-	// std::ostringstream log;
-	// log << "Thread " << worker_id << " waited for " << duration << " µs";
-	// timingLogs.push_back(log.str());
-	// }
+bool Barrier::IsAborted() const {
+	return aborted;
+}
+
+unique_ptr<Barrier> MakeQueryBarrier(std::size_t count, ClientContext &context) {
+	auto &executor = Executor::Get(context);
+	return make_uniq<Barrier>(count, [&executor, &context]() {
+		return executor.HasError() || context.interrupt_state == ClientInterruptState::INTERRUPTED;
+	});
 }
 
 } // namespace duckdb

@@ -61,7 +61,7 @@ BFSState::BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<share
 	benchmark_run_id = CreateBenchmarkRunId();
 
 	// CreateTasks();
-	barrier = make_uniq<Barrier>(num_threads);
+	barrier = MakeQueryBarrier(num_threads, context);
 }
 
 BFSState::~BFSState() = default; // Define the virtual destructor

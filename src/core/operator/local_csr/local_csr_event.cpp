@@ -204,7 +204,7 @@ void LocalCSREvent::Schedule() {
 		csr_tasks.push_back(make_uniq<LocalCSRTask>(shared_from_this(), context, local_csr_state, tnum, op));
 		local_csr_state->tasks_scheduled++;
 	}
-	local_csr_state->barrier = make_uniq<Barrier>(local_csr_state->tasks_scheduled);
+	local_csr_state->barrier = MakeQueryBarrier(local_csr_state->tasks_scheduled, local_csr_state->context);
 	SetTasks(std::move(csr_tasks));
 }
 

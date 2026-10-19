@@ -11,7 +11,7 @@ class PhysicalPathFinding;
 class GroupedIterativeLengthEvent;
 
 struct GroupedIterativeLengthGroupState {
-	explicit GroupedIterativeLengthGroupState(idx_t worker_count);
+	GroupedIterativeLengthGroupState(idx_t worker_count, ClientContext &context);
 
 	unique_ptr<Barrier> barrier;
 	shared_ptr<IterativeLengthState> current_state;

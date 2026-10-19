@@ -42,8 +42,8 @@ static void AppendBFSPhaseTiming(const IterativeLengthState &state, double time_
 
 } // namespace
 
-GroupedIterativeLengthGroupState::GroupedIterativeLengthGroupState(idx_t worker_count)
-    : barrier(make_uniq<Barrier>(worker_count)) {
+GroupedIterativeLengthGroupState::GroupedIterativeLengthGroupState(idx_t worker_count, ClientContext &context)
+    : barrier(MakeQueryBarrier(worker_count, context)) {
 }
 
 GroupedIterativeLengthTask::GroupedIterativeLengthTask(shared_ptr<Event> event_p, ClientContext &context_p,
@@ -55,6 +55,7 @@ GroupedIterativeLengthTask::GroupedIterativeLengthTask(shared_ptr<Event> event_p
 
 TaskExecutionResult GroupedIterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 	auto &group = grouped_event.Group(group_id);
+	BarrierAbortOnUnwind abort_group_barrier(*group.barrier);
 	while (true) {
 		if (worker_id == 0) {
 			group.current_state = grouped_event.ClaimNextBatch();
@@ -66,13 +67,18 @@ TaskExecutionResult GroupedIterativeLengthTask::ExecuteTask(TaskExecutionMode mo
 			break;
 		}
 
-		ExecuteIterativeLengthBatch(*current_state, worker_id);
+		{
+			BarrierAbortOnUnwind abort_batch_barrier(*current_state->barrier);
+			ExecuteIterativeLengthBatch(*current_state, worker_id);
+			abort_batch_barrier.Disarm();
+		}
 		if (worker_id == 0) {
 			grouped_event.FinishBatch(*current_state);
 		}
 		group.barrier->Wait(worker_id);
 	}
 
+	abort_group_barrier.Disarm();
 	event->FinishTask();
 	return TaskExecutionResult::TASK_FINISHED;
 }
@@ -93,7 +99,7 @@ void GroupedIterativeLengthEvent::Schedule() {
 	bfs_tasks.reserve(group_count * workers_per_group);
 
 	for (idx_t group_id = 0; group_id < group_count; group_id++) {
-		groups.push_back(make_uniq<GroupedIterativeLengthGroupState>(workers_per_group));
+		groups.push_back(make_uniq<GroupedIterativeLengthGroupState>(workers_per_group, context));
 		for (idx_t worker_id = 0; worker_id < workers_per_group; worker_id++) {
 			bfs_tasks.push_back(
 			    make_uniq<GroupedIterativeLengthTask>(shared_from_this(), context, *this, group_id, worker_id, op));
@@ -115,7 +121,7 @@ shared_ptr<IterativeLengthState> GroupedIterativeLengthEvent::ClaimNextBatch() {
 	auto state = states[batch_idx];
 	state->phase_start_time = std::chrono::steady_clock::now();
 	state->tasks_scheduled = workers_per_group;
-	state->barrier = make_uniq<Barrier>(workers_per_group);
+	state->barrier = MakeQueryBarrier(workers_per_group, state->context);
 	return state;
 }
 

@@ -48,7 +48,7 @@ void IterativeLengthEvent::Schedule() {
 		bfs_tasks.push_back(make_uniq<IterativeLengthTask>(shared_from_this(), context, gbfs_state, tnum, op));
 		gbfs_state->tasks_scheduled++;
 	}
-	gbfs_state->barrier = make_uniq<Barrier>(gbfs_state->tasks_scheduled);
+	gbfs_state->barrier = MakeQueryBarrier(gbfs_state->tasks_scheduled, gbfs_state->context);
 	SetTasks(std::move(bfs_tasks));
 }
 

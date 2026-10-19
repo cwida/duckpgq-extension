@@ -286,7 +286,9 @@ IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p, ClientContex
 }
 
 TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
+	BarrierAbortOnUnwind abort_barrier(*state->barrier);
 	ExecuteIterativeLengthBatch(*state, worker_id);
+	abort_barrier.Disarm();
 	event->FinishTask();
 	return TaskExecutionResult::TASK_FINISHED;
 }

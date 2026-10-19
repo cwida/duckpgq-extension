@@ -26,6 +26,7 @@ LocalCSRTask::LocalCSRTask(shared_ptr<Event> event_p, ClientContext &context, sh
 }
 
 TaskExecutionResult LocalCSRTask::ExecuteTask(TaskExecutionMode mode) {
+	BarrierAbortOnUnwind abort_barrier(*local_csr_state->barrier);
 	if (local_csr_state->build_forward_csr) {
 		BuildLocalCSRs(false);
 	}
@@ -35,6 +36,7 @@ TaskExecutionResult LocalCSRTask::ExecuteTask(TaskExecutionMode mode) {
 	if (local_csr_state->build_pull_csr) {
 		BuildPullCSRs();
 	}
+	abort_barrier.Disarm();
 	event->FinishTask();
 	return TaskExecutionResult::TASK_FINISHED;
 }

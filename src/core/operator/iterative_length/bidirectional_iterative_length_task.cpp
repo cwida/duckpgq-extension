@@ -29,6 +29,7 @@ BidirectionalIterativeLengthTask::BidirectionalIterativeLengthTask(shared_ptr<Ev
 
 TaskExecutionResult BidirectionalIterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 	auto &barrier = state->barrier;
+	BarrierAbortOnUnwind abort_barrier(*barrier);
 	while (true) {
 		barrier->Wait(worker_id);
 		if (worker_id == 0) {
@@ -92,6 +93,7 @@ TaskExecutionResult BidirectionalIterativeLengthTask::ExecuteTask(TaskExecutionM
 		barrier->Wait(worker_id);
 	}
 
+	abort_barrier.Disarm();
 	event->FinishTask();
 	return TaskExecutionResult::TASK_FINISHED;
 }

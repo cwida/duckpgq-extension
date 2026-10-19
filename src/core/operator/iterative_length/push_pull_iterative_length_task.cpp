@@ -21,6 +21,7 @@ PushPullIterativeLengthTask::PushPullIterativeLengthTask(shared_ptr<Event> event
 
 TaskExecutionResult PushPullIterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 	auto &barrier = state->barrier;
+	BarrierAbortOnUnwind abort_barrier(*barrier);
 	while (true) {
 		if (worker_id == 0) {
 			state->has_more_batches = state->started_searches < state->pairs->size();
@@ -78,6 +79,7 @@ TaskExecutionResult PushPullIterativeLengthTask::ExecuteTask(TaskExecutionMode m
 		TimedBarrier("barrier_after_clear_state", "batch", state->iter);
 	}
 
+	abort_barrier.Disarm();
 	event->FinishTask();
 	return TaskExecutionResult::TASK_FINISHED;
 }

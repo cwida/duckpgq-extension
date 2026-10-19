@@ -200,7 +200,9 @@ public:
 	}
 
 	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
+		BarrierAbortOnUnwind abort_barrier(*state->barrier);
 		Execute();
+		abort_barrier.Disarm();
 		event->FinishTask();
 		return TaskExecutionResult::TASK_FINISHED;
 	}
@@ -348,7 +350,7 @@ public:
 			    make_uniq<SourceGroupedIterativeLengthTask>(shared_from_this(), context, state, worker, op));
 			state->tasks_scheduled++;
 		}
-		state->barrier = make_uniq<Barrier>(state->tasks_scheduled);
+		state->barrier = MakeQueryBarrier(state->tasks_scheduled, context);
 		SetTasks(std::move(tasks));
 	}
 
