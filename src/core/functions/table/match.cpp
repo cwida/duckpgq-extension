@@ -330,6 +330,18 @@ static void PGQCheckQuantifiedEdges(vector<PGQFlatElement> &elements, CreateProp
 		}
 		auto &subpath = *flat.quantifier;
 		auto edge_table = PGQMatchFunction::FindGraphTable(flat.element->label, pg_table);
+		// Path-finding reads the whole edge table: it cannot apply a sublabel or an element-local WHERE per edge.
+		if (!StringUtil::CIEquals(edge_table->main_label.GetIdentifierName(), flat.element->label)) {
+			throw NotImplementedException("Sublabel %s on quantified edge pattern %s is not supported; path-finding "
+			                              "reads the whole edge table %s",
+			                              flat.element->label, flat.element->ToString(),
+			                              edge_table->main_label.GetIdentifierName());
+		}
+		if (subpath.where_clause && flat.element->match_type != PGQMatchType::MATCH_VERTEX) {
+			throw NotImplementedException("WHERE on quantified edge pattern %s is not supported; path-finding cannot "
+			                              "filter edges. Filter the edge table in the property graph definition instead",
+			                              flat.element->ToString());
+		}
 		bool same_vertex_table = !edge_table->source_pg_table || !edge_table->destination_pg_table ||
 		                         edge_table->source_pg_table->SameTableIdentity(*edge_table->destination_pg_table);
 		if (same_vertex_table) {

@@ -80,6 +80,7 @@ grammar, rejected by the binder with a clear error), **no**.
 
 Most recent first. Each entry names the commit's scope and the feature IDs it touched.
 
+- A plain sublabel or an element-local `WHERE` on a quantified edge raises NotImplementedException. Both were silently ignored or produced an unbound-table error, because path-finding reads the whole edge table.
 - Quantified edges whose edge table connects two different vertex tables: `?` and `{0,1}` reduce to one edge, because a zero-length path between different tables cannot exist, and longer quantifiers raise NotImplementedException instead of evaluating over colliding row ids. Adds `G035_quantified_edges.test`.
 - A two-part reference whose qualifier is not an element variable is left to DuckDB, so correlated references to an outer table in a lateral `GRAPH_TABLE` work again.
 - Property references are validated in every expression of `COLUMNS`, `WHERE` and element-local `WHERE` against the properties the element's table exports, with the exported names listed in the error (6.5, G090; issue #198). Property aliases from `PROPERTIES (column AS property)` now work in `GRAPH_TABLE`. Adds `G090_property_reference.test`.

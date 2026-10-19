@@ -111,3 +111,8 @@ statement error
 FROM GRAPH_TABLE (pg MATCH (p:Person)-[w:intern|employee]->{1,2}(o:Organisation) COLUMNS (p.name, o.name));
 ----
 Not implemented Error: Label expression intern|employee selects part of table worksAt; sublabel filters on a quantified edge are not supported
+
+statement error
+FROM GRAPH_TABLE (pg MATCH (p:Person)-[w:intern]->{1,2}(o:Organisation) COLUMNS (p.name, o.name));
+----
+Not implemented Error: Sublabel intern on quantified edge pattern -[w:intern]-> is not supported; path-finding reads the whole edge table worksAt

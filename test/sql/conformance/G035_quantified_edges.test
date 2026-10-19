@@ -67,3 +67,21 @@ statement error
 FROM GRAPH_TABLE (pg MATCH q = ANY SHORTEST (p:Person)-[s:StudyAt]->*(sc:School) COLUMNS (p.name, sc.name));
 ----
 Not implemented Error: Path-finding over -[s:StudyAt]-> is not supported
+
+# Path-finding reads the whole edge table, so an element-local WHERE on a quantified edge is rejected rather than
+# silently dropped or bound against a table that is not in scope.
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows WHERE k.since > 2020]->{1,2}(b:Person) COLUMNS (a.name, b.name));
+----
+Not implemented Error: WHERE on quantified edge pattern -[k:Knows]-> is not supported
+
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows WHERE k.since > 2020]->?(b:Person) COLUMNS (a.name, b.name));
+----
+Not implemented Error: WHERE on quantified edge pattern -[k:Knows]-> is not supported
+
+# A single edge keeps its WHERE.
+query II
+FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows WHERE k.since > 2020]->{1}(b:Person) COLUMNS (a.name, b.name));
+----
+B	C
