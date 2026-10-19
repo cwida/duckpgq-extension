@@ -14,6 +14,7 @@
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
+#include "duckpgq/core/index/csr_index.hpp"
 #include "local_csr/local_csr_state.hpp"
 
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
@@ -168,6 +169,8 @@ public:
 	bool precounted_edge_input;
 	bool cached_partitioned_csr_input;
 	bool buffered_edge_input;
+	//! Set when the operator reads a CSR index: the epoch for this query's transaction
+	shared_ptr<CSRIndexEpoch> index_epoch;
 	unique_ptr<RadixPartitionedColumnData> endpoint_partition_data;
 	std::atomic<idx_t> next_endpoint_partition {0};
 	std::atomic<idx_t> built_endpoint_count {0};

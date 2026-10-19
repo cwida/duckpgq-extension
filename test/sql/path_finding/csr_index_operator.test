@@ -1,0 +1,217 @@
+# name: test/sql/path_finding/csr_index_operator.test
+# description: The path-finding operator reads a CSR index when one matches the edge table, consistently with the table
+# group: [path_finding]
+
+require duckpgq
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# Non-contiguous keys so that dense ids differ from keys and from row ids.
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person VALUES (100), (200), (300), (400), (500);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows VALUES (100, 200), (200, 300), (300, 400), (400, 500);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+# Without an index the operator builds the CSR for the query.
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 100)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+100	0
+200	1
+300	2
+400	3
+500	4
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=built%';
+----
+true
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# With the index the same query reads the index.
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 100)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+100	0
+200	1
+300	2
+400	3
+500	4
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+# All pairs, bounded length, through the index.
+query III
+SELECT s, d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person)-[k:Knows]->{1,2}(b:Person)
+                  COLUMNS (a.id AS s, b.id AS d, path_length(p) AS l))
+ORDER BY s, d;
+----
+100	200	1
+100	300	2
+200	300	1
+200	400	2
+300	400	1
+300	500	2
+400	500	1
+
+# The index follows the table: a shortcut edge, then its removal.
+statement ok
+INSERT INTO knows VALUES (100, 500);
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 100)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+100	0
+200	1
+300	2
+400	3
+500	1
+
+statement ok
+DELETE FROM knows WHERE src = 100 AND dst = 500;
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 100)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+100	0
+200	1
+300	2
+400	3
+500	4
+
+# An update is a delete plus an insert.
+statement ok
+UPDATE knows SET dst = 500 WHERE src = 200;
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 100)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+100	0
+200	1
+500	2
+
+statement ok
+UPDATE knows SET dst = 300 WHERE src = 200;
+
+# A reader inside a transaction sees its own uncommitted change, not the index epoch.
+statement ok
+BEGIN TRANSACTION;
+
+statement ok
+INSERT INTO knows VALUES (500, 100);
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 500)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+100	1
+200	2
+300	3
+400	4
+500	0
+
+statement ok
+ROLLBACK;
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 500)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+500	0
+
+# A directed pattern does not use an undirected index and vice versa.
+statement ok
+DROP INDEX knows_csr;
+
+statement ok
+CREATE INDEX knows_csr_u ON knows USING CSR (src, dst) WITH (undirected = true);
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 300)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+300	0
+400	1
+500	2
+
+query I
+SELECT duckpgq_path_finding_strategy() NOT LIKE '%csr=index%';
+----
+true
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 300)-[k:Knows]-*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+100	2
+200	1
+300	0
+400	1
+500	2
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+# The operator agrees with the SQL rewrite on the same graph.
+statement ok
+SET experimental_path_finding_operator = false;
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 300)-[k:Knows]-*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+100	2
+200	1
+300	0
+400	1
+500	2

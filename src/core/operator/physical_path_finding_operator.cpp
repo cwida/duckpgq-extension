@@ -460,6 +460,41 @@ static PathFindingSearchOrientation ChooseSupportedSearchOrientation(const PathF
 	return ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
 }
 
+//! Maps the pair keys of an index-backed query to the epoch's dense vertex ids; unknown keys become NULL (unreachable)
+shared_ptr<DataChunk> TranslatePairKeys(ClientContext &context, const CSRIndexEpoch &epoch, DataChunk &pairs) {
+	auto result = make_shared_ptr<DataChunk>();
+	result->Initialize(context, pairs.GetTypes());
+	for (idx_t column_idx = 0; column_idx < 2; column_idx++) {
+		UnifiedVectorFormat format;
+		pairs.data[column_idx].ToUnifiedFormat(pairs.size(), format);
+		auto keys = UnifiedVectorFormat::GetData<int64_t>(format);
+		auto ids = FlatVector::GetDataMutable<int64_t>(result->data[column_idx]);
+		for (idx_t row = 0; row < pairs.size(); row++) {
+			auto key_idx = format.sel->get_index(row);
+			auto id = format.validity.RowIsValid(key_idx) ? epoch.dictionary->Lookup(keys[key_idx])
+			                                              : DConstants::INVALID_INDEX;
+			if (id == DConstants::INVALID_INDEX) {
+				FlatVector::SetNull(result->data[column_idx], row, true);
+			} else {
+				ids[row] = NumericCast<int64_t>(id);
+			}
+		}
+	}
+	result->SetCardinality(pairs.size());
+	return result;
+}
+
+shared_ptr<PathFindingBatch> CreateOrientedPathFindingBatch(ClientContext &context,
+                                                            PathFindingSearchOrientation orientation,
+                                                            const shared_ptr<DataChunk> &output_pairs,
+                                                            const shared_ptr<DataChunk> &search_pairs,
+                                                            idx_t output_index) {
+	if (orientation == PathFindingSearchOrientation::REVERSE) {
+		return CreatePathFindingBatch(output_pairs, CreateReversedSearchPairs(context, *search_pairs), output_index);
+	}
+	return CreatePathFindingBatch(output_pairs, search_pairs, output_index);
+}
+
 shared_ptr<PathFindingBatch> CreateOrientedPathFindingBatch(ClientContext &context,
                                                             PathFindingSearchOrientation orientation,
                                                             const shared_ptr<DataChunk> &output_pairs,
@@ -579,6 +614,12 @@ string GetPartitionedCSRCacheKey(const PhysicalPathFinding &op, const PathFindin
 
 bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, const PhysicalPathFinding &op,
                            LocalCSRState &local_csr_state, ClientContext &context) {
+	if (gstate.index_epoch) {
+		local_csr_state.partition_csrs = gstate.index_epoch->csr->forward_partitions;
+		local_csr_state.loaded_from_cache = true;
+		RecordStrategy(context, "csr", "index");
+		return true;
+	}
 	local_csr_state.cache_key = GetPartitionedCSRCacheKey(op, gstate);
 	if (local_csr_state.cache_key.empty()) {
 		return false;
@@ -1535,27 +1576,33 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	RecordStrategy(context, "distinct_src", std::to_string(gstate.pair_stats.distinct_src_count));
 	RecordStrategy(context, "distinct_dst", std::to_string(gstate.pair_stats.distinct_dst_count));
 	RecordStrategy(context, "orientation", OrientationName(gstate.search_orientation));
-	int64_t single_source;
-	if (ShouldUseSourceGroupedIterativeLength(gstate, context) &&
-	    TryGetExactSingleSearchSource(gstate, single_source)) {
-		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
-	}
+	// Index-backed queries search by dense vertex id and use the regular batched MS-BFS only
+	if (!gstate.index_epoch) {
+		int64_t single_source;
+		if (ShouldUseSourceGroupedIterativeLength(gstate, context) &&
+		    TryGetExactSingleSearchSource(gstate, single_source)) {
+			return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
+		}
 
-	if (GetPathFindingDeduplicatePairs(context)) {
-		gstate.global_output_batches.clear();
-		gstate.global_pairs->InitializeScan(gstate.global_scan_state, ColumnDataScanProperties::DISALLOW_ZERO_COPY);
-		return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
-	}
+		if (GetPathFindingDeduplicatePairs(context)) {
+			gstate.global_output_batches.clear();
+			gstate.global_pairs->InitializeScan(gstate.global_scan_state,
+			                                    ColumnDataScanProperties::DISALLOW_ZERO_COPY);
+			return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
+		}
 
-	if (ShouldUseSourceGroupedIterativeLength(gstate, context)) {
-		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
+		if (ShouldUseSourceGroupedIterativeLength(gstate, context)) {
+			return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
+		}
 	}
 
 	vector<shared_ptr<PathFindingBatch>> oriented_batches;
 	oriented_batches.reserve(gstate.global_output_batches.size());
 	for (auto &output_batch : gstate.global_output_batches) {
+		auto search_pairs =
+		    gstate.index_epoch ? TranslatePairKeys(context, *gstate.index_epoch, *output_batch) : output_batch;
 		oriented_batches.push_back(CreateOrientedPathFindingBatch(context, gstate.search_orientation, output_batch,
-		                                                          gstate.next_batch_index++));
+		                                                          search_pairs, gstate.next_batch_index++));
 	}
 	ScheduleLocalCSRBuildThenPathFinding(gstate, std::move(oriented_batches), pipeline, event, op, context);
 
@@ -1817,6 +1864,16 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 	buffered_edge_input = op.buffered_edge_input;
 	vertex_count = op.precounted_vertex_count;
 	expected_edge_count = op.precounted_edge_count;
+	if (cached_partitioned_csr_input && CSRIndex::IsCacheKey(op.cache_key)) {
+		index_epoch = CSRIndex::ResolveCacheKey(context, op.cache_key);
+		if (!index_epoch) {
+			throw InvalidInputException("The CSR index behind '%s' has no snapshot for this transaction; rerun the query",
+			                            op.cache_key);
+		}
+		vertex_count = index_epoch->vertex_count;
+		expected_edge_count = index_epoch->edge_count;
+		endpoint_partition_width = index_epoch->partition_width;
+	}
 	auto &scheduler = TaskScheduler::GetScheduler(context);
 	num_threads = scheduler.NumberOfThreads();
 	if (buffered_edge_input) {

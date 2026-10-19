@@ -1,5 +1,6 @@
 #include <duckpgq_extension.hpp>
 #include "duckpgq/core/functions/table/match.hpp"
+#include "duckpgq/core/index/csr_index.hpp"
 #include "duckpgq/core/parser/duckpgq_grammar.hpp"
 
 #include "duckpgq/core/utils/duckpgq_sql.hpp"
@@ -778,6 +779,23 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 
 	if (GetPathFindingOption(context) && operator_results.empty() &&
 	    (edge_type == PGQMatchType::MATCH_EDGE_RIGHT || edge_type == PGQMatchType::MATCH_EDGE_ANY)) {
+		auto index_name = CSRIndex::FindForEdgeTable(context, *edge_table, edge_type == PGQMatchType::MATCH_EDGE_ANY);
+		if (!index_name.empty() && edge_table->source_pk.size() == 1 && edge_table->destination_pk.size() == 1) {
+			// The index identifies vertices by key, so the pairs are the endpoint keys rather than row ids
+			auto result_index = operator_results.size();
+			auto result_alias = string(PATH_FINDING_RESULT_PREFIX) + std::to_string(result_index);
+			auto source_expression = DuckPGQSQL::ParseExpression(
+			    "CAST(" + DuckPGQSQL::Column(edge_table->source_pk[0], prev_binding) + " AS BIGINT)",
+			    "__duckpgq_pair_src_" + std::to_string(result_index), "DuckPGQ path-finding source key");
+			auto destination_expression = DuckPGQSQL::ParseExpression(
+			    "CAST(" + DuckPGQSQL::Column(edge_table->destination_pk[0], next_binding) + " AS BIGINT)",
+			    "__duckpgq_pair_dst_" + std::to_string(result_index), "DuckPGQ path-finding destination key");
+			operator_results.push_back({std::move(source_expression), std::move(destination_expression), nullptr,
+			                            string(), std::move(result_alias), path_variable, vector<string>(),
+			                            CSRIndex::CacheKey(*edge_table, index_name), 0, 0, subpath->lower,
+			                            subpath->upper});
+			return;
+		}
 		idx_t vertex_count;
 		idx_t edge_count;
 		if (GetPathFindingStorageCounts(context, *edge_table, edge_type, vertex_count, edge_count)) {
@@ -1271,27 +1289,39 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	const string pair_source_alias = "__duckpgq_pair_src_0";
 	const string pair_destination_alias = "__duckpgq_pair_dst_0";
 
+	// With a CSR index the marker has no endpoint input: the operator reads the index for its transaction
+	bool use_index = !operator_result.endpoint_input;
 	std::ostringstream path_length_sql;
 	path_length_sql << "iterativelengthoperator(" << DuckPGQSQL::Column(pair_source_alias, candidate_alias) << ", "
-	                << DuckPGQSQL::Column(pair_destination_alias, candidate_alias) << ", struct_pack(src := "
-	                << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_SRC), operator_result.endpoint_alias) << ", dst := "
-	                << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_DST), operator_result.endpoint_alias) << "), "
-	                << operator_result.vertex_count << "::BIGINT, " << operator_result.edge_count << "::BIGINT, "
+	                << DuckPGQSQL::Column(pair_destination_alias, candidate_alias) << ", ";
+	if (!use_index) {
+		path_length_sql << "struct_pack(src := "
+		                << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_SRC), operator_result.endpoint_alias)
+		                << ", dst := "
+		                << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_DST), operator_result.endpoint_alias) << "), ";
+	}
+	path_length_sql << operator_result.vertex_count << "::BIGINT, " << operator_result.edge_count << "::BIGINT, "
 	                << DuckPGQSQL::StringLiteral(operator_result.cache_key) << ")";
 
 	// The length is computed once under the hidden result alias; the outer query renames it to every projected alias
 	std::ostringstream operator_query_sql;
 	operator_query_sql << "SELECT " << DuckPGQSQL::Identifier(candidate_alias) << ".*, " << path_length_sql.str()
 	                   << " AS " << DuckPGQSQL::Identifier(operator_result.alias);
-	operator_query_sql << " FROM "
-	                   << DuckPGQSQL::Identifier(candidate_alias) << ", "
-	                   << DuckPGQSQL::Identifier(operator_result.endpoint_alias);
+	operator_query_sql << " FROM " << DuckPGQSQL::Identifier(candidate_alias);
+	if (!use_index) {
+		operator_query_sql << ", " << DuckPGQSQL::Identifier(operator_result.endpoint_alias);
+	}
 	auto operator_query = DuckPGQSQL::ParseSelect(operator_query_sql.str(), "DuckPGQ path-finding operator projection");
 	auto &operator_select_node = operator_query->node->Cast<SelectNode>();
-	auto operator_from = make_uniq<JoinRef>(JoinRefType::CROSS);
-	operator_from->left = make_uniq<SubqueryRef>(std::move(candidate_query), PGQIdentifier(candidate_alias));
-	operator_from->right = std::move(operator_result.endpoint_input);
-	operator_select_node.from_table = std::move(operator_from);
+	if (use_index) {
+		operator_select_node.from_table =
+		    make_uniq<SubqueryRef>(std::move(candidate_query), PGQIdentifier(candidate_alias));
+	} else {
+		auto operator_from = make_uniq<JoinRef>(JoinRefType::CROSS);
+		operator_from->left = make_uniq<SubqueryRef>(std::move(candidate_query), PGQIdentifier(candidate_alias));
+		operator_from->right = std::move(operator_result.endpoint_input);
+		operator_select_node.from_table = std::move(operator_from);
+	}
 
 	std::ostringstream outer_query_sql;
 	outer_query_sql << "SELECT * EXCLUDE (" << DuckPGQSQL::Identifier(pair_source_alias) << ", "

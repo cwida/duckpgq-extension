@@ -22,6 +22,7 @@
 #include "duckdb/transaction/duck_transaction.hpp"
 
 #include <algorithm>
+#include <cstring>
 
 namespace duckdb {
 
@@ -319,6 +320,11 @@ shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, Duc
 
 shared_ptr<CSRIndexEpoch> CSRIndex::Snapshot(ClientContext &context, DuckTransaction &transaction,
                                              DataTable &table) const {
+	if (transaction.ChangesMade()) {
+		// The reader's own uncommitted writes are visible to it alone: build a private epoch from its view of the
+		// table and leave the shared epoch, which must only ever contain committed rows, untouched
+		return RebuildFromTable(context, transaction, table);
+	}
 	shared_ptr<CSRIndexEpoch> current;
 	bool rebuild;
 	{
@@ -408,6 +414,29 @@ shared_ptr<CSRIndexEpoch> CSRIndex::Resolve(ClientContext &context, const string
 	auto handle = index_entry->GetReadHandle<CSRIndex>();
 	auto &transaction = DuckTransaction::Get(context, table.catalog);
 	return handle->Snapshot(context, transaction, storage);
+}
+
+static constexpr const char *CSR_INDEX_KEY_PREFIX = "csr-index|";
+
+string CSRIndex::CacheKey(const PropertyGraphTable &edge_table, const string &index_name) {
+	return string(CSR_INDEX_KEY_PREFIX) + edge_table.catalog_name.GetIdentifierName() + "|" +
+	       edge_table.schema_name.GetIdentifierName() + "|" + edge_table.table_name.GetIdentifierName() + "|" +
+	       index_name;
+}
+
+bool CSRIndex::IsCacheKey(const string &cache_key) {
+	return StringUtil::StartsWith(cache_key, CSR_INDEX_KEY_PREFIX);
+}
+
+shared_ptr<CSRIndexEpoch> CSRIndex::ResolveCacheKey(ClientContext &context, const string &cache_key) {
+	if (!IsCacheKey(cache_key)) {
+		return nullptr;
+	}
+	auto parts = StringUtil::Split(cache_key.substr(strlen(CSR_INDEX_KEY_PREFIX)), '|');
+	if (parts.size() != 4) {
+		throw InternalException("Malformed CSR index cache key '%s'", cache_key);
+	}
+	return Resolve(context, parts[0], parts[1], parts[2], parts[3]);
 }
 
 //----------------------------------------------------------------------------------------------------------------------

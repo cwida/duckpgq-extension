@@ -99,6 +99,11 @@ public:
 	static shared_ptr<CSRIndexEpoch> Resolve(ClientContext &context, const string &catalog, const string &schema,
 	                                         const string &table_name, const string &index_name);
 
+	//! The marker cache key that tells the operator to read this index instead of building a CSR
+	static string CacheKey(const PropertyGraphTable &edge_table, const string &index_name);
+	static bool IsCacheKey(const string &cache_key);
+	static shared_ptr<CSRIndexEpoch> ResolveCacheKey(ClientContext &context, const string &cache_key);
+
 public:
 	// BoundIndex interface
 	ErrorData Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) override;
