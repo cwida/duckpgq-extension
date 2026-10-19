@@ -1279,6 +1279,10 @@ static bool PGQCheckPropertyReference(ColumnRefExpression &column_ref,
 	}
 	auto entry = alias_map.find(alias);
 	if (entry == alias_map.end()) {
+		if (names.size() == 2) {
+			// Not an element: a correlated reference to an outer table, left to DuckDB's binder.
+			return false;
+		}
 		throw BinderException("Property %s is never registered! %s is not an element variable of the pattern; "
 		                      "property references take the form element.property",
 		                      reference, alias);

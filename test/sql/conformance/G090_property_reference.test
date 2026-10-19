@@ -105,11 +105,22 @@ FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person) COLUMNS (k.since));
 ----
 Binder Error: Property k.since is never registered! Element k (label Knows) exports no properties
 
-# The qualifier must be an element variable of the pattern.
+# A qualifier that is not an element variable is left to DuckDB: it may be an outer table in a lateral join.
+query II
+SELECT * FROM (VALUES (2)) t(x), GRAPH_TABLE (pg MATCH (a:Person) WHERE a.person_id = t.x COLUMNS (a.name));
+----
+2	Tavneet
+
 statement error
 FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (z.name));
 ----
-Binder Error: Property z.name is never registered! z is not an element variable of the pattern
+Binder Error: Referenced table "z" not found!
+
+# Catalog- or schema-qualified property references are not allowed.
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (main.a.name));
+----
+Binder Error: Property main.a.name is never registered! main is not an element variable of the pattern
 
 statement error
 FROM GRAPH_TABLE (pg MATCH (a:Person) COLUMNS (nothere));
