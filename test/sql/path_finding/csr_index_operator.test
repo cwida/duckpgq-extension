@@ -215,3 +215,44 @@ ORDER BY d;
 300	0
 400	1
 500	2
+
+# Sparse keys far apart exercise the sorted dictionary instead of the bitmap.
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+CREATE TABLE sp_person(id BIGINT);
+
+statement ok
+INSERT INTO sp_person SELECT range * 1000000007 FROM range(1, 6);
+
+statement ok
+CREATE TABLE sp_knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO sp_knows SELECT range * 1000000007, (range + 1) * 1000000007 FROM range(1, 5);
+
+statement ok
+CREATE PROPERTY GRAPH sg
+VERTEX TABLES (sp_person LABEL Person)
+EDGE TABLES (sp_knows SOURCE KEY (src) REFERENCES sp_person(id) DESTINATION KEY (dst) REFERENCES sp_person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX sp_knows_csr ON sp_knows USING CSR (src, dst);
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (sg MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1000000007)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+1000000007	0
+2000000014	1
+3000000021	2
+4000000028	3
+5000000035	4
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true

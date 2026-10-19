@@ -186,42 +186,56 @@ shared_ptr<CSRIndexDictionary> BuildDictionary(const vector<CSRIndexEdgeList> &l
 		return dictionary;
 	}
 
-	// Sparse keys: gather, sort the pieces in parallel, merge, deduplicate
-	vector<int64_t> keys(total_edges * 2);
-	ParallelFor(slices.size(), thread_count, [&](idx_t begin, idx_t end, idx_t) {
+	// Sparse keys: bucket by the top bits of the key offset so that the buckets are ordered, sort and deduplicate
+	// each bucket independently, then concatenate; no merge pass over all keys is needed
+	constexpr idx_t KEY_BUCKET_BITS = 10;
+	constexpr idx_t KEY_BUCKETS = idx_t(1) << KEY_BUCKET_BITS;
+	idx_t range_bits = 1;
+	while (range_bits < 64 && (uint64_t(1) << range_bits) < range) {
+		range_bits++;
+	}
+	auto bucket_shift = range_bits > KEY_BUCKET_BITS ? range_bits - KEY_BUCKET_BITS : 0;
+	vector<vector<vector<int64_t>>> thread_buckets(thread_count, vector<vector<int64_t>>(KEY_BUCKETS));
+	ParallelFor(slices.size(), thread_count, [&](idx_t begin, idx_t end, idx_t thread_idx) {
+		auto &buckets = thread_buckets[thread_idx];
 		for (idx_t slice_idx = begin; slice_idx < end; slice_idx++) {
 			auto &slice = slices[slice_idx];
 			auto &list = lists[slice.list_idx];
-			auto out = slice.offset * 2;
 			for (idx_t edge_idx = slice.begin; edge_idx < slice.end; edge_idx++) {
-				keys[out++] = list.src_keys[edge_idx];
-				keys[out++] = list.dst_keys[edge_idx];
+				auto src = list.src_keys[edge_idx];
+				auto dst = list.dst_keys[edge_idx];
+				auto src_offset = static_cast<uint64_t>(src) - static_cast<uint64_t>(min_key);
+				auto dst_offset = static_cast<uint64_t>(dst) - static_cast<uint64_t>(min_key);
+				buckets[std::min<idx_t>(KEY_BUCKETS - 1, src_offset >> bucket_shift)].push_back(src);
+				buckets[std::min<idx_t>(KEY_BUCKETS - 1, dst_offset >> bucket_shift)].push_back(dst);
 			}
 		}
 	});
-	auto piece_count = std::max<idx_t>(1, std::min<idx_t>(thread_count, keys.size() / 4096 + 1));
-	auto piece_size = (keys.size() + piece_count - 1) / piece_count;
-	ParallelFor(piece_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
-		for (idx_t piece = begin; piece < end; piece++) {
-			auto first = std::min<idx_t>(keys.size(), piece * piece_size);
-			auto last = std::min<idx_t>(keys.size(), first + piece_size);
-			std::sort(keys.begin() + first, keys.begin() + last);
+	vector<vector<int64_t>> bucket_keys(KEY_BUCKETS);
+	ParallelFor(KEY_BUCKETS, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+		for (idx_t bucket_idx = begin; bucket_idx < end; bucket_idx++) {
+			auto &keys = bucket_keys[bucket_idx];
+			for (auto &buckets : thread_buckets) {
+				auto &bucket = buckets[bucket_idx];
+				keys.insert(keys.end(), bucket.begin(), bucket.end());
+				bucket.clear();
+				bucket.shrink_to_fit();
+			}
+			std::sort(keys.begin(), keys.end());
+			keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
 		}
 	});
-	for (idx_t width = piece_size; width < keys.size(); width *= 2) {
-		auto merge_count = (keys.size() + 2 * width - 1) / (2 * width);
-		ParallelFor(merge_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
-			for (idx_t merge_idx = begin; merge_idx < end; merge_idx++) {
-				auto first = merge_idx * 2 * width;
-				auto middle = std::min<idx_t>(keys.size(), first + width);
-				auto last = std::min<idx_t>(keys.size(), first + 2 * width);
-				if (middle < last) {
-					std::inplace_merge(keys.begin() + first, keys.begin() + middle, keys.begin() + last);
-				}
-			}
-		});
+	vector<idx_t> bucket_offsets(KEY_BUCKETS + 1, 0);
+	for (idx_t bucket_idx = 0; bucket_idx < KEY_BUCKETS; bucket_idx++) {
+		bucket_offsets[bucket_idx + 1] = bucket_offsets[bucket_idx] + bucket_keys[bucket_idx].size();
 	}
-	keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+	vector<int64_t> keys(bucket_offsets[KEY_BUCKETS]);
+	ParallelFor(KEY_BUCKETS, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+		for (idx_t bucket_idx = begin; bucket_idx < end; bucket_idx++) {
+			std::copy(bucket_keys[bucket_idx].begin(), bucket_keys[bucket_idx].end(),
+			          keys.begin() + NumericCast<int64_t>(bucket_offsets[bucket_idx]));
+		}
+	});
 	dictionary->sorted_keys = std::move(keys);
 	dictionary->count = dictionary->sorted_keys.size();
 	return dictionary;
