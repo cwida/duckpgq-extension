@@ -19,7 +19,8 @@ public:
 
 	virtual ~BFSState();
 
-	virtual void ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op);
+	//! Creates the event that runs this batch. The caller registers it with the executor.
+	virtual shared_ptr<Event> CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op);
 	void InitializeLanes();
 	virtual void Clear();
 	void CreateThreadLocalCSRs(); // Generates LocalCSRs

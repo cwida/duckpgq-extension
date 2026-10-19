@@ -710,14 +710,52 @@ shared_ptr<BFSState> CreateBFSStateForMode(PathFindingOperatorMode mode, const s
 	throw InternalException("Unhandled path-finding operator mode");
 }
 
-void ScheduleBFSBatchForMode(PathFindingGlobalSinkState &gstate, const shared_ptr<PathFindingBatch> &batch,
-                             Pipeline &pipeline, Event &event, const PhysicalPathFinding *op, ClientContext &context) {
+shared_ptr<Event> CreateBFSEventForMode(PathFindingGlobalSinkState &gstate, const shared_ptr<PathFindingBatch> &batch,
+                                        Pipeline &pipeline, const PhysicalPathFinding *op, ClientContext &context) {
 	auto bfs_state =
 	    CreateBFSStateForMode(gstate.path_finding_mode, batch, gstate.search_orientation, *gstate.local_csr_state,
 	                          gstate.num_threads, context, GetPathFindingVSize(gstate));
-	bfs_state->ScheduleBFSBatch(pipeline, event, op);
+	auto bfs_event = bfs_state->CreateBFSEvent(pipeline, op);
 	gstate.bfs_states.push_back(std::move(bfs_state));
+	return bfs_event;
 }
+
+//! Finishes once every BFS batch event it depends on has finished. It takes over the parents of the scheduling
+//! event, so the pipeline-complete event waits for all batches rather than for the first one only.
+class PathFindingBatchesCompleteEvent : public BasePipelineEvent {
+public:
+	explicit PathFindingBatchesCompleteEvent(Pipeline &pipeline_p) : BasePipelineEvent(pipeline_p) {
+	}
+
+	void Schedule() override {
+	}
+};
+
+//! Base for events whose FinishEvent schedules the BFS batch events. Event::InsertEvent moves the parents of this
+//! event into the inserted event, so calling it once per batch would detach every batch after the first from the
+//! pipeline-complete event. Instead a single completion event is inserted and made dependent on all batch events.
+class PathFindingBatchSchedulerEvent : public BasePipelineEvent {
+public:
+	explicit PathFindingBatchSchedulerEvent(Pipeline &pipeline_p) : BasePipelineEvent(pipeline_p) {
+	}
+
+	void Schedule() override {
+	}
+
+protected:
+	//! Must be called from FinishEvent: the batch events run after this event, the completion event after them.
+	void ScheduleBatchEvents(vector<shared_ptr<Event>> batch_events) {
+		auto complete_event = make_shared_ptr<PathFindingBatchesCompleteEvent>(*pipeline);
+		for (auto &batch_event : batch_events) {
+			complete_event->AddDependency(*batch_event);
+		}
+		InsertEvent(complete_event);
+		for (auto &batch_event : batch_events) {
+			batch_event->AddDependency(*this);
+			executor.AddEvent(std::move(batch_event));
+		}
+	}
+};
 
 idx_t GetGroupedWorkersPerBatch(PathFindingGlobalSinkState &gstate, ClientContext &context) {
 	auto total_threads = std::max<idx_t>(1, gstate.num_threads);
@@ -783,14 +821,18 @@ bool TryGetExactSingleSearchSource(const PathFindingGlobalSinkState &gstate, int
 	return true;
 }
 
-void SchedulePathFindingBatches(PathFindingGlobalSinkState &gstate, vector<shared_ptr<PathFindingBatch>> &batches,
-                                Pipeline &pipeline, Event &event, const PhysicalPathFinding &op,
-                                ClientContext &context) {
+//! Returns the batch events to register, or an empty vector when a single grouped event was inserted directly.
+vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkState &gstate,
+                                                       vector<shared_ptr<PathFindingBatch>> &batches,
+                                                       Pipeline &pipeline, Event &event, const PhysicalPathFinding &op,
+                                                       ClientContext &context) {
+	vector<shared_ptr<Event>> batch_events;
 	if (!ShouldUseGroupedIterativeLengthBatches(gstate, context, batches.size())) {
+		batch_events.reserve(batches.size());
 		for (auto &batch : batches) {
-			ScheduleBFSBatchForMode(gstate, batch, pipeline, event, &op, context);
+			batch_events.push_back(CreateBFSEventForMode(gstate, batch, pipeline, &op, context));
 		}
-		return;
+		return batch_events;
 	}
 
 	auto workers_per_batch = GetGroupedWorkersPerBatch(gstate, context);
@@ -810,20 +852,20 @@ void SchedulePathFindingBatches(PathFindingGlobalSinkState &gstate, vector<share
 
 	event.InsertEvent(make_shared_ptr<GroupedIterativeLengthEvent>(std::move(iterative_states), workers_per_batch,
 	                                                               group_count, pipeline, op));
+	return batch_events;
 }
 
-class SourceGroupedScheduleEvent : public BasePipelineEvent {
+class SourceGroupedScheduleEvent : public PathFindingBatchSchedulerEvent {
 public:
 	SourceGroupedScheduleEvent(PathFindingGlobalSinkState &gstate_p, Pipeline &pipeline_p,
 	                           const PhysicalPathFinding &op_p, ClientContext &context_p)
-	    : BasePipelineEvent(pipeline_p), gstate(gstate_p), op(op_p), context(context_p) {
-	}
-
-	void Schedule() override {
+	    : PathFindingBatchSchedulerEvent(pipeline_p), gstate(gstate_p), op(op_p), context(context_p) {
 	}
 
 	void FinishEvent() override {
 		PublishPartitionedCSR(gstate, context);
+		vector<shared_ptr<Event>> batch_events;
+		batch_events.reserve(gstate.source_group_sources.size());
 		auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
 		                           ? gstate.local_csr_state->reverse_partition_csrs
 		                           : gstate.local_csr_state->partition_csrs;
@@ -839,8 +881,9 @@ public:
 				}
 			}
 			gstate.source_group_states.push_back(state);
-			InsertEvent(make_shared_ptr<SourceGroupedIterativeLengthEvent>(state, *pipeline, op));
+			batch_events.push_back(make_shared_ptr<SourceGroupedIterativeLengthEvent>(state, *pipeline, op));
 		}
+		ScheduleBatchEvents(std::move(batch_events));
 		if (gstate.source_group_preserve_output_order) {
 			for (idx_t chunk_idx = 0; chunk_idx < gstate.global_output_batches.size(); chunk_idx++) {
 				gstate.source_group_output_refs.emplace_back(DConstants::INVALID_INDEX, chunk_idx);
@@ -854,19 +897,20 @@ private:
 	ClientContext &context;
 };
 
-class PathFindingScheduleEvent : public BasePipelineEvent {
+class PathFindingScheduleEvent : public PathFindingBatchSchedulerEvent {
 public:
 	PathFindingScheduleEvent(vector<shared_ptr<PathFindingBatch>> batches_p, PathFindingGlobalSinkState &gstate_p,
 	                         Pipeline &pipeline_p, const PhysicalPathFinding &op_p, ClientContext &context_p)
-	    : BasePipelineEvent(pipeline_p), batches(std::move(batches_p)), gstate(gstate_p), op(op_p), context(context_p) {
-	}
-
-	void Schedule() override {
+	    : PathFindingBatchSchedulerEvent(pipeline_p), batches(std::move(batches_p)), gstate(gstate_p), op(op_p),
+	      context(context_p) {
 	}
 
 	void FinishEvent() override {
 		PublishPartitionedCSR(gstate, context);
-		SchedulePathFindingBatches(gstate, batches, *pipeline, *this, op, context);
+		auto batch_events = CreatePathFindingBatchEvents(gstate, batches, *pipeline, *this, op, context);
+		if (!batch_events.empty()) {
+			ScheduleBatchEvents(std::move(batch_events));
+		}
 	}
 
 private:

@@ -70,8 +70,8 @@ void BFSState::Clear() {
 	// Default empty implementation; override in derived classes
 }
 
-void BFSState::ScheduleBFSBatch(Pipeline &, Event &, const PhysicalPathFinding *) {
-	throw NotImplementedException("ScheduleBFSBatch must be implemented in a derived class.");
+shared_ptr<Event> BFSState::CreateBFSEvent(Pipeline &, const PhysicalPathFinding *) {
+	throw NotImplementedException("CreateBFSEvent must be implemented in a derived class.");
 }
 
 void BFSState::InitializeLanes() {

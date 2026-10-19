@@ -35,7 +35,7 @@ public:
 	                                  std::vector<shared_ptr<LocalCSR>> &reverse_local_csrs_, idx_t num_threads_,
 	                                  ClientContext &context_, int64_t vsize_);
 
-	void ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) override;
+	shared_ptr<Event> CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op) override;
 	void InitializeBidirectionalLanes();
 	void Clear() override;
 

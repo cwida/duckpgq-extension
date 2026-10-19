@@ -136,10 +136,10 @@ void BidirectionalIterativeLengthState::Clear() {
 	lane_completed.reset();
 }
 
-void BidirectionalIterativeLengthState::ScheduleBFSBatch(Pipeline &pipeline, Event &event,
-                                                         const PhysicalPathFinding *op) {
-	event.InsertEvent(make_shared_ptr<BidirectionalIterativeLengthEvent>(
-	    shared_ptr_cast<BFSState, BidirectionalIterativeLengthState>(shared_from_this()), pipeline, *op));
+shared_ptr<Event> BidirectionalIterativeLengthState::CreateBFSEvent(Pipeline &pipeline,
+                                                                    const PhysicalPathFinding *op) {
+	return make_shared_ptr<BidirectionalIterativeLengthEvent>(
+	    shared_ptr_cast<BFSState, BidirectionalIterativeLengthState>(shared_from_this()), pipeline, *op);
 }
 
 void BidirectionalIterativeLengthState::WriteTimingResults(const std::string &filename) {

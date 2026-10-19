@@ -1,0 +1,56 @@
+# name: test/sql/path_finding/path_finding_operator_multi_batch.test
+# description: Path-finding results over more pairs than one 2048-row batch are complete when the pipeline finishes
+# group: [path_finding]
+
+require duckpgq
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# A 100-vertex chain: every pair (a, b) with a < b is reachable with length b - a.
+statement ok
+CREATE TABLE chain_vertex AS SELECT range AS id FROM range(100);
+
+statement ok
+CREATE TABLE chain_edge AS SELECT range AS src, range + 1 AS dst FROM range(99);
+
+statement ok
+CREATE PROPERTY GRAPH chain_graph
+VERTEX TABLES (chain_vertex LABEL Vertex)
+EDGE TABLES (
+    chain_edge SOURCE KEY (src) REFERENCES chain_vertex(id)
+               DESTINATION KEY (dst) REFERENCES chain_vertex(id)
+               LABEL Edge
+);
+
+# 100 x 100 = 10000 candidate pairs, i.e. five BFS batches of 2048 pairs.
+# 5050 pairs are reachable (including 100 zero-length self pairs); sum of lengths = sum_{k=1}^{99} k * (100 - k) = 166650.
+loop i 0 3
+
+query II
+SELECT count(*), sum(len)
+FROM GRAPH_TABLE (chain_graph
+    MATCH p = ANY SHORTEST (a:Vertex)-[e:Edge]->*(b:Vertex)
+    COLUMNS (a.id AS src, b.id AS dst, path_length(p) AS len)
+);
+----
+5050	166650
+
+endloop
+
+# The operator agrees with the SQL rewrite.
+statement ok
+SET experimental_path_finding_operator = false;
+
+query II
+SELECT count(*), sum(len)
+FROM GRAPH_TABLE (chain_graph
+    MATCH p = ANY SHORTEST (a:Vertex)-[e:Edge]->*(b:Vertex)
+    COLUMNS (a.id AS src, b.id AS dst, path_length(p) AS len)
+);
+----
+5050	166650

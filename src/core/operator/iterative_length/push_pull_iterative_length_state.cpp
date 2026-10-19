@@ -48,9 +48,9 @@ void PushPullIterativeLengthState::Clear() {
 	lane_completed.reset();
 }
 
-void PushPullIterativeLengthState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) {
-	event.InsertEvent(make_shared_ptr<PushPullIterativeLengthEvent>(
-	    shared_ptr_cast<BFSState, PushPullIterativeLengthState>(shared_from_this()), pipeline, *op));
+shared_ptr<Event> PushPullIterativeLengthState::CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op) {
+	return make_shared_ptr<PushPullIterativeLengthEvent>(
+	    shared_ptr_cast<BFSState, PushPullIterativeLengthState>(shared_from_this()), pipeline, *op);
 }
 
 void PushPullIterativeLengthState::WriteTimingResults(const std::string &filename) {

@@ -33,9 +33,9 @@ void ShortestPathState::Clear() {
 	lane_completed.reset();
 }
 
-void ShortestPathState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) {
-	event.InsertEvent(make_shared_ptr<ShortestPathEvent>(
-	    shared_ptr_cast<BFSState, ShortestPathState>(shared_from_this()), pipeline, *op));
+shared_ptr<Event> ShortestPathState::CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op) {
+	return make_shared_ptr<ShortestPathEvent>(shared_ptr_cast<BFSState, ShortestPathState>(shared_from_this()),
+	                                          pipeline, *op);
 }
 
 } // namespace duckdb

@@ -28,9 +28,9 @@ void IterativeLengthState::Clear() {
 	lane_completed.reset();
 }
 
-void IterativeLengthState::ScheduleBFSBatch(Pipeline &pipeline, Event &event, const PhysicalPathFinding *op) {
-	event.InsertEvent(make_shared_ptr<IterativeLengthEvent>(
-	    shared_ptr_cast<BFSState, IterativeLengthState>(shared_from_this()), pipeline, *op));
+shared_ptr<Event> IterativeLengthState::CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op) {
+	return make_shared_ptr<IterativeLengthEvent>(shared_ptr_cast<BFSState, IterativeLengthState>(shared_from_this()),
+	                                            pipeline, *op);
 }
 
 // Function to write timing results to a file
