@@ -130,6 +130,24 @@ FROM GRAPH_TABLE (pg MATCH (person)-[knows]->(b:Person) COLUMNS (person.name, b.
 A	B
 B	C
 
+# 4.7.4: a variable declared more than once denotes the same element, so a later occurrence may omit the label.
+query III
+FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person), (b)-[s:StudyAt]->(sc:School) COLUMNS (a.name, b.name, sc.name)) ORDER BY 1;
+----
+A	B	VU
+B	C	UvA
+
+query III
+FROM GRAPH_TABLE (pg MATCH (a)-[k:Knows]->(b), (b:Person)-[s:StudyAt]->(sc:School), (a:Person) COLUMNS (a.name, b.name, sc.name)) ORDER BY 1;
+----
+A	B	VU
+B	C	UvA
+
+statement error
+FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person), (a:School) COLUMNS (a.name));
+----
+Binder Error: Variable a is declared with labels Person and School, which belong to different tables
+
 # An anonymous element cannot be referenced.
 statement error
 FROM GRAPH_TABLE (single MATCH (a:Person)-[]->(b:Person) COLUMNS (a.name, e.src));

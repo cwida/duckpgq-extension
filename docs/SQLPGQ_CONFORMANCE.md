@@ -15,7 +15,7 @@ feature IDs they exercise. Each test file states the clause it is derived from.
 | Default match mode (ID022) | `REPEATABLE ELEMENTS`. Vertices and edges may repeat within a match. |
 | Element identity | A graph element is a row of one vertex or edge table; `rowid` is its identity. Every element pattern therefore binds to exactly one table. |
 | Label expression spanning several tables | Standard: the element matches any element with a satisfying label set. DuckPGQ: NotImplementedException, because an element binds to one table. Within one table, sublabels are encoded in a discriminator column and the expression becomes a row filter. |
-| Element pattern without a label | Standard: matches any element. DuckPGQ: a named element whose variable is a registered label uses that label (historical reading, `(a)` is `(a:a)`); otherwise the table is inferred when exactly one vertex table, or exactly one edge table connecting the endpoint tables in the pattern's direction, exists. Anything else is a binder error. |
+| Element pattern without a label | Standard: matches any element. DuckPGQ: an occurrence of a variable labelled elsewhere in the MATCH takes that label; otherwise a named element whose variable is a registered label uses that label (historical reading, `(a)` is `(a:a)`); otherwise the table is inferred when exactly one vertex table, or exactly one edge table connecting the endpoint tables in the pattern's direction, exists. Anything else is a binder error. |
 | Tie-breaking in `ANY SHORTEST` | Whichever path the breadth-first search reaches first; not stable across runs. |
 | Edge tables with a `source` equal to the `destination` table | Undirected patterns `-[e]-` match each edge in both directions. |
 
@@ -80,6 +80,7 @@ grammar, rejected by the binder with a clear error), **no**.
 
 Most recent first. Each entry names the commit's scope and the feature IDs it touched.
 
+- A variable declared more than once denotes the same element (4.7.4): an occurrence without a label takes the label declared elsewhere, and labels of different tables for one variable are an error.
 - A plain sublabel or an element-local `WHERE` on a quantified edge raises NotImplementedException. Both were silently ignored or produced an unbound-table error, because path-finding reads the whole edge table.
 - Quantified edges whose edge table connects two different vertex tables: `?` and `{0,1}` reduce to one edge, because a zero-length path between different tables cannot exist, and longer quantifiers raise NotImplementedException instead of evaluating over colliding row ids. Adds `G035_quantified_edges.test`.
 - A two-part reference whose qualifier is not an element variable is left to DuckDB, so correlated references to an outer table in a lateral `GRAPH_TABLE` work again.

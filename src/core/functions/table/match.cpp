@@ -311,7 +311,8 @@ static void PGQFlattenPathElements(vector<unique_ptr<PathReference>> &path_list,
                                    optional_ptr<SubPath> quantifier = nullptr) {
 	for (auto &path_reference : path_list) {
 		if (path_reference->path_reference_type == PGQPathReferenceType::PATH_ELEMENT) {
-			elements.push_back({reinterpret_cast<PathElement *>(path_reference.get()), quantifier, quantifier != nullptr});
+			elements.push_back(
+			    {reinterpret_cast<PathElement *>(path_reference.get()), quantifier, quantifier != nullptr});
 		} else {
 			auto &subpath = *reinterpret_cast<SubPath *>(path_reference.get());
 			auto inner = subpath.lower != 1 || subpath.upper != 1 ? optional_ptr<SubPath>(&subpath) : quantifier;
@@ -321,8 +322,8 @@ static void PGQFlattenPathElements(vector<unique_ptr<PathReference>> &path_list,
 }
 
 // Path-finding runs over a CSR with a single vertex-id space, so it is only defined for edge tables whose source and
-// destination are the same vertex table. Between different tables a zero-length path cannot exist, so {0,1} and ? reduce
-// to a single edge; anything longer is rejected rather than evaluated over colliding row ids.
+// destination are the same vertex table. Between different tables a zero-length path cannot exist, so {0,1} and ?
+// reduce to a single edge; anything longer is rejected rather than evaluated over colliding row ids.
 static void PGQCheckQuantifiedEdges(vector<PGQFlatElement> &elements, CreatePropertyGraphInfo &pg_table) {
 	for (auto &flat : elements) {
 		if (!flat.quantifier || flat.element->match_type == PGQMatchType::MATCH_VERTEX) {
@@ -338,9 +339,10 @@ static void PGQCheckQuantifiedEdges(vector<PGQFlatElement> &elements, CreateProp
 			                              edge_table->main_label.GetIdentifierName());
 		}
 		if (subpath.where_clause && flat.element->match_type != PGQMatchType::MATCH_VERTEX) {
-			throw NotImplementedException("WHERE on quantified edge pattern %s is not supported; path-finding cannot "
-			                              "filter edges. Filter the edge table in the property graph definition instead",
-			                              flat.element->ToString());
+			throw NotImplementedException(
+			    "WHERE on quantified edge pattern %s is not supported; path-finding cannot "
+			    "filter edges. Filter the edge table in the property graph definition instead",
+			    flat.element->ToString());
 		}
 		bool same_vertex_table = !edge_table->source_pg_table || !edge_table->destination_pg_table ||
 		                         edge_table->source_pg_table->SameTableIdentity(*edge_table->destination_pg_table);
@@ -492,82 +494,132 @@ static bool PGQSameVertexTable(const shared_ptr<PropertyGraphTable> &reference,
 	return reference && reference->SameTableIdentity(*table);
 }
 
-// Resolve element patterns without a label (10.6: the label is optional in the <element pattern filler>).
-// A named element whose variable is a registered label keeps the historical DuckPGQ reading (a) == (a:a).
-// Otherwise a vertex binds to the only vertex table, and an edge to the only edge table that connects its endpoint
-// tables in the pattern's direction; anything else is ambiguous, because every element binds to exactly one table.
-static void PGQResolveElementLabels(PathPattern &path_pattern, CreatePropertyGraphInfo &pg_table,
-                                    vector<unique_ptr<ParsedExpression>> &conditions) {
-	vector<PGQFlatElement> flat_elements;
-	PGQFlattenPathElements(path_pattern.path_elements, flat_elements);
-	vector<PathElement *> elements;
-	for (auto &flat : flat_elements) {
-		if (flat.element->label_expression) {
-			PGQBindLabelExpression(flat, pg_table, conditions);
-		}
-		elements.push_back(flat.element);
-	}
-	for (auto element : elements) {
-		if (!element->label.empty() || element->match_type != PGQMatchType::MATCH_VERTEX) {
-			continue;
-		}
-		if (!element->anonymous && pg_table.label_map.find(element->variable_binding) != pg_table.label_map.end()) {
-			element->label = element->variable_binding;
-			continue;
-		}
-		if (pg_table.vertex_tables.size() != 1) {
-			throw BinderException("Vertex pattern %s has no label and property graph %s has %s vertex tables (%s); "
-			                      "specify a label",
-			                      element->ToString(), pg_table.property_graph_name,
-			                      std::to_string(pg_table.vertex_tables.size()),
-			                      StringUtil::Join(PGQMainLabels(pg_table.vertex_tables), ", "));
-		}
-		element->label = pg_table.vertex_tables[0]->main_label.GetIdentifierName();
-	}
-	for (idx_t i = 0; i < elements.size(); i++) {
-		auto element = elements[i];
-		if (!element->label.empty() || element->match_type == PGQMatchType::MATCH_VERTEX) {
-			continue;
-		}
-		if (!element->anonymous && pg_table.label_map.find(element->variable_binding) != pg_table.label_map.end()) {
-			element->label = element->variable_binding;
-			continue;
-		}
-		if (i == 0 || i + 1 >= elements.size() || elements[i - 1]->match_type != PGQMatchType::MATCH_VERTEX ||
-		    elements[i + 1]->match_type != PGQMatchType::MATCH_VERTEX) {
-			throw BinderException("Vertex and edge patterns must be alternated.");
-		}
-		auto prev_table = PGQMatchFunction::FindGraphTable(elements[i - 1]->label, pg_table);
-		auto next_table = PGQMatchFunction::FindGraphTable(elements[i + 1]->label, pg_table);
-		vector<shared_ptr<PropertyGraphTable>> candidates;
-		for (auto &edge_table : pg_table.edge_tables) {
-			bool forward = PGQSameVertexTable(edge_table->source_pg_table, prev_table) &&
-			               PGQSameVertexTable(edge_table->destination_pg_table, next_table);
-			bool backward = PGQSameVertexTable(edge_table->source_pg_table, next_table) &&
-			                PGQSameVertexTable(edge_table->destination_pg_table, prev_table);
-			bool connects = element->match_type == PGQMatchType::MATCH_EDGE_RIGHT  ? forward
-			                : element->match_type == PGQMatchType::MATCH_EDGE_LEFT ? backward
-			                                                                       : forward || backward;
-			if (connects) {
-				candidates.push_back(edge_table);
+// Labels declared for a variable anywhere in the MATCH. 4.7.4: a variable declared more than once denotes the same
+// element, so an occurrence without a label takes the label of a labelled occurrence.
+static case_insensitive_map_t<string> PGQDeclaredLabels(const vector<vector<PGQFlatElement>> &patterns,
+                                                        CreatePropertyGraphInfo &pg_table) {
+	case_insensitive_map_t<string> declared;
+	for (auto &elements : patterns) {
+		for (auto &flat : elements) {
+			auto &element = *flat.element;
+			if (element.anonymous || element.label.empty()) {
+				continue;
+			}
+			auto existing = declared.find(element.variable_binding);
+			if (existing == declared.end()) {
+				declared[element.variable_binding] = element.label;
+				continue;
+			}
+			auto previous = PGQMatchFunction::FindGraphTable(existing->second, pg_table);
+			auto current = PGQMatchFunction::FindGraphTable(element.label, pg_table);
+			if (!previous->SameTableIdentity(*current)) {
+				throw BinderException("Variable %s is declared with labels %s and %s, which belong to different tables",
+				                      element.variable_binding, existing->second, element.label);
 			}
 		}
-		if (candidates.empty()) {
-			throw BinderException("Edge pattern %s has no label and no edge table of property graph %s connects %s "
-			                      "and %s in that direction",
-			                      element->ToString(), pg_table.property_graph_name, elements[i - 1]->label,
-			                      elements[i + 1]->label);
-		}
-		if (candidates.size() > 1) {
-			throw BinderException(
-			    "Edge pattern %s has no label and is ambiguous: edge tables %s all connect %s and %s; "
-			    "specify a label",
-			    element->ToString(), StringUtil::Join(PGQMainLabels(candidates), ", "), elements[i - 1]->label,
-			    elements[i + 1]->label);
-		}
-		element->label = candidates[0]->main_label.GetIdentifierName();
 	}
-	PGQCheckQuantifiedEdges(flat_elements, pg_table);
+	return declared;
+}
+
+// Resolve element patterns without a label (10.6: the label is optional in the <element pattern filler>).
+// An occurrence of a variable declared with a label elsewhere takes that label (4.7.4). A named element whose variable
+// is a registered label keeps the historical DuckPGQ reading (a) == (a:a). Otherwise a vertex binds to the only vertex
+// table, and an edge to the only edge table that connects its endpoint tables in the pattern's direction; anything
+// else is ambiguous, because every element binds to exactly one table.
+static void PGQResolveElementLabels(vector<unique_ptr<PathPattern>> &path_patterns, CreatePropertyGraphInfo &pg_table,
+                                    vector<unique_ptr<ParsedExpression>> &conditions) {
+	vector<vector<PGQFlatElement>> patterns;
+	for (auto &path_pattern : path_patterns) {
+		patterns.emplace_back();
+		PGQFlattenPathElements(path_pattern->path_elements, patterns.back());
+		for (auto &flat : patterns.back()) {
+			if (flat.element->label_expression) {
+				PGQBindLabelExpression(flat, pg_table, conditions);
+			}
+		}
+	}
+	auto declared_labels = PGQDeclaredLabels(patterns, pg_table);
+	auto take_declared_label = [&](PathElement &element) {
+		if (element.anonymous) {
+			return false;
+		}
+		auto declared = declared_labels.find(element.variable_binding);
+		if (declared != declared_labels.end()) {
+			element.label = declared->second;
+			return true;
+		}
+		if (pg_table.label_map.find(element.variable_binding) != pg_table.label_map.end()) {
+			element.label = element.variable_binding;
+			return true;
+		}
+		return false;
+	};
+
+	for (auto &flat_elements : patterns) {
+		vector<PathElement *> elements;
+		for (auto &flat : flat_elements) {
+			elements.push_back(flat.element);
+		}
+		for (auto element : elements) {
+			if (!element->label.empty() || element->match_type != PGQMatchType::MATCH_VERTEX) {
+				continue;
+			}
+			if (take_declared_label(*element)) {
+				continue;
+			}
+			if (pg_table.vertex_tables.size() != 1) {
+				throw BinderException("Vertex pattern %s has no label and property graph %s has %s vertex tables (%s); "
+				                      "specify a label",
+				                      element->ToString(), pg_table.property_graph_name,
+				                      std::to_string(pg_table.vertex_tables.size()),
+				                      StringUtil::Join(PGQMainLabels(pg_table.vertex_tables), ", "));
+			}
+			element->label = pg_table.vertex_tables[0]->main_label.GetIdentifierName();
+		}
+		for (idx_t i = 0; i < elements.size(); i++) {
+			auto element = elements[i];
+			if (!element->label.empty() || element->match_type == PGQMatchType::MATCH_VERTEX) {
+				continue;
+			}
+			if (take_declared_label(*element)) {
+				continue;
+			}
+			if (i == 0 || i + 1 >= elements.size() || elements[i - 1]->match_type != PGQMatchType::MATCH_VERTEX ||
+			    elements[i + 1]->match_type != PGQMatchType::MATCH_VERTEX) {
+				throw BinderException("Vertex and edge patterns must be alternated.");
+			}
+			auto prev_table = PGQMatchFunction::FindGraphTable(elements[i - 1]->label, pg_table);
+			auto next_table = PGQMatchFunction::FindGraphTable(elements[i + 1]->label, pg_table);
+			vector<shared_ptr<PropertyGraphTable>> candidates;
+			for (auto &edge_table : pg_table.edge_tables) {
+				bool forward = PGQSameVertexTable(edge_table->source_pg_table, prev_table) &&
+				               PGQSameVertexTable(edge_table->destination_pg_table, next_table);
+				bool backward = PGQSameVertexTable(edge_table->source_pg_table, next_table) &&
+				                PGQSameVertexTable(edge_table->destination_pg_table, prev_table);
+				bool connects = element->match_type == PGQMatchType::MATCH_EDGE_RIGHT  ? forward
+				                : element->match_type == PGQMatchType::MATCH_EDGE_LEFT ? backward
+				                                                                       : forward || backward;
+				if (connects) {
+					candidates.push_back(edge_table);
+				}
+			}
+			if (candidates.empty()) {
+				throw BinderException("Edge pattern %s has no label and no edge table of property graph %s connects %s "
+				                      "and %s in that direction",
+				                      element->ToString(), pg_table.property_graph_name, elements[i - 1]->label,
+				                      elements[i + 1]->label);
+			}
+			if (candidates.size() > 1) {
+				throw BinderException(
+				    "Edge pattern %s has no label and is ambiguous: edge tables %s all connect %s and "
+				    "%s; specify a label",
+				    element->ToString(), StringUtil::Join(PGQMainLabels(candidates), ", "), elements[i - 1]->label,
+				    elements[i + 1]->label);
+			}
+			element->label = candidates[0]->main_label.GetIdentifierName();
+		}
+		PGQCheckQuantifiedEdges(flat_elements, pg_table);
+	}
 }
 
 shared_ptr<PropertyGraphTable> PGQMatchFunction::FindGraphTable(const string &label,
@@ -1410,9 +1462,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	case_insensitive_map_t<shared_ptr<PropertyGraphTable>> alias_map;
 	VertexJoinMap vertex_joins;
 
-	for (auto &path_pattern : ref->path_patterns) {
-		PGQResolveElementLabels(*path_pattern, *pg_table, conditions);
-	}
+	PGQResolveElementLabels(ref->path_patterns, *pg_table, conditions);
 	// Maps from graph element alias to table, including vertex and edge tables.
 	auto alias_to_vertex_and_edge_tables = PopulateGraphTableAliasMap(*pg_table, *ref);
 	for (auto &path_pattern : ref->path_patterns) {
