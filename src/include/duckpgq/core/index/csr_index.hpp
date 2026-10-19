@@ -18,7 +18,6 @@
 #include "duckdb/execution/index/bound_index.hpp"
 #include "duckdb/execution/index/index_type.hpp"
 
-#include <unordered_map>
 
 namespace duckdb {
 
@@ -27,18 +26,40 @@ class DuckTransaction;
 class DuckTableEntry;
 struct PropertyGraphTable;
 
-//! Vertex keys are mapped to dense ids; the dictionary of an epoch is frozen with it.
+//! Vertex keys are mapped to dense ids in key order; the dictionary of an epoch is frozen with it.
+//!
+//! Compact key spaces (the common case: generated ids, row-number-like keys) use a presence bitmap over
+//! [min_key, max_key] with per-word rank counts, so a lookup is a popcount and construction needs no sort. Sparse
+//! key spaces fall back to a sorted key array with binary search.
 struct CSRIndexDictionary {
-	std::unordered_map<int64_t, uint32_t> key_to_id;
-	vector<int64_t> id_to_key;
+	bool dense = false;
+	int64_t min_key = 0;
+	//! Dense: bit (key - min_key) is set when the key is a vertex; word_rank[w] = number of set bits before word w
+	vector<uint64_t> bitmap;
+	vector<uint32_t> word_rank;
+	//! Sparse: all keys in ascending order, id = position
+	vector<int64_t> sorted_keys;
+	idx_t count = 0;
 
 	//! Returns the dense id of a key, or DConstants::INVALID_INDEX when the key is not a vertex of the epoch.
-	idx_t Lookup(int64_t key) const {
-		auto entry = key_to_id.find(key);
-		return entry == key_to_id.end() ? DConstants::INVALID_INDEX : entry->second;
-	}
+	idx_t Lookup(int64_t key) const;
+	//! The key of a dense id
+	int64_t KeyOf(idx_t id) const;
 	idx_t Size() const {
-		return id_to_key.size();
+		return count;
+	}
+};
+
+//! Edges collected by one build thread, keys already cast to BIGINT
+struct CSRIndexEdgeList {
+	vector<int64_t> src_keys;
+	vector<int64_t> dst_keys;
+	vector<row_t> row_ids;
+	int64_t min_key = NumericLimits<int64_t>::Maximum();
+	int64_t max_key = NumericLimits<int64_t>::Minimum();
+
+	idx_t Size() const {
+		return row_ids.size();
 	}
 };
 
@@ -86,9 +107,8 @@ public:
 	//! Installs an epoch built by the CREATE INDEX pipeline
 	void InstallEpoch(shared_ptr<CSRIndexEpoch> epoch);
 
-	//! Builds an epoch from in-memory edge lists (keys already cast to BIGINT)
-	static shared_ptr<CSRIndexEpoch> BuildEpoch(ClientContext &context, const vector<int64_t> &src_keys,
-	                                            const vector<int64_t> &dst_keys, const vector<row_t> &row_ids,
+	//! Builds an epoch from the edge lists of the build threads, in parallel
+	static shared_ptr<CSRIndexEpoch> BuildEpoch(ClientContext &context, vector<CSRIndexEdgeList> &lists,
 	                                            bool undirected, VisibilityBound bound);
 
 	//! Finds a bound CSR index on the edge table of a property graph whose key columns are the edge's source and
