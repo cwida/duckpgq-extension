@@ -62,6 +62,9 @@ public:
 	std::vector<int64_t> statistics_chunks;
 	std::vector<int64_t> reverse_statistics_chunks;
 	std::vector<shared_ptr<LocalCSR>> partition_csrs;
+	//! Index snapshot overlay aligned with partition_csrs, see BFSState
+	std::vector<shared_ptr<LocalCSR>> partition_delta_csrs;
+	std::vector<shared_ptr<vector<uint64_t>>> partition_suppressed;
 	std::vector<shared_ptr<LocalCSR>> reverse_partition_csrs;
 	std::vector<shared_ptr<PullCSR>> pull_partition_csrs;
 	std::vector<std::vector<LocalCSRBuildPartition>> forward_build_buffers;

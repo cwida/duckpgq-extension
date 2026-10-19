@@ -272,8 +272,11 @@ unique_ptr<IndexBuildBindData> CSRBuildBind(IndexBuildBindInput &input) {
 		if (expr->GetExpressionClass() != ExpressionClass::BOUND_COLUMN_REF) {
 			throw BinderException("CSR index keys must be plain columns, not expressions");
 		}
-		if (!expr->GetReturnType().IsIntegral()) {
-			throw BinderException("CSR index keys must be integer columns, got %s", expr->GetReturnType().ToString());
+		auto physical = expr->GetReturnType().InternalType();
+		if (!expr->GetReturnType().IsIntegral() || physical == PhysicalType::UINT64 || physical == PhysicalType::INT128 ||
+		    physical == PhysicalType::UINT128) {
+			throw BinderException("CSR index keys must be integer columns that fit a BIGINT, got %s",
+			                      expr->GetReturnType().ToString());
 		}
 	}
 	return make_uniq<CSRBuildBindData>();
@@ -508,7 +511,9 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 void CSRIndex::InstallEpoch(shared_ptr<CSRIndexEpoch> epoch_p) {
 	IndexLock l(*this);
 	epoch = std::move(epoch_p);
-	stale = false;
+	delta.clear();
+	tombstones.clear();
+	tombstone_positions.clear();
 }
 
 shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
@@ -537,35 +542,292 @@ shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, Duc
 	return BuildEpoch(context, lists, undirected, transaction.view.visibility_bound);
 }
 
-shared_ptr<CSRIndexEpoch> CSRIndex::Snapshot(ClientContext &context, DuckTransaction &transaction,
-                                             DataTable &table) const {
+void CSRIndex::CompactChangeLog(DuckTransaction &transaction, DataTable &table) const {
+	// Evaluate visibility outside the lock on a copy of the current prefix; entries appended meanwhile are kept
+	vector<CSRIndexDeltaEdge> delta_prefix;
+	vector<row_t> tombstone_prefix;
+	{
+		IndexLock l(*this);
+		delta_prefix = delta;
+		tombstone_prefix = tombstones;
+	}
+	// Delta rows visible at the epoch's bound are in the epoch; tombstoned rows that are not visible were excluded
+	vector<uint8_t> keep_delta(delta_prefix.size());
+	vector<uint8_t> keep_tombstone(tombstone_prefix.size());
+	for (idx_t i = 0; i < delta_prefix.size(); i++) {
+		keep_delta[i] = !table.CanFetch(transaction, delta_prefix[i].row);
+	}
+	for (idx_t i = 0; i < tombstone_prefix.size(); i++) {
+		keep_tombstone[i] = table.CanFetch(transaction, tombstone_prefix[i]);
+	}
+	IndexLock l(*this);
+	vector<CSRIndexDeltaEdge> new_delta;
+	for (idx_t i = 0; i < delta.size(); i++) {
+		if (i >= keep_delta.size() || keep_delta[i]) {
+			new_delta.push_back(delta[i]);
+		}
+	}
+	vector<row_t> new_tombstones;
+	for (idx_t i = 0; i < tombstones.size(); i++) {
+		if (i >= keep_tombstone.size() || keep_tombstone[i]) {
+			new_tombstones.push_back(tombstones[i]);
+		}
+	}
+	delta = std::move(new_delta);
+	tombstones = std::move(new_tombstones);
+	tombstone_positions.clear();
+}
+
+void CSRIndex::ResolveTombstonePositions(const CSRIndexEpoch &epoch, idx_t tombstone_count) const {
+	vector<row_t> pending;
+	idx_t known;
+	{
+		IndexLock l(*this);
+		known = tombstone_positions.size();
+		if (known >= tombstone_count) {
+			return;
+		}
+		pending.assign(tombstones.begin() + NumericCast<int64_t>(known),
+		               tombstones.begin() + NumericCast<int64_t>(tombstone_count));
+	}
+	// One scan over the epoch's row ids finds the positions of all pending rows; rows not found are delta rows
+	std::unordered_map<row_t, idx_t> positions;
+	positions.reserve(pending.size());
+	for (auto row : pending) {
+		positions.emplace(row, DConstants::INVALID_INDEX);
+	}
+	auto &partition_row_ids = epoch.partition_row_ids;
+	mutex positions_lock;
+	ParallelFor(partition_row_ids.size(), std::thread::hardware_concurrency(), [&](idx_t begin, idx_t end, idx_t) {
+		vector<std::pair<row_t, idx_t>> found;
+		for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
+			auto &rows = partition_row_ids[partition_idx];
+			for (idx_t offset = 0; offset < rows.size(); offset++) {
+				if (positions.find(rows[offset]) != positions.end()) {
+					found.emplace_back(rows[offset], (partition_idx << 32) | offset);
+				}
+			}
+		}
+		if (!found.empty()) {
+			lock_guard<mutex> guard(positions_lock);
+			for (auto &entry : found) {
+				positions[entry.first] = entry.second;
+			}
+		}
+	});
+	IndexLock l(*this);
+	if (tombstone_positions.size() != known) {
+		// Another reader resolved them meanwhile
+		return;
+	}
+	for (auto row : pending) {
+		tombstone_positions.push_back(positions[row]);
+	}
+}
+
+shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, DuckTransaction &transaction,
+                                                     DataTable &table, shared_ptr<CSRIndexEpoch> epoch_p,
+                                                     idx_t delta_count, idx_t tombstone_count) const {
+	auto snapshot = make_shared_ptr<CSRIndexSnapshot>();
+	snapshot->epoch = epoch_p;
+	auto &epoch = *snapshot->epoch;
+	auto width = epoch.partition_width;
+	snapshot->partition_width = width;
+	snapshot->partitions = epoch.csr->forward_partitions;
+	snapshot->edge_count = epoch.edge_count;
+	auto epoch_vertex_count = epoch.vertex_count;
+
+	// Tombstones: epoch edges deleted by commits this reader sees are suppressed
+	if (tombstone_count > 0) {
+		ResolveTombstonePositions(epoch, tombstone_count);
+		vector<row_t> rows;
+		vector<idx_t> positions;
+		{
+			IndexLock l(*this);
+			rows.assign(tombstones.begin(), tombstones.begin() + NumericCast<int64_t>(tombstone_count));
+			positions.assign(tombstone_positions.begin(),
+			                 tombstone_positions.begin() + NumericCast<int64_t>(tombstone_count));
+		}
+		snapshot->suppressed.resize(snapshot->partitions.size());
+		for (idx_t i = 0; i < tombstone_count; i++) {
+			if (positions[i] == DConstants::INVALID_INDEX || table.CanFetch(transaction, rows[i])) {
+				continue;
+			}
+			auto partition_idx = positions[i] >> 32;
+			auto offset = positions[i] & 0xFFFFFFFF;
+			auto &bitmap = snapshot->suppressed[partition_idx];
+			if (!bitmap) {
+				bitmap = make_shared_ptr<vector<uint64_t>>((snapshot->partitions[partition_idx]->e.size() + 63) / 64);
+			}
+			(*bitmap)[offset >> 6] |= uint64_t(1) << (offset & 63);
+			snapshot->edge_count--;
+		}
+	}
+
+	// Delta: edges committed after the epoch that this reader sees, bucketed by destination range
+	vector<CSRIndexDeltaEdge> delta_edges;
+	if (delta_count > 0) {
+		IndexLock l(*this);
+		delta_edges.assign(delta.begin(), delta.begin() + NumericCast<int64_t>(delta_count));
+	}
+	struct DeltaEntry {
+		uint32_t src;
+		uint16_t local_dst;
+	};
+	auto lookup_or_add = [&](int64_t key) -> uint32_t {
+		auto id = epoch.dictionary->Lookup(key);
+		if (id != DConstants::INVALID_INDEX) {
+			return NumericCast<uint32_t>(id);
+		}
+		auto entry = snapshot->extra_key_to_id.find(key);
+		if (entry != snapshot->extra_key_to_id.end()) {
+			return entry->second;
+		}
+		auto new_id = NumericCast<uint32_t>(epoch_vertex_count + snapshot->extra_keys.size());
+		snapshot->extra_keys.push_back(key);
+		snapshot->extra_key_to_id.emplace(key, new_id);
+		return new_id;
+	};
+	vector<std::pair<uint32_t, uint32_t>> visible_edges;
+	for (auto &edge : delta_edges) {
+		if (!table.CanFetch(transaction, edge.row)) {
+			continue;
+		}
+		auto src = lookup_or_add(edge.src_key);
+		auto dst = lookup_or_add(edge.dst_key);
+		visible_edges.emplace_back(src, dst);
+		if (undirected) {
+			visible_edges.emplace_back(dst, src);
+		}
+	}
+	snapshot->vertex_count = epoch_vertex_count + snapshot->extra_keys.size();
+	snapshot->edge_count += visible_edges.size();
+
+	// Every destination range up to the snapshot's vertex count must have a partition, because the kernel clears and
+	// checks the frontier per partition range. Ranges beyond the epoch get empty cover partitions; the part of the
+	// epoch's last range above the epoch's vertex count gets one too.
+	auto total_ranges = std::max<idx_t>(1, (snapshot->vertex_count + 2 + width - 1) / width);
+	vector<idx_t> range_to_list(total_ranges, DConstants::INVALID_INDEX);
+	for (idx_t partition_idx = 0; partition_idx < snapshot->partitions.size(); partition_idx++) {
+		range_to_list[partition_idx] = partition_idx;
+	}
+	auto epoch_end = epoch_vertex_count + 2;
+	auto snapshot_end = snapshot->vertex_count + 2;
+	if (snapshot_end > epoch_end) {
+		auto epoch_ranges = snapshot->partitions.size();
+		auto last_range_end = epoch_ranges * width;
+		if (epoch_end < std::min(last_range_end, snapshot_end)) {
+			auto cover = make_shared_ptr<LocalCSR>(epoch_end, std::min(last_range_end, snapshot_end),
+			                                       snapshot->vertex_count, false);
+			cover->v_array_size = 0;
+			cover->sparse_rows_initialized = true;
+			cover->initialized_e = true;
+			snapshot->partitions.push_back(std::move(cover));
+		}
+		for (idx_t range = epoch_ranges; range < total_ranges; range++) {
+			auto start_vertex = range * width;
+			auto end_vertex = std::min<idx_t>(start_vertex + width, snapshot_end);
+			auto cover = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, snapshot->vertex_count, false);
+			cover->v_array_size = 0;
+			cover->sparse_rows_initialized = true;
+			cover->initialized_e = true;
+			range_to_list[range] = snapshot->partitions.size();
+			snapshot->partitions.push_back(std::move(cover));
+		}
+	}
+	snapshot->delta_partitions.resize(snapshot->partitions.size());
+	snapshot->suppressed.resize(snapshot->partitions.size());
+
+	if (!visible_edges.empty()) {
+		vector<vector<DeltaEntry>> buckets(total_ranges);
+		for (auto &edge : visible_edges) {
+			auto range = edge.second / width;
+			buckets[range].push_back({edge.first, NumericCast<uint16_t>(edge.second - range * width)});
+		}
+		auto src_bits = CSRSourceBits(snapshot->vertex_count);
+		vector<DeltaEntry> scratch;
+		vector<idx_t> histogram;
+		for (idx_t range = 0; range < total_ranges; range++) {
+			if (buckets[range].empty()) {
+				continue;
+			}
+			CSRRadixSortBySource(buckets[range], scratch, histogram, src_bits);
+			auto start_vertex = range * width;
+			auto end_vertex = std::min<idx_t>(start_vertex + width, snapshot_end);
+			snapshot->delta_partitions[range_to_list[range]] = CSREmitSparsePartition(
+			    start_vertex, end_vertex, snapshot->vertex_count, buckets[range], [](idx_t, const DeltaEntry &) {});
+		}
+	}
+	return snapshot;
+}
+
+shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTransaction &transaction,
+                                                DataTable &table) const {
 	if (transaction.ChangesMade()) {
 		// The reader's own uncommitted writes are visible to it alone: build a private epoch from its view of the
-		// table and leave the shared epoch, which must only ever contain committed rows, untouched
-		return RebuildFromTable(context, transaction, table);
+		// table (which includes them) and leave the shared epoch, which must only contain committed rows, untouched
+		return BuildSnapshot(context, transaction, table, RebuildFromTable(context, transaction, table), 0, 0);
 	}
 	shared_ptr<CSRIndexEpoch> current;
-	bool rebuild;
+	idx_t delta_count;
+	idx_t tombstone_count;
 	{
 		IndexLock l(*this);
 		current = epoch;
-		rebuild = !epoch || stale;
-		if (rebuild) {
-			// Changes committed while we scan set the flag again, so a concurrent writer is never missed
-			stale = false;
-		}
+		delta_count = delta.size();
+		tombstone_count = tombstones.size();
 	}
-	if (rebuild) {
+	if (!current) {
+		// No epoch yet (index created before a restart, or never read): build one at this reader's snapshot
 		auto rebuilt = RebuildFromTable(context, transaction, table);
+		{
+			IndexLock l(*this);
+			if (!epoch) {
+				epoch = rebuilt;
+			}
+			current = epoch;
+		}
+		if (current == rebuilt) {
+			CompactChangeLog(transaction, table);
+		}
 		IndexLock l(*this);
-		epoch = rebuilt;
-		return rebuilt;
+		delta_count = delta.size();
+		tombstone_count = tombstones.size();
 	}
 	// The epoch must not contain rows this reader cannot see: epoch.bound <= reader.bound
 	if (VisibilityBound::Min(current->bound, transaction.view.visibility_bound) != current->bound) {
 		return nullptr;
 	}
-	return current;
+	return BuildSnapshot(context, transaction, table, current, delta_count, tombstone_count);
+}
+
+idx_t CSRIndex::DeltaSize() const {
+	IndexLock l(*this);
+	return delta.size();
+}
+
+idx_t CSRIndex::TombstoneCount() const {
+	IndexLock l(*this);
+	return tombstones.size();
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// CSRIndexSnapshot
+//----------------------------------------------------------------------------------------------------------------------
+idx_t CSRIndexSnapshot::Lookup(int64_t key) const {
+	auto id = epoch->dictionary->Lookup(key);
+	if (id != DConstants::INVALID_INDEX) {
+		return id;
+	}
+	auto entry = extra_key_to_id.find(key);
+	return entry == extra_key_to_id.end() ? DConstants::INVALID_INDEX : entry->second;
+}
+
+int64_t CSRIndexSnapshot::KeyOf(idx_t id) const {
+	if (id < epoch->vertex_count) {
+		return epoch->dictionary->KeyOf(id);
+	}
+	return extra_keys[id - epoch->vertex_count];
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -615,8 +877,8 @@ string CSRIndex::FindForEdgeTable(ClientContext &context, const PropertyGraphTab
 	return string();
 }
 
-shared_ptr<CSRIndexEpoch> CSRIndex::Resolve(ClientContext &context, const string &catalog, const string &schema,
-                                            const string &table_name, const string &index_name) {
+shared_ptr<CSRIndexSnapshot> CSRIndex::Resolve(ClientContext &context, const string &catalog, const string &schema,
+                                               const string &table_name, const string &index_name) {
 	auto entry = Catalog::GetEntry<TableCatalogEntry>(
 	    context, QualifiedName(Identifier(catalog), Identifier(schema), Identifier(table_name)),
 	    OnEntryNotFound::RETURN_NULL);
@@ -627,7 +889,8 @@ shared_ptr<CSRIndexEpoch> CSRIndex::Resolve(ClientContext &context, const string
 	auto &storage = table.GetStorage();
 	storage.BindIndexes(context);
 	auto index_entry = storage.GetDataTableInfo()->GetIndexes().FindEntry(Identifier(index_name));
-	if (!index_entry || index_entry->GetIndexType() != TYPE_NAME || index_entry->GetBindState() != IndexBindState::BOUND) {
+	if (!index_entry || index_entry->GetIndexType() != TYPE_NAME ||
+	    index_entry->GetBindState() != IndexBindState::BOUND) {
 		return nullptr;
 	}
 	auto handle = index_entry->GetReadHandle<CSRIndex>();
@@ -647,7 +910,7 @@ bool CSRIndex::IsCacheKey(const string &cache_key) {
 	return StringUtil::StartsWith(cache_key, CSR_INDEX_KEY_PREFIX);
 }
 
-shared_ptr<CSRIndexEpoch> CSRIndex::ResolveCacheKey(ClientContext &context, const string &cache_key) {
+shared_ptr<CSRIndexSnapshot> CSRIndex::ResolveCacheKey(ClientContext &context, const string &cache_key) {
 	if (!IsCacheKey(cache_key)) {
 		return nullptr;
 	}
@@ -661,9 +924,68 @@ shared_ptr<CSRIndexEpoch> CSRIndex::ResolveCacheKey(ClientContext &context, cons
 //----------------------------------------------------------------------------------------------------------------------
 // BoundIndex interface
 //----------------------------------------------------------------------------------------------------------------------
-ErrorData CSRIndex::Append(IndexLock &l, DataChunk &, Vector &) {
+namespace {
+
+template <class T>
+void ReadIntegerKeys(Vector &input, idx_t count, vector<int64_t> &keys, vector<uint8_t> &valid) {
+	UnifiedVectorFormat format;
+	input.ToUnifiedFormat(count, format);
+	auto data = UnifiedVectorFormat::GetData<T>(format);
+	for (idx_t row = 0; row < count; row++) {
+		auto idx = format.sel->get_index(row);
+		valid[row] = format.validity.RowIsValid(idx);
+		keys[row] = valid[row] ? static_cast<int64_t>(data[idx]) : 0;
+	}
+}
+
+//! Reads an integer key column as BIGINT without a ClientContext (the index hooks have none)
+void ReadKeys(Vector &input, idx_t count, vector<int64_t> &keys, vector<uint8_t> &valid) {
+	keys.resize(count);
+	valid.resize(count);
+	switch (input.GetType().InternalType()) {
+	case PhysicalType::INT8:
+		return ReadIntegerKeys<int8_t>(input, count, keys, valid);
+	case PhysicalType::INT16:
+		return ReadIntegerKeys<int16_t>(input, count, keys, valid);
+	case PhysicalType::INT32:
+		return ReadIntegerKeys<int32_t>(input, count, keys, valid);
+	case PhysicalType::INT64:
+		return ReadIntegerKeys<int64_t>(input, count, keys, valid);
+	case PhysicalType::UINT8:
+		return ReadIntegerKeys<uint8_t>(input, count, keys, valid);
+	case PhysicalType::UINT16:
+		return ReadIntegerKeys<uint16_t>(input, count, keys, valid);
+	case PhysicalType::UINT32:
+		return ReadIntegerKeys<uint32_t>(input, count, keys, valid);
+	default:
+		throw NotImplementedException("CSR index keys of type %s are not supported", input.GetType().ToString());
+	}
+}
+
+} // namespace
+
+ErrorData CSRIndex::Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 	l.AssertHeld(*this);
-	stale = true;
+	// Evaluate the key expressions on the incoming rows, like the ART does
+	DataChunk key_chunk;
+	key_chunk.Initialize(Allocator::DefaultAllocator(), logical_types);
+	ExecuteExpressions(chunk, key_chunk);
+	auto count = key_chunk.size();
+	vector<int64_t> src_keys;
+	vector<int64_t> dst_keys;
+	vector<uint8_t> src_valid;
+	vector<uint8_t> dst_valid;
+	ReadKeys(key_chunk.data[0], count, src_keys, src_valid);
+	ReadKeys(key_chunk.data[1], count, dst_keys, dst_valid);
+	UnifiedVectorFormat row_format;
+	row_ids.ToUnifiedFormat(count, row_format);
+	auto row_data = UnifiedVectorFormat::GetData<row_t>(row_format);
+	for (idx_t row = 0; row < count; row++) {
+		if (!src_valid[row] || !dst_valid[row]) {
+			continue;
+		}
+		delta.push_back({src_keys[row], dst_keys[row], row_data[row_format.sel->get_index(row)]});
+	}
 	return ErrorData();
 }
 
@@ -671,23 +993,29 @@ ErrorData CSRIndex::Insert(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 	return Append(l, chunk, row_ids);
 }
 
-idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &, optional_ptr<SelectionVector> deleted_sel,
-                          optional_ptr<SelectionVector>) {
+idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifiers,
+                          optional_ptr<SelectionVector> deleted_sel, optional_ptr<SelectionVector>) {
 	l.AssertHeld(*this);
-	// Deleted rows are not tracked yet; the epoch is rebuilt by the next reader
-	stale = true;
-	if (deleted_sel) {
-		for (idx_t i = 0; i < entries.size(); i++) {
-			deleted_sel->set_index(i, i);
+	auto count = entries.size();
+	UnifiedVectorFormat row_format;
+	row_identifiers.ToUnifiedFormat(count, row_format);
+	auto row_data = UnifiedVectorFormat::GetData<row_t>(row_format);
+	for (idx_t row = 0; row < count; row++) {
+		// Whether the row is an epoch edge or a delta edge is resolved lazily by the readers
+		tombstones.push_back(row_data[row_format.sel->get_index(row)]);
+		if (deleted_sel) {
+			deleted_sel->set_index(row, row);
 		}
 	}
-	return entries.size();
+	return count;
 }
 
 void CSRIndex::ResetStorage(IndexLock &l) {
 	l.AssertHeld(*this);
 	epoch.reset();
-	stale = false;
+	delta.clear();
+	tombstones.clear();
+	tombstone_positions.clear();
 }
 
 bool CSRIndex::MergeIndexes(IndexLock &, BoundIndex &) {
@@ -699,12 +1027,14 @@ void CSRIndex::Vacuum(IndexLock &) {
 
 idx_t CSRIndex::GetInMemorySize(IndexLock &l) const {
 	l.AssertHeld(*this);
+	idx_t bytes = delta.size() * sizeof(CSRIndexDeltaEdge) + tombstones.size() * sizeof(row_t) +
+	              tombstone_positions.size() * sizeof(idx_t);
 	if (!epoch) {
-		return 0;
+		return bytes;
 	}
-	idx_t bytes = epoch->dictionary->bitmap.size() * sizeof(uint64_t) +
-	              epoch->dictionary->word_rank.size() * sizeof(uint32_t) +
-	              epoch->dictionary->sorted_keys.size() * sizeof(int64_t);
+	bytes += epoch->dictionary->bitmap.size() * sizeof(uint64_t) +
+	         epoch->dictionary->word_rank.size() * sizeof(uint32_t) +
+	         epoch->dictionary->sorted_keys.size() * sizeof(int64_t);
 	for (auto &partition : epoch->csr->forward_partitions) {
 		bytes += partition->e.size() * sizeof(uint16_t) + partition->row_offsets.size() * sizeof(uint32_t) +
 		         partition->source_vertices.size() * sizeof(uint32_t);
@@ -721,11 +1051,12 @@ void CSRIndex::Verify(IndexLock &) {
 string CSRIndex::ToString(IndexLock &l, bool) {
 	l.AssertHeld(*this);
 	if (!epoch) {
-		return "CSR index (no epoch)";
+		return StringUtil::Format("CSR index (no epoch, %llu delta edges, %llu tombstones)", delta.size(),
+		                          tombstones.size());
 	}
-	return StringUtil::Format("CSR index: %llu vertices, %llu edges, %llu partitions%s%s", epoch->vertex_count,
-	                          epoch->edge_count, epoch->csr->forward_partitions.size(),
-	                          undirected ? ", undirected" : "", stale ? ", stale" : "");
+	return StringUtil::Format("CSR index: %llu vertices, %llu edges, %llu partitions%s, %llu delta edges, %llu tombstones",
+	                          epoch->vertex_count, epoch->edge_count, epoch->csr->forward_partitions.size(),
+	                          undirected ? ", undirected" : "", delta.size(), tombstones.size());
 }
 
 void CSRIndex::VerifyAllocations(IndexLock &) {

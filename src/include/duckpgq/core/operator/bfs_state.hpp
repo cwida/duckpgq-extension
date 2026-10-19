@@ -64,6 +64,10 @@ public:
 	shared_ptr<PathFindingBatch> batch;
 	shared_ptr<DataChunk> pairs;
 	std::vector<shared_ptr<LocalCSR>> local_csrs;
+	//! Index snapshot overlay, aligned with local_csrs (empty when traversing a plain CSR): delta edges of the
+	//! partition's destination range and the epoch edge positions this reader must skip
+	std::vector<shared_ptr<LocalCSR>> delta_csrs;
+	std::vector<shared_ptr<vector<uint64_t>>> suppressed;
 	atomic<int64_t> partition_counter;
 	string mode;
 	shared_ptr<DataChunk> pf_results;

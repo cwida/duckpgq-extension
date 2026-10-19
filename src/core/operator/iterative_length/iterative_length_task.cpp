@@ -31,8 +31,12 @@ bool CheckChange(IterativeLengthState &state, std::bitset<LANE_LIMIT> *seen,
 	return local_change;
 }
 
-void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next,
-             const LocalCSR &local_csr) {
+inline bool IsSuppressed(const uint64_t *suppressed, idx_t position) {
+	return suppressed && ((suppressed[position >> 6] >> (position & 63)) & 1);
+}
+
+void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr,
+             const uint64_t *suppressed) {
 	for (const auto &segment : local_csr.segments) {
 		for (idx_t row_idx = 0; row_idx < segment.source_vertices.size(); row_idx++) {
 			auto source_vertex = segment.source_vertices[row_idx];
@@ -55,6 +59,9 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 				auto start_edges = local_csr.row_offsets[row_idx];
 				auto end_edges = local_csr.row_offsets[row_idx + 1];
 				for (auto offset = start_edges; offset < end_edges; offset++) {
+					if (IsSuppressed(suppressed, offset)) {
+						continue;
+					}
 					auto n = local_csr.e[offset] + local_csr.start_vertex;
 					next[n] |= visit[source_vertex];
 				}
@@ -76,14 +83,14 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 }
 
 void RunExplore(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visit,
-                std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr) {
+                std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr, const uint64_t *suppressed) {
 	if (!state.benchmark_enabled) {
-		Explore(visit, next, local_csr);
+		Explore(visit, next, local_csr, suppressed);
 		return;
 	}
 
 	auto start_time = std::chrono::high_resolution_clock::now();
-	Explore(visit, next, local_csr);
+	Explore(visit, next, local_csr, suppressed);
 	auto end_time = std::chrono::high_resolution_clock::now();
 	auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
 
@@ -180,7 +187,14 @@ void RunIteration(IterativeLengthState &state, idx_t worker_id) {
 		if (!local_csr) {
 			throw InternalException("Tried to reference nullptr for LocalCSR");
 		}
-		RunExplore(state, visit, next, *local_csr);
+		auto suppressed = partition_idx < static_cast<int64_t>(state.suppressed.size()) && state.suppressed[partition_idx]
+		                      ? state.suppressed[partition_idx]->data()
+		                      : nullptr;
+		RunExplore(state, visit, next, *local_csr, suppressed);
+		// Edges committed after the epoch, for the same destination range
+		if (partition_idx < static_cast<int64_t>(state.delta_csrs.size()) && state.delta_csrs[partition_idx]) {
+			RunExplore(state, visit, next, *state.delta_csrs[partition_idx], nullptr);
+		}
 	}
 
 	if (worker_id == 0 && state.benchmark_lane_activity_enabled) {

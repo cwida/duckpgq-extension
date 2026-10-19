@@ -1,0 +1,208 @@
+# name: test/sql/path_finding/csr_index_snapshot.test
+# description: A CSR index serves every reader the edges visible to its own transaction without rebuilding
+# group: [path_finding]
+
+require duckpgq
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con1
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con2
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok con1
+SET experimental_path_finding_operator = true;
+
+statement ok con2
+SET experimental_path_finding_operator = true;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(1, 11);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows VALUES (1, 2), (2, 3), (3, 4), (4, 5);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# ---- Inserts committed after the epoch go through the delta, not a rebuild
+statement ok
+INSERT INTO knows VALUES (5, 6), (1, 7);
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+1	0
+2	1
+3	2
+4	3
+5	4
+6	5
+7	1
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+# ---- A reader that started before a commit does not see it; after it commits its own transaction, it does
+statement ok con1
+BEGIN TRANSACTION;
+
+query I con1
+SELECT count(*) FROM knows;
+----
+6
+
+statement ok con2
+INSERT INTO knows VALUES (7, 8);
+
+query II con1
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 7)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+7	0
+
+query II con2
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 7)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+7	0
+8	1
+
+statement ok con1
+COMMIT;
+
+query II con1
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 7)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+7	0
+8	1
+
+# ---- Deletes of epoch edges become tombstones; an older reader still traverses the edge
+statement ok con1
+BEGIN TRANSACTION;
+
+query I con1
+SELECT count(*) FROM knows;
+----
+7
+
+statement ok con2
+DELETE FROM knows WHERE src = 2 AND dst = 3;
+
+query II con1
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->{1,3}(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+2	1
+3	2
+4	3
+7	1
+8	2
+
+query II con2
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->{1,3}(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+2	1
+7	1
+8	2
+
+statement ok con1
+COMMIT;
+
+# ---- A delta edge deleted again is gone; a rolled-back insert never shows
+statement ok con2
+DELETE FROM knows WHERE src = 7 AND dst = 8;
+
+statement ok con2
+BEGIN TRANSACTION;
+
+statement ok con2
+INSERT INTO knows VALUES (1, 9);
+
+statement ok con2
+ROLLBACK;
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+1	0
+2	1
+7	1
+
+# ---- Vertices that exist only in delta edges get ids beyond the epoch
+statement ok
+INSERT INTO person VALUES (100), (101);
+
+statement ok
+INSERT INTO knows VALUES (7, 100), (100, 101);
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+1	0
+2	1
+7	1
+100	2
+101	3
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+# ---- The operator agrees with the SQL rewrite on the final state
+statement ok
+SET experimental_path_finding_operator = false;
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+1	0
+2	1
+7	1
+100	2
+101	3

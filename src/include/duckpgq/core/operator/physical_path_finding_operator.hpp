@@ -169,8 +169,8 @@ public:
 	bool precounted_edge_input;
 	bool cached_partitioned_csr_input;
 	bool buffered_edge_input;
-	//! Set when the operator reads a CSR index: the epoch for this query's transaction
-	shared_ptr<CSRIndexEpoch> index_epoch;
+	//! Set when the operator reads a CSR index: what this query's transaction may traverse
+	shared_ptr<CSRIndexSnapshot> index_snapshot;
 	unique_ptr<RadixPartitionedColumnData> endpoint_partition_data;
 	std::atomic<idx_t> next_endpoint_partition {0};
 	std::atomic<idx_t> built_endpoint_count {0};

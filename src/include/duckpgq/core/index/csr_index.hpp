@@ -18,6 +18,8 @@
 #include "duckdb/execution/index/bound_index.hpp"
 #include "duckdb/execution/index/index_type.hpp"
 
+#include <unordered_map>
+
 
 namespace duckdb {
 
@@ -81,9 +83,39 @@ struct CSRIndexEpoch {
 	vector<vector<row_t>> partition_row_ids;
 };
 
-//! The CSR index. This first version keeps a single epoch and treats any change to the table as invalidating it:
-//! Append/Delete mark the epoch stale and the next reader rebuilds it from the table at its own snapshot. The
-//! delta/tombstone overlay of the design document replaces that in a later step.
+//! An edge committed after the epoch was built (keys, since the vertex may be new) and its row id
+struct CSRIndexDeltaEdge {
+	int64_t src_key;
+	int64_t dst_key;
+	row_t row;
+};
+
+//! What one reader traverses: the shared epoch plus an overlay for the changes visible to its transaction.
+//! Epoch partitions are shared and immutable; the overlay is private to the snapshot.
+struct CSRIndexSnapshot {
+	shared_ptr<CSRIndexEpoch> epoch;
+	//! Epoch vertices plus the vertices that only delta edges reference
+	idx_t vertex_count = 0;
+	idx_t edge_count = 0;
+	idx_t partition_width = 0;
+	//! One entry per destination range: the epoch partition (an empty one beyond the epoch's ranges)
+	std::vector<shared_ptr<LocalCSR>> partitions;
+	//! Aligned with partitions: delta edges of that destination range, or null
+	std::vector<shared_ptr<LocalCSR>> delta_partitions;
+	//! Aligned with partitions: bit set for epoch edge positions this reader must not traverse, or null
+	std::vector<shared_ptr<vector<uint64_t>>> suppressed;
+	//! Keys of vertices that only appear in delta edges, id = vertex_count_of_epoch + position
+	vector<int64_t> extra_keys;
+	std::unordered_map<int64_t, uint32_t> extra_key_to_id;
+
+	idx_t Lookup(int64_t key) const;
+	int64_t KeyOf(idx_t id) const;
+};
+
+//! The CSR index: one immutable epoch (the edges visible at the bound of the transaction that built it), an
+//! append-only delta of edges committed after that bound, and append-only tombstones for epoch edges deleted after
+//! it. No commit ids are stored: a reader decides visibility of the delta and the tombstones through the table's
+//! row version information, once per query (see docs/CSR_INDEX_DESIGN.md).
 class CSRIndex : public BoundIndex {
 public:
 	static constexpr const char *TYPE_NAME = "CSR";
@@ -101,10 +133,9 @@ public:
 		return undirected;
 	}
 
-	//! Returns the epoch a reader with this transaction may traverse, building it from `table` when the index has
-	//! no epoch yet or the table changed since the epoch was built. Returns nullptr when the epoch was built at a
-	//! newer snapshot than the reader's, in which case the caller builds the CSR for the query itself.
-	shared_ptr<CSRIndexEpoch> Snapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table) const;
+	//! Returns what a reader with this transaction may traverse, building the epoch from `table` when the index has
+	//! none yet. Returns nullptr when the epoch was built at a newer snapshot than the reader's.
+	shared_ptr<CSRIndexSnapshot> Snapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table) const;
 
 	//! Installs an epoch built by the CREATE INDEX pipeline
 	void InstallEpoch(shared_ptr<CSRIndexEpoch> epoch);
@@ -117,14 +148,18 @@ public:
 	//! destination foreign keys and whose direction matches. Returns the index name, or an empty string.
 	static string FindForEdgeTable(ClientContext &context, const PropertyGraphTable &edge_table, bool undirected);
 
-	//! Looks up the index by name on its table and returns the epoch for the current transaction (see Snapshot)
-	static shared_ptr<CSRIndexEpoch> Resolve(ClientContext &context, const string &catalog, const string &schema,
-	                                         const string &table_name, const string &index_name);
+	//! Looks up the index by name on its table and returns the snapshot for the current transaction
+	static shared_ptr<CSRIndexSnapshot> Resolve(ClientContext &context, const string &catalog, const string &schema,
+	                                            const string &table_name, const string &index_name);
 
 	//! The marker cache key that tells the operator to read this index instead of building a CSR
 	static string CacheKey(const PropertyGraphTable &edge_table, const string &index_name);
 	static bool IsCacheKey(const string &cache_key);
-	static shared_ptr<CSRIndexEpoch> ResolveCacheKey(ClientContext &context, const string &cache_key);
+	static shared_ptr<CSRIndexSnapshot> ResolveCacheKey(ClientContext &context, const string &cache_key);
+
+	//! Sizes of the change log, for tests and the fold policy
+	idx_t DeltaSize() const;
+	idx_t TombstoneCount() const;
 
 public:
 	// BoundIndex interface
@@ -147,13 +182,23 @@ public:
 private:
 	shared_ptr<CSRIndexEpoch> RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
 	                                           DataTable &table) const;
+	//! Drops change-log entries that the epoch at `transaction`'s bound already accounts for
+	void CompactChangeLog(DuckTransaction &transaction, DataTable &table) const;
+	//! Resolves the epoch positions of tombstoned rows [known_count, tombstone_count) by scanning the epoch's row ids
+	void ResolveTombstonePositions(const CSRIndexEpoch &epoch, idx_t tombstone_count) const;
+	shared_ptr<CSRIndexSnapshot> BuildSnapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table,
+	                                           shared_ptr<CSRIndexEpoch> epoch, idx_t delta_count,
+	                                           idx_t tombstone_count) const;
 
 private:
 	bool undirected = false;
-	//! Readers take the index lock only to copy these two fields
+	//! Readers take the index lock only to copy the epoch pointer and the change-log lengths
 	mutable shared_ptr<CSRIndexEpoch> epoch;
-	//! Set by Append/Delete: the epoch no longer reflects the table
-	mutable bool stale = false;
+	mutable vector<CSRIndexDeltaEdge> delta;
+	mutable vector<row_t> tombstones;
+	//! Epoch position (partition << 32 | offset) of each tombstoned row, DConstants::INVALID_INDEX when the row is
+	//! a delta row; filled lazily, protected by the index lock
+	mutable vector<idx_t> tombstone_positions;
 };
 
 //! Registration entry point called from the core module

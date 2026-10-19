@@ -462,7 +462,7 @@ static PathFindingSearchOrientation ChooseSupportedSearchOrientation(const PathF
 }
 
 //! Maps the pair keys of an index-backed query to the epoch's dense vertex ids; unknown keys become NULL (unreachable)
-shared_ptr<DataChunk> TranslatePairKeys(ClientContext &context, const CSRIndexEpoch &epoch, DataChunk &pairs) {
+shared_ptr<DataChunk> TranslatePairKeys(ClientContext &context, const CSRIndexSnapshot &snapshot, DataChunk &pairs) {
 	auto result = make_shared_ptr<DataChunk>();
 	result->Initialize(context, pairs.GetTypes());
 	for (idx_t column_idx = 0; column_idx < 2; column_idx++) {
@@ -472,8 +472,7 @@ shared_ptr<DataChunk> TranslatePairKeys(ClientContext &context, const CSRIndexEp
 		auto ids = FlatVector::GetDataMutable<int64_t>(result->data[column_idx]);
 		for (idx_t row = 0; row < pairs.size(); row++) {
 			auto key_idx = format.sel->get_index(row);
-			auto id = format.validity.RowIsValid(key_idx) ? epoch.dictionary->Lookup(keys[key_idx])
-			                                              : DConstants::INVALID_INDEX;
+			auto id = format.validity.RowIsValid(key_idx) ? snapshot.Lookup(keys[key_idx]) : DConstants::INVALID_INDEX;
 			if (id == DConstants::INVALID_INDEX) {
 				FlatVector::SetNull(result->data[column_idx], row, true);
 			} else {
@@ -615,8 +614,10 @@ string GetPartitionedCSRCacheKey(const PhysicalPathFinding &op, const PathFindin
 
 bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, const PhysicalPathFinding &op,
                            LocalCSRState &local_csr_state, ClientContext &context) {
-	if (gstate.index_epoch) {
-		local_csr_state.partition_csrs = gstate.index_epoch->csr->forward_partitions;
+	if (gstate.index_snapshot) {
+		local_csr_state.partition_csrs = gstate.index_snapshot->partitions;
+		local_csr_state.partition_delta_csrs = gstate.index_snapshot->delta_partitions;
+		local_csr_state.partition_suppressed = gstate.index_snapshot->suppressed;
 		local_csr_state.loaded_from_cache = true;
 		RecordStrategy(context, "csr", "index");
 		return true;
@@ -783,6 +784,8 @@ shared_ptr<Event> CreateBFSEventForMode(PathFindingGlobalSinkState &gstate, cons
 	auto bfs_state =
 	    CreateBFSStateForMode(gstate.path_finding_mode, batch, gstate.search_orientation, *gstate.local_csr_state,
 	                          gstate.num_threads, context, GetPathFindingVSize(gstate));
+	bfs_state->delta_csrs = gstate.local_csr_state->partition_delta_csrs;
+	bfs_state->suppressed = gstate.local_csr_state->partition_suppressed;
 	auto bfs_event = bfs_state->CreateBFSEvent(pipeline, op);
 	gstate.bfs_states.push_back(std::move(bfs_state));
 	return bfs_event;
@@ -919,6 +922,8 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 		                           : gstate.local_csr_state->partition_csrs;
 		auto state = make_shared_ptr<IterativeLengthState>(batch, partition_csrs, workers_per_batch, context,
 		                                                   GetPathFindingVSize(gstate));
+		state->delta_csrs = gstate.local_csr_state->partition_delta_csrs;
+		state->suppressed = gstate.local_csr_state->partition_suppressed;
 		iterative_states.push_back(state);
 		gstate.bfs_states.push_back(state);
 	}
@@ -1550,7 +1555,7 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	RecordStrategy(context, "distinct_dst", std::to_string(gstate.pair_stats.distinct_dst_count));
 	RecordStrategy(context, "orientation", OrientationName(gstate.search_orientation));
 	// Index-backed queries search by dense vertex id and use the regular batched MS-BFS only
-	if (!gstate.index_epoch) {
+	if (!gstate.index_snapshot) {
 		int64_t single_source;
 		if (ShouldUseSourceGroupedIterativeLength(gstate, context) &&
 		    TryGetExactSingleSearchSource(gstate, single_source)) {
@@ -1573,7 +1578,7 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	oriented_batches.reserve(gstate.global_output_batches.size());
 	for (auto &output_batch : gstate.global_output_batches) {
 		auto search_pairs =
-		    gstate.index_epoch ? TranslatePairKeys(context, *gstate.index_epoch, *output_batch) : output_batch;
+		    gstate.index_snapshot ? TranslatePairKeys(context, *gstate.index_snapshot, *output_batch) : output_batch;
 		oriented_batches.push_back(CreateOrientedPathFindingBatch(context, gstate.search_orientation, output_batch,
 		                                                          search_pairs, gstate.next_batch_index++));
 	}
@@ -1838,14 +1843,14 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 	vertex_count = op.precounted_vertex_count;
 	expected_edge_count = op.precounted_edge_count;
 	if (cached_partitioned_csr_input && CSRIndex::IsCacheKey(op.cache_key)) {
-		index_epoch = CSRIndex::ResolveCacheKey(context, op.cache_key);
-		if (!index_epoch) {
+		index_snapshot = CSRIndex::ResolveCacheKey(context, op.cache_key);
+		if (!index_snapshot) {
 			throw InvalidInputException("The CSR index behind '%s' has no snapshot for this transaction; rerun the query",
 			                            op.cache_key);
 		}
-		vertex_count = index_epoch->vertex_count;
-		expected_edge_count = index_epoch->edge_count;
-		endpoint_partition_width = index_epoch->partition_width;
+		vertex_count = index_snapshot->vertex_count;
+		expected_edge_count = index_snapshot->edge_count;
+		endpoint_partition_width = index_snapshot->partition_width;
 	}
 	auto &scheduler = TaskScheduler::GetScheduler(context);
 	num_threads = scheduler.NumberOfThreads();
