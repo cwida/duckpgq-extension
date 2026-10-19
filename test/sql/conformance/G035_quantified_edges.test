@@ -1,0 +1,69 @@
+# name: test/sql/conformance/G035_quantified_edges.test
+# description: 10.6 quantified edge patterns (G035, G036): what path-finding supports and what it rejects
+# group: [conformance]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Person(id INT, name VARCHAR); INSERT INTO Person VALUES (1, 'A'), (2, 'B'), (3, 'C');
+
+statement ok
+CREATE TABLE School(id INT, name VARCHAR); INSERT INTO School VALUES (10, 'VU'), (11, 'UvA');
+
+statement ok
+CREATE TABLE knows(src INT, dst INT, since INT); INSERT INTO knows VALUES (1, 2, 2020), (2, 3, 2021);
+
+statement ok
+CREATE TABLE studyAt(pid INT, sid INT); INSERT INTO studyAt VALUES (1, 10), (2, 10), (3, 11);
+
+statement ok
+CREATE PROPERTY GRAPH pg
+VERTEX TABLES (Person LABEL Person, School LABEL School)
+EDGE TABLES (
+    knows SOURCE KEY (src) REFERENCES Person (id) DESTINATION KEY (dst) REFERENCES Person (id) LABEL Knows,
+    studyAt SOURCE KEY (pid) REFERENCES Person (id) DESTINATION KEY (sid) REFERENCES School (id) LABEL StudyAt
+);
+
+# Within one vertex table, ? includes the zero-length path.
+query II
+FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->?(b:Person) WHERE a.name = 'B' COLUMNS (a.name, b.name)) ORDER BY 2;
+----
+B	B
+B	C
+
+# Between different vertex tables a zero-length path cannot exist, so ? and {0,1} are the single edge. Person and
+# School rows share row ids, which must not be mistaken for the same vertex.
+query II
+FROM GRAPH_TABLE (pg MATCH (p:Person)-[s:StudyAt]->?(sc:School) COLUMNS (p.name, sc.name)) ORDER BY 1, 2;
+----
+A	VU
+B	VU
+C	UvA
+
+query II
+FROM GRAPH_TABLE (pg MATCH (sc:School)<-[s:StudyAt]-{0,1}(p:Person) COLUMNS (sc.name, p.name)) ORDER BY 1, 2;
+----
+UvA	C
+VU	A
+VU	B
+
+query II
+FROM GRAPH_TABLE (pg MATCH (p:Person)-[s:StudyAt]-{,1}(sc:School) COLUMNS (p.name, sc.name)) ORDER BY 1, 2;
+----
+A	VU
+B	VU
+C	UvA
+
+# Longer paths over an edge table between different vertex tables are not supported.
+statement error
+FROM GRAPH_TABLE (pg MATCH (p:Person)-[s:StudyAt]->{1,2}(sc:School) COLUMNS (p.name, sc.name));
+----
+Not implemented Error: Path-finding over -[s:StudyAt]-> is not supported: edge table StudyAt connects different vertex tables (Person and School)
+
+statement error
+FROM GRAPH_TABLE (pg MATCH q = ANY SHORTEST (p:Person)-[s:StudyAt]->*(sc:School) COLUMNS (p.name, sc.name));
+----
+Not implemented Error: Path-finding over -[s:StudyAt]-> is not supported

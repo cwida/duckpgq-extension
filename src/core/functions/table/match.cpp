@@ -301,18 +301,49 @@ static vector<string> PGQMainLabels(const vector<shared_ptr<PropertyGraphTable>>
 
 struct PGQFlatElement {
 	PathElement *element;
+	//! The innermost quantified subpath the element sits in, i.e. the element is evaluated by path-finding.
+	optional_ptr<SubPath> quantifier;
 	//! True when the element sits inside a quantified subpath and is evaluated by path-finding.
 	bool quantified;
 };
 
 static void PGQFlattenPathElements(vector<unique_ptr<PathReference>> &path_list, vector<PGQFlatElement> &elements,
-                                   bool quantified = false) {
+                                   optional_ptr<SubPath> quantifier = nullptr) {
 	for (auto &path_reference : path_list) {
 		if (path_reference->path_reference_type == PGQPathReferenceType::PATH_ELEMENT) {
-			elements.push_back({reinterpret_cast<PathElement *>(path_reference.get()), quantified});
+			elements.push_back({reinterpret_cast<PathElement *>(path_reference.get()), quantifier, quantifier != nullptr});
 		} else {
 			auto &subpath = *reinterpret_cast<SubPath *>(path_reference.get());
-			PGQFlattenPathElements(subpath.path_list, elements, quantified || subpath.lower != 1 || subpath.upper != 1);
+			auto inner = subpath.lower != 1 || subpath.upper != 1 ? optional_ptr<SubPath>(&subpath) : quantifier;
+			PGQFlattenPathElements(subpath.path_list, elements, inner);
+		}
+	}
+}
+
+// Path-finding runs over a CSR with a single vertex-id space, so it is only defined for edge tables whose source and
+// destination are the same vertex table. Between different tables a zero-length path cannot exist, so {0,1} and ? reduce
+// to a single edge; anything longer is rejected rather than evaluated over colliding row ids.
+static void PGQCheckQuantifiedEdges(vector<PGQFlatElement> &elements, CreatePropertyGraphInfo &pg_table) {
+	for (auto &flat : elements) {
+		if (!flat.quantifier || flat.element->match_type == PGQMatchType::MATCH_VERTEX) {
+			continue;
+		}
+		auto &subpath = *flat.quantifier;
+		auto edge_table = PGQMatchFunction::FindGraphTable(flat.element->label, pg_table);
+		bool same_vertex_table = !edge_table->source_pg_table || !edge_table->destination_pg_table ||
+		                         edge_table->source_pg_table->SameTableIdentity(*edge_table->destination_pg_table);
+		if (same_vertex_table) {
+			continue;
+		}
+		if (subpath.lower == 0) {
+			subpath.lower = 1;
+		}
+		if (subpath.upper > 1) {
+			throw NotImplementedException("Path-finding over %s is not supported: edge table %s connects different "
+			                              "vertex tables (%s and %s)",
+			                              flat.element->ToString(), edge_table->main_label.GetIdentifierName(),
+			                              edge_table->source_reference.GetIdentifierName(),
+			                              edge_table->destination_reference.GetIdentifierName());
 		}
 	}
 }
@@ -524,6 +555,7 @@ static void PGQResolveElementLabels(PathPattern &path_pattern, CreatePropertyGra
 		}
 		element->label = candidates[0]->main_label.GetIdentifierName();
 	}
+	PGQCheckQuantifiedEdges(flat_elements, pg_table);
 }
 
 shared_ptr<PropertyGraphTable> PGQMatchFunction::FindGraphTable(const string &label,

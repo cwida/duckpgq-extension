@@ -61,7 +61,7 @@ grammar, rejected by the binder with a clear error), **no**.
 | G019 | `SHORTEST k` | parse | |
 | G020 | `SHORTEST k GROUP` | no | |
 | G030 to G033 | Path alternation `\|`, `\|+\|` | no | |
-| G035, G036 | Quantified paths and edges | partial | Edges only; bounds are a post-filter on the shortest length |
+| G035, G036 | Quantified paths and edges | partial | Edges only; bounds are a post-filter on the shortest length. Only for edge tables whose source and destination are the same vertex table |
 | G037 | Questioned path primary `?` | partial | Evaluated as `{0,1}` including the zero-length path; variables are not exposed as conditional singletons |
 | G038, G048 to G051 | Parenthesised path patterns, subpath variables and modes | parse | |
 | G060, G061 | Bounded / unbounded quantifiers | yes | 10.7 SR 3 bounds checks: upper bound > 0, lower <= upper (issue #9) |
@@ -80,6 +80,7 @@ grammar, rejected by the binder with a clear error), **no**.
 
 Most recent first. Each entry names the commit's scope and the feature IDs it touched.
 
+- Quantified edges whose edge table connects two different vertex tables: `?` and `{0,1}` reduce to one edge, because a zero-length path between different tables cannot exist, and longer quantifiers raise NotImplementedException instead of evaluating over colliding row ids. Adds `G035_quantified_edges.test`.
 - A two-part reference whose qualifier is not an element variable is left to DuckDB, so correlated references to an outer table in a lateral `GRAPH_TABLE` work again.
 - Property references are validated in every expression of `COLUMNS`, `WHERE` and element-local `WHERE` against the properties the element's table exports, with the exported names listed in the error (6.5, G090; issue #198). Property aliases from `PROPERTIES (column AS property)` now work in `GRAPH_TABLE`. Adds `G090_property_reference.test`.
 - Label conjunction `&`, negation `!`, wildcard `%` and parentheses with standard precedence (10.8, G071, G072, G074, G075). Adds `G071_label_expressions.test`.
