@@ -36,6 +36,8 @@ struct VertexEdgeKeyReference {
 	//! undirected edge is rewritten into.
 	string edge_alias;
 	shared_ptr<PropertyGraphTable> edge_table;
+	//! The vertex table this end of the edge is declared to reference; the pattern's vertex must be that table
+	shared_ptr<PropertyGraphTable> referenced_vertex_table;
 	//! Columns of edge_alias that reference the vertex key
 	vector<Identifier> edge_keys;
 	//! The vertex key columns, aligned with edge_keys
@@ -61,6 +63,9 @@ struct VertexJoinMap {
 
 	void AddReference(const string &vertex_alias, VertexEdgeKeyReference reference);
 	void MarkRequired(const string &vertex_alias);
+
+private:
+	VertexJoinInfo &GetOrCreate(const string &vertex_alias);
 };
 
 //! Vertex-join elimination: a vertex table that is only joined to prove that the edge endpoints exist, and whose key
@@ -74,8 +79,11 @@ class VertexEliminationPlanner {
 public:
 	static constexpr const char *SETTING_NAME = "duckpgq_vertex_join_elimination";
 
+	//! graph_verified: CREATE PROPERTY GRAPH verified that every edge key references a vertex row; without it the
+	//! vertex joins are kept.
 	VertexEliminationPlanner(ClientContext &context, VertexJoinMap &vertex_joins,
-	                         const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map);
+	                         const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
+	                         bool graph_verified);
 
 	//! Decide which vertex variables are eliminated, looking at every expression of the translated query.
 	void Plan(const vector<unique_ptr<ParsedExpression>> &column_list,
@@ -94,6 +102,8 @@ private:
 		string representative_alias;
 		//! vertex key column -> column of representative_alias that replaces it
 		case_insensitive_map_t<Identifier> representative_column;
+		//! vertex key column -> its name in the catalog, which is what the result column was called before
+		case_insensitive_map_t<Identifier> output_name;
 		//! vertex key column -> type to cast the replacement to, when the edge column type differs
 		case_insensitive_map_t<LogicalType> cast_type;
 		//! vertex key column -> whether the replacement column can be NULL
@@ -118,6 +128,7 @@ private:
 	VertexJoinMap &vertex_joins;
 	const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map;
 	bool enabled = true;
+	bool graph_verified = false;
 	case_insensitive_set_t disqualified;
 	case_insensitive_map_t<EliminatedVertex> eliminated;
 	//! Catalog lookups, keyed by the qualified table name
@@ -172,6 +183,7 @@ public:
 	static void RecordVertexJoin(VertexJoinMap &vertex_joins, const string &vertex_alias,
 	                             const vector<Identifier> &vertex_keys, const string &edge_alias,
 	                             const vector<Identifier> &edge_keys, const shared_ptr<PropertyGraphTable> &edge_table,
+	                             const shared_ptr<PropertyGraphTable> &referenced_vertex_table,
 	                             vector<vector<Identifier>> backing_keys = {});
 
 	static void EdgeTypeAny(const shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,

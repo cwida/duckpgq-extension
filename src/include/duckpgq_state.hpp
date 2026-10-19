@@ -28,7 +28,7 @@ public:
 	void PopulateEdgeSpecificFields(unique_ptr<DataChunk> &chunk, idx_t row_idx, PropertyGraphTable &table);
 	static void ExtractListValues(const Value &list_value, vector<Identifier> &output);
 	void RegisterPropertyGraph(const shared_ptr<PropertyGraphTable> &table, const QualifiedName &graph_name,
-	                           bool is_vertex);
+	                           bool is_vertex, bool verified);
 
 public:
 	unique_ptr<ParserExtensionParseData> parse_data;
