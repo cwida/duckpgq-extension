@@ -42,8 +42,9 @@ static void AppendBFSPhaseTiming(const IterativeLengthState &state, double time_
 
 } // namespace
 
-GroupedIterativeLengthGroupState::GroupedIterativeLengthGroupState(idx_t worker_count, ClientContext &context)
-    : barrier(MakeQueryBarrier(worker_count, context)) {
+GroupedIterativeLengthGroupState::GroupedIterativeLengthGroupState(idx_t worker_count, idx_t v_size,
+                                                                   ClientContext &context)
+    : barrier(MakeQueryBarrier(worker_count, context)), working_set(make_shared_ptr<BFSWorkingSet>(context, v_size)) {
 }
 
 GroupedIterativeLengthTask::GroupedIterativeLengthTask(shared_ptr<Event> event_p, ClientContext &context_p,
@@ -58,7 +59,7 @@ TaskExecutionResult GroupedIterativeLengthTask::ExecuteTask(TaskExecutionMode mo
 	BarrierAbortOnUnwind abort_group_barrier(*group.barrier);
 	while (true) {
 		if (worker_id == 0) {
-			group.current_state = grouped_event.ClaimNextBatch();
+			group.current_state = grouped_event.ClaimNextBatch(group);
 		}
 		group.barrier->Wait(worker_id);
 
@@ -99,7 +100,8 @@ void GroupedIterativeLengthEvent::Schedule() {
 	bfs_tasks.reserve(group_count * workers_per_group);
 
 	for (idx_t group_id = 0; group_id < group_count; group_id++) {
-		groups.push_back(make_uniq<GroupedIterativeLengthGroupState>(workers_per_group, context));
+		auto v_size = states.empty() ? 0 : static_cast<idx_t>(states[0]->v_size);
+		groups.push_back(make_uniq<GroupedIterativeLengthGroupState>(workers_per_group, v_size, context));
 		for (idx_t worker_id = 0; worker_id < workers_per_group; worker_id++) {
 			bfs_tasks.push_back(
 			    make_uniq<GroupedIterativeLengthTask>(shared_from_this(), context, *this, group_id, worker_id, op));
@@ -112,13 +114,14 @@ void GroupedIterativeLengthEvent::Schedule() {
 void GroupedIterativeLengthEvent::FinishEvent() {
 }
 
-shared_ptr<IterativeLengthState> GroupedIterativeLengthEvent::ClaimNextBatch() {
+shared_ptr<IterativeLengthState> GroupedIterativeLengthEvent::ClaimNextBatch(GroupedIterativeLengthGroupState &group) {
 	auto batch_idx = next_batch.fetch_add(1);
 	if (batch_idx >= states.size()) {
 		return nullptr;
 	}
 
 	auto state = states[batch_idx];
+	state->AttachWorkingSet(group.working_set);
 	state->phase_start_time = std::chrono::steady_clock::now();
 	state->tasks_scheduled = workers_per_group;
 	state->barrier = MakeQueryBarrier(workers_per_group, state->context);

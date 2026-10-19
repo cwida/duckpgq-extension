@@ -115,9 +115,6 @@ void BidirectionalIterativeLengthState::Clear() {
 		worker_dirty_candidate_words[worker].clear();
 	}
 	for (auto i = 0; i < v_size; i++) {
-		visit1[i] = 0;
-		visit2[i] = 0;
-		seen[i] = 0;
 		src_seen[i] = 0;
 		src_visit1[i] = 0;
 		src_visit2[i] = 0;

@@ -260,7 +260,7 @@ void CorePGQOptions::RegisterPathFindingGroupedBatches(ExtensionLoader &loader) 
 	config.AddExtensionOption(
 	    "experimental_path_finding_operator_grouped_batches",
 	    "Run regular MS-BFS batches with bounded concurrent worker groups instead of one event per batch",
-	    LogicalType::BOOLEAN, Value(false));
+	    LogicalType::BOOLEAN, Value(true));
 }
 
 //------------------------------------------------------------------------------

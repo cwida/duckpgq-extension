@@ -22,6 +22,9 @@ PushPullIterativeLengthTask::PushPullIterativeLengthTask(shared_ptr<Event> event
 TaskExecutionResult PushPullIterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
 	auto &barrier = state->barrier;
 	BarrierAbortOnUnwind abort_barrier(*barrier);
+	if (worker_id == 0) {
+		state->EnsureWorkingSet();
+	}
 	while (true) {
 		if (worker_id == 0) {
 			state->has_more_batches = state->started_searches < state->pairs->size();
@@ -78,13 +81,16 @@ TaskExecutionResult PushPullIterativeLengthTask::ExecuteTask(TaskExecutionMode m
 		}
 		TimedBarrier("barrier_after_clear_state", "batch", state->iter);
 	}
+	if (worker_id == 0) {
+		state->ReleaseWorkingSet();
+	}
 
 	abort_barrier.Disarm();
 	event->FinishTask();
 	return TaskExecutionResult::TASK_FINISHED;
 }
 
-idx_t PushPullIterativeLengthTask::CountFrontierVertices(const std::vector<std::bitset<LANE_LIMIT>> &visit,
+idx_t PushPullIterativeLengthTask::CountFrontierVertices(const std::bitset<LANE_LIMIT> *visit,
                                                          idx_t start_vertex, idx_t end_vertex) const {
 	idx_t frontier_vertices = 0;
 	for (idx_t i = start_vertex; i < end_vertex; i++) {
@@ -187,8 +193,8 @@ void PushPullIterativeLengthTask::PushPullIterativeLength() {
 	}
 }
 
-idx_t PushPullIterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
-                                           std::vector<std::bitset<LANE_LIMIT>> &next, const LocalCSR &local_csr) {
+idx_t PushPullIterativeLengthTask::Explore(const std::bitset<LANE_LIMIT> *visit,
+                                           std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr) {
 	idx_t explored_edges = 0;
 	const bool all_lanes_active = state->lane_active.all();
 	if (local_csr.HasSparseRows()) {
@@ -229,8 +235,8 @@ idx_t PushPullIterativeLengthTask::Explore(const std::vector<std::bitset<LANE_LI
 	return explored_edges;
 }
 
-idx_t PushPullIterativeLengthTask::RunExplore(const std::vector<std::bitset<LANE_LIMIT>> &visit,
-                                              std::vector<std::bitset<LANE_LIMIT>> &next, const LocalCSR &local_csr) {
+idx_t PushPullIterativeLengthTask::RunExplore(const std::bitset<LANE_LIMIT> *visit,
+                                              std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr) {
 	if (!state->benchmark_enabled) {
 		Explore(visit, next, local_csr);
 		return 0;
@@ -389,8 +395,8 @@ void PushPullIterativeLengthTask::Pull(idx_t iteration) {
 	TimedBarrier("barrier_after_pull", "pull", iteration);
 }
 
-idx_t PushPullIterativeLengthTask::CheckChange(std::vector<std::bitset<LANE_LIMIT>> &seen,
-                                               std::vector<std::bitset<LANE_LIMIT>> &next,
+idx_t PushPullIterativeLengthTask::CheckChange(std::bitset<LANE_LIMIT> *seen,
+                                               std::bitset<LANE_LIMIT> *next,
                                                shared_ptr<LocalCSR> &local_csr, idx_t &candidate_vertices) const {
 	idx_t changed_vertices = 0;
 	const bool all_lanes_active = state->lane_active.all();

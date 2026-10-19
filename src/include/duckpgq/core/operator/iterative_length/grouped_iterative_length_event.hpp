@@ -11,9 +11,11 @@ class PhysicalPathFinding;
 class GroupedIterativeLengthEvent;
 
 struct GroupedIterativeLengthGroupState {
-	GroupedIterativeLengthGroupState(idx_t worker_count, ClientContext &context);
+	GroupedIterativeLengthGroupState(idx_t worker_count, idx_t v_size, ClientContext &context);
 
 	unique_ptr<Barrier> barrier;
+	//! Lane bitsets reused by every batch this group runs
+	shared_ptr<BFSWorkingSet> working_set;
 	shared_ptr<IterativeLengthState> current_state;
 };
 
@@ -40,7 +42,7 @@ public:
 	void Schedule() override;
 	void FinishEvent() override;
 
-	shared_ptr<IterativeLengthState> ClaimNextBatch();
+	shared_ptr<IterativeLengthState> ClaimNextBatch(GroupedIterativeLengthGroupState &group);
 	void FinishBatch(IterativeLengthState &state);
 	idx_t WorkersPerGroup() const;
 	GroupedIterativeLengthGroupState &Group(idx_t group_id);

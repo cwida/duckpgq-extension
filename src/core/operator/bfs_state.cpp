@@ -1,5 +1,9 @@
 #include "duckpgq/core/operator/bfs_state.hpp"
 
+#include "duckdb/storage/buffer_manager.hpp"
+
+#include <cstring>
+
 #include <duckpgq/core/operator/shortest_path/shortest_path_event.hpp>
 #include <duckpgq/core/operator/iterative_length/iterative_length_event.hpp>
 
@@ -39,9 +43,6 @@ BFSState::BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<share
 	change = false;
 	pf_results = make_shared_ptr<DataChunk>();
 	pf_results->Initialize(context, {bfs_type});
-	visit1 = vector<std::bitset<LANE_LIMIT>>(v_size);
-	visit2 = vector<std::bitset<LANE_LIMIT>>(v_size);
-	seen = vector<std::bitset<LANE_LIMIT>>(v_size);
 
 	local_csr_counter = 0;
 	partition_counter = 0;
@@ -52,8 +53,6 @@ BFSState::BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<share
 	src = FlatVector::GetData<int64_t>(src_data);
 	dst = FlatVector::GetData<int64_t>(dst_data);
 
-	// Initialize the thread assignment vector
-	thread_assignment = std::vector<int64_t>(v_size, -1);
 	tasks_scheduled = 0;
 	benchmark_enabled = GetPathFindingBenchmarkOption(context);
 	benchmark_lane_activity_enabled = benchmark_enabled && GetPathFindingBenchmarkLaneActivityOption(context);
@@ -65,6 +64,41 @@ BFSState::BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<share
 }
 
 BFSState::~BFSState() = default; // Define the virtual destructor
+
+BFSWorkingSet::BFSWorkingSet(ClientContext &context, idx_t v_size_p) : v_size(v_size_p) {
+	if (v_size == 0) {
+		return;
+	}
+	auto &buffer_manager = BufferManager::GetBufferManager(context);
+	handle = buffer_manager.Allocate(MemoryTag::EXTENSION, BytesFor(v_size), true);
+	memset(handle.GetDataMutable(), 0, BytesFor(v_size));
+	auto base = reinterpret_cast<std::bitset<LANE_LIMIT> *>(handle.GetDataMutable());
+	visit1 = base;
+	visit2 = base + v_size;
+	seen = base + 2 * v_size;
+}
+
+void BFSState::AttachWorkingSet(shared_ptr<BFSWorkingSet> set) {
+	D_ASSERT(set && set->v_size == static_cast<idx_t>(v_size));
+	working_set = std::move(set);
+	visit1 = working_set->visit1;
+	visit2 = working_set->visit2;
+	seen = working_set->seen;
+}
+
+void BFSState::EnsureWorkingSet() {
+	if (working_set) {
+		return;
+	}
+	AttachWorkingSet(make_shared_ptr<BFSWorkingSet>(context, static_cast<idx_t>(v_size)));
+}
+
+void BFSState::ReleaseWorkingSet() {
+	visit1 = nullptr;
+	visit2 = nullptr;
+	seen = nullptr;
+	working_set.reset();
+}
 
 void BFSState::Clear() {
 	// Default empty implementation; override in derived classes

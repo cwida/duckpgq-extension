@@ -4,6 +4,7 @@
 #include "duckpgq/core/operator/path_finding_batch.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 
+#include "duckdb/storage/buffer/buffer_handle.hpp"
 #include <duckpgq/core/utils/duckpgq_barrier.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <chrono>
@@ -11,6 +12,29 @@
 
 namespace duckdb {
 class PhysicalPathFinding; // Forward declaration
+
+//! The per-vertex lane bitsets (visit1, visit2, seen) of one running MS-BFS batch.
+//!
+//! The memory comes from the buffer manager so that it counts towards memory_limit, and a working set is handed from
+//! batch to batch within a worker group, so the footprint scales with the number of concurrently running batches
+//! rather than with the number of batches of the query. A working set is zero when allocated and every batch leaves it
+//! zero again (the last step of a wave is Clear()).
+class BFSWorkingSet {
+public:
+	BFSWorkingSet(ClientContext &context, idx_t v_size);
+
+	static idx_t BytesFor(idx_t v_size) {
+		return 3 * v_size * sizeof(std::bitset<LANE_LIMIT>);
+	}
+
+	std::bitset<LANE_LIMIT> *visit1 = nullptr;
+	std::bitset<LANE_LIMIT> *visit2 = nullptr;
+	std::bitset<LANE_LIMIT> *seen = nullptr;
+	idx_t v_size;
+
+private:
+	BufferHandle handle;
+};
 
 class BFSState : public enable_shared_from_this<BFSState> {
 public:
@@ -28,6 +52,13 @@ public:
 	}
 	virtual void Clear();
 	void CreateThreadLocalCSRs(); // Generates LocalCSRs
+
+	//! Uses a working set shared with the other batches of a worker group
+	void AttachWorkingSet(shared_ptr<BFSWorkingSet> set);
+	//! Allocates a private working set unless one is attached; called by worker 0 when the batch starts running
+	void EnsureWorkingSet();
+	//! Drops the working set when the batch is done: a private set is freed, a shared one stays with its group
+	void ReleaseWorkingSet();
 
 	// Common members
 	shared_ptr<PathFindingBatch> batch;
@@ -57,7 +88,6 @@ public:
 	string benchmark_run_id;
 	std::chrono::steady_clock::time_point phase_start_time;
 
-	std::vector<int64_t> thread_assignment;
 	UnifiedVectorFormat vdata_src;
 	UnifiedVectorFormat vdata_dst;
 	idx_t active = 0;
@@ -69,9 +99,11 @@ public:
 	mutex local_csr_lock;
 	atomic<int64_t> local_csr_counter;
 	size_t current_batch_path_list_len;
-	vector<bitset<LANE_LIMIT>> seen;
-	vector<bitset<LANE_LIMIT>> visit1;
-	vector<bitset<LANE_LIMIT>> visit2;
+	//! Per-vertex lane bitsets, valid between EnsureWorkingSet/AttachWorkingSet and ReleaseWorkingSet
+	shared_ptr<BFSWorkingSet> working_set;
+	bitset<LANE_LIMIT> *seen = nullptr;
+	bitset<LANE_LIMIT> *visit1 = nullptr;
+	bitset<LANE_LIMIT> *visit2 = nullptr;
 
 	idx_t tasks_scheduled;
 	bitset<LANE_LIMIT> lane_completed;

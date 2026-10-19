@@ -18,8 +18,8 @@ namespace duckdb {
 
 namespace {
 
-bool CheckChange(IterativeLengthState &state, std::vector<std::bitset<LANE_LIMIT>> &seen,
-                 std::vector<std::bitset<LANE_LIMIT>> &next, shared_ptr<LocalCSR> &local_csr) {
+bool CheckChange(IterativeLengthState &state, std::bitset<LANE_LIMIT> *seen,
+                 std::bitset<LANE_LIMIT> *next, shared_ptr<LocalCSR> &local_csr) {
 	bool local_change = false;
 	for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
 		if (next[i].any()) {
@@ -31,7 +31,7 @@ bool CheckChange(IterativeLengthState &state, std::vector<std::bitset<LANE_LIMIT
 	return local_change;
 }
 
-void Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit, std::vector<std::bitset<LANE_LIMIT>> &next,
+void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next,
              const LocalCSR &local_csr) {
 	for (const auto &segment : local_csr.segments) {
 		for (idx_t row_idx = 0; row_idx < segment.source_vertices.size(); row_idx++) {
@@ -75,8 +75,8 @@ void Explore(const std::vector<std::bitset<LANE_LIMIT>> &visit, std::vector<std:
 	}
 }
 
-void RunExplore(IterativeLengthState &state, const std::vector<std::bitset<LANE_LIMIT>> &visit,
-                std::vector<std::bitset<LANE_LIMIT>> &next, const LocalCSR &local_csr) {
+void RunExplore(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visit,
+                std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr) {
 	if (!state.benchmark_enabled) {
 		Explore(visit, next, local_csr);
 		return;
@@ -116,7 +116,7 @@ uint64_t GetWord(const std::bitset<LANE_LIMIT> &bitset, idx_t word_idx) {
 	return word;
 }
 
-void WriteLaneActivity(IterativeLengthState &state, const std::vector<std::bitset<LANE_LIMIT>> &visit) {
+void WriteLaneActivity(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visit) {
 	auto file_name = state.benchmark_output_prefix + "_lane_activity_" + state.benchmark_run_id + ".csv";
 	std::ofstream outfile(file_name, std::ios_base::app);
 	if (!outfile.is_open()) {
@@ -251,6 +251,11 @@ void UnReachableSet(IterativeLengthState &state) {
 
 void ExecuteIterativeLengthBatch(IterativeLengthState &state, idx_t worker_id) {
 	auto &barrier = state.barrier;
+	// The lane bitsets are only allocated once the batch actually runs, and handed back when it is done
+	if (worker_id == 0) {
+		state.EnsureWorkingSet();
+	}
+	barrier->Wait(worker_id);
 	while (state.started_searches < state.pairs->size()) {
 		barrier->Wait(worker_id);
 		if (worker_id == 0) {
@@ -276,6 +281,9 @@ void ExecuteIterativeLengthBatch(IterativeLengthState &state, idx_t worker_id) {
 			state.Clear();
 		}
 		barrier->Wait(worker_id);
+	}
+	if (worker_id == 0) {
+		state.ReleaseWorkingSet();
 	}
 }
 
