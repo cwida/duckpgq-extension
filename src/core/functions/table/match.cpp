@@ -21,6 +21,14 @@
 #include "duckdb/parser/expression/conjunction_expression.hpp"
 #include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/parser/expression/star_expression.hpp"
+#include "duckdb/parser/parsed_expression_iterator.hpp"
+#include "duckdb/parser/constraints/not_null_constraint.hpp"
+#include "duckdb/parser/constraints/unique_constraint.hpp"
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
+#include "duckdb/main/client_context.hpp"
+#include "duckdb/main/config.hpp"
 
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/common/enums/subquery_type.hpp"
@@ -623,9 +631,30 @@ unique_ptr<SubqueryRef> PGQMatchFunction::CreateCountCTESubquery() {
 	return DuckPGQSQL::ParseSubqueryRef("SELECT multiply(0, count(cte1.temp)) AS temp FROM cte1", "__x");
 }
 
+void PGQMatchFunction::RecordVertexJoin(VertexJoinMap &vertex_joins, const string &vertex_alias,
+                                        const vector<Identifier> &vertex_keys, const string &edge_alias,
+                                        const vector<Identifier> &edge_keys,
+                                        const shared_ptr<PropertyGraphTable> &edge_table,
+                                        const shared_ptr<PropertyGraphTable> &referenced_vertex_table,
+                                        vector<vector<Identifier>> backing_keys) {
+	if (vertex_keys.size() != edge_keys.size()) {
+		throw BinderException("Vertex columns and edge columns size mismatch");
+	}
+	VertexEdgeKeyReference reference;
+	reference.edge_alias = edge_alias;
+	reference.edge_table = edge_table;
+	reference.referenced_vertex_table = referenced_vertex_table;
+	reference.edge_keys = edge_keys;
+	reference.vertex_keys = vertex_keys;
+	if (backing_keys.empty()) {
+		backing_keys.push_back(edge_keys);
+	}
+	reference.backing_keys = std::move(backing_keys);
+	vertex_joins.AddReference(vertex_alias, std::move(reference));
+}
+
 void PGQMatchFunction::EdgeTypeAny(const shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
-                                   const string &prev_binding, const string &next_binding,
-                                   vector<unique_ptr<ParsedExpression>> &conditions,
+                                   const string &prev_binding, const string &next_binding, VertexJoinMap &vertex_joins,
                                    unique_ptr<TableRef> &from_clause) {
 	std::ostringstream query;
 	query << "SELECT " << DuckPGQSQL::Column(edge_table->source_fk[0], edge_binding) << " AS "
@@ -639,69 +668,60 @@ void PGQMatchFunction::EdgeTypeAny(const shared_ptr<PropertyGraphTable> &edge_ta
 	      << DuckPGQSQL::Identifier(edge_table->destination_fk[0]) << ", * FROM "
 	      << DuckPGQSQL::TableRef(*edge_table, edge_binding) << CreateReverseSelfLoopFilter(*edge_table, edge_binding);
 	PGQAppendCrossJoin(from_clause, DuckPGQSQL::ParseSubqueryRef(query.str(), edge_binding));
+	// The subquery exposes the source key under the source column name and the destination key under the destination
+	// column name, each fed by both underlying columns.
+	vector<vector<Identifier>> backing_keys {edge_table->source_fk, edge_table->destination_fk};
 	// (a) src.key = edge.src
-	auto src_left_expr =
-	    CreateMatchJoinExpression(edge_table->source_pk, edge_table->source_fk, prev_binding, edge_binding);
+	RecordVertexJoin(vertex_joins, prev_binding, edge_table->source_pk, edge_binding, edge_table->source_fk, edge_table,
+	                 edge_table->source_pg_table, backing_keys);
 	// (b) dst.key = edge.dst
-	auto dst_left_expr =
-	    CreateMatchJoinExpression(edge_table->destination_pk, edge_table->destination_fk, next_binding, edge_binding);
-	// (a) AND (b)
-	auto combined_left_expr = make_uniq<ConjunctionExpression>(ExpressionType::CONJUNCTION_AND,
-	                                                           std::move(src_left_expr), std::move(dst_left_expr));
-
-	conditions.push_back(std::move(combined_left_expr));
+	RecordVertexJoin(vertex_joins, next_binding, edge_table->destination_pk, edge_binding, edge_table->destination_fk,
+	                 edge_table, edge_table->destination_pg_table, backing_keys);
 }
 
 void PGQMatchFunction::EdgeTypeLeft(const shared_ptr<PropertyGraphTable> &edge_table, const Identifier &next_table_name,
                                     const Identifier &prev_table_name, const string &edge_binding,
                                     const string &prev_binding, const string &next_binding,
-                                    vector<unique_ptr<ParsedExpression>> &conditions) {
+                                    VertexJoinMap &vertex_joins) {
 	CheckEdgeTableConstraints(next_table_name, prev_table_name, edge_table);
-	conditions.push_back(
-	    CreateMatchJoinExpression(edge_table->source_pk, edge_table->source_fk, next_binding, edge_binding));
-	conditions.push_back(
-	    CreateMatchJoinExpression(edge_table->destination_pk, edge_table->destination_fk, prev_binding, edge_binding));
+	RecordVertexJoin(vertex_joins, next_binding, edge_table->source_pk, edge_binding, edge_table->source_fk, edge_table,
+	                 edge_table->source_pg_table);
+	RecordVertexJoin(vertex_joins, prev_binding, edge_table->destination_pk, edge_binding, edge_table->destination_fk,
+	                 edge_table, edge_table->destination_pg_table);
 }
 
 void PGQMatchFunction::EdgeTypeRight(const shared_ptr<PropertyGraphTable> &edge_table,
                                      const Identifier &next_table_name, const Identifier &prev_table_name,
                                      const string &edge_binding, const string &prev_binding, const string &next_binding,
-                                     vector<unique_ptr<ParsedExpression>> &conditions) {
+                                     VertexJoinMap &vertex_joins) {
 	CheckEdgeTableConstraints(prev_table_name, next_table_name, edge_table);
-	conditions.push_back(
-	    CreateMatchJoinExpression(edge_table->source_pk, edge_table->source_fk, prev_binding, edge_binding));
-	conditions.push_back(
-	    CreateMatchJoinExpression(edge_table->destination_pk, edge_table->destination_fk, next_binding, edge_binding));
+	RecordVertexJoin(vertex_joins, prev_binding, edge_table->source_pk, edge_binding, edge_table->source_fk, edge_table,
+	                 edge_table->source_pg_table);
+	RecordVertexJoin(vertex_joins, next_binding, edge_table->destination_pk, edge_binding, edge_table->destination_fk,
+	                 edge_table, edge_table->destination_pg_table);
 }
 
 void PGQMatchFunction::EdgeTypeLeftRight(const shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
                                          const string &prev_binding, const string &next_binding,
-                                         vector<unique_ptr<ParsedExpression>> &conditions,
+                                         VertexJoinMap &vertex_joins,
                                          case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
                                          int32_t &extra_alias_counter) {
-	auto src_left_expr =
-	    CreateMatchJoinExpression(edge_table->source_pk, edge_table->source_fk, next_binding, edge_binding);
-	auto dst_left_expr =
-	    CreateMatchJoinExpression(edge_table->destination_pk, edge_table->destination_fk, prev_binding, edge_binding);
-
-	auto combined_left_expr = make_uniq<ConjunctionExpression>(ExpressionType::CONJUNCTION_AND,
-	                                                           std::move(src_left_expr), std::move(dst_left_expr));
+	// One copy of the edge table per direction: edge_binding points from next to prev ...
+	RecordVertexJoin(vertex_joins, next_binding, edge_table->source_pk, edge_binding, edge_table->source_fk, edge_table,
+	                 edge_table->source_pg_table);
+	RecordVertexJoin(vertex_joins, prev_binding, edge_table->destination_pk, edge_binding, edge_table->destination_fk,
+	                 edge_table, edge_table->destination_pg_table);
 
 	const auto additional_edge_alias = edge_binding + std::to_string(extra_alias_counter);
 	extra_alias_counter++;
 
 	alias_map[additional_edge_alias] = edge_table;
 
-	auto src_right_expr =
-	    CreateMatchJoinExpression(edge_table->source_pk, edge_table->source_fk, prev_binding, additional_edge_alias);
-	auto dst_right_expr = CreateMatchJoinExpression(edge_table->destination_pk, edge_table->destination_fk,
-	                                                next_binding, additional_edge_alias);
-	auto combined_right_expr = make_uniq<ConjunctionExpression>(ExpressionType::CONJUNCTION_AND,
-	                                                            std::move(src_right_expr), std::move(dst_right_expr));
-
-	auto combined_expr = make_uniq<ConjunctionExpression>(
-	    ExpressionType::CONJUNCTION_AND, std::move(combined_left_expr), std::move(combined_right_expr));
-	conditions.push_back(std::move(combined_expr));
+	// ... and the additional alias from prev to next.
+	RecordVertexJoin(vertex_joins, prev_binding, edge_table->source_pk, additional_edge_alias, edge_table->source_fk,
+	                 edge_table, edge_table->source_pg_table);
+	RecordVertexJoin(vertex_joins, next_binding, edge_table->destination_pk, additional_edge_alias,
+	                 edge_table->destination_fk, edge_table, edge_table->destination_pg_table);
 }
 
 PathElement *PGQMatchFunction::HandleNestedSubPath(unique_ptr<PathReference> &path_reference,
@@ -910,7 +930,7 @@ void PGQMatchFunction::AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_t
                                     const shared_ptr<PropertyGraphTable> &previous_vertex_table,
                                     const shared_ptr<PropertyGraphTable> &next_vertex_table, PGQMatchType edge_type,
                                     const string &edge_binding, const string &prev_binding, const string &next_binding,
-                                    vector<unique_ptr<ParsedExpression>> &conditions,
+                                    VertexJoinMap &vertex_joins,
                                     case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
                                     int32_t &extra_alias_counter, unique_ptr<TableRef> &from_clause) {
 	if (edge_type != PGQMatchType::MATCH_EDGE_ANY) {
@@ -918,19 +938,19 @@ void PGQMatchFunction::AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_t
 	}
 	switch (edge_type) {
 	case PGQMatchType::MATCH_EDGE_ANY: {
-		EdgeTypeAny(edge_table, edge_binding, prev_binding, next_binding, conditions, from_clause);
+		EdgeTypeAny(edge_table, edge_binding, prev_binding, next_binding, vertex_joins, from_clause);
 		break;
 	}
 	case PGQMatchType::MATCH_EDGE_LEFT:
 		EdgeTypeLeft(edge_table, next_vertex_table->table_name, previous_vertex_table->table_name, edge_binding,
-		             prev_binding, next_binding, conditions);
+		             prev_binding, next_binding, vertex_joins);
 		break;
 	case PGQMatchType::MATCH_EDGE_RIGHT:
 		EdgeTypeRight(edge_table, next_vertex_table->table_name, previous_vertex_table->table_name, edge_binding,
-		              prev_binding, next_binding, conditions);
+		              prev_binding, next_binding, vertex_joins);
 		break;
 	case PGQMatchType::MATCH_EDGE_LEFT_RIGHT: {
-		EdgeTypeLeftRight(edge_table, edge_binding, prev_binding, next_binding, conditions, alias_map,
+		EdgeTypeLeftRight(edge_table, edge_binding, prev_binding, next_binding, vertex_joins, alias_map,
 		                  extra_alias_counter);
 		break;
 	}
@@ -959,7 +979,11 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
                                       vector<unique_ptr<ParsedExpression>> &conditions, const string &prev_binding,
                                       const string &edge_binding, const string &next_binding,
                                       const shared_ptr<PropertyGraphTable> &edge_table,
-                                      CreatePropertyGraphInfo &pg_table, SubPath *subpath, PGQMatchType edge_type) {
+                                      CreatePropertyGraphInfo &pg_table, SubPath *subpath, PGQMatchType edge_type,
+                                      VertexJoinMap &vertex_joins) {
+	// Path-finding needs the endpoint tables for their row ids and the CSR; never eliminate them.
+	vertex_joins.MarkRequired(prev_binding);
+	vertex_joins.MarkRequired(next_binding);
 	//! START
 	//! FROM (SELECT count(cte1.temp) * 0 as temp from cte1) __x
 	if (select_node->cte_map.map.find("cte1") == select_node->cte_map.map.end()) {
@@ -1073,7 +1097,7 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
                                        unique_ptr<SelectNode> &final_select_node,
                                        case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
                                        CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
-                                       MatchExpression &original_ref) {
+                                       MatchExpression &original_ref, VertexJoinMap &vertex_joins) {
 	PathElement *previous_vertex_element = GetPathElement(path_list[0]);
 	if (!previous_vertex_element) {
 		const auto previous_vertex_subpath = reinterpret_cast<SubPath *>(path_list[0].get());
@@ -1088,7 +1112,7 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 		} else {
 			// Add the shortest path if the name is found in the column_list
 			ProcessPathList(previous_vertex_subpath->path_list, conditions, final_select_node, alias_map, pg_table,
-			                extra_alias_counter, original_ref);
+			                extra_alias_counter, original_ref, vertex_joins);
 			return;
 		}
 	}
@@ -1133,11 +1157,11 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 				// Add the path-finding
 				AddPathFinding(final_select_node, conditions, previous_vertex_element->variable_binding,
 				               edge_element->variable_binding, next_vertex_element->variable_binding, edge_table,
-				               pg_table, edge_subpath, edge_element->match_type);
+				               pg_table, edge_subpath, edge_element->match_type, vertex_joins);
 			} else {
 				AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table, edge_element->match_type,
 				             edge_element->variable_binding, previous_vertex_element->variable_binding,
-				             next_vertex_element->variable_binding, conditions, alias_map, extra_alias_counter,
+				             next_vertex_element->variable_binding, vertex_joins, alias_map, extra_alias_counter,
 				             final_select_node->from_table);
 			}
 		} else {
@@ -1147,7 +1171,7 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 			// check aliases
 			AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table, edge_element->match_type,
 			             edge_element->variable_binding, previous_vertex_element->variable_binding,
-			             next_vertex_element->variable_binding, conditions, alias_map, extra_alias_counter,
+			             next_vertex_element->variable_binding, vertex_joins, alias_map, extra_alias_counter,
 			             final_select_node->from_table);
 			// Check the edge type
 			// If (a)-[b]->(c) 	-> 	b.src = a.id AND b.dst = c.id
@@ -1336,6 +1360,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 
 	auto final_select_node = make_uniq<SelectNode>();
 	case_insensitive_map_t<shared_ptr<PropertyGraphTable>> alias_map;
+	VertexJoinMap vertex_joins;
 
 	for (auto &path_pattern : ref->path_patterns) {
 		PGQResolveElementLabels(*path_pattern, *pg_table, conditions);
@@ -1353,14 +1378,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		// Check if the element is PathElement or a Subpath with potentially many
 		// items
 		ProcessPathList(path_pattern->path_elements, conditions, final_select_node, alias_map, *pg_table,
-		                extra_alias_counter, *ref);
-	}
-
-	// Go through all aliases encountered
-	for (auto &table_alias_entry : alias_map) {
-		auto table_ref =
-		    DuckPGQSQL::ParseFromTableRef(DuckPGQSQL::TableRef(*table_alias_entry.second, table_alias_entry.first));
-		PGQAppendCrossJoin(final_select_node->from_table, std::move(table_ref));
+		                extra_alias_counter, *ref, vertex_joins);
 	}
 
 	for (auto &column : ref->column_list) {
@@ -1372,6 +1390,23 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	CheckColumnBinding(*ref, alias_to_vertex_and_edge_tables);
 	if (ref->where_clause) {
 		conditions.push_back(std::move(ref->where_clause));
+	}
+
+	// Vertex-join elimination: at this point every expression of the translated query is either in the column list
+	// or in conditions, so the planner can see all references to each vertex variable.
+	VertexEliminationPlanner vertex_elimination(context, vertex_joins, alias_map, pg_table->verified);
+	vertex_elimination.Plan(ref->column_list, conditions);
+	vertex_elimination.RewriteReferences(ref->column_list, conditions);
+	vertex_elimination.EmitJoinConditions(conditions);
+
+	// Go through all aliases encountered
+	for (auto &table_alias_entry : alias_map) {
+		if (vertex_elimination.IsEliminated(table_alias_entry.first)) {
+			continue;
+		}
+		auto table_ref =
+		    DuckPGQSQL::ParseFromTableRef(DuckPGQSQL::TableRef(*table_alias_entry.second, table_alias_entry.first));
+		PGQAppendCrossJoin(final_select_node->from_table, std::move(table_ref));
 	}
 
 	std::vector<unique_ptr<ParsedExpression>> final_column_list;
@@ -1459,10 +1494,392 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 }
 
 //------------------------------------------------------------------------------
+// Vertex-join elimination
+//------------------------------------------------------------------------------
+VertexJoinInfo &VertexJoinMap::GetOrCreate(const string &vertex_alias) {
+	auto entry = entries.find(vertex_alias);
+	if (entry == entries.end()) {
+		order.push_back(vertex_alias);
+		entry = entries.emplace(vertex_alias, VertexJoinInfo()).first;
+	}
+	return entry->second;
+}
+
+void VertexJoinMap::AddReference(const string &vertex_alias, VertexEdgeKeyReference reference) {
+	GetOrCreate(vertex_alias).edge_references.push_back(std::move(reference));
+}
+
+void VertexJoinMap::MarkRequired(const string &vertex_alias) {
+	GetOrCreate(vertex_alias).required = true;
+}
+
+VertexEliminationPlanner::VertexEliminationPlanner(
+    ClientContext &context_p, VertexJoinMap &vertex_joins_p,
+    const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map_p, bool graph_verified_p)
+    : context(context_p), vertex_joins(vertex_joins_p), alias_map(alias_map_p), graph_verified(graph_verified_p) {
+	Value value;
+	if (context.TryGetCurrentSetting(Identifier(SETTING_NAME), value)) {
+		enabled = BooleanValue::Get(value);
+	}
+}
+
+bool VertexEliminationPlanner::IsEliminated(const string &vertex_alias) const {
+	return eliminated.find(vertex_alias) != eliminated.end();
+}
+
+void VertexEliminationPlanner::Plan(const vector<unique_ptr<ParsedExpression>> &column_list,
+                                    const vector<unique_ptr<ParsedExpression>> &conditions) {
+	if (!enabled || !graph_verified || vertex_joins.entries.empty()) {
+		return;
+	}
+	for (auto &expression : column_list) {
+		CollectReferences(*expression);
+	}
+	for (auto &expression : conditions) {
+		CollectReferences(*expression);
+	}
+	for (auto &vertex_alias : vertex_joins.order) {
+		EliminatedVertex plan;
+		if (TryPlanVertex(vertex_alias, vertex_joins.entries[vertex_alias], plan)) {
+			eliminated[vertex_alias] = std::move(plan);
+		}
+	}
+}
+
+void VertexEliminationPlanner::Disqualify(const string &vertex_alias) {
+	disqualified.insert(vertex_alias);
+}
+
+void VertexEliminationPlanner::DisqualifyAll() {
+	for (auto &vertex_alias : vertex_joins.order) {
+		disqualified.insert(vertex_alias);
+	}
+}
+
+bool VertexEliminationPlanner::IsVertexKey(const VertexJoinInfo &info, const Identifier &column) const {
+	for (auto &reference : info.edge_references) {
+		if (KeyPosition(reference.vertex_keys, column) != DConstants::INVALID_INDEX) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool VertexEliminationPlanner::TableHasColumn(const string &vertex_alias, const Identifier &column) {
+	auto table_entry = alias_map.find(vertex_alias);
+	if (table_entry == alias_map.end()) {
+		return true;
+	}
+	auto table = LookupTable(*table_entry->second);
+	// Without catalog information assume the column may belong to the table.
+	return !table || table->ColumnExists(column);
+}
+
+void VertexEliminationPlanner::CollectReferences(const ParsedExpression &expression) {
+	switch (expression.GetExpressionClass()) {
+	case ExpressionClass::COLUMN_REF: {
+		auto &column_ref = expression.Cast<ColumnRefExpression>();
+		auto &names = column_ref.ColumnNames();
+		if (names.size() == 1) {
+			auto &name = names[0].GetIdentifierName();
+			if (vertex_joins.entries.find(name) != vertex_joins.entries.end()) {
+				// The vertex itself, e.g. element_id(v) or v as a struct.
+				Disqualify(name);
+				return;
+			}
+			// An unqualified column may resolve to any vertex table that has a column of that name.
+			for (auto &vertex_alias : vertex_joins.order) {
+				if (TableHasColumn(vertex_alias, names[0])) {
+					Disqualify(vertex_alias);
+				}
+			}
+			return;
+		}
+		auto &vertex_alias = names[0].GetIdentifierName();
+		auto entry = vertex_joins.entries.find(vertex_alias);
+		if (entry == vertex_joins.entries.end()) {
+			return;
+		}
+		if (names.size() != 2 || !IsVertexKey(entry->second, names[1])) {
+			// A property, rowid, a struct field of a property, ...
+			Disqualify(vertex_alias);
+		}
+		return;
+	}
+	case ExpressionClass::STAR: {
+		auto &star = expression.Cast<StarExpression>();
+		if (star.RelationName().empty()) {
+			DisqualifyAll();
+		} else {
+			Disqualify(star.RelationName().GetIdentifierName());
+		}
+		// REPLACE / COLUMNS(...) expressions may reference other variables
+		ParsedExpressionIterator::EnumerateChildren(expression,
+		                                            [&](const ParsedExpression &child) { CollectReferences(child); });
+		return;
+	}
+	case ExpressionClass::SUBQUERY:
+	case ExpressionClass::LAMBDA:
+		// A correlated subquery could reference anything, and a subquery alias or lambda parameter could shadow a
+		// vertex variable, so references inside them cannot be classified.
+		DisqualifyAll();
+		return;
+	default:
+		ParsedExpressionIterator::EnumerateChildren(expression,
+		                                            [&](const ParsedExpression &child) { CollectReferences(child); });
+	}
+}
+
+optional_ptr<TableCatalogEntry> VertexEliminationPlanner::LookupTable(const PropertyGraphTable &table) {
+	auto cache_key = DuckPGQSQL::QualifiedTableName(table);
+	auto cached = table_cache.find(cache_key);
+	if (cached != table_cache.end()) {
+		return cached->second;
+	}
+	optional_ptr<TableCatalogEntry> result;
+	try {
+		result = GetPropertyGraphTableEntry(context, table);
+	} catch (CatalogException &) {
+		// Views and tables outside the catalog cannot be checked for constraints: keep the join.
+		result = nullptr;
+	} catch (BinderException &) {
+		result = nullptr;
+	}
+	table_cache[cache_key] = result;
+	return result;
+}
+
+bool VertexEliminationPlanner::SameKeySet(const vector<Identifier> &left, const vector<Identifier> &right) {
+	if (left.size() != right.size()) {
+		return false;
+	}
+	for (idx_t i = 0; i < left.size(); i++) {
+		if (KeyPosition(right, left[i]) == DConstants::INVALID_INDEX) {
+			return false;
+		}
+		for (idx_t j = i + 1; j < left.size(); j++) {
+			if (left[i] == left[j]) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+idx_t VertexEliminationPlanner::KeyPosition(const vector<Identifier> &keys, const Identifier &key) {
+	for (idx_t i = 0; i < keys.size(); i++) {
+		if (keys[i] == key) {
+			return i;
+		}
+	}
+	return DConstants::INVALID_INDEX;
+}
+
+bool VertexEliminationPlanner::HasUniqueConstraint(const TableCatalogEntry &table, const vector<Identifier> &keys) {
+	for (auto &constraint : table.GetConstraints()) {
+		if (constraint->type != ConstraintType::UNIQUE) {
+			continue;
+		}
+		auto &unique = constraint->Cast<UniqueConstraint>();
+		vector<Identifier> columns;
+		if (unique.HasIndex()) {
+			columns.push_back(table.GetColumn(unique.GetIndex()).Name());
+		} else {
+			columns = unique.GetColumnNames();
+		}
+		if (SameKeySet(columns, keys)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool VertexEliminationPlanner::IsNotNull(const TableCatalogEntry &table, const Identifier &column) {
+	for (auto &constraint : table.GetConstraints()) {
+		if (constraint->type != ConstraintType::NOT_NULL) {
+			continue;
+		}
+		auto &not_null = constraint->Cast<NotNullConstraint>();
+		if (table.GetColumn(not_null.index).Name() == column) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool VertexEliminationPlanner::TryPlanVertex(const string &vertex_alias, const VertexJoinInfo &info,
+                                             EliminatedVertex &result) {
+	if (info.required || info.edge_references.empty() || disqualified.find(vertex_alias) != disqualified.end()) {
+		return false;
+	}
+	auto table_entry = alias_map.find(vertex_alias);
+	if (table_entry == alias_map.end() || !table_entry->second->is_vertex_table) {
+		return false;
+	}
+	auto vertex_table = LookupTable(*table_entry->second);
+	if (!vertex_table) {
+		return false;
+	}
+	auto &representative = info.edge_references[0];
+	auto &keys = representative.vertex_keys;
+	// Every incident edge must reference this vertex table (undirected and bidirectional edges are not checked
+	// against the labels when the pattern is translated; the join did that), join on the same vertex key, and the
+	// key must be unique.
+	for (auto &reference : info.edge_references) {
+		if (!reference.referenced_vertex_table ||
+		    !reference.referenced_vertex_table->SameTableIdentity(*table_entry->second)) {
+			return false;
+		}
+		if (!SameKeySet(reference.vertex_keys, keys)) {
+			return false;
+		}
+		for (auto &backing : reference.backing_keys) {
+			if (backing.size() != reference.edge_keys.size()) {
+				return false;
+			}
+		}
+	}
+	for (auto &key : keys) {
+		if (!vertex_table->ColumnExists(key)) {
+			return false;
+		}
+	}
+	if (!HasUniqueConstraint(*vertex_table, keys)) {
+		return false;
+	}
+	// Every edge column must exist in the catalog, for the type and NOT NULL checks below.
+	for (auto &reference : info.edge_references) {
+		auto edge_table = LookupTable(*reference.edge_table);
+		if (!edge_table) {
+			return false;
+		}
+		for (auto &backing : reference.backing_keys) {
+			for (auto &column : backing) {
+				if (!edge_table->ColumnExists(column)) {
+					return false;
+				}
+			}
+		}
+	}
+	// The first edge provides the replacement for the vertex key.
+	result.representative_alias = representative.edge_alias;
+	auto representative_table = LookupTable(*representative.edge_table);
+	for (auto &key : keys) {
+		auto position = KeyPosition(representative.vertex_keys, key);
+		result.representative_column[key.GetIdentifierName()] = representative.edge_keys[position];
+		auto &vertex_column = vertex_table->GetColumn(key);
+		result.output_name[key.GetIdentifierName()] = vertex_column.Name();
+		auto &vertex_type = vertex_column.Type();
+		for (auto &backing : representative.backing_keys) {
+			auto &column = representative_table->GetColumn(backing[position]);
+			if (column.Type() != vertex_type) {
+				result.cast_type[key.GetIdentifierName()] = vertex_type;
+			}
+			if (!IsNotNull(*representative_table, column.Name())) {
+				result.nullable_keys.insert(key.GetIdentifierName());
+			}
+		}
+	}
+	return true;
+}
+
+void VertexEliminationPlanner::RewriteReferences(vector<unique_ptr<ParsedExpression>> &column_list,
+                                                 vector<unique_ptr<ParsedExpression>> &conditions) {
+	if (eliminated.empty()) {
+		return;
+	}
+	for (auto &expression : column_list) {
+		RewriteExpression(expression, true);
+	}
+	for (auto &expression : conditions) {
+		RewriteExpression(expression, false);
+	}
+}
+
+void VertexEliminationPlanner::RewriteExpression(unique_ptr<ParsedExpression> &expression, bool preserve_name) {
+	if (expression->GetExpressionClass() != ExpressionClass::COLUMN_REF) {
+		ParsedExpressionIterator::EnumerateChildren(
+		    *expression, [&](unique_ptr<ParsedExpression> &child) { RewriteExpression(child, false); });
+		return;
+	}
+	auto &column_ref = expression->Cast<ColumnRefExpression>();
+	auto &names = column_ref.ColumnNames();
+	if (names.size() != 2) {
+		return;
+	}
+	auto plan = eliminated.find(names[0].GetIdentifierName());
+	if (plan == eliminated.end()) {
+		return;
+	}
+	auto replacement_column = plan->second.representative_column.find(names[1].GetIdentifierName());
+	if (replacement_column == plan->second.representative_column.end()) {
+		throw InternalException("Vertex-join elimination: %s.%s is not a key of the eliminated vertex %s",
+		                        names[0].GetIdentifierName(), names[1].GetIdentifierName(),
+		                        names[0].GetIdentifierName());
+	}
+	auto &key_name = names[1].GetIdentifierName();
+	unique_ptr<ParsedExpression> replacement =
+	    PGQColumnRef(replacement_column->second, plan->second.representative_alias);
+	auto cast_type = plan->second.cast_type.find(key_name);
+	if (cast_type != plan->second.cast_type.end()) {
+		replacement = make_uniq<CastExpression>(cast_type->second, std::move(replacement));
+	}
+	// Reproduce the result column name the vertex column would have had. DuckDB names a column reference after the
+	// catalog column when it has no alias or an alias that only differs in case, so COLUMNS (v.ID) and
+	// COLUMNS (v.id AS ID) both yield the catalog spelling. (An alias that differs only in case from the *edge*
+	// column's name is still renamed by that rule; the join-based translation did not have that collision.)
+	auto &catalog_name = plan->second.output_name[key_name];
+	if (expression->HasAlias()) {
+		replacement->SetAlias(expression->GetAlias() == catalog_name ? catalog_name : expression->GetAlias());
+	} else if (preserve_name) {
+		replacement->SetAlias(catalog_name);
+	}
+	expression = std::move(replacement);
+}
+
+void VertexEliminationPlanner::EmitJoinConditions(vector<unique_ptr<ParsedExpression>> &conditions) {
+	for (auto &vertex_alias : vertex_joins.order) {
+		auto &info = vertex_joins.entries[vertex_alias];
+		auto plan = eliminated.find(vertex_alias);
+		if (plan == eliminated.end()) {
+			for (auto &reference : info.edge_references) {
+				conditions.push_back(PGQMatchFunction::CreateMatchJoinExpression(
+				    reference.vertex_keys, reference.edge_keys, vertex_alias, reference.edge_alias));
+			}
+			continue;
+		}
+		auto &representative = info.edge_references[0];
+		for (auto &key : representative.vertex_keys) {
+			auto &key_name = key.GetIdentifierName();
+			auto representative_column = plan->second.representative_column[key_name];
+			// A NULL edge key never joined with the vertex; keep dropping it.
+			if (plan->second.nullable_keys.find(key_name) != plan->second.nullable_keys.end()) {
+				conditions.push_back(
+				    make_uniq<OperatorExpression>(ExpressionType::OPERATOR_IS_NOT_NULL,
+				                                  PGQColumnRef(representative_column, representative.edge_alias)));
+			}
+			// The other edges meet the representative at the vertex key.
+			for (idx_t i = 1; i < info.edge_references.size(); i++) {
+				auto &reference = info.edge_references[i];
+				auto position = KeyPosition(reference.vertex_keys, key);
+				conditions.push_back(make_uniq<ComparisonExpression>(
+				    ExpressionType::COMPARE_EQUAL, PGQColumnRef(reference.edge_keys[position], reference.edge_alias),
+				    PGQColumnRef(representative_column, representative.edge_alias)));
+			}
+		}
+	}
+}
+
+//------------------------------------------------------------------------------
 // Register functions
 //------------------------------------------------------------------------------
 void CoreTableFunctions::RegisterMatchTableFunction(ExtensionLoader &loader) {
 	loader.RegisterFunction(PGQMatchFunction());
+	auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
+	config.AddExtensionOption(Identifier(VertexEliminationPlanner::SETTING_NAME),
+	                          "Leave vertex tables out of the MATCH translation when the query only uses their key, "
+	                          "joining the incident edge tables to each other instead",
+	                          LogicalType::BOOLEAN, Value::BOOLEAN(true));
 }
 
 } // namespace duckdb

@@ -11,8 +11,15 @@
 #include "duckdb/parser/expression/columnref_expression.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 
 namespace duckdb {
+
+optional_ptr<TableCatalogEntry> GetPropertyGraphTableEntry(ClientContext &context, const PropertyGraphTable &table) {
+	return Catalog::GetEntry<TableCatalogEntry>(
+	    context, QualifiedName(table.catalog_name, table.schema_name, table.table_name), OnEntryNotFound::RETURN_NULL);
+}
 
 // Function to get DuckPGQState from ClientContext
 shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context, bool throw_not_found_error) {

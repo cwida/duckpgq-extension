@@ -1,0 +1,135 @@
+# name: test/sql/create_pg/verified_property_graph.test
+# description: Only property graphs whose incomplete-edge check ran drop vertex joins in MATCH; the flag is persisted
+# group: [create_pg]
+
+require duckpgq
+
+load {TEST_DIR}/verified_property_graph.db
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Person(id BIGINT PRIMARY KEY, name VARCHAR);
+
+statement ok
+INSERT INTO Person VALUES (1, 'Alice'), (2, 'Bob');
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows VALUES (1, 2);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (Person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES Person (id)
+                   DESTINATION KEY (dst) REFERENCES Person (id)
+                   LABEL knows);
+
+query II
+EXPLAIN FROM GRAPH_TABLE (g MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (a.id AS a, b.id AS b));
+----
+physical_plan	<!REGEX>:.*main\.Person.*
+
+# The verified flag is stored with the graph and survives a restart
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+query I
+SELECT DISTINCT verified FROM __duckpgq_internal WHERE property_graph = 'g';
+----
+true
+
+query II
+EXPLAIN FROM GRAPH_TABLE (g MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (a.id AS a, b.id AS b));
+----
+physical_plan	<!REGEX>:.*main\.Person.*
+
+# A graph persisted by a version without the check loads as unverified and keeps its vertex joins
+statement ok
+UPDATE __duckpgq_internal SET verified = NULL WHERE property_graph = 'g';
+
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+query II
+EXPLAIN FROM GRAPH_TABLE (g MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (a.id AS a, b.id AS b));
+----
+physical_plan	<REGEX>:.*main\.Person.*
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (a.id AS a, b.id AS b));
+----
+1	2
+
+# Recreating the graph runs the check again
+statement ok
+CREATE OR REPLACE PROPERTY GRAPH g
+VERTEX TABLES (Person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES Person (id)
+                   DESTINATION KEY (dst) REFERENCES Person (id)
+                   LABEL knows);
+
+query II
+EXPLAIN FROM GRAPH_TABLE (g MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (a.id AS a, b.id AS b));
+----
+physical_plan	<!REGEX>:.*main\.Person.*
+
+# Tables created in an open transaction are not visible to the check, which runs on a separate connection:
+# the graph is created unverified instead of failing
+statement ok
+BEGIN TRANSACTION;
+
+statement ok
+CREATE TABLE Tag(id BIGINT PRIMARY KEY, name VARCHAR);
+
+statement ok
+INSERT INTO Tag VALUES (10, 't1');
+
+statement ok
+CREATE TABLE hasInterest(personId BIGINT, tagId BIGINT);
+
+statement ok
+INSERT INTO hasInterest VALUES (1, 10), (2, 99);
+
+statement ok
+CREATE PROPERTY GRAPH g2
+VERTEX TABLES (Person LABEL Person, Tag LABEL Tag)
+EDGE TABLES (hasInterest SOURCE KEY (personId) REFERENCES Person (id)
+                         DESTINATION KEY (tagId) REFERENCES Tag (id)
+                         LABEL hasInterest);
+
+statement ok
+COMMIT;
+
+query I
+SELECT DISTINCT verified FROM __duckpgq_internal WHERE property_graph = 'g2';
+----
+false
+
+query II
+EXPLAIN FROM GRAPH_TABLE (g2 MATCH (p:Person)-[hi:hasInterest]->(t:Tag) COLUMNS (p.id AS p, t.id AS t));
+----
+physical_plan	<REGEX>:.*main\.Tag.*
+
+query II
+FROM GRAPH_TABLE (g2 MATCH (p:Person)-[hi:hasInterest]->(t:Tag) COLUMNS (p.id AS p, t.id AS t));
+----
+1	10
+
+# Once committed, recreating the graph finds the incomplete edge
+statement error
+CREATE OR REPLACE PROPERTY GRAPH g2
+VERTEX TABLES (Person LABEL Person, Tag LABEL Tag)
+EDGE TABLES (hasInterest SOURCE KEY (personId) REFERENCES Person (id)
+                         DESTINATION KEY (tagId) REFERENCES Tag (id)
+                         LABEL hasInterest);
+----
+Incomplete edge

@@ -7,11 +7,15 @@
 
 namespace duckdb {
 
+class TableCatalogEntry;
+
 #define LANE_LIMIT         512
 #define VISIT_SIZE_DIVISOR 2
 
 // Function to get DuckPGQState from ClientContext
 shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context, bool throw_error_not_found = false);
+//! The catalog entry of the table a property graph table refers to, or null when it is not a table (e.g. a view)
+optional_ptr<TableCatalogEntry> GetPropertyGraphTableEntry(ClientContext &context, const PropertyGraphTable &table);
 CreatePropertyGraphInfo *GetPropertyGraphInfo(const shared_ptr<DuckPGQState> &duckpgq_state, const string &pg_name);
 shared_ptr<PropertyGraphTable> ValidateSourceNodeAndEdgeTable(CreatePropertyGraphInfo *pg_info,
                                                               const std::string &node_table,
