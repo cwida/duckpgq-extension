@@ -17,6 +17,8 @@
 #include "duckdb/parser/parsed_data/create_index_info.hpp"
 #include "duckdb/planner/expression/bound_columnref_expression.hpp"
 #include "duckdb/storage/data_table.hpp"
+#include "duckdb/storage/partial_block_manager.hpp"
+#include "duckdb/common/types/value.hpp"
 #include "duckdb/storage/table/data_table_info.hpp"
 #include "duckdb/storage/table/index_entry.hpp"
 #include "duckdb/storage/table/scan_state.hpp"
@@ -404,9 +406,12 @@ IndexType CSRIndex::GetCSRIndexType() {
 }
 
 unique_ptr<BoundIndex> CSRIndex::Create(CreateIndexInput &input) {
-	// Used when an unbound index is bound after a restart: the epoch is rebuilt from the table on first use
-	return make_uniq<CSRIndex>(input.name, input.constraint_type, input.column_ids, input.table_io_manager,
-	                           input.unbound_expressions, input.db, input.options);
+	// Binding after a restart: load the checkpointed state when there is one, else the epoch is rebuilt from the table
+	// on first use
+	auto index = make_uniq<CSRIndex>(input.name, input.constraint_type, input.column_ids, input.table_io_manager,
+	                                 input.unbound_expressions, input.db, input.options);
+	index->LoadFromStorage(input.storage_info);
+	return std::move(index);
 }
 
 shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CSRIndexEdgeList> &lists,
@@ -1147,13 +1152,281 @@ string CSRIndex::GetConstraintViolationMessage(VerifyExistenceType, idx_t, DataC
 	throw InternalException("A CSR index does not enforce constraints");
 }
 
-IndexStorageInfo CSRIndex::SerializeToDisk(QueryContext, const case_insensitive_map_t<Value> &) {
-	// Nothing is persisted yet: after a restart the index comes back empty and rebuilds from the table on first use
-	return IndexStorageInfo(name);
+//----------------------------------------------------------------------------------------------------------------------
+// Persistence
+//----------------------------------------------------------------------------------------------------------------------
+namespace {
+
+struct ByteWriter {
+	vector<uint8_t> bytes;
+
+	template <class T>
+	void Write(const T &value) {
+		auto offset = bytes.size();
+		bytes.resize(offset + sizeof(T));
+		memcpy(bytes.data() + offset, &value, sizeof(T));
+	}
+	template <class T>
+	void WriteVector(const vector<T> &values) {
+		Write<uint64_t>(values.size());
+		auto offset = bytes.size();
+		bytes.resize(offset + values.size() * sizeof(T));
+		if (!values.empty()) {
+			memcpy(bytes.data() + offset, values.data(), values.size() * sizeof(T));
+		}
+	}
+	template <class T>
+	void WriteStdVector(const std::vector<T> &values) {
+		Write<uint64_t>(values.size());
+		auto offset = bytes.size();
+		bytes.resize(offset + values.size() * sizeof(T));
+		if (!values.empty()) {
+			memcpy(bytes.data() + offset, values.data(), values.size() * sizeof(T));
+		}
+	}
+};
+
+struct ByteReader {
+	const vector<uint8_t> &bytes;
+	idx_t position = 0;
+
+	explicit ByteReader(const vector<uint8_t> &bytes_p) : bytes(bytes_p) {
+	}
+	template <class T>
+	T Read() {
+		if (position + sizeof(T) > bytes.size()) {
+			throw SerializationException("Truncated CSR index storage");
+		}
+		T value;
+		memcpy(&value, bytes.data() + position, sizeof(T));
+		position += sizeof(T);
+		return value;
+	}
+	template <class T>
+	void ReadVector(vector<T> &values) {
+		auto count = Read<uint64_t>();
+		if (position + count * sizeof(T) > bytes.size()) {
+			throw SerializationException("Truncated CSR index storage");
+		}
+		values.resize(count);
+		if (count > 0) {
+			memcpy(values.data(), bytes.data() + position, count * sizeof(T));
+		}
+		position += count * sizeof(T);
+	}
+	template <class T>
+	void ReadStdVector(std::vector<T> &values) {
+		auto count = Read<uint64_t>();
+		if (position + count * sizeof(T) > bytes.size()) {
+			throw SerializationException("Truncated CSR index storage");
+		}
+		values.resize(count);
+		if (count > 0) {
+			memcpy(values.data(), bytes.data() + position, count * sizeof(T));
+		}
+		position += count * sizeof(T);
+	}
+};
+
+constexpr const char *STORAGE_OPTION_FORMAT = "csr_format";
+constexpr const char *STORAGE_OPTION_BYTES = "csr_bytes";
+constexpr const char *STORAGE_OPTION_SEGMENTS = "csr_segments";
+
+} // namespace
+
+vector<uint8_t> CSRIndex::SerializeState() const {
+	IndexLock l(*this);
+	ByteWriter writer;
+	if (epochs.empty()) {
+		return writer.bytes;
+	}
+	auto &epoch = *epochs.back();
+	writer.Write<uint32_t>(STORAGE_FORMAT_VERSION);
+	writer.Write<uint8_t>(undirected ? 1 : 0);
+	writer.Write<uint64_t>(epoch.vertex_count);
+	writer.Write<uint64_t>(epoch.edge_count);
+	writer.Write<uint64_t>(epoch.partition_width);
+
+	auto &dictionary = *epoch.dictionary;
+	writer.Write<uint8_t>(dictionary.dense ? 1 : 0);
+	writer.Write<uint8_t>(dictionary.identity ? 1 : 0);
+	writer.Write<int64_t>(dictionary.min_key);
+	writer.Write<uint64_t>(dictionary.count);
+	writer.WriteVector<uint64_t>(dictionary.bitmap);
+	writer.WriteVector<uint32_t>(dictionary.word_rank);
+	writer.WriteVector<int64_t>(dictionary.sorted_keys);
+
+	auto &partitions = epoch.csr->forward_partitions;
+	writer.Write<uint64_t>(partitions.size());
+	for (idx_t partition_idx = 0; partition_idx < partitions.size(); partition_idx++) {
+		auto &partition = *partitions[partition_idx];
+		writer.Write<uint64_t>(partition.start_vertex);
+		writer.Write<uint64_t>(partition.end_vertex);
+		writer.WriteStdVector<uint32_t>(partition.source_vertices);
+		writer.WriteStdVector<uint32_t>(partition.row_offsets);
+		writer.WriteStdVector<uint16_t>(partition.e);
+		writer.WriteVector<row_t>(epoch.partition_row_ids[partition_idx]);
+	}
+
+	// Only the change-log entries the persisted epoch does not account for; the stamps restart from zero on load
+	vector<CSRIndexDeltaEdge> pending_delta;
+	for (auto &edge : delta) {
+		if (edge.covered_epoch > epoch.generation) {
+			pending_delta.push_back(edge);
+		}
+	}
+	writer.Write<uint64_t>(pending_delta.size());
+	for (auto &edge : pending_delta) {
+		writer.Write<int64_t>(edge.src_key);
+		writer.Write<int64_t>(edge.dst_key);
+		writer.Write<int64_t>(edge.row);
+	}
+	vector<row_t> pending_tombstones;
+	for (auto &tombstone : tombstones) {
+		if (tombstone.excluded_epoch > epoch.generation) {
+			pending_tombstones.push_back(tombstone.row);
+		}
+	}
+	writer.WriteVector<row_t>(pending_tombstones);
+	return writer.bytes;
+}
+
+IndexStorageInfo CSRIndex::WriteSegments(const vector<uint8_t> &bytes, optional_ptr<QueryContext> checkpoint_context) {
+	IndexStorageInfo info(name);
+	if (bytes.empty()) {
+		return info;
+	}
+	auto &block_manager = table_io_manager.GetIndexBlockManager();
+	// One segment per block, leaving room for the allocator's bitmask
+	auto segment_size = block_manager.GetBlockSize() - 64;
+	storage_allocator = make_uniq<FixedSizeAllocator>(segment_size, block_manager, MemoryTag::EXTENSION);
+	vector<Value> segments;
+	for (idx_t offset = 0; offset < bytes.size(); offset += segment_size) {
+		auto length = std::min<idx_t>(segment_size, bytes.size() - offset);
+		auto pointer = storage_allocator->New();
+		memcpy(storage_allocator->Get(pointer, true), bytes.data() + offset, length);
+		segments.push_back(Value::UBIGINT((static_cast<uint64_t>(pointer.GetBufferId()) << 32) | pointer.GetOffset()));
+	}
+	if (checkpoint_context) {
+		PartialBlockManager partial_block_manager(*checkpoint_context, block_manager,
+		                                          PartialBlockType::FULL_CHECKPOINT);
+		storage_allocator->SerializeBuffers(partial_block_manager);
+		partial_block_manager.FlushPartialBlocks();
+	} else {
+		info.buffers.push_back(storage_allocator->InitSerializationToWAL());
+	}
+	info.allocator_infos.push_back(storage_allocator->GetInfo());
+	info.options[STORAGE_OPTION_FORMAT] = Value::UBIGINT(STORAGE_FORMAT_VERSION);
+	info.options[STORAGE_OPTION_BYTES] = Value::UBIGINT(bytes.size());
+	info.options[STORAGE_OPTION_SEGMENTS] = Value::LIST(LogicalType::UBIGINT, std::move(segments));
+	return info;
+}
+
+void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
+	if (!info.IsValid() || info.allocator_infos.empty()) {
+		return;
+	}
+	auto format = info.options.find(STORAGE_OPTION_FORMAT);
+	auto byte_count = info.options.find(STORAGE_OPTION_BYTES);
+	auto segment_list = info.options.find(STORAGE_OPTION_SEGMENTS);
+	if (format == info.options.end() || byte_count == info.options.end() || segment_list == info.options.end()) {
+		return;
+	}
+	if (format->second.GetValue<uint64_t>() != STORAGE_FORMAT_VERSION) {
+		// Unknown layout: start empty and rebuild from the table on first use
+		return;
+	}
+	auto &block_manager = table_io_manager.GetIndexBlockManager();
+	auto &allocator_info = info.allocator_infos[0];
+	storage_allocator = make_uniq<FixedSizeAllocator>(allocator_info.segment_size, block_manager, MemoryTag::EXTENSION);
+	storage_allocator->Init(allocator_info);
+	auto total_bytes = byte_count->second.GetValue<uint64_t>();
+	vector<uint8_t> bytes(total_bytes);
+	idx_t offset = 0;
+	for (auto &segment : ListValue::GetChildren(segment_list->second)) {
+		auto packed = segment.GetValue<uint64_t>();
+		IndexPointer pointer(NumericCast<uint32_t>(packed >> 32), NumericCast<uint32_t>(packed & 0xFFFFFFFF));
+		auto length = std::min<idx_t>(allocator_info.segment_size, total_bytes - offset);
+		memcpy(bytes.data() + offset, storage_allocator->Get(pointer, false), length);
+		offset += length;
+	}
+	// The loaded buffers are no longer needed in memory; the blocks stay referenced until the next serialization
+	storage_allocator.reset();
+
+	ByteReader reader(bytes);
+	if (reader.Read<uint32_t>() != STORAGE_FORMAT_VERSION) {
+		throw SerializationException("CSR index storage format mismatch");
+	}
+	auto stored_undirected = reader.Read<uint8_t>() != 0;
+	if (stored_undirected != undirected) {
+		throw SerializationException("CSR index direction does not match its stored state");
+	}
+	auto epoch = make_shared_ptr<CSRIndexEpoch>();
+	epoch->vertex_count = reader.Read<uint64_t>();
+	epoch->edge_count = reader.Read<uint64_t>();
+	epoch->partition_width = reader.Read<uint64_t>();
+
+	auto dictionary = make_shared_ptr<CSRIndexDictionary>();
+	dictionary->dense = reader.Read<uint8_t>() != 0;
+	dictionary->identity = reader.Read<uint8_t>() != 0;
+	dictionary->min_key = reader.Read<int64_t>();
+	dictionary->count = reader.Read<uint64_t>();
+	reader.ReadVector<uint64_t>(dictionary->bitmap);
+	reader.ReadVector<uint32_t>(dictionary->word_rank);
+	reader.ReadVector<int64_t>(dictionary->sorted_keys);
+	epoch->dictionary = std::move(dictionary);
+
+	auto csr = make_shared_ptr<PartitionedCSRIndex>();
+	csr->vertex_count = epoch->vertex_count + 2;
+	csr->edge_count = epoch->edge_count;
+	csr->capabilities = PartitionedCSRCapabilities::FORWARD;
+	auto partition_count = reader.Read<uint64_t>();
+	epoch->partition_row_ids.resize(partition_count);
+	for (idx_t partition_idx = 0; partition_idx < partition_count; partition_idx++) {
+		auto start_vertex = reader.Read<uint64_t>();
+		auto end_vertex = reader.Read<uint64_t>();
+		auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, epoch->vertex_count, false);
+		reader.ReadStdVector<uint32_t>(partition->source_vertices);
+		reader.ReadStdVector<uint32_t>(partition->row_offsets);
+		reader.ReadStdVector<uint16_t>(partition->e);
+		reader.ReadVector<row_t>(epoch->partition_row_ids[partition_idx]);
+		partition->expected_sparse_row_count = partition->source_vertices.size();
+		partition->v_array_size = 0;
+		partition->initialized_e = true;
+		partition->sparse_rows_initialized = true;
+		csr->forward_partitions.push_back(std::move(partition));
+	}
+	epoch->csr = std::move(csr);
+
+	// After a restart every persisted row is committed, so the epoch serves every transaction (default bound)
+	auto delta_count = reader.Read<uint64_t>();
+	vector<CSRIndexDeltaEdge> loaded_delta;
+	for (idx_t i = 0; i < delta_count; i++) {
+		auto src = reader.Read<int64_t>();
+		auto dst = reader.Read<int64_t>();
+		auto row = reader.Read<int64_t>();
+		loaded_delta.push_back({src, dst, row, NumericLimits<uint32_t>::Maximum()});
+	}
+	vector<row_t> loaded_tombstones;
+	reader.ReadVector<row_t>(loaded_tombstones);
+
+	IndexLock l(*this);
+	epoch->generation = next_generation++;
+	epochs.clear();
+	epochs.push_back(std::move(epoch));
+	delta = std::move(loaded_delta);
+	tombstones.clear();
+	for (auto row : loaded_tombstones) {
+		tombstones.push_back({row, NumericLimits<uint32_t>::Maximum()});
+	}
+}
+
+IndexStorageInfo CSRIndex::SerializeToDisk(QueryContext context, const case_insensitive_map_t<Value> &) {
+	return WriteSegments(SerializeState(), &context);
 }
 
 IndexStorageInfo CSRIndex::SerializeToWAL(const case_insensitive_map_t<Value> &) {
-	return IndexStorageInfo(name);
+	return WriteSegments(SerializeState(), nullptr);
 }
 
 //----------------------------------------------------------------------------------------------------------------------

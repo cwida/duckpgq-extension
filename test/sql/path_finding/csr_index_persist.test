@@ -1,0 +1,201 @@
+# name: test/sql/path_finding/csr_index_persist.test
+# description: A CSR index survives checkpoints, WAL replay, and restarts without being rebuilt
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_index_persist.db
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(1, 21);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows SELECT range, range + 1 FROM range(1, 10);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# Two edges land in the delta before the checkpoint
+statement ok
+INSERT INTO knows VALUES (10, 11), (11, 12);
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=2;tombstones=0
+
+statement ok
+CHECKPOINT;
+
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+# The epoch and the pending delta come back from the checkpoint before any query touches the index
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=2;tombstones=0
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 8)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+8	0
+9	1
+10	2
+11	3
+12	4
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+# ---- Changes after the checkpoint are replayed from the WAL into the change log
+statement ok
+PRAGMA disable_checkpoint_on_shutdown;
+
+statement ok
+INSERT INTO knows VALUES (12, 13);
+
+statement ok
+DELETE FROM knows WHERE src = 9;
+
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=3;tombstones=1
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 8)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+8	0
+9	1
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 10)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+10	0
+11	1
+12	2
+13	3
+
+# ---- An index created without any checkpoint is recreated from the WAL with its epoch
+statement ok
+PRAGMA disable_checkpoint_on_shutdown;
+
+statement ok
+CREATE TABLE likes(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO likes VALUES (1, 5), (5, 9);
+
+statement ok
+CREATE INDEX likes_csr ON likes USING CSR (src, dst);
+
+statement ok
+INSERT INTO likes VALUES (9, 13);
+
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+query I
+SELECT duckpgq_csr_index_stats('likes', 'likes_csr');
+----
+epochs=1;delta=1;tombstones=0
+
+statement ok
+CREATE PROPERTY GRAPH g2
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (likes SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Likes);
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g2 MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Likes]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+1	0
+5	1
+9	2
+13	3
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+# ---- Dropping the index is durable too
+statement ok
+DROP INDEX likes_csr;
+
+statement ok
+CHECKPOINT;
+
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+query I
+SELECT count(*) FROM duckdb_indexes() WHERE index_name = 'likes_csr';
+----
+0
+
+query I
+SELECT count(*) FROM duckdb_indexes() WHERE index_name = 'knows_csr';
+----
+1

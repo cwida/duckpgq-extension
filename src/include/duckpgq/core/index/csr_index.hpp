@@ -16,6 +16,7 @@
 
 #include "duckdb/common/constants.hpp"
 #include "duckdb/execution/index/bound_index.hpp"
+#include "duckdb/execution/index/fixed_size_allocator.hpp"
 #include "duckdb/execution/index/index_type.hpp"
 
 #include <unordered_map>
@@ -221,6 +222,13 @@ private:
 	                                           shared_ptr<CSRIndexEpoch> epoch, idx_t delta_count,
 	                                           idx_t tombstone_count) const;
 
+	//! Persistence: the newest epoch and the part of the change log it does not account for are written as one byte
+	//! stream into fixed-size segments; the segment list and sizes travel in the storage info's options
+	static constexpr idx_t STORAGE_FORMAT_VERSION = 1;
+	vector<uint8_t> SerializeState() const;
+	IndexStorageInfo WriteSegments(const vector<uint8_t> &bytes, optional_ptr<QueryContext> checkpoint_context);
+	void LoadFromStorage(const IndexStorageInfo &info);
+
 private:
 	bool undirected = false;
 	//! Retained epochs, oldest first; the newest serves current readers, older ones serve transactions that started
@@ -232,6 +240,8 @@ private:
 	mutable vector<CSRIndexTombstone> tombstones;
 	//! One fold at a time
 	mutable mutex fold_lock;
+	//! Segments of the last checkpoint or WAL serialization, kept until the next one replaces them
+	unique_ptr<FixedSizeAllocator> storage_allocator;
 };
 
 //! Registration entry point called from the core module
