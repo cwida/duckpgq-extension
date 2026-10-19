@@ -1,0 +1,118 @@
+# name: test/sql/create_pg/incomplete_edges.test
+# description: CREATE PROPERTY GRAPH rejects edges whose key references no vertex row (SQL/PGQ "incomplete edge")
+# group: [create_pg]
+
+require duckpgq
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Person(id BIGINT PRIMARY KEY, name VARCHAR);
+
+statement ok
+INSERT INTO Person VALUES (1, 'Alice'), (2, 'Bob');
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows VALUES (1, 2), (2, 99);
+
+# The destination of (2, 99) does not exist
+statement error
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (Person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES Person (id)
+                   DESTINATION KEY (dst) REFERENCES Person (id)
+                   LABEL knows);
+----
+Constraint Error: Incomplete edge: a row of edge table knows has destination key (dst) = (99), which references no row in vertex table Person (id)
+
+# Nothing was registered
+statement error
+FROM GRAPH_TABLE (g MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (a.id));
+----
+Property graph g does not exist
+
+statement ok
+UPDATE knows SET dst = 1 WHERE dst = 99;
+
+statement ok
+INSERT INTO knows VALUES (99, 1);
+
+# Same for the source
+statement error
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (Person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES Person (id)
+                   DESTINATION KEY (dst) REFERENCES Person (id)
+                   LABEL knows);
+----
+Constraint Error: Incomplete edge: a row of edge table knows has source key (src) = (99), which references no row in vertex table Person (id)
+
+statement ok
+DELETE FROM knows WHERE src = 99;
+
+# A NULL key references nothing and is never matched; it is accepted
+statement ok
+INSERT INTO knows VALUES (1, NULL), (NULL, 2);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (Person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES Person (id)
+                   DESTINATION KEY (dst) REFERENCES Person (id)
+                   LABEL knows);
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (a.id AS a, b.id AS b)) ORDER BY ALL;
+----
+1	2
+2	1
+
+# Composite keys
+statement ok
+CREATE TABLE Flight(carrier VARCHAR, number INTEGER, PRIMARY KEY (carrier, number));
+
+statement ok
+INSERT INTO Flight VALUES ('KL', 1), ('LH', 1);
+
+statement ok
+CREATE TABLE books(personId BIGINT, carrier VARCHAR, number INTEGER);
+
+statement ok
+INSERT INTO books VALUES (1, 'KL', 1), (2, 'KL', 2);
+
+statement error
+CREATE PROPERTY GRAPH flights
+VERTEX TABLES (Person LABEL Person, Flight LABEL Flight)
+EDGE TABLES (books SOURCE KEY (personId) REFERENCES Person (id)
+                   DESTINATION KEY (carrier, number) REFERENCES Flight (carrier, number)
+                   LABEL books);
+----
+Constraint Error: Incomplete edge: a row of edge table books has destination key (carrier, number) = (KL, 2), which references no row in vertex table Flight (carrier, number)
+
+statement ok
+DELETE FROM books WHERE number = 2;
+
+statement ok
+CREATE PROPERTY GRAPH flights
+VERTEX TABLES (Person LABEL Person, Flight LABEL Flight)
+EDGE TABLES (books SOURCE KEY (personId) REFERENCES Person (id)
+                   DESTINATION KEY (carrier, number) REFERENCES Flight (carrier, number)
+                   LABEL books);
+
+# CREATE OR REPLACE is checked as well
+statement ok
+INSERT INTO books VALUES (1, 'XX', 9);
+
+statement error
+CREATE OR REPLACE PROPERTY GRAPH flights
+VERTEX TABLES (Person LABEL Person, Flight LABEL Flight)
+EDGE TABLES (books SOURCE KEY (personId) REFERENCES Person (id)
+                   DESTINATION KEY (carrier, number) REFERENCES Flight (carrier, number)
+                   LABEL books);
+----
+Incomplete edge

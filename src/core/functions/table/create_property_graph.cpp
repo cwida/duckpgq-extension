@@ -10,6 +10,7 @@
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/planner/binder.hpp"
+#include "duckpgq/core/utils/duckpgq_sql.hpp"
 
 namespace duckdb {
 
@@ -320,6 +321,70 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 	return make_uniq<CreatePropertyGraphBindData>(info);
 }
 
+//! The property graph declares that every edge key references a vertex row (SOURCE KEY ... REFERENCES ...). SQL/PGQ
+//! calls an edge whose key matches no vertex an "incomplete edge" (ISO/IEC 9075-16, 9.5). Verify the declaration once,
+//! when the graph is created, so that the MATCH translation can rely on it (see VertexEliminationPlanner). Rows
+//! modified after creation are not re-checked.
+//! An edge with a NULL key component references nothing and is never matched; it is accepted.
+//! The check runs on a separate connection, so the table is named by the catalog entry it resolved to in the user's
+//! context (the property graph itself keeps an unqualified name when the search path resolved it).
+static string ResolvedTableRef(ClientContext &context, const shared_ptr<PropertyGraphTable> &table,
+                               const string &alias) {
+	auto entry = GetPropertyGraphTable(context, table);
+	if (!entry) {
+		return DuckPGQSQL::TableRef(*table, alias);
+	}
+	return DuckPGQSQL::TableRef(entry->ParentCatalog().GetName(), entry->ParentSchema().name, entry->name, alias);
+}
+
+static void CheckEdgeKeysReferenceVertices(ClientContext &context, Connection &connection,
+                                           const shared_ptr<PropertyGraphTable> &edge_table_p, const string &side,
+                                           const vector<Identifier> &edge_keys,
+                                           const shared_ptr<PropertyGraphTable> &vertex_table_p,
+                                           const vector<Identifier> &vertex_keys) {
+	if (edge_keys.empty() || edge_keys.size() != vertex_keys.size()) {
+		return;
+	}
+	auto &edge_table = *edge_table_p;
+	auto &vertex_table = *vertex_table_p;
+	vector<string> not_null;
+	vector<string> matches;
+	vector<string> projections;
+	for (idx_t i = 0; i < edge_keys.size(); i++) {
+		auto edge_column = DuckPGQSQL::Column(edge_keys[i], string("e"));
+		not_null.push_back(edge_column + " IS NOT NULL");
+		matches.push_back(DuckPGQSQL::Column(vertex_keys[i], string("v")) + " = " + edge_column);
+		projections.push_back(edge_column);
+	}
+	std::ostringstream query;
+	query << "SELECT " << StringUtil::Join(projections, ", ") << " FROM "
+	      << ResolvedTableRef(context, edge_table_p, "e") << " WHERE " << StringUtil::Join(not_null, " AND ")
+	      << " AND NOT EXISTS (SELECT 1 FROM " << ResolvedTableRef(context, vertex_table_p, "v") << " WHERE "
+	      << StringUtil::Join(matches, " AND ") << ") LIMIT 1";
+	auto result = connection.Query(query.str());
+	if (result->HasError()) {
+		throw Exception(ExceptionType::INVALID,
+		                "Could not verify that the " + side + " key of edge table " + edge_table.table_name +
+		                    " references " + vertex_table.table_name + ": " + result->GetError() +
+		                    ". The check runs on a separate connection; tables created in an open transaction must be "
+		                    "committed before a property graph is created over them.");
+	}
+	auto chunk = result->Fetch();
+	if (!chunk || chunk->size() == 0) {
+		return;
+	}
+	vector<string> values;
+	for (idx_t i = 0; i < edge_keys.size(); i++) {
+		values.push_back(chunk->GetValue(i, 0).ToString());
+	}
+	throw ConstraintException("Incomplete edge: a row of edge table %s has %s key (%s) = (%s), which references no row "
+	                          "in vertex table %s (%s). Every edge key must reference an existing vertex; fix or "
+	                          "remove the row before creating the property graph.",
+	                          edge_table.table_name.GetIdentifierName(), side, StringUtil::Join(edge_keys, ", "),
+	                          StringUtil::Join(values, ", "), vertex_table.table_name.GetIdentifierName(),
+	                          StringUtil::Join(vertex_keys, ", "));
+}
+
 unique_ptr<GlobalTableFunctionState>
 CreatePropertyGraphFunction::CreatePropertyGraphInit(ClientContext &context, TableFunctionInitInput &input) {
 	return make_uniq<CreatePropertyGraphGlobalData>();
@@ -331,13 +396,20 @@ void CreatePropertyGraphFunction::CreatePropertyGraphFunc(ClientContext &context
 	auto pg_info = bind_data.create_pg_info;
 	auto duckpgq_state = GetDuckPGQState(context);
 
+	auto new_conn = make_shared_ptr<Connection>(*context.db);
+	for (auto &edge_table : pg_info->edge_tables) {
+		CheckEdgeKeysReferenceVertices(context, *new_conn, edge_table, "source", edge_table->source_fk,
+		                               edge_table->source_pg_table, edge_table->source_pk);
+		CheckEdgeKeysReferenceVertices(context, *new_conn, edge_table, "destination", edge_table->destination_fk,
+		                               edge_table->destination_pg_table, edge_table->destination_pk);
+	}
+
 	for (auto &local_client_context : ConnectionManager::Get(*context.db).GetConnectionList()) {
 		auto local_state = GetDuckPGQState(*local_client_context);
 		local_state->registered_property_graphs[pg_info->property_graph_name] = pg_info->Copy();
 	}
 
 	duckpgq_state->InitializeInternalTable(context);
-	auto new_conn = make_shared_ptr<Connection>(*context.db);
 	auto retrieve_query = new_conn->Query("SELECT * FROM __duckpgq_internal where property_graph = '" +
 	                                      pg_info->property_graph_name + "';");
 	if (retrieve_query->HasError()) {

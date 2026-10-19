@@ -1,0 +1,629 @@
+# name: test/sql/pattern_matching/vertex_elimination.test
+# description: Vertex-join elimination: vertex tables that are only joined for their key are left out of the translation
+# group: [pattern_matching]
+
+require duckpgq
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+# Vertex tables with a unique key ...
+statement ok
+CREATE TABLE Person(id BIGINT PRIMARY KEY, name VARCHAR);
+
+statement ok
+CREATE TABLE Tag(id BIGINT PRIMARY KEY, name VARCHAR);
+
+statement ok
+CREATE TABLE Category(id BIGINT PRIMARY KEY, name VARCHAR);
+
+statement ok
+CREATE TABLE Organisation(id BIGINT PRIMARY KEY, name VARCHAR, mask BIGINT);
+
+statement ok
+CREATE TABLE Flight(carrier VARCHAR, number INTEGER, PRIMARY KEY (carrier, number));
+
+# ... and one without
+statement ok
+CREATE TABLE Forum(id BIGINT, title VARCHAR);
+
+statement ok
+CREATE TABLE knows(src BIGINT NOT NULL, dst BIGINT NOT NULL);
+
+# tagId is nullable
+statement ok
+CREATE TABLE hasInterest(personId BIGINT NOT NULL, tagId BIGINT);
+
+statement ok
+CREATE TABLE hasCategory(tagId BIGINT NOT NULL, categoryId BIGINT NOT NULL);
+
+statement ok
+CREATE TABLE hasModerator(forumId BIGINT, personId BIGINT);
+
+statement ok
+CREATE TABLE worksAt(personId BIGINT, organisationId BIGINT);
+
+statement ok
+CREATE TABLE books(personId BIGINT, carrier VARCHAR, number INTEGER);
+
+statement ok
+INSERT INTO Person VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Carol');
+
+statement ok
+INSERT INTO Tag VALUES (10, 't1'), (11, 't2');
+
+statement ok
+INSERT INTO Category VALUES (100, 'Athlete'), (101, 'Artist');
+
+statement ok
+INSERT INTO Organisation VALUES (200, 'VU', 1), (201, 'CWI', 2);
+
+statement ok
+INSERT INTO Flight VALUES ('KL', 1), ('KL', 2), ('LH', 1);
+
+statement ok
+INSERT INTO Forum VALUES (1000, 'f1');
+
+statement ok
+INSERT INTO knows VALUES (1, 2), (2, 3), (3, 1), (1, 3);
+
+statement ok
+INSERT INTO hasInterest VALUES (1, 10), (2, 10), (3, 11), (1, NULL);
+
+statement ok
+INSERT INTO hasCategory VALUES (10, 100), (11, 101);
+
+statement ok
+INSERT INTO hasModerator VALUES (1000, 1);
+
+statement ok
+INSERT INTO worksAt VALUES (1, 200), (2, 201), (3, 201);
+
+statement ok
+INSERT INTO books VALUES (1, 'KL', 1), (2, 'KL', 1), (3, 'LH', 1);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (
+    Person LABEL Person,
+    Tag LABEL Tag,
+    Category LABEL Category,
+    Organisation LABEL Organisation IN mask(university, company),
+    Flight LABEL Flight,
+    Forum LABEL Forum
+    )
+EDGE TABLES (
+    knows           SOURCE KEY (src) REFERENCES Person (id)
+                    DESTINATION KEY (dst) REFERENCES Person (id)
+                    LABEL knows,
+    hasInterest     SOURCE KEY (personId) REFERENCES Person (id)
+                    DESTINATION KEY (tagId) REFERENCES Tag (id)
+                    LABEL hasInterest,
+    hasCategory     SOURCE KEY (tagId) REFERENCES Tag (id)
+                    DESTINATION KEY (categoryId) REFERENCES Category (id)
+                    LABEL hasCategory,
+    hasModerator    SOURCE KEY (forumId) REFERENCES Forum (id)
+                    DESTINATION KEY (personId) REFERENCES Person (id)
+                    LABEL hasModerator,
+    worksAt         SOURCE KEY (personId) REFERENCES Person (id)
+                    DESTINATION KEY (organisationId) REFERENCES Organisation (id)
+                    LABEL worksAt,
+    books           SOURCE KEY (personId) REFERENCES Person (id)
+                    DESTINATION KEY (carrier, number) REFERENCES Flight (carrier, number)
+                    LABEL books
+    );
+
+# ---------------------------------------------------------------------------------------------------------------------
+# A 2-hop chain: Person and Tag are only used for their key, Category is filtered on a property
+# ---------------------------------------------------------------------------------------------------------------------
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)-[hc:hasCategory]->(c:Category)
+    WHERE c.name = 'Athlete'
+    COLUMNS (p.id, t.id AS tagId));
+----
+physical_plan	<!REGEX>:.*main\.(Person|Tag).*
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)-[hc:hasCategory]->(c:Category)
+    WHERE c.name = 'Athlete'
+    COLUMNS (p.id, t.id AS tagId));
+----
+physical_plan	<REGEX>:.*main\.Category.*
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)-[hc:hasCategory]->(c:Category)
+    WHERE c.name = 'Athlete'
+    COLUMNS (p.id, t.id AS tagId))
+ORDER BY ALL;
+----
+1	10
+2	10
+
+# Output column names and types are unchanged
+query II
+SELECT id, tagId FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)-[hc:hasCategory]->(c:Category)
+    WHERE c.name = 'Athlete'
+    COLUMNS (p.id, t.id AS tagId))
+ORDER BY ALL;
+----
+1	10
+2	10
+
+query II
+SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)-[hc:hasCategory]->(c:Category)
+    COLUMNS (p.id, t.id AS tagId, hi.personId)));
+----
+id	BIGINT
+tagId	BIGINT
+personId	BIGINT
+
+# Key references inside expressions are rewritten as well
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)-[hc:hasCategory]->(c:Category)
+    WHERE p.id + t.id > 11
+    COLUMNS (p.id * 2 AS doubled, c.name))
+ORDER BY ALL;
+----
+4	Athlete
+6	Artist
+
+# The same query with the optimization disabled produces the same result
+statement ok
+SET duckpgq_vertex_join_elimination = false;
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)-[hc:hasCategory]->(c:Category)
+    WHERE c.name = 'Athlete'
+    COLUMNS (p.id, t.id AS tagId));
+----
+physical_plan	<REGEX>:.*main\.Person.*
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)-[hc:hasCategory]->(c:Category)
+    WHERE c.name = 'Athlete'
+    COLUMNS (p.id, t.id AS tagId));
+----
+physical_plan	<REGEX>:.*main\.Tag.*
+
+query II
+SELECT id, tagId FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)-[hc:hasCategory]->(c:Category)
+    WHERE c.name = 'Athlete'
+    COLUMNS (p.id, t.id AS tagId))
+ORDER BY ALL;
+----
+1	10
+2	10
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)-[hc:hasCategory]->(c:Category)
+    WHERE p.id + t.id > 11
+    COLUMNS (p.id * 2 AS doubled, c.name))
+ORDER BY ALL;
+----
+4	Athlete
+6	Artist
+
+statement ok
+SET duckpgq_vertex_join_elimination = true;
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Not eliminated: a non-key property is referenced
+# ---------------------------------------------------------------------------------------------------------------------
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    WHERE t.name = 't1'
+    COLUMNS (p.id));
+----
+physical_plan	<REGEX>:.*main\.Tag.*
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    WHERE t.name = 't1'
+    COLUMNS (p.id));
+----
+physical_plan	<!REGEX>:.*main\.Person.*
+
+query I
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    WHERE t.name = 't1'
+    COLUMNS (p.id))
+ORDER BY ALL;
+----
+1
+2
+
+# An element-local WHERE counts as well
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person WHERE p.name = 'Alice')-[hi:hasInterest]->(t:Tag)
+    COLUMNS (t.id));
+----
+physical_plan	<REGEX>:.*main\.Person.*
+
+# Not eliminated: v.* and COLUMNS (*)
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (t.*));
+----
+physical_plan	<REGEX>:.*main\.Tag.*
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (*));
+----
+physical_plan	<REGEX>:.*main\.Person.*main\.Tag.*|.*main\.Tag.*main\.Person.*
+
+# Not eliminated: label inheritance adds a predicate on the discriminator column
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[w:worksAt]->(o:company)
+    COLUMNS (p.id, o.id));
+----
+physical_plan	<REGEX>:.*main\.Organisation.*
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[w:worksAt]->(o:company)
+    COLUMNS (p.id, o.id));
+----
+physical_plan	<!REGEX>:.*main\.Person.*
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[w:worksAt]->(o:company)
+    COLUMNS (p.id, o.id))
+ORDER BY ALL;
+----
+2	201
+3	201
+
+# Not eliminated: path-finding endpoints
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]->{1,3}(b:Person)
+    COLUMNS (a.id, b.id));
+----
+physical_plan	<REGEX>:.*main\.Person.*
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]->{1,2}(b:Person)
+    COLUMNS (a.id, b.id))
+ORDER BY ALL;
+----
+1	2
+1	3
+2	1
+2	3
+3	1
+3	2
+
+# Not eliminated: a lone vertex pattern is a scan
+query I
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)
+    COLUMNS (p.id))
+ORDER BY ALL;
+----
+1
+2
+3
+
+# Not eliminated: the vertex key has no PRIMARY KEY or UNIQUE constraint
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (f:Forum)-[m:hasModerator]->(p:Person)
+    COLUMNS (f.id, p.id));
+----
+physical_plan	<REGEX>:.*main\.Forum.*
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (f:Forum)-[m:hasModerator]->(p:Person)
+    COLUMNS (f.id, p.id));
+----
+physical_plan	<!REGEX>:.*main\.Person.*
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (f:Forum)-[m:hasModerator]->(p:Person)
+    COLUMNS (f.id, p.id));
+----
+1000	1
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The same vertex variable in two patterns, cycles, undirected and bidirectional edges
+# ---------------------------------------------------------------------------------------------------------------------
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]->(b:Person), (a:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (a.id, b.name, t.name));
+----
+physical_plan	<REGEX>:.*main\.Person.*
+
+# ... but only one Person scan (for b) remains
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]->(b:Person), (a:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (a.id, b.name, t.name));
+----
+physical_plan	<!REGEX>:.*main\.Person.*main\.Person.*
+
+query III
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]->(b:Person), (a:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (a.id, b.name, t.name))
+ORDER BY ALL;
+----
+1	Bob	t1
+1	Carol	t1
+2	Carol	t1
+3	Alice	t2
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k1:knows]->(b:Person)-[k2:knows]->(a:Person)
+    COLUMNS (a.id, b.id));
+----
+physical_plan	<!REGEX>:.*main\.Person.*
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k1:knows]->(b:Person)-[k2:knows]->(a:Person)
+    COLUMNS (a.id, b.id))
+ORDER BY ALL;
+----
+1	3
+3	1
+
+# Self loop on the same variable
+query I
+SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]->(a:Person)
+    COLUMNS (a.id));
+----
+0
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]-(b:Person)
+    COLUMNS (a.id, b.id));
+----
+physical_plan	<!REGEX>:.*main\.Person.*
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]-(b:Person)
+    COLUMNS (a.id, b.id))
+ORDER BY ALL;
+----
+1	2
+1	3
+1	3
+2	1
+2	3
+3	1
+3	1
+3	2
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)<-[k:knows]->(b:Person)
+    COLUMNS (a.id, b.id));
+----
+physical_plan	<!REGEX>:.*main\.Person.*
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)<-[k:knows]->(b:Person)
+    COLUMNS (a.id, b.id))
+ORDER BY ALL;
+----
+1	3
+3	1
+
+statement ok
+SET duckpgq_vertex_join_elimination = false;
+
+query III
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]->(b:Person), (a:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (a.id, b.name, t.name))
+ORDER BY ALL;
+----
+1	Bob	t1
+1	Carol	t1
+2	Carol	t1
+3	Alice	t2
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k1:knows]->(b:Person)-[k2:knows]->(a:Person)
+    COLUMNS (a.id, b.id))
+ORDER BY ALL;
+----
+1	3
+3	1
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)-[k:knows]-(b:Person)
+    COLUMNS (a.id, b.id))
+ORDER BY ALL;
+----
+1	2
+1	3
+1	3
+2	1
+2	3
+3	1
+3	1
+3	2
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (a:Person)<-[k:knows]->(b:Person)
+    COLUMNS (a.id, b.id))
+ORDER BY ALL;
+----
+1	3
+3	1
+
+statement ok
+SET duckpgq_vertex_join_elimination = true;
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Composite keys
+# ---------------------------------------------------------------------------------------------------------------------
+
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[b:books]->(f:Flight)
+    WHERE f.carrier = 'KL'
+    COLUMNS (p.id, f.carrier, f.number));
+----
+physical_plan	<!REGEX>:.*main\.(Person|Flight).*
+
+query III
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[b:books]->(f:Flight)
+    WHERE f.carrier = 'KL'
+    COLUMNS (p.id, f.carrier, f.number))
+ORDER BY ALL;
+----
+1	KL	1
+2	KL	1
+
+# Two edges meet at the composite key: b2.carrier = b.carrier AND b2.number = b.number
+query II
+EXPLAIN SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[b:books]->(f:Flight)<-[b2:books]-(p2:Person)
+    WHERE p.id <> p2.id
+    COLUMNS (p.id, p2.id AS other));
+----
+physical_plan	<!REGEX>:.*main\.(Person|Flight).*
+
+query II
+SELECT id, other FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[b:books]->(f:Flight)<-[b2:books]-(p2:Person)
+    WHERE p.id <> p2.id
+    COLUMNS (p.id, p2.id AS other))
+ORDER BY ALL;
+----
+1	2
+2	1
+
+# ---------------------------------------------------------------------------------------------------------------------
+# NULL keys and edges that no longer reference a vertex
+# ---------------------------------------------------------------------------------------------------------------------
+
+# A NULL edge key never matches a vertex: the IS NOT NULL guard keeps it out even without any other edge
+query I
+SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (t.id));
+----
+3
+
+query I
+SELECT count(*) FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (t.id)) WHERE id IS NULL;
+----
+0
+
+# CREATE PROPERTY GRAPH verified that every edge key references a vertex (see test/sql/create_pg/incomplete_edges.test).
+# Rows added afterwards are not checked: an edge that references no vertex survives when the vertex is eliminated,
+# whereas the join dropped it. This is the documented limit of the optimization.
+statement ok
+INSERT INTO hasInterest VALUES (2, 99);
+
+statement ok
+INSERT INTO books VALUES (1, 'XX', 9);
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (p.id, t.id AS tagId))
+ORDER BY ALL;
+----
+1	10
+2	10
+2	99
+3	11
+
+query III
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[b:books]->(f:Flight)
+    COLUMNS (p.id, f.carrier, f.number))
+ORDER BY ALL;
+----
+1	KL	1
+1	XX	9
+2	KL	1
+3	LH	1
+
+# As soon as a property of the vertex is needed the join is back and the row is dropped again
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    WHERE t.name IS NOT NULL
+    COLUMNS (p.id, t.id AS tagId))
+ORDER BY ALL;
+----
+1	10
+2	10
+3	11
+
+statement ok
+SET duckpgq_vertex_join_elimination = false;
+
+query II
+SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
+    COLUMNS (p.id, t.id AS tagId))
+ORDER BY ALL;
+----
+1	10
+2	10
+3	11
+
+statement ok
+SET duckpgq_vertex_join_elimination = true;
+
+# Prepared statements bind the pattern again
+statement ok
+PREPARE q AS SELECT * FROM GRAPH_TABLE (g
+    MATCH (p:Person)-[hi:hasInterest]->(t:Tag)-[hc:hasCategory]->(c:Category)
+    WHERE c.name = ?
+    COLUMNS (p.id, t.id AS tagId)) ORDER BY ALL;
+
+query II
+EXECUTE q('Athlete');
+----
+1	10
+2	10
+
+query II
+EXECUTE q('Artist');
+----
+3	11

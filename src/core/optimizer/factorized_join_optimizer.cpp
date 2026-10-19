@@ -1,4 +1,5 @@
 #include "duckpgq/core/optimizer/factorized_join_optimizer.hpp"
+#include "duckpgq/core/functions/table/match.hpp"
 
 #include "duckpgq/core/operator/logical_factorized_group_join.hpp"
 #include "duckpgq/core/operator/physical_factorized_group_join.hpp"
@@ -658,6 +659,10 @@ void CoreOptimizer::Register(ExtensionLoader &loader) {
 	config.AddExtensionOption(Identifier(FactorizedJoinOptimizer::DIRECTORY_SETTING_NAME),
 	                          "Let FACTORIZED_GROUP_JOIN count into a dense array indexed by the key when the key "
 	                          "bounds are known, instead of a hash table",
+	                          LogicalType::BOOLEAN, Value::BOOLEAN(true));
+	config.AddExtensionOption(Identifier(VertexEliminationPlanner::SETTING_NAME),
+	                          "Leave vertex tables out of the MATCH translation when the query only uses their key, "
+	                          "joining the incident edge tables to each other instead",
 	                          LogicalType::BOOLEAN, Value::BOOLEAN(true));
 	OptimizerExtension extension;
 	extension.optimize_function = FactorizedJoinOptimizer::Optimize;
