@@ -127,6 +127,14 @@ idx_t GetPathFindingEdgeCount(const PathFindingGlobalSinkState &gstate) {
 	return gstate.edge_input ? gstate.endpoint_count : gstate.csr->e.size();
 }
 
+void RecordStrategy(ClientContext &context, const string &key, const string &value) {
+	GetDuckPGQState(context)->RecordPathFindingStrategy(key, value);
+}
+
+const char *OrientationName(PathFindingSearchOrientation orientation) {
+	return orientation == PathFindingSearchOrientation::REVERSE ? "reverse" : "forward";
+}
+
 void MarkTransientGlobalCSRForDeletion(PathFindingGlobalSinkState &gstate, ClientContext &context) {
 	if (!gstate.edge_input && !gstate.cached_partitioned_csr_input) {
 		GetDuckPGQState(context)->csr_to_delete.insert(gstate.csr_id);
@@ -627,9 +635,11 @@ bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, const PhysicalPat
 		local_csr_state.rebuild_start_time = end_time;
 		local_csr_state.expected_persistence_generation =
 		    GetPartitionedCSRGeneration(context, local_csr_state.cache_key);
+		RecordStrategy(context, "csr", "built");
 		return false;
 	}
 
+	RecordStrategy(context, "csr", cached_index->persisted_generation > 0 ? "persisted" : "cached");
 	local_csr_state.partition_csrs = cached_index->forward_partitions;
 	local_csr_state.reverse_partition_csrs = cached_index->reverse_partitions;
 	local_csr_state.pull_partition_csrs = cached_index->pull_partitions;
@@ -843,7 +853,9 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
                                                        Pipeline &pipeline, Event &event, const PhysicalPathFinding &op,
                                                        ClientContext &context) {
 	vector<shared_ptr<Event>> batch_events;
+	RecordStrategy(context, "batches", std::to_string(batches.size()));
 	if (!ShouldUseGroupedIterativeLengthBatches(gstate, context, batches.size())) {
+		RecordStrategy(context, "scheduling", "per_batch");
 		batch_events.reserve(batches.size());
 		for (auto &batch : batches) {
 			batch_events.push_back(CreateBFSEventForMode(gstate, batch, pipeline, &op, context));
@@ -853,6 +865,9 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 
 	auto workers_per_batch = GetGroupedWorkersPerBatch(gstate, context);
 	auto group_count = GetGroupedBatchCount(gstate, context, workers_per_batch, batches.size());
+	RecordStrategy(context, "scheduling", "grouped");
+	RecordStrategy(context, "groups", std::to_string(group_count));
+	RecordStrategy(context, "workers_per_batch", std::to_string(workers_per_batch));
 	vector<shared_ptr<IterativeLengthState>> iterative_states;
 	iterative_states.reserve(batches.size());
 
@@ -885,6 +900,7 @@ public:
 		auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
 		                           ? gstate.local_csr_state->reverse_partition_csrs
 		                           : gstate.local_csr_state->partition_csrs;
+		RecordStrategy(context, "source_groups", std::to_string(gstate.source_group_sources.size()));
 		for (idx_t group_idx = 0; group_idx < gstate.source_group_sources.size(); group_idx++) {
 			auto state = make_shared_ptr<SourceGroupedIterativeLengthState>(
 			    context, gstate.source_group_sources[group_idx], partition_csrs, gstate.num_threads,
@@ -1269,6 +1285,7 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
                                                        Event &event, const PhysicalPathFinding &op,
                                                        ClientContext &context) {
 	auto start_time = std::chrono::steady_clock::now();
+	RecordStrategy(context, "scheduling", "source_grouped");
 	int64_t single_source;
 	if (TryGetExactSingleSearchSource(gstate, single_source)) {
 		auto output_chunk_count = gstate.global_output_batches.size();
@@ -1423,6 +1440,9 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 	gstate.search_orientation = ChooseSupportedSearchOrientation(gstate, context);
 
 	auto duplicate_count = input_count - unique_source_rows.size();
+	RecordStrategy(context, "orientation", OrientationName(gstate.search_orientation));
+	RecordStrategy(context, "dedupe", "true");
+	RecordStrategy(context, "duplicate_pairs", std::to_string(duplicate_count));
 	idx_t remap_memory = 0;
 	if (has_duplicates) {
 		for (auto &mapping : gstate.global_output_to_search) {
@@ -1508,6 +1528,13 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	                          gstate.pair_stats.distinct_src_count, gstate.pair_stats.distinct_dst_count,
 	                          std::chrono::duration<double, std::milli>(analysis_end - analysis_start).count(), 0);
 	gstate.search_orientation = ChooseSupportedSearchOrientation(gstate, context);
+	RecordStrategy(context, "mode", gstate.path_finding_mode == PathFindingOperatorMode::ITERATIVE_LENGTH
+	                                    ? "iterativelength"
+	                                    : op.mode);
+	RecordStrategy(context, "pairs", std::to_string(gstate.pair_stats.pair_count));
+	RecordStrategy(context, "distinct_src", std::to_string(gstate.pair_stats.distinct_src_count));
+	RecordStrategy(context, "distinct_dst", std::to_string(gstate.pair_stats.distinct_dst_count));
+	RecordStrategy(context, "orientation", OrientationName(gstate.search_orientation));
 	int64_t single_source;
 	if (ShouldUseSourceGroupedIterativeLength(gstate, context) &&
 	    TryGetExactSingleSearchSource(gstate, single_source)) {
@@ -1851,6 +1878,7 @@ void PathFindingGlobalSinkState::Sink(DataChunk &input, PathFindingLocalSinkStat
 
 unique_ptr<GlobalSinkState> PhysicalPathFinding::GetGlobalSinkState(ClientContext &context) const {
 	D_ASSERT(!sink_state);
+	GetDuckPGQState(context)->ResetPathFindingStrategy();
 	return make_uniq<PathFindingGlobalSinkState>(context, *this);
 }
 

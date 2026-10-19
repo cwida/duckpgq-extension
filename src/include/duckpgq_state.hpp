@@ -26,6 +26,11 @@ public:
 	void PutPartitionedCSR(const string &cache_key, shared_ptr<PartitionedCSRIndex> index);
 	void ErasePartitionedCSR(const string &cache_key);
 
+	//! Execution decisions of the most recent path-finding operator in this connection, for benchmark harnesses
+	void ResetPathFindingStrategy();
+	void RecordPathFindingStrategy(const string &key, const string &value);
+	string GetPathFindingStrategy();
+
 	void RetrievePropertyGraphs(const shared_ptr<Connection> &context);
 	void ProcessPropertyGraphs(ClientContext &context, unique_ptr<QueryResult> &property_graphs, bool is_vertex);
 	void PopulateEdgeSpecificFields(unique_ptr<DataChunk> &chunk, idx_t row_idx, PropertyGraphTable &table);
@@ -50,6 +55,10 @@ public:
 	//! automatic caching for property-graph queries.
 	std::unordered_map<string, shared_ptr<PartitionedCSRIndex>> partitioned_csr_cache;
 	std::mutex partitioned_csr_cache_lock;
+
+	//! key=value pairs in the order they were recorded, see duckpgq_path_finding_strategy()
+	vector<std::pair<string, string>> path_finding_strategy;
+	std::mutex path_finding_strategy_lock;
 };
 
 } // namespace duckdb

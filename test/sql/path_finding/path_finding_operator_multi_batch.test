@@ -27,8 +27,12 @@ EDGE TABLES (
                LABEL Edge
 );
 
-# 100 x 100 = 10000 candidate pairs, i.e. five BFS batches of 2048 pairs.
+# 100 x 100 = 10000 candidate pairs, i.e. five BFS batches of 2048 pairs. Source grouping is disabled so that the
+# regular batched MS-BFS runs.
 # 5050 pairs are reachable (including 100 zero-length self pairs); sum of lengths = sum_{k=1}^{99} k * (100 - k) = 166650.
+statement ok
+SET experimental_path_finding_operator_source_group_ratio = 0;
+
 loop i 0 3
 
 query II
@@ -41,6 +45,32 @@ FROM GRAPH_TABLE (chain_graph
 5050	166650
 
 endloop
+
+# The decisions the operator took are available to benchmark harnesses.
+query I
+SELECT s LIKE '%orientation=forward%' AND s LIKE '%scheduling=grouped%' AND s LIKE '%batches=5%' AND s LIKE '%csr=%'
+FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# With the default ratio, 10000 pairs over 100 sources run source-grouped instead.
+statement ok
+SET experimental_path_finding_operator_source_group_ratio = 4;
+
+query II
+SELECT count(*), sum(len)
+FROM GRAPH_TABLE (chain_graph
+    MATCH p = ANY SHORTEST (a:Vertex)-[e:Edge]->*(b:Vertex)
+    COLUMNS (a.id AS src, b.id AS dst, path_length(p) AS len)
+);
+----
+5050	166650
+
+query I
+SELECT s LIKE '%scheduling=source_grouped%' AND s LIKE '%source_groups=100%'
+FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
 
 # The operator agrees with the SQL rewrite.
 statement ok

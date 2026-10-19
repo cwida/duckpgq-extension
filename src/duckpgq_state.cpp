@@ -274,4 +274,32 @@ void DuckPGQState::ErasePartitionedCSR(const string &cache_key) {
 	partitioned_csr_cache.erase(cache_key);
 }
 
+void DuckPGQState::ResetPathFindingStrategy() {
+	lock_guard<mutex> lock(path_finding_strategy_lock);
+	path_finding_strategy.clear();
+}
+
+void DuckPGQState::RecordPathFindingStrategy(const string &key, const string &value) {
+	lock_guard<mutex> lock(path_finding_strategy_lock);
+	for (auto &entry : path_finding_strategy) {
+		if (entry.first == key) {
+			entry.second = value;
+			return;
+		}
+	}
+	path_finding_strategy.emplace_back(key, value);
+}
+
+string DuckPGQState::GetPathFindingStrategy() {
+	lock_guard<mutex> lock(path_finding_strategy_lock);
+	string result;
+	for (auto &entry : path_finding_strategy) {
+		if (!result.empty()) {
+			result += ";";
+		}
+		result += entry.first + "=" + entry.second;
+	}
+	return result;
+}
+
 } // namespace duckdb
