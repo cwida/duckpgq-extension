@@ -6,7 +6,7 @@ Windows MSVC fails on `__builtin_ctz`); nothing after that has been built on Lin
 
 ## 1. Target and thesis
 
-**Target venue (decision open, recommendation: VLDB, 1 February round).**
+**Target venue: PVLDB Vol. 20 / VLDB 2027, 1 February 2027 round (decided 20 Oct; abstract 25 January).** The SIGMOD notes below stay as the fallback if the February round slips.
 - PVLDB Vol. 20 / VLDB 2027: rolling deadlines, abstract on the 25th of the month before, paper on the 1st of
   every month until **1 March 2027**; notification by the 15th of the following month; one revision round with
   up to 2.5 months; 12 pages + references; single-blind (names on the paper); code/data in a public archival
@@ -166,7 +166,7 @@ time) are now the critical path and depend on EC2 access and the author's hours.
 
 | Week | Dates | Engineering (Claude) | Evaluation / writing (author) |
 |------|-------|----------------------|-------------------------------|
-| 1 | 19-25 Oct | done: W1-W6, W8-W11, W14, W26; branch pushed for Linux CI 20 Oct; next: W7 path reconstruction | Review design doc decisions D2-D5; decide venue; W18 Neo4j Enterprise request; start W22 outline |
+| 1 | 19-25 Oct | done: W1-W6, W8-W11, W14, W26; branch pushed for Linux CI 20 Oct; next: W7 path reconstruction | Venue decided (VLDB); review design doc decisions D2-D5; W18 Neo4j Enterprise request; start W22 outline |
 | 2 | 26 Oct-1 Nov | W7 path reconstruction | W17 end-to-end LDBC queries into the harness; W21 archive setup |
 | 3 | 2-8 Nov | W7 done; W15 remaining tests (restart under load, concurrent writers) | Tag frozen commit; first read-only sweep on EC2 (W19 part 1) |
 | 4 | 9-15 Nov | W12 cost-based choice + W13 model skeleton; fixes from the sweep | **Checkpoint 13 Nov**: sweep results reviewed; related work (W22) |
@@ -220,7 +220,7 @@ time) are now the critical path and depend on EC2 access and the author's hours.
 ## 9. Open decisions
 
 - Path reconstruction is in scope (decided 19 Oct): the paper is about paths, not distances. Weighted (cheapest) paths are future work; the index keeps edge row ids so weights can be looked up later.
-- Venue: VLDB 1 February (recommended) vs SIGMOD Round 1.
+- Venue: VLDB, 1 February 2027 round (decided 20 Oct). SIGMOD 2028 Round 1 is the fallback.
 - Design decisions D2-D5 in `docs/CSR_INDEX_DESIGN.md` (epoch retention without an oldest-active-bound accessor;
   8 B row ids per edge; fold ratio 0.1; undirected as an index option). D1 (keys, not row ids) confirmed 19 Oct.
 - Index granularity: per-epoch deltas (implemented) vs per-edge commit stamps (follow-up).
