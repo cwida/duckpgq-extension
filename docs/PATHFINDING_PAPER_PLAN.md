@@ -75,7 +75,7 @@ Key measurements so far are in `docs/CSR_INDEX_DESIGN.md` (sections 5.1, 5.5, 5.
 ### B. Operator functionality
 | # | Gap | Fix |
 |---|-----|-----|
-| B1 (open, W7) | No path reconstruction (`shortestpathoperator` throws; task file commented out) | Implement parent tracking + reconstruction, or scope paper to distances/reachability |
+| B1 (W7 step 1 done) | No path reconstruction (`shortestpathoperator` throws; task file commented out) | Parent tracking in the per-source kernel; index route done, build route open |
 | B2 (fixed W5/W6) | Optimizer rule misses markers (comma join, nested subquery, 3x UNION) -> runtime NotImplemented | Rewrite all markers, drop early `return false`, pre-optimize only |
 | B3 (fixed W5/W6) | Reverse orientation chosen when no reverse CSR exists -> NotImplemented at default settings | Fall back to forward; update test asserting the error |
 | B4 (fixed W5/W6) | Edge rows with NULL keys / dangling FKs fail every operator query (count mismatch) | Count edges through the same join that produces endpoints |
@@ -137,7 +137,7 @@ Effort in person-days (pd). P1 = must for Round 1, P2 = strongly desired, P3 = i
 | W4 | Deterministic strategy choice + logging (A4), gate timing hooks (A5) | op | 1 | P1 | — | done 19 Oct, `879ae6c0`: `duckpgq_path_finding_strategy()` returns mode/pairs/distinct_src/distinct_dst/orientation/scheduling/groups/csr of the last operator; default kernel samples clocks only when benchmark is on (push-pull/bidirectional variants still sample unconditionally) |
 | W5 | Optimizer rule: all markers, forward fallback, alias fix, NULL-key edge count (B2–B5) | planner | 3 | P1 | — | done 19 Oct, `e7c36dad`; left edges `<-[e]-` still unsupported (pre-existing, both paths) |
 | W6 | Bounds checks on pair ids (B6) | op | 0.5 | P1 | — | done 19 Oct, `578baf3c` |
-| W7 | Path reconstruction (B1): per-level frontier bitsets or reverse BFS from destinations; return edge row ids from the packed CSR | op | 5 | P1 | W1–W3 | open |
+| W7 | Path reconstruction (B1). Step 1 done 20 Oct (`af26e5ad`): element_id/vertices/edges via the operator over a CSR index; parent vertex + parent edge per vertex in the source-grouped kernel, paths as [key, edge row id, key, ...], delta edges carry their row ids, MATCH derives path_length/vertices/edges from one shortestpathoperator call. 8M edges: 20 sources x 200 destinations with paths 0.24 s vs 0.22 s lengths; 158k paths from one source 0.43 s. Step 2 open: paths on the build-per-query route (endpoint struct with edge row id, row ids through the radix build); MS-BFS kernel stays length-only | op | 5 | P1 | W1–W3 | step 1 done, step 2 open |
 | W8 | Index design doc + correctness argument (C1, C2) | index | 4 | P1 | — | draft 19 Oct, `docs/CSR_INDEX_DESIGN.md`; awaiting review (decisions marked **D**) |
 | W9 | `IndexType` skeleton: create/bulk build/serialize/load, read-only snapshot (C1) | index | 6 | P1 | W8 | done 19 Oct (`9af62e18`, `16aca50e`, build `337c2ff5`/`6d38d2c9`/`310fb731`; persistence landed in W11) |
 | W10 | Commit-time append delta + tombstones, epoch selection by start time | index | 6 | P1 | W9 | done 19 Oct, see git log (overlay via `CanFetch`; companion delta partitions; lazy tombstone positions; readers older than the epoch still error instead of falling back) |
@@ -271,3 +271,7 @@ run (D7). The August 2026 sweeps did not record their instance type.
   10 tests, 3 scripts and `docs/CSR_PERSISTENCE.md`. Full suite 81/81. Build-per-query on 8M edges without index:
   1 pair 0.21 s, 20 sources 0.47 s (every query now pays the ~0.15 s build; the index path is unchanged).
   Next: W7 path reconstruction.
+- 20 Oct (later): venue decided (VLDB). W7 step 1 (`af26e5ad`): shortest paths over the CSR index through the
+  operator with parent pointers in the source-grouped kernel; row ids exposed on epoch and delta partitions; MATCH
+  routes element_id/vertices/edges/path_length to one shortestpathoperator call. Suite 82/82. Decision: the first
+  sweep is DuckDB-only; next engineering item is the harness index mode, then W7 step 2 (build route).

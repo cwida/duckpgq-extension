@@ -305,6 +305,22 @@ called at every commit, (ii) row ids never being reused while the index exists (
 - **Undirected.** Index option; a directed index is not used for `-[e]-` patterns.
 - **Memory.** Epoch, delta, overlay, and working sets are all buffer-manager allocations.
 
+## 7b. Path reconstruction over the index (W7, 20 Oct)
+
+Paths are produced by the per-source frontier kernel only. Each `SourceGroupedIterativeLengthState` keeps, when the
+query projects a path, `parent_vertex[v]` and `parent_edge[v]`: the vertex and the edge through which `v` was first
+discovered (set by the worker whose compare-and-swap flipped `seen[v]`). Edges are packed as
+`delta_flag << 63 | partition << 32 | offset`, so the result scatter resolves the edge-table row id through the
+partition's `row_ids` array: epoch partitions point at the epoch's `partition_row_ids` (shared, immutable), delta
+partitions own a copy taken from `CSRIndexDeltaEdge.row`, so edges inserted by the reader's own transaction appear
+with their transaction-local row id. The scatter walks the chain from the destination to the group's source and
+emits `[v0, e0, v1, ..., vk]` with vertex keys (`CSRIndexSnapshot::KeyOf`) and edge row ids; MATCH derives
+`path_length(p) = len(path) // 2`, `vertices(p)` and `edges(p)` as the even and odd positions, which matches the
+`shortestpath()` SQL fallback. Path queries force forward orientation and source grouping; the 512-lane MS-BFS kernel
+stays length-only because per-lane parents would cost 512 x V entries. Memory per group: 12 B per vertex.
+Measured on the 8M-edge graph: 20 sources x 200 destinations 0.24 s with paths vs 0.22 s lengths only; all 158,396
+paths from one source 0.43 s.
+
 ## 8. What to measure (feeds the cost model and the evaluation)
 
 First numbers (19 Oct, 8M edges / 2M vertices, 18 threads, single-pair query, whose BFS alone is ~0.12 s):
