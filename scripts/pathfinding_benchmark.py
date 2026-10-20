@@ -1443,19 +1443,49 @@ FROM GRAPH_TABLE(pathfinding_benchmark_pg
 """
 
 
-def cached_operator_sql(options):
+CSR_INDEX_NAME = "pathfinding_benchmark_csr"
+# Key format of the operator's cache-only marker for a CSR index: csr-index|catalog|schema|table|index
+CSR_INDEX_KEY = f"csr-index|ldbc|main|person_knows_person|{CSR_INDEX_NAME}"
+
+
+def create_csr_index_sql(if_not_exists=True):
+    clause = "IF NOT EXISTS " if if_not_exists else ""
+    return f"CREATE INDEX {clause}{CSR_INDEX_NAME} ON ldbc.person_knows_person USING CSR (person1id, person2id);\n"
+
+
+def index_build_sql(options):
+    """Rebuilds the CSR index; the build is the timed statement before the result row."""
+    return f"""
+DROP INDEX IF EXISTS ldbc.main.{CSR_INDEX_NAME};
+{create_csr_index_sql(if_not_exists=False)}
+SELECT 'index_build' AS mode, 0::BIGINT AS pair_count, NULL::BIGINT AS reachable_count,
+       NULL::BIGINT AS total_len, NULL::BIGINT AS min_len, NULL::BIGINT AS max_len;
+"""
+
+
+def index_query_sql(options, mode_label):
+    """Path lengths over the persisted CSR index; pairs are mapped from row ids to vertex keys."""
     pairs = f"ldbc.{options.pair_table}"
-    return operator_settings_sql(options) + f"""
-SELECT 'cached_operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,
+    return operator_settings_sql(options) + create_csr_index_sql() + f"""
+SELECT {sql_string(mode_label)} AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
 FROM (
-    SELECT src, dst, iterativelengthoperator(
-        src, dst,
-        {options.vertex_count}::BIGINT, {options.edge_count}::BIGINT,
-        {sql_string(f"graph:{options.attached_db}")}) AS len
-    FROM {pairs}
+    SELECT iterativelengthoperator(
+        a.id::BIGINT, b.id::BIGINT, 0::BIGINT, 0::BIGINT, {sql_string(CSR_INDEX_KEY)}) AS len
+    FROM {pairs} p
+    JOIN ldbc.person a ON a.rowid = p.src
+    JOIN ldbc.person b ON b.rowid = p.dst
 );
 """
+
+
+def index_operator_sql(options):
+    return index_query_sql(options, "index_operator")
+
+
+def cached_operator_sql(options):
+    # Warm repeats of --mode cached_operator read the persisted CSR index (the in-memory cache was removed)
+    return index_query_sql(options, "cached_operator")
 
 
 def legacy_operator_sql(options):
@@ -1668,6 +1698,10 @@ def benchmark_modes(mode):
         return ["operator", "pushpull_operator", "bidirectional_operator", "scalar", "recursive"]
     if mode == "operator_comparison":
         return ["operator", "legacy_operator"]
+    if mode == "index":
+        return ["index_build", "index_operator"]
+    if mode == "index_comparison":
+        return ["operator", "index_build", "index_operator"]
     return [mode]
 
 
@@ -1676,6 +1710,10 @@ def mode_sql(mode, options):
         return operator_sql(options)
     if mode == "precounted_operator":
         return precounted_operator_sql(options)
+    if mode == "index_build":
+        return index_build_sql(options)
+    if mode == "index_operator":
+        return index_operator_sql(options)
     if mode == "legacy_operator":
         return legacy_operator_sql(options)
     if mode == "bidirectional_operator":
@@ -2890,6 +2928,11 @@ def run_duckpgq_benchmark(args):
                 row["setup_s"] = f"{sum(timers[:-1]):.6f}"
                 row["csr_build_s"] = f"{timers[-1]:.6f}"
                 row["query_s"] = f"{timers[-1]:.6f}"
+            elif mode == "index_build":
+                # DROP INDEX, CREATE INDEX, result row: the CREATE INDEX statement is the build
+                row["setup_s"] = f"{sum(timers[:-2]):.6f}"
+                row["csr_build_s"] = f"{timers[-2]:.6f}"
+                row["query_s"] = f"{timers[-2]:.6f}"
             else:
                 row["setup_s"] = f"{sum(timers[:-1]):.6f}"
                 row["csr_build_s"] = ""
@@ -3419,6 +3462,8 @@ def main():
         choices=[
             "operator",
             "precounted_operator",
+            "index_build",
+            "index_operator",
             "cached_operator",
             "sql_match_cache",
             "legacy_operator",
@@ -3431,6 +3476,8 @@ def main():
             "operators",
             "all",
             "operator_comparison",
+            "index",
+            "index_comparison",
         ],
         default="both",
     )
