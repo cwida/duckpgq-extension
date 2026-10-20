@@ -201,7 +201,6 @@ public:
 	int32_t csr_id;
 	size_t child;
 	string mode;
-	string base_cache_key;
 	PathFindingOperatorMode path_finding_mode;
 	PathFindingSearchOrientation search_orientation;
 	ClientContext &context_;

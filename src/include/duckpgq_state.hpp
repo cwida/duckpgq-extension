@@ -22,9 +22,6 @@ public:
 	//! Fills in the default catalog and schema, deciding whether a lone qualifier is a schema or a catalog.
 	static QualifiedName ResolvePropertyGraphName(ClientContext &context, const QualifiedName &pg_name);
 	CSR *GetCSR(int32_t id);
-	shared_ptr<PartitionedCSRIndex> GetPartitionedCSR(const string &cache_key);
-	void PutPartitionedCSR(const string &cache_key, shared_ptr<PartitionedCSRIndex> index);
-	void ErasePartitionedCSR(const string &cache_key);
 
 	//! Execution decisions of the most recent path-finding operator in this connection, for benchmark harnesses
 	void ResetPathFindingStrategy();
@@ -48,13 +45,6 @@ public:
 	std::unordered_map<int32_t, unique_ptr<CSR>> csr_list;
 	std::mutex csr_lock;
 	std::unordered_set<int32_t> csr_to_delete;
-
-	//! Reusable final path-finding indexes.
-	//! TODO(dtenwolde): Add table-update triggers or equivalent structural versions that
-	//! invalidate affected entries, including transaction-local writes, before enabling
-	//! automatic caching for property-graph queries.
-	std::unordered_map<string, shared_ptr<PartitionedCSRIndex>> partitioned_csr_cache;
-	std::mutex partitioned_csr_cache_lock;
 
 	//! key=value pairs in the order they were recorded, see duckpgq_path_finding_strategy()
 	vector<std::pair<string, string>> path_finding_strategy;

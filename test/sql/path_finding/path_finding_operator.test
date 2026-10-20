@@ -105,7 +105,7 @@ SELECT src, dst, bidirectionaliterativelengthoperator(src, dst, csr_id) AS len F
 3	8	3
 4	9	3
 
-# Explicit cache keys opt into reusing the completed partitioned CSR across queries.
+# The benchmark CSV records one CSR build per query.
 statement ok
 set experimental_path_finding_operator_benchmark=true;
 
@@ -144,30 +144,13 @@ SELECT src, dst, len FROM cached_path_lengths ORDER BY src, dst;
 3	8	3
 4	9	3
 
-# The cache-only marker has no graph endpoint child. It must reuse the published PartitionCSR.
-statement ok
-CREATE TEMP VIEW cached_only_path_lengths AS
-SELECT src, dst, iterativelengthoperator(
-        src, dst,
-        10::BIGINT, 20::BIGINT,
-        'test-person-forward') AS len
-FROM pairs;
-
-query III
-SELECT src, dst, len FROM cached_only_path_lengths ORDER BY src, dst;
-----
-0	5	3
-1	6	3
-2	7	3
-3	8	3
-4	9	3
-
+# Every query builds its own CSR; the key only names the graph. Both runs of the view built one.
 query I
-SELECT count(*) > 0
+SELECT count(*)
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_benchmark_phase_timing.csv')
-WHERE Phase = 'partitioned_csr_cache_hit';
+WHERE Phase = 'partitioned_csr_build';
 ----
-true
+2
 
 # One exact source keeps the original pair chunks. It must preserve duplicate rows and input order.
 statement ok
@@ -280,7 +263,7 @@ FROM (
     FROM pairs
 );
 ----
-Constraint Error: Cached PartitionCSR not found for cache key 'test-person-cache-miss'; build it before using the cache-only path
+Constraint Error: The cache-only path-finding form needs a CSR index; no index snapshot was found for key 'test-person-cache-miss'
 
 # The metadata-driven count phase must also initialize an empty graph without receiving an endpoint chunk.
 query II

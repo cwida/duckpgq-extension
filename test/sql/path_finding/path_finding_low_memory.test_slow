@@ -18,9 +18,6 @@ statement ok
 SET experimental_path_finding_operator = true;
 
 statement ok
-SET experimental_persist_csr = false;
-
-statement ok
 CREATE TABLE low_memory_vertex AS
 SELECT i::BIGINT AS id
 FROM range(350000) t(i);

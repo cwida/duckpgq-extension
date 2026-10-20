@@ -1,5 +1,4 @@
 #include "duckpgq_state.hpp"
-#include "duckpgq/core/operator/partitioned_csr_persistence.hpp"
 
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/main/database_manager.hpp"
@@ -44,7 +43,6 @@ void DuckPGQState::InitializeInternalTable(ClientContext &context) {
 			throw TransactionException(alter->GetError());
 		}
 	}
-	InitializePartitionedCSRPersistence(context);
 }
 
 void DuckPGQState::RetrievePropertyGraphs(const shared_ptr<Connection> &connection) {
@@ -253,25 +251,6 @@ CSR *DuckPGQState::GetCSR(int32_t id) {
 		throw ConstraintException("CSR not found with ID %d", id);
 	}
 	return csr_entry->second.get();
-}
-
-shared_ptr<PartitionedCSRIndex> DuckPGQState::GetPartitionedCSR(const string &cache_key) {
-	lock_guard<mutex> lock(partitioned_csr_cache_lock);
-	auto entry = partitioned_csr_cache.find(cache_key);
-	if (entry == partitioned_csr_cache.end()) {
-		return nullptr;
-	}
-	return entry->second;
-}
-
-void DuckPGQState::PutPartitionedCSR(const string &cache_key, shared_ptr<PartitionedCSRIndex> index) {
-	lock_guard<mutex> lock(partitioned_csr_cache_lock);
-	partitioned_csr_cache[cache_key] = std::move(index);
-}
-
-void DuckPGQState::ErasePartitionedCSR(const string &cache_key) {
-	lock_guard<mutex> lock(partitioned_csr_cache_lock);
-	partitioned_csr_cache.erase(cache_key);
 }
 
 void DuckPGQState::ResetPathFindingStrategy() {

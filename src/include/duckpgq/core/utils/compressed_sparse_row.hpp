@@ -228,8 +228,7 @@ public:
 	idx_t end_vertex;
 };
 
-//! A completed partitioned CSR layout. Instances are immutable after publication
-//! in the connection-local cache and can be shared by subsequent queries.
+//! A completed partitioned CSR layout, immutable once built; CSR index epochs share one between snapshots.
 enum class PartitionedCSRCapabilities : uint8_t {
 	NONE = 0,
 	FORWARD = 1 << 0,
@@ -248,9 +247,6 @@ inline bool HasPartitionedCSRCapabilities(PartitionedCSRCapabilities available, 
 struct PartitionedCSRIndex {
 	idx_t vertex_count = 0;
 	idx_t edge_count = 0;
-	//! Zero denotes a transient index. Persisted indexes carry the registry generation
-	//! that was current when they were published or loaded.
-	uint64_t persisted_generation = 0;
 	PartitionedCSRCapabilities capabilities = PartitionedCSRCapabilities::NONE;
 	std::vector<shared_ptr<LocalCSR>> forward_partitions;
 	std::vector<shared_ptr<LocalCSR>> reverse_partitions;

@@ -9,7 +9,6 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength_bidirectional.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/iterativelength_operator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pagerank.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/partitioned_csr_invalidation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/path_finding_strategy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/csr_index_functions.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reachability.cpp

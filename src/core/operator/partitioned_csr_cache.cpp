@@ -95,17 +95,10 @@ string GetDirectedPathFindingEndpointsSQL(const PropertyGraphTable &edge_table) 
 
 static idx_t GetBufferedPartitionedCSRRequiredPartitionCount(idx_t vertex_count, idx_t thread_count,
                                                              ClientContext &context) {
-	// Persisted geometry is deterministic and independent of the workers that build or
-	// query it. The local 1/4/8/16-thread sweep selected 22 ranges as the smallest
-	// target that keeps warm traversal within 15% of thread-tuned layouts across the
-	// matrix, without the locality and allocation cost of the old fixed-256 target.
-	// Larger vertex spans still add ranges to keep uint16 destinations valid; tiny
-	// spans naturally materialize fewer ranges. Transient indexes remain thread-tuned.
-	static constexpr idx_t PERSISTED_PARALLEL_PARTITION_TARGET = 22;
+	// Thread-tuned geometry; larger vertex spans add ranges to keep uint16 destinations valid and tiny spans
+	// naturally materialize fewer ranges.
 	auto target_partition_count =
-	    GetPersistCSROption(context)
-	        ? PERSISTED_PARALLEL_PARTITION_TARGET
-	        : std::max<idx_t>(1, thread_count) * (1 + std::max<int32_t>(1, GetLightPartitionMultiplier(context)));
+	    std::max<idx_t>(1, thread_count) * (1 + std::max<int32_t>(1, GetLightPartitionMultiplier(context)));
 	auto minimum_partition_count = std::max<idx_t>(1, (vertex_count + 2 + UINT16_MAX - 1) / UINT16_MAX);
 	auto maximum_partition_count = RadixPartitioning::NumberOfPartitions(RadixPartitioning::MAX_RADIX_BITS);
 	if (minimum_partition_count > maximum_partition_count) {
@@ -136,17 +129,6 @@ idx_t GetBufferedPartitionedCSRWidth(idx_t vertex_count, idx_t thread_count, Cli
 idx_t GetBufferedPartitionedCSRLogicalPartitionCount(idx_t vertex_count, idx_t thread_count, ClientContext &context) {
 	auto partition_width = GetBufferedPartitionedCSRWidth(vertex_count, thread_count, context);
 	return std::max<idx_t>(1, (vertex_count + 2 + partition_width - 1) / partition_width);
-}
-
-string GetBufferedPartitionedCSRLogicalKey(const string &base_cache_key) {
-	if (base_cache_key.empty()) {
-		return string();
-	}
-
-	std::ostringstream key;
-	key << "partitioned-csr-logical-v1|graph=" << base_cache_key.size() << ":" << base_cache_key;
-	key << "|layout=destination-partitioned";
-	return key.str();
 }
 
 } // namespace duckdb

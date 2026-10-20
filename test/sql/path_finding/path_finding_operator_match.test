@@ -71,25 +71,25 @@ FROM GRAPH_TABLE(operator_pg
 ----
 4
 
-# The second directed query uses a one-child cache-only plan.
+# Without a CSR index every query partitions the endpoints and builds its own CSR.
 query I
 SELECT count(*)
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
 WHERE Phase = 'endpoint_radix_partition';
 ----
-1
+2
 
 query I
 SELECT count(*)
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
 WHERE Phase = 'endpoint_partition_build';
 ----
-1
+2
 
 # The direct builder retains one packed 64-bit endpoint per graph edge and
 # creates only the logical destination partitions needed by this graph.
 query II
-SELECT MemoryBytes, PartitionCount
+SELECT DISTINCT MemoryBytes, PartitionCount
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
 WHERE Phase = 'endpoint_radix_partition';
 ----
@@ -108,14 +108,14 @@ WHERE Phase IN (
 	'csr_build_buffer_manager_swap_peak_delta'
 );
 ----
-6
+12
 
 query I
 SELECT count(*)
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
-WHERE Phase = 'partitioned_csr_cache_hit';
+WHERE Phase = 'partitioned_csr_build';
 ----
-1
+2
 
 # Undirected syntax supplies both endpoint orientations to the same operator.
 query II
@@ -163,13 +163,13 @@ FROM GRAPH_TABLE(operator_pg
 ----
 9	10	0	2	2
 
-# The projected path length must still use the operator and the cached CSR.
+# The projected path length must still use the operator; every query builds its own CSR.
 query I
 SELECT count(*)
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
-WHERE Phase = 'partitioned_csr_cache_hit';
+WHERE Phase = 'partitioned_csr_build';
 ----
-4
+6
 
 # This phase is only written by the physical operator.
 query I

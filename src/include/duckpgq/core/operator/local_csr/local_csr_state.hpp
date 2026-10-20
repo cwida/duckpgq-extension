@@ -75,11 +75,9 @@ public:
 	bool build_pull_csr;
 	bool finalize_sparse_rows;
 	bool benchmark_enabled;
+	//! Set when the partitions come from a CSR index snapshot instead of a build for this query
 	bool loaded_from_cache = false;
-	bool published_to_cache = false;
-	bool rebuild_timing_started = false;
-	uint64_t expected_persistence_generation = 0;
-	string cache_key;
+	bool build_timing_started = false;
 	string benchmark_output_prefix;
 	string benchmark_run_id;
 	std::chrono::steady_clock::time_point forward_start_time;
@@ -88,7 +86,7 @@ public:
 	std::chrono::steady_clock::time_point reverse_end_time;
 	std::chrono::steady_clock::time_point pull_start_time;
 	std::chrono::steady_clock::time_point pull_end_time;
-	std::chrono::steady_clock::time_point rebuild_start_time;
+	std::chrono::steady_clock::time_point build_start_time;
 };
 
 } // namespace duckdb

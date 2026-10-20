@@ -3,7 +3,6 @@
 #include "duckpgq/parser/parsed_data/drop_property_graph_info.hpp"
 #include <duckpgq/core/functions/table.hpp>
 #include <duckpgq/core/parser/duckpgq_parser.hpp>
-#include <duckpgq/core/operator/partitioned_csr_persistence.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include "duckdb/main/connection_manager.hpp"
 
@@ -45,7 +44,6 @@ void DropPropertyGraphFunction::DropPropertyGraphFunc(ClientContext &context, Ta
 		}
 		throw BinderException("Property graph %s does not exist.", pg_info->GetQualifiedName().ToString());
 	}
-	DropPartitionedCSRArtifacts(context, *property_graph);
 
 	for (auto &connection : ConnectionManager::Get(*context.db).GetConnectionList()) {
 		auto local_state = connection->registered_state->Get<DuckPGQState>("duckpgq");

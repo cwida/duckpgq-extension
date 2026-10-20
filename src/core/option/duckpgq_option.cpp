@@ -9,18 +9,6 @@ bool GetPathFindingOption(ClientContext &context) {
 	return value.GetValue<bool>();
 }
 
-bool GetPersistCSROption(ClientContext &context) {
-	Value value;
-	context.TryGetCurrentSetting("experimental_persist_csr", value);
-	return value.GetValue<bool>();
-}
-
-bool GetBuildCSROnCreateOption(ClientContext &context) {
-	Value value;
-	context.TryGetCurrentSetting("experimental_build_csr_on_create", value);
-	return value.GetValue<bool>();
-}
-
 int32_t GetPathFindingTaskSize(ClientContext &context) {
 	Value value;
 	context.TryGetCurrentSetting("experimental_path_finding_operator_task_size", value);
@@ -120,30 +108,6 @@ void CorePGQOptions::RegisterExperimentalPathFindingOperator(ExtensionLoader &lo
 	config.AddExtensionOption("experimental_path_finding_operator",
 	                          "Enables the experimental path finding operator to be triggered", LogicalType::BOOLEAN,
 	                          Value(false));
-}
-
-//------------------------------------------------------------------------------
-// Register option
-//------------------------------------------------------------------------------
-void CorePGQOptions::RegisterPersistCSR(ExtensionLoader &loader) {
-	auto &db = loader.GetDatabaseInstance();
-	auto &config = DBConfig::GetConfig(db);
-
-	config.AddExtensionOption("experimental_persist_csr",
-	                          "Load and persist completed path-finding CSR indexes across database sessions",
-	                          LogicalType::BOOLEAN, Value(false));
-}
-
-//------------------------------------------------------------------------------
-// Register option
-//------------------------------------------------------------------------------
-void CorePGQOptions::RegisterBuildCSROnCreate(ExtensionLoader &loader) {
-	auto &db = loader.GetDatabaseInstance();
-	auto &config = DBConfig::GetConfig(db);
-
-	config.AddExtensionOption("experimental_build_csr_on_create",
-	                          "Eagerly build eligible path-finding CSR indexes when a property graph is created",
-	                          LogicalType::BOOLEAN, Value(false));
 }
 
 //------------------------------------------------------------------------------

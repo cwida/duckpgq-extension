@@ -17,8 +17,6 @@
 #include "duckdb/main/extension_callback_manager.hpp"
 #include <duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp>
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
-#include <duckpgq/core/operator/partitioned_csr_cache.hpp>
-#include <duckpgq/core/operator/partitioned_csr_persistence.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <duckpgq_state.hpp>
@@ -310,48 +308,20 @@ FindBufferedEdgesAndPairs(unique_ptr<LogicalOperator> &root, LogicalProjection &
 		throw BinderException("Could not identify buffered path-finding inputs");
 	}
 
-	auto base_cache_key = GetPathFindingCacheKey(*path_function);
-	auto full_cache_key = GetBufferedPartitionedCSRLogicalKey(base_cache_key);
-	auto cached_index = full_cache_key.empty() ? nullptr : GetDuckPGQState(context)->GetPartitionedCSR(full_cache_key);
-	auto cache_hit = cached_index && cached_index->vertex_count == static_cast<idx_t>(vertex_count_value) + 2 &&
-	                 cached_index->edge_count == static_cast<idx_t>(edge_count_value) &&
-	                 HasPartitionedCSRCapabilities(cached_index->capabilities, PartitionedCSRCapabilities::FORWARD);
-	if (cache_hit && GetPersistCSROption(context) && cached_index->persisted_generation == 0) {
-		GetDuckPGQState(context)->ErasePartitionedCSR(full_cache_key);
-		cache_hit = false;
-	}
-	if (cache_hit && IsExplicitPartitionedCSRTransaction(context)) {
-		cache_hit = false;
-	}
-	if (cache_hit && cached_index->persisted_generation > 0 &&
-	    !IsPersistedPartitionedCSRCurrent(context, full_cache_key, *cached_index)) {
-		GetDuckPGQState(context)->ErasePartitionedCSR(full_cache_key);
-		cache_hit = false;
-	}
-
 	vector<unique_ptr<LogicalOperator>> path_finding_children;
 	path_finding_children.push_back(std::move(inputs[pair_index]));
-	if (!cache_hit) {
-		path_finding_children.push_back(std::move(inputs[edge_index]));
-	}
+	path_finding_children.push_back(std::move(inputs[edge_index]));
 	vector<unique_ptr<Expression>> path_finding_expressions;
 	unique_ptr<Expression> function_expression;
 	string mode;
 	vector<idx_t> offsets;
 	string cache_key;
 	ReplaceExpressions(projection, function_expression, mode, offsets, cache_key);
-	if (cache_hit) {
-		// Keep the registered six-argument function shape serializable while removing the endpoint binding whose
-		// input was removed. The physical path-finding operator never evaluates this placeholder.
-		auto &function_children = function_expression->Cast<BoundFunctionExpression>().GetChildrenMutable();
-		function_children[2] = make_uniq<BoundConstantExpression>(Value(function_children[2]->GetReturnType()));
-	}
 	auto max_depth = GetPathFindingMaxDepth(context, *function_expression);
 	path_finding_expressions.push_back(std::move(function_expression));
-	auto result = make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions, mode,
-	                                                    projection.table_index, offsets, std::move(cache_key),
-	                                                    !cache_hit, false, static_cast<idx_t>(vertex_count_value),
-	                                                    static_cast<idx_t>(edge_count_value), cache_hit, !cache_hit);
+	auto result = make_uniq<LogicalPathFindingOperator>(
+	    path_finding_children, path_finding_expressions, mode, projection.table_index, offsets, std::move(cache_key),
+	    true, false, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value), false, true);
 	result->max_depth = max_depth;
 	return result;
 }

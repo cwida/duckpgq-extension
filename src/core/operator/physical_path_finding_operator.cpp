@@ -3,7 +3,6 @@
 #include "duckpgq/common.hpp"
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
 #include <duckpgq/core/operator/partitioned_csr_cache.hpp>
-#include <duckpgq/core/operator/partitioned_csr_persistence.hpp>
 
 #include "duckdb/common/types/column/column_data_collection.hpp"
 #include "duckdb/common/radix_partitioning.hpp"
@@ -708,37 +707,8 @@ void ConfigureLocalCSRStateForMode(LocalCSRState &local_csr_state, PathFindingOp
 	}
 }
 
-PartitionedCSRCapabilities GetRequiredPartitionedCSRCapabilities(const LocalCSRState &local_csr_state) {
-	auto result = PartitionedCSRCapabilities::NONE;
-	if (local_csr_state.build_forward_csr) {
-		result = result | PartitionedCSRCapabilities::FORWARD;
-	}
-	if (local_csr_state.build_reverse_csr) {
-		result = result | PartitionedCSRCapabilities::REVERSE;
-	}
-	if (local_csr_state.build_pull_csr) {
-		result = result | PartitionedCSRCapabilities::PULL;
-	}
-	return result;
-}
-
-string GetPartitionedCSRCacheKey(const PhysicalPathFinding &op, const PathFindingGlobalSinkState &gstate) {
-	if (op.cache_key.empty()) {
-		return string();
-	}
-	if (gstate.cached_partitioned_csr_input || gstate.precounted_edge_input || gstate.buffered_edge_input) {
-		return GetBufferedPartitionedCSRLogicalKey(op.cache_key);
-	}
-
-	std::ostringstream key;
-	key << "partitioned-csr-logical-v1|graph=" << op.cache_key.size() << ":" << op.cache_key;
-	key << "|vertices=" << GetPathFindingVSize(gstate) << "|edges=" << GetPathFindingEdgeCount(gstate);
-	key << "|layout=" << (gstate.edge_input ? "segmented-endpoints" : "global-csr");
-	return key.str();
-}
-
-bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, const PhysicalPathFinding &op,
-                           LocalCSRState &local_csr_state, ClientContext &context) {
+//! Uses the CSR index snapshot when the query has one; otherwise the CSR is built for this query
+bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, LocalCSRState &local_csr_state, ClientContext &context) {
 	if (gstate.index_snapshot) {
 		local_csr_state.partition_csrs = gstate.index_snapshot->partitions;
 		local_csr_state.partition_delta_csrs = gstate.index_snapshot->delta_partitions;
@@ -747,137 +717,24 @@ bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, const PhysicalPat
 		RecordStrategy(context, "csr", "index");
 		return true;
 	}
-	local_csr_state.cache_key = GetPartitionedCSRCacheKey(op, gstate);
-	if (local_csr_state.cache_key.empty()) {
-		return false;
-	}
-
-	auto lookup_start_time = std::chrono::steady_clock::now();
-	auto duckpgq_state = GetDuckPGQState(context);
-	auto cached_index = duckpgq_state->GetPartitionedCSR(local_csr_state.cache_key);
-	auto required_capabilities = GetRequiredPartitionedCSRCapabilities(local_csr_state);
-	if (cached_index && GetPersistCSROption(context) && cached_index->persisted_generation == 0) {
-		duckpgq_state->ErasePartitionedCSR(local_csr_state.cache_key);
-		cached_index.reset();
-	}
-	if (IsExplicitPartitionedCSRTransaction(context)) {
-		cached_index.reset();
-	}
-	if (cached_index && cached_index->persisted_generation > 0 &&
-	    !IsPersistedPartitionedCSRCurrent(context, local_csr_state.cache_key, *cached_index)) {
-		duckpgq_state->ErasePartitionedCSR(local_csr_state.cache_key);
-		cached_index.reset();
-	}
-	if (IsPartitionedCSRInvalidated(context, local_csr_state.cache_key)) {
-		cached_index.reset();
-	}
-	auto metadata_end_time = std::chrono::steady_clock::now();
-	auto metadata_ms = std::chrono::duration<double, std::milli>(metadata_end_time - lookup_start_time).count();
-	AppendOperatorPhaseTiming(context, "partitioned_csr_metadata_lookup", gstate.num_threads,
-	                          gstate.pair_stats.pair_count, GetPathFindingEdgeCount(gstate), 0, metadata_ms, 0);
-
-	if ((!cached_index || cached_index->vertex_count != GetPathFindingVSize(gstate) ||
-	     cached_index->edge_count != GetPathFindingEdgeCount(gstate) ||
-	     !HasPartitionedCSRCapabilities(cached_index->capabilities, required_capabilities)) &&
-	    GetPersistCSROption(context) && !IsExplicitPartitionedCSRTransaction(context)) {
-		auto load_start_time = std::chrono::steady_clock::now();
-		cached_index = TryLoadPersistedPartitionedCSR(context, local_csr_state.cache_key, GetPathFindingVSize(gstate),
-		                                              GetPathFindingEdgeCount(gstate), required_capabilities);
-		auto load_end_time = std::chrono::steady_clock::now();
-		auto load_ms = std::chrono::duration<double, std::milli>(load_end_time - load_start_time).count();
-		AppendOperatorPhaseTiming(context, "partitioned_csr_deserialize_load", gstate.num_threads,
-		                          gstate.pair_stats.pair_count, GetPathFindingEdgeCount(gstate),
-		                          cached_index ? cached_index->forward_partitions.size() : 0, load_ms, 0);
-		if (cached_index) {
-			duckpgq_state->PutPartitionedCSR(local_csr_state.cache_key, cached_index);
-		}
-	}
-	auto end_time = std::chrono::steady_clock::now();
-	auto lookup_ms = std::chrono::duration<double, std::milli>(end_time - lookup_start_time).count();
-	if (!cached_index || cached_index->vertex_count != GetPathFindingVSize(gstate) ||
-	    cached_index->edge_count != GetPathFindingEdgeCount(gstate) ||
-	    !HasPartitionedCSRCapabilities(cached_index->capabilities, required_capabilities)) {
-		AppendOperatorPhaseTiming(context, "partitioned_csr_cache_miss", gstate.num_threads,
-		                          gstate.pair_stats.pair_count, GetPathFindingEdgeCount(gstate), 0, lookup_ms, 0);
-		local_csr_state.rebuild_timing_started = true;
-		local_csr_state.rebuild_start_time = end_time;
-		local_csr_state.expected_persistence_generation =
-		    GetPartitionedCSRGeneration(context, local_csr_state.cache_key);
-		RecordStrategy(context, "csr", "built");
-		return false;
-	}
-
-	RecordStrategy(context, "csr", cached_index->persisted_generation > 0 ? "persisted" : "cached");
-	local_csr_state.partition_csrs = cached_index->forward_partitions;
-	local_csr_state.reverse_partition_csrs = cached_index->reverse_partitions;
-	local_csr_state.pull_partition_csrs = cached_index->pull_partitions;
-	local_csr_state.forward_build_buffers.clear();
-	local_csr_state.loaded_from_cache = true;
-	AppendOperatorPhaseTiming(context, "partitioned_csr_cache_hit", gstate.num_threads, gstate.pair_stats.pair_count,
-	                          GetPathFindingEdgeCount(gstate),
-	                          local_csr_state.partition_csrs.size() + local_csr_state.reverse_partition_csrs.size() +
-	                              local_csr_state.pull_partition_csrs.size(),
-	                          lookup_ms, 0);
-	return true;
+	local_csr_state.build_timing_started = true;
+	local_csr_state.build_start_time = std::chrono::steady_clock::now();
+	RecordStrategy(context, "csr", "built");
+	return false;
 }
 
-void PublishPartitionedCSR(PathFindingGlobalSinkState &gstate, ClientContext &context) {
+//! Records how long this query spent building its CSR, once the build events have finished
+void RecordPartitionedCSRBuild(PathFindingGlobalSinkState &gstate, ClientContext &context) {
 	auto &local_csr_state = *gstate.local_csr_state;
-	if (local_csr_state.cache_key.empty() || local_csr_state.loaded_from_cache || local_csr_state.published_to_cache) {
+	if (local_csr_state.loaded_from_cache || !local_csr_state.build_timing_started) {
 		return;
 	}
-	// A CSR built in an explicit transaction reflects that transaction's snapshot. It is safe for this traversal,
-	// but publishing it could leak uncommitted rows or revalidate a generation after a newer committed mutation.
-	if (IsPartitionedCSRInvalidated(context, local_csr_state.cache_key) ||
-	    IsExplicitPartitionedCSRTransaction(context)) {
-		return;
-	}
-
-	auto start_time = std::chrono::steady_clock::now();
-	auto index = make_shared_ptr<PartitionedCSRIndex>();
-	index->vertex_count = GetPathFindingVSize(gstate);
-	index->edge_count = GetPathFindingEdgeCount(gstate);
-	index->capabilities = GetRequiredPartitionedCSRCapabilities(local_csr_state);
-	index->forward_partitions = local_csr_state.partition_csrs;
-	index->reverse_partitions = local_csr_state.reverse_partition_csrs;
-	index->pull_partitions = local_csr_state.pull_partition_csrs;
-	if (local_csr_state.rebuild_timing_started) {
-		auto rebuild_end_time = std::chrono::steady_clock::now();
-		auto rebuild_ms =
-		    std::chrono::duration<double, std::milli>(rebuild_end_time - local_csr_state.rebuild_start_time).count();
-		AppendOperatorPhaseTiming(context, "partitioned_csr_rebuild", gstate.num_threads, gstate.pair_stats.pair_count,
-		                          GetPathFindingEdgeCount(gstate), local_csr_state.partition_csrs.size(), rebuild_ms,
-		                          0);
-	}
-	if (GetPersistCSROption(context)) {
-		auto serialize_start_time = std::chrono::steady_clock::now();
-		try {
-			index->persisted_generation =
-			    PersistPartitionedCSR(context, local_csr_state.cache_key, gstate.base_cache_key,
-			                          local_csr_state.expected_persistence_generation, *index);
-		} catch (const TransactionException &) {
-			// A relevant table mutation may race the final registry write. The query-local immutable CSR still belongs
-			// to this query's snapshot, but must not become a committed cache generation.
-			index->persisted_generation = 0;
-		}
-		auto serialize_end_time = std::chrono::steady_clock::now();
-		auto serialize_ms =
-		    std::chrono::duration<double, std::milli>(serialize_end_time - serialize_start_time).count();
-		AppendOperatorPhaseTiming(context, "partitioned_csr_serialize_write", gstate.num_threads,
-		                          gstate.pair_stats.pair_count, GetPathFindingEdgeCount(gstate),
-		                          local_csr_state.partition_csrs.size(), serialize_ms, 0);
-	}
-	if (!GetPersistCSROption(context) || index->persisted_generation > 0) {
-		GetDuckPGQState(context)->PutPartitionedCSR(local_csr_state.cache_key, std::move(index));
-	}
-	local_csr_state.published_to_cache = true;
-	auto end_time = std::chrono::steady_clock::now();
-	auto publish_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-	AppendOperatorPhaseTiming(context, "partitioned_csr_cache_publish", gstate.num_threads,
-	                          gstate.pair_stats.pair_count, GetPathFindingEdgeCount(gstate),
-	                          local_csr_state.partition_csrs.size() + local_csr_state.reverse_partition_csrs.size() +
-	                              local_csr_state.pull_partition_csrs.size(),
-	                          publish_ms, 0);
+	local_csr_state.build_timing_started = false;
+	auto build_end_time = std::chrono::steady_clock::now();
+	auto build_ms =
+	    std::chrono::duration<double, std::milli>(build_end_time - local_csr_state.build_start_time).count();
+	AppendOperatorPhaseTiming(context, "partitioned_csr_build", gstate.num_threads, gstate.pair_stats.pair_count,
+	                          GetPathFindingEdgeCount(gstate), local_csr_state.partition_csrs.size(), build_ms, 0);
 }
 
 shared_ptr<BFSState> CreateBFSStateForMode(PathFindingOperatorMode mode, const shared_ptr<PathFindingBatch> &batch,
@@ -1075,7 +932,7 @@ public:
 	}
 
 	void FinishEvent() override {
-		PublishPartitionedCSR(gstate, context);
+		RecordPartitionedCSRBuild(gstate, context);
 		vector<shared_ptr<Event>> batch_events;
 		batch_events.reserve(gstate.source_group_sources.size());
 		auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
@@ -1153,7 +1010,7 @@ public:
 	}
 
 	void FinishEvent() override {
-		PublishPartitionedCSR(gstate, context);
+		RecordPartitionedCSRBuild(gstate, context);
 		auto batch_events = CreatePathFindingBatchEvents(gstate, batches, *pipeline, *this, op, context);
 		if (!batch_events.empty()) {
 			ScheduleBatchEvents(std::move(batch_events));
@@ -1208,14 +1065,14 @@ void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
 		local_csr_state->build_reverse_csr = true;
 	}
 	gstate.local_csr_state = local_csr_state;
-	if (TryLoadPartitionedCSR(gstate, op, *local_csr_state, context)) {
+	if (TryLoadPartitionedCSR(gstate, *local_csr_state, context)) {
 		event.InsertEvent(make_shared_ptr<PathFindingScheduleEvent>(std::move(batches), gstate, pipeline, op, context));
 		return;
 	}
 	if (gstate.cached_partitioned_csr_input) {
-		throw ConstraintException(
-		    "Cached PartitionCSR not found for cache key '%s'; build it before using the cache-only path",
-		    op.cache_key);
+		throw ConstraintException("The cache-only path-finding form needs a CSR index; no index snapshot was found for "
+		                          "key '%s'",
+		                          op.cache_key);
 	}
 	if (gstate.buffered_edge_input) {
 		SchedulePartitionedEndpointBuildThenPathFinding(gstate, std::move(batches), pipeline, event, op, context);
@@ -1264,14 +1121,14 @@ void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, 
 		local_csr_state->build_reverse_csr = true;
 	}
 	gstate.local_csr_state = local_csr_state;
-	if (TryLoadPartitionedCSR(gstate, op, *local_csr_state, context)) {
+	if (TryLoadPartitionedCSR(gstate, *local_csr_state, context)) {
 		event.InsertEvent(make_shared_ptr<SourceGroupedScheduleEvent>(gstate, pipeline, op, context));
 		return;
 	}
 	if (gstate.cached_partitioned_csr_input) {
-		throw ConstraintException(
-		    "Cached PartitionCSR not found for cache key '%s'; build it before using the cache-only path",
-		    op.cache_key);
+		throw ConstraintException("The cache-only path-finding form needs a CSR index; no index snapshot was found for "
+		                          "key '%s'",
+		                          op.cache_key);
 	}
 	if (gstate.buffered_edge_input) {
 		SchedulePartitionedEndpointBuildThenSourceGrouped(gstate, pipeline, event, op, context);
@@ -2048,7 +1905,6 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 
 	child = 0;
 	mode = op.mode;
-	base_cache_key = op.cache_key;
 	path_finding_mode = ParsePathFindingOperatorMode(mode);
 	search_orientation = PathFindingSearchOrientation::FORWARD;
 }
