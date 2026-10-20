@@ -170,6 +170,7 @@ public:
 		if (source < 0 || source >= v_size) {
 			return;
 		}
+		CheckRowLookupAvailable();
 		seen[source].store(1, std::memory_order_relaxed);
 		distances[source] = 0;
 		frontier_list.push_back(NumericCast<uint32_t>(source));
@@ -186,10 +187,29 @@ public:
 		return distances[target];
 	}
 
-	//! A frontier this small is cheaper to expand by vertex lookups than by a sweep over the partitions
+	//! A frontier this small is cheaper to expand by vertex lookups than by a sweep over the partitions.
+	//! Partitions assembled from streaming segments have no row lookup, so they are always swept.
 	bool UseSparseExpansion() const {
+		if (!row_lookup_available) {
+			return false;
+		}
 		return frontier_list.size() * SPARSE_FRONTIER_DIVISOR < static_cast<idx_t>(v_size);
 	}
+
+	void CheckRowLookupAvailable() {
+		row_lookup_available = true;
+		for (auto &local_csr : local_csrs) {
+			if (local_csr && !local_csr->segments.empty()) {
+				row_lookup_available = false;
+			}
+		}
+		for (auto &delta : delta_csrs) {
+			if (delta && !delta->segments.empty()) {
+				row_lookup_available = false;
+			}
+		}
+	}
+	bool row_lookup_available = true;
 
 	static constexpr idx_t SPARSE_FRONTIER_DIVISOR = 64;
 	static constexpr idx_t FRONTIER_SLICE = 256;

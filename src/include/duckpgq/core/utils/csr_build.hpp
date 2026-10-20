@@ -83,6 +83,7 @@ shared_ptr<LocalCSR> CSREmitSparsePartition(idx_t start_vertex, idx_t end_vertex
 	partition->v_array_size = 0;
 	partition->initialized_e = true;
 	partition->sparse_rows_initialized = true;
+	partition->BuildRowBuckets(vertex_count);
 	return partition;
 }
 

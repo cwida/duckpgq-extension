@@ -77,8 +77,7 @@ public:
 		if (expected_sparse_row_count == DConstants::INVALID_INDEX) {
 			expected_sparse_row_count = 0;
 			for (idx_t source = 0; source < source_count; source++) {
-				if (v[source].load(std::memory_order_relaxed) !=
-				    v[source + 1].load(std::memory_order_relaxed)) {
+				if (v[source].load(std::memory_order_relaxed) != v[source + 1].load(std::memory_order_relaxed)) {
 					expected_sparse_row_count++;
 				}
 			}
@@ -102,14 +101,57 @@ public:
 		v = nullptr;
 		v_array_size = 0;
 		sparse_rows_initialized = true;
+		BuildRowBuckets(source_count);
 	}
 
 	bool HasSparseRows() const {
 		return sparse_rows_initialized;
 	}
 
+	//! Builds the bucket index over the sorted sparse rows. Buckets are source-id ranges of 2^bucket_shift ids,
+	//! sized to hold about two rows each, so looking up a source costs one bucket read and a scan of a few
+	//! adjacent rows instead of a binary search over every row of the partition. Costs ~2 bytes per row.
+	void BuildRowBuckets(idx_t vertex_count) {
+		row_buckets.clear();
+		if (!sparse_rows_initialized || source_vertices.empty()) {
+			return;
+		}
+		idx_t rows = source_vertices.size();
+		idx_t id_range = std::max<idx_t>(vertex_count, static_cast<idx_t>(source_vertices.back()) + 1);
+		uint8_t shift = 0;
+		while (shift < 32 && (id_range >> shift) > rows / 2 + 1) {
+			shift++;
+		}
+		bucket_shift = shift;
+		idx_t bucket_count = (id_range >> shift) + 2;
+		row_buckets.resize(bucket_count);
+		idx_t row = 0;
+		for (idx_t bucket = 0; bucket < bucket_count; bucket++) {
+			while (row < rows && (static_cast<idx_t>(source_vertices[row]) >> shift) < bucket) {
+				row++;
+			}
+			row_buckets[bucket] = static_cast<uint32_t>(row);
+		}
+	}
+
 	idx_t FindSparseRow(idx_t source_vertex) const {
-		auto entry = std::lower_bound(source_vertices.begin(), source_vertices.end(), static_cast<uint32_t>(source_vertex));
+		if (!row_buckets.empty()) {
+			auto bucket = source_vertex >> bucket_shift;
+			if (bucket + 1 >= row_buckets.size()) {
+				return std::numeric_limits<idx_t>::max();
+			}
+			for (idx_t row = row_buckets[bucket]; row < row_buckets[bucket + 1]; row++) {
+				if (source_vertices[row] == source_vertex) {
+					return row;
+				}
+				if (source_vertices[row] > source_vertex) {
+					break;
+				}
+			}
+			return std::numeric_limits<idx_t>::max();
+		}
+		auto entry =
+		    std::lower_bound(source_vertices.begin(), source_vertices.end(), static_cast<uint32_t>(source_vertex));
 		if (entry == source_vertices.end() || *entry != source_vertex) {
 			return std::numeric_limits<idx_t>::max();
 		}
@@ -144,6 +186,9 @@ public:
 	std::vector<uint16_t> e;
 	std::vector<uint32_t> source_vertices;
 	std::vector<uint32_t> row_offsets;
+	//! Bucket index over source_vertices (see BuildRowBuckets); empty means binary search
+	std::vector<uint32_t> row_buckets;
+	uint8_t bucket_shift = 0;
 	idx_t expected_sparse_row_count = DConstants::INVALID_INDEX;
 	std::vector<LocalCSRSegment> segments;
 

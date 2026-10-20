@@ -276,8 +276,8 @@ unique_ptr<IndexBuildBindData> CSRBuildBind(IndexBuildBindInput &input) {
 			throw BinderException("CSR index keys must be plain columns, not expressions");
 		}
 		auto physical = expr->GetReturnType().InternalType();
-		if (!expr->GetReturnType().IsIntegral() || physical == PhysicalType::UINT64 || physical == PhysicalType::INT128 ||
-		    physical == PhysicalType::UINT128) {
+		if (!expr->GetReturnType().IsIntegral() || physical == PhysicalType::UINT64 ||
+		    physical == PhysicalType::INT128 || physical == PhysicalType::UINT128) {
 			throw BinderException("CSR index keys must be integer columns that fit a BIGINT, got %s",
 			                      expr->GetReturnType().ToString());
 		}
@@ -414,8 +414,8 @@ unique_ptr<BoundIndex> CSRIndex::Create(CreateIndexInput &input) {
 	return std::move(index);
 }
 
-shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CSRIndexEdgeList> &lists,
-                                               bool undirected, VisibilityBound bound) {
+shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CSRIndexEdgeList> &lists, bool undirected,
+                                               VisibilityBound bound) {
 	auto epoch = make_shared_ptr<CSRIndexEpoch>();
 	epoch->bound = bound;
 	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
@@ -1394,6 +1394,7 @@ void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
 		partition->v_array_size = 0;
 		partition->initialized_e = true;
 		partition->sparse_rows_initialized = true;
+		partition->BuildRowBuckets(epoch->vertex_count);
 		csr->forward_partitions.push_back(std::move(partition));
 	}
 	epoch->csr = std::move(csr);
