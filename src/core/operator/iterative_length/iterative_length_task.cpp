@@ -18,8 +18,8 @@ namespace duckdb {
 
 namespace {
 
-bool CheckChange(IterativeLengthState &state, std::bitset<LANE_LIMIT> *seen,
-                 std::bitset<LANE_LIMIT> *next, shared_ptr<LocalCSR> &local_csr) {
+bool CheckChange(IterativeLengthState &state, std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next,
+                 shared_ptr<LocalCSR> &local_csr) {
 	bool local_change = false;
 	for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
 		if (next[i].any()) {
@@ -82,8 +82,8 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 	}
 }
 
-void RunExplore(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visit,
-                std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr, const uint64_t *suppressed) {
+void RunExplore(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next,
+                const LocalCSR &local_csr, const uint64_t *suppressed) {
 	if (!state.benchmark_enabled) {
 		Explore(visit, next, local_csr, suppressed);
 		return;
@@ -187,9 +187,10 @@ void RunIteration(IterativeLengthState &state, idx_t worker_id) {
 		if (!local_csr) {
 			throw InternalException("Tried to reference nullptr for LocalCSR");
 		}
-		auto suppressed = partition_idx < static_cast<int64_t>(state.suppressed.size()) && state.suppressed[partition_idx]
-		                      ? state.suppressed[partition_idx]->data()
-		                      : nullptr;
+		auto suppressed =
+		    partition_idx < static_cast<int64_t>(state.suppressed.size()) && state.suppressed[partition_idx]
+		        ? state.suppressed[partition_idx]->data()
+		        : nullptr;
 		RunExplore(state, visit, next, *local_csr, suppressed);
 		// Edges committed after the epoch, for the same destination range
 		if (partition_idx < static_cast<int64_t>(state.delta_csrs.size()) && state.delta_csrs[partition_idx]) {
@@ -244,6 +245,10 @@ void ReachDetect(IterativeLengthState &state) {
 		state.change = false;
 	}
 	state.iter++;
+	// Lanes still active after the bound have no path within it; UnReachableSet marks them NULL
+	if (state.max_depth > 0 && static_cast<idx_t>(state.iter) > state.max_depth) {
+		state.change = false;
+	}
 }
 
 void UnReachableSet(IterativeLengthState &state) {

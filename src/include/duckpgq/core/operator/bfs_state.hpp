@@ -38,8 +38,8 @@ private:
 
 class BFSState : public enable_shared_from_this<BFSState> {
 public:
-	BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_, idx_t num_threads_,
-	         string mode_, ClientContext &context_, int64_t vsize_);
+	BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
+	         idx_t num_threads_, string mode_, ClientContext &context_, int64_t vsize_);
 
 	virtual ~BFSState();
 
@@ -73,6 +73,8 @@ public:
 	shared_ptr<DataChunk> pf_results;
 	LogicalType bfs_type;
 	int64_t iter;
+	//! Stop after this many iterations (0 = unbounded); lanes still active are unreachable within the bound
+	idx_t max_depth = 0;
 	int64_t v_size;
 	bool change;
 	idx_t started_searches;

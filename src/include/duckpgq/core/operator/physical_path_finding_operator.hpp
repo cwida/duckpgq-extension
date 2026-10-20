@@ -64,6 +64,8 @@ public:
 	vector<unique_ptr<Expression>> expressions;
 	string mode; // "iterativelength" or "shortestpath"
 	string cache_key;
+	//! Longest path length a query needs; 0 means unbounded. BFS stops after this many iterations.
+	idx_t max_depth = 0;
 	bool edge_input;
 	bool precounted_edge_input;
 	idx_t precounted_vertex_count;
@@ -169,6 +171,7 @@ public:
 	bool precounted_edge_input;
 	bool cached_partitioned_csr_input;
 	bool buffered_edge_input;
+	idx_t max_depth = 0;
 	//! Set when the operator reads a CSR index: what this query's transaction may traverse
 	shared_ptr<CSRIndexSnapshot> index_snapshot;
 	unique_ptr<RadixPartitionedColumnData> endpoint_partition_data;

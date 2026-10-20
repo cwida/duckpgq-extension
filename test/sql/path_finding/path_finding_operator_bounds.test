@@ -37,3 +37,91 @@ ORDER BY p.src NULLS LAST, p.dst;
 3	3	0
 99	4	NULL
 NULL	1	NULL
+
+# A trailing maximum path length stops the search: 0->4 is 4 hops, so a bound of 3 reports NULL and a bound
+# of 4 still finds it. The constant is bound as a cast in the pre-optimizer pass and folded there.
+statement ok
+CREATE TABLE bounds_pair_depth(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO bounds_pair_depth VALUES (0, 3), (0, 4), (3, 3), (3, 4);
+
+query III
+SELECT p.src, p.dst, iterativelengthoperator(
+        p.src, p.dst,
+        struct_pack(src := e.src, dst := e.dst),
+        5::BIGINT, 4::BIGINT,
+        'bounds-test-depth', 3::BIGINT) AS len
+FROM bounds_pair_depth p, bounds_edge e
+ORDER BY p.src, p.dst;
+----
+0	3	3
+0	4	NULL
+3	3	0
+3	4	1
+
+query III
+SELECT p.src, p.dst, iterativelengthoperator(
+        p.src, p.dst,
+        struct_pack(src := e.src, dst := e.dst),
+        5::BIGINT, 4::BIGINT,
+        'bounds-test-depth-4', 4::BIGINT) AS len
+FROM bounds_pair_depth p, bounds_edge e
+ORDER BY p.src, p.dst;
+----
+0	3	3
+0	4	4
+3	3	0
+3	4	1
+
+# MATCH passes the upper bound of the quantifier to the operator; the result must not change.
+statement ok
+CREATE TABLE bounds_vertex AS SELECT range::BIGINT AS id FROM range(5);
+
+statement ok
+CREATE PROPERTY GRAPH bounds_graph
+VERTEX TABLES (bounds_vertex LABEL BV)
+EDGE TABLES (bounds_edge SOURCE KEY (src) REFERENCES bounds_vertex (id)
+                         DESTINATION KEY (dst) REFERENCES bounds_vertex (id) LABEL BE);
+
+query II
+SELECT dst, len FROM GRAPH_TABLE (bounds_graph
+    MATCH p = ANY SHORTEST (a:BV WHERE a.id = 0)-[e:BE]->{1,3}(b:BV)
+    COLUMNS (b.id AS dst, path_length(p) AS len))
+ORDER BY dst;
+----
+1	1
+2	2
+3	3
+
+query II
+SELECT dst, len FROM GRAPH_TABLE (bounds_graph
+    MATCH p = ANY SHORTEST (a:BV WHERE a.id = 0)-[e:BE]->{2,4}(b:BV)
+    COLUMNS (b.id AS dst, path_length(p) AS len))
+ORDER BY dst;
+----
+2	2
+3	3
+4	4
+
+# A single source over every vertex, including ones that have no edges, stays source-grouped: the pairs with
+# a NULL endpoint are answered NULL without disabling the single-BFS plan.
+statement ok
+INSERT INTO bounds_vertex VALUES (7), (8);
+
+query II
+SELECT dst, len FROM GRAPH_TABLE (bounds_graph
+    MATCH p = ANY SHORTEST (a:BV WHERE a.id = 0)-[e:BE]->{1,8}(b:BV)
+    COLUMNS (b.id AS dst, path_length(p) AS len))
+ORDER BY dst;
+----
+1	1
+2	2
+3	3
+4	4
+
+query I
+SELECT s LIKE '%scheduling=source_grouped%' AND s LIKE '%source_groups=1%'
+FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true

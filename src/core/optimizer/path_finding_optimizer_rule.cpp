@@ -1,4 +1,5 @@
 #include "duckpgq/core/optimizer/path_finding_optimizer_rule.hpp"
+#include "duckdb/execution/expression_executor.hpp"
 
 #include "duckpgq/core/optimizer/duckpgq_optimizer.hpp"
 #include <duckdb/catalog/catalog_entry/duck_table_entry.hpp>
@@ -63,13 +64,52 @@ static const BoundFunctionExpression *GetPathFindingFunction(const Expression &e
 	return result;
 }
 
+//! The cache key is the last VARCHAR argument; an optional BIGINT maximum path length may follow it
+static idx_t GetPathFindingCacheKeyIndex(const BoundFunctionExpression &function_expr) {
+	auto &children = function_expr.GetChildren();
+	for (idx_t i = children.size(); i > 0; i--) {
+		if (children[i - 1]->GetReturnType().id() == LogicalTypeId::VARCHAR) {
+			return i - 1;
+		}
+	}
+	return DConstants::INVALID_INDEX;
+}
+
+static bool HasTrailingMaxDepth(const BoundFunctionExpression &function_expr) {
+	auto key_index = GetPathFindingCacheKeyIndex(function_expr);
+	return key_index != DConstants::INVALID_INDEX && key_index + 2 == function_expr.GetChildren().size();
+}
+
+//! Number of marker arguments without the optional trailing maximum path length
+static idx_t GetPathFindingBaseArity(const BoundFunctionExpression &function_expr) {
+	return function_expr.GetChildren().size() - (HasTrailingMaxDepth(function_expr) ? 1 : 0);
+}
+
+static idx_t GetPathFindingMaxDepth(ClientContext &context, const Expression &expr) {
+	auto function_expr = GetPathFindingFunction(expr);
+	if (!function_expr || !HasTrailingMaxDepth(*function_expr)) {
+		return 0;
+	}
+	// Before DuckDB's own optimizer runs the literal is still wrapped in a cast, so fold it here
+	auto &depth_expr = *function_expr->GetChildren().back();
+	Value depth_value;
+	if (!depth_expr.IsFoldable() || !ExpressionExecutor::TryEvaluateScalar(context, depth_expr, depth_value)) {
+		throw BinderException("The path-finding maximum length must be a constant BIGINT");
+	}
+	if (depth_value.IsNull() || depth_value.GetValue<int64_t>() <= 0) {
+		return 0;
+	}
+	return NumericCast<idx_t>(depth_value.GetValue<int64_t>());
+}
+
 static string GetPathFindingCacheKey(const Expression &expr) {
 	auto function_expr = GetPathFindingFunction(expr);
 	if (!function_expr || function_expr->GetChildren().size() < 4) {
 		return string();
 	}
-	auto cache_key_index = function_expr->GetChildren().size() - 1;
-	if (function_expr->GetChildren()[cache_key_index]->GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
+	auto cache_key_index = GetPathFindingCacheKeyIndex(*function_expr);
+	if (cache_key_index == DConstants::INVALID_INDEX ||
+	    function_expr->GetChildren()[cache_key_index]->GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
 		throw BinderException("The path-finding cache key must be a constant VARCHAR");
 	}
 	auto &constant = function_expr->GetChildren()[cache_key_index]->Cast<BoundConstantExpression>();
@@ -167,8 +207,9 @@ static unique_ptr<LogicalPathFindingOperator> FindPrecountedEdgesAndPairs(unique
 	const BoundFunctionExpression *path_function = nullptr;
 	for (const auto &expr : projection.expressions) {
 		path_function = GetPathFindingFunction(*expr);
-		if (path_function && path_function->GetChildren().size() == 7 &&
-		    path_function->GetChildren()[2]->GetReturnType().id() == LogicalTypeId::STRUCT) {
+		if (path_function && GetPathFindingBaseArity(*path_function) == 7 &&
+		    path_function->GetChildren()[2]->GetReturnType().id() == LogicalTypeId::STRUCT &&
+		    path_function->GetChildren()[3]->GetReturnType().id() == LogicalTypeId::STRUCT) {
 			break;
 		}
 		path_function = nullptr;
@@ -230,7 +271,7 @@ FindBufferedEdgesAndPairs(unique_ptr<LogicalOperator> &root, LogicalProjection &
 	const BoundFunctionExpression *path_function = nullptr;
 	for (const auto &expr : projection.expressions) {
 		path_function = GetPathFindingFunction(*expr);
-		if (path_function && path_function->GetChildren().size() == 6 &&
+		if (path_function && GetPathFindingBaseArity(*path_function) == 6 &&
 		    path_function->GetChildren()[2]->GetReturnType().id() == LogicalTypeId::STRUCT) {
 			break;
 		}
@@ -305,19 +346,24 @@ FindBufferedEdgesAndPairs(unique_ptr<LogicalOperator> &root, LogicalProjection &
 		auto &function_children = function_expression->Cast<BoundFunctionExpression>().GetChildrenMutable();
 		function_children[2] = make_uniq<BoundConstantExpression>(Value(function_children[2]->GetReturnType()));
 	}
+	auto max_depth = GetPathFindingMaxDepth(context, *function_expression);
 	path_finding_expressions.push_back(std::move(function_expression));
-	return make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions, mode,
-	                                             projection.table_index, offsets, std::move(cache_key), !cache_hit,
-	                                             false, static_cast<idx_t>(vertex_count_value),
-	                                             static_cast<idx_t>(edge_count_value), cache_hit, !cache_hit);
+	auto result = make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions, mode,
+	                                                    projection.table_index, offsets, std::move(cache_key),
+	                                                    !cache_hit, false, static_cast<idx_t>(vertex_count_value),
+	                                                    static_cast<idx_t>(edge_count_value), cache_hit, !cache_hit);
+	result->max_depth = max_depth;
+	return result;
 }
 
 static unique_ptr<LogicalPathFindingOperator> FindCachedPartitionedCSRAndPairs(unique_ptr<LogicalOperator> &root,
-                                                                               LogicalProjection &projection) {
+                                                                               LogicalProjection &projection,
+                                                                               ClientContext &context) {
 	const BoundFunctionExpression *path_function = nullptr;
 	for (const auto &expr : projection.expressions) {
 		path_function = GetPathFindingFunction(*expr);
-		if (path_function && path_function->GetChildren().size() == 5) {
+		if (path_function && GetPathFindingBaseArity(*path_function) == 5 &&
+		    path_function->GetChildren()[2]->GetReturnType().id() != LogicalTypeId::STRUCT) {
 			break;
 		}
 		path_function = nullptr;
@@ -347,10 +393,13 @@ static unique_ptr<LogicalPathFindingOperator> FindCachedPartitionedCSRAndPairs(u
 	if (cache_key.empty()) {
 		throw BinderException("Cache-only path finding requires a non-empty constant cache key");
 	}
+	auto max_depth = GetPathFindingMaxDepth(context, *function_expression);
 	path_finding_expressions.push_back(std::move(function_expression));
-	return make_uniq<LogicalPathFindingOperator>(
+	auto result = make_uniq<LogicalPathFindingOperator>(
 	    path_finding_children, path_finding_expressions, mode, projection.table_index, offsets, std::move(cache_key),
 	    false, false, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value), true);
+	result->max_depth = max_depth;
+	return result;
 }
 
 // Helper function to create the required BoundColumnRefExpression
@@ -480,7 +529,7 @@ static bool TryReplaceProjection(LogicalProjection &op_proj, ClientContext &cont
 		                      "once and reuse the column");
 	}
 	if (op_proj.children.size() == 1) {
-		auto path_finding_operator = FindCachedPartitionedCSRAndPairs(op_proj.children[0], op_proj);
+		auto path_finding_operator = FindCachedPartitionedCSRAndPairs(op_proj.children[0], op_proj, context);
 		if (!path_finding_operator) {
 			path_finding_operator = FindBufferedEdgesAndPairs(op_proj.children[0], op_proj, context);
 		}
@@ -508,7 +557,8 @@ static bool TryReplaceProjection(LogicalProjection &op_proj, ClientContext &cont
 		auto path_finding_operator =
 		    DuckpgqOptimizerExtension::FindCSRAndPairs(left_child, right_child, op_proj, context);
 		if (!path_finding_operator) {
-			path_finding_operator = DuckpgqOptimizerExtension::FindCSRAndPairs(right_child, left_child, op_proj, context);
+			path_finding_operator =
+			    DuckpgqOptimizerExtension::FindCSRAndPairs(right_child, left_child, op_proj, context);
 		}
 		if (path_finding_operator) {
 			op_proj.children.clear();

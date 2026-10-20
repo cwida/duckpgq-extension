@@ -48,6 +48,8 @@ public:
 	TableIndex table_index;
 	vector<idx_t> offsets;
 	string cache_key;
+	//! Longest path length a query needs; 0 means unbounded
+	idx_t max_depth = 0;
 	bool edge_input;
 	bool precounted_edge_input;
 	idx_t precounted_vertex_count;

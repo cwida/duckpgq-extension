@@ -849,8 +849,8 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 
 void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &original_ref,
                                          CreatePropertyGraphInfo &pg_table, unique_ptr<SelectNode> &final_select_node,
-                                         vector<unique_ptr<ParsedExpression>> &conditions,
-                                         bool defer_path_length, vector<SubPath *> &deferred_path_lengths) {
+                                         vector<unique_ptr<ParsedExpression>> &conditions, bool defer_path_length,
+                                         vector<SubPath *> &deferred_path_lengths) {
 	for (idx_t idx_i = 0; idx_i < original_ref.column_list.size(); idx_i++) {
 		auto parsed_ref = dynamic_cast<FunctionExpression *>(original_ref.column_list[idx_i].get());
 		if (parsed_ref == nullptr) {
@@ -944,8 +944,8 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
                                        case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
                                        CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
                                        MatchExpression &original_ref, ClientContext &context,
-                                       vector<PathFindingOperatorResult> &operator_results,
-                                       const string &path_variable, vector<SubPath *> &deferred_path_lengths) {
+                                       vector<PathFindingOperatorResult> &operator_results, const string &path_variable,
+                                       vector<SubPath *> &deferred_path_lengths) {
 	PathElement *previous_vertex_element = GetPathElement(path_list[0]);
 	if (!previous_vertex_element) {
 		const auto previous_vertex_subpath = reinterpret_cast<SubPath *>(path_list[0].get());
@@ -1007,7 +1007,8 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 				// Add the path-finding
 				AddPathFinding(final_select_node, conditions, previous_vertex_element->variable_binding,
 				               edge_element->variable_binding, next_vertex_element->variable_binding, edge_table,
-				               pg_table, edge_subpath, edge_element->match_type, path_variable, context, operator_results);
+				               pg_table, edge_subpath, edge_element->match_type, path_variable, context,
+				               operator_results);
 			} else {
 				AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table, edge_element->match_type,
 				             edge_element->variable_binding, previous_vertex_element->variable_binding,
@@ -1153,8 +1154,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 			return StringUtil::CIEquals(result.path_variable, subpath->path_variable);
 		});
 		if (!uses_operator) {
-			CheckNamedSubpath(*subpath, *ref, *pg_table, final_select_node, conditions, false,
-			                  deferred_path_lengths);
+			CheckNamedSubpath(*subpath, *ref, *pg_table, final_select_node, conditions, false, deferred_path_lengths);
 		}
 	}
 
@@ -1219,8 +1219,8 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 							projection_alias = "path_length(" + path_name + ")";
 						}
 						operator_result.projected_aliases.push_back(projection_alias);
-						auto placeholder = DuckPGQSQL::ParseExpression(
-						    "NULL::BIGINT", projection_alias, "DuckPGQ MATCH path_length placeholder");
+						auto placeholder = DuckPGQSQL::ParseExpression("NULL::BIGINT", projection_alias,
+						                                               "DuckPGQ MATCH path_length placeholder");
 						final_column_list.push_back(std::move(placeholder));
 						break;
 					}
@@ -1301,7 +1301,12 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		                << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_DST), operator_result.endpoint_alias) << "), ";
 	}
 	path_length_sql << operator_result.vertex_count << "::BIGINT, " << operator_result.edge_count << "::BIGINT, "
-	                << DuckPGQSQL::StringLiteral(operator_result.cache_key) << ")";
+	                << DuckPGQSQL::StringLiteral(operator_result.cache_key);
+	if (operator_result.upper != NumericLimits<int64_t>::Maximum()) {
+		// The operator stops expanding beyond the longest path the pattern accepts
+		path_length_sql << ", " << operator_result.upper << "::BIGINT";
+	}
+	path_length_sql << ")";
 
 	// The length is computed once under the hidden result alias; the outer query renames it to every projected alias
 	std::ostringstream operator_query_sql;
