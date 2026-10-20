@@ -35,13 +35,16 @@ public:
 		string endpoint_alias;
 		string alias;
 		string path_variable;
-		//! Output aliases under which path_length(p) is projected; the length is computed once
-		vector<string> projected_aliases;
+		//! Output aliases under which path functions of p are projected, with the function name (path_length,
+		//! element_id, vertices, edges); the operator runs once and the outer query derives every projection
+		vector<std::pair<string, string>> projected_aliases;
 		string cache_key;
 		idx_t vertex_count;
 		idx_t edge_count;
 		int64_t lower;
 		int64_t upper;
+		//! The operator returns the path as [v0, e0, v1, ..., vk] instead of the length
+		bool return_path = false;
 	};
 
 	PGQMatchFunction() : TableFunction("duckpgq_match", vector<LogicalType>(), nullptr, nullptr) {
@@ -133,8 +136,8 @@ public:
 	                           const string &prev_binding, const string &edge_binding, const string &next_binding,
 	                           const shared_ptr<PropertyGraphTable> &edge_table, CreatePropertyGraphInfo &pg_table,
 	                           SubPath *subpath, PGQMatchType edge_type, const string &path_variable,
-	                           ClientContext &context,
-	                           vector<PathFindingOperatorResult> &operator_results);
+	                           ClientContext &context, vector<PathFindingOperatorResult> &operator_results,
+	                           const case_insensitive_set_t &path_projections);
 
 	static void AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
 	                         const shared_ptr<PropertyGraphTable> &previous_vertex_table,
@@ -149,13 +152,14 @@ public:
 	                            case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
 	                            CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
 	                            MatchExpression &original_ref, ClientContext &context,
-	                            vector<PathFindingOperatorResult> &operator_results,
-	                            const string &path_variable, vector<SubPath *> &deferred_path_lengths);
+	                            vector<PathFindingOperatorResult> &operator_results, const string &path_variable,
+	                            vector<SubPath *> &deferred_path_lengths,
+	                            const case_insensitive_set_t &path_projections);
 
 	static void CheckNamedSubpath(SubPath &subpath, MatchExpression &original_ref, CreatePropertyGraphInfo &pg_table,
 	                              unique_ptr<SelectNode> &final_select_node,
-	                              vector<unique_ptr<ParsedExpression>> &conditions,
-	                              bool defer_path_length, vector<SubPath *> &deferred_path_lengths);
+	                              vector<unique_ptr<ParsedExpression>> &conditions, bool defer_path_length,
+	                              vector<SubPath *> &deferred_path_lengths);
 
 	// Check whether columns to query are valid against the property graph, throws
 	// BinderException if error.

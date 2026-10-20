@@ -772,10 +772,13 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
                                       const shared_ptr<PropertyGraphTable> &edge_table,
                                       CreatePropertyGraphInfo &pg_table, SubPath *subpath, PGQMatchType edge_type,
                                       const string &path_variable, ClientContext &context,
-                                      vector<PathFindingOperatorResult> &operator_results) {
+                                      vector<PathFindingOperatorResult> &operator_results,
+                                      const case_insensitive_set_t &path_projections) {
 	if (select_node->cte_map.map.find("shortest_path_cte") != select_node->cte_map.map.end()) {
 		return;
 	}
+	// element_id(p), vertices(p) or edges(p) are projected: the operator must return the path, not the length
+	bool return_path = !path_variable.empty() && path_projections.count(path_variable) > 0;
 
 	if (GetPathFindingOption(context) && operator_results.empty() &&
 	    (edge_type == PGQMatchType::MATCH_EDGE_RIGHT || edge_type == PGQMatchType::MATCH_EDGE_ANY)) {
@@ -790,10 +793,15 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 			auto destination_expression = DuckPGQSQL::ParseExpression(
 			    "CAST(" + DuckPGQSQL::Column(edge_table->destination_pk[0], next_binding) + " AS BIGINT)",
 			    "__duckpgq_pair_dst_" + std::to_string(result_index), "DuckPGQ path-finding destination key");
-			operator_results.push_back({std::move(source_expression), std::move(destination_expression), nullptr,
-			                            string(), std::move(result_alias), path_variable, vector<string>(),
-			                            CSRIndex::CacheKey(*edge_table, index_name), 0, 0, subpath->lower,
-			                            subpath->upper});
+			operator_results.push_back(
+			    {std::move(source_expression), std::move(destination_expression), nullptr, string(),
+			     std::move(result_alias), path_variable, vector<std::pair<string, string>>(),
+			     CSRIndex::CacheKey(*edge_table, index_name), 0, 0, subpath->lower, subpath->upper, return_path});
+			return;
+		}
+		if (return_path) {
+			// Paths without an index are still produced by the shortestpath() CTE; the deferred named-subpath
+			// pass adds it together with the quantifier condition
 			return;
 		}
 		idx_t vertex_count;
@@ -813,8 +821,8 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 			    "__duckpgq_pair_dst_" + std::to_string(result_index), "DuckPGQ path-finding destination row ID");
 			operator_results.push_back({std::move(source_expression), std::move(destination_expression),
 			                            std::move(endpoints), std::move(endpoint_alias), std::move(result_alias),
-			                            path_variable, vector<string>(), std::move(cache_key), vertex_count, edge_count,
-			                            subpath->lower, subpath->upper});
+			                            path_variable, vector<std::pair<string, string>>(), std::move(cache_key),
+			                            vertex_count, edge_count, subpath->lower, subpath->upper, false});
 			return;
 		}
 	}
@@ -870,6 +878,18 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 		}
 		// Trying to check parsed_ref->alias directly leads to a segfault
 		string column_alias = parsed_ref->GetAlias().GetIdentifierName();
+		auto function_name = parsed_ref->FunctionName();
+		bool is_path_function = function_name == "element_id" || function_name == "path_length" ||
+		                        function_name == "vertices" || function_name == "edges";
+		if (defer_path_length && is_path_function) {
+			// Decided after the pattern is processed: the operator serves the subpath, or this pass runs again
+			// without deferral and expands the shortestpath() CTE
+			if (std::find(deferred_path_lengths.begin(), deferred_path_lengths.end(), &subpath) ==
+			    deferred_path_lengths.end()) {
+				deferred_path_lengths.push_back(&subpath);
+			}
+			continue;
+		}
 		if (parsed_ref->FunctionName() == "element_id") {
 			// Check subpath name matches the column referenced in the function -->
 			// element_id(named_subpath)
@@ -885,13 +905,6 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 			original_ref.column_list.insert(original_ref.column_list.begin() + static_cast<int64_t>(idx_i),
 			                                std::move(shortest_path_function));
 		} else if (parsed_ref->FunctionName() == "path_length") {
-			if (defer_path_length) {
-				if (std::find(deferred_path_lengths.begin(), deferred_path_lengths.end(), &subpath) ==
-				    deferred_path_lengths.end()) {
-					deferred_path_lengths.push_back(&subpath);
-				}
-				continue;
-			}
 			auto shortest_path_function = CreatePathFindingFunction(subpath.path_list, pg_table, subpath.path_variable,
 			                                                        final_select_node, conditions);
 			auto path_len_children = vector<unique_ptr<ParsedExpression>>();
@@ -938,14 +951,12 @@ void PGQMatchFunction::CheckNamedSubpath(SubPath &subpath, MatchExpression &orig
 	}
 }
 
-void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_list,
-                                       vector<unique_ptr<ParsedExpression>> &conditions,
-                                       unique_ptr<SelectNode> &final_select_node,
-                                       case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
-                                       CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
-                                       MatchExpression &original_ref, ClientContext &context,
-                                       vector<PathFindingOperatorResult> &operator_results, const string &path_variable,
-                                       vector<SubPath *> &deferred_path_lengths) {
+void PGQMatchFunction::ProcessPathList(
+    vector<unique_ptr<PathReference>> &path_list, vector<unique_ptr<ParsedExpression>> &conditions,
+    unique_ptr<SelectNode> &final_select_node, case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
+    CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter, MatchExpression &original_ref,
+    ClientContext &context, vector<PathFindingOperatorResult> &operator_results, const string &path_variable,
+    vector<SubPath *> &deferred_path_lengths, const case_insensitive_set_t &path_projections) {
 	PathElement *previous_vertex_element = GetPathElement(path_list[0]);
 	if (!previous_vertex_element) {
 		const auto previous_vertex_subpath = reinterpret_cast<SubPath *>(path_list[0].get());
@@ -962,7 +973,7 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 			// Add the shortest path if the name is found in the column_list
 			ProcessPathList(previous_vertex_subpath->path_list, conditions, final_select_node, alias_map, pg_table,
 			                extra_alias_counter, original_ref, context, operator_results,
-			                previous_vertex_subpath->path_variable, deferred_path_lengths);
+			                previous_vertex_subpath->path_variable, deferred_path_lengths, path_projections);
 			return;
 		}
 	}
@@ -1008,7 +1019,7 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 				AddPathFinding(final_select_node, conditions, previous_vertex_element->variable_binding,
 				               edge_element->variable_binding, next_vertex_element->variable_binding, edge_table,
 				               pg_table, edge_subpath, edge_element->match_type, path_variable, context,
-				               operator_results);
+				               operator_results, path_projections);
 			} else {
 				AddEdgeJoins(edge_table, previous_vertex_table, next_vertex_table, edge_element->match_type,
 				             edge_element->variable_binding, previous_vertex_element->variable_binding,
@@ -1136,6 +1147,23 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	vector<unique_ptr<ParsedExpression>> conditions;
 	vector<PathFindingOperatorResult> operator_results;
 	vector<SubPath *> deferred_path_lengths;
+	// Path variables whose elements are projected; their operator, if any, must return paths
+	case_insensitive_set_t path_projections;
+	for (auto &expression : ref->column_list) {
+		auto *function_ref = dynamic_cast<FunctionExpression *>(expression.get());
+		if (!function_ref || function_ref->GetArgumentsMutable().empty()) {
+			continue;
+		}
+		auto function_name = function_ref->FunctionName();
+		if (function_name != "element_id" && function_name != "vertices" && function_name != "edges") {
+			continue;
+		}
+		auto *column_ref =
+		    dynamic_cast<ColumnRefExpression *>(function_ref->GetArgumentsMutable()[0].GetExpressionMutable().get());
+		if (column_ref && column_ref->ColumnNames().size() == 1) {
+			path_projections.insert(column_ref->ColumnNames()[0].GetIdentifierName());
+		}
+	}
 
 	auto final_select_node = make_uniq<SelectNode>();
 	case_insensitive_map_t<shared_ptr<PropertyGraphTable>> alias_map;
@@ -1147,7 +1175,8 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		// Check if the element is PathElement or a Subpath with potentially many
 		// items
 		ProcessPathList(path_pattern->path_elements, conditions, final_select_node, alias_map, *pg_table,
-		                extra_alias_counter, *ref, context, operator_results, string(), deferred_path_lengths);
+		                extra_alias_counter, *ref, context, operator_results, string(), deferred_path_lengths,
+		                path_projections);
 	}
 	for (auto *subpath : deferred_path_lengths) {
 		auto uses_operator = std::any_of(operator_results.begin(), operator_results.end(), [&](const auto &result) {
@@ -1198,32 +1227,40 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		// Handle FunctionExpression.
 		auto *function_ref = dynamic_cast<FunctionExpression *>(expression.get());
 		if (function_ref != nullptr) {
-			if (function_ref->FunctionName() == "path_length") {
-				if (function_ref->GetArgumentsMutable().empty()) {
-					continue;
-				}
-				column_ref = dynamic_cast<ColumnRefExpression *>(
-				    function_ref->GetArgumentsMutable()[0].GetExpressionMutable().get());
-				if (column_ref == nullptr) {
-					continue;
-				}
-				auto &column_names = column_ref->ColumnNames();
-				if (column_names.size() == 1) {
-					auto path_name = column_names[0].GetIdentifierName();
+			auto function_name = function_ref->FunctionName();
+			bool is_path_function = function_name == "path_length" || function_name == "element_id" ||
+			                        function_name == "vertices" || function_name == "edges";
+			if (is_path_function) {
+				// Only path functions the operator serves are left in this form; the others were rewritten to the
+				// shortestpath() CTE by the named-subpath pass
+				bool served_by_operator = false;
+				column_ref = function_ref->GetArgumentsMutable().empty()
+				                 ? nullptr
+				                 : dynamic_cast<ColumnRefExpression *>(
+				                       function_ref->GetArgumentsMutable()[0].GetExpressionMutable().get());
+				if (column_ref && column_ref->ColumnNames().size() == 1) {
+					auto path_name = column_ref->ColumnNames()[0].GetIdentifierName();
 					for (auto &operator_result : operator_results) {
 						if (!StringUtil::CIEquals(operator_result.path_variable, path_name)) {
 							continue;
 						}
 						auto projection_alias = function_ref->GetAlias().GetIdentifierName();
 						if (projection_alias.empty()) {
-							projection_alias = "path_length(" + path_name + ")";
+							projection_alias = function_name + "(" + path_name + ")";
 						}
-						operator_result.projected_aliases.push_back(projection_alias);
-						auto placeholder = DuckPGQSQL::ParseExpression("NULL::BIGINT", projection_alias,
-						                                               "DuckPGQ MATCH path_length placeholder");
+						operator_result.projected_aliases.emplace_back(projection_alias, function_name);
+						auto placeholder = DuckPGQSQL::ParseExpression(
+						    function_name == "path_length" ? "NULL::BIGINT" : "NULL::BIGINT[]", projection_alias,
+						    "DuckPGQ MATCH path function placeholder");
 						final_column_list.push_back(std::move(placeholder));
+						served_by_operator = true;
 						break;
 					}
+				}
+				if (!served_by_operator && function_name != "path_length") {
+					// Not a path variable of this MATCH; the binder reports the unknown function. A stray
+					// path_length() has always been dropped from the projection.
+					final_column_list.push_back(std::move(expression));
 				}
 			} else {
 				final_column_list.push_back(std::move(expression));
@@ -1292,7 +1329,8 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	// With a CSR index the marker has no endpoint input: the operator reads the index for its transaction
 	bool use_index = !operator_result.endpoint_input;
 	std::ostringstream path_length_sql;
-	path_length_sql << "iterativelengthoperator(" << DuckPGQSQL::Column(pair_source_alias, candidate_alias) << ", "
+	path_length_sql << (operator_result.return_path ? "shortestpathoperator(" : "iterativelengthoperator(")
+	                << DuckPGQSQL::Column(pair_source_alias, candidate_alias) << ", "
 	                << DuckPGQSQL::Column(pair_destination_alias, candidate_alias) << ", ";
 	if (!use_index) {
 		path_length_sql << "struct_pack(src := "
@@ -1335,12 +1373,27 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		outer_query_sql << ", " << DuckPGQSQL::Identifier(operator_results[result_idx].alias);
 	}
 	outer_query_sql << ")";
+	// With a path result, the length is len(path) // 2 and vertices/edges are the even/odd positions
+	auto result_column = [&](const PathFindingOperatorResult &result) {
+		return DuckPGQSQL::Column(result.alias, string(PATH_FINDING_PAIRS_ALIAS));
+	};
+	auto length_expression = [&](const PathFindingOperatorResult &result) {
+		return result.return_path ? "(len(" + result_column(result) + ") // 2)" : result_column(result);
+	};
 	bool has_projected_alias = false;
 	for (idx_t result_idx = 0; result_idx < operator_results.size(); result_idx++) {
-		for (auto &projected_alias : operator_results[result_idx].projected_aliases) {
-			outer_query_sql << (has_projected_alias ? ", " : " REPLACE (")
-			                << DuckPGQSQL::Column(operator_results[result_idx].alias, string(PATH_FINDING_PAIRS_ALIAS))
-			                << " AS " << DuckPGQSQL::Identifier(projected_alias);
+		auto &result = operator_results[result_idx];
+		for (auto &projected : result.projected_aliases) {
+			string expression = result_column(result);
+			if (projected.second == "path_length") {
+				expression = length_expression(result);
+			} else if (projected.second == "vertices") {
+				expression = "list_slice(" + result_column(result) + ", 1, -1, 2)";
+			} else if (projected.second == "edges") {
+				expression = "list_slice(" + result_column(result) + ", 2, -1, 2)";
+			}
+			outer_query_sql << (has_projected_alias ? ", " : " REPLACE (") << expression << " AS "
+			                << DuckPGQSQL::Identifier(projected.first);
 			has_projected_alias = true;
 		}
 	}
@@ -1353,7 +1406,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 			outer_query_sql << " AND ";
 		}
 		auto &operator_result = operator_results[result_idx];
-		outer_query_sql << DuckPGQSQL::Column(operator_result.alias, string(PATH_FINDING_PAIRS_ALIAS));
+		outer_query_sql << length_expression(operator_result);
 		if (operator_result.upper == NumericLimits<int64_t>::Maximum()) {
 			outer_query_sql << " >= " << operator_result.lower;
 		} else {

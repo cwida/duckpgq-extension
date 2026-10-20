@@ -11,6 +11,7 @@
 #include "duckdb/parallel/base_pipeline_event.hpp"
 #include "duckdb/common/types/hash.hpp"
 #include "duckdb/common/types/hyperloglog.hpp"
+#include "duckdb/common/vector/list_vector.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
@@ -234,6 +235,68 @@ public:
 	std::unordered_set<uint32_t> targets;
 	atomic<int64_t> remaining_targets {0};
 
+	//! Path reconstruction: the vertex and the edge through which each vertex was first discovered. Edges are
+	//! packed as (delta flag << 63 | partition << 32 | offset); INVALID_EDGE when the edge has no row id.
+	static constexpr uint64_t INVALID_EDGE = NumericLimits<uint64_t>::Maximum();
+	bool track_parents = false;
+	vector<uint32_t> parent_vertex;
+	vector<uint64_t> parent_edge;
+
+	void EnableParentTracking() {
+		track_parents = true;
+		parent_vertex.assign(v_size, NumericLimits<uint32_t>::Maximum());
+		parent_edge.assign(v_size, INVALID_EDGE);
+	}
+
+	static uint64_t PackEdge(idx_t partition_idx, uint32_t offset, bool is_delta) {
+		return (is_delta ? (uint64_t(1) << 63) : 0) | (static_cast<uint64_t>(partition_idx) << 32) | offset;
+	}
+
+	//! Row id of a packed edge; false when the partition it came from carries no row ids
+	bool EdgeRowId(uint64_t packed, row_t &row) const {
+		if (packed == INVALID_EDGE) {
+			return false;
+		}
+		bool is_delta = (packed >> 63) != 0;
+		idx_t partition_idx = (packed >> 32) & 0x7FFFFFFF;
+		auto offset = static_cast<uint32_t>(packed & 0xFFFFFFFF);
+		auto &partitions = is_delta ? delta_csrs : local_csrs;
+		if (partition_idx >= partitions.size() || !partitions[partition_idx] ||
+		    !partitions[partition_idx]->HasRowIds()) {
+			return false;
+		}
+		row = partitions[partition_idx]->row_ids[offset];
+		return true;
+	}
+
+	//! Appends the path from the group's source to `target` as [v0, e0, v1, ..., vk]: vertices through
+	//! `vertex_value` (dense id -> key or row id), edges as edge-table row ids, NULL when unknown
+	template <class VERTEX_VALUE>
+	void AppendPath(int64_t target, VERTEX_VALUE vertex_value, vector<int64_t> &values, vector<bool> &valid) const {
+		vector<int64_t> reversed;
+		vector<bool> reversed_valid;
+		auto current = NumericCast<uint32_t>(target);
+		reversed.push_back(vertex_value(current));
+		reversed_valid.push_back(true);
+		while (static_cast<int64_t>(current) != source) {
+			auto parent = parent_vertex[current];
+			if (parent == NumericLimits<uint32_t>::Maximum()) {
+				throw InternalException("Path reconstruction found a reached vertex without a parent");
+			}
+			row_t row = 0;
+			bool has_row = EdgeRowId(parent_edge[current], row);
+			reversed.push_back(has_row ? row : 0);
+			reversed_valid.push_back(has_row);
+			reversed.push_back(vertex_value(parent));
+			reversed_valid.push_back(true);
+			current = parent;
+		}
+		for (idx_t i = reversed.size(); i > 0; i--) {
+			values.push_back(reversed[i - 1]);
+			valid.push_back(reversed_valid[i - 1]);
+		}
+	}
+
 	//! Registers the destinations of this group so the search can stop when all of them are found
 	void AddTarget(int64_t target) {
 		if (target < 0 || target >= v_size) {
@@ -280,14 +343,19 @@ public:
 	}
 
 private:
-	//! Discovers `target` at the current distance if no other worker did; the first to flip `seen` owns it
-	inline void Relax(idx_t target) {
+	//! Discovers `target` at the current distance if no other worker did; the first to flip `seen` owns it and,
+	//! when paths are requested, records the source vertex and the edge it arrived through
+	inline void Relax(idx_t target, uint32_t source, uint64_t packed_edge) {
 		if (state->seen[target].load(std::memory_order_relaxed)) {
 			return;
 		}
 		uint8_t expected = 0;
 		if (state->seen[target].compare_exchange_strong(expected, 1, std::memory_order_relaxed)) {
 			state->distances[target] = state->iter;
+			if (state->track_parents) {
+				state->parent_vertex[target] = source;
+				state->parent_edge[target] = packed_edge;
+			}
 			state->next_lists[worker_id].push_back(NumericCast<uint32_t>(target));
 			if (!state->targets.empty() && state->targets.count(NumericCast<uint32_t>(target))) {
 				state->remaining_targets.fetch_sub(1, std::memory_order_relaxed);
@@ -301,12 +369,13 @@ private:
 
 	//! Relaxes the edges of one row of a partition
 	inline void RelaxRow(const LocalCSR &local_csr, uint32_t start_edges, uint32_t end_edges,
-	                     const uint64_t *suppressed) {
+	                     const uint64_t *suppressed, uint32_t source, idx_t partition_idx, bool is_delta) {
 		for (auto offset = start_edges; offset < end_edges; offset++) {
 			if (IsSuppressed(suppressed, offset)) {
 				continue;
 			}
-			Relax(local_csr.e[offset] + local_csr.start_vertex);
+			Relax(local_csr.e[offset] + local_csr.start_vertex, source,
+			      SourceGroupedIterativeLengthState::PackEdge(partition_idx, offset, is_delta));
 		}
 	}
 
@@ -322,20 +391,21 @@ private:
 			auto &local_csr = *state->local_csrs[partition_idx];
 			uint32_t start_edges;
 			uint32_t end_edges;
+			auto source = NumericCast<uint32_t>(vertex);
 			if (local_csr.GetRowEdges(vertex, start_edges, end_edges)) {
-				RelaxRow(local_csr, start_edges, end_edges, SuppressedOf(partition_idx));
+				RelaxRow(local_csr, start_edges, end_edges, SuppressedOf(partition_idx), source, partition_idx, false);
 			}
 			if (partition_idx < state->delta_csrs.size() && state->delta_csrs[partition_idx]) {
 				auto &delta = *state->delta_csrs[partition_idx];
 				if (delta.GetRowEdges(vertex, start_edges, end_edges)) {
-					RelaxRow(delta, start_edges, end_edges, nullptr);
+					RelaxRow(delta, start_edges, end_edges, nullptr, source, partition_idx, true);
 				}
 			}
 		}
 	}
 
 	//! Dense expansion: every row of one partition whose source is in the frontier
-	void ExplorePartition(const LocalCSR &local_csr, const uint64_t *suppressed) {
+	void ExplorePartition(const LocalCSR &local_csr, const uint64_t *suppressed, idx_t partition_idx, bool is_delta) {
 		for (const auto &segment : local_csr.segments) {
 			for (idx_t row_idx = 0; row_idx < segment.source_vertices.size(); row_idx++) {
 				auto source_vertex = segment.source_vertices[row_idx];
@@ -343,7 +413,9 @@ private:
 					continue;
 				}
 				for (auto offset = segment.row_offsets[row_idx]; offset < segment.row_offsets[row_idx + 1]; offset++) {
-					Relax(segment.edges[offset] + local_csr.start_vertex);
+					// Streaming segments carry no row ids
+					Relax(segment.edges[offset] + local_csr.start_vertex, source_vertex,
+					      SourceGroupedIterativeLengthState::INVALID_EDGE);
 				}
 			}
 		}
@@ -356,7 +428,8 @@ private:
 				if (!state->frontier[source_vertex].load(std::memory_order_relaxed)) {
 					continue;
 				}
-				RelaxRow(local_csr, local_csr.row_offsets[row_idx], local_csr.row_offsets[row_idx + 1], suppressed);
+				RelaxRow(local_csr, local_csr.row_offsets[row_idx], local_csr.row_offsets[row_idx + 1], suppressed,
+				         source_vertex, partition_idx, is_delta);
 			}
 			return;
 		}
@@ -365,7 +438,8 @@ private:
 				continue;
 			}
 			RelaxRow(local_csr, local_csr.v[vertex].load(std::memory_order_relaxed),
-			         local_csr.v[vertex + 1].load(std::memory_order_relaxed), nullptr);
+			         local_csr.v[vertex + 1].load(std::memory_order_relaxed), nullptr, NumericCast<uint32_t>(vertex),
+			         partition_idx, is_delta);
 		}
 	}
 
@@ -413,10 +487,11 @@ private:
 					if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
 						break;
 					}
-					ExplorePartition(*state->local_csrs[partition_idx], SuppressedOf(partition_idx));
+					ExplorePartition(*state->local_csrs[partition_idx], SuppressedOf(partition_idx), partition_idx,
+					                 false);
 					if (partition_idx < static_cast<int64_t>(state->delta_csrs.size()) &&
 					    state->delta_csrs[partition_idx]) {
-						ExplorePartition(*state->delta_csrs[partition_idx], nullptr);
+						ExplorePartition(*state->delta_csrs[partition_idx], nullptr, partition_idx, true);
 					}
 				}
 				barrier->Wait(worker_id);
@@ -567,6 +642,10 @@ bool ShouldUseReverseSearch(const PathFindingPairStats &stats, PathFindingOperat
 
 PathFindingSearchOrientation ChooseSearchOrientation(const PathFindingPairStats &stats, PathFindingOperatorMode mode,
                                                      ClientContext &context) {
+	if (mode == PathFindingOperatorMode::SHORTEST_PATH) {
+		// Paths are reconstructed from parent pointers in source-to-destination order
+		return PathFindingSearchOrientation::FORWARD;
+	}
 	return ShouldUseReverseSearch(stats, mode, context) ? PathFindingSearchOrientation::REVERSE
 	                                                    : PathFindingSearchOrientation::FORWARD;
 }
@@ -579,7 +658,7 @@ static bool CanSearchInReverse(const PathFindingGlobalSinkState &gstate) {
 
 static PathFindingSearchOrientation ChooseSupportedSearchOrientation(const PathFindingGlobalSinkState &gstate,
                                                                      ClientContext &context) {
-	if (!CanSearchInReverse(gstate)) {
+	if (!CanSearchInReverse(gstate) || gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH) {
 		return PathFindingSearchOrientation::FORWARD;
 	}
 	return ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
@@ -844,6 +923,10 @@ bool ShouldUseGroupedIterativeLengthBatches(PathFindingGlobalSinkState &gstate, 
 static constexpr idx_t FEW_SOURCES_LIMIT = 16;
 
 bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, ClientContext &context) {
+	if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH) {
+		// Paths need parent pointers per vertex, which only the per-source kernel keeps
+		return true;
+	}
 	auto ratio = GetPathFindingSourceGroupRatio(context);
 	// Pairs with a NULL endpoint (a key absent from the graph) are answered NULL without joining a group
 	if (gstate.path_finding_mode != PathFindingOperatorMode::ITERATIVE_LENGTH || ratio <= 0) {
@@ -946,6 +1029,9 @@ public:
 			state->delta_csrs = gstate.local_csr_state->partition_delta_csrs;
 			state->suppressed = gstate.local_csr_state->partition_suppressed;
 			state->max_depth = gstate.max_depth;
+			if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH) {
+				state->EnableParentTracking();
+			}
 			state->output_chunks = std::move(gstate.source_group_output_chunks[group_idx]);
 			if (!gstate.source_group_preserve_output_order) {
 				// Single group: every row of its chunks is a destination of this source
@@ -1593,7 +1679,8 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	}
 
 	// The dedupe path rescans the raw pairs, which for an index-backed query are keys rather than ids
-	if (GetPathFindingDeduplicatePairs(context) && !gstate.index_snapshot) {
+	if (GetPathFindingDeduplicatePairs(context) && !gstate.index_snapshot &&
+	    gstate.path_finding_mode == PathFindingOperatorMode::ITERATIVE_LENGTH) {
 		gstate.global_output_batches.clear();
 		gstate.global_pairs->InitializeScan(gstate.global_scan_state, ColumnDataScanProperties::DISALLOW_ZERO_COPY);
 		return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
@@ -2258,11 +2345,22 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 		}
 
 		auto output_size = output_pairs->size();
+		bool return_paths = pf_sink.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH;
 		auto output_results = make_shared_ptr<DataChunk>();
-		output_results->Initialize(context.client, {LogicalType::BIGINT}, output_size);
+		output_results->Initialize(
+		    context.client, {return_paths ? LogicalType::LIST(LogicalType::BIGINT) : LogicalType::BIGINT}, output_size);
 		output_results->SetChildCardinality(output_size);
-		auto result_data = FlatVector::GetDataMutable<int64_t>(output_results->data[0]);
-		auto &result_validity = FlatVector::ValidityMutable(output_results->data[0]);
+		auto &result_vector = output_results->data[0];
+		auto result_data = return_paths ? nullptr : FlatVector::GetDataMutable<int64_t>(result_vector);
+		auto list_data = return_paths ? FlatVector::GetDataMutable<list_entry_t>(result_vector) : nullptr;
+		auto &result_validity = FlatVector::ValidityMutable(result_vector);
+		// Path elements of this chunk, flattened; vertices are keys with an index and row ids otherwise
+		vector<int64_t> path_values;
+		vector<bool> path_valid;
+		auto snapshot = pf_sink.index_snapshot.get();
+		auto vertex_value = [snapshot](uint32_t id) -> int64_t {
+			return snapshot ? snapshot->KeyOf(id) : static_cast<int64_t>(id);
+		};
 
 		UnifiedVectorFormat src_format;
 		UnifiedVectorFormat dst_format;
@@ -2286,9 +2384,30 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 			auto distance = source_group ? source_group->Distance(target) : -1;
 			if (distance < 0) {
 				result_validity.SetInvalid(row);
-				result_data[row] = -1;
+				if (return_paths) {
+					list_data[row] = list_entry_t(path_values.size(), 0);
+				} else {
+					result_data[row] = -1;
+				}
+			} else if (return_paths) {
+				auto offset = path_values.size();
+				source_group->AppendPath(target, vertex_value, path_values, path_valid);
+				list_data[row] = list_entry_t(offset, path_values.size() - offset);
 			} else {
 				result_data[row] = distance;
+			}
+		}
+		if (return_paths) {
+			ListVector::Reserve(result_vector, path_values.size());
+			ListVector::SetListSize(result_vector, path_values.size());
+			auto &child = ListVector::GetChildMutable(result_vector);
+			auto child_data = FlatVector::GetDataMutable<int64_t>(child);
+			auto &child_validity = FlatVector::ValidityMutable(child);
+			for (idx_t i = 0; i < path_values.size(); i++) {
+				child_data[i] = path_values[i];
+				if (!path_valid[i]) {
+					child_validity.SetInvalid(i);
+				}
 			}
 		}
 

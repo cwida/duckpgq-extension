@@ -505,6 +505,7 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 			csr->forward_partitions[partition_idx] =
 			    CSREmitSparsePartition(start_vertex, end_vertex, vertex_count, edges,
 			                           [&](idx_t position, const BuildEdge &edge) { row_ids[position] = edge.row; });
+			csr->forward_partitions[partition_idx]->row_ids = row_ids.data();
 			total_edge_count.fetch_add(edges.size(), std::memory_order_relaxed);
 		}
 	});
@@ -723,6 +724,12 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	struct DeltaEntry {
 		uint32_t src;
 		uint16_t local_dst;
+		row_t row;
+	};
+	struct VisibleDeltaEdge {
+		uint32_t src;
+		uint32_t dst;
+		row_t row;
 	};
 	auto lookup_or_add = [&](int64_t key) -> uint32_t {
 		auto id = epoch.dictionary->Lookup(key);
@@ -738,16 +745,16 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		snapshot->extra_key_to_id.emplace(key, new_id);
 		return new_id;
 	};
-	vector<std::pair<uint32_t, uint32_t>> visible_edges;
+	vector<VisibleDeltaEdge> visible_edges;
 	for (auto &edge : delta_edges) {
 		if (!table.CanFetch(transaction, edge.row)) {
 			continue;
 		}
 		auto src = lookup_or_add(edge.src_key);
 		auto dst = lookup_or_add(edge.dst_key);
-		visible_edges.emplace_back(src, dst);
+		visible_edges.push_back({src, dst, edge.row});
 		if (undirected) {
-			visible_edges.emplace_back(dst, src);
+			visible_edges.push_back({dst, src, edge.row});
 		}
 	}
 	snapshot->vertex_count = epoch_vertex_count + snapshot->extra_keys.size();
@@ -791,8 +798,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	if (!visible_edges.empty()) {
 		vector<vector<DeltaEntry>> buckets(total_ranges);
 		for (auto &edge : visible_edges) {
-			auto range = edge.second / width;
-			buckets[range].push_back({edge.first, NumericCast<uint16_t>(edge.second - range * width)});
+			auto range = edge.dst / width;
+			buckets[range].push_back({edge.src, NumericCast<uint16_t>(edge.dst - range * width), edge.row});
 		}
 		auto src_bits = CSRSourceBits(snapshot->vertex_count);
 		vector<DeltaEntry> scratch;
@@ -804,8 +811,13 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			CSRRadixSortBySource(buckets[range], scratch, histogram, src_bits);
 			auto start_vertex = range * width;
 			auto end_vertex = std::min<idx_t>(start_vertex + width, snapshot_end);
-			snapshot->delta_partitions[range_to_list[range]] = CSREmitSparsePartition(
-			    start_vertex, end_vertex, snapshot->vertex_count, buckets[range], [](idx_t, const DeltaEntry &) {});
+			vector<row_t> delta_rows(buckets[range].size());
+			auto delta_partition = CSREmitSparsePartition(
+			    start_vertex, end_vertex, snapshot->vertex_count, buckets[range],
+			    [&](idx_t position, const DeltaEntry &entry) { delta_rows[position] = entry.row; });
+			delta_partition->owned_row_ids = std::move(delta_rows);
+			delta_partition->row_ids = delta_partition->owned_row_ids.data();
+			snapshot->delta_partitions[range_to_list[range]] = std::move(delta_partition);
 		}
 	}
 	return snapshot;
@@ -1390,6 +1402,7 @@ void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
 		reader.ReadStdVector<uint32_t>(partition->row_offsets);
 		reader.ReadStdVector<uint16_t>(partition->e);
 		reader.ReadVector<row_t>(epoch->partition_row_ids[partition_idx]);
+		partition->row_ids = epoch->partition_row_ids[partition_idx].data();
 		partition->expected_sparse_row_count = partition->source_vertices.size();
 		partition->v_array_size = 0;
 		partition->initialized_e = true;

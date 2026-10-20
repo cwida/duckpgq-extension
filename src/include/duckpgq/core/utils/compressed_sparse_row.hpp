@@ -189,6 +189,13 @@ public:
 	//! Bucket index over source_vertices (see BuildRowBuckets); empty means binary search
 	std::vector<uint32_t> row_buckets;
 	uint8_t bucket_shift = 0;
+	//! Edge-table row id per edge position when the build tracked them. `row_ids` points at owned_row_ids or at
+	//! storage of a CSR index epoch, which outlives every partition built from it.
+	std::vector<row_t> owned_row_ids;
+	const row_t *row_ids = nullptr;
+	bool HasRowIds() const {
+		return row_ids != nullptr;
+	}
 	idx_t expected_sparse_row_count = DConstants::INVALID_INDEX;
 	std::vector<LocalCSRSegment> segments;
 
