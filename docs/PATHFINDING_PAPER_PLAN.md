@@ -149,7 +149,7 @@ Effort in person-days (pd). P1 = must for Round 1, P2 = strongly desired, P3 = i
 | W16 | Update workload: LDBC insert streams into harness; mixed sweeps (D2) | eval | 4 | P1 | W12 | open |
 | W17 | End-to-end LDBC IC13/14, BI19/20 in harness for all systems (D3) | eval | 4 | P1 | W5 | open |
 | W18 | Neo4j Enterprise trial or parity protocol (D1) | eval | 1 | P1 | — | open |
-| W19 | Systematic ablation + scaling sweeps on frozen commit (D5, D6) | eval | 4 (+machine time) | P1 | W1–W6 | open |
+| W19 | Systematic ablation + scaling sweeps on frozen commit (D5, D6). Decided 20 Oct: the first sweep is DuckDB-only. Harness modes added 20 Oct: `index_build`, `index_operator`, composites `index` and `index_comparison` (build-per-query operator vs index) in `scripts/pathfinding_benchmark.py`; smoke-tested on the SNB 0.003 sample | eval | 4 (+machine time) | P1 | W1–W6 | harness ready for the DuckDB-only sweep |
 | W20 | Full read-only system comparison rerun on frozen commit | eval | 2 (+machine time) | P1 | W19 | open |
 | W21 | Results archive, version pins, anonymous artifact (D7, E) | eval | 2 | P1 | ongoing | open |
 | W22 | Related work + outline + intro draft | writing | 3 | P1 | — | open |
@@ -251,6 +251,30 @@ for every system and phase; spot is acceptable since the harness writes each res
 instance type, AMI, kernel, volume type, DuckDB SHA, Kuzu and Neo4j versions in the results archive from the first
 run (D7). The August 2026 sweeps did not record their instance type.
 
+## 10b. DuckDB-only sweep recipe (first sweep, decided 20 Oct)
+
+On the r7a.8xlarge, after `GEN=ninja make release` of the frozen commit and a build of the LDBC generator extension
+(`~/git/ldbc-data-gen`, used by `prepare`):
+
+```
+python3 scripts/pathfinding_benchmark.py prepare --scale-factors 1 3 10 --threads 32
+for sf in 1 3 10; do
+  for threads in 1 4 8 16 32; do
+    python3 scripts/pathfinding_benchmark.py run --scale-factor $sf --threads $threads --repeats 5 \
+        --mode index_comparison --pairs 1024 --query-pattern point_to_point
+    python3 scripts/pathfinding_benchmark.py run --scale-factor $sf --threads $threads --repeats 5 \
+        --mode index_comparison --pairs 1024 --query-pattern sssp
+    python3 scripts/pathfinding_benchmark.py run --scale-factor $sf --threads $threads --repeats 5 \
+        --mode index_comparison --pairs 64 --query-pattern all_pairs
+  done
+done
+```
+
+`index_comparison` records three rows per repeat: `operator` (CSR built per query), `index_build` (CREATE INDEX
+time as `csr_build_s`) and `index_operator` (query over the persisted index). Results land in
+`data/ldbc-pathfinding/results/<sf>/` as per-run JSON lines plus `summary_*.csv` and `stats_*.csv`. Record the
+instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once W17/W18 are in place.
+
 ## 11. Progress log
 
 - 19 Oct: merged main (`ea98090f`), fixed build/tests (`7c5db25a`), release review done. Operator: event
@@ -275,3 +299,6 @@ run (D7). The August 2026 sweeps did not record their instance type.
   operator with parent pointers in the source-grouped kernel; row ids exposed on epoch and delta partitions; MATCH
   routes element_id/vertices/edges/path_length to one shortestpathoperator call. Suite 82/82. Decision: the first
   sweep is DuckDB-only; next engineering item is the harness index mode, then W7 step 2 (build route).
+- 20 Oct (evening): harness index modes (`index_build`, `index_operator`, `index`, `index_comparison`) added and
+  smoke-tested; DuckDB-only sweep recipe in section 10b. Next engineering: W7 step 2 (paths on the build route),
+  W15 remaining tests, W12 cost choice.
