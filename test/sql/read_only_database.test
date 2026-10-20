@@ -1,0 +1,60 @@
+# name: test/sql/read_only_database.test
+# description: A read-only database loads its persisted property graphs on first use and rejects changes to them
+# group: [sql]
+
+require duckpgq
+
+load {TEST_DIR}/duckpgq_read_only.db
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Student(id BIGINT, name VARCHAR);
+INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE TABLE Know(src BIGINT, dst BIGINT);
+INSERT INTO Know VALUES (0, 1), (0, 2), (0, 3), (3, 0), (1, 2), (1, 3), (2, 3), (4, 3);
+
+statement ok
+CREATE PROPERTY GRAPH pg
+VERTEX TABLES (Student LABEL Person)
+EDGE TABLES (Know SOURCE KEY (src) REFERENCES Student (id)
+                  DESTINATION KEY (dst) REFERENCES Student (id)
+                  LABEL Knows);
+
+load {TEST_DIR}/duckpgq_read_only.db readonly
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+# The internal table cannot be created here, but the one persisted above is read on the very first statement.
+query I
+SELECT count(*) FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person) COLUMNS (a.id)) tmp;
+----
+8
+
+# Path finding builds its CSR in memory and works on a read-only database.
+query II
+SELECT name, b_name FROM GRAPH_TABLE (pg
+    MATCH p = ANY SHORTEST (a:Person WHERE a.name = 'Daniel')-[k:Knows]->{1,3}(b:Person WHERE b.name = 'Peter')
+    COLUMNS (a.name AS name, b.name AS b_name)
+    ) tmp;
+----
+Daniel	Peter
+
+# Property graphs are persisted in the database, so they cannot be created in a read-only one.
+statement error
+CREATE PROPERTY GRAPH pg2
+VERTEX TABLES (Student)
+EDGE TABLES (Know SOURCE KEY (src) REFERENCES Student (id) DESTINATION KEY (dst) REFERENCES Student (id));
+----
+read-only mode
+
+# The session keeps working after the failed statement.
+query I
+SELECT count(*) FROM GRAPH_TABLE (pg MATCH (a:Person)-[k:Knows]->(b:Person) COLUMNS (a.id)) tmp;
+----
+8

@@ -6,33 +6,84 @@
 
 namespace duckdb {
 
-void DuckPGQState::InitializeInternalTable(ClientContext &context) {
+void DuckPGQState::EnsureInitialized(ClientContext &context) {
+	if (initialized.load(std::memory_order_acquire)) {
+		return;
+	}
+	// The state is created lazily by the first statement that needs it, possibly from several threads of one
+	// connection at once. Only one of them initializes; the others wait here until it is done.
+	std::lock_guard<std::mutex> guard(initialization_lock);
+	if (initialized.load(std::memory_order_relaxed)) {
+		return;
+	}
+	// An earlier attempt may have failed halfway through loading the persisted property graphs.
+	registered_property_graphs.clear();
+	// Run on a fresh connection: the calling context is in the middle of its own query, and the internal table has to
+	// be committed independently of that query.
 	auto connection = make_shared_ptr<Connection>(*context.db);
-	auto query = connection->Query("CREATE TABLE IF NOT EXISTS __duckpgq_internal ("
-	                               "property_graph varchar, "
-	                               "table_name varchar, "
-	                               "label varchar, "
-	                               "is_vertex_table boolean, "
-	                               "source_table varchar, "
-	                               "source_pk varchar[], "
-	                               "source_fk varchar[], "
-	                               "destination_table varchar, "
-	                               "destination_pk varchar[], "
-	                               "destination_fk varchar[], "
-	                               "discriminator varchar, "
-	                               "sub_labels varchar[], "
-	                               "catalog varchar, "
-	                               "schema varchar,"
-	                               "source_catalog varchar, "
-	                               "source_schema varchar, "
-	                               "destination_catalog varchar, "
-	                               "destination_schema varchar, "
-	                               "properties varchar[], "
-	                               "column_aliases varchar[], "
-	                               "graph_catalog varchar, "
-	                               "graph_schema varchar, "
-	                               "verified boolean"
-	                               ")");
+	auto catalog_state = connection->Query("SELECT coalesce((SELECT readonly FROM duckdb_databases() "
+	                                       "                 WHERE database_name = current_database()), false), "
+	                                       "       EXISTS (SELECT 1 FROM duckdb_tables() "
+	                                       "               WHERE database_name = current_database() "
+	                                       "                 AND schema_name = current_schema() "
+	                                       "                 AND table_name = '__duckpgq_internal')");
+	if (catalog_state->HasError()) {
+		catalog_state->ThrowError();
+	}
+	auto catalog_row = catalog_state->Fetch();
+	if (!catalog_row || catalog_row->size() != 1) {
+		throw InternalException("DuckPGQ: expected one row when inspecting the catalog for the internal table");
+	}
+	auto read_only = catalog_row->GetValue(0, 0).GetValue<bool>();
+	auto has_internal_table = catalog_row->GetValue(1, 0).GetValue<bool>();
+	if (!read_only) {
+		CreateInternalTable(*connection);
+		has_internal_table = true;
+	}
+	// A read-only database cannot get the internal table, but it may still hold one from a read-write session.
+	if (has_internal_table) {
+		RetrievePropertyGraphs(connection);
+	}
+	initialized.store(true, std::memory_order_release);
+}
+
+void DuckPGQState::InitializeInternalTable(ClientContext &context) {
+	Connection connection(*context.db);
+	CreateInternalTable(connection);
+}
+
+void DuckPGQState::CreateInternalTable(Connection &connection) {
+	// Connections initialize their state independently, so several of them can reach this statement at the same
+	// time; without serialization all but one fail with a catalog write-write conflict on the table. The lock is
+	// process-wide because the catalog conflict is per database and a per-database lock has no stable home in the
+	// DuckDB API; it covers a few autocommitted statements per connection, so the contention is negligible.
+	static std::mutex create_internal_table_lock;
+	std::lock_guard<std::mutex> guard(create_internal_table_lock);
+	auto query = connection.Query("CREATE TABLE IF NOT EXISTS __duckpgq_internal ("
+	                              "property_graph varchar, "
+	                              "table_name varchar, "
+	                              "label varchar, "
+	                              "is_vertex_table boolean, "
+	                              "source_table varchar, "
+	                              "source_pk varchar[], "
+	                              "source_fk varchar[], "
+	                              "destination_table varchar, "
+	                              "destination_pk varchar[], "
+	                              "destination_fk varchar[], "
+	                              "discriminator varchar, "
+	                              "sub_labels varchar[], "
+	                              "catalog varchar, "
+	                              "schema varchar,"
+	                              "source_catalog varchar, "
+	                              "source_schema varchar, "
+	                              "destination_catalog varchar, "
+	                              "destination_schema varchar, "
+	                              "properties varchar[], "
+	                              "column_aliases varchar[], "
+	                              "graph_catalog varchar, "
+	                              "graph_schema varchar, "
+	                              "verified boolean"
+	                              ")");
 	if (query->HasError()) {
 		throw TransactionException(query->GetError());
 	}
@@ -40,7 +91,7 @@ void DuckPGQState::InitializeInternalTable(ClientContext &context) {
 	// written before the incomplete-edge check have no verified column (NULL: not verified).
 	for (auto column : {"graph_catalog VARCHAR", "graph_schema VARCHAR", "verified BOOLEAN"}) {
 		auto alter =
-		    connection->Query(StringUtil::Format("ALTER TABLE __duckpgq_internal ADD COLUMN IF NOT EXISTS %s", column));
+		    connection.Query(StringUtil::Format("ALTER TABLE __duckpgq_internal ADD COLUMN IF NOT EXISTS %s", column));
 		if (alter->HasError()) {
 			throw TransactionException(alter->GetError());
 		}

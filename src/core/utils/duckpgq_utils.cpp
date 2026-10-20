@@ -1,5 +1,4 @@
 #include "duckpgq/core/utils/duckpgq_utils.hpp"
-#include <mutex>
 #include "duckpgq/common.hpp"
 #include "duckdb/parser/statement/copy_statement.hpp"
 
@@ -24,29 +23,16 @@ optional_ptr<TableCatalogEntry> GetPropertyGraphTableEntry(ClientContext &contex
 
 // Function to get DuckPGQState from ClientContext
 shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context, bool throw_not_found_error) {
-	auto lookup = context.registered_state->Get<DuckPGQState>("duckpgq");
-	if (lookup) {
-		return lookup;
+	auto state = context.registered_state->Get<DuckPGQState>("duckpgq");
+	if (!state) {
+		if (throw_not_found_error) {
+			throw Exception(ExceptionType::INVALID, "Registered DuckPGQ state not found");
+		}
+		// Atomic under the manager's lock: concurrent first callers all end up with the same state object.
+		state = context.registered_state->GetOrCreate<DuckPGQState>("duckpgq");
 	}
-	if (throw_not_found_error) {
-		throw Exception(ExceptionType::INVALID, "Registered DuckPGQ state not found");
-	}
-	// The state is created lazily, possibly from several worker threads of one parallel scalar-function execution
-	// at once. Without serialization every thread ran CREATE TABLE IF NOT EXISTS __duckpgq_internal and all but one
-	// failed with a catalog write-write conflict. Recursive: initialization runs queries on a new connection that
-	// may parse on this thread.
-	static std::recursive_mutex state_creation_mutex;
-	std::lock_guard<std::recursive_mutex> guard(state_creation_mutex);
-	lookup = context.registered_state->Get<DuckPGQState>("duckpgq");
-	if (lookup) {
-		return lookup; // another thread finished creating it while this one waited
-	}
-	shared_ptr<DuckPGQState> state = make_shared_ptr<DuckPGQState>();
-	// Publish only after initialization: a failed initialization must not leave a half-built state registered.
-	state->InitializeInternalTable(context);
-	auto connection = make_shared_ptr<Connection>(*context.db);
-	state->RetrievePropertyGraphs(connection);
-	context.registered_state->Insert("duckpgq", state);
+	// The state is registered before it is initialized, so every caller has to make sure that happened.
+	state->EnsureInitialized(context);
 	return state;
 }
 
