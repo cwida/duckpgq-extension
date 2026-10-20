@@ -179,6 +179,9 @@ public:
 	ClientContext &context;
 	int64_t source;
 	std::vector<shared_ptr<LocalCSR>> local_csrs;
+	//! Index snapshot overlay aligned with local_csrs (empty for a plain CSR), see BFSState
+	std::vector<shared_ptr<LocalCSR>> delta_csrs;
+	std::vector<shared_ptr<vector<uint64_t>>> suppressed;
 	idx_t num_threads;
 	int64_t v_size;
 	vector<int64_t> distances;
@@ -217,6 +220,57 @@ public:
 	}
 
 private:
+	void Relax(idx_t target) {
+		if (!state->seen[target].load(std::memory_order_relaxed)) {
+			state->next[target].store(1, std::memory_order_relaxed);
+		}
+	}
+
+	//! Expands the frontier over one partition; `suppressed` marks edge positions this reader must skip
+	void ExplorePartition(const LocalCSR &local_csr, const uint64_t *suppressed) {
+		for (const auto &segment : local_csr.segments) {
+			for (idx_t row_idx = 0; row_idx < segment.source_vertices.size(); row_idx++) {
+				auto source_vertex = segment.source_vertices[row_idx];
+				if (!state->frontier[source_vertex].load(std::memory_order_relaxed)) {
+					continue;
+				}
+				for (auto offset = segment.row_offsets[row_idx]; offset < segment.row_offsets[row_idx + 1]; offset++) {
+					Relax(segment.edges[offset] + local_csr.start_vertex);
+				}
+			}
+		}
+		if (!local_csr.segments.empty()) {
+			return;
+		}
+		if (local_csr.HasSparseRows()) {
+			for (idx_t row_idx = 0; row_idx < local_csr.source_vertices.size(); row_idx++) {
+				auto source_vertex = local_csr.source_vertices[row_idx];
+				if (!state->frontier[source_vertex].load(std::memory_order_relaxed)) {
+					continue;
+				}
+				auto start_edges = local_csr.row_offsets[row_idx];
+				auto end_edges = local_csr.row_offsets[row_idx + 1];
+				for (auto offset = start_edges; offset < end_edges; offset++) {
+					if (suppressed && ((suppressed[offset >> 6] >> (offset & 63)) & 1)) {
+						continue;
+					}
+					Relax(local_csr.e[offset] + local_csr.start_vertex);
+				}
+			}
+			return;
+		}
+		for (idx_t vertex = 0; vertex < local_csr.GetVertexSize(); vertex++) {
+			if (!state->frontier[vertex].load(std::memory_order_relaxed)) {
+				continue;
+			}
+			auto start_edges = local_csr.v[vertex].load(std::memory_order_relaxed);
+			auto end_edges = local_csr.v[vertex + 1].load(std::memory_order_relaxed);
+			for (auto offset = start_edges; offset < end_edges; offset++) {
+				Relax(local_csr.e[offset] + local_csr.start_vertex);
+			}
+		}
+	}
+
 	void Execute() {
 		auto &barrier = state->barrier;
 		if (worker_id == 0) {
@@ -250,55 +304,15 @@ private:
 				if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
 					break;
 				}
-				auto &local_csr = *state->local_csrs[partition_idx];
-				for (const auto &segment : local_csr.segments) {
-					for (idx_t row_idx = 0; row_idx < segment.source_vertices.size(); row_idx++) {
-						auto source_vertex = segment.source_vertices[row_idx];
-						if (!state->frontier[source_vertex].load(std::memory_order_relaxed)) {
-							continue;
-						}
-						for (auto offset = segment.row_offsets[row_idx]; offset < segment.row_offsets[row_idx + 1];
-						     offset++) {
-							auto target = segment.edges[offset] + local_csr.start_vertex;
-							if (!state->seen[target].load(std::memory_order_relaxed)) {
-								state->next[target].store(1, std::memory_order_relaxed);
-							}
-						}
-					}
-				}
-				if (!local_csr.segments.empty()) {
-					continue;
-				}
-				if (local_csr.HasSparseRows()) {
-					for (idx_t row_idx = 0; row_idx < local_csr.source_vertices.size(); row_idx++) {
-						auto source_vertex = local_csr.source_vertices[row_idx];
-						if (!state->frontier[source_vertex].load(std::memory_order_relaxed)) {
-							continue;
-						}
-						auto start_edges = local_csr.row_offsets[row_idx];
-						auto end_edges = local_csr.row_offsets[row_idx + 1];
-						for (auto offset = start_edges; offset < end_edges; offset++) {
-							auto target = local_csr.e[offset] + local_csr.start_vertex;
-							if (!state->seen[target].load(std::memory_order_relaxed)) {
-								state->next[target].store(1, std::memory_order_relaxed);
-							}
-						}
-					}
-					continue;
-				}
-
-				for (idx_t vertex = 0; vertex < local_csr.GetVertexSize(); vertex++) {
-					if (!state->frontier[vertex].load(std::memory_order_relaxed)) {
-						continue;
-					}
-					auto start_edges = local_csr.v[vertex].load(std::memory_order_relaxed);
-					auto end_edges = local_csr.v[vertex + 1].load(std::memory_order_relaxed);
-					for (auto offset = start_edges; offset < end_edges; offset++) {
-						auto target = local_csr.e[offset] + local_csr.start_vertex;
-						if (!state->seen[target].load(std::memory_order_relaxed)) {
-							state->next[target].store(1, std::memory_order_relaxed);
-						}
-					}
+				auto suppressed = partition_idx < static_cast<int64_t>(state->suppressed.size()) &&
+				                          state->suppressed[partition_idx]
+				                      ? state->suppressed[partition_idx]->data()
+				                      : nullptr;
+				ExplorePartition(*state->local_csrs[partition_idx], suppressed);
+				// Edges committed after the index epoch, for the same destination range
+				if (partition_idx < static_cast<int64_t>(state->delta_csrs.size()) &&
+				    state->delta_csrs[partition_idx]) {
+					ExplorePartition(*state->delta_csrs[partition_idx], nullptr);
 				}
 			}
 			barrier->Wait(worker_id);
@@ -462,26 +476,26 @@ static PathFindingSearchOrientation ChooseSupportedSearchOrientation(const PathF
 }
 
 //! Maps the pair keys of an index-backed query to the epoch's dense vertex ids; unknown keys become NULL (unreachable)
-shared_ptr<DataChunk> TranslatePairKeys(ClientContext &context, const CSRIndexSnapshot &snapshot, DataChunk &pairs) {
-	auto result = make_shared_ptr<DataChunk>();
-	result->Initialize(context, pairs.GetTypes());
+//! Maps the pair keys of an index-backed query to the epoch's dense vertex ids in place; unknown keys become NULL
+//! (unreachable). The hidden pair columns are never returned to the user, so overwriting them is safe.
+void TranslatePairKeysInPlace(const CSRIndexSnapshot &snapshot, DataChunk &pairs) {
 	for (idx_t column_idx = 0; column_idx < 2; column_idx++) {
-		UnifiedVectorFormat format;
-		pairs.data[column_idx].ToUnifiedFormat(pairs.size(), format);
-		auto keys = UnifiedVectorFormat::GetData<int64_t>(format);
-		auto ids = FlatVector::GetDataMutable<int64_t>(result->data[column_idx]);
+		auto &column = pairs.data[column_idx];
+		column.Flatten(pairs.size());
+		auto values = FlatVector::GetDataMutable<int64_t>(column);
+		auto &validity = FlatVector::ValidityMutable(column);
 		for (idx_t row = 0; row < pairs.size(); row++) {
-			auto key_idx = format.sel->get_index(row);
-			auto id = format.validity.RowIsValid(key_idx) ? snapshot.Lookup(keys[key_idx]) : DConstants::INVALID_INDEX;
+			if (!validity.RowIsValid(row)) {
+				continue;
+			}
+			auto id = snapshot.Lookup(values[row]);
 			if (id == DConstants::INVALID_INDEX) {
-				FlatVector::SetNull(result->data[column_idx], row, true);
+				validity.SetInvalid(row);
 			} else {
-				ids[row] = NumericCast<int64_t>(id);
+				values[row] = NumericCast<int64_t>(id);
 			}
 		}
 	}
-	result->SetCardinality(pairs.size());
-	return result;
 }
 
 shared_ptr<PathFindingBatch> CreateOrientedPathFindingBatch(ClientContext &context,
@@ -952,6 +966,8 @@ public:
 			auto state = make_shared_ptr<SourceGroupedIterativeLengthState>(
 			    context, gstate.source_group_sources[group_idx], partition_csrs, gstate.num_threads,
 			    GetPathFindingVSize(gstate));
+			state->delta_csrs = gstate.local_csr_state->partition_delta_csrs;
+			state->suppressed = gstate.local_csr_state->partition_suppressed;
 			state->output_chunks = std::move(gstate.source_group_output_chunks[group_idx]);
 			auto state_idx = gstate.source_group_states.size();
 			if (!gstate.source_group_preserve_output_order) {
@@ -1538,6 +1554,9 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 		auto current_chunk = make_shared_ptr<DataChunk>();
 		current_chunk->Initialize(context, gstate.global_pairs->Types());
 		gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
+		if (gstate.index_snapshot) {
+			TranslatePairKeysInPlace(*gstate.index_snapshot, *current_chunk);
+		}
 		AccumulatePairStats(*current_chunk, pair_stats, distinct_srcs, distinct_dsts);
 		gstate.global_output_batches.push_back(current_chunk);
 	}
@@ -1554,33 +1573,28 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	RecordStrategy(context, "distinct_src", std::to_string(gstate.pair_stats.distinct_src_count));
 	RecordStrategy(context, "distinct_dst", std::to_string(gstate.pair_stats.distinct_dst_count));
 	RecordStrategy(context, "orientation", OrientationName(gstate.search_orientation));
-	// Index-backed queries search by dense vertex id and use the regular batched MS-BFS only
-	if (!gstate.index_snapshot) {
-		int64_t single_source;
-		if (ShouldUseSourceGroupedIterativeLength(gstate, context) &&
-		    TryGetExactSingleSearchSource(gstate, single_source)) {
-			return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
-		}
+	int64_t single_source;
+	if (ShouldUseSourceGroupedIterativeLength(gstate, context) &&
+	    TryGetExactSingleSearchSource(gstate, single_source)) {
+		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
+	}
 
-		if (GetPathFindingDeduplicatePairs(context)) {
-			gstate.global_output_batches.clear();
-			gstate.global_pairs->InitializeScan(gstate.global_scan_state,
-			                                    ColumnDataScanProperties::DISALLOW_ZERO_COPY);
-			return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
-		}
+	// The dedupe path rescans the raw pairs, which for an index-backed query are keys rather than ids
+	if (GetPathFindingDeduplicatePairs(context) && !gstate.index_snapshot) {
+		gstate.global_output_batches.clear();
+		gstate.global_pairs->InitializeScan(gstate.global_scan_state, ColumnDataScanProperties::DISALLOW_ZERO_COPY);
+		return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
+	}
 
-		if (ShouldUseSourceGroupedIterativeLength(gstate, context)) {
-			return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
-		}
+	if (ShouldUseSourceGroupedIterativeLength(gstate, context)) {
+		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
 	}
 
 	vector<shared_ptr<PathFindingBatch>> oriented_batches;
 	oriented_batches.reserve(gstate.global_output_batches.size());
 	for (auto &output_batch : gstate.global_output_batches) {
-		auto search_pairs =
-		    gstate.index_snapshot ? TranslatePairKeys(context, *gstate.index_snapshot, *output_batch) : output_batch;
 		oriented_batches.push_back(CreateOrientedPathFindingBatch(context, gstate.search_orientation, output_batch,
-		                                                          search_pairs, gstate.next_batch_index++));
+		                                                          gstate.next_batch_index++));
 	}
 	ScheduleLocalCSRBuildThenPathFinding(gstate, std::move(oriented_batches), pipeline, event, op, context);
 
