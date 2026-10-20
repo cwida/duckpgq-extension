@@ -221,7 +221,7 @@ reopening 0.043 s (the bucket index below is rebuilt at load, +0.01 s).
 
 The 19 Oct numbers were taken with the dense per-vertex MS-BFS sweep, which costs ~0.12 s per 512-lane batch on 2M
 vertices regardless of how many pairs the batch holds. The 20 Oct numbers (plan item W26, commits `b488486e`,
-`502bb577`, `96fbc7b4`) come from five changes: (1) the source-grouped frontier kernel is allowed on index
+`5455ec18`, `43a37a0f`) come from five changes: (1) the source-grouped frontier kernel is allowed on index
 snapshots and runs whenever there are at most 16 distinct sources, (2) MATCH passes the upper bound of the path
 quantifier into the operator and both kernels stop at that depth, (3) a source group stops as soon as all of its
 destinations are discovered, (4) pairs with a NULL endpoint no longer disable source grouping, (5) every sparse
