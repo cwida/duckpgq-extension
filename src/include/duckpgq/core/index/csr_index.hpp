@@ -12,6 +12,7 @@
 #pragma once
 
 #include "duckpgq/common.hpp"
+#include "duckdb/common/unordered_map.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 
 #include "duckdb/common/constants.hpp"
@@ -20,7 +21,6 @@
 #include "duckdb/execution/index/index_type.hpp"
 
 #include <unordered_map>
-
 
 namespace duckdb {
 
@@ -97,6 +97,15 @@ struct CSRIndexDeltaEdge {
 	//! Generation of the first epoch that contains this row (UINT32_MAX while no retained epoch does); epochs are
 	//! built from a superset of their predecessors' committed rows, so every later epoch contains it as well
 	uint32_t covered_epoch = NumericLimits<uint32_t>::Maximum();
+	//! Change group: one Append call = one commit chunk of one transaction, so every row of a group has the same
+	//! visibility and a reader checks one row per group. 0 means "decide per row" (entries loaded from storage).
+	uint32_t group = 0;
+	//! Change group of the TryDelete call that deleted this delta row, 0 while it is not deleted
+	uint32_t deleted_group = 0;
+	//! Dense ids resolved against the newest dictionary at append time (UINT32_MAX when unknown then). Dictionaries
+	//! are prefix-stable across epochs, so an id below an epoch's vertex count is valid for that epoch.
+	uint32_t src_id = NumericLimits<uint32_t>::Maximum();
+	uint32_t dst_id = NumericLimits<uint32_t>::Maximum();
 };
 
 //! A deleted row that may still be an edge of a retained epoch
@@ -104,6 +113,8 @@ struct CSRIndexTombstone {
 	row_t row;
 	//! Generation of the first epoch built without this row (UINT32_MAX while every retained epoch has it)
 	uint32_t excluded_epoch = NumericLimits<uint32_t>::Maximum();
+	//! Change group of the TryDelete call, see CSRIndexDeltaEdge::group; 0 means "decide per row"
+	uint32_t group = 0;
 };
 
 //! What one reader traverses: the shared epoch plus an overlay for the changes visible to its transaction.
@@ -210,17 +221,21 @@ private:
 	//! Stamps the change-log entries that the epoch built by `transaction` accounts for: delta rows it contains and
 	//! tombstoned rows it excludes. Uses the live transaction, so it does not depend on how long DuckDB keeps row
 	//! versions. Then installs the epoch and drops the entries no retained epoch needs any more.
-	void InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table,
-	                            shared_ptr<CSRIndexEpoch> epoch) const;
+	void InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch) const;
 	//! Drops change-log entries that every retained epoch already accounts for; the index lock must be held
 	void CompactChangeLogLocked() const;
 	//! Resolves the epoch positions of tombstoned rows [known_count, tombstone_count) by scanning the epoch's row ids
 	void ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_count) const;
 	//! The newest retained epoch a reader at `bound` may traverse, or nullptr; the index lock must be held
 	shared_ptr<CSRIndexEpoch> EpochForLocked(VisibilityBound bound) const;
+	//! Builds the reader's snapshot: the epoch plus the overlay of the change log visible to `transaction`. With
+	//! `shareable` the snapshot may be served from and stored in the one-entry cache keyed by (epoch generation,
+	//! newest visible change group), which identifies the visible set for every reader without own changes.
 	shared_ptr<CSRIndexSnapshot> BuildSnapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table,
 	                                           shared_ptr<CSRIndexEpoch> epoch, idx_t delta_count,
-	                                           idx_t tombstone_count) const;
+	                                           idx_t tombstone_count, bool shareable) const;
+	//! Rebuilds delta_row_index from delta; the index lock must be held
+	void RebuildDeltaRowIndexLocked() const;
 
 	//! Persistence: the newest epoch and the part of the change log it does not account for are written as one byte
 	//! stream into fixed-size segments; the segment list and sizes travel in the storage info's options
@@ -238,6 +253,14 @@ private:
 	mutable uint32_t next_generation = 0;
 	mutable vector<CSRIndexDeltaEdge> delta;
 	mutable vector<CSRIndexTombstone> tombstones;
+	//! Next change group id handed to an Append or TryDelete call (commits are serialized, so ids follow commit order)
+	mutable uint32_t next_change_group = 1;
+	//! Position in `delta` of every delta row, so TryDelete can stamp the row's deleted_group without a scan
+	mutable unordered_map<row_t, idx_t> delta_row_index;
+	//! The last shared snapshot built, served to readers that see the same change groups of the same epoch
+	mutable shared_ptr<CSRIndexSnapshot> cached_snapshot;
+	mutable uint32_t cached_snapshot_generation = 0;
+	mutable uint32_t cached_snapshot_group = 0;
 	//! One fold at a time
 	mutable mutex fold_lock;
 	//! Segments of the last checkpoint or WAL serialization, kept until the next one replaces them

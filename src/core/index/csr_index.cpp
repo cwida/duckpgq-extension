@@ -564,8 +564,28 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	}
 	vector<uint8_t> delta_covered(delta_prefix.size());
 	vector<uint8_t> tombstone_excluded(tombstone_prefix.size());
+	// A row the folding transaction can fetch is in the new epoch. A deleted delta row whose insert the folding
+	// transaction sees was deleted before the fold, so the new epoch accounts for it (by excluding it) as well;
+	// the insert's visibility is that of any undeleted row of the same change group.
+	unordered_map<uint32_t, bool> group_insert_visible;
 	for (idx_t i = 0; i < delta_prefix.size(); i++) {
-		delta_covered[i] = table.CanFetch(transaction, delta_prefix[i].row);
+		auto &entry = delta_prefix[i];
+		if (entry.group != 0 && entry.deleted_group == 0) {
+			auto known = group_insert_visible.find(entry.group);
+			if (known == group_insert_visible.end()) {
+				known = group_insert_visible.emplace(entry.group, table.CanFetch(transaction, entry.row)).first;
+			}
+			delta_covered[i] = known->second;
+			continue;
+		}
+		delta_covered[i] = table.CanFetch(transaction, entry.row);
+	}
+	for (idx_t i = 0; i < delta_prefix.size(); i++) {
+		auto &entry = delta_prefix[i];
+		if (!delta_covered[i] && entry.deleted_group != 0 && entry.group != 0) {
+			auto known = group_insert_visible.find(entry.group);
+			delta_covered[i] = known != group_insert_visible.end() && known->second;
+		}
 	}
 	for (idx_t i = 0; i < tombstone_prefix.size(); i++) {
 		tombstone_excluded[i] = !table.CanFetch(transaction, tombstone_prefix[i].row);
@@ -588,6 +608,7 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	while (epochs.size() > MAX_RETAINED_EPOCHS) {
 		epochs.erase(epochs.begin());
 	}
+	cached_snapshot.reset();
 	CompactChangeLogLocked();
 }
 
@@ -611,6 +632,7 @@ void CSRIndex::CompactChangeLogLocked() const {
 	}
 	delta = std::move(new_delta);
 	tombstones = std::move(new_tombstones);
+	RebuildDeltaRowIndexLocked();
 	for (auto &epoch : epochs) {
 		epoch->tombstone_positions.clear();
 	}
@@ -675,37 +697,119 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, DuckTransaction &transaction,
                                                      DataTable &table, shared_ptr<CSRIndexEpoch> epoch_p,
-                                                     idx_t delta_count, idx_t tombstone_count) const {
+                                                     idx_t delta_count, idx_t tombstone_count, bool shareable) const {
+	auto &epoch = *epoch_p;
+	auto width = epoch.partition_width;
+	auto epoch_vertex_count = epoch.vertex_count;
+
+	// The change log this reader considers: the publish lengths copied by the caller
+	vector<CSRIndexDeltaEdge> delta_edges;
+	vector<row_t> tombstone_rows;
+	vector<uint32_t> tombstone_groups;
+	vector<idx_t> tombstone_positions;
+	if (tombstone_count > 0) {
+		ResolveTombstonePositions(epoch, tombstone_count);
+	}
+	{
+		IndexLock l(*this);
+		delta_count = std::min<idx_t>(delta_count, delta.size());
+		delta_edges.assign(delta.begin(), delta.begin() + NumericCast<int64_t>(delta_count));
+		tombstone_count = std::min<idx_t>(tombstone_count, epoch.tombstone_positions.size());
+		for (idx_t i = 0; i < tombstone_count; i++) {
+			tombstone_rows.push_back(tombstones[i].row);
+			tombstone_groups.push_back(tombstones[i].group);
+		}
+		tombstone_positions.assign(epoch.tombstone_positions.begin(),
+		                           epoch.tombstone_positions.begin() + NumericCast<int64_t>(tombstone_count));
+	}
+
+	// Pass 1: which change groups' commits does this reader see? One row-version check per group; rows without a
+	// group (loaded from storage) and deleted delta rows are checked individually. Commits are serialized, so the
+	// visible groups are a prefix of the group sequence (aborted groups are visible to nobody) and the newest
+	// visible group identifies the visible set.
+	unordered_map<uint32_t, bool> commit_visible;
+	uint32_t newest_visible_group = 0;
+	auto group_commit_visible = [&](uint32_t group, bool visible_if_fetchable, row_t representative) {
+		auto known = commit_visible.find(group);
+		if (known == commit_visible.end()) {
+			auto fetchable = table.CanFetch(transaction, representative);
+			known = commit_visible.emplace(group, fetchable == visible_if_fetchable).first;
+			if (known->second) {
+				newest_visible_group = std::max(newest_visible_group, group);
+			}
+		}
+		return known->second;
+	};
+	// Insert groups are decided on an undeleted row (a deleted row is unfetchable for two possible reasons)
+	for (auto &entry : delta_edges) {
+		if (entry.group != 0 && entry.deleted_group == 0) {
+			group_commit_visible(entry.group, true, entry.row);
+		}
+	}
+	vector<bool> delta_visible(delta_edges.size());
+	for (idx_t i = 0; i < delta_edges.size(); i++) {
+		auto &entry = delta_edges[i];
+		bool insert_visible;
+		if (entry.group == 0) {
+			// Loaded from storage: committed before the restart, so visible unless deleted
+			if (entry.deleted_group == 0) {
+				delta_visible[i] = table.CanFetch(transaction, entry.row);
+				continue;
+			}
+			insert_visible = true;
+		} else {
+			auto known = commit_visible.find(entry.group);
+			if (known == commit_visible.end()) {
+				// Every row of the group is deleted: this row's fetchability decides for it
+				delta_visible[i] = table.CanFetch(transaction, entry.row);
+				continue;
+			}
+			insert_visible = known->second;
+		}
+		if (!insert_visible) {
+			delta_visible[i] = false;
+		} else if (entry.deleted_group == 0) {
+			delta_visible[i] = true;
+		} else {
+			// The insert is visible, so the row is unfetchable exactly when the reader sees the deleting commit
+			delta_visible[i] = !group_commit_visible(entry.deleted_group, false, entry.row);
+		}
+	}
+	vector<bool> tombstone_applied(tombstone_rows.size());
+	for (idx_t i = 0; i < tombstone_rows.size(); i++) {
+		if (tombstone_positions[i] == DConstants::INVALID_INDEX) {
+			continue; // a row no retained epoch contains
+		}
+		// An epoch row is visible to every reader of the epoch, so it is not fetchable exactly when the reader sees
+		// the deleting commit
+		tombstone_applied[i] = tombstone_groups[i] == 0
+		                           ? !table.CanFetch(transaction, tombstone_rows[i])
+		                           : group_commit_visible(tombstone_groups[i], false, tombstone_rows[i]);
+	}
+
+	if (shareable) {
+		IndexLock l(*this);
+		if (cached_snapshot && cached_snapshot->epoch == epoch_p && cached_snapshot_generation == epoch.generation &&
+		    cached_snapshot_group == newest_visible_group) {
+			return cached_snapshot;
+		}
+	}
+
 	auto snapshot = make_shared_ptr<CSRIndexSnapshot>();
 	snapshot->epoch = epoch_p;
-	auto &epoch = *snapshot->epoch;
-	auto width = epoch.partition_width;
 	snapshot->partition_width = width;
 	snapshot->partitions = epoch.csr->forward_partitions;
 	snapshot->edge_count = epoch.edge_count;
-	auto epoch_vertex_count = epoch.vertex_count;
 
 	// Tombstones: epoch edges deleted by commits this reader sees are suppressed
 	if (tombstone_count > 0) {
-		ResolveTombstonePositions(epoch, tombstone_count);
-		vector<row_t> rows;
-		vector<idx_t> positions;
-		{
-			IndexLock l(*this);
-			tombstone_count = std::min<idx_t>(tombstone_count, epoch.tombstone_positions.size());
-			for (idx_t i = 0; i < tombstone_count; i++) {
-				rows.push_back(tombstones[i].row);
-			}
-			positions.assign(epoch.tombstone_positions.begin(),
-			                 epoch.tombstone_positions.begin() + NumericCast<int64_t>(tombstone_count));
-		}
 		snapshot->suppressed.resize(snapshot->partitions.size());
 		for (idx_t i = 0; i < tombstone_count; i++) {
-			if (positions[i] == DConstants::INVALID_INDEX || table.CanFetch(transaction, rows[i])) {
+			if (!tombstone_applied[i]) {
 				continue;
 			}
-			auto partition_idx = positions[i] >> 32;
-			auto offset = positions[i] & 0xFFFFFFFF;
+			auto partition_idx = tombstone_positions[i] >> 32;
+			auto offset = tombstone_positions[i] & 0xFFFFFFFF;
 			auto &bitmap = snapshot->suppressed[partition_idx];
 			if (!bitmap) {
 				bitmap = make_shared_ptr<vector<uint64_t>>((snapshot->partitions[partition_idx]->e.size() + 63) / 64);
@@ -716,12 +820,6 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	}
 
 	// Delta: edges committed after the epoch that this reader sees, bucketed by destination range
-	vector<CSRIndexDeltaEdge> delta_edges;
-	if (delta_count > 0) {
-		IndexLock l(*this);
-		delta_count = std::min<idx_t>(delta_count, delta.size());
-		delta_edges.assign(delta.begin(), delta.begin() + NumericCast<int64_t>(delta_count));
-	}
 	struct DeltaEntry {
 		uint32_t src;
 		uint16_t local_dst;
@@ -747,12 +845,13 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		return new_id;
 	};
 	vector<VisibleDeltaEdge> visible_edges;
-	for (auto &edge : delta_edges) {
-		if (!table.CanFetch(transaction, edge.row)) {
+	for (idx_t i = 0; i < delta_edges.size(); i++) {
+		if (!delta_visible[i]) {
 			continue;
 		}
-		auto src = lookup_or_add(edge.src_key);
-		auto dst = lookup_or_add(edge.dst_key);
+		auto &edge = delta_edges[i];
+		auto src = edge.src_id < epoch_vertex_count ? edge.src_id : lookup_or_add(edge.src_key);
+		auto dst = edge.dst_id < epoch_vertex_count ? edge.dst_id : lookup_or_add(edge.dst_key);
 		visible_edges.push_back({src, dst, edge.row});
 		if (undirected) {
 			visible_edges.push_back({dst, src, edge.row});
@@ -821,6 +920,12 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			snapshot->delta_partitions[range_to_list[range]] = std::move(delta_partition);
 		}
 	}
+	if (shareable) {
+		IndexLock l(*this);
+		cached_snapshot = snapshot;
+		cached_snapshot_generation = epoch.generation;
+		cached_snapshot_group = newest_visible_group;
+	}
 	return snapshot;
 }
 
@@ -837,7 +942,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 	if (transaction.ChangesMade()) {
 		// The reader's own uncommitted writes are visible to it alone: build a private epoch from its view of the
 		// table (which includes them) and leave the shared epochs, which must only contain committed rows, untouched
-		return BuildSnapshot(context, transaction, table, RebuildFromTable(context, transaction, table), 0, 0);
+		return BuildSnapshot(context, transaction, table, RebuildFromTable(context, transaction, table), 0, 0, false);
 	}
 	auto bound = transaction.view.visibility_bound;
 	shared_ptr<CSRIndexEpoch> current;
@@ -882,7 +987,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 		// Every retained epoch is newer than this reader's snapshot
 		return nullptr;
 	}
-	return BuildSnapshot(context, transaction, table, current, delta_count, tombstone_count);
+	return BuildSnapshot(context, transaction, table, current, delta_count, tombstone_count, true);
 }
 
 idx_t CSRIndex::DeltaSize() const {
@@ -1078,12 +1183,25 @@ ErrorData CSRIndex::Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 	UnifiedVectorFormat row_format;
 	row_ids.ToUnifiedFormat(count, row_format);
 	auto row_data = UnifiedVectorFormat::GetData<row_t>(row_format);
+	// One call appends the rows of one commit chunk of one transaction: one change group
+	auto group = next_change_group++;
+	// Resolve the keys once here rather than in every reader's snapshot; unknown keys stay unresolved
+	auto dictionary = epochs.empty() ? nullptr : epochs.back()->dictionary.get();
+	auto resolve = [&](int64_t key) -> uint32_t {
+		if (!dictionary) {
+			return NumericLimits<uint32_t>::Maximum();
+		}
+		auto id = dictionary->Lookup(key);
+		return id == DConstants::INVALID_INDEX ? NumericLimits<uint32_t>::Maximum() : NumericCast<uint32_t>(id);
+	};
 	for (idx_t row = 0; row < count; row++) {
 		if (!src_valid[row] || !dst_valid[row]) {
 			continue;
 		}
-		delta.push_back({src_keys[row], dst_keys[row], row_data[row_format.sel->get_index(row)],
-		                 NumericLimits<uint32_t>::Maximum()});
+		auto row_id = row_data[row_format.sel->get_index(row)];
+		delta_row_index[row_id] = delta.size();
+		delta.push_back({src_keys[row], dst_keys[row], row_id, NumericLimits<uint32_t>::Maximum(), group, 0,
+		                 resolve(src_keys[row]), resolve(dst_keys[row])});
 	}
 	return ErrorData();
 }
@@ -1099,9 +1217,17 @@ idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifi
 	UnifiedVectorFormat row_format;
 	row_identifiers.ToUnifiedFormat(count, row_format);
 	auto row_data = UnifiedVectorFormat::GetData<row_t>(row_format);
+	auto group = next_change_group++;
 	for (idx_t row = 0; row < count; row++) {
-		// Whether the row is an epoch edge or a delta edge is resolved lazily by the readers
-		tombstones.push_back({row_data[row_format.sel->get_index(row)], NumericLimits<uint32_t>::Maximum()});
+		auto row_id = row_data[row_format.sel->get_index(row)];
+		auto delta_entry = delta_row_index.find(row_id);
+		if (delta_entry != delta_row_index.end()) {
+			// A delta row: readers drop it once they see this deleting commit
+			delta[delta_entry->second].deleted_group = group;
+		} else {
+			// An epoch row (or one the index never saw); its position is resolved lazily by the readers
+			tombstones.push_back({row_id, NumericLimits<uint32_t>::Maximum(), group});
+		}
 		if (deleted_sel) {
 			deleted_sel->set_index(row, row);
 		}
@@ -1114,6 +1240,16 @@ void CSRIndex::ResetStorage(IndexLock &l) {
 	epochs.clear();
 	delta.clear();
 	tombstones.clear();
+	delta_row_index.clear();
+	cached_snapshot.reset();
+}
+
+void CSRIndex::RebuildDeltaRowIndexLocked() const {
+	delta_row_index.clear();
+	delta_row_index.reserve(delta.size());
+	for (idx_t i = 0; i < delta.size(); i++) {
+		delta_row_index[delta[i].row] = i;
+	}
 }
 
 bool CSRIndex::MergeIndexes(IndexLock &, BoundIndex &) {
@@ -1468,11 +1604,14 @@ void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
 	epoch->generation = next_generation++;
 	epochs.clear();
 	epochs.push_back(std::move(epoch));
+	// Loaded entries carry no change group (0): readers decide their visibility per row until the next fold
 	delta = std::move(loaded_delta);
+	RebuildDeltaRowIndexLocked();
 	tombstones.clear();
 	for (auto row : loaded_tombstones) {
-		tombstones.push_back({row, NumericLimits<uint32_t>::Maximum()});
+		tombstones.push_back({row, NumericLimits<uint32_t>::Maximum(), 0});
 	}
+	cached_snapshot.reset();
 }
 
 IndexStorageInfo CSRIndex::SerializeToDisk(QueryContext context, const case_insensitive_map_t<Value> &) {
