@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import collections
 import csv
 import http.client
 import json
@@ -3686,6 +3687,82 @@ def run_update_benchmark(args):
     print(f"Wrote {path}")
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Concurrent update workload: one writer connection and R reader connections in one process (C++ driver).
+# ---------------------------------------------------------------------------------------------------------------------
+
+CONCURRENT_DRIVER_SOURCE = REPO_ROOT / "scripts" / "tools" / "update_concurrent_driver.cpp"
+CONCURRENT_DRIVER_BINARY = REPO_ROOT / "build" / "release" / "update_concurrent_driver"
+
+
+def build_concurrent_driver():
+    """Compiles the driver against the release build's libduckdb when the binary is missing or older than the source."""
+    libdir = REPO_ROOT / "build" / "release" / "src"
+    if CONCURRENT_DRIVER_BINARY.exists() and CONCURRENT_DRIVER_BINARY.stat().st_mtime >= CONCURRENT_DRIVER_SOURCE.stat().st_mtime:
+        return
+    cmd = ["g++", "-O2", "-std=c++17", f"-I{REPO_ROOT / 'duckdb' / 'src' / 'include'}", str(CONCURRENT_DRIVER_SOURCE),
+           f"-L{libdir}", "-lduckdb", f"-Wl,-rpath,{libdir}", "-o", str(CONCURRENT_DRIVER_BINARY)]
+    print("Compiling", CONCURRENT_DRIVER_BINARY.name)
+    subprocess.run(cmd, cwd=REPO_ROOT, check=True)
+
+
+def run_update_concurrent(args):
+    ensure_update_log(args.scale_factor)
+    pair_shape = generated_pair_shape(args.query_pattern, "random")
+    pair_table = pair_table_name(args.pairs, pair_shape)
+    ensure_pair_table(args.scale_factor, args.pairs, pair_shape)
+    build_concurrent_driver()
+    WORK_ROOT.mkdir(parents=True, exist_ok=True)
+    work_db = WORK_ROOT / f"ldbc_{sf_name(args.scale_factor)}_concurrent.duckdb"
+    for stale in (work_db, Path(str(work_db) + ".wal")):
+        if stale.exists():
+            stale.unlink()
+    shutil.copyfile(db_path(args.scale_factor), work_db)
+    results_dir = DATA_ROOT / "results" / sf_name(args.scale_factor)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    output = results_dir / (f"concurrent_{args.query_pattern}_pairs{args.pairs}_threads{args.threads}_readers{args.readers}"
+                            f"_batch{args.batch_size}x{args.batches}_pause{args.writer_pause_ms}_fold{args.fold_ratio}"
+                            f"_{time.time_ns()}.csv")
+    cmd = [str(CONCURRENT_DRIVER_BINARY), "--database", str(work_db), "--extension", str(DUCKPGQ_EXTENSION),
+           "--output", str(output), "--pair-table", pair_table, "--index-name", CSR_INDEX_NAME,
+           "--threads", str(args.threads), "--readers", str(args.readers), "--batches", str(args.batches),
+           "--batch-size", str(args.batch_size), "--writer-pause-ms", str(args.writer_pause_ms),
+           "--fold-ratio", str(args.fold_ratio)]
+    if args.routes == "index":
+        cmd.append("--no-build")
+    elif args.routes == "build":
+        cmd.append("--no-index")
+    print(" ".join(cmd[1:]))
+    result = subprocess.run(cmd, cwd=REPO_ROOT, text=True, capture_output=True, timeout=args.timeout)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    work_db.unlink()
+    if result.returncode != 0:
+        raise SystemExit(f"concurrent driver failed with exit code {result.returncode}")
+    # Append the run metadata as extra columns so the CSV is self-describing
+    rows = list(csv.DictReader(output.open()))
+    metadata = {
+        "scale_factor": args.scale_factor, "threads": args.threads, "readers": args.readers,
+        "query_pattern": args.query_pattern, "batch_size": args.batch_size, "batches": args.batches,
+        "writer_pause_ms": args.writer_pause_ms, "fold_ratio": args.fold_ratio, "benchmark_notes": args.notes,
+        "repo_commit": subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True,
+                                      capture_output=True).stdout.strip(),
+    }
+    for row in rows:
+        row.update(metadata)
+    with output.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    kinds = collections.Counter(row["kind"] for row in rows)
+    for kind in ("query_index", "query_build", "commit"):
+        values = [float(row["elapsed_s"]) for row in rows if row["kind"] == kind]
+        if values:
+            print(f"   {kind}: n={len(values)} mean {statistics.mean(values):.4f}s max {max(values):.4f}s")
+    print(f"   mismatches={kinds.get('mismatch', 0)} errors={kinds.get('error', 0)}")
+    print(f"Wrote {output}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Prepare and smoke-run pathfinding benchmarks on LDBC Person knows Person data.")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -3993,6 +4070,22 @@ def main():
     update_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
     update_parser.add_argument("--timeout", type=int, default=3600)
     update_parser.set_defaults(func=run_update_benchmark)
+
+    concurrent_parser = subcommands.add_parser("update-concurrent", help="One writer and R readers in one process")
+    concurrent_parser.add_argument("--scale-factor", required=True)
+    concurrent_parser.add_argument("--threads", type=int, default=os.cpu_count())
+    concurrent_parser.add_argument("--readers", type=int, default=4)
+    concurrent_parser.add_argument("--query-pattern", choices=["point_to_point", "sssp"], default="sssp")
+    concurrent_parser.add_argument("--pairs", type=int, default=1024)
+    concurrent_parser.add_argument("--batch-size", type=int, default=1000)
+    concurrent_parser.add_argument("--batches", type=int, default=50)
+    concurrent_parser.add_argument("--writer-pause-ms", type=int, default=0)
+    concurrent_parser.add_argument("--fold-ratio", type=float, default=0.1)
+    concurrent_parser.add_argument("--routes", choices=["both", "index", "build"], default="both",
+                                   help="both runs the index query and the build-per-query in the same read transaction")
+    concurrent_parser.add_argument("--notes", default="")
+    concurrent_parser.add_argument("--timeout", type=int, default=7200)
+    concurrent_parser.set_defaults(func=run_update_concurrent)
 
     args = parser.parse_args()
     args.func(args)
