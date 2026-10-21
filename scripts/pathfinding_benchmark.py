@@ -3728,6 +3728,10 @@ def run_update_concurrent(args):
            "--threads", str(args.threads), "--readers", str(args.readers), "--batches", str(args.batches),
            "--batch-size", str(args.batch_size), "--writer-pause-ms", str(args.writer_pause_ms),
            "--fold-ratio", str(args.fold_ratio)]
+    # The BFS kernels synchronize their worker tasks with barriers; concurrent queries whose workers together exceed
+    # the scheduler's threads deadlock (seen with 4 readers at 32 threads). Cap the workers per query.
+    threads_per_batch = args.threads_per_batch if args.threads_per_batch else max(1, args.threads // (args.readers + 1))
+    cmd += ["--threads-per-batch", str(threads_per_batch)]
     if args.routes == "index":
         cmd.append("--no-build")
     elif args.routes == "build":
@@ -3744,7 +3748,8 @@ def run_update_concurrent(args):
     metadata = {
         "scale_factor": args.scale_factor, "threads": args.threads, "readers": args.readers,
         "query_pattern": args.query_pattern, "batch_size": args.batch_size, "batches": args.batches,
-        "writer_pause_ms": args.writer_pause_ms, "fold_ratio": args.fold_ratio, "benchmark_notes": args.notes,
+        "writer_pause_ms": args.writer_pause_ms, "fold_ratio": args.fold_ratio, "threads_per_batch": threads_per_batch,
+        "benchmark_notes": args.notes,
         "repo_commit": subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True,
                                       capture_output=True).stdout.strip(),
     }
@@ -4081,6 +4086,8 @@ def main():
     concurrent_parser.add_argument("--batches", type=int, default=50)
     concurrent_parser.add_argument("--writer-pause-ms", type=int, default=0)
     concurrent_parser.add_argument("--fold-ratio", type=float, default=0.1)
+    concurrent_parser.add_argument("--threads-per-batch", type=int, default=0,
+                                   help="workers per query; default threads // (readers + 1), see the deadlock note")
     concurrent_parser.add_argument("--routes", choices=["both", "index", "build"], default="both",
                                    help="both runs the index query and the build-per-query in the same read transaction")
     concurrent_parser.add_argument("--notes", default="")

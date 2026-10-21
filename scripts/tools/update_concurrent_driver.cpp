@@ -34,6 +34,9 @@ struct Options {
 	idx_t batch_size = 1000;
 	idx_t batches = 100;
 	idx_t writer_pause_ms = 0;
+	//! Workers per path-finding query. The BFS kernels synchronize their tasks with barriers, so concurrent queries
+	//! whose tasks together exceed the scheduler's threads deadlock; the wrapper sets threads / readers.
+	idx_t threads_per_batch = 0;
 	double fold_ratio = 0.1;
 	bool run_build = true;
 	bool run_index = true;
@@ -100,6 +103,10 @@ static void Setup(Connection &con, const Options &options) {
 	}
 	Must(con, "SET experimental_path_finding_operator=true;");
 	Must(con, "SET duckpgq_csr_index_fold_ratio = " + std::to_string(options.fold_ratio) + ";");
+	if (options.threads_per_batch > 0) {
+		Must(con, "SET experimental_path_finding_operator_threads_per_batch=" +
+		              std::to_string(options.threads_per_batch) + ";");
+	}
 }
 
 static std::string IndexKey(const Options &options) {
@@ -154,7 +161,8 @@ static void Writer(DuckDB &db, const Options &options) {
 	} catch (std::exception &ex) {
 		std::string what = ex.what();
 		for (auto &c : what) {
-			if (c == '\n' || c == '"') c = ' ';
+			if (c == '\n' || c == '"')
+				c = ' ';
 		}
 		Record({"error", 0, 0, Now(), 0, "", "", "", what});
 		failed = true;
@@ -177,9 +185,9 @@ static void ReaderBody(DuckDB &db, const Options &options, idx_t reader_id) {
 		auto commits = std::to_string(commits_done.load());
 		std::string index_reach, index_total, build_reach, build_total;
 		if (options.run_index) {
-			auto stats = Scalar(*Must(con, "SELECT duckpgq_csr_index_stats('person_knows_person', " +
-			                                   Quote(options.index_name) + ");"),
-			                    0);
+			auto stats = Scalar(
+			    *Must(con, "SELECT duckpgq_csr_index_stats('person_knows_person', " + Quote(options.index_name) + ");"),
+			    0);
 			auto start = Now();
 			auto t_start = std::chrono::steady_clock::now();
 			auto result = Must(con, index_query);
@@ -187,7 +195,8 @@ static void ReaderBody(DuckDB &db, const Options &options, idx_t reader_id) {
 			auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count();
 			index_reach = chunk->GetValue(0, 0).ToString();
 			index_total = chunk->GetValue(1, 0).IsNull() ? "NULL" : chunk->GetValue(1, 0).ToString();
-			Record({"query_index", reader_id, seq, start, elapsed, index_reach, index_total, edges, stats + ";commits=" + commits});
+			Record({"query_index", reader_id, seq, start, elapsed, index_reach, index_total, edges,
+			        stats + ";commits=" + commits});
 		}
 		if (options.run_build) {
 			auto start = Now();
@@ -197,7 +206,8 @@ static void ReaderBody(DuckDB &db, const Options &options, idx_t reader_id) {
 			auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count();
 			build_reach = chunk->GetValue(0, 0).ToString();
 			build_total = chunk->GetValue(1, 0).IsNull() ? "NULL" : chunk->GetValue(1, 0).ToString();
-			Record({"query_build", reader_id, seq, start, elapsed, build_reach, build_total, edges, "commits=" + commits});
+			Record(
+			    {"query_build", reader_id, seq, start, elapsed, build_reach, build_total, edges, "commits=" + commits});
 		}
 		Must(con, "COMMIT;");
 		if (options.run_index && options.run_build && (index_reach != build_reach || index_total != build_total)) {
@@ -216,7 +226,8 @@ static void Reader(DuckDB &db, const Options &options, idx_t reader_id) {
 	} catch (std::exception &ex) {
 		std::string what = ex.what();
 		for (auto &c : what) {
-			if (c == '\n' || c == '"') c = ' ';
+			if (c == '\n' || c == '"')
+				c = ' ';
 		}
 		Record({"error", reader_id, 0, Now(), 0, "", "", "", what});
 		failed = true;
@@ -233,19 +244,34 @@ int main(int argc, char **argv) {
 			}
 			return argv[++i];
 		};
-		if (arg == "--database") options.database = next();
-		else if (arg == "--extension") options.extension = next();
-		else if (arg == "--output") options.output = next();
-		else if (arg == "--pair-table") options.pair_table = next();
-		else if (arg == "--index-name") options.index_name = next();
-		else if (arg == "--threads") options.threads = std::stoull(next());
-		else if (arg == "--readers") options.readers = std::stoull(next());
-		else if (arg == "--batch-size") options.batch_size = std::stoull(next());
-		else if (arg == "--batches") options.batches = std::stoull(next());
-		else if (arg == "--writer-pause-ms") options.writer_pause_ms = std::stoull(next());
-		else if (arg == "--fold-ratio") options.fold_ratio = std::stod(next());
-		else if (arg == "--no-build") options.run_build = false;
-		else if (arg == "--no-index") options.run_index = false;
+		if (arg == "--database")
+			options.database = next();
+		else if (arg == "--extension")
+			options.extension = next();
+		else if (arg == "--output")
+			options.output = next();
+		else if (arg == "--pair-table")
+			options.pair_table = next();
+		else if (arg == "--index-name")
+			options.index_name = next();
+		else if (arg == "--threads")
+			options.threads = std::stoull(next());
+		else if (arg == "--readers")
+			options.readers = std::stoull(next());
+		else if (arg == "--batch-size")
+			options.batch_size = std::stoull(next());
+		else if (arg == "--batches")
+			options.batches = std::stoull(next());
+		else if (arg == "--writer-pause-ms")
+			options.writer_pause_ms = std::stoull(next());
+		else if (arg == "--threads-per-batch")
+			options.threads_per_batch = std::stoull(next());
+		else if (arg == "--fold-ratio")
+			options.fold_ratio = std::stod(next());
+		else if (arg == "--no-build")
+			options.run_build = false;
+		else if (arg == "--no-index")
+			options.run_index = false;
 		else {
 			fprintf(stderr, "unknown argument %s\n", arg.c_str());
 			return 2;
