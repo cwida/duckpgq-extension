@@ -23,18 +23,16 @@ optional_ptr<TableCatalogEntry> GetPropertyGraphTableEntry(ClientContext &contex
 
 // Function to get DuckPGQState from ClientContext
 shared_ptr<DuckPGQState> GetDuckPGQState(ClientContext &context, bool throw_not_found_error) {
-	auto lookup = context.registered_state->Get<DuckPGQState>("duckpgq");
-	if (lookup) {
-		return lookup;
+	auto state = context.registered_state->Get<DuckPGQState>("duckpgq");
+	if (!state) {
+		if (throw_not_found_error) {
+			throw Exception(ExceptionType::INVALID, "Registered DuckPGQ state not found");
+		}
+		// Atomic under the manager's lock: concurrent first callers all end up with the same state object.
+		state = context.registered_state->GetOrCreate<DuckPGQState>("duckpgq");
 	}
-	if (throw_not_found_error) {
-		throw Exception(ExceptionType::INVALID, "Registered DuckPGQ state not found");
-	}
-	shared_ptr<DuckPGQState> state = make_shared_ptr<DuckPGQState>();
-	context.registered_state->Insert("duckpgq", state);
-	state->InitializeInternalTable(context);
-	auto connection = make_shared_ptr<Connection>(*context.db);
-	state->RetrievePropertyGraphs(connection);
+	// The state is registered before it is initialized, so every caller has to make sure that happened.
+	state->EnsureInitialized(context);
 	return state;
 }
 

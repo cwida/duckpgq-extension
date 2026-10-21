@@ -7,12 +7,19 @@
 #include "duckdb/parser/parser_extension.hpp"
 #include <duckpgq/parser/parsed_data/create_property_graph_info.hpp>
 
+#include <atomic>
+#include <mutex>
+
 namespace duckdb {
 
 class DuckPGQState : public ClientContextState {
 public:
 	explicit DuckPGQState() {};
 
+	//! Creates the internal table (unless the database is read-only) and loads the persisted property graphs into
+	//! this state. Idempotent and thread-safe: the first caller initializes, concurrent callers wait for it, later
+	//! callers return immediately. A failed attempt leaves the state uninitialized so the next caller retries.
+	void EnsureInitialized(ClientContext &context);
 	static void InitializeInternalTable(ClientContext &context);
 	void QueryEnd() override;
 	CreatePropertyGraphInfo *GetPropertyGraph(const string &pg_name);
@@ -40,6 +47,12 @@ public:
 	std::unordered_map<int32_t, unique_ptr<CSR>> csr_list;
 	std::mutex csr_lock;
 	std::unordered_set<int32_t> csr_to_delete;
+
+private:
+	static void CreateInternalTable(Connection &connection);
+
+	std::mutex initialization_lock;
+	std::atomic<bool> initialized {false};
 };
 
 } // namespace duckdb
