@@ -3364,6 +3364,328 @@ def sweep_graphalytics_bfs(args):
         print("Skipped missing datasets: " + ", ".join(skipped))
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Update workload (W16): a query stream interleaved with committed batches of LDBC knows inserts and deletes.
+# ---------------------------------------------------------------------------------------------------------------------
+
+UPDATE_LOG_TABLE = "knows_update_log"
+UPDATE_CONFIGS = ("build", "index_auto", "index_nofold")
+WORK_ROOT = DATA_ROOT / "work"
+
+
+def ensure_update_log(scale_factor):
+    """Stages the LDBC BI insert and delete batches of Person_knows_Person as one ordered log in the benchmark
+    database. Only edges between snapshot persons are kept, inserts that duplicate an existing edge and deletes
+    without a matching edge are dropped, so the edge count after any prefix of the log is known exactly (the
+    build-per-query route needs the exact count)."""
+    database = db_path(scale_factor)
+    probe = run_duckdb(BENCH_DUCKDB, database,
+                       f"SELECT count(*) FROM information_schema.tables WHERE table_name = '{UPDATE_LOG_TABLE}';",
+                       quiet=True)[0]
+    if probe.strip().splitlines()[-1].strip() == "1":
+        return
+    # The generator writes the dynamic batches as <op>/dynamic/Person_knows_Person/batch_id=<date>/*.parquet
+    dynamic = source_dir(scale_factor) / "graphs" / "parquet" / "bi" / "composite-merged-fk"
+    inserts = dynamic / "inserts" / "dynamic" / "Person_knows_Person"
+    deletes = dynamic / "deletes" / "dynamic" / "Person_knows_Person"
+    for path in (inserts, deletes):
+        if not path.is_dir():
+            raise FileNotFoundError(f"Missing LDBC update batches: {path}")
+    sql = f"""
+CREATE TABLE {UPDATE_LOG_TABLE}_raw AS
+WITH ops AS (
+    SELECT creationDate AS event_time, 'insert' AS op, Person1Id::BIGINT AS person1id, Person2Id::BIGINT AS person2id
+    FROM read_parquet({sql_string(str(inserts / "**" / "*.parquet"))})
+    UNION ALL
+    SELECT deletionDate, 'delete', Person1Id::BIGINT, Person2Id::BIGINT
+    FROM read_parquet({sql_string(str(deletes / "**" / "*.parquet"))})
+)
+SELECT row_number() OVER (ORDER BY event_time, op, person1id, person2id) AS seq, op, person1id, person2id, event_time
+FROM ops o
+WHERE EXISTS (SELECT 1 FROM person p WHERE p.id = o.person1id)
+  AND EXISTS (SELECT 1 FROM person p WHERE p.id = o.person2id);
+
+-- inserts that duplicate a snapshot edge or an earlier insert
+DELETE FROM {UPDATE_LOG_TABLE}_raw r
+WHERE op = 'insert' AND (
+    EXISTS (SELECT 1 FROM person_knows_person k WHERE k.person1id = r.person1id AND k.person2id = r.person2id)
+    OR EXISTS (SELECT 1 FROM {UPDATE_LOG_TABLE}_raw i WHERE i.op = 'insert' AND i.person1id = r.person1id
+               AND i.person2id = r.person2id AND i.seq < r.seq));
+
+-- deletes without a matching snapshot edge or earlier insert, and repeated deletes of the same edge
+DELETE FROM {UPDATE_LOG_TABLE}_raw r
+WHERE op = 'delete' AND (
+    NOT (EXISTS (SELECT 1 FROM person_knows_person k WHERE k.person1id = r.person1id AND k.person2id = r.person2id)
+         OR EXISTS (SELECT 1 FROM {UPDATE_LOG_TABLE}_raw i WHERE i.op = 'insert' AND i.person1id = r.person1id
+                    AND i.person2id = r.person2id AND i.seq < r.seq))
+    OR EXISTS (SELECT 1 FROM {UPDATE_LOG_TABLE}_raw d WHERE d.op = 'delete' AND d.person1id = r.person1id
+               AND d.person2id = r.person2id AND d.seq < r.seq));
+
+CREATE TABLE {UPDATE_LOG_TABLE} AS
+SELECT row_number() OVER (ORDER BY seq) AS seq, op, person1id, person2id, event_time
+FROM {UPDATE_LOG_TABLE}_raw;
+DROP TABLE {UPDATE_LOG_TABLE}_raw;
+SELECT op, count(*) FROM {UPDATE_LOG_TABLE} GROUP BY op ORDER BY op;
+"""
+    print(f"Staging {UPDATE_LOG_TABLE} for {sf_name(scale_factor)}")
+    output, elapsed = run_duckdb(BENCH_DUCKDB, database, sql, quiet=True)
+    print(output.strip().splitlines()[-3:], f"({elapsed:.1f}s)")
+
+
+def update_batch_edge_counts(scale_factor, batch_size, batches):
+    """Edge count of person_knows_person after each batch, and the inserts/deletes per batch."""
+    sql = f"""
+WITH per_batch AS (
+    SELECT ((seq - 1) // {batch_size})::BIGINT AS batch, sum(CASE WHEN op = 'insert' THEN 1 ELSE 0 END) AS ins,
+           sum(CASE WHEN op = 'delete' THEN 1 ELSE 0 END) AS del
+    FROM {UPDATE_LOG_TABLE} WHERE seq <= {batch_size * batches} GROUP BY 1
+)
+SELECT batch, ins, del, (SELECT count(*) FROM person_knows_person) + sum(ins - del) OVER (ORDER BY batch) AS edges
+FROM per_batch ORDER BY batch;
+"""
+    output, _ = run_duckdb(BENCH_DUCKDB, db_path(scale_factor), sql, quiet=True)
+    rows = list(csv.DictReader(output.strip().splitlines()))
+    if len(rows) != batches:
+        raise RuntimeError(f"The update log has only {len(rows)} batches of {batch_size} operations, {batches} requested")
+    return rows
+
+
+def update_query_sql(config, step, options, edge_count):
+    """One timed query of the stream; the row identifies the step."""
+    pairs = f"ldbc.{options.pair_table}"
+    head = (f"SELECT 'query' AS kind, {step} AS step, count(*) AS pair_count, count(len) AS reachable_count, "
+            f"sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len")
+    if config == "build":
+        return f"""{head}
+FROM (
+    SELECT iterativelengthoperator(
+        src, dst,
+        struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+        {options.vertex_count}::BIGINT, {edge_count}::BIGINT,
+        {sql_string(f"graph:{options.attached_db}")}) AS len
+    FROM {pairs},
+        (SELECT a.rowid::BIGINT AS pathfinding_edge_src,
+                c.rowid::BIGINT AS pathfinding_edge_dst
+         FROM ldbc.person_knows_person k
+         JOIN ldbc.person a ON a.id = k.person1id
+         JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges
+);"""
+    return f"""{head}
+FROM (
+    SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, {sql_string(CSR_INDEX_KEY)}) AS len
+    FROM pathfinding_index_pairs
+);"""
+
+
+def update_run_statements(config, args, options, batch_rows, work_db):
+    """Ordered (tag, step, sql) statements of one configuration; every statement gets one .timer line."""
+    statements = []
+
+    def add(tag, step, sql):
+        statements.append((tag, step, sql.strip()))
+
+    add("setup", 0, f"LOAD {sql_string(DUCKPGQ_EXTENSION)};")
+    add("setup", 0, f"SET threads={args.threads};")
+    add("setup", 0, "SET experimental_path_finding_operator=true;")
+    add("setup", 0, f"ATTACH {sql_string(work_db)} AS ldbc;")
+    add("setup", 0, "SELECT delete_csr(2147483647) AS duckpgq_state_init;")
+    for line in operator_settings_sql(options).strip().splitlines():
+        add("setup", 0, line)
+    if config == "build":
+        add("setup", 0, f"DROP INDEX IF EXISTS ldbc.main.{CSR_INDEX_NAME};")
+    else:
+        ratio = args.fold_ratio if config == "index_auto" else 0
+        add("setup", 0, f"SET duckpgq_csr_index_fold_ratio = {ratio};")
+        add("index_build", 0, f"DROP INDEX IF EXISTS ldbc.main.{CSR_INDEX_NAME};")
+        add("index_build", 0, create_csr_index_sql(if_not_exists=False))
+        add("setup", 0, f"""CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS
+SELECT a.id::BIGINT AS src, b.id::BIGINT AS dst
+FROM ldbc.{options.pair_table} p
+JOIN ldbc.person a ON a.rowid = p.src
+JOIN ldbc.person b ON b.rowid = p.dst;""")
+    stats_sql = (f"SELECT 'stats' AS kind, {{step}} AS step, duckpgq_csr_index_stats('ldbc.main.person_knows_person', "
+                 f"'{CSR_INDEX_NAME}') AS stats;")
+    snapshot_edges = int(batch_rows[0]["edges"]) - int(batch_rows[0]["ins"]) + int(batch_rows[0]["del"])
+    for step in range(0, args.batches + 1):
+        edge_count = snapshot_edges if step == 0 else int(batch_rows[step - 1]["edges"])
+        for _ in range(args.queries_per_batch):
+            add("query", step, update_query_sql(config, step, options, edge_count))
+        if config != "build":
+            add("stats", step, stats_sql.format(step=step))
+        add("count", step, f"SELECT 'count' AS kind, {step} AS step, count(*) AS edges, {edge_count} AS expected "
+                           f"FROM ldbc.person_knows_person;")
+        if step == args.batches:
+            break
+        lo = step * args.batch_size
+        hi = lo + args.batch_size
+        add("update", step + 1, "BEGIN TRANSACTION;")
+        add("update", step + 1, f"""INSERT INTO ldbc.person_knows_person
+SELECT person1id, person2id FROM ldbc.{UPDATE_LOG_TABLE} WHERE seq > {lo} AND seq <= {hi} AND op = 'insert';""")
+        add("update", step + 1, f"""DELETE FROM ldbc.person_knows_person k
+USING (SELECT person1id, person2id FROM ldbc.{UPDATE_LOG_TABLE} WHERE seq > {lo} AND seq <= {hi} AND op = 'delete') u
+WHERE k.person1id = u.person1id AND k.person2id = u.person2id;""")
+        add("update", step + 1, "COMMIT;")
+    return statements
+
+
+def run_update_script(statements, timeout_s):
+    """Runs the statements in one CLI process and returns per-statement timers and the CSV result blocks."""
+    script = ".timer on\n" + "\n".join(sql for _, _, sql in statements) + "\n"
+    result = subprocess.run([str(BENCH_DUCKDB), "-unsigned", "-csv"], cwd=REPO_ROOT, text=True, input=script,
+                            capture_output=True, timeout=timeout_s)
+    output = (result.stdout + result.stderr).strip()
+    if result.returncode != 0 or "Error:" in output:
+        raise RuntimeError(output[-4000:])
+    timers = []
+    blocks = []
+    current = []
+    for line in output.splitlines():
+        match = re.match(r"Run Time \(s\): real ([0-9.]+)", line)
+        if match:
+            timers.append(float(match.group(1)))
+            blocks.append("\n".join(current).strip())
+            current = []
+        elif line.strip():
+            current.append(line)
+    if len(timers) != len(statements):
+        raise RuntimeError(f"Expected {len(statements)} timers, got {len(timers)}:\n{output[-3000:]}")
+    return timers, blocks
+
+
+def parse_kind_row(block):
+    rows = list(csv.DictReader(block.splitlines()))
+    if len(rows) != 1:
+        raise RuntimeError(f"Expected one result row, got: {block}")
+    return rows[0]
+
+
+def run_update_config(config, args, options, batch_rows, run_metadata):
+    base_db = db_path(args.scale_factor)
+    WORK_ROOT.mkdir(parents=True, exist_ok=True)
+    work_db = WORK_ROOT / f"ldbc_{sf_name(args.scale_factor)}_update_{config}.duckdb"
+    for stale in (work_db, Path(str(work_db) + ".wal")):
+        if stale.exists():
+            stale.unlink()
+    shutil.copyfile(base_db, work_db)
+    statements = update_run_statements(config, args, options, batch_rows, work_db)
+    started = time.time()
+    timers, blocks = run_update_script(statements, args.timeout)
+    wall_s = time.time() - started
+
+    events = []
+    update_time = {}
+    index_build_s = 0.0
+    for (tag, step, _), elapsed, block in zip(statements, timers, blocks):
+        if tag == "index_build":
+            index_build_s += elapsed
+        elif tag == "update":
+            update_time[step] = update_time.get(step, 0.0) + elapsed
+        elif tag in ("query", "stats", "count"):
+            row = parse_kind_row(block)
+            row["elapsed_s"] = elapsed
+            events.append((tag, step, row))
+
+    rows = []
+    stats_by_step = {}
+    for tag, step, row in events:
+        if tag == "stats":
+            parts = dict(part.split("=") for part in row["stats"].split(";"))
+            stats_by_step[step] = parts
+    for tag, step, row in events:
+        if tag == "count":
+            if row["edges"] != row["expected"]:
+                raise RuntimeError(f"{config} step {step}: {row['edges']} edges in the table, {row['expected']} expected")
+            continue
+        if tag != "query":
+            continue
+        stats = stats_by_step.get(step, {})
+        batch = batch_rows[step - 1] if step > 0 else None
+        rows.append({
+            "config": config,
+            "step": step,
+            "query_s": f"{row['elapsed_s']:.6f}",
+            "update_s": f"{update_time.get(step, 0.0):.6f}" if step > 0 else "",
+            "batch_inserts": batch["ins"] if batch else "",
+            "batch_deletes": batch["del"] if batch else "",
+            "edges": batch["edges"] if batch else "",
+            "pair_count": row["pair_count"],
+            "reachable_count": row["reachable_count"],
+            "total_len": row["total_len"],
+            "min_len": row["min_len"],
+            "max_len": row["max_len"],
+            "epochs": stats.get("epochs", ""),
+            "delta": stats.get("delta", ""),
+            "tombstones": stats.get("tombstones", ""),
+            "index_build_s": f"{index_build_s:.6f}",
+            "config_wall_s": f"{wall_s:.3f}",
+        })
+    for row in rows:
+        row.update(run_metadata)
+    work_db.unlink()
+    return rows
+
+
+def run_update_benchmark(args):
+    ensure_update_log(args.scale_factor)
+    pair_shape = generated_pair_shape(args.query_pattern, "random")
+    pair_table = pair_table_name(args.pairs, pair_shape)
+    ensure_pair_table(args.scale_factor, args.pairs, pair_shape)
+    batch_rows = update_batch_edge_counts(args.scale_factor, args.batch_size, args.batches)
+    vertex_count = int(run_duckdb(BENCH_DUCKDB, db_path(args.scale_factor), "SELECT count(*) FROM person;",
+                                  quiet=True)[0].strip().splitlines()[-1])
+    results_dir = DATA_ROOT / "results" / sf_name(args.scale_factor)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    options = BenchmarkOptions(
+        attached_db=db_path(args.scale_factor), query_pattern=args.query_pattern, pair_count=args.pairs,
+        pair_table=pair_table, vertex_count=vertex_count, edge_count=0, threads=args.threads,
+        benchmark_prefix=results_dir / "update_prefix", recursive_max_depth=0, build_reverse_csr=False,
+        metrics_enabled=False, push_pull_frontier_gate=2, deduplicate_pairs=False, grouped_batches=False,
+        threads_per_batch=0, max_concurrent_batches=0, reverse_orientation_ratio=4, source_group_ratio=4)
+    run_metadata = {
+        "scale_factor": args.scale_factor, "threads": args.threads, "query_pattern": args.query_pattern,
+        "batch_size": args.batch_size, "batches": args.batches, "queries_per_batch": args.queries_per_batch,
+        "fold_ratio": args.fold_ratio, "benchmark_notes": args.notes,
+        "repo_commit": subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True,
+                                      capture_output=True).stdout.strip(),
+        "benchmark_started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    all_rows = []
+    for config in args.configs:
+        print(f"== {config}: {args.batches} batches of {args.batch_size}, {args.queries_per_batch} "
+              f"{args.query_pattern} queries per batch, threads={args.threads}")
+        rows = run_update_config(config, args, options, batch_rows, run_metadata)
+        all_rows.extend(rows)
+        queries = [float(r["query_s"]) for r in rows]
+        updates = [float(r["update_s"]) for r in rows if r["update_s"]]
+        folds = len({r["epochs"] for r in rows if r["epochs"]}) - 1 if rows[0]["epochs"] else 0
+        print(f"   query mean {statistics.mean(queries):.4f}s (min {min(queries):.4f}, max {max(queries):.4f}), "
+              f"update mean {statistics.mean(updates):.4f}s, index build {rows[0]['index_build_s']}s, "
+              f"epoch changes {folds}, wall {rows[0]['config_wall_s']}s")
+
+    # Every configuration sees the same committed state at each step
+    by_step = {}
+    for row in all_rows:
+        by_step.setdefault(int(row["step"]), {})[row["config"]] = (row["reachable_count"], row["total_len"])
+    mismatches = [(step, results) for step, results in sorted(by_step.items()) if len(set(results.values())) > 1]
+    if mismatches:
+        for step, results in mismatches[:10]:
+            print(f"MISMATCH step {step}: {results}")
+        if args.verify:
+            raise RuntimeError(f"{len(mismatches)} steps with disagreeing results across configurations")
+    else:
+        print(f"All {len(by_step)} steps agree across {', '.join(args.configs)}")
+
+    timestamp = time.time_ns()
+    path = results_dir / (f"update_{args.query_pattern}_pairs{args.pairs}_threads{args.threads}_batch{args.batch_size}"
+                          f"x{args.batches}_{timestamp}.csv")
+    fieldnames = list(all_rows[0].keys())
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(all_rows)
+    print(f"Wrote {path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Prepare and smoke-run pathfinding benchmarks on LDBC Person knows Person data.")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -3656,6 +3978,21 @@ def main():
     sweep_parser.add_argument("--run-id", default=None)
     sweep_parser.add_argument("--notes", default="")
     sweep_parser.set_defaults(func=sweep_graphalytics_bfs)
+
+    update_parser = subcommands.add_parser("update-run", help="Query stream interleaved with committed knows updates")
+    update_parser.add_argument("--scale-factor", required=True, help="as in prepare, e.g. 1, 3, 10, 0.1")
+    update_parser.add_argument("--threads", type=int, default=os.cpu_count())
+    update_parser.add_argument("--query-pattern", choices=["point_to_point", "sssp"], default="sssp")
+    update_parser.add_argument("--pairs", type=int, default=1024)
+    update_parser.add_argument("--batch-size", type=int, default=1000, help="log operations per commit")
+    update_parser.add_argument("--batches", type=int, default=50)
+    update_parser.add_argument("--queries-per-batch", type=int, default=1)
+    update_parser.add_argument("--fold-ratio", type=float, default=0.1, help="duckpgq_csr_index_fold_ratio for index_auto")
+    update_parser.add_argument("--configs", nargs="+", choices=UPDATE_CONFIGS, default=list(UPDATE_CONFIGS))
+    update_parser.add_argument("--notes", default="")
+    update_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
+    update_parser.add_argument("--timeout", type=int, default=3600)
+    update_parser.set_defaults(func=run_update_benchmark)
 
     args = parser.parse_args()
     args.func(args)
