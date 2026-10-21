@@ -15,9 +15,9 @@ static int16_t InitialiseBellmanFord(const DataChunk &args, int64_t input_size, 
                                      idx_t result_size, vector<vector<T>> &dists) {
 	dists.resize(input_size, std::vector<T>(lane_limit, std::numeric_limits<T>::max() / 2));
 
-	// The lane of a row is its position inside the batch. Rows with a NULL source or destination get no search, but they
-	// must not shift the lanes of the valid rows behind them (the lane used to be counted over valid rows only while the
-	// results were read back by row position, so valid rows could receive another row's distances).
+	// The lane of a row is its position inside the batch. Rows with a NULL source or destination get no search, but
+	// they must not shift the lanes of the valid rows behind them (the lane used to be counted over valid rows only
+	// while the results were read back by row position, so valid rows could receive another row's distances).
 	int16_t rows = 0;
 	for (idx_t lane = 0; lane < (idx_t)lane_limit && result_size + lane < args.size(); lane++, rows++) {
 		auto i = result_size + lane;

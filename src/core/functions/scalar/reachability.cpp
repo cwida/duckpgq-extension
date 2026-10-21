@@ -213,8 +213,9 @@ static void ReachabilityFunction(DataChunk &args, ExpressionState &state, Vector
 
 		//! mapping of src_value ->  (bfs_num/lane, vector of indices in src_data)
 		unordered_map<int64_t, pair<int16_t, vector<idx_t>>> lane_map;
-		auto curr_batch_size = InitialiseBfs(result_size, args.size(), src_data, vdata_src.sel, vdata_src.validity,
-		                                     vdata_target.sel, vdata_target.validity, seen, visit, visit_next, lane_map);
+		auto curr_batch_size =
+		    InitialiseBfs(result_size, args.size(), src_data, vdata_src.sel, vdata_src.validity, vdata_target.sel,
+		                  vdata_target.validity, seen, visit, visit_next, lane_map);
 		int mode = 0;
 		bool exit_early = false;
 		while (!exit_early) {
