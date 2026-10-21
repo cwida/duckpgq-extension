@@ -84,7 +84,8 @@ static void IterativeLength2Function(DataChunk &args, ExpressionState &state, Ve
 				int64_t search_num = started_searches++;
 				auto src_pos = vdata_src.sel->get_index(search_num);
 				auto dst_pos = vdata_dst.sel->get_index(search_num);
-				if (!vdata_src.validity.RowIsValid(src_pos)) {
+				if (!vdata_src.validity.RowIsValid(src_pos) || !vdata_dst.validity.RowIsValid(dst_pos)) {
+					// a NULL source or destination has no path (the destination used to be read as its raw value)
 					result_validity.SetInvalid(search_num);
 					result_data[search_num] = -1; // no path
 				} else if (src_data[src_pos] == dst_data[dst_pos]) {
