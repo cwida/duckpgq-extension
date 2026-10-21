@@ -471,6 +471,8 @@ DuckpgqOptimizerExtension::FindCSRAndPairs(unique_ptr<LogicalOperator> &first_ch
 		ReplaceExpressions(op_proj, function_expression, path_finding_mode, offsets, cache_key);
 		auto path_finding_function = GetPathFindingFunction(*function_expression);
 		auto edge_input = path_finding_function && path_finding_function->GetChildren().size() >= 7;
+		// The operator evaluates the source and destination arguments over the pair input
+		path_finding_expressions.push_back(std::move(function_expression));
 		return make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions, path_finding_mode,
 		                                             op_proj.table_index, offsets, std::move(cache_key), edge_input);
 	}

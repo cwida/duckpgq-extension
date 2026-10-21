@@ -1,0 +1,126 @@
+# name: test/sql/path_finding/path_finding_pair_columns.test
+# description: The operator reads source and destination from the function arguments, not from the first two pair
+#              columns, keeps the pair input's columns intact, and answers self pairs with 0 on both routes
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# Non-contiguous keys; 600 is a vertex without edges, so an index on knows does not know it.
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person VALUES (100), (200), (300), (400), (500), (600);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows VALUES (100, 200), (200, 300), (300, 400), (400, 500);
+
+# Keys are not the first columns of the pair input.
+statement ok
+CREATE TABLE pairs(tag VARCHAR, a BIGINT, b BIGINT, note VARCHAR);
+
+statement ok
+INSERT INTO pairs VALUES
+    ('p1', 100, 500, 'chain'),
+    ('p2', 500, 100, 'against the edges'),
+    ('p3', 600, 600, 'self pair of a vertex without edges'),
+    ('p4', 300, 300, 'self pair'),
+    ('p5', 100, 600, 'unreachable'),
+    ('p6', NULL, 200, 'NULL endpoint');
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# Index route: the pairs come out of two hash joins, which puts the build side first in the operator's input.
+query IIIII
+SELECT p.tag, p.a, p.b, p.note, iterativelengthoperator(s.id, t.id, 0::BIGINT, 0::BIGINT,
+                                                        'csr-index|memory|main|knows|knows_csr') AS len
+FROM pairs p
+JOIN person s ON s.id = p.a
+JOIN person t ON t.id = p.b
+ORDER BY p.tag;
+----
+p1	100	500	chain	4
+p2	500	100	against the edges	NULL
+p3	600	600	self pair of a vertex without edges	0
+p4	300	300	self pair	0
+p5	100	600	unreachable	NULL
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+# Index route, keys taken from the middle columns of a single table, NULL endpoint included.
+query III
+SELECT tag, note, iterativelengthoperator(a, b, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len
+FROM pairs
+ORDER BY tag;
+----
+p1	chain	4
+p2	against the edges	NULL
+p3	self pair of a vertex without edges	0
+p4	self pair	0
+p5	unreachable	NULL
+p6	NULL endpoint	NULL
+
+# Shortest paths over the index: a self pair yields the single vertex, also for a vertex without edges.
+query II
+SELECT p.tag, shortestpathoperator(s.id, t.id, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS path
+FROM pairs p
+JOIN person s ON s.id = p.a
+JOIN person t ON t.id = p.b
+WHERE p.tag IN ('p3', 'p4', 'p5')
+ORDER BY p.tag;
+----
+p3	[600]
+p4	[300]
+p5	NULL
+
+# Build route: pairs are row ids, again not in the first two columns.
+statement ok
+CREATE TABLE rowid_pairs(tag VARCHAR, src BIGINT, dst BIGINT, note VARCHAR);
+
+statement ok
+INSERT INTO rowid_pairs VALUES
+    ('b1', 0, 4, 'chain'),
+    ('b2', 4, 0, 'against the edges'),
+    ('b3', 5, 5, 'self pair of a vertex without edges'),
+    ('b4', 2, 2, 'self pair'),
+    ('b5', 0, 5, 'unreachable'),
+    ('b6', NULL, 1, 'NULL endpoint');
+
+query IIIII
+SELECT tag, src, dst, note, iterativelengthoperator(
+        src, dst,
+        struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+        6::BIGINT, 4::BIGINT,
+        'pair-columns-build') AS len
+FROM rowid_pairs,
+    (SELECT a.rowid::BIGINT AS pathfinding_edge_src,
+            c.rowid::BIGINT AS pathfinding_edge_dst
+     FROM knows k
+     JOIN person a ON a.id = k.src
+     JOIN person c ON c.id = k.dst) pathfinding_edges
+ORDER BY tag;
+----
+b1	0	4	chain	4
+b2	4	0	against the edges	NULL
+b3	5	5	self pair of a vertex without edges	0
+b4	2	2	self pair	0
+b5	0	5	unreachable	NULL
+b6	NULL	1	NULL endpoint	NULL
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=built%';
+----
+true

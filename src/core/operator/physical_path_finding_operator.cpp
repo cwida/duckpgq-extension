@@ -5,6 +5,7 @@
 #include <duckpgq/core/operator/partitioned_csr_cache.hpp>
 
 #include "duckdb/common/types/column/column_data_collection.hpp"
+#include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/common/radix_partitioning.hpp"
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/main/client_context.hpp"
@@ -1729,15 +1730,118 @@ PhysicalPathFinding::PhysicalPathFinding(PhysicalPlan &physical_plan, LogicalExt
 	buffered_edge_input = path_finding_op.buffered_edge_input;
 }
 
+vector<LogicalType> PhysicalPathFinding::PairTypes() const {
+	vector<LogicalType> types(PAIR_PREFIX_COLUMNS, LogicalType::BIGINT);
+	auto &input_types = children[0].get().GetTypes();
+	types.insert(types.end(), input_types.begin(), input_types.end());
+	return types;
+}
+
+static bool IsPathFindingFunction(const Expression &expr) {
+	if (expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
+		return false;
+	}
+	auto name = expr.Cast<BoundFunctionExpression>().Function().GetName().GetIdentifierName();
+	return name == "iterativelengthoperator" || name == "pushpulliterativelengthoperator" ||
+	       name == "bidirectionaliterativelengthoperator" || name == "shortestpathoperator";
+}
+
+static BoundFunctionExpression *FindPathFindingFunction(Expression &expr) {
+	if (IsPathFindingFunction(expr)) {
+		return &expr.Cast<BoundFunctionExpression>();
+	}
+	BoundFunctionExpression *result = nullptr;
+	ExpressionIterator::EnumerateChildren(expr, [&](unique_ptr<Expression> &child) {
+		if (!result) {
+			result = FindPathFindingFunction(*child);
+		}
+	});
+	return result;
+}
+
+BoundFunctionExpression &PhysicalPathFinding::PathFindingFunction(Expression &expr) {
+	auto result = FindPathFindingFunction(expr);
+	if (!result) {
+		throw InternalException("Path-finding operator expression does not contain a path-finding function");
+	}
+	return *result;
+}
+
+const BoundFunctionExpression &PhysicalPathFinding::PathFindingFunction(const Expression &expr) {
+	return PathFindingFunction(const_cast<Expression &>(expr));
+}
+
+//! Assembles an output chunk: the pair input's columns followed by the result column. A pair with equal non-NULL
+//! endpoints has distance 0 and the path [endpoint] on every route, whether or not the vertex has edges; a
+//! kernel reports NULL for it when the vertex is unknown to an index snapshot.
+static void EmitPathFindingOutput(DataChunk &result, DataChunk &pairs, Vector &results) {
+	auto count = pairs.size();
+	auto pass_through = pairs.ColumnCount() - PhysicalPathFinding::PAIR_PREFIX_COLUMNS;
+	D_ASSERT(result.ColumnCount() == pass_through + 1);
+
+	results.Flatten();
+	auto &result_validity = FlatVector::ValidityMutable(results);
+	{
+		UnifiedVectorFormat src_format;
+		UnifiedVectorFormat dst_format;
+		pairs.data[2].ToUnifiedFormat(src_format);
+		pairs.data[3].ToUnifiedFormat(dst_format);
+		auto src_keys = UnifiedVectorFormat::GetData<int64_t>(src_format);
+		auto dst_keys = UnifiedVectorFormat::GetData<int64_t>(dst_format);
+		bool return_paths = results.GetType().id() == LogicalTypeId::LIST;
+		for (idx_t row = 0; row < count; row++) {
+			if (result_validity.RowIsValid(row)) {
+				continue;
+			}
+			auto src_idx = src_format.sel->get_index(row);
+			auto dst_idx = dst_format.sel->get_index(row);
+			if (!src_format.validity.RowIsValid(src_idx) || !dst_format.validity.RowIsValid(dst_idx) ||
+			    src_keys[src_idx] != dst_keys[dst_idx]) {
+				continue;
+			}
+			result_validity.SetValid(row);
+			if (return_paths) {
+				auto offset = ListVector::GetListSize(results);
+				ListVector::PushBack(results, Value::BIGINT(src_keys[src_idx]));
+				FlatVector::GetDataMutable<list_entry_t>(results)[row] = list_entry_t(offset, 1);
+			} else {
+				FlatVector::GetDataMutable<int64_t>(results)[row] = 0;
+			}
+		}
+	}
+
+	for (idx_t i = 0; i < pass_through; i++) {
+		result.data[i].Reference(pairs.data[PhysicalPathFinding::PAIR_PREFIX_COLUMNS + i]);
+	}
+	result.data[pass_through].Reference(results);
+	result.SetChildCardinality(count);
+}
+
 //===--------------------------------------------------------------------===//
 // Sink
 //===--------------------------------------------------------------------===//
 PathFindingLocalSinkState::PathFindingLocalSinkState(ClientContext &context, const PhysicalPathFinding &op)
-    : local_pairs(context, op.children[0].get().GetTypes()), context(context) {
+    : local_pairs(context, op.PairTypes()), pair_executor(context), context(context) {
+	auto &arguments = PhysicalPathFinding::PathFindingFunction(*op.expressions[0]).GetChildren();
+	pair_executor.AddExpression(*arguments[0]);
+	pair_executor.AddExpression(*arguments[1]);
+	pair_keys.Initialize(context, {LogicalType::BIGINT, LogicalType::BIGINT});
+	pair_chunk.InitializeEmpty(op.PairTypes());
 }
 
 void PathFindingLocalSinkState::SinkPairs(DataChunk &input) {
-	local_pairs.Append(input);
+	pair_keys.Reset();
+	pair_executor.Execute(input, pair_keys);
+	// Search columns and key columns start out identical; an index snapshot translates the search columns in place
+	pair_chunk.data[0].Reference(pair_keys.data[0]);
+	pair_chunk.data[1].Reference(pair_keys.data[1]);
+	pair_chunk.data[2].Reference(pair_keys.data[0]);
+	pair_chunk.data[3].Reference(pair_keys.data[1]);
+	for (idx_t i = 0; i < input.ColumnCount(); i++) {
+		pair_chunk.data[PhysicalPathFinding::PAIR_PREFIX_COLUMNS + i].Reference(input.data[i]);
+	}
+	pair_chunk.SetChildCardinality(input.size());
+	local_pairs.Append(pair_chunk);
 }
 
 void PathFindingLocalSinkState::SinkEndpoints(DataChunk &input) {
@@ -1941,7 +2045,7 @@ static void SinkPreallocatedEndpoints(PathFindingGlobalSinkState &gstate, PathFi
 
 PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, const PhysicalPathFinding &op)
     : context_(context) {
-	global_pairs = make_uniq<ColumnDataCollection>(context, op.children[0].get().GetTypes());
+	global_pairs = make_uniq<ColumnDataCollection>(context, op.PairTypes());
 
 	global_pairs->InitializeScan(global_scan_state);
 	result_scan_idx = 0;
@@ -2411,8 +2515,7 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 			}
 		}
 
-		output_pairs->Fuse(*output_results);
-		result.Move(*output_pairs);
+		EmitPathFindingOutput(result, *output_pairs, output_results->data[0]);
 		auto scatter_end = std::chrono::steady_clock::now();
 		pf_sink.source_group_scatter_ms +=
 		    std::chrono::duration<double, std::milli>(scatter_end - scatter_start).count();
@@ -2455,8 +2558,7 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 			D_ASSERT(search_row < search_state->pf_results->size());
 			output_results->data[0].SetValue(output_row, search_state->pf_results->GetValue(0, search_row));
 		}
-		output_pairs->Fuse(*output_results);
-		result.Move(*output_pairs);
+		EmitPathFindingOutput(result, *output_pairs, output_results->data[0]);
 		auto scatter_end = std::chrono::steady_clock::now();
 		auto scatter_ms = std::chrono::duration<double, std::milli>(scatter_end - scatter_start).count();
 		AppendOperatorPhaseTiming(context.client, "dedupe_scatter", pf_sink.num_threads, output_to_search.size(), 0, 0,
@@ -2473,8 +2575,7 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 	auto current_state = pf_sink.bfs_states[pf_sink.result_scan_idx];
 	D_ASSERT(current_state->batch->output_index == pf_sink.result_scan_idx);
 	current_state->pf_results->SetChildCardinality(current_state->pairs->size());
-	current_state->batch->output_pairs->Fuse(*current_state->pf_results);
-	result.Move(*current_state->batch->output_pairs);
+	EmitPathFindingOutput(result, *current_state->batch->output_pairs, current_state->pf_results->data[0]);
 
 	pf_sink.result_scan_idx++;
 	if (pf_sink.result_scan_idx == pf_sink.bfs_states.size()) {

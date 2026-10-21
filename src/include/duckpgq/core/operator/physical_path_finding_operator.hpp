@@ -7,6 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
+#include "duckdb/execution/expression_executor.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/execution/operator/join/physical_comparison_join.hpp"
 #include "duckdb/execution/physical_operator.hpp"
 #include "duckdb/common/types/column/partitioned_column_data.hpp"
@@ -61,6 +63,15 @@ public:
 	                    PhysicalOperator *csr, PhysicalOperator *counts = nullptr);
 
 	static constexpr PhysicalOperatorType TYPE = PhysicalOperatorType::EXTENSION;
+	//! Buffered pair rows start with four BIGINT columns: the search source and destination (vertex ids on an
+	//! index snapshot after translation), then the untranslated source and destination keys. The pair input's own
+	//! columns follow and are passed through to the output.
+	static constexpr idx_t PAIR_PREFIX_COLUMNS = 4;
+	//! Types of the buffered pair rows: the prefix columns followed by the pair input's columns
+	vector<LogicalType> PairTypes() const;
+	//! The path-finding marker function inside a projection expression (possibly wrapped in casts)
+	static BoundFunctionExpression &PathFindingFunction(Expression &expr);
+	static const BoundFunctionExpression &PathFindingFunction(const Expression &expr);
 	vector<unique_ptr<Expression>> expressions;
 	string mode; // "iterativelength" or "shortestpath"
 	string cache_key;
@@ -125,6 +136,10 @@ public:
 	void SinkBufferedEndpoints(PathFindingGlobalSinkState &gstate, DataChunk &input);
 
 	ColumnDataCollection local_pairs;
+	//! Evaluates the source and destination arguments of the path-finding function over the pair input
+	ExpressionExecutor pair_executor;
+	DataChunk pair_keys;
+	DataChunk pair_chunk;
 	unique_ptr<PartitionedColumnData> local_endpoint_partition_data;
 	unique_ptr<PartitionedColumnDataAppendState> endpoint_partition_append_state;
 	DataChunk endpoint_partition_chunk;
@@ -143,7 +158,7 @@ public:
 	PathFindingGlobalSinkState(ClientContext &context, const PhysicalPathFinding &op);
 
 	void Sink(DataChunk &input, PathFindingLocalSinkState &lstate);
-	// pairs is a 2-column table with src and dst
+	//! Buffered pairs, see PhysicalPathFinding::PAIR_PREFIX_COLUMNS for the layout
 	unique_ptr<ColumnDataCollection> global_pairs;
 	mutex global_pairs_lock;
 	mutex global_endpoints_lock;

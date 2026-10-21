@@ -45,9 +45,22 @@ void LogicalPathFindingOperator::ResolveTypes() {
 }
 
 void LogicalPathFindingOperator::ResolveColumnBindings(ColumnBindingResolver &res, vector<ColumnBinding> &bindings) {
-	for (auto &child : children) {
-		res.VisitOperator(*child);
+	// The pair input is visited last: the resolver keeps the types of the operator it visited last and checks
+	// them against the bindings when it resolves the arguments below
+	for (idx_t child_idx = children.size(); child_idx > 1; child_idx--) {
+		res.VisitOperator(*children[child_idx - 1]);
 	}
+	res.VisitOperator(*children[0]);
+	// The source and destination arguments of the marker function are evaluated over the pair input (children[0]);
+	// the remaining arguments (edges, counts, cache key) are planning-only and are not resolved
+	bindings = children[0]->GetColumnBindings();
+	auto &function = PhysicalPathFinding::PathFindingFunction(*expressions[0]);
+	auto &arguments = function.GetChildrenMutable();
+	if (arguments.size() < 2) {
+		throw InternalException("Path-finding function needs source and destination arguments");
+	}
+	res.VisitExpression(&arguments[0]);
+	res.VisitExpression(&arguments[1]);
 	bindings = GetColumnBindings();
 }
 
