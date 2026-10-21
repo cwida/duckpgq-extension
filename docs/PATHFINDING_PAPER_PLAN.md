@@ -328,3 +328,11 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   (1.28x; 1.43x at 65536), cold-process numbers. Harness: `index_query_sql` materializes key pairs untimed,
   verifier skips `index_build` rows. Next: faster index load (parallel partition deserialization, no double
   copy), point_to_point kernel scaling over the index (5x on 32 threads), W16.
+- 21 Oct (later): parallel index load (`LoadFromStorage`: parallel segment copy into an uninitialized buffer, skip
+  pass then parallel partition deserialization, single-copy vector assign). SF300 load 1.15 s -> 0.09 s at 32
+  threads (the zero-fill of the 610 MB staging buffer was most of the remaining cost once the copies ran in
+  parallel). Harness `index_comparison` at SF300, 3 repeats, cold = first query of a fresh process, warm = second:
+  sssp 32 threads operator 0.40 s / index cold 0.17 s / warm 0.024 s; sssp 1 thread 5.3 / 1.30 / 0.086;
+  point_to_point 32 threads 1.69 / 1.11 / 0.95; point_to_point 1 thread 13.5 / 6.3 / 4.9. The load follows the
+  `threads` setting, so single-threaded runs still pay 1.1 s. Warm single pair over the index is ~0.1 s at every
+  thread count (fixed cost, not yet profiled); warm sssp scales 87 -> 27 ms from 1 to 16 threads and is flat after.

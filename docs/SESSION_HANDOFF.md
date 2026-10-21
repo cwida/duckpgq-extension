@@ -69,8 +69,10 @@ W18 Neo4j Enterprise request, W22 outline.
   function expression); new test `test/sql/path_finding/path_finding_pair_columns.test`; harness
   `index_query_sql` key-pair materialization, `index_operator_warm` mode, verifier skip of `index_build` rows.
   Full suite 83/83 after the changes.
-- Index query times in the sweep are cold-process numbers: the first query pays the lazy index deserialization
-  (`CSRIndex::LoadFromStorage`, ~42M edges/s). Use `index_operator_warm` for resident-index numbers.
+- Index query times in the sf1-sf300 sweep CSVs are cold-process numbers from before the parallel load: the first
+  query paid the serial index deserialization (`CSRIndex::LoadFromStorage`, ~42M edges/s, 1.15 s at SF300). The
+  load is parallel since commit "Load a persisted CSR index in parallel" (90 ms at SF300, 32 threads). Use
+  `index_operator_warm` for resident-index numbers; the plan's progress log has the re-measured SF300 values.
 - EBS on this instance is 250 MB/s (measured). The generator repo is `github.com/Dtenwolde/ldbc-data-gen`; `prepare`
   needs a temporary `third_party -> ~/git/ldbc-data-gen/third_party` symlink in the repo root (dictionary paths
   are cwd-relative); remove it afterwards. AWS CLI credentials on the box belong to another account.
