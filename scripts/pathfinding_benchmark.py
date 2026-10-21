@@ -1464,23 +1464,41 @@ SELECT 'index_build' AS mode, 0::BIGINT AS pair_count, NULL::BIGINT AS reachable
 
 
 def index_query_sql(options, mode_label):
-    """Path lengths over the persisted CSR index; pairs are mapped from row ids to vertex keys."""
+    """Path lengths over the persisted CSR index; pairs are mapped from row ids to vertex keys.
+
+    The pairs are materialized (untimed) with the keys as the first two columns: the path-finding
+    operator reads src and dst from columns 0 and 1 of its pair input, and the row-id joins would
+    otherwise place the hash-join build side first (observed on SF1, 21 Oct 2026: reversed pairs).
+    """
     pairs = f"ldbc.{options.pair_table}"
     return operator_settings_sql(options) + create_csr_index_sql() + f"""
+CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS
+SELECT a.id::BIGINT AS src, b.id::BIGINT AS dst
+FROM {pairs} p
+JOIN ldbc.person a ON a.rowid = p.src
+JOIN ldbc.person b ON b.rowid = p.dst;
 SELECT {sql_string(mode_label)} AS mode, count(*) AS pair_count, count(len) AS reachable_count,
        sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len
 FROM (
     SELECT iterativelengthoperator(
-        a.id::BIGINT, b.id::BIGINT, 0::BIGINT, 0::BIGINT, {sql_string(CSR_INDEX_KEY)}) AS len
-    FROM {pairs} p
-    JOIN ldbc.person a ON a.rowid = p.src
-    JOIN ldbc.person b ON b.rowid = p.dst
+        src, dst, 0::BIGINT, 0::BIGINT, {sql_string(CSR_INDEX_KEY)}) AS len
+    FROM pathfinding_index_pairs
 );
 """
 
 
 def index_operator_sql(options):
     return index_query_sql(options, "index_operator")
+
+
+def index_operator_warm_sql(options):
+    """Same query twice in one process: the first call pays the lazy deserialization of the persisted index (and
+    any other first-use cost), the second is timed as the resident-index query."""
+    sql = index_query_sql(options, "index_operator_warm")
+    statements = sql.rstrip().rstrip(";").rsplit(";", 1)
+    if len(statements) != 2:
+        raise RuntimeError("index_operator_warm expects the timed SELECT to be the last statement")
+    return sql.rstrip() + "\n" + statements[1].strip() + ";\n"
 
 
 def cached_operator_sql(options):
@@ -1701,7 +1719,7 @@ def benchmark_modes(mode):
     if mode == "index":
         return ["index_build", "index_operator"]
     if mode == "index_comparison":
-        return ["operator", "index_build", "index_operator"]
+        return ["operator", "index_build", "index_operator", "index_operator_warm"]
     return [mode]
 
 
@@ -1714,6 +1732,8 @@ def mode_sql(mode, options):
         return index_build_sql(options)
     if mode == "index_operator":
         return index_operator_sql(options)
+    if mode == "index_operator_warm":
+        return index_operator_warm_sql(options)
     if mode == "legacy_operator":
         return legacy_operator_sql(options)
     if mode == "bidirectional_operator":
@@ -1747,7 +1767,8 @@ def recursive_depth_hint(row, expected, actual):
 def verify_result_rows(results):
     result_keys = ["pair_count", "reachable_count", "total_len", "min_len", "max_len"]
     for repeat in sorted({row["repeat"] for row in results}):
-        rows = [row for row in results if row["repeat"] == repeat]
+        # index_build rows carry a placeholder result (pair_count 0), not a query result
+        rows = [row for row in results if row["repeat"] == repeat and row["mode"] != "index_build"]
         if len(rows) < 2:
             continue
         expected = {key: rows[0][key] for key in result_keys}
@@ -3464,6 +3485,7 @@ def main():
             "precounted_operator",
             "index_build",
             "index_operator",
+            "index_operator_warm",
             "cached_operator",
             "sql_match_cache",
             "legacy_operator",
