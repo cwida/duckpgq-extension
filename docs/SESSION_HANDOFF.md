@@ -59,3 +59,19 @@ W18 Neo4j Enterprise request, W22 outline.
   transaction-local row ids (~2^55), so tests compare against `rowid` rather than literals.
 - zsh: `--include=` globs and `rm -f glob` abort the command; `cd` in one parallel shell call changes the cwd for
   the others, use absolute paths.
+
+## 21 Oct EC2 session (m7a.8xlarge, eu-west-1)
+
+- Sweep done for SF1, 3, 10, 30, 100, 300 (plan 10b plus larger factors); summary tables in `~/sweep/collected*.md`
+  on the instance, raw CSVs in `data/ldbc-pathfinding/results/sf*/`. Progress log entry in the plan has the findings.
+- Uncommitted working-tree changes (review before committing): pair-column fix in `logical_path_finding_operator.cpp`,
+  `physical_path_finding_operator.{cpp,hpp}`, `path_finding_optimizer_rule.cpp` (legacy route now passes the
+  function expression); new test `test/sql/path_finding/path_finding_pair_columns.test`; harness
+  `index_query_sql` key-pair materialization, `index_operator_warm` mode, verifier skip of `index_build` rows.
+  Full suite 83/83 after the changes.
+- Index query times in the sweep are cold-process numbers: the first query pays the lazy index deserialization
+  (`CSRIndex::LoadFromStorage`, ~42M edges/s). Use `index_operator_warm` for resident-index numbers.
+- EBS on this instance is 250 MB/s (measured). The generator repo is `github.com/Dtenwolde/ldbc-data-gen`; `prepare`
+  needs a temporary `third_party -> ~/git/ldbc-data-gen/third_party` symlink in the repo root (dictionary paths
+  are cwd-relative); remove it afterwards. AWS CLI credentials on the box belong to another account.
+- zsh pitfall: `pkill -f '<pattern>'` from a tool shell matches the shell itself; `set -- $var` does not split words.

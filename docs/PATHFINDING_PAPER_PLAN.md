@@ -309,3 +309,22 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   W15 remaining tests, W12 cost choice.
 - 21 Oct: machine revised to `m7a.8xlarge` (32 cores, 128 GiB) for all sweeps; `r7a.8xlarge` only for the largest
   Graphalytics sets. Handoff note `docs/SESSION_HANDOFF.md` added for continuing on EC2. Instance started.
+- 21 Oct (EC2, m7a.8xlarge, commit `daab1f1c`, uncommitted fixes): first DuckDB-only sweep (10b) on LDBC SF1-SF300,
+  5 repeats, no failed runs; results in `data/ldbc-pathfinding/results/sf*/`, run logs in `~/sweep` on the instance.
+  Findings: (1) the operator read src/dst from columns 0 and 1 of its pair input and ignored the function
+  arguments, so the index route returned reversed pairs when the keys came out of a hash join (591/1024 SF1 pairs
+  wrong); fixed by resolving the two arguments in `LogicalPathFindingOperator::ResolveColumnBindings` and
+  evaluating them in `SinkPairs` into four leading pair columns (search ids, original keys), test
+  `path_finding_pair_columns.test`. (2) A self pair of a vertex without edges returned NULL on the index route and 0
+  on the build route; `EmitPathFindingOutput` now answers 0 / [key] for equal non-NULL endpoints on every route.
+  (3) The index route's query time was flat across threads (1.3 s at SF300 for every thread count): it is the lazy
+  deserialization of the persisted index (1.3 GB, ~42M edges/s, serial, double copy in `LoadFromStorage`) inside
+  the first query of each fresh process. Second query in the same process: sssp 30 ms at 32 threads / 87 ms at 1
+  thread (build route 0.39 s / 5.3 s), point_to_point 1.04 s / 5.1 s (build route 1.73 s / 13.5 s). Harness mode
+  `index_operator_warm` (runs the query twice, times the second) added to `index_comparison`. (4) The index build
+  uses under 5 of 32 cores and ~30% of its 4.7 s at SF300 is writing to the 250 MB/s volume (2.8-3.3 s on tmpfs).
+  (5) The EBS volume measures 250 MB/s, not the 1,000 MB/s of section 10. Pair-count axis at SF300: the index wins
+  at 1 thread for every pair count (4.2x at 1 pair, 1.75x at 8192) and at 32 threads from 8192 pairs upward
+  (1.28x; 1.43x at 65536), cold-process numbers. Harness: `index_query_sql` materializes key pairs untimed,
+  verifier skips `index_build` rows. Next: faster index load (parallel partition deserialization, no double
+  copy), point_to_point kernel scaling over the index (5x on 32 threads), W16.
