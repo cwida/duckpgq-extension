@@ -163,6 +163,43 @@ SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
 ----
 epochs=1;delta=6;tombstones=1
 
+# ---- A fold rebuilds the dictionary in key order; a new smallest key shifts every id. Entries appended before the
+# fold stay in the log while the previous epoch is retained and must be read with ids of the new dictionary.
+statement ok
+INSERT INTO person VALUES (0);
+
+statement ok
+INSERT INTO knows VALUES (0, 1);
+
+statement ok
+INSERT INTO knows VALUES (6, 11), (11, 12);
+
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr') LIKE 'epochs=2;%';
+----
+true
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 2)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY d;
+----
+2	0
+3	1
+4	2
+6	3
+7	3
+8	4
+9	5
+11	4
+12	5
+
 # ---- Restart: loaded entries carry no group and are decided per row, deletes after the restart are grouped
 statement ok
 CHECKPOINT;
@@ -191,6 +228,8 @@ ORDER BY d;
 7	3
 8	4
 9	5
+11	4
+12	5
 
 statement ok
 DELETE FROM knows WHERE src = 4 AND dst = 7;
@@ -209,6 +248,8 @@ ORDER BY d;
 4	2
 6	3
 10	4
+11	4
+12	5
 
 query I
 SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
@@ -232,3 +273,5 @@ ORDER BY d;
 4	2
 6	3
 10	4
+11	4
+12	5

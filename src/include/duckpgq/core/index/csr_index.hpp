@@ -102,10 +102,12 @@ struct CSRIndexDeltaEdge {
 	uint32_t group = 0;
 	//! Change group of the TryDelete call that deleted this delta row, 0 while it is not deleted
 	uint32_t deleted_group = 0;
-	//! Dense ids resolved against the newest dictionary at append time (UINT32_MAX when unknown then). Dictionaries
-	//! are prefix-stable across epochs, so an id below an epoch's vertex count is valid for that epoch.
+	//! Dense ids of the keys in the dictionary of epoch `id_generation` (UINT32_MAX when unknown to it), resolved
+	//! at append time and again at every fold. A fold rebuilds the dictionary in key order, so ids are only valid
+	//! for the epoch they were resolved against.
 	uint32_t src_id = NumericLimits<uint32_t>::Maximum();
 	uint32_t dst_id = NumericLimits<uint32_t>::Maximum();
+	uint32_t id_generation = NumericLimits<uint32_t>::Maximum();
 };
 
 //! A deleted row that may still be an edge of a retained epoch
@@ -236,6 +238,8 @@ private:
 	                                           idx_t tombstone_count, bool shareable) const;
 	//! Rebuilds delta_row_index from delta; the index lock must be held
 	void RebuildDeltaRowIndexLocked() const;
+	//! Resolves the dense ids of every delta entry against the newest epoch's dictionary; the index lock must be held
+	void ResolveDeltaIdsLocked() const;
 
 	//! Persistence: the newest epoch and the part of the change log it does not account for are written as one byte
 	//! stream into fixed-size segments; the segment list and sizes travel in the storage info's options

@@ -610,6 +610,8 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	}
 	cached_snapshot.reset();
 	CompactChangeLogLocked();
+	// The new dictionary is rebuilt in key order: ids resolved against the previous one no longer apply
+	ResolveDeltaIdsLocked();
 }
 
 void CSRIndex::CompactChangeLogLocked() const {
@@ -850,8 +852,9 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			continue;
 		}
 		auto &edge = delta_edges[i];
-		auto src = edge.src_id < epoch_vertex_count ? edge.src_id : lookup_or_add(edge.src_key);
-		auto dst = edge.dst_id < epoch_vertex_count ? edge.dst_id : lookup_or_add(edge.dst_key);
+		bool ids_valid = edge.id_generation == epoch.generation;
+		auto src = ids_valid && edge.src_id < epoch_vertex_count ? edge.src_id : lookup_or_add(edge.src_key);
+		auto dst = ids_valid && edge.dst_id < epoch_vertex_count ? edge.dst_id : lookup_or_add(edge.dst_key);
 		visible_edges.push_back({src, dst, edge.row});
 		if (undirected) {
 			visible_edges.push_back({dst, src, edge.row});
@@ -1187,6 +1190,7 @@ ErrorData CSRIndex::Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 	auto group = next_change_group++;
 	// Resolve the keys once here rather than in every reader's snapshot; unknown keys stay unresolved
 	auto dictionary = epochs.empty() ? nullptr : epochs.back()->dictionary.get();
+	auto id_generation = epochs.empty() ? NumericLimits<uint32_t>::Maximum() : epochs.back()->generation;
 	auto resolve = [&](int64_t key) -> uint32_t {
 		if (!dictionary) {
 			return NumericLimits<uint32_t>::Maximum();
@@ -1201,9 +1205,26 @@ ErrorData CSRIndex::Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 		auto row_id = row_data[row_format.sel->get_index(row)];
 		delta_row_index[row_id] = delta.size();
 		delta.push_back({src_keys[row], dst_keys[row], row_id, NumericLimits<uint32_t>::Maximum(), group, 0,
-		                 resolve(src_keys[row]), resolve(dst_keys[row])});
+		                 resolve(src_keys[row]), resolve(dst_keys[row]), id_generation});
 	}
 	return ErrorData();
+}
+
+void CSRIndex::ResolveDeltaIdsLocked() const {
+	if (epochs.empty()) {
+		return;
+	}
+	auto &dictionary = *epochs.back()->dictionary;
+	auto generation = epochs.back()->generation;
+	for (auto &entry : delta) {
+		auto src = dictionary.Lookup(entry.src_key);
+		auto dst = dictionary.Lookup(entry.dst_key);
+		entry.src_id =
+		    src == DConstants::INVALID_INDEX ? NumericLimits<uint32_t>::Maximum() : NumericCast<uint32_t>(src);
+		entry.dst_id =
+		    dst == DConstants::INVALID_INDEX ? NumericLimits<uint32_t>::Maximum() : NumericCast<uint32_t>(dst);
+		entry.id_generation = generation;
+	}
 }
 
 ErrorData CSRIndex::Insert(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
