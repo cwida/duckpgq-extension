@@ -3768,6 +3768,174 @@ def run_update_concurrent(args):
     print(f"Wrote {output}")
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Kuzu: the same update workload (snapshot, pairs, committed batches, query stream) on Kuzu.
+# ---------------------------------------------------------------------------------------------------------------------
+
+KUZU_ROOT = DATA_ROOT / "kuzu"
+KUZU_MAX_DEPTH = 30  # Kuzu caps the upper bound of a recursive pattern at 30; LDBC knows paths are far shorter
+
+
+def kuzu_export_dir(scale_factor):
+    return KUZU_ROOT / f"{sf_name(scale_factor)}-export"
+
+
+def kuzu_snapshot_db(scale_factor):
+    return KUZU_ROOT / f"{sf_name(scale_factor)}.kuzu"
+
+
+def ensure_kuzu_update_database(scale_factor, pair_tables, force=False):
+    """Exports the snapshot, the pair tables (as keys) and the update log from the DuckDB benchmark database and loads
+    them into a Kuzu database once; runs copy that database."""
+    kuzu = require_kuzu()
+    export_dir = kuzu_export_dir(scale_factor)
+    export_dir.mkdir(parents=True, exist_ok=True)
+    exports = {
+        "person": "SELECT id FROM person ORDER BY id",
+        "knows": "SELECT person1id, person2id FROM person_knows_person",
+        "ops": f"SELECT seq, op, person1id, person2id FROM {UPDATE_LOG_TABLE} ORDER BY seq",
+    }
+    for table in pair_tables:
+        exports[f"pairs_{table}"] = (f"SELECT row_number() OVER () AS id, a.id AS src, b.id AS dst FROM {table} p "
+                                     f"JOIN person a ON a.rowid = p.src JOIN person b ON b.rowid = p.dst")
+    sql = ""
+    missing = False
+    for name, query in exports.items():
+        path = export_dir / f"{name}.parquet"
+        if force or not path.exists():
+            missing = True
+            sql += f"COPY ({query}) TO {sql_string(path)} (FORMAT PARQUET);\n"
+    if sql:
+        print(f"Exporting {sf_name(scale_factor)} tables for Kuzu")
+        run_duckdb(BENCH_DUCKDB, db_path(scale_factor), sql, quiet=True)
+    db_file = kuzu_snapshot_db(scale_factor)
+    if db_file.exists() and not (force or missing):
+        return db_file
+    for stale in (db_file, Path(str(db_file) + ".wal")):
+        if stale.exists():
+            stale.unlink()
+    print(f"Loading {sf_name(scale_factor)} into Kuzu at {db_file}")
+    started = time.perf_counter()
+    db = kuzu.Database(str(db_file))
+    conn = kuzu.Connection(db)
+    conn.execute("CREATE NODE TABLE Person(id INT64 PRIMARY KEY)")
+    conn.execute("CREATE REL TABLE Knows(FROM Person TO Person)")
+    conn.execute("CREATE NODE TABLE Op(seq INT64 PRIMARY KEY, op STRING, person1id INT64, person2id INT64)")
+    conn.execute(f"COPY Person FROM {sql_string(export_dir / 'person.parquet')}")
+    conn.execute(f"COPY Knows FROM {sql_string(export_dir / 'knows.parquet')}")
+    conn.execute(f"COPY Op FROM {sql_string(export_dir / 'ops.parquet')}")
+    for table in pair_tables:
+        conn.execute(f"CREATE NODE TABLE {table}(id INT64 PRIMARY KEY, src INT64, dst INT64)")
+        conn.execute(f"COPY {table} FROM {sql_string(export_dir / f'pairs_{table}.parquet')}")
+    edges = kuzu_row_get(kuzu_query_single_row(conn, "MATCH (:Person)-[e:Knows]->(:Person) RETURN count(e)"), 0)
+    conn.close()
+    db.close()
+    print(f"Loaded Kuzu database with {edges} edges in {time.perf_counter() - started:.1f}s")
+    return db_file
+
+
+def kuzu_update_query(query_pattern, pair_table, source_key=None):
+    """Shortest-path lengths for the pairs of `pair_table`; self pairs (length 0) are counted by the caller.
+
+    The single source is a literal: bound through a WITH clause Kuzu ran the recursive join from every vertex
+    first (20 s instead of 16 ms at SF1)."""
+    if query_pattern == "sssp":
+        return (f"MATCH (a:Person {{id: {source_key}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]->(b:Person) "
+                f"WITH b.id AS d, length(e) AS l MATCH (p:{pair_table} {{dst: d}}) RETURN count(*), sum(l)")
+    return (f"MATCH (p:{pair_table}), (a:Person {{id: p.src}}), (b:Person {{id: p.dst}}) "
+            f"MATCH (a)-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]->(b) RETURN count(*), sum(length(e))")
+
+
+def run_update_kuzu(args):
+    kuzu = require_kuzu()
+    ensure_update_log(args.scale_factor)
+    pair_shape = generated_pair_shape(args.query_pattern, "random")
+    pair_table = pair_table_name(args.pairs, pair_shape)
+    ensure_pair_table(args.scale_factor, args.pairs, pair_shape)
+    batch_rows = update_batch_edge_counts(args.scale_factor, args.batch_size, args.batches)
+    # Both pair shapes are loaded so one Kuzu snapshot serves both query patterns
+    all_pair_tables = [pair_table_name(args.pairs, "random"), pair_table_name(args.pairs, "same_src")]
+    for table in all_pair_tables:
+        ensure_pair_table(args.scale_factor, args.pairs, "random" if table.endswith(f"_{args.pairs}") and "same" not in table else "same_src")
+    snapshot = ensure_kuzu_update_database(args.scale_factor, all_pair_tables, args.force_load)
+    probe = run_duckdb(BENCH_DUCKDB, db_path(args.scale_factor),
+                       f"SELECT count(*) FILTER (WHERE src = dst), (SELECT a.id FROM {pair_table} q JOIN person a ON a.rowid = q.src LIMIT 1) FROM {pair_table};",
+                       quiet=True)[0].strip().splitlines()[-1].split(",")
+    self_pairs = int(probe[0])
+    source_key = probe[1]
+    WORK_ROOT.mkdir(parents=True, exist_ok=True)
+    work_db = WORK_ROOT / f"{sf_name(args.scale_factor)}_update_kuzu.kuzu"
+    for stale in (work_db, Path(str(work_db) + ".wal")):
+        if stale.exists():
+            stale.unlink()
+    shutil.copyfile(snapshot, work_db)
+    db = kuzu.Database(str(work_db))
+    conn = kuzu.Connection(db, num_threads=args.threads)
+    if hasattr(conn, "set_max_threads_for_exec"):
+        conn.set_max_threads_for_exec(args.threads)
+    query = kuzu_update_query(args.query_pattern, pair_table, source_key)
+    rows = []
+    started = time.perf_counter()
+    for step in range(0, args.batches + 1):
+        for _ in range(args.queries_per_batch):
+            t0 = time.perf_counter()
+            result = conn.execute(query)
+            reachable, total = (result.get_next() if result.has_next() else (0, None))
+            elapsed = time.perf_counter() - t0
+            rows.append({
+                "config": "kuzu", "step": step, "query_s": f"{elapsed:.6f}", "update_s": "",
+                "batch_inserts": batch_rows[step - 1]["ins"] if step else "", "batch_deletes": batch_rows[step - 1]["del"] if step else "",
+                "edges": batch_rows[step - 1]["edges"] if step else "", "pair_count": args.pairs,
+                "reachable_count": int(reachable or 0) + self_pairs, "total_len": int(total or 0),
+            })
+        if step == args.batches:
+            break
+        lo, hi = step * args.batch_size, (step + 1) * args.batch_size
+        t0 = time.perf_counter()
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute(f"MATCH (o:Op) WHERE o.seq > {lo} AND o.seq <= {hi} AND o.op = 'insert' "
+                     f"MATCH (a:Person {{id: o.person1id}}), (b:Person {{id: o.person2id}}) CREATE (a)-[:Knows]->(b)")
+        conn.execute(f"MATCH (o:Op) WHERE o.seq > {lo} AND o.seq <= {hi} AND o.op = 'delete' "
+                     f"MATCH (a:Person {{id: o.person1id}})-[e:Knows]->(b:Person {{id: o.person2id}}) DELETE e")
+        conn.execute("COMMIT")
+        update_s = time.perf_counter() - t0
+        rows.append({"__update__": step + 1, "update_s": update_s})
+    wall = time.perf_counter() - started
+    edges = kuzu_row_get(kuzu_query_single_row(conn, "MATCH (:Person)-[e:Knows]->(:Person) RETURN count(e)"), 0)
+    conn.close()
+    db.close()
+    work_db.unlink()
+    # attach update times to the query rows of the following step
+    updates = {r["__update__"]: r["update_s"] for r in rows if "__update__" in r}
+    rows = [r for r in rows if "__update__" not in r]
+    for r in rows:
+        if r["step"] in updates:
+            r["update_s"] = f"{updates[r['step']]:.6f}"
+    if str(edges) != str(batch_rows[-1]["edges"]):
+        print(f"WARNING: Kuzu has {edges} edges after the run, {batch_rows[-1]['edges']} expected")
+    metadata = {"scale_factor": args.scale_factor, "threads": args.threads, "query_pattern": args.query_pattern,
+                "batch_size": args.batch_size, "batches": args.batches, "queries_per_batch": args.queries_per_batch,
+                "kuzu_version": getattr(kuzu, "__version__", ""), "benchmark_notes": args.notes,
+                "repo_commit": subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True,
+                                              capture_output=True).stdout.strip()}
+    for r in rows:
+        r.update(metadata)
+    results_dir = DATA_ROOT / "results" / sf_name(args.scale_factor)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    path = results_dir / (f"update_kuzu_{args.query_pattern}_pairs{args.pairs}_threads{args.threads}"
+                          f"_batch{args.batch_size}x{args.batches}_{time.time_ns()}.csv")
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    queries = [float(r["query_s"]) for r in rows]
+    upd = [float(r["update_s"]) for r in rows if r["update_s"]]
+    print(f"== kuzu: query mean {statistics.mean(queries):.4f}s (min {min(queries):.4f}, max {max(queries):.4f}), "
+          f"update mean {statistics.mean(upd):.4f}s, wall {wall:.1f}s, final reachable {rows[-1]['reachable_count']} "
+          f"total {rows[-1]['total_len']}")
+    print(f"Wrote {path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Prepare and smoke-run pathfinding benchmarks on LDBC Person knows Person data.")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -4093,6 +4261,18 @@ def main():
     concurrent_parser.add_argument("--notes", default="")
     concurrent_parser.add_argument("--timeout", type=int, default=7200)
     concurrent_parser.set_defaults(func=run_update_concurrent)
+
+    kuzu_parser = subcommands.add_parser("update-kuzu", help="The update workload on Kuzu (sequential)")
+    kuzu_parser.add_argument("--scale-factor", required=True)
+    kuzu_parser.add_argument("--threads", type=int, default=os.cpu_count())
+    kuzu_parser.add_argument("--query-pattern", choices=["point_to_point", "sssp"], default="sssp")
+    kuzu_parser.add_argument("--pairs", type=int, default=1024)
+    kuzu_parser.add_argument("--batch-size", type=int, default=1000)
+    kuzu_parser.add_argument("--batches", type=int, default=50)
+    kuzu_parser.add_argument("--queries-per-batch", type=int, default=1)
+    kuzu_parser.add_argument("--force-load", action="store_true")
+    kuzu_parser.add_argument("--notes", default="")
+    kuzu_parser.set_defaults(func=run_update_kuzu)
 
     args = parser.parse_args()
     args.func(args)

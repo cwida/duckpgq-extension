@@ -336,3 +336,30 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   point_to_point 32 threads 1.69 / 1.11 / 0.95; point_to_point 1 thread 13.5 / 6.3 / 4.9. The load follows the
   `threads` setting, so single-threaded runs still pay 1.1 s. Warm single pair over the index is ~0.1 s at every
   thread count (fixed cost, not yet profiled); warm sssp scales 87 -> 27 ms from 1 to 16 threads and is flat after.
+- 21 Oct (evening): W16 update workload. Harness `update-run` (sequential: build-per-query, index with automatic
+  fold, index without fold, on database copies, exact edge counts from the staged `knows_update_log`),
+  `update-concurrent` (C++ driver, one writer + R readers, index and build route in the same read transaction) and
+  `update-kuzu` (same batches and pairs on Kuzu 0.11.3). Data: LDBC BI insert/delete batches of Person_knows_Person
+  (SF10: 339k inserts, 50k deletes between snapshot persons). Findings and fixes, all committed:
+  (1) The reader snapshot cost O(delta + tombstones) row-version checks and two dictionary lookups per edge on
+  every query: SF10 sssp grew from 8 ms to 124 ms over 332k pending operations and the index averaged 41 ms against
+  26 ms for build-per-query (SF100: 331 vs 132 ms). Fixed by commit groups (one check per Append/TryDelete call),
+  stamping deleted delta rows instead of tombstoning them, append-time id resolution (re-resolved at folds: the
+  dictionary is rebuilt in key order and is not prefix-stable; a stale-id bug surfaced after the first automatic
+  fold) and a one-entry snapshot cache keyed by (epoch generation, newest visible change group). After: SF10 32
+  threads sssp build 26 / index_auto 19 / nofold 25 ms (10 queries per commit: 10.4 ms); point_to_point 86 / 76 /
+  82 ms; 1 thread sssp 138 / 23 / 22 ms; SF100 sssp 136 / 113 / 112 ms (still rising to 200 ms at 1.35M pending,
+  the rebuild after a commit is O(delta) bucketing). Update cost per commit is the same for all routes (+0.3-7 ms).
+  (2) Concurrent path-finding queries deadlock: the BFS kernels synchronize worker tasks with barriers, and with 4
+  readers at 32 threads the scheduler filled with tasks whose peers could not run (164 threads in futex wait).
+  Workaround in the driver: `experimental_path_finding_operator_threads_per_batch = threads / (readers + 1)`. Real
+  fix needed: one event per BFS level (W15 item). (3) Two connections initializing DuckPGQ state at once hit a
+  catalog write-write conflict on `__duckpgq_internal`. (4) The cache key names the file catalog, not `memory`.
+  Concurrent SF10 sssp, writer committing 2000 ops every 200 ms, 190 commits, no mismatches: readers 1/4/8/16 index
+  11/18/37/72 ms vs build 23/32/49/84 ms, 25/72/85/88 iterations per second; point_to_point 4 readers 113 vs 143 ms;
+  unpaced writer (14 commits/s) 8 readers 39 vs 39 ms. Kuzu: results agree step by step; sssp needs the source as a
+  literal (a WITH-bound source ran the recursive join from every vertex: 20 s vs 8 ms at SF1); point_to_point with
+  1024 pairs bound through a node table takes 21 s at SF1 (formulation to be revisited, W17). Kuzu SF10 sssp, same
+  190 commits, 32 threads, results identical on all 191 steps: query mean 16.6 ms (DuckPGQ index 19 ms, build 26 ms),
+  update batch mean 346 ms (DuckDB 8-9 ms; Kuzu via MATCH Op ... CREATE / DELETE, one transaction per batch); Kuzu
+  ended with one edge more than expected (2,124,203 vs 2,124,202), results unaffected, cause open.
