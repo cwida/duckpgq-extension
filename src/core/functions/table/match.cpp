@@ -1017,11 +1017,11 @@ void PGQMatchFunction::CheckColumnBinding(
 		}
 		auto column_names = IdentifiersToStrings(column_ref->ColumnNames());
 		// 'shortest_path_cte' is a special table populated by pgq.
-		if (column_names[0] == "shortest_path_cte") {
+		if (StringUtil::CIEquals(column_names[0], "shortest_path_cte")) {
 			continue;
 		}
-		// 'rowid' is a column duckdb binds automatically.
-		if (column_names.back() == "rowid") {
+		// 'rowid' is a column duckdb binds automatically; identifiers are case-insensitive, so a.ROWID is the same.
+		if (StringUtil::CIEquals(column_names.back(), "rowid")) {
 			continue;
 		}
 		if (column_names.size() == 1) {

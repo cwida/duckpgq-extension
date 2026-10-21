@@ -1,0 +1,46 @@
+# name: test/sql/pattern_matching/rowid_case.test
+# description: rowid in COLUMNS is accepted in any case, like every other identifier (issue #330)
+# group: [pattern_matching]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE v(id INT);
+INSERT INTO v VALUES (1),(2),(3);
+
+statement ok
+CREATE TABLE e(src INT, dst INT);
+INSERT INTO e VALUES (1,2),(2,3);
+
+statement ok
+CREATE PROPERTY GRAPH g VERTEX TABLES (v LABEL V)
+  EDGE TABLES (e SOURCE KEY (src) REFERENCES v (id) DESTINATION KEY (dst) REFERENCES v (id) LABEL E);
+
+query I
+FROM GRAPH_TABLE (g MATCH (a:V) COLUMNS (a.rowid)) ORDER BY 1;
+----
+0
+1
+2
+
+query I
+FROM GRAPH_TABLE (g MATCH (a:V) COLUMNS (a.ROWID)) ORDER BY 1;
+----
+0
+1
+2
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:V)-[k:E]->(b:V) COLUMNS (a.RowId AS a_row, k.ROWID AS k_row)) ORDER BY ALL;
+----
+0	0
+1	1
+
+# an unknown property is still rejected regardless of case
+statement error
+FROM GRAPH_TABLE (g MATCH (a:V) COLUMNS (a.ROWIDS));
+----
+Binder Error
