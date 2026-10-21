@@ -1,4 +1,5 @@
 #include "duckpgq/core/index/csr_index.hpp"
+#include "duckdb/main/attached_database.hpp"
 
 #include "duckpgq/core/operator/partitioned_csr_cache.hpp"
 #include "duckpgq/core/option/duckpgq_option.hpp"
@@ -1198,44 +1199,54 @@ struct ByteWriter {
 	}
 };
 
+//! Reads the serialized state from a byte range; several readers may read disjoint parts of one range in parallel
 struct ByteReader {
-	const vector<uint8_t> &bytes;
+	const uint8_t *bytes;
+	idx_t size;
 	idx_t position = 0;
 
-	explicit ByteReader(const vector<uint8_t> &bytes_p) : bytes(bytes_p) {
+	ByteReader(const uint8_t *bytes_p, idx_t size_p) : bytes(bytes_p), size(size_p) {
+	}
+	explicit ByteReader(const vector<uint8_t> &bytes_p) : bytes(bytes_p.data()), size(bytes_p.size()) {
 	}
 	template <class T>
 	T Read() {
-		if (position + sizeof(T) > bytes.size()) {
+		if (position + sizeof(T) > size) {
 			throw SerializationException("Truncated CSR index storage");
 		}
 		T value;
-		memcpy(&value, bytes.data() + position, sizeof(T));
+		memcpy(&value, bytes + position, sizeof(T));
 		position += sizeof(T);
 		return value;
 	}
+	//! Advances over a length-prefixed vector of T without reading it
+	template <class T>
+	void SkipVector() {
+		auto count = Read<uint64_t>();
+		if (position + count * sizeof(T) > size) {
+			throw SerializationException("Truncated CSR index storage");
+		}
+		position += count * sizeof(T);
+	}
+	//! assign() copies once; resize() followed by memcpy would write the memory twice
 	template <class T>
 	void ReadVector(vector<T> &values) {
 		auto count = Read<uint64_t>();
-		if (position + count * sizeof(T) > bytes.size()) {
+		if (position + count * sizeof(T) > size) {
 			throw SerializationException("Truncated CSR index storage");
 		}
-		values.resize(count);
-		if (count > 0) {
-			memcpy(values.data(), bytes.data() + position, count * sizeof(T));
-		}
+		auto data = reinterpret_cast<const T *>(bytes + position);
+		values.assign(data, data + count);
 		position += count * sizeof(T);
 	}
 	template <class T>
 	void ReadStdVector(std::vector<T> &values) {
 		auto count = Read<uint64_t>();
-		if (position + count * sizeof(T) > bytes.size()) {
+		if (position + count * sizeof(T) > size) {
 			throw SerializationException("Truncated CSR index storage");
 		}
-		values.resize(count);
-		if (count > 0) {
-			memcpy(values.data(), bytes.data() + position, count * sizeof(T));
-		}
+		auto data = reinterpret_cast<const T *>(bytes + position);
+		values.assign(data, data + count);
 		position += count * sizeof(T);
 	}
 };
@@ -1353,19 +1364,32 @@ void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
 	storage_allocator = make_uniq<FixedSizeAllocator>(allocator_info.segment_size, block_manager, MemoryTag::EXTENSION);
 	storage_allocator->Init(allocator_info);
 	auto total_bytes = byte_count->second.GetValue<uint64_t>();
-	vector<uint8_t> bytes(total_bytes);
-	idx_t offset = 0;
+	// Uninitialized staging buffer: every byte is written by the segment copy below
+	auto bytes_buffer = make_unsafe_uniq_array_uninitialized<uint8_t>(total_bytes);
+	auto bytes = bytes_buffer.get();
+	// One segment per block: the blocks are pinned and copied in parallel (each buffer has its own lock)
+	vector<uint64_t> packed_segments;
 	for (auto &segment : ListValue::GetChildren(segment_list->second)) {
-		auto packed = segment.GetValue<uint64_t>();
-		IndexPointer pointer(NumericCast<uint32_t>(packed >> 32), NumericCast<uint32_t>(packed & 0xFFFFFFFF));
-		auto length = std::min<idx_t>(allocator_info.segment_size, total_bytes - offset);
-		memcpy(bytes.data() + offset, storage_allocator->Get(pointer, false), length);
-		offset += length;
+		packed_segments.push_back(segment.GetValue<uint64_t>());
 	}
+	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(db.GetDatabase()).NumberOfThreads());
+	auto segment_size = allocator_info.segment_size;
+	ParallelFor(packed_segments.size(), thread_count, [&](idx_t begin, idx_t end, idx_t) {
+		for (idx_t segment_idx = begin; segment_idx < end; segment_idx++) {
+			auto packed = packed_segments[segment_idx];
+			IndexPointer pointer(NumericCast<uint32_t>(packed >> 32), NumericCast<uint32_t>(packed & 0xFFFFFFFF));
+			auto offset = segment_idx * segment_size;
+			if (offset >= total_bytes) {
+				throw SerializationException("CSR index storage has more segments than bytes");
+			}
+			auto length = std::min<idx_t>(segment_size, total_bytes - offset);
+			memcpy(bytes + offset, storage_allocator->Get(pointer, false), length);
+		}
+	});
 	// The loaded buffers are no longer needed in memory; the blocks stay referenced until the next serialization
 	storage_allocator.reset();
 
-	ByteReader reader(bytes);
+	ByteReader reader(bytes, total_bytes);
 	if (reader.Read<uint32_t>() != STORAGE_FORMAT_VERSION) {
 		throw SerializationException("CSR index storage format mismatch");
 	}
@@ -1393,23 +1417,39 @@ void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
 	csr->edge_count = epoch->edge_count;
 	csr->capabilities = PartitionedCSRCapabilities::FORWARD;
 	auto partition_count = reader.Read<uint64_t>();
-	epoch->partition_row_ids.resize(partition_count);
+	// Locate every partition's bytes first, then deserialize the partitions in parallel
+	vector<idx_t> partition_offsets(partition_count);
 	for (idx_t partition_idx = 0; partition_idx < partition_count; partition_idx++) {
-		auto start_vertex = reader.Read<uint64_t>();
-		auto end_vertex = reader.Read<uint64_t>();
-		auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, epoch->vertex_count, false);
-		reader.ReadStdVector<uint32_t>(partition->source_vertices);
-		reader.ReadStdVector<uint32_t>(partition->row_offsets);
-		reader.ReadStdVector<uint16_t>(partition->e);
-		reader.ReadVector<row_t>(epoch->partition_row_ids[partition_idx]);
-		partition->row_ids = epoch->partition_row_ids[partition_idx].data();
-		partition->expected_sparse_row_count = partition->source_vertices.size();
-		partition->v_array_size = 0;
-		partition->initialized_e = true;
-		partition->sparse_rows_initialized = true;
-		partition->BuildRowBuckets(epoch->vertex_count);
-		csr->forward_partitions.push_back(std::move(partition));
+		partition_offsets[partition_idx] = reader.position;
+		reader.Read<uint64_t>();
+		reader.Read<uint64_t>();
+		reader.SkipVector<uint32_t>();
+		reader.SkipVector<uint32_t>();
+		reader.SkipVector<uint16_t>();
+		reader.SkipVector<row_t>();
 	}
+	epoch->partition_row_ids.resize(partition_count);
+	csr->forward_partitions.resize(partition_count);
+	ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+		for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
+			ByteReader partition_reader(bytes, total_bytes);
+			partition_reader.position = partition_offsets[partition_idx];
+			auto start_vertex = partition_reader.Read<uint64_t>();
+			auto end_vertex = partition_reader.Read<uint64_t>();
+			auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, epoch->vertex_count, false);
+			partition_reader.ReadStdVector<uint32_t>(partition->source_vertices);
+			partition_reader.ReadStdVector<uint32_t>(partition->row_offsets);
+			partition_reader.ReadStdVector<uint16_t>(partition->e);
+			partition_reader.ReadVector<row_t>(epoch->partition_row_ids[partition_idx]);
+			partition->row_ids = epoch->partition_row_ids[partition_idx].data();
+			partition->expected_sparse_row_count = partition->source_vertices.size();
+			partition->v_array_size = 0;
+			partition->initialized_e = true;
+			partition->sparse_rows_initialized = true;
+			partition->BuildRowBuckets(epoch->vertex_count);
+			csr->forward_partitions[partition_idx] = std::move(partition);
+		}
+	});
 	epoch->csr = std::move(csr);
 
 	// After a restart every persisted row is committed, so the epoch serves every transaction (default bound)
