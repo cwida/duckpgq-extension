@@ -232,7 +232,7 @@ time) are now the critical path and depend on EC2 access and the author's hours.
 - Staffing: one author with ~1 day/week plus Claude on engineering; the author's time goes to review,
   EC2 sweeps, and writing.
 
-## 10. Evaluation machines (decided 19 Oct)
+## 10. Evaluation machines (decided 19 Oct, revised 21 Oct)
 
 Sizing is set by the index build and by Neo4j's heap projection, not by queries: peak ~50-60 B/edge during the
 build (edge lists 24 B + buckets 16 B + epoch 10-17 B), so datagen-8_9-fb (1.7B edges) needs ~100 GB plus ~27 GB
@@ -241,8 +241,13 @@ Graphalytics sets (<= ~500M edges); 256 GB covers everything in the harness.
 
 | Phase | Instance | vCPU (= physical cores, no SMT) / RAM | On-demand (approx.) |
 |---|---|---|---|
-| Primary: all datasets, all systems, thread scaling up to 32 | `r7a.8xlarge` (AMD Genoa) | 32 / 256 GiB | ~$2.4/h |
-| Only if scaling beyond 32 threads is needed | `r7a.16xlarge` | 64 / 512 GiB | ~$4.8/h |
+| Primary (started 21 Oct): all datasets up to graph500-24, all systems, thread scaling up to 32 | `m7a.8xlarge` (AMD Genoa) | 32 / 128 GiB | ~$1.85/h |
+| Only for datagen-9_4 / graph500-25 class datasets (build peak ~60 GB + Neo4j heap) | `r7a.8xlarge` | 32 / 256 GiB | ~$2.4/h |
+| Only if scaling beyond 32 threads is needed | `m7a.16xlarge` | 64 / 256 GiB | ~$3.7/h |
+
+Revision 21 Oct: 128 GiB covers every dataset discussed so far (LDBC SF1-SF100 need < 3 GB; graph500-24 with 260M
+edges peaks at ~20 GB; Neo4j heap and page cache 16-32 GB on top). The same Genoa CPU keeps the thread sweep
+comparable across the m7a and r7a sizes.
 
 Storage: EBS only. Provision a gp3 volume of 500 GB-1 TB with 1,000 MB/s throughput and 16,000 IOPS (the default
 125 MB/s would dominate cold-start and import numbers). Define cold start as "fresh process, warm OS cache", as
@@ -302,3 +307,5 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
 - 20 Oct (evening): harness index modes (`index_build`, `index_operator`, `index`, `index_comparison`) added and
   smoke-tested; DuckDB-only sweep recipe in section 10b. Next engineering: W7 step 2 (paths on the build route),
   W15 remaining tests, W12 cost choice.
+- 21 Oct: machine revised to `m7a.8xlarge` (32 cores, 128 GiB) for all sweeps; `r7a.8xlarge` only for the largest
+  Graphalytics sets. Handoff note `docs/SESSION_HANDOFF.md` added for continuing on EC2. Instance started.
