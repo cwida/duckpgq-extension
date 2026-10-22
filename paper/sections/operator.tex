@@ -11,7 +11,7 @@
   edge endpoints, or pairs and an index snapshot; the radix-partitioned CSR; the chain of per-level events. Right:
   the result column joined back and filtered on the quantifier.}}
   \caption{The path-finding operator answers one \sqlpgq path pattern for a set of candidate pairs. Pairs and edge
-  endpoints arrive through ordinary pipelines; the CSR is partitioned by destination range and built in parallel
+  endpoints arrive through ordinary pipelines; the partitioned CSR is built by destination range in parallel
   (Section~\ref{sec:csr}); the traversal runs as a chain of per-level events whose tasks never wait for each other
   (Section~\ref{sec:phases}); with a CSR index (Section~\ref{sec:index}) the edge input disappears and the operator
   reads a snapshot.}
@@ -47,7 +47,7 @@ Third, when a CSR index exists for the edge table, the rewrite drops the edge in
 key; the operator then resolves the key to a snapshot (Section~\ref{sec:index}) and the pairs carry vertex keys
 rather than row ids, because the index identifies vertices by key.
 
-\subsection{Building the graph per query}
+\subsection{Building the partitioned CSR per query}
 \label{sec:csr}
 
 Without an index the operator builds a CSR for every query, so the build has to be cheap, and it still dominates:
@@ -62,7 +62,8 @@ bucket, so that looking up a source in a partition costs one bucket read and a s
 instead of a binary search over all rows of the partition. No per-vertex counter array exists at any point, which is
 what makes the build memory proportional to the edges, not the vertices.
 
-The layout is the same for the operator's build and for the index of Section~\ref{sec:index}, and for a reason. A
+We call this layout the \emph{partitioned CSR}. It is the same for the operator's build and for the index of
+Section~\ref{sec:index}, and for a reason. A
 partition holds every edge into one destination range, so a traversal step that processes partition $p$ writes
 only to vertices of range $p$; the tasks of one level never write the same vertex, and the frontier arrays of a
 range stay in the cache of the core that works on it. Destinations inside a partition are 16-bit offsets, which halves
@@ -99,7 +100,9 @@ With at most 16 distinct sources, or with at least four pairs per source, the si
 group per source; otherwise the multi-source traversal runs over batches of 512. The same sketches decide the
 orientation: when there are far fewer distinct destinations than sources and the build can produce the reverse
 partitions, the search starts from the destinations. Both rules are thresholds today; Section~\ref{sec:strategy}
-discusses what a cost model needs to replace them. On the 8M-edge graph the switch to the single-source traversal
+discusses what a cost model needs to replace them. The operator also implements the reverse orientation over reverse partitions, a push/pull variant of the
+multi-source traversal~\cite{beamer2012direction} and a bidirectional one; they are not faster than the two
+traversals above on our workloads and appear only in the ablation of Section~\ref{sec:eval}. On the 8M-edge graph the switch to the single-source traversal
 took a single pair from 0.11\,s to 0.01\,s and twenty sources with 200 destinations each from 1.5\,s to 0.13\,s,
 for identical answers.
 

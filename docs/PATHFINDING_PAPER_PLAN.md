@@ -396,3 +396,6 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   (`7a706d27`): the CIDR 2023 paper's own limitation (morsel-driven parallelism is tuple-driven; CSR as UDF-built
   global state outside the transaction) is the hook, the operator and the index are the answer. The user is
   looking for PDFs of 'Database Architecture Evolution' (VLDB 2009) and 'TPC-H Analyzed' to sharpen the guide.
+- 22 Oct (evening): operator section drafted (`70a5d43a`), 'partitioned CSR' named as the layout. Decision (user):
+  reverse CSR, push-pull and bidirectional traversals are low priority; they stay in the code and the ablation only,
+  and get paper space only if they become faster than the two main traversals.
