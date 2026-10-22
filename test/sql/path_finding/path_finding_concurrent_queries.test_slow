@@ -1,0 +1,98 @@
+# name: test/sql/path_finding/path_finding_concurrent_queries.test_slow
+# description: Concurrent path-finding queries whose worker tasks together exceed the thread count must not deadlock
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# 200k vertices, 1.3M edges: one query wants about 20 workers (one per 65k edges), so two overlapping queries
+# already exceed a 32-thread scheduler
+statement ok
+CREATE TABLE person AS SELECT range AS id FROM range(200000);
+
+statement ok
+CREATE TABLE knows AS
+SELECT (i % 200000)::BIGINT AS src, ((i * 7919 + (i // 200000) * 104729 + 13) % 200000)::BIGINT AS dst
+FROM range(1300000) t(i);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# The same edges without an index: queries over g2 build the CSR per query with a full set of worker tasks
+statement ok
+CREATE TABLE knows2 AS SELECT * FROM knows;
+
+statement ok
+CREATE PROPERTY GRAPH g2
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows2 SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+query I
+SELECT count(*) > 1000
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+true
+
+# Reference results, one connection at a time; the concurrent runs below must match them
+statement ok
+CREATE TABLE expected(source BIGINT, rows BIGINT);
+
+loop t 0 8
+
+loop i 0 6
+
+statement ok
+INSERT INTO expected
+SELECT {t} * 10 + {i}, count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = {t} * 10 + {i})-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+
+endloop
+
+endloop
+
+query I
+SELECT count(*) FROM expected WHERE rows > 1000;
+----
+48
+
+# Eight connections, each with single-source queries over the index and build-per-query runs; the worker tasks of
+# two overlapping queries exceed the thread count
+concurrentloop threadid 0 8
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+loop i 0 6
+
+query I
+SELECT count(*) = (SELECT rows FROM expected WHERE source = {threadid} * 10 + {i})
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = {threadid} * 10 + {i})-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+true
+
+query I
+SELECT count(*) = (SELECT rows FROM expected WHERE source = {threadid} * 10 + {i})
+FROM GRAPH_TABLE (g2 MATCH p = ANY SHORTEST (a:Person WHERE a.id = {threadid} * 10 + {i})-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+true
+
+endloop
+
+endloop

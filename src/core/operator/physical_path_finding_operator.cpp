@@ -1,5 +1,6 @@
 #include "duckpgq/core/operator/physical_path_finding_operator.hpp"
 #include "duckpgq/core/utils/csr_build.hpp"
+#include "duckpgq/core/operator/phased_kernel_event.hpp"
 #include "duckpgq/common.hpp"
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
 #include <duckpgq/core/operator/partitioned_csr_cache.hpp>
@@ -152,35 +153,86 @@ void MarkTransientGlobalCSRForDeletion(PathFindingGlobalSinkState &gstate, Clien
 //! every partition (binary search in the sparse rows), so an iteration costs O(frontier + edges) instead of a sweep
 //! over all vertices; large frontiers switch to the partition sweep, which streams the CSR once. Discovery is a
 //! compare-and-swap on `seen`, so there is no separate check phase and the next frontier is collected per worker.
-class SourceGroupedIterativeLengthState {
+//!
+//! One BFS level is one phase of a PhasedKernel: the workers expand the frontier concurrently and the serial step
+//! between phases merges their discoveries into the next frontier.
+class SourceGroupedIterativeLengthState : public PhasedKernel {
 public:
 	SourceGroupedIterativeLengthState(ClientContext &context_p, int64_t source_p,
 	                                  std::vector<shared_ptr<LocalCSR>> &local_csrs_p, idx_t num_threads_p,
 	                                  int64_t v_size_p)
 	    : context(context_p), source(source_p), local_csrs(local_csrs_p), num_threads(num_threads_p), v_size(v_size_p),
-	      distances(v_size, -1), seen(v_size), frontier(v_size), next_lists(num_threads_p), iter(1), change(false),
-	      tasks_scheduled(0) {
-		partition_counter = 0;
-		local_csr_counter = 0;
-		frontier_cursor = 0;
+	      distances(v_size, -1), seen(v_size), frontier_stamp(v_size, 0), iter(1), change(false) {
 		benchmark_enabled = GetPathFindingBenchmarkOption(context);
 		benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
 	}
 
-	void Initialize() {
-		if (source < 0 || source >= v_size) {
-			return;
+	//! ---- PhasedKernel
+	bool Start() override {
+		phase_start_time = std::chrono::steady_clock::now();
+		worker_count = ChooseWorkerCount();
+		tasks_scheduled = worker_count;
+		next_lists.assign(worker_count, {});
+		Initialize();
+		if (!change) {
+			return false;
 		}
-		CheckRowLookupAvailable();
-		seen[source].store(1, std::memory_order_relaxed);
-		distances[source] = 0;
-		frontier_list.push_back(NumericCast<uint32_t>(source));
-		if (!targets.empty() && targets.count(NumericCast<uint32_t>(source))) {
-			remaining_targets.fetch_sub(1, std::memory_order_relaxed);
-		}
-		change = !Exhausted();
+		PrepareLevel();
+		return true;
 	}
 
+	idx_t WorkerCount() const override {
+		return worker_count;
+	}
+
+	void RunPhase(idx_t worker_id) override {
+		if (sparse_expansion) {
+			ForEachFrontierSlice([&](uint32_t vertex) { ExpandVertex(vertex, worker_id); });
+			return;
+		}
+		while (true) {
+			auto partition_idx = local_csr_counter.fetch_add(1);
+			if (partition_idx >= static_cast<int64_t>(local_csrs.size())) {
+				break;
+			}
+			ExplorePartition(*local_csrs[partition_idx], SuppressedOf(partition_idx), partition_idx, false, worker_id);
+			if (partition_idx < static_cast<int64_t>(delta_csrs.size()) && delta_csrs[partition_idx]) {
+				ExplorePartition(*delta_csrs[partition_idx], nullptr, partition_idx, true, worker_id);
+			}
+		}
+	}
+
+	bool AdvancePhase() override {
+		// The next frontier is the union of what every worker discovered
+		frontier_list.clear();
+		for (auto &next : next_lists) {
+			frontier_list.insert(frontier_list.end(), next.begin(), next.end());
+			next.clear();
+		}
+		iter++;
+		change = !frontier_list.empty() && !Exhausted();
+		if (change) {
+			PrepareLevel();
+		}
+		return change;
+	}
+
+	void Finished() override {
+		if (!benchmark_enabled) {
+			return;
+		}
+		auto phase_end_time = std::chrono::steady_clock::now();
+		auto time_ms = std::chrono::duration<double, std::milli>(phase_end_time - phase_start_time).count();
+		idx_t output_count = 0;
+		for (auto &chunk : output_chunks) {
+			output_count += chunk->size();
+		}
+		// Report the workers that actually ran: small graphs have fewer partitions than configured threads
+		AppendOperatorPhaseTiming(context, "source_group_bfs", tasks_scheduled, output_count, v_size - 2,
+		                          local_csrs.size(), time_ms, 0);
+	}
+
+	//! ---- Results
 	int64_t Distance(int64_t target) const {
 		if (target < 0 || target >= v_size) {
 			return -1;
@@ -188,60 +240,9 @@ public:
 		return distances[target];
 	}
 
-	//! A frontier this small is cheaper to expand by vertex lookups than by a sweep over the partitions.
-	//! Partitions assembled from streaming segments have no row lookup, so they are always swept.
-	bool UseSparseExpansion() const {
-		if (!row_lookup_available) {
-			return false;
-		}
-		return frontier_list.size() * SPARSE_FRONTIER_DIVISOR < static_cast<idx_t>(v_size);
-	}
-
-	void CheckRowLookupAvailable() {
-		row_lookup_available = true;
-		for (auto &local_csr : local_csrs) {
-			if (local_csr && !local_csr->segments.empty()) {
-				row_lookup_available = false;
-			}
-		}
-		for (auto &delta : delta_csrs) {
-			if (delta && !delta->segments.empty()) {
-				row_lookup_available = false;
-			}
-		}
-	}
-	bool row_lookup_available = true;
-
-	static constexpr idx_t SPARSE_FRONTIER_DIVISOR = 64;
-	static constexpr idx_t FRONTIER_SLICE = 256;
-
-	ClientContext &context;
-	int64_t source;
-	std::vector<shared_ptr<LocalCSR>> local_csrs;
-	//! Index snapshot overlay aligned with local_csrs (empty for a plain CSR), see BFSState
-	std::vector<shared_ptr<LocalCSR>> delta_csrs;
-	std::vector<shared_ptr<vector<uint64_t>>> suppressed;
-	idx_t num_threads;
-	int64_t v_size;
-	vector<int64_t> distances;
-	//! Visited flags; set with compare-and-swap at discovery
-	vector<atomic<uint8_t>> seen;
-	//! Membership bytes of the current frontier, only maintained while the dense sweep is used
-	vector<atomic<uint8_t>> frontier;
-	vector<uint32_t> frontier_list;
-	vector<vector<uint32_t>> next_lists;
-	bool sparse_expansion = true;
-	//! Stop after this many iterations (0 = unbounded) or once every destination of the group has been reached
-	idx_t max_depth = 0;
-	std::unordered_set<uint32_t> targets;
-	atomic<int64_t> remaining_targets {0};
-
 	//! Path reconstruction: the vertex and the edge through which each vertex was first discovered. Edges are
 	//! packed as (delta flag << 63 | partition << 32 | offset); INVALID_EDGE when the edge has no row id.
 	static constexpr uint64_t INVALID_EDGE = NumericLimits<uint64_t>::Maximum();
-	bool track_parents = false;
-	vector<uint32_t> parent_vertex;
-	vector<uint64_t> parent_edge;
 
 	void EnableParentTracking() {
 		track_parents = true;
@@ -308,115 +309,177 @@ public:
 		}
 	}
 
+	ClientContext &context;
+	int64_t source;
+	std::vector<shared_ptr<LocalCSR>> local_csrs;
+	//! Index snapshot overlay aligned with local_csrs (empty for a plain CSR), see BFSState
+	std::vector<shared_ptr<LocalCSR>> delta_csrs;
+	std::vector<shared_ptr<vector<uint64_t>>> suppressed;
+	idx_t num_threads;
+	int64_t v_size;
+	vector<int64_t> distances;
+	//! Stop after this many iterations (0 = unbounded) or once every destination of the group has been reached
+	idx_t max_depth = 0;
+	std::unordered_set<uint32_t> targets;
+	bool track_parents = false;
+	vector<uint32_t> parent_vertex;
+	vector<uint64_t> parent_edge;
+	idx_t tasks_scheduled = 0;
+	vector<shared_ptr<DataChunk>> output_chunks;
+
+private:
+	//! A frontier this small is cheaper to expand by vertex lookups than by a sweep over the partitions.
+	//! Partitions assembled from streaming segments have no row lookup, so they are always swept.
+	bool UseSparseExpansion() const {
+		if (!row_lookup_available) {
+			return false;
+		}
+		return frontier_list.size() * SPARSE_FRONTIER_DIVISOR < static_cast<idx_t>(v_size);
+	}
+
+	void CheckRowLookupAvailable() {
+		row_lookup_available = true;
+		for (auto &local_csr : local_csrs) {
+			if (local_csr && !local_csr->segments.empty()) {
+				row_lookup_available = false;
+			}
+		}
+		for (auto &delta : delta_csrs) {
+			if (delta && !delta->segments.empty()) {
+				row_lookup_available = false;
+			}
+		}
+	}
+
+	void Initialize() {
+		if (source < 0 || source >= v_size) {
+			return;
+		}
+		CheckRowLookupAvailable();
+		seen[source].store(1, std::memory_order_relaxed);
+		distances[source] = 0;
+		frontier_list.push_back(NumericCast<uint32_t>(source));
+		if (!targets.empty() && targets.count(NumericCast<uint32_t>(source))) {
+			remaining_targets.fetch_sub(1, std::memory_order_relaxed);
+		}
+		change = !Exhausted();
+	}
+
+	//! Chooses the expansion mode of the coming level and resets the shared cursors. For the partition sweep the
+	//! frontier vertices are stamped with the level, which replaces a parallel mark and unmark of a membership byte
+	//! array (the frontier is at most v_size entries and this runs once per level).
+	void PrepareLevel() {
+		sparse_expansion = UseSparseExpansion();
+		frontier_cursor = 0;
+		local_csr_counter = 0;
+		if (!sparse_expansion) {
+			auto stamp = NumericCast<uint32_t>(iter);
+			for (auto vertex : frontier_list) {
+				frontier_stamp[vertex] = stamp;
+			}
+		}
+	}
+
 	bool Exhausted() const {
 		return (max_depth > 0 && static_cast<idx_t>(iter) > max_depth) ||
 		       (!targets.empty() && remaining_targets.load(std::memory_order_relaxed) <= 0);
 	}
-	atomic<int64_t> partition_counter;
-	atomic<int64_t> local_csr_counter;
-	atomic<idx_t> frontier_cursor;
-	unique_ptr<Barrier> barrier;
-	int64_t iter;
-	bool change;
-	idx_t tasks_scheduled;
-	bool benchmark_enabled;
-	string benchmark_output_prefix;
-	std::chrono::steady_clock::time_point phase_start_time;
-	vector<shared_ptr<DataChunk>> output_chunks;
-};
 
-namespace {
-
-class SourceGroupedIterativeLengthTask : public ExecutorTask {
-public:
-	SourceGroupedIterativeLengthTask(shared_ptr<Event> event_p, ClientContext &context,
-	                                 shared_ptr<SourceGroupedIterativeLengthState> state_p, idx_t worker_id_p,
-	                                 const PhysicalOperator &op_p)
-	    : ExecutorTask(context, std::move(event_p), op_p), state(std::move(state_p)), worker_id(worker_id_p) {
+	//! Workers for one source: never more than the configured per-batch limit or than there are partitions, and
+	//! roughly one per EDGES_PER_WORKER edges so small graphs do not pay for scheduling idle workers
+	idx_t ChooseWorkerCount() const {
+		static constexpr idx_t EDGES_PER_WORKER = 1 << 16;
+		idx_t workers = std::max<idx_t>(1, num_threads);
+		auto configured = GetPathFindingThreadsPerBatch(context);
+		if (configured > 0) {
+			workers = std::min<idx_t>(workers, static_cast<idx_t>(configured));
+		}
+		workers = std::min<idx_t>(workers, std::max<idx_t>(1, local_csrs.size()));
+		idx_t edge_count = 0;
+		for (auto &local_csr : local_csrs) {
+			edge_count += local_csr->GetEdgeSize();
+		}
+		return std::max<idx_t>(1, std::min<idx_t>(workers, (edge_count + EDGES_PER_WORKER - 1) / EDGES_PER_WORKER));
 	}
 
-	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override {
-		BarrierAbortOnUnwind abort_barrier(*state->barrier);
-		Execute();
-		abort_barrier.Disarm();
-		event->FinishTask();
-		return TaskExecutionResult::TASK_FINISHED;
-	}
-
-private:
 	//! Discovers `target` at the current distance if no other worker did; the first to flip `seen` owns it and,
 	//! when paths are requested, records the source vertex and the edge it arrived through
-	inline void Relax(idx_t target, uint32_t source, uint64_t packed_edge) {
-		if (state->seen[target].load(std::memory_order_relaxed)) {
+	inline void Relax(idx_t target, uint32_t from, uint64_t packed_edge, idx_t worker_id) {
+		if (seen[target].load(std::memory_order_relaxed)) {
 			return;
 		}
 		uint8_t expected = 0;
-		if (state->seen[target].compare_exchange_strong(expected, 1, std::memory_order_relaxed)) {
-			state->distances[target] = state->iter;
-			if (state->track_parents) {
-				state->parent_vertex[target] = source;
-				state->parent_edge[target] = packed_edge;
+		if (seen[target].compare_exchange_strong(expected, 1, std::memory_order_relaxed)) {
+			distances[target] = iter;
+			if (track_parents) {
+				parent_vertex[target] = from;
+				parent_edge[target] = packed_edge;
 			}
-			state->next_lists[worker_id].push_back(NumericCast<uint32_t>(target));
-			if (!state->targets.empty() && state->targets.count(NumericCast<uint32_t>(target))) {
-				state->remaining_targets.fetch_sub(1, std::memory_order_relaxed);
+			next_lists[worker_id].push_back(NumericCast<uint32_t>(target));
+			if (!targets.empty() && targets.count(NumericCast<uint32_t>(target))) {
+				remaining_targets.fetch_sub(1, std::memory_order_relaxed);
 			}
 		}
 	}
 
-	inline static bool IsSuppressed(const uint64_t *suppressed, idx_t offset) {
-		return suppressed && ((suppressed[offset >> 6] >> (offset & 63)) & 1);
+	inline static bool IsSuppressed(const uint64_t *suppressed_bits, idx_t offset) {
+		return suppressed_bits && ((suppressed_bits[offset >> 6] >> (offset & 63)) & 1);
 	}
 
 	//! Relaxes the edges of one row of a partition
 	inline void RelaxRow(const LocalCSR &local_csr, uint32_t start_edges, uint32_t end_edges,
-	                     const uint64_t *suppressed, uint32_t source, idx_t partition_idx, bool is_delta) {
+	                     const uint64_t *suppressed_bits, uint32_t from, idx_t partition_idx, bool is_delta,
+	                     idx_t worker_id) {
 		for (auto offset = start_edges; offset < end_edges; offset++) {
-			if (IsSuppressed(suppressed, offset)) {
+			if (IsSuppressed(suppressed_bits, offset)) {
 				continue;
 			}
-			Relax(local_csr.e[offset] + local_csr.start_vertex, source,
-			      SourceGroupedIterativeLengthState::PackEdge(partition_idx, offset, is_delta));
+			Relax(local_csr.e[offset] + local_csr.start_vertex, from, PackEdge(partition_idx, offset, is_delta),
+			      worker_id);
 		}
 	}
 
 	const uint64_t *SuppressedOf(idx_t partition_idx) const {
-		return partition_idx < state->suppressed.size() && state->suppressed[partition_idx]
-		           ? state->suppressed[partition_idx]->data()
-		           : nullptr;
+		return partition_idx < suppressed.size() && suppressed[partition_idx] ? suppressed[partition_idx]->data()
+		                                                                      : nullptr;
 	}
 
 	//! Sparse expansion: one frontier vertex, looked up in every partition and its delta companion
-	void ExpandVertex(idx_t vertex) {
-		for (idx_t partition_idx = 0; partition_idx < state->local_csrs.size(); partition_idx++) {
-			auto &local_csr = *state->local_csrs[partition_idx];
+	void ExpandVertex(idx_t vertex, idx_t worker_id) {
+		for (idx_t partition_idx = 0; partition_idx < local_csrs.size(); partition_idx++) {
+			auto &local_csr = *local_csrs[partition_idx];
 			uint32_t start_edges;
 			uint32_t end_edges;
-			auto source = NumericCast<uint32_t>(vertex);
+			auto from = NumericCast<uint32_t>(vertex);
 			if (local_csr.GetRowEdges(vertex, start_edges, end_edges)) {
-				RelaxRow(local_csr, start_edges, end_edges, SuppressedOf(partition_idx), source, partition_idx, false);
+				RelaxRow(local_csr, start_edges, end_edges, SuppressedOf(partition_idx), from, partition_idx, false,
+				         worker_id);
 			}
-			if (partition_idx < state->delta_csrs.size() && state->delta_csrs[partition_idx]) {
-				auto &delta = *state->delta_csrs[partition_idx];
+			if (partition_idx < delta_csrs.size() && delta_csrs[partition_idx]) {
+				auto &delta = *delta_csrs[partition_idx];
 				if (delta.GetRowEdges(vertex, start_edges, end_edges)) {
-					RelaxRow(delta, start_edges, end_edges, nullptr, source, partition_idx, true);
+					RelaxRow(delta, start_edges, end_edges, nullptr, from, partition_idx, true, worker_id);
 				}
 			}
 		}
 	}
 
+	bool InFrontier(idx_t vertex) const {
+		return frontier_stamp[vertex] == static_cast<uint32_t>(iter);
+	}
+
 	//! Dense expansion: every row of one partition whose source is in the frontier
-	void ExplorePartition(const LocalCSR &local_csr, const uint64_t *suppressed, idx_t partition_idx, bool is_delta) {
+	void ExplorePartition(const LocalCSR &local_csr, const uint64_t *suppressed_bits, idx_t partition_idx,
+	                      bool is_delta, idx_t worker_id) {
 		for (const auto &segment : local_csr.segments) {
 			for (idx_t row_idx = 0; row_idx < segment.source_vertices.size(); row_idx++) {
 				auto source_vertex = segment.source_vertices[row_idx];
-				if (!state->frontier[source_vertex].load(std::memory_order_relaxed)) {
+				if (!InFrontier(source_vertex)) {
 					continue;
 				}
 				for (auto offset = segment.row_offsets[row_idx]; offset < segment.row_offsets[row_idx + 1]; offset++) {
 					// Streaming segments carry no row ids
-					Relax(segment.edges[offset] + local_csr.start_vertex, source_vertex,
-					      SourceGroupedIterativeLengthState::INVALID_EDGE);
+					Relax(segment.edges[offset] + local_csr.start_vertex, source_vertex, INVALID_EDGE, worker_id);
 				}
 			}
 		}
@@ -426,161 +489,62 @@ private:
 		if (local_csr.HasSparseRows()) {
 			for (idx_t row_idx = 0; row_idx < local_csr.source_vertices.size(); row_idx++) {
 				auto source_vertex = local_csr.source_vertices[row_idx];
-				if (!state->frontier[source_vertex].load(std::memory_order_relaxed)) {
+				if (!InFrontier(source_vertex)) {
 					continue;
 				}
-				RelaxRow(local_csr, local_csr.row_offsets[row_idx], local_csr.row_offsets[row_idx + 1], suppressed,
-				         source_vertex, partition_idx, is_delta);
+				RelaxRow(local_csr, local_csr.row_offsets[row_idx], local_csr.row_offsets[row_idx + 1], suppressed_bits,
+				         source_vertex, partition_idx, is_delta, worker_id);
 			}
 			return;
 		}
 		for (idx_t vertex = 0; vertex < local_csr.GetVertexSize(); vertex++) {
-			if (!state->frontier[vertex].load(std::memory_order_relaxed)) {
+			if (!InFrontier(vertex)) {
 				continue;
 			}
 			RelaxRow(local_csr, local_csr.v[vertex].load(std::memory_order_relaxed),
 			         local_csr.v[vertex + 1].load(std::memory_order_relaxed), nullptr, NumericCast<uint32_t>(vertex),
-			         partition_idx, is_delta);
+			         partition_idx, is_delta, worker_id);
 		}
 	}
 
 	//! Work over slices of the frontier list, shared between workers through the cursor
 	template <class FUNC>
 	void ForEachFrontierSlice(FUNC &&fn) {
-		auto &frontier = state->frontier_list;
 		while (true) {
-			auto begin = state->frontier_cursor.fetch_add(SourceGroupedIterativeLengthState::FRONTIER_SLICE);
-			if (begin >= frontier.size()) {
+			auto begin = frontier_cursor.fetch_add(FRONTIER_SLICE);
+			if (begin >= frontier_list.size()) {
 				break;
 			}
-			auto end = std::min<idx_t>(frontier.size(), begin + SourceGroupedIterativeLengthState::FRONTIER_SLICE);
+			auto end = std::min<idx_t>(frontier_list.size(), begin + FRONTIER_SLICE);
 			for (idx_t i = begin; i < end; i++) {
-				fn(frontier[i]);
+				fn(frontier_list[i]);
 			}
 		}
 	}
 
-	void Execute() {
-		auto &barrier = state->barrier;
-		if (worker_id == 0) {
-			state->Initialize();
-		}
-		barrier->Wait(worker_id);
+	static constexpr idx_t SPARSE_FRONTIER_DIVISOR = 64;
+	static constexpr idx_t FRONTIER_SLICE = 256;
 
-		while (state->change) {
-			// Worker 0 picks the expansion mode for this iteration and resets the shared cursors
-			if (worker_id == 0) {
-				state->sparse_expansion = state->UseSparseExpansion();
-				state->frontier_cursor = 0;
-				state->local_csr_counter = 0;
-			}
-			barrier->Wait(worker_id);
-
-			if (state->sparse_expansion) {
-				ForEachFrontierSlice([&](uint32_t vertex) { ExpandVertex(vertex); });
-			} else {
-				// Mark the frontier, sweep the partitions, unmark; all O(frontier) except the sweep itself
-				ForEachFrontierSlice(
-				    [&](uint32_t vertex) { state->frontier[vertex].store(1, std::memory_order_relaxed); });
-				barrier->Wait(worker_id);
-				while (true) {
-					auto partition_idx = state->local_csr_counter.fetch_add(1);
-					if (partition_idx >= static_cast<int64_t>(state->local_csrs.size())) {
-						break;
-					}
-					ExplorePartition(*state->local_csrs[partition_idx], SuppressedOf(partition_idx), partition_idx,
-					                 false);
-					if (partition_idx < static_cast<int64_t>(state->delta_csrs.size()) &&
-					    state->delta_csrs[partition_idx]) {
-						ExplorePartition(*state->delta_csrs[partition_idx], nullptr, partition_idx, true);
-					}
-				}
-				barrier->Wait(worker_id);
-				if (worker_id == 0) {
-					state->frontier_cursor = 0;
-				}
-				barrier->Wait(worker_id);
-				ForEachFrontierSlice(
-				    [&](uint32_t vertex) { state->frontier[vertex].store(0, std::memory_order_relaxed); });
-			}
-			barrier->Wait(worker_id);
-
-			// The next frontier is the union of what every worker discovered
-			if (worker_id == 0) {
-				state->frontier_list.clear();
-				for (auto &next : state->next_lists) {
-					state->frontier_list.insert(state->frontier_list.end(), next.begin(), next.end());
-					next.clear();
-				}
-				state->iter++;
-				state->change = !state->frontier_list.empty() && !state->Exhausted();
-			}
-			barrier->Wait(worker_id);
-		}
-	}
-
-	shared_ptr<SourceGroupedIterativeLengthState> state;
-	idx_t worker_id;
+	bool row_lookup_available = true;
+	//! Visited flags; set with compare-and-swap at discovery
+	vector<atomic<uint8_t>> seen;
+	//! Level at which a vertex was last in the frontier; only maintained while the dense sweep is used
+	vector<uint32_t> frontier_stamp;
+	vector<uint32_t> frontier_list;
+	vector<vector<uint32_t>> next_lists;
+	bool sparse_expansion = true;
+	atomic<int64_t> remaining_targets {0};
+	atomic<int64_t> local_csr_counter {0};
+	atomic<idx_t> frontier_cursor {0};
+	int64_t iter;
+	bool change;
+	idx_t worker_count = 1;
+	bool benchmark_enabled;
+	string benchmark_output_prefix;
+	std::chrono::steady_clock::time_point phase_start_time;
 };
 
-class SourceGroupedIterativeLengthEvent : public BasePipelineEvent {
-public:
-	SourceGroupedIterativeLengthEvent(shared_ptr<SourceGroupedIterativeLengthState> state_p, Pipeline &pipeline_p,
-	                                  const PhysicalPathFinding &op_p)
-	    : BasePipelineEvent(pipeline_p), state(std::move(state_p)), op(op_p) {
-	}
-
-	void Schedule() override {
-		state->phase_start_time = std::chrono::steady_clock::now();
-		auto &context = pipeline->GetClientContext();
-		vector<shared_ptr<Task>> tasks;
-		auto worker_count = ChooseWorkerCount(context);
-		for (idx_t worker = 0; worker < worker_count; worker++) {
-			tasks.push_back(
-			    make_uniq<SourceGroupedIterativeLengthTask>(shared_from_this(), context, state, worker, op));
-			state->tasks_scheduled++;
-		}
-		state->barrier = MakeQueryBarrier(state->tasks_scheduled, context);
-		SetTasks(std::move(tasks));
-	}
-
-	//! Workers for one source: never more than the configured per-batch limit (the eager CSR build relies on a
-	//! single worker to avoid starving the outer query) or than there are partitions, and roughly one per
-	//! EDGES_PER_WORKER edges so small graphs do not pay for barrier rounds across idle threads
-	idx_t ChooseWorkerCount(ClientContext &context) const {
-		static constexpr idx_t EDGES_PER_WORKER = 1 << 16;
-		idx_t workers = std::max<idx_t>(1, state->num_threads);
-		auto configured = GetPathFindingThreadsPerBatch(context);
-		if (configured > 0) {
-			workers = std::min<idx_t>(workers, static_cast<idx_t>(configured));
-		}
-		workers = std::min<idx_t>(workers, std::max<idx_t>(1, state->local_csrs.size()));
-		idx_t edge_count = 0;
-		for (auto &local_csr : state->local_csrs) {
-			edge_count += local_csr->GetEdgeSize();
-		}
-		return std::max<idx_t>(1, std::min<idx_t>(workers, (edge_count + EDGES_PER_WORKER - 1) / EDGES_PER_WORKER));
-	}
-
-	void FinishEvent() override {
-		if (!state->benchmark_enabled) {
-			return;
-		}
-		auto phase_end_time = std::chrono::steady_clock::now();
-		auto time_ms = std::chrono::duration<double, std::milli>(phase_end_time - state->phase_start_time).count();
-		idx_t output_count = 0;
-		for (auto &chunk : state->output_chunks) {
-			output_count += chunk->size();
-		}
-		// Report the workers that actually ran: small graphs have fewer partitions than configured threads
-		AppendOperatorPhaseTiming(state->context, "source_group_bfs", state->tasks_scheduled, output_count,
-		                          state->v_size - 2, state->local_csrs.size(), time_ms, 0);
-	}
-
-private:
-	shared_ptr<SourceGroupedIterativeLengthState> state;
-	const PhysicalPathFinding &op;
-};
+namespace {
 
 struct PairKey {
 	bool src_valid;
@@ -1003,8 +967,13 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 		gstate.bfs_states.push_back(state);
 	}
 
-	event.InsertEvent(make_shared_ptr<GroupedIterativeLengthEvent>(std::move(iterative_states), workers_per_batch,
-	                                                               group_count, pipeline, op));
+	// One kernel per worker group; the groups claim batches from the shared list and run independently
+	auto grouped_batches = make_shared_ptr<GroupedIterativeLengthBatches>(std::move(iterative_states));
+	for (idx_t group = 0; group < group_count; group++) {
+		auto kernel = make_shared_ptr<GroupedIterativeLengthKernel>(grouped_batches, workers_per_batch,
+		                                                            GetPathFindingVSize(gstate), context);
+		batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(std::move(kernel), pipeline, op));
+	}
 	return batch_events;
 }
 
@@ -1047,7 +1016,7 @@ public:
 				}
 			}
 			gstate.source_group_states.push_back(state);
-			batch_events.push_back(make_shared_ptr<SourceGroupedIterativeLengthEvent>(state, *pipeline, op));
+			batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(state, *pipeline, op));
 		}
 		if (gstate.source_group_preserve_output_order) {
 			// Several groups: the output rows stay in input order and are mapped to their group per row
@@ -1170,7 +1139,8 @@ void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
 		return;
 	}
 
-	auto local_csr_event = make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, op, context);
+	auto local_csr_event =
+	    make_shared_ptr<PhasedKernelEvent>(make_shared_ptr<LocalCSRBuildKernel>(local_csr_state), pipeline, op);
 	event.InsertEvent(local_csr_event);
 	local_csr_event->InsertEvent(
 	    make_shared_ptr<PathFindingScheduleEvent>(std::move(batches), gstate, pipeline, op, context));
@@ -1226,7 +1196,8 @@ void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, 
 		return;
 	}
 
-	auto local_csr_event = make_shared_ptr<LocalCSREvent>(local_csr_state, pipeline, op, context);
+	auto local_csr_event =
+	    make_shared_ptr<PhasedKernelEvent>(make_shared_ptr<LocalCSRBuildKernel>(local_csr_state), pipeline, op);
 	event.InsertEvent(local_csr_event);
 	local_csr_event->InsertEvent(make_shared_ptr<SourceGroupedScheduleEvent>(gstate, pipeline, op, context));
 }

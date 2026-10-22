@@ -5,7 +5,7 @@
 #include <cstring>
 
 #include <duckpgq/core/operator/shortest_path/shortest_path_event.hpp>
-#include <duckpgq/core/operator/iterative_length/iterative_length_event.hpp>
+#include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
 
 #include <duckpgq/core/option/duckpgq_option.hpp>
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
@@ -23,16 +23,15 @@ static string CreateBenchmarkRunId() {
 	auto time_t_now = std::chrono::system_clock::to_time_t(now);
 	auto micros = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count() % 1000000;
 	std::stringstream ss;
-	ss << std::put_time(std::localtime(&time_t_now), "%Y-%m-%d_%H-%M-%S") << "_" << std::setfill('0')
-	   << std::setw(6) << micros;
+	ss << std::put_time(std::localtime(&time_t_now), "%Y-%m-%d_%H-%M-%S") << "_" << std::setfill('0') << std::setw(6)
+	   << micros;
 	return ss.str();
 }
 
 BFSState::BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
                    idx_t num_threads_, string mode_, ClientContext &context_, int64_t vsize_)
     : batch(batch_), pairs(batch->search_pairs), local_csrs(local_csrs_), context(context_), num_threads(num_threads_),
-      mode(std::move(mode_)),
-      v_size(vsize_), src_data(pairs->data[0]), dst_data(pairs->data[1]) {
+      mode(std::move(mode_)), v_size(vsize_), src_data(pairs->data[0]), dst_data(pairs->data[1]) {
 	bfs_type = mode == "shortestpath" ? LogicalType::LIST(LogicalType::BIGINT) : LogicalType::BIGINT;
 	// Only have to initialize the current batch and state once.
 	total_pairs_processed = 0; // Initialize the total pairs processed

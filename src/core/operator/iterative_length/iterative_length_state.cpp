@@ -1,6 +1,5 @@
 #include "duckpgq/core/operator/iterative_length/iterative_length_state.hpp"
 
-#include <duckpgq/core/operator/iterative_length/iterative_length_event.hpp>
 #include <duckpgq/core/operator/shortest_path/shortest_path_event.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
 #include <fstream>
@@ -12,6 +11,7 @@ IterativeLengthState::IterativeLengthState(const shared_ptr<PathFindingBatch> &b
                                            ClientContext &context_, int64_t vsize_)
     : BFSState(batch_, local_csrs_, num_threads_, "iterativelength", context_, vsize_) {
 	worker_changed.resize(num_threads_, 0);
+	worker_count = std::max<idx_t>(1, num_threads_);
 }
 
 void IterativeLengthState::Clear() {
@@ -29,8 +29,8 @@ void IterativeLengthState::Clear() {
 }
 
 shared_ptr<Event> IterativeLengthState::CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op) {
-	return make_shared_ptr<IterativeLengthEvent>(shared_ptr_cast<BFSState, IterativeLengthState>(shared_from_this()),
-	                                            pipeline, *op);
+	auto self = shared_ptr_cast<BFSState, IterativeLengthState>(shared_from_this());
+	return make_shared_ptr<PhasedKernelEvent>(shared_ptr<PhasedKernel>(self), pipeline, *op);
 }
 
 // Function to write timing results to a file

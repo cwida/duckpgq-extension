@@ -1,13 +1,13 @@
-#include "duckpgq/core/operator/iterative_length/iterative_length_task.hpp"
+#include "duckpgq/core/operator/iterative_length/iterative_length_state.hpp"
 
-#include <duckdb/parallel/event.hpp>
-#include <duckpgq/core/operator/iterative_length/iterative_length_kernel.hpp>
 #include <duckpgq/core/operator/physical_path_finding_operator.hpp>
+#include <duckpgq/core/option/duckpgq_option.hpp>
 
 #include <chrono>
+#include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <thread>
-
 #ifdef __linux__
 #include <sched.h>
 #elif defined(__APPLE__)
@@ -18,15 +18,17 @@ namespace duckdb {
 
 namespace {
 
-bool CheckChange(IterativeLengthState &state, std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next,
-                 shared_ptr<LocalCSR> &local_csr) {
+bool CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next, std::bitset<LANE_LIMIT> *visit,
+                 const LocalCSR &local_csr) {
 	bool local_change = false;
-	for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
+	for (auto i = local_csr.start_vertex; i < local_csr.end_vertex; i++) {
 		if (next[i].any()) {
 			next[i] &= ~seen[i];
 			seen[i] |= next[i];
 			local_change |= next[i].any();
 		}
+		// Every EXPLORE of this iteration has read `visit`; cleared here it is the empty `next` of the next iteration
+		visit[i] = 0;
 	}
 	return local_change;
 }
@@ -69,7 +71,6 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 		}
 		return;
 	}
-
 	for (idx_t i = 0; i < local_csr.GetVertexSize(); i++) {
 		if (visit[i].any()) {
 			auto start_edges = local_csr.v[i].load(std::memory_order_relaxed);
@@ -88,12 +89,10 @@ void RunExplore(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visi
 		Explore(visit, next, local_csr, suppressed);
 		return;
 	}
-
 	auto start_time = std::chrono::high_resolution_clock::now();
 	Explore(visit, next, local_csr, suppressed);
 	auto end_time = std::chrono::high_resolution_clock::now();
 	auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-
 	std::thread::id thread_id = std::this_thread::get_id();
 	int core_id = -1;
 #ifdef __linux__
@@ -106,7 +105,6 @@ void RunExplore(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visi
 		core_id = static_cast<int>(tid % hardware_threads);
 	}
 #endif
-
 	std::lock_guard<std::mutex> guard(state.log_mutex);
 	state.timing_data.emplace_back(thread_id, core_id, duration_ms, state.num_threads, local_csr.GetVertexSize(),
 	                               local_csr.GetEdgeSize(), state.local_csrs.size(), state.iter);
@@ -132,7 +130,6 @@ void WriteLaneActivity(IterativeLengthState &state, const std::bitset<LANE_LIMIT
 	if (outfile.tellp() == 0) {
 		outfile << "Iter,Lane,ActiveVertices\n";
 	}
-
 	std::vector<int64_t> lane_activity(LANE_LIMIT, 0);
 	static constexpr idx_t WORD_COUNT = (LANE_LIMIT + 63) / 64;
 	for (idx_t v = 0; v < state.v_size; ++v) {
@@ -146,89 +143,13 @@ void WriteLaneActivity(IterativeLengthState &state, const std::bitset<LANE_LIMIT
 			}
 		}
 	}
-
 	for (idx_t lane = 0; lane < LANE_LIMIT; ++lane) {
 		outfile << state.iter << "," << lane << "," << lane_activity[lane] << "\n";
 	}
 }
 
-void RunIteration(IterativeLengthState &state, idx_t worker_id) {
-	auto &seen = state.seen;
-	auto &visit = state.iter & 1 ? state.visit1 : state.visit2;
-	auto &next = state.iter & 1 ? state.visit2 : state.visit1;
-	auto &barrier = state.barrier;
-
-	while (true) {
-		auto partition_idx = state.partition_counter.fetch_add(1);
-		if (partition_idx >= static_cast<int64_t>(state.local_csrs.size())) {
-			break;
-		}
-		auto &local_csr = state.local_csrs[partition_idx];
-		for (auto i = local_csr->start_vertex; i < local_csr->end_vertex; i++) {
-			next[i] = 0;
-		}
-	}
-	barrier->Wait(worker_id);
-
-	if (worker_id == 0) {
-		state.partition_counter = 0;
-		state.local_csr_counter = 0;
-		state.change = false;
-		std::fill(state.worker_changed.begin(), state.worker_changed.end(), 0);
-	}
-	barrier->Wait(worker_id);
-
-	while (true) {
-		auto partition_idx = state.local_csr_counter.fetch_add(1);
-		if (partition_idx >= static_cast<int64_t>(state.local_csrs.size())) {
-			break;
-		}
-		auto local_csr = state.local_csrs[partition_idx].get();
-		if (!local_csr) {
-			throw InternalException("Tried to reference nullptr for LocalCSR");
-		}
-		auto suppressed =
-		    partition_idx < static_cast<int64_t>(state.suppressed.size()) && state.suppressed[partition_idx]
-		        ? state.suppressed[partition_idx]->data()
-		        : nullptr;
-		RunExplore(state, visit, next, *local_csr, suppressed);
-		// Edges committed after the epoch, for the same destination range
-		if (partition_idx < static_cast<int64_t>(state.delta_csrs.size()) && state.delta_csrs[partition_idx]) {
-			RunExplore(state, visit, next, *state.delta_csrs[partition_idx], nullptr);
-		}
-	}
-
-	if (worker_id == 0 && state.benchmark_lane_activity_enabled) {
-		WriteLaneActivity(state, visit);
-	}
-
-	barrier->Wait(worker_id);
-	bool local_change = false;
-	while (true) {
-		auto partition_idx = state.partition_counter.fetch_add(1);
-		if (partition_idx >= static_cast<int64_t>(state.local_csrs.size())) {
-			break;
-		}
-		auto &local_csr = state.local_csrs[partition_idx];
-		local_change |= CheckChange(state, seen, next, local_csr);
-	}
-	state.worker_changed[worker_id] = local_change ? 1 : 0;
-	barrier->Wait(worker_id);
-
-	if (worker_id == 0) {
-		bool any_change = false;
-		for (idx_t i = 0; i < state.tasks_scheduled; i++) {
-			any_change |= state.worker_changed[i] != 0;
-		}
-		state.change = any_change;
-		state.partition_counter = 0;
-	}
-	barrier->Wait(worker_id);
-}
-
 void ReachDetect(IterativeLengthState &state) {
 	auto result_data = FlatVector::GetDataMutable<int64_t>(state.pf_results->data[0]);
-
 	for (idx_t lane = 0; lane < LANE_LIMIT; lane++) {
 		int64_t search_num = state.lane_to_num[lane];
 		if (search_num >= 0) {
@@ -254,7 +175,6 @@ void ReachDetect(IterativeLengthState &state) {
 void UnReachableSet(IterativeLengthState &state) {
 	auto result_data = FlatVector::GetDataMutable<int64_t>(state.pf_results->data[0]);
 	auto &result_validity = FlatVector::ValidityMutable(state.pf_results->data[0]);
-
 	for (idx_t lane = 0; lane < LANE_LIMIT; lane++) {
 		int64_t search_num = state.lane_to_num[lane];
 		if (search_num >= 0) {
@@ -266,58 +186,151 @@ void UnReachableSet(IterativeLengthState &state) {
 	}
 }
 
+mutex bfs_phase_timing_lock;
+
+size_t GetLocalCSREdgeCount(const std::vector<shared_ptr<LocalCSR>> &partition_csrs) {
+	size_t edge_count = 0;
+	for (const auto &local_csr : partition_csrs) {
+		edge_count += local_csr->GetEdgeSize();
+	}
+	return edge_count;
+}
+
+void AppendBFSPhaseTiming(const IterativeLengthState &state, const string &label, double time_ms) {
+	auto file_name = state.benchmark_output_prefix + "_phase_timing.csv";
+	lock_guard<mutex> lock(bfs_phase_timing_lock);
+	bool write_header = !std::filesystem::exists(file_name);
+	std::ofstream outfile(file_name, std::ios::app);
+	if (!outfile.is_open()) {
+		throw IOException("Could not open path-finding phase benchmark file \"%s\"", file_name);
+	}
+	if (write_header) {
+		outfile << "Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes\n";
+	}
+	outfile << label << "," << state.benchmark_run_id << "," << state.num_threads << "," << state.pairs->size() << ","
+	        << state.v_size - 2 << "," << GetLocalCSREdgeCount(state.local_csrs) << "," << state.local_csrs.size()
+	        << "," << time_ms << ",0\n";
+}
+
 } // namespace
 
-void ExecuteIterativeLengthBatch(IterativeLengthState &state, idx_t worker_id) {
-	auto &barrier = state.barrier;
+//===--------------------------------------------------------------------===//
+// PhasedKernel
+//===--------------------------------------------------------------------===//
+void IterativeLengthState::SetWorkerCount(idx_t workers) {
+	worker_count = std::max<idx_t>(1, workers);
+}
+
+void IterativeLengthState::SetTimingLabel(const string &label) {
+	timing_label = label;
+}
+
+idx_t IterativeLengthState::WorkerCount() const {
+	return worker_count;
+}
+
+void IterativeLengthState::BeginIteration() {
+	phase = Phase::EXPLORE;
+	partition_counter = 0;
+	local_csr_counter = 0;
+	change = false;
+	std::fill(worker_changed.begin(), worker_changed.end(), 0);
+}
+
+bool IterativeLengthState::Start() {
+	phase_start_time = std::chrono::steady_clock::now();
+	// Never more workers than partitions: the parallel phases hand out partitions
+	worker_count = std::max<idx_t>(1, std::min<idx_t>(worker_count, std::max<idx_t>(1, local_csrs.size())));
+	tasks_scheduled = worker_count;
+	worker_changed.assign(worker_count, 0);
 	// The lane bitsets are only allocated once the batch actually runs, and handed back when it is done
-	if (worker_id == 0) {
-		state.EnsureWorkingSet();
+	EnsureWorkingSet();
+	if (started_searches >= pairs->size()) {
+		return false;
 	}
-	barrier->Wait(worker_id);
-	while (state.started_searches < state.pairs->size()) {
-		barrier->Wait(worker_id);
-		if (worker_id == 0) {
-			state.InitializeLanes();
-		}
-		barrier->Wait(worker_id);
+	InitializeLanes();
+	BeginIteration();
+	return true;
+}
 
-		do {
-			RunIteration(state, worker_id);
-			barrier->Wait(worker_id);
-			if (worker_id == 0) {
-				ReachDetect(state);
+void IterativeLengthState::RunPhase(idx_t worker_id) {
+	auto &visit = iter & 1 ? visit1 : visit2;
+	auto &next = iter & 1 ? visit2 : visit1;
+	if (phase == Phase::EXPLORE) {
+		while (true) {
+			auto partition_idx = local_csr_counter.fetch_add(1);
+			if (partition_idx >= static_cast<int64_t>(local_csrs.size())) {
+				break;
 			}
-			barrier->Wait(worker_id);
-		} while (state.change);
-
-		if (worker_id == 0) {
-			UnReachableSet(state);
+			auto local_csr = local_csrs[partition_idx].get();
+			if (!local_csr) {
+				throw InternalException("Tried to reference nullptr for LocalCSR");
+			}
+			auto suppressed_bits = partition_idx < static_cast<int64_t>(suppressed.size()) && suppressed[partition_idx]
+			                           ? suppressed[partition_idx]->data()
+			                           : nullptr;
+			RunExplore(*this, visit, next, *local_csr, suppressed_bits);
+			// Edges committed after the epoch, for the same destination range
+			if (partition_idx < static_cast<int64_t>(delta_csrs.size()) && delta_csrs[partition_idx]) {
+				RunExplore(*this, visit, next, *delta_csrs[partition_idx], nullptr);
+			}
 		}
-
-		barrier->Wait(worker_id);
-		if (worker_id == 0) {
-			state.Clear();
+		return;
+	}
+	bool local_change = false;
+	while (true) {
+		auto partition_idx = partition_counter.fetch_add(1);
+		if (partition_idx >= static_cast<int64_t>(local_csrs.size())) {
+			break;
 		}
-		barrier->Wait(worker_id);
+		local_change |= CheckChange(seen, next, visit, *local_csrs[partition_idx]);
 	}
-	if (worker_id == 0) {
-		state.ReleaseWorkingSet();
-	}
+	worker_changed[worker_id] = local_change ? 1 : 0;
 }
 
-IterativeLengthTask::IterativeLengthTask(shared_ptr<Event> event_p, ClientContext &context,
-                                         shared_ptr<IterativeLengthState> &state, idx_t worker_id,
-                                         const PhysicalOperator &op_p)
-    : ExecutorTask(context, std::move(event_p), op_p), context(context), state(state), worker_id(worker_id) {
+bool IterativeLengthState::AdvancePhase() {
+	if (phase == Phase::EXPLORE) {
+		if (benchmark_lane_activity_enabled) {
+			WriteLaneActivity(*this, iter & 1 ? visit1 : visit2);
+		}
+		phase = Phase::CHECK;
+		partition_counter = 0;
+		return true;
+	}
+	bool any_change = false;
+	for (idx_t i = 0; i < worker_count; i++) {
+		any_change |= worker_changed[i] != 0;
+	}
+	change = any_change;
+	ReachDetect(*this);
+	if (change) {
+		BeginIteration();
+		return true;
+	}
+	UnReachableSet(*this);
+	Clear();
+	if (started_searches < pairs->size()) {
+		InitializeLanes();
+		BeginIteration();
+		return true;
+	}
+	return false;
 }
 
-TaskExecutionResult IterativeLengthTask::ExecuteTask(TaskExecutionMode mode) {
-	BarrierAbortOnUnwind abort_barrier(*state->barrier);
-	ExecuteIterativeLengthBatch(*state, worker_id);
-	abort_barrier.Disarm();
-	event->FinishTask();
-	return TaskExecutionResult::TASK_FINISHED;
+void IterativeLengthState::Finished() {
+	ReleaseWorkingSet();
+	if (!benchmark_enabled) {
+		return;
+	}
+	auto phase_end_time = std::chrono::steady_clock::now();
+	auto time_ms = std::chrono::duration<double, std::milli>(phase_end_time - phase_start_time).count();
+	AppendBFSPhaseTiming(*this, timing_label, time_ms);
+	auto heavy_partition_fraction = std::to_string(GetHeavyPartitionFraction(context));
+	auto light_partition_multiplier = std::to_string(GetLightPartitionMultiplier(context));
+	auto file_name = benchmark_output_prefix + "_explore_timing_" + benchmark_run_id + "_threads_" +
+	                 std::to_string(num_threads) + "_" + heavy_partition_fraction + "_" + light_partition_multiplier +
+	                 ".csv";
+	WriteTimingResults(file_name);
 }
 
 } // namespace duckdb

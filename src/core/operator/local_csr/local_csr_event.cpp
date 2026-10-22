@@ -192,63 +192,248 @@ static void WritePullPartitionStats(const LocalCSRState &state, ClientContext &c
 	}
 }
 
-LocalCSREvent::LocalCSREvent(shared_ptr<LocalCSRState> local_csr_state_p, Pipeline &pipeline_p,
-                             const PhysicalPathFinding &op_p, ClientContext &context_p)
-    : BasePipelineEvent(pipeline_p), local_csr_state(std::move(local_csr_state_p)), op(op_p), context(context_p) {
-}
-
-void LocalCSREvent::Schedule() {
-	auto &context = pipeline->GetClientContext();
-	vector<shared_ptr<Task>> csr_tasks;
-	for (idx_t tnum = 0; tnum < local_csr_state->num_threads; tnum++) {
-		csr_tasks.push_back(make_uniq<LocalCSRTask>(shared_from_this(), context, local_csr_state, tnum, op));
-		local_csr_state->tasks_scheduled++;
+//===--------------------------------------------------------------------===//
+// LocalCSRBuildKernel
+//===--------------------------------------------------------------------===//
+static void RecordSubphase(LocalCSRState &state, bool reverse, const string &phase,
+                           std::chrono::steady_clock::time_point start) {
+	if (!state.benchmark_enabled) {
+		return;
 	}
-	local_csr_state->barrier = MakeQueryBarrier(local_csr_state->tasks_scheduled, local_csr_state->context);
-	SetTasks(std::move(csr_tasks));
+	state.subphase_timings.push_back({reverse, phase, ElapsedMs(start, std::chrono::steady_clock::now())});
 }
 
-void LocalCSREvent::FinishEvent() {
+LocalCSRBuildKernel::LocalCSRBuildKernel(shared_ptr<LocalCSRState> state_p) : state(std::move(state_p)) {
+}
+
+void LocalCSRBuildKernel::AddStep(std::function<void()> before, std::function<void(LocalCSRWorker &)> parallel,
+                                  std::function<void()> after) {
+	steps.push_back({std::move(before), std::move(parallel), std::move(after)});
+}
+
+//! Statistics, partitions, edge counts, running sums, distribution (and sparse rows), as the barrier version did
+void LocalCSRBuildKernel::PlanDenseBuild(bool reverse) {
+	auto st = state;
+	auto &statistics = reverse ? st->reverse_statistics_chunks : st->statistics_chunks;
+	auto &partitions = reverse ? st->reverse_partition_csrs : st->partition_csrs;
+	auto &start_time = reverse ? st->reverse_start_time : st->forward_start_time;
+	auto &end_time = reverse ? st->reverse_end_time : st->forward_end_time;
+	auto record = [this, st, reverse](const string &phase) {
+		RecordSubphase(*st, reverse, phase, subphase_start);
+	};
+	AddStep(
+	    [this, st, &statistics, &partitions, &start_time]() {
+		    std::fill(statistics.begin(), statistics.end(), 0);
+		    partitions.clear();
+		    st->partition_index = 0;
+		    start_time = std::chrono::steady_clock::now();
+		    subphase_start = start_time;
+	    },
+	    [reverse, &statistics](LocalCSRWorker &worker) { worker.CreateStatistics(reverse, statistics); },
+	    [record]() { record("statistics"); });
+	AddStep(
+	    [this, &statistics, &partitions, record]() {
+		    subphase_start = std::chrono::steady_clock::now();
+		    workers[0]->DeterminePartitions(statistics, partitions);
+		    record("determine_partitions");
+		    subphase_start = std::chrono::steady_clock::now();
+	    },
+	    [reverse, &partitions](LocalCSRWorker &worker) { worker.CountOutgoingEdgesPerPartition(reverse, partitions); },
+	    [this, st, record]() {
+		    record("count_edges");
+		    st->partition_index = 0;
+		    subphase_start = std::chrono::steady_clock::now();
+	    });
+	AddStep(
+	    nullptr, [&partitions](LocalCSRWorker &worker) { worker.CreateRunningSum(partitions); },
+	    [this, record]() {
+		    record("running_sum");
+		    subphase_start = std::chrono::steady_clock::now();
+	    });
+	AddStep([this, &partitions]() { workers[0]->PrepareDistributeEdges(partitions); },
+	        [reverse, &partitions](LocalCSRWorker &worker) { worker.DistributeEdges(reverse, partitions); },
+	        [record]() { record("distribute_edges"); });
+	if (st->finalize_sparse_rows) {
+		AddStep(
+		    [this, st]() {
+			    st->partition_index = 0;
+			    subphase_start = std::chrono::steady_clock::now();
+		    },
+		    [&partitions](LocalCSRWorker &worker) { worker.FinalizeSparseRows(partitions); },
+		    [record]() { record("finalize_sparse_rows"); });
+	}
+	auto previous_after = steps.back().after;
+	steps.back().after = [previous_after, &end_time]() {
+		if (previous_after) {
+			previous_after();
+		}
+		end_time = std::chrono::steady_clock::now();
+	};
+}
+
+//! Statistics, partitions, per-worker edge buffers, merge
+void LocalCSRBuildKernel::PlanSparseForwardBuild() {
+	auto st = state;
+	auto record = [this, st](const string &phase) {
+		RecordSubphase(*st, false, phase, subphase_start);
+	};
+	AddStep(
+	    [this, st]() {
+		    std::fill(st->statistics_chunks.begin(), st->statistics_chunks.end(), 0);
+		    st->partition_csrs.clear();
+		    st->forward_build_buffers.clear();
+		    st->partition_index = 0;
+		    st->forward_start_time = std::chrono::steady_clock::now();
+		    subphase_start = st->forward_start_time;
+	    },
+	    [st](LocalCSRWorker &worker) { worker.CreateStatistics(false, st->statistics_chunks); },
+	    [record]() { record("statistics"); });
+	AddStep(
+	    [this, st, record]() {
+		    subphase_start = std::chrono::steady_clock::now();
+		    workers[0]->DeterminePartitions(st->statistics_chunks, st->partition_csrs, false);
+		    st->forward_build_buffers.resize(st->tasks_scheduled);
+		    for (auto &worker_buffers : st->forward_build_buffers) {
+			    worker_buffers.resize(st->partition_csrs.size());
+		    }
+		    record("determine_partitions");
+		    subphase_start = std::chrono::steady_clock::now();
+	    },
+	    [st](LocalCSRWorker &worker) { worker.BufferForwardEdges(st->partition_csrs); },
+	    [this, st, record]() {
+		    st->partition_index = 0;
+		    record("buffer_edges");
+		    subphase_start = std::chrono::steady_clock::now();
+	    });
+	AddStep(
+	    nullptr, [st](LocalCSRWorker &worker) { worker.MergeForwardBuffers(st->partition_csrs); },
+	    [st, record]() {
+		    st->forward_build_buffers.clear();
+		    st->forward_end_time = std::chrono::steady_clock::now();
+		    record("merge_buffers");
+	    });
+}
+
+void LocalCSRBuildKernel::PlanPullBuild() {
+	auto st = state;
+	AddStep(
+	    [this, st]() {
+		    st->pull_partition_csrs.clear();
+		    st->partition_index = 0;
+		    st->pull_start_time = std::chrono::steady_clock::now();
+		    workers[0]->DeterminePullPartitions(st->pull_partition_csrs);
+	    },
+	    [st](LocalCSRWorker &worker) { worker.CountIncomingEdgesPerPullPartition(st->pull_partition_csrs); },
+	    [st]() { st->partition_index = 0; });
+	AddStep(
+	    nullptr, [st](LocalCSRWorker &worker) { worker.CreatePullRunningSum(st->pull_partition_csrs); }, nullptr);
+	AddStep([this, st]() { workers[0]->PrepareDistributePullEdges(st->pull_partition_csrs); },
+	        [st](LocalCSRWorker &worker) { worker.DistributePullEdges(st->pull_partition_csrs); },
+	        [st]() { st->pull_end_time = std::chrono::steady_clock::now(); });
+}
+
+bool LocalCSRBuildKernel::Start() {
+	auto worker_count = std::max<idx_t>(1, state->num_threads);
+	state->num_threads = worker_count;
+	state->tasks_scheduled = worker_count;
+	for (idx_t worker = 0; worker < worker_count; worker++) {
+		workers.push_back(make_uniq<LocalCSRWorker>(state, worker));
+	}
+	if (state->build_forward_csr) {
+		if (state->streaming_endpoint_input) {
+			// Serial: the streaming segments are promoted to partitions as they are
+			state->partition_csrs.clear();
+			state->forward_start_time = std::chrono::steady_clock::now();
+			workers[0]->PromoteStreamingEndpointBuffers(state->partition_csrs);
+			state->forward_build_buffers.clear();
+			state->forward_end_time = std::chrono::steady_clock::now();
+			RecordSubphase(*state, false, "streaming_promote", state->forward_start_time);
+		} else if (state->finalize_sparse_rows) {
+			PlanSparseForwardBuild();
+		} else {
+			PlanDenseBuild(false);
+		}
+	}
+	if (state->build_reverse_csr) {
+		if (state->streaming_endpoint_input) {
+			throw InternalException("Streaming endpoint CSR cannot build reverse input");
+		}
+		PlanDenseBuild(true);
+	}
+	if (state->build_pull_csr) {
+		PlanPullBuild();
+	}
+	if (steps.empty()) {
+		return false;
+	}
+	if (steps[0].before) {
+		steps[0].before();
+	}
+	return true;
+}
+
+idx_t LocalCSRBuildKernel::WorkerCount() const {
+	return workers.size();
+}
+
+void LocalCSRBuildKernel::RunPhase(idx_t worker_id) {
+	steps[step].parallel(*workers[worker_id]);
+}
+
+bool LocalCSRBuildKernel::AdvancePhase() {
+	if (steps[step].after) {
+		steps[step].after();
+	}
+	step++;
+	if (step >= steps.size()) {
+		return false;
+	}
+	if (steps[step].before) {
+		steps[step].before();
+	}
+	return true;
+}
+
+void LocalCSRBuildKernel::Finished() {
 	// Assume at least one partition exists
-	D_ASSERT(!local_csr_state->partition_csrs.empty() || !local_csr_state->reverse_partition_csrs.empty());
+	D_ASSERT(!state->partition_csrs.empty() || !state->reverse_partition_csrs.empty());
 
-	if (local_csr_state->build_forward_csr) {
-		std::sort(local_csr_state->partition_csrs.begin(), local_csr_state->partition_csrs.end(),
+	if (state->build_forward_csr) {
+		std::sort(state->partition_csrs.begin(), state->partition_csrs.end(),
 		          [](const shared_ptr<LocalCSR> &a, const shared_ptr<LocalCSR> &b) {
 			          return a->GetEdgeSize() > b->GetEdgeSize(); // Sort by edge count
 		          });
 	}
-	if (local_csr_state->build_reverse_csr) {
-		std::sort(local_csr_state->reverse_partition_csrs.begin(), local_csr_state->reverse_partition_csrs.end(),
+	if (state->build_reverse_csr) {
+		std::sort(state->reverse_partition_csrs.begin(), state->reverse_partition_csrs.end(),
 		          [](const shared_ptr<LocalCSR> &a, const shared_ptr<LocalCSR> &b) {
 			          return a->GetEdgeSize() > b->GetEdgeSize(); // Sort by edge count
 		          });
 	}
-	std::sort(local_csr_state->pull_partition_csrs.begin(), local_csr_state->pull_partition_csrs.end(),
+	std::sort(state->pull_partition_csrs.begin(), state->pull_partition_csrs.end(),
 	          [](const shared_ptr<PullCSR> &a, const shared_ptr<PullCSR> &b) {
 		          return a->GetEdgeSize() > b->GetEdgeSize(); // Sort by edge count
 	          });
 
-	if (!local_csr_state->benchmark_enabled) {
+	if (!state->benchmark_enabled) {
 		return;
 	}
 
-	if (local_csr_state->build_forward_csr) {
-		AppendPhaseTiming(*local_csr_state, "local_csr_forward", local_csr_state->partition_csrs,
-		                  ElapsedMs(local_csr_state->forward_start_time, local_csr_state->forward_end_time));
-		WritePartitionStats(*local_csr_state, context, local_csr_state->partition_csrs, "forward");
+	if (state->build_forward_csr) {
+		AppendPhaseTiming(*state, "local_csr_forward", state->partition_csrs,
+		                  ElapsedMs(state->forward_start_time, state->forward_end_time));
+		WritePartitionStats(*state, state->context, state->partition_csrs, "forward");
 	}
-	if (local_csr_state->build_reverse_csr) {
-		AppendPhaseTiming(*local_csr_state, "local_csr_reverse", local_csr_state->reverse_partition_csrs,
-		                  ElapsedMs(local_csr_state->reverse_start_time, local_csr_state->reverse_end_time));
-		WritePartitionStats(*local_csr_state, context, local_csr_state->reverse_partition_csrs, "reverse");
+	if (state->build_reverse_csr) {
+		AppendPhaseTiming(*state, "local_csr_reverse", state->reverse_partition_csrs,
+		                  ElapsedMs(state->reverse_start_time, state->reverse_end_time));
+		WritePartitionStats(*state, state->context, state->reverse_partition_csrs, "reverse");
 	}
-	if (local_csr_state->build_pull_csr) {
-		AppendPullPhaseTiming(*local_csr_state,
-		                      ElapsedMs(local_csr_state->pull_start_time, local_csr_state->pull_end_time));
-		WritePullPartitionStats(*local_csr_state, context);
+	if (state->build_pull_csr) {
+		AppendPullPhaseTiming(*state, ElapsedMs(state->pull_start_time, state->pull_end_time));
+		WritePullPartitionStats(*state, state->context);
 	}
-	AppendSubphaseTimings(*local_csr_state);
+	AppendSubphaseTimings(*state);
 }
 
 } // namespace duckdb

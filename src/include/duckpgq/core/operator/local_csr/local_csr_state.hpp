@@ -2,7 +2,7 @@
 
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
-#include "duckpgq/core/utils/duckpgq_barrier.hpp"
+#include "duckpgq/core/utils/duckpgq_utils.hpp"
 
 #include <chrono>
 
@@ -56,8 +56,6 @@ public:
 
 	idx_t num_threads;
 	idx_t tasks_scheduled;
-
-	unique_ptr<Barrier> barrier;
 
 	std::vector<int64_t> statistics_chunks;
 	std::vector<int64_t> reverse_statistics_chunks;

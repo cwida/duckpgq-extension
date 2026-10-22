@@ -1,22 +1,44 @@
 #pragma once
 
-#include <duckdb/parallel/base_pipeline_event.hpp>
-#include <duckpgq/core/operator/local_csr/local_csr_task.hpp>
+#include "duckpgq/common.hpp"
+#include "duckpgq/core/operator/local_csr/local_csr_state.hpp"
+#include "duckpgq/core/operator/local_csr/local_csr_task.hpp"
+#include "duckpgq/core/operator/phased_kernel_event.hpp"
+
+#include <chrono>
+#include <functional>
 
 namespace duckdb {
 
-class LocalCSREvent : public BasePipelineEvent {
+//! Builds the partitioned CSR (forward, reverse and pull variants) as a phased kernel: a list of steps, each with a
+//! serial part before, a parallel part run by every worker, and a serial part after.
+class LocalCSRBuildKernel : public PhasedKernel {
 public:
-	LocalCSREvent(shared_ptr<LocalCSRState> local_csr_state_p, Pipeline &pipeline_p, const PhysicalPathFinding &op_p,
-	              ClientContext &context_p);
+	explicit LocalCSRBuildKernel(shared_ptr<LocalCSRState> state_p);
 
-	void Schedule() override;
-	void FinishEvent() override;
+	bool Start() override;
+	idx_t WorkerCount() const override;
+	void RunPhase(idx_t worker_id) override;
+	bool AdvancePhase() override;
+	void Finished() override;
 
 private:
-	ClientContext &context;
-	shared_ptr<LocalCSRState> local_csr_state;
-	const PhysicalPathFinding &op;
+	struct Step {
+		std::function<void()> before;
+		std::function<void(LocalCSRWorker &)> parallel;
+		std::function<void()> after;
+	};
+	void AddStep(std::function<void()> before, std::function<void(LocalCSRWorker &)> parallel,
+	             std::function<void()> after);
+	void PlanDenseBuild(bool reverse);
+	void PlanSparseForwardBuild();
+	void PlanPullBuild();
+
+	shared_ptr<LocalCSRState> state;
+	vector<unique_ptr<LocalCSRWorker>> workers;
+	vector<Step> steps;
+	idx_t step = 0;
+	std::chrono::steady_clock::time_point subphase_start;
 };
 
 } // namespace duckdb
