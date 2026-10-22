@@ -4236,6 +4236,76 @@ def run_update_falkordb(args):
     run_update_graphdb(args, FalkorDBSystem(args.host, args.port, f"pf_{sf_name(args.scale_factor)}"))
 
 
+class Neo4jSystem(GraphDBSystem):
+    """Neo4j 5 Enterprise (evaluation licence) over Bolt; `runtime` is prepended to the read queries
+    (parallel is Enterprise-only)."""
+
+    name = "neo4j"
+
+    def __init__(self, uri, database, runtime):
+        neo4j = __import__("neo4j")
+        self.neo4j = neo4j
+        self.driver = neo4j.GraphDatabase.driver(uri, auth=None)
+        self.database = database
+        self.runtime = runtime
+        self.session = None
+
+    def run(self, query, **params):
+        return self.session.run(query, **params).data()
+
+    def read(self, query, **params):
+        prefix = f"CYPHER runtime={self.runtime} " if self.runtime else ""
+        return self.run(prefix + query, **params)
+
+    def load(self, export_dir, scale_factor):
+        with self.driver.session(database="system") as system:
+            system.run(f"CREATE OR REPLACE DATABASE {self.database} WAIT").consume()
+        self.session = self.driver.session(database=self.database)
+        mount = f"file:///{sf_name(scale_factor)}"
+        self.run("CREATE INDEX person_id IF NOT EXISTS FOR (p:Person) ON (p.id)")
+        self.run("CALL db.awaitIndexes(600)")
+        self.run(f"LOAD CSV WITH HEADERS FROM '{mount}/person.csv' AS row "
+                 f"CALL (row) {{ CREATE (:Person {{id: toInteger(row.id)}}) }} IN TRANSACTIONS OF 50000 ROWS")
+        self.run(f"LOAD CSV WITH HEADERS FROM '{mount}/knows.csv' AS row "
+                 f"CALL (row) {{ MATCH (a:Person {{id: toInteger(row.person1id)}}), "
+                 f"(b:Person {{id: toInteger(row.person2id)}}) CREATE (a)-[:KNOWS]->(b) }} IN TRANSACTIONS OF 50000 ROWS")
+
+    def sssp(self, source, destinations):
+        rows = self.read(f"MATCH (a:Person {{id: $src}}), (b:Person) WHERE b.id IN $dsts "
+                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) "
+                         f"RETURN count(p) AS c, sum(length(p)) AS s", src=source, dsts=destinations)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def point_to_point(self, pairs):
+        rows = self.read(f"UNWIND $pairs AS pr MATCH (a:Person {{id: pr[0]}}), (b:Person {{id: pr[1]}}) "
+                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) "
+                         f"RETURN count(p) AS c, sum(length(p)) AS s",
+                         pairs=[list(pair) for pair in pairs if pair[0] != pair[1]])
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def apply_batch(self, inserts, deletes):
+        with self.session.begin_transaction() as tx:
+            if inserts:
+                tx.run("UNWIND $ops AS o MATCH (a:Person {id: o[0]}), (b:Person {id: o[1]}) CREATE (a)-[:KNOWS]->(b)",
+                       ops=[list(op) for op in inserts]).consume()
+            if deletes:
+                tx.run("UNWIND $ops AS o MATCH (a:Person {id: o[0]})-[e:KNOWS]->(b:Person {id: o[1]}) DELETE e",
+                       ops=[list(op) for op in deletes]).consume()
+            tx.commit()
+
+    def edge_count(self):
+        return int(self.run("MATCH ()-[e:KNOWS]->() RETURN count(e) AS c")[0]["c"])
+
+    def close(self):
+        if self.session:
+            self.session.close()
+        self.driver.close()
+
+
+def run_update_neo4j(args):
+    run_update_graphdb(args, Neo4jSystem(args.uri, args.database, args.runtime))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Prepare and smoke-run pathfinding benchmarks on LDBC Person knows Person data.")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -4573,7 +4643,8 @@ def main():
     kuzu_parser.add_argument("--notes", default="")
     kuzu_parser.set_defaults(func=run_update_kuzu)
 
-    for name, func in (("update-memgraph", run_update_memgraph), ("update-falkordb", run_update_falkordb)):
+    for name, func in (("update-memgraph", run_update_memgraph), ("update-falkordb", run_update_falkordb),
+                       ("update-neo4j", run_update_neo4j)):
         gp = subcommands.add_parser(name, help=f"The update workload on {name.split('-')[1]} (sequential, Docker server)")
         gp.add_argument("--scale-factor", required=True)
         gp.add_argument("--threads", type=int, default=os.cpu_count(), help="recorded only; the server's own setting applies")
@@ -4586,6 +4657,10 @@ def main():
         gp.add_argument("--notes", default="")
         if name == "update-memgraph":
             gp.add_argument("--uri", default="bolt://localhost:7687")
+        elif name == "update-neo4j":
+            gp.add_argument("--uri", default="bolt://localhost:7688")
+            gp.add_argument("--database", default="pathfinding")
+            gp.add_argument("--runtime", default="parallel", help="Cypher runtime: parallel (Enterprise), pipelined, or ''")
         else:
             gp.add_argument("--host", default="localhost")
             gp.add_argument("--port", type=int, default=6379)
