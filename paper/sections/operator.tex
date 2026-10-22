@@ -1,17 +1,144 @@
 \section{The Path-Finding Operator}
 \label{sec:operator}
 
-\todo{2.5 pages. Figure: pipeline from MATCH to operator (pairs child, endpoint child, index snapshot).}
+% Draft 22 Oct 2026 in the style of paper/STYLE.md. Numbers are provisional (laptop, 8M-edge graph; SF300 from the
+% m7a.8xlarge) until the frozen-commit rerun.
+
+\begin{figure}[t]
+  \centering
+  \framebox[\linewidth]{\rule{0pt}{4.2cm}\todo{Figure 1: from \texttt{MATCH} to the operator. Left: the rewritten SQL with
+  the candidate pairs (a, b) and the marker function. Middle: the physical operator with its two inputs, pairs and
+  edge endpoints, or pairs and an index snapshot; the radix-partitioned CSR; the chain of per-level events. Right:
+  the result column joined back and filtered on the quantifier.}}
+  \caption{The path-finding operator answers one \sqlpgq path pattern for a set of candidate pairs. Pairs and edge
+  endpoints arrive through ordinary pipelines; the CSR is partitioned by destination range and built in parallel
+  (Section~\ref{sec:csr}); the traversal runs as a chain of per-level events whose tasks never wait for each other
+  (Section~\ref{sec:phases}); with a CSR index (Section~\ref{sec:index}) the edge input disappears and the operator
+  reads a snapshot.}
+  \label{fig:overview}
+\end{figure}
+
+A path pattern in \sqlpgq asks, for a set of candidate (source, destination) pairs, whether a path of the allowed
+length exists and how long it is, or which vertices and edges it uses. The operator takes exactly that: a stream of
+pairs and a description of the graph, and returns one length or one path per pair. Everything else, label tests,
+filters on the endpoints, the join back to the vertex tables and the test on the quantifier, stays relational and is
+left to \duckdb's planner. This section describes how the operator gets its inputs, how it builds and lays out the
+graph, how it traverses it, and how it runs in parallel without waiting on anything.
+
 \subsection{From \texttt{MATCH} to an operator}
-\todo{Marker function in the rewritten SQL, optimizer rule replaces it with the logical operator; argument forms
-(buffered endpoints, precounted, index cache key, depth bound); result column joins back; filters on path length.}
-\subsection{Pair batches and the partitioned CSR}
-\todo{Sink of pairs; endpoint input radix-partitioned by destination range into uint16 local ids; sort-and-emit sparse
-rows; bucket index over source ids; row ids per edge when paths are requested; build cost numbers.}
+\label{sec:planner}
+
+\duckpgq rewrites \texttt{MATCH} into SQL, and the path pattern becomes a scalar function call in that SQL: a
+\emph{marker} that takes the two endpoint columns of the candidate pairs, the edge endpoints as a struct column, the
+vertex and edge counts, a constant key naming the graph, and the upper bound of the quantifier. The marker is
+registered as a volatile scalar function so that no part of the engine folds or reorders it, and it is never
+executed: an optimizer extension runs before \duckdb's own optimizer, finds the projection that contains the marker,
+takes its two inputs out of the plan and replaces the projection by a logical path-finding operator whose output
+column stands in for the marker. The optimizer rule runs on the binder's plan shape, before join reordering, because
+the two inputs are easy to identify there and impossible to find after the optimizer has pushed filters into them.
+The engine then sees an operator with two children and a cardinality, plans the rest of the query around it, and
+executes it as a sink over both children and a source for the result.
+
+Three details of the rewrite matter for performance. First, the pairs are the cross product of the two endpoint
+vertex sets after their own filters, so a query with one source and a filter on the destination produces few pairs
+and the operator never materializes a full cross product. Second, the upper bound of the quantifier travels with the
+marker, so the traversal stops at that depth instead of exhausting the graph and letting a filter discard the rest.
+Third, when a CSR index exists for the edge table, the rewrite drops the edge input and passes the index name in the
+key; the operator then resolves the key to a snapshot (Section~\ref{sec:index}) and the pairs carry vertex keys
+rather than row ids, because the index identifies vertices by key.
+
+\subsection{Building the graph per query}
+\label{sec:csr}
+
+Without an index the operator builds a CSR for every query, so the build has to be cheap, and it still dominates:
+at SF300 it is nine tenths of a single-source query (0.30\,s against 0.031\,s over the index) and two fifths of a
+1024-pair query (1.61\,s against 0.96\,s). The edge input is a stream of (source,
+destination) row-id pairs from a join of the edge table with its two vertex tables. The sink packs each edge into 64
+bits and radix-partitions it by destination range, with the number of ranges chosen so that a destination fits in
+16 bits inside its range and there are about one and a half times as many ranges as threads. Each range is then
+built by one task: sort its edges by source with a radix sort, emit the sparse rows (only sources with at least one
+edge into the range get a row) in one sweep, and attach a bucket index over the source ids with about two rows per
+bucket, so that looking up a source in a partition costs one bucket read and a scan of two or three adjacent rows
+instead of a binary search over all rows of the partition. No per-vertex counter array exists at any point, which is
+what makes the build memory proportional to the edges, not the vertices.
+
+The layout is the same for the operator's build and for the index of Section~\ref{sec:index}, and for a reason. A
+partition holds every edge into one destination range, so a traversal step that processes partition $p$ writes
+only to vertices of range $p$; the tasks of one level never write the same vertex, and the frontier arrays of a
+range stay in the cache of the core that works on it. Destinations inside a partition are 16-bit offsets, which halves
+the edge array against 32-bit ids. On the 8M-edge graph of Section~\ref{sec:eval} the build takes
+\todo{0.03--0.06\,s on 18 threads; verify} and the CSR occupies \todo{2.5 bytes per edge plus 8 bytes per sparse row}.
+
 \subsection{Traversals}
-\todo{MS-BFS lanes over partitions (grouped scheduling, orientation choice via HLL statistics); per-source frontier
-traversal (hybrid sparse/dense expansion, early termination on destinations, depth bound, parent pointers for paths);
-when each is chosen (distinct sources, pairs per source).}
-\subsection{Scheduling without barriers}
-\todo{Phased traversals: one event per BFS level, serial step in FinishEvent, no task waits for another; why barriers
-deadlock under concurrent queries in a shared scheduler; abortability and interrupts.}
+\label{sec:traversals}
+
+The operator has two traversals and a rule that picks one. Both run breadth-first over the partitions and both
+honour the depth bound; they differ in what a step costs.
+
+\paragraph{Multi-source traversal.} For many pairs we keep \msbfs~\cite{then2014msbfs}: 512 searches share one sweep
+over the adjacency, each search owns a bit in three bit-set arrays per vertex (seen, this frontier, next frontier),
+and relaxing an edge is a 512-bit \texttt{or}. Pairs are grouped into batches of 512 by source, a batch is a lane
+assignment, and several batches run concurrently with a fixed number of tasks each, so that a query with 100K pairs
+keeps 32 cores busy. A step costs a sweep over all sparse rows of all partitions, regardless of how many of the 512
+lanes are alive. That is the right trade when hundreds of lanes are alive and the wrong one when one is: on the
+8M-edge graph a single pair paid 0.12\,s for sweeps over 2M vertices, the same as 512 pairs.
+
+\paragraph{Single-source traversal.} For few sources we run one search per source with a frontier list, in the shape
+Ligra~\cite{shun2013ligra} made standard. The frontier is a vector of vertex ids; while it is smaller than a
+sixty-fourth of the vertex count, each frontier vertex is looked up in every partition through the bucket index and
+its edges are relaxed with a compare-and-swap on a byte per vertex, so a step costs the frontier plus its edges;
+when the frontier grows past that bound the step switches to a sweep over the partitions with a membership byte per
+vertex. The search records the destinations its group of pairs asks for and stops as soon as the last one is
+reached, or at the depth bound. When the query asks for paths, the traversal also records, per vertex, the vertex
+and the edge through which it was first reached, and the result scatter walks that chain backwards
+(Section~\ref{sec:paths}). The multi-source traversal cannot afford that: a parent per lane per vertex is 512 times
+the memory.
+
+\paragraph{Choosing.} The sink keeps HyperLogLog sketches of the distinct sources and destinations of the pairs.
+With at most 16 distinct sources, or with at least four pairs per source, the single-source traversal runs, one
+group per source; otherwise the multi-source traversal runs over batches of 512. The same sketches decide the
+orientation: when there are far fewer distinct destinations than sources and the build can produce the reverse
+partitions, the search starts from the destinations. Both rules are thresholds today; Section~\ref{sec:strategy}
+discusses what a cost model needs to replace them. On the 8M-edge graph the switch to the single-source traversal
+took a single pair from 0.11\,s to 0.01\,s and twenty sources with 200 destinations each from 1.5\,s to 0.13\,s,
+for identical answers.
+
+\paragraph{Pairs with unknown endpoints.} A pair whose source or destination has no edges, or whose key is absent
+from the index, has no path, and the operator answers \texttt{NULL} for it without searching. This matters more than
+it sounds: an early version fell back from the single-source traversal to 196 full multi-source batches as soon as
+one such pair appeared in a single-source query over two million destinations, and took 288\,s instead of 0.15\,s.
+
+\subsection{Parallelism without barriers}
+\label{sec:phases}
+
+A BFS level is a parallel sweep followed by a serial decision: which vertices were reached, whether any lane is
+still alive, whether the depth bound is hit. The obvious implementation gives every worker a task for the whole
+traversal and synchronizes them with a barrier at the end of each level, and that is how the operator started. It
+deadlocks under concurrent queries. \duckdb schedules tasks from a fixed pool of threads; when four queries each
+schedule 32 tasks that wait at a barrier for 32 peers, the pool fills with tasks that wait for peers the scheduler
+never gets to run. With four concurrent single-source queries on 32 threads we observed 164 threads in a futex wait
+and no progress.
+
+The operator now runs every traversal, and the CSR build, as a \emph{chain of per-phase events}. A phase is a set of
+tasks that run independently and finish; when the last one finishes, the event's completion callback runs the serial
+step once and inserts the event of the next phase. No task waits for any other task, so the scheduler may interleave
+the tasks of concurrent queries freely, abort cleanly on an error or an interrupt, and run as many queries at once
+as there are tasks. The same abstraction covers the multi-source traversal (one event per level and batch), the
+single-source traversal (one event per level and source group), and the three build phases (partition, sort and
+emit, publish). The cost is one event per level, which is microseconds; the concurrent-reader experiment of
+Section~\ref{sec:eval} runs 16 readers against one writer at 32 workers per query with no coordination beyond the
+engine's scheduler.
+
+\subsection{Paths}
+\label{sec:paths}
+
+\texttt{element\_id(p)}, \texttt{vertices(p)} and \texttt{edges(p)} are answered by the same operator in a second
+mode that returns, per pair, the list $[v_0, e_0, v_1, \dots, v_k]$ of vertex keys and edge row ids. The
+single-source traversal records parents as described above; the scatter walks from the destination to the source,
+maps vertex ids to keys and edge positions to row ids, and reverses. \texttt{path\_length(p)} is then
+$\lfloor\text{len}/2\rfloor$, and \texttt{vertices} and \texttt{edges} are the even and odd positions, which is
+also how the SQL fallback of \duckpgq defines them, so the two routes agree bit for bit. Edge row ids are available
+because the build keeps one per edge position when paths are requested and the index keeps them always
+(Section~\ref{sec:index}); a path can therefore be joined back to the edge table for its properties. On the 8M-edge
+graph, returning paths instead of lengths for twenty sources with 200 destinations each costs 0.24\,s against
+0.22\,s, and all 158,396 paths from one source take 0.43\,s.
