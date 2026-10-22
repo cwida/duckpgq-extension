@@ -899,29 +899,72 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	snapshot->suppressed.resize(snapshot->partitions.size());
 
 	if (!visible_edges.empty()) {
-		vector<vector<DeltaEntry>> buckets(total_ranges);
-		for (auto &edge : visible_edges) {
-			auto range = edge.dst / width;
-			buckets[range].push_back({edge.src, NumericCast<uint16_t>(edge.dst - range * width), edge.row});
-		}
-		auto src_bits = CSRSourceBits(snapshot->vertex_count);
-		vector<DeltaEntry> scratch;
-		vector<idx_t> histogram;
-		for (idx_t range = 0; range < total_ranges; range++) {
-			if (buckets[range].empty()) {
-				continue;
+		// Bucket the visible edges by destination range, then sort and pack every range in parallel: the rebuild
+		// after a commit is O(D) and this is where its time goes once visibility is decided per change group
+		auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
+		idx_t slice_count = std::min<idx_t>(thread_count, (visible_edges.size() + 65535) / 65536);
+		slice_count = std::max<idx_t>(1, slice_count);
+		auto slice_size = (visible_edges.size() + slice_count - 1) / slice_count;
+		vector<vector<idx_t>> slice_histograms(slice_count, vector<idx_t>(total_ranges, 0));
+		ParallelFor(slice_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+			for (idx_t slice = begin; slice < end; slice++) {
+				auto &histogram = slice_histograms[slice];
+				auto first = slice * slice_size;
+				auto last = std::min<idx_t>(visible_edges.size(), first + slice_size);
+				for (idx_t i = first; i < last; i++) {
+					histogram[visible_edges[i].dst / width]++;
+				}
 			}
-			CSRRadixSortBySource(buckets[range], scratch, histogram, src_bits);
-			auto start_vertex = range * width;
-			auto end_vertex = std::min<idx_t>(start_vertex + width, snapshot_end);
-			vector<row_t> delta_rows(buckets[range].size());
-			auto delta_partition = CSREmitSparsePartition(
-			    start_vertex, end_vertex, snapshot->vertex_count, buckets[range],
-			    [&](idx_t position, const DeltaEntry &entry) { delta_rows[position] = entry.row; });
-			delta_partition->owned_row_ids = std::move(delta_rows);
-			delta_partition->row_ids = delta_partition->owned_row_ids.data();
-			snapshot->delta_partitions[range_to_list[range]] = std::move(delta_partition);
+		});
+		// Offsets per range and per slice within the range (counting sort, stable within a slice)
+		vector<idx_t> range_offsets(total_ranges + 1, 0);
+		for (idx_t range = 0; range < total_ranges; range++) {
+			idx_t count = 0;
+			for (idx_t slice = 0; slice < slice_count; slice++) {
+				auto slice_count_in_range = slice_histograms[slice][range];
+				slice_histograms[slice][range] = range_offsets[range] + count;
+				count += slice_count_in_range;
+			}
+			range_offsets[range + 1] = range_offsets[range] + count;
 		}
+		vector<DeltaEntry> bucketed(visible_edges.size());
+		ParallelFor(slice_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+			for (idx_t slice = begin; slice < end; slice++) {
+				auto &cursor = slice_histograms[slice];
+				auto first = slice * slice_size;
+				auto last = std::min<idx_t>(visible_edges.size(), first + slice_size);
+				for (idx_t i = first; i < last; i++) {
+					auto &edge = visible_edges[i];
+					auto range = edge.dst / width;
+					bucketed[cursor[range]++] = {edge.src, NumericCast<uint16_t>(edge.dst - range * width), edge.row};
+				}
+			}
+		});
+		auto src_bits = CSRSourceBits(snapshot->vertex_count);
+		ParallelFor(total_ranges, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+			vector<DeltaEntry> entries;
+			vector<DeltaEntry> scratch;
+			vector<idx_t> histogram;
+			for (idx_t range = begin; range < end; range++) {
+				auto first = range_offsets[range];
+				auto last = range_offsets[range + 1];
+				if (first == last) {
+					continue;
+				}
+				entries.assign(bucketed.begin() + NumericCast<int64_t>(first),
+				               bucketed.begin() + NumericCast<int64_t>(last));
+				CSRRadixSortBySource(entries, scratch, histogram, src_bits);
+				auto start_vertex = range * width;
+				auto end_vertex = std::min<idx_t>(start_vertex + width, snapshot_end);
+				vector<row_t> delta_rows(entries.size());
+				auto delta_partition = CSREmitSparsePartition(
+				    start_vertex, end_vertex, snapshot->vertex_count, entries,
+				    [&](idx_t position, const DeltaEntry &entry) { delta_rows[position] = entry.row; });
+				delta_partition->owned_row_ids = std::move(delta_rows);
+				delta_partition->row_ids = delta_partition->owned_row_ids.data();
+				snapshot->delta_partitions[range_to_list[range]] = std::move(delta_partition);
+			}
+		});
 	}
 	if (shareable) {
 		IndexLock l(*this);
