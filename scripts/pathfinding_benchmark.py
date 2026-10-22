@@ -4033,6 +4033,16 @@ class GraphDBSystem:
     def edge_count(self):
         raise NotImplementedError
 
+    def multi_source(self, sources):
+        """(reachable_count, total_len) from every source to every reachable vertex, lengths >= 1"""
+        raise NotImplementedError
+
+    stop_requested = False
+
+    def cancel(self):
+        """Best effort: stop the query running on this system's connection (called from another thread); per-pair
+        loops also check stop_requested so they stop issuing queries"""
+
     def close(self):
         pass
 
@@ -4084,6 +4094,18 @@ class MemgraphSystem(GraphDBSystem):
     def edge_count(self):
         return int(self.run("MATCH ()-[e:KNOWS]->() RETURN count(e) AS c")[0]["c"])
 
+    def multi_source(self, sources):
+        # Without the WITH barrier Memgraph scans every b and filters a after the BFS (35 s instead of 10 ms at SF1)
+        rows = self.run(f"MATCH (a:Person) WHERE a.id IN $srcs WITH a MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]->(b:Person) "
+                        f"RETURN count(p) AS c, sum(size(p)) AS s", srcs=sources)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def cancel(self):
+        with self.driver.session() as other:
+            for row in other.run("SHOW TRANSACTIONS").data():
+                if "KNOWS" in (row.get("query") or ""):
+                    other.run(f'TERMINATE TRANSACTIONS "{row["transaction_id"]}"').consume()
+
     def close(self):
         self.session.close()
         self.driver.close()
@@ -4099,8 +4121,9 @@ class FalkorDBSystem(GraphDBSystem):
         self.graph = self.db.select_graph(graph_name)
 
     def query(self, text, params=None):
-        # The client applies a default timeout that a 1024-destination query exceeds; the server has none
-        return self.graph.query(text, params or {}, timeout=3600000).result_set
+        # The client applies a default timeout that a 1024-destination query exceeds; the server has none. The
+        # sweep sets the budget here, so FalkorDB stops a query server-side when it is exceeded.
+        return self.graph.query(text, params or {}, timeout=self.budget_ms).result_set
 
     def load(self, export_dir, scale_factor):
         try:
@@ -4144,6 +4167,24 @@ class FalkorDBSystem(GraphDBSystem):
 
     def edge_count(self):
         return int(self.query("MATCH ()-[e:KNOWS]->() RETURN count(e)")[0][0])
+
+    def multi_source(self, sources):
+        # No single-source primitive with lengths: one shortestPath per (source, vertex)
+        reachable, total = 0, 0
+        for source in sources:
+            if self.stop_requested:
+                raise RuntimeError("timeout: stop requested")
+            rows = self.query(f"MATCH (a:Person {{id: $src}}), (b:Person) "
+                              f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                              {"src": source})
+            reachable += int(rows[0][0])
+            total += int(rows[0][1] or 0)
+        return reachable, total
+
+    def set_budget(self, budget_s):
+        self.budget_ms = int(budget_s * 1000)
+
+    budget_ms = 3600000
 
 
 def run_update_graphdb(args, system):
@@ -4271,7 +4312,9 @@ class Neo4jSystem(GraphDBSystem):
                  f"(b:Person {{id: toInteger(row.person2id)}}) CREATE (a)-[:KNOWS]->(b) }} IN TRANSACTIONS OF 50000 ROWS")
 
     def sssp(self, source, destinations):
-        rows = self.read(f"MATCH (a:Person {{id: $src}}), (b:Person) WHERE b.id IN $dsts "
+        # UNWIND rather than `b.id IN $dsts`: the IN form plans a MultiNodeIndexSeek that hands the parallel runtime
+        # one row, so every shortestPath runs on a single worker (SF10: 10.3 s vs 0.76 s for the same 1024 paths)
+        rows = self.read(f"MATCH (a:Person {{id: $src}}) UNWIND $dsts AS d MATCH (b:Person {{id: d}}) "
                          f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) "
                          f"RETURN count(p) AS c, sum(length(p)) AS s", src=source, dsts=destinations)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
@@ -4296,6 +4339,19 @@ class Neo4jSystem(GraphDBSystem):
     def edge_count(self):
         return int(self.run("MATCH ()-[e:KNOWS]->() RETURN count(e) AS c")[0]["c"])
 
+    def multi_source(self, sources):
+        rows = self.read(f"UNWIND $srcs AS sid MATCH (a:Person {{id: sid}}) MATCH (b:Person) WHERE a <> b "
+                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) RETURN count(p) AS c, sum(length(p)) AS s",
+                         srcs=sources)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def cancel(self):
+        with self.driver.session(database=self.database) as other:
+            rows = other.run("SHOW TRANSACTIONS YIELD transactionId, currentQuery "
+                             "WHERE currentQuery CONTAINS 'KNOWS' RETURN transactionId").data()
+            for row in rows:
+                other.run(f'TERMINATE TRANSACTIONS "{row["transactionId"]}"').consume()
+
     def close(self):
         if self.session:
             self.session.close()
@@ -4304,6 +4360,342 @@ class Neo4jSystem(GraphDBSystem):
 
 def run_update_neo4j(args):
     run_update_graphdb(args, Neo4jSystem(args.uri, args.database, args.runtime))
+
+
+class KuzuSystem(GraphDBSystem):
+    """Kuzu over the snapshot database built by ensure_kuzu_update_database (read-only for the sweep)."""
+
+    name = "kuzu"
+
+    def __init__(self, threads):
+        self.kuzu = require_kuzu()
+        self.threads = threads
+        self.db = None
+        self.conn = None
+
+    def load(self, export_dir, scale_factor):
+        all_pair_tables = [pair_table_name(1024, "random"), pair_table_name(1024, "same_src")]
+        snapshot = ensure_kuzu_update_database(scale_factor, all_pair_tables)
+        self.db = self.kuzu.Database(str(snapshot), read_only=True)
+        self.conn = self.kuzu.Connection(self.db, num_threads=self.threads)
+
+    def one(self, query):
+        result = self.conn.execute(query)
+        row = result.get_next() if result.has_next() else (0, None)
+        return int(row[0] or 0), int(row[1] or 0)
+
+    def sssp(self, source, destinations):
+        dsts = ", ".join(str(d) for d in destinations)
+        return self.one(f"MATCH (a:Person {{id: {source}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]->(b:Person) "
+                        f"WHERE list_contains([{dsts}], b.id) RETURN count(*), sum(length(e))")
+
+    def point_to_point(self, pairs):
+        reachable, total = 0, 0
+        for src, dst in pairs:
+            if src == dst:
+                continue
+            if self.stop_requested:
+                raise RuntimeError("timeout: stop requested")
+            result = self.conn.execute(f"MATCH (a:Person {{id: {src}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]->"
+                                       f"(b:Person {{id: {dst}}}) RETURN length(e)")
+            if result.has_next():
+                reachable += 1
+                total += int(result.get_next()[0])
+        return reachable, total
+
+    def multi_source(self, sources):
+        reachable, total = 0, 0
+        for source in sources:
+            if self.stop_requested:
+                raise RuntimeError("timeout: stop requested")
+            c, t = self.one(f"MATCH (a:Person {{id: {source}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]->(b:Person) "
+                            f"RETURN count(*), sum(length(e))")
+            reachable += c
+            total += t
+        return reachable, total
+
+    def edge_count(self):
+        return self.one("MATCH (:Person)-[e:Knows]->(:Person) RETURN count(e), 0")[0]
+
+    def cancel(self):
+        if self.conn:
+            self.conn.interrupt()
+
+    def close(self):
+        if self.conn:
+            self.conn.close()
+        if self.db:
+            self.db.close()
+
+
+class DuckPGQSystem(GraphDBSystem):
+    """DuckPGQ through the CLI, one process per query so the budget can kill it: 'build' builds the CSR per query,
+    'index' reads the persisted CSR index (resident after a warm-up query)."""
+
+    def __init__(self, route, scale_factor, threads, budget_s):
+        self.route = route
+        self.name = f"duckpgq_{route}"
+        self.scale_factor = scale_factor
+        self.threads = threads
+        self.budget_s = budget_s
+        self.database = db_path(scale_factor)
+
+    def load(self, export_dir, scale_factor):
+        counts = run_duckdb(BENCH_DUCKDB, self.database,
+                            "SELECT count(*) FROM person; SELECT count(*) FROM person_knows_person;", quiet=True)[0]
+        values = [line.strip() for line in counts.strip().splitlines() if line.strip().isdigit()]
+        self.vertex_count, self.edge_count_value = int(values[0]), int(values[1])
+        if self.route == "index":
+            run_duckdb(BENCH_DUCKDB, None, f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; "
+                                          f"ATTACH {sql_string(self.database)} AS ldbc; {create_csr_index_sql()}", quiet=True)
+
+    def edge_count(self):
+        return self.edge_count_value
+
+    def script(self, pair_table, warm):
+        key_pairs = (f"CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS SELECT a.id::BIGINT AS src, b.id::BIGINT AS dst "
+                     f"FROM ldbc.{pair_table} p JOIN ldbc.person a ON a.rowid = p.src JOIN ldbc.person b ON b.rowid = p.dst;")
+        if self.route == "build":
+            query = f"""SELECT count(len), coalesce(sum(len), 0) FROM (
+    SELECT iterativelengthoperator(src, dst, struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+        {self.vertex_count}::BIGINT, {self.edge_count_value}::BIGINT, 'graph:sweep') AS len
+    FROM ldbc.{pair_table},
+        (SELECT a.rowid::BIGINT AS pathfinding_edge_src, c.rowid::BIGINT AS pathfinding_edge_dst
+         FROM ldbc.person_knows_person k JOIN ldbc.person a ON a.id = k.person1id JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges);"""
+            prelude = ""
+        else:
+            query = (f"SELECT count(len), coalesce(sum(len), 0) FROM (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, "
+                     f"{sql_string(CSR_INDEX_KEY)}) AS len FROM pathfinding_index_pairs);")
+            prelude = key_pairs
+        warm_up = ""
+        if warm:
+            # Resident index (and a warm process) before the timed statement
+            warm_up = query + "\n"
+        return f"""LOAD {sql_string(DUCKPGQ_EXTENSION)};
+SET threads={self.threads};
+SET experimental_path_finding_operator=true;
+ATTACH {sql_string(self.database)} AS ldbc (READ_ONLY);
+SELECT delete_csr(2147483647) AS duckpgq_state_init;
+{prelude}
+{warm_up}.timer on
+{query}
+"""
+
+    def timed(self, pair_table, warm):
+        script = self.script(pair_table, warm)
+        result = subprocess.run([str(BENCH_DUCKDB), "-unsigned", "-csv"], cwd=REPO_ROOT, text=True, input=script,
+                                capture_output=True, timeout=self.budget_s)
+        output = result.stdout + result.stderr
+        if result.returncode != 0 or "Error" in output:
+            raise RuntimeError(output[-2000:])
+        timers = re.findall(r"Run Time \(s\): real ([0-9.]+)", output)
+        rows = [line for line in output.splitlines() if re.match(r"^\d+,", line)]
+        reachable, total = rows[-1].split(",")[:2]
+        return float(timers[-1]), int(reachable), int(0 if total in ("", "NULL") else total)
+
+
+SWEEP_PAIR_COUNTS = [1, 16, 128, 1024, 2048, 16384, 65536]
+SWEEP_SOURCE_COUNTS = [1, 16, 128, 1024]
+
+
+def multi_source_table_name(source_count):
+    return f"benchmark_pairs_multi_{source_count}"
+
+
+def ensure_multi_source_table(scale_factor, source_count):
+    """source_count sampled persons x every person, as row-id pairs (the operator's input)"""
+    table = multi_source_table_name(source_count)
+    sql = f"""
+CREATE TABLE IF NOT EXISTS {table} AS
+SELECT s.rowid::BIGINT AS src, d.rowid::BIGINT AS dst
+FROM (SELECT rowid FROM person ORDER BY hash(id + 7) LIMIT {source_count}) s, person d;
+"""
+    run_duckdb(BENCH_DUCKDB, db_path(scale_factor), sql, quiet=True)
+    return table
+
+
+def run_with_budget(system, fn, budget_s):
+    """Runs fn() on a worker thread; after budget_s calls system.cancel() and reports the budget as exceeded."""
+    outcome = {}
+
+    def worker():
+        try:
+            outcome["value"] = fn()
+        except Exception as ex:  # noqa: BLE001
+            outcome["error"] = str(ex)
+
+    import threading
+    system.stop_requested = False
+    thread = threading.Thread(target=worker, daemon=True)
+    started = time.perf_counter()
+    thread.start()
+    thread.join(budget_s)
+    if thread.is_alive():
+        system.stop_requested = True
+        try:
+            system.cancel()
+        except Exception as ex:  # noqa: BLE001
+            print(f"   cancel failed: {str(ex)[:120]}")
+        thread.join(60)
+        return None, time.perf_counter() - started, "budget_exceeded"
+    elapsed = time.perf_counter() - started
+    if "error" in outcome:
+        if "timed out" in outcome["error"].lower() or "timeout" in outcome["error"].lower():
+            return None, elapsed, "budget_exceeded"
+        return None, elapsed, f"error: {outcome['error'][:200]}"
+    return outcome["value"], elapsed, "ok"
+
+
+def sweep_pairs(args):
+    """Pair-count and source-count sweep over DuckPGQ and the graph databases, with a per-query budget."""
+    scale_factor = args.scale_factor
+    ensure_update_log(scale_factor)
+    pair_tables = [pair_table_name(n, "random") for n in args.pair_counts]
+    for n in args.pair_counts:
+        ensure_pair_table(scale_factor, n, "random")
+    source_tables = [ensure_multi_source_table(scale_factor, k) for k in args.source_counts]
+    export_dir = ensure_graphdb_export(scale_factor, pair_tables + source_tables)
+    systems = []
+    for name in args.systems:
+        if name == "duckpgq_build":
+            systems.append(DuckPGQSystem("build", scale_factor, args.threads, args.budget_s))
+        elif name == "duckpgq_index":
+            systems.append(DuckPGQSystem("index", scale_factor, args.threads, args.budget_s))
+        elif name == "kuzu":
+            systems.append(KuzuSystem(args.threads))
+        elif name == "memgraph":
+            systems.append(MemgraphSystem(args.memgraph_uri))
+        elif name == "falkordb":
+            system = FalkorDBSystem(args.falkordb_host, args.falkordb_port, f"pf_{sf_name(scale_factor)}")
+            system.set_budget(args.budget_s)
+            systems.append(system)
+        elif name == "neo4j":
+            systems.append(Neo4jSystem(args.neo4j_uri, args.neo4j_database, args.neo4j_runtime))
+    results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    path = results_dir / f"sweep_pairs_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
+    fieldnames = ["system", "scale_factor", "shape", "pairs", "sources", "repeat", "status", "query_s",
+                  "reachable_count", "total_len", "threads", "budget_s", "benchmark_notes", "repo_commit"]
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
+    rows = []
+
+    def record(system, shape, pairs, sources, repeat, status, elapsed, value):
+        row = {"system": system.name, "scale_factor": scale_factor, "shape": shape, "pairs": pairs,
+               "sources": sources, "repeat": repeat, "status": status, "query_s": f"{elapsed:.6f}",
+               "reachable_count": value[0] if value else "", "total_len": value[1] if value else "",
+               "threads": args.threads, "budget_s": args.budget_s, "benchmark_notes": args.notes, "repo_commit": commit}
+        rows.append(row)
+        with path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        shown = f"{value[0]}/{value[1]}" if value else status
+        print(f"   {system.name:14s} {shape:12s} pairs={pairs:<7} sources={sources:<5} repeat {repeat}: {elapsed:8.3f}s {shown}")
+
+    for system in systems:
+        print(f"== {system.name}: loading {sf_name(scale_factor)}")
+        started = time.perf_counter()
+        system.load(export_dir, scale_factor)
+        print(f"   loaded in {time.perf_counter() - started:.1f}s, {system.edge_count()} edges")
+        # Random pairs; once a count exceeds the budget the larger counts are recorded as exceeded without running
+        shape_exceeded = False
+        for n in args.pair_counts:
+            table = pair_table_name(n, "random")
+            pairs = read_pairs(export_dir, table)
+            self_pairs = sum(1 for src, dst in pairs if src == dst)
+            if shape_exceeded:
+                record(system, "random_pairs", n, "", 1, "budget_exceeded_inferred", 0.0, None)
+                continue
+            exceeded = False
+            for repeat in range(1, args.repeats + 1):
+                if exceeded:
+                    break
+                if isinstance(system, DuckPGQSystem):
+                    try:
+                        elapsed, reachable, total = system.timed(table, warm=True)
+                        value, status = (reachable, total), "ok"
+                    except subprocess.TimeoutExpired:
+                        value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                else:
+                    value, elapsed, status = run_with_budget(system, lambda: system.point_to_point(pairs), args.budget_s)
+                    if value:
+                        value = (value[0] + self_pairs, value[1])
+                record(system, "random_pairs", n, "", repeat, status, elapsed, value)
+                exceeded = status == "budget_exceeded"
+                shape_exceeded = shape_exceeded or exceeded
+        # Sources x all destinations
+        shape_exceeded = False
+        for k in args.source_counts:
+            table = multi_source_table_name(k)
+            source_keys = sorted({src for src, _ in read_pairs(export_dir, table)})
+            if shape_exceeded:
+                record(system, "multi_source", "", k, 1, "budget_exceeded_inferred", 0.0, None)
+                continue
+            exceeded = False
+            for repeat in range(1, args.repeats + 1):
+                if exceeded:
+                    break
+                if isinstance(system, DuckPGQSystem):
+                    try:
+                        elapsed, reachable, total = system.timed(table, warm=True)
+                        value, status = (reachable, total), "ok"
+                    except subprocess.TimeoutExpired:
+                        value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                else:
+                    value, elapsed, status = run_with_budget(system, lambda: system.multi_source(source_keys), args.budget_s)
+                    if value:
+                        value = (value[0] + len(source_keys), value[1])  # the source itself, length 0
+                record(system, "multi_source", "", k, repeat, status, elapsed, value)
+                exceeded = status == "budget_exceeded"
+                shape_exceeded = shape_exceeded or exceeded
+        system.close()
+    # Agreement across systems: every ok result of a point must equal the first system's
+    by_point = {}
+    for row in rows:
+        if row["status"] != "ok":
+            continue
+        key = (row["shape"], row["pairs"], row["sources"])
+        by_point.setdefault(key, set()).add((row["reachable_count"], row["total_len"]))
+    disagreements = {k: v for k, v in by_point.items() if len(v) > 1}
+    print(f"Wrote {path}")
+    if disagreements:
+        print("DISAGREEMENTS:", disagreements)
+    else:
+        print(f"All {len(by_point)} points agree across the systems that completed them")
+
+
+def sweep_pairs_table(args):
+    """Prints the sweep as one table per shape: systems x pair counts, mean seconds or the budget status."""
+    rows = []
+    for path in args.files:
+        rows.extend(csv.DictReader(open(path)))
+    for shape, column in (("random_pairs", "pairs"), ("multi_source", "sources")):
+        shape_rows = [r for r in rows if r["shape"] == shape]
+        if not shape_rows:
+            continue
+        counts = sorted({int(r[column]) for r in shape_rows})
+        systems = []
+        for r in shape_rows:
+            if r["system"] not in systems:
+                systems.append(r["system"])
+        print(f"\n## {shape}: mean seconds per query, SF{shape_rows[0]['scale_factor']}, {shape_rows[0]['threads']} threads, budget {shape_rows[0]['budget_s']} s\n")
+        print("| system | " + " | ".join(f"{column}={c}" for c in counts) + " |")
+        print("|---|" + "---|" * len(counts))
+        for system in systems:
+            cells = []
+            for c in counts:
+                point = [r for r in shape_rows if r["system"] == system and int(r[column]) == c]
+                ok = [float(r["query_s"]) for r in point if r["status"] == "ok"]
+                if ok:
+                    mean = statistics.mean(ok)
+                    cells.append(f"{mean*1000:.0f} ms" if mean < 1 else f"{mean:.1f} s")
+                elif any(r["status"].startswith("budget_exceeded") for r in point):
+                    cells.append(f"> {point[0]['budget_s']} s")
+                elif point:
+                    cells.append("error")
+                else:
+                    cells.append("")
+            print(f"| {system} | " + " | ".join(cells) + " |")
 
 
 def main():
@@ -4665,6 +5057,28 @@ def main():
             gp.add_argument("--host", default="localhost")
             gp.add_argument("--port", type=int, default=6379)
         gp.set_defaults(func=func)
+
+    sweep_pairs_parser = subcommands.add_parser("sweep-pairs", help="Pair-count and source-count sweep across systems")
+    sweep_pairs_parser.add_argument("--scale-factor", required=True)
+    sweep_pairs_parser.add_argument("--threads", type=int, default=os.cpu_count())
+    sweep_pairs_parser.add_argument("--systems", nargs="+",
+                                    default=["duckpgq_build", "duckpgq_index", "kuzu", "memgraph", "falkordb", "neo4j"])
+    sweep_pairs_parser.add_argument("--pair-counts", nargs="*", type=int, default=SWEEP_PAIR_COUNTS)
+    sweep_pairs_parser.add_argument("--source-counts", nargs="*", type=int, default=SWEEP_SOURCE_COUNTS)
+    sweep_pairs_parser.add_argument("--repeats", type=int, default=3)
+    sweep_pairs_parser.add_argument("--budget-s", type=float, default=600, help="per-query budget; exceeded is recorded")
+    sweep_pairs_parser.add_argument("--memgraph-uri", default="bolt://localhost:7687")
+    sweep_pairs_parser.add_argument("--neo4j-uri", default="bolt://localhost:7688")
+    sweep_pairs_parser.add_argument("--neo4j-database", default="pathfinding")
+    sweep_pairs_parser.add_argument("--neo4j-runtime", default="parallel")
+    sweep_pairs_parser.add_argument("--falkordb-host", default="localhost")
+    sweep_pairs_parser.add_argument("--falkordb-port", type=int, default=6379)
+    sweep_pairs_parser.add_argument("--notes", default="")
+    sweep_pairs_parser.set_defaults(func=sweep_pairs)
+
+    table_parser = subcommands.add_parser("sweep-pairs-table", help="Print sweep-pairs CSVs as tables")
+    table_parser.add_argument("files", nargs="+")
+    table_parser.set_defaults(func=sweep_pairs_table)
 
     args = parser.parse_args()
     args.func(args)
