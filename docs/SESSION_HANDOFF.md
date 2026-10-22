@@ -103,3 +103,16 @@ W18 Neo4j Enterprise request, W22 outline.
   Memgraph multi-source patterns need a `WITH a` barrier before the `*BFS` expansion.
 - Paths on the build route (W7 step 2, `48a7563a`): `shortestpathoperator(src, dst, struct_pack(src, dst, id), V, E,
   key)`; the `id` field is the edge row id and is required in path mode.
+- Many source groups (`8aa7aa32`): groups scheduled together divide the threads (`concurrent_groups` on the
+  source-grouped state; a single-worker group runs all levels in one task), destination sets are bitmaps above
+  1/64 of the vertices (`SourceGroupTargets`), Finalize materialises the pair chunks with a parallel scan
+  (`ParallelFor` in `utils/parallel_for.hpp`). The `pair_analysis_precompute` phase no longer exists. Diagnosis
+  recipe that found it: run the query with `SET threads=1` and `=32` (serial if equal), then `perf record -g` on the
+  CLI (`perf` is installed on the box, sudo works) and the operator's phase timings
+  (`SET experimental_path_finding_operator_benchmark=true; SET ..._benchmark_prefix='/tmp/x'` ->
+  `/tmp/x_phase_timing.csv`).
+- Queued runs (22 Oct evening, tmux session `w27_chain`, script `~/sweep/run_w27_chain.sh`): DuckPGQ SF10 rerun on
+  the current build, GDS SF10, `ldbc-queries` SF10, then `sweep-pairs` and `ldbc-queries` at SF100 and SF300; logs
+  `~/sweep/sweep_pairs_sf*.out`, `~/sweep/ldbc_queries_sf*.out`, `~/sweep/chain_done.txt` when finished. Print
+  tables with `sweep-pairs-table <csvs>` / `ldbc-queries-table <csvs>` (a system's rows come from the last file
+  that has it, so pass the SF10 full-sweep CSV first and the DuckPGQ/GDS rerun CSVs after it).
