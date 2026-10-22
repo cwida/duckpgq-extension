@@ -3,6 +3,7 @@
 #include "duckpgq/common.hpp"
 
 #include <duckpgq/core/operator/bfs_state.hpp>
+#include <duckpgq/core/operator/phased_kernel_event.hpp>
 
 namespace duckdb {
 class PhysicalPathFinding; // Forward declaration
@@ -28,7 +29,13 @@ struct BidirectionalPhaseTiming {
 	double time_ms;
 };
 
-class BidirectionalIterativeLengthState : public BFSState {
+enum class BidirectionalSearchSide : uint8_t { SOURCE, DESTINATION };
+
+class BidirectionalIterativeLengthWorker;
+
+//! Bidirectional MS-BFS as a phased kernel: each step expands one side in a CLEAR, EXPLORE and CHECK phase, with the
+//! serial preparation and aggregation between them
+class BidirectionalIterativeLengthState : public BFSState, public PhasedKernel {
 public:
 	BidirectionalIterativeLengthState(const shared_ptr<PathFindingBatch> &batch_,
 	                                  std::vector<shared_ptr<LocalCSR>> &local_csrs_,
@@ -36,6 +43,13 @@ public:
 	                                  ClientContext &context_, int64_t vsize_);
 
 	shared_ptr<Event> CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op) override;
+	~BidirectionalIterativeLengthState() override;
+
+	bool Start() override;
+	idx_t WorkerCount() const override;
+	void RunPhase(idx_t worker_id) override;
+	bool AdvancePhase() override;
+	void Finished() override;
 	void InitializeBidirectionalLanes();
 	void Clear() override;
 
@@ -74,6 +88,18 @@ public:
 	bool has_more_batches;
 	bool continue_search;
 	bool expand_source_next;
+
+private:
+	enum class Phase : uint8_t { CLEAR, EXPLORE, CHECK };
+	//! Starts the next step of the current batch
+	bool BeginStep();
+	//! Finishes the current batch and starts the next one that has work; false when none is left
+	bool FinishBatch();
+
+	Phase phase = Phase::CLEAR;
+	BidirectionalSearchSide side = BidirectionalSearchSide::SOURCE;
+	idx_t worker_count = 1;
+	vector<unique_ptr<BidirectionalIterativeLengthWorker>> workers;
 };
 
 } // namespace duckdb

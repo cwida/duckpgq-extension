@@ -5,7 +5,6 @@
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 
 #include "duckdb/storage/buffer/buffer_handle.hpp"
-#include <duckpgq/core/utils/duckpgq_barrier.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 #include <chrono>
 #include <thread>
@@ -100,7 +99,6 @@ public:
 	ClientContext &context;
 	idx_t total_pairs_processed;
 	idx_t num_threads;
-	unique_ptr<Barrier> barrier;
 	mutex change_lock;
 	mutex local_csr_lock;
 	atomic<int64_t> local_csr_counter;

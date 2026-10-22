@@ -211,7 +211,7 @@ void LocalCSRBuildKernel::AddStep(std::function<void()> before, std::function<vo
 	steps.push_back({std::move(before), std::move(parallel), std::move(after)});
 }
 
-//! Statistics, partitions, edge counts, running sums, distribution (and sparse rows), as the barrier version did
+//! Statistics, partitions, edge counts, running sums, distribution (and sparse rows)
 void LocalCSRBuildKernel::PlanDenseBuild(bool reverse) {
 	auto st = state;
 	auto &statistics = reverse ? st->reverse_statistics_chunks : st->statistics_chunks;

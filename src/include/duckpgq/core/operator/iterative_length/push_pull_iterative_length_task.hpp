@@ -1,43 +1,35 @@
 #pragma once
 
 #include "duckpgq/common.hpp"
-#include "push_pull_iterative_length_state.hpp"
-
-#include <duckpgq/core/operator/physical_path_finding_operator.hpp>
+#include "duckpgq/core/operator/iterative_length/push_pull_iterative_length_state.hpp"
 
 namespace duckdb {
 
-class PushPullIterativeLengthTask : public ExecutorTask {
+//! The per-worker phases of the push/pull MS-BFS; the state (a PhasedKernel) sequences them
+class PushPullIterativeLengthWorker {
 public:
-	PushPullIterativeLengthTask(shared_ptr<Event> event_p, ClientContext &context,
-	                            shared_ptr<PushPullIterativeLengthState> &state, idx_t worker_id,
-	                            const PhysicalOperator &op_p);
+	PushPullIterativeLengthWorker(shared_ptr<PushPullIterativeLengthState> state_p, idx_t worker_id_p);
 
-	TaskExecutionResult ExecuteTask(TaskExecutionMode mode) override;
-
-private:
-	void PushPullIterativeLength();
-	void Push(idx_t iteration);
+	//! Parallel phases
+	void PreparePhase();
+	void PushExplore(idx_t iteration);
+	void PushCheck(idx_t iteration);
 	void Pull(idx_t iteration);
+	//! Serial steps, run through worker 0
+	void DecideMode();
 	void ReachDetect() const;
-	idx_t CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next,
-	                  shared_ptr<LocalCSR> &local_csr, idx_t &candidate_vertices) const;
 	void UnReachableSet() const;
-	idx_t CountFrontierVertices(const std::bitset<LANE_LIMIT> *visit, idx_t start_vertex,
-	                            idx_t end_vertex) const;
 	void RecordPhaseTiming(const char *phase, const char *mode, idx_t iteration, idx_t partition_count, idx_t vertices,
 	                       idx_t edges, idx_t candidates, idx_t changed_vertices, double time_ms) const;
-	void TimedBarrier(const char *phase, const char *mode, idx_t iteration);
-
-	idx_t Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next,
-	              const LocalCSR &local_csr);
-
-	idx_t RunExplore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next,
-	                 const LocalCSR &local_csr);
 
 private:
-	ClientContext &context;
-	shared_ptr<PushPullIterativeLengthState> &state;
+	idx_t CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next, shared_ptr<LocalCSR> &local_csr,
+	                  idx_t &candidate_vertices) const;
+	idx_t CountFrontierVertices(const std::bitset<LANE_LIMIT> *visit, idx_t start_vertex, idx_t end_vertex) const;
+	idx_t Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr);
+	idx_t RunExplore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr);
+
+	shared_ptr<PushPullIterativeLengthState> state;
 	idx_t worker_id;
 };
 
