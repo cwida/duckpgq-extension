@@ -147,7 +147,7 @@ Effort in person-days (pd). P1 = must for Round 1, P2 = strongly desired, P3 = i
 | W14 | Remove prototype persistence/eager/triggers (C5) and the per-connection partitioned CSR cache. Done 20 Oct (`a45795db`): -529/+198 lines, 10 prototype tests, 3 benchmark scripts and `docs/CSR_PERSISTENCE.md` removed; without an index every query builds its CSR (`partitioned_csr_build` phase), the cache-only marker form is index-only | index | 2 | P1 | W12 | done |
 | W15 | Index tests (snapshot isolation, concurrent writers, rollback, checkpoint, restart, drop) | index | 3 | P1 | W10–W11 | partly done: `csr_index_snapshot.test`, `csr_index_change_groups.test` (21 Oct: commit groups, restart, fold with id shift), `path_finding_concurrent_queries.test_slow` (22 Oct); concurrent writer + readers exercised by the update-concurrent driver (no mismatches at SF10); restart under load and drop while in use open |
 | W16 | Update workload: LDBC insert streams into harness; mixed sweeps (D2) | eval | 4 | P1 | W12 | done 21-22 Oct (`update-run`, `update-concurrent`, `update-kuzu`); results SF10/SF100 in the progress log; mixed-sweep matrix for the paper still to run on the frozen commit |
-| W17 | End-to-end LDBC IC13/14, BI19/20 in harness for all systems (D3) | eval | 4 | P1 | W5 | open |
+| W17 | End-to-end LDBC IC13/14, BI19/20 in harness for all systems (D3); BI 19/20 double as the predicate-driven multi-source queries of W27 | eval | 4 | P1 | W5 | open, next with W27 |
 | W18 | Neo4j Enterprise trial or parity protocol (D1) | eval | 1 | P1 | — | open |
 | W19 | Systematic ablation + scaling sweeps on frozen commit (D5, D6). Decided 20 Oct: the first sweep is DuckDB-only. Harness modes added 20 Oct: `index_build`, `index_operator`, composites `index` and `index_comparison` (build-per-query operator vs index) in `scripts/pathfinding_benchmark.py`; smoke-tested on the SNB 0.003 sample | eval | 4 (+machine time) | P1 | W1–W6 | first DuckDB-only sweep done 21 Oct (SF1-SF300, 5 repeats; `~/sweep/collected*.md` on the EC2 box); to be rerun on the frozen commit after W7 step 2 and W12 |
 | W20 | Full read-only system comparison rerun on frozen commit | eval | 2 (+machine time) | P1 | W19 | open |
@@ -156,6 +156,7 @@ Effort in person-days (pd). P1 = must for Round 1, P2 = strongly desired, P3 = i
 | W23 | Full draft, figures, internal review, polish | writing | 10 | P1 | W16–W20 | open |
 | W24 | Teseo/Sortledton or GraphBLAS baseline (D4) | eval | 4 | P3 | W16 | open |
 | W25 | WCC table function reads the index snapshot (generality argument, build vs index for a whole-graph algorithm) | op+index | 2 | P3 | W12 | open |
+| W27 | Multi-source and all-pairs comparison (decided 22 Oct). Present query shapes by cardinality (1x1 point lookup, 1xN sssp, Nx1, NxM from a predicate on the source table or a join) rather than by pattern name; sweep the pair count 1, 16, 128, 1024, 2048, 16384, 65536 and all pairs on every system with the same pair tables, at SF10, SF100 and SF300 (decided 22 Oct: no reason to stay at small scale factors; DuckPGQ handled 65536 pairs at SF300 in the 21 Oct pair-count axis, build 74 s / index 52 s at 32 threads). Give every baseline a per-query time budget (e.g. 10 minutes) and report an exceeded budget as such rather than skipping the point, since the per-pair systems grow linearly (at SF10: Neo4j ~0.7 ms, Kuzu ~6 ms, FalkorDB ~8 ms, Memgraph ~39 ms per pair); add a predicate-driven multi-source query (sources selected by an attribute, as in LDBC BI 19/20) so the many-pair case is not a synthetic pair table; run the systems' set-oriented procedures where they exist (Neo4j GDS single-source and all-pairs, Memgraph MAGE) so no baseline is shown on its slow path, and note that those procedures do not compose with a Cypher predicate in the same query; include all-pairs shortest path as the extreme of the sweep (our source-grouped kernel per source vs their per-pair searches). The absence of a batched, set-oriented path-finding operator is a design limitation of the graph databases to be stated as such, with the sweep as evidence | eval | 4 | P1 | W16, W17 | open |
 | W26 | Point-query kernel: single-pair/single-source queries paid ~0.12 s of dense bitset sweeps over 2M vertices regardless of index or build. Done 20 Oct (`b488486e`, `5455ec18`, `43a37a0f`): source-grouped frontier kernel on index snapshots, hybrid sparse/dense expansion with a per-partition source bucket index, MATCH passes the quantifier upper bound into the operator (both kernels stop at the depth bound), a source group stops once all its destinations are found, up to 16 distinct sources always run source-grouped, pairs with a NULL endpoint no longer force the 512-lane batch path (a single source over all 2M vertices went from 288 s to 0.15 s because 1214 isolated vertices made NULL pairs). 8M edges, index, 18 threads: 1 pair 0.01-0.02 s (Kuzu 0.03-0.05), 20 sources 0.13 s (Kuzu 0.07), 1 source x 2M destinations 0.15 s. Remaining gap on few-source queries is per-group array allocation and worker oversubscription (design doc 5.6); revisit only if the evaluation needs it | op | 3 | P1 | W12 | done |
 
 Done on day 1: W1-W6, W8 (draft), W9, W10, W11, most of W12 and W15. Open P1: W7, W12 (cost choice), W15
@@ -399,3 +400,33 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
 - 22 Oct (evening): operator section drafted (`70a5d43a`), 'partitioned CSR' named as the layout. Decision (user):
   reverse CSR, push-pull and bidirectional traversals are low priority; they stay in the code and the ablation only,
   and get paper space only if they become faster than the two main traversals.
+- 22 Oct (evening): Memgraph (memgraph/memgraph:latest, Bolt) and FalkorDB (falkordb/falkordb:latest) added to the
+  update workload (`update-memgraph`, `update-falkordb`, Docker containers on the EC2 box); results identical to
+  DuckDB on every step for both patterns. SF10, 190 commits of 2000 operations, one query per commit, query mean /
+  update batch mean: DuckPGQ index (auto fold) 19 ms / 9 ms, build per query 26 ms / 8 ms, Kuzu 16 ms / 342 ms,
+  Memgraph 41 ms / 26 ms, FalkorDB 9.3 s / 111 ms for sssp (1024 destinations); point_to_point (1024 pairs, 20
+  commits for the graph databases): DuckPGQ 62 / 76 ms, Kuzu 6.5 s (one query per pair), Memgraph 40 s (`*BFS` with a
+  bound target is one BFS per pair), FalkorDB 8.1 s (one `shortestPath` per pair; its single-source query is the same
+  per-destination search, hence 9.3 s). Loads at SF10: Memgraph 6-7 s (LOAD CSV), FalkorDB 85 s (UNWIND batches),
+  Kuzu < 1 s (COPY). None of the three has a batched many-pair or many-destination primitive that shares the search;
+  the comparison for the paper should lead with single-source (the fair fight) and state every Cypher formulation.
+  FalkorDB serializes writes against reads with a per-graph lock (no MVCC), the contrast for the concurrent pass.
+- 22 Oct (night): Neo4j 5.26 Enterprise added (`update-neo4j`; Docker `neo4j:5-enterprise` under the evaluation
+  licence, `NEO4J_ACCEPT_LICENSE_AGREEMENT=yes`, Bolt 7688, 16 GB heap + 16 GB page cache, Cypher `runtime=parallel`).
+  Results identical to DuckDB on every step. SF10, same batches: sssp (1024 destinations) 10.3 s per query (1024
+  `shortestPath` searches), point_to_point (1024 pairs, `UNWIND` + `shortestPath`) 0.76 s, update batch 69 ms, load 21 s
+  via LOAD CSV. The 13x gap between its two shapes with the same per-pair primitive is unexplained (planner or
+  parallel-runtime behaviour with a single source row); try `runtime=pipelined` and GDS before the frozen rerun.
+  Licence: evaluation terms only; publication rights must be settled (W18) before these numbers appear in the paper.
+  Cross-system table (`~/sweep/collect_systems.py 10`): sssp DuckPGQ index 19 ms / build 26 ms / Kuzu 16 ms /
+  Memgraph 41 ms / FalkorDB 9.3 s / Neo4j 10.3 s; point_to_point 62 / 76 ms / 6.5 s / 40 s / 8.1 s / 0.76 s; update
+  batch 9 / 8 / 342 / 26 / 111 / 69 ms.
+- 22 Oct (observations for the paper, decided with the author): the graph databases answer a set of pairs one
+  search at a time, so a predicate on the source table (not a point lookup) or a join turns into N independent
+  searches with no shared work; that is a design limitation to be stated as one, quantified by a source-cardinality
+  sweep (1, 16, 128, 1024, all pairs) rather than by two query types. For a fair comparison run Neo4j GDS and
+  Memgraph MAGE set procedures beside Cypher, and note they do not compose with a predicate in the same query.
+  Next engineering/eval items: W17 (LDBC IC13/14, BI19/20 for all systems) together with W27 (multi-source and
+  all-pairs sweep), then W7 step 2 and W12/W13. Neo4j's 13x gap between its two 1024-search queries is open.
+  Pair-count sweep for W27: 1, 16, 128, 1024, 2048, 16384, 65536, all pairs; scale factors 10, 100, 300; the
+  baselines get a time budget per query and an exceeded budget is reported, not dropped.
