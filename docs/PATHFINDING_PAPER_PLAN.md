@@ -372,3 +372,16 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   point_to_point 1.61 s (was 1.73); index route unchanged (0.031 s / 0.96 s). Regression test
   `path_finding_concurrent_queries.test_slow` (eight connections, index and build route; the deadlock is timing
   dependent and does not reproduce reliably in it, the driver run is the definitive check).
+- 22 Oct (later): overlay rebuild parallelized (counting sort by destination range, ranges sorted and packed in
+  parallel, `9c780af3`): SF10 rebuild after a commit 41-51 -> 32-43 ms; SF100 sssp under updates index 95 ms vs
+  build 131 ms (was 331 vs 132 before the 21-22 Oct work), still 39 -> 159 ms over 1.35M pending operations with one
+  query per commit (the remaining cost is the O(delta) copy and visibility pass; a fold policy belongs to W13).
+  SF10 point_to_point under updates with the event-chain kernels: build 76 / index_auto 62 / nofold 66 ms (was
+  86 / 76 / 82). Kuzu 0.11.3 on the same batches, results identical on every step: sssp 16 ms per query and 342 ms
+  per 2000-op batch (DuckPGQ index 19 ms / 9 ms); point_to_point needs one query per pair (a pair table bound at
+  both ends runs the recursive join over far more than the pairs): 6.3 ms per pair, 6.5 s per 1024 pairs at SF10
+  against 62-76 ms. Kuzu's MATCH ... DELETE in the same transaction as the CREATE did not see the created
+  relationship; the runner commits inserts and deletes separately. lance-graph 0.5.4 checked as a further baseline:
+  Cypher over Lance/DataFusion with variable-length patterns but no shortest-path semantics, no mutation statements
+  found, no wheel for this box (Rust build needed); related work and at most a read-only bounded-reachability
+  comparison (P3).
