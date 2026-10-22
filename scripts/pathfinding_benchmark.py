@@ -3956,6 +3956,286 @@ def run_update_kuzu(args):
     print(f"Wrote {path}")
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Memgraph and FalkorDB: the same update workload over Bolt / the FalkorDB client. Both servers run in Docker
+# (memgraph/memgraph on 7687 with GRAPHDB_EXPORT_ROOT mounted at /import, falkordb/falkordb on 6379).
+# ---------------------------------------------------------------------------------------------------------------------
+
+GRAPHDB_EXPORT_ROOT = DATA_ROOT / "graphdb-export"
+GRAPHDB_MAX_DEPTH = 30
+
+
+def ensure_graphdb_export(scale_factor, pair_tables):
+    """CSV exports of the snapshot, the pair tables (as keys) and the update log for the graph database loaders."""
+    export_dir = GRAPHDB_EXPORT_ROOT / sf_name(scale_factor)
+    export_dir.mkdir(parents=True, exist_ok=True)
+    exports = {
+        "person": "SELECT id FROM person ORDER BY id",
+        "knows": "SELECT person1id, person2id FROM person_knows_person",
+        "ops": f"SELECT seq, op, person1id, person2id FROM {UPDATE_LOG_TABLE} ORDER BY seq",
+    }
+    for table in pair_tables:
+        exports[f"pairs_{table}"] = (f"SELECT row_number() OVER () AS id, a.id AS src, b.id AS dst FROM {table} p "
+                                     f"JOIN person a ON a.rowid = p.src JOIN person b ON b.rowid = p.dst")
+    sql = ""
+    for name, query in exports.items():
+        path = export_dir / f"{name}.csv"
+        if not path.exists():
+            sql += f"COPY ({query}) TO {sql_string(path)} (FORMAT CSV, HEADER);\n"
+    if sql:
+        print(f"Exporting {sf_name(scale_factor)} tables for the graph databases")
+        run_duckdb(BENCH_DUCKDB, db_path(scale_factor), sql, quiet=True)
+    return export_dir
+
+
+def read_update_batches(export_dir, batch_size, batches):
+    """Per batch: the inserts and deletes as lists of (person1id, person2id)."""
+    result = []
+    with (export_dir / "ops.csv").open() as handle:
+        reader = csv.DictReader(handle)
+        current_ins, current_del = [], []
+        for row in reader:
+            seq = int(row["seq"])
+            if seq > batch_size * batches:
+                break
+            (current_ins if row["op"] == "insert" else current_del).append((int(row["person1id"]), int(row["person2id"])))
+            if seq % batch_size == 0:
+                result.append((current_ins, current_del))
+                current_ins, current_del = [], []
+    if len(result) != batches:
+        raise RuntimeError(f"The update log has only {len(result)} batches of {batch_size} operations, {batches} requested")
+    return result
+
+
+def read_pairs(export_dir, pair_table):
+    with (export_dir / f"pairs_{pair_table}.csv").open() as handle:
+        return [(int(r["src"]), int(r["dst"])) for r in csv.DictReader(handle)]
+
+
+class GraphDBSystem:
+    """What a graph database needs to provide for the update workload."""
+
+    name = ""
+
+    def load(self, export_dir, scale_factor):
+        raise NotImplementedError
+
+    def sssp(self, source, destinations):
+        """(reachable_count, total_len) for paths of length >= 1"""
+        raise NotImplementedError
+
+    def point_to_point(self, pairs):
+        raise NotImplementedError
+
+    def apply_batch(self, inserts, deletes):
+        raise NotImplementedError
+
+    def edge_count(self):
+        raise NotImplementedError
+
+    def close(self):
+        pass
+
+
+class MemgraphSystem(GraphDBSystem):
+    name = "memgraph"
+
+    def __init__(self, uri):
+        neo4j = __import__("neo4j")
+        self.driver = neo4j.GraphDatabase.driver(uri, auth=None)
+        self.session = self.driver.session()
+
+    def run(self, query, **params):
+        return self.session.run(query, **params).data()
+
+    def load(self, export_dir, scale_factor):
+        # The export directory is mounted at /import in the container
+        mount = f"/import/{sf_name(scale_factor)}"
+        self.run("STORAGE MODE IN_MEMORY_ANALYTICAL")
+        self.run("MATCH (n) DETACH DELETE n")
+        self.run("CREATE INDEX ON :Person(id)")
+        self.run(f'LOAD CSV FROM "{mount}/person.csv" WITH HEADER AS row CREATE (:Person {{id: ToInteger(row.id)}})')
+        self.run(f'LOAD CSV FROM "{mount}/knows.csv" WITH HEADER AS row '
+                 f"MATCH (a:Person {{id: ToInteger(row.person1id)}}), (b:Person {{id: ToInteger(row.person2id)}}) "
+                 f"CREATE (a)-[:KNOWS]->(b)")
+        self.run("STORAGE MODE IN_MEMORY_TRANSACTIONAL")
+
+    def sssp(self, source, destinations):
+        rows = self.run(f"MATCH (a:Person {{id: $src}}) MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]->(b:Person) "
+                        f"WHERE b.id IN $dsts RETURN count(p) AS c, sum(size(p)) AS s", src=source, dsts=destinations)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def point_to_point(self, pairs):
+        rows = self.run(f"UNWIND $pairs AS pr MATCH (a:Person {{id: pr[0]}}), (b:Person {{id: pr[1]}}) "
+                        f"MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]->(b) RETURN count(p) AS c, sum(size(p)) AS s",
+                        pairs=[list(pair) for pair in pairs if pair[0] != pair[1]])
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def apply_batch(self, inserts, deletes):
+        with self.session.begin_transaction() as tx:
+            if inserts:
+                tx.run("UNWIND $ops AS o MATCH (a:Person {id: o[0]}), (b:Person {id: o[1]}) CREATE (a)-[:KNOWS]->(b)",
+                       ops=[list(op) for op in inserts]).consume()
+            if deletes:
+                tx.run("UNWIND $ops AS o MATCH (a:Person {id: o[0]})-[e:KNOWS]->(b:Person {id: o[1]}) DELETE e",
+                       ops=[list(op) for op in deletes]).consume()
+            tx.commit()
+
+    def edge_count(self):
+        return int(self.run("MATCH ()-[e:KNOWS]->() RETURN count(e) AS c")[0]["c"])
+
+    def close(self):
+        self.session.close()
+        self.driver.close()
+
+
+class FalkorDBSystem(GraphDBSystem):
+    name = "falkordb"
+
+    def __init__(self, host, port, graph_name):
+        falkordb = __import__("falkordb")
+        self.db = falkordb.FalkorDB(host=host, port=port)
+        self.graph_name = graph_name
+        self.graph = self.db.select_graph(graph_name)
+
+    def query(self, text, params=None):
+        # The client applies a default timeout that a 1024-destination query exceeds; the server has none
+        return self.graph.query(text, params or {}, timeout=3600000).result_set
+
+    def load(self, export_dir, scale_factor):
+        try:
+            self.graph.delete()
+        except Exception:
+            pass
+        self.graph = self.db.select_graph(self.graph_name)
+        self.query("CREATE INDEX FOR (p:Person) ON (p.id)")
+        with (export_dir / "person.csv").open() as handle:
+            ids = [int(r["id"]) for r in csv.DictReader(handle)]
+        for i in range(0, len(ids), 50000):
+            self.query("UNWIND $rows AS r CREATE (:Person {id: r})", {"rows": ids[i:i + 50000]})
+        with (export_dir / "knows.csv").open() as handle:
+            edges = [[int(r["person1id"]), int(r["person2id"])] for r in csv.DictReader(handle)]
+        for i in range(0, len(edges), 20000):
+            self.query("UNWIND $rows AS r MATCH (a:Person {id: r[0]}), (b:Person {id: r[1]}) CREATE (a)-[:KNOWS]->(b)",
+                       {"rows": edges[i:i + 20000]})
+
+    def sssp(self, source, destinations):
+        # FalkorDB only allows shortestPath in WITH or RETURN; count(p) counts the non-NULL paths
+        rows = self.query(f"MATCH (a:Person {{id: $src}}), (b:Person) WHERE b.id IN $dsts "
+                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          {"src": source, "dsts": destinations})
+        return int(rows[0][0]), int(rows[0][1] or 0)
+
+    def point_to_point(self, pairs):
+        rows = self.query(f"UNWIND $pairs AS pr MATCH (a:Person {{id: pr[0]}}), (b:Person {{id: pr[1]}}) "
+                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          {"pairs": [list(pair) for pair in pairs if pair[0] != pair[1]]})
+        return int(rows[0][0]), int(rows[0][1] or 0)
+
+    def apply_batch(self, inserts, deletes):
+        # One query is one transaction in FalkorDB; inserts first, then deletes (a delete may hit an insert of
+        # the same batch)
+        if inserts:
+            self.query("UNWIND $ops AS o MATCH (a:Person {id: o[0]}), (b:Person {id: o[1]}) CREATE (a)-[:KNOWS]->(b)",
+                       {"ops": [list(op) for op in inserts]})
+        if deletes:
+            self.query("UNWIND $ops AS o MATCH (a:Person {id: o[0]})-[e:KNOWS]->(b:Person {id: o[1]}) DELETE e",
+                       {"ops": [list(op) for op in deletes]})
+
+    def edge_count(self):
+        return int(self.query("MATCH ()-[e:KNOWS]->() RETURN count(e)")[0][0])
+
+
+def run_update_graphdb(args, system):
+    ensure_update_log(args.scale_factor)
+    pair_shape = generated_pair_shape(args.query_pattern, "random")
+    pair_table = pair_table_name(args.pairs, pair_shape)
+    all_pair_tables = [pair_table_name(args.pairs, "random"), pair_table_name(args.pairs, "same_src")]
+    ensure_pair_table(args.scale_factor, args.pairs, "random")
+    ensure_pair_table(args.scale_factor, args.pairs, "same_src")
+    batch_rows = update_batch_edge_counts(args.scale_factor, args.batch_size, args.batches)
+    export_dir = ensure_graphdb_export(args.scale_factor, all_pair_tables)
+    pairs = read_pairs(export_dir, pair_table)
+    self_pairs = sum(1 for src, dst in pairs if src == dst)
+    batches = read_update_batches(export_dir, args.batch_size, args.batches)
+    print(f"Loading {sf_name(args.scale_factor)} into {system.name}")
+    started = time.perf_counter()
+    system.load(export_dir, args.scale_factor)
+    load_s = time.perf_counter() - started
+    edges = system.edge_count()
+    snapshot_edges = int(batch_rows[0]["edges"]) - int(batch_rows[0]["ins"]) + int(batch_rows[0]["del"])
+    print(f"Loaded {edges} edges in {load_s:.1f}s (expected {snapshot_edges})")
+    if edges != snapshot_edges:
+        raise RuntimeError(f"{system.name} loaded {edges} edges, {snapshot_edges} expected")
+    source = pairs[0][0]
+    destinations = [dst for _, dst in pairs]
+    rows = []
+    updates = {}
+    started = time.perf_counter()
+    for step in range(0, args.batches + 1):
+        for _ in range(args.queries_per_batch):
+            t0 = time.perf_counter()
+            if args.query_pattern == "sssp":
+                reachable, total = system.sssp(source, destinations)
+            else:
+                reachable, total = system.point_to_point(pairs)
+            elapsed = time.perf_counter() - t0
+            rows.append({
+                "config": system.name, "step": step, "query_s": f"{elapsed:.6f}", "update_s": "",
+                "batch_inserts": batch_rows[step - 1]["ins"] if step else "",
+                "batch_deletes": batch_rows[step - 1]["del"] if step else "",
+                "edges": batch_rows[step - 1]["edges"] if step else "", "pair_count": args.pairs,
+                "reachable_count": reachable + self_pairs, "total_len": total,
+            })
+        if step == args.batches:
+            break
+        inserts, deletes = batches[step]
+        t0 = time.perf_counter()
+        system.apply_batch(inserts, deletes)
+        updates[step + 1] = time.perf_counter() - t0
+        if args.check_counts:
+            actual = system.edge_count()
+            if str(actual) != str(batch_rows[step]["edges"]):
+                print(f"WARNING step {step + 1}: {system.name} has {actual} edges, {batch_rows[step]['edges']} expected")
+    wall = time.perf_counter() - started
+    final_edges = system.edge_count()
+    system.close()
+    for row in rows:
+        if row["step"] in updates:
+            row["update_s"] = f"{updates[row['step']]:.6f}"
+    if str(final_edges) != str(batch_rows[-1]["edges"]):
+        print(f"WARNING: {system.name} has {final_edges} edges after the run, {batch_rows[-1]['edges']} expected")
+    metadata = {"scale_factor": args.scale_factor, "threads": args.threads, "query_pattern": args.query_pattern,
+                "batch_size": args.batch_size, "batches": args.batches, "queries_per_batch": args.queries_per_batch,
+                "load_s": f"{load_s:.3f}", "benchmark_notes": args.notes,
+                "repo_commit": subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True,
+                                              capture_output=True).stdout.strip()}
+    for row in rows:
+        row.update(metadata)
+    results_dir = DATA_ROOT / "results" / sf_name(args.scale_factor)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    path = results_dir / (f"update_{system.name}_{args.query_pattern}_pairs{args.pairs}_threads{args.threads}"
+                          f"_batch{args.batch_size}x{args.batches}_{time.time_ns()}.csv")
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    queries = [float(r["query_s"]) for r in rows]
+    upd = list(updates.values())
+    print(f"== {system.name}: query mean {statistics.mean(queries):.4f}s (min {min(queries):.4f}, max {max(queries):.4f}), "
+          f"update mean {statistics.mean(upd):.4f}s, load {load_s:.1f}s, wall {wall:.1f}s, final reachable "
+          f"{rows[-1]['reachable_count']} total {rows[-1]['total_len']}")
+    print(f"Wrote {path}")
+
+
+def run_update_memgraph(args):
+    run_update_graphdb(args, MemgraphSystem(args.uri))
+
+
+def run_update_falkordb(args):
+    run_update_graphdb(args, FalkorDBSystem(args.host, args.port, f"pf_{sf_name(args.scale_factor)}"))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Prepare and smoke-run pathfinding benchmarks on LDBC Person knows Person data.")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -4292,6 +4572,24 @@ def main():
     kuzu_parser.add_argument("--force-load", action="store_true")
     kuzu_parser.add_argument("--notes", default="")
     kuzu_parser.set_defaults(func=run_update_kuzu)
+
+    for name, func in (("update-memgraph", run_update_memgraph), ("update-falkordb", run_update_falkordb)):
+        gp = subcommands.add_parser(name, help=f"The update workload on {name.split('-')[1]} (sequential, Docker server)")
+        gp.add_argument("--scale-factor", required=True)
+        gp.add_argument("--threads", type=int, default=os.cpu_count(), help="recorded only; the server's own setting applies")
+        gp.add_argument("--query-pattern", choices=["point_to_point", "sssp"], default="sssp")
+        gp.add_argument("--pairs", type=int, default=1024)
+        gp.add_argument("--batch-size", type=int, default=1000)
+        gp.add_argument("--batches", type=int, default=50)
+        gp.add_argument("--queries-per-batch", type=int, default=1)
+        gp.add_argument("--check-counts", action="store_true", help="verify the edge count after every batch")
+        gp.add_argument("--notes", default="")
+        if name == "update-memgraph":
+            gp.add_argument("--uri", default="bolt://localhost:7687")
+        else:
+            gp.add_argument("--host", default="localhost")
+            gp.add_argument("--port", type=int, default=6379)
+        gp.set_defaults(func=func)
 
     args = parser.parse_args()
     args.func(args)
