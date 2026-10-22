@@ -18,9 +18,10 @@ provisional until the frozen-commit rerun. "SF" = LDBC SNB scale factor, knows g
 
 ## Operator section (already drafted; add)
 
-- Deadlock evidence: 4 readers at 32 threads, 164 threads in futex wait; DuckDB has no gang scheduling, so barrier
-  groups of concurrent queries exceeding the thread count cannot all be running at once. Phased events fixed it;
-  concurrent driver runs 4/8/16 readers at 32 workers per query clean (78/87/90 iterations per second).
+- Per-phase events (author's decision 22 Oct: the barrier deadlock that motivated them is an implementation detail
+  and stays out of the paper). State the design positively: no task waits for a task, the operator shares the fixed
+  thread pool like DuckDB's own operators; concurrent driver runs 4/8/16 readers at 32 workers per query
+  (78/87/90 iterations per second).
 - Phased events also sped up the build route at SF300, 32 threads, warm: sssp 0.39 -> 0.30 s, point-to-point
   1.73 -> 1.61 s; the index route unchanged (0.031 s / 0.96 s).
 - Scaling over the index: warm sssp 87 -> 27 ms from 1 to 16 threads, flat after; warm single pair ~0.1 s at every

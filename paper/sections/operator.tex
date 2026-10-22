@@ -107,30 +107,23 @@ took a single pair from 0.11\,s to 0.01\,s and twenty sources with 200 destinati
 for identical answers.
 
 \paragraph{Pairs with unknown endpoints.} A pair whose source or destination has no edges, or whose key is absent
-from the index, has no path, and the operator answers \texttt{NULL} for it without searching. This matters more than
-it sounds: an early version fell back from the single-source traversal to 196 full multi-source batches as soon as
-one such pair appeared in a single-source query over two million destinations, and took 288\,s instead of 0.15\,s.
+from the index, has no path, and the operator answers \texttt{NULL} for it without searching and without changing
+the traversal chosen for the other pairs of the query.
 
-\subsection{Parallelism without barriers}
+\subsection{Parallelism as a chain of events}
 \label{sec:phases}
 
 A BFS level is a parallel sweep followed by a serial decision: which vertices were reached, whether any lane is
-still alive, whether the depth bound is hit. The obvious implementation gives every worker a task for the whole
-traversal and synchronizes them with a barrier at the end of each level, and that is how the operator started. It
-deadlocks under concurrent queries. \duckdb schedules tasks from a fixed pool of threads; when four queries each
-schedule 32 tasks that wait at a barrier for 32 peers, the pool fills with tasks that wait for peers the scheduler
-never gets to run. With four concurrent single-source queries on 32 threads we observed 164 threads in a futex wait
-and no progress.
-
-The operator now runs every traversal, and the CSR build, as a \emph{chain of per-phase events}. A phase is a set of
-tasks that run independently and finish; when the last one finishes, the event's completion callback runs the serial
-step once and inserts the event of the next phase. No task waits for any other task, so the scheduler may interleave
-the tasks of concurrent queries freely, abort cleanly on an error or an interrupt, and run as many queries at once
-as there are tasks. The same abstraction covers the multi-source traversal (one event per level and batch), the
-single-source traversal (one event per level and source group), and the three build phases (partition, sort and
-emit, publish). The cost is one event per level, which is microseconds; the concurrent-reader experiment of
-Section~\ref{sec:eval} runs 16 readers against one writer at 32 workers per query with no coordination beyond the
-engine's scheduler.
+still alive, whether the depth bound is hit. The operator runs every traversal, and the CSR build, as a \emph{chain
+of per-phase events}. A phase is a set of tasks that run independently and finish; when the last one finishes, the
+event's completion callback runs the serial step once and inserts the event of the next phase. No task ever waits
+for another task. This is the shape \duckdb's own operators have, and it is what lets the operator share the engine's
+fixed thread pool with other queries: the scheduler may interleave the tasks of concurrent queries freely, the
+operator aborts cleanly on an error or an interrupt, and as many queries run at once as there are tasks. The same
+abstraction covers the multi-source traversal (one event per level and batch), the single-source traversal (one event
+per level and source group), and the three build phases (partition, sort and emit, publish). The cost is one event
+per level, which is microseconds; the concurrent-reader experiment of Section~\ref{sec:eval} runs 16 readers against
+one writer at 32 workers per query with no coordination beyond the engine's scheduler.
 
 \subsection{Paths}
 \label{sec:paths}
