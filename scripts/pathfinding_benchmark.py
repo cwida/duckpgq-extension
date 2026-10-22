@@ -4453,13 +4453,21 @@ class DuckPGQSystem(GraphDBSystem):
         return self.edge_count_value
 
     def script(self, pair_table, warm):
-        key_pairs = (f"CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS SELECT a.id::BIGINT AS src, b.id::BIGINT AS dst "
-                     f"FROM ldbc.{pair_table} p JOIN ldbc.person a ON a.rowid = p.src JOIN ldbc.person b ON b.rowid = p.dst;")
+        multi = pair_table.startswith(multi_source_table_name(""))
+        if multi:
+            # sources (row ids) x every person, streamed
+            rowid_pairs = f"(SELECT s.src AS src, d.rowid::BIGINT AS dst FROM ldbc.{pair_table} s, ldbc.person d)"
+            key_pairs = (f"CREATE OR REPLACE TEMP VIEW pathfinding_index_pairs AS SELECT a.id::BIGINT AS src, d.id::BIGINT AS dst "
+                         f"FROM ldbc.{pair_table} s JOIN ldbc.person a ON a.rowid = s.src, ldbc.person d;")
+        else:
+            rowid_pairs = f"ldbc.{pair_table}"
+            key_pairs = (f"CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS SELECT a.id::BIGINT AS src, b.id::BIGINT AS dst "
+                         f"FROM ldbc.{pair_table} p JOIN ldbc.person a ON a.rowid = p.src JOIN ldbc.person b ON b.rowid = p.dst;")
         if self.route == "build":
             query = f"""SELECT count(len), coalesce(sum(len), 0) FROM (
     SELECT iterativelengthoperator(src, dst, struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
         {self.vertex_count}::BIGINT, {self.edge_count_value}::BIGINT, 'graph:sweep') AS len
-    FROM ldbc.{pair_table},
+    FROM {rowid_pairs},
         (SELECT a.rowid::BIGINT AS pathfinding_edge_src, c.rowid::BIGINT AS pathfinding_edge_dst
          FROM ldbc.person_knows_person k JOIN ldbc.person a ON a.id = k.person1id JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges);"""
             prelude = ""
@@ -4503,12 +4511,13 @@ def multi_source_table_name(source_count):
 
 
 def ensure_multi_source_table(scale_factor, source_count):
-    """source_count sampled persons x every person, as row-id pairs (the operator's input)"""
+    """source_count sampled persons as row ids (src = dst); the sources x all persons product is never materialised,
+    the queries stream it from a cross join (1024 x 1.2M persons at SF300)"""
     table = multi_source_table_name(source_count)
     sql = f"""
 CREATE TABLE IF NOT EXISTS {table} AS
-SELECT s.rowid::BIGINT AS src, d.rowid::BIGINT AS dst
-FROM (SELECT rowid FROM person ORDER BY hash(id + 7) LIMIT {source_count}) s, person d;
+SELECT s.rowid::BIGINT AS src, s.rowid::BIGINT AS dst
+FROM (SELECT rowid FROM person ORDER BY hash(id + 7) LIMIT {source_count}) s;
 """
     run_duckdb(BENCH_DUCKDB, db_path(scale_factor), sql, quiet=True)
     return table
@@ -4548,6 +4557,7 @@ def run_with_budget(system, fn, budget_s):
 
 def sweep_pairs(args):
     """Pair-count and source-count sweep over DuckPGQ and the graph databases, with a per-query budget."""
+    sys.stdout.reconfigure(line_buffering=True)
     scale_factor = args.scale_factor
     ensure_update_log(scale_factor)
     pair_tables = [pair_table_name(n, "random") for n in args.pair_counts]
