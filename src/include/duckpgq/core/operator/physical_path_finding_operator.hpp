@@ -170,6 +170,8 @@ public:
 	vector<shared_ptr<SourceGroupedIterativeLengthState>> source_group_states;
 	vector<std::pair<idx_t, idx_t>> source_group_output_refs;
 	vector<int64_t> source_group_sources;
+	//! Pair rows per source group, to size each group's destination set
+	vector<idx_t> source_group_row_counts;
 	vector<vector<shared_ptr<DataChunk>>> source_group_output_chunks;
 	vector<vector<idx_t>> source_group_output_states;
 	vector<shared_ptr<DataChunk>> global_output_batches;

@@ -448,3 +448,24 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   index 17.9 s (the index route is slower on the all-destinations shape; key translation and the person join on the
   pair side, to be looked at). Kuzu 65536 random pairs 325 s (5 ms/pair), Memgraph 39 ms/pair (16384 pairs will
   exceed the 600 s budget).
+- 22 Oct (night): SF10 sweep complete (`sweep_pairs_sf10_threads32_1792681084488488018.csv`, all 11 points agree
+  across six systems). Random pairs, 32 threads: 65536 pairs DuckPGQ index 2.6 s / build 3.0 s, Neo4j 11.7 s
+  (parallel runtime, UNWIND), Kuzu 330 s, FalkorDB 360 s, Memgraph exceeds the 600 s budget from 16384 pairs
+  (40 ms per pair); at 1 pair DuckPGQ build 23 ms / index 4 ms, Kuzu 11 ms, Memgraph 41 ms, FalkorDB 17 ms,
+  Neo4j 70 ms. Sources x all persons (1024 sources, 22.5M reachable pairs): Kuzu 4.0 s (one recursive join per
+  source), Memgraph 38 s (one `*BFS` per source), DuckPGQ build 13.6 s / index 17.8 s, Neo4j and FalkorDB exceed
+  the budget from 128 and 16 sources (one shortestPath per pair). The DuckPGQ number was investigated the same
+  night: the 1024-source query ran at 1 thread in 14.1 s and at 32 threads in 12.2 s, i.e. serially. Three serial
+  parts: (1) every source group was a 29-worker BFS with an event per level (65 ms CPU per traversal, 17%
+  utilisation); now groups scheduled together divide the threads, and a single-worker group runs its whole search
+  in one task (traversal CPU 66 -> 17 s); (2) the scheduler registered 70M destinations into per-group
+  `unordered_set`s (3.5 s); groups that target more than 1/64 of the vertices now use a bitmap; (3) Finalize copied
+  and analysed the 70M-row pair list in three serial passes (3.5 s); one pass was dead (the endpoint-pair phase
+  recomputed statistics the main phase recomputes), the main pass now materialises the chunks with a parallel
+  scan and merges per-thread statistics (HLL merge), and the per-group state allocation runs in parallel. Result
+  (SF10, 32 threads, same answers): 1024 sources x all 13.8 -> 4.4 s (Kuzu 4.0), 128 sources 1.73 -> 0.59 s
+  (Kuzu 0.63), 16 sources 0.245 -> 0.096 s (Kuzu 0.10), 1024 random pairs with paths 1.34 -> 0.54 s; single
+  source and random-pair lengths unchanged. What remains on the sources x all shape is the pair-list interface
+  itself: the cross product is sunk (0.9 s for 70M rows), grouped (0.5 s serial), scattered (0.75 s); a
+  destination-free "all vertices" form of the operator would skip it, noted as future work. SF10 DuckPGQ points
+  are rerun on this build before the SF100/SF300 sweeps.

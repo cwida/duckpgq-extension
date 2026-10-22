@@ -175,7 +175,7 @@ WHERE Phase = 'partitioned_csr_build';
 query I
 SELECT count(*) >= 2
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
-WHERE Phase = 'pair_analysis_precompute'
+WHERE Phase = 'pair_analysis'
   AND PairCount = 5;
 ----
 true
