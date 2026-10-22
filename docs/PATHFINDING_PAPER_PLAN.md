@@ -385,3 +385,14 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   Cypher over Lance/DataFusion with variable-length patterns but no shortest-path semantics, no mutation statements
   found, no wheel for this box (Rust build needed); related work and at most a read-only bounded-reachability
   comparison (P3).
+- 22 Oct (evening): Memgraph (memgraph/memgraph:latest, Bolt) and FalkorDB (falkordb/falkordb:latest) added to the
+  update workload (`update-memgraph`, `update-falkordb`, Docker containers on the EC2 box); results identical to
+  DuckDB on every step for both patterns. SF10, 190 commits of 2000 operations, one query per commit, query mean /
+  update batch mean: DuckPGQ index (auto fold) 19 ms / 9 ms, build per query 26 ms / 8 ms, Kuzu 16 ms / 342 ms,
+  Memgraph 41 ms / 26 ms, FalkorDB 9.3 s / 111 ms for sssp (1024 destinations); point_to_point (1024 pairs, 20
+  commits for the graph databases): DuckPGQ 62 / 76 ms, Kuzu 6.5 s (one query per pair), Memgraph 40 s (`*BFS` with a
+  bound target is one BFS per pair), FalkorDB 8.1 s (one `shortestPath` per pair; its single-source query is the same
+  per-destination search, hence 9.3 s). Loads at SF10: Memgraph 6-7 s (LOAD CSV), FalkorDB 85 s (UNWIND batches),
+  Kuzu < 1 s (COPY). None of the three has a batched many-pair or many-destination primitive that shares the search;
+  the comparison for the paper should lead with single-source (the fair fight) and state every Cypher formulation.
+  FalkorDB serializes writes against reads with a per-graph lock (no MVCC), the contrast for the concurrent pass.
