@@ -1207,15 +1207,41 @@ struct EndpointBuildEntry {
 	uint16_t local_dst;
 };
 
+//! Endpoint with its edge-table row id, used when the query returns paths
+struct EndpointBuildEntryWithRow {
+	uint32_t src;
+	uint16_t local_dst;
+	row_t row;
+};
+
+static inline EndpointBuildEntry MakeEndpointEntry(uint32_t src, uint16_t local_dst, row_t, EndpointBuildEntry *) {
+	return {src, local_dst};
+}
+
+static inline EndpointBuildEntryWithRow MakeEndpointEntry(uint32_t src, uint16_t local_dst, row_t row,
+                                                          EndpointBuildEntryWithRow *) {
+	return {src, local_dst, row};
+}
+
+static inline void StoreEntryRow(vector<row_t> &, idx_t, const EndpointBuildEntry &) {
+}
+
+static inline void StoreEntryRow(vector<row_t> &rows, idx_t position, const EndpointBuildEntryWithRow &entry) {
+	rows[position] = entry.row;
+}
+
 //! Builds one destination-range partition from its radix-partitioned endpoints: one scan into an edge array,
 //! a radix sort by source in cache, and the sparse rows emitted in one sweep. No per-vertex counter array.
-static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, idx_t partition_idx) {
+//! With row tracking the entries carry the edge row ids and the partition keeps them per edge position.
+template <class ENTRY>
+static idx_t BuildCSRFromEndpointPartitionEntries(PathFindingGlobalSinkState &gstate, idx_t partition_idx) {
 	auto &endpoint_partitions = gstate.endpoint_partition_data->GetPartitions();
 	auto &endpoint_partition = endpoint_partitions[partition_idx];
 	auto start_vertex = partition_idx * gstate.endpoint_partition_width;
 	auto end_vertex = std::min(start_vertex + gstate.endpoint_partition_width, gstate.vertex_count + 2);
+	bool with_rows = gstate.track_edge_rows;
 
-	vector<EndpointBuildEntry> edges;
+	vector<ENTRY> edges;
 	if (endpoint_partition) {
 		edges.reserve(endpoint_partition->Count());
 		ColumnDataScanState scan;
@@ -1226,8 +1252,14 @@ static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, i
 			UnifiedVectorFormat endpoint_format;
 			input.data[0].ToUnifiedFormat(endpoint_format);
 			auto endpoint_data = UnifiedVectorFormat::GetData<hash_t>(endpoint_format);
-			for (idx_t row = 0; row < input.size(); row++) {
-				auto endpoint = endpoint_data[endpoint_format.sel->get_index(row)];
+			UnifiedVectorFormat row_format;
+			const int64_t *row_data = nullptr;
+			if (with_rows) {
+				input.data[1].ToUnifiedFormat(row_format);
+				row_data = UnifiedVectorFormat::GetData<int64_t>(row_format);
+			}
+			for (idx_t row_idx = 0; row_idx < input.size(); row_idx++) {
+				auto endpoint = endpoint_data[endpoint_format.sel->get_index(row_idx)];
 				auto source = UnpackPartitionedEndpointSource(endpoint, gstate.endpoint_radix_bits);
 				auto local_destination = endpoint & UINT16_MAX;
 				if (static_cast<idx_t>(source) >= gstate.vertex_count ||
@@ -1236,21 +1268,37 @@ static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, i
 					throw InternalException(
 					    "Packed partitioned endpoint does not match its source or destination partition");
 				}
-				edges.push_back({source, NumericCast<uint16_t>(local_destination)});
+				row_t row = with_rows ? row_data[row_format.sel->get_index(row_idx)] : 0;
+				edges.push_back(MakeEndpointEntry(source, NumericCast<uint16_t>(local_destination), row,
+				                                  static_cast<ENTRY *>(nullptr)));
 			}
 		}
 	}
 	auto endpoint_count = edges.size();
 	SampleCSRBuildMemory(gstate);
 
-	vector<EndpointBuildEntry> scratch;
+	vector<ENTRY> scratch;
 	vector<idx_t> histogram;
 	CSRRadixSortBySource(edges, scratch, histogram, CSRSourceBits(gstate.vertex_count));
-	gstate.endpoint_partition_csrs[partition_idx] = CSREmitSparsePartition(
-	    start_vertex, end_vertex, gstate.vertex_count, edges, [](idx_t, const EndpointBuildEntry &) {});
+	vector<row_t> rows(with_rows ? edges.size() : 0);
+	auto partition =
+	    CSREmitSparsePartition(start_vertex, end_vertex, gstate.vertex_count, edges,
+	                           [&](idx_t position, const ENTRY &entry) { StoreEntryRow(rows, position, entry); });
+	if (with_rows) {
+		partition->owned_row_ids = std::move(rows);
+		partition->row_ids = partition->owned_row_ids.data();
+	}
+	gstate.endpoint_partition_csrs[partition_idx] = std::move(partition);
 	endpoint_partition.reset();
 	SampleCSRBuildMemory(gstate);
 	return endpoint_count;
+}
+
+static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, idx_t partition_idx) {
+	if (gstate.track_edge_rows) {
+		return BuildCSRFromEndpointPartitionEntries<EndpointBuildEntryWithRow>(gstate, partition_idx);
+	}
+	return BuildCSRFromEndpointPartitionEntries<EndpointBuildEntry>(gstate, partition_idx);
 }
 
 class PartitionedEndpointBuildTask : public ExecutorTask {
@@ -1924,8 +1972,12 @@ void PathFindingLocalSinkState::SinkBufferedEndpoints(PathFindingGlobalSinkState
 	if (input.size() == 0) {
 		return;
 	}
-	if (input.data.size() != 2) {
+	if (input.data.size() != 2 && input.data.size() != 3) {
 		throw InternalException("Partitioned endpoint input expected src and dst columns");
+	}
+	if (gstate.track_edge_rows && input.data.size() != 3) {
+		throw InvalidInputException("shortestpathoperator over an endpoint input needs the edge row id: "
+		                            "struct_pack(src := ..., dst := ..., id := <edge rowid>)");
 	}
 	if (!gstate.endpoint_build_started) {
 		lock_guard<mutex> initialize_lock(gstate.endpoint_init_lock);
@@ -1938,23 +1990,41 @@ void PathFindingLocalSinkState::SinkBufferedEndpoints(PathFindingGlobalSinkState
 		local_endpoint_partition_data = gstate.endpoint_partition_data->CreateShared();
 		endpoint_partition_append_state = make_uniq<PartitionedColumnDataAppendState>();
 		local_endpoint_partition_data->InitializeAppendState(*endpoint_partition_append_state);
-		endpoint_partition_chunk.Initialize(context, {LogicalType::HASH});
+		vector<LogicalType> endpoint_types {LogicalType::HASH};
+		if (gstate.track_edge_rows) {
+			endpoint_types.push_back(LogicalType::BIGINT);
+		}
+		endpoint_partition_chunk.Initialize(context, endpoint_types);
 	}
 
 	UnifiedVectorFormat src_format;
 	UnifiedVectorFormat dst_format;
+	UnifiedVectorFormat id_format;
 	input.data[0].ToUnifiedFormat(src_format);
 	input.data[1].ToUnifiedFormat(dst_format);
 	auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
 	auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
+	const int64_t *id_data = nullptr;
+	if (gstate.track_edge_rows) {
+		input.data[2].ToUnifiedFormat(id_format);
+		id_data = UnifiedVectorFormat::GetData<int64_t>(id_format);
+	}
 	endpoint_partition_chunk.Reset();
 	endpoint_partition_chunk.SetChildCardinality(input.size());
 	auto output_endpoint = FlatVector::Writer<hash_t>(endpoint_partition_chunk.data[0], input.size());
+	auto output_rows = gstate.track_edge_rows ? FlatVector::GetDataMutable<int64_t>(endpoint_partition_chunk.data[1]) : nullptr;
 	for (idx_t row = 0; row < input.size(); row++) {
 		auto src_idx = src_format.sel->get_index(row);
 		auto dst_idx = dst_format.sel->get_index(row);
 		if (!src_format.validity.RowIsValid(src_idx) || !dst_format.validity.RowIsValid(dst_idx)) {
 			throw ConstraintException("Path-finding graph endpoints cannot be NULL");
+		}
+		if (output_rows) {
+			auto id_idx = id_format.sel->get_index(row);
+			if (!id_format.validity.RowIsValid(id_idx)) {
+				throw ConstraintException("Path-finding edge row ids cannot be NULL");
+			}
+			output_rows[row] = id_data[id_idx];
 		}
 		auto src = src_data[src_idx];
 		auto dst = dst_data[dst_idx];
@@ -2045,13 +2115,21 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 	}
 	auto &scheduler = TaskScheduler::GetScheduler(context);
 	num_threads = scheduler.NumberOfThreads();
+	mode = op.mode;
+	path_finding_mode = ParsePathFindingOperatorMode(mode);
+	// Paths report edges by row id, so the endpoint input of a path query carries them through the build
+	track_edge_rows = buffered_edge_input && path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH;
 	if (buffered_edge_input) {
 		endpoint_radix_bits = GetBufferedPartitionedCSRRadixBits(vertex_count, num_threads, context);
 		endpoint_partition_width = GetBufferedPartitionedCSRWidth(vertex_count, num_threads, context);
 		endpoint_logical_partition_count =
 		    GetBufferedPartitionedCSRLogicalPartitionCount(vertex_count, num_threads, context);
-		endpoint_partition_data = make_uniq<RadixPartitionedColumnData>(
-		    context, vector<LogicalType> {LogicalType::HASH}, endpoint_radix_bits, 0);
+		vector<LogicalType> endpoint_types {LogicalType::HASH};
+		if (track_edge_rows) {
+			endpoint_types.push_back(LogicalType::BIGINT);
+		}
+		endpoint_partition_data =
+		    make_uniq<RadixPartitionedColumnData>(context, std::move(endpoint_types), endpoint_radix_bits, 0);
 		// Ensure that an empty graph also has all destination partitions.
 		auto empty_partitions = endpoint_partition_data->CreateShared();
 		endpoint_partition_data->Combine(*empty_partitions);

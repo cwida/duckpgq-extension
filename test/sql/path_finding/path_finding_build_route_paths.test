@@ -1,0 +1,84 @@
+# name: test/sql/path_finding/path_finding_build_route_paths.test
+# description: element_id, vertices, edges and path_length of a shortest path are produced by the operator on the build-per-query route (no CSR index); edges are reported by row id
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+# Vertex keys equal row ids so the operator result (row ids on this route) can be read as keys.
+statement ok
+CREATE TABLE pv(id BIGINT);
+
+statement ok
+INSERT INTO pv VALUES (0), (1), (2), (3), (4), (5), (6);
+
+statement ok
+CREATE TABLE pe(src BIGINT, dst BIGINT);
+
+# Row ids 0..5. 0->3 has a two-hop path via 4 (edges 3 and 4) and a three-hop path via 1 and 2.
+statement ok
+INSERT INTO pe VALUES (0, 1), (1, 2), (2, 3), (0, 4), (4, 3), (3, 5);
+
+statement ok
+CREATE PROPERTY GRAPH path_graph
+VERTEX TABLES (pv LABEL PV)
+EDGE TABLES (pe SOURCE KEY (src) REFERENCES pv (id) DESTINATION KEY (dst) REFERENCES pv (id) LABEL PE);
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+query IIIII
+SELECT dst, path, vs, es, len FROM GRAPH_TABLE (path_graph
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,4}(b:PV WHERE b.id IN (3, 5, 6))
+    COLUMNS (b.id AS dst, element_id(p) AS path, vertices(p) AS vs, edges(p) AS es, path_length(p) AS len))
+ORDER BY dst;
+----
+3	[0, 3, 4, 4, 3]	[0, 4, 3]	[3, 4]	2
+5	[0, 3, 4, 4, 3, 5, 5]	[0, 4, 3, 5]	[3, 4, 5]	3
+
+query I
+SELECT s LIKE '%mode=shortestpath%' AND s LIKE '%csr=built%' AND s LIKE '%scheduling=source_grouped%'
+FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# The quantifier bounds the search: three hops are no longer accepted.
+query II
+SELECT dst, path FROM GRAPH_TABLE (path_graph
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,2}(b:PV WHERE b.id IN (3, 5))
+    COLUMNS (b.id AS dst, element_id(p) AS path))
+ORDER BY dst;
+----
+3	[0, 3, 4, 4, 3]
+
+# Undirected: 5 reaches 0 and 1 against the edge directions (edges 5, 4, 3 and edges 5, 2, 1).
+query III
+SELECT dst, path, len FROM GRAPH_TABLE (path_graph
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 5)-[e:PE]-{1,4}(b:PV WHERE b.id IN (0, 1))
+    COLUMNS (b.id AS dst, element_id(p) AS path, path_length(p) AS len))
+ORDER BY dst;
+----
+0	[5, 5, 3, 4, 4, 3, 0]	3
+1	[5, 5, 3, 2, 2, 1, 1]	3
+
+# Several sources, one search per source; the path of a pair that cannot be reached is NULL and filtered.
+query III
+SELECT src, dst, path FROM GRAPH_TABLE (path_graph
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 6))-[e:PE]->{1,4}(b:PV WHERE b.id IN (3, 5))
+    COLUMNS (a.id AS src, b.id AS dst, element_id(p) AS path))
+ORDER BY src, dst;
+----
+0	3	[0, 3, 4, 4, 3]
+0	5	[0, 3, 4, 4, 3, 5, 5]
+1	3	[1, 1, 2, 2, 3]
+1	5	[1, 1, 2, 2, 3, 5, 5]
+
+# The marker function itself with the edge row id in the endpoint struct.
+query III
+SELECT src, dst, shortestpathoperator(src, dst, struct_pack(src := es, dst := ed, id := eid), 7::BIGINT, 6::BIGINT, 'graph:test')
+FROM (SELECT 0::BIGINT AS src, 3::BIGINT AS dst),
+     (SELECT e.src AS es, e.dst AS ed, e.rowid::BIGINT AS eid FROM pe e);
+----
+0	3	[0, 3, 4, 4, 3]
