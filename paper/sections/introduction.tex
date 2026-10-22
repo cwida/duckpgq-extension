@@ -1,0 +1,23 @@
+\section{Introduction}
+\label{sec:intro}
+
+\todo{1.5 pages. Thesis: a loadable extension can give a relational engine graph-native path finding, including an
+MVCC-consistent CSR index, without forking the engine.}
+
+\todo{Motivation: SQL/PGQ brings graph pattern matching into SQL; variable-length and shortest-path patterns are the
+part that relational operators serve worst (recursive CTEs, per-query CSR builds). Native graph systems keep
+adjacency as primary storage but live next to the relational data.}
+
+\todo{Why an extension and not a fork: deployment, engine evolution (DuckDB v2.0 API), the host engine keeps
+ownership of storage, transactions and the planner. The hooks an extension actually gets: optimizer extension,
+custom physical operator, index type, parser/grammar extension.}
+
+\todo{Contributions:
+(1) a path-finding physical operator for DuckDB: pair batches, radix-partitioned CSR built per query, multi-source BFS
+lanes, per-source frontier kernel, orientation and grouping choices, phased events without barriers;
+(2) an MVCC-consistent CSR index through the extension index interface: immutable epochs, commit-group change log,
+per-reader snapshot, fold, checkpoint and recovery, path reconstruction with edge row ids;
+(3) planner integration from SQL/PGQ MATCH to the operator and index without engine changes;
+(4) an evaluation against Kuzu, Neo4j, Memgraph and FalkorDB on LDBC SNB SF1-SF300 and Graphalytics, read-only and
+under LDBC update streams, with the index within X of native systems on point and single-source queries and
+updates in the same transaction as the tables.}

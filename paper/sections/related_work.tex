@@ -1,0 +1,59 @@
+\section{Related Work}
+\label{sec:related}
+
+% Draft 22 Oct 2026. Citations marked \cn or with VERIFY comments in references.bib still need checking.
+
+\paragraph{Graph queries in relational engines.}
+Making a relational engine answer graph queries has a long history: as a rewrite of pattern matching into joins
+over edge tables~\cite{sun2015sqlgraph,jindal2014vertexica,fan2015grail}, as a query language layered on an
+RDBMS~\cite{vanrest2016pgql}, and most recently through \sqlpgq, the graph pattern matching part of the SQL
+standard~\cite{deutsch2022gql}. \duckpgq~\cite{tenwolde2023duckpgq} implements \sqlpgq as a \duckdb extension that
+rewrites \texttt{MATCH} into relational SQL; this paper extends it with a physical operator and an index while
+keeping the extension boundary. Systems that modify the engine for graph workloads add predefined joins and
+adjacency structures (GRainDB~\cite{jin2022graindb,jin2022predefinedjoins}), worst-case optimal joins for cyclic
+patterns (EmptyHeaded~\cite{aberger2017emptyheaded}, Umbra~\cite{freitag2020wcoj}), or compressed adjacency
+indexes for aggregation-heavy queries (GQ-Fast~\cite{lin2016gqfast}). Their adjacency structures are built inside
+the engine and share its storage and transaction code; ours is a derived structure that an extension maintains
+through the public index interface, which is what forces the snapshot design of Section~\ref{sec:index}.
+
+\paragraph{Path finding.}
+Variable-length and shortest-path patterns are the part of \sqlpgq that relational operators serve worst.
+Recursive common table expressions evaluate them as iterated joins with a frontier table per step, and both
+RaSQL~\cite{gu2019rasql} and the Umbra work on recursive SQL~\cite{hirn2019recursion} optimize that evaluation
+rather than replace it. Our operator instead runs a graph traversal over a compressed sparse row (CSR) layout, in the
+tradition of Grail~\cite{fan2015grail} and of in-database BFS kernels~\cite{jindal2014vertexica}. The kernel is
+multi-source BFS~\cite{then2014msbfs}, which shares one sweep over the adjacency among 512 concurrent searches held
+in bit sets; direction-optimizing BFS~\cite{beamer2012direction} supplies the push/pull variant we compare against,
+and frontier-list BFS as in Ligra~\cite{shun2013ligra} is the shape of our per-source kernel for point queries. The
+GraphBLAS~\cite{davis2019graphblas} expresses the same traversals as sparse matrix products; RedisGraph and its
+successor FalkorDB build a graph database on it~\cite{cailliau2019redisgraph}.
+
+\paragraph{Native graph database systems.}
+Neo4j, Kuzu~\cite{feng2023kuzu}, TigerGraph~\cite{deutsch2019tigergraph} and Memgraph keep adjacency lists as
+their primary storage, so a shortest path never needs a structure to be built; the price is a separate system next
+to the relational data. Kuzu is the closest design point to ours: columnar storage, vectorized execution, and
+factorized intermediate results, with recursive joins for variable-length patterns~\cite{feng2023kuzu}. Our
+evaluation uses Kuzu and Neo4j as the native baselines and shows that a relational engine with the index closes the
+gap on read-only point and single-source queries while keeping updates in the same transaction as the tables.
+
+\paragraph{Dynamic and versioned graph structures.}
+Updating a CSR is the classic weakness of the layout, and a line of work replaces it with structures that absorb
+edge updates: packed memory arrays and compressed sparse formats with gaps~\cite{wheatman2018pcsr,deleo2021teseo},
+sorted blocked adjacency lists~\cite{fuchs2022sortledton}, log-structured snapshots~\cite{macko2015llama}, and
+purely functional trees that give every reader its own version~\cite{dhulipala2019aspen}. LiveGraph~\cite{zhu2020livegraph}
+and Teseo~\cite{deleo2021teseo} offer transactional semantics with multi-version concurrency over such structures,
+and Sortledton~\cite{fuchs2022sortledton} shows the cost of versioning inside the structure itself. These systems
+own both the graph and its transaction manager. Our index does not: visibility is decided by the host engine's
+row versions, and the index stores an immutable CSR per epoch plus a change log stamped per commit group, which is
+closer to how an RDBMS maintains a materialized view than to a dynamic graph structure. Surveys of the dynamic graph
+literature~\cite{besta2023dynamic} and the experimental comparison of these structures~\cite{deleo2019pma} cover the
+design space.
+
+\paragraph{Indexes under MVCC.}
+Relational indexes under multi-version concurrency either store version information per entry or, as in
+PostgreSQL and \duckdb's ART~\cite{leis2013art}, keep only row identifiers and consult the row's versions on every
+probe~\cite{wu2017mvcc,neumann2015mvcc}. A traversal that touches millions of edges cannot afford a version check
+per edge, which is why the index of Section~\ref{sec:index} checks visibility once per commit group and serves a
+whole BFS from one immutable snapshot. The extension builds on the index type interface that \duckdb exposes to
+extensions~\cite{duckdb2019}, the same hook that its spatial index uses; to our knowledge this is the first use of such
+an interface for a snapshot-consistent graph structure.

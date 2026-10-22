@@ -1,0 +1,15 @@
+\section{Background}
+\label{sec:background}
+
+\todo{1 page.}
+\subsection{SQL/PGQ in \duckpgq}
+\todo{Property graphs over tables, MATCH, path modes (ANY SHORTEST), quantifiers, path functions (path\_length,
+vertices, edges, element\_id); the rewrite into SQL; where the operator and index attach.}
+\subsection{\duckdb execution and extension hooks}
+\todo{Vectorized push-based pipelines, sink/source operators, events and tasks; optimizer extension; index type
+interface (create, append, delete, serialize); what an extension does not get (storage format, transaction manager).}
+\subsection{MVCC and indexes in \duckdb}
+\todo{Row versions, transaction start/commit ids, CanFetch, garbage collection of versions; ART keeps row ids only.}
+\subsection{Multi-source BFS}
+\todo{MS-BFS bit-set lanes, seen/visit/next arrays, 512 lanes; why it suits batches of pairs; its cost per lane batch is
+a sweep over all vertices, which motivates the per-source kernel for point queries.}

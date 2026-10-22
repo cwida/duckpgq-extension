@@ -1,0 +1,17 @@
+\section{Evaluation}
+\label{sec:eval}
+
+\todo{3 pages. Setup: m7a.8xlarge (32 cores, 128 GiB, gp3 1000 MB/s), DuckDB v2.0 at commit X, Kuzu 0.11.3, Neo4j Y,
+Memgraph, FalkorDB; LDBC SNB SF1-SF300 knows graph, Graphalytics sets; query shapes point-to-point (1024 pairs),
+single-source (sssp), all-pairs blocks, Graphalytics BFS; cold = fresh process, warm = second query.}
+\subsection{Read-only: build per query vs index vs native systems}
+\todo{Table: per SF and query shape, operator / index cold / index warm / Kuzu / Neo4j. SF300 warm 32 threads: sssp
+0.30 / 0.17 / 0.031 s; point-to-point 1.61 / 1.11 / 0.96 s. Index load 0.09 s at 32 threads.}
+\subsection{Updates}
+\todo{LDBC BI insert/delete batches; sequential and concurrent (1 writer, 1-16 readers); index with and without fold vs
+build per query vs Kuzu/Memgraph/FalkorDB; query latency over pending operations; update cost per commit.}
+\subsection{End-to-end queries}
+\todo{LDBC IC13, IC14 (paths), BI19/20 on all systems (W17).}
+\subsection{Ablations}
+\todo{Kernels (lanes vs per-source, hybrid expansion, bucket index), orientation, grouping, phased events vs barriers,
+fold ratio, snapshot cache; thread scaling 1-32; memory per edge during build and for the index.}

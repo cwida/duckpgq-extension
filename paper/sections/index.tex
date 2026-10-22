@@ -1,0 +1,24 @@
+\section{An MVCC-Consistent CSR Index}
+\label{sec:index}
+
+\todo{2.5 pages. Figure: epoch + change log + per-reader snapshot.}
+\subsection{Design constraints from the extension interface}
+\todo{What the index type interface delivers (appends, deletes with row ids, serialize, WAL replay) and what it does
+not (commit ids, visibility); keys not row ids identify vertices; the index may not evaluate visibility at past
+bounds because the engine garbage-collects row versions.}
+\subsection{Epochs, change groups and snapshots}
+\todo{Immutable epoch CSR with dictionary and row ids per position; change log stamped per commit group; a reader
+decides visibility once per group with CanFetch; snapshot = epoch partitions + delta partitions + suppressed bitmap;
+private snapshot for writing transactions; snapshot cache keyed by (generation, newest visible group).}
+\subsection{Fold}
+\todo{Rebuilding an epoch from a live transaction, generation stamping, retained epochs, id re-resolution; fold
+ratio policy.}
+\subsection{Checkpoint, recovery and parallel load}
+\todo{Segments in the index allocator, manifest in storage options, WAL replay through Append/Delete, parallel
+deserialization numbers (SF300 1.15 s to 0.09 s).}
+\subsection{Path reconstruction}
+\todo{Parent pointers in the per-source kernel, edge row ids from epoch and delta partitions, keys for vertices;
+what the lane kernel cannot do and why.}
+\subsection{Correctness}
+\todo{Argument: a reader sees exactly the edges whose rows are visible to its transaction; cases: concurrent insert,
+delete of an epoch edge, delete of a delta edge, rollback, fold during a long snapshot, restart.}

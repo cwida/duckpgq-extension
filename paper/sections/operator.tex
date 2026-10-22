@@ -1,0 +1,17 @@
+\section{The Path-Finding Operator}
+\label{sec:operator}
+
+\todo{2.5 pages. Figure: pipeline from MATCH to operator (pairs child, endpoint child, index snapshot).}
+\subsection{From \texttt{MATCH} to an operator}
+\todo{Marker function in the rewritten SQL, optimizer rule replaces it with the logical operator; argument forms
+(buffered endpoints, precounted, index cache key, depth bound); result column joins back; filters on path length.}
+\subsection{Pair batches and the partitioned CSR}
+\todo{Sink of pairs; endpoint input radix-partitioned by destination range into uint16 local ids; sort-and-emit sparse
+rows; bucket index over source ids; row ids per edge when paths are requested; build cost numbers.}
+\subsection{Kernels}
+\todo{MS-BFS lanes over partitions (grouped scheduling, orientation choice via HLL statistics); per-source frontier
+kernel (hybrid sparse/dense expansion, early termination on destinations, depth bound, parent pointers for paths);
+when each is chosen (distinct sources, pairs per source).}
+\subsection{Scheduling without barriers}
+\todo{Phased kernels: one event per BFS level, serial step in FinishEvent, no task waits for another; why barriers
+deadlock under concurrent queries in a shared scheduler; abortability and interrupts.}

@@ -1,0 +1,92 @@
+% PVLDB Vol. 20 (VLDB 2027) submission. Template: https://github.com/cwida/pvldbstyle (acmart sigconf, nonacm).
+\documentclass[sigconf, nonacm]{acmart}
+
+%% The following content must be adapted for the final version
+% paper-specific
+\newcommand\vldbdoi{XX.XX/XXX.XX}
+\newcommand\vldbpages{XXX-XXX}
+% issue-specific
+\newcommand\vldbvolume{20}
+\newcommand\vldbissue{1}
+\newcommand\vldbyear{2027}
+% should be fine as it is
+\newcommand\vldbauthors{\authors}
+\newcommand\vldbtitle{\shorttitle}
+% leave empty if no availability url should be set
+\newcommand\vldbavailabilityurl{}
+% whether page numbers should be shown or not, use 'plain' for review versions, 'empty' for camera ready
+\newcommand\vldbpagestyle{plain}
+
+\usepackage{booktabs}
+\usepackage{xspace}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\newcommand{\duckpgq}{DuckPGQ\xspace}
+\newcommand{\duckdb}{DuckDB\xspace}
+\newcommand{\sqlpgq}{SQL/PGQ\xspace}
+\newcommand{\msbfs}{MS-BFS\xspace}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\newcommand{\cn}{\textcolor{red}{[cite]}\xspace}
+
+\lstset{basicstyle=\ttfamily\small, breaklines=true, columns=fullflexible, keepspaces=true}
+
+\begin{document}
+\title{Graph-Native Path Finding as a Loadable Extension: An MVCC-Consistent CSR Index for a Relational Engine}
+
+\author{Daniel ten Wolde}
+\affiliation{%
+  \institution{CWI}
+  \city{Amsterdam}
+  \country{The Netherlands}
+}
+\email{dljtw@cwi.nl}
+
+\begin{abstract}
+\todo{Abstract. Thesis: a loadable extension can give a relational engine graph-native path finding, including an MVCC-consistent CSR index, without forking the engine. One sentence each on: the operator (multi-source BFS over a radix-partitioned CSR built per query), the index (epochs plus a commit-group change log, snapshot per reader, fold), the planner integration through \sqlpgq, the evaluation headline numbers against Kuzu and Neo4j, and the update workload result.}
+\end{abstract}
+
+\maketitle
+
+%%% do not modify the following VLDB block %%
+%%% VLDB block start %%%
+\pagestyle{\vldbpagestyle}
+\begingroup\small\noindent\raggedright\textbf{PVLDB Reference Format:}\\
+\vldbauthors. \vldbtitle. PVLDB, \vldbvolume(\vldbissue): \vldbpages, \vldbyear.\\
+\href{https://doi.org/\vldbdoi}{doi:\vldbdoi}
+\endgroup
+\begingroup
+\renewcommand\thefootnote{}\footnote{\noindent
+This work is licensed under the Creative Commons BY-NC-ND 4.0 International License. Visit \url{https://creativecommons.org/licenses/by-nc-nd/4.0/} to view a copy of this license. For any use beyond those covered by this license, obtain permission by emailing \href{mailto:info@vldb.org}{info@vldb.org}. Copyright is held by the owner/author(s). Publication rights licensed to the VLDB Endowment. \\
+\raggedright Proceedings of the VLDB Endowment, Vol. \vldbvolume, No. \vldbissue\ %
+ISSN 2150-8097. \\
+\href{https://doi.org/\vldbdoi}{doi:\vldbdoi} \\
+}\addtocounter{footnote}{-1}\endgroup
+%%% VLDB block end %%%
+
+%%% do not modify the following VLDB block %%
+%%% VLDB block start %%%
+\ifdefempty{\vldbavailabilityurl}{}{
+\vspace{.3cm}
+\begingroup\small\noindent\raggedright\textbf{PVLDB Artifact Availability:}\\
+The source code, data, and/or other artifacts have been made available at \url{\vldbavailabilityurl}.
+\endgroup
+}
+%%% VLDB block end %%%
+
+\input{sections/introduction}
+\input{sections/background}
+\input{sections/operator}
+\input{sections/index}
+\input{sections/strategy}
+\input{sections/evaluation}
+\input{sections/related_work}
+\input{sections/conclusion}
+
+%\begin{acks}
+%\end{acks}
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
+
+\end{document}
