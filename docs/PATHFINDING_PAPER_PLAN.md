@@ -152,7 +152,7 @@ Effort in person-days (pd). P1 = must for Round 1, P2 = strongly desired, P3 = i
 | W19 | Systematic ablation + scaling sweeps on frozen commit (D5, D6). Decided 20 Oct: the first sweep is DuckDB-only. Harness modes added 20 Oct: `index_build`, `index_operator`, composites `index` and `index_comparison` (build-per-query operator vs index) in `scripts/pathfinding_benchmark.py`; smoke-tested on the SNB 0.003 sample | eval | 4 (+machine time) | P1 | W1–W6 | first DuckDB-only sweep done 21 Oct (SF1-SF300, 5 repeats; `~/sweep/collected*.md` on the EC2 box); to be rerun on the frozen commit after W7 step 2 and W12 |
 | W20 | Full read-only system comparison rerun on frozen commit | eval | 2 (+machine time) | P1 | W19 | open |
 | W21 | Results archive, version pins, anonymous artifact (D7, E) | eval | 2 | P1 | ongoing | open |
-| W22 | Related work + outline + intro draft. Started 22 Oct: `paper/` (PVLDB acmart template, `main.tex`, one file per section with the outline of section 8 as TODO notes, `references.bib` with 35 entries, VERIFY marks on uncertain ones), related work drafted (`paper/sections/related_work.tex`, five paragraphs: graph queries in RDBMSs, path finding, native graph systems, dynamic/versioned graph structures, indexes under MVCC). Open: intro draft, citation check | writing | 3 | P1 | — | in progress |
+| W22 | Related work + outline + intro draft. Started 22 Oct: `paper/` (PVLDB acmart template, `main.tex`, one file per section with the outline of section 8 as TODO notes, `references.bib` with 35 entries, VERIFY marks on uncertain ones), related work drafted (`paper/sections/related_work.tex`, five paragraphs: graph queries in RDBMSs, path finding, native graph systems, dynamic/versioned graph structures, indexes under MVCC). Intro drafted 22 Oct (`7a706d27`), framed on the CIDR 2023 open problem (tuple-driven parallelism, UDF-built global CSR); style guide `paper/STYLE.md` after Boncz's first-author papers; 'kernel' -> 'traversal'. Open: citation check (VERIFY marks), Figure 1, abstract | writing | 3 | P1 | — | in progress |
 | W23 | Full draft, figures, internal review, polish | writing | 10 | P1 | W16–W20 | open |
 | W24 | Teseo/Sortledton or GraphBLAS baseline (D4) | eval | 4 | P3 | W16 | open |
 | W25 | WCC table function reads the index snapshot (generality argument, build vs index for a whole-graph algorithm) | op+index | 2 | P3 | W12 | open |
@@ -391,3 +391,8 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   main.tex`. Decision (user, 22 Oct): the 21-22 Oct sweep numbers are provisional; every number in the paper is
   rerun on one frozen commit once the implementation has settled (before the 13 Dec checkpoint at the latest).
   Tooling on the laptop: TeX Live 2026 and poppler present; Skim not installed despite the attempt.
+- 22 Oct (later): `paper/STYLE.md` (analysis of X100, FSST, Teseo, DuckPGQ CIDR, Kersten et al.; ten rules;
+  terminology table, 'traversal' not 'kernel'), related work rewritten (`f4af3280`), introduction drafted
+  (`7a706d27`): the CIDR 2023 paper's own limitation (morsel-driven parallelism is tuple-driven; CSR as UDF-built
+  global state outside the transaction) is the hook, the operator and the index are the answer. The user is
+  looking for PDFs of 'Database Architecture Evolution' (VLDB 2009) and 'TPC-H Analyzed' to sharpen the guide.
