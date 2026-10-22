@@ -4225,6 +4225,13 @@ class FalkorDBSystem(GraphDBSystem):
         return int(self.query("MATCH ()-[e:KNOWS]->() RETURN count(e)")[0][0])
 
     def load_ldbc(self, export_dir, scale_factor):
+        # FalkorDB has no undirected shortestPath ("does not currently support undirected shortestPath
+        # traversals"), so the LDBC graph gets the reverse of every knows edge and the queries use directed patterns
+        with (export_dir / "knows.csv").open() as handle:
+            edges = [[int(r["person2id"]), int(r["person1id"])] for r in csv.DictReader(handle)]
+        for i in range(0, len(edges), 20000):
+            self.query("UNWIND $rows AS r MATCH (a:Person {id: r[0]}), (b:Person {id: r[1]}) CREATE (a)-[:KNOWS]->(b)",
+                       {"rows": edges[i:i + 20000]})
         self.query("CREATE INDEX FOR (p:Person) ON (p.cityId)")
         self.query("CREATE INDEX FOR (c:Company) ON (c.id)")
         with (export_dir / "person_city.csv").open() as handle:
@@ -4242,20 +4249,20 @@ class FalkorDBSystem(GraphDBSystem):
 
     def ic13(self, person1, person2):
         rows = self.query(f"MATCH (a:Person {{id: $p1}}), (b:Person {{id: $p2}}) "
-                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]-(b)) AS p RETURN count(p), sum(length(p))",
+                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
                           {"p1": person1, "p2": person2})
         return int(rows[0][0]), int(rows[0][1] or 0)
 
     def bi19(self, city1, city2):
         rows = self.query(f"MATCH (a:Person {{cityId: $c1}}), (b:Person {{cityId: $c2}}) WHERE a <> b "
-                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]-(b)) AS p RETURN count(p), sum(length(p))",
+                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
                           {"c1": city1, "c2": city2})
         return int(rows[0][0]), int(rows[0][1] or 0)
 
     def bi20(self, company, person2):
         rows = self.query(f"MATCH (a:Person)-[:WORK_AT]->(:Company {{id: $co}}) WITH DISTINCT a "
                           f"MATCH (b:Person {{id: $p2}}) WHERE a <> b "
-                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]-(b)) AS p RETURN count(p), sum(length(p))",
+                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
                           {"co": company, "p2": person2})
         return int(rows[0][0]), int(rows[0][1] or 0)
 

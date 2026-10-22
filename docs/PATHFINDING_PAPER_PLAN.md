@@ -469,3 +469,24 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   itself: the cross product is sunk (0.9 s for 70M rows), grouped (0.5 s serial), scattered (0.75 s); a
   destination-free "all vertices" form of the operator would skip it, noted as future work. SF10 DuckPGQ points
   are rerun on this build before the SF100/SF300 sweeps.
+- 22 Oct (night, results): SF10 W27 sweep on the final build (`sweep-pairs-table` over the three SF10 CSVs; 32
+  threads, 600 s budget). Random pairs 1 / 16 / 128 / 1024 / 2048 / 16384 / 65536: DuckPGQ index 4 / 20 / 25 / 50 /
+  87 / 658 ms / 2.6 s; build 23 / 45 / 50 / 74 / 119 / 776 ms / 3.1 s; Neo4j 70 / 112 / 552 / 716 / 772 ms / 2.9 /
+  11.7 s; Kuzu 11 / 85 / 629 ms / 5.1 / 10.2 / 82 / 330 s; FalkorDB 17 / 92 / 719 ms / 5.7 / 11.5 / 92 / 360 s;
+  Memgraph 41 / 459 ms / 5.1 / 40 / 81 s / >600 / >600; Neo4j GDS (4 threads, Dijkstra per pair) 23 / 143 ms / 1.3 /
+  9.7 / 19.7 / 152 / 570 s. Sources x all persons 1 / 16 / 128 / 1024: DuckPGQ index 10 / 67 / 527 ms / 4.1 s,
+  build 27 / 98 / 579 ms / 4.4 s, Kuzu 7 / 101 / 632 ms / 4.0 s, Memgraph 14 / 573 ms / 4.9 / 38 s, GDS
+  (delta-stepping per source) 25 / 350 ms / 3.0 / 22 s, Neo4j 18 s / 179 s / >600 / >600, FalkorDB 297 s / >600 /
+  >600 / >600. Reading: with a bound destination set the systems that run one search per pair scale linearly
+  (Neo4j is the fast one at 0.2 ms per pair under the parallel runtime, still 4.5x DuckPGQ at 65536 pairs; Kuzu,
+  FalkorDB 5 ms per pair; Memgraph 40 ms); on sources x all persons the systems with a single-source primitive
+  (Kuzu's recursive join, Memgraph's BFS expansion, GDS) are within 1x-10x and Kuzu matches us, which is the
+  honest result for that shape: the work is the traversal, our pair-list interface adds the cross product.
+  W17 at SF10 (`ldbc-queries-table`, hop-count variants, 5 parameter sets x 3 repeats, all systems agree):
+  IC13 DuckPGQ index 4 ms / build 28 ms / Neo4j 5 ms / Kuzu 8 ms / GDS 64 ms / Memgraph 385 ms; BI19 (149 x 79
+  down to 80 x 70 persons of two cities) index 128 ms / build 172 ms / Neo4j 45 ms / Kuzu 1.6 s / GDS 10.2 s /
+  Memgraph 41.6 s; BI20 (1277-1339 employees x 1 person) index 25 ms / build 256 ms / Neo4j 31 ms / Memgraph
+  540 ms / Kuzu 7.6 s / GDS 58 s. Neo4j's bidirectional shortestPath is very effective when the pairs are close
+  (same city, 2-3 hops). FalkorDB does not support undirected shortestPath; its LDBC graph now holds both
+  directions and the queries are directed (rerun queued after the SF100/SF300 chain). Loads at SF10: DuckPGQ
+  0.2-0.6 s, Kuzu 0.6 s, Memgraph 8 s, Neo4j 23 s, FalkorDB 93 s.
