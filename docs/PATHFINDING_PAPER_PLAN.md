@@ -396,3 +396,13 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   Kuzu < 1 s (COPY). None of the three has a batched many-pair or many-destination primitive that shares the search;
   the comparison for the paper should lead with single-source (the fair fight) and state every Cypher formulation.
   FalkorDB serializes writes against reads with a per-graph lock (no MVCC), the contrast for the concurrent pass.
+- 22 Oct (night): Neo4j 5.26 Enterprise added (`update-neo4j`; Docker `neo4j:5-enterprise` under the evaluation
+  licence, `NEO4J_ACCEPT_LICENSE_AGREEMENT=yes`, Bolt 7688, 16 GB heap + 16 GB page cache, Cypher `runtime=parallel`).
+  Results identical to DuckDB on every step. SF10, same batches: sssp (1024 destinations) 10.3 s per query (1024
+  `shortestPath` searches), point_to_point (1024 pairs, `UNWIND` + `shortestPath`) 0.76 s, update batch 69 ms, load 21 s
+  via LOAD CSV. The 13x gap between its two shapes with the same per-pair primitive is unexplained (planner or
+  parallel-runtime behaviour with a single source row); try `runtime=pipelined` and GDS before the frozen rerun.
+  Licence: evaluation terms only; publication rights must be settled (W18) before these numbers appear in the paper.
+  Cross-system table (`~/sweep/collect_systems.py 10`): sssp DuckPGQ index 19 ms / build 26 ms / Kuzu 16 ms /
+  Memgraph 41 ms / FalkorDB 9.3 s / Neo4j 10.3 s; point_to_point 62 / 76 ms / 6.5 s / 40 s / 8.1 s / 0.76 s; update
+  batch 9 / 8 / 342 / 26 / 111 / 69 ms.

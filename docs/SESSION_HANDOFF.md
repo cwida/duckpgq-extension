@@ -82,7 +82,8 @@ W18 Neo4j Enterprise request, W22 outline.
   Collectors `~/sweep/collect_update.py`, `~/sweep/collect_concurrent.py`. Since 22 Oct the kernels run as event
   chains (`phased_kernel_event.hpp`), there are no barriers across tasks and the driver needs no worker cap.
 - Graph database baselines on the EC2 box: containers `pf-memgraph` (Bolt 7687, `data/ldbc-pathfinding/graphdb-export`
-  mounted at /import) and `pf-falkordb` (6379), started with `docker run` (see the plan's 22 Oct entry); Python
+  mounted at /import), `pf-falkordb` (6379) and `pf-neo4j` (Enterprise evaluation licence, Bolt 7688, database
+  `pathfinding`), started with `docker run` (see the plan's 22 Oct entry); Python
   clients `neo4j` and `falkordb` installed for the user; `~/sweep/collect_systems.py <sf>` prints the cross-system
   table. Kuzu point-to-point and FalkorDB queries are one search per pair, so their point-to-point runs use 20 batches.
 - Kernel pattern: a `PhasedKernel` has Start / RunPhase(worker) / AdvancePhase / Finished; serial work goes into
