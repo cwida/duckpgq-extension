@@ -4955,11 +4955,23 @@ def sweep_pairs(args):
         print(f"All {len(by_point)} points agree across the systems that completed them")
 
 
+def read_result_files(files):
+    """Rows of several result CSVs; when a system appears in more than one file only its rows from the last file
+    listed count, so a rerun of one system replaces its earlier numbers"""
+    rows_by_file = [list(csv.DictReader(open(path))) for path in files]
+    last_file_of_system = {}
+    for file_idx, rows in enumerate(rows_by_file):
+        for row in rows:
+            last_file_of_system[row["system"]] = file_idx
+    result = []
+    for file_idx, rows in enumerate(rows_by_file):
+        result.extend(row for row in rows if last_file_of_system[row["system"]] == file_idx)
+    return result
+
+
 def sweep_pairs_table(args):
     """Prints the sweep as one table per shape: systems x pair counts, mean seconds or the budget status."""
-    rows = []
-    for path in args.files:
-        rows.extend(csv.DictReader(open(path)))
+    rows = read_result_files(args.files)
     for shape, column in (("random_pairs", "pairs"), ("multi_source", "sources")):
         shape_rows = [r for r in rows if r["shape"] == shape]
         if not shape_rows:
@@ -5156,9 +5168,7 @@ def ldbc_queries(args):
 
 def ldbc_queries_table(args):
     """systems x queries: mean seconds over the parameter sets (each the mean of its repeats), or the budget status"""
-    rows = []
-    for path in args.files:
-        rows.extend(csv.DictReader(open(path)))
+    rows = read_result_files(args.files)
     queries = [q for q in LDBC_QUERIES if any(r["query"] == q for r in rows)]
     systems = []
     for r in rows:
