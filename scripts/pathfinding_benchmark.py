@@ -4358,6 +4358,58 @@ class Neo4jSystem(GraphDBSystem):
         self.driver.close()
 
 
+class Neo4jGDSSystem(Neo4jSystem):
+    """Neo4j with the Graph Data Science library: the graph is projected once after the load (static snapshot, so
+    not usable in the update workload) and the queries call GDS single-source and pairwise procedures. The
+    unlicensed library caps concurrency at 4 threads."""
+
+    name = "neo4j_gds"
+    GRAPH = "knows"
+    CONCURRENCY = 4
+
+    def read(self, query, **params):
+        # GDS procedures cannot run under the parallel runtime (transaction.acquireStatementLock unsupported)
+        return self.run(query, **params)
+
+    def load(self, export_dir, scale_factor):
+        super().load(export_dir, scale_factor)
+        started = time.perf_counter()
+        self.run(f"CALL gds.graph.drop({sql_string(self.GRAPH)}, false)")
+        self.run(f"CALL gds.graph.project({sql_string(self.GRAPH)}, 'Person', 'KNOWS')")
+        self.projection_s = time.perf_counter() - started
+        print(f"   GDS projection in {self.projection_s:.1f}s")
+
+    def sssp(self, source, destinations):
+        rows = self.read(f"MATCH (a:Person {{id: $src}}) "
+                         f"CALL gds.allShortestPaths.delta.stream({sql_string(self.GRAPH)}, "
+                         f"{{sourceNode: a, concurrency: {self.CONCURRENCY}}}) YIELD targetNode, totalCost "
+                         f"WITH gds.util.asNode(targetNode) AS b, totalCost WHERE totalCost > 0 AND b.id IN $dsts "
+                         f"RETURN count(*) AS c, sum(totalCost) AS s", src=source, dsts=destinations)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def point_to_point(self, pairs):
+        rows = self.read(f"UNWIND $pairs AS pr MATCH (a:Person {{id: pr[0]}}), (b:Person {{id: pr[1]}}) "
+                         f"CALL gds.shortestPath.dijkstra.stream({sql_string(self.GRAPH)}, "
+                         f"{{sourceNode: a, targetNode: b, concurrency: {self.CONCURRENCY}}}) YIELD totalCost "
+                         f"RETURN count(*) AS c, sum(totalCost) AS s",
+                         pairs=[list(pair) for pair in pairs if pair[0] != pair[1]])
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def multi_source(self, sources):
+        rows = self.read(f"UNWIND $srcs AS sid MATCH (a:Person {{id: sid}}) "
+                         f"CALL gds.allShortestPaths.delta.stream({sql_string(self.GRAPH)}, "
+                         f"{{sourceNode: a, concurrency: {self.CONCURRENCY}}}) YIELD totalCost "
+                         f"WITH totalCost WHERE totalCost > 0 RETURN count(*) AS c, sum(totalCost) AS s", srcs=sources)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def cancel(self):
+        with self.driver.session(database=self.database) as other:
+            rows = other.run("SHOW TRANSACTIONS YIELD transactionId, currentQuery "
+                             "WHERE currentQuery CONTAINS 'gds.' RETURN transactionId").data()
+            for row in rows:
+                other.run(f'TERMINATE TRANSACTIONS "{row["transactionId"]}"').consume()
+
+
 def run_update_neo4j(args):
     run_update_graphdb(args, Neo4jSystem(args.uri, args.database, args.runtime))
 
@@ -4581,6 +4633,10 @@ def sweep_pairs(args):
             systems.append(system)
         elif name == "neo4j":
             systems.append(Neo4jSystem(args.neo4j_uri, args.neo4j_database, args.neo4j_runtime))
+        elif name == "neo4j_gds":
+            systems.append(Neo4jGDSSystem(args.neo4j_uri, args.neo4j_database, args.neo4j_runtime))
+        else:
+            raise SystemExit(f"unknown system {name}")
     results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
     results_dir.mkdir(parents=True, exist_ok=True)
     path = results_dir / f"sweep_pairs_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
@@ -5072,7 +5128,8 @@ def main():
     sweep_pairs_parser.add_argument("--scale-factor", required=True)
     sweep_pairs_parser.add_argument("--threads", type=int, default=os.cpu_count())
     sweep_pairs_parser.add_argument("--systems", nargs="+",
-                                    default=["duckpgq_build", "duckpgq_index", "kuzu", "memgraph", "falkordb", "neo4j"])
+                                    default=["duckpgq_build", "duckpgq_index", "kuzu", "memgraph", "falkordb", "neo4j",
+                                             "neo4j_gds"])
     sweep_pairs_parser.add_argument("--pair-counts", nargs="*", type=int, default=SWEEP_PAIR_COUNTS)
     sweep_pairs_parser.add_argument("--source-counts", nargs="*", type=int, default=SWEEP_SOURCE_COUNTS)
     sweep_pairs_parser.add_argument("--repeats", type=int, default=3)
