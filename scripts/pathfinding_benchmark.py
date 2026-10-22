@@ -3874,13 +3874,29 @@ def run_update_kuzu(args):
     if hasattr(conn, "set_max_threads_for_exec"):
         conn.set_max_threads_for_exec(args.threads)
     query = kuzu_update_query(args.query_pattern, pair_table, source_key)
+    # point_to_point: one query per pair with literal ids. Binding both ends through the pair table makes Kuzu run
+    # the recursive join over far more than the pairs (64 pairs: 15 s batched, 0.15 s as 64 queries at SF1).
+    pair_list = []
+    if args.query_pattern == "point_to_point":
+        pair_list = [(int(r[0]), int(r[1])) for r in conn.execute(f"MATCH (p:{pair_table}) RETURN p.src, p.dst ORDER BY p.id").get_all()]
     rows = []
     started = time.perf_counter()
     for step in range(0, args.batches + 1):
         for _ in range(args.queries_per_batch):
             t0 = time.perf_counter()
-            result = conn.execute(query)
-            reachable, total = (result.get_next() if result.has_next() else (0, None))
+            if pair_list:
+                reachable, total = 0, 0
+                for src, dst in pair_list:
+                    if src == dst:
+                        continue  # counted through self_pairs below
+                    result = conn.execute(f"MATCH (a:Person {{id: {src}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]->"
+                                          f"(b:Person {{id: {dst}}}) RETURN length(e)")
+                    if result.has_next():
+                        reachable += 1
+                        total += int(result.get_next()[0])
+            else:
+                result = conn.execute(query)
+                reachable, total = (result.get_next() if result.has_next() else (0, None))
             elapsed = time.perf_counter() - t0
             rows.append({
                 "config": "kuzu", "step": step, "query_s": f"{elapsed:.6f}", "update_s": "",
@@ -3892,9 +3908,13 @@ def run_update_kuzu(args):
             break
         lo, hi = step * args.batch_size, (step + 1) * args.batch_size
         t0 = time.perf_counter()
+        # Two transactions: a MATCH ... DELETE in the same transaction as the CREATE did not see a relationship
+        # created by that transaction (Kuzu 0.11.3, one edge inserted and deleted in the same LDBC batch)
         conn.execute("BEGIN TRANSACTION")
         conn.execute(f"MATCH (o:Op) WHERE o.seq > {lo} AND o.seq <= {hi} AND o.op = 'insert' "
                      f"MATCH (a:Person {{id: o.person1id}}), (b:Person {{id: o.person2id}}) CREATE (a)-[:Knows]->(b)")
+        conn.execute("COMMIT")
+        conn.execute("BEGIN TRANSACTION")
         conn.execute(f"MATCH (o:Op) WHERE o.seq > {lo} AND o.seq <= {hi} AND o.op = 'delete' "
                      f"MATCH (a:Person {{id: o.person1id}})-[e:Knows]->(b:Person {{id: o.person2id}}) DELETE e")
         conn.execute("COMMIT")
