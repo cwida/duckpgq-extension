@@ -14,7 +14,7 @@ custom physical operator, index type, parser/grammar extension.}
 
 \todo{Contributions:
 (1) a path-finding physical operator for DuckDB: pair batches, radix-partitioned CSR built per query, multi-source BFS
-lanes, per-source frontier kernel, orientation and grouping choices, phased events without barriers;
+lanes, single-source frontier traversal, orientation and grouping choices, phased events without barriers;
 (2) an MVCC-consistent CSR index through the extension index interface: immutable epochs, commit-group change log,
 per-reader snapshot, fold, checkpoint and recovery, path reconstruction with edge row ids;
 (3) planner integration from SQL/PGQ MATCH to the operator and index without engine changes;

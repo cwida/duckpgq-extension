@@ -12,4 +12,4 @@ interface (create, append, delete, serialize); what an extension does not get (s
 \todo{Row versions, transaction start/commit ids, CanFetch, garbage collection of versions; ART keeps row ids only.}
 \subsection{Multi-source BFS}
 \todo{MS-BFS bit-set lanes, seen/visit/next arrays, 512 lanes; why it suits batches of pairs; its cost per lane batch is
-a sweep over all vertices, which motivates the per-source kernel for point queries.}
+a sweep over all vertices, which motivates the single-source traversal for point queries.}

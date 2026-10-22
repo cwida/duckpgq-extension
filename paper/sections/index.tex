@@ -17,8 +17,8 @@ ratio policy.}
 \todo{Segments in the index allocator, manifest in storage options, WAL replay through Append/Delete, parallel
 deserialization numbers (SF300 1.15 s to 0.09 s).}
 \subsection{Path reconstruction}
-\todo{Parent pointers in the per-source kernel, edge row ids from epoch and delta partitions, keys for vertices;
-what the lane kernel cannot do and why.}
+\todo{Parent pointers in the single-source traversal, edge row ids from epoch and delta partitions, keys for vertices;
+what the multi-source traversal cannot do and why.}
 \subsection{Correctness}
 \todo{Argument: a reader sees exactly the edges whose rows are visible to its transaction; cases: concurrent insert,
 delete of an epoch edge, delete of a delta edge, rollback, fold during a long snapshot, restart.}
