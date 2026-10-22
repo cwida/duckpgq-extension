@@ -363,3 +363,12 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   190 commits, 32 threads, results identical on all 191 steps: query mean 16.6 ms (DuckPGQ index 19 ms, build 26 ms),
   update batch mean 346 ms (DuckDB 8-9 ms; Kuzu via MATCH Op ... CREATE / DELETE, one transaction per batch); Kuzu
   ended with one edge more than expected (2,124,203 vs 2,124,202), results unaffected, cause open.
+- 22 Oct: deadlock fixed at the root. Every kernel (source-grouped, MS-BFS iterative length and its grouped
+  scheduler, partitioned CSR build, push-pull, bidirectional) now runs as a chain of per-phase events
+  (`PhasedKernel`/`PhasedKernelEvent`): the tasks of a phase run independently, the serial step between phases runs
+  in `FinishEvent` and inserts the next phase's event. No task waits for another, `duckpgq_barrier` is gone, the
+  concurrent driver needs no worker cap: 4/8/16 readers at 32 threads with 32 workers per query run clean
+  (78/87/90 iterations per second, no mismatches). Warm SF300 at 32 threads: build route sssp 0.30 s (was 0.39),
+  point_to_point 1.61 s (was 1.73); index route unchanged (0.031 s / 0.96 s). Regression test
+  `path_finding_concurrent_queries.test_slow` (eight connections, index and build route; the deadlock is timing
+  dependent and does not reproduce reliably in it, the driver run is the definitive check).

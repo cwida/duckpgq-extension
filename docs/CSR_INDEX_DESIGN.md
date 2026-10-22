@@ -87,16 +87,23 @@ immutable, packed, partitioned **epoch** CSR that equals the edge set visible at
 append-only **delta** of edges committed after that bound, and append-only **tombstones** for epoch edges deleted
 after that bound. A reader with visibility bound `b >= bound(epoch)` sees exactly `epoch ∪ {d ∈ delta : CanFetch(b,
 d.row)} \ {t ∈ tombstones : ¬CanFetch(b, t.row)}`. The index never stores commit ids: DuckDB's row version
-information decides visibility for the (small) delta and tombstone sets, once per query. A **fold** builds a new epoch
-from the visible set at a fresh bound and resets delta and tombstones; old epochs stay until no active transaction
-can still need them.
+information decides visibility. Since 21 Oct it does so per **change group** rather than per row: one `Append` or
+`TryDelete` call carries the rows of one commit chunk of one transaction, so all of them share one visibility and a
+reader checks one row per group (O(commits since the fold) checks instead of O(D + T); the per-row version cost
+3-4x the whole query at LDBC SF10 with 300k pending operations). Commits are serialized, so the visible groups form
+a prefix of the group sequence and the newest visible group identifies a reader's visible set; the last snapshot
+built is cached and served to every reader with the same epoch and newest visible group. A **fold** builds a new
+epoch from the visible set at a fresh bound and resets delta and tombstones; old epochs stay until no active
+transaction can still need them.
 
 ## 4. Data structures
 
 ```
 CSRIndex (BoundIndex)
 ├── options: undirected (bool), key type
-├── dictionary        key (int64) -> dense vertex id (uint32), append-only; prefix of every later version
+├── dictionary        key (int64) -> dense vertex id (uint32), one per epoch, rebuilt in key order at a fold
+│                     (NOT a prefix of later versions: a new smallest key shifts every id; delta entries record
+│                     the epoch their resolved ids belong to and are re-resolved at a fold)
 ├── epochs[]          shared_ptr<Epoch>, newest last, at least the newest kept
 │   └── Epoch
 │       ├── bound                 VisibilityBound of the builder transaction
@@ -105,8 +112,9 @@ CSRIndex (BoundIndex)
 │       │                         (source_vertices, row_offsets) + uint16 local destinations), forward [+ reverse]
 │       ├── edge_row_ids[]        row_t per epoch edge position (8 B/edge; see 9.2 for compression)
 │       └── position_of_row       hash row_t -> epoch position, used by Delete to turn a row id into a tombstone
-├── delta             append-only (src_id, dst_id, row_t) in commit order; length is the publish point
-├── tombstones        append-only (epoch_position, row_t); only for rows present in the newest epoch
+├── delta             append-only (src_key, dst_key, row_t, group, deleted_group, ids + id_generation) in commit
+│                     order; length is the publish point; delta_row_index: row_t -> position, for TryDelete
+├── tombstones        append-only (row_t, group); rows of the epoch deleted after its bound (positions resolved lazily)
 └── lock              the DuckDB IndexLock; readers copy lengths under it, then read without it
 ```
 
@@ -135,14 +143,16 @@ build runs in the creating transaction, so the epoch bound is that transaction's
 appended by concurrent committers arrive through `Append` into the delta as usual.
 
 ### 5.2 Append (writer commit)
-Under the index lock: for each (src_key, dst_key, row_id): look up or assign dense ids; push (src, dst, row) to the
-delta (both directions when undirected). No visibility information is recorded. Constant work per edge.
+Under the index lock: the call is one change group (next group id). For each (src_key, dst_key, row_id): resolve the
+keys against the newest epoch's dictionary (UINT32_MAX when unknown, resolved by the reader as an extra vertex), push
+the entry with its group and record `delta_row_index[row] = position`. No visibility information is recorded.
+Constant work per edge.
 
 ### 5.3 Delete (writer commit)
-Under the index lock: for each row id: if `position_of_row` finds it in the newest epoch, push (position, row) to
-tombstones; otherwise it is a delta row and nothing is recorded, because readers decide delta visibility by
-`CanFetch` anyway. A commit that is reverted after `Append` calls `Delete` for the same rows; those are delta rows,
-so nothing happens, and `CanFetch` will report the row invisible.
+Under the index lock: the call is one change group. For each row id: a delta row (found through `delta_row_index`)
+is stamped with the deleting group; any other row becomes a tombstone (row, group) whose epoch position the first
+reader that needs it resolves. A commit that is reverted after `Append` calls `Delete` for the same rows; they are
+stamped, and since the group is never visible to anyone the stamp never applies.
 
 ### 5.4 Reader snapshot
 `CSRIndex::Snapshot(DuckTransaction &t)`:
@@ -151,10 +161,16 @@ so nothing happens, and `CanFetch` will report the row invisible.
    be published. (Found by test: a rebuild from a writing transaction's table view leaked a rolled-back edge.)
 1. Under the lock: pick the newest epoch with `bound(epoch) <= t.visibility_bound`; copy `delta.size()` and
    `tombstones.size()` as the publish lengths; take a `shared_ptr` to the epoch and the dictionary length.
-2. Without the lock: build the **overlay**: a bitmap over epoch positions with bit set for every tombstone whose row
-   is **not** visible (`!CanFetch(t, row)`), and a small adjacency (sorted by source, forward [+ reverse]) over the
-   delta entries whose row **is** visible. Both are O(D + T) `CanFetch` calls; no edge of the epoch is examined.
-3. Return `{epoch, overlay, dictionary_view}`, pinned for the duration of the query.
+2. Without the lock: decide visibility per change group. An insert group is visible when one of its undeleted rows
+   is fetchable; a delete group (tombstones and stamped delta rows) applies when a row it deleted, whose insert the
+   reader sees, is not fetchable. Rows without a group (loaded from storage, committed before the restart) are
+   decided per row until the next fold. The newest visible group is the cache key: if the index holds a snapshot
+   of the same epoch and key, return it (readers between two commits share one snapshot).
+3. Otherwise build the **overlay**: a bitmap over epoch positions for the applied tombstones, and a small adjacency
+   (sorted by source, bucketed by destination range like the epoch partitions) over the visible delta entries, using
+   the ids resolved at append time when they belong to this epoch. O(groups) row-version checks plus O(D) bucketing;
+   no edge of the epoch is examined. Store it as the cached snapshot.
+4. Return `{epoch, overlay, dictionary_view}`, pinned for the duration of the query.
 
 A reader whose bound is older than every retained epoch gets no snapshot and the operator falls back to building the
 CSR for the query (today's path). This is rare (a long transaction that started before the last two folds).
@@ -255,6 +271,13 @@ checkpoint, or legacy file), the index comes up empty and marks itself `needs_re
 - `Append` evaluates the key expressions itself (`ExecuteExpressions`) and reads integer keys without a
   ClientContext, so UBIGINT/HUGEINT keys are rejected at CREATE INDEX.
 - Delta edges carry keys, not ids: a delta-only vertex is assigned an id above the epoch's count per snapshot.
+- (21 Oct) Ids resolved at append time are tagged with the epoch generation and re-resolved after a fold: the
+  dictionary is rebuilt in key order, and entries stay in the log across a fold while the previous epoch is
+  retained (a stale id read after the first automatic fold gave 411 instead of 394 reachable pairs at SF10).
+- (21 Oct) The per-query overlay build was the dominant cost under updates (one CanFetch per entry and two
+  dictionary lookups per edge); change groups, append-time ids and the one-entry snapshot cache took an SF10 query
+  with 267k pending operations from 80-130 ms to 41-51 ms after a commit and 23 ms (the no-delta cost) between
+  commits. What remains per rebuild is O(D) bucketing and sorting of the visible delta edges.
 
 ## 6. Correctness
 
@@ -303,6 +326,10 @@ called at every commit, (ii) row ids never being reused while the index exists (
 - **Path reconstruction (W7)** records predecessor edge positions; an epoch position maps to a row id via
   `edge_row_ids`, a delta edge carries its row id, so `edges(p)` can fetch edge rows by row id.
 - **Undirected.** Index option; a directed index is not used for `-[e]-` patterns.
+- **Execution model (22 Oct).** Every kernel (source-grouped, MS-BFS, push-pull, bidirectional) and the partitioned
+  CSR build run as a `PhasedKernel`: a chain of events, one per parallel phase, with the serial step between phases
+  in `FinishEvent`. No task waits for another task. The previous barrier-synchronized tasks deadlocked as soon as
+  the barrier groups of concurrent queries exceeded the scheduler's threads (DuckDB has no gang scheduling).
 - **Memory.** Epoch, delta, overlay, and working sets are all buffer-manager allocations.
 
 ## 7b. Path reconstruction over the index (W7, 20 Oct)

@@ -79,7 +79,10 @@ W18 Neo4j Enterprise request, W22 outline.
 - zsh pitfall: `pkill -f '<pattern>'` from a tool shell matches the shell itself; `set -- $var` does not split words.
 - W16 harness: `update-run`, `update-concurrent` (driver `scripts/tools/update_concurrent_driver.cpp`, compiled by
   the harness against build/release/src/libduckdb.so), `update-kuzu` (pip `kuzu` 0.11.3 installed for the user).
-  Collectors `~/sweep/collect_update.py`, `~/sweep/collect_concurrent.py`. Keep the per-query worker cap in the
-  concurrent driver until the BFS kernels stop using barriers across tasks (deadlock, see the plan's 21 Oct entry).
+  Collectors `~/sweep/collect_update.py`, `~/sweep/collect_concurrent.py`. Since 22 Oct the kernels run as event
+  chains (`phased_kernel_event.hpp`), there are no barriers across tasks and the driver needs no worker cap.
+- Kernel pattern: a `PhasedKernel` has Start / RunPhase(worker) / AdvancePhase / Finished; serial work goes into
+  Start and AdvancePhase (they run on one thread between phases), parallel work into RunPhase; never block inside a
+  task.
 - The CSR index now stamps change groups and caches the last snapshot (commits f585926a, 3c5b8b78); the design doc's
   "dictionary is a prefix of every later version" is not what the code does (rebuilt in key order at a fold).
