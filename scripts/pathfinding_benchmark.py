@@ -4734,33 +4734,37 @@ class DuckPGQSystem(GraphDBSystem):
         pass  # ensure_ldbc_attributes ran in load()
 
     def pair_forms(self, pair_table):
-        """(row-id pair relation for the build route, key pair relation for the index route) of a pair table"""
+        """(row-id pair relation for the build route, key pair relation for the index route) of a pair table; a
+        multi-source table yields its sources only and the query runs in reach mode (every vertex each source
+        reaches, no destination list)"""
         if pair_table.startswith(multi_source_table_name("")):
-            # sources (row ids) x every person, streamed
-            return (f"(SELECT s.src AS src, d.rowid::BIGINT AS dst FROM ldbc.{pair_table} s, ldbc.person d)",
-                    f"(SELECT a.id::BIGINT AS src, d.id::BIGINT AS dst FROM ldbc.{pair_table} s "
-                    f"JOIN ldbc.person a ON a.rowid = s.src, ldbc.person d)")
+            return (f"(SELECT s.src AS src, s.src AS dst FROM ldbc.{pair_table} s)",
+                    f"(SELECT a.id::BIGINT AS src, a.id::BIGINT AS dst FROM ldbc.{pair_table} s "
+                    f"JOIN ldbc.person a ON a.rowid = s.src)")
         return (f"ldbc.{pair_table}",
                 f"(SELECT a.id::BIGINT AS src, b.id::BIGINT AS dst FROM ldbc.{pair_table} p "
                 f"JOIN ldbc.person a ON a.rowid = p.src JOIN ldbc.person b ON b.rowid = p.dst)")
 
     def script(self, rowid_pairs, key_pairs, warm):
+        reach = "AS dst FROM ldbc.benchmark_pairs_multi_" in rowid_pairs
+        if reach:
+            # reachoperator yields [dst, len] per reached vertex; count and sum over the lengths as in pair mode
+            select = "SELECT count(r[2]), coalesce(sum(r[2]), 0) FROM (SELECT reachoperator(src, dst, "
+            result = ") AS r"
+        else:
+            select = "SELECT count(len), coalesce(sum(len), 0) FROM (SELECT iterativelengthoperator(src, dst, "
+            result = ") AS len"
         if self.route == "build":
-            query = f"""SELECT count(len), coalesce(sum(len), 0) FROM (
-    SELECT iterativelengthoperator(src, dst, struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
-        {self.vertex_count}::BIGINT, {self.edge_count_value}::BIGINT, {sql_string(self.cache_key)}) AS len
+            query = f"""{select}struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+        {self.vertex_count}::BIGINT, {self.edge_count_value}::BIGINT, {sql_string(self.cache_key)}{result}
     FROM {rowid_pairs} AS pathfinding_pairs,
         (SELECT a.rowid::BIGINT AS pathfinding_edge_src, c.rowid::BIGINT AS pathfinding_edge_dst
          FROM ldbc.{self.edge_table} k JOIN ldbc.person a ON a.id = k.person1id JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges);"""
             prelude = ""
         else:
-            # Small pair sets are materialised untimed (the operator then reads a plain table), large ones stream
-            if "ldbc.person d)" in key_pairs:
-                prelude = f"CREATE OR REPLACE TEMP VIEW pathfinding_index_pairs AS SELECT * FROM {key_pairs};"
-            else:
-                prelude = f"CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS SELECT * FROM {key_pairs};"
-            query = (f"SELECT count(len), coalesce(sum(len), 0) FROM (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, "
-                     f"{sql_string(self.index_key)}) AS len FROM pathfinding_index_pairs);")
+            # The key pairs are materialised untimed (the operator then reads a plain table)
+            prelude = f"CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS SELECT * FROM {key_pairs};"
+            query = f"{select}0::BIGINT, 0::BIGINT, {sql_string(self.index_key)}{result} FROM pathfinding_index_pairs);"
         warm_up = query + "\n" if warm else ""
         return f"""LOAD {sql_string(DUCKPGQ_EXTENSION)};
 SET threads={self.threads};
@@ -4945,7 +4949,9 @@ def sweep_pairs(args):
             for repeat in range(1, args.repeats + 1):
                 if exceeded:
                     break
-                if len(source_keys) * system_vertex_count > args.max_pairs:
+                if not isinstance(system, DuckPGQSystem) and len(source_keys) * system_vertex_count > args.max_pairs:
+                    # The per-source systems answer this shape in time proportional to the result; DuckPGQ's reach
+                    # mode has no pair list and runs every point
                     value, elapsed, status = None, 0.0, f"exceeds_pair_limit_{args.max_pairs}"
                 elif isinstance(system, DuckPGQSystem):
                     try:

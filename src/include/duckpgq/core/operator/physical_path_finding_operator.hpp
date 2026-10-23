@@ -37,7 +37,9 @@ enum class PathFindingOperatorMode {
 	ITERATIVE_LENGTH,
 	PUSH_PULL_ITERATIVE_LENGTH,
 	BIDIRECTIONAL_ITERATIVE_LENGTH,
-	SHORTEST_PATH
+	SHORTEST_PATH,
+	//! One row per vertex reachable from each source (dst, len), no destination input
+	REACH
 };
 
 enum class PathFindingSearchOrientation { FORWARD, REVERSE };
@@ -174,6 +176,15 @@ public:
 	vector<idx_t> source_group_row_counts;
 	vector<vector<shared_ptr<DataChunk>>> source_group_output_chunks;
 	vector<vector<idx_t>> source_group_output_states;
+	//! REACH mode: the input rows (chunk, row) of every source group; the output repeats a row once per vertex
+	//! its source reaches
+	vector<vector<std::pair<DataChunk *, idx_t>>> source_group_rows;
+	//! REACH mode: slices of (group, vertex range) handed to the parallel source, and finished slices per group
+	std::atomic<idx_t> reach_next_slice {0};
+	vector<unique_ptr<std::atomic<idx_t>>> reach_slices_done;
+	//! REACH mode: input rows whose source key is not in the graph (no group); each reaches only itself
+	vector<std::pair<DataChunk *, idx_t>> reach_ungrouped_rows;
+	std::atomic<idx_t> reach_next_ungrouped {0};
 	vector<shared_ptr<DataChunk>> global_output_batches;
 	vector<vector<idx_t>> global_output_to_search;
 	bool use_global_deduplication;

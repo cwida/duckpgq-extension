@@ -1,4 +1,5 @@
 
+#include "duckpgq/core/functions/scalar.hpp"
 #include "duckpgq/core/operator/logical_path_finding_operator.hpp"
 #include "duckpgq/core/operator/physical_path_finding_operator.hpp"
 #include "duckpgq/common.hpp"
@@ -39,6 +40,8 @@ void LogicalPathFindingOperator::ResolveTypes() {
 		types.push_back(LogicalType::BIGINT);
 	} else if (mode == "shortestpath") {
 		types.push_back(LogicalType::LIST(LogicalType::BIGINT));
+	} else if (mode == "reach") {
+		types.push_back(ReachOperatorResultType());
 	} else {
 		throw NotImplementedException("Unrecognized mode in PathFindingOperator: " + mode);
 	}

@@ -106,6 +106,13 @@ W18 Neo4j Enterprise request, W22 outline.
   `graph:sweep|undirected` for the LDBC build route); the forward partitions are then also the reverse partitions.
   Test `path_finding_reverse_orientation.test`. The 23 Oct chain `sf300_chain` reruns the SF300 sweep (first run
   died on the 1.2G-pair point) and the DuckPGQ LDBC queries at SF100/SF300; `~/sweep/sf300_chain_done.txt` marks the end.
+- Reach mode (W29, 23 Oct): `reachoperator(src, src, struct_pack(src, dst), V, E, key[, max])` or the index form
+  `reachoperator(src, src, 0, 0, 'csr-index|...')` returns a `BIGINT[]` [dst, len] per reached vertex; mode string
+  `reach`, `PathFindingOperatorMode::REACH`, output in `GetReachData` (parallel source, slices of the distance arrays,
+  `source_group_rows` per group, `reach_ungrouped_rows` for sources outside the graph). Test
+  `path_finding_reach.test`. The harness's multi-source tables hold the sources only and `DuckPGQSystem.script`
+  switches to the reach form for them. A WHERE directly on the source table next to the edge input is not planned
+  (filter between scan and cross product); wrap the sources in a subquery, as the harness does.
 - Paths on the build route (W7 step 2, `48a7563a`): `shortestpathoperator(src, dst, struct_pack(src, dst, id), V, E,
   key)`; the `id` field is the edge row id and is required in path mode.
 - Many source groups (`8aa7aa32`): groups scheduled together divide the threads (`concurrent_groups` on the
