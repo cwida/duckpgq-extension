@@ -3,10 +3,10 @@
 
 % Draft 22 Oct 2026 in the style of paper/STYLE.md. Every number is provisional until the frozen-commit rerun.
 
-Graph queries have arrived in SQL. The SQL:2023 standard added \sqlpgq, which lets a query declare a property graph
-over existing tables and match patterns against it, including variable-length and shortest-path patterns that no
-join plan expresses well~\cite{deutsch2022gql}. For a relational engine the question is no longer whether to support
-graph queries, but how: fork the engine and add graph storage and operators, buy a second system and copy the data
+A shortest path is the one graph query a join plan cannot express well. Since SQL:2023, \sqlpgq lets a query
+declare a property graph over existing tables and match patterns against it, including variable-length and
+shortest-path patterns~\cite{deutsch2022gql}, so every relational engine now faces the question of how to answer
+them: fork the engine and add graph storage and operators, buy a second system and copy the data
 into it, or extend the engine from the outside.
 
 \duckpgq~\cite{tenwolde2023duckpgq} took the third option. It is an extension of \duckdb that parses \sqlpgq and
