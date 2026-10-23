@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The DuckPGQ CSR index: snapshot-consistent adjacency under MVCC</title>
+<style>
+  :root {
+    --ink: #1f2933; --muted: #5b6770; --rule: #d9dee3; --bg: #ffffff; --panel: #f6f8fa;
+    --epoch: #2a6f97; --epoch-light: #d6e6f0; --delta: #2f8f5b; --delta-light: #d8efe1;
+    --tomb: #c2553a; --tomb-light: #f5dcd5; --reader: #6c5ce7; --reader-light: #e6e2fb; --table: #8a949c;
+  }
+  html { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.5; }
+  body { margin: 0; }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 24px 64px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 48px 0 8px; padding-top: 16px; border-top: 1px solid var(--rule); }
+  h3 { font-size: 16px; margin: 24px 0 6px; }
+  p, li { max-width: 78ch; }
+  .lede { color: var(--muted); font-size: 17px; margin: 0 0 24px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+  code { background: var(--panel); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--panel); padding: 12px 14px; border-radius: 6px; overflow-x: auto; max-width: 100%; }
+  figure { margin: 16px 0; }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 6px; max-width: 90ch; }
+  svg { max-width: 100%; height: auto; display: block; }
+  svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--ink); }
+  svg .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  svg .label { font-size: 12px; fill: var(--muted); }
+  svg .title { font-size: 14px; font-weight: 600; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px 22px; font-size: 14px; color: var(--muted); margin: 8px 0 0; }
+  .legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .legend .epoch::before { background: var(--epoch); } .legend .delta::before { background: var(--delta); }
+  .legend .tomb::before { background: var(--tomb); } .legend .reader::before { background: var(--reader); }
+  .legend .table::before { background: var(--table); }
+  .steps { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0 6px; }
+  .steps button { font: inherit; font-size: 14px; padding: 6px 12px; border: 1px solid var(--rule); background: var(--bg); border-radius: 6px; cursor: pointer; }
+  .steps button:hover { background: var(--panel); }
+  .steps button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .step-text { background: var(--panel); border-left: 4px solid var(--reader); padding: 10px 14px; border-radius: 0 6px 6px 0; min-height: 44px; max-width: none; }
+  table { border-collapse: collapse; font-size: 14px; margin: 10px 0; }
+  th, td { text-align: left; padding: 6px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .note { color: var(--muted); font-size: 14px; }
+  .hidden { display: none; }
+  .dim { opacity: 0.25; }
+</style>
+</head>
+<body>
+<main>
+<h1>The CSR index: snapshot-consistent adjacency under MVCC</h1>
+<p class="lede">How DuckPGQ keeps a packed compressed-sparse-row graph inside a DuckDB table index, so that a path-finding query traverses exactly the edges its transaction can see, while other transactions insert and delete edges, without storing a single commit id.</p>
+
+<p>The index has three parts and one rule. An <strong>epoch</strong> is an immutable, partitioned CSR equal to the edge set that was visible when it was built. A <strong>delta</strong> is an append-only log of edges committed after that. <strong>Tombstones</strong> are an append-only log of epoch edges deleted after that. The rule, for a reader with visibility bound <span class="mono">b</span> at least the epoch's bound:</p>
+<pre>Vis(b)  =  epoch  ∪  { d ∈ delta : CanFetch(b, d.row) }  \  { t ∈ tombstones : ¬CanFetch(b, t.row) }</pre>
+<p><code>CanFetch</code> is DuckDB's own row-visibility test. The index never records who committed what; it stores edge-table row ids, and DuckDB's version information decides what each reader sees. That is the whole trick, and it is why the index is correct under concurrent writers, explicit transactions and rollback (design doc, section 6).</p>
+
+<h2>1. What is stored</h2>
+<figure>
+<svg viewBox="0 0 1040 400" role="img" aria-label="Structure of the CSR index: edge table, dictionary, epoch partitions, delta log, tombstones">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6770"/></marker>
+  </defs>
+  <!-- edge table -->
+  <rect x="20" y="40" width="190" height="300" rx="8" fill="#f6f8fa" stroke="#8a949c"/>
+  <text x="115" y="30" text-anchor="middle" class="title">edge table knows</text>
+  <text x="34" y="64" class="mono">rowid  src   dst</text>
+  <g class="mono">
+    <text x="34" y="90">0      14  → 16</text>
+    <text x="34" y="112">1      14  → 90</text>
+    <text x="34" y="134">2      16  → 42</text>
+    <text x="34" y="156">3      42  → 14</text>
+    <text x="34" y="178">…</text>
+    <text x="34" y="200">E-1    90  → 16</text>
+    <text x="34" y="240" fill="#2f8f5b">E      42  → 90   (new)</text>
+    <text x="34" y="262" fill="#2f8f5b">E+1    16  → 14   (new)</text>
+    <text x="34" y="300" fill="#c2553a">row 2 deleted</text>
+  </g>
+  <!-- dictionary -->
+  <rect x="260" y="40" width="170" height="92" rx="8" fill="#fff" stroke="#2a6f97"/>
+  <text x="345" y="30" text-anchor="middle" class="title">dictionary (per epoch)</text>
+  <g class="mono">
+    <text x="272" y="64">key  → dense id</text>
+    <text x="272" y="86">14 → 0   16 → 1</text>
+    <text x="272" y="108">42 → 2   90 → 3</text>
+  </g>
+  <text x="345" y="150" text-anchor="middle" class="label">rebuilt in key order at every fold</text>
+  <!-- epoch partitions -->
+  <rect x="260" y="170" width="420" height="170" rx="8" fill="#d6e6f0" stroke="#2a6f97"/>
+  <text x="470" y="192" text-anchor="middle" class="title">epoch: immutable partitioned CSR, bound b_e</text>
+  <g>
+    <rect x="276" y="206" width="190" height="118" rx="6" fill="#fff" stroke="#2a6f97"/>
+    <text x="371" y="224" text-anchor="middle" class="label">partition 0: destinations 0..1</text>
+    <g class="mono">
+      <text x="288" y="246">sparse rows  src 0: [1]</text>
+      <text x="288" y="266">             src 2: [0]</text>
+      <text x="288" y="286">             src 3: [1]</text>
+      <text x="288" y="310">row ids      0 3 E-1</text>
+    </g>
+    <rect x="476" y="206" width="190" height="118" rx="6" fill="#fff" stroke="#2a6f97"/>
+    <text x="571" y="224" text-anchor="middle" class="label">partition 1: destinations 2..3</text>
+    <g class="mono">
+      <text x="488" y="246">sparse rows  src 0: [3]</text>
+      <text x="488" y="266">             src 1: [2]</text>
+      <text x="488" y="310">row ids      1 2</text>
+    </g>
+  </g>
+  <text x="470" y="362" text-anchor="middle" class="label">uint16 destination offsets per edge, 8-byte edge row id per edge, bucket index over sparse rows</text>
+  <!-- delta -->
+  <rect x="720" y="40" width="300" height="130" rx="8" fill="#d8efe1" stroke="#2f8f5b"/>
+  <text x="870" y="30" text-anchor="middle" class="title">delta: append-only, commit order</text>
+  <g class="mono">
+    <text x="732" y="66">src dst  row   group  deleted  ids(gen)</text>
+    <text x="732" y="90">42  90   E     g1     –        2→3 (1)</text>
+    <text x="732" y="114">16  14   E+1   g1     –        1→0 (1)</text>
+    <text x="732" y="138">…                              </text>
+  </g>
+  <text x="870" y="160" text-anchor="middle" class="label">one Append call = one change group</text>
+  <!-- tombstones -->
+  <rect x="720" y="200" width="300" height="80" rx="8" fill="#f5dcd5" stroke="#c2553a"/>
+  <text x="870" y="190" text-anchor="middle" class="title">tombstones: append-only</text>
+  <g class="mono">
+    <text x="732" y="228">row   group   epoch position</text>
+    <text x="732" y="252">2     g2      resolved lazily</text>
+  </g>
+  <!-- snapshot cache -->
+  <rect x="720" y="300" width="300" height="60" rx="8" fill="#e6e2fb" stroke="#6c5ce7"/>
+  <text x="870" y="324" text-anchor="middle" class="title">cached snapshot</text>
+  <text x="870" y="346" text-anchor="middle" class="label">key: (epoch generation, newest visible group)</text>
+  <!-- arrows -->
+  <path d="M210,110 L258,90" stroke="#5b6770" fill="none" marker-end="url(#arrow)"/>
+  <path d="M210,160 L258,230" stroke="#5b6770" fill="none" marker-end="url(#arrow)"/>
+  <path d="M210,245 L718,90" stroke="#2f8f5b" fill="none" marker-end="url(#arrow)"/>
+  <path d="M210,300 L718,240" stroke="#c2553a" fill="none" marker-end="url(#arrow)"/>
+  <text x="440" y="150" class="label" transform="rotate(-11 440 150)">Append at commit</text>
+  <text x="440" y="285" class="label" transform="rotate(-7 440 285)">Delete at commit</text>
+</svg>
+<figcaption>Edges live in the epoch by position and in the delta by row id. Vertices are keys mapped to dense ids through the epoch's dictionary; a delta edge to a key the epoch does not know gets an id above the epoch's vertex count when a snapshot is built. The dictionary is not a prefix of later versions: a fold rebuilds it in key order, so delta entries record the epoch generation their resolved ids belong to and are re-resolved after a fold.</figcaption>
+</figure>
+<div class="legend"><span class="table">table rows</span><span class="epoch">epoch (immutable)</span><span class="delta">delta (appends)</span><span class="tomb">tombstones (deletes)</span><span class="reader">reader state</span></div>
+
+<h3>Sizes</h3>
+<table>
+  <tr><th>Scale factor</th><th class="num">edges</th><th class="num">knows table on disk</th><th class="num">CSR index on disk</th><th class="num">bytes per edge</th></tr>
+  <tr><td>LDBC SF10</td><td class="num">1.84 M</td><td class="num">12.6 MB</td><td class="num">25.4 MB</td><td class="num">13.8</td></tr>
+  <tr><td>LDBC SF100</td><td class="num">18.7 M</td><td class="num">123 MB</td><td class="num">232 MB</td><td class="num">12.4</td></tr>
+</table>
+<p class="note">Measured 23 Oct 2026 by checkpointing a copy of the database with and without the index. Of the 12 to 14 bytes per edge, 8 are the edge row id that lets <code>edges(p)</code> return edge rows; 2 are the destination offset; the rest are sparse-row starts, the bucket index and the dictionary. The table itself compresses to about 6.7 bytes per edge. A reverse direction would add the same again, or about 5 bytes per edge without row ids.</p>
+
+<h2>2. Commits, change groups and what a reader sees</h2>
+<p>Every <code>Append</code> or <code>TryDelete</code> call the storage layer makes at commit time carries the rows of one commit chunk of one transaction. The index numbers these calls: a <strong>change group</strong>. All rows of a group share one visibility, so a reader decides a whole group by testing one of its rows with <code>CanFetch</code>. DuckDB serialises commits, so the groups a reader can see form a prefix of the group sequence, and the <em>newest visible group</em> identifies the reader's view. Step through a small history:</p>
+
+<div class="steps" id="steps" role="group" aria-label="Timeline steps"></div>
+<p class="step-text" id="step-text"></p>
+<figure>
+<svg viewBox="0 0 1040 330" role="img" aria-label="Timeline of change groups and reader snapshots" id="timeline">
+  <defs>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6770"/></marker>
+  </defs>
+  <!-- axis -->
+  <line x1="40" y1="120" x2="1000" y2="120" stroke="#8a949c" marker-end="url(#arrow2)"/>
+  <text x="1000" y="145" text-anchor="end" class="label">commit order</text>
+  <!-- epoch marker -->
+  <g id="t-epoch">
+    <rect x="40" y="60" width="150" height="46" rx="6" fill="#d6e6f0" stroke="#2a6f97"/>
+    <text x="115" y="79" text-anchor="middle" class="title">epoch, bound b_e</text>
+    <text x="115" y="97" text-anchor="middle" class="label">E edges, visible then</text>
+    <line x1="190" y1="120" x2="190" y2="110" stroke="#2a6f97" stroke-width="2"/>
+  </g>
+  <!-- groups -->
+  <g id="t-g1">
+    <rect x="230" y="68" width="120" height="38" rx="6" fill="#d8efe1" stroke="#2f8f5b"/>
+    <text x="290" y="85" text-anchor="middle" class="title">g1: Append</text>
+    <text x="290" y="100" text-anchor="middle" class="label">2 000 edges, tx A</text>
+    <line x1="290" y1="120" x2="290" y2="108" stroke="#2f8f5b" stroke-width="2"/>
+  </g>
+  <g id="t-g2">
+    <rect x="390" y="68" width="120" height="38" rx="6" fill="#f5dcd5" stroke="#c2553a"/>
+    <text x="450" y="85" text-anchor="middle" class="title">g2: Delete</text>
+    <text x="450" y="100" text-anchor="middle" class="label">epoch rows, tx B</text>
+    <line x1="450" y1="120" x2="450" y2="108" stroke="#c2553a" stroke-width="2"/>
+  </g>
+  <g id="t-g3">
+    <rect x="550" y="68" width="120" height="38" rx="6" fill="#d8efe1" stroke="#2f8f5b"/>
+    <text x="610" y="85" text-anchor="middle" class="title">g3: Append</text>
+    <text x="610" y="100" text-anchor="middle" class="label">tx C, in flight</text>
+    <line x1="610" y1="120" x2="610" y2="108" stroke="#2f8f5b" stroke-width="2" stroke-dasharray="4 3"/>
+  </g>
+  <g id="t-g4">
+    <rect x="710" y="68" width="120" height="38" rx="6" fill="#f5dcd5" stroke="#c2553a"/>
+    <text x="770" y="85" text-anchor="middle" class="title">g4: Delete</text>
+    <text x="770" y="100" text-anchor="middle" class="label">a g1 row, tx D</text>
+    <line x1="770" y1="120" x2="770" y2="108" stroke="#c2553a" stroke-width="2"/>
+  </g>
+  <!-- readers -->
+  <g id="t-r1">
+    <line x1="370" y1="120" x2="370" y2="170" stroke="#6c5ce7" stroke-width="2"/>
+    <rect x="300" y="170" width="140" height="56" rx="6" fill="#e6e2fb" stroke="#6c5ce7"/>
+    <text x="370" y="190" text-anchor="middle" class="title">reader R1</text>
+    <text x="370" y="206" text-anchor="middle" class="label">sees g1, not g2</text>
+    <text x="370" y="220" text-anchor="middle" class="label">epoch ∪ g1</text>
+  </g>
+  <g id="t-r2">
+    <line x1="530" y1="120" x2="530" y2="170" stroke="#6c5ce7" stroke-width="2"/>
+    <rect x="460" y="170" width="140" height="56" rx="6" fill="#e6e2fb" stroke="#6c5ce7"/>
+    <text x="530" y="190" text-anchor="middle" class="title">reader R2</text>
+    <text x="530" y="206" text-anchor="middle" class="label">sees g1, g2</text>
+    <text x="530" y="220" text-anchor="middle" class="label">epoch ∪ g1 \ g2</text>
+  </g>
+  <g id="t-r3">
+    <line x1="690" y1="120" x2="690" y2="170" stroke="#6c5ce7" stroke-width="2"/>
+    <rect x="620" y="170" width="140" height="56" rx="6" fill="#e6e2fb" stroke="#6c5ce7"/>
+    <text x="690" y="190" text-anchor="middle" class="title">reader R3</text>
+    <text x="690" y="206" text-anchor="middle" class="label">g3 not committed:</text>
+    <text x="690" y="220" text-anchor="middle" class="label">same view as R2, cache hit</text>
+  </g>
+  <g id="t-r4">
+    <line x1="850" y1="120" x2="850" y2="170" stroke="#6c5ce7" stroke-width="2"/>
+    <rect x="780" y="170" width="150" height="56" rx="6" fill="#e6e2fb" stroke="#6c5ce7"/>
+    <text x="855" y="190" text-anchor="middle" class="title">reader R4</text>
+    <text x="855" y="206" text-anchor="middle" class="label">g4 stamps a delta row:</text>
+    <text x="855" y="220" text-anchor="middle" class="label">epoch ∪ (g1 minus that row) \ g2</text>
+  </g>
+  <g id="t-writer">
+    <rect x="40" y="250" width="960" height="60" rx="6" fill="#f6f8fa" stroke="#d9dee3"/>
+    <text x="56" y="272" class="title">A transaction with its own uncommitted writes</text>
+    <text x="56" y="292" class="label">gets a private snapshot: its rows are visible to it alone, so neither the shared overlay nor the cache may serve it, and nothing it builds is published (found by a test that leaked a rolled-back edge).</text>
+  </g>
+</svg>
+<figcaption>Only the index lock protects the two append-only logs; a reader copies their lengths under the lock and evaluates visibility without it. Entries appended after the copy belong to commits that cannot be visible to that reader yet.</figcaption>
+</figure>
+
+<h2>3. Building a snapshot: the overlay</h2>
+<p>A snapshot is the epoch plus an <strong>overlay</strong>. The overlay has two parts: a bitmap over epoch edge positions for the tombstones that apply (<em>suppression</em>), and a small adjacency of the visible delta edges, sorted by source and bucketed by destination range exactly like the epoch partitions, so that every epoch partition has a <em>companion</em> delta partition. The traversal kernel visits an epoch partition, skips suppressed positions with one bit test per edge, then visits the companion. Delta edges to new vertices extend the id space above the epoch's vertex count.</p>
+<figure>
+<svg viewBox="0 0 1040 250" role="img" aria-label="Read path: epoch partition with suppression bitmap and companion delta partition">
+  <rect x="20" y="40" width="470" height="180" rx="8" fill="#d6e6f0" stroke="#2a6f97"/>
+  <text x="255" y="30" text-anchor="middle" class="title">epoch partition k (shared, immutable)</text>
+  <g class="mono">
+    <text x="36" y="70">positions   0   1   2   3   4   5   6   7</text>
+    <text x="36" y="94">dst offset  1   3   0   2   2   1   3   0</text>
+    <text x="36" y="118">src rows    [0: 0..3) [2: 3..5) [3: 5..8)</text>
+  </g>
+  <text x="36" y="150" class="title">overlay: suppression bitmap (per snapshot)</text>
+  <g class="mono">
+    <text x="36" y="174">            0   0   1   0   0   0   1   0</text>
+  </g>
+  <text x="36" y="200" class="label">positions 2 and 6 are tombstoned for this reader; one bit test per edge, branch predicted away when the bitmap is empty</text>
+  <rect x="530" y="40" width="490" height="180" rx="8" fill="#d8efe1" stroke="#2f8f5b"/>
+  <text x="775" y="30" text-anchor="middle" class="title">companion delta partition k (per snapshot)</text>
+  <g class="mono">
+    <text x="546" y="70">visible delta edges into range k, sorted by source:</text>
+    <text x="546" y="94">src 0 → dst 2   (row E,   id resolved at append)</text>
+    <text x="546" y="118">src 5 → dst 1   (row E+7, src 5 is a new vertex)</text>
+  </g>
+  <text x="546" y="150" class="title">cost per snapshot</text>
+  <text x="546" y="174" class="label">O(groups since the fold) CanFetch calls + O(D) bucketing of visible delta edges;</text>
+  <text x="546" y="192" class="label">no edge of the epoch is examined. Between two commits every reader shares the cached snapshot.</text>
+</svg>
+<figcaption>Why companions and not separate ranges: the kernel clears and checks its frontier per destination range; two partitions over the same range would wipe each other's frontier. Tombstone positions are resolved lazily: the first snapshot that sees new tombstones scans the epoch's row ids once, in parallel, and caches the positions.</figcaption>
+</figure>
+<p>Measured at LDBC SF10 (1.84 M edges, 32 threads): a single-source query with 1 024 destinations costs 19 ms on the index with no pending changes, 41 to 51 ms right after a commit with 267 k pending operations (the overlay is rebuilt once), and 23 ms for the next reader (cache hit). Before change groups the same query cost 80 to 130 ms because the overlay did one visibility check per pending row and two dictionary lookups per edge.</p>
+
+<h2>4. Folding: a new epoch</h2>
+<p>The delta and the tombstones grow with every commit. A <strong>fold</strong> builds a fresh epoch equal to the visible set at a new bound <span class="mono">b_f</span> and empties the logs. It is triggered when <span class="mono">delta + tombstones &gt; fold_ratio × epoch edges</span> at the end of a query (default ratio 0.1), by <code>CHECKPOINT</code>, or by <code>duckpgq_csr_index_fold(table, index)</code>.</p>
+<figure>
+<svg viewBox="0 0 1040 300" role="img" aria-label="Fold: old epoch and logs become a new epoch; old epoch retained for older readers">
+  <defs>
+    <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6770"/></marker>
+  </defs>
+  <text x="20" y="28" class="title">before the fold</text>
+  <rect x="20" y="40" width="200" height="60" rx="8" fill="#d6e6f0" stroke="#2a6f97"/>
+  <text x="120" y="66" text-anchor="middle" class="title">epoch 1, bound b_e</text>
+  <text x="120" y="86" text-anchor="middle" class="label">E edges</text>
+  <rect x="20" y="112" width="200" height="40" rx="8" fill="#d8efe1" stroke="#2f8f5b"/>
+  <text x="120" y="137" text-anchor="middle" class="label">delta: D edges, groups g1..gn</text>
+  <rect x="20" y="164" width="200" height="40" rx="8" fill="#f5dcd5" stroke="#c2553a"/>
+  <text x="120" y="189" text-anchor="middle" class="label">tombstones: T rows</text>
+
+  <path d="M230,120 L380,120" stroke="#5b6770" fill="none" marker-end="url(#arrow3)"/>
+  <text x="305" y="106" text-anchor="middle" class="label">fold transaction, bound b_f</text>
+  <text x="305" y="140" text-anchor="middle" class="label">scan the table at b_f, bulk build</text>
+
+  <text x="400" y="28" class="title">after the fold</text>
+  <rect x="400" y="40" width="220" height="60" rx="8" fill="#d6e6f0" stroke="#2a6f97"/>
+  <text x="510" y="66" text-anchor="middle" class="title">epoch 2, bound b_f</text>
+  <text x="510" y="86" text-anchor="middle" class="label">Vis(b_f): new dictionary in key order</text>
+  <rect x="400" y="112" width="220" height="40" rx="8" fill="#d8efe1" stroke="#2f8f5b"/>
+  <text x="510" y="137" text-anchor="middle" class="label">delta: rows not visible at b_f, ids re-resolved</text>
+  <rect x="400" y="164" width="220" height="40" rx="8" fill="#f5dcd5" stroke="#c2553a"/>
+  <text x="510" y="189" text-anchor="middle" class="label">tombstones: ∅ for epoch 2</text>
+
+  <rect x="660" y="40" width="360" height="164" rx="8" fill="#f6f8fa" stroke="#d9dee3"/>
+  <text x="680" y="64" class="title">retention (MAX_RETAINED_EPOCHS = 2)</text>
+  <text x="680" y="88" class="label">epoch 1 stays for readers whose bound is older than b_f;</text>
+  <text x="680" y="106" class="label">a reader older than every retained epoch gets no snapshot</text>
+  <text x="680" y="124" class="label">and the operator builds the CSR for that query instead.</text>
+  <text x="680" y="152" class="label">Log entries are stamped with the generation of the first</text>
+  <text x="680" y="170" class="label">epoch that accounts for them; compaction drops an entry only</text>
+  <text x="680" y="188" class="label">once that generation is at most the oldest retained epoch's.</text>
+
+  <rect x="20" y="226" width="1000" height="60" rx="6" fill="#fff" stroke="#d9dee3"/>
+  <text x="36" y="248" class="title">What a fold must not do</text>
+  <text x="36" y="268" class="label">Evaluate visibility at a past bound. DuckDB drops row version information once no active transaction can observe the pre-commit state, after which every row looks visible at every bound; the first compaction did this and dropped entries an older epoch's readers still needed. Visibility is only ever evaluated by a live transaction at its own bound.</text>
+</svg>
+<figcaption>Folding is about memory and snapshot cost, not traversal speed: traversing delta edges through companion partitions costs the same as traversing them in the epoch (measured on an 8 M-edge graph with a 50 % delta: 2.12 s before the fold, 2.17 s after). The fold itself rebuilt a 12 M-edge epoch in 0.42 s on 18 threads.</figcaption>
+</figure>
+
+<h2>5. Persistence and recovery</h2>
+<ul>
+  <li><strong>Checkpoint</strong> writes one byte stream: the newest epoch plus the log entries it does not account for, in fixed-size allocator segments; the segment list lives in the index's storage info. Writes during serialisation go to the main index under its lock. Each checkpoint rewrites the whole index.</li>
+  <li><strong>Restart</strong> binds the index lazily from that stream: 90 ms for the 55.7 M-edge SF300 index on 32 threads (segments copied in parallel into uninitialised memory; the serial version took 1.15 s). WAL replay re-applies inserts and deletes through <code>Append</code>/<code>Delete</code>. Loaded entries carry no group and are decided per row until the next fold.</li>
+  <li><strong>Row id stability.</strong> DuckDB only remaps row ids at vacuum when every index on the table is an ART; with a CSR index present, row ids are stable, so epoch positions keep pointing at the right rows. The table keeps delete gaps while the index exists.</li>
+  <li><strong>An index created after the last checkpoint</strong> comes up empty, marks itself for rebuild, and the first snapshot performs the bulk build at that transaction's bound.</li>
+</ul>
+
+<h2>6. Paths through the index</h2>
+<p>Each epoch partition carries its edges' row ids and each delta edge carries its own, so a traversal that records, per discovered vertex, the edge it arrived through can return <code>edges(p)</code> as edge-table rows. Edges are packed as <span class="mono">delta_flag &lt;&lt; 63 | partition &lt;&lt; 32 | offset</span>; the result scatter resolves the row id through the partition's row-id array. Vertices come back as keys through the snapshot's dictionary. The same mechanism now works on the build-per-query route, where the row id travels as a third field of the endpoint struct through the radix build.</p>
+
+<h2>7. The numbers that matter</h2>
+<table>
+  <tr><th>Measurement (LDBC SF10, 32 threads unless noted)</th><th class="num">index</th><th class="num">build per query</th></tr>
+  <tr><td>single source, 1 024 destinations, no pending changes</td><td class="num">19 ms</td><td class="num">26 ms</td></tr>
+  <tr><td>same, under the LDBC insert/delete stream (190 commits of 2 000 operations)</td><td class="num">19 ms</td><td class="num">26 ms</td></tr>
+  <tr><td>SF100, same query under the update stream</td><td class="num">95 ms</td><td class="num">131 ms</td></tr>
+  <tr><td>update batch of 2 000 operations (index maintenance included)</td><td class="num">9 ms</td><td class="num">8 ms</td></tr>
+  <tr><td>SF300 single source, resident index vs CSR build in the query</td><td class="num">31 ms</td><td class="num">300 ms</td></tr>
+  <tr><td>1 random pair</td><td class="num">4 ms</td><td class="num">23 ms</td></tr>
+  <tr><td>65 536 random pairs</td><td class="num">2.6 s</td><td class="num">3.1 s</td></tr>
+</table>
+<p class="note">For comparison on the same box: Kuzu 16 ms, Memgraph 41 ms, FalkorDB 9.3 s and Neo4j 10 s (before the UNWIND fix, 0.76 s after) for the single-source query under updates; their update batches took 342, 26, 111 and 69 ms. Every system agreed on every answer at every step. Numbers are provisional until the commit is frozen; see <code>docs/PATHFINDING_PAPER_PLAN.md</code>, section 11.</p>
+
+<p class="note">Source of truth: <code>docs/CSR_INDEX_DESIGN.md</code> (design and correctness argument, sections 3 to 7) and <code>src/core/index/csr_index.cpp</code>. This page is a reading aid; where they disagree, the code wins.</p>
+</main>
+
+<script>
+(function () {
+  const steps = [
+    { show: ["t-epoch"], text: "An epoch is built by CREATE INDEX (or a fold) inside one transaction. It equals the edge set visible to that transaction and never changes afterwards." },
+    { show: ["t-epoch", "t-g1"], text: "Transaction A commits 2 000 new edges. The storage layer calls Append once per commit chunk; the index appends the rows to the delta as change group g1, resolving their keys against the epoch's dictionary. No visibility information is stored." },
+    { show: ["t-epoch", "t-g1", "t-r1"], text: "Reader R1 starts before B commits. Its snapshot tests one row of g1 with CanFetch: visible. The overlay is epoch ∪ g1 and is cached under (epoch 1, newest visible group g1)." },
+    { show: ["t-epoch", "t-g1", "t-g2", "t-r1", "t-r2"], text: "Transaction B deletes epoch rows: group g2 becomes tombstones. Reader R2 sees g1 and g2; its overlay suppresses the deleted epoch positions. R1, still running, keeps its own snapshot: the epoch is immutable and its overlay is pinned." },
+    { show: ["t-epoch", "t-g1", "t-g2", "t-g3", "t-r1", "t-r2", "t-r3"], text: "Transaction C has called Append (group g3 is in the log) but has not committed. Reader R3 copies the log length under the lock, tests g3: not fetchable. Its newest visible group is still g2, so it gets R2's cached snapshot. If C rolls back, its Delete stamps g3's rows; the stamp is never visible to anyone, like the rows." },
+    { show: ["t-epoch", "t-g1", "t-g2", "t-g3", "t-g4", "t-r1", "t-r2", "t-r3", "t-r4"], text: "Transaction D deletes a row that g1 inserted. That row is found through the delta row index and stamped with deleting group g4, not tombstoned: tombstones are for epoch rows only. Reader R4 sees g4, so the stamped row is excluded from its companion partitions." },
+    { show: ["t-epoch", "t-g1", "t-g2", "t-g3", "t-g4", "t-r1", "t-r2", "t-r3", "t-r4", "t-writer"], text: "A transaction that has written edges itself gets a private snapshot built from its own view, never the cache. When delta + tombstones exceed a tenth of the epoch, the next query end folds everything into epoch 2 (section 4)." },
+  ];
+  const all = ["t-epoch", "t-g1", "t-g2", "t-g3", "t-g4", "t-r1", "t-r2", "t-r3", "t-r4", "t-writer"];
+  const bar = document.getElementById("steps");
+  const text = document.getElementById("step-text");
+  function render(i) {
+    const shown = new Set(steps[i].show);
+    all.forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle("dim", !shown.has(id)); });
+    text.textContent = steps[i].text;
+    bar.querySelectorAll("button").forEach((b, j) => b.setAttribute("aria-pressed", String(j === i)));
+  }
+  steps.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.textContent = "Step " + (i + 1);
+    b.addEventListener("click", () => render(i));
+    bar.appendChild(b);
+  });
+  render(0);
+})();
+</script>
+</body>
+</html>
