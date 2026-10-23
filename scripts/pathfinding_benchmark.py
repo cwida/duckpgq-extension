@@ -4778,6 +4778,8 @@ SELECT delete_csr(2147483647) AS duckpgq_state_init;
         result = subprocess.run([str(BENCH_DUCKDB), "-unsigned", "-csv"], cwd=REPO_ROOT, text=True, input=script,
                                 capture_output=True, timeout=self.budget_s)
         output = result.stdout + result.stderr
+        if result.returncode < 0:
+            raise RuntimeError(f"duckdb killed by signal {-result.returncode} (out of memory?)")
         if result.returncode != 0 or "Error" in output:
             raise RuntimeError(output[-2000:])
         timers = re.findall(r"Run Time \(s\): real ([0-9.]+)", output)
@@ -4873,6 +4875,8 @@ def sweep_pairs(args):
         ensure_pair_table(scale_factor, n, "random")
     source_tables = [ensure_multi_source_table(scale_factor, k) for k in args.source_counts]
     export_dir = ensure_graphdb_export(scale_factor, pair_tables + source_tables)
+    with (export_dir / "person.csv").open() as handle:
+        vertex_count = sum(1 for _ in handle) - 1
     systems = make_systems(args, scale_factor)
     results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -4900,6 +4904,7 @@ def sweep_pairs(args):
         started = time.perf_counter()
         system.load(export_dir, scale_factor)
         print(f"   loaded in {time.perf_counter() - started:.1f}s, {system.edge_count()} edges")
+        system_vertex_count = vertex_count
         # Random pairs; once a count exceeds the budget the larger counts are recorded as exceeded without running
         shape_exceeded = False
         for n in args.pair_counts:
@@ -4919,6 +4924,8 @@ def sweep_pairs(args):
                         value, status = (reachable, total), "ok"
                     except subprocess.TimeoutExpired:
                         value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                    except RuntimeError as ex:
+                        value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                 else:
                     value, elapsed, status = run_with_budget(system, lambda: system.point_to_point(pairs), args.budget_s)
                     if value:
@@ -4938,12 +4945,16 @@ def sweep_pairs(args):
             for repeat in range(1, args.repeats + 1):
                 if exceeded:
                     break
-                if isinstance(system, DuckPGQSystem):
+                if len(source_keys) * system_vertex_count > args.max_pairs:
+                    value, elapsed, status = None, 0.0, f"exceeds_pair_limit_{args.max_pairs}"
+                elif isinstance(system, DuckPGQSystem):
                     try:
                         elapsed, reachable, total = system.timed_table(table)
                         value, status = (reachable, total), "ok"
                     except subprocess.TimeoutExpired:
                         value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                    except RuntimeError as ex:
+                        value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                 else:
                     value, elapsed, status = run_with_budget(system, lambda: system.multi_source(source_keys), args.budget_s)
                     if value:
@@ -5006,6 +5017,8 @@ def sweep_pairs_table(args):
                     cells.append(f"{mean*1000:.0f} ms" if mean < 1 else f"{mean:.1f} s")
                 elif any(r["status"].startswith("budget_exceeded") for r in point):
                     cells.append(f"> {point[0]['budget_s']} s")
+                elif any(r["status"].startswith("exceeds_pair_limit") for r in point):
+                    cells.append("not run")
                 elif point:
                     cells.append("error")
                 else:
@@ -5153,6 +5166,8 @@ def ldbc_queries(args):
                             value, status = (reachable, total), "ok"
                         except subprocess.TimeoutExpired:
                             value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                        except RuntimeError as ex:
+                            value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                     else:
                         value, elapsed, status = run_with_budget(system, lambda: getattr(system, query)(*values), args.budget_s)
                     writer.add({"system": system.name, "scale_factor": scale_factor, "query": query, "param_index": idx,
@@ -5580,6 +5595,8 @@ def main():
     sweep_pairs_parser.add_argument("--source-counts", nargs="*", type=int, default=SWEEP_SOURCE_COUNTS)
     sweep_pairs_parser.add_argument("--repeats", type=int, default=3)
     sweep_pairs_parser.add_argument("--budget-s", type=float, default=600, help="per-query budget; exceeded is recorded")
+    sweep_pairs_parser.add_argument("--max-pairs", type=int, default=500_000_000,
+                                    help="sources x all points above this many pairs are recorded as not run")
     sweep_pairs_parser.add_argument("--memgraph-uri", default="bolt://localhost:7687")
     sweep_pairs_parser.add_argument("--neo4j-uri", default="bolt://localhost:7688")
     sweep_pairs_parser.add_argument("--neo4j-database", default="pathfinding")
