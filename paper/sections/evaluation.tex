@@ -1,17 +1,80 @@
 \section{Evaluation}
 \label{sec:eval}
 
-\todo{3 pages. Setup: m7a.8xlarge (32 cores, 128 GiB, gp3 1000 MB/s), DuckDB v2.0 at commit X, Kuzu 0.11.3, Neo4j Y,
-Memgraph, FalkorDB; LDBC SNB SF1-SF300 knows graph, Graphalytics sets; query shapes point-to-point (1024 pairs),
-single-source (sssp), all-pairs blocks, Graphalytics BFS; cold = fresh process, warm = second query.}
-\subsection{Read-only: build per query vs index vs native systems}
-\todo{Table: per SF and query shape, operator / index cold / index warm / Kuzu / Neo4j. SF300 warm 32 threads: sssp
-0.30 / 0.17 / 0.031 s; point-to-point 1.61 / 1.11 / 0.96 s. Index load 0.09 s at 32 threads.}
+\todo{Setup paragraph: m7a.8xlarge (32 cores, 123 GiB, gp3 250 MB/s for the provisional numbers, 1000 MB/s for the
+final run), DuckDB v2.0 at commit X, Kuzu 0.11.3, Neo4j 5.26 Enterprise (evaluation licence, see W18) with the
+parallel runtime and GDS 2.13 (unlicensed, 4 threads), Memgraph (memgraph/memgraph:latest), FalkorDB
+(falkordb/falkordb:latest); LDBC SNB SF10, SF100, SF300 knows graph (1.8M, 18.7M, 55.7M edges); every system answers
+every query from the same pair tables and we check that counts and summed lengths agree at every point. All numbers
+in this section are provisional until the frozen commit; the tables are generated from the result CSVs.}
+
+\subsection{Query shapes by cardinality}
+\label{sec:eval-shapes}
+
+A path-finding workload is characterised by how many sources and destinations one query binds, not by the pattern it
+is written in. We therefore measure three shapes: random pairs, where both ends are bound and the number of pairs
+grows from 1 to 65\,536; $k$ sources to all vertices, for $k$ from 1 to 1024; and the LDBC queries IC13, BI19 and
+BI20, whose sources and destinations are selected by predicates (a city, a company) rather than listed. Every system
+runs the same pairs with a budget of 600\,s per query; a point over budget is reported as such, not dropped, because
+the systems that search one pair at a time grow linearly and the budget is the honest way to show where they stop.
+
+\paragraph{Three classes of systems.} The results separate the baselines into three classes. Neo4j and FalkorDB
+evaluate a set of pairs as one \texttt{shortestPath} per pair: at SF100 Neo4j needs 169\,s for 65\,536 pairs, 0.2\,ms
+per pair under its parallel runtime, and FalkorDB and Memgraph exceed the budget. For $k$ sources to all vertices the
+same systems need one search per (source, vertex) pair and exceed the budget from 16 and 128 sources at SF10. Kuzu and
+Memgraph have a per-source primitive (Kuzu's recursive join with \texttt{SHORTEST}, Memgraph's \texttt{*BFS}
+expansion from a bound source), so they answer $k$ sources to all vertices in $k$ traversals: Kuzu takes 4.0\,s at
+SF10 and 9.4\,s at SF100 for 1024 sources, but has no batching across sources and no cheaper form for bound pairs,
+where it stays at 5\,ms per pair. Our operator is set-oriented in both directions: 65\,536 random pairs take 2.6\,s on
+the index at SF10 and 16.8\,s at SF100, 4.5 and 10 times less than Neo4j, and 1024 sources to all vertices take
+0.22\,s at SF10, 18 times less than Kuzu, because the 1024 traversals share the threads and nothing is matched against
+a destination list (Section~\ref{sec:eval-reach}). Neo4j GDS, the set-oriented library, runs single-source
+delta-stepping per source and Dijkstra per pair and sits between the two classes (22\,s and 570\,s at SF10); it is
+capped at four threads without a licence and cannot run inside the parallel runtime.
+
+\todo{Table: the two SF10 sweep tables (random pairs, sources x all) and the SF100 and SF300 rows for DuckPGQ index,
+DuckPGQ build, Neo4j, Kuzu; FalkorDB, Memgraph and GDS in the appendix or as "> budget" cells.}
+
+\paragraph{The interface matters as much as the traversal.}
+\label{sec:eval-reach}
+Our first implementation of $k$ sources to all vertices fed the operator the cross product of the sources with
+every vertex, 70M pairs at SF10, and took 13.6\,s against Kuzu's 4.0\,s. The traversal cost 16 CPU-seconds of the
+query; the rest was the pair list: sinking it, grouping it by source, registering 70M destinations, and matching
+the results back. Removing the serial passes brought the query to 4.4\,s, level with Kuzu, and only a second
+operator shape brought it to 0.22\,s: a reach mode that takes the sources alone and emits one row per reached vertex
+from the per-source distance arrays. In other words, an operator that is set-oriented over bound pairs is one shape;
+``from these sources, everything'' is another, and a relational engine can offer both because the operator, not the
+query language, decides how the result is produced. The same lesson applies to the baselines: Kuzu's recursive join
+is this second shape and nothing else, which is why it is competitive on sources to all and linear on bound pairs.
+
+\paragraph{The baselines on their best path.} We report every baseline in the formulation that its planner executes
+well, and we found two formulations that look equivalent and are not. Neo4j's \texttt{WHERE b.id IN \$list} plans a
+single index seek that hands the parallel runtime one row, so every \texttt{shortestPath} of the query ran on one
+worker; binding the list with \texttt{UNWIND} fans out and runs 13 times faster at SF10 (10.3\,s to 0.76\,s for 1024
+destinations). Memgraph plans a filter on the source after a \texttt{*BFS} expansion from every vertex unless a
+\texttt{WITH} barrier precedes the pattern (35\,s instead of 10\,ms at SF1). FalkorDB does not support undirected
+\texttt{shortestPath}, so its undirected graph stores both directions. None of these change the ranking, and all of
+them are in the published harness; we mention them because a comparison that misses them overstates our advantage
+by an order of magnitude on some points.
+
+\subsection{Read-only: build per query vs index}
+\todo{Table per SF and shape: build / index cold / index warm; SF300 warm 32 threads: single source 0.30 / 0.17 /
+0.031 s; 1024 pairs 1.61 / 1.11 / 0.96 s; index load 0.09 s at 32 threads; one pair SF100 build 99 ms vs index 8 ms:
+the index removes the per-query CSR build, which is the whole cost of a point lookup.}
+
 \subsection{Updates}
-\todo{LDBC BI insert/delete batches; sequential and concurrent (1 writer, 1-16 readers); index with and without fold vs
-build per query vs Kuzu/Memgraph/FalkorDB; query latency over pending operations; update cost per commit.}
+\todo{LDBC insert/delete stream, 190 commits of 2000 operations at SF10: single source 19 ms index / 26 ms build /
+Kuzu 16 ms / Memgraph 41 ms / FalkorDB 9.3 s / Neo4j 0.76 s; update batch 9 / 8 / 342 / 26 / 111 / 69 ms; SF100
+95 ms vs 131 ms; concurrent 1 writer + 4/8/16 readers, no mismatches; query latency over pending operations before
+and after change groups (124 ms to 41 ms at 330k pending); fold ratio.}
+
 \subsection{End-to-end queries}
-\todo{LDBC IC13, IC14 (paths), BI19/20 on all systems (W17).}
+\todo{IC13, BI19, BI20 (hop-count variants, undirected knows, IC14 omitted) on all systems at SF10, SF100, SF300.
+SF100: IC13 index 14 ms / Neo4j 6 ms / Kuzu 26 ms; BI19 index 6.0 s / Neo4j 4.3 s / Kuzu 63 s; BI20 index 1.2 s
+before and 6 ms (SF10) after the reverse orientation on symmetric edge sets / Neo4j 127 ms. State the hop-count
+simplification and the symmetric closure.}
+
 \subsection{Ablations}
-\todo{Traversals (multi-source lanes vs single-source, hybrid expansion, bucket index), orientation, grouping, phased events vs barriers,
-fold ratio, snapshot cache; thread scaling 1-32; memory per edge during build and for the index.}
+\todo{Traversals (multi-source lanes vs single-source, hybrid expansion, bucket index), orientation, grouping,
+phased events vs barriers, fold ratio, snapshot cache; thread scaling 1-32; memory per edge during build and for the
+index (12-14 B per edge on disk, 2x the compressed edge table).}

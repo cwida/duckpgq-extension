@@ -395,3 +395,60 @@ edge plus O(D) snapshot work), not traversal speed; a default ratio of 0.1 is co
    rollback, update = delete + insert).
 3. W11: fold with retention, checkpoint delta hooks, crash/restart tests through WAL replay.
 4. W12: planner selection; W14: remove prototype persistence; W15: full test matrix.
+
+## 11. Reverse direction in the index (W28, proposal, 23 October 2026)
+
+**Why.** Two query shapes need the edges by destination: many sources to one destination (LDBC BI20, 1300 employees
+to one person), which is one traversal from the destination side instead of one per source, and random pairs at
+scale, where a bidirectional search meets in the middle and touches a fraction of the edges the forward multi-source
+traversal scans per 512-lane batch (SF300: 0.8-1 ms per pair forward, Neo4j's bidirectional `shortestPath` at
+0.2 ms per pair at SF100). Both kernels exist in the operator; both run only where reverse partitions exist, which
+today is the legacy CSR route and, since `7fdfe65e`, any symmetric edge set (an undirected index or an undirected
+pattern, whose forward partitions are also the reverse partitions). Directed graphs need the reverse direction
+stored.
+
+**Design.** One index holds both directions under an option, `CREATE INDEX ... USING CSR (src, dst) WITH (reverse =
+true)`; `undirected = true` implies it (the forward partitions already contain both directions, so no second set is
+stored). One maintenance path, one epoch, one change log; the two directions of one edge are always in the same
+epoch and the same change group, so a reader's snapshot is consistent across them without extra bookkeeping.
+
+- **Epoch.** `CSRIndexEpoch` gets `reverse_csr` (`PartitionedCSRIndex`, destination ranges over the *source*
+  ids, edges sorted by destination) built in the same pass as `csr`: the bulk build already maps every edge to dense
+  ids and buckets it by destination partition; the reverse side buckets `(dst, src)` by `src` partition. No row ids on
+  the reverse side: paths are reconstructed from the forward side (path mode forces forward orientation), and a
+  reverse or bidirectional search only needs distances. Cost: 2 B (uint16 local destination) per edge plus sparse
+  rows and the bucket index, about 5 B per edge; the forward side stays at 12-14 B per edge (measured 23 Oct: SF10
+  25.4 MB, SF100 232 MB).
+- **Delta.** `CSRIndexDeltaEdge` is unchanged (it carries both keys). `BuildSnapshot` buckets the visible delta edges
+  a second time by source range into `reverse_delta_partitions`, aligned with `reverse_csr`'s partitions, exactly
+  as it already does for an undirected index (it pushes `(dst, src)` into the same list; here the pair goes into the
+  second list instead).
+- **Tombstones.** A tombstone suppresses one forward position and one reverse position. `tombstone_positions`
+  grows a second vector resolved by the same lazy scan (the reverse side needs `position_of_row` for the reverse
+  layout: the scan over the forward row ids yields the edge's `(src, dst)`, and the reverse position is found by a
+  bucket lookup of `src` in the reverse partition of `dst`'s range... in practice: during the bulk build, record for
+  each forward position its reverse position in a `vector<uint32_t>` per partition, 4 B per edge, or resolve by
+  lookup at tombstone time; **D**: lookup at tombstone time, since tombstones are few relative to edges).
+- **Fold, checkpoint, load.** The fold rebuilds both sides. The byte stream gains the reverse partitions after the
+  forward ones (`STORAGE_FORMAT_VERSION` bump, old files load as forward-only and rebuild the reverse side at the
+  first fold, or eagerly at bind). The parallel loader copies the extra segments like the others.
+- **Snapshot.** `CSRIndexSnapshot` gets `reverse_partitions`, `reverse_delta_partitions`, `reverse_suppressed`,
+  empty when the index has no reverse side. `undirected` snapshots alias the forward vectors.
+- **Operator.** `TryLoadPartitionedCSR` fills `local_csr_state->reverse_partition_csrs` and the reverse delta
+  companions from the snapshot; `CanSearchInReverse` returns true when they are present; the delta companion and
+  suppression lookups in the source-grouped kernel take the orientation into account (today they index
+  `delta_csrs[partition_idx]` by the forward partition). The bidirectional kernel over the index then needs the
+  reverse companions as well. The orientation decision stays where it is: runtime, from the pair statistics
+  (`ShouldUseReverseSearch`, ratio 4), with bidirectional as a third choice for many distinct sources and
+  destinations once its kernel is validated on the index route.
+- **MATCH.** Nothing: the cache key resolves the index and the snapshot carries both sides.
+
+**Costs.** Append work doubles on the snapshot side (bucketing twice), not on the log (one entry per edge). Storage
++5 B per edge, about +40%. The update workload at SF10 spent 9 ms per 2000-operation batch on the index side
+against 26 ms for Memgraph's batch, so the headroom is there; the fold rebuilds two layouts (0.42 s for 12M edges
+forward today).
+
+**Steps.** (1) epoch + build + checkpoint format + load, with `csr_index_ddl` and `csr_index_snapshot` tests
+extended for `reverse = true`; (2) delta and tombstones on the reverse side, under the change-group tests;
+(3) operator: reverse orientation over the index, BI20 directed test; (4) bidirectional kernel over the index,
+random-pair sweep points at SF100 and SF300 rerun. One to two days for (1)-(3), one to two for (4).
