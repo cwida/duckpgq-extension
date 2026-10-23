@@ -702,8 +702,13 @@ PathFindingSearchOrientation ChooseSearchOrientation(const PathFindingPairStats 
 }
 
 //! Only the legacy CSR inputs build reverse partitions; endpoint inputs and cached indexes are forward-only, so a
-//! reverse search would have nothing to traverse and the forward orientation is used instead
+//! reverse search would have nothing to traverse and the forward orientation is used instead. When the edge set is
+//! symmetric the forward partitions are the reverse partitions, and a search from the destination side is allowed
+//! (many sources to one destination then costs one traversal instead of one per source).
 static bool CanSearchInReverse(const PathFindingGlobalSinkState &gstate) {
+	if (gstate.symmetric_edges) {
+		return true;
+	}
 	return !(gstate.precounted_edge_input || gstate.buffered_edge_input || gstate.cached_partitioned_csr_input);
 }
 
@@ -866,6 +871,9 @@ void ConfigureLocalCSRStateForMode(LocalCSRState &local_csr_state, PathFindingOp
 bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, LocalCSRState &local_csr_state, ClientContext &context) {
 	if (gstate.index_snapshot) {
 		local_csr_state.partition_csrs = gstate.index_snapshot->partitions;
+		if (gstate.symmetric_edges) {
+			local_csr_state.reverse_partition_csrs = local_csr_state.partition_csrs;
+		}
 		local_csr_state.partition_delta_csrs = gstate.index_snapshot->delta_partitions;
 		local_csr_state.partition_suppressed = gstate.index_snapshot->suppressed;
 		local_csr_state.loaded_from_cache = true;
@@ -1216,7 +1224,7 @@ void SchedulePartitionedEndpointBuildThenSourceGrouped(PathFindingGlobalSinkStat
 void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
                                           vector<shared_ptr<PathFindingBatch>> batches, Pipeline &pipeline,
                                           Event &event, const PhysicalPathFinding &op, ClientContext &context) {
-	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE &&
+	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE && !gstate.symmetric_edges &&
 	    (gstate.precounted_edge_input || gstate.buffered_edge_input)) {
 		throw NotImplementedException(
 		    "Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the "
@@ -1233,6 +1241,9 @@ void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
 		                                                 GetPathFindingEdgeCount(gstate),
 		                                                 gstate.endpoint_partition_width, gstate.num_threads);
 		local_csr_state->partition_csrs = gstate.endpoint_partition_csrs;
+		if (gstate.symmetric_edges) {
+			local_csr_state->reverse_partition_csrs = local_csr_state->partition_csrs;
+		}
 	} else if (gstate.edge_input) {
 		local_csr_state =
 		    make_shared_ptr<LocalCSRState>(context, std::move(gstate.endpoint_build_runs), gstate.vertex_count,
@@ -1273,7 +1284,7 @@ void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
 
 void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
                                             const PhysicalPathFinding &op, ClientContext &context) {
-	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE &&
+	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE && !gstate.symmetric_edges &&
 	    (gstate.precounted_edge_input || gstate.buffered_edge_input)) {
 		throw NotImplementedException(
 		    "Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the "
@@ -1290,6 +1301,9 @@ void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, 
 		                                                 GetPathFindingEdgeCount(gstate),
 		                                                 gstate.endpoint_partition_width, gstate.num_threads);
 		local_csr_state->partition_csrs = gstate.endpoint_partition_csrs;
+		if (gstate.symmetric_edges) {
+			local_csr_state->reverse_partition_csrs = local_csr_state->partition_csrs;
+		}
 	} else if (gstate.edge_input) {
 		local_csr_state =
 		    make_shared_ptr<LocalCSRState>(context, std::move(gstate.endpoint_build_runs), gstate.vertex_count,
@@ -1501,6 +1515,9 @@ public:
 		    gstate.endpoint_count, gstate.endpoint_partition_csrs.size(),
 		    std::chrono::duration<double, std::milli>(end_time - gstate.endpoint_build_start).count(), memory_bytes);
 		gstate.local_csr_state->partition_csrs = gstate.endpoint_partition_csrs;
+		if (gstate.symmetric_edges) {
+			gstate.local_csr_state->reverse_partition_csrs = gstate.local_csr_state->partition_csrs;
+		}
 		gstate.endpoint_partition_data.reset();
 		SampleCSRBuildMemory(gstate);
 		auto buffer_peak = gstate.csr_build_buffer_peak_bytes.load(std::memory_order_relaxed);
@@ -2248,6 +2265,7 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 		expected_edge_count = index_snapshot->edge_count;
 		endpoint_partition_width = index_snapshot->partition_width;
 	}
+	symmetric_edges = (index_snapshot && index_snapshot->undirected) || StringUtil::EndsWith(op.cache_key, "|undirected");
 	auto &scheduler = TaskScheduler::GetScheduler(context);
 	num_threads = scheduler.NumberOfThreads();
 	mode = op.mode;

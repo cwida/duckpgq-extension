@@ -764,6 +764,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	}
 
 	auto snapshot = make_shared_ptr<CSRIndexSnapshot>();
+	snapshot->undirected = undirected;
 	snapshot->epoch = epoch_p;
 	snapshot->partition_width = width;
 	snapshot->partitions = epoch.csr->forward_partitions;

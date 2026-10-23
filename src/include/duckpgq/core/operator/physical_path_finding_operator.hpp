@@ -191,6 +191,9 @@ public:
 	idx_t max_depth = 0;
 	//! Set when the operator reads a CSR index: what this query's transaction may traverse
 	shared_ptr<CSRIndexSnapshot> index_snapshot;
+	//! The edge set holds both directions of every edge (undirected index, or an undirected MATCH pattern whose
+	//! endpoint input is the union of both directions), so the forward partitions serve a reverse search too
+	bool symmetric_edges = false;
 	unique_ptr<RadixPartitionedColumnData> endpoint_partition_data;
 	std::atomic<idx_t> next_endpoint_partition {0};
 	std::atomic<idx_t> built_endpoint_count {0};

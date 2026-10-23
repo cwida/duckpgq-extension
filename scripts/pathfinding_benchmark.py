@@ -4705,9 +4705,13 @@ class DuckPGQSystem(GraphDBSystem):
         self.budget_s = budget_s
         self.symmetric = symmetric
         self.database = db_path(scale_factor)
+        # Build route: the symmetric closure table and a cache key that tells the operator the edge set is
+        # symmetric (a reverse search may use the forward partitions); index route: an undirected index on knows
         self.edge_table = "person_knows_person_sym" if symmetric else "person_knows_person"
-        self.index_name = f"{CSR_INDEX_NAME}_sym" if symmetric else CSR_INDEX_NAME
-        self.index_key = f"csr-index|ldbc|main|{self.edge_table}|{self.index_name}"
+        self.cache_key = "graph:sweep|undirected" if symmetric else "graph:sweep"
+        self.index_table = "person_knows_person"
+        self.index_name = f"{CSR_INDEX_NAME}_undirected" if symmetric else CSR_INDEX_NAME
+        self.index_key = f"csr-index|ldbc|main|{self.index_table}|{self.index_name}"
 
     def load(self, export_dir, scale_factor):
         if self.symmetric:
@@ -4719,8 +4723,9 @@ class DuckPGQSystem(GraphDBSystem):
         if self.route == "index":
             run_duckdb(BENCH_DUCKDB, None, f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; "
                                           f"ATTACH {sql_string(self.database)} AS ldbc; "
-                                          f"CREATE INDEX IF NOT EXISTS {self.index_name} ON ldbc.{self.edge_table} "
-                                          f"USING CSR (person1id, person2id);", quiet=True)
+                                          f"CREATE INDEX IF NOT EXISTS {self.index_name} ON ldbc.{self.index_table} "
+                                          f"USING CSR (person1id, person2id)"
+                                          f"{' WITH (undirected = true)' if self.symmetric else ''};", quiet=True)
 
     def edge_count(self):
         return self.edge_count_value
@@ -4743,7 +4748,7 @@ class DuckPGQSystem(GraphDBSystem):
         if self.route == "build":
             query = f"""SELECT count(len), coalesce(sum(len), 0) FROM (
     SELECT iterativelengthoperator(src, dst, struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
-        {self.vertex_count}::BIGINT, {self.edge_count_value}::BIGINT, 'graph:sweep') AS len
+        {self.vertex_count}::BIGINT, {self.edge_count_value}::BIGINT, {sql_string(self.cache_key)}) AS len
     FROM {rowid_pairs} AS pathfinding_pairs,
         (SELECT a.rowid::BIGINT AS pathfinding_edge_src, c.rowid::BIGINT AS pathfinding_edge_dst
          FROM ldbc.{self.edge_table} k JOIN ldbc.person a ON a.id = k.person1id JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges);"""
