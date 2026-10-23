@@ -39,6 +39,7 @@ namespace duckdb {
 
 static constexpr const char *PATH_FINDING_EDGE_SRC = "pathfinding_edge_src";
 static constexpr const char *PATH_FINDING_EDGE_DST = "pathfinding_edge_dst";
+static constexpr const char *PATH_FINDING_EDGE_ID = "pathfinding_edge_id";
 static constexpr const char *PATH_FINDING_RESULT_PREFIX = "__duckpgq_path_length_";
 static constexpr const char *PATH_FINDING_PAIRS_ALIAS = "__duckpgq_path_pairs";
 
@@ -101,24 +102,29 @@ static bool GetPathFindingStorageCounts(ClientContext &context, const PropertyGr
 	return true;
 }
 
+//! The endpoint input of the build-per-query route: (src row id, dst row id) per edge, both directions for an
+//! undirected pattern, plus the edge row id when the query returns paths
 static unique_ptr<SubqueryRef> CreatePathFindingEndpointSubquery(const PropertyGraphTable &edge_table,
-                                                                 PGQMatchType edge_type, const string &alias) {
-	auto directed = GetDirectedPathFindingEndpointsSQL(edge_table);
+                                                                 PGQMatchType edge_type, const string &alias,
+                                                                 bool with_edge_ids) {
+	auto directed = GetDirectedPathFindingEndpointsSQL(edge_table, with_edge_ids);
 	if (edge_type == PGQMatchType::MATCH_EDGE_RIGHT) {
 		return DuckPGQSQL::ParseSubqueryRef(directed, alias, "DuckPGQ path-finding endpoint input");
 	}
 	if (edge_type != PGQMatchType::MATCH_EDGE_ANY) {
 		return nullptr;
 	}
+	string id_column = with_edge_ids ? ", " + DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_ID)) : string();
 	std::ostringstream query;
 	query << "WITH __duckpgq_directed_endpoints AS MATERIALIZED (" << directed << ") SELECT "
 	      << DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_SRC)) << ", "
-	      << DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_DST))
+	      << DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_DST)) << id_column
 	      << " FROM __duckpgq_directed_endpoints UNION ALL SELECT "
 	      << DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_DST)) << " AS "
 	      << DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_SRC)) << ", "
 	      << DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_SRC)) << " AS "
-	      << DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_DST)) << " FROM __duckpgq_directed_endpoints";
+	      << DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_DST)) << id_column
+	      << " FROM __duckpgq_directed_endpoints";
 	return DuckPGQSQL::ParseSubqueryRef(query.str(), alias, "DuckPGQ undirected path-finding endpoint input");
 }
 
@@ -799,18 +805,14 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 			     CSRIndex::CacheKey(*edge_table, index_name), 0, 0, subpath->lower, subpath->upper, return_path});
 			return;
 		}
-		if (return_path) {
-			// Paths without an index are still produced by the shortestpath() CTE; the deferred named-subpath
-			// pass adds it together with the quantifier condition
-			return;
-		}
 		idx_t vertex_count;
 		idx_t edge_count;
 		if (GetPathFindingStorageCounts(context, *edge_table, edge_type, vertex_count, edge_count)) {
+			// Without an index the CSR is built for the query; paths carry the edge row ids through the build
 			auto result_index = operator_results.size();
 			auto endpoint_alias = "__duckpgq_path_edges_" + std::to_string(result_index);
 			auto result_alias = string(PATH_FINDING_RESULT_PREFIX) + std::to_string(result_index);
-			auto endpoints = CreatePathFindingEndpointSubquery(*edge_table, edge_type, endpoint_alias);
+			auto endpoints = CreatePathFindingEndpointSubquery(*edge_table, edge_type, endpoint_alias, return_path);
 			auto cache_key = pg_table.property_graph_name + "|" + edge_table->FullTableName() + "|" +
 			                 (edge_type == PGQMatchType::MATCH_EDGE_ANY ? "undirected" : "directed");
 			auto source_expression = DuckPGQSQL::ParseExpression(
@@ -822,7 +824,7 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 			operator_results.push_back({std::move(source_expression), std::move(destination_expression),
 			                            std::move(endpoints), std::move(endpoint_alias), std::move(result_alias),
 			                            path_variable, vector<std::pair<string, string>>(), std::move(cache_key),
-			                            vertex_count, edge_count, subpath->lower, subpath->upper, false});
+			                            vertex_count, edge_count, subpath->lower, subpath->upper, return_path});
 			return;
 		}
 	}
@@ -1336,7 +1338,12 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		path_length_sql << "struct_pack(src := "
 		                << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_SRC), operator_result.endpoint_alias)
 		                << ", dst := "
-		                << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_DST), operator_result.endpoint_alias) << "), ";
+		                << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_DST), operator_result.endpoint_alias);
+		if (operator_result.return_path) {
+			path_length_sql << ", id := "
+			                << DuckPGQSQL::Column(string(PATH_FINDING_EDGE_ID), operator_result.endpoint_alias);
+		}
+		path_length_sql << "), ";
 	}
 	path_length_sql << operator_result.vertex_count << "::BIGINT, " << operator_result.edge_count << "::BIGINT, "
 	                << DuckPGQSQL::StringLiteral(operator_result.cache_key);

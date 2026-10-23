@@ -1,5 +1,6 @@
 #include "duckpgq/core/operator/physical_path_finding_operator.hpp"
 #include "duckpgq/core/utils/csr_build.hpp"
+#include "duckpgq/core/utils/parallel_for.hpp"
 #include "duckpgq/core/operator/phased_kernel_event.hpp"
 #include "duckpgq/common.hpp"
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
@@ -147,6 +148,54 @@ void MarkTransientGlobalCSRForDeletion(PathFindingGlobalSinkState &gstate, Clien
 
 } // namespace
 
+//! The destinations of one source group: a hash set while they are few, a bitmap over the vertex ids once a group
+//! targets a large part of the graph (sources x all vertices registers one entry per vertex per group)
+class SourceGroupTargets {
+public:
+	void Reserve(idx_t expected_count, idx_t v_size) {
+		if (!use_bits && expected_count * 64 > v_size) {
+			use_bits = true;
+			bits.assign((v_size + 63) / 64, 0);
+			for (auto value : set) {
+				bits[value >> 6] |= uint64_t(1) << (value & 63);
+			}
+			set.clear();
+		}
+	}
+
+	//! True when the value was not registered before
+	bool Insert(uint32_t value) {
+		if (use_bits) {
+			auto &word = bits[value >> 6];
+			auto mask = uint64_t(1) << (value & 63);
+			if (word & mask) {
+				return false;
+			}
+			word |= mask;
+			count++;
+			return true;
+		}
+		return set.insert(value).second;
+	}
+
+	bool Contains(uint32_t value) const {
+		if (use_bits) {
+			return (bits[value >> 6] >> (value & 63)) & 1;
+		}
+		return set.count(value) != 0;
+	}
+
+	bool Empty() const {
+		return use_bits ? count == 0 : set.empty();
+	}
+
+private:
+	std::unordered_set<uint32_t> set;
+	vector<uint64_t> bits;
+	bool use_bits = false;
+	idx_t count = 0;
+};
+
 //! Single-source BFS over the partitioned CSR for one group of pairs that share a source.
 //!
 //! The frontier is a list of vertex ids. Small frontiers are expanded vertex by vertex, looking each vertex up in
@@ -186,6 +235,28 @@ public:
 	}
 
 	void RunPhase(idx_t worker_id) override {
+		if (worker_count == 1) {
+			// A single worker runs the whole search in this task: with many groups in flight (one per source) the
+			// event per level would cost more than the level itself
+			while (true) {
+				RunLevel(0);
+				if (!AdvanceLevel()) {
+					return;
+				}
+			}
+		}
+		RunLevel(worker_id);
+	}
+
+	bool AdvancePhase() override {
+		if (worker_count == 1) {
+			return false; // the levels were advanced inside RunPhase
+		}
+		return AdvanceLevel();
+	}
+
+	//! The parallel part of one level on one worker
+	void RunLevel(idx_t worker_id) {
 		if (sparse_expansion) {
 			ForEachFrontierSlice([&](uint32_t vertex) { ExpandVertex(vertex, worker_id); });
 			return;
@@ -202,12 +273,17 @@ public:
 		}
 	}
 
-	bool AdvancePhase() override {
-		// The next frontier is the union of what every worker discovered
-		frontier_list.clear();
-		for (auto &next : next_lists) {
-			frontier_list.insert(frontier_list.end(), next.begin(), next.end());
-			next.clear();
+	//! The serial step between levels: the next frontier is the union of what every worker discovered
+	bool AdvanceLevel() {
+		if (next_lists.size() == 1) {
+			frontier_list.swap(next_lists[0]);
+			next_lists[0].clear();
+		} else {
+			frontier_list.clear();
+			for (auto &next : next_lists) {
+				frontier_list.insert(frontier_list.end(), next.begin(), next.end());
+				next.clear();
+			}
 		}
 		iter++;
 		change = !frontier_list.empty() && !Exhausted();
@@ -299,12 +375,17 @@ public:
 		}
 	}
 
+	//! Sizes the destination set before the destinations are registered
+	void ReserveTargets(idx_t expected_count) {
+		targets.Reserve(expected_count, NumericCast<idx_t>(v_size));
+	}
+
 	//! Registers the destinations of this group so the search can stop when all of them are found
 	void AddTarget(int64_t target) {
 		if (target < 0 || target >= v_size) {
 			return;
 		}
-		if (targets.insert(NumericCast<uint32_t>(target)).second) {
+		if (targets.Insert(NumericCast<uint32_t>(target))) {
 			remaining_targets.fetch_add(1, std::memory_order_relaxed);
 		}
 	}
@@ -320,7 +401,9 @@ public:
 	vector<int64_t> distances;
 	//! Stop after this many iterations (0 = unbounded) or once every destination of the group has been reached
 	idx_t max_depth = 0;
-	std::unordered_set<uint32_t> targets;
+	//! Source groups scheduled together with this one (they share the threads), set by the scheduler
+	idx_t concurrent_groups = 1;
+	SourceGroupTargets targets;
 	bool track_parents = false;
 	vector<uint32_t> parent_vertex;
 	vector<uint64_t> parent_edge;
@@ -359,7 +442,7 @@ private:
 		seen[source].store(1, std::memory_order_relaxed);
 		distances[source] = 0;
 		frontier_list.push_back(NumericCast<uint32_t>(source));
-		if (!targets.empty() && targets.count(NumericCast<uint32_t>(source))) {
+		if (!targets.Empty() && targets.Contains(NumericCast<uint32_t>(source))) {
 			remaining_targets.fetch_sub(1, std::memory_order_relaxed);
 		}
 		change = !Exhausted();
@@ -382,7 +465,7 @@ private:
 
 	bool Exhausted() const {
 		return (max_depth > 0 && static_cast<idx_t>(iter) > max_depth) ||
-		       (!targets.empty() && remaining_targets.load(std::memory_order_relaxed) <= 0);
+		       (!targets.Empty() && remaining_targets.load(std::memory_order_relaxed) <= 0);
 	}
 
 	//! Workers for one source: never more than the configured per-batch limit or than there are partitions, and
@@ -390,6 +473,9 @@ private:
 	idx_t ChooseWorkerCount() const {
 		static constexpr idx_t EDGES_PER_WORKER = 1 << 16;
 		idx_t workers = std::max<idx_t>(1, num_threads);
+		// Groups scheduled together share the threads: each gets its slice, down to one worker that runs the
+		// whole search without an event per level (1024 sources x all vertices at SF10: 13.6 s -> see plan)
+		workers = std::max<idx_t>(1, workers / std::max<idx_t>(1, concurrent_groups));
 		auto configured = GetPathFindingThreadsPerBatch(context);
 		if (configured > 0) {
 			workers = std::min<idx_t>(workers, static_cast<idx_t>(configured));
@@ -416,7 +502,7 @@ private:
 				parent_edge[target] = packed_edge;
 			}
 			next_lists[worker_id].push_back(NumericCast<uint32_t>(target));
-			if (!targets.empty() && targets.count(NumericCast<uint32_t>(target))) {
+			if (!targets.Empty() && targets.Contains(NumericCast<uint32_t>(target))) {
 				remaining_targets.fetch_sub(1, std::memory_order_relaxed);
 			}
 		}
@@ -714,6 +800,31 @@ void AccumulatePairStats(DataChunk &chunk, PathFindingPairStats &stats, HyperLog
 	}
 }
 
+//! Merges the statistics of a pair subset into `into`
+void MergePairStats(PathFindingPairStats &into, const PathFindingPairStats &other) {
+	into.pair_count += other.pair_count;
+	into.null_pair_count += other.null_pair_count;
+	into.self_pair_count += other.self_pair_count;
+	if (other.src_value_initialized) {
+		if (!into.src_value_initialized) {
+			into.src_value_initialized = true;
+			into.single_src = other.single_src;
+			into.all_src_equal = other.all_src_equal;
+		} else {
+			into.all_src_equal = into.all_src_equal && other.all_src_equal && into.single_src == other.single_src;
+		}
+	}
+	if (other.dst_value_initialized) {
+		if (!into.dst_value_initialized) {
+			into.dst_value_initialized = true;
+			into.single_dst = other.single_dst;
+			into.all_dst_equal = other.all_dst_equal;
+		} else {
+			into.all_dst_equal = into.all_dst_equal && other.all_dst_equal && into.single_dst == other.single_dst;
+		}
+	}
+}
+
 void FinalizePairStats(PathFindingGlobalSinkState &gstate, PathFindingPairStats stats, const HyperLogLog &distinct_srcs,
                        const HyperLogLog &distinct_dsts) {
 	stats.distinct_src_count = distinct_srcs.Count();
@@ -992,16 +1103,30 @@ public:
 		                           ? gstate.local_csr_state->reverse_partition_csrs
 		                           : gstate.local_csr_state->partition_csrs;
 		RecordStrategy(context, "source_groups", std::to_string(gstate.source_group_sources.size()));
-		for (idx_t group_idx = 0; group_idx < gstate.source_group_sources.size(); group_idx++) {
-			auto state = make_shared_ptr<SourceGroupedIterativeLengthState>(
-			    context, gstate.source_group_sources[group_idx], partition_csrs, gstate.num_threads,
-			    GetPathFindingVSize(gstate));
-			state->delta_csrs = gstate.local_csr_state->partition_delta_csrs;
-			state->suppressed = gstate.local_csr_state->partition_suppressed;
-			state->max_depth = gstate.max_depth;
-			if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH) {
-				state->EnableParentTracking();
+		auto group_count = gstate.source_group_sources.size();
+		// The per-group arrays (distances, seen, frontier stamps, parents) are sized by the vertex count; with
+		// many groups their allocation is spread over the threads
+		vector<shared_ptr<SourceGroupedIterativeLengthState>> states(group_count);
+		ParallelFor(group_count, gstate.num_threads, [&](idx_t begin, idx_t end, idx_t) {
+			for (idx_t group_idx = begin; group_idx < end; group_idx++) {
+				auto state = make_shared_ptr<SourceGroupedIterativeLengthState>(
+				    context, gstate.source_group_sources[group_idx], partition_csrs, gstate.num_threads,
+				    GetPathFindingVSize(gstate));
+				state->delta_csrs = gstate.local_csr_state->partition_delta_csrs;
+				state->suppressed = gstate.local_csr_state->partition_suppressed;
+				state->max_depth = gstate.max_depth;
+				state->concurrent_groups = group_count;
+				if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH) {
+					state->EnableParentTracking();
+				}
+				if (group_idx < gstate.source_group_row_counts.size()) {
+					state->ReserveTargets(gstate.source_group_row_counts[group_idx]);
+				}
+				states[group_idx] = std::move(state);
 			}
+		});
+		for (idx_t group_idx = 0; group_idx < group_count; group_idx++) {
+			auto state = std::move(states[group_idx]);
 			state->output_chunks = std::move(gstate.source_group_output_chunks[group_idx]);
 			if (!gstate.source_group_preserve_output_order) {
 				// Single group: every row of its chunks is a destination of this source
@@ -1207,15 +1332,41 @@ struct EndpointBuildEntry {
 	uint16_t local_dst;
 };
 
+//! Endpoint with its edge-table row id, used when the query returns paths
+struct EndpointBuildEntryWithRow {
+	uint32_t src;
+	uint16_t local_dst;
+	row_t row;
+};
+
+static inline EndpointBuildEntry MakeEndpointEntry(uint32_t src, uint16_t local_dst, row_t, EndpointBuildEntry *) {
+	return {src, local_dst};
+}
+
+static inline EndpointBuildEntryWithRow MakeEndpointEntry(uint32_t src, uint16_t local_dst, row_t row,
+                                                          EndpointBuildEntryWithRow *) {
+	return {src, local_dst, row};
+}
+
+static inline void StoreEntryRow(vector<row_t> &, idx_t, const EndpointBuildEntry &) {
+}
+
+static inline void StoreEntryRow(vector<row_t> &rows, idx_t position, const EndpointBuildEntryWithRow &entry) {
+	rows[position] = entry.row;
+}
+
 //! Builds one destination-range partition from its radix-partitioned endpoints: one scan into an edge array,
 //! a radix sort by source in cache, and the sparse rows emitted in one sweep. No per-vertex counter array.
-static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, idx_t partition_idx) {
+//! With row tracking the entries carry the edge row ids and the partition keeps them per edge position.
+template <class ENTRY>
+static idx_t BuildCSRFromEndpointPartitionEntries(PathFindingGlobalSinkState &gstate, idx_t partition_idx) {
 	auto &endpoint_partitions = gstate.endpoint_partition_data->GetPartitions();
 	auto &endpoint_partition = endpoint_partitions[partition_idx];
 	auto start_vertex = partition_idx * gstate.endpoint_partition_width;
 	auto end_vertex = std::min(start_vertex + gstate.endpoint_partition_width, gstate.vertex_count + 2);
+	bool with_rows = gstate.track_edge_rows;
 
-	vector<EndpointBuildEntry> edges;
+	vector<ENTRY> edges;
 	if (endpoint_partition) {
 		edges.reserve(endpoint_partition->Count());
 		ColumnDataScanState scan;
@@ -1226,8 +1377,14 @@ static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, i
 			UnifiedVectorFormat endpoint_format;
 			input.data[0].ToUnifiedFormat(endpoint_format);
 			auto endpoint_data = UnifiedVectorFormat::GetData<hash_t>(endpoint_format);
-			for (idx_t row = 0; row < input.size(); row++) {
-				auto endpoint = endpoint_data[endpoint_format.sel->get_index(row)];
+			UnifiedVectorFormat row_format;
+			const int64_t *row_data = nullptr;
+			if (with_rows) {
+				input.data[1].ToUnifiedFormat(row_format);
+				row_data = UnifiedVectorFormat::GetData<int64_t>(row_format);
+			}
+			for (idx_t row_idx = 0; row_idx < input.size(); row_idx++) {
+				auto endpoint = endpoint_data[endpoint_format.sel->get_index(row_idx)];
 				auto source = UnpackPartitionedEndpointSource(endpoint, gstate.endpoint_radix_bits);
 				auto local_destination = endpoint & UINT16_MAX;
 				if (static_cast<idx_t>(source) >= gstate.vertex_count ||
@@ -1236,21 +1393,37 @@ static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, i
 					throw InternalException(
 					    "Packed partitioned endpoint does not match its source or destination partition");
 				}
-				edges.push_back({source, NumericCast<uint16_t>(local_destination)});
+				row_t row = with_rows ? row_data[row_format.sel->get_index(row_idx)] : 0;
+				edges.push_back(MakeEndpointEntry(source, NumericCast<uint16_t>(local_destination), row,
+				                                  static_cast<ENTRY *>(nullptr)));
 			}
 		}
 	}
 	auto endpoint_count = edges.size();
 	SampleCSRBuildMemory(gstate);
 
-	vector<EndpointBuildEntry> scratch;
+	vector<ENTRY> scratch;
 	vector<idx_t> histogram;
 	CSRRadixSortBySource(edges, scratch, histogram, CSRSourceBits(gstate.vertex_count));
-	gstate.endpoint_partition_csrs[partition_idx] = CSREmitSparsePartition(
-	    start_vertex, end_vertex, gstate.vertex_count, edges, [](idx_t, const EndpointBuildEntry &) {});
+	vector<row_t> rows(with_rows ? edges.size() : 0);
+	auto partition =
+	    CSREmitSparsePartition(start_vertex, end_vertex, gstate.vertex_count, edges,
+	                           [&](idx_t position, const ENTRY &entry) { StoreEntryRow(rows, position, entry); });
+	if (with_rows) {
+		partition->owned_row_ids = std::move(rows);
+		partition->row_ids = partition->owned_row_ids.data();
+	}
+	gstate.endpoint_partition_csrs[partition_idx] = std::move(partition);
 	endpoint_partition.reset();
 	SampleCSRBuildMemory(gstate);
 	return endpoint_count;
+}
+
+static idx_t BuildCSRFromEndpointPartition(PathFindingGlobalSinkState &gstate, idx_t partition_idx) {
+	if (gstate.track_edge_rows) {
+		return BuildCSRFromEndpointPartitionEntries<EndpointBuildEntryWithRow>(gstate, partition_idx);
+	}
+	return BuildCSRFromEndpointPartitionEntries<EndpointBuildEntry>(gstate, partition_idx);
 }
 
 class PartitionedEndpointBuildTask : public ExecutorTask {
@@ -1381,6 +1554,7 @@ void SchedulePartitionedEndpointBuildThenSourceGrouped(PathFindingGlobalSinkStat
 
 struct SourceGroupBuildState {
 	int64_t source;
+	idx_t row_count = 0;
 };
 
 SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkState &gstate, Pipeline &pipeline,
@@ -1392,6 +1566,7 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
 	if (TryGetExactSingleSearchSource(gstate, single_source)) {
 		auto output_chunk_count = gstate.global_output_batches.size();
 		gstate.source_group_sources.push_back(single_source);
+		gstate.source_group_row_counts.push_back(gstate.pair_stats.pair_count);
 		gstate.source_group_output_chunks.push_back(std::move(gstate.global_output_batches));
 		gstate.source_group_zero_copy = true;
 		gstate.use_source_grouping = true;
@@ -1438,6 +1613,7 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
 				groups.push_back(std::move(group));
 				entry = source_to_group.find(source);
 			}
+			groups[entry->second].row_count++;
 			output_states.push_back(entry->second);
 		}
 		gstate.source_group_output_states.push_back(std::move(output_states));
@@ -1446,6 +1622,7 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
 	idx_t output_chunk_count = gstate.global_output_batches.size();
 	for (auto &group : groups) {
 		gstate.source_group_sources.push_back(group.source);
+		gstate.source_group_row_counts.push_back(group.row_count);
 		gstate.source_group_output_chunks.emplace_back();
 	}
 
@@ -1469,26 +1646,9 @@ SinkFinalizeType FinalizeCSRIdPhase(PathFindingGlobalSinkState &gstate) {
 }
 
 SinkFinalizeType FinalizeEndpointPairPhase(PathFindingGlobalSinkState &gstate, ClientContext &context) {
-	auto analysis_start = std::chrono::steady_clock::now();
-	PathFindingPairStats pair_stats;
-	HyperLogLog distinct_srcs;
-	HyperLogLog distinct_dsts;
-	gstate.global_pairs->InitializeScan(gstate.global_scan_state);
-	while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
-		DataChunk current_chunk;
-		current_chunk.Initialize(context, gstate.global_pairs->Types());
-		gstate.global_pairs->Scan(gstate.global_scan_state, current_chunk);
-		AccumulatePairStats(current_chunk, pair_stats, distinct_srcs, distinct_dsts);
-	}
-	FinalizePairStats(gstate, pair_stats, distinct_srcs, distinct_dsts);
-	auto analysis_end = std::chrono::steady_clock::now();
-	AppendOperatorPhaseTiming(context, "pair_analysis_precompute", gstate.num_threads, gstate.pair_stats.pair_count,
-	                          gstate.pair_stats.distinct_src_count, gstate.pair_stats.distinct_dst_count,
-	                          std::chrono::duration<double, std::milli>(analysis_end - analysis_start).count(), 0);
-	gstate.search_orientation = ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
-	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
-		gstate.search_orientation = PathFindingSearchOrientation::FORWARD;
-	}
+	// The pairs are analysed once the edges are in (FinalizePathFindingPhase); endpoint inputs are forward-only,
+	// so nothing about the pairs has to be known before the CSR build
+	gstate.search_orientation = PathFindingSearchOrientation::FORWARD;
 	++gstate.child;
 	return SinkFinalizeType::READY;
 }
@@ -1615,22 +1775,45 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	}
 
 	auto analysis_start = std::chrono::steady_clock::now();
+	// The pairs are materialised into the output chunks by several threads sharing one scan (the order of the
+	// chunks is free), each translating keys and accumulating statistics for its chunks; the statistics are
+	// merged below. The chunks remain live until BFS finishes and cannot reference the scan state's buffer
+	// handles: under memory pressure, a zero-copy scan can evict or reuse an earlier chunk's backing block,
+	// silently corrupting the retained source/destination pairs.
+	auto pair_types = gstate.global_pairs->Types();
+	idx_t thread_count = std::max<idx_t>(1, std::min<idx_t>(gstate.num_threads, gstate.global_pairs->ChunkCount()));
+	vector<vector<shared_ptr<DataChunk>>> thread_batches(thread_count);
+	vector<PathFindingPairStats> thread_stats(thread_count);
+	vector<HyperLogLog> thread_distinct_srcs(thread_count);
+	vector<HyperLogLog> thread_distinct_dsts(thread_count);
+	ColumnDataParallelScanState parallel_scan;
+	gstate.global_pairs->InitializeScan(parallel_scan, ColumnDataScanProperties::DISALLOW_ZERO_COPY);
+	ParallelFor(thread_count, thread_count, [&](idx_t thread_idx, idx_t, idx_t) {
+		ColumnDataLocalScanState local_scan;
+		while (true) {
+			auto current_chunk = make_shared_ptr<DataChunk>();
+			current_chunk->Initialize(context, pair_types);
+			if (!gstate.global_pairs->Scan(parallel_scan, local_scan, *current_chunk)) {
+				break;
+			}
+			if (gstate.index_snapshot) {
+				TranslatePairKeysInPlace(*gstate.index_snapshot, *current_chunk);
+			}
+			AccumulatePairStats(*current_chunk, thread_stats[thread_idx], thread_distinct_srcs[thread_idx],
+			                    thread_distinct_dsts[thread_idx]);
+			thread_batches[thread_idx].push_back(std::move(current_chunk));
+		}
+	});
 	PathFindingPairStats pair_stats;
 	HyperLogLog distinct_srcs;
 	HyperLogLog distinct_dsts;
-	// These chunks remain live until BFS finishes and cannot reference the scan state's current buffer handles.
-	// Under memory pressure, a zero-copy scan can evict or reuse an earlier chunk's backing block, silently
-	// corrupting the retained source/destination pairs.
-	gstate.global_pairs->InitializeScan(gstate.global_scan_state, ColumnDataScanProperties::DISALLOW_ZERO_COPY);
-	while (gstate.global_scan_state.next_row_index < gstate.global_pairs->Count()) {
-		auto current_chunk = make_shared_ptr<DataChunk>();
-		current_chunk->Initialize(context, gstate.global_pairs->Types());
-		gstate.global_pairs->Scan(gstate.global_scan_state, *current_chunk);
-		if (gstate.index_snapshot) {
-			TranslatePairKeysInPlace(*gstate.index_snapshot, *current_chunk);
+	for (idx_t thread_idx = 0; thread_idx < thread_count; thread_idx++) {
+		MergePairStats(pair_stats, thread_stats[thread_idx]);
+		distinct_srcs.Merge(thread_distinct_srcs[thread_idx]);
+		distinct_dsts.Merge(thread_distinct_dsts[thread_idx]);
+		for (auto &chunk : thread_batches[thread_idx]) {
+			gstate.global_output_batches.push_back(std::move(chunk));
 		}
-		AccumulatePairStats(*current_chunk, pair_stats, distinct_srcs, distinct_dsts);
-		gstate.global_output_batches.push_back(current_chunk);
 	}
 	FinalizePairStats(gstate, pair_stats, distinct_srcs, distinct_dsts);
 	auto analysis_end = std::chrono::steady_clock::now();
@@ -1924,8 +2107,12 @@ void PathFindingLocalSinkState::SinkBufferedEndpoints(PathFindingGlobalSinkState
 	if (input.size() == 0) {
 		return;
 	}
-	if (input.data.size() != 2) {
+	if (input.data.size() != 2 && input.data.size() != 3) {
 		throw InternalException("Partitioned endpoint input expected src and dst columns");
+	}
+	if (gstate.track_edge_rows && input.data.size() != 3) {
+		throw InvalidInputException("shortestpathoperator over an endpoint input needs the edge row id: "
+		                            "struct_pack(src := ..., dst := ..., id := <edge rowid>)");
 	}
 	if (!gstate.endpoint_build_started) {
 		lock_guard<mutex> initialize_lock(gstate.endpoint_init_lock);
@@ -1938,23 +2125,41 @@ void PathFindingLocalSinkState::SinkBufferedEndpoints(PathFindingGlobalSinkState
 		local_endpoint_partition_data = gstate.endpoint_partition_data->CreateShared();
 		endpoint_partition_append_state = make_uniq<PartitionedColumnDataAppendState>();
 		local_endpoint_partition_data->InitializeAppendState(*endpoint_partition_append_state);
-		endpoint_partition_chunk.Initialize(context, {LogicalType::HASH});
+		vector<LogicalType> endpoint_types {LogicalType::HASH};
+		if (gstate.track_edge_rows) {
+			endpoint_types.push_back(LogicalType::BIGINT);
+		}
+		endpoint_partition_chunk.Initialize(context, endpoint_types);
 	}
 
 	UnifiedVectorFormat src_format;
 	UnifiedVectorFormat dst_format;
+	UnifiedVectorFormat id_format;
 	input.data[0].ToUnifiedFormat(src_format);
 	input.data[1].ToUnifiedFormat(dst_format);
 	auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
 	auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
+	const int64_t *id_data = nullptr;
+	if (gstate.track_edge_rows) {
+		input.data[2].ToUnifiedFormat(id_format);
+		id_data = UnifiedVectorFormat::GetData<int64_t>(id_format);
+	}
 	endpoint_partition_chunk.Reset();
 	endpoint_partition_chunk.SetChildCardinality(input.size());
 	auto output_endpoint = FlatVector::Writer<hash_t>(endpoint_partition_chunk.data[0], input.size());
+	auto output_rows = gstate.track_edge_rows ? FlatVector::GetDataMutable<int64_t>(endpoint_partition_chunk.data[1]) : nullptr;
 	for (idx_t row = 0; row < input.size(); row++) {
 		auto src_idx = src_format.sel->get_index(row);
 		auto dst_idx = dst_format.sel->get_index(row);
 		if (!src_format.validity.RowIsValid(src_idx) || !dst_format.validity.RowIsValid(dst_idx)) {
 			throw ConstraintException("Path-finding graph endpoints cannot be NULL");
+		}
+		if (output_rows) {
+			auto id_idx = id_format.sel->get_index(row);
+			if (!id_format.validity.RowIsValid(id_idx)) {
+				throw ConstraintException("Path-finding edge row ids cannot be NULL");
+			}
+			output_rows[row] = id_data[id_idx];
 		}
 		auto src = src_data[src_idx];
 		auto dst = dst_data[dst_idx];
@@ -2045,13 +2250,21 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 	}
 	auto &scheduler = TaskScheduler::GetScheduler(context);
 	num_threads = scheduler.NumberOfThreads();
+	mode = op.mode;
+	path_finding_mode = ParsePathFindingOperatorMode(mode);
+	// Paths report edges by row id, so the endpoint input of a path query carries them through the build
+	track_edge_rows = buffered_edge_input && path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH;
 	if (buffered_edge_input) {
 		endpoint_radix_bits = GetBufferedPartitionedCSRRadixBits(vertex_count, num_threads, context);
 		endpoint_partition_width = GetBufferedPartitionedCSRWidth(vertex_count, num_threads, context);
 		endpoint_logical_partition_count =
 		    GetBufferedPartitionedCSRLogicalPartitionCount(vertex_count, num_threads, context);
-		endpoint_partition_data = make_uniq<RadixPartitionedColumnData>(
-		    context, vector<LogicalType> {LogicalType::HASH}, endpoint_radix_bits, 0);
+		vector<LogicalType> endpoint_types {LogicalType::HASH};
+		if (track_edge_rows) {
+			endpoint_types.push_back(LogicalType::BIGINT);
+		}
+		endpoint_partition_data =
+		    make_uniq<RadixPartitionedColumnData>(context, std::move(endpoint_types), endpoint_radix_bits, 0);
 		// Ensure that an empty graph also has all destination partitions.
 		auto empty_partitions = endpoint_partition_data->CreateShared();
 		endpoint_partition_data->Combine(*empty_partitions);

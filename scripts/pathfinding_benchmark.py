@@ -827,6 +827,14 @@ def kuzu_query_single_row(conn, query):
     return rows[0]
 
 
+def kuzu_all_rows(conn, query):
+    result = conn.execute(query)
+    rows = []
+    while result.has_next():
+        rows.append(result.get_next())
+    return rows
+
+
 def kuzu_row_get(row, index, default=None):
     if isinstance(row, dict):
         return list(row.values())[index] if index < len(row) else default
@@ -4033,6 +4041,33 @@ class GraphDBSystem:
     def edge_count(self):
         raise NotImplementedError
 
+    def multi_source(self, sources):
+        """(reachable_count, total_len) from every source to every reachable vertex, lengths >= 1"""
+        raise NotImplementedError
+
+    # LDBC SNB queries over the undirected knows graph, hop-count variants (see ensure_ldbc_attributes); each
+    # returns (reachable_count, total_len) over the (source, destination) pairs the query defines
+    def load_ldbc(self, export_dir, scale_factor):
+        """Person.cityId, Company nodes and WORK_AT edges on top of load()"""
+        raise NotImplementedError
+
+    def ic13(self, person1, person2):
+        raise NotImplementedError
+
+    def bi19(self, city1, city2):
+        """every person in city1 x every person in city2"""
+        raise NotImplementedError
+
+    def bi20(self, company, person2):
+        """every employee of company x person2"""
+        raise NotImplementedError
+
+    stop_requested = False
+
+    def cancel(self):
+        """Best effort: stop the query running on this system's connection (called from another thread); per-pair
+        loops also check stop_requested so they stop issuing queries"""
+
     def close(self):
         pass
 
@@ -4084,6 +4119,49 @@ class MemgraphSystem(GraphDBSystem):
     def edge_count(self):
         return int(self.run("MATCH ()-[e:KNOWS]->() RETURN count(e) AS c")[0]["c"])
 
+    def load_ldbc(self, export_dir, scale_factor):
+        mount = f"/import/{sf_name(scale_factor)}"
+        self.run("STORAGE MODE IN_MEMORY_ANALYTICAL")
+        self.run("CREATE INDEX ON :Person(cityId)")
+        self.run("CREATE INDEX ON :Company(id)")
+        self.run(f'LOAD CSV FROM "{mount}/person_city.csv" WITH HEADER AS row '
+                 f"MATCH (p:Person {{id: ToInteger(row.personid)}}) SET p.cityId = ToInteger(row.cityid)")
+        self.run(f'LOAD CSV FROM "{mount}/company.csv" WITH HEADER AS row CREATE (:Company {{id: ToInteger(row.id)}})')
+        self.run(f'LOAD CSV FROM "{mount}/work_at.csv" WITH HEADER AS row '
+                 f"MATCH (p:Person {{id: ToInteger(row.personid)}}), (c:Company {{id: ToInteger(row.companyid)}}) "
+                 f"CREATE (p)-[:WORK_AT]->(c)")
+        self.run("STORAGE MODE IN_MEMORY_TRANSACTIONAL")
+
+    def ic13(self, person1, person2):
+        rows = self.run(f"MATCH (a:Person {{id: $p1}}), (b:Person {{id: $p2}}) MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]-(b) "
+                        f"RETURN count(p) AS c, sum(size(p)) AS s", p1=person1, p2=person2)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def bi19(self, city1, city2):
+        # One BFS per source with the destination predicate on the expansion (Memgraph's set-oriented form)
+        rows = self.run(f"MATCH (a:Person {{cityId: $c1}}) WITH a MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]-(b:Person) "
+                        f"WHERE b.cityId = $c2 RETURN count(p) AS c, sum(size(p)) AS s", c1=city1, c2=city2)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def bi20(self, company, person2):
+        rows = self.run(f"MATCH (a:Person)-[:WORK_AT]->(:Company {{id: $co}}) WITH DISTINCT a "
+                        f"MATCH (b:Person {{id: $p2}}) WHERE a <> b WITH a, b "
+                        f"MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]-(b) RETURN count(p) AS c, sum(size(p)) AS s",
+                        co=company, p2=person2)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def multi_source(self, sources):
+        # Without the WITH barrier Memgraph scans every b and filters a after the BFS (35 s instead of 10 ms at SF1)
+        rows = self.run(f"MATCH (a:Person) WHERE a.id IN $srcs WITH a MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]->(b:Person) "
+                        f"RETURN count(p) AS c, sum(size(p)) AS s", srcs=sources)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def cancel(self):
+        with self.driver.session() as other:
+            for row in other.run("SHOW TRANSACTIONS").data():
+                if "KNOWS" in (row.get("query") or ""):
+                    other.run(f'TERMINATE TRANSACTIONS "{row["transaction_id"]}"').consume()
+
     def close(self):
         self.session.close()
         self.driver.close()
@@ -4099,8 +4177,9 @@ class FalkorDBSystem(GraphDBSystem):
         self.graph = self.db.select_graph(graph_name)
 
     def query(self, text, params=None):
-        # The client applies a default timeout that a 1024-destination query exceeds; the server has none
-        return self.graph.query(text, params or {}, timeout=3600000).result_set
+        # The client applies a default timeout that a 1024-destination query exceeds; the server has none. The
+        # sweep sets the budget here, so FalkorDB stops a query server-side when it is exceeded.
+        return self.graph.query(text, params or {}, timeout=self.budget_ms).result_set
 
     def load(self, export_dir, scale_factor):
         try:
@@ -4144,6 +4223,66 @@ class FalkorDBSystem(GraphDBSystem):
 
     def edge_count(self):
         return int(self.query("MATCH ()-[e:KNOWS]->() RETURN count(e)")[0][0])
+
+    def load_ldbc(self, export_dir, scale_factor):
+        # FalkorDB has no undirected shortestPath ("does not currently support undirected shortestPath
+        # traversals"), so the LDBC graph gets the reverse of every knows edge and the queries use directed patterns
+        with (export_dir / "knows.csv").open() as handle:
+            edges = [[int(r["person2id"]), int(r["person1id"])] for r in csv.DictReader(handle)]
+        for i in range(0, len(edges), 20000):
+            self.query("UNWIND $rows AS r MATCH (a:Person {id: r[0]}), (b:Person {id: r[1]}) CREATE (a)-[:KNOWS]->(b)",
+                       {"rows": edges[i:i + 20000]})
+        self.query("CREATE INDEX FOR (p:Person) ON (p.cityId)")
+        self.query("CREATE INDEX FOR (c:Company) ON (c.id)")
+        with (export_dir / "person_city.csv").open() as handle:
+            rows = [[int(r["personid"]), int(r["cityid"])] for r in csv.DictReader(handle)]
+        for i in range(0, len(rows), 20000):
+            self.query("UNWIND $rows AS r MATCH (p:Person {id: r[0]}) SET p.cityId = r[1]", {"rows": rows[i:i + 20000]})
+        with (export_dir / "company.csv").open() as handle:
+            ids = [int(r["id"]) for r in csv.DictReader(handle)]
+        self.query("UNWIND $rows AS r CREATE (:Company {id: r})", {"rows": ids})
+        with (export_dir / "work_at.csv").open() as handle:
+            rows = [[int(r["personid"]), int(r["companyid"])] for r in csv.DictReader(handle)]
+        for i in range(0, len(rows), 20000):
+            self.query("UNWIND $rows AS r MATCH (p:Person {id: r[0]}), (c:Company {id: r[1]}) CREATE (p)-[:WORK_AT]->(c)",
+                       {"rows": rows[i:i + 20000]})
+
+    def ic13(self, person1, person2):
+        rows = self.query(f"MATCH (a:Person {{id: $p1}}), (b:Person {{id: $p2}}) "
+                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          {"p1": person1, "p2": person2})
+        return int(rows[0][0]), int(rows[0][1] or 0)
+
+    def bi19(self, city1, city2):
+        rows = self.query(f"MATCH (a:Person {{cityId: $c1}}), (b:Person {{cityId: $c2}}) WHERE a <> b "
+                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          {"c1": city1, "c2": city2})
+        return int(rows[0][0]), int(rows[0][1] or 0)
+
+    def bi20(self, company, person2):
+        rows = self.query(f"MATCH (a:Person)-[:WORK_AT]->(:Company {{id: $co}}) WITH DISTINCT a "
+                          f"MATCH (b:Person {{id: $p2}}) WHERE a <> b "
+                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          {"co": company, "p2": person2})
+        return int(rows[0][0]), int(rows[0][1] or 0)
+
+    def multi_source(self, sources):
+        # No single-source primitive with lengths: one shortestPath per (source, vertex)
+        reachable, total = 0, 0
+        for source in sources:
+            if self.stop_requested:
+                raise RuntimeError("timeout: stop requested")
+            rows = self.query(f"MATCH (a:Person {{id: $src}}), (b:Person) "
+                              f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                              {"src": source})
+            reachable += int(rows[0][0])
+            total += int(rows[0][1] or 0)
+        return reachable, total
+
+    def set_budget(self, budget_s):
+        self.budget_ms = int(budget_s * 1000)
+
+    budget_ms = 3600000
 
 
 def run_update_graphdb(args, system):
@@ -4271,7 +4410,9 @@ class Neo4jSystem(GraphDBSystem):
                  f"(b:Person {{id: toInteger(row.person2id)}}) CREATE (a)-[:KNOWS]->(b) }} IN TRANSACTIONS OF 50000 ROWS")
 
     def sssp(self, source, destinations):
-        rows = self.read(f"MATCH (a:Person {{id: $src}}), (b:Person) WHERE b.id IN $dsts "
+        # UNWIND rather than `b.id IN $dsts`: the IN form plans a MultiNodeIndexSeek that hands the parallel runtime
+        # one row, so every shortestPath runs on a single worker (SF10: 10.3 s vs 0.76 s for the same 1024 paths)
+        rows = self.read(f"MATCH (a:Person {{id: $src}}) UNWIND $dsts AS d MATCH (b:Person {{id: d}}) "
                          f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) "
                          f"RETURN count(p) AS c, sum(length(p)) AS s", src=source, dsts=destinations)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
@@ -4296,14 +4437,772 @@ class Neo4jSystem(GraphDBSystem):
     def edge_count(self):
         return int(self.run("MATCH ()-[e:KNOWS]->() RETURN count(e) AS c")[0]["c"])
 
+    def load_ldbc(self, export_dir, scale_factor):
+        mount = f"file:///{sf_name(scale_factor)}"
+        self.run("CREATE INDEX person_city IF NOT EXISTS FOR (p:Person) ON (p.cityId)")
+        self.run("CREATE INDEX company_id IF NOT EXISTS FOR (c:Company) ON (c.id)")
+        self.run("CALL db.awaitIndexes(600)")
+        self.run(f"LOAD CSV WITH HEADERS FROM '{mount}/person_city.csv' AS row "
+                 f"CALL (row) {{ MATCH (p:Person {{id: toInteger(row.personid)}}) SET p.cityId = toInteger(row.cityid) }} "
+                 f"IN TRANSACTIONS OF 50000 ROWS")
+        self.run(f"LOAD CSV WITH HEADERS FROM '{mount}/company.csv' AS row "
+                 f"CALL (row) {{ CREATE (:Company {{id: toInteger(row.id)}}) }} IN TRANSACTIONS OF 50000 ROWS")
+        self.run(f"LOAD CSV WITH HEADERS FROM '{mount}/work_at.csv' AS row "
+                 f"CALL (row) {{ MATCH (p:Person {{id: toInteger(row.personid)}}), (c:Company {{id: toInteger(row.companyid)}}) "
+                 f"CREATE (p)-[:WORK_AT]->(c) }} IN TRANSACTIONS OF 50000 ROWS")
+
+    def ic13(self, person1, person2):
+        rows = self.read(f"MATCH (a:Person {{id: $p1}}), (b:Person {{id: $p2}}) "
+                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]-(b)) RETURN count(p) AS c, sum(length(p)) AS s",
+                         p1=person1, p2=person2)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def bi19(self, city1, city2):
+        rows = self.read(f"MATCH (a:Person {{cityId: $c1}}) MATCH (b:Person {{cityId: $c2}}) WHERE a <> b "
+                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]-(b)) RETURN count(p) AS c, sum(length(p)) AS s",
+                         c1=city1, c2=city2)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def bi20(self, company, person2):
+        rows = self.read(f"MATCH (a:Person)-[:WORK_AT]->(:Company {{id: $co}}) WITH DISTINCT a "
+                         f"MATCH (b:Person {{id: $p2}}) WHERE a <> b "
+                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]-(b)) RETURN count(p) AS c, sum(length(p)) AS s",
+                         co=company, p2=person2)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def multi_source(self, sources):
+        rows = self.read(f"UNWIND $srcs AS sid MATCH (a:Person {{id: sid}}) MATCH (b:Person) WHERE a <> b "
+                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) RETURN count(p) AS c, sum(length(p)) AS s",
+                         srcs=sources)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def cancel(self):
+        with self.driver.session(database=self.database) as other:
+            rows = other.run("SHOW TRANSACTIONS YIELD transactionId, currentQuery "
+                             "WHERE currentQuery CONTAINS 'KNOWS' RETURN transactionId").data()
+            for row in rows:
+                other.run(f'TERMINATE TRANSACTIONS "{row["transactionId"]}"').consume()
+
     def close(self):
         if self.session:
             self.session.close()
         self.driver.close()
 
 
+class Neo4jGDSSystem(Neo4jSystem):
+    """Neo4j with the Graph Data Science library: the graph is projected once after the load (static snapshot, so
+    not usable in the update workload) and the queries call GDS single-source and pairwise procedures. The
+    unlicensed library caps concurrency at 4 threads."""
+
+    name = "neo4j_gds"
+    GRAPH = "knows"
+    CONCURRENCY = 4
+
+    def read(self, query, **params):
+        # GDS procedures cannot run under the parallel runtime (transaction.acquireStatementLock unsupported)
+        return self.run(query, **params)
+
+    def load(self, export_dir, scale_factor):
+        super().load(export_dir, scale_factor)
+        started = time.perf_counter()
+        self.run(f"CALL gds.graph.drop({sql_string(self.GRAPH)}, false)")
+        self.run(f"CALL gds.graph.project({sql_string(self.GRAPH)}, 'Person', 'KNOWS')")
+        self.projection_s = time.perf_counter() - started
+        print(f"   GDS projection in {self.projection_s:.1f}s")
+
+    def sssp(self, source, destinations):
+        rows = self.read(f"MATCH (a:Person {{id: $src}}) "
+                         f"CALL gds.allShortestPaths.delta.stream({sql_string(self.GRAPH)}, "
+                         f"{{sourceNode: a, concurrency: {self.CONCURRENCY}}}) YIELD targetNode, totalCost "
+                         f"WITH gds.util.asNode(targetNode) AS b, totalCost WHERE totalCost > 0 AND b.id IN $dsts "
+                         f"RETURN count(*) AS c, sum(totalCost) AS s", src=source, dsts=destinations)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def point_to_point(self, pairs):
+        rows = self.read(f"UNWIND $pairs AS pr MATCH (a:Person {{id: pr[0]}}), (b:Person {{id: pr[1]}}) "
+                         f"CALL gds.shortestPath.dijkstra.stream({sql_string(self.GRAPH)}, "
+                         f"{{sourceNode: a, targetNode: b, concurrency: {self.CONCURRENCY}}}) YIELD totalCost "
+                         f"RETURN count(*) AS c, sum(totalCost) AS s",
+                         pairs=[list(pair) for pair in pairs if pair[0] != pair[1]])
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def multi_source(self, sources):
+        rows = self.read(f"UNWIND $srcs AS sid MATCH (a:Person {{id: sid}}) "
+                         f"CALL gds.allShortestPaths.delta.stream({sql_string(self.GRAPH)}, "
+                         f"{{sourceNode: a, concurrency: {self.CONCURRENCY}}}) YIELD totalCost "
+                         f"WITH totalCost WHERE totalCost > 0 RETURN count(*) AS c, sum(totalCost) AS s", srcs=sources)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    UNDIRECTED = "knows_undirected"
+
+    def load_ldbc(self, export_dir, scale_factor):
+        super().load_ldbc(export_dir, scale_factor)
+        started = time.perf_counter()
+        self.run(f"CALL gds.graph.drop({sql_string(self.UNDIRECTED)}, false)")
+        self.run(f"CALL gds.graph.project({sql_string(self.UNDIRECTED)}, 'Person', {{KNOWS: {{orientation: 'UNDIRECTED'}}}})")
+        print(f"   GDS undirected projection in {time.perf_counter() - started:.1f}s")
+
+    def ic13(self, person1, person2):
+        rows = self.read(f"MATCH (a:Person {{id: $p1}}), (b:Person {{id: $p2}}) "
+                         f"CALL gds.shortestPath.dijkstra.stream({sql_string(self.UNDIRECTED)}, "
+                         f"{{sourceNode: a, targetNode: b, concurrency: {self.CONCURRENCY}}}) YIELD totalCost "
+                         f"RETURN count(*) AS c, sum(totalCost) AS s", p1=person1, p2=person2)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def bi19(self, city1, city2):
+        # One single-source run per person in city1, destinations filtered by city2
+        rows = self.read(f"MATCH (a:Person {{cityId: $c1}}) "
+                         f"CALL gds.allShortestPaths.delta.stream({sql_string(self.UNDIRECTED)}, "
+                         f"{{sourceNode: a, concurrency: {self.CONCURRENCY}}}) YIELD targetNode, totalCost "
+                         f"WITH gds.util.asNode(targetNode) AS b, totalCost WHERE totalCost > 0 AND b.cityId = $c2 "
+                         f"RETURN count(*) AS c, sum(totalCost) AS s", c1=city1, c2=city2)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def bi20(self, company, person2):
+        rows = self.read(f"MATCH (a:Person)-[:WORK_AT]->(:Company {{id: $co}}) WITH DISTINCT a "
+                         f"MATCH (b:Person {{id: $p2}}) WHERE a <> b "
+                         f"CALL gds.shortestPath.dijkstra.stream({sql_string(self.UNDIRECTED)}, "
+                         f"{{sourceNode: a, targetNode: b, concurrency: {self.CONCURRENCY}}}) YIELD totalCost "
+                         f"RETURN count(*) AS c, sum(totalCost) AS s", co=company, p2=person2)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def cancel(self):
+        with self.driver.session(database=self.database) as other:
+            rows = other.run("SHOW TRANSACTIONS YIELD transactionId, currentQuery "
+                             "WHERE currentQuery CONTAINS 'gds.' RETURN transactionId").data()
+            for row in rows:
+                other.run(f'TERMINATE TRANSACTIONS "{row["transactionId"]}"').consume()
+
+
 def run_update_neo4j(args):
     run_update_graphdb(args, Neo4jSystem(args.uri, args.database, args.runtime))
+
+
+class KuzuSystem(GraphDBSystem):
+    """Kuzu over the snapshot database built by ensure_kuzu_update_database (read-only for the sweep)."""
+
+    name = "kuzu"
+
+    def __init__(self, threads):
+        self.kuzu = require_kuzu()
+        self.threads = threads
+        self.db = None
+        self.conn = None
+
+    def load(self, export_dir, scale_factor):
+        all_pair_tables = [pair_table_name(1024, "random"), pair_table_name(1024, "same_src")]
+        self.snapshot = ensure_kuzu_update_database(scale_factor, all_pair_tables)
+        self.open()
+
+    def open(self):
+        self.db = self.kuzu.Database(str(self.snapshot), read_only=True)
+        self.conn = self.kuzu.Connection(self.db, num_threads=self.threads)
+
+    def load_ldbc(self, export_dir, scale_factor):
+        # PersonCity, Company and WorkAt tables are added to the snapshot database once
+        self.close()
+        db = self.kuzu.Database(str(self.snapshot))
+        conn = self.kuzu.Connection(db)
+        tables = {kuzu_row_get(row, 0) for row in kuzu_all_rows(conn, "CALL show_tables() RETURN name")}
+        if "WorkAt" not in tables:
+            print(f"   adding PersonCity, Company and WorkAt to the Kuzu snapshot")
+            conn.execute("CREATE NODE TABLE PersonCity(personid INT64 PRIMARY KEY, cityid INT64)")
+            conn.execute("CREATE NODE TABLE Company(id INT64 PRIMARY KEY)")
+            conn.execute("CREATE REL TABLE WorkAt(FROM Person TO Company)")
+            conn.execute(f"COPY PersonCity FROM {sql_string(export_dir / 'person_city.csv')} (HEADER=true)")
+            conn.execute(f"COPY Company FROM {sql_string(export_dir / 'company.csv')} (HEADER=true)")
+            conn.execute(f"COPY WorkAt FROM {sql_string(export_dir / 'work_at.csv')} (HEADER=true)")
+        conn.close()
+        db.close()
+        self.open()
+
+    def ic13(self, person1, person2):
+        if person1 == person2:
+            return 0, 0
+        return self.one(f"MATCH (a:Person {{id: {person1}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]-(b:Person {{id: {person2}}}) "
+                        f"RETURN count(*), sum(length(e))")
+
+    def bi19(self, city1, city2):
+        # One single-source query per person in city1 (literal source, see kuzu_update_query), destinations
+        # filtered by city2
+        sources = [kuzu_row_get(row, 0) for row in kuzu_all_rows(self.conn, f"MATCH (pc:PersonCity {{cityid: {city1}}}) RETURN pc.personid")]
+        reachable, total = 0, 0
+        for source in sources:
+            if self.stop_requested:
+                raise RuntimeError("timeout: stop requested")
+            c, t = self.one(f"MATCH (a:Person {{id: {source}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]-(b:Person) "
+                            f"WITH b.id AS d, length(e) AS l MATCH (pc:PersonCity {{personid: d}}) WHERE pc.cityid = {city2} "
+                            f"RETURN count(*), sum(l)")
+            reachable += c
+            total += t
+        return reachable, total
+
+    def bi20(self, company, person2):
+        sources = [kuzu_row_get(row, 0) for row in kuzu_all_rows(self.conn, f"MATCH (p:Person)-[:WorkAt]->(c:Company {{id: {company}}}) RETURN DISTINCT p.id")]
+        pairs = [(source, person2) for source in sources]
+        return self.point_to_point(pairs, undirected=True)
+
+    def one(self, query):
+        result = self.conn.execute(query)
+        row = result.get_next() if result.has_next() else (0, None)
+        return int(row[0] or 0), int(row[1] or 0)
+
+    def sssp(self, source, destinations):
+        dsts = ", ".join(str(d) for d in destinations)
+        return self.one(f"MATCH (a:Person {{id: {source}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]->(b:Person) "
+                        f"WHERE list_contains([{dsts}], b.id) RETURN count(*), sum(length(e))")
+
+    def point_to_point(self, pairs, undirected=False):
+        reachable, total = 0, 0
+        arrow = "-" if undirected else "->"
+        for src, dst in pairs:
+            if src == dst:
+                continue
+            if self.stop_requested:
+                raise RuntimeError("timeout: stop requested")
+            result = self.conn.execute(f"MATCH (a:Person {{id: {src}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]{arrow}"
+                                       f"(b:Person {{id: {dst}}}) RETURN length(e)")
+            if result.has_next():
+                reachable += 1
+                total += int(result.get_next()[0])
+        return reachable, total
+
+    def multi_source(self, sources):
+        reachable, total = 0, 0
+        for source in sources:
+            if self.stop_requested:
+                raise RuntimeError("timeout: stop requested")
+            c, t = self.one(f"MATCH (a:Person {{id: {source}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]->(b:Person) "
+                            f"RETURN count(*), sum(length(e))")
+            reachable += c
+            total += t
+        return reachable, total
+
+    def edge_count(self):
+        return self.one("MATCH (:Person)-[e:Knows]->(:Person) RETURN count(e), 0")[0]
+
+    def cancel(self):
+        if self.conn:
+            self.conn.interrupt()
+
+    def close(self):
+        if self.conn:
+            self.conn.close()
+        if self.db:
+            self.db.close()
+
+
+class DuckPGQSystem(GraphDBSystem):
+    """DuckPGQ through the CLI, one process per query so the budget can kill it: 'build' builds the CSR per query,
+    'index' reads the persisted CSR index (resident after a warm-up query). With symmetric=True the edge table is
+    the symmetric closure of knows (LDBC's undirected semantics)."""
+
+    def __init__(self, route, scale_factor, threads, budget_s, symmetric=False):
+        self.route = route
+        self.name = f"duckpgq_{route}"
+        self.scale_factor = scale_factor
+        self.threads = threads
+        self.budget_s = budget_s
+        self.symmetric = symmetric
+        self.database = db_path(scale_factor)
+        self.edge_table = "person_knows_person_sym" if symmetric else "person_knows_person"
+        self.index_name = f"{CSR_INDEX_NAME}_sym" if symmetric else CSR_INDEX_NAME
+        self.index_key = f"csr-index|ldbc|main|{self.edge_table}|{self.index_name}"
+
+    def load(self, export_dir, scale_factor):
+        if self.symmetric:
+            ensure_ldbc_attributes(scale_factor)
+        counts = run_duckdb(BENCH_DUCKDB, self.database,
+                            f"SELECT count(*) FROM person; SELECT count(*) FROM {self.edge_table};", quiet=True)[0]
+        values = [line.strip() for line in counts.strip().splitlines() if line.strip().isdigit()]
+        self.vertex_count, self.edge_count_value = int(values[0]), int(values[1])
+        if self.route == "index":
+            run_duckdb(BENCH_DUCKDB, None, f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; "
+                                          f"ATTACH {sql_string(self.database)} AS ldbc; "
+                                          f"CREATE INDEX IF NOT EXISTS {self.index_name} ON ldbc.{self.edge_table} "
+                                          f"USING CSR (person1id, person2id);", quiet=True)
+
+    def edge_count(self):
+        return self.edge_count_value
+
+    def load_ldbc(self, export_dir, scale_factor):
+        pass  # ensure_ldbc_attributes ran in load()
+
+    def pair_forms(self, pair_table):
+        """(row-id pair relation for the build route, key pair relation for the index route) of a pair table"""
+        if pair_table.startswith(multi_source_table_name("")):
+            # sources (row ids) x every person, streamed
+            return (f"(SELECT s.src AS src, d.rowid::BIGINT AS dst FROM ldbc.{pair_table} s, ldbc.person d)",
+                    f"(SELECT a.id::BIGINT AS src, d.id::BIGINT AS dst FROM ldbc.{pair_table} s "
+                    f"JOIN ldbc.person a ON a.rowid = s.src, ldbc.person d)")
+        return (f"ldbc.{pair_table}",
+                f"(SELECT a.id::BIGINT AS src, b.id::BIGINT AS dst FROM ldbc.{pair_table} p "
+                f"JOIN ldbc.person a ON a.rowid = p.src JOIN ldbc.person b ON b.rowid = p.dst)")
+
+    def script(self, rowid_pairs, key_pairs, warm):
+        if self.route == "build":
+            query = f"""SELECT count(len), coalesce(sum(len), 0) FROM (
+    SELECT iterativelengthoperator(src, dst, struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+        {self.vertex_count}::BIGINT, {self.edge_count_value}::BIGINT, 'graph:sweep') AS len
+    FROM {rowid_pairs} AS pathfinding_pairs,
+        (SELECT a.rowid::BIGINT AS pathfinding_edge_src, c.rowid::BIGINT AS pathfinding_edge_dst
+         FROM ldbc.{self.edge_table} k JOIN ldbc.person a ON a.id = k.person1id JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges);"""
+            prelude = ""
+        else:
+            # Small pair sets are materialised untimed (the operator then reads a plain table), large ones stream
+            if "ldbc.person d)" in key_pairs:
+                prelude = f"CREATE OR REPLACE TEMP VIEW pathfinding_index_pairs AS SELECT * FROM {key_pairs};"
+            else:
+                prelude = f"CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS SELECT * FROM {key_pairs};"
+            query = (f"SELECT count(len), coalesce(sum(len), 0) FROM (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, "
+                     f"{sql_string(self.index_key)}) AS len FROM pathfinding_index_pairs);")
+        warm_up = query + "\n" if warm else ""
+        return f"""LOAD {sql_string(DUCKPGQ_EXTENSION)};
+SET threads={self.threads};
+SET experimental_path_finding_operator=true;
+ATTACH {sql_string(self.database)} AS ldbc (READ_ONLY);
+SELECT delete_csr(2147483647) AS duckpgq_state_init;
+{prelude}
+{warm_up}.timer on
+{query}
+"""
+
+    def timed(self, rowid_pairs, key_pairs, warm=True):
+        """(seconds, reachable_count, total_len) of the operator over the given pair relations"""
+        script = self.script(rowid_pairs, key_pairs, warm)
+        result = subprocess.run([str(BENCH_DUCKDB), "-unsigned", "-csv"], cwd=REPO_ROOT, text=True, input=script,
+                                capture_output=True, timeout=self.budget_s)
+        output = result.stdout + result.stderr
+        if result.returncode != 0 or "Error" in output:
+            raise RuntimeError(output[-2000:])
+        timers = re.findall(r"Run Time \(s\): real ([0-9.]+)", output)
+        rows = [line for line in output.splitlines() if re.match(r"^\d+,", line)]
+        reachable, total = rows[-1].split(",")[:2]
+        return float(timers[-1]), int(reachable), int(0 if total in ("", "NULL") else total)
+
+    def timed_table(self, pair_table, warm=True):
+        return self.timed(*self.pair_forms(pair_table), warm=warm)
+
+    def ic13(self, person1, person2):
+        rowid_pairs = f"(SELECT a.rowid::BIGINT AS src, b.rowid::BIGINT AS dst FROM ldbc.person a, ldbc.person b WHERE a.id = {person1} AND b.id = {person2})"
+        key_pairs = f"(SELECT {person1}::BIGINT AS src, {person2}::BIGINT AS dst)"
+        return self.timed(rowid_pairs, key_pairs)
+
+    def bi19(self, city1, city2):
+        where = f"ca.cityid = {city1} AND cb.cityid = {city2} AND a.id <> b.id"
+        rowid_pairs = (f"(SELECT a.rowid::BIGINT AS src, b.rowid::BIGINT AS dst FROM ldbc.person a JOIN ldbc.person_city ca ON ca.personid = a.id, "
+                       f"ldbc.person b JOIN ldbc.person_city cb ON cb.personid = b.id WHERE {where})")
+        key_pairs = (f"(SELECT a.id::BIGINT AS src, b.id::BIGINT AS dst FROM ldbc.person a JOIN ldbc.person_city ca ON ca.personid = a.id, "
+                     f"ldbc.person b JOIN ldbc.person_city cb ON cb.personid = b.id WHERE {where})")
+        return self.timed(rowid_pairs, key_pairs)
+
+    def bi20(self, company, person2):
+        where = f"w.companyid = {company} AND b.id = {person2} AND a.id <> b.id"
+        rowid_pairs = (f"(SELECT DISTINCT a.rowid::BIGINT AS src, b.rowid::BIGINT AS dst FROM ldbc.person a JOIN ldbc.person_work_at w ON w.personid = a.id, "
+                       f"ldbc.person b WHERE {where})")
+        key_pairs = (f"(SELECT DISTINCT a.id::BIGINT AS src, b.id::BIGINT AS dst FROM ldbc.person a JOIN ldbc.person_work_at w ON w.personid = a.id, "
+                     f"ldbc.person b WHERE {where})")
+        return self.timed(rowid_pairs, key_pairs)
+
+
+SWEEP_PAIR_COUNTS = [1, 16, 128, 1024, 2048, 16384, 65536]
+SWEEP_SOURCE_COUNTS = [1, 16, 128, 1024]
+
+
+def multi_source_table_name(source_count):
+    return f"benchmark_pairs_multi_{source_count}"
+
+
+def ensure_multi_source_table(scale_factor, source_count):
+    """source_count sampled persons as row ids (src = dst); the sources x all persons product is never materialised,
+    the queries stream it from a cross join (1024 x 1.2M persons at SF300)"""
+    table = multi_source_table_name(source_count)
+    sql = f"""
+CREATE TABLE IF NOT EXISTS {table} AS
+SELECT s.rowid::BIGINT AS src, s.rowid::BIGINT AS dst
+FROM (SELECT rowid FROM person ORDER BY hash(id + 7) LIMIT {source_count}) s;
+"""
+    run_duckdb(BENCH_DUCKDB, db_path(scale_factor), sql, quiet=True)
+    return table
+
+
+def run_with_budget(system, fn, budget_s):
+    """Runs fn() on a worker thread; after budget_s calls system.cancel() and reports the budget as exceeded."""
+    outcome = {}
+
+    def worker():
+        try:
+            outcome["value"] = fn()
+        except Exception as ex:  # noqa: BLE001
+            outcome["error"] = str(ex)
+
+    import threading
+    system.stop_requested = False
+    thread = threading.Thread(target=worker, daemon=True)
+    started = time.perf_counter()
+    thread.start()
+    thread.join(budget_s)
+    if thread.is_alive():
+        system.stop_requested = True
+        try:
+            system.cancel()
+        except Exception as ex:  # noqa: BLE001
+            print(f"   cancel failed: {str(ex)[:120]}")
+        thread.join(60)
+        return None, time.perf_counter() - started, "budget_exceeded"
+    elapsed = time.perf_counter() - started
+    if "error" in outcome:
+        if "timed out" in outcome["error"].lower() or "timeout" in outcome["error"].lower():
+            return None, elapsed, "budget_exceeded"
+        return None, elapsed, f"error: {outcome['error'][:200]}"
+    return outcome["value"], elapsed, "ok"
+
+
+def sweep_pairs(args):
+    """Pair-count and source-count sweep over DuckPGQ and the graph databases, with a per-query budget."""
+    sys.stdout.reconfigure(line_buffering=True)
+    scale_factor = args.scale_factor
+    ensure_update_log(scale_factor)
+    pair_tables = [pair_table_name(n, "random") for n in args.pair_counts]
+    for n in args.pair_counts:
+        ensure_pair_table(scale_factor, n, "random")
+    source_tables = [ensure_multi_source_table(scale_factor, k) for k in args.source_counts]
+    export_dir = ensure_graphdb_export(scale_factor, pair_tables + source_tables)
+    systems = make_systems(args, scale_factor)
+    results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    path = results_dir / f"sweep_pairs_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
+    fieldnames = ["system", "scale_factor", "shape", "pairs", "sources", "repeat", "status", "query_s",
+                  "reachable_count", "total_len", "threads", "budget_s", "benchmark_notes", "repo_commit"]
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
+    rows = []
+
+    def record(system, shape, pairs, sources, repeat, status, elapsed, value):
+        row = {"system": system.name, "scale_factor": scale_factor, "shape": shape, "pairs": pairs,
+               "sources": sources, "repeat": repeat, "status": status, "query_s": f"{elapsed:.6f}",
+               "reachable_count": value[0] if value else "", "total_len": value[1] if value else "",
+               "threads": args.threads, "budget_s": args.budget_s, "benchmark_notes": args.notes, "repo_commit": commit}
+        rows.append(row)
+        with path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        shown = f"{value[0]}/{value[1]}" if value else status
+        print(f"   {system.name:14s} {shape:12s} pairs={pairs:<7} sources={sources:<5} repeat {repeat}: {elapsed:8.3f}s {shown}")
+
+    for system in systems:
+        print(f"== {system.name}: loading {sf_name(scale_factor)}")
+        started = time.perf_counter()
+        system.load(export_dir, scale_factor)
+        print(f"   loaded in {time.perf_counter() - started:.1f}s, {system.edge_count()} edges")
+        # Random pairs; once a count exceeds the budget the larger counts are recorded as exceeded without running
+        shape_exceeded = False
+        for n in args.pair_counts:
+            table = pair_table_name(n, "random")
+            pairs = read_pairs(export_dir, table)
+            self_pairs = sum(1 for src, dst in pairs if src == dst)
+            if shape_exceeded:
+                record(system, "random_pairs", n, "", 1, "budget_exceeded_inferred", 0.0, None)
+                continue
+            exceeded = False
+            for repeat in range(1, args.repeats + 1):
+                if exceeded:
+                    break
+                if isinstance(system, DuckPGQSystem):
+                    try:
+                        elapsed, reachable, total = system.timed_table(table)
+                        value, status = (reachable, total), "ok"
+                    except subprocess.TimeoutExpired:
+                        value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                else:
+                    value, elapsed, status = run_with_budget(system, lambda: system.point_to_point(pairs), args.budget_s)
+                    if value:
+                        value = (value[0] + self_pairs, value[1])
+                record(system, "random_pairs", n, "", repeat, status, elapsed, value)
+                exceeded = status == "budget_exceeded"
+                shape_exceeded = shape_exceeded or exceeded
+        # Sources x all destinations
+        shape_exceeded = False
+        for k in args.source_counts:
+            table = multi_source_table_name(k)
+            source_keys = sorted({src for src, _ in read_pairs(export_dir, table)})
+            if shape_exceeded:
+                record(system, "multi_source", "", k, 1, "budget_exceeded_inferred", 0.0, None)
+                continue
+            exceeded = False
+            for repeat in range(1, args.repeats + 1):
+                if exceeded:
+                    break
+                if isinstance(system, DuckPGQSystem):
+                    try:
+                        elapsed, reachable, total = system.timed_table(table)
+                        value, status = (reachable, total), "ok"
+                    except subprocess.TimeoutExpired:
+                        value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                else:
+                    value, elapsed, status = run_with_budget(system, lambda: system.multi_source(source_keys), args.budget_s)
+                    if value:
+                        value = (value[0] + len(source_keys), value[1])  # the source itself, length 0
+                record(system, "multi_source", "", k, repeat, status, elapsed, value)
+                exceeded = status == "budget_exceeded"
+                shape_exceeded = shape_exceeded or exceeded
+        system.close()
+    # Agreement across systems: every ok result of a point must equal the first system's
+    by_point = {}
+    for row in rows:
+        if row["status"] != "ok":
+            continue
+        key = (row["shape"], row["pairs"], row["sources"])
+        by_point.setdefault(key, set()).add((row["reachable_count"], row["total_len"]))
+    disagreements = {k: v for k, v in by_point.items() if len(v) > 1}
+    print(f"Wrote {path}")
+    if disagreements:
+        print("DISAGREEMENTS:", disagreements)
+    else:
+        print(f"All {len(by_point)} points agree across the systems that completed them")
+
+
+def read_result_files(files):
+    """Rows of several result CSVs; when a system appears in more than one file only its rows from the last file
+    listed count, so a rerun of one system replaces its earlier numbers"""
+    rows_by_file = [list(csv.DictReader(open(path))) for path in files]
+    last_file_of_system = {}
+    for file_idx, rows in enumerate(rows_by_file):
+        for row in rows:
+            last_file_of_system[row["system"]] = file_idx
+    result = []
+    for file_idx, rows in enumerate(rows_by_file):
+        result.extend(row for row in rows if last_file_of_system[row["system"]] == file_idx)
+    return result
+
+
+def sweep_pairs_table(args):
+    """Prints the sweep as one table per shape: systems x pair counts, mean seconds or the budget status."""
+    rows = read_result_files(args.files)
+    for shape, column in (("random_pairs", "pairs"), ("multi_source", "sources")):
+        shape_rows = [r for r in rows if r["shape"] == shape]
+        if not shape_rows:
+            continue
+        counts = sorted({int(r[column]) for r in shape_rows})
+        systems = []
+        for r in shape_rows:
+            if r["system"] not in systems:
+                systems.append(r["system"])
+        print(f"\n## {shape}: mean seconds per query, SF{shape_rows[0]['scale_factor']}, {shape_rows[0]['threads']} threads, budget {shape_rows[0]['budget_s']} s\n")
+        print("| system | " + " | ".join(f"{column}={c}" for c in counts) + " |")
+        print("|---|" + "---|" * len(counts))
+        for system in systems:
+            cells = []
+            for c in counts:
+                point = [r for r in shape_rows if r["system"] == system and int(r[column]) == c]
+                ok = [float(r["query_s"]) for r in point if r["status"] == "ok"]
+                if ok:
+                    mean = statistics.mean(ok)
+                    cells.append(f"{mean*1000:.0f} ms" if mean < 1 else f"{mean:.1f} s")
+                elif any(r["status"].startswith("budget_exceeded") for r in point):
+                    cells.append(f"> {point[0]['budget_s']} s")
+                elif point:
+                    cells.append("error")
+                else:
+                    cells.append("")
+            print(f"| {system} | " + " | ".join(cells) + " |")
+
+
+LDBC_QUERIES = ["ic13", "bi19", "bi20"]
+LDBC_PARAM_SETS = 5
+
+
+def ensure_ldbc_attributes(scale_factor):
+    """Adds to the benchmark database what the LDBC queries need beyond person and knows: the symmetric closure of
+    knows (LDBC knows is undirected and the generator stores one direction), person -> city, person -> company,
+    and deterministic parameter sets: IC13 pairs from the random pair table, BI19 pairs among the most populous
+    cities, BI20 the largest companies with a random person."""
+    ensure_pair_table(scale_factor, 1024, "random")
+    src_dir = source_dir(scale_factor)
+    person_path = find_relation_path(src_dir, "Person")
+    work_path = find_relation_path(src_dir, "Person_workAt_Company")
+    pairs = pair_table_name(1024, "random")
+    sql = f"""
+CREATE TABLE IF NOT EXISTS person_knows_person_sym AS
+SELECT person1id, person2id FROM person_knows_person UNION ALL SELECT person2id, person1id FROM person_knows_person;
+CREATE TABLE IF NOT EXISTS person_city AS
+SELECT s.id::BIGINT AS personid, s.LocationCityId::BIGINT AS cityid
+FROM read_parquet({sql_string(person_path)}) s JOIN person p ON p.id = s.id ORDER BY personid;
+CREATE TABLE IF NOT EXISTS person_work_at AS
+SELECT DISTINCT w.PersonId::BIGINT AS personid, w.CompanyId::BIGINT AS companyid
+FROM read_parquet({sql_string(work_path)}) w JOIN person p ON p.id = w.PersonId ORDER BY personid, companyid;
+CREATE TABLE IF NOT EXISTS ldbc_params_ic13 AS
+SELECT row_number() OVER () AS idx, a.id AS person1, b.id AS person2
+FROM (SELECT * FROM {pairs} ORDER BY rowid LIMIT {LDBC_PARAM_SETS * 2}) p
+JOIN person a ON a.rowid = p.src JOIN person b ON b.rowid = p.dst WHERE a.id <> b.id LIMIT {LDBC_PARAM_SETS};
+CREATE TABLE IF NOT EXISTS ldbc_params_bi19 AS
+WITH top AS (SELECT cityid, row_number() OVER (ORDER BY count(*) DESC, cityid) AS rank FROM person_city GROUP BY cityid)
+SELECT a.rank AS idx, a.cityid AS city1, b.cityid AS city2
+FROM top a JOIN top b ON b.rank = {LDBC_PARAM_SETS} + a.rank WHERE a.rank <= {LDBC_PARAM_SETS};
+CREATE TABLE IF NOT EXISTS ldbc_params_bi20 AS
+WITH top AS (SELECT companyid, row_number() OVER (ORDER BY count(*) DESC, companyid) AS rank FROM person_work_at GROUP BY companyid),
+     persons AS (SELECT row_number() OVER () AS idx, b.id AS personid FROM (SELECT * FROM {pairs} ORDER BY rowid LIMIT {LDBC_PARAM_SETS}) p JOIN person b ON b.rowid = p.dst)
+SELECT top.rank AS idx, top.companyid, persons.personid FROM top JOIN persons ON persons.idx = top.rank;
+"""
+    run_duckdb(BENCH_DUCKDB, db_path(scale_factor), sql, quiet=True)
+
+
+def ensure_ldbc_export(scale_factor):
+    """CSV exports of the attribute tables and the parameter sets next to the graph database exports"""
+    ensure_ldbc_attributes(scale_factor)
+    export_dir = ensure_graphdb_export(scale_factor, [])
+    exports = {
+        "person_city": "SELECT personid, cityid FROM person_city ORDER BY personid",
+        "company": "SELECT DISTINCT companyid AS id FROM person_work_at ORDER BY id",
+        "work_at": "SELECT personid, companyid FROM person_work_at ORDER BY personid, companyid",
+        "params_ic13": "SELECT idx, person1, person2 FROM ldbc_params_ic13 ORDER BY idx",
+        "params_bi19": "SELECT idx, city1, city2 FROM ldbc_params_bi19 ORDER BY idx",
+        "params_bi20": "SELECT idx, companyid, personid FROM ldbc_params_bi20 ORDER BY idx",
+    }
+    sql = ""
+    for name, query in exports.items():
+        path = export_dir / f"{name}.csv"
+        if not path.exists():
+            sql += f"COPY ({query}) TO {sql_string(path)} (FORMAT CSV, HEADER);\n"
+    if sql:
+        print(f"Exporting {sf_name(scale_factor)} LDBC attribute tables")
+        run_duckdb(BENCH_DUCKDB, db_path(scale_factor), sql, quiet=True)
+    return export_dir
+
+
+def read_ldbc_params(export_dir, query):
+    with (export_dir / f"params_{query}.csv").open() as handle:
+        return [[int(v) for v in row.values()] for row in csv.DictReader(handle)]
+
+
+def make_systems(args, scale_factor, symmetric=False):
+    systems = []
+    for name in args.systems:
+        if name == "duckpgq_build":
+            systems.append(DuckPGQSystem("build", scale_factor, args.threads, args.budget_s, symmetric))
+        elif name == "duckpgq_index":
+            systems.append(DuckPGQSystem("index", scale_factor, args.threads, args.budget_s, symmetric))
+        elif name == "kuzu":
+            systems.append(KuzuSystem(args.threads))
+        elif name == "memgraph":
+            systems.append(MemgraphSystem(args.memgraph_uri))
+        elif name == "falkordb":
+            system = FalkorDBSystem(args.falkordb_host, args.falkordb_port, f"pf_{sf_name(scale_factor)}")
+            system.set_budget(args.budget_s)
+            systems.append(system)
+        elif name == "neo4j":
+            systems.append(Neo4jSystem(args.neo4j_uri, args.neo4j_database, args.neo4j_runtime))
+        elif name == "neo4j_gds":
+            systems.append(Neo4jGDSSystem(args.neo4j_uri, args.neo4j_database, args.neo4j_runtime))
+        else:
+            raise SystemExit(f"unknown system {name}")
+    return systems
+
+
+class ResultWriter:
+    """Appends rows to a CSV as they arrive (a killed run keeps what it measured)"""
+
+    def __init__(self, path, fieldnames):
+        self.path = path
+        self.fieldnames = fieldnames
+        self.rows = []
+
+    def add(self, row):
+        self.rows.append(row)
+        with self.path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=self.fieldnames)
+            writer.writeheader()
+            writer.writerows(self.rows)
+
+
+def ldbc_queries(args):
+    """IC13, BI19 and BI20 (hop-count variants over the undirected knows graph) on every system with a budget"""
+    sys.stdout.reconfigure(line_buffering=True)
+    scale_factor = args.scale_factor
+    ensure_update_log(scale_factor)
+    export_dir = ensure_ldbc_export(scale_factor)
+    params = {query: read_ldbc_params(export_dir, query) for query in args.queries}
+    systems = make_systems(args, scale_factor, symmetric=True)
+    results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    path = results_dir / f"ldbc_queries_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
+    writer = ResultWriter(path, ["system", "scale_factor", "query", "param_index", "params", "repeat", "status", "query_s",
+                                 "reachable_count", "total_len", "threads", "budget_s", "benchmark_notes", "repo_commit"])
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
+    for system in systems:
+        print(f"== {system.name}: loading {sf_name(scale_factor)}")
+        started = time.perf_counter()
+        system.load(export_dir, scale_factor)
+        system.load_ldbc(export_dir, scale_factor)
+        print(f"   loaded in {time.perf_counter() - started:.1f}s")
+        for query in args.queries:
+            exceeded = False
+            for param_row in params[query]:
+                idx, values = param_row[0], param_row[1:]
+                for repeat in range(1, args.repeats + 1):
+                    if exceeded:
+                        value, elapsed, status = None, 0.0, "budget_exceeded_inferred"
+                    elif isinstance(system, DuckPGQSystem):
+                        try:
+                            elapsed, reachable, total = getattr(system, query)(*values)
+                            value, status = (reachable, total), "ok"
+                        except subprocess.TimeoutExpired:
+                            value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                    else:
+                        value, elapsed, status = run_with_budget(system, lambda: getattr(system, query)(*values), args.budget_s)
+                    writer.add({"system": system.name, "scale_factor": scale_factor, "query": query, "param_index": idx,
+                                "params": " ".join(str(v) for v in values), "repeat": repeat, "status": status,
+                                "query_s": f"{elapsed:.6f}", "reachable_count": value[0] if value else "",
+                                "total_len": value[1] if value else "", "threads": args.threads, "budget_s": args.budget_s,
+                                "benchmark_notes": args.notes, "repo_commit": commit})
+                    shown = f"{value[0]}/{value[1]}" if value else status
+                    print(f"   {system.name:14s} {query} params {' '.join(str(v) for v in values):28s} repeat {repeat}: {elapsed:8.3f}s {shown}")
+                    if status == "budget_exceeded":
+                        exceeded = True
+                        break
+        system.close()
+    by_point = {}
+    for row in writer.rows:
+        if row["status"] == "ok":
+            by_point.setdefault((row["query"], row["param_index"]), set()).add((row["reachable_count"], row["total_len"]))
+    disagreements = {k: v for k, v in by_point.items() if len(v) > 1}
+    print(f"Wrote {path}")
+    if disagreements:
+        print("DISAGREEMENTS:", disagreements)
+    else:
+        print(f"All {len(by_point)} points agree across the systems that completed them")
+
+
+def ldbc_queries_table(args):
+    """systems x queries: mean seconds over the parameter sets (each the mean of its repeats), or the budget status"""
+    rows = read_result_files(args.files)
+    queries = [q for q in LDBC_QUERIES if any(r["query"] == q for r in rows)]
+    systems = []
+    for r in rows:
+        if r["system"] not in systems:
+            systems.append(r["system"])
+    print(f"\n## LDBC queries (hop-count variants, undirected knows): mean seconds per query, SF{rows[0]['scale_factor']}, "
+          f"{rows[0]['threads']} threads, budget {rows[0]['budget_s']} s\n")
+    print("| system | " + " | ".join(queries) + " |")
+    print("|---|" + "---|" * len(queries))
+    for system in systems:
+        cells = []
+        for query in queries:
+            point = [r for r in rows if r["system"] == system and r["query"] == query]
+            per_param = {}
+            for r in point:
+                if r["status"] == "ok":
+                    per_param.setdefault(r["param_index"], []).append(float(r["query_s"]))
+            if per_param and len(per_param) == len({r["param_index"] for r in point}):
+                mean = statistics.mean(statistics.mean(v) for v in per_param.values())
+                cells.append(f"{mean*1000:.0f} ms" if mean < 1 else f"{mean:.1f} s")
+            elif any(r["status"].startswith("budget_exceeded") for r in point):
+                cells.append(f"> {point[0]['budget_s']} s")
+            elif point:
+                cells.append("error")
+            else:
+                cells.append("")
+        print(f"| {system} | " + " | ".join(cells) + " |")
 
 
 def main():
@@ -4665,6 +5564,50 @@ def main():
             gp.add_argument("--host", default="localhost")
             gp.add_argument("--port", type=int, default=6379)
         gp.set_defaults(func=func)
+
+    sweep_pairs_parser = subcommands.add_parser("sweep-pairs", help="Pair-count and source-count sweep across systems")
+    sweep_pairs_parser.add_argument("--scale-factor", required=True)
+    sweep_pairs_parser.add_argument("--threads", type=int, default=os.cpu_count())
+    sweep_pairs_parser.add_argument("--systems", nargs="+",
+                                    default=["duckpgq_build", "duckpgq_index", "kuzu", "memgraph", "falkordb", "neo4j",
+                                             "neo4j_gds"])
+    sweep_pairs_parser.add_argument("--pair-counts", nargs="*", type=int, default=SWEEP_PAIR_COUNTS)
+    sweep_pairs_parser.add_argument("--source-counts", nargs="*", type=int, default=SWEEP_SOURCE_COUNTS)
+    sweep_pairs_parser.add_argument("--repeats", type=int, default=3)
+    sweep_pairs_parser.add_argument("--budget-s", type=float, default=600, help="per-query budget; exceeded is recorded")
+    sweep_pairs_parser.add_argument("--memgraph-uri", default="bolt://localhost:7687")
+    sweep_pairs_parser.add_argument("--neo4j-uri", default="bolt://localhost:7688")
+    sweep_pairs_parser.add_argument("--neo4j-database", default="pathfinding")
+    sweep_pairs_parser.add_argument("--neo4j-runtime", default="parallel")
+    sweep_pairs_parser.add_argument("--falkordb-host", default="localhost")
+    sweep_pairs_parser.add_argument("--falkordb-port", type=int, default=6379)
+    sweep_pairs_parser.add_argument("--notes", default="")
+    sweep_pairs_parser.set_defaults(func=sweep_pairs)
+
+    table_parser = subcommands.add_parser("sweep-pairs-table", help="Print sweep-pairs CSVs as tables")
+    table_parser.add_argument("files", nargs="+")
+    table_parser.set_defaults(func=sweep_pairs_table)
+
+    ldbc_parser = subcommands.add_parser("ldbc-queries", help="LDBC IC13, BI19, BI20 (hop-count variants) across systems")
+    ldbc_parser.add_argument("--scale-factor", required=True)
+    ldbc_parser.add_argument("--threads", type=int, default=os.cpu_count())
+    ldbc_parser.add_argument("--systems", nargs="+",
+                             default=["duckpgq_build", "duckpgq_index", "kuzu", "memgraph", "falkordb", "neo4j", "neo4j_gds"])
+    ldbc_parser.add_argument("--queries", nargs="+", default=LDBC_QUERIES)
+    ldbc_parser.add_argument("--repeats", type=int, default=3)
+    ldbc_parser.add_argument("--budget-s", type=float, default=600)
+    ldbc_parser.add_argument("--memgraph-uri", default="bolt://localhost:7687")
+    ldbc_parser.add_argument("--neo4j-uri", default="bolt://localhost:7688")
+    ldbc_parser.add_argument("--neo4j-database", default="pathfinding")
+    ldbc_parser.add_argument("--neo4j-runtime", default="parallel")
+    ldbc_parser.add_argument("--falkordb-host", default="localhost")
+    ldbc_parser.add_argument("--falkordb-port", type=int, default=6379)
+    ldbc_parser.add_argument("--notes", default="")
+    ldbc_parser.set_defaults(func=ldbc_queries)
+
+    ldbc_table_parser = subcommands.add_parser("ldbc-queries-table", help="Print ldbc-queries CSVs as a table")
+    ldbc_table_parser.add_argument("files", nargs="+")
+    ldbc_table_parser.set_defaults(func=ldbc_queries_table)
 
     args = parser.parse_args()
     args.func(args)

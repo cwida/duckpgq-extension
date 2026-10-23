@@ -76,14 +76,18 @@ static string PathFindingEndpointJoin(const string &edge_alias, const PropertyGr
 	return result.str();
 }
 
-string GetDirectedPathFindingEndpointsSQL(const PropertyGraphTable &edge_table) {
+string GetDirectedPathFindingEndpointsSQL(const PropertyGraphTable &edge_table, bool with_edge_ids) {
 	const string edge_alias = "__duckpgq_edge";
 	const string source_alias = "__duckpgq_source";
 	const string destination_alias = "__duckpgq_destination";
 	std::ostringstream query;
 	query << "SELECT CAST(" << DuckPGQSQL::Column(string("rowid"), source_alias)
 	      << " AS BIGINT) AS pathfinding_edge_src, CAST(" << DuckPGQSQL::Column(string("rowid"), destination_alias)
-	      << " AS BIGINT) AS pathfinding_edge_dst FROM " << DuckPGQSQL::TableRef(edge_table, edge_alias)
+	      << " AS BIGINT) AS pathfinding_edge_dst";
+	if (with_edge_ids) {
+		query << ", CAST(" << DuckPGQSQL::Column(string("rowid"), edge_alias) << " AS BIGINT) AS pathfinding_edge_id";
+	}
+	query << " FROM " << DuckPGQSQL::TableRef(edge_table, edge_alias)
 	      << " INNER JOIN "
 	      << PathFindingEndpointJoin(edge_alias, *edge_table.source_pg_table, source_alias, edge_table.source_fk,
 	                                 edge_table.source_pk)
