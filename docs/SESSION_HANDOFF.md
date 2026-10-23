@@ -101,6 +101,11 @@ W18 Neo4j Enterprise request, W22 outline.
   `sweep_pairs_*.csv` and `ldbc_queries_*.csv` under `data/ldbc-pathfinding/results/sf<sf>/`; logs in `~/sweep/`.
   Neo4j queries bind destination/source lists with UNWIND, never `IN $list` (parallel runtime fan-out, see plan);
   Memgraph multi-source patterns need a `WITH a` barrier before the `*BFS` expansion.
+- Reverse orientation on symmetric edge sets (`7fdfe65e`): `gstate.symmetric_edges` is set from an undirected index
+  snapshot or a cache key ending in `|undirected` (MATCH sets it for `-[e]-` patterns; the harness passes
+  `graph:sweep|undirected` for the LDBC build route); the forward partitions are then also the reverse partitions.
+  Test `path_finding_reverse_orientation.test`. The 23 Oct chain `sf300_chain` reruns the SF300 sweep (first run
+  died on the 1.2G-pair point) and the DuckPGQ LDBC queries at SF100/SF300; `~/sweep/sf300_chain_done.txt` marks the end.
 - Paths on the build route (W7 step 2, `48a7563a`): `shortestpathoperator(src, dst, struct_pack(src, dst, id), V, E,
   key)`; the `id` field is the edge row id and is required in path mode.
 - Many source groups (`8aa7aa32`): groups scheduled together divide the threads (`concurrent_groups` on the
