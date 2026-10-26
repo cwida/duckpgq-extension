@@ -48,7 +48,12 @@ bucket, so that looking up a source in a partition costs one bucket read and a s
 instead of a binary search over all rows of the partition. No per-vertex counter array exists at any point, which is
 what makes the build memory proportional to the edges, not the vertices.
 
-We call this layout the \emph{partitioned CSR}. It is the same for the operator's build and for the index of
+We call this layout the \emph{partitioned CSR}. Partitioning the adjacency by destination range so that a traversal
+step writes only a cache-sized slice of the frontier is an established idea, known as CSR segmenting~\cite{zhang2017cagra}
+and propagation blocking~\cite{beamer2017blocking}, and GraphChi's shards partition edges by destination interval for the
+same reason~\cite{kyrola2012graphchi}; what is specific here is that the layout is produced in one pass from a join
+stream inside a relational operator, with radix partitioning and no per-vertex array, and that the same layout serves
+as the on-disk format of a transactional index. It is the same for the operator's build and for the index of
 Section~\ref{sec:index}, and for a reason. A
 partition holds every edge into one destination range, so a traversal step that processes partition $p$ writes
 only to vertices of range $p$; the tasks of one level never write the same vertex, and the frontier arrays of a
