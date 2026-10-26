@@ -1,37 +1,37 @@
-\begin{table}[t]\centering\small
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
 \caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, mean seconds per query over five parameter sets; rows marked conn.\ split the sources over 32 client connections.}\label{tab:ldbc}
 \begin{tabular}{lrrr}\toprule
 system & IC13 & BI19 & BI20 \\ \midrule
 \multicolumn{4}{l}{\textit{LDBC SF10}} \\
-\quad DuckPGQ index & 4\,ms & 117\,ms & 6\,ms \\
+\quad DuckPGQ index & \textbf{4\,ms} & 117\,ms & \textbf{6\,ms} \\
 \quad DuckPGQ build & 29\,ms & 176\,ms & 32\,ms \\
-\quad Neo4j & 5\,ms & 45\,ms & 31\,ms \\
+\quad Neo4j & 5\,ms & \textbf{45\,ms} & 31\,ms \\
 \quad Kuzu & 8\,ms & 1.6\,s & 7.6\,s \\
 \quad Kuzu (32 conn.) & 12\,ms & 537\,ms & 1.5\,s \\
 \quad FalkorDB & 15\,ms & 69.0\,s & 11.2\,s \\
 \quad FalkorDB (32 conn.) & 15\,ms & 18.6\,s & 3.0\,s \\
 \quad Memgraph & 385\,ms & 41.6\,s & 540\,ms \\
 \quad Memgraph (32 conn.) & 395\,ms & 134\,ms & 26.8\,s \\
-\quad Neo4j GDS (4 threads) & 64\,ms & 10.2\,s & 58.4\,s \\
+\quad Neo4j GDS (4 thr.) & 64\,ms & 10.2\,s & 58.4\,s \\
 \addlinespace
 \multicolumn{4}{l}{\textit{LDBC SF100}} \\
-\quad DuckPGQ index & 14\,ms & 5.9\,s & 25\,ms \\
+\quad DuckPGQ index & 14\,ms & 5.9\,s & \textbf{25\,ms} \\
 \quad DuckPGQ build & 185\,ms & 8.3\,s & 200\,ms \\
-\quad Neo4j & 6\,ms & 4.3\,s & 127\,ms \\
+\quad Neo4j & \textbf{6\,ms} & \textbf{4.3\,s} & 127\,ms \\
 \quad Kuzu & 26\,ms & 63.3\,s & 165\,s \\
 \quad Kuzu (32 conn.) & 65\,ms & 22.4\,s & 29.6\,s \\
-\quad FalkorDB & 62\,ms & $>$600\,s & 399\,s \\
-\quad FalkorDB (32 conn.) & 60\,ms & $>$600\,s & 211\,s \\
-\quad Memgraph & 8.7\,s & $>$600\,s & 6.4\,s \\
+\quad FalkorDB & 62\,ms & timeout & 399\,s \\
+\quad FalkorDB (32 conn.) & 60\,ms & timeout & 211\,s \\
+\quad Memgraph & 8.7\,s & timeout & 6.4\,s \\
 \quad Memgraph (32 conn.) & 8.8\,s & 16.1\,s & 641\,ms \\
-\quad Neo4j GDS (4 threads) & 583\,ms & $>$600\,s & $>$600\,s \\
+\quad Neo4j GDS (4 thr.) & 583\,ms & timeout & timeout \\
 \addlinespace
 \multicolumn{4}{l}{\textit{LDBC SF300}} \\
-\quad DuckPGQ index & 27\,ms & 43.7\,s & 55\,ms \\
+\quad DuckPGQ index & 27\,ms & \textbf{43.7\,s} & \textbf{55\,ms} \\
 \quad DuckPGQ build & 535\,ms & 59.9\,s & 573\,ms \\
-\quad Neo4j & 5\,ms & 48.4\,s & 1.2\,s \\
-\quad Kuzu & 53\,ms & 329\,s & $>$600\,s \\
-\quad FalkorDB & 118\,ms & $>$600\,s & $>$600\,s \\
-\quad Memgraph & 33.2\,s & $>$600\,s & 47.9\,s \\
-\quad Neo4j GDS (4 threads) & 1.8\,s & $>$600\,s & $>$600\,s \\
+\quad Neo4j & \textbf{5\,ms} & 48.4\,s & 1.2\,s \\
+\quad Kuzu & 53\,ms & 329\,s & timeout \\
+\quad FalkorDB & 118\,ms & timeout & timeout \\
+\quad Memgraph & 33.2\,s & timeout & 47.9\,s \\
+\quad Neo4j GDS (4 thr.) & 1.8\,s & timeout & timeout \\
 \bottomrule\end{tabular}\end{table}

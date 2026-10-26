@@ -77,3 +77,11 @@ numbers; then "In the future, we will" with real items.
 
 Bugs we fixed along the way (the barrier deadlock under concurrent queries, the NULL-pair fallback, the stale
 dictionary ids) are implementation details. Describe the resulting design and its property; do not narrate the bug.
+
+## Captions
+
+A caption states what is plotted, not what we conclude from it, in this order: what the query is, which data sets,
+what the axes are with their units and scales, what each line or row is, what a marker means, and how many runs
+the number averages. Our own words for the experiment (shape, point, route, budget) do not appear; say "random
+pairs", "65 536 pairs", "over the index", "600 s limit". One sentence of interpretation at the end is allowed when
+the figure cannot be misread without it.

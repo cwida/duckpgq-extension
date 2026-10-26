@@ -1,6 +1,19 @@
 \section{Introduction}
 \label{sec:intro}
 
+\begin{figure}[t]
+  \centering
+  \input{figures/overview}
+  \caption{Path finding in \duckpgq. A \texttt{MATCH} path pattern is rewritten to SQL with a marker function that an
+  optimizer extension replaces by the path-finding operator (Section~\ref{sec:planner}). The operator traverses a
+  partitioned CSR that is either built inside the query from the edge table (Section~\ref{sec:csr}) or read as a
+  transaction-consistent snapshot of a CSR index (Section~\ref{sec:index}); both have the same layout. Two
+  traversals, multi-source lanes for many pairs and a frontier search for few, run as chains of per-phase events
+  (Sections~\ref{sec:traversals} and~\ref{sec:phases}). Everything in colour is the extension; the grey band is the
+  host engine and the four interfaces it exposes.}
+  \label{fig:overview}
+\end{figure}
+
 % Draft 22 Oct 2026 in the style of paper/STYLE.md. Every number is provisional until the frozen-commit rerun.
 
 SQL:2023 added graph pattern matching to SQL, and with it a query type relational engines have never executed
