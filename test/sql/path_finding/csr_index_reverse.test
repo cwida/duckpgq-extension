@@ -1,0 +1,185 @@
+# name: test/sql/path_finding/csr_index_reverse.test
+# description: a CSR index WITH (reverse = true) stores the edges by source range as well, so many sources to one destination is searched from the destination side on a directed graph; the reverse side follows inserts, deletes, folds and restarts
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_index_reverse.db
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# No automatic fold: the change log must stay an overlay so both sides' companions and suppression are exercised
+statement ok
+SET duckpgq_csr_index_fold_ratio = 1000;
+
+statement ok
+CREATE TABLE pv(id BIGINT);
+
+statement ok
+INSERT INTO pv VALUES (0), (1), (2), (3), (4), (5), (6);
+
+statement ok
+CREATE TABLE pe(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO pe VALUES (0, 1), (1, 2), (2, 3), (0, 4), (4, 3), (3, 5);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (pv LABEL PV)
+EDGE TABLES (pe SOURCE KEY (src) REFERENCES pv (id) DESTINATION KEY (dst) REFERENCES pv (id) LABEL PE);
+
+statement ok
+CREATE INDEX pe_csr ON pe USING CSR (src, dst) WITH (reverse = true);
+
+# Five sources, one destination: one search from the destination over the reverse side.
+query II
+SELECT src, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 2, 4, 6))-[e:PE]->{1,4}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	2
+1	2
+2	1
+4	1
+
+query I
+SELECT s LIKE '%orientation=reverse%' AND s LIKE '%csr=index%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# The forward side answers the same.
+statement ok
+SET experimental_path_finding_operator_reverse_orientation_ratio = 0;
+
+query II
+SELECT src, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 2, 4, 6))-[e:PE]->{1,4}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	2
+1	2
+2	1
+4	1
+
+statement ok
+SET experimental_path_finding_operator_reverse_orientation_ratio = 4;
+
+# A new edge and a deleted one, committed: delta companions and suppression on the reverse side.
+statement ok
+INSERT INTO pe VALUES (6, 3);
+
+statement ok
+DELETE FROM pe WHERE src = 2 AND dst = 3;
+
+query I
+SELECT duckpgq_csr_index_stats('pe', 'pe_csr');
+----
+epochs=1;delta=1;tombstones=1
+
+query II
+SELECT src, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 2, 4, 6))-[e:PE]->{1,4}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	2
+4	1
+6	1
+
+query I
+SELECT s LIKE '%orientation=reverse%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Uncommitted changes of the reader itself: a private snapshot with both sides.
+statement ok
+BEGIN TRANSACTION;
+
+statement ok
+INSERT INTO pe VALUES (1, 3);
+
+query II
+SELECT src, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 2, 4, 6))-[e:PE]->{1,4}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	2
+1	1
+4	1
+6	1
+
+statement ok
+ROLLBACK;
+
+# A fold rebuilds both sides.
+query I
+SELECT duckpgq_csr_index_fold('pe', 'pe_csr');
+----
+true
+
+# The previous epoch stays retained for older readers, so the change log is kept until the next fold
+query I
+SELECT duckpgq_csr_index_stats('pe', 'pe_csr') LIKE 'epochs=2;%';
+----
+true
+
+query II
+SELECT src, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 2, 4, 6))-[e:PE]->{1,4}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	2
+4	1
+6	1
+
+# The reverse side is persisted and loaded with the index.
+statement ok
+CHECKPOINT;
+
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+query II
+SELECT src, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 2, 4, 6))-[e:PE]->{1,4}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	2
+4	1
+6	1
+
+query I
+SELECT s LIKE '%orientation=reverse%' AND s LIKE '%csr=index%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# An undirected index needs no stored reverse side; the option is ignored for it.
+statement ok
+CREATE INDEX pe_csr_u ON pe USING CSR (src, dst) WITH (undirected = true, reverse = true);
+
+query II
+SELECT src, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 2, 4, 6))-[e:PE]-{1,4}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	2
+1	3
+2	4
+4	1
+6	1

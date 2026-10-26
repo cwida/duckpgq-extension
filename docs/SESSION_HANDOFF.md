@@ -113,6 +113,17 @@ W18 Neo4j Enterprise request, W22 outline.
   `path_finding_reach.test`. The harness's multi-source tables hold the sources only and `DuckPGQSystem.script`
   switches to the reach form for them. A WHERE directly on the source table next to the edge input is not planned
   (filter between scan and cross product); wrap the sources in a subquery, as the harness does.
+- Reverse side of the CSR index (W28 steps 1-3, 26 Oct): option `reverse = true` (`CSRIndex::reverse`), epoch
+  `csr->reverse_partitions` (no row ids), `reverse_tombstone_positions`, snapshot `reverse_partitions /
+  reverse_delta_partitions / reverse_suppressed`, storage format version 2 (version 1 still loads), operator
+  `LocalCSRState::reverse_partition_delta_csrs / reverse_partition_suppressed` and the `SearchDeltaCSRs` /
+  `SearchSuppressed` helpers. Test `csr_index_reverse.test`. The fold keeps the change log while the previous epoch
+  is retained (two epochs), so post-fold stats checks use `LIKE 'epochs=2;%'`.
+- MATCH on the reach mode (`9272fcb4`): decided in `MatchBindReplace` after `ProcessPathList`; `PathFindingOperatorResult`
+  carries `destination_binding/table/key_column/join_column` and `reach`; the destination alias is skipped in the
+  FROM, its predicates and projections move to the outer `reach_sql` query with a join on `result[1]`. Options
+  `experimental_path_finding_operator_reach` (default true) and `..._reach_filtered` (default false). Tests
+  `path_finding_reach_match.test`; `path_finding_operator_match.test` and `..._multi_batch.test` disable the reach.
 - Paths on the build route (W7 step 2, `48a7563a`): `shortestpathoperator(src, dst, struct_pack(src, dst, id), V, E,
   key)`; the `id` field is the edge row id and is required in path mode.
 - Many source groups (`8aa7aa32`): groups scheduled together divide the threads (`concurrent_groups` on the
@@ -128,3 +139,18 @@ W18 Neo4j Enterprise request, W22 outline.
   `~/sweep/sweep_pairs_sf*.out`, `~/sweep/ldbc_queries_sf*.out`, `~/sweep/chain_done.txt` when finished. Print
   tables with `sweep-pairs-table <csvs>` / `ldbc-queries-table <csvs>` (a system's rows come from the last file
   that has it, so pass the SF10 full-sweep CSV first and the DuckPGQ/GDS rerun CSVs after it).
+
+## Reproduction package (26 Oct)
+
+`repro/` is the archive and the one-script reproduction: `setup.sh`, `prepare.sh`, `run_all.sh`, `collect.sh`,
+`environment.sh`, `results/` (CSVs behind every figure). After any new sweep run `./repro/collect.sh` so the
+archive and the figures move together, then commit `repro/results` and `paper/`. `./repro/collect.sh archive`
+re-renders from the archive alone. Decisions: Neo4j Enterprise evaluation-licence numbers are published (W18);
+the archive goes to GitHub, this branch first, then a separate repository (W21).
+
+## Ablations (26 Oct)
+
+`docs/ABLATION_SWITCHES.md` is the inventory and the sweep design. Run `python3 scripts/pathfinding_benchmark.py
+ablation --scale-factor SF --threads 32 --repeats 3 --timeout-s 600` and print with `ablation-table`. Configurations
+live in `ABLATION_CONFIGS` / `ABLATION_GROUPS` in the harness; adding one is a dict entry. Results chain on the box:
+`~/sweep/run_ablation_chain.sh` (SF10 then SF100, marker `~/sweep/ablation_chain_done.txt`).

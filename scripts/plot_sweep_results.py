@@ -8,6 +8,7 @@ categorical slots in the validated order of the data-viz palette; the three slot
 surface get direct labels at the line ends (relief rule) and every number is also in the plan's tables.
 """
 import csv
+import os
 import statistics
 from collections import defaultdict
 from pathlib import Path
@@ -19,7 +20,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-RESULTS = REPO / "data" / "ldbc-pathfinding" / "results"
+RESULTS = Path(os.environ.get("DUCKPGQ_RESULTS_DIR", str(REPO / "data" / "ldbc-pathfinding" / "results")))
 OUT = REPO / "paper" / "figures"
 SCALE_FACTORS = ["10", "100", "300"]
 TIMEOUT_S = 600.0

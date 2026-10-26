@@ -396,7 +396,7 @@ edge plus O(D) snapshot work), not traversal speed; a default ratio of 0.1 is co
 3. W11: fold with retention, checkpoint delta hooks, crash/restart tests through WAL replay.
 4. W12: planner selection; W14: remove prototype persistence; W15: full test matrix.
 
-## 11. Reverse direction in the index (W28, proposal, 23 October 2026)
+## 11. Reverse direction in the index (W28; steps 1-3 implemented 26 October 2026, step 4 open)
 
 **Why.** Two query shapes need the edges by destination: many sources to one destination (LDBC BI20, 1300 employees
 to one person), which is one traversal from the destination side instead of one per source, and random pairs at
@@ -407,7 +407,7 @@ today is the legacy CSR route and, since `7fdfe65e`, any symmetric edge set (an 
 pattern, whose forward partitions are also the reverse partitions). Directed graphs need the reverse direction
 stored.
 
-**Design.** One index holds both directions under an option, `CREATE INDEX ... USING CSR (src, dst) WITH (reverse =
+**Design (as implemented).** One index holds both directions under an option, `CREATE INDEX ... USING CSR (src, dst) WITH (reverse =
 true)`; `undirected = true` implies it (the forward partitions already contain both directions, so no second set is
 stored). One maintenance path, one epoch, one change log; the two directions of one edge are always in the same
 epoch and the same change group, so a reader's snapshot is consistent across them without extra bookkeeping.

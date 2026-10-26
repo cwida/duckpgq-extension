@@ -1,0 +1,17 @@
+system,scale_factor,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,budget_s,benchmark_notes,repo_commit
+duckpgq_build,10,multi_source,,1,1,ok,0.022000,9158,36249,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_build,10,multi_source,,1,2,ok,0.023000,9158,36249,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_build,10,multi_source,,16,1,ok,0.033000,348510,1249123,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_build,10,multi_source,,16,2,ok,0.033000,348510,1249123,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_build,10,multi_source,,128,1,ok,0.085000,2945336,10549235,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_build,10,multi_source,,128,2,ok,0.081000,2945336,10549235,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_build,10,multi_source,,1024,1,ok,0.444000,22513530,79941209,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_build,10,multi_source,,1024,2,ok,0.428000,22513530,79941209,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_index,10,multi_source,,1,1,ok,0.003000,9158,36249,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_index,10,multi_source,,1,2,ok,0.004000,9158,36249,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_index,10,multi_source,,16,1,ok,0.013000,348510,1249123,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_index,10,multi_source,,16,2,ok,0.013000,348510,1249123,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_index,10,multi_source,,128,1,ok,0.042000,2945336,10549235,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_index,10,multi_source,,128,2,ok,0.041000,2945336,10549235,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_index,10,multi_source,,1024,1,ok,0.220000,22513530,79941209,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167
+duckpgq_index,10,multi_source,,1024,2,ok,0.218000,22513530,79941209,32,600.0,W27 SF10 reach mode,1b1c7a746ea4c82faf50069711312fe2a8bae167

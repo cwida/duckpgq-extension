@@ -1,0 +1,240 @@
+# name: test/sql/path_finding/path_finding_reach_match.test
+# description: MATCH plans a path pattern whose destination is unbound or only filtered as a reach query (one row per reached vertex), on the build route and over a CSR index; key-bound destinations and path projections keep the pair mode
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+CREATE TABLE pv(id BIGINT, city VARCHAR);
+
+statement ok
+INSERT INTO pv VALUES (0, 'A'), (1, 'B'), (2, 'A'), (3, 'B'), (4, 'A'), (5, 'B'), (6, 'A');
+
+statement ok
+CREATE TABLE pe(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO pe VALUES (0, 1), (1, 2), (2, 3), (0, 4), (4, 3), (3, 5);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (pv LABEL PV)
+EDGE TABLES (pe SOURCE KEY (src) REFERENCES pv (id) DESTINATION KEY (dst) REFERENCES pv (id) LABEL PE);
+
+# Unbound destination with its column projected: every vertex each source reaches, the destination joined back.
+query III
+SELECT src, dst, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 4))-[e:PE]->{1,4}(b:PV)
+    COLUMNS (a.id AS src, b.id AS dst, path_length(p) AS len))
+ORDER BY src, dst;
+----
+0	1	1
+0	2	2
+0	3	2
+0	4	1
+0	5	3
+4	3	1
+4	5	2
+
+query I
+SELECT s LIKE '%mode=reach%' AND s LIKE '%csr=built%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# A predicate on another column of the destination keeps the pair mode by default (each search stops early) ...
+query II
+SELECT src, dst FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,4}(b:PV WHERE b.city = 'B')
+    COLUMNS (a.id AS src, b.id AS dst))
+ORDER BY src, dst;
+----
+0	1
+0	3
+0	5
+
+query I
+SELECT s LIKE '%mode=iterativelength%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# ... and is applied after the reach when the filtered variant is enabled.
+statement ok
+SET experimental_path_finding_operator_reach_filtered = true;
+
+query II
+SELECT src, dst FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,4}(b:PV WHERE b.city = 'B')
+    COLUMNS (a.id AS src, b.id AS dst))
+ORDER BY src, dst;
+----
+0	1
+0	3
+0	5
+
+query I
+SELECT s LIKE '%mode=reach%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+SET experimental_path_finding_operator_reach_filtered = false;
+
+# A destination bound by its key keeps the pair mode.
+query III
+SELECT src, dst, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,4}(b:PV WHERE b.id IN (3, 5))
+    COLUMNS (a.id AS src, b.id AS dst, path_length(p) AS len))
+ORDER BY dst;
+----
+0	3	2
+0	5	3
+
+query I
+SELECT s LIKE '%mode=iterativelength%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# A zero lower bound keeps the source itself; the upper bound stops the search.
+query III
+SELECT src, dst, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 4)-[e:PE]->{0,4}(b:PV)
+    COLUMNS (a.id AS src, b.id AS dst, path_length(p) AS len))
+ORDER BY dst;
+----
+4	3	1
+4	4	0
+4	5	2
+
+query II
+SELECT dst, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,2}(b:PV)
+    COLUMNS (b.id AS dst, path_length(p) AS len))
+ORDER BY dst;
+----
+1	1
+2	2
+3	2
+4	1
+
+# A single-hop quantifier is a plain join; its path functions come from the SQL fallback (this used to dereference
+# a WHERE clause that the pattern pass had already consumed).
+query II
+SELECT dst, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,1}(b:PV)
+    COLUMNS (b.id AS dst, path_length(p) AS len))
+ORDER BY dst;
+----
+1	1
+4	1
+
+query II
+SELECT dst, path FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,1}(b:PV WHERE b.id = 4)
+    COLUMNS (b.id AS dst, element_id(p) AS path))
+ORDER BY dst;
+----
+4	[0, 3, 4]
+
+# Path projections need parents per pair: pair mode with paths.
+query II
+SELECT dst, path FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,4}(b:PV)
+    COLUMNS (b.id AS dst, element_id(p) AS path))
+ORDER BY dst;
+----
+1	[0, 0, 1]
+2	[0, 0, 1, 1, 2]
+3	[0, 3, 4, 4, 3]
+4	[0, 3, 4]
+5	[0, 3, 4, 4, 3, 5, 5]
+
+query I
+SELECT s LIKE '%mode=shortestpath%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Undirected pattern, nothing of the destination projected: no join back.
+query III
+SELECT src, count(*) AS reached, sum(len) AS total FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 5)-[e:PE]-{1,4}(b:PV)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+GROUP BY src;
+----
+5	5	11
+
+# A destination column first keeps the COLUMNS order.
+query III
+SELECT * FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,4}(b:PV)
+    COLUMNS (b.city AS bc, a.id AS src, b.id AS dst))
+ORDER BY dst;
+----
+B	0	1
+A	0	2
+B	0	3
+A	0	4
+B	0	5
+
+# The destination continues into another edge: bound, pair mode.
+query II
+SELECT src, dst FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,4}(b:PV)-[f:PE]->(c:PV WHERE c.id = 5)
+    COLUMNS (a.id AS src, b.id AS dst))
+ORDER BY dst;
+----
+0	3
+
+query I
+SELECT s LIKE '%mode=iterativelength%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# The option returns every pattern to the pair mode.
+statement ok
+SET experimental_path_finding_operator_reach = false;
+
+query III
+SELECT src, dst, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 4)-[e:PE]->{1,4}(b:PV)
+    COLUMNS (a.id AS src, b.id AS dst, path_length(p) AS len))
+ORDER BY dst;
+----
+4	3	1
+4	5	2
+
+query I
+SELECT s LIKE '%mode=iterativelength%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+SET experimental_path_finding_operator_reach = true;
+
+# Over a CSR index: vertices join back by key; a source without edges reaches only itself and is filtered by {1,4}.
+statement ok
+CREATE INDEX pe_csr ON pe USING CSR (src, dst);
+
+query III
+SELECT src, dst, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 4, 6))-[e:PE]->{1,4}(b:PV)
+    COLUMNS (a.id AS src, b.id AS dst, path_length(p) AS len))
+ORDER BY src, dst;
+----
+0	1	1
+0	2	2
+0	3	2
+0	4	1
+0	5	3
+4	3	1
+4	5	2
+
+query I
+SELECT s LIKE '%mode=reach%' AND s LIKE '%csr=index%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true

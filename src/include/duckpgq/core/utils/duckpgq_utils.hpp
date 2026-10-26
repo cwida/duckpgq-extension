@@ -7,7 +7,10 @@
 
 namespace duckdb {
 
+// MS-BFS lanes per wave; a build may override it (cmake -DDUCKPGQ_LANE_LIMIT=256) for the lane-width ablation
+#ifndef LANE_LIMIT
 #define LANE_LIMIT         512
+#endif
 #define VISIT_SIZE_DIVISOR 2
 #define BUCKET_COUNT       256U
 #define BUCKET_MASK        (BUCKET_COUNT - 1)

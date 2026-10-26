@@ -11,6 +11,10 @@ set(DUCKPGQ_GENERATED_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
 include_directories(src/include ${DUCKPGQ_GENERATED_INCLUDE_DIR})
 add_subdirectory(src)
 
+if(DUCKPGQ_LANE_LIMIT)
+  add_compile_definitions(LANE_LIMIT=${DUCKPGQ_LANE_LIMIT})
+endif()
+
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 

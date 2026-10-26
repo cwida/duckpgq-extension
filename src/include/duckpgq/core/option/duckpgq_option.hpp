@@ -15,11 +15,17 @@ bool GetPathFindingBuildReverseCSR(ClientContext &context);
 int32_t GetPathFindingPushPullFrontierGate(ClientContext &context);
 bool GetPathFindingDeduplicatePairs(ClientContext &context);
 bool GetPathFindingGroupedBatches(ClientContext &context);
+bool GetPathFindingReachOption(ClientContext &context);
+bool GetPathFindingReachFilteredOption(ClientContext &context);
 int32_t GetPathFindingThreadsPerBatch(ClientContext &context);
 int32_t GetPathFindingMaxConcurrentBatches(ClientContext &context);
 int32_t GetPathFindingReverseOrientationRatio(ClientContext &context);
 int32_t GetPathFindingSourceGroupRatio(ClientContext &context);
 double_t GetCSRIndexFoldRatio(ClientContext &context);
+bool GetPathFindingSnapshotCache(ClientContext &context);
+bool GetPathFindingTargetEarlyTermination(ClientContext &context);
+int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context);
+int32_t GetPathFindingFewSourcesLimit(ClientContext &context);
 
 struct CorePGQOptions {
 	static void Register(ExtensionLoader &loader) {
@@ -34,11 +40,17 @@ struct CorePGQOptions {
 		RegisterPathFindingPushPullFrontierGate(loader);
 		RegisterPathFindingDeduplicatePairs(loader);
 		RegisterPathFindingGroupedBatches(loader);
+		RegisterPathFindingReach(loader);
+		RegisterPathFindingReachFiltered(loader);
 		RegisterPathFindingThreadsPerBatch(loader);
 		RegisterPathFindingMaxConcurrentBatches(loader);
 		RegisterPathFindingReverseOrientationRatio(loader);
 		RegisterPathFindingSourceGroupRatio(loader);
 		RegisterCSRIndexFoldRatio(loader);
+		RegisterPathFindingSnapshotCache(loader);
+		RegisterPathFindingTargetEarlyTermination(loader);
+		RegisterPathFindingSparseFrontierDivisor(loader);
+		RegisterPathFindingFewSourcesLimit(loader);
 	}
 
 private:
@@ -53,11 +65,17 @@ private:
 	static void RegisterPathFindingPushPullFrontierGate(ExtensionLoader &loader);
 	static void RegisterPathFindingDeduplicatePairs(ExtensionLoader &loader);
 	static void RegisterPathFindingGroupedBatches(ExtensionLoader &loader);
+	static void RegisterPathFindingReach(ExtensionLoader &loader);
+	static void RegisterPathFindingReachFiltered(ExtensionLoader &loader);
 	static void RegisterPathFindingThreadsPerBatch(ExtensionLoader &loader);
 	static void RegisterPathFindingMaxConcurrentBatches(ExtensionLoader &loader);
 	static void RegisterPathFindingReverseOrientationRatio(ExtensionLoader &loader);
 	static void RegisterPathFindingSourceGroupRatio(ExtensionLoader &loader);
 	static void RegisterCSRIndexFoldRatio(ExtensionLoader &loader);
+	static void RegisterPathFindingSnapshotCache(ExtensionLoader &loader);
+	static void RegisterPathFindingTargetEarlyTermination(ExtensionLoader &loader);
+	static void RegisterPathFindingSparseFrontierDivisor(ExtensionLoader &loader);
+	static void RegisterPathFindingFewSourcesLimit(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

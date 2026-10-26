@@ -36,12 +36,21 @@ namespace duckdb {
 
 namespace {
 
-bool ReadUndirectedOption(const case_insensitive_map_t<Value> &options) {
-	auto entry = options.find(CSRIndex::UNDIRECTED_OPTION);
+bool ReadBooleanOption(const case_insensitive_map_t<Value> &options, const char *name) {
+	auto entry = options.find(name);
 	if (entry == options.end() || entry->second.IsNull()) {
 		return false;
 	}
 	return entry->second.DefaultCastAs(LogicalType::BOOLEAN).GetValue<bool>();
+}
+
+bool ReadUndirectedOption(const case_insensitive_map_t<Value> &options) {
+	return ReadBooleanOption(options, CSRIndex::UNDIRECTED_OPTION);
+}
+
+//! A stored reverse side is pointless for an undirected index: its forward partitions hold both directions
+bool ReadReverseOption(const case_insensitive_map_t<Value> &options) {
+	return ReadBooleanOption(options, CSRIndex::REVERSE_OPTION) && !ReadUndirectedOption(options);
 }
 
 //! Appends the BIGINT-cast keys and the row ids of a chunk to an edge list. Rows with a NULL key have no endpoint
@@ -283,7 +292,7 @@ void CSRBuildCombine(IndexBuildCombineInput &input) {
 unique_ptr<BoundIndex> CSRBuildFinalize(IndexBuildFinalizeInput &input) {
 	auto &gstate = input.global_state.Cast<CSRBuildGlobalState>();
 	auto &transaction = DuckTransaction::Get(gstate.context, gstate.db);
-	auto epoch = CSRIndex::BuildEpoch(gstate.context, gstate.lists, gstate.index->IsUndirected(),
+	auto epoch = CSRIndex::BuildEpoch(gstate.context, gstate.lists, gstate.index->IsUndirected(), gstate.index->IsReverse(),
 	                                  transaction.view.visibility_bound);
 	gstate.index->InstallEpoch(std::move(epoch));
 	return std::move(gstate.index);
@@ -352,7 +361,7 @@ CSRIndex::CSRIndex(const Identifier &name, IndexConstraintType constraint_type, 
                    TableIOManager &table_io_manager, const vector<unique_ptr<Expression>> &unbound_expressions,
                    AttachedDatabase &db, const case_insensitive_map_t<Value> &options)
     : BoundIndex(name, TYPE_NAME, constraint_type, column_ids, table_io_manager, unbound_expressions, db),
-      undirected(ReadUndirectedOption(options)) {
+      undirected(ReadUndirectedOption(options)), reverse(ReadReverseOption(options)) {
 	if (constraint_type != IndexConstraintType::NONE) {
 		throw BinderException("A CSR index cannot enforce a constraint");
 	}
@@ -382,7 +391,7 @@ unique_ptr<BoundIndex> CSRIndex::Create(CreateIndexInput &input) {
 }
 
 shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CSRIndexEdgeList> &lists, bool undirected,
-                                               VisibilityBound bound) {
+                                               bool reverse, VisibilityBound bound) {
 	auto epoch = make_shared_ptr<CSRIndexEpoch>();
 	epoch->bound = bound;
 	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
@@ -420,6 +429,9 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 	};
 	auto slices = MakeEdgeSlices(lists, directions);
 	vector<vector<vector<BuildEdge>>> thread_buckets(thread_count, vector<vector<BuildEdge>>(partition_count));
+	// The reverse side buckets (dst, src) by the source's range; it carries no row ids (lengths only)
+	vector<vector<vector<BuildEdge>>> reverse_buckets(reverse ? thread_count : 0,
+	                                                  vector<vector<BuildEdge>>(partition_count));
 	ParallelFor(slices.size(), thread_count, [&](idx_t begin, idx_t end, idx_t thread_idx) {
 		auto &buckets = thread_buckets[thread_idx];
 		for (idx_t slice_idx = begin; slice_idx < end; slice_idx++) {
@@ -432,6 +444,8 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 				buckets[dst / width].push_back({src, NumericCast<uint16_t>(dst % width), row});
 				if (undirected) {
 					buckets[src / width].push_back({dst, NumericCast<uint16_t>(src % width), row});
+				} else if (reverse) {
+					reverse_buckets[thread_idx][src / width].push_back({dst, NumericCast<uint16_t>(src % width), 0});
 				}
 			}
 		}
@@ -477,6 +491,30 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 		}
 	});
 	csr->edge_count = total_edge_count.load();
+	if (reverse) {
+		csr->capabilities = static_cast<PartitionedCSRCapabilities>(static_cast<uint8_t>(csr->capabilities) |
+		                                                            static_cast<uint8_t>(PartitionedCSRCapabilities::REVERSE));
+		csr->reverse_partitions.resize(partition_count);
+		ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+			vector<BuildEdge> edges;
+			vector<BuildEdge> scratch;
+			vector<idx_t> histogram;
+			for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
+				edges.clear();
+				for (auto &buckets : reverse_buckets) {
+					auto &bucket = buckets[partition_idx];
+					edges.insert(edges.end(), bucket.begin(), bucket.end());
+					bucket.clear();
+					bucket.shrink_to_fit();
+				}
+				CSRRadixSortBySource(edges, scratch, histogram, src_bits);
+				auto start_vertex = partition_idx * width;
+				auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
+				csr->reverse_partitions[partition_idx] = CSREmitSparsePartition(
+				    start_vertex, end_vertex, vertex_count, edges, [](idx_t, const BuildEdge &) {});
+			}
+		});
+	}
 	epoch->edge_count = csr->edge_count;
 	epoch->csr = std::move(csr);
 	return epoch;
@@ -514,7 +552,7 @@ shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, Duc
 		key_chunk.SetCardinality(chunk.size());
 		CollectEdges(context, key_chunk, chunk.data[2], chunk.size(), lists[0]);
 	}
-	return BuildEpoch(context, lists, undirected, transaction.view.visibility_bound);
+	return BuildEpoch(context, lists, undirected, reverse, transaction.view.visibility_bound);
 }
 
 void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table,
@@ -653,13 +691,51 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 			}
 		}
 	});
+	// The same rows on the reverse side: the forward position names the edge (its source row and destination
+	// offset); the reverse partition of the source's range holds it in the destination's row
+	vector<idx_t> reverse_positions;
+	if (!epoch.csr->reverse_partitions.empty()) {
+		reverse_positions.reserve(pending.size());
+		auto width = epoch.partition_width;
+		for (auto row : pending) {
+			auto position = positions[row];
+			if (position == DConstants::INVALID_INDEX) {
+				reverse_positions.push_back(DConstants::INVALID_INDEX);
+				continue;
+			}
+			auto partition_idx = position >> 32;
+			auto offset = position & 0xFFFFFFFF;
+			auto &forward = *epoch.csr->forward_partitions[partition_idx];
+			// The sparse row that holds `offset`: row_offsets is sorted, row r covers [row_offsets[r], row_offsets[r+1])
+			auto row_it = std::upper_bound(forward.row_offsets.begin(), forward.row_offsets.end(), offset);
+			auto row_idx = NumericCast<idx_t>(row_it - forward.row_offsets.begin()) - 1;
+			auto src = forward.source_vertices[row_idx];
+			auto dst = NumericCast<uint32_t>(forward.start_vertex + forward.e[offset]);
+			auto &reverse_partition = *epoch.csr->reverse_partitions[src / width];
+			auto reverse_row = reverse_partition.FindSparseRow(dst);
+			idx_t reverse_position = DConstants::INVALID_INDEX;
+			if (reverse_row != std::numeric_limits<idx_t>::max()) {
+				auto local_src = NumericCast<uint16_t>(src - (src / width) * width);
+				for (auto o = reverse_partition.row_offsets[reverse_row]; o < reverse_partition.row_offsets[reverse_row + 1]; o++) {
+					if (reverse_partition.e[o] == local_src) {
+						reverse_position = ((src / width) << 32) | o;
+						break;
+					}
+				}
+			}
+			reverse_positions.push_back(reverse_position);
+		}
+	}
 	IndexLock l(*this);
 	if (epoch.tombstone_positions.size() != known) {
 		// Another reader resolved them meanwhile, or the log was compacted
 		return;
 	}
-	for (auto row : pending) {
-		epoch.tombstone_positions.push_back(positions[row]);
+	for (idx_t i = 0; i < pending.size(); i++) {
+		epoch.tombstone_positions.push_back(positions[pending[i]]);
+		if (!reverse_positions.empty()) {
+			epoch.reverse_tombstone_positions.push_back(reverse_positions[i]);
+		}
 	}
 }
 
@@ -675,6 +751,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	vector<row_t> tombstone_rows;
 	vector<uint32_t> tombstone_groups;
 	vector<idx_t> tombstone_positions;
+	vector<idx_t> reverse_tombstone_positions;
 	if (tombstone_count > 0) {
 		ResolveTombstonePositions(epoch, tombstone_count);
 	}
@@ -689,6 +766,11 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		}
 		tombstone_positions.assign(epoch.tombstone_positions.begin(),
 		                           epoch.tombstone_positions.begin() + NumericCast<int64_t>(tombstone_count));
+		if (epoch.reverse_tombstone_positions.size() >= tombstone_count) {
+			reverse_tombstone_positions.assign(epoch.reverse_tombstone_positions.begin(),
+			                                   epoch.reverse_tombstone_positions.begin() +
+			                                       NumericCast<int64_t>(tombstone_count));
+		}
 	}
 
 	// Pass 1: which change groups' commits does this reader see? One row-version check per group; rows without a
@@ -755,6 +837,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		                           : group_commit_visible(tombstone_groups[i], false, tombstone_rows[i]);
 	}
 
+	// The cache is an ablation switch: off, every query packs its own overlay
+	shareable = shareable && GetPathFindingSnapshotCache(context);
 	if (shareable) {
 		IndexLock l(*this);
 		if (cached_snapshot && cached_snapshot->epoch == epoch_p && cached_snapshot_generation == epoch.generation &&
@@ -770,21 +854,37 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	snapshot->partitions = epoch.csr->forward_partitions;
 	snapshot->edge_count = epoch.edge_count;
 
-	// Tombstones: epoch edges deleted by commits this reader sees are suppressed
+	bool stored_reverse = !epoch.csr->reverse_partitions.empty();
+	if (stored_reverse) {
+		snapshot->reverse_partitions = epoch.csr->reverse_partitions;
+	}
+
+	// Tombstones: epoch edges deleted by commits this reader sees are suppressed, on both sides
+	auto suppress = [&](std::vector<shared_ptr<vector<uint64_t>>> &suppressed, const std::vector<shared_ptr<LocalCSR>> &partitions,
+	                    idx_t position) {
+		auto partition_idx = position >> 32;
+		auto offset = position & 0xFFFFFFFF;
+		auto &bitmap = suppressed[partition_idx];
+		if (!bitmap) {
+			bitmap = make_shared_ptr<vector<uint64_t>>((partitions[partition_idx]->e.size() + 63) / 64);
+		}
+		(*bitmap)[offset >> 6] |= uint64_t(1) << (offset & 63);
+	};
 	if (tombstone_count > 0) {
 		snapshot->suppressed.resize(snapshot->partitions.size());
+		if (stored_reverse) {
+			snapshot->reverse_suppressed.resize(snapshot->reverse_partitions.size());
+		}
 		for (idx_t i = 0; i < tombstone_count; i++) {
 			if (!tombstone_applied[i]) {
 				continue;
 			}
-			auto partition_idx = tombstone_positions[i] >> 32;
-			auto offset = tombstone_positions[i] & 0xFFFFFFFF;
-			auto &bitmap = snapshot->suppressed[partition_idx];
-			if (!bitmap) {
-				bitmap = make_shared_ptr<vector<uint64_t>>((snapshot->partitions[partition_idx]->e.size() + 63) / 64);
-			}
-			(*bitmap)[offset >> 6] |= uint64_t(1) << (offset & 63);
+			suppress(snapshot->suppressed, snapshot->partitions, tombstone_positions[i]);
 			snapshot->edge_count--;
+			if (stored_reverse && i < reverse_tombstone_positions.size() &&
+			    reverse_tombstone_positions[i] != DConstants::INVALID_INDEX) {
+				suppress(snapshot->reverse_suppressed, snapshot->reverse_partitions, reverse_tombstone_positions[i]);
+			}
 		}
 	}
 
@@ -834,14 +934,20 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	// checks the frontier per partition range. Ranges beyond the epoch get empty cover partitions; the part of the
 	// epoch's last range above the epoch's vertex count gets one too.
 	auto total_ranges = std::max<idx_t>(1, (snapshot->vertex_count + 2 + width - 1) / width);
-	vector<idx_t> range_to_list(total_ranges, DConstants::INVALID_INDEX);
-	for (idx_t partition_idx = 0; partition_idx < snapshot->partitions.size(); partition_idx++) {
-		range_to_list[partition_idx] = partition_idx;
-	}
 	auto epoch_end = epoch_vertex_count + 2;
 	auto snapshot_end = snapshot->vertex_count + 2;
-	if (snapshot_end > epoch_end) {
-		auto epoch_ranges = snapshot->partitions.size();
+	// Ranges beyond the epoch get empty cover partitions (same ranges on both sides, so one range -> list mapping)
+	vector<idx_t> range_to_list(total_ranges, DConstants::INVALID_INDEX);
+	auto add_covers = [&](std::vector<shared_ptr<LocalCSR>> &partitions, bool record) {
+		auto epoch_ranges = partitions.size();
+		if (record) {
+			for (idx_t partition_idx = 0; partition_idx < epoch_ranges; partition_idx++) {
+				range_to_list[partition_idx] = partition_idx;
+			}
+		}
+		if (snapshot_end <= epoch_end) {
+			return;
+		}
 		auto last_range_end = epoch_ranges * width;
 		if (epoch_end < std::min(last_range_end, snapshot_end)) {
 			auto cover = make_shared_ptr<LocalCSR>(epoch_end, std::min(last_range_end, snapshot_end),
@@ -849,7 +955,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			cover->v_array_size = 0;
 			cover->sparse_rows_initialized = true;
 			cover->initialized_e = true;
-			snapshot->partitions.push_back(std::move(cover));
+			partitions.push_back(std::move(cover));
 		}
 		for (idx_t range = epoch_ranges; range < total_ranges; range++) {
 			auto start_vertex = range * width;
@@ -858,28 +964,41 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			cover->v_array_size = 0;
 			cover->sparse_rows_initialized = true;
 			cover->initialized_e = true;
-			range_to_list[range] = snapshot->partitions.size();
-			snapshot->partitions.push_back(std::move(cover));
+			if (record) {
+				range_to_list[range] = partitions.size();
+			}
+			partitions.push_back(std::move(cover));
 		}
+	};
+	add_covers(snapshot->partitions, true);
+	if (stored_reverse) {
+		add_covers(snapshot->reverse_partitions, false);
+		snapshot->reverse_delta_partitions.resize(snapshot->reverse_partitions.size());
+		snapshot->reverse_suppressed.resize(snapshot->reverse_partitions.size());
 	}
 	snapshot->delta_partitions.resize(snapshot->partitions.size());
 	snapshot->suppressed.resize(snapshot->partitions.size());
 
-	if (!visible_edges.empty()) {
-		// Bucket the visible edges by destination range, then sort and pack every range in parallel: the rebuild
-		// after a commit is O(D) and this is where its time goes once visibility is decided per change group
+	// Bucket the visible edges by destination range, then sort and pack every range in parallel: the rebuild after
+	// a commit is O(D) and this is where its time goes once visibility is decided per change group. The reverse side
+	// packs the same edges with the endpoints swapped and without row ids.
+	auto pack_companions = [&](const vector<VisibleDeltaEdge> &edges, std::vector<shared_ptr<LocalCSR>> &companions,
+	                           bool keep_rows) {
+		if (edges.empty()) {
+			return;
+		}
 		auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
-		idx_t slice_count = std::min<idx_t>(thread_count, (visible_edges.size() + 65535) / 65536);
+		idx_t slice_count = std::min<idx_t>(thread_count, (edges.size() + 65535) / 65536);
 		slice_count = std::max<idx_t>(1, slice_count);
-		auto slice_size = (visible_edges.size() + slice_count - 1) / slice_count;
+		auto slice_size = (edges.size() + slice_count - 1) / slice_count;
 		vector<vector<idx_t>> slice_histograms(slice_count, vector<idx_t>(total_ranges, 0));
 		ParallelFor(slice_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
 			for (idx_t slice = begin; slice < end; slice++) {
 				auto &histogram = slice_histograms[slice];
 				auto first = slice * slice_size;
-				auto last = std::min<idx_t>(visible_edges.size(), first + slice_size);
+				auto last = std::min<idx_t>(edges.size(), first + slice_size);
 				for (idx_t i = first; i < last; i++) {
-					histogram[visible_edges[i].dst / width]++;
+					histogram[edges[i].dst / width]++;
 				}
 			}
 		});
@@ -894,14 +1013,14 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			}
 			range_offsets[range + 1] = range_offsets[range] + count;
 		}
-		vector<DeltaEntry> bucketed(visible_edges.size());
+		vector<DeltaEntry> bucketed(edges.size());
 		ParallelFor(slice_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
 			for (idx_t slice = begin; slice < end; slice++) {
 				auto &cursor = slice_histograms[slice];
 				auto first = slice * slice_size;
-				auto last = std::min<idx_t>(visible_edges.size(), first + slice_size);
+				auto last = std::min<idx_t>(edges.size(), first + slice_size);
 				for (idx_t i = first; i < last; i++) {
-					auto &edge = visible_edges[i];
+					auto &edge = edges[i];
 					auto range = edge.dst / width;
 					bucketed[cursor[range]++] = {edge.src, NumericCast<uint16_t>(edge.dst - range * width), edge.row};
 				}
@@ -923,15 +1042,34 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 				CSRRadixSortBySource(entries, scratch, histogram, src_bits);
 				auto start_vertex = range * width;
 				auto end_vertex = std::min<idx_t>(start_vertex + width, snapshot_end);
-				vector<row_t> delta_rows(entries.size());
+				vector<row_t> delta_rows(keep_rows ? entries.size() : 0);
 				auto delta_partition = CSREmitSparsePartition(
-				    start_vertex, end_vertex, snapshot->vertex_count, entries,
-				    [&](idx_t position, const DeltaEntry &entry) { delta_rows[position] = entry.row; });
-				delta_partition->owned_row_ids = std::move(delta_rows);
-				delta_partition->row_ids = delta_partition->owned_row_ids.data();
-				snapshot->delta_partitions[range_to_list[range]] = std::move(delta_partition);
+				    start_vertex, end_vertex, snapshot->vertex_count, entries, [&](idx_t position, const DeltaEntry &entry) {
+					    if (keep_rows) {
+						    delta_rows[position] = entry.row;
+					    }
+				    });
+				if (keep_rows) {
+					delta_partition->owned_row_ids = std::move(delta_rows);
+					delta_partition->row_ids = delta_partition->owned_row_ids.data();
+				}
+				companions[range_to_list[range]] = std::move(delta_partition);
 			}
 		});
+	};
+	pack_companions(visible_edges, snapshot->delta_partitions, true);
+	if (stored_reverse) {
+		vector<VisibleDeltaEdge> reverse_edges;
+		reverse_edges.reserve(visible_edges.size());
+		for (auto &edge : visible_edges) {
+			reverse_edges.push_back({edge.dst, edge.src, edge.row});
+		}
+		pack_companions(reverse_edges, snapshot->reverse_delta_partitions, false);
+	} else if (undirected) {
+		// Both directions are in the forward side already: the reverse view is the same vectors
+		snapshot->reverse_partitions = snapshot->partitions;
+		snapshot->reverse_delta_partitions = snapshot->delta_partitions;
+		snapshot->reverse_suppressed = snapshot->suppressed;
 	}
 	if (shareable) {
 		IndexLock l(*this);
@@ -1457,6 +1595,20 @@ vector<uint8_t> CSRIndex::SerializeState() const {
 		writer.WriteStdVector<uint16_t>(partition.e);
 		writer.WriteVector<row_t>(epoch.partition_row_ids[partition_idx]);
 	}
+	// Version 2: the reverse side (edges by source range, no row ids), present when the index stores one
+	auto &reverse_partitions = epoch.csr->reverse_partitions;
+	writer.Write<uint8_t>(reverse_partitions.empty() ? 0 : 1);
+	if (!reverse_partitions.empty()) {
+		writer.Write<uint64_t>(reverse_partitions.size());
+		for (auto &partition_p : reverse_partitions) {
+			auto &partition = *partition_p;
+			writer.Write<uint64_t>(partition.start_vertex);
+			writer.Write<uint64_t>(partition.end_vertex);
+			writer.WriteStdVector<uint32_t>(partition.source_vertices);
+			writer.WriteStdVector<uint32_t>(partition.row_offsets);
+			writer.WriteStdVector<uint16_t>(partition.e);
+		}
+	}
 
 	// Only the change-log entries the persisted epoch does not account for; the stamps restart from zero on load
 	vector<CSRIndexDeltaEdge> pending_delta;
@@ -1557,7 +1709,8 @@ void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
 	storage_allocator.reset();
 
 	ByteReader reader(bytes, total_bytes);
-	if (reader.Read<uint32_t>() != STORAGE_FORMAT_VERSION) {
+	auto stored_version = reader.Read<uint32_t>();
+	if (stored_version != 1 && stored_version != STORAGE_FORMAT_VERSION) {
 		throw SerializationException("CSR index storage format mismatch");
 	}
 	auto stored_undirected = reader.Read<uint8_t>() != 0;
@@ -1617,6 +1770,43 @@ void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
 			csr->forward_partitions[partition_idx] = std::move(partition);
 		}
 	});
+	bool stored_reverse = false;
+	if (stored_version >= 2) {
+		stored_reverse = reader.Read<uint8_t>() != 0;
+		if (stored_reverse) {
+			auto reverse_count = reader.Read<uint64_t>();
+			csr->reverse_partitions.resize(reverse_count);
+			vector<idx_t> reverse_offsets(reverse_count);
+			for (idx_t partition_idx = 0; partition_idx < reverse_count; partition_idx++) {
+				reverse_offsets[partition_idx] = reader.position;
+				reader.Read<uint64_t>();
+				reader.Read<uint64_t>();
+				reader.SkipVector<uint32_t>();
+				reader.SkipVector<uint32_t>();
+				reader.SkipVector<uint16_t>();
+			}
+			ParallelFor(reverse_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+				for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
+					ByteReader partition_reader(bytes, total_bytes);
+					partition_reader.position = reverse_offsets[partition_idx];
+					auto start_vertex = partition_reader.Read<uint64_t>();
+					auto end_vertex = partition_reader.Read<uint64_t>();
+					auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, epoch->vertex_count, false);
+					partition_reader.ReadStdVector<uint32_t>(partition->source_vertices);
+					partition_reader.ReadStdVector<uint32_t>(partition->row_offsets);
+					partition_reader.ReadStdVector<uint16_t>(partition->e);
+					partition->expected_sparse_row_count = partition->source_vertices.size();
+					partition->v_array_size = 0;
+					partition->initialized_e = true;
+					partition->sparse_rows_initialized = true;
+					partition->BuildRowBuckets(epoch->vertex_count);
+					csr->reverse_partitions[partition_idx] = std::move(partition);
+				}
+			});
+			csr->capabilities = static_cast<PartitionedCSRCapabilities>(
+			    static_cast<uint8_t>(csr->capabilities) | static_cast<uint8_t>(PartitionedCSRCapabilities::REVERSE));
+		}
+	}
 	epoch->csr = std::move(csr);
 
 	// After a restart every persisted row is committed, so the epoch serves every transaction (default bound)
@@ -1632,6 +1822,15 @@ void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
 	reader.ReadVector<row_t>(loaded_tombstones);
 
 	IndexLock l(*this);
+	if (reverse && !stored_reverse) {
+		// Stored before the index had a reverse side: the first reader rebuilds the epoch from the table
+		epochs.clear();
+		delta.clear();
+		RebuildDeltaRowIndexLocked();
+		tombstones.clear();
+		cached_snapshot.reset();
+		return;
+	}
 	epoch->generation = next_generation++;
 	epochs.clear();
 	epochs.push_back(std::move(epoch));

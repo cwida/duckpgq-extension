@@ -45,6 +45,16 @@ public:
 		int64_t upper;
 		//! The operator returns the path as [v0, e0, v1, ..., vk] instead of the length
 		bool return_path = false;
+		//! The destination element of the pattern, its table, and the column the operator's dst value joins on
+		//! (the vertex key over an index, rowid on the build route); decided after the whole pattern is known
+		string destination_binding;
+		shared_ptr<PropertyGraphTable> destination_table;
+		//! The vertex key the edge table references (a condition on it pins the destination)
+		string destination_key_column;
+		string destination_join_column;
+		//! Reach mode: the destination is unbound or only filtered, so the operator emits [dst, len] for every
+		//! vertex each source reaches and the destination table is joined back in the outer query
+		bool reach = false;
 	};
 
 	PGQMatchFunction() : TableFunction("duckpgq_match", vector<LogicalType>(), nullptr, nullptr) {

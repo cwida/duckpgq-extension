@@ -218,6 +218,9 @@ public:
 	      distances(v_size, -1), seen(v_size), frontier_stamp(v_size, 0), iter(1), change(false) {
 		benchmark_enabled = GetPathFindingBenchmarkOption(context);
 		benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
+		target_early_termination = GetPathFindingTargetEarlyTermination(context);
+		auto divisor = GetPathFindingSparseFrontierDivisor(context);
+		sparse_frontier_divisor = divisor > 0 ? NumericCast<idx_t>(divisor) : 0;
 	}
 
 	//! ---- PhasedKernel
@@ -397,7 +400,7 @@ public:
 
 	//! Registers the destinations of this group so the search can stop when all of them are found
 	void AddTarget(int64_t target) {
-		if (target < 0 || target >= v_size) {
+		if (!target_early_termination || target < 0 || target >= v_size) {
 			return;
 		}
 		if (targets.Insert(NumericCast<uint32_t>(target))) {
@@ -432,7 +435,7 @@ private:
 		if (!row_lookup_available) {
 			return false;
 		}
-		return frontier_list.size() * SPARSE_FRONTIER_DIVISOR < static_cast<idx_t>(v_size);
+		return sparse_frontier_divisor > 0 && frontier_list.size() * sparse_frontier_divisor < static_cast<idx_t>(v_size);
 	}
 
 	void CheckRowLookupAvailable() {
@@ -623,7 +626,10 @@ private:
 		}
 	}
 
-	static constexpr idx_t SPARSE_FRONTIER_DIVISOR = 64;
+	//! experimental_path_finding_operator_sparse_frontier_divisor (0: always sweep)
+	idx_t sparse_frontier_divisor = 64;
+	//! experimental_path_finding_operator_target_early_termination
+	bool target_early_termination = true;
 	static constexpr idx_t FRONTIER_SLICE = 256;
 
 	bool row_lookup_available = true;
@@ -725,7 +731,23 @@ static bool CanSearchInReverse(const PathFindingGlobalSinkState &gstate) {
 	if (gstate.symmetric_edges) {
 		return true;
 	}
+	if (gstate.index_snapshot && !gstate.index_snapshot->reverse_partitions.empty()) {
+		return true; // the index stores the reverse side
+	}
 	return !(gstate.precounted_edge_input || gstate.buffered_edge_input || gstate.cached_partitioned_csr_input);
+}
+
+//! The snapshot overlay that goes with the partitions of the search orientation
+static const std::vector<shared_ptr<LocalCSR>> &SearchDeltaCSRs(const PathFindingGlobalSinkState &gstate) {
+	auto &state = *gstate.local_csr_state;
+	return gstate.search_orientation == PathFindingSearchOrientation::REVERSE ? state.reverse_partition_delta_csrs
+	                                                                           : state.partition_delta_csrs;
+}
+
+static const std::vector<shared_ptr<vector<uint64_t>>> &SearchSuppressed(const PathFindingGlobalSinkState &gstate) {
+	auto &state = *gstate.local_csr_state;
+	return gstate.search_orientation == PathFindingSearchOrientation::REVERSE ? state.reverse_partition_suppressed
+	                                                                           : state.partition_suppressed;
 }
 
 static PathFindingSearchOrientation ChooseSupportedSearchOrientation(const PathFindingGlobalSinkState &gstate,
@@ -891,11 +913,18 @@ void ConfigureLocalCSRStateForMode(LocalCSRState &local_csr_state, PathFindingOp
 bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, LocalCSRState &local_csr_state, ClientContext &context) {
 	if (gstate.index_snapshot) {
 		local_csr_state.partition_csrs = gstate.index_snapshot->partitions;
-		if (gstate.symmetric_edges) {
-			local_csr_state.reverse_partition_csrs = local_csr_state.partition_csrs;
-		}
 		local_csr_state.partition_delta_csrs = gstate.index_snapshot->delta_partitions;
 		local_csr_state.partition_suppressed = gstate.index_snapshot->suppressed;
+		if (!gstate.index_snapshot->reverse_partitions.empty()) {
+			// A stored reverse side (or the undirected index's alias of the forward side) with its own overlay
+			local_csr_state.reverse_partition_csrs = gstate.index_snapshot->reverse_partitions;
+			local_csr_state.reverse_partition_delta_csrs = gstate.index_snapshot->reverse_delta_partitions;
+			local_csr_state.reverse_partition_suppressed = gstate.index_snapshot->reverse_suppressed;
+		} else if (gstate.symmetric_edges) {
+			local_csr_state.reverse_partition_csrs = local_csr_state.partition_csrs;
+			local_csr_state.reverse_partition_delta_csrs = local_csr_state.partition_delta_csrs;
+			local_csr_state.reverse_partition_suppressed = local_csr_state.partition_suppressed;
+		}
 		local_csr_state.loaded_from_cache = true;
 		RecordStrategy(context, "csr", "index");
 		return true;
@@ -950,8 +979,8 @@ shared_ptr<Event> CreateBFSEventForMode(PathFindingGlobalSinkState &gstate, cons
 	auto bfs_state =
 	    CreateBFSStateForMode(gstate.path_finding_mode, batch, gstate.search_orientation, *gstate.local_csr_state,
 	                          gstate.num_threads, context, GetPathFindingVSize(gstate));
-	bfs_state->delta_csrs = gstate.local_csr_state->partition_delta_csrs;
-	bfs_state->suppressed = gstate.local_csr_state->partition_suppressed;
+	bfs_state->delta_csrs = SearchDeltaCSRs(gstate);
+	bfs_state->suppressed = SearchSuppressed(gstate);
 	bfs_state->max_depth = gstate.max_depth;
 	auto bfs_event = bfs_state->CreateBFSEvent(pipeline, op);
 	gstate.bfs_states.push_back(std::move(bfs_state));
@@ -1025,8 +1054,6 @@ bool ShouldUseGroupedIterativeLengthBatches(PathFindingGlobalSinkState &gstate, 
 	       GetPathFindingGroupedBatches(context);
 }
 
-static constexpr idx_t FEW_SOURCES_LIMIT = 16;
-
 bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, ClientContext &context) {
 	if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH ||
 	    gstate.path_finding_mode == PathFindingOperatorMode::REACH) {
@@ -1047,7 +1074,8 @@ bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, C
 	}
 	// A handful of sources is always cheaper to search one at a time with the frontier kernel than with 512-lane
 	// bitsets over every vertex
-	if (distinct_search_sources <= FEW_SOURCES_LIMIT) {
+	auto few_sources_limit = GetPathFindingFewSourcesLimit(context);
+	if (few_sources_limit > 0 && distinct_search_sources <= NumericCast<idx_t>(few_sources_limit)) {
 		return true;
 	}
 	return static_cast<double>(gstate.pair_stats.pair_count) >=
@@ -1102,8 +1130,8 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 		                           : gstate.local_csr_state->partition_csrs;
 		auto state = make_shared_ptr<IterativeLengthState>(batch, partition_csrs, workers_per_batch, context,
 		                                                   GetPathFindingVSize(gstate));
-		state->delta_csrs = gstate.local_csr_state->partition_delta_csrs;
-		state->suppressed = gstate.local_csr_state->partition_suppressed;
+		state->delta_csrs = SearchDeltaCSRs(gstate);
+		state->suppressed = SearchSuppressed(gstate);
 		state->max_depth = gstate.max_depth;
 		iterative_states.push_back(state);
 		gstate.bfs_states.push_back(state);
@@ -1143,8 +1171,8 @@ public:
 				auto state = make_shared_ptr<SourceGroupedIterativeLengthState>(
 				    context, gstate.source_group_sources[group_idx], partition_csrs, gstate.num_threads,
 				    GetPathFindingVSize(gstate));
-				state->delta_csrs = gstate.local_csr_state->partition_delta_csrs;
-				state->suppressed = gstate.local_csr_state->partition_suppressed;
+				state->delta_csrs = SearchDeltaCSRs(gstate);
+				state->suppressed = SearchSuppressed(gstate);
 				state->max_depth = gstate.max_depth;
 				state->concurrent_groups = group_count;
 				if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH) {

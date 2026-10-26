@@ -1,0 +1,5 @@
+# Python clients and plotting, pinned to the versions used for the paper's measurements
+kuzu==0.11.3
+neo4j==5.28.8
+falkordb==1.2.2
+matplotlib==3.9.4
