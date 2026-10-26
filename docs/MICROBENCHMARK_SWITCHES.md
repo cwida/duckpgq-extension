@@ -1,13 +1,15 @@
-# Ablation switches (W19)
+# Microbenchmark switches (W19)
+
+Terminology: the paper calls these microbenchmarks (decided 26 Oct); earlier notes say microbenchmark.
 
 26 October 2026. An inventory of every mechanism in the path-finding operator and the CSR index that changes
 measured query time, whether it can be switched at runtime, and the sweep that measures each one. The harness
-side is `scripts/pathfinding_benchmark.py ablation` (section 4); the results feed the ablation subsection of the
+side is `scripts/pathfinding_benchmark.py microbench` (section 4); the results feed the microbenchmark subsection of the
 evaluation. File references are to the tree at the time of writing.
 
-## 1. The ablations the paper needs
+## 1. The microbenchmarks the paper needs
 
-The evaluation claims rest on a handful of design decisions. Each needs one row in an ablation table showing
+The evaluation claims rest on a handful of design decisions. Each needs one row in a microbenchmark table showing
 what the decision is worth, measured on the shapes where it applies (SF10 and SF100, 32 threads, 3 repeats,
 600 s timeout, both routes unless stated).
 
@@ -29,7 +31,7 @@ what the decision is worth, measured on the shapes where it applies (SF10 and SF
 ## 2. Inventory
 
 Options are `SET experimental_path_finding_operator_<name>` unless written in full. "Always on" means the code path
-has no switch; the right-hand column says what an ablation would need.
+has no switch; the right-hand column says what a microbenchmark would need.
 
 ### 2.1 Switchable today
 
@@ -52,11 +54,11 @@ has no switch; the right-hand column says what an ablation would need.
 | Push/pull, bidirectional kernels | marker function name (`pushpulliterativelengthoperator`, `bidirectionaliterativelengthoperator`), `push_pull_frontier_gate` (2), `build_reverse_csr` | legacy global-CSR input only | not reachable from MATCH; harness modes `pushpull_operator`, `bidirectional_operator` |
 | Heavy/light partition split | `heavy_partition_fraction` (0.75), `light_partition_multiplier` | legacy CSR build only | not exercised by the buffered or index paths |
 | Thread count | `SET threads` | | feeds partition count, worker counts, Finalize parallelism |
-| Instrumentation | `benchmark`, `benchmark_lane_activity`, `benchmark_prefix` | false | keep off in ablations |
+| Instrumentation | `benchmark`, `benchmark_lane_activity`, `benchmark_prefix` | false | keep off in microbenchmarks |
 
 ### 2.2 Hard-coded, kept that way
 
-These are structural constants whose ablation would not inform a design decision in the paper, or whose effect is
+These are structural constants whose microbenchmark would not inform a design decision in the paper, or whose effect is
 covered by a switch above. They stay as they are, listed here so the inventory is complete.
 
 | Constant | Value | Where |
@@ -81,7 +83,7 @@ covered by a switch above. They stay as they are, listed here so the inventory i
 
 Only if the writing needs the number. Each is a one-line gate.
 
-- `bidirectional` over the index (W28 step 4) if the random-pairs ablation wants a second kernel to compare with.
+- `bidirectional` over the index (W28 step 4) if the random-pairs microbenchmark wants a second kernel to compare with.
 - A lengths-only index (no row ids, about 8 B/edge less) for the storage discussion; today the index always keeps
   row ids for path reconstruction.
 - A serial pair-analysis switch, if the Finalize share at 65536 pairs needs isolating beyond `threads_1`.
@@ -99,26 +101,26 @@ GEN=ninja EXT_FLAGS="-DDUCKPGQ_LANE_LIMIT=256" make release
 
 builds into the same `build/release` directory, so lane-width variants are separate builds run one after another
 (copy `build/release/extension/duckpgq/duckpgq.duckdb_extension` aside and point `DUCKPGQ_EXTENSION` at it, or run
-the ablation between builds). The legacy scalar UDFs share the constant.
+the microbenchmark between builds). The legacy scalar UDFs share the constant.
 
 ## 4. The harness
 
 ```
-python3 scripts/pathfinding_benchmark.py ablation --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 \
+python3 scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 \
     [--routes build index] [--configs all | kernel | index | reach | threads | <names>] \
     [--shapes random same_dst multi_source] [--pair-counts 1 128 1024 65536] [--source-counts 1 128 1024]
-python3 scripts/pathfinding_benchmark.py ablation-table data/ldbc-pathfinding/results/sf10/ablation_*.csv
+python3 scripts/pathfinding_benchmark.py microbench-table data/ldbc-pathfinding/results/sf10/microbench_*.csv
 ```
 
 One configuration is a set of `SET` overrides, an optional `CREATE INDEX WITH` clause (the index route creates and
 keeps a separate index per clause, `pathfinding_benchmark_csr_reverse_true`), and the pair-list form of the
 sources x all shape (`pair_mode`). Every point runs in a fresh process with the timeout; a timed-out point skips
 the larger points of its shape for that configuration. Rows carry `config` and `settings`, the result CSV is
-`ablation_<sf>_threads<t>_<ns>.csv`, and the table prints each configuration as mean seconds with its ratio to
+`microbench_<sf>_threads<t>_<ns>.csv`, and the table prints each configuration as mean seconds with its ratio to
 the baseline. The driver checks that every configuration returns the same reachable count and length sum per
 point.
 
-Configurations (groups in `ABLATION_GROUPS`): `kernel` = baseline, no_grouped_batches, dedupe_pairs,
+Configurations (groups in `MICROBENCH_GROUPS`): `kernel` = baseline, no_grouped_batches, dedupe_pairs,
 threads_per_batch_4, no_source_grouping, no_few_sources_rule, source_group_ratio_1, source_group_ratio_16,
 no_early_termination, dense_frontier, sparse_frontier, light_partitions_4; `index` = baseline, no_snapshot_cache,
 reverse_index, reverse_index_forward_only, no_reverse_orientation; `reach` = baseline, pair_mode; `threads` =
@@ -127,6 +129,6 @@ baseline, threads_1/2/4/8/16.
 ## 5. Plan
 
 1. Smoke at SF10 (1 repeat, pair counts 1/128/1024, sources 1/128) to check every configuration runs and agrees.
-2. Full ablation at SF10 and SF100 on the current build, 3 repeats: `all` configurations, all three shapes.
+2. Full microbenchmark at SF10 and SF100 on the current build, 3 repeats: `all` configurations, all three shapes.
 3. Lane-width builds (64, 128, 256, 1024) on random pairs at SF10.
-4. Freeze (tag `eval-freeze-rc1`), then the frozen rerun includes the ablation as a `run_all.sh ablation` step.
+4. Freeze (tag `eval-freeze-rc1`), then the frozen rerun includes the microbenchmark as a `run_all.sh microbench` step.

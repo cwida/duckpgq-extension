@@ -47,7 +47,7 @@ export the first time it is needed; that load time is recorded as `load_s` in th
 | `sweep_pairs_sf*` | `sweep-pairs` | random pairs 1..65536; 1/16/128/1024 sources x all persons | all seven |
 | `ldbc_queries_sf*` | `ldbc-queries` | IC13, BI19, BI20 (hop-count variants) | all seven |
 | `*_client32` | the two above with `--client-threads 32` | same | Kuzu, Memgraph, FalkorDB (SF10, SF100) |
-| `ablation_sf*` | `ablation` | random pairs, same destination, sources x all with one mechanism switched off at a time | DuckPGQ build and index routes (SF10, SF100) |
+| `microbench_sf*` | `microbench` | random pairs, same destination, sources x all with one mechanism switched off at a time | DuckPGQ build and index routes (SF10, SF100) |
 | `update_*`, `concurrent_*` | `update-run`, `update-concurrent`, `update-<system>` | 190 commits of 2000 knows operations with a query after each | DuckPGQ build and index routes, Kuzu, Memgraph, FalkorDB, Neo4j |
 
 Every query has a 600 s timeout; a timed-out point is recorded as `timed_out` and larger points of the same

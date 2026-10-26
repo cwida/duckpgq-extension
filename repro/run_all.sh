@@ -4,7 +4,7 @@
 # machine was roughly 3.5 days, dominated by the baselines at SF300 (10 minute timeouts) and the
 # FalkorDB/Neo4j update workloads (about 30 minutes each).
 #
-# Subsets:  ./run_all.sh sweep | ldbc | client | ablation | updates | all   (default all)
+# Subsets:  ./run_all.sh sweep | ldbc | client | microbench | updates | all   (default all)
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 cd "${REPO_ROOT}"
@@ -37,10 +37,10 @@ if [ "$what" = all ] || [ "$what" = client ]; then
   done
 fi
 
-if [ "$what" = all ] || [ "$what" = ablation ]; then
-  # W19: one mechanism switched off at a time on the DuckPGQ routes (docs/ABLATION_SWITCHES.md)
+if [ "$what" = all ] || [ "$what" = microbench ]; then
+  # W19: one mechanism switched off at a time on the DuckPGQ routes (docs/MICROBENCHMARK_SWITCHES.md)
   for sf in 10 100; do
-    step "ablation_sf${sf}" ${HARNESS} ablation --scale-factor "$sf" "${COMMON[@]}" --configs all --notes "W19 ablation SF${sf} ${NOTE}"
+    step "microbench_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs all --notes "W19 microbenchmark SF${sf} ${NOTE}"
   done
 fi
 

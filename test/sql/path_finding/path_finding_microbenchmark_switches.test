@@ -1,10 +1,10 @@
-# name: test/sql/path_finding/path_finding_ablation_switches.test
-# description: the ablation switches (target early termination, sparse frontier divisor, few-sources limit, snapshot cache) change the strategy or the work, never the answer
+# name: test/sql/path_finding/path_finding_microbenchmark_switches.test
+# description: the microbenchmark switches (target early termination, sparse frontier divisor, few-sources limit, snapshot cache) change the strategy or the work, never the answer
 # group: [path_finding]
 
 require duckpgq
 
-load {TEST_DIR}/path_finding_ablation_switches.db
+load {TEST_DIR}/path_finding_microbenchmark_switches.db
 
 statement ok
 SET active_grammar_extensions = ['duckpgq'];

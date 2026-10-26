@@ -148,9 +148,9 @@ archive and the figures move together, then commit `repro/results` and `paper/`.
 re-renders from the archive alone. Decisions: Neo4j Enterprise evaluation-licence numbers are published (W18);
 the archive goes to GitHub, this branch first, then a separate repository (W21).
 
-## Ablations (26 Oct)
+## Microbenchmarks (26 Oct)
 
-`docs/ABLATION_SWITCHES.md` is the inventory and the sweep design. Run `python3 scripts/pathfinding_benchmark.py
-ablation --scale-factor SF --threads 32 --repeats 3 --timeout-s 600` and print with `ablation-table`. Configurations
-live in `ABLATION_CONFIGS` / `ABLATION_GROUPS` in the harness; adding one is a dict entry. Results chain on the box:
-`~/sweep/run_ablation_chain.sh` (SF10 then SF100, marker `~/sweep/ablation_chain_done.txt`).
+`docs/MICROBENCHMARK_SWITCHES.md` is the inventory and the sweep design. Run `python3 scripts/pathfinding_benchmark.py
+microbench --scale-factor SF --threads 32 --repeats 3 --timeout-s 600` and print with `microbench-table`. Configurations
+live in `MICROBENCH_CONFIGS` / `MICROBENCH_GROUPS` in the harness; adding one is a dict entry. Results chain on the box:
+`~/sweep/run_microbench_chain.sh` (marker `~/sweep/microbench_chain_done.txt`); the first SF10 run wrote `microbenchmark_sf10_threads32_*.csv` under the old name.

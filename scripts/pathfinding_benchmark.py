@@ -4836,7 +4836,7 @@ class DuckPGQSystem(GraphDBSystem):
         self.threads = threads
         self.timeout_s = timeout_s
         self.symmetric = symmetric
-        # Ablation controls: extra SET statements, an extra CREATE INDEX WITH clause (e.g. "reverse = true"), and
+        # Microbenchmark controls: extra SET statements, an extra CREATE INDEX WITH clause (e.g. "reverse = true"), and
         # the pair-list form of the sources x all shape instead of the reach mode
         self.settings = dict(settings or {})
         self.index_with = index_with
@@ -4881,7 +4881,7 @@ class DuckPGQSystem(GraphDBSystem):
         reaches, no destination list)"""
         if pair_table.startswith(multi_source_table_name("")):
             if self.multi_source_pair_mode:
-                # The ablation of the reach mode: the sources x all persons pair list, streamed from a cross join
+                # The microbenchmark of the reach mode: the sources x all persons pair list, streamed from a cross join
                 return (f"(SELECT s.src AS src, p.rowid::BIGINT AS dst FROM ldbc.{pair_table} s, ldbc.person p)",
                         f"(SELECT a.id::BIGINT AS src, p.id::BIGINT AS dst FROM ldbc.{pair_table} s "
                         f"JOIN ldbc.person a ON a.rowid = s.src, ldbc.person p)")
@@ -5190,10 +5190,10 @@ def sweep_pairs_table(args):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Ablation sweep (W19): the DuckPGQ routes under one mechanism switched off or one threshold moved at a time
+# Microbenchmarks (W19): the DuckPGQ routes under one mechanism switched off or one threshold moved at a time
 # ---------------------------------------------------------------------------------------------------------------------
 OPT = "experimental_path_finding_operator_"
-ABLATION_CONFIGS = {
+MICROBENCH_CONFIGS = {
     # name: (SET overrides, index WITH clause, multi-source pair mode)
     "baseline": ({}, None, False),
     # Pair batching and scheduling (MS-BFS kernel)
@@ -5221,31 +5221,39 @@ ABLATION_CONFIGS = {
     "light_partitions_4": ({OPT + "light_partition_multiplier": 4}, None, False),
 }
 for _n in (1, 2, 4, 8, 16):
-    ABLATION_CONFIGS[f"threads_{_n}"] = ({"threads": _n}, None, False)
-ABLATION_GROUPS = {
+    MICROBENCH_CONFIGS[f"threads_{_n}"] = ({"threads": _n}, None, False)
+# Batch scheduling (W31): workers per batch w gives 32 / w concurrent groups; sched_w1_g<g> holds w = 1 and caps the
+# groups, so intra-batch and inter-batch parallelism vary separately
+for _w in (1, 2, 4, 8, 16):
+    MICROBENCH_CONFIGS[f"sched_w{_w}"] = ({OPT + "threads_per_batch": _w}, None, False)
+for _g in (2, 4, 8, 16):
+    MICROBENCH_CONFIGS[f"sched_w1_g{_g}"] = ({OPT + "threads_per_batch": 1, OPT + "max_concurrent_batches": _g}, None, False)
+MICROBENCH_GROUPS = {
     "kernel": ["baseline", "no_grouped_batches", "dedupe_pairs", "threads_per_batch_4", "no_source_grouping",
                "no_few_sources_rule", "source_group_ratio_1", "source_group_ratio_16", "no_early_termination",
                "dense_frontier", "sparse_frontier", "light_partitions_4"],
     "index": ["baseline", "no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "no_reverse_orientation"],
     "reach": ["baseline", "pair_mode"],
     "threads": ["baseline"] + [f"threads_{n}" for n in (1, 2, 4, 8, 16)],
+    "scheduling": ["baseline", "no_grouped_batches"] + [f"sched_w{w}" for w in (1, 2, 4, 8, 16)]
+                  + [f"sched_w1_g{g}" for g in (2, 4, 8, 16)],
 }
-ABLATION_GROUPS["all"] = list(dict.fromkeys(sum(ABLATION_GROUPS.values(), [])))
-ABLATION_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only"}
+MICROBENCH_GROUPS["all"] = list(dict.fromkeys(sum((v for k, v in MICROBENCH_GROUPS.items() if k != "scheduling"), [])))
+MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only"}
 
 
-def ablation_configs(names):
+def microbench_configs(names):
     out = []
     for name in names:
-        for config in ABLATION_GROUPS.get(name, [name]):
-            if config not in ABLATION_CONFIGS:
-                raise SystemExit(f"unknown ablation config {config}; known: {', '.join(ABLATION_CONFIGS)}")
+        for config in MICROBENCH_GROUPS.get(name, [name]):
+            if config not in MICROBENCH_CONFIGS:
+                raise SystemExit(f"unknown microbenchmark config {config}; known: {', '.join(MICROBENCH_CONFIGS)}")
             if config not in out:
                 out.append(config)
     return out
 
 
-def ablation(args):
+def microbenchmarks(args):
     """One DuckPGQ route x one configuration at a time over the sweep shapes, each point repeated with a timeout.
     A configuration is a set of SET overrides and, for the index route, a CREATE INDEX WITH clause."""
     sys.stdout.reconfigure(line_buffering=True)
@@ -5263,18 +5271,18 @@ def ablation(args):
     if "multi_source" in args.shapes:
         for k in args.source_counts:
             points.append(("multi_source", ensure_multi_source_table(scale_factor, k), "", k))
-    configs = ablation_configs(args.configs)
+    configs = microbench_configs(args.configs)
     results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
     results_dir.mkdir(parents=True, exist_ok=True)
-    path = results_dir / f"ablation_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
+    path = results_dir / f"microbench_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
     fieldnames = ["system", "config", "settings", "shape", "pairs", "sources", "repeat", "status", "query_s",
                   "reachable_count", "total_len", "threads", "timeout_s", "benchmark_notes", "repo_commit"]
     writer = ResultWriter(path, fieldnames)
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
     for route in args.routes:
         for config in configs:
-            settings, index_with, pair_mode = ABLATION_CONFIGS[config]
-            if route == "build" and config in ABLATION_INDEX_ONLY:
+            settings, index_with, pair_mode = MICROBENCH_CONFIGS[config]
+            if route == "build" and config in MICROBENCH_INDEX_ONLY:
                 continue
             system = DuckPGQSystem(route, scale_factor, args.threads, args.timeout_s, settings=settings,
                                    index_with=index_with, multi_source_pair_mode=pair_mode)
@@ -5326,7 +5334,7 @@ def ablation(args):
           disagreements if disagreements else "")
 
 
-def ablation_table(args):
+def microbenchmarks_table(args):
     """One table per route and shape: configurations x points, mean seconds and the ratio to the baseline."""
     rows = []
     for file in args.files:
@@ -5755,7 +5763,7 @@ def main():
         "--grouped-batches",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Grouped regular MS-BFS scheduling with bounded worker groups (the engine default; --no-grouped-batches ablates it).",
+        help="Grouped regular MS-BFS scheduling with bounded worker groups (the engine default; --no-grouped-batches switches it off).",
     )
     run_parser.add_argument(
         "--threads-per-batch",
@@ -5966,24 +5974,24 @@ def main():
     sweep_pairs_parser.add_argument("--notes", default="")
     sweep_pairs_parser.set_defaults(func=sweep_pairs)
 
-    ablation_parser = subcommands.add_parser("ablation", help="DuckPGQ routes with one mechanism switched off at a time")
-    ablation_parser.add_argument("--scale-factor", required=True)
-    ablation_parser.add_argument("--threads", type=int, default=os.cpu_count())
-    ablation_parser.add_argument("--routes", nargs="+", choices=["build", "index"], default=["build", "index"])
-    ablation_parser.add_argument("--configs", nargs="+", default=["all"],
-                                 help=f"config names or groups {', '.join(ABLATION_GROUPS)}; configs: {', '.join(ABLATION_CONFIGS)}")
-    ablation_parser.add_argument("--shapes", nargs="+", choices=["random", "same_dst", "multi_source"],
+    microbench_parser = subcommands.add_parser("microbench", aliases=["ablation"], help="Microbenchmarks: DuckPGQ routes with one mechanism switched off at a time")
+    microbench_parser.add_argument("--scale-factor", required=True)
+    microbench_parser.add_argument("--threads", type=int, default=os.cpu_count())
+    microbench_parser.add_argument("--routes", nargs="+", choices=["build", "index"], default=["build", "index"])
+    microbench_parser.add_argument("--configs", nargs="+", default=["all"],
+                                 help=f"config names or groups {', '.join(MICROBENCH_GROUPS)}; configs: {', '.join(MICROBENCH_CONFIGS)}")
+    microbench_parser.add_argument("--shapes", nargs="+", choices=["random", "same_dst", "multi_source"],
                                  default=["random", "same_dst", "multi_source"])
-    ablation_parser.add_argument("--pair-counts", nargs="*", type=int, default=[1, 128, 1024, 65536])
-    ablation_parser.add_argument("--source-counts", nargs="*", type=int, default=[1, 128, 1024])
-    ablation_parser.add_argument("--repeats", type=int, default=3)
-    ablation_parser.add_argument("--timeout-s", type=float, default=600)
-    ablation_parser.add_argument("--notes", default="")
-    ablation_parser.set_defaults(func=ablation)
+    microbench_parser.add_argument("--pair-counts", nargs="*", type=int, default=[1, 128, 1024, 65536])
+    microbench_parser.add_argument("--source-counts", nargs="*", type=int, default=[1, 128, 1024])
+    microbench_parser.add_argument("--repeats", type=int, default=3)
+    microbench_parser.add_argument("--timeout-s", type=float, default=600)
+    microbench_parser.add_argument("--notes", default="")
+    microbench_parser.set_defaults(func=microbenchmarks)
 
-    ablation_table_parser = subcommands.add_parser("ablation-table", help="Print ablation CSVs as tables")
-    ablation_table_parser.add_argument("files", nargs="+")
-    ablation_table_parser.set_defaults(func=ablation_table)
+    microbench_table_parser = subcommands.add_parser("microbench-table", aliases=["ablation-table"], help="Print microbenchmark CSVs as tables")
+    microbench_table_parser.add_argument("files", nargs="+")
+    microbench_table_parser.set_defaults(func=microbenchmarks_table)
 
     table_parser = subcommands.add_parser("sweep-pairs-table", help="Print sweep-pairs CSVs as tables")
     table_parser.add_argument("files", nargs="+")

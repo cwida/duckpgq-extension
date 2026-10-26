@@ -114,7 +114,7 @@ itself:
 | D2 | Only read-only workloads | LDBC SNB insert streams (ldbc-data-gen) as update workload; mixed read/write sweeps; delta-size vs traversal cost; vacuum cost |
 | D3 | Kernels only | End-to-end SQL/PGQ: LDBC Interactive 13, 14; BI 19, 20 (filters + joins + path op) |
 | D4 | Baselines beatable by construction (recursive CTE strawman) | Keep as context; add rebuild-per-query vs index comparison; optional Teseo/Sortledton or GraphBLAS upper bound |
-| D5 | Ablations are one-off runs with dates in filenames | Systematic sweeps: orientation ratio, source grouping, dedupe, grouped batches, CSR build variants, threads 1..32 |
+| D5 | Microbenchmarks are one-off runs with dates in filenames | Systematic sweeps: orientation ratio, source grouping, dedupe, grouped batches, CSR build variants, threads 1..32 |
 | D6 | Variance/repeats | 3+ repeats, medians with error bars, cold vs warm separated, chosen strategy logged (A4) |
 | D7 | Results only on EC2 | Archive raw CSVs in a results repo; tag the commit per sweep; pin DuckDB SHA, Kuzu, Neo4j 2026.06.0, instance type |
 
@@ -150,12 +150,15 @@ Effort in person-days (pd). P1 = must for Round 1, P2 = strongly desired, P3 = i
 | W17 | End-to-end LDBC IC13/14, BI19/20 in harness for all systems (D3); BI 19/20 double as the predicate-driven multi-source queries of W27 | eval | 4 | P1 | W5 | harness done 22 Oct (`ldbc-queries`, `ldbc-queries-table`): IC13, BI19, BI20 on DuckPGQ build/index, Kuzu, Memgraph, FalkorDB, Neo4j and Neo4j GDS over the symmetric closure of knows (LDBC knows is undirected, the generator stores one direction); BI19/BI20 as hop-count variants (the operator is unweighted; the LDBC versions weight edges by interactions or study years), IC14 omitted (all shortest paths with interaction weights; the operator returns one path). Five deterministic parameter sets per query; SF1 all systems agree. SF10 run pending |
 | W18 | Neo4j Enterprise trial or parity protocol (D1) | eval | 1 | P1 | — | decided 26 Oct: publish the Neo4j 5.26 Enterprise numbers measured under the evaluation licence (parallel runtime; GDS 2.13 unlicensed at 4 threads), stated in the setup paragraph; no trial request |
 | W19 | Systematic ablation + scaling sweeps on frozen commit (D5, D6). Decided 20 Oct: the first sweep is DuckDB-only. Harness modes added 20 Oct: `index_build`, `index_operator`, composites `index` and `index_comparison` (build-per-query operator vs index) in `scripts/pathfinding_benchmark.py`; smoke-tested on the SNB 0.003 sample | eval | 4 (+machine time) | P1 | W1–W6 | first DuckDB-only sweep done 21 Oct (SF1-SF300, 5 repeats; `~/sweep/collected*.md`); 26 Oct: switch inventory and harness `ablation` subcommand (`docs/ABLATION_SWITCHES.md`), four switches added (snapshot cache, target early termination, sparse frontier divisor, few-sources limit), lane width a build-time define; smoke at SF10 passed, full SF10 and SF100 runs queued; rerun on the frozen commit as `run_all.sh ablation`. Needed for the paper's 'Evolution of the operator' table (26 Oct): the CIDR 2023 UDF route (harness mode `scalar`, the `iterativelength` UDF over a UDF-built CSR) on the same three queries (one pair, 1024 random pairs, one source to all) at SF10 and SF100, 32 threads, next to the switch runs |
+| W19 | Systematic microbenchmark + scaling sweeps on frozen commit (D5, D6). Decided 20 Oct: the first sweep is DuckDB-only. Harness modes added 20 Oct: `index_build`, `index_operator`, composites `index` and `index_comparison` (build-per-query operator vs index) in `scripts/pathfinding_benchmark.py`; smoke-tested on the SNB 0.003 sample | eval | 4 (+machine time) | P1 | W1–W6 | first DuckDB-only sweep done 21 Oct (SF1-SF300, 5 repeats; `~/sweep/collected*.md`); 26 Oct: switch inventory and harness `microbench` subcommand (`docs/MICROBENCHMARK_SWITCHES.md`), four switches added (snapshot cache, target early termination, sparse frontier divisor, few-sources limit), lane width a build-time define; smoke at SF10 passed, full SF10 and SF100 runs queued; rerun on the frozen commit as `run_all.sh microbenchmark` |
 | W20 | Full read-only system comparison rerun on frozen commit | eval | 2 (+machine time) | P1 | W19 | open |
 | W21 | Results archive, version pins, anonymous artifact (D7, E) | eval | 2 | P1 | ongoing | decided 26 Oct: GitHub. First on this branch as `repro/` (setup, prepare, run_all, collect, environment record, pinned versions, the result CSVs behind every figure and table); later a separate reproduction repository with this checkout as a submodule and `setup.sh` as the one entry point. Open: FalkorDB image pinned by tag `latest` (pin by digest for the frozen run), anonymisation for review |
 | W22 | Related work + outline + intro draft. Started 22 Oct: `paper/` (PVLDB acmart template, `main.tex`, one file per section with the outline of section 8 as TODO notes, `references.bib` with 35 entries, VERIFY marks on uncertain ones), related work drafted (`paper/sections/related_work.tex`, five paragraphs: graph queries in RDBMSs, path finding, native graph systems, dynamic/versioned graph structures, indexes under MVCC). Intro drafted 22 Oct (`7a706d27`), framed on the CIDR 2023 open problem (tuple-driven parallelism, UDF-built global CSR); style guide `paper/STYLE.md` after Boncz's first-author papers; 'kernel' -> 'traversal'. Open: citation check (VERIFY marks), Figure 1, abstract | writing | 3 | P1 | — | in progress |
 | W23 | Full draft, figures, internal review, polish | writing | 10 | P1 | W16–W20 | open |
 | W24 | Teseo/Sortledton or GraphBLAS baseline (D4) | eval | 4 | P3 | W16 | open |
 | W25 | WCC table function reads the index snapshot (generality argument, build vs index for a whole-graph algorithm) | op+index | 2 | P3 | W12 | open |
+| W31 | Batch scheduling rule (found by the 26 Oct microbenchmarks). Grouped scheduling derives one group of 32 workers, so 65536 pairs run their 32 batches one after another; grouping off or 4 workers per batch is 0.41-0.56x the time at SF10. Study: a two-dimensional sweep groups x workers per batch over the divisors of 32 at 65536 pairs on SF10, SF100, SF300, both routes; derive workers per batch = threads / batches (floored at 1) bounded by a working-set budget (192 B per vertex per group); validate the rule lands at the optimum per scale factor. Paper: a microbenchmark figure (time vs group count, one line per SF, memory column), framed as intra- vs inter-batch parallelism and tied to the baselines needing 32 client threads. Changes the headline numbers, so before the freeze | op | 1 | P1 | W19 | open, next after the SF10 microbenchmark |
+| W30 | Graph structure microbenchmark (decided 26 Oct). LDBC knows is the operator's friendliest graph (small world, diameter about 6, mild skew). One figure on LDBC Graphalytics datasets that differ where it matters: graph500-24 (hubs; 8.9M V, 260M E), cit-Patents (long level tail; 3.8M V, 16.5M E), datagen-8_4-fb (same family, other density; 3.8M V, 269M E), optionally dota-league or wiki-Talk. Shapes 65536 random pairs and 1024 sources x all, both DuckPGQ routes plus the fastest-loading baseline (Kuzu or Ladybug), reporting levels reached. Harness has download, materialisation and BFS reference validation (`prepare --graphalytics-datasets`). About a day of machine time; measured on the frozen build. Writing: one paragraph naming where the operator degrades and why | eval | 2 | P1 | W19, W31 | open, scheduled after the microbenchmarks and the freeze |
 | W29 | Reach mode: sources x all vertices without a pair list (done 23 Oct). `reachoperator(src, src, ...)` has the argument forms of `iterativelengthoperator` and yields one row per vertex each source reaches, a list [dst, len] (a struct crashed DuckDB's statistics pass after the unused-columns optimizer pulled the field extraction up). One group per distinct source, no destination sets, the search runs to exhaustion or the pattern's bound; the parallel source emits slices of each group's distance array (65536 vertices per slice), one output chunk per input row with constant pass-through columns, and frees a group's arrays once emitted; a source absent from the graph reaches only itself. SF10, 32 threads, 1024 sources x all persons: build 0.43 s / index 0.22 s (pair mode 4.4 / 4.1 s, Kuzu 4.0 s); 1 source: index 3 ms (Kuzu 7 ms). Open: MATCH planning of an unbound or weakly bound destination onto reach mode (today the harness calls the marker); the cost rule between pair and reach mode belongs to W12 | op | 3 | P1 | W27 | done 26 Oct: MATCH plans an unbound destination onto reach mode (`9272fcb4`); a filtered destination keeps the pair mode by default (option `experimental_path_finding_operator_reach_filtered`), see the 26 Oct entry; cost rule proper is W12 |
 | W28 | Reverse direction in the CSR index for directed graphs (decided to look into 23 Oct). Nx1 shapes and the bidirectional kernel need reverse partitions; today only the legacy CSR route builds them, symmetric edge sets reuse the forward partitions (`7fdfe65e`). Plan: one index holding both directions (`WITH (reverse = true)` or similar, one maintenance path, lengths-only reverse side ~5 B/edge), the operator resolving both from one cache key and choosing forward / reverse / bidirectional at runtime from the pair statistics; then bidirectional search over the index for the random-pair shape at scale (SF300: 0.8-1 ms per pair forward MS-BFS vs Neo4j's bidirectional shortestPath). Effort 1-2 days each step | op/index | 3 | P1 | W27 | steps 1-3 done 26 Oct (`WITH (reverse = true)`, storage format 2, reverse companions and suppression, reverse orientation over the index: SF10 directed 2000 sources x 1 destination 5 ms reverse vs 91 ms forward); step 4 (bidirectional over the index) open |
 | W27 | Multi-source and all-pairs comparison (decided 22 Oct). Present query shapes by cardinality (1x1 point lookup, 1xN sssp, Nx1, NxM from a predicate on the source table or a join) rather than by pattern name; sweep the pair count 1, 16, 128, 1024, 2048, 16384, 65536 and all pairs on every system with the same pair tables, at SF10, SF100 and SF300 (decided 22 Oct: no reason to stay at small scale factors; DuckPGQ handled 65536 pairs at SF300 in the 21 Oct pair-count axis, build 74 s / index 52 s at 32 threads). Give every baseline a per-query timeout (e.g. 10 minutes) and report a timed-out point as such rather than skipping the point, since the per-pair systems grow linearly (at SF10: Neo4j ~0.7 ms, Kuzu ~6 ms, FalkorDB ~8 ms, Memgraph ~39 ms per pair); add a predicate-driven multi-source query (sources selected by an attribute, as in LDBC BI 19/20) so the many-pair case is not a synthetic pair table; run the systems' set-oriented procedures where they exist (Neo4j GDS single-source and all-pairs, Memgraph MAGE) so no baseline is shown on its slow path, and note that those procedures do not compose with a Cypher predicate in the same query; include all-pairs shortest path as the extreme of the sweep (our source-grouped kernel per source vs their per-pair searches). The absence of a batched, set-oriented path-finding operator is a design limitation of the graph databases to be stated as such, with the sweep as evidence | eval | 4 | P1 | W16, W17 | harness done 22 Oct (`sweep-pairs`, `sweep-pairs-table`): random pairs 1..65536 and k sources x all persons (k = 1, 16, 128, 1024; V^2 all pairs is not materialisable), 600 s timeout per query with server-side cancellation, larger counts after an exceeded one recorded as inferred, cross-system agreement check. SF10 run in progress 22 Oct; SF100 and SF300 next |
@@ -170,12 +173,12 @@ time) are now the critical path and depend on EC2 access and the author's hours.
 | Week | Dates | Engineering (Claude) | Evaluation / writing (author) |
 |------|-------|----------------------|-------------------------------|
 | 1 | 19-25 Oct | done: W1-W6, W8-W11, W14, W26; branch pushed for Linux CI 20 Oct; next: W7 path reconstruction | Venue decided (VLDB); review design doc decisions D2-D5; W18 Neo4j Enterprise request; start W22 outline |
-| 2 | 26 Oct-1 Nov | W7 path reconstruction | W17 end-to-end LDBC queries into the harness; W21 archive setup |
-| 3 | 2-8 Nov | W7 done; W15 remaining tests (restart under load, concurrent writers) | Tag frozen commit; first read-only sweep on EC2 (W19 part 1) |
+| 2 | 26 Oct-1 Nov | done: W7, W17, W27, W28 steps 1-3, W29, W21 repro package, W19 switches; next: W31 batch scheduling rule, W19 microbenchmarks at SF100 | Decide Ladybug (section 9); W18 and W21 decided 26 Oct |
+| 3 | 2-8 Nov | W15 remaining tests (restart under load, concurrent writers); remove dead option `task_size` | Tag frozen commit (`eval-freeze-rc1`); frozen rerun via `repro/run_all.sh` incl. microbenchmarks; then W30 graph structure |
 | 4 | 9-15 Nov | W12 cost-based choice + W13 model skeleton; fixes from the sweep | **Checkpoint 13 Nov**: sweep results reviewed; related work (W22) |
 | 5 | 16-22 Nov | W16 update workload in the harness (LDBC insert streams) | Intro + operator section draft |
 | 6 | 23-29 Nov | W13 calibration from sweep data; W25 if time | Update-workload sweeps on EC2 (W16) |
-| 7 | 30 Nov-6 Dec | Bug fixing from sweeps; W24 if time | Index section draft; ablation sweeps (W19 part 2) |
+| 7 | 30 Nov-6 Dec | Bug fixing from sweeps; W24 if time | Index section draft; microbenchmark sweeps (W19 part 2) |
 | 8 | 7-13 Dec | Engineering freeze except fixes | **Checkpoint 13 Dec**: update-workload numbers; W20 final comparison rerun |
 | 9 | 14-20 Dec | Figures and tables from the archive | Evaluation section draft |
 | 10-11 | 21 Dec-3 Jan | Buffer / holidays | **1 Jan: complete draft with final numbers** |
@@ -215,7 +218,7 @@ time) are now the critical path and depend on EC2 access and the author's hours.
 4. MVCC-consistent CSR index: epochs, deltas, tombstones, snapshot selection, vacuum, checkpoint and
    recovery, correctness (2.5 p)
 5. Choosing a strategy: cost model and the engine hooks an extension needs (1 p)
-6. Evaluation: setup; read-only vs Kuzu/Neo4j; updates and delta size; end-to-end queries; ablations;
+6. Evaluation: setup; read-only vs Kuzu/Neo4j; updates and delta size; end-to-end queries; microbenchmarks;
    memory and scaling (3 p)
 7. Related work (0.75 p)
 8. Conclusion (0.25 p)
@@ -234,6 +237,9 @@ time) are now the critical path and depend on EC2 access and the author's hours.
   directly (W24).
 - Staffing: one author with ~1 day/week plus Claude on engineering; the author's time goes to review,
   EC2 sweeps, and writing.
+
+- Ladybug as the maintained successor of Kuzu (raised 26 Oct): Kuzu's last release is 0.11.3 (10 Oct 2025, project archived); Ladybug (PyPI `real_ladybug`, 0.15.3 on 1 Apr 2026) continues it with the same Python API. Proposal: add it as a system next to Kuzu at SF10 and SF100 (about four machine hours after the microbenchmarks), report Ladybug as the embedded baseline if the two agree within noise. Open.
+- Terminology (decided 26 Oct): the paper says microbenchmarks, not ablations; harness subcommands `microbench` / `microbench-table` (old names kept as aliases), `docs/MICROBENCHMARK_SWITCHES.md`.
 
 ## 10. Evaluation machines (decided 19 Oct, revised 21 Oct)
 
@@ -400,7 +406,7 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   global state outside the transaction) is the hook, the operator and the index are the answer. The user is
   looking for PDFs of 'Database Architecture Evolution' (VLDB 2009) and 'TPC-H Analyzed' to sharpen the guide.
 - 22 Oct (evening): operator section drafted (`70a5d43a`), 'partitioned CSR' named as the layout. Decision (user):
-  reverse CSR, push-pull and bidirectional traversals are low priority; they stay in the code and the ablation only,
+  reverse CSR, push-pull and bidirectional traversals are low priority; they stay in the code and the microbenchmark only,
   and get paper space only if they become faster than the two main traversals.
 - 22 Oct (evening): Memgraph (memgraph/memgraph:latest, Bolt) and FalkorDB (falkordb/falkordb:latest) added to the
   update workload (`update-memgraph`, `update-falkordb`, Docker containers on the EC2 box); results identical to
@@ -597,19 +603,55 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   `DUCKPGQ_GENERATOR_ROOT`, the plot script `DUCKPGQ_RESULTS_DIR`. `repro/results/` holds the 173 CSVs behind
   the current figures and tables (20 MB) plus the harness text tables; rendering from the archive reproduces
   `paper/tables/*.tex` byte for byte. Decisions recorded in W18 and W21.
-- 26 Oct (late afternoon): ablation switches (W19). Inventory of every mechanism that affects query time in
-  `docs/ABLATION_SWITCHES.md`: about twenty switchable, about twenty hard-coded. Added as `SET` options with the
+- 26 Oct (late afternoon): microbenchmark switches (W19). Inventory of every mechanism that affects query time in
+  `docs/MICROBENCHMARK_SWITCHES.md`: about twenty switchable, about twenty hard-coded. Added as `SET` options with the
   measured behaviour as default: `experimental_path_finding_operator_snapshot_cache` (true),
   `..._target_early_termination` (true), `..._sparse_frontier_divisor` (64; 0 always sweeps),
   `..._few_sources_limit` (16; 0 off); `LANE_LIMIT` overridable with `cmake -DDUCKPGQ_LANE_LIMIT`. The `run`
   subcommand's `--grouped-batches` default now follows the engine default (true); the 21 Oct DuckDB-only sweep ran
-  with grouped batches off. Harness `ablation` / `ablation-table`: 23 configurations in groups kernel, index, reach,
+  with grouped batches off. Harness `microbench` / `microbench-table`: 23 configurations in groups kernel, index, reach,
   threads over random pairs, same destination and sources x all, both routes, per-point timeout, agreement check;
   `DuckPGQSystem` takes settings, an index WITH clause (separate index per clause) and a pair-list form of the
-  sources x all shape. Test `path_finding_ablation_switches.test`. Smoke at SF10 (1 repeat, points 1/128/1024
+  sources x all shape. Test `path_finding_microbenchmark_switches.test`. Smoke at SF10 (1 repeat, points 1/128/1024
   pairs and 1/128 sources): all 8 points agree. Already visible: pair list instead of reach for 128 sources 7.0x
   (build) and 9.5x (index) slower; reverse side for 1024 sources to one destination 43 ms to 5 ms (0.12x); forcing
   dense or sparse expansion 1.3-1.5x slower at 128 sources; `threads_per_batch=4` 2-3x slower on random pairs;
   source grouping off 2x (build) to 4x (index) slower for a single pair. Oddity to check in the full run: on the
   index route 2 threads is slower than 1 thread (167 vs 98 ms at 1024 pairs). Dead option `task_size` to remove
   before the freeze. Full runs queued: SF10 then SF100, 3 repeats, all configurations and shapes.
+- 26 Oct (evening): SF10 microbenchmarks complete (`ablation_sf10_threads32_1793027665795144714.csv`, 3 repeats,
+  600 s timeout, 23 configurations x both routes x 11 points, all points agree; tables in
+  `~/sweep/microbench_sf10_tables.md`). Findings beyond the smoke: (1) batch scheduling, 65536 random pairs:
+  grouped off 0.56x (build, 3.04 to 1.69 s) and 0.40x (index, 2.61 to 1.04 s); 4 workers per batch 0.43x / 0.41x;
+  the default derives one group of 32 workers (W31). (2) Thread scaling index route 65536 pairs: 1 thread 5.8 s,
+  2 threads 10.2 s, 4 threads 6.3 s, 8 threads 4.1 s, 16 threads 3.1 s, 32 threads 2.6 s; the 2-thread point is
+  the same scheduler issue. Sources x all 1024 scales 9.5x from 1 to 32 threads on the index route (2.19 s to
+  0.23 s), 6.2x on the build route. (3) Source group ratio 1 (group everything): 5.0x slower at 65536 pairs; ratio
+  16 equals 4. (4) Per-source kernel for one pair: 4.4-5.2x faster than lanes on the index route, 2x on build.
+  (5) Reach vs pair list, 1024 sources x all: 11.0x (build) and 14.6x (index). (6) Reverse side, 65536 sources to
+  one destination, index: 2.62 s to 12 ms; forward-only with the reverse side present equals the baseline. (7) The
+  reverse side costs the forward sources x all shape 1.44x on the index route (231 to 332 ms at 1024 sources) and
+  1.25x at 128 sources; random pairs unaffected. To investigate (W28): what the forward search pays for the
+  reverse partitions being present (snapshot packing or partition loading). (8) Forcing dense or sparse frontier
+  expansion: 1.5-1.8x slower for sources x all; no effect on pairs. (9) Doubling partitions: 1.3x slower on
+  sources x all, flat on pairs. (10) Within noise: dedupe, early termination on these shapes, snapshot cache with an
+  empty change log. Scheduling study configs added to the harness (`microbench --configs scheduling`: workers per
+  batch 1..16, groups 2..16 at one worker, grouped off).
+- 26 Oct (evening): W31 scheduling sweep at SF10, random pairs, 3 repeats (`microbench --configs scheduling`).
+  Workers per batch w with 32/w groups; baseline is w=32 (one group). Build route, 2048 / 16384 / 65536 pairs:
+  w=32 0.12 / 0.78 / 3.03 s; w=16 0.14 / 0.51 / 1.91; w=8 0.20 / 0.42 / 1.48; w=4 0.32 / 0.40 / 1.32; w=2 0.49 /
+  0.61 / 1.23; w=1 0.57 / 0.79 / 1.23; grouping off 0.12 / 0.46 / 1.72. Index route: w=32 0.09 / 0.66 / 2.63 s;
+  w=4 0.26 / 0.32 / 1.09; w=1 0.42 / 0.59 / 0.80; grouping off 0.09 / 0.31 / 1.07. Capping the groups at w=1
+  (2/4/8/16 groups at 65536 pairs: 8.9 / 4.8 / 2.7 / 1.7 s build) shows the cost is linear in the batches a group
+  runs in sequence. The optimum is w = threads / batches at every point (1 batch: 32; 8 batches: 4; 32 batches: 1),
+  and grouped with the rule beats grouping off (0.80 vs 1.07 s on the index at 65536 pairs: one working set per
+  group instead of one per batch). Rule implemented: `GetGroupedWorkersPerBatch` takes the batch count, groups are
+  bounded by a working-set budget of a quarter of the buffer manager's memory (192 B per vertex per group), spare
+  threads go back to the batches when the budget binds. Headline effect at SF10, 65536 pairs: index 2.6 s to about
+  0.8 s, build 3.0 s to 1.2 s; SF100 and SF300 to be re-measured.
+- 26 Oct (evening): reverse-side forward cost (finding 7 above) not reproducible with freshly built indexes. Both
+  SF10 indexes dropped and recreated, index route, 3 repeats: 128 sources x all baseline 45 ms vs reverse 45 ms;
+  1024 sources 232 ms vs 232 ms. The 1.44x row came from a reverse index created while the 22 Oct baseline index
+  (storage format 1) coexisted; the forward-index rows measured in the same window were normal, so the cause is
+  not the second index as such. Unexplained; watch the SF100 microbenchmark, which recreates the situation. Rule for
+  the frozen rerun: every index built fresh (the repro scripts start from an empty data directory).

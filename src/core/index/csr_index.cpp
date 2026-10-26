@@ -837,7 +837,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		                           : group_commit_visible(tombstone_groups[i], false, tombstone_rows[i]);
 	}
 
-	// The cache is an ablation switch: off, every query packs its own overlay
+	// The cache is a microbenchmark switch: off, every query packs its own overlay
 	shareable = shareable && GetPathFindingSnapshotCache(context);
 	if (shareable) {
 		IndexLock l(*this);
