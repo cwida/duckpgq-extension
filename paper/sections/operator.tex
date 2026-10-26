@@ -6,8 +6,8 @@
 
 A path pattern in \sqlpgq asks, for a set of candidate (source, destination) pairs, whether a path of the allowed
 length exists and how long it is, or which vertices and edges it uses. The operator takes exactly that: a stream of
-pairs, one \duckdb vector of 2048 rows at a time, and a description of the graph, and returns one length or one path
-per pair. Everything else, label tests,
+pairs, one \duckdb vector of 2048 rows at a time, and the graph, either as a stream of edge endpoints to build the
+CSR from or as the name of a CSR index to read it from, and returns one length or one path per pair. Everything else, label tests,
 filters on the endpoints, the join back to the vertex tables and the test on the quantifier, stays relational and is
 left to \duckdb's planner. This section describes how the operator gets its inputs, how it builds and lays out the
 graph, how it traverses it, and how it runs in parallel without waiting on anything.
