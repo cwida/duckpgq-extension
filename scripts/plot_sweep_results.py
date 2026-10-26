@@ -74,7 +74,7 @@ def load(prefix, sf):
             ok = [float(r["query_s"]) for r in rows if r["status"] == "ok"]
             if ok:
                 points[key] = {"mean": statistics.mean(ok), "status": "ok"}
-            elif any(r["status"].startswith(("timed_out", "timeout_exceeded")) for r in rows):
+            elif any(r["status"].startswith(("timed_out", "budget_exceeded")) for r in rows):
                 points[key] = {"mean": None, "status": "exceeded"}
             elif any(r["status"].startswith("exceeds_pair_limit") for r in rows):
                 points[key] = {"mean": None, "status": "not_run"}
@@ -125,14 +125,22 @@ def series_legend(fig, systems, ncol, y=-0.04, marker="o", linewidth=1.6):
     fig.legend(handles, labels, loc="lower center", ncol=ncol, bbox_to_anchor=(0.5, y), handlelength=2.4, columnspacing=1.2)
 
 
-def plot_series(ax, xs, ys, exceeded_x, color, linestyle="-", linewidth=1.6, alpha=1.0, hollow=True):
+OURS = ("duckpgq_index", "duckpgq_build")
+
+
+def emphasis(system):
+    """(linewidth, alpha, zorder): our two routes at full weight, the baselines muted behind them"""
+    return (2.0, 1.0, 5) if system in OURS else (1.2, 0.6, 3)
+
+
+def plot_series(ax, xs, ys, exceeded_x, color, linestyle="-", linewidth=1.6, alpha=1.0, hollow=True, zorder=3):
     if xs:
         ax.plot(xs, ys, color=color, linewidth=linewidth, linestyle=linestyle, marker="o", markersize=3.6,
-                markeredgecolor=SURFACE, markeredgewidth=0.8, zorder=3, alpha=alpha)
+                markeredgecolor=SURFACE, markeredgewidth=0.8, zorder=zorder, alpha=alpha)
     if exceeded_x:
         ax.plot(exceeded_x, [TIMEOUT_S] * len(exceeded_x), linestyle="none", marker="^", markersize=5,
-                markerfacecolor=SURFACE if hollow else color, markeredgecolor=color, markeredgewidth=1.2, zorder=4,
-                alpha=alpha)
+                markerfacecolor=SURFACE if hollow else color, markeredgecolor=color, markeredgewidth=1.2,
+                zorder=zorder + 1, alpha=alpha)
 
 
 def sweep_figure(shape, xlabel, filename, title):
@@ -156,7 +164,8 @@ def sweep_figure(shape, xlabel, filename, title):
                     ys.append(point["mean"])
                 elif point["status"] == "exceeded":
                     exceeded_x.append(count)
-            plot_series(ax, xs, ys, exceeded_x, color)
+            linewidth, alpha, zorder = emphasis(system)
+            plot_series(ax, xs, ys, exceeded_x, color, linewidth=linewidth, alpha=alpha, zorder=zorder)
             if xs:
                 label_positions.append((ys[-1], xs[-1], name, color))
         ax.set_ylim(0.001, 3000)
@@ -200,12 +209,14 @@ def ldbc_figure(filename):
                     elif point["status"] == "exceeded":
                         exceeded = True
                 x = column + offsets[system]
+                _, alpha, zorder = emphasis(system)
+                size = 5.2 if system in OURS else 4.2
                 if values and not exceeded:
-                    ax.plot([x], [statistics.mean(values)], marker="o", markersize=4.4, color=color, linestyle="none",
-                            markeredgecolor=SURFACE, markeredgewidth=0.8, zorder=3)
+                    ax.plot([x], [statistics.mean(values)], marker="o", markersize=size, color=color, linestyle="none",
+                            markeredgecolor=SURFACE, markeredgewidth=0.8, zorder=zorder, alpha=alpha)
                 elif exceeded:
                     ax.plot([x], [TIMEOUT_S], marker="^", markersize=5.5, linestyle="none", markerfacecolor=SURFACE,
-                            markeredgecolor=color, markeredgewidth=1.2, zorder=3)
+                            markeredgecolor=color, markeredgewidth=1.2, zorder=zorder, alpha=alpha)
         ax.set_xticks(range(len(queries)))
         ax.set_xticklabels([label for _, label in queries], fontsize=7, color=INK2)
         ax.set_xlim(-0.5, len(queries) - 0.5)
@@ -271,6 +282,113 @@ def client_threads_figure(filename):
     save(fig, filename)
 
 
+BASELINES = [entry for entry in SYSTEMS if entry[0] not in OURS]
+
+
+def speedup_figure(filename):
+    """Baseline time divided by the DuckPGQ index time, per point; a timed-out baseline is at least 600 s / ours"""
+    shapes = [("random_pairs", "random pairs per query"), ("multi_source", "sources per query, each to every person")]
+    fig, axes = plt.subplots(2, 3, figsize=(7.2, 4.4), sharey="row")
+    width = 0.17
+    for row, (shape, xlabel) in enumerate(shapes):
+        top = 1
+        for col, sf in enumerate(SCALE_FACTORS):
+            ax = axes[row][col]
+            points = load("sweep_pairs", sf)
+            counts = sorted({k[2] for k in points if k[1] == shape and k[0] == "duckpgq_index"})
+            ax.set_yscale("log", base=2)
+            ax.axhline(1, color=INK2, linewidth=0.8, zorder=2)
+            for i, (system, name, color) in enumerate(BASELINES):
+                xs, heights, open_ended = [], [], []
+                for j, count in enumerate(counts):
+                    ours = points.get(("duckpgq_index", shape, count))
+                    theirs = best_path(points, system, shape, count)
+                    if not ours or ours["status"] != "ok" or theirs is None:
+                        continue
+                    if theirs["status"] == "ok":
+                        ratio, lower_bound = theirs["mean"] / ours["mean"], False
+                    elif theirs["status"] == "exceeded":
+                        ratio, lower_bound = TIMEOUT_S / ours["mean"], True
+                    else:
+                        continue
+                    xs.append(j + (i - (len(BASELINES) - 1) / 2) * width)
+                    heights.append(ratio)
+                    open_ended.append(lower_bound)
+                    top = max(top, ratio)
+                for x, h, lower_bound in zip(xs, heights, open_ended):
+                    ax.bar(x, h, width=width * 0.9, bottom=None, color=SURFACE if lower_bound else color,
+                           edgecolor=color, linewidth=1.0 if lower_bound else 0, zorder=3,
+                           hatch="////" if lower_bound else None)
+                    if lower_bound:
+                        ax.text(x, h * 1.15, "≥", color=color, fontsize=6, ha="center", va="bottom")
+            ax.set_xticks(range(len(counts)))
+            ax.set_xticklabels([count_label(c) for c in counts], fontsize=6.5)
+            ax.set_xlim(-0.6, len(counts) - 0.4)
+            ax.set_title(f"SF{sf}: {'sources × all' if shape == 'multi_source' else 'random pairs'}", loc="left")
+            ax.grid(axis="x", visible=False)
+            style_axes(ax)
+        axes[row][1].set_xlabel(xlabel)
+        ymax = 2 ** (int(top).bit_length() + 1)
+        for ax in axes[row]:
+            ax.set_ylim(0.25, ymax)
+            ticks = [2 ** k for k in range(-2, ymax.bit_length(), 2)]
+            ax.set_yticks(ticks)
+            ax.set_yticklabels([f"{t}×" if t >= 1 else f"1/{int(1 / t)}×" for t in ticks], fontsize=6.5)
+            ax.set_yticks([], minor=True)
+        axes[row][0].set_ylabel("× slower than DuckPGQ index")
+    handles = [plt.Rectangle((0, 0), 1, 1, color=c) for _, _, c in BASELINES]
+    handles.append(plt.Rectangle((0, 0), 1, 1, facecolor=SURFACE, edgecolor=INK2, hatch="////"))
+    labels = [n for _, n, _ in BASELINES] + ["baseline timed out: at least this"]
+    fig.legend(handles, labels, loc="lower center", ncol=5, bbox_to_anchor=(0.5, -0.01), handlelength=1.4, columnspacing=1.2)
+    fig.suptitle("Baseline time relative to the DuckPGQ index route (best path per baseline; below 1× the baseline is faster)",
+                 x=0.01, ha="left", fontsize=9.5, color=INK)
+    fig.tight_layout(rect=(0, 0.05, 1, 0.95))
+    save(fig, filename)
+
+
+def scaling_figure(filename):
+    """Time against scale factor at the largest point of each shape"""
+    panels = [("random_pairs", 65536, "65 536 random pairs per query"), ("multi_source", 1024, "1024 sources, each to every person")]
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.6), sharey=True)
+    edges = {"10": 1.84, "100": 18.7, "300": 55.7}
+    for ax, (shape, count, title) in zip(axes, panels):
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.axhline(TIMEOUT_S, color=AXIS, linewidth=0.6)
+        ax.text(edges["10"], TIMEOUT_S * 1.3, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
+        label_positions = []
+        for system, name, color in SYSTEMS:
+            xs, ys, exceeded_x = [], [], []
+            for sf in SCALE_FACTORS:
+                points = load("sweep_pairs", sf)
+                point = best_path(points, system, shape, count)
+                if point is None:
+                    continue
+                if point["status"] == "ok":
+                    xs.append(edges[sf])
+                    ys.append(point["mean"])
+                elif point["status"] == "exceeded":
+                    exceeded_x.append(edges[sf])
+            linewidth, alpha, zorder = emphasis(system)
+            plot_series(ax, xs, ys, exceeded_x, color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+            if xs:
+                label_positions.append((ys[-1], xs[-1], name, color))
+        ax.set_ylim(0.01, 3000)
+        direct_labels(ax, label_positions, edges["300"] * 1.15, factor=1.9)
+        ax.set_xticks([edges[sf] for sf in SCALE_FACTORS])
+        ax.set_xticklabels([f"SF{sf}\n{edges[sf]}M" for sf in SCALE_FACTORS], fontsize=6.5)
+        ax.set_xlim(1.2, 90)
+        ax.set_xlabel("scale factor, edges")
+        ax.set_title(title, loc="left")
+        style_axes(ax)
+    axes[0].set_ylabel("seconds per query (mean of 3)")
+    series_legend(fig, SYSTEMS, ncol=7)
+    fig.suptitle("Scaling with the graph: the largest point of each shape from SF10 to SF300", x=0.01, ha="left",
+                 fontsize=9.5, color=INK)
+    fig.tight_layout(rect=(0, 0.06, 0.9, 0.95))
+    save(fig, filename)
+
+
 def save(fig, filename):
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / f"{filename}.pdf")
@@ -286,3 +404,5 @@ if __name__ == "__main__":
                  "Sources × all persons: distances to every reachable vertex from k sources")
     ldbc_figure("ldbc_queries")
     client_threads_figure("client_threads")
+    speedup_figure("speedup")
+    scaling_figure("scaling")
