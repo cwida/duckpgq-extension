@@ -5120,16 +5120,20 @@ def sweep_pairs(args):
 
 
 def read_result_files(files):
-    """Rows of several result CSVs; when a system appears in more than one file only its rows from the last file
-    listed count, so a rerun of one system replaces its earlier numbers"""
+    """Rows of several result CSVs; when a system's rows for a shape (or query) appear in more than one file only
+    those from the last file listed count, so a rerun of one system replaces its earlier numbers point by point"""
     rows_by_file = [list(csv.DictReader(open(path))) for path in files]
-    last_file_of_system = {}
+
+    def key(row):
+        return row["system"], row.get("shape") or row.get("query")
+
+    last_file = {}
     for file_idx, rows in enumerate(rows_by_file):
         for row in rows:
-            last_file_of_system[row["system"]] = file_idx
+            last_file[key(row)] = file_idx
     result = []
     for file_idx, rows in enumerate(rows_by_file):
-        result.extend(row for row in rows if last_file_of_system[row["system"]] == file_idx)
+        result.extend(row for row in rows if last_file[key(row)] == file_idx)
     return result
 
 
