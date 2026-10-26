@@ -176,14 +176,18 @@ def sweep_figure(shape, xlabel, filename, title):
 
 def ldbc_figure(filename):
     queries = [("ic13", "IC13\n1 × 1"), ("bi19", "BI19\ncity × city"), ("bi20", "BI20\ncompany × 1")]
-    fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.4), sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.7), sharey=True)
+    offsets = {system: (i - (len(SYSTEMS) - 1) / 2) * 0.12 for i, (system, _, _) in enumerate(SYSTEMS)}
     for ax, sf in zip(axes, SCALE_FACTORS):
         points = load("ldbc_queries", sf)
-        ax.set_xscale("log")
-        ax.axvline(BUDGET_S, color=AXIS, linewidth=0.6)
-        ax.text(BUDGET_S * 1.15, -0.42, "timeout", color=MUTED, fontsize=6.5, ha="left", va="center")
-        offsets = {system: (i - (len(SYSTEMS) - 1) / 2) * 0.11 for i, (system, _, _) in enumerate(SYSTEMS)}
-        for row, (query, _) in enumerate(queries):
+        ax.set_yscale("log")
+        # One band per query so the groups read as separate columns
+        for column in range(len(queries)):
+            if column % 2 == 1:
+                ax.axvspan(column - 0.5, column + 0.5, color="#f1f1ee", zorder=0, linewidth=0)
+        ax.axhline(BUDGET_S, color=AXIS, linewidth=0.6, zorder=1)
+        ax.text(-0.45, BUDGET_S * 1.3, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom", ha="left")
+        for column, (query, _) in enumerate(queries):
             for system, name, color in SYSTEMS:
                 params = sorted({k[2] for k in points if k[1] == query and k[0] in (system, f"{system}@32")})
                 values, exceeded = [], False
@@ -195,29 +199,28 @@ def ldbc_figure(filename):
                         values.append(point["mean"])
                     elif point["status"] == "exceeded":
                         exceeded = True
-                y = row + offsets[system]
+                x = column + offsets[system]
                 if values and not exceeded:
-                    ax.plot([statistics.mean(values)], [y], marker="o", markersize=4.2, color=color, linestyle="none",
+                    ax.plot([x], [statistics.mean(values)], marker="o", markersize=4.4, color=color, linestyle="none",
                             markeredgecolor=SURFACE, markeredgewidth=0.8, zorder=3)
                 elif exceeded:
-                    ax.plot([BUDGET_S], [y], marker="^", markersize=5, linestyle="none", markerfacecolor=SURFACE,
+                    ax.plot([x], [BUDGET_S], marker="^", markersize=5.5, linestyle="none", markerfacecolor=SURFACE,
                             markeredgecolor=color, markeredgewidth=1.2, zorder=3)
-        ax.set_yticks(range(len(queries)))
-        ax.set_yticklabels([label for _, label in queries], fontsize=7, color=INK2)
-        ax.set_ylim(-0.5, len(queries) - 0.5)
-        ax.invert_yaxis()
-        ax.set_xlim(0.002, 3000)
+        ax.set_xticks(range(len(queries)))
+        ax.set_xticklabels([label for _, label in queries], fontsize=7, color=INK2)
+        ax.set_xlim(-0.5, len(queries) - 0.5)
+        ax.set_ylim(0.002, 3000)
         ax.set_title(f"LDBC SF{sf}", loc="left")
-        ax.grid(axis="y", visible=False)
+        ax.grid(axis="x", visible=False)
         style_axes(ax)
-    axes[1].set_xlabel("seconds per query (mean over 5 parameter sets)")
-    handles = [Line2D([], [], linestyle="none", marker="o", markersize=4.2, color=c, markeredgecolor=SURFACE) for _, _, c in SYSTEMS]
-    handles.append(Line2D([], [], linestyle="none", marker="^", markersize=5, markerfacecolor=SURFACE, markeredgecolor=INK2))
+    axes[0].set_ylabel("seconds per query")
+    handles = [Line2D([], [], linestyle="none", marker="o", markersize=4.4, color=c, markeredgecolor=SURFACE) for _, _, c in SYSTEMS]
+    handles.append(Line2D([], [], linestyle="none", marker="^", markersize=5.5, markerfacecolor=SURFACE, markeredgecolor=INK2))
     labels = [n for _, n, _ in SYSTEMS] + ["timed out"]
-    fig.legend(handles, labels, loc="lower center", ncol=7, bbox_to_anchor=(0.5, 0.0), handlelength=1.2, columnspacing=1.2)
-    fig.suptitle("LDBC queries as hop-count shortest paths, undirected knows; baselines on their best path",
+    fig.legend(handles, labels, loc="lower center", ncol=7, bbox_to_anchor=(0.5, -0.02), handlelength=1.2, columnspacing=1.2)
+    fig.suptitle("LDBC queries as hop-count shortest paths on undirected knows, mean over 5 parameter sets; baselines on their best path",
                  x=0.01, ha="left", fontsize=9.5, color=INK)
-    fig.tight_layout(rect=(0, 0.1, 1, 0.94))
+    fig.tight_layout(rect=(0, 0.07, 1, 0.94))
     save(fig, filename)
 
 
