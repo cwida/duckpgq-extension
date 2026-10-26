@@ -19,11 +19,12 @@
 SQL:2023 added graph pattern matching to SQL, and with it a query type relational engines have never executed
 well: the shortest path. Its \sqlpgq part lets a query declare a property graph over existing tables and match
 patterns against it, including variable-length and shortest-path patterns~\cite{deutsch2022gql}. A user whose
-data lives in a relational engine has had three options for such queries: copy the data into a graph database and
-keep the two in sync; write the path pattern as a recursive join and accept its performance; or wait for the engine
-to grow graph storage and operators of its own. This paper is about a fourth: load an extension.
+data lives in a relational engine has three options for such queries: copy the data into a graph database and keep
+the two in sync; write the path pattern as a recursive join and accept its performance; or have the engine answer it
+with graph storage and operators of its own. The third is the one users want, and so far it has meant waiting for
+the engine's developers to build it. This paper shows that it does not have to: a loadable extension can add it.
 
-\duckpgq~\cite{tenwolde2023duckpgq} took that fourth route first. It is an extension of \duckdb that parses \sqlpgq and
+\duckpgq~\cite{tenwolde2023duckpgq} was the first attempt at that. It is an extension of \duckdb that parses \sqlpgq and
 rewrites it into relational SQL, and it argued that a competent graph system should build on everything a
 state-of-the-art analytical engine already has, columnar storage, vectorized execution, morsel-driven parallelism and
 a cost-based optimizer, and add only two things: a compact graph representation and a bulk path-finding algorithm.
