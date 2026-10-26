@@ -521,3 +521,23 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   points are queued for a rerun after the SF300 baseline chain (`after_sf300`). Lesson for the paper: a path-finding
   operator over bound pairs is one shape; "from these sources, everything" needs the destination-free shape, and
   with it the traversal is the cost (the 1024-source point is 1024 BFS runs over 1.8M edges in 0.2 s).
+- 23 Oct (evening, final provisional tables; collected 26 Oct): all queued runs done 19:33 UTC, every point agrees
+  across the systems that completed it. Files: `sweep_pairs_sf{100,300}_*` (full sweep + DuckPGQ reach rerun),
+  `ldbc_queries_sf{100,300}_*` (full + DuckPGQ undirected-index rerun); print with the full CSV first.
+  SF300 random pairs 1 / 16 / 128 / 1024 / 2048 / 16384 / 65536: DuckPGQ index 9 / 106 / 514 / 984 ms / 1.9 /
+  14.0 / 55.2 s; build 288 ms / 1.0 / 1.0 / 1.6 / 2.8 / 17.9 / 70.3 s; Neo4j 15 / 515 ms / 24 / 39 / 43 / 192 s /
+  > 600 (its per-pair cost grew from 0.18 ms at SF10 to 12 ms at SF300: the bidirectional search is not scale-free,
+  the worry that it overtakes us at scale is settled); Kuzu 33 / 647 ms / 5.8 / 46 / 96 s / > 600 / > 600; FalkorDB
+  113 / 927 ms / 8.3 / 69 / 137 s / > 600 / > 600; Memgraph 2.4 / 27 / 307 s / > 600 ...; GDS 79 ms / 3.4 / 49 /
+  404 s / > 600 .... SF300 sources x all 1 / 16 / 128 / 1024: DuckPGQ index (reach mode) 9 / 135 / 657 ms / 4.2 s,
+  build 282 / 542 ms / 1.7 / 9.7 s; Kuzu 3 / 151 ms / 2.0 s / not run (above the 500M-pair limit); Memgraph 1 ms /
+  17 / 284 s / not run; GDS 51 ms / 4.1 / 57 s / not run; Neo4j 119 ms then > 600; FalkorDB > 600. SF100 sources x
+  all with reach mode: index 15 / 91 / 383 ms / 2.3 s (Kuzu 13 / 148 ms / 1.2 / 9.4 s). SF100 random pairs on the
+  final build: index 8 / 62 / 157 / 303 / 543 ms / 4.3 / 16.9 s.
+  W17 on the undirected index with the reverse orientation: SF100 IC13 14 ms / BI19 5.9 s / BI20 25 ms (Neo4j 6 ms /
+  4.3 s / 127 ms; Kuzu 26 ms / 63 s / 165 s); SF300 IC13 27 ms / BI19 43.7 s / BI20 55 ms (Neo4j 5 ms / 48 s / 1.2 s;
+  Kuzu 53 ms / 329 s / > 600). BI20 went from 7.6 s to 55 ms at SF300 with the reverse orientation. What is left:
+  BI19 (persons of city 1 x persons of city 2, about 1500 x 800 at SF300) runs as a pair list with 1500 sources;
+  the reach mode through MATCH with the destination predicate applied after the reach is the planned fix (W29 step
+  2); IC13, a point lookup, is 27 ms against Neo4j's 5 ms at SF300, the per-query fixed cost of the index route.
+  Loads at SF300: Memgraph 279 s, Neo4j 841 s, FalkorDB 2597 s, Kuzu and DuckPGQ under a second (persisted).
