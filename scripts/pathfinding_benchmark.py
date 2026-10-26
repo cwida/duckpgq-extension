@@ -4165,7 +4165,9 @@ class MemgraphSystem(GraphDBSystem):
         return [int(r["id"]) for r in self.run("MATCH (a:Person)-[:WORK_AT]->(:Company {id: $co}) RETURN DISTINCT a.id AS id", co=company)]
 
     def bi20_from(self, sources, person2):
-        rows = self.run(f"UNWIND $srcs AS sid MATCH (a:Person {{id: sid}}), (b:Person {{id: $p2}}) WHERE a <> b "
+        # Same shape as the single-query form (WITH barriers); the UNWIND form took 26.8 s at SF10 over 32 connections
+        # where this one takes 540 ms on one
+        rows = self.run(f"MATCH (a:Person) WHERE a.id IN $srcs WITH a MATCH (b:Person {{id: $p2}}) WHERE a <> b WITH a, b "
                         f"MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]-(b) RETURN count(p) AS c, sum(size(p)) AS s",
                         srcs=sources, p2=person2)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
@@ -4228,10 +4230,9 @@ class MemgraphSystem(GraphDBSystem):
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
     def bi19(self, city1, city2):
-        # One BFS per source with the destination predicate on the expansion (Memgraph's set-oriented form)
-        rows = self.run(f"MATCH (a:Person {{cityId: $c1}}) WITH a MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]-(b:Person) "
-                        f"WHERE b.cityId = $c2 RETURN count(p) AS c, sum(size(p)) AS s", c1=city1, c2=city2)
-        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+        # Sources listed explicitly: with `(a:Person {cityId: $c1})` Memgraph takes 41.6 s at SF10 for the same
+        # answer that the `a.id IN $srcs` form gives in 134 ms (planner choice), so the single-query form lists them too
+        return self.bi19_from(self.bi19_sources(city1), city2)
 
     def bi20(self, company, person2):
         rows = self.run(f"MATCH (a:Person)-[:WORK_AT]->(:Company {{id: $co}}) WITH DISTINCT a "
