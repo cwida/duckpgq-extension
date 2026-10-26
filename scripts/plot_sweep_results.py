@@ -73,7 +73,9 @@ def load(prefix, sf):
         for key, rows in groups.items():
             ok = [float(r["query_s"]) for r in rows if r["status"] == "ok"]
             if ok:
-                points[key] = {"mean": statistics.mean(ok), "status": "ok"}
+                reached = [float(r["reachable_count"]) for r in rows if r["status"] == "ok" and r.get("reachable_count")]
+                points[key] = {"mean": statistics.mean(ok), "status": "ok",
+                               "reachable": statistics.mean(reached) if reached else None}
             elif any(r["status"].startswith(("timed_out", "budget_exceeded")) for r in rows):
                 points[key] = {"mean": None, "status": "exceeded"}
             elif any(r["status"].startswith("exceeds_pair_limit") for r in rows):
@@ -389,6 +391,181 @@ def scaling_figure(filename):
     save(fig, filename)
 
 
+def throughput_figure(filename):
+    """Answers per second: pairs per second for random pairs, (source, vertex, distance) results per second for
+    sources x all. A timed-out point is an upper bound: its work divided by 600 s, drawn as a hollow triangle."""
+    fig, axes = plt.subplots(2, 3, figsize=(7.2, 4.6), sharey="row")
+    rows_spec = [("random_pairs", "pairs per query", "pairs answered per second", lambda point, count: count),
+                 ("multi_source", "sources per query, each to every person", "distances produced per second",
+                  lambda point, count: point["reachable"])]
+    for row, (shape, xlabel, ylabel, work) in enumerate(rows_spec):
+        for col, sf in enumerate(SCALE_FACTORS):
+            ax = axes[row][col]
+            points = load("sweep_pairs", sf)
+            counts = sorted({k[2] for k in points if k[1] == shape})
+            ax.set_xscale("log", base=2)
+            ax.set_yscale("log")
+            label_positions = []
+            for system, name, color in SYSTEMS:
+                xs, ys, bound_x, bound_y = [], [], [], []
+                for count in counts:
+                    point = best_path(points, system, shape, count)
+                    if point is None:
+                        continue
+                    if point["status"] == "ok":
+                        amount = work(point, count)
+                        if amount:
+                            xs.append(count)
+                            ys.append(amount / point["mean"])
+                    elif point["status"] == "exceeded" and shape == "random_pairs":
+                        bound_x.append(count)
+                        bound_y.append(count / TIMEOUT_S)
+                linewidth, alpha, zorder = emphasis(system)
+                if xs:
+                    ax.plot(xs, ys, color=color, linewidth=linewidth, marker="o", markersize=3.6, markeredgecolor=SURFACE,
+                            markeredgewidth=0.8, zorder=zorder, alpha=alpha)
+                    label_positions.append((ys[-1], xs[-1], name, color))
+                if bound_x:
+                    ax.plot(bound_x, bound_y, linestyle="none", marker="v", markersize=5, markerfacecolor=SURFACE,
+                            markeredgecolor=color, markeredgewidth=1.2, zorder=zorder + 1, alpha=alpha)
+            ax.set_xticks(counts)
+            ax.set_xticklabels([count_label(c) for c in counts], fontsize=6)
+            ax.set_title(f"SF{sf}: {'sources × all' if shape == 'multi_source' else 'random pairs'}", loc="left")
+            style_axes(ax)
+            if col == 2:
+                ax.set_ylim(*ax.get_ylim())
+                direct_labels(ax, label_positions, max(counts) * 1.3, factor=2.2)
+        axes[row][1].set_xlabel(xlabel)
+        axes[row][0].set_ylabel(ylabel)
+    handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE) for _, _, c in SYSTEMS]
+    handles.append(Line2D([], [], linestyle="none", marker="v", markersize=5, markerfacecolor=SURFACE, markeredgecolor=INK2))
+    labels = [n for _, n, _ in SYSTEMS] + ["timed out (upper bound)"]
+    fig.legend(handles, labels, loc="lower center", ncol=7, bbox_to_anchor=(0.5, -0.01), handlelength=1.8, columnspacing=1.0)
+    fig.suptitle("Throughput: a set-oriented operator amortises the traversal, a per-pair system is a flat line",
+                 x=0.01, ha="left", fontsize=9.5, color=INK)
+    fig.tight_layout(rect=(0, 0.05, 0.9, 0.95))
+    save(fig, filename)
+
+
+# Load or import times in seconds, read from the run logs under ~/sweep on the m7a.8xlarge (23 Oct 2026):
+# "loaded in" lines of sweep_pairs_sf*.out for the graph databases, "Loaded Kuzu database" for Kuzu's import.
+LOAD_S = {
+    "memgraph": {"10": 5.8, "100": 71.0, "300": 278.9},
+    "neo4j": {"10": 22.8, "100": 257.8, "300": 841.3},
+    "falkordb": {"10": 85.3, "100": 872.1, "300": 2596.7},
+    "kuzu": {"10": 0.9, "100": 3.0, "300": 7.9},
+}
+
+
+def index_build_s(sf):
+    """CSR index build time at 32 threads from the index_comparison summaries (mode index_build)"""
+    files = sorted((RESULTS / f"sf{sf}").glob("summary_sssp_same_src_pairs1024_threads32_modeindex_comparison_*.csv"))
+    values = []
+    for path in files:
+        for r in csv.DictReader(open(path)):
+            if r.get("mode") == "index_build" and r.get("csr_build_s"):
+                values.append(float(r["csr_build_s"]))
+    return statistics.mean(values) if values else None
+
+
+def first_query_figure(filename):
+    """Time from the data being on disk to the first answer: import or load plus the first single-pair query. DuckPGQ
+    queries the tables as they are; the index route adds the index build (or a 90 ms load when it is persisted)."""
+    fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.5), sharex=True, sharey=True)
+    for ax, sf in zip(axes, SCALE_FACTORS):
+        points = load("sweep_pairs", sf)
+        entries = []
+        for system, name, color in SYSTEMS:
+            first = best_path(points, system, "random_pairs", 1)
+            first_s = first["mean"] if first and first["status"] == "ok" else None
+            if first_s is None:
+                continue
+            if system == "duckpgq_build":
+                total = first_s
+            elif system == "duckpgq_index":
+                build = index_build_s(sf)
+                if build is None:
+                    continue
+                total = build + first_s
+                name = "DuckPGQ index (build + query)"
+            else:
+                total = LOAD_S[system][sf] + first_s
+            entries.append((name, total, color))
+        ys = range(len(entries))
+        ax.barh(list(ys), [t for _, t, _ in entries], color=[c for _, _, c in entries], height=0.62, zorder=3)
+        for y, (name, total, color) in zip(ys, entries):
+            text = f"{total * 1000:.0f} ms" if total < 1 else (f"{total:.1f} s" if total < 100 else f"{total / 60:.0f} min")
+            ax.text(total * 1.25, y, text, va="center", ha="left", fontsize=6.5, color=INK2)
+        ax.set_yticks(list(ys))
+        ax.set_yticklabels([n for n, _, _ in entries], fontsize=7, color=INK2)
+        ax.invert_yaxis()
+        ax.set_xscale("log")
+        ax.set_xlim(0.003, 30000)
+        ax.set_xticks([0.01, 1, 100, 10000])
+        ax.set_xticklabels(["10 ms", "1 s", "100 s", "3 h"], fontsize=6.5)
+        ax.set_xticks([], minor=True)
+        ax.set_title(f"LDBC SF{sf}", loc="left")
+        ax.grid(axis="y", visible=False)
+        style_axes(ax)
+    axes[1].set_xlabel("from data on disk to the first answer")
+    fig.suptitle("Time to first query: import or load plus one single-pair shortest path", x=0.01, ha="left",
+                 fontsize=9.5, color=INK)
+    fig.tight_layout(rect=(0, 0.02, 1, 0.94))
+    save(fig, filename)
+
+
+def update_rows(pattern, system):
+    """Rows of the newest one-query-per-batch update run for a system at SF10"""
+    files = sorted((RESULTS / "sf10").glob(pattern), key=lambda p: p.stat().st_mtime)
+    for path in reversed(files):
+        rows = list(csv.DictReader(open(path)))
+        if rows and rows[0].get("queries_per_batch", "1") == "1":
+            return rows
+    return []
+
+
+def updates_figure(filename):
+    """The LDBC insert/delete stream at SF10: 190 commits of 2000 operations, one single-source query (1024
+    destinations) after each commit. Left: query latency during the stream; right: cost of applying a commit."""
+    series = [("duckpgq_index", "DuckPGQ index", COLOR["duckpgq_index"], ("update_sssp_pairs1024_threads32_batch2000x190_*.csv", "index_auto")),
+              ("duckpgq_build", "DuckPGQ build", COLOR["duckpgq_build"], ("update_sssp_pairs1024_threads32_batch2000x190_*.csv", "build")),
+              ("neo4j", "Neo4j", COLOR["neo4j"], ("update_neo4j_sssp_pairs1024_threads32_batch2000x190_*.csv", None)),
+              ("kuzu", "Kuzu", COLOR["kuzu"], ("update_kuzu_sssp_pairs1024_threads32_batch2000x190_*.csv", None)),
+              ("falkordb", "FalkorDB", COLOR["falkordb"], ("update_falkordb_sssp_pairs1024_threads32_batch2000x190_*.csv", None)),
+              ("memgraph", "Memgraph", COLOR["memgraph"], ("update_memgraph_sssp_pairs1024_threads32_batch2000x190_*.csv", None))]
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.5), sharey=True)
+    names, queries, updates, colors = [], [], [], []
+    for system, name, color, (pattern, config) in series:
+        rows = update_rows(pattern, system)
+        if config:
+            rows = [r for r in rows if r["config"] == config]
+        if not rows:
+            continue
+        names.append(name)
+        colors.append(color)
+        queries.append(statistics.mean(float(r["query_s"]) for r in rows))
+        updates.append(statistics.mean(float(r["update_s"]) for r in rows if r["update_s"]))
+    ys = list(range(len(names)))
+    for ax, values, title in ((axes[0], queries, "query latency during the stream"),
+                              (axes[1], updates, "applying one commit of 2000 operations")):
+        ax.barh(ys, values, color=colors, height=0.62, zorder=3)
+        for y, v in zip(ys, values):
+            ax.text(v * 1.2, y, f"{v * 1000:.0f} ms" if v < 1 else f"{v:.1f} s", va="center", ha="left", fontsize=6.5, color=INK2)
+        ax.set_xscale("log")
+        ax.set_xlim(0.002, 60)
+        ax.set_title(title, loc="left")
+        ax.grid(axis="y", visible=False)
+        ax.set_xlabel("seconds (log), mean over the stream")
+        style_axes(ax)
+    axes[0].set_yticks(ys)
+    axes[0].set_yticklabels(names, fontsize=7, color=INK2)
+    axes[0].invert_yaxis()
+    fig.suptitle("Under updates, LDBC SF10: single source to 1024 destinations after each of 190 commits", x=0.01, ha="left",
+                 fontsize=9.5, color=INK)
+    fig.tight_layout(rect=(0, 0.02, 1, 0.94))
+    save(fig, filename)
+
+
 def save(fig, filename):
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / f"{filename}.pdf")
@@ -406,3 +583,6 @@ if __name__ == "__main__":
     client_threads_figure("client_threads")
     speedup_figure("speedup")
     scaling_figure("scaling")
+    throughput_figure("throughput")
+    first_query_figure("first_query")
+    updates_figure("updates")
