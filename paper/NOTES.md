@@ -102,3 +102,19 @@ Introduction, when the frozen-commit numbers are in:
   (vs Kuzu/Neo4j), many-pair scaling against the native systems (the 1024- or 65 536-pair point), and the update cost
   per commit (index vs Kuzu). Written once, from the frozen rerun.
 - Keep the register of the rewritten paragraphs: ideas in the introduction, mechanism in Sections 3 and 4.
+
+## Implementation gaps found by the Section 4 code audit (26 Oct); the paper now states the code's behaviour
+
+- A reader whose bound is older than every retained epoch gets an error ("rerun the query"), not a build-per-query
+  fallback. Fix before the frozen commit or keep the sentence.
+- `CSRIndex::Vacuum` is a no-op and there is no checkpoint hook: the only fold triggers are the explicit function and
+  the automatic check in Snapshot. The paper no longer claims VACUUM/checkpoint folds.
+- The fold's table scan (`RebuildFromTable`) is single-threaded; only the build after it is parallel.
+- A writing transaction's private snapshot is a full CSR rebuild from the table, not epoch + overlay.
+- The snapshot cache is checked after the per-group visibility pass, so a cache hit still costs O(groups) CanFetch.
+- WAL: `SerializeToWAL` writes the full epoch + log into the CREATE INDEX record (not just create/drop).
+- Rows replayed from the WAL carry no group id and are decided per row until the next fold.
+- No vertex-existence filter in MATCH; endpoints come from the vertex tables, intermediate deleted vertices are
+  traversed. Documented as a semantic difference.
+- Epoch memory is plain heap, not buffer-managed (only the BFS working sets and partitions in the operator are).
+- Key limits: two integer columns fitting BIGINT, no UNIQUE/PK, < 2^32 vertices, NULL-keyed rows skipped.

@@ -38,7 +38,8 @@ edges by their edge-table row id, which the engine promises not to reuse while a
   \centering
   \input{figures/index_timeline}
   \caption{The index over time. Epoch 0 is the partitioned CSR of the edges visible to the transaction that built it
-  (bound $b_0$); every later commit appends one change group to the log, inserts in blue and deletes in red. A reader
+  (bound $b_0$); every later commit appends its change groups to the log, one per insert or delete call, inserts in
+  blue and deletes in red. A reader
   takes the newest epoch its bound allows and decides once per group whether the group is visible to it. A fold builds
   epoch 1 from epoch 0 and the groups visible to a fresh transaction with bound $b_f$; epoch 0 stays as long as a reader
   that started before the fold needs it.}
@@ -62,10 +63,12 @@ knows the answer for the whole group. A group of deletes applies when one row it
 sees, is no longer fetchable. Commits are serialized, so the visible groups of a reader form a prefix of the log and
 the newest visible group identifies the reader's view completely. That makes the snapshot cacheable: the index
 keeps the last snapshot it built, keyed by epoch and newest visible group, and every reader between two commits
-receives the same one. A transaction with uncommitted changes of its own gets a private snapshot, because its view
-is its own and nothing it builds may be published. Building a snapshot costs one version check per group since the
+receives the same one. A transaction with uncommitted changes of its own gets a private CSR built from its own view of
+the table, a full build rather than an overlay, because its view is its own and nothing it builds may be published. Building a snapshot costs one version check per group since the
 fold and one pass over the inserted edges to bucket them by destination range, in parallel; no edge of the epoch is
-examined. The per-row alternative, one version check per log entry, costs three to four times the query itself at
+examined. The version checks are paid even when the cached snapshot is returned, because they are what identifies it;
+groups whose rows have all been deleted again, and entries replayed from the write-ahead log after a restart, which
+carry no group, fall back to one check per row until the next fold. The per-row alternative, one version check per log entry, costs three to four times the query itself at
 SF10 with 300\,k pending operations, and is why change groups exist.
 
 Keys are resolved to dense ids when the group is appended, so that a snapshot can place inserted edges without a
@@ -77,12 +80,13 @@ against a newer epoch.
 \subsection{Fold}
 \label{sec:index-fold}
 
-The log grows with every commit and the overlay with it, so a \emph{fold} periodically builds a new epoch. It runs
-in its own transaction with bound $b_f$ and no changes of its own, scans the edges visible to that transaction with
-the same parallel build as \texttt{CREATE INDEX}, and installs the result as the newest epoch; the log entries the
-new epoch contains are the ones visible at $b_f$. A fold is triggered by \texttt{VACUUM}, by a checkpoint, or when the
-log exceeds a configurable fraction of the epoch, one tenth by default, at the end of a query; Section~\ref{sec:cost}
-discusses why the trigger belongs to the reader side.
+The log grows with every commit and the overlay with it, so a \emph{fold} periodically builds a new epoch. It is
+run by a transaction without uncommitted changes of its own, with that transaction's bound $b_f$: it scans the edges
+visible to it, builds the partitioned CSR with the same parallel build as \texttt{CREATE INDEX}, and installs the
+result as the newest epoch; the log entries the new epoch contains are the ones visible at $b_f$. A fold is triggered
+explicitly through a function, or automatically by the first reader that finds the log larger than a configurable
+fraction of the epoch, one tenth by default, before that reader's snapshot is built; folds are serialized by a lock.
+Section~\ref{sec:cost} discusses why the trigger belongs to the reader side and what a policy should look at.
 
 Two consequences of the interface shape the fold. The old epoch cannot be dropped at once: a transaction that started
 before the fold has a bound below $b_f$, and the new epoch contains edges it must not see. The index therefore retains
@@ -91,18 +95,20 @@ exceed theirs. And the log cannot be compacted by re-evaluating visibility at $b
 versions that would answer the question are gone; instead the folding transaction, while it is live, stamps every log
 entry with the generation of the first epoch that accounts for it, and compaction drops the entries whose generation
 is at most the oldest retained epoch's. A reader whose bound is older than every retained epoch, a long transaction
-that started before two folds, gets no snapshot and the operator builds the CSR for that query.
+that started before two folds, gets no snapshot; today its query fails with an error that asks for a rerun, and
+falling back to a build inside the query is the obvious fix.
 
 \subsection{Checkpoint, recovery and load}
 \label{sec:index-storage}
 
 At a checkpoint the newest epoch and the log are written through the engine's index allocator as a sequence of
-one-block segments with a small manifest in the index's storage options; the write-ahead log records only the
-creation and the drop of the index, and inserts and deletes that happened after the checkpoint are replayed through
-\texttt{Append} and \texttt{Delete} like any other index. On opening the database the index is bound on its first use
-and loaded in parallel, partition by partition, into buffer-managed memory: 0.03\,s at SF10 and 0.41\,s at SF300
-(Table~\ref{tab:fixed-costs}). An index created after the last checkpoint comes up empty and rebuilds itself on first
-use. Row ids are stable while the index exists because the checkpoint vacuum remaps row ids only for tables whose
+one-block segments with a small manifest in the index's storage options. The write-ahead log carries the same
+serialized state in the record that creates the index, so an index created after the last checkpoint survives a
+restart with its epoch; inserts and deletes that happened after the checkpoint are replayed through \texttt{Append}
+and \texttt{Delete} like any other index, and arrive without group ids, which is the per-row residue mentioned above.
+On opening the database the index is bound on its first use and loaded in parallel, partition by partition:
+0.03\,s at SF10 and 0.41\,s at SF300 (Table~\ref{tab:fixed-costs}). Only an index whose stored format is missing or
+outdated comes up empty and rebuilds itself on first use. Row ids are stable while the index exists because the checkpoint vacuum remaps row ids only for tables whose
 indexes are all ARTs; a table with a CSR index keeps its delete gaps until the index is dropped, which we document as
 the price of the design.
 
@@ -131,6 +137,8 @@ $b$. Entries appended to the log after the reader copied its length belong to co
 reader, since \texttt{Append} runs during the commit, before the rows become visible. The fold preserves the claim
 with $b_e := b_f$. The argument rests on three invariants of the engine and none of ours: the hooks fire at every
 commit, row ids are not reused while the index exists, and \texttt{CanFetch} implements $\mathit{Vis}$. What it does
-not cover is a vertex deleted while its edges remain: the SQL rewrite drops such edges through its join with the
-vertex table, the index keeps them, and \texttt{MATCH} adds a vertex-existence filter on the endpoints where the
-pattern makes that observable.
+not cover is a vertex deleted while its edges remain. The endpoints of a pair come from the vertex tables, so a
+deleted endpoint yields no pair; an intermediate vertex deleted with its edges in place is still traversed, where the
+SQL rewrite would have dropped those edges through its join with the vertex table. We document this as a semantic
+difference of the index; keys that are not integers, more than two key columns, and graphs beyond $2^{32}$ vertices
+are rejected at \texttt{CREATE INDEX}.
