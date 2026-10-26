@@ -404,7 +404,7 @@ def scaling_figure(filename):
         style_axes(ax)
     axes[0].set_ylabel("seconds per query (mean of 3)")
     series_legend(fig, without_build(sparse_systems("random_pairs", "multi_source")), ncol=6)
-    fig.suptitle("Scaling with the graph: the largest point of each shape from SF10 to SF300", x=0.01, ha="left",
+    fig.suptitle("Growth with the graph: the heaviest query of each sweep from SF10 to SF300", x=0.01, ha="left",
                  fontsize=9.5, color=INK)
     fig.tight_layout(rect=(0, 0.06, 0.9, 0.95))
     save(fig, filename)
