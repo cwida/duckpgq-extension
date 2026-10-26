@@ -3,10 +3,10 @@
 
 % Draft 22 Oct 2026 in the style of paper/STYLE.md. Every number is provisional until the frozen-commit rerun.
 
-A shortest path is the one graph query a join plan cannot express well. Since SQL:2023, \sqlpgq lets a query
-declare a property graph over existing tables and match patterns against it, including variable-length and
-shortest-path patterns~\cite{deutsch2022gql}, so every relational engine now faces the question of how to answer
-them: fork the engine and add graph storage and operators, buy a second system and copy the data
+SQL:2023 added graph pattern matching to SQL, and with it a query type relational engines have never executed
+well: the shortest path. Its \sqlpgq part lets a query declare a property graph over existing tables and match
+patterns against it, including variable-length and shortest-path patterns~\cite{deutsch2022gql}, so every relational
+engine now faces the question of how to answer them: fork the engine and add graph storage and operators, buy a second system and copy the data
 into it, or extend the engine from the outside.
 
 \duckpgq~\cite{tenwolde2023duckpgq} took the third option. It is an extension of \duckdb that parses \sqlpgq and
