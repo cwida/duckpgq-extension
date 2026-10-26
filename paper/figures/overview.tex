@@ -1,73 +1,75 @@
-% Figure 1: the extension around the partitioned CSR, framed by the engine hooks it uses.
-% Colours follow paper/figures: operator blue, index orange, engine grey. Coordinates in cm; text width 17.8 cm.
+% Figure 1, column width (8.4 cm): the extension around the partitioned CSR, framed by the engine hooks it uses.
+% Colours follow paper/figures: operator blue, index orange, engine grey. Coordinates in cm.
 \begin{tikzpicture}[
-  font=\scriptsize,
-  >={Stealth[length=4pt,width=3.5pt]},
-  box/.style={draw, rounded corners=1.5pt, align=center, inner sep=2.5pt, minimum height=5mm, anchor=north west},
+  font=\tiny,
+  >={Stealth[length=3.5pt,width=3pt]},
+  box/.style={draw, rounded corners=1.2pt, align=center, inner sep=2pt, minimum height=4mm, anchor=north west},
   engine/.style={box, draw=engine!80!black, fill=engine!15, text=black!80},
-  hook/.style={box, draw=engine!80!black, fill=white, font=\scriptsize\itshape, inner sep=2pt, minimum height=4mm, anchor=north},
+  hook/.style={font=\tiny\itshape, text=engine!60!black, inner sep=0.5pt, anchor=north},
   op/.style={box, draw=opblue, fill=opblue!10},
   ix/.style={box, draw=ixorange, fill=ixorange!10},
   sql/.style={box, draw=black!50, fill=white, font=\tiny\ttfamily, align=left},
-  flow/.style={->, thick, black!70},
-  opflow/.style={->, thick, opblue},
-  ixflow/.style={->, thick, ixorange},
-  hooked/.style={->, densely dashed, engine!80!black},
-  lbl/.style={font=\tiny, text=black!60, inner sep=1pt},
+  flow/.style={->, semithick, black!70},
+  opflow/.style={->, semithick, opblue},
+  ixflow/.style={->, semithick, ixorange},
+  hooked/.style={->, densely dashed, engine!80!black, thin},
+  lbl/.style={font=\tiny, text=black!60, inner sep=0.8pt},
 ]
-% ---------------------------------------------------------------- engine band (top)
-\node[engine, minimum width=17.8cm, align=left] (band) at (0,0)
-  {\textbf{DuckDB} \quad parser \;$\cdot$\; binder \;$\cdot$\; optimizer \;$\cdot$\; pipelines and scheduler \;$\cdot$\; MVCC storage \;$\cdot$\; index manager \;$\cdot$\; checkpoint and WAL};
-\node[hook] (h-grammar) at (2.3,-0.75)  {grammar extension};
-\node[hook] (h-opt)     at (7.6,-0.75)  {optimizer extension};
-\node[hook] (h-physop)  at (12.9,-0.75) {physical operator};
-\node[hook] (h-index)   at (17.0,-0.75) {index type};
-\foreach \h in {h-grammar,h-opt,h-physop,h-index} {\draw[engine!80!black] (\h.north) -- (\h.north |- band.south);}
+\def\W{8.4}
+% ---------------------------------------------------------------- engine band
+\node[engine, minimum width=\W cm, text width=\W cm-4pt, align=center, minimum height=4.5mm] (band) at (0,0)
+  {\textbf{DuckDB}\; parser $\cdot$ binder $\cdot$ optimizer $\cdot$ pipelines and scheduler $\cdot$ MVCC storage $\cdot$ index manager $\cdot$ WAL};
+\node[hook] (h-grammar) at (1.05,-0.5)  {grammar ext.};
+\node[hook] (h-opt)     at (3.15,-0.5)  {optimizer ext.};
+\node[hook] (h-physop)  at (5.3,-0.5)  {physical operator};
+\node[hook] (h-index)   at (7.7,-0.5)  {index type};
+\foreach \h in {h-grammar,h-opt,h-physop,h-index} {\draw[engine!80!black, thin] (\h.north) -- (\h.north |- band.south);}
 
-% ---------------------------------------------------------------- row 1: query rewrite
-\node[sql, text width=4.6cm] (match) at (0,-1.55)
-  {MATCH p = ANY SHORTEST\\ \ (a:Person)-[k:Knows]->\{1,8\}(b:Person)\\ \ WHERE a.id = 7\\ COLUMNS (b.id, path\_length(p))};
-\node[sql, text width=4.2cm] (marker) at (5.5,-1.55)
-  {SELECT b.id, iterativelength\\ \ \ \ (a.id, b.id, edges, V, E, key, 8)\\ FROM Person a, Person b, edges\\ WHERE a.id = 7};
-\node[op, text width=4.7cm, minimum height=11mm] (operator) at (10.6,-1.55)
-  {\textbf{path-finding operator}\\ sink: pairs $(a,b)$, edge endpoints\\ source: one length or path per pair};
-\draw[flow] (match) -- node[lbl, above] {rewrite} (marker);
-\draw[flow] (marker) -- node[lbl, above] {replace} node[lbl, below] {marker} (operator);
+% ---------------------------------------------------------------- row 1: MATCH -> SQL with marker
+\node[sql, text width=3.75cm] (match) at (0,-0.95)
+  {MATCH p = ANY SHORTEST\\ \ (a)-[k:Knows]->\{1,8\}(b)\\ \ WHERE a.id = 7\\ COLUMNS (b.id, path\_length(p))};
+\node[sql, text width=3.75cm] (marker) at (4.25,-0.95)
+  {SELECT b.id, iterativelength(\\ \ \ a.id, b.id, edges, V, E, key, 8)\\ FROM Person a, Person b, edges\\ WHERE a.id = 7};
+\draw[flow] (match) -- (marker);
 \draw[hooked] (h-grammar.south) -- (h-grammar.south |- match.north);
 \draw[hooked] (h-opt.south) -- (h-opt.south |- marker.north);
-\draw[hooked] (h-physop.south) -- (h-physop.south |- operator.north);
 
-% ---------------------------------------------------------------- row 2: build per query -> partitioned CSR <- index
-\node[op, text width=4.9cm] (build) at (0,-3.55)
+% ---------------------------------------------------------------- row 2: the operator
+\node[op, text width=\W cm-4pt] (operator) at (0,-2.05)
+  {\textbf{path-finding operator}: sinks the pairs $(a,b)$ and the edge endpoints, or reads an index snapshot;\\ one length or one path per pair};
+\draw[flow] (marker.south) -- node[lbl, left] {marker replaced (\S\ref{sec:planner})} (marker.south |- operator.north);
+\draw[hooked] (h-physop.south) -- ++(0,-0.12) -| (4.0,-1.6) -- (4.0,-2.05);
+
+% ---------------------------------------------------------------- row 3: build per query | CSR index
+\node[op, text width=3.75cm] (build) at (0,-2.95)
   {\textbf{build per query} (\S\ref{sec:csr})\\ edge table $\bowtie$ vertices $\rightarrow$ endpoints\\ radix partition by destination range\\ sort by source, emit sparse rows};
-\node[box, draw=black!60, fill=white, inner sep=2pt] (csr) at (6.0,-3.55) {%
-  \begin{tikzpicture}[font=\tiny, inner sep=0pt]
-    \node[anchor=north west, text=black!70, font=\scriptsize] (title) at (0,0) {\textbf{partitioned CSR}: one partition per destination range};
-    \foreach \i/\t in {0/0,1/1,2/2,3/$\cdots$,4/$p$} {
-      \node[draw=black!60, fill=black!4, minimum width=5.4mm, minimum height=4mm, anchor=north west, font=\scriptsize] (p\i) at ($(title.south west)+(\i*5.7mm,-1mm)$) {\t};
-    }
-    \node[draw=black!60, fill=white, anchor=north west, align=left] (detail) at ($(p0.south west)+(0,-1.4mm)$)
-      {sparse rows: source id, offsets, bucket index\\ edges: 16-bit destination (+ row id for paths)};
-    \draw[black!60] (p1.south) -- (p1.south |- detail.north);
-  \end{tikzpicture}};
-\node[ix, text width=4.9cm] (index) at (12.6,-3.55)
+\node[ix, text width=3.75cm] (index) at (4.25,-2.95)
   {\textbf{CSR index} (\S\ref{sec:index})\\ immutable epoch CSR + dictionary\\ change log stamped per commit group\\ snapshot = epoch + overlay for txn $T$};
-\draw[opflow] (build.east) -- node[lbl, above] {per query} (build.east -| csr.west);
-\draw[ixflow] (index.west) -- node[lbl, above] {snapshot} (index.west -| csr.east);
-\draw[hooked] (h-index.south) -- (h-index.south |- index.north);
-\draw[opflow] (operator.south) -- ++(0,-2.5mm) -| ($(csr.north east)+(-4mm,0)$);
+\draw[hooked] (h-index.south) -- ++(0,-0.12) -| (8.3,-3.2) -- (index.east |- 0,-3.2);
 
-% ---------------------------------------------------------------- row 3: traversals and result
-\node[op, text width=4.3cm] (ms) at (0,-5.75)
+% ---------------------------------------------------------------- row 4: the partitioned CSR
+\node[box, draw=black!60, fill=white, text width=\W cm-4pt, inner sep=2pt] (csr) at (0,-4.35) {%
+  \begin{tikzpicture}[font=\tiny, inner sep=0pt]
+    \node[anchor=north west, text=black!70] (title) at (0,0) {\textbf{partitioned CSR}: one partition per destination range, same layout for both};
+    \foreach \i/\t in {0/0,1/1,2/2,3/$\cdots$,4/$p$} {
+      \node[draw=black!60, fill=black!4, minimum width=4.6mm, minimum height=3.4mm, anchor=north west] (p\i) at ($(title.south west)+(\i*4.9mm,-0.8mm)$) {\t};
+    }
+    \node[anchor=north west, align=left, text=black!70] at ($(p4.north east)+(1.2mm,0)$)
+      {sparse rows: source id, offsets, bucket index\\ edges: 16-bit destination (+ row id for paths)};
+  \end{tikzpicture}};
+\draw[opflow] (build.south) -- node[lbl, right] {per query} (build.south |- csr.north);
+\draw[ixflow] (index.south) -- node[lbl, right] {snapshot} (index.south |- csr.north);
+
+% ---------------------------------------------------------------- row 5: traversals, phases, result
+\node[op, text width=3.75cm] (ms) at (0,-5.55)
   {\textbf{multi-source traversal} (\S\ref{sec:traversals})\\ 512 pairs per batch in bit lanes\\ one sweep over all partitions per level};
-\node[op, text width=4.6cm] (ss) at (5.0,-5.75)
-  {\textbf{single-source traversal} (\S\ref{sec:traversals})\\ frontier list, bucket lookups, parents\\ stops at the depth bound or last destination};
-\node[op, text width=3.9cm] (phases) at (10.3,-5.75)
-  {\textbf{phases as events} (\S\ref{sec:phases})\\ one event per BFS level\\ no task waits for a task};
-\node[sql, text width=2.9cm] (result) at (14.9,-5.75)
-  {b.id  len  path\\ 42 \ \ \ 3 \ \ [7,e1,19,e2,42]\\ 77 \ \ \ 5 \ \ ...};
-\draw[opflow] (csr.south) -- ++(0,-2.5mm) -| ($(ss.north)+(0,0)$);
-\draw[opflow] (ms.east) -- (ss.west);
-\draw[opflow] (ss.east) -- (phases.west);
-\draw[flow] (phases.east) -- node[lbl, above] {filter} node[lbl, below] {on \{1,8\}} (result.west);
+\node[op, text width=3.75cm] (ss) at (4.25,-5.55)
+  {\textbf{single-source traversal} (\S\ref{sec:traversals})\\ frontier list, bucket lookups, parents\\ stops at depth bound or last destination};
+\draw[opflow] (csr.south -| ms.north) -- (ms.north);
+\draw[opflow] (csr.south -| ss.north) -- (ss.north);
+\node[op, text width=\W cm-4pt] (phases) at (0,-6.5)
+  {\textbf{phases as events} (\S\ref{sec:phases}): one event per BFS level, no task waits for a task
+   \quad $\rightarrow$ \quad \texttt{(b.id, len, [7,e1,19,e2,42])}, filtered on \{1,8\}};
+\draw[opflow] (ms.south -| phases.north) ++(0,0) -- ($(phases.north)+(-2.0,0)$) ;
+\draw[opflow] (ss.south -| phases.north) ++(0,0) -- ($(phases.north)+(2.0,0)$);
 \end{tikzpicture}
