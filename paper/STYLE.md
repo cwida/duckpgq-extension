@@ -72,3 +72,8 @@ numbers; then "In the future, we will" with real items.
 | destination partition, source bucket | shard, chunk | the layout's own names |
 | host engine, extension | fork, plugin | the thesis is about the boundary |
 | vertex key, edge row id | rowid, id | keys identify vertices, row ids identify edges |
+
+## Out of scope for the text
+
+Bugs we fixed along the way (the barrier deadlock under concurrent queries, the NULL-pair fallback, the stale
+dictionary ids) are implementation details. Describe the resulting design and its property; do not narrate the bug.
