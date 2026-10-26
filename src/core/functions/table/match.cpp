@@ -1258,10 +1258,17 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	string reach_binding;
 	if (!operator_results.empty() && GetPathFindingReachOption(context)) {
 		auto &result = operator_results[0];
+		// A key lookup pins the destination; any other predicate on it also keeps the pair mode unless the
+		// filtered variant is enabled: with few selected destinations each search stops early in pair mode,
+		// while a reach runs to exhaustion and filters afterwards
 		bool pinned = false;
+		bool allow_filtered = GetPathFindingReachFilteredOption(context);
 		for (auto &condition : conditions) {
-			if (condition && (PGQBoundByKey(*condition, result.destination_binding, result.destination_key_column) ||
-			                  PGQBoundByKey(*condition, result.destination_binding, "rowid"))) {
+			if (!condition || !PGQReferencesBinding(*condition, result.destination_binding)) {
+				continue;
+			}
+			if (!allow_filtered || PGQBoundByKey(*condition, result.destination_binding, result.destination_key_column) ||
+			    PGQBoundByKey(*condition, result.destination_binding, "rowid")) {
 				pinned = true;
 			}
 		}

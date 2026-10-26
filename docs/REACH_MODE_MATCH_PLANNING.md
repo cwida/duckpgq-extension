@@ -1,6 +1,6 @@
 # Planning MATCH onto the reach mode (W29, step 2)
 
-Status: design note, 23 October 2026. The operator side of the reach mode is done (`bf149024`): `reachoperator(src,
+Status: implemented 26 October 2026 (`9272fcb4`); rule 2 below is behind `experimental_path_finding_operator_reach_filtered` (default off) after the SF100 measurement in the plan's 26 Oct entry: a selective destination predicate favours the pair mode's early termination. Design note, 23 October 2026. The operator side of the reach mode is done (`bf149024`): `reachoperator(src,
 src, ...)` yields one `[dst, len]` row per vertex a source reaches, on the build route and over a CSR index. This
 note describes how `MATCH` should choose it, grounded in the current `match.cpp` (functions `AddPathFinding`,
 `CreatePathFindingEndpointSubquery`, the result assembly around `PATH_FINDING_RESULT_PREFIX`).

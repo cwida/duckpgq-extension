@@ -113,6 +113,11 @@ W18 Neo4j Enterprise request, W22 outline.
   `path_finding_reach.test`. The harness's multi-source tables hold the sources only and `DuckPGQSystem.script`
   switches to the reach form for them. A WHERE directly on the source table next to the edge input is not planned
   (filter between scan and cross product); wrap the sources in a subquery, as the harness does.
+- MATCH on the reach mode (`9272fcb4`): decided in `MatchBindReplace` after `ProcessPathList`; `PathFindingOperatorResult`
+  carries `destination_binding/table/key_column/join_column` and `reach`; the destination alias is skipped in the
+  FROM, its predicates and projections move to the outer `reach_sql` query with a join on `result[1]`. Options
+  `experimental_path_finding_operator_reach` (default true) and `..._reach_filtered` (default false). Tests
+  `path_finding_reach_match.test`; `path_finding_operator_match.test` and `..._multi_batch.test` disable the reach.
 - Paths on the build route (W7 step 2, `48a7563a`): `shortestpathoperator(src, dst, struct_pack(src, dst, id), V, E,
   key)`; the `id` field is the edge row id and is required in path mode.
 - Many source groups (`8aa7aa32`): groups scheduled together divide the threads (`concurrent_groups` on the

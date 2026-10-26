@@ -47,7 +47,26 @@ SELECT s LIKE '%mode=reach%' AND s LIKE '%csr=built%' FROM (SELECT duckpgq_path_
 ----
 true
 
-# A predicate on another column of the destination is applied after the reach.
+# A predicate on another column of the destination keeps the pair mode by default (each search stops early) ...
+query II
+SELECT src, dst FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,4}(b:PV WHERE b.city = 'B')
+    COLUMNS (a.id AS src, b.id AS dst))
+ORDER BY src, dst;
+----
+0	1
+0	3
+0	5
+
+query I
+SELECT s LIKE '%mode=iterativelength%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# ... and is applied after the reach when the filtered variant is enabled.
+statement ok
+SET experimental_path_finding_operator_reach_filtered = true;
+
 query II
 SELECT src, dst FROM GRAPH_TABLE (g
     MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,4}(b:PV WHERE b.city = 'B')
@@ -62,6 +81,9 @@ query I
 SELECT s LIKE '%mode=reach%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
 ----
 true
+
+statement ok
+SET experimental_path_finding_operator_reach_filtered = false;
 
 # A destination bound by its key keeps the pair mode.
 query III
