@@ -358,8 +358,8 @@ void CorePGQOptions::RegisterCSRIndexFoldRatio(ExtensionLoader &loader) {
 }
 
 //------------------------------------------------------------------------------
-// Ablation switches (default = the behaviour the paper measures; each one turns a mechanism off or moves a
-// hard-coded threshold so an ablation can isolate it)
+// Microbenchmark switches (default = the behaviour the paper measures; each one turns a mechanism off or moves a
+// hard-coded threshold so a microbenchmark can isolate it)
 //------------------------------------------------------------------------------
 void CorePGQOptions::RegisterPathFindingSnapshotCache(ExtensionLoader &loader) {
 	auto &db = loader.GetDatabaseInstance();
