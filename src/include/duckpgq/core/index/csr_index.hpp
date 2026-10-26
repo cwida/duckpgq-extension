@@ -87,6 +87,8 @@ struct CSRIndexEpoch {
 	//! Epoch position (partition << 32 | offset) of each tombstoned row, DConstants::INVALID_INDEX when the row is
 	//! not an edge of this epoch; filled lazily by readers, protected by the index lock
 	vector<idx_t> tombstone_positions;
+	//! The same rows' positions in the reverse partitions (indexes with a stored reverse side), aligned
+	vector<idx_t> reverse_tombstone_positions;
 };
 
 //! An edge committed after the epoch was built (keys, since the vertex may be new) and its row id
@@ -135,6 +137,11 @@ struct CSRIndexSnapshot {
 	std::vector<shared_ptr<LocalCSR>> delta_partitions;
 	//! Aligned with partitions: bit set for epoch edge positions this reader must not traverse, or null
 	std::vector<shared_ptr<vector<uint64_t>>> suppressed;
+	//! The reverse direction (edges by source range), with its own companions and suppression, when the index
+	//! stores one (`reverse = true`); an undirected index aliases the forward vectors; empty otherwise
+	std::vector<shared_ptr<LocalCSR>> reverse_partitions;
+	std::vector<shared_ptr<LocalCSR>> reverse_delta_partitions;
+	std::vector<shared_ptr<vector<uint64_t>>> reverse_suppressed;
 	//! Keys of vertices that only appear in delta edges, id = vertex_count_of_epoch + position
 	vector<int64_t> extra_keys;
 	std::unordered_map<int64_t, uint32_t> extra_key_to_id;
@@ -151,6 +158,9 @@ class CSRIndex : public BoundIndex {
 public:
 	static constexpr const char *TYPE_NAME = "CSR";
 	static constexpr const char *UNDIRECTED_OPTION = "undirected";
+	//! `WITH (reverse = true)`: the epoch also stores every edge by its source range, without row ids, so a search
+	//! can run from the destination side (many sources to one destination) on a directed graph
+	static constexpr const char *REVERSE_OPTION = "reverse";
 
 	CSRIndex(const Identifier &name, IndexConstraintType constraint_type, const vector<column_t> &column_ids,
 	         TableIOManager &table_io_manager, const vector<unique_ptr<Expression>> &unbound_expressions,
@@ -163,6 +173,9 @@ public:
 	bool IsUndirected() const {
 		return undirected;
 	}
+	bool IsReverse() const {
+		return reverse;
+	}
 
 	//! Returns what a reader with this transaction may traverse, building the epoch from `table` when the index has
 	//! none yet. Returns nullptr when the epoch was built at a newer snapshot than the reader's.
@@ -173,7 +186,7 @@ public:
 
 	//! Builds an epoch from the edge lists of the build threads, in parallel
 	static shared_ptr<CSRIndexEpoch> BuildEpoch(ClientContext &context, vector<CSRIndexEdgeList> &lists,
-	                                            bool undirected, VisibilityBound bound);
+	                                            bool undirected, bool reverse, VisibilityBound bound);
 
 	//! Finds a bound CSR index on the edge table of a property graph whose key columns are the edge's source and
 	//! destination foreign keys and whose direction matches. Returns the index name, or an empty string.
@@ -245,13 +258,15 @@ private:
 
 	//! Persistence: the newest epoch and the part of the change log it does not account for are written as one byte
 	//! stream into fixed-size segments; the segment list and sizes travel in the storage info's options
-	static constexpr idx_t STORAGE_FORMAT_VERSION = 1;
+	//! Version 2 adds the reverse side after the forward partitions; version 1 streams still load (forward only)
+	static constexpr idx_t STORAGE_FORMAT_VERSION = 2;
 	vector<uint8_t> SerializeState() const;
 	IndexStorageInfo WriteSegments(const vector<uint8_t> &bytes, optional_ptr<QueryContext> checkpoint_context);
 	void LoadFromStorage(const IndexStorageInfo &info);
 
 private:
 	bool undirected = false;
+	bool reverse = false;
 	//! Retained epochs, oldest first; the newest serves current readers, older ones serve transactions that started
 	//! before a fold. Readers take the index lock only to copy an epoch pointer and the change-log lengths.
 	static constexpr idx_t MAX_RETAINED_EPOCHS = 2;

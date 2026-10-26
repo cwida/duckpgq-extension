@@ -64,6 +64,9 @@ public:
 	std::vector<shared_ptr<LocalCSR>> partition_delta_csrs;
 	std::vector<shared_ptr<vector<uint64_t>>> partition_suppressed;
 	std::vector<shared_ptr<LocalCSR>> reverse_partition_csrs;
+	//! Index snapshot overlay of the reverse side, aligned with reverse_partition_csrs (empty without an index)
+	std::vector<shared_ptr<LocalCSR>> reverse_partition_delta_csrs;
+	std::vector<shared_ptr<vector<uint64_t>>> reverse_partition_suppressed;
 	std::vector<shared_ptr<PullCSR>> pull_partition_csrs;
 	std::vector<std::vector<LocalCSRBuildPartition>> forward_build_buffers;
 	std::vector<LocalCSRSubphaseTiming> subphase_timings;
