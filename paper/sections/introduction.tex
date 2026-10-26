@@ -49,24 +49,20 @@ offers, a parser extension, an optimizer extension, a custom physical operator a
 give a relational engine graph-native path finding, including a graph index that is consistent with the engine's
 multi-version concurrency control (MVCC), and that the places where they fall short are few and nameable.
 
-The first half of the answer is a \emph{path-finding operator}. It is a physical operator with its own sink, source
-and event schedule, so its parallelism comes from the graph and not from the tuples: it radix-partitions the edges
-by destination range, builds one CSR partition per range in parallel, and runs the traversal as a chain of
-per-level events whose tasks never wait for each other. It keeps the \msbfs lanes for queries with many pairs and
-adds a single-source frontier traversal for queries with few, because a bit-lane sweep over all vertices is the
-wrong tool for one pair. It stops at the depth the pattern allows, reconstructs paths with vertex keys and edge row
-ids, and is reached from \texttt{MATCH} through an optimizer rule that replaces a marker function in the rewritten
-SQL, so the planner sees a normal operator with cardinalities.
+The first half of the answer is a \emph{path-finding operator}. It is a physical operator with its own inputs and
+its own schedule, so its parallelism comes from the graph and not from the tuples: the edges are partitioned by
+destination range, the partitions are built and traversed in parallel, and the traversal proceeds level by level as
+a chain of events that never wait for each other. One traversal serves many pairs at once, the multi-source lanes of
+the CIDR design; a second, a frontier search per source, serves the single pair that the lanes handle badly. The
+planner reaches the operator through an optimizer rule, so it sees an ordinary operator with a cardinality.
 
-The second half is a \emph{CSR index}. \texttt{CREATE INDEX ... USING CSR (src, dst)} asks the engine to keep the
-graph representation across queries, restarts and checkpoints, and the engine's index interface delivers every
-insert and delete to it. What the interface does not deliver is visibility: an extension index is told which rows
-changed, not which transaction may see them, and it may not ask about the past because the engine garbage-collects
-row versions. The index therefore stores an immutable CSR per \emph{epoch} together with a change log stamped per
-commit group, resolves visibility once per group through the engine's own row-version check, and gives every
-reader a snapshot that is exactly the set of edges its transaction can see. A fold turns the log into a new epoch in
-the background; persistence and recovery go through the engine's block manager and write-ahead log like any other
-index. Reconstructed paths carry edge row ids, so a path can be joined back to the edge table it came from.
+The second half is a \emph{CSR index}. \texttt{CREATE INDEX ... USING CSR (src, dst)} keeps the graph representation
+across queries, restarts and checkpoints, maintained through the engine's index interface like any other index. The
+difficulty is consistency: a transaction must traverse exactly the edges it is allowed to see, and the interface tells
+an extension which rows changed but nothing about who may see them. The index resolves this with immutable epochs and
+a change log whose entries the engine's own row-version check classifies, once per commit rather than once per edge;
+every reader gets a snapshot of its own transaction's view, writers pay a constant cost per edge, and a background
+fold turns the log into the next epoch. Section~\ref{sec:index} gives the design and its correctness argument.
 
 We evaluate on LDBC SNB scale factors 1 to 300 and the Graphalytics data sets against Kuzu, Neo4j, Memgraph and
 FalkorDB, read-only and under LDBC update streams with concurrent readers. \todo{Provisional, m7a.8xlarge, 32 threads:
