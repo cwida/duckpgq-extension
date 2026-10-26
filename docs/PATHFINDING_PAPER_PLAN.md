@@ -636,3 +636,21 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   sources x all, flat on pairs. (10) Within noise: dedupe, early termination on these shapes, snapshot cache with an
   empty change log. Scheduling study configs added to the harness (`microbench --configs scheduling`: workers per
   batch 1..16, groups 2..16 at one worker, grouped off).
+- 26 Oct (evening): W31 scheduling sweep at SF10, random pairs, 3 repeats (`microbench --configs scheduling`).
+  Workers per batch w with 32/w groups; baseline is w=32 (one group). Build route, 2048 / 16384 / 65536 pairs:
+  w=32 0.12 / 0.78 / 3.03 s; w=16 0.14 / 0.51 / 1.91; w=8 0.20 / 0.42 / 1.48; w=4 0.32 / 0.40 / 1.32; w=2 0.49 /
+  0.61 / 1.23; w=1 0.57 / 0.79 / 1.23; grouping off 0.12 / 0.46 / 1.72. Index route: w=32 0.09 / 0.66 / 2.63 s;
+  w=4 0.26 / 0.32 / 1.09; w=1 0.42 / 0.59 / 0.80; grouping off 0.09 / 0.31 / 1.07. Capping the groups at w=1
+  (2/4/8/16 groups at 65536 pairs: 8.9 / 4.8 / 2.7 / 1.7 s build) shows the cost is linear in the batches a group
+  runs in sequence. The optimum is w = threads / batches at every point (1 batch: 32; 8 batches: 4; 32 batches: 1),
+  and grouped with the rule beats grouping off (0.80 vs 1.07 s on the index at 65536 pairs: one working set per
+  group instead of one per batch). Rule implemented: `GetGroupedWorkersPerBatch` takes the batch count, groups are
+  bounded by a working-set budget of a quarter of the buffer manager's memory (192 B per vertex per group), spare
+  threads go back to the batches when the budget binds. Headline effect at SF10, 65536 pairs: index 2.6 s to about
+  0.8 s, build 3.0 s to 1.2 s; SF100 and SF300 to be re-measured.
+- 26 Oct (evening): reverse-side forward cost (finding 7 above) not reproducible with freshly built indexes. Both
+  SF10 indexes dropped and recreated, index route, 3 repeats: 128 sources x all baseline 45 ms vs reverse 45 ms;
+  1024 sources 232 ms vs 232 ms. The 1.44x row came from a reverse index created while the 22 Oct baseline index
+  (storage format 1) coexisted; the forward-index rows measured in the same window were normal, so the cause is
+  not the second index as such. Unexplained; watch the SF100 microbenchmark, which recreates the situation. Rule for
+  the frozen rerun: every index built fresh (the repro scripts start from an empty data directory).

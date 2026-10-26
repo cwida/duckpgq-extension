@@ -1024,11 +1024,15 @@ protected:
 	}
 };
 
-idx_t GetGroupedWorkersPerBatch(PathFindingGlobalSinkState &gstate, ClientContext &context) {
+//! Workers per MS-BFS batch. Unset, the rule is threads / batches (floored at one): a single batch takes every
+//! thread, 32 batches on 32 threads run one per thread with no barrier between levels. Measured at SF10 (W31,
+//! 26 Oct): 2048 pairs 32 workers 0.12 s vs 1 worker 0.57 s; 16384 pairs 4 workers 0.40 s vs 32 workers 0.78 s;
+//! 65536 pairs 1 worker 1.23 s (build) / 0.80 s (index) vs 32 workers 3.03 s / 2.63 s.
+idx_t GetGroupedWorkersPerBatch(PathFindingGlobalSinkState &gstate, ClientContext &context, idx_t batch_count) {
 	auto total_threads = std::max<idx_t>(1, gstate.num_threads);
 	auto configured_workers = GetPathFindingThreadsPerBatch(context);
 	auto workers_per_batch = configured_workers <= 0
-	                             ? total_threads
+	                             ? std::max<idx_t>(1, total_threads / std::max<idx_t>(1, batch_count))
 	                             : std::min<idx_t>(static_cast<idx_t>(configured_workers), total_threads);
 	auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
 	                           ? gstate.local_csr_state->reverse_partition_csrs
@@ -1037,6 +1041,9 @@ idx_t GetGroupedWorkersPerBatch(PathFindingGlobalSinkState &gstate, ClientContex
 	return std::max<idx_t>(1, std::min(workers_per_batch, partition_count));
 }
 
+//! Concurrent worker groups: the threads not used inside a batch run further batches, bounded by the batch count
+//! and by a working-set budget (each group holds 3 bitsets per vertex, 192 B at 512 lanes: 13 MB at SF10, 230 MB
+//! at SF300) of a quarter of the buffer manager's memory
 idx_t GetGroupedBatchCount(PathFindingGlobalSinkState &gstate, ClientContext &context, idx_t workers_per_batch,
                            idx_t batch_count) {
 	auto total_threads = std::max<idx_t>(1, gstate.num_threads);
@@ -1045,6 +1052,10 @@ idx_t GetGroupedBatchCount(PathFindingGlobalSinkState &gstate, ClientContext &co
 	auto group_count = configured_groups <= 0
 	                       ? max_groups_from_threads
 	                       : std::min<idx_t>(static_cast<idx_t>(configured_groups), max_groups_from_threads);
+	auto working_set_bytes = std::max<idx_t>(1, BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
+	auto budget = BufferManager::GetBufferManager(context).GetMaxMemory() / 4;
+	auto max_groups_from_memory = std::max<idx_t>(1, budget / working_set_bytes);
+	group_count = std::min(group_count, max_groups_from_memory);
 	return std::max<idx_t>(1, std::min(group_count, batch_count));
 }
 
@@ -1116,8 +1127,12 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 		return batch_events;
 	}
 
-	auto workers_per_batch = GetGroupedWorkersPerBatch(gstate, context);
+	auto workers_per_batch = GetGroupedWorkersPerBatch(gstate, context, batches.size());
 	auto group_count = GetGroupedBatchCount(gstate, context, workers_per_batch, batches.size());
+	if (group_count * workers_per_batch < std::max<idx_t>(1, gstate.num_threads) && group_count < batches.size()) {
+		// The memory budget capped the groups: give the spare threads back to each batch
+		workers_per_batch = std::max<idx_t>(1, std::max<idx_t>(1, gstate.num_threads) / group_count);
+	}
 	RecordStrategy(context, "scheduling", "grouped");
 	RecordStrategy(context, "groups", std::to_string(group_count));
 	RecordStrategy(context, "workers_per_batch", std::to_string(workers_per_batch));
