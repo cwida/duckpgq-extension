@@ -11,17 +11,20 @@ between every pair of vertices $a$ and $b$ that the rest of the pattern admits; 
 \texttt{ANY SHORTEST} fixes which of the possibly many paths is returned. Four functions expose the path:
 \texttt{path\_length(p)}, \texttt{vertices(p)}, \texttt{edges(p)} and \texttt{element\_id(p)}, the last being the
 list of vertex and edge identifiers in path order. Everything in this paper concerns these patterns on a single
-edge table, directed or undirected; the rest of \sqlpgq translates to joins and filters and is not changed.
+edge table, directed or undirected. In \duckpgq's rewrite of \texttt{MATCH} into SQL, vertex and edge patterns become
+joins over the vertex and edge tables and the pattern's predicates become filters; that part of the rewrite is
+unchanged by this work. Only the variable-length and shortest-path patterns change: they become the marker function
+that the optimizer rule replaces by the path-finding operator (Section~\ref{sec:planner}).
 
-\paragraph{\duckdb, pipelines and extensions.} \duckdb executes a query plan as pipelines that push vectors of about
-2048 rows from a source through operators into a sink; a sink that must see all its input, a hash join build or a
+\paragraph{\duckdb, pipelines and extensions.} \duckdb executes a query plan as pipelines that push one \duckdb
+vector, 2048 rows, at a time from a source through operators into a sink; a sink that must see all its input, a hash join build or a
 sort, ends one pipeline and starts the next. Pipelines are broken into tasks that a fixed pool of worker threads
 executes, and a pipeline's completion is an \emph{event} whose callback can schedule further events, which is how
-operators run multi-phase work without blocking a thread. An extension is a shared library loaded into a running
-engine; the engine exposes to it the interfaces listed in Section~\ref{sec:hooks}, among them a parser extension for
-new syntax, an optimizer extension that may rewrite the logical plan, custom logical and physical operators, and a
-custom index type. An extension does not get at the storage format, the transaction manager or the scheduler's
-internals.
+operators run multi-phase work without blocking a thread. \duckdb has an extension mechanism through which external code
+adds to the system behind defined interfaces: parser extensions, scalar and table functions, optimizer extensions,
+custom operators and index types (Section~\ref{sec:hooks} lists them). \duckpgq is such an extension. It adds \sqlpgq
+parsing, the path-finding operator and the CSR index through these interfaces, and it gets nothing else: the storage
+format, the transaction manager and the executor are \duckdb's and are unchanged.
 
 \paragraph{MVCC and row visibility.} \duckdb keeps multiple versions of a row and gives each transaction a
 \emph{visibility bound}: a row inserted by a commit at or before the bound, and not deleted by a commit at or before
