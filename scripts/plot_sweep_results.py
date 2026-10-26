@@ -121,7 +121,7 @@ def series_legend(fig, systems, ncol, y=-0.04, marker="o", linewidth=1.6):
     handles = [Line2D([], [], color=c, linewidth=linewidth, marker=marker, markersize=3.6, markeredgecolor=SURFACE)
                for _, _, c in systems]
     handles.append(Line2D([], [], linestyle="none", marker="^", markersize=5, markerfacecolor=SURFACE, markeredgecolor=INK2))
-    labels = [n for _, n, _ in systems] + ["over budget"]
+    labels = [n for _, n, _ in systems] + ["timed out"]
     fig.legend(handles, labels, loc="lower center", ncol=ncol, bbox_to_anchor=(0.5, y), handlelength=2.4, columnspacing=1.2)
 
 
@@ -143,7 +143,7 @@ def sweep_figure(shape, xlabel, filename, title):
         ax.set_xscale("log", base=2)
         ax.set_yscale("log")
         ax.axhline(BUDGET_S, color=AXIS, linewidth=0.6)
-        ax.text(counts[0], BUDGET_S * 1.25, "600 s budget", color=MUTED, fontsize=6.5, va="bottom")
+        ax.text(counts[0], BUDGET_S * 1.25, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
         label_positions = []
         for system, name, color in SYSTEMS:
             xs, ys, exceeded_x = [], [], []
@@ -181,7 +181,7 @@ def ldbc_figure(filename):
         points = load("ldbc_queries", sf)
         ax.set_xscale("log")
         ax.axvline(BUDGET_S, color=AXIS, linewidth=0.6)
-        ax.text(BUDGET_S * 1.15, -0.42, "budget", color=MUTED, fontsize=6.5, ha="left", va="center")
+        ax.text(BUDGET_S * 1.15, -0.42, "timeout", color=MUTED, fontsize=6.5, ha="left", va="center")
         offsets = {system: (i - (len(SYSTEMS) - 1) / 2) * 0.11 for i, (system, _, _) in enumerate(SYSTEMS)}
         for row, (query, _) in enumerate(queries):
             for system, name, color in SYSTEMS:
@@ -213,7 +213,7 @@ def ldbc_figure(filename):
     axes[1].set_xlabel("seconds per query (mean over 5 parameter sets)")
     handles = [Line2D([], [], linestyle="none", marker="o", markersize=4.2, color=c, markeredgecolor=SURFACE) for _, _, c in SYSTEMS]
     handles.append(Line2D([], [], linestyle="none", marker="^", markersize=5, markerfacecolor=SURFACE, markeredgecolor=INK2))
-    labels = [n for _, n, _ in SYSTEMS] + ["over budget"]
+    labels = [n for _, n, _ in SYSTEMS] + ["timed out"]
     fig.legend(handles, labels, loc="lower center", ncol=7, bbox_to_anchor=(0.5, 0.0), handlelength=1.2, columnspacing=1.2)
     fig.suptitle("LDBC queries as hop-count shortest paths, undirected knows; baselines on their best path",
                  x=0.01, ha="left", fontsize=9.5, color=INK)
@@ -230,7 +230,7 @@ def client_threads_figure(filename):
         ax.set_xscale("log", base=2)
         ax.set_yscale("log")
         ax.axhline(BUDGET_S, color=AXIS, linewidth=0.6)
-        ax.text(counts[0], BUDGET_S * 1.25, "600 s budget", color=MUTED, fontsize=6.5, va="bottom")
+        ax.text(counts[0], BUDGET_S * 1.25, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
         ref = [(c, points[("duckpgq_index", "random_pairs", c)]["mean"]) for c in counts
                if points.get(("duckpgq_index", "random_pairs", c), {}).get("status") == "ok"]
         plot_series(ax, [c for c, _ in ref], [v for _, v in ref], [], COLOR["duckpgq_index"])
