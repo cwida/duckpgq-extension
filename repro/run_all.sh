@@ -4,7 +4,7 @@
 # machine was roughly 3.5 days, dominated by the baselines at SF300 (10 minute timeouts) and the
 # FalkorDB/Neo4j update workloads (about 30 minutes each).
 #
-# Subsets:  ./run_all.sh sweep | ldbc | client | updates | all   (default all)
+# Subsets:  ./run_all.sh sweep | ldbc | client | ablation | updates | all   (default all)
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 cd "${REPO_ROOT}"
@@ -34,6 +34,13 @@ if [ "$what" = all ] || [ "$what" = client ]; then
       --client-threads "${CLIENT_THREADS}" --systems memgraph falkordb kuzu --notes "W27 SF${sf} client threads ${CLIENT_THREADS} ${NOTE}"
     step "ldbc_queries_sf${sf}_client${CLIENT_THREADS}" ${HARNESS} ldbc-queries --scale-factor "$sf" "${COMMON[@]}" \
       --client-threads "${CLIENT_THREADS}" --systems memgraph falkordb kuzu --notes "W17 SF${sf} client threads ${CLIENT_THREADS} ${NOTE}"
+  done
+fi
+
+if [ "$what" = all ] || [ "$what" = ablation ]; then
+  # W19: one mechanism switched off at a time on the DuckPGQ routes (docs/ABLATION_SWITCHES.md)
+  for sf in 10 100; do
+    step "ablation_sf${sf}" ${HARNESS} ablation --scale-factor "$sf" "${COMMON[@]}" --configs all --notes "W19 ablation SF${sf} ${NOTE}"
   done
 fi
 

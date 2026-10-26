@@ -218,6 +218,9 @@ public:
 	      distances(v_size, -1), seen(v_size), frontier_stamp(v_size, 0), iter(1), change(false) {
 		benchmark_enabled = GetPathFindingBenchmarkOption(context);
 		benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
+		target_early_termination = GetPathFindingTargetEarlyTermination(context);
+		auto divisor = GetPathFindingSparseFrontierDivisor(context);
+		sparse_frontier_divisor = divisor > 0 ? NumericCast<idx_t>(divisor) : 0;
 	}
 
 	//! ---- PhasedKernel
@@ -397,7 +400,7 @@ public:
 
 	//! Registers the destinations of this group so the search can stop when all of them are found
 	void AddTarget(int64_t target) {
-		if (target < 0 || target >= v_size) {
+		if (!target_early_termination || target < 0 || target >= v_size) {
 			return;
 		}
 		if (targets.Insert(NumericCast<uint32_t>(target))) {
@@ -432,7 +435,7 @@ private:
 		if (!row_lookup_available) {
 			return false;
 		}
-		return frontier_list.size() * SPARSE_FRONTIER_DIVISOR < static_cast<idx_t>(v_size);
+		return sparse_frontier_divisor > 0 && frontier_list.size() * sparse_frontier_divisor < static_cast<idx_t>(v_size);
 	}
 
 	void CheckRowLookupAvailable() {
@@ -623,7 +626,10 @@ private:
 		}
 	}
 
-	static constexpr idx_t SPARSE_FRONTIER_DIVISOR = 64;
+	//! experimental_path_finding_operator_sparse_frontier_divisor (0: always sweep)
+	idx_t sparse_frontier_divisor = 64;
+	//! experimental_path_finding_operator_target_early_termination
+	bool target_early_termination = true;
 	static constexpr idx_t FRONTIER_SLICE = 256;
 
 	bool row_lookup_available = true;
@@ -1048,8 +1054,6 @@ bool ShouldUseGroupedIterativeLengthBatches(PathFindingGlobalSinkState &gstate, 
 	       GetPathFindingGroupedBatches(context);
 }
 
-static constexpr idx_t FEW_SOURCES_LIMIT = 16;
-
 bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, ClientContext &context) {
 	if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH ||
 	    gstate.path_finding_mode == PathFindingOperatorMode::REACH) {
@@ -1070,7 +1074,8 @@ bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, C
 	}
 	// A handful of sources is always cheaper to search one at a time with the frontier kernel than with 512-lane
 	// bitsets over every vertex
-	if (distinct_search_sources <= FEW_SOURCES_LIMIT) {
+	auto few_sources_limit = GetPathFindingFewSourcesLimit(context);
+	if (few_sources_limit > 0 && distinct_search_sources <= NumericCast<idx_t>(few_sources_limit)) {
 		return true;
 	}
 	return static_cast<double>(gstate.pair_stats.pair_count) >=

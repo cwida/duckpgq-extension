@@ -147,3 +147,10 @@ W18 Neo4j Enterprise request, W22 outline.
 archive and the figures move together, then commit `repro/results` and `paper/`. `./repro/collect.sh archive`
 re-renders from the archive alone. Decisions: Neo4j Enterprise evaluation-licence numbers are published (W18);
 the archive goes to GitHub, this branch first, then a separate repository (W21).
+
+## Ablations (26 Oct)
+
+`docs/ABLATION_SWITCHES.md` is the inventory and the sweep design. Run `python3 scripts/pathfinding_benchmark.py
+ablation --scale-factor SF --threads 32 --repeats 3 --timeout-s 600` and print with `ablation-table`. Configurations
+live in `ABLATION_CONFIGS` / `ABLATION_GROUPS` in the harness; adding one is a dict entry. Results chain on the box:
+`~/sweep/run_ablation_chain.sh` (SF10 then SF100, marker `~/sweep/ablation_chain_done.txt`).

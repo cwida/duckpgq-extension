@@ -111,6 +111,30 @@ int32_t GetPathFindingSourceGroupRatio(ClientContext &context) {
 	return value.GetValue<int32_t>();
 }
 
+bool GetPathFindingSnapshotCache(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_snapshot_cache", value);
+	return value.GetValue<bool>();
+}
+
+bool GetPathFindingTargetEarlyTermination(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_target_early_termination", value);
+	return value.GetValue<bool>();
+}
+
+int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_sparse_frontier_divisor", value);
+	return value.GetValue<int32_t>();
+}
+
+int32_t GetPathFindingFewSourcesLimit(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_few_sources_limit", value);
+	return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -331,6 +355,46 @@ void CorePGQOptions::RegisterCSRIndexFoldRatio(ExtensionLoader &loader) {
 	                          "A CSR index folds its change log into a new epoch when the log exceeds this fraction of "
 	                          "the epoch's edges; 0 disables automatic folding",
 	                          LogicalType::DOUBLE, Value(0.1));
+}
+
+//------------------------------------------------------------------------------
+// Ablation switches (default = the behaviour the paper measures; each one turns a mechanism off or moves a
+// hard-coded threshold so an ablation can isolate it)
+//------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingSnapshotCache(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_snapshot_cache",
+	                          "Reuse a CSR index snapshot across queries while the epoch, its change log and the "
+	                          "visible change groups are unchanged; false rebuilds the overlay for every query",
+	                          LogicalType::BOOLEAN, Value(true));
+}
+
+void CorePGQOptions::RegisterPathFindingTargetEarlyTermination(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_target_early_termination",
+	                          "Stop a source-grouped search once every destination of the group is reached; false "
+	                          "searches to the depth bound or exhaustion",
+	                          LogicalType::BOOLEAN, Value(true));
+}
+
+void CorePGQOptions::RegisterPathFindingSparseFrontierDivisor(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_sparse_frontier_divisor",
+	                          "A source-grouped frontier is expanded vertex by vertex when frontier_size * divisor < "
+	                          "vertex_count, and by a sweep over the partitions otherwise; 0 always sweeps",
+	                          LogicalType::INTEGER, Value(64));
+}
+
+void CorePGQOptions::RegisterPathFindingFewSourcesLimit(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_few_sources_limit",
+	                          "Pair queries with at most this many distinct sources always use the per-source frontier "
+	                          "kernel instead of MS-BFS lanes; 0 leaves the choice to the source group ratio",
+	                          LogicalType::INTEGER, Value(16));
 }
 
 } // namespace duckdb

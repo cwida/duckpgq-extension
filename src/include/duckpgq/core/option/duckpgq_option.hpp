@@ -22,6 +22,10 @@ int32_t GetPathFindingMaxConcurrentBatches(ClientContext &context);
 int32_t GetPathFindingReverseOrientationRatio(ClientContext &context);
 int32_t GetPathFindingSourceGroupRatio(ClientContext &context);
 double_t GetCSRIndexFoldRatio(ClientContext &context);
+bool GetPathFindingSnapshotCache(ClientContext &context);
+bool GetPathFindingTargetEarlyTermination(ClientContext &context);
+int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context);
+int32_t GetPathFindingFewSourcesLimit(ClientContext &context);
 
 struct CorePGQOptions {
 	static void Register(ExtensionLoader &loader) {
@@ -43,6 +47,10 @@ struct CorePGQOptions {
 		RegisterPathFindingReverseOrientationRatio(loader);
 		RegisterPathFindingSourceGroupRatio(loader);
 		RegisterCSRIndexFoldRatio(loader);
+		RegisterPathFindingSnapshotCache(loader);
+		RegisterPathFindingTargetEarlyTermination(loader);
+		RegisterPathFindingSparseFrontierDivisor(loader);
+		RegisterPathFindingFewSourcesLimit(loader);
 	}
 
 private:
@@ -64,6 +72,10 @@ private:
 	static void RegisterPathFindingReverseOrientationRatio(ExtensionLoader &loader);
 	static void RegisterPathFindingSourceGroupRatio(ExtensionLoader &loader);
 	static void RegisterCSRIndexFoldRatio(ExtensionLoader &loader);
+	static void RegisterPathFindingSnapshotCache(ExtensionLoader &loader);
+	static void RegisterPathFindingTargetEarlyTermination(ExtensionLoader &loader);
+	static void RegisterPathFindingSparseFrontierDivisor(ExtensionLoader &loader);
+	static void RegisterPathFindingFewSourcesLimit(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

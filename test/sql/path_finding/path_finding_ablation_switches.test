@@ -1,0 +1,142 @@
+# name: test/sql/path_finding/path_finding_ablation_switches.test
+# description: the ablation switches (target early termination, sparse frontier divisor, few-sources limit, snapshot cache) change the strategy or the work, never the answer
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/path_finding_ablation_switches.db
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+CREATE TABLE pv(id BIGINT);
+
+statement ok
+INSERT INTO pv VALUES (0), (1), (2), (3), (4), (5), (6);
+
+statement ok
+CREATE TABLE pe(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO pe VALUES (0, 1), (1, 2), (2, 3), (0, 4), (4, 3), (3, 5);
+
+statement ok
+CREATE TABLE pairs(s BIGINT, d BIGINT);
+
+statement ok
+INSERT INTO pairs SELECT a.id, b.id FROM pv a, pv b WHERE a.id IN (0, 4) AND b.id IN (3, 5, 6);
+
+# Defaults: two sources fall under the few-sources rule, so the per-source kernel runs
+query II
+SELECT count(len), sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 7::BIGINT, 6::BIGINT, 'graph:abl') AS len FROM pairs, pe);
+----
+4	8
+
+query I
+SELECT s LIKE '%scheduling=source_grouped%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Few-sources rule off: 6 pairs over 2 sources is below the default ratio of 4, so MS-BFS lanes run instead
+statement ok
+SET experimental_path_finding_operator_few_sources_limit = 0;
+
+query II
+SELECT count(len), sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 7::BIGINT, 6::BIGINT, 'graph:abl') AS len FROM pairs, pe);
+----
+4	8
+
+query I
+SELECT s LIKE '%scheduling=source_grouped%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+false
+
+statement ok
+RESET experimental_path_finding_operator_few_sources_limit;
+
+# Early termination off and both frontier expansions forced: same answer
+statement ok
+SET experimental_path_finding_operator_target_early_termination = false;
+
+query II
+SELECT count(len), sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 7::BIGINT, 6::BIGINT, 'graph:abl') AS len FROM pairs, pe);
+----
+4	8
+
+statement ok
+SET experimental_path_finding_operator_sparse_frontier_divisor = 0;
+
+query II
+SELECT count(len), sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 7::BIGINT, 6::BIGINT, 'graph:abl') AS len FROM pairs, pe);
+----
+4	8
+
+statement ok
+SET experimental_path_finding_operator_sparse_frontier_divisor = 2000000000;
+
+query II
+SELECT count(len), sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 7::BIGINT, 6::BIGINT, 'graph:abl') AS len FROM pairs, pe);
+----
+4	8
+
+statement ok
+RESET experimental_path_finding_operator_target_early_termination;
+
+statement ok
+RESET experimental_path_finding_operator_sparse_frontier_divisor;
+
+# Snapshot cache off over a CSR index with an unfolded change log: every query packs its own overlay
+statement ok
+SET duckpgq_csr_index_fold_ratio = 1000;
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (pv LABEL PV)
+EDGE TABLES (pe SOURCE KEY (src) REFERENCES pv (id) DESTINATION KEY (dst) REFERENCES pv (id) LABEL PE);
+
+statement ok
+CREATE INDEX pe_csr ON pe USING CSR (src, dst);
+
+statement ok
+INSERT INTO pe VALUES (6, 0);
+
+statement ok
+DELETE FROM pe WHERE src = 4 AND dst = 3;
+
+statement ok
+SET experimental_path_finding_operator_snapshot_cache = false;
+
+query II
+SELECT src, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 4, 6))-[e:PE]->{1,6}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	3
+6	4
+
+query I
+SELECT s LIKE '%csr=index%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+RESET experimental_path_finding_operator_snapshot_cache;
+
+query II
+SELECT src, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 4, 6))-[e:PE]->{1,6}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	3
+6	4

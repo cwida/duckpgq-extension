@@ -4828,13 +4828,19 @@ class DuckPGQSystem(GraphDBSystem):
     'index' reads the persisted CSR index (resident after a warm-up query). With symmetric=True the edge table is
     the symmetric closure of knows (LDBC's undirected semantics)."""
 
-    def __init__(self, route, scale_factor, threads, timeout_s, symmetric=False):
+    def __init__(self, route, scale_factor, threads, timeout_s, symmetric=False, settings=None, index_with=None,
+                 multi_source_pair_mode=False):
         self.route = route
         self.name = f"duckpgq_{route}"
         self.scale_factor = scale_factor
         self.threads = threads
         self.timeout_s = timeout_s
         self.symmetric = symmetric
+        # Ablation controls: extra SET statements, an extra CREATE INDEX WITH clause (e.g. "reverse = true"), and
+        # the pair-list form of the sources x all shape instead of the reach mode
+        self.settings = dict(settings or {})
+        self.index_with = index_with
+        self.multi_source_pair_mode = multi_source_pair_mode
         self.database = db_path(scale_factor)
         # Build route: the symmetric closure table and a cache key that tells the operator the edge set is
         # symmetric (a reverse search may use the forward partitions); index route: an undirected index on knows
@@ -4842,6 +4848,8 @@ class DuckPGQSystem(GraphDBSystem):
         self.cache_key = "graph:sweep|undirected" if symmetric else "graph:sweep"
         self.index_table = "person_knows_person"
         self.index_name = f"{CSR_INDEX_NAME}_undirected" if symmetric else CSR_INDEX_NAME
+        if index_with:
+            self.index_name += "_" + re.sub(r"[^a-z0-9]+", "_", index_with.lower()).strip("_")
         self.index_key = f"csr-index|ldbc|main|{self.index_table}|{self.index_name}"
 
     def load(self, export_dir, scale_factor):
@@ -4855,8 +4863,11 @@ class DuckPGQSystem(GraphDBSystem):
             run_duckdb(BENCH_DUCKDB, None, f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; "
                                           f"ATTACH {sql_string(self.database)} AS ldbc; "
                                           f"CREATE INDEX IF NOT EXISTS {self.index_name} ON ldbc.{self.index_table} "
-                                          f"USING CSR (person1id, person2id)"
-                                          f"{' WITH (undirected = true)' if self.symmetric else ''};", quiet=True)
+                                          f"USING CSR (person1id, person2id){self.index_with_clause()};", quiet=True)
+
+    def index_with_clause(self):
+        options = (["undirected = true"] if self.symmetric else []) + ([self.index_with] if self.index_with else [])
+        return f" WITH ({', '.join(options)})" if options else ""
 
     def edge_count(self):
         return self.edge_count_value
@@ -4869,15 +4880,20 @@ class DuckPGQSystem(GraphDBSystem):
         multi-source table yields its sources only and the query runs in reach mode (every vertex each source
         reaches, no destination list)"""
         if pair_table.startswith(multi_source_table_name("")):
-            return (f"(SELECT s.src AS src, s.src AS dst FROM ldbc.{pair_table} s)",
-                    f"(SELECT a.id::BIGINT AS src, a.id::BIGINT AS dst FROM ldbc.{pair_table} s "
+            if self.multi_source_pair_mode:
+                # The ablation of the reach mode: the sources x all persons pair list, streamed from a cross join
+                return (f"(SELECT s.src AS src, p.rowid::BIGINT AS dst FROM ldbc.{pair_table} s, ldbc.person p)",
+                        f"(SELECT a.id::BIGINT AS src, p.id::BIGINT AS dst FROM ldbc.{pair_table} s "
+                        f"JOIN ldbc.person a ON a.rowid = s.src, ldbc.person p)")
+            return (f"(SELECT /*reach*/ s.src AS src, s.src AS dst FROM ldbc.{pair_table} s)",
+                    f"(SELECT /*reach*/ a.id::BIGINT AS src, a.id::BIGINT AS dst FROM ldbc.{pair_table} s "
                     f"JOIN ldbc.person a ON a.rowid = s.src)")
         return (f"ldbc.{pair_table}",
                 f"(SELECT a.id::BIGINT AS src, b.id::BIGINT AS dst FROM ldbc.{pair_table} p "
                 f"JOIN ldbc.person a ON a.rowid = p.src JOIN ldbc.person b ON b.rowid = p.dst)")
 
     def script(self, rowid_pairs, key_pairs, warm):
-        reach = "AS dst FROM ldbc.benchmark_pairs_multi_" in rowid_pairs
+        reach = "/*reach*/" in rowid_pairs
         if reach:
             # reachoperator yields [dst, len] per reached vertex; count and sum over the lengths as in pair mode
             select = "SELECT count(r[2]), coalesce(sum(r[2]), 0) FROM (SELECT reachoperator(src, dst, "
@@ -4897,10 +4913,11 @@ class DuckPGQSystem(GraphDBSystem):
             prelude = f"CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS SELECT * FROM {key_pairs};"
             query = f"{select}0::BIGINT, 0::BIGINT, {sql_string(self.index_key)}{result} FROM pathfinding_index_pairs);"
         warm_up = query + "\n" if warm else ""
+        settings = "".join(f"SET {name}={value};\n" for name, value in self.settings.items())
         return f"""LOAD {sql_string(DUCKPGQ_EXTENSION)};
 SET threads={self.threads};
 SET experimental_path_finding_operator=true;
-ATTACH {sql_string(self.database)} AS ldbc (READ_ONLY);
+{settings}ATTACH {sql_string(self.database)} AS ldbc (READ_ONLY);
 SELECT delete_csr(2147483647) AS duckpgq_state_init;
 {prelude}
 {warm_up}.timer on
@@ -5170,6 +5187,185 @@ def sweep_pairs_table(args):
                 else:
                     cells.append("")
             print(f"| {system} | " + " | ".join(cells) + " |")
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Ablation sweep (W19): the DuckPGQ routes under one mechanism switched off or one threshold moved at a time
+# ---------------------------------------------------------------------------------------------------------------------
+OPT = "experimental_path_finding_operator_"
+ABLATION_CONFIGS = {
+    # name: (SET overrides, index WITH clause, multi-source pair mode)
+    "baseline": ({}, None, False),
+    # Pair batching and scheduling (MS-BFS kernel)
+    "no_grouped_batches": ({OPT + "grouped_batches": "false"}, None, False),
+    "dedupe_pairs": ({OPT + "deduplicate_pairs": "true"}, None, False),
+    "threads_per_batch_4": ({OPT + "threads_per_batch": 4}, None, False),
+    # Kernel choice: MS-BFS lanes vs the per-source frontier kernel
+    "no_source_grouping": ({OPT + "source_group_ratio": 0, OPT + "few_sources_limit": 0}, None, False),
+    "no_few_sources_rule": ({OPT + "few_sources_limit": 0}, None, False),
+    "source_group_ratio_1": ({OPT + "source_group_ratio": 1}, None, False),
+    "source_group_ratio_16": ({OPT + "source_group_ratio": 16}, None, False),
+    # Per-source frontier kernel internals
+    "no_early_termination": ({OPT + "target_early_termination": "false"}, None, False),
+    "dense_frontier": ({OPT + "sparse_frontier_divisor": 0}, None, False),
+    "sparse_frontier": ({OPT + "sparse_frontier_divisor": 2000000000}, None, False),
+    # Orientation
+    "no_reverse_orientation": ({OPT + "reverse_orientation_ratio": 0}, None, False),
+    # Index side
+    "no_snapshot_cache": ({OPT + "snapshot_cache": "false"}, None, False),
+    "reverse_index": ({}, "reverse = true", False),
+    "reverse_index_forward_only": ({OPT + "reverse_orientation_ratio": 0}, "reverse = true", False),
+    # Reach mode vs the pair list for sources x all persons
+    "pair_mode": ({}, None, True),
+    # Partitioning (more partitions than 2 x threads)
+    "light_partitions_4": ({OPT + "light_partition_multiplier": 4}, None, False),
+}
+for _n in (1, 2, 4, 8, 16):
+    ABLATION_CONFIGS[f"threads_{_n}"] = ({"threads": _n}, None, False)
+ABLATION_GROUPS = {
+    "kernel": ["baseline", "no_grouped_batches", "dedupe_pairs", "threads_per_batch_4", "no_source_grouping",
+               "no_few_sources_rule", "source_group_ratio_1", "source_group_ratio_16", "no_early_termination",
+               "dense_frontier", "sparse_frontier", "light_partitions_4"],
+    "index": ["baseline", "no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "no_reverse_orientation"],
+    "reach": ["baseline", "pair_mode"],
+    "threads": ["baseline"] + [f"threads_{n}" for n in (1, 2, 4, 8, 16)],
+}
+ABLATION_GROUPS["all"] = list(dict.fromkeys(sum(ABLATION_GROUPS.values(), [])))
+ABLATION_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only"}
+
+
+def ablation_configs(names):
+    out = []
+    for name in names:
+        for config in ABLATION_GROUPS.get(name, [name]):
+            if config not in ABLATION_CONFIGS:
+                raise SystemExit(f"unknown ablation config {config}; known: {', '.join(ABLATION_CONFIGS)}")
+            if config not in out:
+                out.append(config)
+    return out
+
+
+def ablation(args):
+    """One DuckPGQ route x one configuration at a time over the sweep shapes, each point repeated with a timeout.
+    A configuration is a set of SET overrides and, for the index route, a CREATE INDEX WITH clause."""
+    sys.stdout.reconfigure(line_buffering=True)
+    scale_factor = args.scale_factor
+    ensure_update_log(scale_factor)
+    points = []  # (shape, table, pairs, sources)
+    if "random" in args.shapes:
+        for n in args.pair_counts:
+            ensure_pair_table(scale_factor, n, "random")
+            points.append(("random_pairs", pair_table_name(n, "random"), n, ""))
+    if "same_dst" in args.shapes:
+        for n in args.pair_counts:
+            ensure_pair_table(scale_factor, n, "same_dst")
+            points.append(("same_dst", pair_table_name(n, "same_dst"), n, ""))
+    if "multi_source" in args.shapes:
+        for k in args.source_counts:
+            points.append(("multi_source", ensure_multi_source_table(scale_factor, k), "", k))
+    configs = ablation_configs(args.configs)
+    results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    path = results_dir / f"ablation_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
+    fieldnames = ["system", "config", "settings", "shape", "pairs", "sources", "repeat", "status", "query_s",
+                  "reachable_count", "total_len", "threads", "timeout_s", "benchmark_notes", "repo_commit"]
+    writer = ResultWriter(path, fieldnames)
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
+    for route in args.routes:
+        for config in configs:
+            settings, index_with, pair_mode = ABLATION_CONFIGS[config]
+            if route == "build" and config in ABLATION_INDEX_ONLY:
+                continue
+            system = DuckPGQSystem(route, scale_factor, args.threads, args.timeout_s, settings=settings,
+                                   index_with=index_with, multi_source_pair_mode=pair_mode)
+            started = time.perf_counter()
+            system.load(None, scale_factor)
+            print(f"== duckpgq_{route} [{config}] loaded in {time.perf_counter() - started:.1f}s"
+                  + (f" (index {system.index_name})" if route == "index" else ""))
+            settings_text = " ".join(f"{k}={v}" for k, v in settings.items())
+            if index_with:
+                settings_text = f"index WITH ({index_with}) {settings_text}".strip()
+            if pair_mode:
+                settings_text = f"pair_mode {settings_text}".strip()
+            exceeded_shapes = set()
+            for shape, table, pairs, sources in points:
+                if shape in exceeded_shapes:
+                    writer.add({"system": system.name, "config": config, "settings": settings_text, "shape": shape,
+                                "pairs": pairs, "sources": sources, "repeat": 1, "status": "timed_out_inferred",
+                                "query_s": "", "reachable_count": "", "total_len": "", "threads": args.threads,
+                                "timeout_s": args.timeout_s, "benchmark_notes": args.notes, "repo_commit": commit})
+                    continue
+                for repeat in range(1, args.repeats + 1):
+                    try:
+                        elapsed, reachable, total = system.timed_table(table)
+                        value, status = (reachable, total), "ok"
+                    except subprocess.TimeoutExpired:
+                        value, elapsed, status = None, args.timeout_s, "timed_out"
+                    except RuntimeError as ex:
+                        value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
+                    writer.add({"system": system.name, "config": config, "settings": settings_text, "shape": shape,
+                                "pairs": pairs, "sources": sources, "repeat": repeat, "status": status,
+                                "query_s": f"{elapsed:.6f}", "reachable_count": value[0] if value else "",
+                                "total_len": value[1] if value else "", "threads": args.threads,
+                                "timeout_s": args.timeout_s, "benchmark_notes": args.notes, "repo_commit": commit})
+                    shown = f"{value[0]}/{value[1]}" if value else status
+                    print(f"   {config:28s} {shape:12s} pairs={pairs!s:<7} sources={sources!s:<5} repeat {repeat}: "
+                          f"{elapsed:8.3f}s {shown}")
+                    if status != "ok":
+                        exceeded_shapes.add(shape)
+                        break
+    # Every configuration must return the same answer per point
+    by_point = {}
+    for row in writer.rows:
+        if row["status"] == "ok":
+            by_point.setdefault((row["shape"], row["pairs"], row["sources"]), set()).add(
+                (row["reachable_count"], row["total_len"]))
+    disagreements = {k: v for k, v in by_point.items() if len(v) > 1}
+    print(f"Wrote {path}")
+    print("DISAGREEMENTS:" if disagreements else f"All {len(by_point)} points agree across configurations",
+          disagreements if disagreements else "")
+
+
+def ablation_table(args):
+    """One table per route and shape: configurations x points, mean seconds and the ratio to the baseline."""
+    rows = []
+    for file in args.files:
+        rows.extend(csv.DictReader(open(file)))
+    for route in sorted({r["system"] for r in rows}):
+        for shape, column in (("random_pairs", "pairs"), ("same_dst", "pairs"), ("multi_source", "sources")):
+            shape_rows = [r for r in rows if r["system"] == route and r["shape"] == shape]
+            if not shape_rows:
+                continue
+            counts = sorted({int(r[column]) for r in shape_rows})
+            configs = list(dict.fromkeys(r["config"] for r in shape_rows))
+            sf = shape_rows[0].get("benchmark_notes", "")
+            print(f"\n## {route} {shape}: mean seconds (x baseline), {shape_rows[0]['threads']} threads, "
+                  f"timeout {shape_rows[0]['timeout_s']} s")
+            print("| config | " + " | ".join(f"{column}={c}" for c in counts) + " |")
+            print("|---|" + "---|" * len(counts))
+
+            def mean_of(config, count):
+                ok = [float(r["query_s"]) for r in shape_rows
+                      if r["config"] == config and int(r[column]) == count and r["status"] == "ok"]
+                point = [r for r in shape_rows if r["config"] == config and int(r[column]) == count]
+                return (statistics.mean(ok) if ok else None), point
+
+            for config in configs:
+                cells = []
+                for count in counts:
+                    mean, point = mean_of(config, count)
+                    base, _ = mean_of("baseline", count)
+                    if mean is None:
+                        if any(r["status"].startswith("timed_out") for r in point):
+                            cells.append(f"> {point[0]['timeout_s']} s")
+                        else:
+                            cells.append("error" if point else "")
+                        continue
+                    text = f"{mean*1000:.0f} ms" if mean < 1 else f"{mean:.2f} s"
+                    if base and config != "baseline":
+                        text += f" ({mean / base:.2f}x)"
+                    cells.append(text)
+                print(f"| {config} | " + " | ".join(cells) + " |")
 
 
 LDBC_QUERIES = ["ic13", "bi19", "bi20"]
@@ -5558,8 +5754,8 @@ def main():
     run_parser.add_argument(
         "--grouped-batches",
         action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Enable grouped regular MS-BFS scheduling with bounded worker groups.",
+        default=True,
+        help="Grouped regular MS-BFS scheduling with bounded worker groups (the engine default; --no-grouped-batches ablates it).",
     )
     run_parser.add_argument(
         "--threads-per-batch",
@@ -5769,6 +5965,25 @@ def main():
     sweep_pairs_parser.add_argument("--falkordb-port", type=int, default=6379)
     sweep_pairs_parser.add_argument("--notes", default="")
     sweep_pairs_parser.set_defaults(func=sweep_pairs)
+
+    ablation_parser = subcommands.add_parser("ablation", help="DuckPGQ routes with one mechanism switched off at a time")
+    ablation_parser.add_argument("--scale-factor", required=True)
+    ablation_parser.add_argument("--threads", type=int, default=os.cpu_count())
+    ablation_parser.add_argument("--routes", nargs="+", choices=["build", "index"], default=["build", "index"])
+    ablation_parser.add_argument("--configs", nargs="+", default=["all"],
+                                 help=f"config names or groups {', '.join(ABLATION_GROUPS)}; configs: {', '.join(ABLATION_CONFIGS)}")
+    ablation_parser.add_argument("--shapes", nargs="+", choices=["random", "same_dst", "multi_source"],
+                                 default=["random", "same_dst", "multi_source"])
+    ablation_parser.add_argument("--pair-counts", nargs="*", type=int, default=[1, 128, 1024, 65536])
+    ablation_parser.add_argument("--source-counts", nargs="*", type=int, default=[1, 128, 1024])
+    ablation_parser.add_argument("--repeats", type=int, default=3)
+    ablation_parser.add_argument("--timeout-s", type=float, default=600)
+    ablation_parser.add_argument("--notes", default="")
+    ablation_parser.set_defaults(func=ablation)
+
+    ablation_table_parser = subcommands.add_parser("ablation-table", help="Print ablation CSVs as tables")
+    ablation_table_parser.add_argument("files", nargs="+")
+    ablation_table_parser.set_defaults(func=ablation_table)
 
     table_parser = subcommands.add_parser("sweep-pairs-table", help="Print sweep-pairs CSVs as tables")
     table_parser.add_argument("files", nargs="+")
