@@ -32,6 +32,7 @@ jobs:
       duckdb_version: ${{ needs.get-duckdb-version.outputs.duckdb_version }}
       ci_tools_version: main
       extension_name: duckpgq
+      opt_in_archs: 'windows_arm64'
 
   code-quality-check:
     name: Code Quality Check
