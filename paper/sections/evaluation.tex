@@ -19,7 +19,9 @@ graph is the \texttt{Person\_knows\_Person} relation of LDBC SNB at scale factor
 each; \emph{sources $\times$ all}, the distance from each of $k$ sources to every reachable person; and three LDBC
 queries whose core is a shortest path, IC13 (one pair), BI19 (every pair between the persons of two cities) and
 BI20 (one target, every person of one company). Every query is given to each system in its native language in the
-form that ran fastest for it, listed in Appendix~\todo{A}; a query that exceeds 600\,s is reported as timed out, not
+form that ran fastest for it, listed in Appendix~\ref{sec:appendix-queries}; the Cypher patterns carry a hop bound of
+30, which no path in these graphs reaches, and \duckpgq runs through the operator's planner marker so that pairs come
+from a table rather than a cross product of vertex patterns. A query that exceeds 600\,s is reported as timed out, not
 dropped. Each point is the mean of three runs after one warm-up; ``\duckpgq build'' builds the partitioned CSR inside
 the query, ``\duckpgq index'' reads a CSR index created once. All systems return identical path lengths on every
 point they complete.
