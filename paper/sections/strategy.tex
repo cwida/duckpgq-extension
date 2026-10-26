@@ -1,6 +1,57 @@
-\section{Choosing a Strategy}
+\section{Choosing a Strategy, and What the Engine Had to Offer}
 \label{sec:strategy}
 
-\todo{1 page. Build per query vs index; multi-source traversal vs single-source traversal; forward vs reverse; the statistics the
-operator has (pair count, distinct sources/destinations via HLL, edge count, pending change-log size) and the cost
-model calibrated from the sweeps (W13). The engine hooks an extension needs for this and which ones are missing.}
+% Draft 26 Oct 2026. The hook table is written; the cost-model part is still an outline (W12/W13).
+
+\subsection{What the extension uses}
+\label{sec:hooks}
+
+The operator and the index touch almost every interface \duckdb exposes to an extension, and none of its internals.
+Table~\ref{tab:hooks} lists the interfaces, what each one gave us, and where it stopped short; the right column is
+the part of this paper that is addressed to engine designers rather than to graph people. Three gaps shaped the
+design more than any other. The index interface delivers the rows that changed but not the transaction that changed
+them, and it offers no way to ask whether a row was visible at an earlier point in time, because the engine garbage
+collects row versions; the epochs, commit groups and per-reader snapshots of Section~\ref{sec:index} exist because
+of that. The scheduler has no notion of a group of tasks that must run together, so the traversals are chains of
+per-phase events (Section~\ref{sec:phases}). And an extension operator cannot tell the optimizer what it will cost,
+so every choice between build and index, between the two traversals and between the two orientations is made inside
+the operator from its own statistics (Section~\ref{sec:cost}).
+
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
+  \caption{The \duckdb extension interfaces the operator and the index use, what each provided, and what it lacked
+  for this work. The graph never leaves the relational tables: no storage extension, custom catalog, replacement
+  scan or custom type is involved.}
+  \label{tab:hooks}
+  \begin{tabular}{p{1.9cm}p{2.9cm}p{2.9cm}}\toprule
+  interface & used for & what it lacked \\ \midrule
+  parser extension & \sqlpgq syntax: \texttt{MATCH}, \texttt{CREATE PROPERTY GRAPH} & -- \\
+  \addlinespace[2pt]
+  table function with bind replacement & \texttt{MATCH} expanding to the rewritten SQL & -- \\
+  \addlinespace[2pt]
+  scalar functions & the marker that carries the path pattern to the planner; index statistics; strategy introspection & a marker must be volatile to survive folding, and must not reach execution \\
+  \addlinespace[2pt]
+  optimizer extension & replacing the marker and its two inputs by the logical operator & runs before or after the engine's optimizer, not between its rules; the rewrite must find its inputs on the binder's plan shape \\
+  \addlinespace[2pt]
+  logical and physical operator & sink for pairs and endpoints, source for results, own events and tasks & no cardinality or cost reported back to the optimizer; no task groups in the scheduler \\
+  \addlinespace[2pt]
+  index type & build, append and delete callbacks; serialization into the block manager; WAL replay; vacuum & rows but not transactions; no visibility at past points in time; a scan interface meant for point lookups, not for a traversal \\
+  \addlinespace[2pt]
+  client context state & per-connection registry of property graphs and operator state & two connections initializing at once contend on the catalog \\
+  \addlinespace[2pt]
+  settings & operator and index options & per connection; a policy such as the fold ratio cannot be attached to the index itself \\
+  \addlinespace[2pt]
+  buffer manager & BFS working sets and CSR partitions as buffer-managed allocations & -- \\
+  \bottomrule\end{tabular}
+\end{table}
+
+\subsection{Build or index, lanes or frontier, forward or reverse}
+\label{sec:cost}
+
+\todo{1 page, after W12/W13. The operator has: the pair count and HyperLogLog sketches of distinct sources and
+destinations from its sink; the edge count and vertex count from the marker; whether an index snapshot exists and
+how many change groups it carries. The choices today are thresholds (16 distinct sources or four pairs per source for
+the single-source traversal; reverse when destinations are far fewer than sources and reverse partitions exist). The
+sweeps of Section~\ref{sec:eval} give the crossovers: the build costs 0.02 to 0.3\,s per query from SF10 to SF300 and
+is amortized over a batch; the single-source traversal wins up to tens of sources; the overlay rebuild after a commit
+is O(pending operations) and the fold has to be triggered from the read side. Cost model skeleton and calibration
+from the frozen rerun.}
