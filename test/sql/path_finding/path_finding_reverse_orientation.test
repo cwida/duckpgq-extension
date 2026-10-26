@@ -1,0 +1,103 @@
+# name: test/sql/path_finding/path_finding_reverse_orientation.test
+# description: many sources to one destination on a symmetric edge set (undirected index or undirected pattern) is searched from the destination side, on both routes
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE pv(id BIGINT);
+
+statement ok
+INSERT INTO pv VALUES (0), (1), (2), (3), (4), (5), (6);
+
+statement ok
+CREATE TABLE pe(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO pe VALUES (0, 1), (1, 2), (2, 3), (0, 4), (4, 3), (3, 5);
+
+statement ok
+CREATE PROPERTY GRAPH path_graph
+VERTEX TABLES (pv LABEL PV)
+EDGE TABLES (pe SOURCE KEY (src) REFERENCES pv (id) DESTINATION KEY (dst) REFERENCES pv (id) LABEL PE);
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# Build route, undirected pattern: five sources, one destination (ratio 4 reached) -> reverse search over the
+# symmetric endpoint input. Vertex 6 has no edges and yields no row.
+query II
+SELECT src, len FROM GRAPH_TABLE (path_graph
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 2, 4, 5, 6))-[e:PE]-{1,4}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	2
+1	2
+2	1
+4	1
+5	1
+
+query I
+SELECT s LIKE '%orientation=reverse%' AND s LIKE '%csr=built%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# A directed pattern on the same pairs has no reverse partitions and stays forward.
+query II
+SELECT src, len FROM GRAPH_TABLE (path_graph
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 2, 4, 5, 6))-[e:PE]->{1,4}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	2
+1	2
+2	1
+4	1
+
+query I
+SELECT s LIKE '%orientation=forward%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Index route: an undirected index serves the undirected pattern and allows the reverse search.
+statement ok
+CREATE INDEX pe_csr_u ON pe USING CSR (src, dst) WITH (undirected = true);
+
+query II
+SELECT src, len FROM GRAPH_TABLE (path_graph
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 2, 4, 5, 6))-[e:PE]-{1,4}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, path_length(p) AS len))
+ORDER BY src;
+----
+0	2
+1	2
+2	1
+4	1
+5	1
+
+query I
+SELECT s LIKE '%orientation=reverse%' AND s LIKE '%csr=index%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Paths are reconstructed from the source, so a path query keeps the forward orientation.
+query III
+SELECT src, path, len FROM GRAPH_TABLE (path_graph
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id IN (0, 1, 2, 4, 5, 6))-[e:PE]-{1,4}(b:PV WHERE b.id = 3)
+    COLUMNS (a.id AS src, element_id(p) AS path, path_length(p) AS len))
+ORDER BY src;
+----
+0	[0, 3, 4, 4, 3]	2
+1	[1, 1, 2, 2, 3]	2
+2	[2, 2, 3]	1
+4	[4, 4, 3]	1
+5	[5, 5, 3]	1
+
+query I
+SELECT s LIKE '%orientation=forward%' AND s LIKE '%mode=shortestpath%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true

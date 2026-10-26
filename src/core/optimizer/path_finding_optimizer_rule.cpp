@@ -1,3 +1,4 @@
+#include "duckpgq/core/functions/scalar.hpp"
 #include "duckpgq/core/optimizer/path_finding_optimizer_rule.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 
@@ -28,7 +29,8 @@ static string GetPathFindingFunctionName(const Expression &expr) {
 		auto &function_expr = expr.Cast<BoundFunctionExpression>();
 		auto function_name = function_expr.Function().GetName().GetIdentifierName();
 		if (function_name == "iterativelengthoperator" || function_name == "pushpulliterativelengthoperator" ||
-		    function_name == "bidirectionaliterativelengthoperator" || function_name == "shortestpathoperator") {
+		    function_name == "bidirectionaliterativelengthoperator" || function_name == "shortestpathoperator" ||
+		    function_name == "reachoperator") {
 			return function_name;
 		}
 	}
@@ -48,7 +50,8 @@ static const BoundFunctionExpression *GetPathFindingFunction(const Expression &e
 		auto &function_expr = expr.Cast<BoundFunctionExpression>();
 		auto function_name = function_expr.Function().GetName().GetIdentifierName();
 		if (function_name == "iterativelengthoperator" || function_name == "pushpulliterativelengthoperator" ||
-		    function_name == "bidirectionaliterativelengthoperator" || function_name == "shortestpathoperator") {
+		    function_name == "bidirectionaliterativelengthoperator" || function_name == "shortestpathoperator" ||
+		    function_name == "reachoperator") {
 			return &function_expr;
 		}
 	}
@@ -384,6 +387,10 @@ unique_ptr<Expression> CreateReplacementExpression(const Identifier &alias, cons
 		return make_uniq<BoundColumnRefExpression>(alias, LogicalType::LIST(LogicalType::BIGINT),
 		                                           ColumnBinding(tableIndex, ProjectionIndex(position)));
 	}
+	if (functionName == "reachoperator") {
+		return make_uniq<BoundColumnRefExpression>(alias, ReachOperatorResultType(),
+		                                           ColumnBinding(tableIndex, ProjectionIndex(position)));
+	}
 	return nullptr;
 }
 
@@ -424,6 +431,8 @@ void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_
 				mode = "pushpulliterativelength";
 			} else if (function_name == "bidirectionaliterativelengthoperator") {
 				mode = "bidirectionaliterativelength";
+			} else if (function_name == "reachoperator") {
+				mode = "reach";
 			} else {
 				mode = "shortestpath";
 			}

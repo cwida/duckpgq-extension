@@ -1,0 +1,125 @@
+# name: test/sql/path_finding/path_finding_reach.test
+# description: reachoperator emits one [dst, len] row per vertex reachable from each source, on the build route and over a CSR index
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+CREATE TABLE pv(id BIGINT);
+
+statement ok
+INSERT INTO pv VALUES (0), (1), (2), (3), (4), (5), (6);
+
+statement ok
+CREATE TABLE pe(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO pe VALUES (0, 1), (1, 2), (2, 3), (0, 4), (4, 3), (3, 5);
+
+# Two input rows share source 0; vertex 6 has no edges and reaches only itself.
+statement ok
+CREATE TABLE srcs(s BIGINT, tag VARCHAR);
+
+statement ok
+INSERT INTO srcs VALUES (0, 'a'), (4, 'b'), (6, 'c'), (0, 'd');
+
+# Build route: the same answer as the pair mode over the cross product with every vertex.
+query IIII
+SELECT tag, s, r[1] AS dst, r[2] AS len
+FROM (SELECT tag, s, reachoperator(s, s, struct_pack(src := src, dst := dst), 7::BIGINT, 6::BIGINT, 'graph:reach') AS r
+      FROM srcs, pe)
+ORDER BY tag, s, dst;
+----
+a	0	0	0
+a	0	1	1
+a	0	2	2
+a	0	3	2
+a	0	4	1
+a	0	5	3
+b	4	3	1
+b	4	4	0
+b	4	5	2
+c	6	6	0
+d	0	0	0
+d	0	1	1
+d	0	2	2
+d	0	3	2
+d	0	4	1
+d	0	5	3
+
+query I
+SELECT s LIKE '%mode=reach%' AND s LIKE '%csr=built%' AND s LIKE '%scheduling=source_grouped%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+CREATE TABLE pairs AS SELECT tag, s, v.id AS d FROM srcs, pv v;
+
+query II
+SELECT count(len), sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 7::BIGINT, 6::BIGINT, 'graph:reach') AS len
+    FROM pairs, pe);
+----
+16	21
+
+query II
+SELECT count(r[2]), sum(r[2])
+FROM (SELECT reachoperator(s, s, struct_pack(src := src, dst := dst), 7::BIGINT, 6::BIGINT, 'graph:reach') AS r
+      FROM srcs, pe);
+----
+16	21
+
+# The depth bound stops the search.
+query III
+SELECT tag, r[1] AS dst, r[2] AS len
+FROM (SELECT tag, reachoperator(s, s, struct_pack(src := src, dst := dst), 7::BIGINT, 6::BIGINT, 'graph:reach', 1::BIGINT) AS r
+      FROM (SELECT * FROM srcs WHERE tag = 'a') one, pe)
+ORDER BY dst;
+----
+a	0	0
+a	1	1
+a	4	1
+
+# Index route: keys instead of row ids (equal here); a key absent from the index reaches only itself.
+statement ok
+CREATE INDEX pe_csr ON pe USING CSR (src, dst);
+
+query IIII
+SELECT tag, s, r[1] AS dst, r[2] AS len
+FROM (SELECT tag, s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM srcs)
+ORDER BY tag, s, dst;
+----
+a	0	0	0
+a	0	1	1
+a	0	2	2
+a	0	3	2
+a	0	4	1
+a	0	5	3
+b	4	3	1
+b	4	4	0
+b	4	5	2
+c	6	6	0
+d	0	0	0
+d	0	1	1
+d	0	2	2
+d	0	3	2
+d	0	4	1
+d	0	5	3
+
+query I
+SELECT s LIKE '%mode=reach%' AND s LIKE '%csr=index%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# A single source takes the zero-copy group path.
+query II
+SELECT r[1] AS dst, r[2] AS len
+FROM (SELECT reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM srcs WHERE tag = 'b')
+ORDER BY dst;
+----
+3	1
+4	0
+5	2

@@ -127,6 +127,8 @@ struct CSRIndexSnapshot {
 	idx_t vertex_count = 0;
 	idx_t edge_count = 0;
 	idx_t partition_width = 0;
+	//! The index holds both directions of every edge, so a search may run from the destination side
+	bool undirected = false;
 	//! One entry per destination range: the epoch partition (an empty one beyond the epoch's ranges)
 	std::vector<shared_ptr<LocalCSR>> partitions;
 	//! Aligned with partitions: delta edges of that destination range, or null

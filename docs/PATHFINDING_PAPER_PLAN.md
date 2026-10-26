@@ -156,6 +156,8 @@ Effort in person-days (pd). P1 = must for Round 1, P2 = strongly desired, P3 = i
 | W23 | Full draft, figures, internal review, polish | writing | 10 | P1 | W16–W20 | open |
 | W24 | Teseo/Sortledton or GraphBLAS baseline (D4) | eval | 4 | P3 | W16 | open |
 | W25 | WCC table function reads the index snapshot (generality argument, build vs index for a whole-graph algorithm) | op+index | 2 | P3 | W12 | open |
+| W29 | Reach mode: sources x all vertices without a pair list (done 23 Oct). `reachoperator(src, src, ...)` has the argument forms of `iterativelengthoperator` and yields one row per vertex each source reaches, a list [dst, len] (a struct crashed DuckDB's statistics pass after the unused-columns optimizer pulled the field extraction up). One group per distinct source, no destination sets, the search runs to exhaustion or the pattern's bound; the parallel source emits slices of each group's distance array (65536 vertices per slice), one output chunk per input row with constant pass-through columns, and frees a group's arrays once emitted; a source absent from the graph reaches only itself. SF10, 32 threads, 1024 sources x all persons: build 0.43 s / index 0.22 s (pair mode 4.4 / 4.1 s, Kuzu 4.0 s); 1 source: index 3 ms (Kuzu 7 ms). Open: MATCH planning of an unbound or weakly bound destination onto reach mode (today the harness calls the marker); the cost rule between pair and reach mode belongs to W12 | op | 3 | P1 | W27 | marker + operator done, MATCH planning open |
+| W28 | Reverse direction in the CSR index for directed graphs (decided to look into 23 Oct). Nx1 shapes and the bidirectional kernel need reverse partitions; today only the legacy CSR route builds them, symmetric edge sets reuse the forward partitions (`7fdfe65e`). Plan: one index holding both directions (`WITH (reverse = true)` or similar, one maintenance path, lengths-only reverse side ~5 B/edge), the operator resolving both from one cache key and choosing forward / reverse / bidirectional at runtime from the pair statistics; then bidirectional search over the index for the random-pair shape at scale (SF300: 0.8-1 ms per pair forward MS-BFS vs Neo4j's bidirectional shortestPath). Effort 1-2 days each step | op/index | 3 | P1 | W27 | open |
 | W27 | Multi-source and all-pairs comparison (decided 22 Oct). Present query shapes by cardinality (1x1 point lookup, 1xN sssp, Nx1, NxM from a predicate on the source table or a join) rather than by pattern name; sweep the pair count 1, 16, 128, 1024, 2048, 16384, 65536 and all pairs on every system with the same pair tables, at SF10, SF100 and SF300 (decided 22 Oct: no reason to stay at small scale factors; DuckPGQ handled 65536 pairs at SF300 in the 21 Oct pair-count axis, build 74 s / index 52 s at 32 threads). Give every baseline a per-query time budget (e.g. 10 minutes) and report an exceeded budget as such rather than skipping the point, since the per-pair systems grow linearly (at SF10: Neo4j ~0.7 ms, Kuzu ~6 ms, FalkorDB ~8 ms, Memgraph ~39 ms per pair); add a predicate-driven multi-source query (sources selected by an attribute, as in LDBC BI 19/20) so the many-pair case is not a synthetic pair table; run the systems' set-oriented procedures where they exist (Neo4j GDS single-source and all-pairs, Memgraph MAGE) so no baseline is shown on its slow path, and note that those procedures do not compose with a Cypher predicate in the same query; include all-pairs shortest path as the extreme of the sweep (our source-grouped kernel per source vs their per-pair searches). The absence of a batched, set-oriented path-finding operator is a design limitation of the graph databases to be stated as such, with the sweep as evidence | eval | 4 | P1 | W16, W17 | harness done 22 Oct (`sweep-pairs`, `sweep-pairs-table`): random pairs 1..65536 and k sources x all persons (k = 1, 16, 128, 1024; V^2 all pairs is not materialisable), 600 s budget per query with server-side cancellation, larger counts after an exceeded one recorded as inferred, cross-system agreement check. SF10 run in progress 22 Oct; SF100 and SF300 next |
 | W26 | Point-query kernel: single-pair/single-source queries paid ~0.12 s of dense bitset sweeps over 2M vertices regardless of index or build. Done 20 Oct (`b488486e`, `5455ec18`, `43a37a0f`): source-grouped frontier kernel on index snapshots, hybrid sparse/dense expansion with a per-partition source bucket index, MATCH passes the quantifier upper bound into the operator (both kernels stop at the depth bound), a source group stops once all its destinations are found, up to 16 distinct sources always run source-grouped, pairs with a NULL endpoint no longer force the 512-lane batch path (a single source over all 2M vertices went from 288 s to 0.15 s because 1214 isolated vertices made NULL pairs). 8M edges, index, 18 threads: 1 pair 0.01-0.02 s (Kuzu 0.03-0.05), 20 sources 0.13 s (Kuzu 0.07), 1 source x 2M destinations 0.15 s. Remaining gap on few-source queries is per-group array allocation and worker oversubscription (design doc 5.6); revisit only if the evaluation needs it | op | 3 | P1 | W12 | done |
 
@@ -490,3 +492,52 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   (same city, 2-3 hops). FalkorDB does not support undirected shortestPath; its LDBC graph now holds both
   directions and the queries are directed (rerun queued after the SF100/SF300 chain). Loads at SF10: DuckPGQ
   0.2-0.6 s, Kuzu 0.6 s, Memgraph 8 s, Neo4j 23 s, FalkorDB 93 s.
+- 23 Oct: SF100 sweep complete (all 11 points agree). Random pairs 65536: DuckPGQ index 16.8 s / build 21.5 s,
+  Neo4j 169 s, Kuzu and FalkorDB > 600 s, Memgraph > 600 s from 1024 pairs; 1 pair index 8 ms / build 99 ms,
+  Neo4j 14 ms, Kuzu 22 ms. Sources x all (1024): Kuzu 9.4 s, DuckPGQ build 24.5 s / index 26.0 s, GDS 191 s,
+  Memgraph, Neo4j, FalkorDB > 600 s. W17 SF100: IC13 index 14 ms / build 182 ms / Neo4j 6 ms / Kuzu 26 ms; BI19
+  index 6.0 s / build 8.4 s / Neo4j 4.3 s / Kuzu 63 s; BI20 index 1.2 s / build 3.0 s / Neo4j 127 ms / Memgraph
+  6.4 s / Kuzu 165 s. W17 SF300 (all agree): IC13 index 27 ms / build 541 ms / Neo4j 5 ms / Kuzu 53 ms / FalkorDB
+  118 ms; BI19 index 44.6 s / build 61 s / Neo4j 48 s / Kuzu 329 s, the rest > 600 s; BI20 index 7.6 s / build
+  12.7 s / Neo4j 1.2 s / Memgraph 48 s, the rest > 600 s. The first SF300 sweep died on the 1024 sources x 1.19M
+  persons point (1.2G pairs: the DuckDB process was killed, the pair list alone is ~58 GB) after the build route's
+  random pairs (65536 in 68.5 s, 1 pair 286 ms) and 128 sources (7.8 s); the harness now records a DuckPGQ failure
+  and skips sources x all points above `--max-pairs` (500M); rerun queued (`sf300_chain`).
+  Reverse orientation on symmetric edge sets (`7fdfe65e`): Nx1 shapes (BI20) were N forward searches because
+  endpoint inputs and index snapshots were forward-only; an undirected index (both directions in the epoch) or an
+  undirected MATCH pattern (both directions in the endpoint input) now lets the ratio heuristic search from the
+  destination side. SF10 BI20: index 25 -> 6 ms, build 256 -> 32 ms (Neo4j 31 ms); the LDBC harness uses
+  `CREATE INDEX ... WITH (undirected = true)` on knows instead of a directed index on the closure table. Still open
+  for directed graphs: a reverse direction in the index (W28 below). Storage, measured by checkpointing a copy with
+  and without the index: SF10 25.4 MB index vs 12.6 MB knows table (13.8 B/edge), SF100 232 MB vs 123 MB (12.4
+  B/edge): 8 B edge row id, 2 B destination, the rest sparse rows, bucket index, dictionary; a lengths-only reverse
+  side would add ~5 B/edge. `docs/csr_index_explainer.html`: self-contained explainer of the index.
+- 23 Oct (afternoon): reach mode (W29). The sources x all persons shape was the pair-list interface at its worst
+  (70M pairs sunk, grouped and scattered at SF10, 1.2G pairs at SF300 not representable). `reachoperator` takes
+  the sources only and emits [dst, len] per reached vertex from the per-source distance arrays through a
+  parallel source. SF10, 32 threads, both routes, same answers as the pair mode: 1 / 16 / 128 / 1024 sources
+  build 22 / 33 / 85 / 430 ms, index 3 / 13 / 42 / 220 ms (pair mode 27 / 98 / 579 ms / 4.4 s build; Kuzu 7 /
+  101 / 632 ms / 4.0 s). The harness's multi-source form uses the reach mode; the SF100 and SF300 DuckPGQ
+  points are queued for a rerun after the SF300 baseline chain (`after_sf300`). Lesson for the paper: a path-finding
+  operator over bound pairs is one shape; "from these sources, everything" needs the destination-free shape, and
+  with it the traversal is the cost (the 1024-source point is 1024 BFS runs over 1.8M edges in 0.2 s).
+- 23 Oct (evening, final provisional tables; collected 26 Oct): all queued runs done 19:33 UTC, every point agrees
+  across the systems that completed it. Files: `sweep_pairs_sf{100,300}_*` (full sweep + DuckPGQ reach rerun),
+  `ldbc_queries_sf{100,300}_*` (full + DuckPGQ undirected-index rerun); print with the full CSV first.
+  SF300 random pairs 1 / 16 / 128 / 1024 / 2048 / 16384 / 65536: DuckPGQ index 9 / 106 / 514 / 984 ms / 1.9 /
+  14.0 / 55.2 s; build 288 ms / 1.0 / 1.0 / 1.6 / 2.8 / 17.9 / 70.3 s; Neo4j 15 / 515 ms / 24 / 39 / 43 / 192 s /
+  > 600 (its per-pair cost grew from 0.18 ms at SF10 to 12 ms at SF300: the bidirectional search is not scale-free,
+  the worry that it overtakes us at scale is settled); Kuzu 33 / 647 ms / 5.8 / 46 / 96 s / > 600 / > 600; FalkorDB
+  113 / 927 ms / 8.3 / 69 / 137 s / > 600 / > 600; Memgraph 2.4 / 27 / 307 s / > 600 ...; GDS 79 ms / 3.4 / 49 /
+  404 s / > 600 .... SF300 sources x all 1 / 16 / 128 / 1024: DuckPGQ index (reach mode) 9 / 135 / 657 ms / 4.2 s,
+  build 282 / 542 ms / 1.7 / 9.7 s; Kuzu 3 / 151 ms / 2.0 s / not run (above the 500M-pair limit); Memgraph 1 ms /
+  17 / 284 s / not run; GDS 51 ms / 4.1 / 57 s / not run; Neo4j 119 ms then > 600; FalkorDB > 600. SF100 sources x
+  all with reach mode: index 15 / 91 / 383 ms / 2.3 s (Kuzu 13 / 148 ms / 1.2 / 9.4 s). SF100 random pairs on the
+  final build: index 8 / 62 / 157 / 303 / 543 ms / 4.3 / 16.9 s.
+  W17 on the undirected index with the reverse orientation: SF100 IC13 14 ms / BI19 5.9 s / BI20 25 ms (Neo4j 6 ms /
+  4.3 s / 127 ms; Kuzu 26 ms / 63 s / 165 s); SF300 IC13 27 ms / BI19 43.7 s / BI20 55 ms (Neo4j 5 ms / 48 s / 1.2 s;
+  Kuzu 53 ms / 329 s / > 600). BI20 went from 7.6 s to 55 ms at SF300 with the reverse orientation. What is left:
+  BI19 (persons of city 1 x persons of city 2, about 1500 x 800 at SF300) runs as a pair list with 1500 sources;
+  the reach mode through MATCH with the destination predicate applied after the reach is the planned fix (W29 step
+  2); IC13, a point lookup, is 27 ms against Neo4j's 5 ms at SF300, the per-query fixed cost of the index route.
+  Loads at SF300: Memgraph 279 s, Neo4j 841 s, FalkorDB 2597 s, Kuzu and DuckPGQ under a second (persisted).

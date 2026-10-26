@@ -3,6 +3,8 @@
 #include "duckpgq/core/utils/parallel_for.hpp"
 #include "duckpgq/core/operator/phased_kernel_event.hpp"
 #include "duckpgq/common.hpp"
+#include "duckpgq/core/functions/scalar.hpp"
+#include "duckdb/parallel/task_scheduler.hpp"
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
 #include <duckpgq/core/operator/partitioned_csr_cache.hpp>
 
@@ -15,6 +17,8 @@
 #include "duckdb/common/types/hash.hpp"
 #include "duckdb/common/types/hyperloglog.hpp"
 #include "duckdb/common/vector/list_vector.hpp"
+#include "duckdb/common/vector/struct_vector.hpp"
+#include "duckdb/common/vector/constant_vector.hpp"
 #include "duckdb/parallel/meta_pipeline.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
@@ -375,6 +379,17 @@ public:
 		}
 	}
 
+	//! Frees the per-vertex arrays once every reached vertex has been emitted (REACH mode)
+	void ReleaseWorkingSets() {
+		vector<int64_t>().swap(distances);
+		vector<atomic<uint8_t>>().swap(seen);
+		vector<uint32_t>().swap(frontier_stamp);
+	}
+
+	const vector<int64_t> &Distances() const {
+		return distances;
+	}
+
 	//! Sizes the destination set before the destinations are registered
 	void ReserveTargets(idx_t expected_count) {
 		targets.Reserve(expected_count, NumericCast<idx_t>(v_size));
@@ -693,8 +708,9 @@ bool ShouldUseReverseSearch(const PathFindingPairStats &stats, PathFindingOperat
 
 PathFindingSearchOrientation ChooseSearchOrientation(const PathFindingPairStats &stats, PathFindingOperatorMode mode,
                                                      ClientContext &context) {
-	if (mode == PathFindingOperatorMode::SHORTEST_PATH) {
-		// Paths are reconstructed from parent pointers in source-to-destination order
+	if (mode == PathFindingOperatorMode::SHORTEST_PATH || mode == PathFindingOperatorMode::REACH) {
+		// Paths are reconstructed from parent pointers in source-to-destination order; reach emits what each
+		// source reaches
 		return PathFindingSearchOrientation::FORWARD;
 	}
 	return ShouldUseReverseSearch(stats, mode, context) ? PathFindingSearchOrientation::REVERSE
@@ -702,14 +718,20 @@ PathFindingSearchOrientation ChooseSearchOrientation(const PathFindingPairStats 
 }
 
 //! Only the legacy CSR inputs build reverse partitions; endpoint inputs and cached indexes are forward-only, so a
-//! reverse search would have nothing to traverse and the forward orientation is used instead
+//! reverse search would have nothing to traverse and the forward orientation is used instead. When the edge set is
+//! symmetric the forward partitions are the reverse partitions, and a search from the destination side is allowed
+//! (many sources to one destination then costs one traversal instead of one per source).
 static bool CanSearchInReverse(const PathFindingGlobalSinkState &gstate) {
+	if (gstate.symmetric_edges) {
+		return true;
+	}
 	return !(gstate.precounted_edge_input || gstate.buffered_edge_input || gstate.cached_partitioned_csr_input);
 }
 
 static PathFindingSearchOrientation ChooseSupportedSearchOrientation(const PathFindingGlobalSinkState &gstate,
                                                                      ClientContext &context) {
-	if (!CanSearchInReverse(gstate) || gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH) {
+	if (!CanSearchInReverse(gstate) || gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH ||
+	    gstate.path_finding_mode == PathFindingOperatorMode::REACH) {
 		return PathFindingSearchOrientation::FORWARD;
 	}
 	return ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
@@ -845,6 +867,9 @@ PathFindingOperatorMode ParsePathFindingOperatorMode(const string &mode) {
 	if (mode == "shortestpath") {
 		return PathFindingOperatorMode::SHORTEST_PATH;
 	}
+	if (mode == "reach") {
+		return PathFindingOperatorMode::REACH;
+	}
 	throw InvalidInputException("Unknown mode specified %s", mode);
 }
 
@@ -866,6 +891,9 @@ void ConfigureLocalCSRStateForMode(LocalCSRState &local_csr_state, PathFindingOp
 bool TryLoadPartitionedCSR(PathFindingGlobalSinkState &gstate, LocalCSRState &local_csr_state, ClientContext &context) {
 	if (gstate.index_snapshot) {
 		local_csr_state.partition_csrs = gstate.index_snapshot->partitions;
+		if (gstate.symmetric_edges) {
+			local_csr_state.reverse_partition_csrs = local_csr_state.partition_csrs;
+		}
 		local_csr_state.partition_delta_csrs = gstate.index_snapshot->delta_partitions;
 		local_csr_state.partition_suppressed = gstate.index_snapshot->suppressed;
 		local_csr_state.loaded_from_cache = true;
@@ -910,8 +938,9 @@ shared_ptr<BFSState> CreateBFSStateForMode(PathFindingOperatorMode mode, const s
 		return make_shared_ptr<BidirectionalIterativeLengthState>(
 		    batch, local_csr_state.partition_csrs, local_csr_state.reverse_partition_csrs, num_threads, context, vsize);
 	case PathFindingOperatorMode::SHORTEST_PATH:
-		// TODO(dtenwolde) implement also for shortest path
-		throw NotImplementedException("Shortest path operator has not been implemented yet.");
+	case PathFindingOperatorMode::REACH:
+		// Both run on the source-grouped kernel only
+		throw NotImplementedException("Shortest path and reach run on the source-grouped kernel.");
 	}
 	throw InternalException("Unhandled path-finding operator mode");
 }
@@ -999,8 +1028,10 @@ bool ShouldUseGroupedIterativeLengthBatches(PathFindingGlobalSinkState &gstate, 
 static constexpr idx_t FEW_SOURCES_LIMIT = 16;
 
 bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, ClientContext &context) {
-	if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH) {
-		// Paths need parent pointers per vertex, which only the per-source kernel keeps
+	if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH ||
+	    gstate.path_finding_mode == PathFindingOperatorMode::REACH) {
+		// Paths need parent pointers per vertex, which only the per-source kernel keeps; reach emits each
+		// group's whole distance array
 		return true;
 	}
 	auto ratio = GetPathFindingSourceGroupRatio(context);
@@ -1128,7 +1159,16 @@ public:
 		for (idx_t group_idx = 0; group_idx < group_count; group_idx++) {
 			auto state = std::move(states[group_idx]);
 			state->output_chunks = std::move(gstate.source_group_output_chunks[group_idx]);
-			if (!gstate.source_group_preserve_output_order) {
+			bool reach = gstate.path_finding_mode == PathFindingOperatorMode::REACH;
+			if (reach && !gstate.source_group_preserve_output_order) {
+				// Single group: every input row belongs to it
+				gstate.source_group_rows.resize(group_count);
+				for (auto &chunk : state->output_chunks) {
+					for (idx_t row = 0; row < chunk->size(); row++) {
+						gstate.source_group_rows[group_idx].emplace_back(chunk.get(), row);
+					}
+				}
+			} else if (!gstate.source_group_preserve_output_order) {
 				// Single group: every row of its chunks is a destination of this source
 				for (auto &chunk : state->output_chunks) {
 					RegisterTargets(*chunk, [&](idx_t) { return state.get(); });
@@ -1143,7 +1183,13 @@ public:
 			gstate.source_group_states.push_back(state);
 			batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(state, *pipeline, op));
 		}
-		if (gstate.source_group_preserve_output_order) {
+		if (gstate.path_finding_mode == PathFindingOperatorMode::REACH) {
+			gstate.source_group_rows.resize(group_count);
+			gstate.reach_slices_done.clear();
+			for (idx_t group_idx = 0; group_idx < group_count; group_idx++) {
+				gstate.reach_slices_done.push_back(make_uniq<std::atomic<idx_t>>(0));
+			}
+		} else if (gstate.source_group_preserve_output_order) {
 			// Several groups: the output rows stay in input order and are mapped to their group per row
 			for (idx_t chunk_idx = 0; chunk_idx < gstate.global_output_batches.size(); chunk_idx++) {
 				auto &row_groups = gstate.source_group_output_states[chunk_idx];
@@ -1216,7 +1262,7 @@ void SchedulePartitionedEndpointBuildThenSourceGrouped(PathFindingGlobalSinkStat
 void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
                                           vector<shared_ptr<PathFindingBatch>> batches, Pipeline &pipeline,
                                           Event &event, const PhysicalPathFinding &op, ClientContext &context) {
-	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE &&
+	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE && !gstate.symmetric_edges &&
 	    (gstate.precounted_edge_input || gstate.buffered_edge_input)) {
 		throw NotImplementedException(
 		    "Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the "
@@ -1233,6 +1279,9 @@ void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
 		                                                 GetPathFindingEdgeCount(gstate),
 		                                                 gstate.endpoint_partition_width, gstate.num_threads);
 		local_csr_state->partition_csrs = gstate.endpoint_partition_csrs;
+		if (gstate.symmetric_edges) {
+			local_csr_state->reverse_partition_csrs = local_csr_state->partition_csrs;
+		}
 	} else if (gstate.edge_input) {
 		local_csr_state =
 		    make_shared_ptr<LocalCSRState>(context, std::move(gstate.endpoint_build_runs), gstate.vertex_count,
@@ -1273,7 +1322,7 @@ void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
 
 void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
                                             const PhysicalPathFinding &op, ClientContext &context) {
-	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE &&
+	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE && !gstate.symmetric_edges &&
 	    (gstate.precounted_edge_input || gstate.buffered_edge_input)) {
 		throw NotImplementedException(
 		    "Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the "
@@ -1290,6 +1339,9 @@ void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, 
 		                                                 GetPathFindingEdgeCount(gstate),
 		                                                 gstate.endpoint_partition_width, gstate.num_threads);
 		local_csr_state->partition_csrs = gstate.endpoint_partition_csrs;
+		if (gstate.symmetric_edges) {
+			local_csr_state->reverse_partition_csrs = local_csr_state->partition_csrs;
+		}
 	} else if (gstate.edge_input) {
 		local_csr_state =
 		    make_shared_ptr<LocalCSRState>(context, std::move(gstate.endpoint_build_runs), gstate.vertex_count,
@@ -1501,6 +1553,9 @@ public:
 		    gstate.endpoint_count, gstate.endpoint_partition_csrs.size(),
 		    std::chrono::duration<double, std::milli>(end_time - gstate.endpoint_build_start).count(), memory_bytes);
 		gstate.local_csr_state->partition_csrs = gstate.endpoint_partition_csrs;
+		if (gstate.symmetric_edges) {
+			gstate.local_csr_state->reverse_partition_csrs = gstate.local_csr_state->partition_csrs;
+		}
 		gstate.endpoint_partition_data.reset();
 		SampleCSRBuildMemory(gstate);
 		auto buffer_peak = gstate.csr_build_buffer_peak_bytes.load(std::memory_order_relaxed);
@@ -1583,6 +1638,7 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
 
 	std::unordered_map<int64_t, idx_t> source_to_group;
 	vector<SourceGroupBuildState> groups;
+	bool reach = gstate.path_finding_mode == PathFindingOperatorMode::REACH;
 
 	for (auto &chunk : gstate.global_output_batches) {
 		vector<idx_t> output_states;
@@ -1598,8 +1654,11 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
 			auto src_idx = src_format.sel->get_index(row);
 			auto dst_idx = dst_format.sel->get_index(row);
 			if (!src_format.validity.RowIsValid(src_idx) || !dst_format.validity.RowIsValid(dst_idx)) {
-				// No group searches this row; the scatter emits NULL for it
+				// No group searches this row; the scatter emits NULL for it (reach: the row reaches only itself)
 				output_states.push_back(DConstants::INVALID_INDEX);
+				if (reach) {
+					gstate.reach_ungrouped_rows.emplace_back(chunk.get(), row);
+				}
 				continue;
 			}
 			auto source = gstate.search_orientation == PathFindingSearchOrientation::REVERSE ? dst_data[dst_idx]
@@ -1614,6 +1673,10 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
 				entry = source_to_group.find(source);
 			}
 			groups[entry->second].row_count++;
+			if (reach) {
+				gstate.source_group_rows.resize(groups.size());
+				gstate.source_group_rows[entry->second].emplace_back(chunk.get(), row);
+			}
 			output_states.push_back(entry->second);
 		}
 		gstate.source_group_output_states.push_back(std::move(output_states));
@@ -1897,7 +1960,8 @@ static bool IsPathFindingFunction(const Expression &expr) {
 	}
 	auto name = expr.Cast<BoundFunctionExpression>().Function().GetName().GetIdentifierName();
 	return name == "iterativelengthoperator" || name == "pushpulliterativelengthoperator" ||
-	       name == "bidirectionaliterativelengthoperator" || name == "shortestpathoperator";
+	       name == "bidirectionaliterativelengthoperator" || name == "shortestpathoperator" ||
+	       name == "reachoperator";
 }
 
 static BoundFunctionExpression *FindPathFindingFunction(Expression &expr) {
@@ -2248,6 +2312,7 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 		expected_edge_count = index_snapshot->edge_count;
 		endpoint_partition_width = index_snapshot->partition_width;
 	}
+	symmetric_edges = (index_snapshot && index_snapshot->undirected) || StringUtil::EndsWith(op.cache_key, "|undirected");
 	auto &scheduler = TaskScheduler::GetScheduler(context);
 	num_threads = scheduler.NumberOfThreads();
 	mode = op.mode;
@@ -2582,25 +2647,139 @@ public:
 	}
 
 	const PhysicalPathFinding &op;
+	//! REACH mode cursor: the slice this thread is emitting, the input row of its group and the vertex position
+	idx_t reach_slice = DConstants::INVALID_INDEX;
+	idx_t reach_row_idx = 0;
+	idx_t reach_vertex_pos = 0;
 };
 
 class PathFindingGlobalSourceState : public GlobalSourceState {
 public:
-	explicit PathFindingGlobalSourceState(const PhysicalPathFinding &op) : op(op), initialized(false) {
+	PathFindingGlobalSourceState(const PhysicalPathFinding &op, idx_t max_threads_p)
+	    : op(op), initialized(false), max_threads(max_threads_p) {
 	}
 
 public:
 	idx_t MaxThreads() override {
-		return 1;
+		return max_threads;
 	}
 	const PhysicalPathFinding &op;
 
 	mutex lock;
 	bool initialized;
+	idx_t max_threads;
 };
 
 unique_ptr<GlobalSourceState> PhysicalPathFinding::GetGlobalSourceState(ClientContext &context) const {
-	return make_uniq<PathFindingGlobalSourceState>(*this);
+	// Only the reach output is read by several threads (slices of a group's distance array); the other result
+	// scans share one cursor
+	idx_t max_threads = mode == "reach" ? std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads()) : 1;
+	return make_uniq<PathFindingGlobalSourceState>(*this, max_threads);
+}
+
+//! Vertices per slice of a group's distance array handed to one GetData call sequence
+static constexpr idx_t REACH_SLICE = 1 << 16;
+
+//! REACH output: the threads claim slices (group, vertex range); a slice emits, for every input row of the group
+//! and every vertex in the range the source reached, the input row's columns and [vertex, distance]. One output
+//! chunk holds rows of one input row, so its pass-through columns are constant references.
+static SourceResultType GetReachData(ExecutionContext &context, DataChunk &result, PathFindingGlobalSinkState &pf_sink,
+                                     PathFindingLocalSourceState &lstate) {
+	auto group_count = pf_sink.source_group_states.size();
+	auto v_size = static_cast<idx_t>(pf_sink.vertex_count + 2);
+	auto slices_per_group = std::max<idx_t>(1, (v_size + REACH_SLICE - 1) / REACH_SLICE);
+	auto total_slices = group_count * slices_per_group;
+	auto snapshot = pf_sink.index_snapshot.get();
+	auto pass_through = result.ColumnCount() - 1;
+	auto &list_vector = result.data[pass_through];
+	ListVector::Reserve(list_vector, 2 * STANDARD_VECTOR_SIZE);
+	auto list_entries = FlatVector::GetDataMutable<list_entry_t>(list_vector);
+	auto list_child = FlatVector::GetDataMutable<int64_t>(ListVector::GetChildMutable(list_vector));
+	idx_t out = 0;
+	DataChunk *chunk_of_output = nullptr;
+	idx_t row_of_output = 0;
+	while (out < STANDARD_VECTOR_SIZE) {
+		if (lstate.reach_slice == DConstants::INVALID_INDEX) {
+			auto slice = pf_sink.reach_next_slice.fetch_add(1);
+			if (slice >= total_slices) {
+				break;
+			}
+			lstate.reach_slice = slice;
+			lstate.reach_row_idx = 0;
+			lstate.reach_vertex_pos = (slice % slices_per_group) * REACH_SLICE;
+		}
+		auto group_idx = lstate.reach_slice / slices_per_group;
+		auto range_end = std::min<idx_t>(v_size, ((lstate.reach_slice % slices_per_group) + 1) * REACH_SLICE);
+		auto &rows = pf_sink.source_group_rows[group_idx];
+		auto &group = *pf_sink.source_group_states[group_idx];
+		auto &distances = group.Distances();
+		bool slice_done = rows.empty() || distances.empty();
+		if (!slice_done) {
+			auto &row = rows[lstate.reach_row_idx];
+			if (out > 0 && (row.first != chunk_of_output || row.second != row_of_output)) {
+				break; // the chunk is bound to one input row; continue with the next call
+			}
+			chunk_of_output = row.first;
+			row_of_output = row.second;
+			auto vertex = lstate.reach_vertex_pos;
+			for (; vertex < range_end && out < STANDARD_VECTOR_SIZE; vertex++) {
+				auto distance = distances[vertex];
+				if (distance < 0) {
+					continue;
+				}
+				list_entries[out] = list_entry_t(2 * out, 2);
+				list_child[2 * out] = snapshot ? snapshot->KeyOf(vertex) : static_cast<int64_t>(vertex);
+				list_child[2 * out + 1] = distance;
+				out++;
+			}
+			lstate.reach_vertex_pos = vertex;
+			if (vertex >= range_end) {
+				lstate.reach_row_idx++;
+				lstate.reach_vertex_pos = (lstate.reach_slice % slices_per_group) * REACH_SLICE;
+				slice_done = lstate.reach_row_idx >= rows.size();
+			}
+		}
+		if (slice_done) {
+			lstate.reach_slice = DConstants::INVALID_INDEX;
+			auto done = pf_sink.reach_slices_done[group_idx]->fetch_add(1) + 1;
+			if (done == slices_per_group) {
+				group.ReleaseWorkingSets();
+			}
+		}
+	}
+	if (out == 0) {
+		// Rows whose source key is not in the graph: one row each, the source at distance 0 (the pair mode answers
+		// a self pair of such a vertex with 0 as well)
+		auto &ungrouped = pf_sink.reach_ungrouped_rows;
+		auto begin = pf_sink.reach_next_ungrouped.fetch_add(STANDARD_VECTOR_SIZE);
+		if (begin >= ungrouped.size()) {
+			result.SetChildCardinality(0);
+			return SourceResultType::FINISHED;
+		}
+		auto end = std::min<idx_t>(ungrouped.size(), begin + STANDARD_VECTOR_SIZE);
+		for (idx_t idx = begin; idx < end; idx++) {
+			auto &row = ungrouped[idx];
+			for (idx_t column = 0; column < pass_through; column++) {
+				result.data[column].SetValue(out, row.first->GetValue(PhysicalPathFinding::PAIR_PREFIX_COLUMNS + column,
+				                                                     row.second));
+			}
+			list_entries[out] = list_entry_t(2 * out, 2);
+			list_child[2 * out] = row.first->GetValue(2, row.second).GetValue<int64_t>();
+			list_child[2 * out + 1] = 0;
+			out++;
+		}
+		ListVector::SetListSize(list_vector, 2 * out);
+		result.SetChildCardinality(out);
+		return SourceResultType::HAVE_MORE_OUTPUT;
+	}
+	ListVector::SetListSize(list_vector, 2 * out);
+	for (idx_t column = 0; column < pass_through; column++) {
+		ConstantVector::Reference(result.data[column], count_t(out),
+		                          chunk_of_output->data[PhysicalPathFinding::PAIR_PREFIX_COLUMNS + column],
+		                          row_of_output, chunk_of_output->size());
+	}
+	result.SetChildCardinality(out);
+	return SourceResultType::HAVE_MORE_OUTPUT;
 }
 
 unique_ptr<LocalSourceState> PhysicalPathFinding::GetLocalSourceState(ExecutionContext &context,
@@ -2614,6 +2793,10 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 	// If there are no pairs, we're done
 	if (pf_sink.global_pairs->Count() == 0) {
 		return SourceResultType::FINISHED;
+	}
+
+	if (pf_sink.path_finding_mode == PathFindingOperatorMode::REACH) {
+		return GetReachData(context, result, pf_sink, input.local_state.Cast<PathFindingLocalSourceState>());
 	}
 
 	if (pf_sink.use_source_grouping) {

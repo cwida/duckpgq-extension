@@ -4705,9 +4705,13 @@ class DuckPGQSystem(GraphDBSystem):
         self.budget_s = budget_s
         self.symmetric = symmetric
         self.database = db_path(scale_factor)
+        # Build route: the symmetric closure table and a cache key that tells the operator the edge set is
+        # symmetric (a reverse search may use the forward partitions); index route: an undirected index on knows
         self.edge_table = "person_knows_person_sym" if symmetric else "person_knows_person"
-        self.index_name = f"{CSR_INDEX_NAME}_sym" if symmetric else CSR_INDEX_NAME
-        self.index_key = f"csr-index|ldbc|main|{self.edge_table}|{self.index_name}"
+        self.cache_key = "graph:sweep|undirected" if symmetric else "graph:sweep"
+        self.index_table = "person_knows_person"
+        self.index_name = f"{CSR_INDEX_NAME}_undirected" if symmetric else CSR_INDEX_NAME
+        self.index_key = f"csr-index|ldbc|main|{self.index_table}|{self.index_name}"
 
     def load(self, export_dir, scale_factor):
         if self.symmetric:
@@ -4719,8 +4723,9 @@ class DuckPGQSystem(GraphDBSystem):
         if self.route == "index":
             run_duckdb(BENCH_DUCKDB, None, f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; "
                                           f"ATTACH {sql_string(self.database)} AS ldbc; "
-                                          f"CREATE INDEX IF NOT EXISTS {self.index_name} ON ldbc.{self.edge_table} "
-                                          f"USING CSR (person1id, person2id);", quiet=True)
+                                          f"CREATE INDEX IF NOT EXISTS {self.index_name} ON ldbc.{self.index_table} "
+                                          f"USING CSR (person1id, person2id)"
+                                          f"{' WITH (undirected = true)' if self.symmetric else ''};", quiet=True)
 
     def edge_count(self):
         return self.edge_count_value
@@ -4729,33 +4734,37 @@ class DuckPGQSystem(GraphDBSystem):
         pass  # ensure_ldbc_attributes ran in load()
 
     def pair_forms(self, pair_table):
-        """(row-id pair relation for the build route, key pair relation for the index route) of a pair table"""
+        """(row-id pair relation for the build route, key pair relation for the index route) of a pair table; a
+        multi-source table yields its sources only and the query runs in reach mode (every vertex each source
+        reaches, no destination list)"""
         if pair_table.startswith(multi_source_table_name("")):
-            # sources (row ids) x every person, streamed
-            return (f"(SELECT s.src AS src, d.rowid::BIGINT AS dst FROM ldbc.{pair_table} s, ldbc.person d)",
-                    f"(SELECT a.id::BIGINT AS src, d.id::BIGINT AS dst FROM ldbc.{pair_table} s "
-                    f"JOIN ldbc.person a ON a.rowid = s.src, ldbc.person d)")
+            return (f"(SELECT s.src AS src, s.src AS dst FROM ldbc.{pair_table} s)",
+                    f"(SELECT a.id::BIGINT AS src, a.id::BIGINT AS dst FROM ldbc.{pair_table} s "
+                    f"JOIN ldbc.person a ON a.rowid = s.src)")
         return (f"ldbc.{pair_table}",
                 f"(SELECT a.id::BIGINT AS src, b.id::BIGINT AS dst FROM ldbc.{pair_table} p "
                 f"JOIN ldbc.person a ON a.rowid = p.src JOIN ldbc.person b ON b.rowid = p.dst)")
 
     def script(self, rowid_pairs, key_pairs, warm):
+        reach = "AS dst FROM ldbc.benchmark_pairs_multi_" in rowid_pairs
+        if reach:
+            # reachoperator yields [dst, len] per reached vertex; count and sum over the lengths as in pair mode
+            select = "SELECT count(r[2]), coalesce(sum(r[2]), 0) FROM (SELECT reachoperator(src, dst, "
+            result = ") AS r"
+        else:
+            select = "SELECT count(len), coalesce(sum(len), 0) FROM (SELECT iterativelengthoperator(src, dst, "
+            result = ") AS len"
         if self.route == "build":
-            query = f"""SELECT count(len), coalesce(sum(len), 0) FROM (
-    SELECT iterativelengthoperator(src, dst, struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
-        {self.vertex_count}::BIGINT, {self.edge_count_value}::BIGINT, 'graph:sweep') AS len
+            query = f"""{select}struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+        {self.vertex_count}::BIGINT, {self.edge_count_value}::BIGINT, {sql_string(self.cache_key)}{result}
     FROM {rowid_pairs} AS pathfinding_pairs,
         (SELECT a.rowid::BIGINT AS pathfinding_edge_src, c.rowid::BIGINT AS pathfinding_edge_dst
          FROM ldbc.{self.edge_table} k JOIN ldbc.person a ON a.id = k.person1id JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges);"""
             prelude = ""
         else:
-            # Small pair sets are materialised untimed (the operator then reads a plain table), large ones stream
-            if "ldbc.person d)" in key_pairs:
-                prelude = f"CREATE OR REPLACE TEMP VIEW pathfinding_index_pairs AS SELECT * FROM {key_pairs};"
-            else:
-                prelude = f"CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS SELECT * FROM {key_pairs};"
-            query = (f"SELECT count(len), coalesce(sum(len), 0) FROM (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, "
-                     f"{sql_string(self.index_key)}) AS len FROM pathfinding_index_pairs);")
+            # The key pairs are materialised untimed (the operator then reads a plain table)
+            prelude = f"CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS SELECT * FROM {key_pairs};"
+            query = f"{select}0::BIGINT, 0::BIGINT, {sql_string(self.index_key)}{result} FROM pathfinding_index_pairs);"
         warm_up = query + "\n" if warm else ""
         return f"""LOAD {sql_string(DUCKPGQ_EXTENSION)};
 SET threads={self.threads};
@@ -4773,6 +4782,8 @@ SELECT delete_csr(2147483647) AS duckpgq_state_init;
         result = subprocess.run([str(BENCH_DUCKDB), "-unsigned", "-csv"], cwd=REPO_ROOT, text=True, input=script,
                                 capture_output=True, timeout=self.budget_s)
         output = result.stdout + result.stderr
+        if result.returncode < 0:
+            raise RuntimeError(f"duckdb killed by signal {-result.returncode} (out of memory?)")
         if result.returncode != 0 or "Error" in output:
             raise RuntimeError(output[-2000:])
         timers = re.findall(r"Run Time \(s\): real ([0-9.]+)", output)
@@ -4868,6 +4879,8 @@ def sweep_pairs(args):
         ensure_pair_table(scale_factor, n, "random")
     source_tables = [ensure_multi_source_table(scale_factor, k) for k in args.source_counts]
     export_dir = ensure_graphdb_export(scale_factor, pair_tables + source_tables)
+    with (export_dir / "person.csv").open() as handle:
+        vertex_count = sum(1 for _ in handle) - 1
     systems = make_systems(args, scale_factor)
     results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -4895,6 +4908,7 @@ def sweep_pairs(args):
         started = time.perf_counter()
         system.load(export_dir, scale_factor)
         print(f"   loaded in {time.perf_counter() - started:.1f}s, {system.edge_count()} edges")
+        system_vertex_count = vertex_count
         # Random pairs; once a count exceeds the budget the larger counts are recorded as exceeded without running
         shape_exceeded = False
         for n in args.pair_counts:
@@ -4914,6 +4928,8 @@ def sweep_pairs(args):
                         value, status = (reachable, total), "ok"
                     except subprocess.TimeoutExpired:
                         value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                    except RuntimeError as ex:
+                        value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                 else:
                     value, elapsed, status = run_with_budget(system, lambda: system.point_to_point(pairs), args.budget_s)
                     if value:
@@ -4933,12 +4949,18 @@ def sweep_pairs(args):
             for repeat in range(1, args.repeats + 1):
                 if exceeded:
                     break
-                if isinstance(system, DuckPGQSystem):
+                if not isinstance(system, DuckPGQSystem) and len(source_keys) * system_vertex_count > args.max_pairs:
+                    # The per-source systems answer this shape in time proportional to the result; DuckPGQ's reach
+                    # mode has no pair list and runs every point
+                    value, elapsed, status = None, 0.0, f"exceeds_pair_limit_{args.max_pairs}"
+                elif isinstance(system, DuckPGQSystem):
                     try:
                         elapsed, reachable, total = system.timed_table(table)
                         value, status = (reachable, total), "ok"
                     except subprocess.TimeoutExpired:
                         value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                    except RuntimeError as ex:
+                        value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                 else:
                     value, elapsed, status = run_with_budget(system, lambda: system.multi_source(source_keys), args.budget_s)
                     if value:
@@ -5001,6 +5023,8 @@ def sweep_pairs_table(args):
                     cells.append(f"{mean*1000:.0f} ms" if mean < 1 else f"{mean:.1f} s")
                 elif any(r["status"].startswith("budget_exceeded") for r in point):
                     cells.append(f"> {point[0]['budget_s']} s")
+                elif any(r["status"].startswith("exceeds_pair_limit") for r in point):
+                    cells.append("not run")
                 elif point:
                     cells.append("error")
                 else:
@@ -5148,6 +5172,8 @@ def ldbc_queries(args):
                             value, status = (reachable, total), "ok"
                         except subprocess.TimeoutExpired:
                             value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                        except RuntimeError as ex:
+                            value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                     else:
                         value, elapsed, status = run_with_budget(system, lambda: getattr(system, query)(*values), args.budget_s)
                     writer.add({"system": system.name, "scale_factor": scale_factor, "query": query, "param_index": idx,
@@ -5575,6 +5601,8 @@ def main():
     sweep_pairs_parser.add_argument("--source-counts", nargs="*", type=int, default=SWEEP_SOURCE_COUNTS)
     sweep_pairs_parser.add_argument("--repeats", type=int, default=3)
     sweep_pairs_parser.add_argument("--budget-s", type=float, default=600, help="per-query budget; exceeded is recorded")
+    sweep_pairs_parser.add_argument("--max-pairs", type=int, default=500_000_000,
+                                    help="sources x all points above this many pairs are recorded as not run")
     sweep_pairs_parser.add_argument("--memgraph-uri", default="bolt://localhost:7687")
     sweep_pairs_parser.add_argument("--neo4j-uri", default="bolt://localhost:7688")
     sweep_pairs_parser.add_argument("--neo4j-database", default="pathfinding")

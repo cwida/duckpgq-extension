@@ -3,6 +3,9 @@
 
 namespace duckdb {
 
+//! Result type of the reachoperator marker: one [dst, len] list per reached vertex
+LogicalType ReachOperatorResultType();
+
 struct CoreScalarFunctions {
 	static void Register(ExtensionLoader &loader) {
 		RegisterCheapestPathLengthScalarFunction(loader);
@@ -16,6 +19,7 @@ struct CoreScalarFunctions {
 		RegisterReachabilityScalarFunction(loader);
 		RegisterShortestPathScalarFunction(loader);
 		RegisterShortestPathOperatorScalarFunction(loader);
+		RegisterReachOperatorScalarFunction(loader);
 		RegisterIterativeLengthOperatorScalarFunction(loader);
 		RegisterPushPullIterativeLengthOperatorScalarFunction(loader);
 		RegisterBidirectionalIterativeLengthOperatorScalarFunction(loader);
@@ -37,6 +41,7 @@ private:
 	static void RegisterReachabilityScalarFunction(ExtensionLoader &loader);
 	static void RegisterShortestPathScalarFunction(ExtensionLoader &loader);
 	static void RegisterShortestPathOperatorScalarFunction(ExtensionLoader &loader);
+	static void RegisterReachOperatorScalarFunction(ExtensionLoader &loader);
 	static void RegisterIterativeLengthOperatorScalarFunction(ExtensionLoader &loader);
 	static void RegisterPushPullIterativeLengthOperatorScalarFunction(ExtensionLoader &loader);
 	static void RegisterBidirectionalIterativeLengthOperatorScalarFunction(ExtensionLoader &loader);
