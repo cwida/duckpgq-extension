@@ -32,7 +32,7 @@ the operator from its own statistics (Section~\ref{sec:cost}).
   \addlinespace[2pt]
   optimizer extension & replacing the marker and its two inputs by the logical operator & runs before or after the engine's optimizer, not between its rules; the rewrite must find its inputs on the binder's plan shape \\
   \addlinespace[2pt]
-  logical and physical operator & sink for pairs and endpoints, source for results, own events and tasks & no cardinality or cost reported back to the optimizer; no task groups in the scheduler \\
+  logical and physical operator & sink for pairs and edges, source for results, own events and tasks & no cardinality or cost reported back to the optimizer; no task groups in the scheduler \\
   \addlinespace[2pt]
   index type & build, append and delete callbacks; serialization into the block manager; WAL replay; vacuum & rows but not transactions; no visibility at past points in time; a scan interface meant for point lookups, not for a traversal \\
   \addlinespace[2pt]

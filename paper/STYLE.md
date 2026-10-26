@@ -71,6 +71,7 @@ numbers; then "In the future, we will" with real items.
 | lanes (of the multi-source traversal) | bitset columns | MS-BFS terminology from Then et al. |
 | destination partition, source bucket | shard, chunk | the layout's own names |
 | host engine, extension | fork, plugin | the thesis is about the boundary |
+| source and destination; (src, dst) row ids | endpoint(s) | the author's preference; say which vertex is meant |
 | microbenchmark | ablation | the author's term; say what was switched off or varied |
 | vertex key, edge row id | rowid, id | keys identify vertices, row ids identify edges |
 

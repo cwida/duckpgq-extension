@@ -8,7 +8,8 @@ A path pattern in \sqlpgq asks, for a set of candidate (source, destination) pai
 length exists and how long it is, or which vertices and edges it uses. The operator takes exactly that: a stream of
 pairs, one \duckdb vector of 2048 rows at a time, and the graph, either as a set of edges to build the CSR from or
 as the name of a CSR index to read it from, and returns one length or one path per pair. Everything else, label tests,
-filters on the endpoints, the join back to the vertex tables and the test on the quantifier, stays relational and is
+filters on the source and destination vertices, the join back to the vertex tables and the test on the quantifier,
+stays relational and is
 left to \duckdb's planner. This section describes how the operator gets its inputs, how it builds and lays out the
 graph, how it traverses it, and how it runs in parallel without waiting on anything.
 
@@ -16,7 +17,8 @@ graph, how it traverses it, and how it runs in parallel without waiting on anyth
 \label{sec:planner}
 
 \duckpgq rewrites \texttt{MATCH} into SQL, and the path pattern becomes a scalar function call in that SQL: a
-\emph{marker} that takes the two endpoint columns of the candidate pairs, the edge endpoints as a struct column, the
+\emph{marker} that takes the source and destination columns of the candidate pairs, the edges as a struct column of
+(source, destination) row ids, the
 vertex and edge counts, a constant key naming the graph, and the upper bound of the quantifier. The marker is
 registered as a volatile scalar function so that no part of the engine folds or reorders it, and it is never
 executed: an optimizer extension runs before \duckdb's own optimizer, finds the projection that contains the marker,
@@ -26,8 +28,8 @@ the two inputs are easy to identify there and impossible to find after the optim
 The engine then sees an operator with two children and a cardinality, plans the rest of the query around it, and
 executes it as a sink over both children and a source for the result.
 
-Three details of the rewrite matter for performance. First, the pairs are the cross product of the two endpoint
-vertex sets after their own filters, so a query with one source and a filter on the destination produces few pairs
+Three details of the rewrite matter for performance. First, the pairs are the cross product of the source and
+destination vertex sets after their own filters, so a query with one source and a filter on the destination produces few pairs
 and the operator never materializes a full cross product. Second, the upper bound of the quantifier travels with the
 marker, so the traversal stops at that depth instead of exhausting the graph and letting a filter discard the rest.
 Third, when a CSR index exists for the edge table, the rewrite drops the edge input and passes the index name in the
@@ -100,7 +102,7 @@ in Sections 3.2 and 4.} On the 8M-edge graph the switch to the single-source tra
 took a single pair from 0.11\,s to 0.01\,s and twenty sources with 200 destinations each from 1.5\,s to 0.13\,s,
 for identical answers.
 
-\paragraph{Pairs with unknown endpoints.} A pair whose source or destination has no edges, or whose key is absent
+\paragraph{Pairs with an unknown source or destination.} A pair whose source or destination has no edges, or whose key is absent
 from the index, has no path, and the operator answers \texttt{NULL} for it without searching and without changing
 the traversal chosen for the other pairs of the query.
 

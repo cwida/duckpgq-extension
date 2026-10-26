@@ -38,13 +38,13 @@
 
 % ---------------------------------------------------------------- row 2: the operator
 \node[op, text width=\W cm-4pt] (operator) at (0,-2.05)
-  {\textbf{path-finding operator}: sinks the pairs $(a,b)$ and the edge endpoints, or reads an index snapshot;\\ one length or one path per pair};
+  {\textbf{path-finding operator}: sinks the pairs $(a,b)$ and the edges, or reads an index snapshot;\\ one length or one path per pair};
 \draw[flow] (marker.south) -- node[lbl, right, xshift=2pt] {marker $\rightarrow$ operator (\S\ref{sec:planner})} (marker.south |- operator.north);
 \draw[hooked] (h-physop.south) -- ++(0,-0.12) -| (4.0,-1.6) -- (4.0,-2.05);
 
 % ---------------------------------------------------------------- row 3: build per query | CSR index
 \node[op, text width=3.75cm] (build) at (0,-2.95)
-  {\textbf{build per query} (\S\ref{sec:csr})\\ edge table $\bowtie$ vertices $\rightarrow$ endpoints\\ radix partition by destination range\\ sort by source, emit sparse rows};
+  {\textbf{build per query} (\S\ref{sec:csr})\\ edge table $\bowtie$ vertices $\rightarrow$ (src, dst) row ids\\ radix partition by destination range\\ sort by source, emit sparse rows};
 \node[ix, text width=3.6cm] (index) at (4.25,-2.95)
   {\textbf{CSR index} (\S\ref{sec:index})\\ immutable epoch CSR + dictionary\\ change log stamped per commit group\\ snapshot = epoch + overlay for txn $T$};
 \draw[hooked] (h-index.south) -- ++(0,-0.12) -| (8.35,-3.2) -- (index.east |- 0,-3.2);
