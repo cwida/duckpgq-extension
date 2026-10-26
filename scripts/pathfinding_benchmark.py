@@ -20,7 +20,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = REPO_ROOT / "data" / "ldbc-pathfinding"
-GENERATOR_ROOT = Path.home() / "git" / "ldbc-data-gen"
+GENERATOR_ROOT = Path(os.environ.get("DUCKPGQ_GENERATOR_ROOT", str(Path.home() / "git" / "ldbc-data-gen")))
 GENERATOR_DUCKDB = GENERATOR_ROOT / "build" / "release" / "duckdb"
 GENERATOR_EXTENSION = GENERATOR_ROOT / "build" / "release" / "extension" / "ldbc_data_gen" / "ldbc_data_gen.duckdb_extension"
 BENCH_DUCKDB = REPO_ROOT / "build" / "release" / "duckdb"

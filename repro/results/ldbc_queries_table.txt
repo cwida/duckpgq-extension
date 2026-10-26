@@ -1,0 +1,15 @@
+
+## LDBC queries (hop-count variants, undirected knows): mean seconds per query, SF100, 32 threads, timeout 600.0 s
+
+| system | ic13 | bi19 | bi20 |
+|---|---|---|---|
+| memgraph@32 | 8.8 s | 16.1 s | 641 ms |
+| falkordb@32 | 60 ms | > 600.0 s | 210.6 s |
+| kuzu@32 | 65 ms | 22.4 s | 29.6 s |
+| kuzu | 53 ms | 328.5 s | > 600.0 s |
+| memgraph | 33.2 s | > 600.0 s | 47.9 s |
+| falkordb | 118 ms | > 600.0 s | > 600.0 s |
+| neo4j | 5 ms | 48.4 s | 1.2 s |
+| neo4j_gds | 1.8 s | > 600.0 s | > 600.0 s |
+| duckpgq_build | 535 ms | 59.9 s | 573 ms |
+| duckpgq_index | 27 ms | 43.7 s | 55 ms |

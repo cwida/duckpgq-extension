@@ -139,3 +139,11 @@ W18 Neo4j Enterprise request, W22 outline.
   `~/sweep/sweep_pairs_sf*.out`, `~/sweep/ldbc_queries_sf*.out`, `~/sweep/chain_done.txt` when finished. Print
   tables with `sweep-pairs-table <csvs>` / `ldbc-queries-table <csvs>` (a system's rows come from the last file
   that has it, so pass the SF10 full-sweep CSV first and the DuckPGQ/GDS rerun CSVs after it).
+
+## Reproduction package (26 Oct)
+
+`repro/` is the archive and the one-script reproduction: `setup.sh`, `prepare.sh`, `run_all.sh`, `collect.sh`,
+`environment.sh`, `results/` (CSVs behind every figure). After any new sweep run `./repro/collect.sh` so the
+archive and the figures move together, then commit `repro/results` and `paper/`. `./repro/collect.sh archive`
+re-renders from the archive alone. Decisions: Neo4j Enterprise evaluation-licence numbers are published (W18);
+the archive goes to GitHub, this branch first, then a separate repository (W21).

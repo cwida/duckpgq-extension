@@ -1,0 +1,22 @@
+config,step,query_s,update_s,batch_inserts,batch_deletes,edges,pair_count,reachable_count,total_len,scale_factor,threads,query_pattern,batch_size,batches,queries_per_batch,kuzu_version,benchmark_notes,repo_commit
+kuzu,0,5.288315,,,,,1024,364,1257,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,1,5.189625,0.402881,1848,152,1841050,1024,364,1255,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,2,5.260209,0.291352,1841,159,1842732,1024,364,1255,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,3,5.399627,0.291723,1849,151,1844430,1024,364,1255,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,4,5.528302,0.295240,1830,170,1846090,1024,364,1255,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,5,5.646183,0.289238,1845,155,1847780,1024,365,1259,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,6,5.799315,0.299785,1832,168,1849444,1024,365,1259,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,7,5.986613,0.296964,1829,171,1851102,1024,365,1259,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,8,6.154515,0.301766,1832,168,1852766,1024,364,1254,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,9,6.310213,0.299269,1849,151,1854464,1024,364,1254,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,10,6.456674,0.302184,1820,180,1856104,1024,364,1254,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,11,6.614944,0.304854,1840,160,1857784,1024,364,1253,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,12,6.782355,0.309967,1840,160,1859464,1024,364,1252,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,13,6.948365,0.301696,1843,157,1861150,1024,364,1252,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,14,7.096780,0.313793,1845,155,1862840,1024,364,1252,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,15,7.253821,0.307697,1844,156,1864528,1024,364,1251,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,16,7.413557,0.308415,1813,187,1866154,1024,364,1251,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,17,7.558911,0.304683,1828,172,1867810,1024,365,1255,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,18,7.717752,0.306403,1813,187,1869436,1024,365,1255,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,19,7.874674,0.311049,1825,175,1871086,1024,365,1255,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
+kuzu,20,8.019719,0.312134,1816,184,1872718,1024,365,1254,10,32,point_to_point,2000,20,1,0.11.3,"kuzu 0.11.3, per-pair queries, 20 batches",21be0e0d8bd509a9a0f209607ee86a3384bdf8a2
