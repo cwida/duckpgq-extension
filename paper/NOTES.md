@@ -123,5 +123,5 @@ Introduction, when the frozen-commit numbers are in:
   ablation (reverse orientation is 18x faster for many sources to one destination, the BI20 shape), add the reverse
   partitions to Section 4 (stored without row ids, same epoch and change groups, undirected aliases forward), and
   state its cost (~5 B per edge). Push/pull and bidirectional stay out unless the sweep says otherwise.
-- Word choice: "ablation" is replaced by "the effect of each design choice" in titles and by "switching a mechanism
-  off" in prose (author does not use the word).
+- Word choice: "ablation" is not used; the subsection is "Microbenchmarks" and the prose says what was switched off
+  or varied.
