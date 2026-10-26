@@ -10,7 +10,7 @@ graph changes underneath concurrent readers? And how do the three routes behave 
 benchmark?
 
 \paragraph{Setup.} All experiments run on one AWS m7a.8xlarge (32 AMD Genoa cores without SMT, 128\,GiB, gp3 volume
-at 1000\,MB/s), Linux, 32 threads per system unless stated. \duckpgq runs on \duckdb v2.0 at commit \todo{hash}; the
+at 1000\,MB/s), Linux, 32 threads per system unless stated. \duckpgq runs on \duckdb v2.0.0; the
 baselines are Kuzu 0.11.3, Neo4j 5.26 Enterprise (16\,GB heap, 16\,GB page cache, parallel runtime; the GDS library
 with its community limit of four threads where marked), Memgraph and FalkorDB in their current Docker images. The
 graph is the \texttt{Person\_knows\_Person} relation of LDBC SNB at scale factors 10, 100 and 300 (1.84M, 18.7M and

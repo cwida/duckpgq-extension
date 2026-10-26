@@ -1,4 +1,4 @@
-\begin{table}[t]\centering\small
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
 \caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, mean seconds per query over five parameter sets; rows marked conn.\ split the sources over 32 client connections.}\label{tab:ldbc}
 \begin{tabular}{lrrr}\toprule
 system & IC13 & BI19 & BI20 \\ \midrule
@@ -12,7 +12,7 @@ system & IC13 & BI19 & BI20 \\ \midrule
 \quad FalkorDB (32 conn.) & 15\,ms & 18.6\,s & 3.0\,s \\
 \quad Memgraph & 385\,ms & 41.6\,s & 540\,ms \\
 \quad Memgraph (32 conn.) & 395\,ms & 134\,ms & 26.8\,s \\
-\quad Neo4j GDS (4 threads) & 64\,ms & 10.2\,s & 58.4\,s \\
+\quad Neo4j GDS (4 thr.) & 64\,ms & 10.2\,s & 58.4\,s \\
 \addlinespace
 \multicolumn{4}{l}{\textit{LDBC SF100}} \\
 \quad DuckPGQ index & 14\,ms & 5.9\,s & \textbf{25\,ms} \\
@@ -24,7 +24,7 @@ system & IC13 & BI19 & BI20 \\ \midrule
 \quad FalkorDB (32 conn.) & 60\,ms & timeout & 211\,s \\
 \quad Memgraph & 8.7\,s & timeout & 6.4\,s \\
 \quad Memgraph (32 conn.) & 8.8\,s & 16.1\,s & 641\,ms \\
-\quad Neo4j GDS (4 threads) & 583\,ms & timeout & timeout \\
+\quad Neo4j GDS (4 thr.) & 583\,ms & timeout & timeout \\
 \addlinespace
 \multicolumn{4}{l}{\textit{LDBC SF300}} \\
 \quad DuckPGQ index & 27\,ms & \textbf{43.7\,s} & \textbf{55\,ms} \\
@@ -33,5 +33,5 @@ system & IC13 & BI19 & BI20 \\ \midrule
 \quad Kuzu & 53\,ms & 329\,s & timeout \\
 \quad FalkorDB & 118\,ms & timeout & timeout \\
 \quad Memgraph & 33.2\,s & timeout & 47.9\,s \\
-\quad Neo4j GDS (4 threads) & 1.8\,s & timeout & timeout \\
+\quad Neo4j GDS (4 thr.) & 1.8\,s & timeout & timeout \\
 \bottomrule\end{tabular}\end{table}

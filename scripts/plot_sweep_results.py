@@ -582,7 +582,7 @@ def updates_figure(filename):
 
 TABLES = REPO / "paper" / "tables"
 NAME_OF = {key: name for key, name, _ in SYSTEMS}
-NAME_OF["neo4j_gds"] = "Neo4j GDS (4 threads)"
+NAME_OF["neo4j_gds"] = "Neo4j GDS (4 thr.)"
 ORDER = [key for key, _, _ in SYSTEMS] + ["neo4j_gds"]
 
 
@@ -639,9 +639,10 @@ def sweep_table(shape, filename, caption, label, head):
     lines = []
     for sf in SCALE_FACTORS:
         points = load("sweep_pairs", sf)
-        counts = sorted({k[2] for k in points if k[1] == shape})
+        counts = [c for c in sorted({k[2] for k in points if k[1] == shape}) if c != 2048]
         if not lines:
-            lines += [r"\begin{table*}[t]\centering\small", f"\\caption{{{caption}}}\\label{{{label}}}",
+            lines += [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.6pt}",
+                      f"\\caption{{{caption}}}\\label{{{label}}}",
                       r"\begin{tabular}{l" + "r" * len(counts) + r"}\toprule",
                       f"{head} & " + " & ".join(count_label(c) for c in counts) + r" \\ \midrule"]
         lines.append(f"\\multicolumn{{{len(counts) + 1}}}{{l}}{{\\textit{{LDBC SF{sf}}}}} \\\\")
@@ -650,13 +651,13 @@ def sweep_table(shape, filename, caption, label, head):
         lines += format_rows(rows)
         if sf != SCALE_FACTORS[-1]:
             lines.append(r"\addlinespace")
-    lines.append(r"\bottomrule\end{tabular}\end{table*}")
+    lines.append(r"\bottomrule\end{tabular}\end{table}")
     write_table(filename, lines)
 
 
 def ldbc_table(filename):
     queries = ["ic13", "bi19", "bi20"]
-    lines = [r"\begin{table}[t]\centering\small",
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
              r"\caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, mean seconds per query over five parameter sets; rows marked conn.\ split the sources over 32 client connections.}\label{tab:ldbc}",
              r"\begin{tabular}{lrrr}\toprule", r"system & IC13 & BI19 & BI20 \\ \midrule"]
     for sf in SCALE_FACTORS:

@@ -1,4 +1,4 @@
-\begin{table*}[t]\centering\small
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.6pt}
 \caption{Distances from $k$ sources to every reachable person, mean seconds over three runs; n/r: not run above 500M pairs.}\label{tab:sources-all}
 \begin{tabular}{lrrrr}\toprule
 system / sources & 1 & 16 & 128 & 1k \\ \midrule
@@ -12,7 +12,7 @@ system / sources & 1 & 16 & 128 & 1k \\ \midrule
 \quad FalkorDB (32 conn.) & 295\,s & timeout & timeout & timeout \\
 \quad Memgraph & 14\,ms & 573\,ms & 4.9\,s & 38.0\,s \\
 \quad Memgraph (32 conn.) & 13\,ms & 146\,ms & 341\,ms & 2.3\,s \\
-\quad Neo4j GDS (4 threads) & 25\,ms & 350\,ms & 3.0\,s & 22.3\,s \\
+\quad Neo4j GDS (4 thr.) & 25\,ms & 350\,ms & 3.0\,s & 22.3\,s \\
 \addlinespace
 \multicolumn{5}{l}{\textit{LDBC SF100}} \\
 \quad DuckPGQ index & 15\,ms & \textbf{91\,ms} & \textbf{383\,ms} & \textbf{2.3\,s} \\
@@ -24,7 +24,7 @@ system / sources & 1 & 16 & 128 & 1k \\ \midrule
 \quad FalkorDB (32 conn.) & timeout & timeout & timeout & timeout \\
 \quad Memgraph & 1.2\,s & 12.1\,s & 90.9\,s & timeout \\
 \quad Memgraph (32 conn.) & 1.1\,s & 2.4\,s & 6.2\,s & 35.7\,s \\
-\quad Neo4j GDS (4 threads) & 330\,ms & 3.3\,s & 24.1\,s & 191\,s \\
+\quad Neo4j GDS (4 thr.) & 330\,ms & 3.3\,s & 24.1\,s & 191\,s \\
 \addlinespace
 \multicolumn{5}{l}{\textit{LDBC SF300}} \\
 \quad DuckPGQ index & 9\,ms & \textbf{135\,ms} & \textbf{657\,ms} & \textbf{4.2\,s} \\
@@ -33,5 +33,5 @@ system / sources & 1 & 16 & 128 & 1k \\ \midrule
 \quad Kuzu & 3\,ms & 151\,ms & 2.0\,s & n/r \\
 \quad FalkorDB & timeout & timeout & timeout & timeout \\
 \quad Memgraph & \textbf{1\,ms} & 17.1\,s & 284\,s & n/r \\
-\quad Neo4j GDS (4 threads) & 51\,ms & 4.1\,s & 57.3\,s & n/r \\
-\bottomrule\end{tabular}\end{table*}
+\quad Neo4j GDS (4 thr.) & 51\,ms & 4.1\,s & 57.3\,s & n/r \\
+\bottomrule\end{tabular}\end{table}
