@@ -145,7 +145,20 @@ def plot_series(ax, xs, ys, exceeded_x, color, linestyle="-", linewidth=1.6, alp
                 zorder=zorder + 1, alpha=alpha)
 
 
+# The line charts show our two routes and the two strongest baselines of each shape; every system is in the tables
+SPARSE = {
+    "random_pairs": ("duckpgq_index", "duckpgq_build", "neo4j", "kuzu"),
+    "multi_source": ("duckpgq_index", "duckpgq_build", "kuzu", "memgraph"),
+}
+
+
+def sparse_systems(*shapes):
+    keys = [key for shape in shapes for key in SPARSE[shape]]
+    return [entry for entry in SYSTEMS if entry[0] in keys]
+
+
 def sweep_figure(shape, xlabel, filename, title):
+    systems = sparse_systems(shape)
     fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.6), sharey=True)
     for ax, sf in zip(axes, SCALE_FACTORS):
         points = load("sweep_pairs", sf)
@@ -155,7 +168,7 @@ def sweep_figure(shape, xlabel, filename, title):
         ax.axhline(TIMEOUT_S, color=AXIS, linewidth=0.6)
         ax.text(counts[0], TIMEOUT_S * 1.25, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
         label_positions = []
-        for system, name, color in SYSTEMS:
+        for system, name, color in systems:
             xs, ys, exceeded_x = [], [], []
             for count in counts:
                 point = best_path(points, system, shape, count)
@@ -179,7 +192,7 @@ def sweep_figure(shape, xlabel, filename, title):
         style_axes(ax)
     axes[1].set_xlabel(xlabel)
     axes[0].set_ylabel("seconds per query (mean of 3)")
-    series_legend(fig, SYSTEMS, ncol=7)
+    series_legend(fig, systems, ncol=5)
     fig.suptitle(title, x=0.01, ha="left", fontsize=9.5, color=INK)
     fig.tight_layout(rect=(0, 0.06, 0.9, 0.95))
     save(fig, filename)
@@ -359,7 +372,7 @@ def scaling_figure(filename):
         ax.axhline(TIMEOUT_S, color=AXIS, linewidth=0.6)
         ax.text(edges["10"], TIMEOUT_S * 1.3, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
         label_positions = []
-        for system, name, color in SYSTEMS:
+        for system, name, color in sparse_systems(shape):
             xs, ys, exceeded_x = [], [], []
             for sf in SCALE_FACTORS:
                 points = load("sweep_pairs", sf)
@@ -384,7 +397,7 @@ def scaling_figure(filename):
         ax.set_title(title, loc="left")
         style_axes(ax)
     axes[0].set_ylabel("seconds per query (mean of 3)")
-    series_legend(fig, SYSTEMS, ncol=7)
+    series_legend(fig, sparse_systems("random_pairs", "multi_source"), ncol=6)
     fig.suptitle("Scaling with the graph: the largest point of each shape from SF10 to SF300", x=0.01, ha="left",
                  fontsize=9.5, color=INK)
     fig.tight_layout(rect=(0, 0.06, 0.9, 0.95))
@@ -406,7 +419,7 @@ def throughput_figure(filename):
             ax.set_xscale("log", base=2)
             ax.set_yscale("log")
             label_positions = []
-            for system, name, color in SYSTEMS:
+            for system, name, color in sparse_systems(shape):
                 xs, ys, bound_x, bound_y = [], [], [], []
                 for count in counts:
                     point = best_path(points, system, shape, count)
@@ -437,9 +450,10 @@ def throughput_figure(filename):
                 direct_labels(ax, label_positions, max(counts) * 1.3, factor=2.2)
         axes[row][1].set_xlabel(xlabel)
         axes[row][0].set_ylabel(ylabel)
-    handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE) for _, _, c in SYSTEMS]
+    shown = sparse_systems("random_pairs", "multi_source")
+    handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE) for _, _, c in shown]
     handles.append(Line2D([], [], linestyle="none", marker="v", markersize=5, markerfacecolor=SURFACE, markeredgecolor=INK2))
-    labels = [n for _, n, _ in SYSTEMS] + ["timed out (upper bound)"]
+    labels = [n for _, n, _ in shown] + ["timed out (upper bound)"]
     fig.legend(handles, labels, loc="lower center", ncol=7, bbox_to_anchor=(0.5, -0.01), handlelength=1.8, columnspacing=1.0)
     fig.suptitle("Throughput: a set-oriented operator amortises the traversal, a per-pair system is a flat line",
                  x=0.01, ha="left", fontsize=9.5, color=INK)
@@ -566,6 +580,85 @@ def updates_figure(filename):
     save(fig, filename)
 
 
+TABLES = REPO / "paper" / "tables"
+NAME_OF = {key: name for key, name, _ in SYSTEMS}
+NAME_OF["neo4j_gds"] = "Neo4j GDS (4 threads)"
+ORDER = [key for key, _, _ in SYSTEMS] + ["neo4j_gds"]
+
+
+def cell(point):
+    if point is None:
+        return "--"
+    if point["status"] == "ok":
+        v = point["mean"]
+        return f"{v * 1000:.0f}\,ms" if v < 1 else (f"{v:.1f}\,s" if v < 100 else f"{v:.0f}\,s")
+    if point["status"] == "exceeded":
+        return "$>$600\,s"
+    if point["status"] == "not_run":
+        return "n/r"
+    return "err"
+
+
+def row_label(label):
+    base, _, suffix = label.partition("@")
+    return NAME_OF.get(base, base) + (f" ({suffix} conn.)" if suffix else "")
+
+
+def sorted_labels(labels):
+    return sorted(labels, key=lambda l: (ORDER.index(l.split("@")[0]) if l.split("@")[0] in ORDER else 99, "@" in l))
+
+
+def write_table(filename, lines):
+    TABLES.mkdir(parents=True, exist_ok=True)
+    (TABLES / f"{filename}.tex").write_text("\n".join(lines) + "\n")
+    print(f"wrote {TABLES / filename}.tex")
+
+
+def sweep_table(shape, filename, caption, label, head):
+    lines = []
+    for sf in SCALE_FACTORS:
+        points = load("sweep_pairs", sf)
+        counts = sorted({k[2] for k in points if k[1] == shape})
+        if not lines:
+            lines += [r"\begin{table*}[t]\centering\small", f"\\caption{{{caption}}}\\label{{{label}}}",
+                      r"\begin{tabular}{l" + "r" * len(counts) + r"}\toprule",
+                      f"{head} & " + " & ".join(count_label(c) for c in counts) + r" \\ \midrule"]
+        lines.append(f"\\multicolumn{{{len(counts) + 1}}}{{l}}{{\\textit{{LDBC SF{sf}}}}} \\\\")
+        for lab in sorted_labels({k[0] for k in points if k[1] == shape}):
+            lines.append(f"\\quad {row_label(lab)} & " + " & ".join(cell(points.get((lab, shape, c))) for c in counts) + r" \\")
+        if sf != SCALE_FACTORS[-1]:
+            lines.append(r"\addlinespace")
+    lines.append(r"\bottomrule\end{tabular}\end{table*}")
+    write_table(filename, lines)
+
+
+def ldbc_table(filename):
+    queries = ["ic13", "bi19", "bi20"]
+    lines = [r"\begin{table}[t]\centering\small",
+             r"\caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, mean seconds per query over five parameter sets; rows marked conn.\ split the sources over 32 client connections.}\label{tab:ldbc}",
+             r"\begin{tabular}{lrrr}\toprule", r"system & IC13 & BI19 & BI20 \\ \midrule"]
+    for sf in SCALE_FACTORS:
+        points = load("ldbc_queries", sf)
+        lines.append(f"\\multicolumn{{4}}{{l}}{{\\textit{{LDBC SF{sf}}}}} \\\\")
+        for lab in sorted_labels({k[0] for k in points}):
+            cells = []
+            for query in queries:
+                values = [points[(lab, query, pr)] for pr in sorted({k[2] for k in points if k[0] == lab and k[1] == query})]
+                if not values:
+                    cells.append("--")
+                elif all(v["status"] == "ok" for v in values):
+                    cells.append(cell({"status": "ok", "mean": statistics.mean(v["mean"] for v in values)}))
+                elif any(v["status"] == "exceeded" for v in values):
+                    cells.append(r"$>$600\,s")
+                else:
+                    cells.append("err")
+            lines.append(f"\\quad {row_label(lab)} & " + " & ".join(cells) + r" \\")
+        if sf != SCALE_FACTORS[-1]:
+            lines.append(r"\addlinespace")
+    lines.append(r"\bottomrule\end{tabular}\end{table}")
+    write_table(filename, lines)
+
+
 def save(fig, filename):
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / f"{filename}.pdf")
@@ -586,3 +679,10 @@ if __name__ == "__main__":
     throughput_figure("throughput")
     first_query_figure("first_query")
     updates_figure("updates")
+    sweep_table("random_pairs", "random_pairs",
+                r"Shortest-path lengths for $n$ random pairs per query, mean seconds over three runs, 32 threads, 600\,s timeout; "
+                r"rows marked conn.\ split the pairs over 32 client connections.", "tab:random-pairs", "system / pairs")
+    sweep_table("multi_source", "sources_all",
+                r"Distances from $k$ sources to every reachable person, mean seconds over three runs; n/r: not run above 500M pairs.",
+                "tab:sources-all", "system / sources")
+    ldbc_table("ldbc_queries")
