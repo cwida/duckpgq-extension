@@ -71,7 +71,7 @@
 \draw[opflow] (csr.south -| ss.north) -- (ss.north);
 \node[op, text width=\W cm-4pt] (phases) at (0,-6.5)
   {\textbf{phases as events} (\S\ref{sec:phases}): one event per BFS level, no task waits for a task\\
-   result per pair \texttt{(b.id, len, [7,e1,19,e2,42])}, filtered on \{1,8\} by the query};
+   one row per pair, \texttt{(b.id, len, [7,e1,19,e2,42])}; the query keeps the rows with $1 \leq$ len $\leq 8$};
 \draw[opflow] (ms.south) -- (ms.south |- phases.north);
 \draw[opflow] (ss.south) -- (ss.south |- phases.north);
 \end{tikzpicture}

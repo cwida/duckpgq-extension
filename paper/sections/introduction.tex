@@ -9,8 +9,8 @@
   partitioned CSR that is either built inside the query from the edge table (Section~\ref{sec:csr}) or read as a
   transaction-consistent snapshot of a CSR index (Section~\ref{sec:index}); both have the same layout. Two
   traversals, multi-source lanes for many pairs and a frontier search for few, run as chains of per-phase events
-  (Sections~\ref{sec:traversals} and~\ref{sec:phases}). Everything in colour is the extension; the grey band is the
-  host engine and the four interfaces it exposes.}
+  (Sections~\ref{sec:traversals} and~\ref{sec:phases}). Everything in colour is the extension; the grey band is
+  \duckdb and the four interfaces it exposes.}
   \label{fig:overview}
 \end{figure}
 
@@ -18,11 +18,12 @@
 
 SQL:2023 added graph pattern matching to SQL, and with it a query type relational engines have never executed
 well: the shortest path. Its \sqlpgq part lets a query declare a property graph over existing tables and match
-patterns against it, including variable-length and shortest-path patterns~\cite{deutsch2022gql}, so every relational
-engine now faces the question of how to answer them: fork the engine and add graph storage and operators, buy a second system and copy the data
-into it, or extend the engine from the outside.
+patterns against it, including variable-length and shortest-path patterns~\cite{deutsch2022gql}. A user whose
+data lives in a relational engine has had three options for such queries: copy the data into a graph database and
+keep the two in sync; write the path pattern as a recursive join and accept its performance; or wait for the engine
+to grow graph storage and operators of its own. This paper is about a fourth: load an extension.
 
-\duckpgq~\cite{tenwolde2023duckpgq} took the third option. It is an extension of \duckdb that parses \sqlpgq and
+\duckpgq~\cite{tenwolde2023duckpgq} took that fourth route first. It is an extension of \duckdb that parses \sqlpgq and
 rewrites it into relational SQL, and it argued that a competent graph system should build on everything a
 state-of-the-art analytical engine already has, columnar storage, vectorized execution, morsel-driven parallelism and
 a cost-based optimizer, and add only two things: a compact graph representation and a bulk path-finding algorithm.

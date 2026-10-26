@@ -1,0 +1,35 @@
+% Figure: epochs, the change log in commit groups, and readers' snapshots on a time axis. Column width (8.2 cm).
+\begin{tikzpicture}[
+  font=\tiny,
+  >={Stealth[length=3.5pt,width=3pt]},
+  epoch/.style={draw=ixorange, fill=ixorange!12, rounded corners=1.2pt, align=center, inner sep=2pt, minimum height=7mm},
+  grp/.style={draw=black!60, fill=black!5, minimum width=5.2mm, minimum height=4mm, inner sep=1pt, align=center},
+  ins/.style={grp, fill=opblue!12, draw=opblue},
+  del/.style={grp, fill=red!10, draw=red!60!black},
+  lbl/.style={font=\tiny, text=black!60, inner sep=0.8pt},
+  tick/.style={black!60},
+]
+% time axis
+\draw[->, black!50] (0,0) -- (8.2,0);
+\node[lbl, anchor=north east] at (8.2,-0.02) {commit order};
+% epoch 0
+\node[epoch, anchor=south west, text width=1.75cm] (e0) at (0,0.3) {\textbf{epoch 0}\\ CSR, dictionary,\\ row ids; bound $b_0$};
+\draw[tick] (e0.south east) -- ++(0,-0.3) node[lbl, below] {$b_0$};
+% change groups g1..g6
+\foreach \i/\t/\s in {1/$g_1$/ins,2/$g_2$/ins,3/$g_3$/del,4/$g_4$/ins,5/$g_5$/ins,6/$g_6$/del} {
+  \node[\s, anchor=south west] (g\i) at (2.2+\i*0.62-0.62,0.3) {\t};
+}
+\node[lbl, anchor=south west] at ($(g1.north west)+(0,0.02)$) {change log: one group per commit (\textcolor{opblue}{inserts}, \textcolor{red!60!black}{deletes})};
+% fold
+\draw[tick] ($(g4.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$b_f$};
+\node[epoch, anchor=south west, text width=1.65cm] (e1) at (6.3,0.3) {\textbf{epoch 1}\\ built at $b_f$ from\\ epoch 0 and $g_1$--$g_4$};
+\draw[->, ixorange, semithick] (e0.north) .. controls (2.5,1.7) and (5.8,1.7) .. node[lbl, above, pos=0.5] {fold, in its own transaction} (e1.north);
+% reader bounds on the axis
+\draw[tick] ($(g3.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_a$, $T_c$};
+\draw[tick] ($(g6.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_b$};
+% readers
+\node[lbl, anchor=north west, text width=8.1cm, align=left] at (0,-0.55) {%
+  $T_a$ (bound after $g_3$): epoch 0 + overlay, $g_1$ and $g_2$ visible, the deletes of $g_3$ applied.\\
+  $T_b$ (bound after $g_6$): epoch 1 + overlay, $g_5$ visible, $g_6$ applied; $g_1$--$g_4$ are inside epoch 1.\\
+  $T_c$ (bound after $g_3$, started before the fold): served from epoch 0, which is retained until $T_c$ ends.};
+\end{tikzpicture}
