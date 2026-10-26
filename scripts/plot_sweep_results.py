@@ -397,6 +397,7 @@ def scaling_figure(filename):
         direct_labels(ax, label_positions, edges["300"] * 1.15, factor=1.9)
         ax.set_xticks([edges[sf] for sf in SCALE_FACTORS])
         ax.set_xticklabels([f"SF{sf}\n{edges[sf]}M" for sf in SCALE_FACTORS], fontsize=6.5)
+        ax.set_xticks([], minor=True)  # no minor tick labels on the three-point log axis
         ax.set_xlim(1.2, 90)
         ax.set_xlabel("scale factor, edges")
         ax.set_title(title, loc="left")
