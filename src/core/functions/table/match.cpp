@@ -23,6 +23,7 @@
 #include "duckdb/parser/expression/conjunction_expression.hpp"
 #include "duckdb/parser/expression/operator_expression.hpp"
 #include "duckdb/parser/expression/star_expression.hpp"
+#include "duckdb/parser/parsed_expression_iterator.hpp"
 
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/common/enums/subquery_type.hpp"
@@ -126,6 +127,64 @@ static unique_ptr<SubqueryRef> CreatePathFindingEndpointSubquery(const PropertyG
 	      << DuckPGQSQL::Identifier(string(PATH_FINDING_EDGE_DST)) << id_column
 	      << " FROM __duckpgq_directed_endpoints";
 	return DuckPGQSQL::ParseSubqueryRef(query.str(), alias, "DuckPGQ undirected path-finding endpoint input");
+}
+
+//! Whether an expression refers to a column of the pattern element `binding` (as binding.column)
+static bool PGQReferencesBinding(const ParsedExpression &expression, const string &binding) {
+	if (expression.GetExpressionClass() == ExpressionClass::COLUMN_REF) {
+		auto &names = expression.Cast<ColumnRefExpression>().ColumnNames();
+		return names.size() >= 2 && StringUtil::CIEquals(names[0].GetIdentifierName(), binding);
+	}
+	bool found = false;
+	ParsedExpressionIterator::EnumerateChildren(expression, [&](const ParsedExpression &child) {
+		if (!found) {
+			found = PGQReferencesBinding(child, binding);
+		}
+	});
+	return found;
+}
+
+static bool PGQIsBindingKey(const ParsedExpression &expression, const string &binding, const string &key_column) {
+	if (expression.GetExpressionClass() != ExpressionClass::COLUMN_REF) {
+		return false;
+	}
+	auto &names = expression.Cast<ColumnRefExpression>().ColumnNames();
+	return names.size() >= 2 && StringUtil::CIEquals(names[0].GetIdentifierName(), binding) &&
+	       StringUtil::CIEquals(names[1].GetIdentifierName(), key_column);
+}
+
+//! Whether a condition pins the element down by its key: `b.key = ...` (a constant, a parameter, or another element's
+//! column, which is how a further edge joins it) or `b.key IN (...)`. Such a destination keeps the pair mode; a
+//! destination with no condition or with a predicate on other columns is served by the reach mode.
+static bool PGQBoundByKey(const ParsedExpression &expression, const string &binding, const string &key_column) {
+	switch (expression.GetExpressionClass()) {
+	case ExpressionClass::COMPARISON: {
+		auto &comparison = expression.Cast<ComparisonExpression>();
+		if (comparison.GetExpressionType() == ExpressionType::COMPARE_EQUAL &&
+		    (PGQIsBindingKey(comparison.Left(), binding, key_column) ||
+		     PGQIsBindingKey(comparison.Right(), binding, key_column))) {
+			return true;
+		}
+		break;
+	}
+	case ExpressionClass::OPERATOR: {
+		auto &op = expression.Cast<OperatorExpression>();
+		if (op.GetExpressionType() == ExpressionType::COMPARE_IN && !op.GetChildren().empty() &&
+		    PGQIsBindingKey(*op.GetChildren()[0], binding, key_column)) {
+			return true;
+		}
+		break;
+	}
+	default:
+		break;
+	}
+	bool found = false;
+	ParsedExpressionIterator::EnumerateChildren(expression, [&](const ParsedExpression &child) {
+		if (!found) {
+			found = PGQBoundByKey(child, binding, key_column);
+		}
+	});
+	return found;
 }
 
 static void PGQAppendCrossJoin(unique_ptr<TableRef> &from_clause, unique_ptr<TableRef> new_ref) {
@@ -802,7 +861,9 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 			operator_results.push_back(
 			    {std::move(source_expression), std::move(destination_expression), nullptr, string(),
 			     std::move(result_alias), path_variable, vector<std::pair<string, string>>(),
-			     CSRIndex::CacheKey(*edge_table, index_name), 0, 0, subpath->lower, subpath->upper, return_path});
+			     CSRIndex::CacheKey(*edge_table, index_name), 0, 0, subpath->lower, subpath->upper, return_path,
+			     next_binding, edge_table->destination_pg_table, edge_table->destination_pk[0].GetIdentifierName(),
+			     edge_table->destination_pk[0].GetIdentifierName()});
 			return;
 		}
 		idx_t vertex_count;
@@ -824,7 +885,9 @@ void PGQMatchFunction::AddPathFinding(unique_ptr<SelectNode> &select_node,
 			operator_results.push_back({std::move(source_expression), std::move(destination_expression),
 			                            std::move(endpoints), std::move(endpoint_alias), std::move(result_alias),
 			                            path_variable, vector<std::pair<string, string>>(), std::move(cache_key),
-			                            vertex_count, edge_count, subpath->lower, subpath->upper, return_path});
+			                            vertex_count, edge_count, subpath->lower, subpath->upper, return_path,
+			                            next_binding, edge_table->destination_pg_table,
+			                            edge_table->destination_pk[0].GetIdentifierName(), string("rowid")});
 			return;
 		}
 	}
@@ -1189,8 +1252,35 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		}
 	}
 
+	// Reach mode: the destination of the path-finding pattern is unbound or only filtered (no key lookup, no
+	// further edge), the query does not project a path, and the destination is another element than the source.
+	// The operator then emits [dst, len] per reached vertex and the destination table joins back in the outer query.
+	string reach_binding;
+	if (!operator_results.empty() && GetPathFindingReachOption(context)) {
+		auto &result = operator_results[0];
+		bool pinned = false;
+		for (auto &condition : conditions) {
+			if (condition && (PGQBoundByKey(*condition, result.destination_binding, result.destination_key_column) ||
+			                  PGQBoundByKey(*condition, result.destination_binding, "rowid"))) {
+				pinned = true;
+			}
+		}
+		bool self_pattern = result.source_expression && PGQReferencesBinding(*result.source_expression, result.destination_binding);
+		if (!result.return_path && !pinned && !self_pattern && !result.destination_binding.empty() &&
+		    alias_map.count(result.destination_binding)) {
+			result.reach = true;
+			reach_binding = result.destination_binding;
+			// The marker keeps its two endpoint arguments; the second repeats the source and is ignored
+			result.destination_expression = result.source_expression->Copy();
+			result.destination_expression->SetAlias(Identifier("__duckpgq_pair_dst_0"));
+		}
+	}
+
 	// Go through all aliases encountered
 	for (auto &table_alias_entry : alias_map) {
+		if (!reach_binding.empty() && StringUtil::CIEquals(table_alias_entry.first, reach_binding)) {
+			continue; // the destination joins back on the operator's output
+		}
 		auto table_ref =
 		    DuckPGQSQL::ParseFromTableRef(DuckPGQSQL::TableRef(*table_alias_entry.second, table_alias_entry.first));
 		PGQAppendCrossJoin(final_select_node->from_table, std::move(table_ref));
@@ -1303,6 +1393,46 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		final_column_list.emplace_back(std::move(expression));
 	}
 
+	// Reach mode: predicates and projections on the destination move to the outer query, where the destination
+	// table is joined on the reached vertex; every other projection gets a fixed alias so the outer query can
+	// reproduce the column order
+	vector<unique_ptr<ParsedExpression>> destination_conditions;
+	struct ReachColumn {
+		string alias;
+		unique_ptr<ParsedExpression> destination_expression; // set when the column references the destination
+	};
+	vector<ReachColumn> reach_columns;
+	if (!reach_binding.empty()) {
+		vector<unique_ptr<ParsedExpression>> kept;
+		for (auto &condition : conditions) {
+			if (condition && PGQReferencesBinding(*condition, reach_binding)) {
+				destination_conditions.push_back(std::move(condition));
+			} else {
+				kept.push_back(std::move(condition));
+			}
+		}
+		conditions = std::move(kept);
+		vector<unique_ptr<ParsedExpression>> candidate_side;
+		for (auto &column : final_column_list) {
+			string alias = column->GetAlias().GetIdentifierName();
+			if (alias.empty()) {
+				if (column->GetExpressionClass() == ExpressionClass::COLUMN_REF) {
+					alias = column->Cast<ColumnRefExpression>().ColumnNames().back().GetIdentifierName();
+				} else {
+					alias = column->GetName().GetIdentifierName();
+				}
+				column->SetAlias(Identifier(alias));
+			}
+			if (PGQReferencesBinding(*column, reach_binding)) {
+				reach_columns.push_back({alias, std::move(column)});
+			} else {
+				reach_columns.push_back({alias, nullptr});
+				candidate_side.push_back(std::move(column));
+			}
+		}
+		final_column_list = std::move(candidate_side);
+	}
+
 	final_select_node->where_clause = CreateWhereClause(conditions);
 	if (operator_results.empty()) {
 		final_select_node->select_list = std::move(final_column_list);
@@ -1331,7 +1461,9 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	// With a CSR index the marker has no endpoint input: the operator reads the index for its transaction
 	bool use_index = !operator_result.endpoint_input;
 	std::ostringstream path_length_sql;
-	path_length_sql << (operator_result.return_path ? "shortestpathoperator(" : "iterativelengthoperator(")
+	path_length_sql << (operator_result.reach ? "reachoperator("
+	                                          : operator_result.return_path ? "shortestpathoperator("
+	                                                                        : "iterativelengthoperator(")
 	                << DuckPGQSQL::Column(pair_source_alias, candidate_alias) << ", "
 	                << DuckPGQSQL::Column(pair_destination_alias, candidate_alias) << ", ";
 	if (!use_index) {
@@ -1371,6 +1503,67 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 		operator_from->left = make_uniq<SubqueryRef>(std::move(candidate_query), PGQIdentifier(candidate_alias));
 		operator_from->right = std::move(operator_result.endpoint_input);
 		operator_select_node.from_table = std::move(operator_from);
+	}
+
+	if (operator_result.reach) {
+		// SELECT <columns in their original order> FROM pairs [JOIN destination ON join column = result[1]]
+		// WHERE <destination predicates> AND result[2] BETWEEN lower AND upper
+		auto result_column = DuckPGQSQL::Column(operator_result.alias, string(PATH_FINDING_PAIRS_ALIAS));
+		auto length_sql = result_column + "[2]";
+		std::ostringstream reach_sql;
+		reach_sql << "SELECT ";
+		bool first = true;
+		for (auto &column : reach_columns) {
+			reach_sql << (first ? "" : ", ");
+			first = false;
+			bool projected_length = false;
+			for (auto &projected : operator_result.projected_aliases) {
+				if (StringUtil::CIEquals(projected.first, column.alias) && projected.second == "path_length") {
+					projected_length = true;
+				}
+			}
+			if (projected_length) {
+				reach_sql << length_sql;
+			} else if (column.destination_expression) {
+				reach_sql << column.destination_expression->ToString();
+			} else {
+				reach_sql << DuckPGQSQL::Column(column.alias, string(PATH_FINDING_PAIRS_ALIAS));
+			}
+			reach_sql << " AS " << DuckPGQSQL::Identifier(column.alias);
+		}
+		if (first) {
+			reach_sql << length_sql << " AS " << DuckPGQSQL::Identifier(operator_result.alias);
+		}
+		reach_sql << " FROM " << DuckPGQSQL::Identifier(string(PATH_FINDING_PAIRS_ALIAS));
+		bool join_destination = !destination_conditions.empty() ||
+		                        std::any_of(reach_columns.begin(), reach_columns.end(),
+		                                    [](const ReachColumn &c) { return c.destination_expression != nullptr; });
+		if (join_destination) {
+			reach_sql << " JOIN " << DuckPGQSQL::TableRef(*operator_result.destination_table, reach_binding) << " ON CAST("
+			          << DuckPGQSQL::Column(operator_result.destination_join_column, reach_binding) << " AS BIGINT) = "
+			          << result_column << "[1]";
+		}
+		reach_sql << " WHERE ";
+		for (auto &condition : destination_conditions) {
+			reach_sql << "(" << condition->ToString() << ") AND ";
+		}
+		reach_sql << length_sql;
+		if (operator_result.upper == NumericLimits<int64_t>::Maximum()) {
+			reach_sql << " >= " << operator_result.lower;
+		} else {
+			reach_sql << " BETWEEN " << operator_result.lower << " AND " << operator_result.upper;
+		}
+		auto reach_query = DuckPGQSQL::ParseSelect(reach_sql.str(), "DuckPGQ reach result");
+		auto &reach_select_node = reach_query->node->Cast<SelectNode>();
+		// The parsed FROM is either the pairs subquery or a join of it with the destination table
+		if (join_destination) {
+			auto &join = reach_select_node.from_table->Cast<JoinRef>();
+			join.left = make_uniq<SubqueryRef>(std::move(operator_query), PGQIdentifier(string(PATH_FINDING_PAIRS_ALIAS)));
+		} else {
+			reach_select_node.from_table =
+			    make_uniq<SubqueryRef>(std::move(operator_query), PGQIdentifier(string(PATH_FINDING_PAIRS_ALIAS)));
+		}
+		return make_uniq<SubqueryRef>(std::move(reach_query), PGQIdentifier(ref->alias));
 	}
 
 	std::ostringstream outer_query_sql;

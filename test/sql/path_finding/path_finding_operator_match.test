@@ -11,6 +11,10 @@ SET active_grammar_extensions = ['duckpgq'];
 statement ok
 set experimental_path_finding_operator=true;
 
+# These checks count pairs and batches of the pair mode; unbound destinations would otherwise take the reach mode.
+statement ok
+set experimental_path_finding_operator_reach=false;
+
 statement ok
 set experimental_path_finding_operator_benchmark=true;
 

@@ -15,6 +15,7 @@ bool GetPathFindingBuildReverseCSR(ClientContext &context);
 int32_t GetPathFindingPushPullFrontierGate(ClientContext &context);
 bool GetPathFindingDeduplicatePairs(ClientContext &context);
 bool GetPathFindingGroupedBatches(ClientContext &context);
+bool GetPathFindingReachOption(ClientContext &context);
 int32_t GetPathFindingThreadsPerBatch(ClientContext &context);
 int32_t GetPathFindingMaxConcurrentBatches(ClientContext &context);
 int32_t GetPathFindingReverseOrientationRatio(ClientContext &context);
@@ -34,6 +35,7 @@ struct CorePGQOptions {
 		RegisterPathFindingPushPullFrontierGate(loader);
 		RegisterPathFindingDeduplicatePairs(loader);
 		RegisterPathFindingGroupedBatches(loader);
+		RegisterPathFindingReach(loader);
 		RegisterPathFindingThreadsPerBatch(loader);
 		RegisterPathFindingMaxConcurrentBatches(loader);
 		RegisterPathFindingReverseOrientationRatio(loader);
@@ -53,6 +55,7 @@ private:
 	static void RegisterPathFindingPushPullFrontierGate(ExtensionLoader &loader);
 	static void RegisterPathFindingDeduplicatePairs(ExtensionLoader &loader);
 	static void RegisterPathFindingGroupedBatches(ExtensionLoader &loader);
+	static void RegisterPathFindingReach(ExtensionLoader &loader);
 	static void RegisterPathFindingThreadsPerBatch(ExtensionLoader &loader);
 	static void RegisterPathFindingMaxConcurrentBatches(ExtensionLoader &loader);
 	static void RegisterPathFindingReverseOrientationRatio(ExtensionLoader &loader);

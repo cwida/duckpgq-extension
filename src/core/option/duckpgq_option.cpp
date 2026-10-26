@@ -75,6 +75,12 @@ bool GetPathFindingGroupedBatches(ClientContext &context) {
 	return value.GetValue<bool>();
 }
 
+bool GetPathFindingReachOption(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_reach", value);
+	return value.GetValue<bool>();
+}
+
 int32_t GetPathFindingThreadsPerBatch(ClientContext &context) {
 	Value value;
 	context.TryGetCurrentSetting("experimental_path_finding_operator_threads_per_batch", value);
@@ -223,6 +229,16 @@ void CorePGQOptions::RegisterPathFindingDeduplicatePairs(ExtensionLoader &loader
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
+void CorePGQOptions::RegisterPathFindingReach(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+
+	config.AddExtensionOption("experimental_path_finding_operator_reach",
+	                          "Plan a path pattern whose destination is unbound or only filtered as a reach query: "
+	                          "the operator emits every vertex each source reaches instead of matching a pair list",
+	                          LogicalType::BOOLEAN, Value(true));
+}
+
 void CorePGQOptions::RegisterPathFindingGroupedBatches(ExtensionLoader &loader) {
 	auto &db = loader.GetDatabaseInstance();
 	auto &config = DBConfig::GetConfig(db);

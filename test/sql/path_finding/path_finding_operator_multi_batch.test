@@ -30,6 +30,10 @@ EDGE TABLES (
 # 100 x 100 = 10000 candidate pairs, i.e. five BFS batches of 2048 pairs. Source grouping is disabled so that the
 # regular batched MS-BFS runs.
 # 5050 pairs are reachable (including 100 zero-length self pairs); sum of lengths = sum_{k=1}^{99} k * (100 - k) = 166650.
+# The destination is unbound, which the planner would serve with the reach mode; this test is about the pair mode.
+statement ok
+SET experimental_path_finding_operator_reach = false;
+
 statement ok
 SET experimental_path_finding_operator_source_group_ratio = 0;
 
