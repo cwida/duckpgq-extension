@@ -586,17 +586,38 @@ NAME_OF["neo4j_gds"] = "Neo4j GDS (4 threads)"
 ORDER = [key for key, _, _ in SYSTEMS] + ["neo4j_gds"]
 
 
-def cell(point):
+def cell(point, bold=False):
     if point is None:
         return "--"
     if point["status"] == "ok":
         v = point["mean"]
-        return f"{v * 1000:.0f}\,ms" if v < 1 else (f"{v:.1f}\,s" if v < 100 else f"{v:.0f}\,s")
+        text = f"{v * 1000:.0f}\,ms" if v < 1 else (f"{v:.1f}\,s" if v < 100 else f"{v:.0f}\,s")
+        return f"\\textbf{{{text}}}" if bold else text
     if point["status"] == "exceeded":
-        return "$>$600\,s"
+        return "timeout"
     if point["status"] == "not_run":
         return "n/r"
     return "err"
+
+
+def column_minima(rows):
+    """Per column, the smallest completed mean among the rows of one scale-factor block; None when no row completed."""
+    minima = []
+    for col in range(len(rows[0][1]) if rows else 0):
+        oks = [r[1][col]["mean"] for r in rows if r[1][col] is not None and r[1][col]["status"] == "ok"]
+        minima.append(min(oks) if oks else None)
+    return minima
+
+
+def format_rows(rows):
+    """Rows of (label, points); the fastest completed cell of every column is bold."""
+    minima = column_minima(rows)
+    lines = []
+    for lab, points_of_row in rows:
+        cells = [cell(pt, bold=pt is not None and pt["status"] == "ok" and pt["mean"] == minima[i])
+                 for i, pt in enumerate(points_of_row)]
+        lines.append(f"\\quad {row_label(lab)} & " + " & ".join(cells) + r" \\")
+    return lines
 
 
 def row_label(label):
@@ -624,8 +645,9 @@ def sweep_table(shape, filename, caption, label, head):
                       r"\begin{tabular}{l" + "r" * len(counts) + r"}\toprule",
                       f"{head} & " + " & ".join(count_label(c) for c in counts) + r" \\ \midrule"]
         lines.append(f"\\multicolumn{{{len(counts) + 1}}}{{l}}{{\\textit{{LDBC SF{sf}}}}} \\\\")
-        for lab in sorted_labels({k[0] for k in points if k[1] == shape}):
-            lines.append(f"\\quad {row_label(lab)} & " + " & ".join(cell(points.get((lab, shape, c))) for c in counts) + r" \\")
+        rows = [(lab, [points.get((lab, shape, c)) for c in counts])
+                for lab in sorted_labels({k[0] for k in points if k[1] == shape})]
+        lines += format_rows(rows)
         if sf != SCALE_FACTORS[-1]:
             lines.append(r"\addlinespace")
     lines.append(r"\bottomrule\end{tabular}\end{table*}")
@@ -640,19 +662,21 @@ def ldbc_table(filename):
     for sf in SCALE_FACTORS:
         points = load("ldbc_queries", sf)
         lines.append(f"\\multicolumn{{4}}{{l}}{{\\textit{{LDBC SF{sf}}}}} \\\\")
+        rows = []
         for lab in sorted_labels({k[0] for k in points}):
-            cells = []
+            aggregated = []
             for query in queries:
                 values = [points[(lab, query, pr)] for pr in sorted({k[2] for k in points if k[0] == lab and k[1] == query})]
                 if not values:
-                    cells.append("--")
+                    aggregated.append(None)
                 elif all(v["status"] == "ok" for v in values):
-                    cells.append(cell({"status": "ok", "mean": statistics.mean(v["mean"] for v in values)}))
+                    aggregated.append({"status": "ok", "mean": statistics.mean(v["mean"] for v in values)})
                 elif any(v["status"] == "exceeded" for v in values):
-                    cells.append(r"$>$600\,s")
+                    aggregated.append({"status": "exceeded"})
                 else:
-                    cells.append("err")
-            lines.append(f"\\quad {row_label(lab)} & " + " & ".join(cells) + r" \\")
+                    aggregated.append({"status": "err"})
+            rows.append((lab, aggregated))
+        lines += format_rows(rows)
         if sf != SCALE_FACTORS[-1]:
             lines.append(r"\addlinespace")
     lines.append(r"\bottomrule\end{tabular}\end{table}")
