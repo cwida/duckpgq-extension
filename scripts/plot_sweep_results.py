@@ -22,7 +22,7 @@ REPO = Path(__file__).resolve().parents[1]
 RESULTS = REPO / "data" / "ldbc-pathfinding" / "results"
 OUT = REPO / "paper" / "figures"
 SCALE_FACTORS = ["10", "100", "300"]
-BUDGET_S = 600.0
+TIMEOUT_S = 600.0
 
 # Entity colours (validated categorical slots 1..6, light mode) and display names
 SYSTEMS = [
@@ -74,7 +74,7 @@ def load(prefix, sf):
             ok = [float(r["query_s"]) for r in rows if r["status"] == "ok"]
             if ok:
                 points[key] = {"mean": statistics.mean(ok), "status": "ok"}
-            elif any(r["status"].startswith("budget_exceeded") for r in rows):
+            elif any(r["status"].startswith(("timed_out", "timeout_exceeded")) for r in rows):
                 points[key] = {"mean": None, "status": "exceeded"}
             elif any(r["status"].startswith("exceeds_pair_limit") for r in rows):
                 points[key] = {"mean": None, "status": "not_run"}
@@ -130,7 +130,7 @@ def plot_series(ax, xs, ys, exceeded_x, color, linestyle="-", linewidth=1.6, alp
         ax.plot(xs, ys, color=color, linewidth=linewidth, linestyle=linestyle, marker="o", markersize=3.6,
                 markeredgecolor=SURFACE, markeredgewidth=0.8, zorder=3, alpha=alpha)
     if exceeded_x:
-        ax.plot(exceeded_x, [BUDGET_S] * len(exceeded_x), linestyle="none", marker="^", markersize=5,
+        ax.plot(exceeded_x, [TIMEOUT_S] * len(exceeded_x), linestyle="none", marker="^", markersize=5,
                 markerfacecolor=SURFACE if hollow else color, markeredgecolor=color, markeredgewidth=1.2, zorder=4,
                 alpha=alpha)
 
@@ -142,8 +142,8 @@ def sweep_figure(shape, xlabel, filename, title):
         counts = sorted({k[2] for k in points if k[1] == shape})
         ax.set_xscale("log", base=2)
         ax.set_yscale("log")
-        ax.axhline(BUDGET_S, color=AXIS, linewidth=0.6)
-        ax.text(counts[0], BUDGET_S * 1.25, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
+        ax.axhline(TIMEOUT_S, color=AXIS, linewidth=0.6)
+        ax.text(counts[0], TIMEOUT_S * 1.25, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
         label_positions = []
         for system, name, color in SYSTEMS:
             xs, ys, exceeded_x = [], [], []
@@ -185,8 +185,8 @@ def ldbc_figure(filename):
         for column in range(len(queries)):
             if column % 2 == 1:
                 ax.axvspan(column - 0.5, column + 0.5, color="#f1f1ee", zorder=0, linewidth=0)
-        ax.axhline(BUDGET_S, color=AXIS, linewidth=0.6, zorder=1)
-        ax.text(-0.45, BUDGET_S * 1.3, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom", ha="left")
+        ax.axhline(TIMEOUT_S, color=AXIS, linewidth=0.6, zorder=1)
+        ax.text(-0.45, TIMEOUT_S * 1.3, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom", ha="left")
         for column, (query, _) in enumerate(queries):
             for system, name, color in SYSTEMS:
                 params = sorted({k[2] for k in points if k[1] == query and k[0] in (system, f"{system}@32")})
@@ -204,7 +204,7 @@ def ldbc_figure(filename):
                     ax.plot([x], [statistics.mean(values)], marker="o", markersize=4.4, color=color, linestyle="none",
                             markeredgecolor=SURFACE, markeredgewidth=0.8, zorder=3)
                 elif exceeded:
-                    ax.plot([x], [BUDGET_S], marker="^", markersize=5.5, linestyle="none", markerfacecolor=SURFACE,
+                    ax.plot([x], [TIMEOUT_S], marker="^", markersize=5.5, linestyle="none", markerfacecolor=SURFACE,
                             markeredgecolor=color, markeredgewidth=1.2, zorder=3)
         ax.set_xticks(range(len(queries)))
         ax.set_xticklabels([label for _, label in queries], fontsize=7, color=INK2)
@@ -232,8 +232,8 @@ def client_threads_figure(filename):
         counts = sorted({k[2] for k in points if k[1] == "random_pairs"})
         ax.set_xscale("log", base=2)
         ax.set_yscale("log")
-        ax.axhline(BUDGET_S, color=AXIS, linewidth=0.6)
-        ax.text(counts[0], BUDGET_S * 1.25, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
+        ax.axhline(TIMEOUT_S, color=AXIS, linewidth=0.6)
+        ax.text(counts[0], TIMEOUT_S * 1.25, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
         ref = [(c, points[("duckpgq_index", "random_pairs", c)]["mean"]) for c in counts
                if points.get(("duckpgq_index", "random_pairs", c), {}).get("status") == "ok"]
         plot_series(ax, [c for c, _ in ref], [v for _, v in ref], [], COLOR["duckpgq_index"])

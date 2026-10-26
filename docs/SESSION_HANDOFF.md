@@ -92,7 +92,7 @@ W18 Neo4j Enterprise request, W22 outline.
 - The CSR index now stamps change groups and caches the last snapshot (commits f585926a, 3c5b8b78); the design doc's
   "dictionary is a prefix of every later version" is not what the code does (rebuilt in key order at a fold).
 - W27/W17 harness (22 Oct): `sweep-pairs --scale-factor <sf>` runs random pairs 1..65536 and k sources x all persons
-  over `--systems duckpgq_build duckpgq_index kuzu memgraph falkordb neo4j neo4j_gds` with `--budget-s` (default 600,
+  over `--systems duckpgq_build duckpgq_index kuzu memgraph falkordb neo4j neo4j_gds` with `--timeout-s` (default 600,
   server-side cancellation, exceeded points recorded), `sweep-pairs-table <csv...>` prints the tables;
   `ldbc-queries --scale-factor <sf>` runs IC13, BI19, BI20 (hop-count variants over the symmetric closure of knows,
   tables `person_knows_person_sym`, `person_city`, `person_work_at`, `ldbc_params_*` added to the benchmark database
