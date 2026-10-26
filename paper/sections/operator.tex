@@ -44,8 +44,9 @@ be cheap, and it still dominates:
 at SF300 it is nine tenths of a single-source query (0.30\,s against 0.031\,s over the index) and two fifths of a
 1024-pair query (1.61\,s against 0.96\,s). The edge input is a stream of (source,
 destination) row-id pairs from a join of the edge table with its two vertex tables. The sink packs each edge into 64
-bits and radix-partitions it by destination range, with the number of ranges chosen so that a destination fits in
-16 bits inside its range and there are about one and a half times as many ranges as threads. Each range is then
+bits and radix-partitions it by destination range, with the number of ranges set to twice the number of threads, and to more when
+that would not let a destination fit in 16 bits inside its range (the factor is a setting; Section~\ref{sec:eval-ablation}
+measures it). Each range is then
 built by one task: sort its edges by source with a radix sort, emit the sparse rows (only sources with at least one
 edge into the range get a row) in one sweep, and attach a bucket index over the source ids with about two rows per
 bucket, so that looking up a source in a partition costs one bucket read and a scan of two or three adjacent rows

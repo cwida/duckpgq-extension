@@ -220,6 +220,7 @@ random pairs, one source to all) at SF10 and SF100, 32 threads, from the switch 
 (6) plus the CSR index (the build disappears: one pair 23 to 4\,ms at SF10);
 (7) plus the reverse side (1024 sources to one destination 43 to 5\,ms), pending the frozen-commit decision.
 One table, one row per step, three columns of times, and a fourth column with the section that describes the step.
-Narrow measurements that do not fit the chain, thread scaling of both routes and the snapshot cost against pending
-operations, follow as two short microbenchmarks.}
+Narrow measurements that do not fit the chain, thread scaling of both routes, the number of destination ranges per
+thread (default two; the harness runs four) and the snapshot cost against pending operations, follow as short
+microbenchmarks.}
 
