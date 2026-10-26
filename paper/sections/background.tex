@@ -1,15 +1,41 @@
 \section{Background}
 \label{sec:background}
 
-\todo{1 page.}
-\subsection{SQL/PGQ in \duckpgq}
-\todo{Property graphs over tables, MATCH, path modes (ANY SHORTEST), quantifiers, path functions (path\_length,
-vertices, edges, element\_id); the rewrite into SQL; where the operator and index attach.}
-\subsection{\duckdb execution and extension hooks}
-\todo{Vectorized push-based pipelines, sink/source operators, events and tasks; optimizer extension; index type
-interface (create, append, delete, serialize); what an extension does not get (storage format, transaction manager).}
-\subsection{MVCC and indexes in \duckdb}
-\todo{Row versions, transaction start/commit ids, CanFetch, garbage collection of versions; ART keeps row ids only.}
-\subsection{Multi-source BFS}
-\todo{MS-BFS bit-set lanes, seen/visit/next arrays, 512 lanes; why it suits batches of pairs; its cost per lane batch is
-a sweep over all vertices, which motivates the single-source traversal for point queries.}
+% Draft 26 Oct 2026. Defines only what Sections 3 and 4 use.
+
+\paragraph{Path patterns in \sqlpgq.} A property graph in \sqlpgq is a view over tables: \texttt{CREATE PROPERTY
+GRAPH} names vertex tables and edge tables and says which edge columns reference which vertex keys. A \texttt{MATCH}
+clause inside \texttt{GRAPH\_TABLE} binds a pattern against it. A \emph{path pattern} such as
+\texttt{p = ANY SHORTEST (a)-[k:Knows]->\{1,8\}(b)} asks for one shortest path of one to eight \texttt{Knows} edges
+between every pair of vertices $a$ and $b$ that the rest of the pattern admits; the quantifier bounds the length, and
+\texttt{ANY SHORTEST} fixes which of the possibly many paths is returned. Four functions expose the path:
+\texttt{path\_length(p)}, \texttt{vertices(p)}, \texttt{edges(p)} and \texttt{element\_id(p)}, the last being the
+list of vertex and edge identifiers in path order. Everything in this paper concerns these patterns on a single
+edge table, directed or undirected; the rest of \sqlpgq translates to joins and filters and is not changed.
+
+\paragraph{\duckdb, pipelines and extensions.} \duckdb executes a query plan as pipelines that push vectors of about
+2048 rows from a source through operators into a sink; a sink that must see all its input, a hash join build or a
+sort, ends one pipeline and starts the next. Pipelines are broken into tasks that a fixed pool of worker threads
+executes, and a pipeline's completion is an \emph{event} whose callback can schedule further events, which is how
+operators run multi-phase work without blocking a thread. An extension is a shared library loaded into a running
+engine; the engine exposes to it the interfaces listed in Section~\ref{sec:hooks}, among them a parser extension for
+new syntax, an optimizer extension that may rewrite the logical plan, custom logical and physical operators, and a
+custom index type. An extension does not get at the storage format, the transaction manager or the scheduler's
+internals.
+
+\paragraph{MVCC and row visibility.} \duckdb keeps multiple versions of a row and gives each transaction a
+\emph{visibility bound}: a row inserted by a commit at or before the bound, and not deleted by a commit at or before
+it, is visible. The check is \texttt{CanFetch(transaction, row)}; a table scan applies it to every row it reads, and
+an index such as \duckdb's ART returns row identifiers without checking, because the scan that fetches the rows
+checks for it. Versions are garbage-collected once no active transaction can observe the earlier state, so
+visibility can be asked about a live transaction only. Row identifiers are stable while a table carries any index
+other than an ART.
+
+\paragraph{Multi-source BFS.} A breadth-first search from one source visits each vertex at most once and each edge
+once; the cost of a level is the frontier plus its edges, but the memory access is one random read per edge.
+Multi-source BFS~\cite{then2014msbfs} runs $w$ searches together, $w$ the width of a machine word or a SIMD register,
+keeping for each vertex a bit set of the searches that have seen it and a bit set of the searches whose frontier it
+is on. Relaxing an edge $u \to v$ becomes $\mathit{next}[v] \mathrel{|}= \mathit{visit}[u]$, one read and one write
+of $w$ bits for all $w$ searches at once, and a search terminates when its destination's bit is set. Its cost per
+level is a sweep over all vertices whose visit bits are non-zero, which is cheap per search when many searches are
+live and expensive when one is. \duckpgq runs 512 lanes per batch, the width of eight 64-bit words.
