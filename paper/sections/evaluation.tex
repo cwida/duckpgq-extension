@@ -47,6 +47,15 @@ from the per-source distance arrays. In other words, an operator that is set-ori
 query language, decides how the result is produced. The same lesson applies to the baselines: Kuzu's recursive join
 is this second shape and nothing else, which is why it is competitive on sources to all and linear on bound pairs.
 
+\paragraph{Client-side concurrency.} Memgraph and FalkorDB execute one query on one thread and parallelise only
+across concurrent queries; Kuzu parallelises inside a query but we issue its per-source queries one at a time. A
+single query per system therefore understates what these engines can do on a 32-core machine, so we also run each
+of them as an application would, with the pair or source list split round-robin over 32 connections and the
+partial results summed (rows marked \texttt{@32}). Memgraph gains 13 to 24 times on the large point sets and
+FalkorDB 4.3 times, its query pool capping the rest; neither changes the ranking. At SF10, 65\,536 pairs take
+Memgraph 110\,s and FalkorDB 83\,s with every core busy against 2.6\,s for our index; 1024 sources to all vertices
+take Memgraph 2.3\,s against 0.22\,s. \todo{Kuzu@32 and the SF100 rows once the run is in.}
+
 \paragraph{The baselines on their best path.} We report every baseline in the formulation that its planner executes
 well, and we found two formulations that look equivalent and are not. Neo4j's \texttt{WHERE b.id IN \$list} plans a
 single index seek that hands the parallel runtime one row, so every \texttt{shortestPath} of the query ran on one
