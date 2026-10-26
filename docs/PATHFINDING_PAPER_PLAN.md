@@ -541,3 +541,8 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   the reach mode through MATCH with the destination predicate applied after the reach is the planned fix (W29 step
   2); IC13, a point lookup, is 27 ms against Neo4j's 5 ms at SF300, the per-query fixed cost of the index route.
   Loads at SF300: Memgraph 279 s, Neo4j 841 s, FalkorDB 2597 s, Kuzu and DuckPGQ under a second (persisted).
+- 26 Oct: paper draft has all technical sections (intro, related work, operator, index with timeline figure, section 5
+  interface table, evaluation with figures and tables from the 22-26 Oct sweeps); 12 pages before background,
+  cost-model text, abstract and conclusion, so a cut pass is due. Pending final edits recorded in `paper/NOTES.md`
+  (thesis sentence without the four interface names; three headline numbers instead of eight). Figure 1 is a
+  column-width TikZ figure on page 1; captions follow the rule in `paper/STYLE.md`.

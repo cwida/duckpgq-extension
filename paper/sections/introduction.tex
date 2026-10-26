@@ -44,7 +44,8 @@ insert into the edge table is either in the CSR or not, depending on timing. The
 challenge: ``to reconcile this elegantly with any query-pipeline-driven parallelization method''.
 
 This paper takes up that challenge, under the same constraint that made \duckpgq viable: everything stays in a
-loadable extension, and the engine is not forked. Our thesis is that the extension interfaces a modern engine
+loadable extension, and the engine is not forked. % TODO(final): say 'the interfaces a modern engine already offers to extensions' without naming the four here
+Our thesis is that the extension interfaces a modern engine
 offers, a parser extension, an optimizer extension, a custom physical operator and a custom index type, are enough to
 give a relational engine graph-native path finding, including a graph index that is consistent with the engine's
 multi-version concurrency control (MVCC), and that the places where they fall short are few and nameable.
@@ -65,7 +66,7 @@ every reader gets a snapshot of its own transaction's view, writers pay a consta
 fold turns the log into the next epoch. Section~\ref{sec:index} gives the design and its correctness argument.
 
 We evaluate on LDBC SNB scale factors 1 to 300 and the Graphalytics data sets against Kuzu, Neo4j, Memgraph and
-FalkorDB, read-only and under LDBC update streams with concurrent readers. \todo{Provisional, m7a.8xlarge, 32 threads:
+FalkorDB, read-only and under LDBC update streams with concurrent readers. \todo{FINAL: pick three numbers, one per claim (single pair over the index, many pairs vs the native systems, update cost per commit). Provisional, m7a.8xlarge, 32 threads:
 at SF300 a single-source query takes 0.30\,s when the CSR is built per query and 0.031\,s over the index; the index
 loads from disk in 0.09\,s; under a stream of 2000 edge updates every 200\,ms with 16 concurrent readers, the index
 answers single-source queries in 72\,ms and the build-per-query route in 84\,ms, both with results identical to Kuzu

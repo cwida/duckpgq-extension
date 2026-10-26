@@ -91,3 +91,14 @@ provisional until the frozen-commit rerun. "SF" = LDBC SNB scale factor, knows g
 - Frozen commit and full rerun (all numbers above).
 - W27 cardinality sweep; W17 end-to-end LDBC IC13/14, BI19/20; W18 Neo4j publication rights; Neo4j 13x gap.
 - W7 step 2 (paths on the build route), W12/W13 (strategy choice and fold policy) for the strategy section.
+
+## Pending edits (decided with the author, 26 Oct)
+
+Introduction, when the frozen-commit numbers are in:
+- Thesis sentence: stop enumerating the four interfaces by name ("a parser extension, an optimizer extension, a custom
+  physical operator and a custom index type"); say "the interfaces a modern engine already offers to extensions" and
+  let Section 5 list them.
+- Headline numbers: replace the TODO wall of eight figures by three, one per claim: single-pair time over the index
+  (vs Kuzu/Neo4j), many-pair scaling against the native systems (the 1024- or 65 536-pair point), and the update cost
+  per commit (index vs Kuzu). Written once, from the frozen rerun.
+- Keep the register of the rewritten paragraphs: ideas in the introduction, mechanism in Sections 3 and 4.
