@@ -123,5 +123,7 @@ Introduction, when the frozen-commit numbers are in:
   ablation (reverse orientation is 18x faster for many sources to one destination, the BI20 shape), add the reverse
   partitions to Section 4 (stored without row ids, same epoch and change groups, undirected aliases forward), and
   state its cost (~5 B per edge). Push/pull and bidirectional stay out unless the sweep says otherwise.
-- Word choice: "ablation" is not used; the subsection is "Microbenchmarks" and the prose says what was switched off
-  or varied.
+- Word choice: "ablation" is not used. The design-choice subsection is "Evolution of the operator" (after FSST's
+  "Evolution of FSST"): one table, one row per step from the CIDR UDF design to the index and the reverse side, the
+  same three queries per row. "Microbenchmark" is the prose word for narrow measurements (thread scaling, snapshot
+  cost), as in Kersten et al.
