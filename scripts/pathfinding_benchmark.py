@@ -4063,22 +4063,112 @@ class GraphDBSystem:
         raise NotImplementedError
 
     stop_requested = False
+    #: the system can run a split of a pair or source list over several connections (client-side concurrency)
+    partitionable = False
+    #: extra connections of a partitioned run in flight, so a budget cancellation reaches them
+    workers = ()
+    #: name used in the result rows (gets an @N suffix for client-side concurrency)
+    label = None
+
+    def worker(self, share):
+        """A second connection to the same loaded graph for one of `share` concurrent client threads"""
+        raise NotImplementedError
+
+    def cancel_query(self):
+        """Best effort: stop the query running on this system's connection (called from another thread)"""
 
     def cancel(self):
-        """Best effort: stop the query running on this system's connection (called from another thread); per-pair
-        loops also check stop_requested so they stop issuing queries"""
+        """Stops this connection's query and those of the workers of a partitioned run; per-pair loops also check
+        stop_requested so they stop issuing queries"""
+        self.stop_requested = True
+        self.cancel_query()
+        for worker in self.workers:
+            worker.stop_requested = True
+            worker.cancel_query()
+
+    # Split forms of the LDBC queries for client-side concurrency: the sources of the query, then the query from a
+    # subset of them (the sum over the subsets equals the whole query)
+    def bi19_sources(self, city1):
+        raise NotImplementedError
+
+    def bi19_from(self, sources, city2):
+        raise NotImplementedError
+
+    def bi20_sources(self, company):
+        raise NotImplementedError
+
+    def bi20_from(self, sources, person2):
+        raise NotImplementedError
 
     def close(self):
         pass
 
 
+def run_partitioned(system, items, call, client_threads):
+    """call(connection, part) over `items` split round-robin into client_threads parts, each on its own connection
+    of `system`, concurrently; returns the summed (count, total). One part (or a system without worker connections)
+    runs on the system's own connection."""
+    if client_threads <= 1 or len(items) < 2 or not system.partitionable:
+        return call(system, items)
+    parts = [items[i::client_threads] for i in range(client_threads)]
+    parts = [part for part in parts if part]
+    workers = [system.worker(len(parts)) for _ in parts]
+    system.workers = workers
+    results = [None] * len(parts)
+    errors = []
+    import threading
+
+    def go(idx):
+        try:
+            results[idx] = call(workers[idx], parts[idx])
+        except Exception as ex:  # noqa: BLE001
+            errors.append(ex)
+
+    threads = [threading.Thread(target=go, args=(idx,), daemon=True) for idx in range(len(parts))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    system.workers = ()
+    for worker in workers:
+        try:
+            worker.close()
+        except Exception:  # noqa: BLE001
+            pass
+    if errors:
+        raise errors[0]
+    return sum(r[0] for r in results), sum(r[1] for r in results)
+
+
 class MemgraphSystem(GraphDBSystem):
     name = "memgraph"
+    partitionable = True  # one thread per query; concurrency across Bolt sessions
 
     def __init__(self, uri):
         neo4j = __import__("neo4j")
+        self.uri = uri
         self.driver = neo4j.GraphDatabase.driver(uri, auth=None)
         self.session = self.driver.session()
+
+    def worker(self, share):
+        return MemgraphSystem(self.uri)
+
+    def bi19_sources(self, city1):
+        return [int(r["id"]) for r in self.run("MATCH (a:Person {cityId: $c1}) RETURN a.id AS id", c1=city1)]
+
+    def bi19_from(self, sources, city2):
+        rows = self.run(f"MATCH (a:Person) WHERE a.id IN $srcs WITH a MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]-(b:Person) "
+                        f"WHERE b.cityId = $c2 RETURN count(p) AS c, sum(size(p)) AS s", srcs=sources, c2=city2)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
+
+    def bi20_sources(self, company):
+        return [int(r["id"]) for r in self.run("MATCH (a:Person)-[:WORK_AT]->(:Company {id: $co}) RETURN DISTINCT a.id AS id", co=company)]
+
+    def bi20_from(self, sources, person2):
+        rows = self.run(f"UNWIND $srcs AS sid MATCH (a:Person {{id: sid}}), (b:Person {{id: $p2}}) WHERE a <> b "
+                        f"MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]-(b) RETURN count(p) AS c, sum(size(p)) AS s",
+                        srcs=sources, p2=person2)
+        return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
     def run(self, query, **params):
         return self.session.run(query, **params).data()
@@ -4156,7 +4246,7 @@ class MemgraphSystem(GraphDBSystem):
                         f"RETURN count(p) AS c, sum(size(p)) AS s", srcs=sources)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
-    def cancel(self):
+    def cancel_query(self):
         with self.driver.session() as other:
             for row in other.run("SHOW TRANSACTIONS").data():
                 if "KNOWS" in (row.get("query") or ""):
@@ -4169,12 +4259,37 @@ class MemgraphSystem(GraphDBSystem):
 
 class FalkorDBSystem(GraphDBSystem):
     name = "falkordb"
+    partitionable = True  # one thread per GRAPH.QUERY; the server's pool runs concurrent queries
 
     def __init__(self, host, port, graph_name):
         falkordb = __import__("falkordb")
+        self.host, self.port = host, port
         self.db = falkordb.FalkorDB(host=host, port=port)
         self.graph_name = graph_name
         self.graph = self.db.select_graph(graph_name)
+
+    def worker(self, share):
+        other = FalkorDBSystem(self.host, self.port, self.graph_name)
+        other.budget_ms = self.budget_ms
+        return other
+
+    def bi19_sources(self, city1):
+        return [int(r[0]) for r in self.query("MATCH (a:Person {cityId: $c1}) RETURN a.id", {"c1": city1})]
+
+    def bi19_from(self, sources, city2):
+        rows = self.query(f"UNWIND $srcs AS sid MATCH (a:Person {{id: sid}}), (b:Person {{cityId: $c2}}) WHERE a <> b "
+                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          {"srcs": sources, "c2": city2})
+        return int(rows[0][0]), int(rows[0][1] or 0)
+
+    def bi20_sources(self, company):
+        return [int(r[0]) for r in self.query("MATCH (a:Person)-[:WORK_AT]->(:Company {id: $co}) RETURN DISTINCT a.id", {"co": company})]
+
+    def bi20_from(self, sources, person2):
+        rows = self.query(f"UNWIND $srcs AS sid MATCH (a:Person {{id: sid}}), (b:Person {{id: $p2}}) WHERE a <> b "
+                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          {"srcs": sources, "p2": person2})
+        return int(rows[0][0]), int(rows[0][1] or 0)
 
     def query(self, text, params=None):
         # The client applies a default timeout that a 1024-destination query exceeds; the server has none. The
@@ -4476,7 +4591,7 @@ class Neo4jSystem(GraphDBSystem):
                          srcs=sources)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
-    def cancel(self):
+    def cancel_query(self):
         with self.driver.session(database=self.database) as other:
             rows = other.run("SHOW TRANSACTIONS YIELD transactionId, currentQuery "
                              "WHERE currentQuery CONTAINS 'KNOWS' RETURN transactionId").data()
@@ -4566,7 +4681,7 @@ class Neo4jGDSSystem(Neo4jSystem):
                          f"RETURN count(*) AS c, sum(totalCost) AS s", co=company, p2=person2)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
-    def cancel(self):
+    def cancel_query(self):
         with self.driver.session(database=self.database) as other:
             rows = other.run("SHOW TRANSACTIONS YIELD transactionId, currentQuery "
                              "WHERE currentQuery CONTAINS 'gds.' RETURN transactionId").data()
@@ -4582,12 +4697,38 @@ class KuzuSystem(GraphDBSystem):
     """Kuzu over the snapshot database built by ensure_kuzu_update_database (read-only for the sweep)."""
 
     name = "kuzu"
+    partitionable = True  # each query is parallel inside Kuzu; several connections run several queries at once
 
-    def __init__(self, threads):
+    def __init__(self, threads, db=None):
         self.kuzu = require_kuzu()
         self.threads = threads
-        self.db = None
-        self.conn = None
+        self.db = db
+        self.conn = self.kuzu.Connection(db, num_threads=threads) if db is not None else None
+        self.shared_db = db is not None
+
+    def worker(self, share):
+        return KuzuSystem(max(1, self.threads // share), db=self.db)
+
+    def bi19_sources(self, city1):
+        return [kuzu_row_get(row, 0) for row in kuzu_all_rows(self.conn, f"MATCH (pc:PersonCity {{cityid: {city1}}}) RETURN pc.personid")]
+
+    def bi19_from(self, sources, city2):
+        reachable, total = 0, 0
+        for source in sources:
+            if self.stop_requested:
+                raise RuntimeError("timeout: stop requested")
+            c, t = self.one(f"MATCH (a:Person {{id: {source}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]-(b:Person) "
+                            f"WITH b.id AS d, length(e) AS l MATCH (pc:PersonCity {{personid: d}}) WHERE pc.cityid = {city2} "
+                            f"RETURN count(*), sum(l)")
+            reachable += c
+            total += t
+        return reachable, total
+
+    def bi20_sources(self, company):
+        return [kuzu_row_get(row, 0) for row in kuzu_all_rows(self.conn, f"MATCH (p:Person)-[:WorkAt]->(c:Company {{id: {company}}}) RETURN DISTINCT p.id")]
+
+    def bi20_from(self, sources, person2):
+        return self.point_to_point([(source, person2) for source in sources], undirected=True)
 
     def load(self, export_dir, scale_factor):
         all_pair_tables = [pair_table_name(1024, "random"), pair_table_name(1024, "same_src")]
@@ -4625,22 +4766,10 @@ class KuzuSystem(GraphDBSystem):
     def bi19(self, city1, city2):
         # One single-source query per person in city1 (literal source, see kuzu_update_query), destinations
         # filtered by city2
-        sources = [kuzu_row_get(row, 0) for row in kuzu_all_rows(self.conn, f"MATCH (pc:PersonCity {{cityid: {city1}}}) RETURN pc.personid")]
-        reachable, total = 0, 0
-        for source in sources:
-            if self.stop_requested:
-                raise RuntimeError("timeout: stop requested")
-            c, t = self.one(f"MATCH (a:Person {{id: {source}}})-[e:Knows* SHORTEST 1..{KUZU_MAX_DEPTH}]-(b:Person) "
-                            f"WITH b.id AS d, length(e) AS l MATCH (pc:PersonCity {{personid: d}}) WHERE pc.cityid = {city2} "
-                            f"RETURN count(*), sum(l)")
-            reachable += c
-            total += t
-        return reachable, total
+        return self.bi19_from(self.bi19_sources(city1), city2)
 
     def bi20(self, company, person2):
-        sources = [kuzu_row_get(row, 0) for row in kuzu_all_rows(self.conn, f"MATCH (p:Person)-[:WorkAt]->(c:Company {{id: {company}}}) RETURN DISTINCT p.id")]
-        pairs = [(source, person2) for source in sources]
-        return self.point_to_point(pairs, undirected=True)
+        return self.bi20_from(self.bi20_sources(company), person2)
 
     def one(self, query):
         result = self.conn.execute(query)
@@ -4681,14 +4810,15 @@ class KuzuSystem(GraphDBSystem):
     def edge_count(self):
         return self.one("MATCH (:Person)-[e:Knows]->(:Person) RETURN count(e), 0")[0]
 
-    def cancel(self):
+    def cancel_query(self):
         if self.conn:
             self.conn.interrupt()
 
     def close(self):
         if self.conn:
             self.conn.close()
-        if self.db:
+            self.conn = None
+        if self.db and not self.shared_db:
             self.db.close()
 
 
@@ -4886,22 +5016,23 @@ def sweep_pairs(args):
     results_dir.mkdir(parents=True, exist_ok=True)
     path = results_dir / f"sweep_pairs_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
     fieldnames = ["system", "scale_factor", "shape", "pairs", "sources", "repeat", "status", "query_s",
-                  "reachable_count", "total_len", "threads", "budget_s", "benchmark_notes", "repo_commit"]
+                  "reachable_count", "total_len", "threads", "client_threads", "budget_s", "benchmark_notes", "repo_commit"]
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
     rows = []
 
     def record(system, shape, pairs, sources, repeat, status, elapsed, value):
-        row = {"system": system.name, "scale_factor": scale_factor, "shape": shape, "pairs": pairs,
+        row = {"system": system_label(system, args), "scale_factor": scale_factor, "shape": shape, "pairs": pairs,
                "sources": sources, "repeat": repeat, "status": status, "query_s": f"{elapsed:.6f}",
                "reachable_count": value[0] if value else "", "total_len": value[1] if value else "",
-               "threads": args.threads, "budget_s": args.budget_s, "benchmark_notes": args.notes, "repo_commit": commit}
+               "threads": args.threads, "client_threads": args.client_threads, "budget_s": args.budget_s,
+               "benchmark_notes": args.notes, "repo_commit": commit}
         rows.append(row)
         with path.open("w", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(rows)
         shown = f"{value[0]}/{value[1]}" if value else status
-        print(f"   {system.name:14s} {shape:12s} pairs={pairs:<7} sources={sources:<5} repeat {repeat}: {elapsed:8.3f}s {shown}")
+        print(f"   {system_label(system, args):14s} {shape:12s} pairs={pairs:<7} sources={sources:<5} repeat {repeat}: {elapsed:8.3f}s {shown}")
 
     for system in systems:
         print(f"== {system.name}: loading {sf_name(scale_factor)}")
@@ -4931,7 +5062,9 @@ def sweep_pairs(args):
                     except RuntimeError as ex:
                         value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                 else:
-                    value, elapsed, status = run_with_budget(system, lambda: system.point_to_point(pairs), args.budget_s)
+                    value, elapsed, status = run_with_budget(
+                        system, lambda: run_partitioned(system, pairs, lambda w, part: w.point_to_point(part), args.client_threads),
+                        args.budget_s)
                     if value:
                         value = (value[0] + self_pairs, value[1])
                 record(system, "random_pairs", n, "", repeat, status, elapsed, value)
@@ -4962,7 +5095,9 @@ def sweep_pairs(args):
                     except RuntimeError as ex:
                         value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                 else:
-                    value, elapsed, status = run_with_budget(system, lambda: system.multi_source(source_keys), args.budget_s)
+                    value, elapsed, status = run_with_budget(
+                        system, lambda: run_partitioned(system, source_keys, lambda w, part: w.multi_source(part), args.client_threads),
+                        args.budget_s)
                     if value:
                         value = (value[0] + len(source_keys), value[1])  # the source itself, length 0
                 record(system, "multi_source", "", k, repeat, status, elapsed, value)
@@ -5099,6 +5234,12 @@ def read_ldbc_params(export_dir, query):
         return [[int(v) for v in row.values()] for row in csv.DictReader(handle)]
 
 
+def system_label(system, args):
+    """Result-row name: the system, with @N when N client threads split its work"""
+    client_threads = getattr(args, "client_threads", 1)
+    return f"{system.name}@{client_threads}" if client_threads > 1 and system.partitionable else system.name
+
+
 def make_systems(args, scale_factor, symmetric=False):
     systems = []
     for name in args.systems:
@@ -5151,7 +5292,8 @@ def ldbc_queries(args):
     results_dir.mkdir(parents=True, exist_ok=True)
     path = results_dir / f"ldbc_queries_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
     writer = ResultWriter(path, ["system", "scale_factor", "query", "param_index", "params", "repeat", "status", "query_s",
-                                 "reachable_count", "total_len", "threads", "budget_s", "benchmark_notes", "repo_commit"])
+                                 "reachable_count", "total_len", "threads", "client_threads", "budget_s", "benchmark_notes",
+                                 "repo_commit"])
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
     for system in systems:
         print(f"== {system.name}: loading {sf_name(scale_factor)}")
@@ -5175,14 +5317,23 @@ def ldbc_queries(args):
                         except RuntimeError as ex:
                             value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                     else:
-                        value, elapsed, status = run_with_budget(system, lambda: getattr(system, query)(*values), args.budget_s)
-                    writer.add({"system": system.name, "scale_factor": scale_factor, "query": query, "param_index": idx,
-                                "params": " ".join(str(v) for v in values), "repeat": repeat, "status": status,
-                                "query_s": f"{elapsed:.6f}", "reachable_count": value[0] if value else "",
-                                "total_len": value[1] if value else "", "threads": args.threads, "budget_s": args.budget_s,
+                        if args.client_threads > 1 and system.partitionable and query in ("bi19", "bi20"):
+                            def split_query(system=system, query=query, values=values):
+                                sources = getattr(system, f"{query}_sources")(values[0])
+                                return run_partitioned(system, sources,
+                                                       lambda w, part: getattr(w, f"{query}_from")(part, values[1]),
+                                                       args.client_threads)
+                            value, elapsed, status = run_with_budget(system, split_query, args.budget_s)
+                        else:
+                            value, elapsed, status = run_with_budget(system, lambda: getattr(system, query)(*values), args.budget_s)
+                    writer.add({"system": system_label(system, args), "scale_factor": scale_factor, "query": query,
+                                "param_index": idx, "params": " ".join(str(v) for v in values), "repeat": repeat,
+                                "status": status, "query_s": f"{elapsed:.6f}", "reachable_count": value[0] if value else "",
+                                "total_len": value[1] if value else "", "threads": args.threads,
+                                "client_threads": args.client_threads, "budget_s": args.budget_s,
                                 "benchmark_notes": args.notes, "repo_commit": commit})
                     shown = f"{value[0]}/{value[1]}" if value else status
-                    print(f"   {system.name:14s} {query} params {' '.join(str(v) for v in values):28s} repeat {repeat}: {elapsed:8.3f}s {shown}")
+                    print(f"   {system_label(system, args):14s} {query} params {' '.join(str(v) for v in values):28s} repeat {repeat}: {elapsed:8.3f}s {shown}")
                     if status == "budget_exceeded":
                         exceeded = True
                         break
@@ -5601,6 +5752,8 @@ def main():
     sweep_pairs_parser.add_argument("--source-counts", nargs="*", type=int, default=SWEEP_SOURCE_COUNTS)
     sweep_pairs_parser.add_argument("--repeats", type=int, default=3)
     sweep_pairs_parser.add_argument("--budget-s", type=float, default=600, help="per-query budget; exceeded is recorded")
+    sweep_pairs_parser.add_argument("--client-threads", type=int, default=1,
+                                    help="split pair and source lists over this many connections for Memgraph, FalkorDB, Kuzu")
     sweep_pairs_parser.add_argument("--max-pairs", type=int, default=500_000_000,
                                     help="sources x all points above this many pairs are recorded as not run")
     sweep_pairs_parser.add_argument("--memgraph-uri", default="bolt://localhost:7687")
@@ -5624,6 +5777,8 @@ def main():
     ldbc_parser.add_argument("--queries", nargs="+", default=LDBC_QUERIES)
     ldbc_parser.add_argument("--repeats", type=int, default=3)
     ldbc_parser.add_argument("--budget-s", type=float, default=600)
+    ldbc_parser.add_argument("--client-threads", type=int, default=1,
+                             help="split BI19/BI20 sources over this many connections for Memgraph, FalkorDB, Kuzu")
     ldbc_parser.add_argument("--memgraph-uri", default="bolt://localhost:7687")
     ldbc_parser.add_argument("--neo4j-uri", default="bolt://localhost:7688")
     ldbc_parser.add_argument("--neo4j-database", default="pathfinding")
