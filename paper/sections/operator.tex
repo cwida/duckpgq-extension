@@ -22,9 +22,10 @@ graph, how it traverses it, and how it runs in parallel without waiting on anyth
 vertex and edge counts, a constant key naming the graph, and the upper bound of the quantifier. The marker is
 registered as a volatile scalar function so that no part of the engine folds or reorders it, and it is never
 executed: an optimizer extension runs before \duckdb's own optimizer, finds the projection that contains the marker,
-takes its two inputs out of the plan and replaces the projection by a logical path-finding operator whose output
-column stands in for the marker. The optimizer rule runs on the binder's plan shape, before join reordering, because
-the two inputs are easy to identify there and impossible to find after the optimizer has pushed filters into them.
+replaces the marker by a reference to the operator's output column, and places a logical path-finding operator with
+the pairs and the edges as its two children beneath the projection. The rule runs on the binder's plan shape, before
+join reordering, because the two inputs are easy to identify there and impossible to find after the optimizer has
+pushed filters into them.
 The engine then sees an operator with two children and a cardinality, plans the rest of the query around it, and
 executes it as a sink over both children and a source for the result.
 
@@ -74,35 +75,43 @@ honour the depth bound; they differ in what a step costs.
 
 \paragraph{Multi-source traversal.} For many pairs we keep \msbfs~\cite{then2014msbfs}: 512 searches share one sweep
 over the adjacency, each search owns a bit in three bit-set arrays per vertex (seen, this frontier, next frontier),
-and relaxing an edge is a 512-bit \texttt{or}. Pairs are grouped into batches of 512 by source, a batch is a lane
-assignment, and several batches run concurrently with a fixed number of tasks each, so that a query with 100K pairs
-keeps 32 cores busy. A step costs a sweep over all sparse rows of all partitions, regardless of how many of the 512
-lanes are alive. That is the right trade when hundreds of lanes are alive and the wrong one when one is: on the
+and relaxing an edge is a 512-bit \texttt{or}. Pairs are taken in input order in batches of 2048 and each batch is
+run as waves of 512 lanes. Batches are shared out over worker groups: with $b$ batches and $t$ threads each group has
+$t/b$ workers and $b$ groups run at once, bounded by a memory budget, since every group holds three bit sets per
+vertex, 192 bytes at 512 lanes, which is 230\,MB per group at SF100. A level costs two phases, a sweep over all
+sparse rows of all partitions that relaxes the frontier into the next bit sets, and a pass that folds the next bit
+sets into the seen bits, and it costs that regardless of how many of the 512 lanes are alive. That is the right trade when hundreds of lanes are alive and the wrong one when one is: on the
 8M-edge graph a single pair paid 0.12\,s for sweeps over 2M vertices, the same as 512 pairs.
 
 \paragraph{Single-source traversal.} For few sources we run one search per source with a frontier list, in the shape
 Ligra~\cite{shun2013ligra} made standard. The frontier is a vector of vertex ids; while it is smaller than a
 sixty-fourth of the vertex count, each frontier vertex is looked up in every partition through the bucket index and
 its edges are relaxed with a compare-and-swap on a byte per vertex, so a step costs the frontier plus its edges;
-when the frontier grows past that bound the step switches to a sweep over the partitions with a membership byte per
-vertex. The search records the destinations its group of pairs asks for and stops as soon as the last one is
+when the frontier grows past that bound the step switches to a sweep over the partitions with a per-vertex level
+stamp marking the frontier. The search records the destinations its group of pairs asks for and stops as soon as the last one is
 reached, or at the depth bound. When the query asks for paths, the traversal also records, per vertex, the vertex
 and the edge through which it was first reached, and the result scatter walks that chain backwards
 (Section~\ref{sec:paths}). The multi-source traversal cannot afford that: a parent per lane per vertex is 512 times
 the memory.
 
-\paragraph{Choosing.} The sink keeps HyperLogLog sketches of the distinct sources and destinations of the pairs.
-With at most 16 distinct sources, or with at least four pairs per source, the single-source traversal runs, one
-group per source; otherwise the multi-source traversal runs over batches of 512. The same sketches decide the
-orientation: when there are far fewer distinct destinations than sources and the build can produce the reverse
-partitions, the search starts from the destinations. Both rules are thresholds today; Section~\ref{sec:strategy}
-discusses what a cost model needs to replace them. The operator also implements the reverse orientation over reverse partitions, a push/pull variant of the
-multi-source traversal~\cite{beamer2012direction} and a bidirectional one; the reverse orientation pays off when many sources
-share one destination (Section~\ref{sec:eval-ablation}); the other two are not faster than the two traversals above on
-our workloads and appear only there. \todo{Confirm after the full sweep whether the reverse side stays; then describe it
-in Sections 3.2 and 4.} On the 8M-edge graph the switch to the single-source traversal
-took a single pair from 0.11\,s to 0.01\,s and twenty sources with 200 destinations each from 1.5\,s to 0.13\,s,
-for identical answers.
+\paragraph{Choosing.} When the pairs are complete, the operator estimates the distinct sources and destinations with
+HyperLogLog sketches (64 registers, about 13\% error, enough for a threshold). With at most 16 distinct sources, or
+with at least four pairs per distinct source, the single-source traversal runs, one group per source and the threads
+divided over the groups; otherwise the multi-source traversal runs. The same sketches decide the orientation: when
+there are at least four times as many distinct sources as destinations and reverse partitions are available, which is
+the case for an undirected pattern and for an index that stores its reverse side (Section~\ref{sec:index}), the
+search starts from the destinations; the on-the-fly build produces forward partitions only. Both rules are
+thresholds today; Section~\ref{sec:strategy} discusses what a cost model needs to replace them. The reverse orientation
+pays off when many sources share one destination, the shape of LDBC BI20 (Section~\ref{sec:eval-ablation}).
+\todo{Confirm after the full sweep whether the reverse side stays; then describe it in Sections 3.2 and 4.} On the
+8M-edge graph the switch to the single-source traversal took a single pair from 0.11\,s to 0.01\,s and twenty sources
+with 200 destinations each from 1.5\,s to 0.13\,s, for identical answers.
+
+\paragraph{Unbound destinations.} A pattern whose destination carries no condition, every person reachable from $a$,
+would produce one candidate pair per vertex. The rewrite recognises this case and asks the operator for the
+\emph{reach} of each source instead: one single-source traversal per source that returns every reached vertex with
+its distance, and the destination table is joined back afterwards only when the query projects its columns. The
+sources $\times$ all queries of Section~\ref{sec:eval} run this way.
 
 \paragraph{Pairs with an unknown source or destination.} A pair whose source or destination has no edges, or whose key is absent
 from the index, has no path, and the operator answers \texttt{NULL} for it without searching and without changing
@@ -112,15 +121,16 @@ the traversal chosen for the other pairs of the query.
 \label{sec:phases}
 
 A BFS level is a parallel sweep followed by a serial decision: which vertices were reached, whether any lane is
-still alive, whether the depth bound is hit. The operator runs every traversal, and the CSR build, as a \emph{chain
-of per-phase events}. A phase is a set of tasks that run independently and finish; when the last one finishes, the
-event's completion callback runs the serial step once and inserts the event of the next phase. No task ever waits
-for another task. This is the shape \duckdb's own operators have, and it is what lets the operator share the engine's
+still alive, whether the depth bound is hit. The operator runs every traversal as a \emph{chain of per-phase events}. A
+phase is a set of tasks that run independently and finish; when the last one finishes, the event's completion
+callback runs the serial step once and inserts the event of the next phase. The on-the-fly build has the same shape
+with fewer phases: the partitioning happens in the sink as the edges stream in, one event's tasks sort and emit the
+ranges, and its completion callback publishes them. No task ever waits for another task. This is the shape \duckdb's own operators have, and it is what lets the operator share the engine's
 fixed thread pool with other queries: the scheduler may interleave the tasks of concurrent queries freely, the
 operator aborts cleanly on an error or an interrupt, and as many queries run at once as there are tasks. The same
-abstraction covers the multi-source traversal (one event per level and batch), the single-source traversal (one event
-per level and source group), and the three build phases (partition, sort and emit, publish). The cost is one event
-per level, which is microseconds; the concurrent-reader experiment of Section~\ref{sec:eval} runs 16 readers against
+abstraction covers the multi-source traversal (two events per level and batch) and the single-source traversal (one
+event per level and source group; a group with a single worker runs all its levels in one task). The cost is one or
+two events per level, which is microseconds; the concurrent-reader experiment of Section~\ref{sec:eval} runs 16 readers against
 one writer at 32 workers per query with no coordination beyond the engine's scheduler.
 
 \subsection{Paths}
