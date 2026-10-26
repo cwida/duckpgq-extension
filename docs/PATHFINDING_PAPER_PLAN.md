@@ -654,3 +654,20 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   (storage format 1) coexisted; the forward-index rows measured in the same window were normal, so the cause is
   not the second index as such. Unexplained; watch the SF100 microbenchmark, which recreates the situation. Rule for
   the frozen rerun: every index built fresh (the repro scripts start from an empty data directory).
+- 26 Oct (evening): W31 rule verified at SF10 (`microbench_rule_sf10.out`): the new default equals the best explicit
+  setting at every point (build 0.12 / 0.40 / 1.22 s, index 0.09 / 0.32 / 0.80 s at 2048 / 16384 / 65536 pairs;
+  grouping off now 1.3-1.4x slower at 65536). Thread scaling on the index at 65536 pairs is monotonic again: 12.6 /
+  6.3 / 3.2 / 1.7 / 1.1 / 0.80 s for 1 / 2 / 4 / 8 / 16 / 32 threads (15.7x), build 6.5 / 3.6 / 2.1 / 1.5 / 1.2 /
+  1.2 s. The 1-thread index points are 2-3x slower than in the morning run (12.6 vs 5.8 s; sources x all 1024: 6.5
+  vs 2.2 s) because the SF10 index was rebuilt fresh in between: the partition count is fixed at CREATE INDEX from
+  the creating session's threads (64 partitions at 32 threads), and a vertex's adjacency is spread over every
+  partition (partitioned by destination range), so a per-source expansion pays one lookup per partition per
+  frontier vertex. Check: an index built with `SET threads=4` (8 partitions) answers the 1-thread sources x all
+  query in 2.96 s against 6.47 s with 64 partitions; both 0.23 s at 32 threads. So the 22 Oct index had fewer
+  partitions than today's (built with an older geometry), which also explains the morning's "reverse side costs
+  1.44x" row (fresh 64-partition index vs old index). Consequences: (a) the thread-scaling microbenchmark on the
+  index route measures the geometry of the index as much as the kernel; report it with the partition count and
+  build indexes with the thread count they will be queried with, or (b, W32 candidate) decouple the index geometry
+  from the creating session (e.g. partitions from the vertex count and the machine's core count) and give the
+  per-source kernel a per-vertex partition bitmap so sparse expansion touches only partitions that hold edges of
+  the vertex. SF100 indexes dropped so the SF100 microbenchmarks build them fresh.
