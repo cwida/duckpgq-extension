@@ -93,8 +93,10 @@ group per source; otherwise the multi-source traversal runs over batches of 512.
 orientation: when there are far fewer distinct destinations than sources and the build can produce the reverse
 partitions, the search starts from the destinations. Both rules are thresholds today; Section~\ref{sec:strategy}
 discusses what a cost model needs to replace them. The operator also implements the reverse orientation over reverse partitions, a push/pull variant of the
-multi-source traversal~\cite{beamer2012direction} and a bidirectional one; they are not faster than the two
-traversals above on our workloads and appear only in the ablation of Section~\ref{sec:eval}. On the 8M-edge graph the switch to the single-source traversal
+multi-source traversal~\cite{beamer2012direction} and a bidirectional one; the reverse orientation pays off when many sources
+share one destination (Section~\ref{sec:eval-ablation}); the other two are not faster than the two traversals above on
+our workloads and appear only there. \todo{Confirm after the full sweep whether the reverse side stays; then describe it
+in Sections 3.2 and 4.} On the 8M-edge graph the switch to the single-source traversal
 took a single pair from 0.11\,s to 0.01\,s and twenty sources with 200 destinations each from 1.5\,s to 0.13\,s,
 for identical answers.
 
