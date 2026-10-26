@@ -36,10 +36,11 @@ Third, when a CSR index exists for the edge table, the rewrite drops the edge in
 key; the operator then resolves the key to a snapshot (Section~\ref{sec:index}) and the pairs carry vertex keys
 rather than row ids, because the index identifies vertices by key.
 
-\subsection{Building the partitioned CSR per query}
+\subsection{Building the partitioned CSR on the fly}
 \label{sec:csr}
 
-Without an index the operator builds a CSR for every query, so the build has to be cheap, and it still dominates:
+Without an index the operator builds the CSR on the fly, inside every query, as the CIDR design did; the build has to
+be cheap, and it still dominates:
 at SF300 it is nine tenths of a single-source query (0.30\,s against 0.031\,s over the index) and two fifths of a
 1024-pair query (1.61\,s against 0.96\,s). The edge input is a stream of (source,
 destination) row-id pairs from a join of the edge table with its two vertex tables. The sink packs each edge into 64
