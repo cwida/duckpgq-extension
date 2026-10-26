@@ -83,7 +83,7 @@ source. Memgraph's \texttt{*BFS} from one source is competitive at one source an
 beyond it. Neo4j and FalkorDB have no single-source formulation at all: both run one \texttt{shortestPath} per
 destination and leave the timeout at 16 sources. From 16 sources up the operator leads by a factor of two to three
 over Kuzu and by two to three orders of magnitude over the rest, and 1024 sources to every one of 2.4\,M persons
-at SF300 take 4.2\,s over the index. The desk's run at 32 client connections (Figure~\ref{fig:client-threads}) is
+at SF300 take 4.2\,s over the index. The run with 32 client connections (Figure~\ref{fig:client-threads}) is
 the fairest version of this comparison: with the pair list split over 32 connections the native systems improve by
 the expected factor and remain between one and two orders of magnitude slower than one operator call, because
 the operator's parallelism is inside the traversal and theirs is between independent searches.
