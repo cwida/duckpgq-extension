@@ -122,6 +122,25 @@ ORDER BY dst;
 3	2
 4	1
 
+# A single-hop quantifier is a plain join; its path functions come from the SQL fallback (this used to dereference
+# a WHERE clause that the pattern pass had already consumed).
+query II
+SELECT dst, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,1}(b:PV)
+    COLUMNS (b.id AS dst, path_length(p) AS len))
+ORDER BY dst;
+----
+1	1
+4	1
+
+query II
+SELECT dst, path FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:PV WHERE a.id = 0)-[e:PE]->{1,1}(b:PV WHERE b.id = 4)
+    COLUMNS (b.id AS dst, element_id(p) AS path))
+ORDER BY dst;
+----
+4	[0, 3, 4]
+
 # Path projections need parents per pair: pair mode with paths.
 query II
 SELECT dst, path FROM GRAPH_TABLE (g

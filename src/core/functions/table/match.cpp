@@ -615,6 +615,9 @@ PathElement *PGQMatchFunction::HandleNestedSubPath(unique_ptr<PathReference> &pa
 unique_ptr<ParsedExpression> PGQMatchFunction::CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions) {
 	unique_ptr<ParsedExpression> where_clause;
 	for (auto &condition : conditions) {
+		if (!condition) {
+			continue; // a clause already moved into another query
+		}
 		if (where_clause) {
 			where_clause = make_uniq<ConjunctionExpression>(ExpressionType::CONJUNCTION_AND, std::move(where_clause),
 			                                                std::move(condition));
@@ -694,10 +697,14 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
 				// (un)bounded shortest path
 				// Add the shortest path UDF as a CTE
 				if (previous_vertex_subpath) {
-					path_finding_conditions.push_back(std::move(previous_vertex_subpath->where_clause));
+					if (previous_vertex_subpath->where_clause) {
+						path_finding_conditions.push_back(std::move(previous_vertex_subpath->where_clause));
+					}
 				}
 				if (next_vertex_subpath) {
-					path_finding_conditions.push_back(std::move(next_vertex_subpath->where_clause));
+					if (next_vertex_subpath->where_clause) {
+						path_finding_conditions.push_back(std::move(next_vertex_subpath->where_clause));
+					}
 				}
 				if (final_select_node->cte_map.map.find(Identifier("cte1")) == final_select_node->cte_map.map.end()) {
 					edge_element = reinterpret_cast<PathElement *>(edge_subpath->path_list[0].get());
@@ -749,10 +756,14 @@ unique_ptr<ParsedExpression> PGQMatchFunction::CreatePathFindingFunction(
 				continue;
 			}
 			if (previous_vertex_subpath) {
-				conditions.push_back(std::move(previous_vertex_subpath->where_clause));
+				if (previous_vertex_subpath->where_clause) {
+					conditions.push_back(std::move(previous_vertex_subpath->where_clause));
+				}
 			}
 			if (next_vertex_subpath) {
-				conditions.push_back(std::move(next_vertex_subpath->where_clause));
+				if (next_vertex_subpath->where_clause) {
+					conditions.push_back(std::move(next_vertex_subpath->where_clause));
+				}
 			}
 			edge_element = GetPathElement(edge_subpath->path_list[0]);
 		}
@@ -1054,7 +1065,9 @@ void PGQMatchFunction::ProcessPathList(
 				throw NotImplementedException("Recursive patterns are not yet supported.");
 			}
 			if (next_vertex_subpath->where_clause) {
-				conditions.push_back(std::move(next_vertex_subpath->where_clause));
+				if (next_vertex_subpath->where_clause) {
+					conditions.push_back(std::move(next_vertex_subpath->where_clause));
+				}
 			}
 			next_vertex_element = GetPathElement(next_vertex_subpath->path_list[0]);
 		}

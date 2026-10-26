@@ -555,8 +555,10 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   destinations; the proper rule needs a selectivity estimate at plan time and belongs to W12. The unbound query
   "everyone city 1425 reaches" (1095 sources x 473k persons) takes 7.8 s through MATCH, 51M distances per second.
   Options: `experimental_path_finding_operator_reach` (default true) returns every pattern to the pair mode; two
-  tests that count pair-mode batches set it. Found and left: `{1,1}` with `path_length(p)` projected fails with a
-  NULL dereference on the operator route regardless of reach mode (pre-existing, the plain-join path).
+  tests that count pair-mode batches set it. Fixed the same day: `{1,1}` with `path_length(p)` or `element_id(p)` projected dereferenced a
+  NULL WHERE clause when the operator option was on (the named-subpath pass is deferred and ran after the pattern
+  pass had moved the element WHERE clauses into the main conditions; the SQL-fallback builder now skips moved
+  clauses and `CreateWhereClause` skips nulls).
   Client-side concurrency (`--client-threads`, `d99fed4e`) measured 26 Oct: Memgraph gains 13-24x, FalkorDB 4x,
   Kuzu 11x on 65536 pairs (SF10: 110 s, 83 s, 29 s against the index's 2.6 s) and 6.5x on 1024 sources x all
   (0.62 s against 0.22 s); SF100 Kuzu@32 170 s on 65536 pairs, level with Neo4j's parallel runtime, 4.3 s on
