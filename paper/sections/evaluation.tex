@@ -27,18 +27,22 @@ point they complete.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/random_pairs.pdf}
-  \caption{Random pairs: $n$ pairs per query, seconds per query (log scale), 32 threads, 600\,s timeout. Each baseline
-  on its fastest formulation. The operator's time grows with the pairs sub-linearly because a traversal is shared by
-  many pairs; the baselines run one search per pair.}
+  \caption{Shortest-path length for $n$ random (source, destination) pairs in one query, LDBC SF10, SF100 and
+  SF300. Y: seconds per query, log scale, mean of three runs at 32 threads; x: $n$ from 1 to 65\,536. Lines: \duckpgq
+  over the CSR index, \duckpgq building the CSR inside the query, Neo4j and Kuzu in their fastest formulation; a
+  triangle at the top marks a run over the 600\,s limit. \duckpgq shares one traversal among 512 pairs; Neo4j and
+  Kuzu run one search per pair.}
   \label{fig:random-pairs}
 \end{figure*}
 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/sources_all.pdf}
-  \caption{Sources $\times$ all: distances from $k$ sources to every reachable person. Kuzu's single-source recursive
-  join is the one native formulation that shares work; Neo4j and FalkorDB express the query as one shortest path per
-  destination and exceed the timeout from 16 sources at SF10 (not plotted).}
+  \caption{Distance from each of $k$ sources to every reachable person in one query, SF10, SF100 and SF300. Y:
+  seconds per query, log scale, mean of three runs at 32 threads; x: $k$ from 1 to 1024. Lines: \duckpgq over the
+  index, \duckpgq building per query, Kuzu (recursive join from a literal source) and Memgraph (\texttt{*BFS} per
+  source). Neo4j and FalkorDB have no single-source form, run one \texttt{shortestPath} per destination, and exceed
+  600\,s from 16 sources at SF10; they are omitted.}
   \label{fig:sources-all}
 \end{figure*}
 
@@ -64,9 +68,11 @@ on SF10, the per-pair systems are flat lines.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/throughput.pdf}
-  \caption{Throughput for the two shapes of Figures~\ref{fig:random-pairs} and~\ref{fig:sources-all}. A set-oriented
-  traversal amortizes the sweep over the adjacency; a per-pair system cannot, so its throughput does not depend on
-  the batch.}
+  \caption{The same runs as Figures~\ref{fig:random-pairs} and~\ref{fig:sources-all} as throughput. Top: random
+  pairs answered per second against $n$ pairs per query; bottom: (source, person) distances produced per second
+  against $k$ sources per query. Log y, 32 threads, SF10, SF100 and SF300 from left to right; a hollow triangle is an
+  upper bound for a run over 600\,s. \duckpgq's throughput rises with the batch until one traversal saturates the
+  machine; a system that searches once per pair has the same throughput at every $n$.}
   \label{fig:throughput}
 \end{figure*}
 
@@ -85,9 +91,11 @@ the operator's parallelism is inside the traversal and theirs is between indepen
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/client_threads.pdf}
-  \caption{Client-side concurrency: the pair list split over 32 connections (solid) against one query (dashed).
-  Splitting helps every per-pair system by about an order of magnitude at large $n$ and does not close the gap to one
-  call of the operator.}
+  \caption{Random pairs with client-side parallelism, SF10 and SF100. Solid lines: the $n$ pairs split evenly over
+  32 client connections that query concurrently, wall time until the last connection returns; dashed lines: the same
+  $n$ pairs in one query on one connection. Y: seconds, log scale, mean of three runs; x: $n$. Kuzu, FalkorDB and
+  Memgraph gain about an order of magnitude from 32 connections at large $n$; one call of the \duckpgq operator over
+  the index (blue, one connection) stays one to two orders of magnitude faster.}
   \label{fig:client-threads}
 \end{figure*}
 
@@ -138,9 +146,11 @@ linear in the edges for both routes: from SF10 to SF300 the edges grow by 30, th
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/scaling.pdf}
-  \caption{Growth with the graph: the heaviest query of each sweep, 65\,536 random pairs and 1024 sources to every
-  person, from SF10 to SF300 (1.8\,M to 55.7\,M edges). The index route grows with the edges; the systems that
-  search per pair leave the time budget first.}
+  \caption{Query time against graph size for the two heaviest queries of the sweeps. Left: 65\,536 random pairs per
+  query; right: 1024 sources, each to every person. X: LDBC SF10, SF100 and SF300 with their edge counts (1.84\,M,
+  18.7\,M, 55.7\,M), log scale; y: seconds per query, log scale, mean of three runs at 32 threads. Lines: \duckpgq
+  over the index, Neo4j, Kuzu, Memgraph; a triangle marks a run over 600\,s. The 30-fold growth in edges costs the
+  index 21-fold (left) and 19-fold (right).}
   \label{fig:scaling}
 \end{figure}
 
@@ -163,8 +173,10 @@ appends to its change log and is otherwise the same transaction the table sees.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/updates.pdf}
-  \caption{Under updates at SF10: single-source query latency during a stream of 190 commits of 2000 edge
-  operations, and the cost of applying one commit.}
+  \caption{Query and update cost under a write stream, SF10, 32 threads. The LDBC insert and delete stream for
+  \texttt{Person\_knows\_Person} is applied as 190 commits of 2000 operations; after every commit one query asks the
+  distance from one source to 1024 destinations. Left: mean query time over the 190 queries; right: mean time to
+  apply one commit. Log x. Every system returns the same 190 answers.}
   \label{fig:updates}
 \end{figure}
 
