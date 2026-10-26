@@ -15,13 +15,13 @@ A path-finding workload is characterised by how many sources and destinations on
 is written in. We therefore measure three shapes: random pairs, where both ends are bound and the number of pairs
 grows from 1 to 65\,536; $k$ sources to all vertices, for $k$ from 1 to 1024; and the LDBC queries IC13, BI19 and
 BI20, whose sources and destinations are selected by predicates (a city, a company) rather than listed. Every system
-runs the same pairs with a budget of 600\,s per query; a point over budget is reported as such, not dropped, because
-the systems that search one pair at a time grow linearly and the budget is the honest way to show where they stop.
+runs the same pairs with a timeout of 600\,s per query; a point that times out is reported as such, not dropped, because
+the systems that search one pair at a time grow linearly and the timeout is the honest way to show where they stop.
 
 \paragraph{Three classes of systems.} The results separate the baselines into three classes. Neo4j and FalkorDB
 evaluate a set of pairs as one \texttt{shortestPath} per pair: at SF100 Neo4j needs 169\,s for 65\,536 pairs, 0.2\,ms
-per pair under its parallel runtime, and FalkorDB and Memgraph exceed the budget. For $k$ sources to all vertices the
-same systems need one search per (source, vertex) pair and exceed the budget from 16 and 128 sources at SF10. Kuzu and
+per pair under its parallel runtime, and FalkorDB and Memgraph time out. For $k$ sources to all vertices the
+same systems need one search per (source, vertex) pair and time out from 16 and 128 sources at SF10. Kuzu and
 Memgraph have a per-source primitive (Kuzu's recursive join with \texttt{SHORTEST}, Memgraph's \texttt{*BFS}
 expansion from a bound source), so they answer $k$ sources to all vertices in $k$ traversals: Kuzu takes 4.0\,s at
 SF10 and 9.4\,s at SF100 for 1024 sources, but has no batching across sources and no cheaper form for bound pairs,
@@ -33,7 +33,7 @@ delta-stepping per source and Dijkstra per pair and sits between the two classes
 capped at four threads without a licence and cannot run inside the parallel runtime.
 
 \todo{Table: the two SF10 sweep tables (random pairs, sources x all) and the SF100 and SF300 rows for DuckPGQ index,
-DuckPGQ build, Neo4j, Kuzu; FalkorDB, Memgraph and GDS in the appendix or as "> budget" cells.}
+DuckPGQ build, Neo4j, Kuzu; FalkorDB, Memgraph and GDS in the appendix or as "> timeout" cells.}
 
 \paragraph{The interface matters as much as the traversal.}
 \label{sec:eval-reach}

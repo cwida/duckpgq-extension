@@ -4065,7 +4065,7 @@ class GraphDBSystem:
     stop_requested = False
     #: the system can run a split of a pair or source list over several connections (client-side concurrency)
     partitionable = False
-    #: extra connections of a partitioned run in flight, so a budget cancellation reaches them
+    #: extra connections of a partitioned run in flight, so a timeout cancellation reaches them
     workers = ()
     #: name used in the result rows (gets an @N suffix for client-side concurrency)
     label = None
@@ -4271,7 +4271,7 @@ class FalkorDBSystem(GraphDBSystem):
 
     def worker(self, share):
         other = FalkorDBSystem(self.host, self.port, self.graph_name)
-        other.budget_ms = self.budget_ms
+        other.timeout_ms = self.timeout_ms
         return other
 
     def bi19_sources(self, city1):
@@ -4294,8 +4294,8 @@ class FalkorDBSystem(GraphDBSystem):
 
     def query(self, text, params=None):
         # The client applies a default timeout that a 1024-destination query exceeds; the server has none. The
-        # sweep sets the budget here, so FalkorDB stops a query server-side when it is exceeded.
-        return self.graph.query(text, params or {}, timeout=self.budget_ms).result_set
+        # sweep sets the timeout here, so FalkorDB stops a query server-side when it is exceeded.
+        return self.graph.query(text, params or {}, timeout=self.timeout_ms).result_set
 
     def load(self, export_dir, scale_factor):
         try:
@@ -4395,10 +4395,10 @@ class FalkorDBSystem(GraphDBSystem):
             total += int(rows[0][1] or 0)
         return reachable, total
 
-    def set_budget(self, budget_s):
-        self.budget_ms = int(budget_s * 1000)
+    def set_timeout(self, timeout_s):
+        self.timeout_ms = int(timeout_s * 1000)
 
-    budget_ms = 3600000
+    timeout_ms = 3600000
 
 
 def run_update_graphdb(args, system):
@@ -4824,16 +4824,16 @@ class KuzuSystem(GraphDBSystem):
 
 
 class DuckPGQSystem(GraphDBSystem):
-    """DuckPGQ through the CLI, one process per query so the budget can kill it: 'build' builds the CSR per query,
+    """DuckPGQ through the CLI, one process per query so the timeout can kill it: 'build' builds the CSR per query,
     'index' reads the persisted CSR index (resident after a warm-up query). With symmetric=True the edge table is
     the symmetric closure of knows (LDBC's undirected semantics)."""
 
-    def __init__(self, route, scale_factor, threads, budget_s, symmetric=False):
+    def __init__(self, route, scale_factor, threads, timeout_s, symmetric=False):
         self.route = route
         self.name = f"duckpgq_{route}"
         self.scale_factor = scale_factor
         self.threads = threads
-        self.budget_s = budget_s
+        self.timeout_s = timeout_s
         self.symmetric = symmetric
         self.database = db_path(scale_factor)
         # Build route: the symmetric closure table and a cache key that tells the operator the edge set is
@@ -4911,7 +4911,7 @@ SELECT delete_csr(2147483647) AS duckpgq_state_init;
         """(seconds, reachable_count, total_len) of the operator over the given pair relations"""
         script = self.script(rowid_pairs, key_pairs, warm)
         result = subprocess.run([str(BENCH_DUCKDB), "-unsigned", "-csv"], cwd=REPO_ROOT, text=True, input=script,
-                                capture_output=True, timeout=self.budget_s)
+                                capture_output=True, timeout=self.timeout_s)
         output = result.stdout + result.stderr
         if result.returncode < 0:
             raise RuntimeError(f"duckdb killed by signal {-result.returncode} (out of memory?)")
@@ -4968,8 +4968,8 @@ FROM (SELECT rowid FROM person ORDER BY hash(id + 7) LIMIT {source_count}) s;
     return table
 
 
-def run_with_budget(system, fn, budget_s):
-    """Runs fn() on a worker thread; after budget_s calls system.cancel() and reports the budget as exceeded."""
+def run_with_timeout(system, fn, timeout_s):
+    """Runs fn() on a worker thread; after timeout_s calls system.cancel() and reports a timeout."""
     outcome = {}
 
     def worker():
@@ -4983,7 +4983,7 @@ def run_with_budget(system, fn, budget_s):
     thread = threading.Thread(target=worker, daemon=True)
     started = time.perf_counter()
     thread.start()
-    thread.join(budget_s)
+    thread.join(timeout_s)
     if thread.is_alive():
         system.stop_requested = True
         try:
@@ -4991,17 +4991,17 @@ def run_with_budget(system, fn, budget_s):
         except Exception as ex:  # noqa: BLE001
             print(f"   cancel failed: {str(ex)[:120]}")
         thread.join(60)
-        return None, time.perf_counter() - started, "budget_exceeded"
+        return None, time.perf_counter() - started, "timed_out"
     elapsed = time.perf_counter() - started
     if "error" in outcome:
         if "timed out" in outcome["error"].lower() or "timeout" in outcome["error"].lower():
-            return None, elapsed, "budget_exceeded"
+            return None, elapsed, "timed_out"
         return None, elapsed, f"error: {outcome['error'][:200]}"
     return outcome["value"], elapsed, "ok"
 
 
 def sweep_pairs(args):
-    """Pair-count and source-count sweep over DuckPGQ and the graph databases, with a per-query budget."""
+    """Pair-count and source-count sweep over DuckPGQ and the graph databases, with a per-query timeout."""
     sys.stdout.reconfigure(line_buffering=True)
     scale_factor = args.scale_factor
     ensure_update_log(scale_factor)
@@ -5017,7 +5017,7 @@ def sweep_pairs(args):
     results_dir.mkdir(parents=True, exist_ok=True)
     path = results_dir / f"sweep_pairs_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
     fieldnames = ["system", "scale_factor", "shape", "pairs", "sources", "repeat", "status", "query_s",
-                  "reachable_count", "total_len", "threads", "client_threads", "budget_s", "benchmark_notes", "repo_commit"]
+                  "reachable_count", "total_len", "threads", "client_threads", "timeout_s", "benchmark_notes", "repo_commit"]
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
     rows = []
 
@@ -5025,7 +5025,7 @@ def sweep_pairs(args):
         row = {"system": system_label(system, args), "scale_factor": scale_factor, "shape": shape, "pairs": pairs,
                "sources": sources, "repeat": repeat, "status": status, "query_s": f"{elapsed:.6f}",
                "reachable_count": value[0] if value else "", "total_len": value[1] if value else "",
-               "threads": args.threads, "client_threads": args.client_threads, "budget_s": args.budget_s,
+               "threads": args.threads, "client_threads": args.client_threads, "timeout_s": args.timeout_s,
                "benchmark_notes": args.notes, "repo_commit": commit}
         rows.append(row)
         with path.open("w", newline="") as handle:
@@ -5041,14 +5041,14 @@ def sweep_pairs(args):
         system.load(export_dir, scale_factor)
         print(f"   loaded in {time.perf_counter() - started:.1f}s, {system.edge_count()} edges")
         system_vertex_count = vertex_count
-        # Random pairs; once a count exceeds the budget the larger counts are recorded as exceeded without running
+        # Random pairs; once a count times out the larger counts are recorded as exceeded without running
         shape_exceeded = False
         for n in args.pair_counts:
             table = pair_table_name(n, "random")
             pairs = read_pairs(export_dir, table)
             self_pairs = sum(1 for src, dst in pairs if src == dst)
             if shape_exceeded:
-                record(system, "random_pairs", n, "", 1, "budget_exceeded_inferred", 0.0, None)
+                record(system, "random_pairs", n, "", 1, "timed_out_inferred", 0.0, None)
                 continue
             exceeded = False
             for repeat in range(1, args.repeats + 1):
@@ -5059,17 +5059,17 @@ def sweep_pairs(args):
                         elapsed, reachable, total = system.timed_table(table)
                         value, status = (reachable, total), "ok"
                     except subprocess.TimeoutExpired:
-                        value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                        value, elapsed, status = None, args.timeout_s, "timed_out"
                     except RuntimeError as ex:
                         value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                 else:
-                    value, elapsed, status = run_with_budget(
+                    value, elapsed, status = run_with_timeout(
                         system, lambda: run_partitioned(system, pairs, lambda w, part: w.point_to_point(part), args.client_threads),
-                        args.budget_s)
+                        args.timeout_s)
                     if value:
                         value = (value[0] + self_pairs, value[1])
                 record(system, "random_pairs", n, "", repeat, status, elapsed, value)
-                exceeded = status == "budget_exceeded"
+                exceeded = status == "timed_out"
                 shape_exceeded = shape_exceeded or exceeded
         # Sources x all destinations
         shape_exceeded = False
@@ -5077,7 +5077,7 @@ def sweep_pairs(args):
             table = multi_source_table_name(k)
             source_keys = sorted({src for src, _ in read_pairs(export_dir, table)})
             if shape_exceeded:
-                record(system, "multi_source", "", k, 1, "budget_exceeded_inferred", 0.0, None)
+                record(system, "multi_source", "", k, 1, "timed_out_inferred", 0.0, None)
                 continue
             exceeded = False
             for repeat in range(1, args.repeats + 1):
@@ -5092,17 +5092,17 @@ def sweep_pairs(args):
                         elapsed, reachable, total = system.timed_table(table)
                         value, status = (reachable, total), "ok"
                     except subprocess.TimeoutExpired:
-                        value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                        value, elapsed, status = None, args.timeout_s, "timed_out"
                     except RuntimeError as ex:
                         value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                 else:
-                    value, elapsed, status = run_with_budget(
+                    value, elapsed, status = run_with_timeout(
                         system, lambda: run_partitioned(system, source_keys, lambda w, part: w.multi_source(part), args.client_threads),
-                        args.budget_s)
+                        args.timeout_s)
                     if value:
                         value = (value[0] + len(source_keys), value[1])  # the source itself, length 0
                 record(system, "multi_source", "", k, repeat, status, elapsed, value)
-                exceeded = status == "budget_exceeded"
+                exceeded = status == "timed_out"
                 shape_exceeded = shape_exceeded or exceeded
         system.close()
     # Agreement across systems: every ok result of a point must equal the first system's
@@ -5139,7 +5139,7 @@ def read_result_files(files):
 
 
 def sweep_pairs_table(args):
-    """Prints the sweep as one table per shape: systems x pair counts, mean seconds or the budget status."""
+    """Prints the sweep as one table per shape: systems x pair counts, mean seconds or the timeout status."""
     rows = read_result_files(args.files)
     for shape, column in (("random_pairs", "pairs"), ("multi_source", "sources")):
         shape_rows = [r for r in rows if r["shape"] == shape]
@@ -5150,7 +5150,7 @@ def sweep_pairs_table(args):
         for r in shape_rows:
             if r["system"] not in systems:
                 systems.append(r["system"])
-        print(f"\n## {shape}: mean seconds per query, SF{shape_rows[0]['scale_factor']}, {shape_rows[0]['threads']} threads, budget {shape_rows[0]['budget_s']} s\n")
+        print(f"\n## {shape}: mean seconds per query, SF{shape_rows[0]['scale_factor']}, {shape_rows[0]['threads']} threads, timeout {shape_rows[0].get('timeout_s') or shape_rows[0].get('budget_s')} s\n")
         print("| system | " + " | ".join(f"{column}={c}" for c in counts) + " |")
         print("|---|" + "---|" * len(counts))
         for system in systems:
@@ -5161,8 +5161,8 @@ def sweep_pairs_table(args):
                 if ok:
                     mean = statistics.mean(ok)
                     cells.append(f"{mean*1000:.0f} ms" if mean < 1 else f"{mean:.1f} s")
-                elif any(r["status"].startswith("budget_exceeded") for r in point):
-                    cells.append(f"> {point[0]['budget_s']} s")
+                elif any(r["status"].startswith(("timed_out", "budget_exceeded")) for r in point):
+                    cells.append(f"> {point[0].get('timeout_s') or point[0].get('budget_s')} s")
                 elif any(r["status"].startswith("exceeds_pair_limit") for r in point):
                     cells.append("not run")
                 elif point:
@@ -5249,16 +5249,16 @@ def make_systems(args, scale_factor, symmetric=False):
     systems = []
     for name in args.systems:
         if name == "duckpgq_build":
-            systems.append(DuckPGQSystem("build", scale_factor, args.threads, args.budget_s, symmetric))
+            systems.append(DuckPGQSystem("build", scale_factor, args.threads, args.timeout_s, symmetric))
         elif name == "duckpgq_index":
-            systems.append(DuckPGQSystem("index", scale_factor, args.threads, args.budget_s, symmetric))
+            systems.append(DuckPGQSystem("index", scale_factor, args.threads, args.timeout_s, symmetric))
         elif name == "kuzu":
             systems.append(KuzuSystem(args.threads))
         elif name == "memgraph":
             systems.append(MemgraphSystem(args.memgraph_uri))
         elif name == "falkordb":
             system = FalkorDBSystem(args.falkordb_host, args.falkordb_port, f"pf_{sf_name(scale_factor)}")
-            system.set_budget(args.budget_s)
+            system.set_timeout(args.timeout_s)
             systems.append(system)
         elif name == "neo4j":
             systems.append(Neo4jSystem(args.neo4j_uri, args.neo4j_database, args.neo4j_runtime))
@@ -5286,7 +5286,7 @@ class ResultWriter:
 
 
 def ldbc_queries(args):
-    """IC13, BI19 and BI20 (hop-count variants over the undirected knows graph) on every system with a budget"""
+    """IC13, BI19 and BI20 (hop-count variants over the undirected knows graph) on every system with a timeout"""
     sys.stdout.reconfigure(line_buffering=True)
     scale_factor = args.scale_factor
     ensure_update_log(scale_factor)
@@ -5297,7 +5297,7 @@ def ldbc_queries(args):
     results_dir.mkdir(parents=True, exist_ok=True)
     path = results_dir / f"ldbc_queries_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
     writer = ResultWriter(path, ["system", "scale_factor", "query", "param_index", "params", "repeat", "status", "query_s",
-                                 "reachable_count", "total_len", "threads", "client_threads", "budget_s", "benchmark_notes",
+                                 "reachable_count", "total_len", "threads", "client_threads", "timeout_s", "benchmark_notes",
                                  "repo_commit"])
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
     for system in systems:
@@ -5312,13 +5312,13 @@ def ldbc_queries(args):
                 idx, values = param_row[0], param_row[1:]
                 for repeat in range(1, args.repeats + 1):
                     if exceeded:
-                        value, elapsed, status = None, 0.0, "budget_exceeded_inferred"
+                        value, elapsed, status = None, 0.0, "timed_out_inferred"
                     elif isinstance(system, DuckPGQSystem):
                         try:
                             elapsed, reachable, total = getattr(system, query)(*values)
                             value, status = (reachable, total), "ok"
                         except subprocess.TimeoutExpired:
-                            value, elapsed, status = None, args.budget_s, "budget_exceeded"
+                            value, elapsed, status = None, args.timeout_s, "timed_out"
                         except RuntimeError as ex:
                             value, elapsed, status = None, 0.0, f"error: {str(ex)[:200]}"
                     else:
@@ -5328,18 +5328,18 @@ def ldbc_queries(args):
                                 return run_partitioned(system, sources,
                                                        lambda w, part: getattr(w, f"{query}_from")(part, values[1]),
                                                        args.client_threads)
-                            value, elapsed, status = run_with_budget(system, split_query, args.budget_s)
+                            value, elapsed, status = run_with_timeout(system, split_query, args.timeout_s)
                         else:
-                            value, elapsed, status = run_with_budget(system, lambda: getattr(system, query)(*values), args.budget_s)
+                            value, elapsed, status = run_with_timeout(system, lambda: getattr(system, query)(*values), args.timeout_s)
                     writer.add({"system": system_label(system, args), "scale_factor": scale_factor, "query": query,
                                 "param_index": idx, "params": " ".join(str(v) for v in values), "repeat": repeat,
                                 "status": status, "query_s": f"{elapsed:.6f}", "reachable_count": value[0] if value else "",
                                 "total_len": value[1] if value else "", "threads": args.threads,
-                                "client_threads": args.client_threads, "budget_s": args.budget_s,
+                                "client_threads": args.client_threads, "timeout_s": args.timeout_s,
                                 "benchmark_notes": args.notes, "repo_commit": commit})
                     shown = f"{value[0]}/{value[1]}" if value else status
                     print(f"   {system_label(system, args):14s} {query} params {' '.join(str(v) for v in values):28s} repeat {repeat}: {elapsed:8.3f}s {shown}")
-                    if status == "budget_exceeded":
+                    if status == "timed_out":
                         exceeded = True
                         break
         system.close()
@@ -5356,7 +5356,7 @@ def ldbc_queries(args):
 
 
 def ldbc_queries_table(args):
-    """systems x queries: mean seconds over the parameter sets (each the mean of its repeats), or the budget status"""
+    """systems x queries: mean seconds over the parameter sets (each the mean of its repeats), or the timeout status"""
     rows = read_result_files(args.files)
     queries = [q for q in LDBC_QUERIES if any(r["query"] == q for r in rows)]
     systems = []
@@ -5364,7 +5364,7 @@ def ldbc_queries_table(args):
         if r["system"] not in systems:
             systems.append(r["system"])
     print(f"\n## LDBC queries (hop-count variants, undirected knows): mean seconds per query, SF{rows[0]['scale_factor']}, "
-          f"{rows[0]['threads']} threads, budget {rows[0]['budget_s']} s\n")
+          f"{rows[0]['threads']} threads, timeout {rows[0].get('timeout_s') or rows[0].get('budget_s')} s\n")
     print("| system | " + " | ".join(queries) + " |")
     print("|---|" + "---|" * len(queries))
     for system in systems:
@@ -5378,8 +5378,8 @@ def ldbc_queries_table(args):
             if per_param and len(per_param) == len({r["param_index"] for r in point}):
                 mean = statistics.mean(statistics.mean(v) for v in per_param.values())
                 cells.append(f"{mean*1000:.0f} ms" if mean < 1 else f"{mean:.1f} s")
-            elif any(r["status"].startswith("budget_exceeded") for r in point):
-                cells.append(f"> {point[0]['budget_s']} s")
+            elif any(r["status"].startswith(("timed_out", "budget_exceeded")) for r in point):
+                cells.append(f"> {point[0].get('timeout_s') or point[0].get('budget_s')} s")
             elif point:
                 cells.append("error")
             else:
@@ -5571,7 +5571,7 @@ def main():
         "--max-concurrent-batches",
         type=int,
         default=0,
-        help="Maximum grouped regular MS-BFS batches admitted concurrently; <= 0 derives from thread budget.",
+        help="Maximum grouped regular MS-BFS batches admitted concurrently; <= 0 derives from thread timeout.",
     )
     run_parser.add_argument(
         "--reverse-orientation-ratio",
@@ -5756,7 +5756,7 @@ def main():
     sweep_pairs_parser.add_argument("--pair-counts", nargs="*", type=int, default=SWEEP_PAIR_COUNTS)
     sweep_pairs_parser.add_argument("--source-counts", nargs="*", type=int, default=SWEEP_SOURCE_COUNTS)
     sweep_pairs_parser.add_argument("--repeats", type=int, default=3)
-    sweep_pairs_parser.add_argument("--budget-s", type=float, default=600, help="per-query budget; exceeded is recorded")
+    sweep_pairs_parser.add_argument("--timeout-s", "--timeout-s", type=float, default=600, help="per-query timeout; a timed-out point is recorded")
     sweep_pairs_parser.add_argument("--client-threads", type=int, default=1,
                                     help="split pair and source lists over this many connections for Memgraph, FalkorDB, Kuzu")
     sweep_pairs_parser.add_argument("--max-pairs", type=int, default=500_000_000,
@@ -5781,7 +5781,7 @@ def main():
                              default=["duckpgq_build", "duckpgq_index", "kuzu", "memgraph", "falkordb", "neo4j", "neo4j_gds"])
     ldbc_parser.add_argument("--queries", nargs="+", default=LDBC_QUERIES)
     ldbc_parser.add_argument("--repeats", type=int, default=3)
-    ldbc_parser.add_argument("--budget-s", type=float, default=600)
+    ldbc_parser.add_argument("--timeout-s", "--timeout-s", type=float, default=600)
     ldbc_parser.add_argument("--client-threads", type=int, default=1,
                              help="split BI19/BI20 sources over this many connections for Memgraph, FalkorDB, Kuzu")
     ldbc_parser.add_argument("--memgraph-uri", default="bolt://localhost:7687")
