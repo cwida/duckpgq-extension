@@ -18,6 +18,11 @@
 \newcommand\vldbpagestyle{plain}
 
 \usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,fit}
+\definecolor{opblue}{HTML}{2A78D6}
+\definecolor{ixorange}{HTML}{EB6834}
+\definecolor{engine}{HTML}{898781}
 \usepackage{xspace}
 \usepackage{listings}
 \usepackage{xcolor}
@@ -45,6 +50,19 @@
 \begin{abstract}
 \todo{Abstract. Thesis: a loadable extension can give a relational engine graph-native path finding, including an MVCC-consistent CSR index, without forking the engine. One sentence each on: the operator (multi-source BFS over a radix-partitioned CSR built per query), the index (epochs plus a commit-group change log, snapshot per reader, fold), the planner integration through \sqlpgq, the evaluation headline numbers against Kuzu and Neo4j, and the update workload result.}
 \end{abstract}
+
+\begin{teaserfigure}
+  \centering
+  \input{figures/overview}
+  \caption{Path finding in \duckpgq. A \texttt{MATCH} path pattern is rewritten to SQL with a marker function that an
+  optimizer extension replaces by the path-finding operator (Section~\ref{sec:planner}). The operator traverses a
+  partitioned CSR that is either built inside the query from the edge table (Section~\ref{sec:csr}) or read as a
+  transaction-consistent snapshot of a CSR index (Section~\ref{sec:index}); both have the same layout. Two
+  traversals, multi-source lanes for many pairs and a frontier search for few, run as chains of per-phase events
+  (Sections~\ref{sec:traversals} and~\ref{sec:phases}). Everything in colour is the extension; the grey band is the
+  host engine and the four interfaces it exposes.}
+  \label{fig:overview}
+\end{teaserfigure}
 
 \maketitle
 
