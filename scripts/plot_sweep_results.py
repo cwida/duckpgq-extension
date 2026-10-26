@@ -152,6 +152,11 @@ SPARSE = {
 }
 
 
+def without_build(entries):
+    """The throughput and scaling figures show one DuckPGQ line; the build route is in the tables."""
+    return [entry for entry in entries if entry[0] != "duckpgq_build"]
+
+
 def sparse_systems(*shapes):
     keys = [key for shape in shapes for key in SPARSE[shape]]
     return [entry for entry in SYSTEMS if entry[0] in keys]
@@ -372,7 +377,7 @@ def scaling_figure(filename):
         ax.axhline(TIMEOUT_S, color=AXIS, linewidth=0.6)
         ax.text(edges["10"], TIMEOUT_S * 1.3, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
         label_positions = []
-        for system, name, color in sparse_systems(shape):
+        for system, name, color in without_build(sparse_systems(shape)):
             xs, ys, exceeded_x = [], [], []
             for sf in SCALE_FACTORS:
                 points = load("sweep_pairs", sf)
@@ -397,7 +402,7 @@ def scaling_figure(filename):
         ax.set_title(title, loc="left")
         style_axes(ax)
     axes[0].set_ylabel("seconds per query (mean of 3)")
-    series_legend(fig, sparse_systems("random_pairs", "multi_source"), ncol=6)
+    series_legend(fig, without_build(sparse_systems("random_pairs", "multi_source")), ncol=6)
     fig.suptitle("Scaling with the graph: the largest point of each shape from SF10 to SF300", x=0.01, ha="left",
                  fontsize=9.5, color=INK)
     fig.tight_layout(rect=(0, 0.06, 0.9, 0.95))
@@ -419,7 +424,7 @@ def throughput_figure(filename):
             ax.set_xscale("log", base=2)
             ax.set_yscale("log")
             label_positions = []
-            for system, name, color in sparse_systems(shape):
+            for system, name, color in without_build(sparse_systems(shape)):
                 xs, ys, bound_x, bound_y = [], [], [], []
                 for count in counts:
                     point = best_path(points, system, shape, count)
@@ -450,7 +455,7 @@ def throughput_figure(filename):
                 direct_labels(ax, label_positions, max(counts) * 1.3, factor=2.2)
         axes[row][1].set_xlabel(xlabel)
         axes[row][0].set_ylabel(ylabel)
-    shown = sparse_systems("random_pairs", "multi_source")
+    shown = without_build(sparse_systems("random_pairs", "multi_source"))
     handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE) for _, _, c in shown]
     handles.append(Line2D([], [], linestyle="none", marker="v", markersize=5, markerfacecolor=SURFACE, markeredgecolor=INK2))
     labels = [n for _, n, _ in shown] + ["timed out (upper bound)"]
