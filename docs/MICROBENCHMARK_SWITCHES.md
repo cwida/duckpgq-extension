@@ -27,6 +27,7 @@ what the decision is worth, measured on the shapes where it applies (SF10 and SF
 | A10 | Thread scaling | `threads_1/2/4/8/16` | random pairs 65536, sources x all 1024 |
 | A11 | MS-BFS lane width | build-time `cmake -DDUCKPGQ_LANE_LIMIT=64|128|256|1024` (separate builds, section 3; `DUCKPGQ_EXTENSION` picks the build) | random pairs; 256 lanes measured 27 Oct: same time and misses as 512 at SF10 and SF100 |
 | A12 | Fold ratio and overlay size | `update-run --fold-ratio`, configs `index_auto` vs `index_nofold` (existing) | update workload |
+| A14 | Partition geometry (W32): vertices per partition instead of 2 x threads partitions | `partitions` group: `partitions_4096 .. 65535` (one index per geometry) | random pairs 2048 / 65536 and sources x all 1024 at SF10, SF100 |
 | A13 | Explore-phase memory traffic (W31 step 3): frontier summary bitmap, per-source bitmap test on dense levels, row-lookup expansion on sparse levels, visit-line prefetch | `memory` group: `plain_explore`, `no_frontier_bitmap`, `bitmap_filter_on/off`, `no_sparse_levels`, `sparse_levels_8/64`, `visit_prefetch_8` | random pairs 2048 / 16384 / 65536 at SF10, SF100, SF300; measured 27 Oct: plain -> default 1.14x (SF10), 1.37x (SF100), 1.68x (SF300) on the index at 65536 pairs |
 
 ## 2. Inventory
@@ -54,7 +55,7 @@ has no switch; the right-hand column says what a microbenchmark would need.
 | Undirected aliasing | `CREATE INDEX ... WITH (undirected = true)`, `-[]-` in MATCH, cache key suffix `|undirected` | off | reverse search over forward partitions |
 | Pair deduplication | `deduplicate_pairs` | false | ITERATIVE_LENGTH without an index snapshot |
 | Reach mode planning | `reach`, `reach_filtered` | true, false | MATCH only; the harness calls `reachoperator` directly |
-| Partition count | `light_partition_multiplier` (and `SET threads`) | 1 | partitions = threads x (1 + max(1, multiplier)), width <= 65535 vertices; the index freezes the count at CREATE INDEX |
+| Partition count | `partition_vertices` (new, 27 Oct), else `light_partition_multiplier` and `SET threads` | 0 (thread rule) | partition_vertices > 0 sets ceil(V / partition_vertices) partitions, otherwise threads x (1 + max(1, multiplier)); width <= 65535 vertices; the index freezes the count at CREATE INDEX, so the harness builds one index per geometry |
 | Fold ratio | `duckpgq_csr_index_fold_ratio` | 0.1 (0 off) | manual `duckpgq_csr_index_fold(table, index)` |
 | Push/pull, bidirectional kernels | marker function name (`pushpulliterativelengthoperator`, `bidirectionaliterativelengthoperator`), `push_pull_frontier_gate` (2), `build_reverse_csr` | legacy global-CSR input only | not reachable from MATCH; harness modes `pushpull_operator`, `bidirectional_operator` |
 | Heavy/light partition split | `heavy_partition_fraction` (0.75), `light_partition_multiplier` | legacy CSR build only | not exercised by the buffered or index paths |

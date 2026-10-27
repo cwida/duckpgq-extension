@@ -154,3 +154,20 @@ the archive goes to GitHub, this branch first, then a separate repository (W21).
 microbench --scale-factor SF --threads 32 --repeats 3 --timeout-s 600` and print with `microbench-table`. Configurations
 live in `MICROBENCH_CONFIGS` / `MICROBENCH_GROUPS` in the harness; adding one is a dict entry. Results chain on the box:
 `~/sweep/run_microbench_chain.sh` (marker `~/sweep/microbench_chain_done.txt`); the first SF10 run wrote `microbenchmark_sf10_threads32_*.csv` under the old name.
+
+## State on 27 Oct (afternoon)
+
+- MS-BFS batch scheduling is adaptive (`grouped_iterative_length_event.*`, `phased_kernel_event.*`): worker groups,
+  pooled working sets, window grown on edges swept per second; two decisions from the working-set size (own threads
+  vs pooled level tasks: one set <= 32 MB; start wide vs ramp from 16: total <= 512 MB). Per-batch events remain as
+  `grouped_batches=false`. Verified equal or better at SF10 / SF100 / SF300 (`microbench_final_sf*.out`).
+- Explore phase: frontier summary bitmap (built in the check phase), per-source bitmap test on dense levels when one
+  working set > 32 MB (`frontier_bitmap_filter` -1/0/1), row-lookup expansion on sparse levels
+  (`sparse_level_divisor` 16), prefetch off. Strategy string records `regime`, `tasks`, `bitmap_filter`,
+  `sparse_level_divisor`, `window_trace`.
+- Microbenchmark groups: `kernel`, `index`, `reach`, `threads` (= `all`), plus `scheduling`, `memory`, `partitions`
+  (run separately). Results in `data/ldbc-pathfinding/results/sf*/microbench_*.csv`; tables with `microbench-table`.
+- Headline (index, 65536 random pairs): SF10 0.68 s, SF100 5.20 s, SF300 12.3 s. Every DuckPGQ number in
+  `repro/results` is stale until the frozen rerun; the baselines are not.
+- Running / next: W32 partition geometry (`microbench --configs partitions`), then freeze (`eval-freeze-rc1`) and the
+  frozen rerun via `repro/run_all.sh`; the paper's operator section (merged 27 Oct) predates the adaptive scheduler.
