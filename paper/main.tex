@@ -50,19 +50,20 @@
 \email{dljtw@cwi.nl}
 
 \begin{abstract}
-SQL:2023 brought graph pattern matching into SQL, and with it the one query type relational systems execute badly:
-the shortest path. In \duckpgq we answered it with multi-source BFS inside scalar UDFs, which inherit \duckdb's
-parallelism for free and also its limit: a UDF gets work per tuple, so a single path pattern runs on one core, and the
-compressed sparse row (CSR) representation of the graph it searches is rebuilt for every query. This paper removes both limits while staying a loadable
-extension. A path-finding operator with its own inputs and event schedule takes its parallelism from a partitioned
-CSR rather than from the tuples, runs a multi-source traversal for many pairs and a frontier traversal for few, and is
-reached from \sqlpgq's \texttt{MATCH} through an optimizer rule. A CSR index keeps that representation across queries,
-restarts and checkpoints behind \duckdb's general index interface, which delivers changed rows but no visibility;
-immutable epochs, a change log classified once per commit by \duckdb's own row-version check, and per-reader
-snapshots make every traversal see exactly the edges its transaction may see. On LDBC SNB up to scale factor 300,
-against Kuzu, Neo4j, Memgraph and FalkorDB, \duckpgq answers a single pair as fast as the native systems, answers
-thousands of pairs in one traversal where they search once per pair, and keeps query latency flat under concurrent
-edge updates while applying a commit in milliseconds. \todo{Final numbers: single pair, many pairs, update cost.}
+SQL:2023 brought graph pattern matching into SQL. The shortest path is the part of it that relational systems
+execute badly. In \duckpgq we answered it with multi-source BFS inside scalar UDFs, which inherit \duckdb's
+parallelism for free. They also inherit its limit. A UDF receives work per tuple, so a single path pattern runs on one
+core, and the compressed sparse row (CSR) representation of the graph is rebuilt for every query. This paper removes
+both limits and remains a loadable extension. A path-finding operator with its own inputs and event schedule draws its
+parallelism from a partitioned CSR, uses a multi-source traversal for many pairs and a frontier traversal for few,
+and is reached from \sqlpgq's \texttt{MATCH} through an optimizer rule. A CSR index keeps the representation across
+queries, restarts and checkpoints behind \duckdb's general index interface. That interface reports which rows changed
+and nothing about who may see them, so the index stores immutable epochs and a change log that \duckdb's own
+row-version check classifies once per commit, and every reader traverses exactly the edges its transaction may see.
+On LDBC SNB up to scale factor 300, compared with Kuzu, Neo4j, Memgraph and FalkorDB, \duckpgq answers a single pair
+as fast as the native systems and thousands of pairs in one traversal where they search once per pair. Under
+concurrent edge updates its query latency stays flat and a commit is applied in milliseconds.
+\todo{Final numbers: single pair, many pairs, update cost.}
 \end{abstract}
 
 \maketitle
