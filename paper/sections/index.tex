@@ -23,7 +23,7 @@ log, replayed after a restart; and (5) \emph{lookup}, the planner finding the in
 run under the index lock, so appends and deletes arrive in commit order.
 
 It withholds three things an index for traversals needs. The first is visibility. The calls carry row ids and keys,
-never the transaction or the commit that made the change, and a reader cannot ask the index what is visible to it. An
+never the transaction or the commit that made the change, and a transaction cannot ask the index what it may see. An
 ART index does not need that, because it returns row ids that the table scan filters through the row versions, one
 probe at a time. A traversal that touches ten million edges cannot afford a version check per edge, and it never goes
 back to the table. The second is the past. \texttt{CanFetch(transaction, row)} answers whether a row is visible to a
@@ -56,7 +56,7 @@ transaction and equal to the edge set that transaction could see. A \emph{change
 epoch as one or more \emph{change groups}. An \texttt{Append} call becomes a group of inserted edges, each with its
 keys, its row id and the ids the keys resolve to in the current dictionary. A \texttt{Delete} call becomes a group of
 deleted rows, where a row that is in the log is stamped with the deleting group and a row that is in the epoch becomes
-a tombstone. The log stores no visibility information at all. A \emph{snapshot} is what a reader traverses, the epoch
+a tombstone. The log stores no visibility information at all. A \emph{snapshot} is what a \emph{reader}, a transaction that runs a path query, traverses: the epoch
 plus an overlay, which is a bitmap of suppressed epoch positions and a small adjacency of the inserted edges laid out
 in the same destination-range partitions as the epoch, so that the traversal explores an epoch partition and its
 companion in one step.
