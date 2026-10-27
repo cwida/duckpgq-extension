@@ -27,13 +27,14 @@ binder's plan shape, before join reordering, because the two inputs are easy to 
 the optimizer has pushed filters into them. \duckdb then sees an operator with two children and a cardinality, plans
 the rest of the query around it, and executes it as a sink over both children and a source for the result.
 
-Three details of the rewrite matter for performance. The pairs are the cross product of the source and destination
-vertex sets after their own filters, so a query with one source and a filter on the destination produces few pairs and
-the operator never materializes a full cross product. The upper bound of the quantifier travels with the marker, so
-the traversal stops at that depth and no filter has to discard the rest. When a CSR index exists for the edge table,
-the rewrite drops the edge input and passes the index name in the key; the operator resolves the key to a snapshot
-(Section~\ref{sec:index}), and the pairs carry vertex keys instead of row ids because the index identifies vertices by
-key.
+Three details of the rewrite matter for performance. (1) \emph{filtered pairs}, the filters on the source and
+destination vertices are applied to each vertex set before the two are combined, so a query with one source and a
+selective filter on the destination yields few candidate pairs, and the unfiltered cross product of the vertex tables
+is never formed. (2) \emph{depth bound}, the upper bound of the quantifier travels with the marker, so the traversal
+stops at that depth instead of exploring further paths that a filter would discard afterwards. (3) \emph{index
+route}, when a CSR index exists for the edge table, the rewrite drops the edge input and passes the index name in the
+key. The operator resolves the key to a snapshot (Section~\ref{sec:index}), and the pairs carry vertex keys instead
+of row ids, because the index identifies vertices by key.
 
 \subsection{Building the partitioned CSR on the fly}
 \label{sec:csr}
