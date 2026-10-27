@@ -1,66 +1,64 @@
 \section{Related Work}
 \label{sec:related}
 
-% Draft 22 Oct 2026, in the style of paper/STYLE.md. Entries marked VERIFY in references.bib still need checking.
+% Revised 27 Oct 2026 against paper/STYLE.md. Entries marked VERIFY in references.bib still need checking.
 
-\paragraph{Graph queries on relational engines.}
-Relational systems have answered graph queries for a long time, and in three ways: by rewriting pattern matching
-into joins over edge tables~\cite{sun2015sqlgraph,jindal2014vertexica,fan2015grail}, by layering a graph query
-language on an RDBMS~\cite{vanrest2016pgql}, and, since SQL:2023, through \sqlpgq, the graph pattern matching part of
-the SQL standard~\cite{deutsch2022gql}. \duckpgq~\cite{tenwolde2023duckpgq} took the third route as a \duckdb
-extension that rewrites \texttt{MATCH} into SQL, and argued that a competent graph system must build on everything a
-state-of-the-art relational engine already has, plus a many-source path-finding algorithm and a compact graph
-representation. This paper delivers those two additions, and keeps them inside the extension. The systems that
-instead change the engine add predefined joins and adjacency structures (GRainDB~\cite{jin2022graindb,jin2022predefinedjoins}),
-worst-case optimal joins for cyclic patterns (EmptyHeaded~\cite{aberger2017emptyheaded},
-Umbra~\cite{freitag2020wcoj}), or compressed adjacency indexes for aggregation queries (GQ-Fast~\cite{lin2016gqfast}).
-Their adjacency structures live inside the engine and share its storage and transaction code. Ours is a derived
-structure that an extension maintains through the public index interface, and that interface neither tells the
-index which transaction committed a row nor lets it decide visibility; Section~\ref{sec:index} is the consequence.
+\paragraph{Graph queries on relational systems.}
+Relational systems have answered graph queries for a long time, by rewriting pattern matching into joins over edge
+tables~\cite{sun2015sqlgraph,jindal2014vertexica,fan2015grail}, by layering a graph query language on an
+RDBMS~\cite{vanrest2016pgql}, and since SQL:2023 through \sqlpgq, the graph pattern matching part of the SQL
+standard~\cite{deutsch2022gql}. \duckpgq~\cite{tenwolde2023duckpgq} took the third route as a \duckdb extension that
+rewrites \texttt{MATCH} into SQL. We argued there that a graph system should build on everything a state-of-the-art
+relational system already has and add a many-source path-finding algorithm and a compact graph representation. This
+paper delivers those two additions and keeps them inside the extension. Systems that change the relational system
+itself add predefined joins and adjacency structures (GRainDB~\cite{jin2022graindb,jin2022predefinedjoins}),
+worst-case optimal joins for cyclic patterns (EmptyHeaded~\cite{aberger2017emptyheaded}, Umbra~\cite{freitag2020wcoj}),
+or compressed adjacency indexes for aggregation queries (GQ-Fast~\cite{lin2016gqfast}). Their adjacency structures
+share the system's storage and transaction code. Ours is a derived structure that an extension maintains through the
+public index interface, which tells the index neither which transaction committed a row nor what a reader may see,
+and Section~\ref{sec:index} describes what follows from that.
 
 \paragraph{Path finding.}
-Variable-length and shortest-path patterns are the part of \sqlpgq that relational operators serve worst. A
-recursive common table expression evaluates them as a chain of joins with one frontier table per step;
-RaSQL~\cite{gu2019rasql} and the T\"ubingen work on recursion in SQL~\cite{hirn2019recursion} make that chain faster
-but keep its shape. We take the other route, in the tradition of Grail~\cite{fan2015grail} and of in-database BFS
-operators~\cite{jindal2014vertexica}: build a compressed sparse row (CSR) layout and traverse it. The traversal is
+Variable-length and shortest-path patterns are the part of \sqlpgq that relational operators serve worst. A recursive
+common table expression evaluates them as a chain of joins with one frontier table per step. RaSQL~\cite{gu2019rasql}
+and the T\"ubingen work on recursion in SQL~\cite{hirn2019recursion} make that chain faster and keep its shape. We
+take the other route, in the tradition of Grail~\cite{fan2015grail} and of in-database BFS
+operators~\cite{jindal2014vertexica}, and build a compressed sparse row (CSR) layout to traverse. The traversal is
 multi-source BFS~\cite{then2014msbfs}, which runs 512 searches through one sweep over the adjacency by keeping each
-search in a bit lane; it costs a sweep over all vertices per iteration regardless of how many of the 512 lanes are
-alive, which is exactly wrong for a single pair (Section~\ref{sec:operator}). For that case we use a frontier
-traversal of the kind Ligra~\cite{shun2013ligra} made standard, and we compare against direction-optimizing
-BFS~\cite{beamer2012direction} as the push/pull variant. The GraphBLAS~\cite{davis2019graphblas} expresses the same
-traversals as sparse matrix products; RedisGraph, now FalkorDB, is a graph database built on
-it~\cite{cailliau2019redisgraph} and appears in our evaluation.
+search in a bit lane. Its cost per iteration is a sweep over all vertices regardless of how many of the 512 lanes are
+alive, which is wrong for a single pair (Section~\ref{sec:operator}); for that case we use a frontier traversal of
+the kind Ligra~\cite{shun2013ligra} made standard. Direction-optimizing BFS~\cite{beamer2012direction} is the
+push/pull variant we also implemented. The GraphBLAS~\cite{davis2019graphblas} expresses the same traversals as
+sparse matrix products, and RedisGraph, now FalkorDB, is a graph database built on it~\cite{cailliau2019redisgraph}
+that appears in our evaluation.
 
 \paragraph{Native graph database systems.}
 Neo4j, Kuzu~\cite{feng2023kuzu}, TigerGraph~\cite{deutsch2019tigergraph} and Memgraph store adjacency lists as
 their primary representation, so a shortest-path query never waits for a structure to be built. The price is a second
-system next to the relational data, with its own storage, transactions and copy of the graph. Kuzu is the closest
-design point to ours: columnar storage, vectorized execution and factorized intermediate results, with recursive
-joins for variable-length patterns~\cite{feng2023kuzu}. Section~\ref{sec:eval} shows that with the index a
-relational engine answers point and single-source queries in the same time as Kuzu, and keeps every update in the
-same transaction as the tables.
+system next to the relational data, with its own storage, transactions and copy of the graph. Kuzu is the design
+closest to ours, with columnar storage, vectorized execution and factorized intermediate results, and recursive joins
+for variable-length patterns~\cite{feng2023kuzu}. Section~\ref{sec:eval} shows that with the index \duckpgq answers
+point and single-source queries in the same time as Kuzu and keeps every update in the same transaction as the tables.
 
 \paragraph{Dynamic and versioned graph structures.}
-Updating a CSR is the classic weakness of the layout, and a line of work replaces it with structures that absorb
-edge updates: packed memory arrays and sparse arrays with gaps~\cite{wheatman2018pcsr,deleo2021teseo}, sorted
+Updating a CSR is the classic weakness of the layout. A line of work replaces it with structures that absorb edge
+updates, among them packed memory arrays and sparse arrays with gaps~\cite{wheatman2018pcsr,deleo2021teseo}, sorted
 blocked adjacency lists~\cite{fuchs2022sortledton}, log-structured snapshots~\cite{macko2015llama}, and purely
 functional trees that hand every reader its own version~\cite{dhulipala2019aspen}. LiveGraph~\cite{zhu2020livegraph}
 and Teseo~\cite{deleo2021teseo} add transactions with multi-version concurrency to such structures, and
-Sortledton~\cite{fuchs2022sortledton} measures what versioning inside the structure costs. All of them own both
-the graph and its transaction manager. Our index owns neither: the host engine's row versions decide what a reader
-may see, and the index stores an immutable CSR per epoch plus a change log stamped per commit group, which makes it
-closer to a materialized view than to a dynamic graph structure. The surveys of streaming graph
-processing~\cite{besta2023dynamic} and the experimental comparison of these structures~\cite{deleo2019pma} map the
-design space we chose not to enter.
+Sortledton~\cite{fuchs2022sortledton} measures what versioning inside the structure costs. All of them own both the
+graph and its transaction manager. Our index owns neither. \duckdb's row versions decide what a reader may see, and
+the index stores an immutable CSR per epoch plus a change log stamped per commit group, so it is closer to a
+materialized view than to a dynamic graph structure. The survey of streaming graph processing~\cite{besta2023dynamic}
+and the experimental comparison of these structures~\cite{deleo2019pma} cover the design space we did not enter.
 
 \paragraph{Indexes under MVCC.}
-An index in a multi-version engine either stores version information per entry or, as PostgreSQL and \duckdb's
+An index in a multi-version system either stores version information per entry or, as PostgreSQL and \duckdb's
 ART~\cite{leis2013art} do, stores only row identifiers and checks the row's versions on every
 probe~\cite{wu2017mvcc,neumann2015mvcc}. A traversal that touches millions of edges cannot pay a version check per
-edge: on LDBC SF10 that check alone grew a single-source query from 8 to 124\,ms as updates accumulated
-(Section~\ref{sec:eval}). The index of Section~\ref{sec:index} therefore checks visibility once per commit group and
-serves a whole traversal from one immutable snapshot. It uses the index interface that \duckdb exposes to
-extensions~\cite{duckdb2019}, the same hook the \texttt{vss} and \texttt{spatial} extensions use~\cite{duckdb_vss,duckdb_spatial}; as far as we know this is the first
-snapshot-consistent graph structure built behind such an interface, and Section~\ref{sec:strategy} lists what the
-interface would need to make it simpler.
+edge. On LDBC SF10 that check alone grew a single-source query from 8 to 124\,ms as updates accumulated
+(Section~\ref{sec:eval}), so the index of Section~\ref{sec:index} checks visibility once per commit group and serves a
+whole traversal from one immutable snapshot. It uses the index interface that \duckdb exposes to
+extensions~\cite{duckdb2019}, the same hook the \texttt{vss} and \texttt{spatial} extensions
+use~\cite{duckdb_vss,duckdb_spatial}. As far as we know it is the first snapshot-consistent graph structure built behind
+such an interface, and Section~\ref{sec:strategy} lists what the interface would need to make it simpler.
