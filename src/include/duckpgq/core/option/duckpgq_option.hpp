@@ -29,6 +29,8 @@ int32_t GetPathFindingFewSourcesLimit(ClientContext &context);
 int64_t GetPathFindingGroupedBatchesBudget(ClientContext &context);
 int32_t GetPathFindingBatchOversubscription(ClientContext &context);
 bool GetPathFindingFrontierBitmap(ClientContext &context);
+int32_t GetPathFindingFrontierBitmapFilter(ClientContext &context);
+int32_t GetPathFindingSparseLevelDivisor(ClientContext &context);
 int32_t GetPathFindingVisitPrefetch(ClientContext &context);
 
 struct CorePGQOptions {
@@ -58,6 +60,8 @@ struct CorePGQOptions {
 		RegisterPathFindingGroupedBatchesBudget(loader);
 		RegisterPathFindingBatchOversubscription(loader);
 		RegisterPathFindingFrontierBitmap(loader);
+		RegisterPathFindingFrontierBitmapFilter(loader);
+		RegisterPathFindingSparseLevelDivisor(loader);
 		RegisterPathFindingVisitPrefetch(loader);
 	}
 
@@ -87,6 +91,8 @@ private:
 	static void RegisterPathFindingGroupedBatchesBudget(ExtensionLoader &loader);
 	static void RegisterPathFindingBatchOversubscription(ExtensionLoader &loader);
 	static void RegisterPathFindingFrontierBitmap(ExtensionLoader &loader);
+	static void RegisterPathFindingFrontierBitmapFilter(ExtensionLoader &loader);
+	static void RegisterPathFindingSparseLevelDivisor(ExtensionLoader &loader);
 	static void RegisterPathFindingVisitPrefetch(ExtensionLoader &loader);
 };
 

@@ -734,3 +734,33 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   summary bitmap and visit-line prefetch written (W31 step 3, memory traffic of the explore phase), with the
   microbenchmark group `memory`; lane-activity instrumentation now records the vertices with any lane active per
   level.
+- 27 Oct (midday): frontier bitmap and prefetch measured (`microbench_memory_sf10/100.out`, 3 repeats). SF100, the
+  per-source bitmap test on every level: index 65536 pairs 6.35 s vs 7.76 s without (1.22x), 16384 pairs 1.91 vs
+  2.62 s (1.37x); build 9.46 vs 12.87 s (1.36x) and 2.94 vs 4.63 s (1.57x). SF10: the test costs 10% at 65536
+  pairs (0.83 vs 0.75 s) and gains 5-8% at 2048 / 16384. Prefetch (4 / 8 / 16 rows ahead): within 3% everywhere,
+  default off. The bitmap test follows the scheduler's regime (`frontier_bitmap_filter` -1: on when memory bound,
+  off when cache resident; 0 / 1 force). Activity profile of one SF100 batch (eight waves): levels 1-2 and 8-18
+  have 0.0-13% of vertices with any active lane (one lane each at the tail: straggler pairs at distance 10-18),
+  levels 3-7 46-97%; a wave spends 11 of 18 levels sweeping the CSR for a handful of vertices. Sparse-level path
+  written: a level with active x divisor < V (divisor 64, the per-source kernel's) expands the active list (from
+  the bitmap) by row lookup per partition instead of the sweep; first level of every wave included. Lunch chain
+  (`run_lunch_chain.sh`) measures it. Note: the author merged paper commits (`4dd78ba8`, operator section
+  corrected against the code at `64bc8f54`); the scheduling text there predates the adaptive scheduler and the
+  regime rules and needs a pass once the defaults settle.
+- 27 Oct (early afternoon): sparse levels measured (`microbench_memory2_sf*.out`, 3 repeats, `memory` group).
+  Index 65536 pairs, plain explore -> bitmap filter + sparse levels: SF10 0.78 -> 0.68 s (1.14x), SF100 7.9 -> 5.8 s
+  (1.37x), SF300 20.7 -> 12.3 s (1.68x); build SF100 12.6 -> 8.6 s (1.47x). Split: the per-source bitmap test is the
+  larger part at scale (SF300 65536: 13.3 s without it), the row-lookup sparse levels add 5-13% (SF10 65536 773 ->
+  684 ms, SF300 13.2 -> 12.3 s). Divisor 16 (active < V/16 takes the sparse path) beats 64 by 5-10% at the
+  16384-pair points, 256 is worse: adopted as its own option `sparse_level_divisor` (the per-source kernel keeps
+  `sparse_frontier_divisor` = 64). Prefetch neutral (default 0). The bitmap test pays even for a single SF100 batch
+  (2048 pairs: 526 vs 554 ms), so its rule is the size of one working set (> budget / 16 = 32 MB) rather than the
+  scheduler's regime; recorded as `bitmap_filter` and `sparse_level_divisor` in the strategy string. Headline after
+  W31 steps 2-3 (index, 65536 random pairs): SF10 0.68 s (was 2.6 s on 25 Oct), SF100 5.8 s (was 16.9 s), SF300
+  12.3 s (was 55 s). Pending: ramp-start check and activity profiles at SF10 / SF300 (lunch chain); commit.
+- 27 Oct (noon): ramp-start check after the explore changes (`microbench_ramp8_sf100/300.out`, 3 repeats): SF300
+  adaptive default = per-batch events on both routes (index 12.25 vs 12.13 s, build 20.3 vs 20.3 s at 65536 pairs);
+  SF100 per-batch ahead again (index 5.33 vs 5.86 s, 16384 pairs 1.58 vs 1.93 s; build 8.13 vs 8.60, 2.43 vs 3.46
+  s). With 8 batches both schedulers run all 8 concurrently, so the 25% gap at 16384 pairs is not the window; to
+  isolate (fixed 8x32 grouped vs per-batch, phase timings). Activity profiles: SF10 waves reach level 17, SF300
+  level 26 (19 of 26 levels under 2% active); dense core at levels 3-7 at every scale factor.

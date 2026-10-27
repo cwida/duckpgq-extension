@@ -27,6 +27,7 @@ what the decision is worth, measured on the shapes where it applies (SF10 and SF
 | A10 | Thread scaling | `threads_1/2/4/8/16` | random pairs 65536, sources x all 1024 |
 | A11 | MS-BFS lane width | build-time `cmake -DDUCKPGQ_LANE_LIMIT=64|128|256|1024` (separate builds, section 3; `DUCKPGQ_EXTENSION` picks the build) | random pairs; 256 lanes measured 27 Oct: same time and misses as 512 at SF10 and SF100 |
 | A12 | Fold ratio and overlay size | `update-run --fold-ratio`, configs `index_auto` vs `index_nofold` (existing) | update workload |
+| A13 | Explore-phase memory traffic (W31 step 3): frontier summary bitmap, per-source bitmap test on dense levels, row-lookup expansion on sparse levels, visit-line prefetch | `memory` group: `plain_explore`, `no_frontier_bitmap`, `bitmap_filter_on/off`, `no_sparse_levels`, `sparse_levels_8/64`, `visit_prefetch_8` | random pairs 2048 / 16384 / 65536 at SF10, SF100, SF300; measured 27 Oct: plain -> default 1.14x (SF10), 1.37x (SF100), 1.68x (SF300) on the index at 65536 pairs |
 
 ## 2. Inventory
 
@@ -41,6 +42,10 @@ has no switch; the right-hand column says what a microbenchmark would need.
 | Few-sources rule | `few_sources_limit` (new, 26 Oct) | 16 (0 off) | at most this many distinct sources always uses the per-source kernel |
 | Target early termination | `target_early_termination` (new) | true | a group stops once every destination is reached; `SourceGroupTargets` set/bitmap switch at 64 x expected > V stays hard-coded |
 | Sparse vs dense frontier expansion | `sparse_frontier_divisor` (new) | 64 (0 always sweeps; a huge value always looks up rows) | per-source kernel only; needs row lookup (not on streaming segments) |
+| Frontier summary bitmap (lane kernel) | `frontier_bitmap` | true | one bit per vertex in the working set, built in the check phase; lists the frontier of sparse levels |
+| Bitmap test per source on dense levels | `frontier_bitmap_filter` | -1 (on when one working set > budget / 16 = 32 MB) | SF100: 1.2-1.6x; SF10: 10% overhead, hence off there |
+| Sparse levels of the lane kernel | `sparse_level_divisor` | 16 (0 sweeps every level) | active vertices x divisor < V: row lookup of the active list per partition instead of the sweep |
+| Visit-line prefetch | `visit_prefetch` | 0 (off) | rows ahead in the partition's source list; neutral within 3% at every scale factor |
 | Snapshot cache | `snapshot_cache` (new) | true | `CSRIndex::BuildSnapshot` skips both the hit test and the store when false |
 | Grouped batches | `grouped_batches` | true | The adaptive batch scheduler (W31): worker groups with pooled working sets, window grown on measured throughput; false runs one event per batch. `grouped_batches_budget` (512 MB) separates the cache-resident regime (start wide, own threads) from the memory-bound one (ramp from 4, pooled tasks); `batch_oversubscription` (0 = by regime) and `max_concurrent_batches` / `threads_per_batch` fix the shape for the `sched_g<G>_w<W>` configurations. The `run` subcommand's `--grouped-batches` flag defaulted to false until 26 Oct, so the 21 Oct DuckDB-only sweep (`summary_*_comparison` files) ran without grouped batches |
 | Workers per batch / concurrent batches | `threads_per_batch`, `max_concurrent_batches` | 0 (derive) | |

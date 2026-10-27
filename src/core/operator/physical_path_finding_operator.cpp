@@ -1160,6 +1160,10 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 		iterative_states.push_back(state);
 		gstate.bfs_states.push_back(state);
 	}
+	if (!iterative_states.empty()) {
+		RecordStrategy(context, "bitmap_filter", iterative_states.front()->bitmap_filter ? "on" : "off");
+		RecordStrategy(context, "sparse_level_divisor", std::to_string(iterative_states.front()->sparse_level_divisor));
+	}
 	auto grouped_batches = make_shared_ptr<GroupedIterativeLengthBatches>(
 	    std::move(iterative_states), context, GetPathFindingVSize(gstate), threads, partition_csrs.size(),
 	    GetPathFindingEdgeCount(gstate), initial_window, adaptive, fixed_workers, NumericCast<idx_t>(oversubscription));

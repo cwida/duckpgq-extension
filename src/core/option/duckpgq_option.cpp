@@ -159,6 +159,18 @@ int32_t GetPathFindingVisitPrefetch(ClientContext &context) {
 	return value.GetValue<int32_t>();
 }
 
+int32_t GetPathFindingFrontierBitmapFilter(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_frontier_bitmap_filter", value);
+	return value.GetValue<int32_t>();
+}
+
+int32_t GetPathFindingSparseLevelDivisor(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_sparse_level_divisor", value);
+	return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -450,8 +462,9 @@ void CorePGQOptions::RegisterPathFindingFrontierBitmap(ExtensionLoader &loader) 
 	auto &db = loader.GetDatabaseInstance();
 	auto &config = DBConfig::GetConfig(db);
 	config.AddExtensionOption("experimental_path_finding_operator_frontier_bitmap",
-	                          "MS-BFS keeps a one-bit-per-vertex summary of the frontier so the explore phase skips "
-	                          "the 64-byte visit line of sources with no active lane; false reads every line",
+	                          "MS-BFS keeps a one-bit-per-vertex summary of the frontier; a level with few active "
+	                          "vertices (count x sparse_frontier_divisor < V) expands them by row lookup from that "
+	                          "list instead of sweeping every partition row; false sweeps every level",
 	                          LogicalType::BOOLEAN, Value(true));
 }
 
@@ -459,9 +472,30 @@ void CorePGQOptions::RegisterPathFindingVisitPrefetch(ExtensionLoader &loader) {
 	auto &db = loader.GetDatabaseInstance();
 	auto &config = DBConfig::GetConfig(db);
 	config.AddExtensionOption("experimental_path_finding_operator_visit_prefetch",
-	                          "MS-BFS explore prefetches the visit line of the active source this many rows ahead in "
-	                          "the partition's source list; 0 disables",
-	                          LogicalType::INTEGER, Value(8));
+	                          "MS-BFS explore prefetches the visit line of the source this many rows ahead in the "
+	                          "partition's source list; 0 (default) disables",
+	                          LogicalType::INTEGER, Value(0));
+}
+
+void CorePGQOptions::RegisterPathFindingFrontierBitmapFilter(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_frontier_bitmap_filter",
+	                          "On dense MS-BFS levels test the frontier bitmap per source before reading its visit "
+	                          "line: 1 on, 0 off, -1 (default) on when the working sets exceed the grouped batches "
+	                          "budget (SF100: 1.2-1.6x faster) and off when they are cache resident (SF10: 10% "
+	                          "overhead)",
+	                          LogicalType::INTEGER, Value(-1));
+}
+
+void CorePGQOptions::RegisterPathFindingSparseLevelDivisor(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_sparse_level_divisor",
+	                          "An MS-BFS level whose active vertices x divisor < V expands the active vertices by row "
+	                          "lookup in each partition instead of sweeping the partition's rows (the first two and "
+	                          "the tail levels of a wave); 0 sweeps every level. 16 measured best (27 Oct)",
+	                          LogicalType::INTEGER, Value(16));
 }
 
 } // namespace duckdb

@@ -33,7 +33,7 @@ inline void StoreActiveWord(uint64_t *active, idx_t word_idx, uint64_t range_mas
 }
 
 bool CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next, std::bitset<LANE_LIMIT> *visit,
-                 uint64_t *active, const LocalCSR &local_csr) {
+                 uint64_t *active, const LocalCSR &local_csr, idx_t &active_count) {
 	bool local_change = false;
 	idx_t word_idx = local_csr.start_vertex >> 6;
 	uint64_t word_bits = 0;
@@ -45,6 +45,7 @@ bool CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next, s
 			seen[i] |= next[i];
 			now_active = next[i].any();
 			local_change |= now_active;
+			active_count += now_active;
 		}
 		// Every EXPLORE of this iteration has read `visit`; cleared here it is the empty `next` of the next iteration
 		visit[i] = 0;
@@ -138,9 +139,37 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 	}
 }
 
+//! The explore phase of one partition on a sparse level: every active vertex is looked up in the partition (row
+//! buckets, about two rows per bucket) and its edges into the partition's destination range are relaxed. Writes stay
+//! within the partition, as in the sweep, so partitions remain the parallel unit.
+void ExploreSparse(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr,
+                   const uint64_t *suppressed, const vector<uint32_t> &frontier) {
+	for (auto source_vertex : frontier) {
+		uint32_t start_edges;
+		uint32_t end_edges;
+		if (!local_csr.GetRowEdges(source_vertex, start_edges, end_edges)) {
+			continue;
+		}
+		const auto &lanes = visit[source_vertex];
+		for (auto offset = start_edges; offset < end_edges; offset++) {
+			if (IsSuppressed(suppressed, offset)) {
+				continue;
+			}
+			next[local_csr.e[offset] + local_csr.start_vertex] |= lanes;
+		}
+	}
+}
+
 void RunExplore(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next,
                 const LocalCSR &local_csr, const uint64_t *suppressed) {
-	const uint64_t *active = state.use_frontier_bitmap ? state.active_bitmap : nullptr;
+	// Dense levels sweep the partition's rows without consulting the bitmap: when most vertices have an active lane
+	// the per-source bit test only costs (SF10, 65536 pairs: 10% slower with it); the bitmap's job is the frontier
+	// list of a sparse level
+	const uint64_t *active = state.use_frontier_bitmap && state.bitmap_filter ? state.active_bitmap : nullptr;
+	if (state.sparse_level) {
+		ExploreSparse(visit, next, local_csr, suppressed, state.frontier_list);
+		return;
+	}
 	if (!state.benchmark_enabled) {
 		Explore(visit, next, local_csr, suppressed, active, state.visit_prefetch);
 		return;
@@ -297,6 +326,32 @@ void IterativeLengthState::BeginIteration() {
 	local_csr_counter = 0;
 	change = false;
 	std::fill(worker_changed.begin(), worker_changed.end(), 0);
+	worker_active_counts.assign(worker_count, 0);
+	sparse_level = false;
+}
+
+//! Chooses the sweep or the row-lookup expansion for the coming level from the number of active vertices, and
+//! lists them from the summary bitmap when looking up
+void IterativeLengthState::PrepareLevel(idx_t active_total) {
+	sparse_level = row_lookup_available && use_frontier_bitmap && active_bitmap && sparse_level_divisor > 0 &&
+	               active_total * sparse_level_divisor < static_cast<idx_t>(v_size);
+	if (!sparse_level) {
+		return;
+	}
+	frontier_list.clear();
+	frontier_list.reserve(active_total);
+	auto words = BFSWorkingSet::ActiveWordsFor(static_cast<idx_t>(v_size));
+	for (idx_t word_idx = 0; word_idx < words; word_idx++) {
+		auto word = active_bitmap[word_idx];
+		while (word) {
+			auto bit = static_cast<idx_t>(__builtin_ctzll(word));
+			auto vertex = (word_idx << 6) + bit;
+			if (vertex < static_cast<idx_t>(v_size)) {
+				frontier_list.push_back(NumericCast<uint32_t>(vertex));
+			}
+			word &= word - 1;
+		}
+	}
 }
 
 bool IterativeLengthState::Start() {
@@ -312,6 +367,8 @@ bool IterativeLengthState::Start() {
 	}
 	InitializeLanes();
 	BeginIteration();
+	// The first level has at most one active vertex per lane
+	PrepareLevel(active);
 	return true;
 }
 
@@ -348,14 +405,16 @@ void IterativeLengthState::RunPhase(idx_t worker_id) {
 		return;
 	}
 	bool local_change = false;
+	idx_t active_count = 0;
 	while (true) {
 		auto partition_idx = partition_counter.fetch_add(1);
 		if (partition_idx >= static_cast<int64_t>(local_csrs.size())) {
 			break;
 		}
-		local_change |= CheckChange(seen, next, visit, active_bitmap, *local_csrs[partition_idx]);
+		local_change |= CheckChange(seen, next, visit, active_bitmap, *local_csrs[partition_idx], active_count);
 	}
 	worker_changed[worker_id] = local_change ? 1 : 0;
+	worker_active_counts[worker_id] = active_count;
 }
 
 bool IterativeLengthState::AdvancePhase() {
@@ -368,13 +427,16 @@ bool IterativeLengthState::AdvancePhase() {
 		return true;
 	}
 	bool any_change = false;
+	idx_t active_total = 0;
 	for (idx_t i = 0; i < worker_count; i++) {
 		any_change |= worker_changed[i] != 0;
+		active_total += worker_active_counts[i];
 	}
 	change = any_change;
 	ReachDetect(*this);
 	if (change) {
 		BeginIteration();
+		PrepareLevel(active_total);
 		return true;
 	}
 	UnReachableSet(*this);
@@ -382,6 +444,7 @@ bool IterativeLengthState::AdvancePhase() {
 	if (started_searches < pairs->size()) {
 		InitializeLanes();
 		BeginIteration();
+		PrepareLevel(active);
 		return true;
 	}
 	return false;
