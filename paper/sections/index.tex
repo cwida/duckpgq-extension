@@ -13,7 +13,8 @@ gives such a structure, what it withholds, and the design that follows.
 \subsection{What the interface gives, and what it withholds}
 \label{sec:index-interface}
 
-\duckdb's index type interface, the one its spatial and vector-search extensions use, delivers four things: a bulk
+\duckdb's index interface, which the \texttt{vss} and \texttt{spatial} extensions also use~\cite{duckdb_vss,duckdb_spatial},
+provides four things: a bulk
 build as a parallel sink over the key columns and row ids of the table; an \texttt{Append} call at every commit with
 the keys and row ids the transaction inserted, and a \texttt{Delete} call with the row ids it deleted; serialization
 into the engine's block manager at a checkpoint and replay of the log after a restart; and a lookup from the planner

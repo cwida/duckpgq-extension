@@ -60,7 +60,7 @@ ART~\cite{leis2013art} do, stores only row identifiers and checks the row's vers
 probe~\cite{wu2017mvcc,neumann2015mvcc}. A traversal that touches millions of edges cannot pay a version check per
 edge: on LDBC SF10 that check alone grew a single-source query from 8 to 124\,ms as updates accumulated
 (Section~\ref{sec:eval}). The index of Section~\ref{sec:index} therefore checks visibility once per commit group and
-serves a whole traversal from one immutable snapshot. It uses the index type interface that \duckdb exposes to
-extensions~\cite{duckdb2019}, the same hook its spatial index uses; as far as we know this is the first
+serves a whole traversal from one immutable snapshot. It uses the index interface that \duckdb exposes to
+extensions~\cite{duckdb2019}, the same hook the \texttt{vss} and \texttt{spatial} extensions use~\cite{duckdb_vss,duckdb_spatial}; as far as we know this is the first
 snapshot-consistent graph structure built behind such an interface, and Section~\ref{sec:strategy} lists what the
 interface would need to make it simpler.
