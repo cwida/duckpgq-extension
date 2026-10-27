@@ -78,7 +78,9 @@ over the adjacency, each search owns a bit in three bit-set arrays per vertex (s
 and relaxing an edge is a 512-bit \texttt{or}. Pairs are taken in input order in batches of 2048 and each batch is
 run as waves of 512 lanes. Batches are shared out over worker groups: with $b$ batches and $t$ threads each group has
 $t/b$ workers and $b$ groups run at once, bounded by a memory budget, since every group holds three bit sets per
-vertex, 192 bytes at 512 lanes, which is 230\,MB per group at SF100. A level costs two phases, a sweep over all
+vertex, 192 bytes at 512 lanes, which is 230\,MB per group at SF100. \todo{The scheduler is being reworked (W31 step
+2: adaptive worker groups with pooled working sets); describe the rule of the frozen commit at the re-audit.} A level
+costs two phases, a sweep over all
 sparse rows of all partitions that relaxes the frontier into the next bit sets, and a pass that folds the next bit
 sets into the seen bits, and it costs that regardless of how many of the 512 lanes are alive. That is the right trade when hundreds of lanes are alive and the wrong one when one is: on the
 8M-edge graph a single pair paid 0.12\,s for sweeps over 2M vertices, the same as 512 pairs.
