@@ -34,6 +34,15 @@ checks for it. Versions are garbage-collected once no active transaction can obs
 visibility can be asked about a live transaction only. Row identifiers are stable while a table carries any index
 other than an ART.
 
+\paragraph{Compressed sparse row.} A CSR stores a graph with $V$ vertices and $E$ edges in two arrays. The vertices are
+numbered $0$ to $V-1$; an offset array of $V+1$ entries gives, for vertex $v$, the range $[\mathit{off}[v],
+\mathit{off}[v+1])$ in an edge array of $E$ destination ids sorted by source. The neighbours of $v$ are one contiguous
+slice, a traversal reads the edge array sequentially, and the whole structure costs $4$ to $8$ bytes per edge. Its
+weakness is that an insert in the middle moves everything behind it, so a CSR is built once from a sorted edge list
+and rebuilt when the graph changes; Section~\ref{sec:index} is about keeping one under updates without rebuilding it
+per query. A \emph{sparse-row} CSR keeps offsets only for the sources that have edges, as a sorted list of (source,
+offset) pairs, which matters when the sources are a small subset of a large id space.
+
 \paragraph{Multi-source BFS.} A breadth-first search from one source visits each vertex at most once and each edge
 once; the cost of a level is the frontier plus its edges, but the memory access is one random read per edge.
 Multi-source BFS~\cite{then2014msbfs} runs $w$ searches together, with $w$ the width of a machine word or a SIMD

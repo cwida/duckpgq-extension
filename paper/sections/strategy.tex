@@ -11,7 +11,7 @@ Table~\ref{tab:hooks} lists the interfaces, what each one gave us, and where it 
 the part of this paper addressed to the designers of database systems. Three gaps shaped the design more than any
 other. The index interface delivers the rows that changed but not the transaction that changed
 them, and it offers no way to ask whether a row was visible at an earlier point in time, because \duckdb garbage
-collects row versions. The epochs, commit groups and per-reader snapshots of Section~\ref{sec:index} exist because of
+collects row versions. The epochs, commit groups and per-transaction snapshots of Section~\ref{sec:index} exist because of
 that. The scheduler has no notion of a group of tasks that must run together, so the traversals are chains of
 per-phase events (Section~\ref{sec:phases}). An extension operator cannot tell the optimizer what it will cost,
 so every choice between build and index, between the two traversals and between the two orientations is made inside

@@ -41,7 +41,8 @@ Without an index the operator builds the CSR on the fly, inside every query, as 
 be cheap and it still dominates. At SF300 it is nine tenths of a single-source query (0.30\,s against 0.031\,s over
 the index) and two fifths of a 1024-pair query (1.61\,s against 0.96\,s). The edge input is a stream of (source,
 destination) row-id pairs from a join of the edge table with its two vertex tables. The sink packs each edge into 64
-bits and radix-partitions it by destination range. The number of ranges is twice the number of threads, or more when
+bits and radix-partitions it by destination range, scattering each edge into the bucket named by the high bits of
+its destination id, as \duckdb's hash joins partition their input. The number of ranges is twice the number of threads, or more when
 a destination would otherwise not fit in 16 bits inside its range; the factor is a setting and
 Section~\ref{sec:eval-ablation} measures it. Each range is then built by one task, which sorts the edges by source with
 a radix sort, emits the sparse rows in one sweep (only sources with at least one edge into the range get a row), and

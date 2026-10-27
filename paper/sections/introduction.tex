@@ -60,16 +60,16 @@ across queries, restarts and checkpoints, maintained through \duckdb's index int
 difficulty is consistency. A transaction must traverse exactly the edges it is allowed to see, and the interface
 tells an extension which rows changed but nothing about who may see them. The index stores immutable epochs and a
 change log whose entries \duckdb's own row-version check classifies, once per commit instead of once per edge. Every
-reader gets a snapshot of its own transaction's view, a writer spends a constant amount of work per edge, and a
+transaction gets a snapshot of its own transaction's view, a writer spends a constant amount of work per edge, and a
 background fold turns the log into the next epoch. Section~\ref{sec:index} gives the design and its correctness
 argument.
 
 We evaluate on LDBC SNB scale factors 1 to 300 and the Graphalytics data sets against Kuzu, Neo4j, Memgraph and
-FalkorDB, read-only and under LDBC update streams with concurrent readers. \todo{FINAL: pick three numbers, one per
+FalkorDB, read-only and under LDBC update streams with concurrent transactions. \todo{FINAL: pick three numbers, one per
 claim (single pair over the index, many pairs vs the native systems, update cost per commit). Provisional,
 m7a.8xlarge, 32 threads: at SF300 a single-source query takes 0.30\,s when the CSR is built per query and 0.031\,s
 over the index; the index loads from disk in 0.09\,s; under a stream of 2000 edge updates every 200\,ms with 16
-concurrent readers, the index answers single-source queries in 72\,ms and the build-per-query route in 84\,ms, both
+concurrent transactions, the index answers single-source queries in 72\,ms and the build-per-query route in 84\,ms, both
 with results identical to Kuzu at every step; Kuzu needs 16\,ms per query but 342\,ms per update batch where \duckdb
 needs 9. Replace with frozen-commit numbers.}
 
@@ -79,7 +79,7 @@ Our contributions are:
         CSR and per-level events instead of from input tuples, with multi-source and single-source traversals and a
         rule that selects between them (Section~\ref{sec:operator}).
   \item An MVCC-consistent CSR index built behind a general-purpose extension index interface: epochs, a commit-group
-        change log, per-reader snapshots, folds, checkpoints and recovery, with a correctness argument
+        change log, per-transaction snapshots, folds, checkpoints and recovery, with a correctness argument
         (Section~\ref{sec:index}).
   \item The planner integration from \sqlpgq \texttt{MATCH} to operator and index without changes to \duckdb, and the
         list of what a system would have to expose to make such an extension simpler (Section~\ref{sec:strategy}).

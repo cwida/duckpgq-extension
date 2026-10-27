@@ -44,9 +44,9 @@ every row keeps its id, and the id of a deleted row is not given to a new row, u
   \input{figures/index_timeline}
   \caption{The index over time. Epoch 0 is the partitioned CSR of the edges visible to the transaction that built it
   (bound $b_0$); every later commit appends its change groups to the log, one per insert or delete call, inserts in
-  blue and deletes in red. A reader takes the newest epoch its bound allows and decides once per group whether the
+  blue and deletes in red. A transaction takes the newest epoch its bound allows and decides once per group whether the
   group is visible to it. A fold builds epoch 1 from epoch 0 and the groups visible to a fresh transaction with bound
-  $b_f$; epoch 0 stays as long as a reader that started before the fold needs it.}
+  $b_f$; epoch 0 stays as long as a transaction that started before the fold needs it.}
   \label{fig:index-timeline}
 \end{figure}
 
@@ -56,17 +56,18 @@ transaction and equal to the edge set that transaction could see. A \emph{change
 epoch as one or more \emph{change groups}. An \texttt{Append} call becomes a group of inserted edges, each with its
 keys, its row id and the ids the keys resolve to in the current dictionary. A \texttt{Delete} call becomes a group of
 deleted rows, where a row that is in the log is stamped with the deleting group and a row that is in the epoch becomes
-a tombstone. The log stores no visibility information at all. A \emph{snapshot} is what a \emph{reader}, a transaction that runs a path query, traverses: the epoch
+a tombstone. The log stores no commit identifier, transaction id or timestamp with an entry; what a transaction may see is
+decided later, by \duckdb, when the transaction reads the log. A \emph{snapshot} is what a transaction that runs a path query traverses: the epoch
 plus an overlay, which is a bitmap of suppressed epoch positions and a small adjacency of the inserted edges laid out
 in the same destination-range partitions as the epoch, so that the traversal explores an epoch partition and its
 companion in one step.
 
 Visibility is decided by \duckdb, once per group. A group of inserts came from one commit of one transaction, so its
-rows are visible to a reader either all or none; the reader asks \texttt{CanFetch} about one row of the group and
-knows the answer for the whole group. A group of deletes applies when one row it deleted, whose insert the reader
-sees, is no longer fetchable. Commits are serialized, so the visible groups of a reader form a prefix of the log and
-the newest visible group identifies the reader's view completely. The snapshot is therefore cacheable. The index keeps
-the last snapshot it built, keyed by epoch and newest visible group, and every reader between two commits receives
+rows are visible to a transaction either all or none; the transaction asks \texttt{CanFetch} about one row of the group and
+knows the answer for the whole group. A group of deletes applies when one row it deleted, whose insert the transaction
+sees, is no longer fetchable. Commits are serialized, so the visible groups of a transaction form a prefix of the log and
+the newest visible group identifies the transaction's view completely. The snapshot is therefore cacheable. The index keeps
+the last snapshot it built, keyed by epoch and newest visible group, and every transaction between two commits receives
 the same one. A transaction with uncommitted changes of its own gets a private CSR built from its own view of the
 table, a full build and not an overlay, because its view is its own and nothing it builds may be published. Building a
 snapshot costs one version check per group since the fold and one pass over the inserted edges to bucket them by
@@ -89,17 +90,17 @@ The log grows with every commit and the overlay with it, so a \emph{fold} period
 by a transaction without uncommitted changes of its own, with that transaction's bound $b_f$. It scans the edges
 visible to it, builds the partitioned CSR with the same parallel build as \texttt{CREATE INDEX}, and installs the
 result as the newest epoch; the log entries the new epoch contains are the ones visible at $b_f$. A fold is triggered
-explicitly through a function, or automatically by the first reader that finds the log larger than a configurable
-fraction of the epoch, one tenth by default, before that reader's snapshot is built. Folds are serialized by a lock.
-Section~\ref{sec:cost} discusses why the trigger belongs to the reader side and what a policy should look at.
+explicitly through a function, or automatically by the first transaction that finds the log larger than a configurable
+fraction of the epoch, one tenth by default, before that transaction's snapshot is built. Folds are serialized by a lock.
+Section~\ref{sec:cost} discusses why the trigger belongs to the transaction side and what a policy should look at.
 
 Two consequences of the interface shape the fold. The old epoch cannot be dropped at once, because a transaction that
 started before the fold has a bound below $b_f$ and the new epoch contains edges it must not see. The index therefore
-retains the previous epoch until no such transaction can remain, and serves readers from the newest epoch whose bound
+retains the previous epoch until no such transaction can remain, and serves transactions from the newest epoch whose bound
 does not exceed theirs. The log cannot be compacted by re-evaluating visibility at $b_f$ after the fact, because the
 row versions that would answer the question are gone. Instead the folding transaction, while it is live, stamps every
 log entry with the generation of the first epoch that accounts for it, and compaction drops the entries whose
-generation is at most the oldest retained epoch's. A reader whose bound is older than every retained epoch, a long
+generation is at most the oldest retained epoch's. A transaction whose bound is older than every retained epoch, a long
 transaction that started before two folds, gets no snapshot. Today its query fails with an error that asks for a
 rerun; falling back to a build inside the query is the obvious fix.
 
@@ -122,7 +123,7 @@ price of the design.
 
 The epoch stores an edge-table row id per edge position and the log stores one per inserted edge, so a path
 reconstructed by the single-source traversal (Section~\ref{sec:paths}) carries the row ids of its edges, including
-edges inserted by the reader's own transaction, and vertex keys for its vertices. \texttt{edges(p)} can therefore be
+edges inserted by the transaction's own transaction, and vertex keys for its vertices. \texttt{edges(p)} can therefore be
 joined back to the edge table for its properties, and \texttt{vertices(p)} to the vertex table by key, without the
 index knowing either table's schema.
 
@@ -131,15 +132,15 @@ index knowing either table's schema.
 
 Let $\mathit{Vis}(b)$ be the set of edge rows visible to a transaction with bound $b$, as \duckdb defines it through
 \texttt{CanFetch}, and let epoch $E$ be built by a transaction with bound $b_e$, so $E = \mathit{Vis}(b_e)$. For a
-reader with bound $b \geq b_e$ the snapshot is $E \,\cup\, \Delta_b \setminus T_b$, where $\Delta_b$ are the inserted
+transaction with bound $b \geq b_e$ the snapshot is $E \,\cup\, \Delta_b \setminus T_b$, where $\Delta_b$ are the inserted
 rows of the groups visible to $b$ and $T_b$ the rows of the delete groups that apply to $b$; we claim it equals
 $\mathit{Vis}(b)$. Every row inserted after $b_e$ reached the index through \texttt{Append} at its commit, so
 $\mathit{Vis}(b) \subseteq E \cup \Delta$. A row of the log is in $\mathit{Vis}(b)$ exactly when its group is visible
 to $b$, which covers rows inserted and deleted after $b_e$ and rows of reverted commits, which are never visible to
 anyone. A row of $E$ leaves $\mathit{Vis}(b)$ only through a delete that committed after $b_e$, and every such delete
 reached \texttt{Delete} and became a tombstone or a stamp whose group applies exactly when the delete is visible to
-$b$. Entries appended to the log after the reader copied its length belong to commits that cannot be visible to the
-reader, since \texttt{Append} runs during the commit, before the rows become visible. The fold preserves the claim
+$b$. Entries appended to the log after the transaction copied its length belong to commits that cannot be visible to the
+transaction, since \texttt{Append} runs during the commit, before the rows become visible. The fold preserves the claim
 with $b_e := b_f$. The argument rests on three invariants of \duckdb and none of ours: the hooks fire at every commit,
 row ids are not reused while the index exists, and \texttt{CanFetch} implements $\mathit{Vis}$. What it does not
 cover is a vertex deleted while its edges remain. The source and destination of a pair come from the vertex tables,

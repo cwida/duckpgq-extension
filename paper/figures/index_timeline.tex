@@ -1,4 +1,4 @@
-% Figure: epochs, the change log in commit groups, and readers' snapshots on a time axis. Column width (8.2 cm).
+% Figure: epochs, the change log in commit groups, and transactions' snapshots on a time axis. Column width (8.2 cm).
 \begin{tikzpicture}[
   font=\tiny,
   >={Stealth[length=3.5pt,width=3pt]},
@@ -23,11 +23,11 @@
 % fold
 \draw[tick] ($(g4.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$b_f$};
 \node[epoch, anchor=south west, text width=1.65cm] (e1) at (6.3,0.3) {\textbf{epoch 1}\\ built at $b_f$ from\\ epoch 0 and $g_1$--$g_4$};
-\draw[->, ixorange, semithick] (e0.north) .. controls (2.5,1.7) and (5.8,1.7) .. node[lbl, above, pos=0.5] {fold, in its own transaction} (e1.north);
-% reader bounds on the axis
+\draw[->, ixorange, semithick] (e0.north) .. controls (2.5,1.7) and (5.8,1.7) .. node[lbl, above, pos=0.5] {fold} (e1.north);
+% transaction bounds on the axis
 \draw[tick] ($(g3.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_a$, $T_c$};
 \draw[tick] ($(g6.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_b$};
-% readers
+% transactions
 \node[lbl, anchor=north west, text width=8.1cm, align=left] at (0,-0.55) {%
   $T_a$ (bound after $g_3$): epoch 0 + overlay, $g_1$ and $g_2$ visible, the deletes of $g_3$ applied.\\
   $T_b$ (bound after $g_6$): epoch 1 + overlay, $g_5$ visible, $g_6$ applied; $g_1$--$g_4$ are inside epoch 1.\\

@@ -15,7 +15,7 @@ itself add predefined joins and adjacency structures (GRainDB~\cite{jin2022grain
 worst-case optimal joins for cyclic patterns (EmptyHeaded~\cite{aberger2017emptyheaded}, Umbra~\cite{freitag2020wcoj}),
 or compressed adjacency indexes for aggregation queries (GQ-Fast~\cite{lin2016gqfast}). Their adjacency structures
 share the system's storage and transaction code. Ours is a derived structure that an extension maintains through the
-public index interface, which tells the index neither which transaction committed a row nor what a reader may see,
+public index interface, which tells the index neither which transaction committed a row nor what a transaction may see,
 and Section~\ref{sec:index} describes what follows from that.
 
 \paragraph{Path finding.}
@@ -44,10 +44,10 @@ point and single-source queries in the same time as Kuzu and keeps every update 
 Updating a CSR is the classic weakness of the layout. A line of work replaces it with structures that absorb edge
 updates, among them packed memory arrays and sparse arrays with gaps~\cite{wheatman2018pcsr,deleo2021teseo}, sorted
 blocked adjacency lists~\cite{fuchs2022sortledton}, log-structured snapshots~\cite{macko2015llama}, and purely
-functional trees that hand every reader its own version~\cite{dhulipala2019aspen}. LiveGraph~\cite{zhu2020livegraph}
+functional trees that hand every transaction its own version~\cite{dhulipala2019aspen}. LiveGraph~\cite{zhu2020livegraph}
 and Teseo~\cite{deleo2021teseo} add transactions with multi-version concurrency to such structures, and
 Sortledton~\cite{fuchs2022sortledton} measures what versioning inside the structure costs. All of them own both the
-graph and its transaction manager. Our index owns neither. \duckdb's row versions decide what a reader may see, and
+graph and its transaction manager. Our index owns neither. \duckdb's row versions decide what a transaction may see, and
 the index stores an immutable CSR per epoch plus a change log stamped per commit group, so it is closer to a
 materialized view than to a dynamic graph structure. The survey of streaming graph processing~\cite{besta2023dynamic}
 and the experimental comparison of these structures~\cite{deleo2019pma} cover the design space we did not enter.
