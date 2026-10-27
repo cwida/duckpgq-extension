@@ -118,3 +118,33 @@ Introduction, when the frozen-commit numbers are in:
   traversed. Documented as a semantic difference.
 - Epoch memory is plain heap, not buffer-managed (only the BFS working sets and partitions in the operator are).
 - Key limits: two integer columns fitting BIGINT, no UNIQUE/PK, < 2^32 vertices, NULL-keyed rows skipped.
+- Reverse side of the index (W28, `WITH (reverse = true)`): expected to stay in the frozen commit; call it after the
+  full sweep. If it stays: rewrite the Section 3.3 sentence that demotes reverse/push-pull/bidirectional to the
+  ablation (reverse orientation is 18x faster for many sources to one destination, the BI20 shape), add the reverse
+  partitions to Section 4 (stored without row ids, same epoch and change groups, undirected aliases forward), and
+  state its cost (~5 B per edge). Push/pull and bidirectional stay out unless the sweep says otherwise.
+- Word choice: "ablation" is not used. The design-choice subsection is "Evolution of the operator" (after FSST's
+  "Evolution of FSST"): one table, one row per step from the CIDR UDF design to the index and the reverse side, the
+  same three queries per row. "Microbenchmark" is the prose word for narrow measurements (thread scaling, snapshot
+  cost), as in Kersten et al.
+
+## Section 3 code audit (26 Oct): corrections applied and facts to keep straight
+
+- The optimizer rule does not replace the projection; it swaps the marker for a column reference and puts the
+  operator beneath the projection. Pre-optimize for MATCH; the post-optimize pass serves only the legacy global-CSR form.
+- MS-BFS batches are 2048 pairs in input order run as waves of 512 lanes; there is no grouping by source. A level is
+  two phases (explore, check). Scheduling since W31: workers per batch = threads / batches, concurrent groups bounded
+  by a working-set budget (3 bitsets x 512 lanes = 192 B/vertex per group; a quarter of the buffer manager's memory).
+- Dense sweep of the single-source traversal uses a per-vertex level stamp, not a membership byte.
+- Reverse orientation: distinct sources >= 4 x distinct destinations AND reverse partitions available (undirected
+  pattern, or index with reverse side); the on-the-fly build never builds reverse partitions.
+- Push/pull and bidirectional exist only for the legacy global-CSR route (3/4-arg markers), unreachable from MATCH:
+  removed from the paper text.
+- The on-the-fly build is not a PhasedKernel: Sink/Combine partition, one build event sorts and emits, FinishEvent
+  publishes. "No task waits" holds.
+- Reach mode (unbound destination -> reachoperator, one traversal per source, destination table joined back) exists
+  since W29 and is what sources x all runs; now described in 3.3.
+- Limits to state somewhere: vertex ids fit uint32 and the radix build allows at most 4096 x 65535 (~268M) vertices;
+  build-route vertex ids are row ids up to the next row id (deleted rows count as vertices); pairs are not
+  deduplicated by default; per-group memory of the single-source traversal 13 B/vertex (+12 with parents), all groups
+  live until the scatter; NULL pairs count toward the ratio rule and disable the single-source zero-copy shortcut.

@@ -137,8 +137,8 @@ $b$. Entries appended to the log after the reader copied its length belong to co
 reader, since \texttt{Append} runs during the commit, before the rows become visible. The fold preserves the claim
 with $b_e := b_f$. The argument rests on three invariants of the engine and none of ours: the hooks fire at every
 commit, row ids are not reused while the index exists, and \texttt{CanFetch} implements $\mathit{Vis}$. What it does
-not cover is a vertex deleted while its edges remain. The endpoints of a pair come from the vertex tables, so a
-deleted endpoint yields no pair; an intermediate vertex deleted with its edges in place is still traversed, where the
+not cover is a vertex deleted while its edges remain. The source and destination of a pair come from the vertex tables,
+so a deleted source or destination yields no pair; an intermediate vertex deleted with its edges in place is still traversed, where the
 SQL rewrite would have dropped those edges through its join with the vertex table. We document this as a semantic
 difference of the index; keys that are not integers, more than two key columns, and graphs beyond $2^{32}$ vertices
 are rejected at \texttt{CREATE INDEX}.

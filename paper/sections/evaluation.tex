@@ -207,12 +207,20 @@ Section~\ref{sec:eval-pairs} is the same fact measured along one axis.
 
 \input{tables/ldbc_queries}
 
-\subsection{Ablations}
+\subsection{Evolution of the operator}
 \label{sec:eval-ablation}
 
-\todo{From the operator sweep on the laptop and the desk's thread sweep: single-source vs multi-source traversal on
-one pair and on 20 sources (0.11 to 0.01\,s, 1.5 to 0.13\,s on 8M edges); bucket index on the sparse rows (0.28 to
-0.13\,s); depth bound and destination termination; thread scaling 1 to 32 of the index route (warm single-source
-87 to 27\,ms from 1 to 16 threads, flat after; a warm single pair at ~0.1\,s at every thread count); parallel index
-load 1.15 to 0.09\,s at SF300; memory per edge of the partitioned CSR and of the index; reverse, push/pull and
-bidirectional variants.}
+\todo{Written as the chain the introduction promises, each step measured on the same three queries (one pair, 1024
+random pairs, one source to all) at SF10 and SF100, 32 threads, from the switch runs of the harness:
+(1) the CIDR 2023 UDF design (CSR built by UDFs, MS-BFS in a UDF, one core for one pair);
+(2) the operator with multi-source lanes only (parallelism from the partitioned CSR: the 16-thread factor six becomes X);
+(3) plus the single-source traversal for few sources (one pair 0.11 to 0.01\,s on the 8M-edge graph);
+(4) plus the bucket index over the sparse rows (twenty sources 0.28 to 0.13\,s);
+(5) plus per-phase events instead of barriers (SF300 build route sssp 0.39 to 0.30\,s; concurrent readers);
+(6) plus the CSR index (the build disappears: one pair 23 to 4\,ms at SF10);
+(7) plus the reverse side (1024 sources to one destination 43 to 5\,ms), pending the frozen-commit decision.
+One table, one row per step, three columns of times, and a fourth column with the section that describes the step.
+Narrow measurements that do not fit the chain, thread scaling of both routes, the number of destination ranges per
+thread (default two; the harness runs four) and the snapshot cost against pending operations, follow as short
+microbenchmarks.}
+

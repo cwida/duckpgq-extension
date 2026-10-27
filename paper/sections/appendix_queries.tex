@@ -35,7 +35,7 @@ SELECT count(len), coalesce(sum(len), 0) FROM (
   FROM pairs_by_key);  -- (src, dst) keys, materialized from the pair table before the timed statement
 \end{lstlisting}
 Sources $\times$ all uses \texttt{reachoperator} in place of \texttt{iterativelengthoperator} with the source as both
-endpoints and returns one $(\mathit{destination}, \mathit{length})$ per reached vertex. Undirected queries (the LDBC
+source and destination and returns one $(\mathit{destination}, \mathit{length})$ per reached vertex. Undirected queries (the LDBC
 set) use the symmetric closure of the edge table on the build route and an index created \texttt{WITH (undirected =
 true)} on the index route. One \duckdb process per measured query; one untimed warm-up repetition precedes the timed
 statement.

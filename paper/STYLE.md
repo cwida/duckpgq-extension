@@ -67,10 +67,12 @@ numbers; then "In the future, we will" with real items.
 | traversal (multi-source traversal, single-source traversal, frontier traversal) | kernel | "kernel" reads as GPU or OS jargon; the author's preference |
 | path-finding operator | PathFinding operator, BFS operator | matches SQL/PGQ wording |
 | CSR index, index snapshot, epoch, change log, fold | cache, persistence | the index is a derived structure under MVCC, not a cache |
-| build per query | on-the-fly CSR, transient CSR | names what happens |
+| on-the-fly CSR, built inside the query ("build per query" in tables and figure legends) | transient CSR | the CIDR paper's term; the short form fits a table row |
 | lanes (of the multi-source traversal) | bitset columns | MS-BFS terminology from Then et al. |
 | destination partition, source bucket | shard, chunk | the layout's own names |
 | host engine, extension | fork, plugin | the thesis is about the boundary |
+| source and destination; (src, dst) row ids | endpoint(s) | the author's preference; say which vertex is meant |
+| microbenchmark | ablation | the author's term; say what was switched off or varied |
 | vertex key, edge row id | rowid, id | keys identify vertices, row ids identify edges |
 
 ## Out of scope for the text
