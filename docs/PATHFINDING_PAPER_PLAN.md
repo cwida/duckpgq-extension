@@ -822,3 +822,12 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   penalty is inherent to coarse partitions (every task reads every row header and visit line of its partition) and
   is the price of the set-oriented gains; the `partitions` group documents the trade-off. Headline, index route:
   SF10 65536 pairs 0.45 s, 1024 sources x all 0.11 s; SF100 3.43 s and 1.11 s; SF300 10.0 s and 3.97 s.
+- 27 Oct (evening): freeze preparation. Dead option `task_size` removed (`1cc48dc2`); `repro/environment.sh` records
+  every operator option default from the built extension (`repro/ENVIRONMENT.txt`); switches document gets a terms
+  section (shape classes by counts and kernel; every ratio with its direction). Soak of today's changes on the shapes
+  the microbenchmarks did not cover, DuckPGQ only, SF10 and SF100 (`~/sweep/run_soak.sh`, log `~/sweep/soak.log`):
+  sweep-pairs and ldbc-queries with the counts compared against the archived CSVs (`compare_counts.py`), the index
+  group (reverse side, same destination), update-run sssp and point-to-point (190 x 2000) and update-concurrent with 4
+  readers. Tag `eval-freeze-rc1` and the frozen rerun follow a clean soak. Left for after the paper's numbers, with
+  reasons: W32 step 3 (parallel per-partition sort; build route single searches 1.1-1.35x slower than the thread
+  rule), the learned scheduler window per graph (changes no number), W34 locality ordering (unmeasured), W28 step 4.

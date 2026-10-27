@@ -19,3 +19,5 @@ done
 echo "memgraph:    $(docker exec pf-memgraph /usr/lib/memgraph/memgraph --version 2>/dev/null | head -1)"
 echo "falkordb:    module version $(docker exec pf-falkordb redis-cli MODULE LIST 2>/dev/null | sed -n 4p) (4.2.2 = 42202)"
 echo "neo4j:       $(docker exec pf-neo4j neo4j --version 2>/dev/null) enterprise, GDS $(docker exec pf-neo4j cypher-shell --format plain 'RETURN gds.version()' 2>/dev/null | tail -1 | tr -d '\"')"
+echo "duckpgq operator option defaults (the measured configuration):"
+"${REPO_ROOT}/build/release/duckdb" -unsigned -no-agent -csv -c "LOAD '${REPO_ROOT}/build/release/extension/duckpgq/duckpgq.duckdb_extension'; SELECT name, value FROM duckdb_settings() WHERE name LIKE 'experimental_path_finding%' OR name LIKE 'duckpgq%' ORDER BY name;" 2>/dev/null | tail -n +2 | sed 's/^/  /'

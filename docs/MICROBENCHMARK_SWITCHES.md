@@ -7,6 +7,20 @@ measured query time, whether it can be switched at runtime, and the sweep that m
 side is `scripts/pathfinding_benchmark.py microbench` (section 4); the results feed the microbenchmark subsection of the
 evaluation. File references are to the tree at the time of writing.
 
+## 0. Terms
+
+Query shapes are named by their counts and the kernel they run on:
+
+- **many-pair lists**: 16384 or 65536 random pairs, 8 or 32 MS-BFS batches of up to 512 lanes per wave (the lane
+  kernel);
+- **one-batch lane queries**: 128 to 2048 random pairs, a single MS-BFS batch;
+- **sources x all**: k sources, every reachable vertex (reach mode, the per-source kernel), k = 1, 128, 1024;
+- **single searches**: 1 pair or 1 source (the per-source kernel), IC13 and BI20 in the LDBC set;
+- **same destination**: N sources to one destination (reverse orientation over the reverse side of the index).
+
+Every ratio in this document and in the plan states its direction, "1.5x faster" or "1.3x slower", relative to the
+named baseline.
+
 ## 1. The microbenchmarks the paper needs
 
 The evaluation claims rest on a handful of design decisions. Each needs one row in a microbenchmark table showing
@@ -15,7 +29,7 @@ what the decision is worth, measured on the shapes where it applies (SF10 and SF
 
 | # | Decision | Switch (config name in the harness) | Shapes where it shows |
 |---|---|---|---|
-| A1 | Per-source frontier kernel for few sources, MS-BFS lanes otherwise | `no_source_grouping`, `no_few_sources_rule`, `source_group_ratio_1/16` | random pairs (lanes win), same destination and sources x all (per-source wins) |
+| A1 | Per-source frontier kernel for few sources, MS-BFS lanes otherwise | `no_source_grouping`, `no_few_sources_rule`, `source_group_ratio_1/16` | many-pair lists (lanes win), same destination and sources x all (per-source wins) |
 | A2 | Batch scheduling: adaptive worker groups vs one event per batch, fixed shapes G x W, pooled vs own threads | `scheduling` group: `no_grouped_batches`, `adaptive`, `adaptive_os4/os32`, `sched_g<G>_w<W>` | random pairs 2048 / 16384 / 65536 at SF10, SF100, SF300 (the crossover figure) |
 | A3 | Stop a source's search once its destinations are found | `no_early_termination` | random pairs with few sources, same destination |
 | A4 | Sparse expansion by row lookup vs partition sweep | `dense_frontier`, `sparse_frontier` | sources x all (frontier grows to the whole graph), same destination (small frontiers) |
