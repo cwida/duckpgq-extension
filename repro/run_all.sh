@@ -41,7 +41,12 @@ if [ "$what" = all ] || [ "$what" = microbench ]; then
   # W19: one mechanism switched off at a time on the DuckPGQ routes (docs/MICROBENCHMARK_SWITCHES.md)
   for sf in 10 100; do
     step "microbench_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs all --notes "W19 microbenchmark SF${sf} ${NOTE}"
+    step "microbench_memory_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs memory --shapes random --pair-counts 2048 16384 65536 --notes "W31 explore memory traffic SF${sf} ${NOTE}"
+    step "microbench_partitions_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs partitions --shapes random multi_source --pair-counts 128 2048 16384 65536 --source-counts 1 1024 --notes "W32 partition geometry SF${sf} ${NOTE}"
+    step "microbench_scheduling_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --notes "W31 scheduling SF${sf} ${NOTE}"
   done
+  # The scheduling crossover figure needs SF300 as well; index route only
+  step "microbench_scheduling_sf300" ${HARNESS} microbench --scale-factor 300 "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes "W31 scheduling SF300 ${NOTE}"
 fi
 
 if [ "$what" = all ] || [ "$what" = updates ]; then

@@ -831,3 +831,10 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   readers. Tag `eval-freeze-rc1` and the frozen rerun follow a clean soak. Left for after the paper's numbers, with
   reasons: W32 step 3 (parallel per-partition sort; build route single searches 1.1-1.35x slower than the thread
   rule), the learned scheduler window per graph (changes no number), W34 locality ordering (unmeasured), W28 step 4.
+- 27 Oct (evening): soak clean (`~/sweep/soak.log`, build `1cc48dc2`, 9 minutes): SF10 and SF100 sweep-pairs (44
+  points each) and ldbc-queries (60 points each) agree with the archived counts, 0 mismatches; index group (reverse
+  side, same destination) 6 points agree; update-run sssp and point-to-point, 190 x 2000, verified with 0 mismatches
+  on build, index_auto and index_nofold; update-concurrent 4 readers 7696 events, 190 commits, 0 mismatches, 0
+  errors (index query mean 15.5 ms, build 25 ms, commit 32 ms). The repro matrix's microbench step now also runs the
+  `memory`, `partitions` and `scheduling` groups (SF300 scheduling on the index route). Ready to tag
+  `eval-freeze-rc1`.
