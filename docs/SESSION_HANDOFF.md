@@ -171,3 +171,10 @@ live in `MICROBENCH_CONFIGS` / `MICROBENCH_GROUPS` in the harness; adding one is
   `repro/results` is stale until the frozen rerun; the baselines are not.
 - Running / next: W32 partition geometry (`microbench --configs partitions`), then freeze (`eval-freeze-rc1`) and the
   frozen rerun via `repro/run_all.sh`; the paper's operator section (merged 27 Oct) predates the adaptive scheduler.
+
+## Frozen run (started 27 Oct 15:07 UTC)
+
+Tag `eval-freeze-rc1`. `ls repro/logs/*.done` shows finished steps; `repro/logs/run_all.out` the current one;
+`~/sweep/wait_step.sh <seconds>` blocks until the next step ends. Do not run anything else on the box until
+`matrix finished` appears. A failed step: read `repro/logs/<step>.out`, fix, rerun `./repro/run_all.sh` (finished
+steps are skipped). Then `./repro/collect.sh`, commit the archive and the figures.

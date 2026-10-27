@@ -841,3 +841,8 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   errors (index query mean 15.5 ms, build 25 ms, commit 32 ms). The repro matrix's microbench step now also runs the
   `memory`, `partitions` and `scheduling` groups (SF300 scheduling on the index route). Ready to tag
   `eval-freeze-rc1`.
+- 27 Oct 15:07 UTC: tag `eval-freeze-rc1` (`7e9778c0`); frozen rerun started (`repro/run_all.sh`, log
+  `repro/logs/run_all.out`, one `.done` marker per step). Every benchmark index was dropped beforehand so the run
+  builds them under the tagged geometry; containers up (Memgraph 3.14.0, FalkorDB 4.2.2, Neo4j 5.26.32 Enterprise
+  with GDS 2.13.14). Expected about 3.5 days; nothing else runs on the machine meanwhile. Afterwards:
+  `./repro/collect.sh`, commit `repro/results` and `paper/`, compare with the 25 Oct archive.
