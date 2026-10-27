@@ -1129,12 +1129,12 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 	                    static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
 	auto budget = GetPathFindingGroupedBatchesBudget(context);
 	bool start_wide = budget > 0 && working_sets <= static_cast<double>(budget);
-	// The ramp starts at eight groups: below that the window is never the bottleneck (SF300's knee is at 8, SF100's
-	// at 16), and a query of at most eight batches would otherwise spend half its batches ramping (SF100, 16384
-	// pairs: 2.6 s from 4 groups against 1.96 s with all 8 at once)
+	// The ramp starts at sixteen groups: with the explore phase's memory traffic reduced (bitmap, sparse levels) the
+	// fixed shapes 8, 16 and 32 groups are within 2% at SF100 and SF300, and the ramp's time at smaller windows was
+	// the remaining 5% against per-batch events (SF100 65536 pairs: 5.47 s ramping from 8 vs 5.16 s at 32 groups)
 	idx_t initial_window = !adaptive  ? NumericCast<idx_t>(configured_groups)
 	                       : start_wide ? max_groups
-	                                    : std::max<idx_t>(1, std::min<idx_t>(8, threads));
+	                                    : std::max<idx_t>(1, std::min<idx_t>(16, threads));
 	auto configured_workers = GetPathFindingThreadsPerBatch(context);
 	idx_t fixed_workers = configured_workers > 0 ? NumericCast<idx_t>(configured_workers) : 0;
 	// Two regimes (W31, 27 Oct). Cache resident: every group gets its own threads (threads / window, so one worker
@@ -1142,12 +1142,18 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 	// bound: the level tasks of all groups are pooled (every group schedules a task per thread), so a group waiting
 	// at its level barrier leaves no thread idle; SF100 8.0 s against 11 s with own threads, SF300 20.4 s, within a
 	// few percent of one event per batch while holding 8-16 working sets instead of 32.
+	// Own threads per group (no pooling) only while one working set is small (SF10, 14 MB: the levels are too short
+	// for pooled task overhead, 0.68 vs 1.3 s); larger sets pool the level tasks whatever the window (SF100 16384
+	// pairs, 8 groups of 41 MB: pooled 1.50 s vs own threads 1.69 s). Same threshold as the bitmap filter.
+	auto working_set_bytes = static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
+	bool small_working_set = budget > 0 && working_set_bytes <= static_cast<double>(budget) / 16;
 	auto configured_oversubscription = GetPathFindingBatchOversubscription(context);
 	auto oversubscription = configured_oversubscription > 0 ? NumericCast<idx_t>(configured_oversubscription)
-	                        : start_wide                    ? idx_t(1)
+	                        : small_working_set             ? idx_t(1)
 	                                                        : threads;
 	RecordStrategy(context, "scheduling", adaptive ? "grouped_adaptive" : "grouped");
 	RecordStrategy(context, "regime", start_wide ? "cache_resident" : "memory_bound");
+	RecordStrategy(context, "tasks", small_working_set ? "own_threads" : "pooled");
 	RecordStrategy(context, "grouped_working_sets_mb", std::to_string(static_cast<idx_t>(working_sets / (1024 * 1024))));
 	vector<shared_ptr<IterativeLengthState>> iterative_states;
 	iterative_states.reserve(batches.size());

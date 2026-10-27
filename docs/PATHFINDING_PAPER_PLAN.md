@@ -764,3 +764,14 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   s). With 8 batches both schedulers run all 8 concurrently, so the 25% gap at 16384 pairs is not the window; to
   isolate (fixed 8x32 grouped vs per-batch, phase timings). Activity profiles: SF10 waves reach level 17, SF300
   level 26 (19 of 26 levels under 2% active); dense core at levels 3-7 at every scale factor.
+- 27 Oct (early afternoon): the SF100 scheduler gap isolated by alternating the variants at 16384 pairs: adaptive
+  default 1.69 / 1.76 s, fixed 8 groups x 32 pooled tasks 1.50 / 1.53 s, per-batch events 1.57 / 1.52 s. The
+  default's strategy string showed 8 working sets of 41 MB (332 MB, under the 512 MB budget), so the regime rule
+  said cache resident and gave each group its own 4 threads; pooling is what the point wanted. The two decisions
+  are now separate: own threads only while one working set is <= budget / 16 (32 MB; SF10's 13 MB), pooled tasks
+  otherwise (`tasks` in the strategy string); the window starts at all groups while the total fits the budget and
+  ramps from 16 otherwise (fixed 8 / 16 / 32 groups are within 2% at SF100 and SF300 after the explore changes;
+  the ramp from 8 cost 5%). Fixed 32 x 32 equals per-batch events exactly (5.16 s), so the grouped mechanism has no
+  inherent cost. Working-set sizes as the engine computes them from the index dictionary (vertices with edges):
+  SF10 13 MB, SF100 41 MB, SF300 about 110 MB per group; earlier notes quoting 86 / 225 MB used person counts
+  (68.7K / 473K / 1.19M persons; 1.84M / 18.7M / 55.7M knows edges).
