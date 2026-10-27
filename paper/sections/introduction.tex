@@ -51,7 +51,7 @@ graph-native path finding, including a graph index that is consistent with its m
 The first half of the answer is a \emph{path-finding operator}. It is a physical operator with its own inputs and its
 own schedule, so its parallelism comes from the graph and not from the tuples. The edges are partitioned by
 destination range, the partitions are built and traversed in parallel, and the traversal proceeds level by level as a
-chain of events that never wait for each other. One traversal serves many pairs at once, the multi-source lanes of the
+chain of events in which no task blocks its thread waiting for another. One traversal serves many pairs at once, the multi-source lanes of the
 CIDR design; a second, a frontier search per source, serves the single pair that the lanes handle badly. The planner
 reaches the operator through an optimizer rule and sees an ordinary operator with a cardinality.
 

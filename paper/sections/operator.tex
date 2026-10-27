@@ -10,7 +10,8 @@ a stream of pairs, one \duckdb vector of 2048 rows at a time, and the graph, eit
 from or as the name of a CSR index to read it from; its output is one length or one path per pair. Label tests,
 filters on the source and destination vertices, the join back to the vertex tables and the test on the quantifier stay
 relational and are left to \duckdb's planner. This section describes how the operator gets its inputs, how it builds
-and lays out the graph, how it traverses it, and how it runs in parallel without waiting on anything.
+and lays out the graph, how it traverses it, and how it runs in parallel without any task blocking a thread while
+it waits for another.
 
 \subsection{From \texttt{MATCH} to an operator}
 \label{sec:planner}
@@ -125,7 +126,7 @@ still alive and whether the depth bound is hit. The operator runs every traversa
 events}. A phase is a set of tasks that run independently and finish; when the last one finishes, the event's
 completion callback runs the serial step once and inserts the event of the next phase. The on-the-fly build has the
 same shape with fewer phases. The partitioning happens in the sink as the edges stream in, one event's tasks sort and
-emit the ranges, and its completion callback publishes them. No task ever waits for another task. This is the shape
+emit the ranges, and its completion callback publishes them. Each phase still waits for the one before it, but no task ever blocks its thread waiting for another task. This is the shape
 \duckdb's own operators have, and it is what lets the operator share \duckdb's fixed thread pool with other queries.
 The scheduler may interleave the tasks of concurrent queries freely, the operator aborts cleanly on an error or an
 interrupt, and as many queries run at once as there are tasks. The same abstraction covers the multi-source traversal
