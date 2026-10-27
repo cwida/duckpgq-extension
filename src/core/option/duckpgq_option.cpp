@@ -9,12 +9,6 @@ bool GetPathFindingOption(ClientContext &context) {
 	return value.GetValue<bool>();
 }
 
-int32_t GetPathFindingTaskSize(ClientContext &context) {
-	Value value;
-	context.TryGetCurrentSetting("experimental_path_finding_operator_task_size", value);
-	return value.GetValue<int32_t>();
-}
-
 int32_t GetLightPartitionMultiplier(ClientContext &context) {
 	Value value;
 	context.TryGetCurrentSetting("experimental_path_finding_operator_light_partition_multiplier", value);
@@ -192,17 +186,6 @@ void CorePGQOptions::RegisterExperimentalPathFindingOperator(ExtensionLoader &lo
 	config.AddExtensionOption("experimental_path_finding_operator",
 	                          "Enables the experimental path finding operator to be triggered", LogicalType::BOOLEAN,
 	                          Value(false));
-}
-
-//------------------------------------------------------------------------------
-// Register option
-//------------------------------------------------------------------------------
-void CorePGQOptions::RegisterPathFindingTaskSize(ExtensionLoader &loader) {
-	auto &db = loader.GetDatabaseInstance();
-	auto &config = DBConfig::GetConfig(db);
-
-	config.AddExtensionOption("experimental_path_finding_operator_task_size",
-	                          "Number of vertices processed per thread at a time", LogicalType::INTEGER, Value(256));
 }
 
 //------------------------------------------------------------------------------
