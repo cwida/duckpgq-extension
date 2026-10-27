@@ -734,3 +734,6 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   summary bitmap and visit-line prefetch written (W31 step 3, memory traffic of the explore phase), with the
   microbenchmark group `memory`; lane-activity instrumentation now records the vertices with any lane active per
   level.
+- 27 Oct: paper Sections 3 and 4 audited against the code (26 Oct, two claim-by-claim passes; eleven corrections
+  applied, `44aa6ccd`, `74534530`). Decision: repeat the audit on the frozen commit after the memory-bandwidth work on
+  the multi-source traversal and the other open optimizations have settled; recorded in `paper/NOTES.md`.

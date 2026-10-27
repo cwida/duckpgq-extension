@@ -148,3 +148,9 @@ Introduction, when the frozen-commit numbers are in:
   build-route vertex ids are row ids up to the next row id (deleted rows count as vertices); pairs are not
   deduplicated by default; per-group memory of the single-source traversal 13 B/vertex (+12 with parents), all groups
   live until the scatter; NULL pairs count toward the ratio rule and disable the single-source zero-copy shortcut.
+- Re-audit Sections 3 and 4 against the frozen commit (decided 27 Oct). The desk is working on the memory bandwidth
+  of the multi-source traversal and other optimizations whose fate is open; once the dust settles and the frozen commit
+  is tagged, run the claim-by-claim code audit again (same procedure as 26 Oct: each mechanism and number in 3.x and
+  4.x checked against the code with file:line verdicts) and apply the corrections before the final numbers go in.
+  Sections most exposed: 3.3 (traversal costs, batch scheduling, thresholds), 3.4 (phases), 4.2-4.4 (snapshot cost,
+  fold trigger, load), the Evolution table.
