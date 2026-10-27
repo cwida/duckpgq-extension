@@ -775,3 +775,10 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   inherent cost. Working-set sizes as the engine computes them from the index dictionary (vertices with edges):
   SF10 13 MB, SF100 41 MB, SF300 about 110 MB per group; earlier notes quoting 86 / 225 MB used person counts
   (68.7K / 473K / 1.19M persons; 1.84M / 18.7M / 55.7M knows edges).
+- 27 Oct (afternoon): final scheduler default verified (`microbench_final_sf*.out`, 3 repeats, both routes, 2048 /
+  16384 / 65536 pairs, every point agreeing, no errors). Default vs per-batch events, index: SF10 0.68 vs 1.12 s
+  (1.64x), SF100 5.20 vs 5.20 s, SF300 12.33 vs 12.37 s; build: SF10 0.91 vs 1.56 s (1.70x), SF100 8.24 vs 8.09 s
+  (0.98x), SF300 20.3 vs 20.3 s; 2048 and 16384 pairs within 3% everywhere. W31 steps 2 and 3 closed: one
+  scheduler at every scale, equal to the best fixed shape where it is not better. Headline, index route, 65536
+  random pairs: SF10 0.68 s, SF100 5.20 s, SF300 12.3 s (25 Oct archive: 2.6 / 16.9 / 55 s). Next: W32 partition
+  geometry microbenchmark (option `partition_vertices`, harness group `partitions`, one index per geometry).
