@@ -7,13 +7,13 @@
 \label{sec:hooks}
 
 The operator and the index touch almost every interface \duckdb exposes to an extension, and none of its internals.
-Table~\ref{tab:hooks} lists the interfaces, what each one gave us, and where it stopped short; the right column is
-the part of this paper that is addressed to engine designers rather than to graph people. Three gaps shaped the
-design more than any other. The index interface delivers the rows that changed but not the transaction that changed
-them, and it offers no way to ask whether a row was visible at an earlier point in time, because the engine garbage
-collects row versions; the epochs, commit groups and per-reader snapshots of Section~\ref{sec:index} exist because
-of that. The scheduler has no notion of a group of tasks that must run together, so the traversals are chains of
-per-phase events (Section~\ref{sec:phases}). And an extension operator cannot tell the optimizer what it will cost,
+Table~\ref{tab:hooks} lists the interfaces, what each one gave us, and where it stopped short. The right column is
+the part of this paper addressed to the designers of database systems. Three gaps shaped the design more than any
+other. The index interface delivers the rows that changed but not the transaction that changed
+them, and it offers no way to ask whether a row was visible at an earlier point in time, because \duckdb garbage
+collects row versions. The epochs, commit groups and per-reader snapshots of Section~\ref{sec:index} exist because of
+that. The scheduler has no notion of a group of tasks that must run together, so the traversals are chains of
+per-phase events (Section~\ref{sec:phases}). An extension operator cannot tell the optimizer what it will cost,
 so every choice between build and index, between the two traversals and between the two orientations is made inside
 the operator from its own statistics (Section~\ref{sec:cost}).
 
@@ -30,7 +30,7 @@ the operator from its own statistics (Section~\ref{sec:cost}).
   \addlinespace[2pt]
   scalar functions & the marker that carries the path pattern to the planner; index statistics; strategy introspection & a marker must be volatile to survive folding, and must not reach execution \\
   \addlinespace[2pt]
-  optimizer extension & replacing the marker and its two inputs by the logical operator & runs before or after the engine's optimizer, not between its rules; the rewrite must find its inputs on the binder's plan shape \\
+  optimizer extension & replacing the marker and its two inputs by the logical operator & runs before or after \duckdb's optimizer, not between its rules; the rewrite must find its inputs on the binder's plan shape \\
   \addlinespace[2pt]
   logical and physical operator & sink for pairs and edges, source for results, own events and tasks & no cardinality or cost reported back to the optimizer; no task groups in the scheduler \\
   \addlinespace[2pt]
