@@ -846,3 +846,6 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   builds them under the tagged geometry; containers up (Memgraph 3.14.0, FalkorDB 4.2.2, Neo4j 5.26.32 Enterprise
   with GDS 2.13.14). Expected about 3.5 days; nothing else runs on the machine meanwhile. Afterwards:
   `./repro/collect.sh`, commit `repro/results` and `paper/`, compare with the 25 Oct archive.
+- 27 Oct (paper): after the frozen sweep on eval-freeze-rc1, verify every number in the paper against the sweep's
+  tables, figures and CSVs and make the text cite its source; replace the laptop numbers in Section 3. Checklist in
+  `paper/NOTES.md` under "TODO after the frozen-commit sweep".

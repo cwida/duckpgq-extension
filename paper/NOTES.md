@@ -159,3 +159,15 @@ Introduction, when the frozen-commit numbers are in:
   carry laptop numbers from the synthetic 2M-vertex, 8M-edge graph (build time and bytes per edge, the 0.12 s sweep
   for one pair, the single-source switch 0.11 -> 0.01 s and 1.5 -> 0.13 s, paths 0.24 vs 0.22 s and 0.43 s), marked
   red; replace them from the frozen rerun or move them into the Evolution table. Check Section 4 in the same pass.
+
+## TODO after the frozen-commit sweep (eval-freeze-rc1)
+
+- Verify every number in the paper against the frozen sweep, not only Sections 3 and 4: abstract, introduction,
+  every section's prose, every caption, Tables 1-5, the figures, and the appendix. For each number: find the table,
+  figure or result CSV it comes from, check the value, and make the text cite it. Numbers that come from no table
+  are either added to one or removed.
+- In particular the build-cost sentence of Section 3.2 (282 ms vs 9 ms and 1.6 s vs 0.98 s at SF300, 97% and two
+  fifths), the "a fifth" of Sections 4 and 6.2, and the per-row check cost (8 to 124 ms at SF10) in Section 4.2.
+- Replace the laptop numbers on the synthetic 8M-edge graph (four passages in Section 3, marked red).
+- Then the code re-audit of Sections 3 and 4 (listed above), the two pending introduction edits, and the abstract's
+  provisional numbers.
