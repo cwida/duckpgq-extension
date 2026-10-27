@@ -1059,10 +1059,22 @@ idx_t GetGroupedBatchCount(PathFindingGlobalSinkState &gstate, ClientContext &co
 	return std::max<idx_t>(1, std::min(group_count, batch_count));
 }
 
+//! Grouped scheduling pays off while the concurrent groups' working sets stay cache resident: at SF10 (14 MB per
+//! group) 32 one-worker groups answer 65536 pairs in 0.80 s against 1.07 s for one event per batch; at SF100
+//! (86 MB per group) the same 32 groups stream their visit arrays from memory, 13.4 s against 7.4 s for per-batch
+//! events whose level tasks share one working set across the threads. The budget option draws that line.
 bool ShouldUseGroupedIterativeLengthBatches(PathFindingGlobalSinkState &gstate, ClientContext &context,
                                             idx_t batch_count) {
-	return batch_count > 0 && gstate.path_finding_mode == PathFindingOperatorMode::ITERATIVE_LENGTH &&
-	       GetPathFindingGroupedBatches(context);
+	if (batch_count == 0 || gstate.path_finding_mode != PathFindingOperatorMode::ITERATIVE_LENGTH ||
+	    !GetPathFindingGroupedBatches(context)) {
+		return false;
+	}
+	auto groups = std::min<idx_t>(batch_count, std::max<idx_t>(1, gstate.num_threads));
+	auto working_sets = static_cast<double>(groups) * static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
+	auto budget = GetPathFindingGroupedBatchesBudget(context);
+	bool grouped = budget <= 0 || working_sets <= static_cast<double>(budget);
+	RecordStrategy(context, "grouped_working_sets_mb", std::to_string(static_cast<idx_t>(working_sets / (1024 * 1024))));
+	return grouped;
 }
 
 bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, ClientContext &context) {

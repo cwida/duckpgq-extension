@@ -5228,6 +5228,8 @@ for _w in (1, 2, 4, 8, 16):
     MICROBENCH_CONFIGS[f"sched_w{_w}"] = ({OPT + "threads_per_batch": _w}, None, False)
 for _g in (2, 4, 8, 16):
     MICROBENCH_CONFIGS[f"sched_w1_g{_g}"] = ({OPT + "threads_per_batch": 1, OPT + "max_concurrent_batches": _g}, None, False)
+# Grouped scheduling regardless of the working-set budget (the rule w = threads / batches at any scale)
+MICROBENCH_CONFIGS["grouped_always"] = ({OPT + "grouped_batches_budget": 0}, None, False)
 MICROBENCH_GROUPS = {
     "kernel": ["baseline", "no_grouped_batches", "dedupe_pairs", "threads_per_batch_4", "no_source_grouping",
                "no_few_sources_rule", "source_group_ratio_1", "source_group_ratio_16", "no_early_termination",
@@ -5235,7 +5237,7 @@ MICROBENCH_GROUPS = {
     "index": ["baseline", "no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "no_reverse_orientation"],
     "reach": ["baseline", "pair_mode"],
     "threads": ["baseline"] + [f"threads_{n}" for n in (1, 2, 4, 8, 16)],
-    "scheduling": ["baseline", "no_grouped_batches"] + [f"sched_w{w}" for w in (1, 2, 4, 8, 16)]
+    "scheduling": ["baseline", "no_grouped_batches", "grouped_always"] + [f"sched_w{w}" for w in (1, 2, 4, 8, 16)]
                   + [f"sched_w1_g{g}" for g in (2, 4, 8, 16)],
 }
 MICROBENCH_GROUPS["all"] = list(dict.fromkeys(sum((v for k, v in MICROBENCH_GROUPS.items() if k != "scheduling"), [])))

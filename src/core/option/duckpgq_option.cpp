@@ -135,6 +135,12 @@ int32_t GetPathFindingFewSourcesLimit(ClientContext &context) {
 	return value.GetValue<int32_t>();
 }
 
+int64_t GetPathFindingGroupedBatchesBudget(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_grouped_batches_budget", value);
+	return value.GetValue<int64_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -395,6 +401,18 @@ void CorePGQOptions::RegisterPathFindingFewSourcesLimit(ExtensionLoader &loader)
 	                          "Pair queries with at most this many distinct sources always use the per-source frontier "
 	                          "kernel instead of MS-BFS lanes; 0 leaves the choice to the source group ratio",
 	                          LogicalType::INTEGER, Value(16));
+}
+
+void CorePGQOptions::RegisterPathFindingGroupedBatchesBudget(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_grouped_batches_budget",
+	                          "Grouped MS-BFS scheduling (one worker group per batch, groups = min(batches, threads)) "
+	                          "is used while the groups' working sets (192 B per vertex each) fit this many bytes; "
+	                          "above it every batch is its own event and the executor interleaves them, which keeps "
+	                          "the threads of a level on one shared working set (W31: 512 MB sits between SF10's 32 "
+	                          "x 14 MB and SF100's 32 x 86 MB on a 128 MB L3 machine)",
+	                          LogicalType::BIGINT, Value::BIGINT(512LL * 1024 * 1024));
 }
 
 } // namespace duckdb

@@ -26,6 +26,7 @@ bool GetPathFindingSnapshotCache(ClientContext &context);
 bool GetPathFindingTargetEarlyTermination(ClientContext &context);
 int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context);
 int32_t GetPathFindingFewSourcesLimit(ClientContext &context);
+int64_t GetPathFindingGroupedBatchesBudget(ClientContext &context);
 
 struct CorePGQOptions {
 	static void Register(ExtensionLoader &loader) {
@@ -51,6 +52,7 @@ struct CorePGQOptions {
 		RegisterPathFindingTargetEarlyTermination(loader);
 		RegisterPathFindingSparseFrontierDivisor(loader);
 		RegisterPathFindingFewSourcesLimit(loader);
+		RegisterPathFindingGroupedBatchesBudget(loader);
 	}
 
 private:
@@ -76,6 +78,7 @@ private:
 	static void RegisterPathFindingTargetEarlyTermination(ExtensionLoader &loader);
 	static void RegisterPathFindingSparseFrontierDivisor(ExtensionLoader &loader);
 	static void RegisterPathFindingFewSourcesLimit(ExtensionLoader &loader);
+	static void RegisterPathFindingGroupedBatchesBudget(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

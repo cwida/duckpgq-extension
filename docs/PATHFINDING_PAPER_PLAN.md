@@ -671,3 +671,27 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   from the creating session (e.g. partitions from the vertex count and the machine's core count) and give the
   per-source kernel a per-vertex partition bitmap so sparse expansion touches only partitions that hold edges of
   the vertex. SF100 indexes dropped so the SF100 microbenchmarks build them fresh.
+- 27 Oct (morning): overnight chain done (`microbench_sf100.out`, `microbench_sched_sf100.out`,
+  `microbench_sched_sf300.out`; tables in `~/sweep/microbench_*_tables.md`; all points agree). SF100
+  microbenchmarks (fresh indexes, 3 repeats, build / index): (1) scheduling, 65536 pairs: grouped (one group of 32
+  under the old default; the same time as 32 one-worker groups under the 26 Oct rule) 24.1 / 13.6 s, per-batch
+  events 15.5 / 7.5 s (0.64x / 0.55x); the SF10 result inverts at SF100 and SF300 (index 40.8 s grouped vs 23.3 s
+  per-batch events at SF300). Capping the groups at one worker shows why: 2 groups answer 65536 pairs in 11.7 s on
+  the index and 32 groups in 13.5 s, so 32 concurrent single-worker sweeps gain nothing over 2: each group streams
+  its own visit array (V x 64 B: 4.7 MB at SF10, 29 MB at SF100, 75 MB at SF300) and 32 of them exceed the 128 MB
+  L3; per-batch events let the threads of one level share one working set. Rule now: grouped (w = threads /
+  batches) while min(batches, threads) x 192 B x V <= `experimental_path_finding_operator_grouped_batches_budget`
+  (default 512 MB: SF10 32 x 14 MB = 450 MB grouped, SF100 32 x 86 MB and SF300 32 x 225 MB per-batch events;
+  16384 pairs at SF100 8 x 86 MB = 690 MB per-batch events, 1.9 vs 3.2 s), strategy string records
+  `grouped_working_sets_mb`. For the paper figure: time vs scheduling at SF10 / SF100 / SF300 shows the crossover
+  between per-level barrier cost (small graphs) and working-set locality (large graphs). (2) Reach vs pair list,
+  1024 sources x all: 6.0x (build, 4.1 vs 24.8 s) and 10.0x (index, 2.45 vs 24.6 s). (3) Reverse side, 65536
+  sources to one destination, index: 13.5 s to 27 ms; no forward cost (sources x all 2.42 vs 2.45 s), so the SF10
+  1.44x row did not recur with fresh indexes. (4) Per-source kernel for one pair over the index: 8 ms vs 87-96 ms
+  with lanes (11-12x); build 110 vs 215 ms. (5) Source group ratio 1 at 65536 pairs: out of memory (65536 groups x
+  450K x 8 B distance arrays); the ratio of 4 is what prevents that; 16 equals 4. (6) Forced dense or sparse
+  expansion: 1.4-1.5x slower on sources x all, flat on pairs. (7) Doubling partitions on the build route: 1.3x
+  slower at 65536 pairs and on sources x all. (8) Threads 1 to 32, index: 65536 pairs 139 to 13.6 s (10.2x),
+  sources x all 1024 52.5 to 2.45 s (21x, the 1-thread point carrying the 64-partition lookup cost of the 26 Oct
+  geometry note); build 102 to 24 s and 47 to 4.1 s. (9) Within noise: dedupe, early termination, snapshot cache
+  (empty log), threads_per_batch=4 at 65536 pairs (0.87-0.90x, consistent with the per-batch-events finding).
