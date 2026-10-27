@@ -14,11 +14,12 @@ gives such a structure, what it withholds, and the design that follows.
 \label{sec:index-interface}
 
 \duckdb's index interface, which the \texttt{vss} and \texttt{spatial} extensions also use~\cite{duckdb_vss,duckdb_spatial},
-provides four things: a bulk
-build as a parallel sink over the key columns and row ids of the table; an \texttt{Append} call at every commit with
-the keys and row ids the transaction inserted, and a \texttt{Delete} call with the row ids it deleted; serialization
-into the engine's block manager at a checkpoint and replay of the log after a restart; and a lookup from the planner
-by table and index name. All calls run under the index lock, so appends and deletes arrive in commit order.
+provides five things: (1) \emph{bulk build}, a parallel sink over the key columns and row ids of the table that
+produces the initial index; (2) \emph{append}, a call at every commit with the keys and row ids the transaction
+inserted; (3) \emph{delete}, a call at every commit with the row ids the transaction deleted; (4) \emph{serialize},
+the index's bytes written into \duckdb's block manager at a checkpoint and into the write-ahead log, replayed after a
+restart; and (5) \emph{lookup}, the planner finding the index by table and index name. All calls run under the index
+lock, so appends and deletes arrive in commit order.
 
 It withholds three things an index for traversals needs. First, visibility. The calls carry row ids and keys, never
 the transaction or the commit that made the change, and a reader cannot ask the index what is visible to it; an ART
