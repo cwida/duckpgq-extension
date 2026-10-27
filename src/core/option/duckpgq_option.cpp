@@ -177,6 +177,12 @@ int32_t GetPathFindingPartitionVertices(ClientContext &context) {
 	return value.GetValue<int32_t>();
 }
 
+bool GetPathFindingSubRangeTasks(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_sub_range_tasks", value);
+	return value.GetValue<bool>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -514,6 +520,16 @@ void CorePGQOptions::RegisterPathFindingPartitionVertices(ExtensionLoader &loade
 	                          "source's visit line fewer times per level, more keep a partition's next slice in L2 "
 	                          "(16384 vertices = 1 MB at 512 lanes); W32 microbenchmark",
 	                          LogicalType::INTEGER, Value(0));
+}
+
+void CorePGQOptions::RegisterPathFindingSubRangeTasks(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_sub_range_tasks",
+	                          "When an MS-BFS batch has more workers than partitions, split each partition's "
+	                          "destination range into sub-range tasks so the batch keeps its parallelism on coarse "
+	                          "partitions (W32); false gives one task per partition",
+	                          LogicalType::BOOLEAN, Value(true));
 }
 
 } // namespace duckdb

@@ -5244,6 +5244,10 @@ MICROBENCH_CONFIGS["grouped_always"] = MICROBENCH_CONFIGS["adaptive"]
 # index per geometry (4th tuple element: index name suffix)
 for _pv in (4096, 8192, 16384, 32768, 65535):
     MICROBENCH_CONFIGS[f"partitions_{_pv}"] = ({OPT + "partition_vertices": _pv}, None, False, f"pv{_pv}")
+MICROBENCH_CONFIGS["no_sub_range_tasks"] = ({OPT + "sub_range_tasks": "false"}, None, False)
+MICROBENCH_CONFIGS["partitions_65535_nosub"] = ({OPT + "partition_vertices": 65535, OPT + "sub_range_tasks": "false"}, None, False, "pv65535")
+# The thread rule (2 x threads partitions) as an explicit geometry, for when the default becomes the coarse one
+MICROBENCH_CONFIGS["threads_rule_partitions"] = ({OPT + "partition_vertices": -1}, None, False, "threads")
 # Memory traffic of the explore phase (W31 step 3): the frontier summary bitmap and the visit-line prefetch
 MICROBENCH_CONFIGS["no_frontier_bitmap"] = ({OPT + "frontier_bitmap": "false"}, None, False)
 MICROBENCH_CONFIGS["bitmap_filter_on"] = ({OPT + "frontier_bitmap_filter": 1}, None, False)
@@ -5265,7 +5269,8 @@ MICROBENCH_GROUPS = {
     "threads": ["baseline"] + [f"threads_{n}" for n in (1, 2, 4, 8, 16)],
     "memory": ["baseline", "no_frontier_bitmap", "no_sparse_levels", "sparse_levels_8", "sparse_levels_64",
                "bitmap_filter_on", "bitmap_filter_off", "visit_prefetch_8", "plain_explore"],
-    "partitions": ["baseline"] + [f"partitions_{pv}" for pv in (4096, 8192, 16384, 32768, 65535)],
+    "partitions": ["baseline"] + [f"partitions_{pv}" for pv in (4096, 8192, 16384, 32768, 65535)]
+                  + ["partitions_65535_nosub", "no_sub_range_tasks", "threads_rule_partitions"],
     "scheduling": ["baseline", "no_grouped_batches", "adaptive", "adaptive_os4", "adaptive_os32",
                    "sched_g1_w32", "sched_g2_w16", "sched_g4_w8", "sched_g8_w4", "sched_g16_w2", "sched_g32_w1",
                    "sched_g4_w32", "sched_g8_w32", "sched_g16_w32"],

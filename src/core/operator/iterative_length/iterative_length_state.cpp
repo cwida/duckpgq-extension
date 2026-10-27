@@ -16,6 +16,7 @@ IterativeLengthState::IterativeLengthState(const shared_ptr<PathFindingBatch> &b
 	SetBitmapFilter();
 	auto prefetch = GetPathFindingVisitPrefetch(context_);
 	visit_prefetch = prefetch > 0 ? NumericCast<idx_t>(prefetch) : 0;
+	sub_range_tasks = GetPathFindingSubRangeTasks(context_);
 	auto divisor = GetPathFindingSparseLevelDivisor(context_);
 	sparse_level_divisor = divisor > 0 ? NumericCast<idx_t>(divisor) : 0;
 	// Row lookup needs the sparse-row form of every partition; partitions assembled from streaming segments are swept

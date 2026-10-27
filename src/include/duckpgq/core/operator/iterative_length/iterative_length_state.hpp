@@ -66,11 +66,18 @@ public:
 	bool row_lookup_available = true;
 	vector<uint32_t> frontier_list;
 	vector<idx_t> worker_active_counts;
+	//! Destination sub-ranges per partition in the parallel phases (1 = one task per partition); chosen in Start()
+	idx_t sub_ranges = 1;
+	//! experimental_path_finding_operator_sub_range_tasks
+	bool sub_range_tasks = true;
+	//! Sub-ranges the scheduler asks for (from the query's batch count); 0 derives from this batch's workers alone
+	idx_t sub_range_hint = 0;
 
 private:
 	enum class Phase : uint8_t { EXPLORE, CHECK };
 	void BeginIteration();
 	void PrepareLevel(idx_t active_total);
+	void SubRange(const LocalCSR &local_csr, idx_t sub_idx, idx_t &begin, idx_t &end) const;
 
 	Phase phase = Phase::EXPLORE;
 	idx_t worker_count = 1;

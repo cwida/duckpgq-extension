@@ -782,3 +782,15 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   scheduler at every scale, equal to the best fixed shape where it is not better. Headline, index route, 65536
   random pairs: SF10 0.68 s, SF100 5.20 s, SF300 12.3 s (25 Oct archive: 2.6 / 16.9 / 55 s). Next: W32 partition
   geometry microbenchmark (option `partition_vertices`, harness group `partitions`, one index per geometry).
+- 27 Oct (afternoon): W32 partition geometry measured (`microbench_partitions_sf10/100.out`, 3 repeats, option
+  `partition_vertices`, one index per geometry). Partitions at SF10 / SF100: default 2 x threads = 64 / 64;
+  4096-vertex 17 / 116; 8192 9 / 58; 16384 5 / 29; 32768 3 / 15; 65535 2 / 8. Index route, 65536 pairs: SF10 675
+  -> 387 ms (65535-wide, 1.74x), SF100 5.28 -> 3.45 s (1.53x); sources x all 1024: SF10 228 -> 79 ms (2.9x), SF100
+  2.37 -> 1.11 s (2.1x); build route the same direction (SF100 8.28 -> 4.30 s, 4.09 -> 2.18 s). The cost: a
+  single-batch lane query gets its parallelism from the partitions, so 2048 pairs go SF10 103 -> 262 ms, SF100 528
+  -> 1100 ms (2-2.5x slower); 4096-vertex partitions are slower than the default everywhere at SF100 (more visit
+  re-reads, no more parallelism). Both routes fix the geometry before the pair shape is known (the build route
+  radix-partitions edges as they arrive, the index at CREATE INDEX), so the choice cannot follow the query. W32
+  step 2: decouple a batch's parallelism from the partition count with (partition, destination sub-range) explore
+  and check tasks when a level has fewer partitions than workers, then default to the coarsest geometry (65535
+  vertices per partition). Default unchanged until then.

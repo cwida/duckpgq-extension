@@ -33,12 +33,12 @@ inline void StoreActiveWord(uint64_t *active, idx_t word_idx, uint64_t range_mas
 }
 
 bool CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next, std::bitset<LANE_LIMIT> *visit,
-                 uint64_t *active, const LocalCSR &local_csr, idx_t &active_count) {
+                 uint64_t *active, idx_t range_begin, idx_t range_end, idx_t &active_count) {
 	bool local_change = false;
-	idx_t word_idx = local_csr.start_vertex >> 6;
+	idx_t word_idx = range_begin >> 6;
 	uint64_t word_bits = 0;
 	uint64_t word_mask = 0;
-	for (auto i = local_csr.start_vertex; i < local_csr.end_vertex; i++) {
+	for (auto i = range_begin; i < range_end; i++) {
 		bool now_active = false;
 		if (next[i].any()) {
 			next[i] &= ~seen[i];
@@ -56,7 +56,7 @@ bool CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next, s
 			if (now_active) {
 				word_bits |= bit;
 			}
-			if ((i & 63) == 63 || i + 1 == local_csr.end_vertex) {
+			if ((i & 63) == 63 || i + 1 == range_end) {
 				StoreActiveWord(active, word_idx, word_mask, word_bits);
 				word_idx++;
 				word_bits = 0;
@@ -79,8 +79,11 @@ inline bool IsSuppressed(const uint64_t *suppressed, idx_t position) {
 //! its visit line into the lines of its targets. `active` (may be null) skips inactive sources without reading their
 //! 64-byte visit line; `prefetch` sources ahead the visit line of the next active source is requested early, the
 //! source list being sequential while the visit lines are scattered (W31 step 3).
+//! FILTER: only edges whose destination lies in [dst_begin, dst_end) are applied, so several tasks can share one
+//! partition with disjoint writes (W32: coarse partitions keep the parallelism of a single batch)
+template <bool FILTER>
 void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr,
-             const uint64_t *suppressed, const uint64_t *active, idx_t prefetch) {
+             const uint64_t *suppressed, const uint64_t *active, idx_t prefetch, idx_t dst_begin, idx_t dst_end) {
 	for (const auto &segment : local_csr.segments) {
 		auto rows = segment.source_vertices.size();
 		for (idx_t row_idx = 0; row_idx < rows; row_idx++) {
@@ -96,6 +99,9 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 			}
 			for (auto offset = segment.row_offsets[row_idx]; offset < segment.row_offsets[row_idx + 1]; offset++) {
 				auto target = segment.edges[offset] + local_csr.start_vertex;
+				if (FILTER && (target < dst_begin || target >= dst_end)) {
+					continue;
+				}
 				next[target] |= visit[source_vertex];
 			}
 		}
@@ -121,6 +127,9 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 						continue;
 					}
 					auto n = local_csr.e[offset] + local_csr.start_vertex;
+					if (FILTER && (n < dst_begin || n >= dst_end)) {
+						continue;
+					}
 					next[n] |= visit[source_vertex];
 				}
 			}
@@ -133,6 +142,9 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 			auto end_edges = local_csr.v[i + 1].load(std::memory_order_relaxed);
 			for (auto offset = start_edges; offset < end_edges; offset++) {
 				auto n = local_csr.e[offset] + local_csr.start_vertex;
+				if (FILTER && (n < dst_begin || n >= dst_end)) {
+					continue;
+				}
 				next[n] |= visit[i];
 			}
 		}
@@ -142,8 +154,9 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 //! The explore phase of one partition on a sparse level: every active vertex is looked up in the partition (row
 //! buckets, about two rows per bucket) and its edges into the partition's destination range are relaxed. Writes stay
 //! within the partition, as in the sweep, so partitions remain the parallel unit.
+template <bool FILTER>
 void ExploreSparse(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr,
-                   const uint64_t *suppressed, const vector<uint32_t> &frontier) {
+                   const uint64_t *suppressed, const vector<uint32_t> &frontier, idx_t dst_begin, idx_t dst_end) {
 	for (auto source_vertex : frontier) {
 		uint32_t start_edges;
 		uint32_t end_edges;
@@ -155,27 +168,43 @@ void ExploreSparse(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT>
 			if (IsSuppressed(suppressed, offset)) {
 				continue;
 			}
-			next[local_csr.e[offset] + local_csr.start_vertex] |= lanes;
+			auto n = local_csr.e[offset] + local_csr.start_vertex;
+			if (FILTER && (n < dst_begin || n >= dst_end)) {
+				continue;
+			}
+			next[n] |= lanes;
 		}
 	}
 }
 
 void RunExplore(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next,
-                const LocalCSR &local_csr, const uint64_t *suppressed) {
+                const LocalCSR &local_csr, const uint64_t *suppressed, idx_t dst_begin, idx_t dst_end,
+                bool whole_partition) {
 	// Dense levels sweep the partition's rows without consulting the bitmap: when most vertices have an active lane
 	// the per-source bit test only costs (SF10, 65536 pairs: 10% slower with it); the bitmap's job is the frontier
 	// list of a sparse level
 	const uint64_t *active = state.use_frontier_bitmap && state.bitmap_filter ? state.active_bitmap : nullptr;
 	if (state.sparse_level) {
-		ExploreSparse(visit, next, local_csr, suppressed, state.frontier_list);
+		if (whole_partition) {
+			ExploreSparse<false>(visit, next, local_csr, suppressed, state.frontier_list, dst_begin, dst_end);
+		} else {
+			ExploreSparse<true>(visit, next, local_csr, suppressed, state.frontier_list, dst_begin, dst_end);
+		}
 		return;
 	}
+	auto explore = [&]() {
+		if (whole_partition) {
+			Explore<false>(visit, next, local_csr, suppressed, active, state.visit_prefetch, dst_begin, dst_end);
+		} else {
+			Explore<true>(visit, next, local_csr, suppressed, active, state.visit_prefetch, dst_begin, dst_end);
+		}
+	};
 	if (!state.benchmark_enabled) {
-		Explore(visit, next, local_csr, suppressed, active, state.visit_prefetch);
+		explore();
 		return;
 	}
 	auto start_time = std::chrono::high_resolution_clock::now();
-	Explore(visit, next, local_csr, suppressed, active, state.visit_prefetch);
+	explore();
 	auto end_time = std::chrono::high_resolution_clock::now();
 	auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
 	std::thread::id thread_id = std::this_thread::get_id();
@@ -354,10 +383,27 @@ void IterativeLengthState::PrepareLevel(idx_t active_total) {
 	}
 }
 
+//! The destination range of task sub_idx within a partition: the partition's vertex range split into sub_ranges
+//! pieces (whole partition when sub_ranges is one)
+void IterativeLengthState::SubRange(const LocalCSR &local_csr, idx_t sub_idx, idx_t &begin, idx_t &end) const {
+	auto span = local_csr.end_vertex - local_csr.start_vertex;
+	begin = local_csr.start_vertex + span * sub_idx / sub_ranges;
+	end = sub_idx + 1 == sub_ranges ? local_csr.end_vertex : local_csr.start_vertex + span * (sub_idx + 1) / sub_ranges;
+}
+
 bool IterativeLengthState::Start() {
 	phase_start_time = std::chrono::steady_clock::now();
-	// Never more workers than partitions: the parallel phases hand out partitions
-	worker_count = std::max<idx_t>(1, std::min<idx_t>(worker_count, std::max<idx_t>(1, local_csrs.size())));
+	// Fewer partitions than workers: split every partition's destination range so each worker has a task per phase
+	// (W32: coarse partitions cost a single batch its parallelism otherwise)
+	auto partitions = std::max<idx_t>(1, local_csrs.size());
+	sub_ranges = 1;
+	if (sub_range_tasks && worker_count > partitions) {
+		// A sub-range task re-reads the partition's rows, so split only as far as the query's batches leave
+		// threads idle (the scheduler's hint), not up to this batch's own worker count
+		auto wanted = sub_range_hint > 0 ? sub_range_hint : (worker_count + partitions - 1) / partitions;
+		sub_ranges = std::max<idx_t>(1, std::min<idx_t>(16, wanted));
+	}
+	worker_count = std::max<idx_t>(1, std::min<idx_t>(worker_count, partitions * sub_ranges));
 	tasks_scheduled = worker_count;
 	worker_changed.assign(worker_count, 0);
 	// The lane bitsets are only allocated once the batch actually runs, and handed back when it is done
@@ -377,24 +423,31 @@ void IterativeLengthState::RunPhase(idx_t worker_id) {
 	auto &next = iter & 1 ? visit2 : visit1;
 	if (phase == Phase::EXPLORE) {
 		idx_t swept_total = 0;
+		auto task_count = static_cast<int64_t>(local_csrs.size() * sub_ranges);
 		while (true) {
-			auto partition_idx = local_csr_counter.fetch_add(1);
-			if (partition_idx >= static_cast<int64_t>(local_csrs.size())) {
+			auto task_idx = local_csr_counter.fetch_add(1);
+			if (task_idx >= task_count) {
 				break;
 			}
+			auto partition_idx = task_idx / static_cast<int64_t>(sub_ranges);
+			auto sub_idx = static_cast<idx_t>(task_idx % static_cast<int64_t>(sub_ranges));
 			auto local_csr = local_csrs[partition_idx].get();
 			if (!local_csr) {
 				throw InternalException("Tried to reference nullptr for LocalCSR");
 			}
+			idx_t dst_begin;
+			idx_t dst_end;
+			SubRange(*local_csr, sub_idx, dst_begin, dst_end);
+			bool whole = sub_ranges == 1;
 			auto suppressed_bits = partition_idx < static_cast<int64_t>(suppressed.size()) && suppressed[partition_idx]
 			                           ? suppressed[partition_idx]->data()
 			                           : nullptr;
-			RunExplore(*this, visit, next, *local_csr, suppressed_bits);
-			idx_t swept = local_csr->GetEdgeSize();
+			RunExplore(*this, visit, next, *local_csr, suppressed_bits, dst_begin, dst_end, whole);
+			idx_t swept = sub_idx == 0 ? local_csr->GetEdgeSize() : 0;
 			// Edges committed after the epoch, for the same destination range
 			if (partition_idx < static_cast<int64_t>(delta_csrs.size()) && delta_csrs[partition_idx]) {
-				RunExplore(*this, visit, next, *delta_csrs[partition_idx], nullptr);
-				swept += delta_csrs[partition_idx]->GetEdgeSize();
+				RunExplore(*this, visit, next, *delta_csrs[partition_idx], nullptr, dst_begin, dst_end, whole);
+				swept += sub_idx == 0 ? delta_csrs[partition_idx]->GetEdgeSize() : 0;
 			}
 			swept_total += swept;
 		}
@@ -406,12 +459,18 @@ void IterativeLengthState::RunPhase(idx_t worker_id) {
 	}
 	bool local_change = false;
 	idx_t active_count = 0;
+	auto task_count = static_cast<int64_t>(local_csrs.size() * sub_ranges);
 	while (true) {
-		auto partition_idx = partition_counter.fetch_add(1);
-		if (partition_idx >= static_cast<int64_t>(local_csrs.size())) {
+		auto task_idx = partition_counter.fetch_add(1);
+		if (task_idx >= task_count) {
 			break;
 		}
-		local_change |= CheckChange(seen, next, visit, active_bitmap, *local_csrs[partition_idx], active_count);
+		auto partition_idx = task_idx / static_cast<int64_t>(sub_ranges);
+		idx_t range_begin;
+		idx_t range_end;
+		SubRange(*local_csrs[partition_idx], static_cast<idx_t>(task_idx % static_cast<int64_t>(sub_ranges)),
+		         range_begin, range_end);
+		local_change |= CheckChange(seen, next, visit, active_bitmap, range_begin, range_end, active_count);
 	}
 	worker_changed[worker_id] = local_change ? 1 : 0;
 	worker_active_counts[worker_id] = active_count;
