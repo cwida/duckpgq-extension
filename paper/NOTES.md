@@ -154,3 +154,8 @@ Introduction, when the frozen-commit numbers are in:
   4.x checked against the code with file:line verdicts) and apply the corrections before the final numbers go in.
   Sections most exposed: 3.3 (traversal costs, batch scheduling, thresholds), 3.4 (phases), 4.2-4.4 (snapshot cost,
   fold trigger, load), the Evolution table.
+- Every number in Sections 3 and 4 must come from the evaluation setup or say where it comes from (author, 27 Oct).
+  Section 3 now states its source in the opening and cites Tables 2 and 3 for the build cost. Four passages still
+  carry laptop numbers from the synthetic 2M-vertex, 8M-edge graph (build time and bytes per edge, the 0.12 s sweep
+  for one pair, the single-source switch 0.11 -> 0.01 s and 1.5 -> 0.13 s, paths 0.24 vs 0.22 s and 0.43 s), marked
+  red; replace them from the frozen rerun or move them into the Evolution table. Check Section 4 in the same pass.
