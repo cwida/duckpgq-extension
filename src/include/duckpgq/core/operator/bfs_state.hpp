@@ -22,13 +22,20 @@ class BFSWorkingSet {
 public:
 	BFSWorkingSet(ClientContext &context, idx_t v_size);
 
+	//! Words of the frontier summary bitmap: one bit per vertex, set when any lane is active at the vertex
+	static idx_t ActiveWordsFor(idx_t v_size) {
+		return (v_size + 63) / 64 + 1;
+	}
 	static idx_t BytesFor(idx_t v_size) {
-		return 3 * v_size * sizeof(std::bitset<LANE_LIMIT>);
+		return 3 * v_size * sizeof(std::bitset<LANE_LIMIT>) + ActiveWordsFor(v_size) * sizeof(uint64_t);
 	}
 
 	std::bitset<LANE_LIMIT> *visit1 = nullptr;
 	std::bitset<LANE_LIMIT> *visit2 = nullptr;
 	std::bitset<LANE_LIMIT> *seen = nullptr;
+	//! Frontier summary: bit v set when visit[v] (the frontier of the coming iteration) has any lane active, so the
+	//! explore phase skips the 64-byte visit line of inactive sources (W31 step 3; the bitmap is 1/512 of visit)
+	uint64_t *active_bitmap = nullptr;
 	idx_t v_size;
 
 private:
@@ -108,6 +115,8 @@ public:
 	bitset<LANE_LIMIT> *seen = nullptr;
 	bitset<LANE_LIMIT> *visit1 = nullptr;
 	bitset<LANE_LIMIT> *visit2 = nullptr;
+	//! Frontier summary bitmap of the working set (one bit per vertex), see BFSWorkingSet
+	uint64_t *active_bitmap = nullptr;
 
 	idx_t tasks_scheduled;
 	bitset<LANE_LIMIT> lane_completed;

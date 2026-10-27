@@ -724,3 +724,12 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   (`grouped_batches=false`). Strategy string: `regime`, `grouped_working_sets_mb`, `window_trace`. Open: the
   learned window per graph (store in the cache entry), and whether the budget constant can be replaced by starting
   wide and shrinking on a measured drop.
+- 27 Oct (midday): adaptive scheduler default verified against per-batch events, 3 repeats, both routes
+  (`microbench_default_sf*.out`). Index 65536 pairs: SF10 0.75 vs 1.23 s, SF100 7.97 vs 7.64 s, SF300 20.3 vs 20.1
+  s; build 65536: SF10 1.00 vs 1.92 s, SF100 12.5 vs 12.2 s, SF300 39.8 vs 39.7 s; sources x all unchanged (the
+  per-source kernel). Weak point found: SF100 16384 pairs (8 batches, memory-bound regime) 2.60 vs 1.96 s on the
+  index and 4.67 vs 3.24 s on the build route, because the ramp from 4 groups spends half the query's batches at
+  window 4. Fix: the ramp starts at 8 groups (SF300's knee; below 8 the window is never the bottleneck). Frontier
+  summary bitmap and visit-line prefetch written (W31 step 3, memory traffic of the explore phase), with the
+  microbenchmark group `memory`; lane-activity instrumentation now records the vertices with any lane active per
+  level.

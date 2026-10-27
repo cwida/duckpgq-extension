@@ -5234,6 +5234,12 @@ MICROBENCH_CONFIGS["adaptive"] = ({OPT + "grouped_batches_budget": 0}, None, Fal
 MICROBENCH_CONFIGS["adaptive_os4"] = ({OPT + "grouped_batches_budget": 0, OPT + "batch_oversubscription": 4}, None, False)
 MICROBENCH_CONFIGS["adaptive_os32"] = ({OPT + "grouped_batches_budget": 0, OPT + "batch_oversubscription": 32}, None, False)
 MICROBENCH_CONFIGS["grouped_always"] = MICROBENCH_CONFIGS["adaptive"]
+# Memory traffic of the explore phase (W31 step 3): the frontier summary bitmap and the visit-line prefetch
+MICROBENCH_CONFIGS["no_frontier_bitmap"] = ({OPT + "frontier_bitmap": "false"}, None, False)
+MICROBENCH_CONFIGS["no_visit_prefetch"] = ({OPT + "visit_prefetch": 0}, None, False)
+MICROBENCH_CONFIGS["visit_prefetch_4"] = ({OPT + "visit_prefetch": 4}, None, False)
+MICROBENCH_CONFIGS["visit_prefetch_16"] = ({OPT + "visit_prefetch": 16}, None, False)
+MICROBENCH_CONFIGS["no_bitmap_no_prefetch"] = ({OPT + "frontier_bitmap": "false", OPT + "visit_prefetch": 0}, None, False)
 MICROBENCH_GROUPS = {
     "kernel": ["baseline", "no_grouped_batches", "dedupe_pairs", "threads_per_batch_4", "no_source_grouping",
                "no_few_sources_rule", "source_group_ratio_1", "source_group_ratio_16", "no_early_termination",
@@ -5241,6 +5247,8 @@ MICROBENCH_GROUPS = {
     "index": ["baseline", "no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "no_reverse_orientation"],
     "reach": ["baseline", "pair_mode"],
     "threads": ["baseline"] + [f"threads_{n}" for n in (1, 2, 4, 8, 16)],
+    "memory": ["baseline", "no_frontier_bitmap", "no_visit_prefetch", "visit_prefetch_4", "visit_prefetch_16",
+               "no_bitmap_no_prefetch"],
     "scheduling": ["baseline", "no_grouped_batches", "adaptive", "adaptive_os4", "adaptive_os32",
                    "sched_g1_w32", "sched_g2_w16", "sched_g4_w8", "sched_g8_w4", "sched_g16_w2", "sched_g32_w1",
                    "sched_g4_w32", "sched_g8_w32", "sched_g16_w32"],

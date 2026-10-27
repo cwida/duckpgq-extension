@@ -18,31 +18,79 @@ namespace duckdb {
 
 namespace {
 
+//! Sets or clears the summary bits of [begin, end) within one 64-vertex word from `bits`; the word may be shared with
+//! the neighbouring partition at a range boundary, so it is updated atomically
+inline void StoreActiveWord(uint64_t *active, idx_t word_idx, uint64_t range_mask, uint64_t bits) {
+	auto &word = *reinterpret_cast<std::atomic<uint64_t> *>(active + word_idx);
+	if (range_mask == ~uint64_t(0)) {
+		word.store(bits, std::memory_order_relaxed);
+		return;
+	}
+	word.fetch_and(~range_mask, std::memory_order_relaxed);
+	if (bits) {
+		word.fetch_or(bits, std::memory_order_relaxed);
+	}
+}
+
 bool CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next, std::bitset<LANE_LIMIT> *visit,
-                 const LocalCSR &local_csr) {
+                 uint64_t *active, const LocalCSR &local_csr) {
 	bool local_change = false;
+	idx_t word_idx = local_csr.start_vertex >> 6;
+	uint64_t word_bits = 0;
+	uint64_t word_mask = 0;
 	for (auto i = local_csr.start_vertex; i < local_csr.end_vertex; i++) {
+		bool now_active = false;
 		if (next[i].any()) {
 			next[i] &= ~seen[i];
 			seen[i] |= next[i];
-			local_change |= next[i].any();
+			now_active = next[i].any();
+			local_change |= now_active;
 		}
 		// Every EXPLORE of this iteration has read `visit`; cleared here it is the empty `next` of the next iteration
 		visit[i] = 0;
+		if (active) {
+			// The frontier of the coming iteration, summarised one bit per vertex
+			auto bit = uint64_t(1) << (i & 63);
+			word_mask |= bit;
+			if (now_active) {
+				word_bits |= bit;
+			}
+			if ((i & 63) == 63 || i + 1 == local_csr.end_vertex) {
+				StoreActiveWord(active, word_idx, word_mask, word_bits);
+				word_idx++;
+				word_bits = 0;
+				word_mask = 0;
+			}
+		}
 	}
 	return local_change;
+}
+
+inline bool IsActive(const uint64_t *active, idx_t vertex) {
+	return !active || ((active[vertex >> 6] >> (vertex & 63)) & 1);
 }
 
 inline bool IsSuppressed(const uint64_t *suppressed, idx_t position) {
 	return suppressed && ((suppressed[position >> 6] >> (position & 63)) & 1);
 }
 
+//! The explore phase of one partition: for every source with edges into the partition whose lanes are active, OR
+//! its visit line into the lines of its targets. `active` (may be null) skips inactive sources without reading their
+//! 64-byte visit line; `prefetch` sources ahead the visit line of the next active source is requested early, the
+//! source list being sequential while the visit lines are scattered (W31 step 3).
 void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next, const LocalCSR &local_csr,
-             const uint64_t *suppressed) {
+             const uint64_t *suppressed, const uint64_t *active, idx_t prefetch) {
 	for (const auto &segment : local_csr.segments) {
-		for (idx_t row_idx = 0; row_idx < segment.source_vertices.size(); row_idx++) {
+		auto rows = segment.source_vertices.size();
+		for (idx_t row_idx = 0; row_idx < rows; row_idx++) {
 			auto source_vertex = segment.source_vertices[row_idx];
-			if (!visit[source_vertex].any()) {
+			if (prefetch && row_idx + prefetch < rows) {
+				auto ahead = segment.source_vertices[row_idx + prefetch];
+				if (IsActive(active, ahead)) {
+					__builtin_prefetch(visit + ahead);
+				}
+			}
+			if (!IsActive(active, source_vertex) || !visit[source_vertex].any()) {
 				continue;
 			}
 			for (auto offset = segment.row_offsets[row_idx]; offset < segment.row_offsets[row_idx + 1]; offset++) {
@@ -55,9 +103,16 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 		return;
 	}
 	if (local_csr.HasSparseRows()) {
-		for (idx_t row_idx = 0; row_idx < local_csr.source_vertices.size(); row_idx++) {
+		auto rows = local_csr.source_vertices.size();
+		for (idx_t row_idx = 0; row_idx < rows; row_idx++) {
 			auto source_vertex = local_csr.source_vertices[row_idx];
-			if (visit[source_vertex].any()) {
+			if (prefetch && row_idx + prefetch < rows) {
+				auto ahead = local_csr.source_vertices[row_idx + prefetch];
+				if (IsActive(active, ahead)) {
+					__builtin_prefetch(visit + ahead);
+				}
+			}
+			if (IsActive(active, source_vertex) && visit[source_vertex].any()) {
 				auto start_edges = local_csr.row_offsets[row_idx];
 				auto end_edges = local_csr.row_offsets[row_idx + 1];
 				for (auto offset = start_edges; offset < end_edges; offset++) {
@@ -72,7 +127,7 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 		return;
 	}
 	for (idx_t i = 0; i < local_csr.GetVertexSize(); i++) {
-		if (visit[i].any()) {
+		if (IsActive(active, i) && visit[i].any()) {
 			auto start_edges = local_csr.v[i].load(std::memory_order_relaxed);
 			auto end_edges = local_csr.v[i + 1].load(std::memory_order_relaxed);
 			for (auto offset = start_edges; offset < end_edges; offset++) {
@@ -85,12 +140,13 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 
 void RunExplore(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next,
                 const LocalCSR &local_csr, const uint64_t *suppressed) {
+	const uint64_t *active = state.use_frontier_bitmap ? state.active_bitmap : nullptr;
 	if (!state.benchmark_enabled) {
-		Explore(visit, next, local_csr, suppressed);
+		Explore(visit, next, local_csr, suppressed, active, state.visit_prefetch);
 		return;
 	}
 	auto start_time = std::chrono::high_resolution_clock::now();
-	Explore(visit, next, local_csr, suppressed);
+	Explore(visit, next, local_csr, suppressed, active, state.visit_prefetch);
 	auto end_time = std::chrono::high_resolution_clock::now();
 	auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
 	std::thread::id thread_id = std::this_thread::get_id();
@@ -146,6 +202,12 @@ void WriteLaneActivity(IterativeLengthState &state, const std::bitset<LANE_LIMIT
 	for (idx_t lane = 0; lane < LANE_LIMIT; ++lane) {
 		outfile << state.iter << "," << lane << "," << lane_activity[lane] << "\n";
 	}
+	// Lane -1: vertices with any lane active, the sources the explore phase has to read
+	int64_t any_active = 0;
+	for (idx_t v = 0; v < state.v_size; ++v) {
+		any_active += visit[v].any();
+	}
+	outfile << state.iter << ",-1," << any_active << "\n";
 }
 
 void ReachDetect(IterativeLengthState &state) {
@@ -291,7 +353,7 @@ void IterativeLengthState::RunPhase(idx_t worker_id) {
 		if (partition_idx >= static_cast<int64_t>(local_csrs.size())) {
 			break;
 		}
-		local_change |= CheckChange(seen, next, visit, *local_csrs[partition_idx]);
+		local_change |= CheckChange(seen, next, visit, active_bitmap, *local_csrs[partition_idx]);
 	}
 	worker_changed[worker_id] = local_change ? 1 : 0;
 }

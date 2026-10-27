@@ -73,6 +73,7 @@ BFSWorkingSet::BFSWorkingSet(ClientContext &context, idx_t v_size_p) : v_size(v_
 	visit1 = base;
 	visit2 = base + v_size;
 	seen = base + 2 * v_size;
+	active_bitmap = reinterpret_cast<uint64_t *>(base + 3 * v_size);
 }
 
 void BFSState::AttachWorkingSet(shared_ptr<BFSWorkingSet> set) {
@@ -81,6 +82,7 @@ void BFSState::AttachWorkingSet(shared_ptr<BFSWorkingSet> set) {
 	visit1 = working_set->visit1;
 	visit2 = working_set->visit2;
 	seen = working_set->seen;
+	active_bitmap = working_set->active_bitmap;
 }
 
 void BFSState::EnsureWorkingSet() {
@@ -94,6 +96,7 @@ void BFSState::ReleaseWorkingSet() {
 	visit1 = nullptr;
 	visit2 = nullptr;
 	seen = nullptr;
+	active_bitmap = nullptr;
 	working_set.reset();
 }
 
@@ -125,6 +128,9 @@ void BFSState::InitializeLanes() {
 				pf_results->data[0].SetValue(search_num, 0);
 			} else {
 				visit1[src[src_pos]][lane] = true;
+				if (active_bitmap) {
+					active_bitmap[src[src_pos] >> 6] |= uint64_t(1) << (src[src_pos] & 63);
+				}
 				// bfs_state->seen[bfs_state->src[src_pos]][lane] = true;
 				lane_to_num[lane] = search_num; // active lane
 				lane_active[lane] = true;

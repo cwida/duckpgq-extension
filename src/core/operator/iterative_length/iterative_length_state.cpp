@@ -12,6 +12,9 @@ IterativeLengthState::IterativeLengthState(const shared_ptr<PathFindingBatch> &b
     : BFSState(batch_, local_csrs_, num_threads_, "iterativelength", context_, vsize_) {
 	worker_changed.resize(num_threads_, 0);
 	worker_count = std::max<idx_t>(1, num_threads_);
+	use_frontier_bitmap = GetPathFindingFrontierBitmap(context_);
+	auto prefetch = GetPathFindingVisitPrefetch(context_);
+	visit_prefetch = prefetch > 0 ? NumericCast<idx_t>(prefetch) : 0;
 }
 
 void IterativeLengthState::Clear() {
@@ -24,6 +27,9 @@ void IterativeLengthState::Clear() {
 		visit1[i] = 0;
 		visit2[i] = 0;
 		seen[i] = 0; // reset
+	}
+	if (active_bitmap) {
+		std::fill(active_bitmap, active_bitmap + BFSWorkingSet::ActiveWordsFor(static_cast<idx_t>(v_size)), 0);
 	}
 	lane_completed.reset();
 }

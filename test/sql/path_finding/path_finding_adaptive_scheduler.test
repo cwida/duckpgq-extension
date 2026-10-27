@@ -65,11 +65,14 @@ SELECT (SELECT c FROM reference) = count(len) AND (SELECT s FROM reference) = su
 true
 
 query I
-SELECT s LIKE '%regime=memory_bound%' AND s LIKE '%groups=4%' AND s LIKE '%window_trace=window=4%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+SELECT s LIKE '%regime=memory_bound%' AND s LIKE '%groups=5%' AND s LIKE '%window_trace=window=5%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
 ----
 true
 
-# A fixed shape through the options
+# A fixed shape through the options (own threads per group, so the worker count is exactly the setting)
+statement ok
+SET experimental_path_finding_operator_batch_oversubscription = 1;
+
 statement ok
 SET experimental_path_finding_operator_max_concurrent_batches = 2;
 

@@ -1129,9 +1129,12 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 	                    static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
 	auto budget = GetPathFindingGroupedBatchesBudget(context);
 	bool start_wide = budget > 0 && working_sets <= static_cast<double>(budget);
+	// The ramp starts at eight groups: below that the window is never the bottleneck (SF300's knee is at 8, SF100's
+	// at 16), and a query of at most eight batches would otherwise spend half its batches ramping (SF100, 16384
+	// pairs: 2.6 s from 4 groups against 1.96 s with all 8 at once)
 	idx_t initial_window = !adaptive  ? NumericCast<idx_t>(configured_groups)
 	                       : start_wide ? max_groups
-	                                    : std::max<idx_t>(1, std::min<idx_t>(4, threads));
+	                                    : std::max<idx_t>(1, std::min<idx_t>(8, threads));
 	auto configured_workers = GetPathFindingThreadsPerBatch(context);
 	idx_t fixed_workers = configured_workers > 0 ? NumericCast<idx_t>(configured_workers) : 0;
 	// Two regimes (W31, 27 Oct). Cache resident: every group gets its own threads (threads / window, so one worker

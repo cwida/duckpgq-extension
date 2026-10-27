@@ -28,6 +28,8 @@ int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context);
 int32_t GetPathFindingFewSourcesLimit(ClientContext &context);
 int64_t GetPathFindingGroupedBatchesBudget(ClientContext &context);
 int32_t GetPathFindingBatchOversubscription(ClientContext &context);
+bool GetPathFindingFrontierBitmap(ClientContext &context);
+int32_t GetPathFindingVisitPrefetch(ClientContext &context);
 
 struct CorePGQOptions {
 	static void Register(ExtensionLoader &loader) {
@@ -55,6 +57,8 @@ struct CorePGQOptions {
 		RegisterPathFindingFewSourcesLimit(loader);
 		RegisterPathFindingGroupedBatchesBudget(loader);
 		RegisterPathFindingBatchOversubscription(loader);
+		RegisterPathFindingFrontierBitmap(loader);
+		RegisterPathFindingVisitPrefetch(loader);
 	}
 
 private:
@@ -82,6 +86,8 @@ private:
 	static void RegisterPathFindingFewSourcesLimit(ExtensionLoader &loader);
 	static void RegisterPathFindingGroupedBatchesBudget(ExtensionLoader &loader);
 	static void RegisterPathFindingBatchOversubscription(ExtensionLoader &loader);
+	static void RegisterPathFindingFrontierBitmap(ExtensionLoader &loader);
+	static void RegisterPathFindingVisitPrefetch(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

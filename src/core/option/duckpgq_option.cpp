@@ -147,6 +147,18 @@ int32_t GetPathFindingBatchOversubscription(ClientContext &context) {
 	return value.GetValue<int32_t>();
 }
 
+bool GetPathFindingFrontierBitmap(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_frontier_bitmap", value);
+	return value.GetValue<bool>();
+}
+
+int32_t GetPathFindingVisitPrefetch(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_visit_prefetch", value);
+	return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -432,6 +444,24 @@ void CorePGQOptions::RegisterPathFindingBatchOversubscription(ExtensionLoader &l
 	                          "filled with another group's work; 0 (default) chooses 1 while the working sets fit "
 	                          "the grouped batches budget and the thread count above it",
 	                          LogicalType::INTEGER, Value(0));
+}
+
+void CorePGQOptions::RegisterPathFindingFrontierBitmap(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_frontier_bitmap",
+	                          "MS-BFS keeps a one-bit-per-vertex summary of the frontier so the explore phase skips "
+	                          "the 64-byte visit line of sources with no active lane; false reads every line",
+	                          LogicalType::BOOLEAN, Value(true));
+}
+
+void CorePGQOptions::RegisterPathFindingVisitPrefetch(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_visit_prefetch",
+	                          "MS-BFS explore prefetches the visit line of the active source this many rows ahead in "
+	                          "the partition's source list; 0 disables",
+	                          LogicalType::INTEGER, Value(8));
 }
 
 } // namespace duckdb

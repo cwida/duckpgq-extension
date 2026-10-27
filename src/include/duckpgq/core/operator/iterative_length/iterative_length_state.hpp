@@ -37,6 +37,10 @@ public:
 	//! Shared with the scheduler: edges swept by the explore phases of this batch (the throughput clock of the
 	//! adaptive batch scheduler); null when nobody listens
 	atomic<idx_t> *edges_scanned = nullptr;
+	//! experimental_path_finding_operator_frontier_bitmap: skip inactive sources through the summary bitmap
+	bool use_frontier_bitmap = true;
+	//! experimental_path_finding_operator_visit_prefetch: visit lines prefetched this many sources ahead (0 off)
+	idx_t visit_prefetch = 8;
 
 private:
 	enum class Phase : uint8_t { EXPLORE, CHECK };
