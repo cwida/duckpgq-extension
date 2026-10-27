@@ -794,3 +794,31 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   step 2: decouple a batch's parallelism from the partition count with (partition, destination sub-range) explore
   and check tasks when a level has fewer partitions than workers, then default to the coarsest geometry (65535
   vertices per partition). Default unchanged until then.
+- 27 Oct (late afternoon): W32 step 2. Destination sub-range tasks: when a query's batches x partitions leave
+  threads idle (the scheduler's hint threads / (partitions x batches)), each partition's destination range is split
+  into sub-ranges and explore / check tasks are (partition, sub-range) pairs with disjoint writes; the build's radix
+  sort now orders every row's destinations (two LSD passes on the 16-bit local destination before the source
+  passes) so a sub-range task binary-searches its slice of a row instead of scanning the row. Two bugs on the way: the
+  group scheduled its own worker count while the batch had sized its arrays for the partition count (out-of-bounds
+  writes, one failed test), and the first rule split every batch of a 32-batch query. SF100, 1 repeat, 8 partitions
+  vs the 64 of the thread rule: index 2048 pairs 531 -> 816 ms (1.54x slower; 1.09 s without sub-ranges), 16384
+  pairs 1.42 -> 0.99 s, 65536 5.12 -> 3.34 s, sources x all 2.27 -> 1.05 s; build 682 -> 927 ms, 2.25 -> 1.34 s,
+  8.11 -> 4.28 s, 3.91 -> 2.14 s. The single-batch penalty that remains is inherent to the geometry (every task
+  reads every row header and visit line of its partition); it is the price of 1.5-2.2x on the set-oriented shapes
+  and the per-source kernel, which is the paper's thesis. Default now 65535 vertices per partition
+  (`partition_vertices`; <= 0 is the thread rule, microbenchmark `threads_rule_partitions`). Verification at SF10 /
+  SF100 / SF300 with fresh indexes follows.
+- 27 Oct (end of afternoon): W32 closed. Default geometry: 65535 vertices per partition with a floor of eight
+  partitions (SF10 8, SF100 8, SF300 19 instead of 64); the per-source kernel's dense sweep splits a partition's
+  rows between workers when partitions < workers (discovery is a compare-and-swap, so row ranges are safe), the
+  lane kernel splits destination sub-ranges with rows sorted by destination. Verification vs the thread rule
+  (`microbench_floor_sf10/100.out`, `microbench_coarse_sf300.out`, 3 repeats), "faster" / "slower" of the default:
+  index 65536 pairs SF10 1.48x faster (446 vs 658 ms), SF100 1.51x (3.43 vs 5.18 s), SF300 1.21x (10.0 vs 12.2 s);
+  16384 pairs 1.23x / 1.53x / 1.16x faster; 1024 sources x all 2.07x / 2.09x / 1.28x faster (112 ms, 1.11 s, 3.97
+  s); 1 pair and 1 source level (3-10 ms, 18 vs 15 ms at SF100); 128 and 2048 pairs (one batch) 1.3-1.6x slower
+  (SF100 2048: 831 vs 507 ms). Build route: 65536 pairs 1.64x / 1.92x / 1.56x faster, sources x all 1.78x / 1.84x /
+  1.45x faster, 2048 pairs 1.25-1.4x slower, 1 pair and 1 source 1.1-1.35x slower because the per-query CSR build
+  sorts one task per partition (W32 step 3, open: a parallel per-partition sort would remove that). The single-batch
+  penalty is inherent to coarse partitions (every task reads every row header and visit line of its partition) and
+  is the price of the set-oriented gains; the `partitions` group documents the trade-off. Headline, index route:
+  SF10 65536 pairs 0.45 s, 1024 sources x all 0.11 s; SF100 3.43 s and 1.11 s; SF300 10.0 s and 3.97 s.

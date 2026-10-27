@@ -28,19 +28,20 @@ inline idx_t CSRSourceBits(idx_t vertex_count) {
 	return bits;
 }
 
-//! LSD radix sort of entries by their `src` member. `scratch` and `histogram` are reused across calls.
+//! LSD radix sort of entries by (`src`, `local_dst`): the rows of a partition come out grouped by source with the
+//! destinations of a row in ascending order, so a destination sub-range of a row is found by binary search (W32:
+//! sub-range tasks on coarse partitions read only their own edges). `scratch` and `histogram` are reused across
+//! calls.
 template <class ENTRY>
 void CSRRadixSortBySource(vector<ENTRY> &entries, vector<ENTRY> &scratch, vector<idx_t> &histogram, idx_t src_bits) {
 	constexpr idx_t RADIX_BITS = 11;
 	constexpr idx_t RADIX_BUCKETS = idx_t(1) << RADIX_BITS;
-	auto passes = (src_bits + RADIX_BITS - 1) / RADIX_BITS;
 	scratch.resize(entries.size());
 	histogram.resize(RADIX_BUCKETS);
-	for (idx_t pass = 0; pass < passes; pass++) {
-		auto shift = pass * RADIX_BITS;
+	auto pass = [&](auto key_of) {
 		std::fill(histogram.begin(), histogram.end(), 0);
 		for (auto &entry : entries) {
-			histogram[(entry.src >> shift) & (RADIX_BUCKETS - 1)]++;
+			histogram[key_of(entry)]++;
 		}
 		idx_t offset = 0;
 		for (auto &count : histogram) {
@@ -49,9 +50,18 @@ void CSRRadixSortBySource(vector<ENTRY> &entries, vector<ENTRY> &scratch, vector
 			offset = next;
 		}
 		for (auto &entry : entries) {
-			scratch[histogram[(entry.src >> shift) & (RADIX_BUCKETS - 1)]++] = entry;
+			scratch[histogram[key_of(entry)]++] = entry;
 		}
 		std::swap(entries, scratch);
+	};
+	// Least significant first: the destination (16 bits, two passes), then the source
+	for (idx_t shift = 0; shift < 16; shift += RADIX_BITS) {
+		pass([shift](const ENTRY &entry) { return (static_cast<idx_t>(entry.local_dst) >> shift) & (RADIX_BUCKETS - 1); });
+	}
+	auto src_passes = (src_bits + RADIX_BITS - 1) / RADIX_BITS;
+	for (idx_t src_pass = 0; src_pass < src_passes; src_pass++) {
+		auto shift = src_pass * RADIX_BITS;
+		pass([shift](const ENTRY &entry) { return (static_cast<idx_t>(entry.src) >> shift) & (RADIX_BUCKETS - 1); });
 	}
 }
 

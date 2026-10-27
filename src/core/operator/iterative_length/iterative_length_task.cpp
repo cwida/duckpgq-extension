@@ -3,6 +3,7 @@
 #include <duckpgq/core/operator/physical_path_finding_operator.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -71,6 +72,20 @@ inline bool IsActive(const uint64_t *active, idx_t vertex) {
 	return !active || ((active[vertex >> 6] >> (vertex & 63)) & 1);
 }
 
+//! Narrows [start_edges, end_edges) of a row whose destinations are sorted to those in [dst_begin, dst_end)
+inline void RowSubRange(const LocalCSR &local_csr, uint32_t &start_edges, uint32_t &end_edges, idx_t dst_begin,
+                        idx_t dst_end) {
+	auto lo = static_cast<uint16_t>(dst_begin - local_csr.start_vertex);
+	auto hi_global = dst_end - local_csr.start_vertex;
+	auto base = local_csr.e.data();
+	auto first = base + start_edges;
+	auto last = base + end_edges;
+	auto begin_it = std::lower_bound(first, last, lo);
+	auto end_it = hi_global >= 65536 ? last : std::lower_bound(begin_it, last, static_cast<uint16_t>(hi_global));
+	start_edges = NumericCast<uint32_t>(begin_it - base);
+	end_edges = NumericCast<uint32_t>(end_it - base);
+}
+
 inline bool IsSuppressed(const uint64_t *suppressed, idx_t position) {
 	return suppressed && ((suppressed[position >> 6] >> (position & 63)) & 1);
 }
@@ -122,14 +137,15 @@ void Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next
 			if (IsActive(active, source_vertex) && visit[source_vertex].any()) {
 				auto start_edges = local_csr.row_offsets[row_idx];
 				auto end_edges = local_csr.row_offsets[row_idx + 1];
+				if (FILTER) {
+					// Rows are sorted by destination: only this task's slice of the row is read
+					RowSubRange(local_csr, start_edges, end_edges, dst_begin, dst_end);
+				}
 				for (auto offset = start_edges; offset < end_edges; offset++) {
 					if (IsSuppressed(suppressed, offset)) {
 						continue;
 					}
 					auto n = local_csr.e[offset] + local_csr.start_vertex;
-					if (FILTER && (n < dst_begin || n >= dst_end)) {
-						continue;
-					}
 					next[n] |= visit[source_vertex];
 				}
 			}
@@ -164,15 +180,14 @@ void ExploreSparse(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT>
 			continue;
 		}
 		const auto &lanes = visit[source_vertex];
+		if (FILTER) {
+			RowSubRange(local_csr, start_edges, end_edges, dst_begin, dst_end);
+		}
 		for (auto offset = start_edges; offset < end_edges; offset++) {
 			if (IsSuppressed(suppressed, offset)) {
 				continue;
 			}
-			auto n = local_csr.e[offset] + local_csr.start_vertex;
-			if (FILTER && (n < dst_begin || n >= dst_end)) {
-				continue;
-			}
-			next[n] |= lanes;
+			next[local_csr.e[offset] + local_csr.start_vertex] |= lanes;
 		}
 	}
 }

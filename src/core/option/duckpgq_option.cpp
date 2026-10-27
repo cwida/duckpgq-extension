@@ -514,12 +514,14 @@ void CorePGQOptions::RegisterPathFindingPartitionVertices(ExtensionLoader &loade
 	auto &db = loader.GetDatabaseInstance();
 	auto &config = DBConfig::GetConfig(db);
 	config.AddExtensionOption("experimental_path_finding_operator_partition_vertices",
-	                          "Target vertices per CSR partition (destination range) for the per-query build and for "
-	                          "CREATE INDEX ... USING CSR; 0 (default) derives the partition count from the thread "
-	                          "count (threads x (1 + light_partition_multiplier)). Fewer partitions read each "
-	                          "source's visit line fewer times per level, more keep a partition's next slice in L2 "
-	                          "(16384 vertices = 1 MB at 512 lanes); W32 microbenchmark",
-	                          LogicalType::INTEGER, Value(0));
+	                          "Vertices per CSR partition (destination range) for the per-query build and for CREATE "
+	                          "INDEX ... USING CSR; 65535 (default, the widest a uint16 destination allows) gives the "
+	                          "fewest partitions: every frontier vertex costs one row lookup per partition and every "
+	                          "source's visit line is read once per partition, so coarse partitions are 1.5x faster "
+	                          "on many-batch pair lists and 2x on sources x all (W32, 27 Oct); a single batch keeps "
+	                          "its parallelism through destination sub-range tasks and pays 1.3-1.5x. <= 0 derives "
+	                          "the count from the thread count (threads x (1 + light_partition_multiplier))",
+	                          LogicalType::INTEGER, Value(65535));
 }
 
 void CorePGQOptions::RegisterPathFindingSubRangeTasks(ExtensionLoader &loader) {

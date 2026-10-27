@@ -5247,7 +5247,7 @@ for _pv in (4096, 8192, 16384, 32768, 65535):
 MICROBENCH_CONFIGS["no_sub_range_tasks"] = ({OPT + "sub_range_tasks": "false"}, None, False)
 MICROBENCH_CONFIGS["partitions_65535_nosub"] = ({OPT + "partition_vertices": 65535, OPT + "sub_range_tasks": "false"}, None, False, "pv65535")
 # The thread rule (2 x threads partitions) as an explicit geometry, for when the default becomes the coarse one
-MICROBENCH_CONFIGS["threads_rule_partitions"] = ({OPT + "partition_vertices": -1}, None, False, "threads")
+MICROBENCH_CONFIGS["threads_rule_partitions"] = ({OPT + "partition_vertices": 0}, None, False, "threads")
 # Memory traffic of the explore phase (W31 step 3): the frontier summary bitmap and the visit-line prefetch
 MICROBENCH_CONFIGS["no_frontier_bitmap"] = ({OPT + "frontier_bitmap": "false"}, None, False)
 MICROBENCH_CONFIGS["bitmap_filter_on"] = ({OPT + "frontier_bitmap_filter": 1}, None, False)

@@ -270,14 +270,21 @@ public:
 			ForEachFrontierSlice([&](uint32_t vertex) { ExpandVertex(vertex, worker_id); });
 			return;
 		}
+		// Dense sweep tasks are (partition, row range): discovery is a compare-and-swap, so a partition's rows can be
+		// split between workers when there are fewer partitions than workers (coarse geometry, W32)
+		auto task_count = static_cast<int64_t>(local_csrs.size() * dense_sub_ranges);
 		while (true) {
-			auto partition_idx = local_csr_counter.fetch_add(1);
-			if (partition_idx >= static_cast<int64_t>(local_csrs.size())) {
+			auto task_idx = local_csr_counter.fetch_add(1);
+			if (task_idx >= task_count) {
 				break;
 			}
-			ExplorePartition(*local_csrs[partition_idx], SuppressedOf(partition_idx), partition_idx, false, worker_id);
+			auto partition_idx = task_idx / static_cast<int64_t>(dense_sub_ranges);
+			auto sub_idx = static_cast<idx_t>(task_idx % static_cast<int64_t>(dense_sub_ranges));
+			ExplorePartition(*local_csrs[partition_idx], SuppressedOf(partition_idx), partition_idx, false, worker_id,
+			                 sub_idx, dense_sub_ranges);
 			if (partition_idx < static_cast<int64_t>(delta_csrs.size()) && delta_csrs[partition_idx]) {
-				ExplorePartition(*delta_csrs[partition_idx], nullptr, partition_idx, true, worker_id);
+				ExplorePartition(*delta_csrs[partition_idx], nullptr, partition_idx, true, worker_id, sub_idx,
+				                 dense_sub_ranges);
 			}
 		}
 	}
@@ -473,6 +480,8 @@ private:
 	//! array (the frontier is at most v_size entries and this runs once per level).
 	void PrepareLevel() {
 		sparse_expansion = UseSparseExpansion();
+		auto partitions = std::max<idx_t>(1, local_csrs.size());
+		dense_sub_ranges = worker_count > partitions ? std::min<idx_t>(16, (worker_count + partitions - 1) / partitions) : 1;
 		frontier_cursor = 0;
 		local_csr_counter = 0;
 		if (!sparse_expansion) {
@@ -500,7 +509,7 @@ private:
 		if (configured > 0) {
 			workers = std::min<idx_t>(workers, static_cast<idx_t>(configured));
 		}
-		workers = std::min<idx_t>(workers, std::max<idx_t>(1, local_csrs.size()));
+		// Not capped by the partition count: the dense sweep splits a partition's rows between workers
 		idx_t edge_count = 0;
 		for (auto &local_csr : local_csrs) {
 			edge_count += local_csr->GetEdgeSize();
@@ -574,11 +583,13 @@ private:
 		return frontier_stamp[vertex] == static_cast<uint32_t>(iter);
 	}
 
-	//! Dense expansion: every row of one partition whose source is in the frontier
+	//! Dense expansion: the rows of one partition whose source is in the frontier; rows [rows x sub / subs, rows x
+	//! (sub + 1) / subs) when the partition is split between tasks
 	void ExplorePartition(const LocalCSR &local_csr, const uint64_t *suppressed_bits, idx_t partition_idx,
-	                      bool is_delta, idx_t worker_id) {
+	                      bool is_delta, idx_t worker_id, idx_t sub = 0, idx_t subs = 1) {
 		for (const auto &segment : local_csr.segments) {
-			for (idx_t row_idx = 0; row_idx < segment.source_vertices.size(); row_idx++) {
+			auto rows = segment.source_vertices.size();
+			for (idx_t row_idx = rows * sub / subs; row_idx < rows * (sub + 1) / subs; row_idx++) {
 				auto source_vertex = segment.source_vertices[row_idx];
 				if (!InFrontier(source_vertex)) {
 					continue;
@@ -593,7 +604,8 @@ private:
 			return;
 		}
 		if (local_csr.HasSparseRows()) {
-			for (idx_t row_idx = 0; row_idx < local_csr.source_vertices.size(); row_idx++) {
+			auto rows = local_csr.source_vertices.size();
+			for (idx_t row_idx = rows * sub / subs; row_idx < rows * (sub + 1) / subs; row_idx++) {
 				auto source_vertex = local_csr.source_vertices[row_idx];
 				if (!InFrontier(source_vertex)) {
 					continue;
@@ -603,7 +615,8 @@ private:
 			}
 			return;
 		}
-		for (idx_t vertex = 0; vertex < local_csr.GetVertexSize(); vertex++) {
+		auto vertices = local_csr.GetVertexSize();
+		for (idx_t vertex = vertices * sub / subs; vertex < vertices * (sub + 1) / subs; vertex++) {
 			if (!InFrontier(vertex)) {
 				continue;
 			}
@@ -630,6 +643,8 @@ private:
 
 	//! experimental_path_finding_operator_sparse_frontier_divisor (0: always sweep)
 	idx_t sparse_frontier_divisor = 64;
+	//! Row ranges per partition in the dense sweep, so that partitions x ranges >= workers
+	idx_t dense_sub_ranges = 1;
 	//! experimental_path_finding_operator_target_early_termination
 	bool target_early_termination = true;
 	static constexpr idx_t FRONTIER_SLICE = 256;
