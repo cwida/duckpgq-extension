@@ -31,7 +31,9 @@ observe the earlier state, after which every row looks as if it had always been 
 retroactively. Third, the vertex side. The index is attached to the edge table and learns about its rows; it never
 learns the row ids of the vertex table, and vertex row ids are not stable without an index on that table either. The
 index therefore identifies vertices by their key, which is what the \sqlpgq definition of the graph does anyway, and
-edges by their edge-table row id, which the engine promises not to reuse while an index exists.
+edges by their edge-table row id. Row ids are safe to store because \duckdb changes them only when it compacts a table
+at a checkpoint, and it compacts only tables whose indexes are all ARTs; with a CSR index present every row keeps its
+id, and the id of a deleted row is not given to a new row, until the index is dropped.
 
 \subsection{Epochs, change groups and snapshots}
 \label{sec:index-snapshots}
