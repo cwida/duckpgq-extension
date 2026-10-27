@@ -50,7 +50,19 @@
 \email{dljtw@cwi.nl}
 
 \begin{abstract}
-\todo{Abstract. Thesis: a loadable extension can give a relational engine graph-native path finding, including an MVCC-consistent CSR index, without forking the engine. One sentence each on: the operator (multi-source BFS over a radix-partitioned CSR built per query), the index (epochs plus a commit-group change log, snapshot per reader, fold), the planner integration through \sqlpgq, the evaluation headline numbers against Kuzu and Neo4j, and the update workload result.}
+SQL:2023 brought graph pattern matching into SQL, and with it the one query type relational engines execute badly:
+the shortest path. \duckpgq answered it with multi-source BFS inside scalar UDFs, which inherit the engine's
+parallelism for free and also its limit: a UDF gets work per tuple, so a single path pattern runs on one core, and the
+graph structure it needs is rebuilt for every query. We show that a loadable extension can do better without forking
+the engine. A path-finding operator with its own inputs and event schedule takes its parallelism from a partitioned
+CSR rather than from the tuples, runs a multi-source traversal for many pairs and a frontier traversal for few, and is
+reached from \texttt{MATCH} through an optimizer rule. A CSR index keeps that structure across queries, restarts and
+checkpoints behind the engine's general index interface, which delivers changed rows but no visibility; immutable
+epochs, a change log classified once per commit by the engine's own row-version check, and per-reader snapshots make
+every traversal see exactly the edges its transaction may see. On LDBC SNB up to scale factor 300, against Kuzu,
+Neo4j, Memgraph and FalkorDB, the extension answers a single pair as fast as the native systems, answers thousands of
+pairs in one traversal where they search once per pair, and keeps query latency flat under concurrent edge updates
+while applying a commit in milliseconds. \todo{Final numbers: single pair, many pairs, update cost.}
 \end{abstract}
 
 \maketitle
