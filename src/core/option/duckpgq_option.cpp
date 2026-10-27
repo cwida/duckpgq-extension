@@ -171,6 +171,12 @@ int32_t GetPathFindingSparseLevelDivisor(ClientContext &context) {
 	return value.GetValue<int32_t>();
 }
 
+int32_t GetPathFindingPartitionVertices(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_partition_vertices", value);
+	return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -496,6 +502,18 @@ void CorePGQOptions::RegisterPathFindingSparseLevelDivisor(ExtensionLoader &load
 	                          "lookup in each partition instead of sweeping the partition's rows (the first two and "
 	                          "the tail levels of a wave); 0 sweeps every level. 16 measured best (27 Oct)",
 	                          LogicalType::INTEGER, Value(16));
+}
+
+void CorePGQOptions::RegisterPathFindingPartitionVertices(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_partition_vertices",
+	                          "Target vertices per CSR partition (destination range) for the per-query build and for "
+	                          "CREATE INDEX ... USING CSR; 0 (default) derives the partition count from the thread "
+	                          "count (threads x (1 + light_partition_multiplier)). Fewer partitions read each "
+	                          "source's visit line fewer times per level, more keep a partition's next slice in L2 "
+	                          "(16384 vertices = 1 MB at 512 lanes); W32 microbenchmark",
+	                          LogicalType::INTEGER, Value(0));
 }
 
 } // namespace duckdb

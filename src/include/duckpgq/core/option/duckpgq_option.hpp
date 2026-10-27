@@ -31,6 +31,7 @@ int32_t GetPathFindingBatchOversubscription(ClientContext &context);
 bool GetPathFindingFrontierBitmap(ClientContext &context);
 int32_t GetPathFindingFrontierBitmapFilter(ClientContext &context);
 int32_t GetPathFindingSparseLevelDivisor(ClientContext &context);
+int32_t GetPathFindingPartitionVertices(ClientContext &context);
 int32_t GetPathFindingVisitPrefetch(ClientContext &context);
 
 struct CorePGQOptions {
@@ -62,6 +63,7 @@ struct CorePGQOptions {
 		RegisterPathFindingFrontierBitmap(loader);
 		RegisterPathFindingFrontierBitmapFilter(loader);
 		RegisterPathFindingSparseLevelDivisor(loader);
+		RegisterPathFindingPartitionVertices(loader);
 		RegisterPathFindingVisitPrefetch(loader);
 	}
 
@@ -93,6 +95,7 @@ private:
 	static void RegisterPathFindingFrontierBitmap(ExtensionLoader &loader);
 	static void RegisterPathFindingFrontierBitmapFilter(ExtensionLoader &loader);
 	static void RegisterPathFindingSparseLevelDivisor(ExtensionLoader &loader);
+	static void RegisterPathFindingPartitionVertices(ExtensionLoader &loader);
 	static void RegisterPathFindingVisitPrefetch(ExtensionLoader &loader);
 };
 
