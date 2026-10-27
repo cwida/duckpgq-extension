@@ -53,12 +53,30 @@ void PhasedKernelEvent::Schedule() {
 }
 
 void PhasedKernelEvent::FinishEvent() {
-	if (running && kernel->AdvancePhase()) {
-		// The inserted event takes over this event's dependents and runs after it
-		InsertEvent(make_shared_ptr<PhasedKernelEvent>(kernel, *pipeline, op, false));
-		return;
+	bool continues = running && kernel->AdvancePhase();
+	if (!continues) {
+		kernel->Finished();
+	} else {
+		// The inserted event takes over this event's dependents (it moves the parents list) and runs after it
+		auto next = make_shared_ptr<PhasedKernelEvent>(kernel, *pipeline, op, false);
+		next->SetCompletion(completion);
+		InsertEvent(std::move(next));
 	}
-	kernel->Finished();
+	// Kernels spawned by this phase run alongside. An event added at runtime is only ever scheduled through a
+	// dependency that completes, so each spawned event depends on this one (registered after InsertEvent moved the
+	// chain's parents away, so this event itself completes it). The completion event waits for it too; this event
+	// is not finished yet, so the completion event cannot be scheduled while its dependency count grows.
+	vector<shared_ptr<PhasedKernel>> spawned;
+	kernel->CollectSpawned(spawned);
+	for (auto &spawned_kernel : spawned) {
+		auto spawned_event = make_shared_ptr<PhasedKernelEvent>(std::move(spawned_kernel), *pipeline, op);
+		spawned_event->SetCompletion(completion);
+		spawned_event->AddDependency(*this);
+		if (completion) {
+			completion->AddDependency(*spawned_event);
+		}
+		executor.AddEvent(std::move(spawned_event));
+	}
 }
 
 } // namespace duckdb

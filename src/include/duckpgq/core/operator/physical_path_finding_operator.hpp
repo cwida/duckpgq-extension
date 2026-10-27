@@ -15,6 +15,7 @@
 #include "duckdb/common/radix_partitioning.hpp"
 #include "duckdb/planner/operator/logical_extension_operator.hpp"
 #include "duckpgq/common.hpp"
+#include "duckpgq/core/operator/iterative_length/grouped_iterative_length_event.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
 #include "duckpgq/core/index/csr_index.hpp"
 #include "local_csr/local_csr_state.hpp"
@@ -169,6 +170,8 @@ public:
 	idx_t result_scan_idx;
 	idx_t next_batch_index;
 	vector<shared_ptr<BFSState>> bfs_states;
+	//! The adaptive batch scheduler of this query (grouped MS-BFS scheduling), for its trace
+	shared_ptr<GroupedIterativeLengthBatches> grouped_batches;
 	vector<shared_ptr<SourceGroupedIterativeLengthState>> source_group_states;
 	vector<std::pair<idx_t, idx_t>> source_group_output_refs;
 	vector<int64_t> source_group_sources;

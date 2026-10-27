@@ -1,4 +1,6 @@
 #include "duckpgq/core/operator/physical_path_finding_operator.hpp"
+
+#include <functional>
 #include "duckpgq/core/utils/csr_build.hpp"
 #include "duckpgq/core/utils/parallel_for.hpp"
 #include "duckpgq/core/operator/phased_kernel_event.hpp"
@@ -996,6 +998,15 @@ public:
 
 	void Schedule() override {
 	}
+
+	void FinishEvent() override {
+		if (on_complete) {
+			on_complete();
+		}
+	}
+
+	//! Runs once every batch is done (the adaptive scheduler records its trace here)
+	std::function<void()> on_complete;
 };
 
 //! Base for events whose FinishEvent schedules the BFS batch events. Event::InsertEvent moves the parents of this
@@ -1011,10 +1022,16 @@ public:
 
 protected:
 	//! Must be called from FinishEvent: the batch events run after this event, the completion event after them.
-	void ScheduleBatchEvents(vector<shared_ptr<Event>> batch_events) {
+	void ScheduleBatchEvents(vector<shared_ptr<Event>> batch_events, std::function<void()> on_complete = nullptr) {
 		auto complete_event = make_shared_ptr<PathFindingBatchesCompleteEvent>(*pipeline);
+		complete_event->on_complete = std::move(on_complete);
 		for (auto &batch_event : batch_events) {
 			complete_event->AddDependency(*batch_event);
+			// Kernels that spawn further kernels register them with the completion event
+			auto phased = dynamic_cast<PhasedKernelEvent *>(batch_event.get());
+			if (phased) {
+				phased->SetCompletion(complete_event);
+			}
 		}
 		InsertEvent(complete_event);
 		for (auto &batch_event : batch_events) {
@@ -1024,57 +1041,15 @@ protected:
 	}
 };
 
-//! Workers per MS-BFS batch. Unset, the rule is threads / batches (floored at one): a single batch takes every
-//! thread, 32 batches on 32 threads run one per thread with no barrier between levels. Measured at SF10 (W31,
-//! 26 Oct): 2048 pairs 32 workers 0.12 s vs 1 worker 0.57 s; 16384 pairs 4 workers 0.40 s vs 32 workers 0.78 s;
-//! 65536 pairs 1 worker 1.23 s (build) / 0.80 s (index) vs 32 workers 3.03 s / 2.63 s.
-idx_t GetGroupedWorkersPerBatch(PathFindingGlobalSinkState &gstate, ClientContext &context, idx_t batch_count) {
-	auto total_threads = std::max<idx_t>(1, gstate.num_threads);
-	auto configured_workers = GetPathFindingThreadsPerBatch(context);
-	auto workers_per_batch = configured_workers <= 0
-	                             ? std::max<idx_t>(1, total_threads / std::max<idx_t>(1, batch_count))
-	                             : std::min<idx_t>(static_cast<idx_t>(configured_workers), total_threads);
-	auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
-	                           ? gstate.local_csr_state->reverse_partition_csrs
-	                           : gstate.local_csr_state->partition_csrs;
-	auto partition_count = std::max<idx_t>(1, partition_csrs.size());
-	return std::max<idx_t>(1, std::min(workers_per_batch, partition_count));
-}
-
-//! Concurrent worker groups: the threads not used inside a batch run further batches, bounded by the batch count
-//! and by a working-set budget (each group holds 3 bitsets per vertex, 192 B at 512 lanes: 13 MB at SF10, 230 MB
-//! at SF300) of a quarter of the buffer manager's memory
-idx_t GetGroupedBatchCount(PathFindingGlobalSinkState &gstate, ClientContext &context, idx_t workers_per_batch,
-                           idx_t batch_count) {
-	auto total_threads = std::max<idx_t>(1, gstate.num_threads);
-	auto max_groups_from_threads = std::max<idx_t>(1, total_threads / workers_per_batch);
-	auto configured_groups = GetPathFindingMaxConcurrentBatches(context);
-	auto group_count = configured_groups <= 0
-	                       ? max_groups_from_threads
-	                       : std::min<idx_t>(static_cast<idx_t>(configured_groups), max_groups_from_threads);
-	auto working_set_bytes = std::max<idx_t>(1, BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
-	auto budget = BufferManager::GetBufferManager(context).GetMaxMemory() / 4;
-	auto max_groups_from_memory = std::max<idx_t>(1, budget / working_set_bytes);
-	group_count = std::min(group_count, max_groups_from_memory);
-	return std::max<idx_t>(1, std::min(group_count, batch_count));
-}
-
-//! Grouped scheduling pays off while the concurrent groups' working sets stay cache resident: at SF10 (14 MB per
-//! group) 32 one-worker groups answer 65536 pairs in 0.80 s against 1.07 s for one event per batch; at SF100
-//! (86 MB per group) the same 32 groups stream their visit arrays from memory, 13.4 s against 7.4 s for per-batch
-//! events whose level tasks share one working set across the threads. The budget option draws that line.
+//! The grouped scheduler runs every MS-BFS query unless switched off (per-batch events, the microbenchmark
+//! baseline); see CreatePathFindingBatchEvents for its two regimes
 bool ShouldUseGroupedIterativeLengthBatches(PathFindingGlobalSinkState &gstate, ClientContext &context,
                                             idx_t batch_count) {
 	if (batch_count == 0 || gstate.path_finding_mode != PathFindingOperatorMode::ITERATIVE_LENGTH ||
 	    !GetPathFindingGroupedBatches(context)) {
 		return false;
 	}
-	auto groups = std::min<idx_t>(batch_count, std::max<idx_t>(1, gstate.num_threads));
-	auto working_sets = static_cast<double>(groups) * static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
-	auto budget = GetPathFindingGroupedBatchesBudget(context);
-	bool grouped = budget <= 0 || working_sets <= static_cast<double>(budget);
-	RecordStrategy(context, "grouped_working_sets_mb", std::to_string(static_cast<idx_t>(working_sets / (1024 * 1024))));
-	return grouped;
+	return true;
 }
 
 bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, ClientContext &context) {
@@ -1139,23 +1114,42 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 		return batch_events;
 	}
 
-	auto workers_per_batch = GetGroupedWorkersPerBatch(gstate, context, batches.size());
-	auto group_count = GetGroupedBatchCount(gstate, context, workers_per_batch, batches.size());
-	if (group_count * workers_per_batch < std::max<idx_t>(1, gstate.num_threads) && group_count < batches.size()) {
-		// The memory budget capped the groups: give the spare threads back to each batch
-		workers_per_batch = std::max<idx_t>(1, std::max<idx_t>(1, gstate.num_threads) / group_count);
-	}
-	RecordStrategy(context, "scheduling", "grouped");
-	RecordStrategy(context, "groups", std::to_string(group_count));
-	RecordStrategy(context, "workers_per_batch", std::to_string(workers_per_batch));
+	// Adaptive grouped scheduling (W31): the controller starts a few worker groups and grows the window while the
+	// throughput improves; max_concurrent_batches > 0 fixes the window, threads_per_batch > 0 fixes the workers
+	auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
+	                           ? gstate.local_csr_state->reverse_partition_csrs
+	                           : gstate.local_csr_state->partition_csrs;
+	auto threads = std::max<idx_t>(1, gstate.num_threads);
+	auto configured_groups = GetPathFindingMaxConcurrentBatches(context);
+	bool adaptive = configured_groups <= 0;
+	// Working sets that fit the budget start wide (one group per batch, up to the threads: the cache-resident
+	// regime of SF10, where every doubling pays); larger ones start at four groups and ramp on measured throughput
+	auto max_groups = std::max<idx_t>(1, std::min<idx_t>(batches.size(), threads));
+	auto working_sets = static_cast<double>(max_groups) *
+	                    static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
+	auto budget = GetPathFindingGroupedBatchesBudget(context);
+	bool start_wide = budget > 0 && working_sets <= static_cast<double>(budget);
+	idx_t initial_window = !adaptive  ? NumericCast<idx_t>(configured_groups)
+	                       : start_wide ? max_groups
+	                                    : std::max<idx_t>(1, std::min<idx_t>(4, threads));
+	auto configured_workers = GetPathFindingThreadsPerBatch(context);
+	idx_t fixed_workers = configured_workers > 0 ? NumericCast<idx_t>(configured_workers) : 0;
+	// Two regimes (W31, 27 Oct). Cache resident: every group gets its own threads (threads / window, so one worker
+	// per group when wide) and no level barrier; SF10 65536 pairs 0.67 s against 1.3 s with pooled tasks. Memory
+	// bound: the level tasks of all groups are pooled (every group schedules a task per thread), so a group waiting
+	// at its level barrier leaves no thread idle; SF100 8.0 s against 11 s with own threads, SF300 20.4 s, within a
+	// few percent of one event per batch while holding 8-16 working sets instead of 32.
+	auto configured_oversubscription = GetPathFindingBatchOversubscription(context);
+	auto oversubscription = configured_oversubscription > 0 ? NumericCast<idx_t>(configured_oversubscription)
+	                        : start_wide                    ? idx_t(1)
+	                                                        : threads;
+	RecordStrategy(context, "scheduling", adaptive ? "grouped_adaptive" : "grouped");
+	RecordStrategy(context, "regime", start_wide ? "cache_resident" : "memory_bound");
+	RecordStrategy(context, "grouped_working_sets_mb", std::to_string(static_cast<idx_t>(working_sets / (1024 * 1024))));
 	vector<shared_ptr<IterativeLengthState>> iterative_states;
 	iterative_states.reserve(batches.size());
-
 	for (auto &batch : batches) {
-		auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
-		                           ? gstate.local_csr_state->reverse_partition_csrs
-		                           : gstate.local_csr_state->partition_csrs;
-		auto state = make_shared_ptr<IterativeLengthState>(batch, partition_csrs, workers_per_batch, context,
+		auto state = make_shared_ptr<IterativeLengthState>(batch, partition_csrs, threads, context,
 		                                                   GetPathFindingVSize(gstate));
 		state->delta_csrs = SearchDeltaCSRs(gstate);
 		state->suppressed = SearchSuppressed(gstate);
@@ -1163,14 +1157,18 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 		iterative_states.push_back(state);
 		gstate.bfs_states.push_back(state);
 	}
-
-	// One kernel per worker group; the groups claim batches from the shared list and run independently
-	auto grouped_batches = make_shared_ptr<GroupedIterativeLengthBatches>(std::move(iterative_states));
-	for (idx_t group = 0; group < group_count; group++) {
-		auto kernel = make_shared_ptr<GroupedIterativeLengthKernel>(grouped_batches, workers_per_batch,
-		                                                            GetPathFindingVSize(gstate), context);
+	auto grouped_batches = make_shared_ptr<GroupedIterativeLengthBatches>(
+	    std::move(iterative_states), context, GetPathFindingVSize(gstate), threads, partition_csrs.size(),
+	    GetPathFindingEdgeCount(gstate), initial_window, adaptive, fixed_workers, NumericCast<idx_t>(oversubscription));
+	auto initial_groups = grouped_batches->InitialGroups();
+	RecordStrategy(context, "groups", std::to_string(initial_groups));
+	RecordStrategy(context, "workers_per_batch", std::to_string(grouped_batches->WorkersPerGroup()));
+	for (idx_t group = 0; group < initial_groups; group++) {
+		grouped_batches->NoteGroupStarted();
+		auto kernel = make_shared_ptr<GroupedIterativeLengthKernel>(grouped_batches);
 		batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(std::move(kernel), pipeline, op));
 	}
+	gstate.grouped_batches = grouped_batches;
 	return batch_events;
 }
 
@@ -1295,7 +1293,13 @@ public:
 		RecordPartitionedCSRBuild(gstate, context);
 		auto batch_events = CreatePathFindingBatchEvents(gstate, batches, *pipeline, *this, op, context);
 		if (!batch_events.empty()) {
-			ScheduleBatchEvents(std::move(batch_events));
+			auto &gstate_ref = gstate;
+			auto &context_ref = context;
+			ScheduleBatchEvents(std::move(batch_events), [&gstate_ref, &context_ref]() {
+				if (gstate_ref.grouped_batches) {
+					RecordStrategy(context_ref, "window_trace", gstate_ref.grouped_batches->Trace());
+				}
+			});
 		}
 	}
 

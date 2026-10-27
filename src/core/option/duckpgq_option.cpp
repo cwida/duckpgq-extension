@@ -141,6 +141,12 @@ int64_t GetPathFindingGroupedBatchesBudget(ClientContext &context) {
 	return value.GetValue<int64_t>();
 }
 
+int32_t GetPathFindingBatchOversubscription(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_batch_oversubscription", value);
+	return value.GetValue<int32_t>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -407,12 +413,25 @@ void CorePGQOptions::RegisterPathFindingGroupedBatchesBudget(ExtensionLoader &lo
 	auto &db = loader.GetDatabaseInstance();
 	auto &config = DBConfig::GetConfig(db);
 	config.AddExtensionOption("experimental_path_finding_operator_grouped_batches_budget",
-	                          "Grouped MS-BFS scheduling (one worker group per batch, groups = min(batches, threads)) "
-	                          "is used while the groups' working sets (192 B per vertex each) fit this many bytes; "
-	                          "above it every batch is its own event and the executor interleaves them, which keeps "
-	                          "the threads of a level on one shared working set (W31: 512 MB sits between SF10's 32 "
-	                          "x 14 MB and SF100's 32 x 86 MB on a 128 MB L3 machine)",
+	                          "The MS-BFS batch scheduler starts wide (one worker group per batch, up to the threads, "
+	                          "each with its own threads) while that many working sets (192 B per vertex each) fit "
+	                          "this many bytes; above it the groups pool their level tasks and the window of "
+	                          "concurrent groups starts at four and grows while the measured throughput improves "
+	                          "(W31: 512 MB sits between SF10's 32 x 14 MB and SF100's 32 x 86 MB on a 128 MB L3 "
+	                          "machine); 0 always ramps",
 	                          LogicalType::BIGINT, Value::BIGINT(512LL * 1024 * 1024));
+}
+
+void CorePGQOptions::RegisterPathFindingBatchOversubscription(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_batch_oversubscription",
+	                          "Tasks per level of one MS-BFS batch relative to its share of the threads (threads / "
+	                          "concurrent groups): 1 gives every group its own threads, higher values pool the "
+	                          "level tasks of all groups in the executor so idle time at a group's level barrier is "
+	                          "filled with another group's work; 0 (default) chooses 1 while the working sets fit "
+	                          "the grouped batches budget and the thread count above it",
+	                          LogicalType::INTEGER, Value(0));
 }
 
 } // namespace duckdb

@@ -34,6 +34,9 @@ public:
 
 public:
 	vector<uint8_t> worker_changed;
+	//! Shared with the scheduler: edges swept by the explore phases of this batch (the throughput clock of the
+	//! adaptive batch scheduler); null when nobody listens
+	atomic<idx_t> *edges_scanned = nullptr;
 
 private:
 	enum class Phase : uint8_t { EXPLORE, CHECK };

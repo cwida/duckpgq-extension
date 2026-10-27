@@ -16,7 +16,7 @@ what the decision is worth, measured on the shapes where it applies (SF10 and SF
 | # | Decision | Switch (config name in the harness) | Shapes where it shows |
 |---|---|---|---|
 | A1 | Per-source frontier kernel for few sources, MS-BFS lanes otherwise | `no_source_grouping`, `no_few_sources_rule`, `source_group_ratio_1/16` | random pairs (lanes win), same destination and sources x all (per-source wins) |
-| A2 | Grouped batches sharing one working set | `no_grouped_batches` | random pairs 1024 to 65536 |
+| A2 | Batch scheduling: adaptive worker groups vs one event per batch, fixed shapes G x W, pooled vs own threads | `scheduling` group: `no_grouped_batches`, `adaptive`, `adaptive_os4/os32`, `sched_g<G>_w<W>` | random pairs 2048 / 16384 / 65536 at SF10, SF100, SF300 (the crossover figure) |
 | A3 | Stop a source's search once its destinations are found | `no_early_termination` | random pairs with few sources, same destination |
 | A4 | Sparse expansion by row lookup vs partition sweep | `dense_frontier`, `sparse_frontier` | sources x all (frontier grows to the whole graph), same destination (small frontiers) |
 | A5 | Reverse orientation for many sources to few destinations | `no_reverse_orientation`, `reverse_index`, `reverse_index_forward_only` | same destination, index route; directed graph needs the reverse side |
@@ -25,7 +25,7 @@ what the decision is worth, measured on the shapes where it applies (SF10 and SF
 | A8 | Pair deduplication | `dedupe_pairs` | random pairs (no duplicates: pure overhead) and a duplicated pair table (to add) |
 | A9 | Partition count | `light_partitions_4` | all shapes; index route rebuilds the index with the new count |
 | A10 | Thread scaling | `threads_1/2/4/8/16` | random pairs 65536, sources x all 1024 |
-| A11 | MS-BFS lane width | build-time `cmake -DDUCKPGQ_LANE_LIMIT=64|128|256|1024` (separate builds, section 3) | random pairs |
+| A11 | MS-BFS lane width | build-time `cmake -DDUCKPGQ_LANE_LIMIT=64|128|256|1024` (separate builds, section 3; `DUCKPGQ_EXTENSION` picks the build) | random pairs; 256 lanes measured 27 Oct: same time and misses as 512 at SF10 and SF100 |
 | A12 | Fold ratio and overlay size | `update-run --fold-ratio`, configs `index_auto` vs `index_nofold` (existing) | update workload |
 
 ## 2. Inventory
@@ -42,7 +42,7 @@ has no switch; the right-hand column says what a microbenchmark would need.
 | Target early termination | `target_early_termination` (new) | true | a group stops once every destination is reached; `SourceGroupTargets` set/bitmap switch at 64 x expected > V stays hard-coded |
 | Sparse vs dense frontier expansion | `sparse_frontier_divisor` (new) | 64 (0 always sweeps; a huge value always looks up rows) | per-source kernel only; needs row lookup (not on streaming segments) |
 | Snapshot cache | `snapshot_cache` (new) | true | `CSRIndex::BuildSnapshot` skips both the hit test and the store when false |
-| Grouped batches | `grouped_batches` | true | MS-BFS batches claimed by bounded worker groups sharing one working set. The `run` subcommand's `--grouped-batches` flag defaulted to false until 26 Oct, so the 21 Oct DuckDB-only sweep (`summary_*_comparison` files) ran without grouped batches |
+| Grouped batches | `grouped_batches` | true | The adaptive batch scheduler (W31): worker groups with pooled working sets, window grown on measured throughput; false runs one event per batch. `grouped_batches_budget` (512 MB) separates the cache-resident regime (start wide, own threads) from the memory-bound one (ramp from 4, pooled tasks); `batch_oversubscription` (0 = by regime) and `max_concurrent_batches` / `threads_per_batch` fix the shape for the `sched_g<G>_w<W>` configurations. The `run` subcommand's `--grouped-batches` flag defaulted to false until 26 Oct, so the 21 Oct DuckDB-only sweep (`summary_*_comparison` files) ran without grouped batches |
 | Workers per batch / concurrent batches | `threads_per_batch`, `max_concurrent_batches` | 0 (derive) | |
 | Reverse orientation | `reverse_orientation_ratio` | 4 (<= 0 off) | ITERATIVE_LENGTH only; feasible with symmetric edges, an index `WITH (reverse = true)`, or the legacy CSR |
 | Reverse side of the index | `CREATE INDEX ... WITH (reverse = true)` | off | storage format 2 |

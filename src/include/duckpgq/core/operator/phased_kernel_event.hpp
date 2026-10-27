@@ -27,6 +27,10 @@ public:
 	//! Serial, once after the last phase
 	virtual void Finished() {
 	}
+	//! Serial, after AdvancePhase or Finished: kernels this one wants started alongside itself (adaptive scheduling
+	//! grows the number of concurrent worker groups this way); each gets its own event chain
+	virtual void CollectSpawned(vector<shared_ptr<PhasedKernel>> &spawned) {
+	}
 };
 
 //! Runs one phase of a kernel; its FinishEvent advances the kernel and inserts the event of the next phase, so the
@@ -38,9 +42,14 @@ public:
 
 	void Schedule() override;
 	void FinishEvent() override;
+	//! The event that waits for every kernel of the operator; spawned kernels are added to its dependencies
+	void SetCompletion(shared_ptr<Event> completion_p) {
+		completion = std::move(completion_p);
+	}
 
 private:
 	shared_ptr<PhasedKernel> kernel;
+	shared_ptr<Event> completion;
 	const PhysicalOperator &op;
 	bool first;
 	//! Whether the kernel has a phase to run (false after Start() declined)

@@ -1,0 +1,88 @@
+# name: test/sql/path_finding/path_finding_adaptive_scheduler.test
+# description: the MS-BFS batch scheduler ramps its window of worker groups on measured throughput and records the trace; results equal the per-batch schedule
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_path_finding_operator_reach = false;
+
+statement ok
+SET experimental_path_finding_operator_source_group_ratio = 0;
+
+statement ok
+SET experimental_path_finding_operator_few_sources_limit = 0;
+
+statement ok
+CREATE TABLE pv AS SELECT range AS id FROM range(300);
+
+# A ring with chords: every vertex reaches every other within a few hops
+statement ok
+CREATE TABLE pe AS SELECT id AS src, (id + 1) % 300 AS dst FROM pv UNION ALL SELECT id, (id + 7) % 300 FROM pv UNION ALL SELECT id, (id + 50) % 300 FROM pv;
+
+statement ok
+CREATE TABLE pairs AS SELECT a.id AS s, b.id AS d FROM pv a, pv b WHERE (a.id * 7 + b.id) % 9 = 0;
+
+# Reference: one event per batch
+statement ok
+SET experimental_path_finding_operator_grouped_batches = false;
+
+statement ok
+CREATE TABLE reference AS SELECT count(len) AS c, sum(len) AS s FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 300::BIGINT, 900::BIGINT, 'graph:sched') AS len FROM pairs, pe);
+
+query I
+SELECT s LIKE '%scheduling=per_batch%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+SET experimental_path_finding_operator_grouped_batches = true;
+
+# Cache-resident regime: the window starts at one group per batch
+query I
+SELECT (SELECT c FROM reference) = count(len) AND (SELECT s FROM reference) = sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 300::BIGINT, 900::BIGINT, 'graph:sched') AS len FROM pairs, pe);
+----
+true
+
+query I
+SELECT s LIKE '%scheduling=grouped_adaptive%' AND s LIKE '%regime=cache_resident%' AND s LIKE '%window_trace=window=%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Forced ramp (no budget): starts at four groups, pooled tasks, same answer
+statement ok
+SET experimental_path_finding_operator_grouped_batches_budget = 0;
+
+query I
+SELECT (SELECT c FROM reference) = count(len) AND (SELECT s FROM reference) = sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 300::BIGINT, 900::BIGINT, 'graph:sched') AS len FROM pairs, pe);
+----
+true
+
+query I
+SELECT s LIKE '%regime=memory_bound%' AND s LIKE '%groups=4%' AND s LIKE '%window_trace=window=4%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# A fixed shape through the options
+statement ok
+SET experimental_path_finding_operator_max_concurrent_batches = 2;
+
+statement ok
+SET experimental_path_finding_operator_threads_per_batch = 1;
+
+query I
+SELECT (SELECT c FROM reference) = count(len) AND (SELECT s FROM reference) = sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 300::BIGINT, 900::BIGINT, 'graph:sched') AS len FROM pairs, pe);
+----
+true
+
+query I
+SELECT s LIKE '%scheduling=grouped;%' AND s LIKE '%groups=2%' AND s LIKE '%workers_per_batch=1%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true

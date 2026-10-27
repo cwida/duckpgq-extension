@@ -24,7 +24,8 @@ GENERATOR_ROOT = Path(os.environ.get("DUCKPGQ_GENERATOR_ROOT", str(Path.home() /
 GENERATOR_DUCKDB = GENERATOR_ROOT / "build" / "release" / "duckdb"
 GENERATOR_EXTENSION = GENERATOR_ROOT / "build" / "release" / "extension" / "ldbc_data_gen" / "ldbc_data_gen.duckdb_extension"
 BENCH_DUCKDB = REPO_ROOT / "build" / "release" / "duckdb"
-DUCKPGQ_EXTENSION = REPO_ROOT / "build" / "release" / "extension" / "duckpgq" / "duckpgq.duckdb_extension"
+# DUCKPGQ_EXTENSION selects another build of the extension (lane-width microbenchmark builds live next to the default)
+DUCKPGQ_EXTENSION = Path(os.environ.get("DUCKPGQ_EXTENSION", str(REPO_ROOT / "build" / "release" / "extension" / "duckpgq" / "duckpgq.duckdb_extension")))
 PAIR_SHAPES = ("random", "same_dst", "same_src")
 QUERY_PATTERNS = ("point_to_point", "sssp", "all_pairs", "graphalytics_bfs")
 GRAPHALYTICS_BFS_UNREACHABLE = 9223372036854775807
@@ -5222,14 +5223,17 @@ MICROBENCH_CONFIGS = {
 }
 for _n in (1, 2, 4, 8, 16):
     MICROBENCH_CONFIGS[f"threads_{_n}"] = ({"threads": _n}, None, False)
-# Batch scheduling (W31): workers per batch w gives 32 / w concurrent groups; sched_w1_g<g> holds w = 1 and caps the
-# groups, so intra-batch and inter-batch parallelism vary separately
-for _w in (1, 2, 4, 8, 16):
-    MICROBENCH_CONFIGS[f"sched_w{_w}"] = ({OPT + "threads_per_batch": _w}, None, False)
-for _g in (2, 4, 8, 16):
-    MICROBENCH_CONFIGS[f"sched_w1_g{_g}"] = ({OPT + "threads_per_batch": 1, OPT + "max_concurrent_batches": _g}, None, False)
-# Grouped scheduling regardless of the working-set budget (the rule w = threads / batches at any scale)
-MICROBENCH_CONFIGS["grouped_always"] = ({OPT + "grouped_batches_budget": 0}, None, False)
+# Batch scheduling (W31). The grouped scheduler is adaptive (window of concurrent groups grows while throughput
+# improves); max_concurrent_batches fixes the window and threads_per_batch the workers, so fixed shapes G x W are
+# "sched_g<G>_w<W>". grouped_batches_budget=0 forces the grouped scheduler at any scale (the default falls back
+# to per-batch events above the budget), batch_oversubscription pools the level tasks of the groups.
+for _g, _w in ((1, 32), (2, 16), (4, 8), (8, 4), (16, 2), (32, 1), (4, 32), (8, 32), (16, 32)):
+    MICROBENCH_CONFIGS[f"sched_g{_g}_w{_w}"] = ({OPT + "grouped_batches_budget": 0, OPT + "max_concurrent_batches": _g,
+                                                 OPT + "threads_per_batch": _w}, None, False)
+MICROBENCH_CONFIGS["adaptive"] = ({OPT + "grouped_batches_budget": 0}, None, False)
+MICROBENCH_CONFIGS["adaptive_os4"] = ({OPT + "grouped_batches_budget": 0, OPT + "batch_oversubscription": 4}, None, False)
+MICROBENCH_CONFIGS["adaptive_os32"] = ({OPT + "grouped_batches_budget": 0, OPT + "batch_oversubscription": 32}, None, False)
+MICROBENCH_CONFIGS["grouped_always"] = MICROBENCH_CONFIGS["adaptive"]
 MICROBENCH_GROUPS = {
     "kernel": ["baseline", "no_grouped_batches", "dedupe_pairs", "threads_per_batch_4", "no_source_grouping",
                "no_few_sources_rule", "source_group_ratio_1", "source_group_ratio_16", "no_early_termination",
@@ -5237,8 +5241,9 @@ MICROBENCH_GROUPS = {
     "index": ["baseline", "no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "no_reverse_orientation"],
     "reach": ["baseline", "pair_mode"],
     "threads": ["baseline"] + [f"threads_{n}" for n in (1, 2, 4, 8, 16)],
-    "scheduling": ["baseline", "no_grouped_batches", "grouped_always"] + [f"sched_w{w}" for w in (1, 2, 4, 8, 16)]
-                  + [f"sched_w1_g{g}" for g in (2, 4, 8, 16)],
+    "scheduling": ["baseline", "no_grouped_batches", "adaptive", "adaptive_os4", "adaptive_os32",
+                   "sched_g1_w32", "sched_g2_w16", "sched_g4_w8", "sched_g8_w4", "sched_g16_w2", "sched_g32_w1",
+                   "sched_g4_w32", "sched_g8_w32", "sched_g16_w32"],
 }
 MICROBENCH_GROUPS["all"] = list(dict.fromkeys(sum((v for k, v in MICROBENCH_GROUPS.items() if k != "scheduling"), [])))
 MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only"}

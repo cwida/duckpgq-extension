@@ -257,6 +257,7 @@ void IterativeLengthState::RunPhase(idx_t worker_id) {
 	auto &visit = iter & 1 ? visit1 : visit2;
 	auto &next = iter & 1 ? visit2 : visit1;
 	if (phase == Phase::EXPLORE) {
+		idx_t swept_total = 0;
 		while (true) {
 			auto partition_idx = local_csr_counter.fetch_add(1);
 			if (partition_idx >= static_cast<int64_t>(local_csrs.size())) {
@@ -270,10 +271,17 @@ void IterativeLengthState::RunPhase(idx_t worker_id) {
 			                           ? suppressed[partition_idx]->data()
 			                           : nullptr;
 			RunExplore(*this, visit, next, *local_csr, suppressed_bits);
+			idx_t swept = local_csr->GetEdgeSize();
 			// Edges committed after the epoch, for the same destination range
 			if (partition_idx < static_cast<int64_t>(delta_csrs.size()) && delta_csrs[partition_idx]) {
 				RunExplore(*this, visit, next, *delta_csrs[partition_idx], nullptr);
+				swept += delta_csrs[partition_idx]->GetEdgeSize();
 			}
+			swept_total += swept;
+		}
+		if (edges_scanned && swept_total) {
+			// One shared increment per worker per phase, not one per partition
+			edges_scanned->fetch_add(swept_total, std::memory_order_relaxed);
 		}
 		return;
 	}
