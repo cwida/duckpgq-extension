@@ -28,9 +28,10 @@ struct GroupedIterativeLengthBatches {
 	//! A zeroed working set from the pool (allocating one when the pool is empty)
 	shared_ptr<BFSWorkingSet> AcquireWorkingSet();
 	void ReleaseWorkingSet(shared_ptr<BFSWorkingSet> set);
-	//! Workers for a batch started now: threads / window, times the oversubscription factor, never more than the
-	//! partitions
+	//! Workers for a batch started now: threads / window, times the oversubscription factor, at most the threads
 	idx_t WorkersPerGroup();
+	//! Destination sub-ranges per partition a batch should use so that the query's batches together fill the threads
+	idx_t SubRangeHint();
 	//! Called by a group when its batch is done. Decides on the window, tells the group whether to run another
 	//! batch, and returns the number of groups to spawn alongside it.
 	bool OnBatchDone(idx_t &spawn_count);

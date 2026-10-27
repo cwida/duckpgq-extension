@@ -270,14 +270,21 @@ public:
 			ForEachFrontierSlice([&](uint32_t vertex) { ExpandVertex(vertex, worker_id); });
 			return;
 		}
+		// Dense sweep tasks are (partition, row range): discovery is a compare-and-swap, so a partition's rows can be
+		// split between workers when there are fewer partitions than workers (coarse geometry, W32)
+		auto task_count = static_cast<int64_t>(local_csrs.size() * dense_sub_ranges);
 		while (true) {
-			auto partition_idx = local_csr_counter.fetch_add(1);
-			if (partition_idx >= static_cast<int64_t>(local_csrs.size())) {
+			auto task_idx = local_csr_counter.fetch_add(1);
+			if (task_idx >= task_count) {
 				break;
 			}
-			ExplorePartition(*local_csrs[partition_idx], SuppressedOf(partition_idx), partition_idx, false, worker_id);
+			auto partition_idx = task_idx / static_cast<int64_t>(dense_sub_ranges);
+			auto sub_idx = static_cast<idx_t>(task_idx % static_cast<int64_t>(dense_sub_ranges));
+			ExplorePartition(*local_csrs[partition_idx], SuppressedOf(partition_idx), partition_idx, false, worker_id,
+			                 sub_idx, dense_sub_ranges);
 			if (partition_idx < static_cast<int64_t>(delta_csrs.size()) && delta_csrs[partition_idx]) {
-				ExplorePartition(*delta_csrs[partition_idx], nullptr, partition_idx, true, worker_id);
+				ExplorePartition(*delta_csrs[partition_idx], nullptr, partition_idx, true, worker_id, sub_idx,
+				                 dense_sub_ranges);
 			}
 		}
 	}
@@ -473,6 +480,8 @@ private:
 	//! array (the frontier is at most v_size entries and this runs once per level).
 	void PrepareLevel() {
 		sparse_expansion = UseSparseExpansion();
+		auto partitions = std::max<idx_t>(1, local_csrs.size());
+		dense_sub_ranges = worker_count > partitions ? std::min<idx_t>(16, (worker_count + partitions - 1) / partitions) : 1;
 		frontier_cursor = 0;
 		local_csr_counter = 0;
 		if (!sparse_expansion) {
@@ -500,7 +509,7 @@ private:
 		if (configured > 0) {
 			workers = std::min<idx_t>(workers, static_cast<idx_t>(configured));
 		}
-		workers = std::min<idx_t>(workers, std::max<idx_t>(1, local_csrs.size()));
+		// Not capped by the partition count: the dense sweep splits a partition's rows between workers
 		idx_t edge_count = 0;
 		for (auto &local_csr : local_csrs) {
 			edge_count += local_csr->GetEdgeSize();
@@ -574,11 +583,13 @@ private:
 		return frontier_stamp[vertex] == static_cast<uint32_t>(iter);
 	}
 
-	//! Dense expansion: every row of one partition whose source is in the frontier
+	//! Dense expansion: the rows of one partition whose source is in the frontier; rows [rows x sub / subs, rows x
+	//! (sub + 1) / subs) when the partition is split between tasks
 	void ExplorePartition(const LocalCSR &local_csr, const uint64_t *suppressed_bits, idx_t partition_idx,
-	                      bool is_delta, idx_t worker_id) {
+	                      bool is_delta, idx_t worker_id, idx_t sub = 0, idx_t subs = 1) {
 		for (const auto &segment : local_csr.segments) {
-			for (idx_t row_idx = 0; row_idx < segment.source_vertices.size(); row_idx++) {
+			auto rows = segment.source_vertices.size();
+			for (idx_t row_idx = rows * sub / subs; row_idx < rows * (sub + 1) / subs; row_idx++) {
 				auto source_vertex = segment.source_vertices[row_idx];
 				if (!InFrontier(source_vertex)) {
 					continue;
@@ -593,7 +604,8 @@ private:
 			return;
 		}
 		if (local_csr.HasSparseRows()) {
-			for (idx_t row_idx = 0; row_idx < local_csr.source_vertices.size(); row_idx++) {
+			auto rows = local_csr.source_vertices.size();
+			for (idx_t row_idx = rows * sub / subs; row_idx < rows * (sub + 1) / subs; row_idx++) {
 				auto source_vertex = local_csr.source_vertices[row_idx];
 				if (!InFrontier(source_vertex)) {
 					continue;
@@ -603,7 +615,8 @@ private:
 			}
 			return;
 		}
-		for (idx_t vertex = 0; vertex < local_csr.GetVertexSize(); vertex++) {
+		auto vertices = local_csr.GetVertexSize();
+		for (idx_t vertex = vertices * sub / subs; vertex < vertices * (sub + 1) / subs; vertex++) {
 			if (!InFrontier(vertex)) {
 				continue;
 			}
@@ -630,6 +643,8 @@ private:
 
 	//! experimental_path_finding_operator_sparse_frontier_divisor (0: always sweep)
 	idx_t sparse_frontier_divisor = 64;
+	//! Row ranges per partition in the dense sweep, so that partitions x ranges >= workers
+	idx_t dense_sub_ranges = 1;
 	//! experimental_path_finding_operator_target_early_termination
 	bool target_early_termination = true;
 	static constexpr idx_t FRONTIER_SLICE = 256;
@@ -1129,12 +1144,12 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 	                    static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
 	auto budget = GetPathFindingGroupedBatchesBudget(context);
 	bool start_wide = budget > 0 && working_sets <= static_cast<double>(budget);
-	// The ramp starts at eight groups: below that the window is never the bottleneck (SF300's knee is at 8, SF100's
-	// at 16), and a query of at most eight batches would otherwise spend half its batches ramping (SF100, 16384
-	// pairs: 2.6 s from 4 groups against 1.96 s with all 8 at once)
+	// The ramp starts at sixteen groups: with the explore phase's memory traffic reduced (bitmap, sparse levels) the
+	// fixed shapes 8, 16 and 32 groups are within 2% at SF100 and SF300, and the ramp's time at smaller windows was
+	// the remaining 5% against per-batch events (SF100 65536 pairs: 5.47 s ramping from 8 vs 5.16 s at 32 groups)
 	idx_t initial_window = !adaptive  ? NumericCast<idx_t>(configured_groups)
 	                       : start_wide ? max_groups
-	                                    : std::max<idx_t>(1, std::min<idx_t>(8, threads));
+	                                    : std::max<idx_t>(1, std::min<idx_t>(16, threads));
 	auto configured_workers = GetPathFindingThreadsPerBatch(context);
 	idx_t fixed_workers = configured_workers > 0 ? NumericCast<idx_t>(configured_workers) : 0;
 	// Two regimes (W31, 27 Oct). Cache resident: every group gets its own threads (threads / window, so one worker
@@ -1142,12 +1157,18 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 	// bound: the level tasks of all groups are pooled (every group schedules a task per thread), so a group waiting
 	// at its level barrier leaves no thread idle; SF100 8.0 s against 11 s with own threads, SF300 20.4 s, within a
 	// few percent of one event per batch while holding 8-16 working sets instead of 32.
+	// Own threads per group (no pooling) only while one working set is small (SF10, 14 MB: the levels are too short
+	// for pooled task overhead, 0.68 vs 1.3 s); larger sets pool the level tasks whatever the window (SF100 16384
+	// pairs, 8 groups of 41 MB: pooled 1.50 s vs own threads 1.69 s). Same threshold as the bitmap filter.
+	auto working_set_bytes = static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
+	bool small_working_set = budget > 0 && working_set_bytes <= static_cast<double>(budget) / 16;
 	auto configured_oversubscription = GetPathFindingBatchOversubscription(context);
 	auto oversubscription = configured_oversubscription > 0 ? NumericCast<idx_t>(configured_oversubscription)
-	                        : start_wide                    ? idx_t(1)
+	                        : small_working_set             ? idx_t(1)
 	                                                        : threads;
 	RecordStrategy(context, "scheduling", adaptive ? "grouped_adaptive" : "grouped");
 	RecordStrategy(context, "regime", start_wide ? "cache_resident" : "memory_bound");
+	RecordStrategy(context, "tasks", small_working_set ? "own_threads" : "pooled");
 	RecordStrategy(context, "grouped_working_sets_mb", std::to_string(static_cast<idx_t>(working_sets / (1024 * 1024))));
 	vector<shared_ptr<IterativeLengthState>> iterative_states;
 	iterative_states.reserve(batches.size());
@@ -1159,6 +1180,10 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 		state->max_depth = gstate.max_depth;
 		iterative_states.push_back(state);
 		gstate.bfs_states.push_back(state);
+	}
+	if (!iterative_states.empty()) {
+		RecordStrategy(context, "bitmap_filter", iterative_states.front()->bitmap_filter ? "on" : "off");
+		RecordStrategy(context, "sparse_level_divisor", std::to_string(iterative_states.front()->sparse_level_divisor));
 	}
 	auto grouped_batches = make_shared_ptr<GroupedIterativeLengthBatches>(
 	    std::move(iterative_states), context, GetPathFindingVSize(gstate), threads, partition_csrs.size(),

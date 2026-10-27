@@ -42,11 +42,18 @@ void GroupedIterativeLengthBatches::ReleaseWorkingSet(shared_ptr<BFSWorkingSet> 
 	pool.push_back(std::move(set));
 }
 
+idx_t GroupedIterativeLengthBatches::SubRangeHint() {
+	// Parallelism a query lacks when it has few batches on coarse partitions: threads / (partitions x batches)
+	auto batch_slots = std::max<idx_t>(1, std::min<idx_t>(states.size(), threads));
+	return std::max<idx_t>(1, (threads + partitions * batch_slots - 1) / (partitions * batch_slots));
+}
+
 idx_t GroupedIterativeLengthBatches::WorkersPerGroup() {
 	lock_guard<mutex> guard(lock);
 	idx_t workers = fixed_workers > 0 ? fixed_workers : std::max<idx_t>(1, threads / std::max<idx_t>(1, window));
-	workers = std::max<idx_t>(1, std::min<idx_t>(workers * oversubscription, threads));
-	return std::min<idx_t>(workers, partitions);
+	// Not capped by the partition count: a batch with more workers than partitions splits the partitions into
+	// destination sub-ranges (IterativeLengthState::Start), which is what keeps coarse partitions parallel
+	return std::max<idx_t>(1, std::min<idx_t>(workers * oversubscription, threads));
 }
 
 void GroupedIterativeLengthBatches::Decide(idx_t edges_now, std::chrono::steady_clock::time_point now) {
@@ -127,7 +134,10 @@ bool GroupedIterativeLengthKernel::StartNextBatch() {
 		current->SetWorkerCount(workers);
 		current->SetTimingLabel("bfs_batch_grouped");
 		current->edges_scanned = &batches->edges_scanned;
+		current->sub_range_hint = batches->SubRangeHint();
 		if (current->Start()) {
+			// The batch may have fewer tasks than the group's workers (partitions x sub-ranges)
+			workers = current->WorkerCount();
 			return true;
 		}
 		current->Finished();

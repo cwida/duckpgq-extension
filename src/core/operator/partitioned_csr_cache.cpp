@@ -103,6 +103,14 @@ static idx_t GetBufferedPartitionedCSRRequiredPartitionCount(idx_t vertex_count,
 	// naturally materialize fewer ranges.
 	auto target_partition_count =
 	    std::max<idx_t>(1, thread_count) * (1 + std::max<int32_t>(1, GetLightPartitionMultiplier(context)));
+	auto partition_vertices = GetPathFindingPartitionVertices(context);
+	if (partition_vertices > 0) {
+		// Geometry from the vertex count rather than the thread count (the index freezes it at CREATE INDEX); at
+		// least eight partitions so small graphs keep some build and sweep parallelism (SF10: 8 instead of 2)
+		target_partition_count =
+		    std::max<idx_t>(8, (vertex_count + 2 + NumericCast<idx_t>(partition_vertices) - 1) /
+		                           NumericCast<idx_t>(partition_vertices));
+	}
 	auto minimum_partition_count = std::max<idx_t>(1, (vertex_count + 2 + UINT16_MAX - 1) / UINT16_MAX);
 	auto maximum_partition_count = RadixPartitioning::NumberOfPartitions(RadixPartitioning::MAX_RADIX_BITS);
 	if (minimum_partition_count > maximum_partition_count) {

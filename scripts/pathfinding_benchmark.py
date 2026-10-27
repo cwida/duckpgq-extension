@@ -4830,7 +4830,7 @@ class DuckPGQSystem(GraphDBSystem):
     the symmetric closure of knows (LDBC's undirected semantics)."""
 
     def __init__(self, route, scale_factor, threads, timeout_s, symmetric=False, settings=None, index_with=None,
-                 multi_source_pair_mode=False):
+                 multi_source_pair_mode=False, index_suffix=None):
         self.route = route
         self.name = f"duckpgq_{route}"
         self.scale_factor = scale_factor
@@ -4851,6 +4851,10 @@ class DuckPGQSystem(GraphDBSystem):
         self.index_name = f"{CSR_INDEX_NAME}_undirected" if symmetric else CSR_INDEX_NAME
         if index_with:
             self.index_name += "_" + re.sub(r"[^a-z0-9]+", "_", index_with.lower()).strip("_")
+        # Settings that shape the index at CREATE INDEX (partition geometry) get their own index
+        self.index_suffix = index_suffix
+        if index_suffix:
+            self.index_name += "_" + index_suffix
         self.index_key = f"csr-index|ldbc|main|{self.index_table}|{self.index_name}"
 
     def load(self, export_dir, scale_factor):
@@ -4861,7 +4865,9 @@ class DuckPGQSystem(GraphDBSystem):
         values = [line.strip() for line in counts.strip().splitlines() if line.strip().isdigit()]
         self.vertex_count, self.edge_count_value = int(values[0]), int(values[1])
         if self.route == "index":
-            run_duckdb(BENCH_DUCKDB, None, f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; "
+            # The configuration's settings apply at CREATE INDEX too (partition geometry is frozen there)
+            settings = "".join(f"SET {name}={value}; " for name, value in self.settings.items()) if self.index_suffix else ""
+            run_duckdb(BENCH_DUCKDB, None, f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; SET threads={self.threads}; {settings}"
                                           f"ATTACH {sql_string(self.database)} AS ldbc; "
                                           f"CREATE INDEX IF NOT EXISTS {self.index_name} ON ldbc.{self.index_table} "
                                           f"USING CSR (person1id, person2id){self.index_with_clause()};", quiet=True)
@@ -5227,19 +5233,33 @@ for _n in (1, 2, 4, 8, 16):
 # improves); max_concurrent_batches fixes the window and threads_per_batch the workers, so fixed shapes G x W are
 # "sched_g<G>_w<W>". grouped_batches_budget=0 forces the grouped scheduler at any scale (the default falls back
 # to per-batch events above the budget), batch_oversubscription pools the level tasks of the groups.
-for _g, _w in ((1, 32), (2, 16), (4, 8), (8, 4), (16, 2), (32, 1), (4, 32), (8, 32), (16, 32)):
+for _g, _w in ((1, 32), (2, 16), (4, 8), (8, 4), (16, 2), (32, 1), (4, 32), (8, 32), (16, 32), (32, 32)):
     MICROBENCH_CONFIGS[f"sched_g{_g}_w{_w}"] = ({OPT + "grouped_batches_budget": 0, OPT + "max_concurrent_batches": _g,
                                                  OPT + "threads_per_batch": _w}, None, False)
 MICROBENCH_CONFIGS["adaptive"] = ({OPT + "grouped_batches_budget": 0}, None, False)
 MICROBENCH_CONFIGS["adaptive_os4"] = ({OPT + "grouped_batches_budget": 0, OPT + "batch_oversubscription": 4}, None, False)
 MICROBENCH_CONFIGS["adaptive_os32"] = ({OPT + "grouped_batches_budget": 0, OPT + "batch_oversubscription": 32}, None, False)
 MICROBENCH_CONFIGS["grouped_always"] = MICROBENCH_CONFIGS["adaptive"]
+# Partition geometry (W32): vertices per partition instead of 2 x threads partitions; the index route builds one
+# index per geometry (4th tuple element: index name suffix)
+for _pv in (4096, 8192, 16384, 32768, 65535):
+    MICROBENCH_CONFIGS[f"partitions_{_pv}"] = ({OPT + "partition_vertices": _pv}, None, False, f"pv{_pv}")
+MICROBENCH_CONFIGS["no_sub_range_tasks"] = ({OPT + "sub_range_tasks": "false"}, None, False)
+MICROBENCH_CONFIGS["partitions_65535_nosub"] = ({OPT + "partition_vertices": 65535, OPT + "sub_range_tasks": "false"}, None, False, "pv65535")
+# The thread rule (2 x threads partitions) as an explicit geometry, for when the default becomes the coarse one
+MICROBENCH_CONFIGS["threads_rule_partitions"] = ({OPT + "partition_vertices": 0}, None, False, "threads")
 # Memory traffic of the explore phase (W31 step 3): the frontier summary bitmap and the visit-line prefetch
 MICROBENCH_CONFIGS["no_frontier_bitmap"] = ({OPT + "frontier_bitmap": "false"}, None, False)
-MICROBENCH_CONFIGS["no_visit_prefetch"] = ({OPT + "visit_prefetch": 0}, None, False)
-MICROBENCH_CONFIGS["visit_prefetch_4"] = ({OPT + "visit_prefetch": 4}, None, False)
+MICROBENCH_CONFIGS["bitmap_filter_on"] = ({OPT + "frontier_bitmap_filter": 1}, None, False)
+MICROBENCH_CONFIGS["bitmap_filter_off"] = ({OPT + "frontier_bitmap_filter": 0}, None, False)
+MICROBENCH_CONFIGS["visit_prefetch_8"] = ({OPT + "visit_prefetch": 8}, None, False)
 MICROBENCH_CONFIGS["visit_prefetch_16"] = ({OPT + "visit_prefetch": 16}, None, False)
-MICROBENCH_CONFIGS["no_bitmap_no_prefetch"] = ({OPT + "frontier_bitmap": "false", OPT + "visit_prefetch": 0}, None, False)
+# Sparse levels of the lane kernel (row lookup of the active vertices instead of a sweep) share the per-source
+# kernel's divisor; 0 sweeps every level
+MICROBENCH_CONFIGS["no_sparse_levels"] = ({OPT + "sparse_level_divisor": 0}, None, False)
+MICROBENCH_CONFIGS["sparse_levels_8"] = ({OPT + "sparse_level_divisor": 8}, None, False)
+MICROBENCH_CONFIGS["sparse_levels_64"] = ({OPT + "sparse_level_divisor": 64}, None, False)
+MICROBENCH_CONFIGS["plain_explore"] = ({OPT + "frontier_bitmap": "false", OPT + "frontier_bitmap_filter": 0, OPT + "sparse_level_divisor": 0}, None, False)
 MICROBENCH_GROUPS = {
     "kernel": ["baseline", "no_grouped_batches", "dedupe_pairs", "threads_per_batch_4", "no_source_grouping",
                "no_few_sources_rule", "source_group_ratio_1", "source_group_ratio_16", "no_early_termination",
@@ -5247,13 +5267,15 @@ MICROBENCH_GROUPS = {
     "index": ["baseline", "no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "no_reverse_orientation"],
     "reach": ["baseline", "pair_mode"],
     "threads": ["baseline"] + [f"threads_{n}" for n in (1, 2, 4, 8, 16)],
-    "memory": ["baseline", "no_frontier_bitmap", "no_visit_prefetch", "visit_prefetch_4", "visit_prefetch_16",
-               "no_bitmap_no_prefetch"],
+    "memory": ["baseline", "no_frontier_bitmap", "no_sparse_levels", "sparse_levels_8", "sparse_levels_64",
+               "bitmap_filter_on", "bitmap_filter_off", "visit_prefetch_8", "plain_explore"],
+    "partitions": ["baseline"] + [f"partitions_{pv}" for pv in (4096, 8192, 16384, 32768, 65535)]
+                  + ["partitions_65535_nosub", "no_sub_range_tasks", "threads_rule_partitions"],
     "scheduling": ["baseline", "no_grouped_batches", "adaptive", "adaptive_os4", "adaptive_os32",
                    "sched_g1_w32", "sched_g2_w16", "sched_g4_w8", "sched_g8_w4", "sched_g16_w2", "sched_g32_w1",
                    "sched_g4_w32", "sched_g8_w32", "sched_g16_w32"],
 }
-MICROBENCH_GROUPS["all"] = list(dict.fromkeys(sum((v for k, v in MICROBENCH_GROUPS.items() if k != "scheduling"), [])))
+MICROBENCH_GROUPS["all"] = list(dict.fromkeys(sum((v for k, v in MICROBENCH_GROUPS.items() if k not in ("scheduling", "memory", "partitions")), [])))
 MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only"}
 
 
@@ -5296,11 +5318,13 @@ def microbenchmarks(args):
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
     for route in args.routes:
         for config in configs:
-            settings, index_with, pair_mode = MICROBENCH_CONFIGS[config]
+            entry = MICROBENCH_CONFIGS[config]
+            settings, index_with, pair_mode = entry[0], entry[1], entry[2]
+            index_suffix = entry[3] if len(entry) > 3 else None
             if route == "build" and config in MICROBENCH_INDEX_ONLY:
                 continue
             system = DuckPGQSystem(route, scale_factor, args.threads, args.timeout_s, settings=settings,
-                                   index_with=index_with, multi_source_pair_mode=pair_mode)
+                                   index_with=index_with, multi_source_pair_mode=pair_mode, index_suffix=index_suffix)
             started = time.perf_counter()
             system.load(None, scale_factor)
             print(f"== duckpgq_{route} [{config}] loaded in {time.perf_counter() - started:.1f}s"

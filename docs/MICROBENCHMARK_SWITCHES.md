@@ -7,6 +7,20 @@ measured query time, whether it can be switched at runtime, and the sweep that m
 side is `scripts/pathfinding_benchmark.py microbench` (section 4); the results feed the microbenchmark subsection of the
 evaluation. File references are to the tree at the time of writing.
 
+## 0. Terms
+
+Query shapes are named by their counts and the kernel they run on:
+
+- **many-pair lists**: 16384 or 65536 random pairs, 8 or 32 MS-BFS batches of up to 512 lanes per wave (the lane
+  kernel);
+- **one-batch lane queries**: 128 to 2048 random pairs, a single MS-BFS batch;
+- **sources x all**: k sources, every reachable vertex (reach mode, the per-source kernel), k = 1, 128, 1024;
+- **single searches**: 1 pair or 1 source (the per-source kernel), IC13 and BI20 in the LDBC set;
+- **same destination**: N sources to one destination (reverse orientation over the reverse side of the index).
+
+Every ratio in this document and in the plan states its direction, "1.5x faster" or "1.3x slower", relative to the
+named baseline.
+
 ## 1. The microbenchmarks the paper needs
 
 The evaluation claims rest on a handful of design decisions. Each needs one row in a microbenchmark table showing
@@ -15,7 +29,7 @@ what the decision is worth, measured on the shapes where it applies (SF10 and SF
 
 | # | Decision | Switch (config name in the harness) | Shapes where it shows |
 |---|---|---|---|
-| A1 | Per-source frontier kernel for few sources, MS-BFS lanes otherwise | `no_source_grouping`, `no_few_sources_rule`, `source_group_ratio_1/16` | random pairs (lanes win), same destination and sources x all (per-source wins) |
+| A1 | Per-source frontier kernel for few sources, MS-BFS lanes otherwise | `no_source_grouping`, `no_few_sources_rule`, `source_group_ratio_1/16` | many-pair lists (lanes win), same destination and sources x all (per-source wins) |
 | A2 | Batch scheduling: adaptive worker groups vs one event per batch, fixed shapes G x W, pooled vs own threads | `scheduling` group: `no_grouped_batches`, `adaptive`, `adaptive_os4/os32`, `sched_g<G>_w<W>` | random pairs 2048 / 16384 / 65536 at SF10, SF100, SF300 (the crossover figure) |
 | A3 | Stop a source's search once its destinations are found | `no_early_termination` | random pairs with few sources, same destination |
 | A4 | Sparse expansion by row lookup vs partition sweep | `dense_frontier`, `sparse_frontier` | sources x all (frontier grows to the whole graph), same destination (small frontiers) |
@@ -27,6 +41,8 @@ what the decision is worth, measured on the shapes where it applies (SF10 and SF
 | A10 | Thread scaling | `threads_1/2/4/8/16` | random pairs 65536, sources x all 1024 |
 | A11 | MS-BFS lane width | build-time `cmake -DDUCKPGQ_LANE_LIMIT=64|128|256|1024` (separate builds, section 3; `DUCKPGQ_EXTENSION` picks the build) | random pairs; 256 lanes measured 27 Oct: same time and misses as 512 at SF10 and SF100 |
 | A12 | Fold ratio and overlay size | `update-run --fold-ratio`, configs `index_auto` vs `index_nofold` (existing) | update workload |
+| A14 | Partition geometry (W32): vertices per partition instead of 2 x threads partitions | `partitions` group: `partitions_4096 .. 65535` (one index per geometry) | random pairs 2048 / 65536 and sources x all 1024 at SF10, SF100 |
+| A13 | Explore-phase memory traffic (W31 step 3): frontier summary bitmap, per-source bitmap test on dense levels, row-lookup expansion on sparse levels, visit-line prefetch | `memory` group: `plain_explore`, `no_frontier_bitmap`, `bitmap_filter_on/off`, `no_sparse_levels`, `sparse_levels_8/64`, `visit_prefetch_8` | random pairs 2048 / 16384 / 65536 at SF10, SF100, SF300; measured 27 Oct: plain -> default 1.14x (SF10), 1.37x (SF100), 1.68x (SF300) on the index at 65536 pairs |
 
 ## 2. Inventory
 
@@ -41,6 +57,11 @@ has no switch; the right-hand column says what a microbenchmark would need.
 | Few-sources rule | `few_sources_limit` (new, 26 Oct) | 16 (0 off) | at most this many distinct sources always uses the per-source kernel |
 | Target early termination | `target_early_termination` (new) | true | a group stops once every destination is reached; `SourceGroupTargets` set/bitmap switch at 64 x expected > V stays hard-coded |
 | Sparse vs dense frontier expansion | `sparse_frontier_divisor` (new) | 64 (0 always sweeps; a huge value always looks up rows) | per-source kernel only; needs row lookup (not on streaming segments) |
+| Frontier summary bitmap (lane kernel) | `frontier_bitmap` | true | one bit per vertex in the working set, built in the check phase; lists the frontier of sparse levels |
+| Bitmap test per source on dense levels | `frontier_bitmap_filter` | -1 (on when one working set > budget / 16 = 32 MB) | SF100: 1.2-1.6x; SF10: 10% overhead, hence off there |
+| Sparse levels of the lane kernel | `sparse_level_divisor` | 16 (0 sweeps every level) | active vertices x divisor < V: row lookup of the active list per partition instead of the sweep |
+| Destination sub-range tasks (lane kernel) | `sub_range_tasks` | true | when batches x partitions < threads, each partition's destination range is split; rows are sorted by destination so a task reads only its slice |
+| Visit-line prefetch | `visit_prefetch` | 0 (off) | rows ahead in the partition's source list; neutral within 3% at every scale factor |
 | Snapshot cache | `snapshot_cache` (new) | true | `CSRIndex::BuildSnapshot` skips both the hit test and the store when false |
 | Grouped batches | `grouped_batches` | true | The adaptive batch scheduler (W31): worker groups with pooled working sets, window grown on measured throughput; false runs one event per batch. `grouped_batches_budget` (512 MB) separates the cache-resident regime (start wide, own threads) from the memory-bound one (ramp from 4, pooled tasks); `batch_oversubscription` (0 = by regime) and `max_concurrent_batches` / `threads_per_batch` fix the shape for the `sched_g<G>_w<W>` configurations. The `run` subcommand's `--grouped-batches` flag defaulted to false until 26 Oct, so the 21 Oct DuckDB-only sweep (`summary_*_comparison` files) ran without grouped batches |
 | Workers per batch / concurrent batches | `threads_per_batch`, `max_concurrent_batches` | 0 (derive) | |
@@ -49,7 +70,7 @@ has no switch; the right-hand column says what a microbenchmark would need.
 | Undirected aliasing | `CREATE INDEX ... WITH (undirected = true)`, `-[]-` in MATCH, cache key suffix `|undirected` | off | reverse search over forward partitions |
 | Pair deduplication | `deduplicate_pairs` | false | ITERATIVE_LENGTH without an index snapshot |
 | Reach mode planning | `reach`, `reach_filtered` | true, false | MATCH only; the harness calls `reachoperator` directly |
-| Partition count | `light_partition_multiplier` (and `SET threads`) | 1 | partitions = threads x (1 + max(1, multiplier)), width <= 65535 vertices; the index freezes the count at CREATE INDEX |
+| Partition count | `partition_vertices` (new, 27 Oct), else `light_partition_multiplier` and `SET threads` | 65535 (floor 8 partitions) | partition_vertices > 0 sets ceil(V / partition_vertices) partitions, otherwise threads x (1 + max(1, multiplier)); width <= 65535 vertices; the index freezes the count at CREATE INDEX, so the harness builds one index per geometry |
 | Fold ratio | `duckpgq_csr_index_fold_ratio` | 0.1 (0 off) | manual `duckpgq_csr_index_fold(table, index)` |
 | Push/pull, bidirectional kernels | marker function name (`pushpulliterativelengthoperator`, `bidirectionaliterativelengthoperator`), `push_pull_frontier_gate` (2), `build_reverse_csr` | legacy global-CSR input only | not reachable from MATCH; harness modes `pushpull_operator`, `bidirectional_operator` |
 | Heavy/light partition split | `heavy_partition_fraction` (0.75), `light_partition_multiplier` | legacy CSR build only | not exercised by the buffered or index paths |

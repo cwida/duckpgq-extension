@@ -5,7 +5,6 @@
 namespace duckdb {
 
 bool GetPathFindingOption(ClientContext &context);
-int32_t GetPathFindingTaskSize(ClientContext &context);
 int32_t GetLightPartitionMultiplier(ClientContext &context);
 double_t GetHeavyPartitionFraction(ClientContext &context);
 bool GetPathFindingBenchmarkOption(ClientContext &context);
@@ -29,12 +28,15 @@ int32_t GetPathFindingFewSourcesLimit(ClientContext &context);
 int64_t GetPathFindingGroupedBatchesBudget(ClientContext &context);
 int32_t GetPathFindingBatchOversubscription(ClientContext &context);
 bool GetPathFindingFrontierBitmap(ClientContext &context);
+int32_t GetPathFindingFrontierBitmapFilter(ClientContext &context);
+int32_t GetPathFindingSparseLevelDivisor(ClientContext &context);
+int32_t GetPathFindingPartitionVertices(ClientContext &context);
+bool GetPathFindingSubRangeTasks(ClientContext &context);
 int32_t GetPathFindingVisitPrefetch(ClientContext &context);
 
 struct CorePGQOptions {
 	static void Register(ExtensionLoader &loader) {
 		RegisterExperimentalPathFindingOperator(loader);
-		RegisterPathFindingTaskSize(loader);
 		RegisterPathFindingLightPartitionMultiplier(loader);
 		RegisterPathFindingHeavyPartitionFraction(loader);
 		RegisterPathFindingBenchmark(loader);
@@ -58,12 +60,15 @@ struct CorePGQOptions {
 		RegisterPathFindingGroupedBatchesBudget(loader);
 		RegisterPathFindingBatchOversubscription(loader);
 		RegisterPathFindingFrontierBitmap(loader);
+		RegisterPathFindingFrontierBitmapFilter(loader);
+		RegisterPathFindingSparseLevelDivisor(loader);
+		RegisterPathFindingPartitionVertices(loader);
+		RegisterPathFindingSubRangeTasks(loader);
 		RegisterPathFindingVisitPrefetch(loader);
 	}
 
 private:
 	static void RegisterExperimentalPathFindingOperator(ExtensionLoader &loader);
-	static void RegisterPathFindingTaskSize(ExtensionLoader &loader);
 	static void RegisterPathFindingLightPartitionMultiplier(ExtensionLoader &loader);
 	static void RegisterPathFindingHeavyPartitionFraction(ExtensionLoader &loader);
 	static void RegisterPathFindingBenchmark(ExtensionLoader &loader);
@@ -87,6 +92,10 @@ private:
 	static void RegisterPathFindingGroupedBatchesBudget(ExtensionLoader &loader);
 	static void RegisterPathFindingBatchOversubscription(ExtensionLoader &loader);
 	static void RegisterPathFindingFrontierBitmap(ExtensionLoader &loader);
+	static void RegisterPathFindingFrontierBitmapFilter(ExtensionLoader &loader);
+	static void RegisterPathFindingSparseLevelDivisor(ExtensionLoader &loader);
+	static void RegisterPathFindingPartitionVertices(ExtensionLoader &loader);
+	static void RegisterPathFindingSubRangeTasks(ExtensionLoader &loader);
 	static void RegisterPathFindingVisitPrefetch(ExtensionLoader &loader);
 };
 

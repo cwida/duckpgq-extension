@@ -737,3 +737,107 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
 - 27 Oct: paper Sections 3 and 4 audited against the code (26 Oct, two claim-by-claim passes; eleven corrections
   applied, `44aa6ccd`, `74534530`). Decision: repeat the audit on the frozen commit after the memory-bandwidth work on
   the multi-source traversal and the other open optimizations have settled; recorded in `paper/NOTES.md`.
+- 27 Oct (midday): frontier bitmap and prefetch measured (`microbench_memory_sf10/100.out`, 3 repeats). SF100, the
+  per-source bitmap test on every level: index 65536 pairs 6.35 s vs 7.76 s without (1.22x), 16384 pairs 1.91 vs
+  2.62 s (1.37x); build 9.46 vs 12.87 s (1.36x) and 2.94 vs 4.63 s (1.57x). SF10: the test costs 10% at 65536
+  pairs (0.83 vs 0.75 s) and gains 5-8% at 2048 / 16384. Prefetch (4 / 8 / 16 rows ahead): within 3% everywhere,
+  default off. The bitmap test follows the scheduler's regime (`frontier_bitmap_filter` -1: on when memory bound,
+  off when cache resident; 0 / 1 force). Activity profile of one SF100 batch (eight waves): levels 1-2 and 8-18
+  have 0.0-13% of vertices with any active lane (one lane each at the tail: straggler pairs at distance 10-18),
+  levels 3-7 46-97%; a wave spends 11 of 18 levels sweeping the CSR for a handful of vertices. Sparse-level path
+  written: a level with active x divisor < V (divisor 64, the per-source kernel's) expands the active list (from
+  the bitmap) by row lookup per partition instead of the sweep; first level of every wave included. Lunch chain
+  (`run_lunch_chain.sh`) measures it. Note: the author merged paper commits (`4dd78ba8`, operator section
+  corrected against the code at `64bc8f54`); the scheduling text there predates the adaptive scheduler and the
+  regime rules and needs a pass once the defaults settle.
+- 27 Oct (early afternoon): sparse levels measured (`microbench_memory2_sf*.out`, 3 repeats, `memory` group).
+  Index 65536 pairs, plain explore -> bitmap filter + sparse levels: SF10 0.78 -> 0.68 s (1.14x), SF100 7.9 -> 5.8 s
+  (1.37x), SF300 20.7 -> 12.3 s (1.68x); build SF100 12.6 -> 8.6 s (1.47x). Split: the per-source bitmap test is the
+  larger part at scale (SF300 65536: 13.3 s without it), the row-lookup sparse levels add 5-13% (SF10 65536 773 ->
+  684 ms, SF300 13.2 -> 12.3 s). Divisor 16 (active < V/16 takes the sparse path) beats 64 by 5-10% at the
+  16384-pair points, 256 is worse: adopted as its own option `sparse_level_divisor` (the per-source kernel keeps
+  `sparse_frontier_divisor` = 64). Prefetch neutral (default 0). The bitmap test pays even for a single SF100 batch
+  (2048 pairs: 526 vs 554 ms), so its rule is the size of one working set (> budget / 16 = 32 MB) rather than the
+  scheduler's regime; recorded as `bitmap_filter` and `sparse_level_divisor` in the strategy string. Headline after
+  W31 steps 2-3 (index, 65536 random pairs): SF10 0.68 s (was 2.6 s on 25 Oct), SF100 5.8 s (was 16.9 s), SF300
+  12.3 s (was 55 s). Pending: ramp-start check and activity profiles at SF10 / SF300 (lunch chain); commit.
+- 27 Oct (noon): ramp-start check after the explore changes (`microbench_ramp8_sf100/300.out`, 3 repeats): SF300
+  adaptive default = per-batch events on both routes (index 12.25 vs 12.13 s, build 20.3 vs 20.3 s at 65536 pairs);
+  SF100 per-batch ahead again (index 5.33 vs 5.86 s, 16384 pairs 1.58 vs 1.93 s; build 8.13 vs 8.60, 2.43 vs 3.46
+  s). With 8 batches both schedulers run all 8 concurrently, so the 25% gap at 16384 pairs is not the window; to
+  isolate (fixed 8x32 grouped vs per-batch, phase timings). Activity profiles: SF10 waves reach level 17, SF300
+  level 26 (19 of 26 levels under 2% active); dense core at levels 3-7 at every scale factor.
+- 27 Oct (early afternoon): the SF100 scheduler gap isolated by alternating the variants at 16384 pairs: adaptive
+  default 1.69 / 1.76 s, fixed 8 groups x 32 pooled tasks 1.50 / 1.53 s, per-batch events 1.57 / 1.52 s. The
+  default's strategy string showed 8 working sets of 41 MB (332 MB, under the 512 MB budget), so the regime rule
+  said cache resident and gave each group its own 4 threads; pooling is what the point wanted. The two decisions
+  are now separate: own threads only while one working set is <= budget / 16 (32 MB; SF10's 13 MB), pooled tasks
+  otherwise (`tasks` in the strategy string); the window starts at all groups while the total fits the budget and
+  ramps from 16 otherwise (fixed 8 / 16 / 32 groups are within 2% at SF100 and SF300 after the explore changes;
+  the ramp from 8 cost 5%). Fixed 32 x 32 equals per-batch events exactly (5.16 s), so the grouped mechanism has no
+  inherent cost. Working-set sizes as the engine computes them from the index dictionary (vertices with edges):
+  SF10 13 MB, SF100 41 MB, SF300 about 110 MB per group; earlier notes quoting 86 / 225 MB used person counts
+  (68.7K / 473K / 1.19M persons; 1.84M / 18.7M / 55.7M knows edges).
+- 27 Oct (afternoon): final scheduler default verified (`microbench_final_sf*.out`, 3 repeats, both routes, 2048 /
+  16384 / 65536 pairs, every point agreeing, no errors). Default vs per-batch events, index: SF10 0.68 vs 1.12 s
+  (1.64x), SF100 5.20 vs 5.20 s, SF300 12.33 vs 12.37 s; build: SF10 0.91 vs 1.56 s (1.70x), SF100 8.24 vs 8.09 s
+  (0.98x), SF300 20.3 vs 20.3 s; 2048 and 16384 pairs within 3% everywhere. W31 steps 2 and 3 closed: one
+  scheduler at every scale, equal to the best fixed shape where it is not better. Headline, index route, 65536
+  random pairs: SF10 0.68 s, SF100 5.20 s, SF300 12.3 s (25 Oct archive: 2.6 / 16.9 / 55 s). Next: W32 partition
+  geometry microbenchmark (option `partition_vertices`, harness group `partitions`, one index per geometry).
+- 27 Oct (afternoon): W32 partition geometry measured (`microbench_partitions_sf10/100.out`, 3 repeats, option
+  `partition_vertices`, one index per geometry). Partitions at SF10 / SF100: default 2 x threads = 64 / 64;
+  4096-vertex 17 / 116; 8192 9 / 58; 16384 5 / 29; 32768 3 / 15; 65535 2 / 8. Index route, 65536 pairs: SF10 675
+  -> 387 ms (65535-wide, 1.74x), SF100 5.28 -> 3.45 s (1.53x); sources x all 1024: SF10 228 -> 79 ms (2.9x), SF100
+  2.37 -> 1.11 s (2.1x); build route the same direction (SF100 8.28 -> 4.30 s, 4.09 -> 2.18 s). The cost: a
+  single-batch lane query gets its parallelism from the partitions, so 2048 pairs go SF10 103 -> 262 ms, SF100 528
+  -> 1100 ms (2-2.5x slower); 4096-vertex partitions are slower than the default everywhere at SF100 (more visit
+  re-reads, no more parallelism). Both routes fix the geometry before the pair shape is known (the build route
+  radix-partitions edges as they arrive, the index at CREATE INDEX), so the choice cannot follow the query. W32
+  step 2: decouple a batch's parallelism from the partition count with (partition, destination sub-range) explore
+  and check tasks when a level has fewer partitions than workers, then default to the coarsest geometry (65535
+  vertices per partition). Default unchanged until then.
+- 27 Oct (late afternoon): W32 step 2. Destination sub-range tasks: when a query's batches x partitions leave
+  threads idle (the scheduler's hint threads / (partitions x batches)), each partition's destination range is split
+  into sub-ranges and explore / check tasks are (partition, sub-range) pairs with disjoint writes; the build's radix
+  sort now orders every row's destinations (two LSD passes on the 16-bit local destination before the source
+  passes) so a sub-range task binary-searches its slice of a row instead of scanning the row. Two bugs on the way: the
+  group scheduled its own worker count while the batch had sized its arrays for the partition count (out-of-bounds
+  writes, one failed test), and the first rule split every batch of a 32-batch query. SF100, 1 repeat, 8 partitions
+  vs the 64 of the thread rule: index 2048 pairs 531 -> 816 ms (1.54x slower; 1.09 s without sub-ranges), 16384
+  pairs 1.42 -> 0.99 s, 65536 5.12 -> 3.34 s, sources x all 2.27 -> 1.05 s; build 682 -> 927 ms, 2.25 -> 1.34 s,
+  8.11 -> 4.28 s, 3.91 -> 2.14 s. The single-batch penalty that remains is inherent to the geometry (every task
+  reads every row header and visit line of its partition); it is the price of 1.5-2.2x on the set-oriented shapes
+  and the per-source kernel, which is the paper's thesis. Default now 65535 vertices per partition
+  (`partition_vertices`; <= 0 is the thread rule, microbenchmark `threads_rule_partitions`). Verification at SF10 /
+  SF100 / SF300 with fresh indexes follows.
+- 27 Oct (end of afternoon): W32 closed. Default geometry: 65535 vertices per partition with a floor of eight
+  partitions (SF10 8, SF100 8, SF300 19 instead of 64); the per-source kernel's dense sweep splits a partition's
+  rows between workers when partitions < workers (discovery is a compare-and-swap, so row ranges are safe), the
+  lane kernel splits destination sub-ranges with rows sorted by destination. Verification vs the thread rule
+  (`microbench_floor_sf10/100.out`, `microbench_coarse_sf300.out`, 3 repeats), "faster" / "slower" of the default:
+  index 65536 pairs SF10 1.48x faster (446 vs 658 ms), SF100 1.51x (3.43 vs 5.18 s), SF300 1.21x (10.0 vs 12.2 s);
+  16384 pairs 1.23x / 1.53x / 1.16x faster; 1024 sources x all 2.07x / 2.09x / 1.28x faster (112 ms, 1.11 s, 3.97
+  s); 1 pair and 1 source level (3-10 ms, 18 vs 15 ms at SF100); 128 and 2048 pairs (one batch) 1.3-1.6x slower
+  (SF100 2048: 831 vs 507 ms). Build route: 65536 pairs 1.64x / 1.92x / 1.56x faster, sources x all 1.78x / 1.84x /
+  1.45x faster, 2048 pairs 1.25-1.4x slower, 1 pair and 1 source 1.1-1.35x slower because the per-query CSR build
+  sorts one task per partition (W32 step 3, open: a parallel per-partition sort would remove that). The single-batch
+  penalty is inherent to coarse partitions (every task reads every row header and visit line of its partition) and
+  is the price of the set-oriented gains; the `partitions` group documents the trade-off. Headline, index route:
+  SF10 65536 pairs 0.45 s, 1024 sources x all 0.11 s; SF100 3.43 s and 1.11 s; SF300 10.0 s and 3.97 s.
+- 27 Oct (evening): freeze preparation. Dead option `task_size` removed (`1cc48dc2`); `repro/environment.sh` records
+  every operator option default from the built extension (`repro/ENVIRONMENT.txt`); switches document gets a terms
+  section (shape classes by counts and kernel; every ratio with its direction). Soak of today's changes on the shapes
+  the microbenchmarks did not cover, DuckPGQ only, SF10 and SF100 (`~/sweep/run_soak.sh`, log `~/sweep/soak.log`):
+  sweep-pairs and ldbc-queries with the counts compared against the archived CSVs (`compare_counts.py`), the index
+  group (reverse side, same destination), update-run sssp and point-to-point (190 x 2000) and update-concurrent with 4
+  readers. Tag `eval-freeze-rc1` and the frozen rerun follow a clean soak. Left for after the paper's numbers, with
+  reasons: W32 step 3 (parallel per-partition sort; build route single searches 1.1-1.35x slower than the thread
+  rule), the learned scheduler window per graph (changes no number), W34 locality ordering (unmeasured), W28 step 4.
+- 27 Oct (evening): soak clean (`~/sweep/soak.log`, build `1cc48dc2`, 9 minutes): SF10 and SF100 sweep-pairs (44
+  points each) and ldbc-queries (60 points each) agree with the archived counts, 0 mismatches; index group (reverse
+  side, same destination) 6 points agree; update-run sssp and point-to-point, 190 x 2000, verified with 0 mismatches
+  on build, index_auto and index_nofold; update-concurrent 4 readers 7696 events, 190 commits, 0 mismatches, 0
+  errors (index query mean 15.5 ms, build 25 ms, commit 32 ms). The repro matrix's microbench step now also runs the
+  `memory`, `partitions` and `scheduling` groups (SF300 scheduling on the index route). Ready to tag
+  `eval-freeze-rc1`.

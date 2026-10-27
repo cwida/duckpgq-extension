@@ -91,7 +91,8 @@ WHERE Phase = 'endpoint_partition_build';
 2
 
 # The direct builder retains one packed 64-bit endpoint per graph edge and
-# creates only the logical destination partitions needed by this graph.
+# creates only the logical destination partitions needed by this graph: the default geometry (65535 vertices per
+# partition, at least eight partitions) gives this small graph a width that covers it in seven ranges.
 query II
 SELECT DISTINCT MemoryBytes, PartitionCount
 FROM read_csv_auto('{TEST_DIR}/path_finding_operator_match_syntax_phase_timing.csv')
