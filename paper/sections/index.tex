@@ -5,7 +5,7 @@
 % re-audit on the frozen commit. Numbers provisional.
 
 Building the partitioned CSR costs 0.02 to 0.3\,s per query on our graphs (Section~\ref{sec:eval}), which is the
-whole cost of a single-pair query and a quarter of a 65\,536-pair one. The remedy is to keep the CSR, and the place
+whole cost of a single-pair query and a fifth of a 65\,536-pair one (Table~\ref{tab:random-pairs}). The remedy is to keep the CSR, and the place
 to keep it is an index. \texttt{CREATE INDEX knows\_csr ON knows USING CSR (src, dst)} asks \duckdb to maintain the
 structure across queries, transactions, checkpoints and restarts, and its planner to use it when a path pattern
 matches the edge table. This section describes what \duckdb's index interface gives such a structure, what it
@@ -74,8 +74,8 @@ snapshot costs one version check per group since the fold and one pass over the 
 destination range, in parallel; no edge of the epoch is examined. The version checks are paid even when the cached
 snapshot is returned, because they are what identifies it. Groups whose rows have all been deleted again, and entries
 replayed from the write-ahead log after a restart, which carry no group, fall back to one check per row until the next
-fold. The per-row alternative, one version check per log entry, costs three to four times the query itself at SF10
-with 300\,k pending operations, and is why change groups exist.
+fold. The per-row alternative, one version check per log entry, grew a single-source query at SF10 from 8 to 124\,ms as
+the pending operations accumulated (Section~\ref{sec:eval-updates}), and is why change groups exist.
 
 Keys are resolved to dense ids when the group is appended, so that a snapshot can place inserted edges without a
 dictionary lookup per edge. A key that is not in the epoch's dictionary, a new vertex, gets an id above the epoch's
