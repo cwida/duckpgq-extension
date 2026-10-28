@@ -843,3 +843,8 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   builds them under the tagged geometry; containers up (Memgraph 3.14.0, FalkorDB 4.2.2, Neo4j 5.26.32 Enterprise
   with GDS 2.13.14). Expected about 3.5 days; nothing else runs on the machine meanwhile. Afterwards:
   `./repro/collect.sh`, commit `repro/results` and `paper/`, compare with the 25 Oct archive.
+- 28 Oct: frozen run steps 1-6 done (sweeps and LDBC at all three scale factors, 20 h, no errors, every point
+  agreeing). Decided: the LDBC table and figure report medians (the baselines' first repeats are cold: Kuzu IC13 at
+  SF300 mean 186 ms vs median 51 ms, Memgraph BI20 at SF10 578 vs 275 ms; DuckPGQ medians equal its means because
+  every query runs once untimed in its process). To do after the run, together with `collect.sh`: `ldbc-queries-table`
+  and `ldbc_figure` on medians, raw rows unchanged.
