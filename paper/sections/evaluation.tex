@@ -8,30 +8,46 @@ We ask four questions. How does the operator compare with native graph systems w
 when it asks for thousands? What does the index add over building the CSR on the fly? What do both cost when the graph
 changes underneath concurrent readers? And how do the three routes behave on the path queries of a standard benchmark?
 
-\paragraph{Setup.} All experiments run on one AWS m7a.8xlarge (32 AMD Genoa cores without SMT, 128\,GiB, gp3 volume
-at 1000\,MB/s), Linux, 32 threads per system unless stated. \duckpgq runs on \duckdb v2.0.0. The baselines are Kuzu
-0.11.3, Neo4j 5.26 Enterprise (16\,GB heap, 16\,GB page cache, parallel runtime; the GDS library with its community
-limit of four threads where marked), Memgraph and FalkorDB in their current Docker images. The graph is the
-\texttt{Person\_knows\_Person} relation of LDBC SNB at scale factors 10, 100 and 300 (1.84M, 18.7M and 55.7M edges,
-undirected), which every system loads from the same CSV files. Three query shapes drive the comparison. \emph{Random
-pairs} draws $n$ source-destination pairs uniformly and returns the hop-count shortest path length of each.
-\emph{Sources $\times$ all} returns the distance from each of $k$ sources to every reachable person. Three LDBC queries
-have a shortest path at their core, IC13 (one pair), BI19 (every pair between the persons of two cities) and BI20
-(one target, every person of one company). Every query is given to each system in its native language in the form
-that ran fastest for it, listed in Appendix~\ref{sec:appendix-queries}. The Cypher patterns carry a hop bound of 30,
-which no path in these graphs reaches, and \duckpgq runs through the operator's planner marker so that pairs come from
-a table and not from a cross product of vertex patterns. A query that exceeds 600\,s is reported as timed out and kept
-in the tables. Each point is the mean of three runs after one warm-up. ``\duckpgq build'' builds the partitioned CSR
-inside the query, ``\duckpgq index'' reads a CSR index created once. All systems return identical path lengths on
-every point they complete.
+\paragraph{Setup.} All experiments run on one AWS m7a.8xlarge (32 AMD EPYC 9R14 cores, one thread per core,
+128\,GiB of which 123\,GiB are usable, Amazon Linux 2023, gp3 EBS volume \todo{throughput: the reproduction README
+says about 250\,MB/s, the plan said 1000\,MB/s; check the volume}). \duckpgq runs on \duckdb v2.0.0-dev (commit
+45f4fdf3) with \texttt{experimental\_path\_finding\_operator} enabled and every other setting at its default, 32
+threads. The baselines are Kuzu 0.11.3 (embedded, 32 threads, read-only database), Neo4j 5.26.32 Enterprise (16\,GB
+heap, 16\,GB page cache, parallel runtime with the server's default worker count; the GDS library 2.13.14 with its
+unlicensed limit of four threads where marked), Memgraph 3.14.0 and FalkorDB 4.2.2 in Docker with their default
+configuration, both of which run each query on one thread. The graph is the \texttt{Person\_knows\_Person} relation of
+LDBC SNB at scale factors 10, 100 and 300, with 1.84M, 18.7M and 55.7M edges stored once in the direction the
+generator produces them. Random pairs, sources $\times$ all and the update workload traverse that direction; the LDBC
+queries use the undirected closure. Every system loads the same snapshot, exported from the \duckdb tables as CSV for
+Neo4j, Memgraph and FalkorDB and as Parquet for Kuzu.
+
+Three query shapes drive the comparison. \emph{Random pairs} returns the hop-count shortest path length of each of $n$
+pairs taken from a fixed pseudo-random sequence (source $i$, destination $104729\,i + 15485863 \bmod |V|$), so the
+pairs for a smaller $n$ are a prefix of those for a larger one; in the directed graph about a third of them are
+reachable. \emph{Sources $\times$ all} returns the distance from each of $k$ sampled sources to every reachable
+person. Three LDBC queries have a shortest path at their core, IC13 (one pair), BI19 (every pair between the persons
+of two cities) and BI20 (one target, every person of one company); we run their hop-count variants with five
+parameter sets each, chosen by the harness (Appendix~\ref{sec:appendix-queries}). Every query is given to each system
+in its native language in the form that ran fastest for it, listed in the appendix. The Cypher patterns carry a hop
+bound of 30, Kuzu's default maximum, \todo{verify on the frozen pair tables that no shortest path exceeds 30, in
+particular at SF300} and \duckpgq runs through the operator's planner marker so that pairs come from a table and not
+from a cross product of vertex patterns. A query that exceeds 600\,s is reported as timed out and kept in the tables;
+the larger points of the same shape are then recorded as timed out without running them. Each point is the mean of
+three runs. Every \duckpgq run is a fresh process that executes the query once untimed before the timed run, which
+also loads the index from disk; the native systems run three timed repetitions back to back without a separate
+warm-up. \todo{Decide whether the native systems get a warm-up run; the frozen sweep has none.} ``\duckpgq build''
+builds the partitioned CSR inside the query, ``\duckpgq index'' reads a CSR index created once, untimed, before the
+first query. On every point they complete, all systems return the same number of reached pairs and the same sum of
+path lengths. \todo{Check the frozen logs for the harness's DISAGREEMENTS line.}
 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/random_pairs.pdf}
   \caption{Shortest-path length for $n$ random (source, destination) pairs in one query, LDBC SF10, SF100 and
   SF300. Y: seconds per query, log scale, mean of three runs at 32 threads; x: $n$ from 1 to 65\,536. Lines: \duckpgq
-  over the CSR index, \duckpgq building the CSR inside the query, Neo4j and Kuzu in their fastest formulation; a
-  triangle at the top marks a run over the 600\,s limit. \duckpgq shares one traversal among 512 pairs; Neo4j and
+  over the CSR index, \duckpgq building the CSR inside the query, Neo4j and Kuzu in their fastest formulation; the Kuzu
+  line at SF10 and SF100 is the run with the pairs split over 32 connections, at SF300 the single-connection run. A
+  triangle at the top marks a run over the 600\,s limit. \todo{Plot one configuration consistently, or keep this note.} \duckpgq shares one traversal among 512 pairs; Neo4j and
   Kuzu run one search per pair.}
   \label{fig:random-pairs}
 \end{figure*}
@@ -42,7 +58,7 @@ every point they complete.
   \caption{Distance from each of $k$ sources to every reachable person in one query, SF10, SF100 and SF300. Y:
   seconds per query, log scale, mean of three runs at 32 threads; x: $k$ from 1 to 1024. Lines: \duckpgq over the
   index, \duckpgq building per query, Kuzu (recursive join from a literal source) and Memgraph (\texttt{*BFS} per
-  source). Neo4j and FalkorDB have no single-source form, run one \texttt{shortestPath} per destination, and exceed
+  source); at SF10 and SF100 the Kuzu and Memgraph lines are the runs over 32 client connections. Neo4j and FalkorDB have no single-source form, run one \texttt{shortestPath} per destination, and exceed
   600\,s from 16 sources at SF10; they are omitted.}
   \label{fig:sources-all}
 \end{figure*}
@@ -84,7 +100,8 @@ FalkorDB have no single-source formulation; both run one \texttt{shortestPath} p
 16 sources. From 16 sources up the operator is two to three times faster than Kuzu and two to three orders of
 magnitude faster than the rest, and 1024 sources to every one of 2.4\,M persons at SF300 take 4.2\,s over the index.
 The run with 32 client connections (Figure~\ref{fig:client-threads}) is the fairest version of this comparison. With
-the pair list split over 32 connections the native systems improve by about an order of magnitude and remain one to
+the pair list split over 32 connections, Kuzu, Memgraph and FalkorDB improve by about an order of magnitude (Neo4j's
+driver session cannot be split this way and runs as one query) and remain one to
 two orders of magnitude slower than one operator call, because the operator's parallelism is inside the traversal and
 theirs is between independent searches.
 
@@ -93,7 +110,8 @@ theirs is between independent searches.
   \includegraphics[width=\linewidth]{figures/client_threads.pdf}
   \caption{Random pairs with client-side parallelism, SF10 and SF100. Solid lines: the $n$ pairs split evenly over
   32 client connections that query concurrently, wall time until the last connection returns; dashed lines: the same
-  $n$ pairs in one query on one connection. Y: seconds, log scale, mean of three runs; x: $n$. Kuzu, FalkorDB and
+  $n$ pairs on one connection (one query, or for Kuzu one query per pair). Opening the 32 connections is inside the
+  timed region. Y: seconds, log scale, mean of three runs; x: $n$. Kuzu, FalkorDB and
   Memgraph gain about an order of magnitude from 32 connections at large $n$; one call of the \duckpgq operator over
   the index (blue, one connection) stays one to two orders of magnitude faster.}
   \label{fig:client-threads}
@@ -123,7 +141,9 @@ under 1\,GB at SF300.
 \begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{4pt}
   \caption{Fixed costs on the knows graph, 32 threads: time from the CSV files to a loaded graph (import, or for the
   index its creation), the index's load on the first query after the database is opened, and its size on disk
-  (17.5 bytes per edge). \todo{Measure the sizes and the other systems' store sizes; add single-threaded load.}}
+  (17.5 bytes per edge). Kuzu's import is from Parquet. \todo{Not produced by the frozen sweep: the native load times
+  are constants from the 23 Oct logs and the index rows come from index\_comparison runs that the frozen matrix does not
+  include. Add a load step to the matrix or measure separately; measure the sizes.}}
   \label{tab:fixed-costs}
   \begin{tabular}{lrrr}\toprule
   & SF10 & SF100 & SF300 \\
@@ -159,16 +179,21 @@ edges grow by a factor of 30, the index time for 65\,536 pairs by 21 and for 102
 \label{sec:eval-updates}
 
 The third question is the reason the index exists. We replay the LDBC SNB insert and delete streams for
-\texttt{Person\_knows\_Person} at SF10, 339\,k inserts and 50\,k deletes grouped into 190 commits of 2000 operations,
-and after every commit run one single-source query to 1024 destinations on each system. Figure~\ref{fig:updates}
+\texttt{Person\_knows\_Person} at SF10, the first 380\,k operations of the stream restricted to the persons of the snapshot (332\,k inserts, 48\,k
+deletes) in 190 commits of 2000 operations, and run one single-source query to 1024 destinations before the stream and
+after every commit on each system, 191 queries in all. The \duckpgq index runs with automatic folds at the default
+ratio of one tenth. Figure~\ref{fig:updates}
 reports the mean query latency during the stream and the mean time to apply one commit. The index answers in 19\,ms,
 the build route in 26\,ms, Kuzu in 16\,ms, Memgraph in 41\,ms, Neo4j in 1.3\,s and FalkorDB in 9.3\,s. Applying a
 commit costs \duckdb 8 to 9\,ms with either route, Memgraph 26\,ms, Neo4j 68\,ms, FalkorDB 111\,ms and Kuzu 342\,ms.
-Results agree on every one of the 190 steps across all six configurations. Two things in these numbers bear on the
+The three \duckpgq configurations (build, index with and without automatic folds) agree on every step, which the
+harness checks; the native systems agree with them on the first and the last step. \todo{Compare all systems on all
+191 steps of the frozen run.} Two things in these numbers bear on the
 design of Section~\ref{sec:index}. The index's query cost under updates is dominated by the overlay it rebuilds after a
 commit, 32 to 43\,ms at SF10 for the first query after a commit and the no-delta cost for the ones that follow
 (10.4\,ms with ten queries per commit); without the commit-group visibility of Section~\ref{sec:index} the same query
-grew to 124\,ms as the pending operations accumulated. And the index adds nothing to the update path. An insert or
+grew to 124\,ms as the pending operations accumulated. \todo{Both numbers are from pre-freeze runs; the frozen matrix
+has no ten-queries-per-commit step and no switch for per-row visibility. Add the steps or drop the numbers.} And the index adds nothing to the update path. An insert or
 delete appends to its change log and is otherwise the same transaction the table sees.
 
 \begin{figure}[t]
@@ -176,15 +201,15 @@ delete appends to its change log and is otherwise the same transaction the table
   \includegraphics[width=\linewidth]{figures/updates.pdf}
   \caption{Query and update cost under a write stream, SF10, 32 threads. The LDBC insert and delete stream for
   \texttt{Person\_knows\_Person} is applied as 190 commits of 2000 operations; after every commit one query asks the
-  distance from one source to 1024 destinations. Left: mean query time over the 190 queries; right: mean time to
-  apply one commit. Log x. Every system returns the same 190 answers.}
+  distance from one source to 1024 destinations. Left: mean query time over the 191 queries (index: automatic folds at ratio 0.1); right: mean time to
+  apply one commit. Log x. \todo{State what was checked across systems after the frozen run.}}
   \label{fig:updates}
 \end{figure}
 
-With concurrent readers the picture holds. One writer committing 2000 operations every 200\,ms against 1, 4, 8 and
+With concurrent readers the picture holds. One writer committing 2000 operations and pausing 200\,ms after each commit, against 1, 4, 8 and
 16 readers running single-source queries gives mean latencies of 11, 18, 37 and 72\,ms over the index and 23, 32, 49
 and 84\,ms for the build route, with no result mismatch across 190 commits. With an unpaced writer at 14 commits per
-second and 8 readers both routes answer in 39\,ms. FalkorDB serializes writers against readers with a per-graph lock
+second and 8 readers both routes answer in 39\,ms. \todo{Pre-freeze run; the frozen matrix has only the 200\,ms pause.} FalkorDB serializes writers against readers with a per-graph lock
 and has no snapshot to offer a reader; the other systems were not run concurrently. \todo{Table or small figure for
 the concurrent run; SF100 numbers (index 95 vs build 131\,ms, growing to 159\,ms over 1.35M pending operations) and
 the fold policy discussion belong to Section~\ref{sec:strategy}.}
