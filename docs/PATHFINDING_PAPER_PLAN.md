@@ -854,3 +854,17 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   SF300 mean 186 ms vs median 51 ms, Memgraph BI20 at SF10 578 vs 275 ms; DuckPGQ medians equal its means because
   every query runs once untimed in its process). To do after the run, together with `collect.sh`: `ldbc-queries-table`
   and `ldbc_figure` on medians, raw rows unchanged.
+- 28 Oct (afternoon): the author's audit of the frozen commit found index bugs (tests in `4bad0c97`, merged here as
+  `05f80f7f`, failing on rc1): (1) fold order, an older transaction folding after a newer one installs the older
+  epoch as newest and compaction drops entries only the newer one covered; (2) row-id reuse after a failed commit,
+  a reverted append's log entry becomes visible once the row id is reused by a committed row; (3) two readers that
+  differ only in a fully deleted change group share a cached snapshot (the cache key was the newest visible group,
+  and a fully deleted group is decided per row); plus two performance notes, duplicate overlay edges for a snapshot
+  on the newest epoch while the older one is retained, and a tombstone for a row still in the log. Decision: the
+  rc1 run continues (none of these touch the read path with an empty log); fixes written in the working tree,
+  unbuilt until the run ends: Fold skips when the newest epoch is not older than the folder's view; Append marks a
+  reused row id's previous entry DEAD (invisible, excluded from folds, dropped by compaction and serialisation);
+  the snapshot skips log entries its epoch already contains; the cache key hashes every per-entry visibility
+  decision. Then build, suite incl. the three new tests, tag `eval-freeze-rc2`, rerun the full matrix (about 1.5
+  days); rc1 serves as the validation set. The author's paper commits (sections audited against the frozen commit)
+  came in with the same merge.
