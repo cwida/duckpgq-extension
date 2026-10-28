@@ -6,16 +6,19 @@
 \subsection{The interfaces and their limits}
 \label{sec:hooks}
 
-The operator and the index touch almost every interface \duckdb exposes to an extension, and none of its internals.
-Table~\ref{tab:hooks} lists the interfaces, what each one gave us, and where it stopped short; the right column is
-the part of this paper that is addressed to engine designers rather than to graph people. Three gaps shaped the
-design more than any other. The index interface delivers the rows that changed but not the transaction that changed
-them, and it offers no way to ask whether a row was visible at an earlier point in time, because the engine garbage
-collects row versions; the epochs, commit groups and per-reader snapshots of Section~\ref{sec:index} exist because
-of that. The scheduler has no notion of a group of tasks that must run together, so the traversals are chains of
-per-phase events (Section~\ref{sec:phases}). And an extension operator cannot tell the optimizer what it will cost,
-so every choice between build and index, between the two traversals and between the two orientations is made inside
-the operator from its own statistics (Section~\ref{sec:cost}).
+The operator and the index touch almost every interface \duckdb exposes to an extension, and they need no change to
+\duckdb itself; to ask about row visibility they do call into classes that are not part of the extension API, the
+transaction and the table storage.
+Table~\ref{tab:hooks} lists the interfaces, what each one gave us, and where it stopped short. The right column is
+the part of this paper addressed to the designers of database systems. Three gaps shaped the design more than any
+other. The index interface delivers the rows that changed but not the transaction that changed
+them, and it offers no way to ask whether a row was visible at an earlier point in time, because \duckdb garbage
+collects row versions. The epochs, change groups and per-transaction snapshots of Section~\ref{sec:index} exist because of
+that. The scheduler has no notion of a group of tasks that must run together, so the traversals are chains of
+per-phase events (Section~\ref{sec:phases}). An extension operator can report a cardinality but not a cost, and
+join ordering treats it as opaque, so the choices between the two traversals and between the two orientations are
+made inside the operator from its own statistics (Section~\ref{sec:cost}). The choice between build and index is
+made earlier, at bind time, by the rewrite, which takes the index whenever one exists.
 
 \begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
   \caption{The \duckdb extension interfaces the operator and the index use, what each provided, and what it lacked
@@ -30,17 +33,17 @@ the operator from its own statistics (Section~\ref{sec:cost}).
   \addlinespace[2pt]
   scalar functions & the marker that carries the path pattern to the planner; index statistics; strategy introspection & a marker must be volatile to survive folding, and must not reach execution \\
   \addlinespace[2pt]
-  optimizer extension & replacing the marker and its two inputs by the logical operator & runs before or after the engine's optimizer, not between its rules; the rewrite must find its inputs on the binder's plan shape \\
+  optimizer extension & replacing the marker and its two inputs by the logical operator & runs before or after \duckdb's optimizer, not between its rules; the rewrite must find its inputs on the binder's plan shape \\
   \addlinespace[2pt]
-  logical and physical operator & sink for pairs and edges, source for results, own events and tasks & no cardinality or cost reported back to the optimizer; no task groups in the scheduler \\
+  logical and physical operator & sink for pairs and edges, source for results, own events and tasks & a cardinality, but no cost, and join ordering treats the operator as opaque; no task groups in the scheduler \\
   \addlinespace[2pt]
-  index type & build, append and delete callbacks; serialization into the block manager; WAL replay; vacuum & rows but not transactions; no visibility at past points in time; a scan interface meant for point lookups, not for a traversal \\
+  index type & build, append and delete callbacks; serialization into the block manager; WAL replay & rows but not transactions; no visibility at past points in time; no scan interface, so the operator finds the index in the catalog by name; no tasks for index work, so its build, fold and load start threads of their own \\
   \addlinespace[2pt]
-  client context state & per-connection registry of property graphs and operator state & two connections initializing at once contend on the catalog \\
+  client context state & per-connection registry of property graphs and operator state & -- \\
   \addlinespace[2pt]
-  settings & operator and index options & per connection; a policy such as the fold ratio cannot be attached to the index itself \\
+  settings & operator and index options, per connection or global & index options are fixed at \texttt{CREATE INDEX}, so a policy such as the fold ratio is a setting and not a property of the index \\
   \addlinespace[2pt]
-  buffer manager & BFS working sets and CSR partitions as buffer-managed allocations & -- \\
+  buffer manager & the multi-source working sets, the build's staged edges and the persisted index segments & -- \\
   \bottomrule\end{tabular}
 \end{table}
 

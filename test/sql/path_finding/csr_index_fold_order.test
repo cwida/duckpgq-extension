@@ -1,0 +1,78 @@
+# name: test/sql/path_finding/csr_index_fold_order.test
+# description: A fold by an older transaction after a newer one must not hide committed edges from new transactions
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con1
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con2
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 1000;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(1, 101);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows SELECT range, range + 1 FROM range(1, 50);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# con1 pins a snapshot before the insert
+statement ok con1
+BEGIN;
+
+query I con1
+SELECT count(*) FROM knows;
+----
+49
+
+statement ok
+INSERT INTO knows VALUES (50, 51);
+
+# A newer transaction folds first
+query I con2
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=2;delta=1;tombstones=0
+
+# The older transaction folds after it
+query I con1
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+statement ok con1
+COMMIT;
+
+query I
+SELECT len FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person WHERE b.id = 51)
+    COLUMNS (path_length(p) AS len));
+----
+50

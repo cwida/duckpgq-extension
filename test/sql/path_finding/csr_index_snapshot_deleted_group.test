@@ -1,0 +1,70 @@
+# name: test/sql/path_finding/csr_index_snapshot_deleted_group.test
+# description: Two transactions that differ only in a fully deleted change group get different snapshots
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con1
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok con1
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET GLOBAL duckpgq_csr_index_fold_ratio = 1000;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(1, 11);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows VALUES (1, 2), (2, 3);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+statement ok
+INSERT INTO knows VALUES (5, 6);
+
+statement ok con1
+BEGIN;
+
+query I con1
+SELECT len FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 5)-[k:Knows]->*(b:Person WHERE b.id = 6)
+    COLUMNS (path_length(p) AS len));
+----
+1
+
+statement ok
+DELETE FROM knows WHERE src = 5;
+
+query I
+SELECT count(*) FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 5)-[k:Knows]->*(b:Person WHERE b.id = 6)
+    COLUMNS (path_length(p) AS len));
+----
+0
+
+query I con1
+SELECT len FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 5)-[k:Knows]->*(b:Person WHERE b.id = 6)
+    COLUMNS (path_length(p) AS len));
+----
+1
+
+statement ok con1
+COMMIT;

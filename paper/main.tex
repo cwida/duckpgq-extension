@@ -50,7 +50,21 @@
 \email{dljtw@cwi.nl}
 
 \begin{abstract}
-\todo{Abstract. Thesis: a loadable extension can give a relational engine graph-native path finding, including an MVCC-consistent CSR index, without forking the engine. One sentence each on: the operator (multi-source BFS over a radix-partitioned CSR built per query), the index (epochs plus a commit-group change log, snapshot per reader, fold), the planner integration through \sqlpgq, the evaluation headline numbers against Kuzu and Neo4j, and the update workload result.}
+SQL:2023 brought graph pattern matching into SQL. The shortest path is the part of it that relational systems
+execute badly. In \duckpgq we answered it with multi-source BFS inside scalar UDFs, which inherit \duckdb's
+parallelism for free. They also inherit its limit. A UDF receives work per tuple, so a single path pattern runs on one
+core, and the compressed sparse row (CSR) representation of the graph is rebuilt for every query. This paper removes
+both limits and remains a loadable extension. A path-finding operator with its own inputs and event schedule draws its
+parallelism from a partitioned CSR, uses a multi-source traversal for many pairs and a frontier traversal for few,
+and is reached from \sqlpgq's \texttt{MATCH} through an optimizer rule. A CSR index keeps the representation across
+queries, restarts and checkpoints behind \duckdb's general index interface. That interface reports which rows changed
+and nothing about which transactions may see them, so the index stores immutable epochs and a change log that \duckdb's own
+row-version check classifies once per change group, and every transaction traverses exactly the edges its transaction may see.
+On LDBC SNB at scale factor 300, against Kuzu, Neo4j, Memgraph and FalkorDB, \duckpgq answers a single pair in
+9\,ms where Kuzu needs 33\,ms and Neo4j 15\,ms, and 65\,536 pairs in 55\,s where both exceed ten minutes, because
+they search once per pair and \duckpgq once per traversal. Under a stream of 2000 edge updates per commit at scale
+factor 10 it answers a single-source query in 19\,ms and applies a commit in 9\,ms; Kuzu needs 16 and 342\,ms.
+\todo{Provisional numbers; replace from the frozen rerun.}
 \end{abstract}
 
 \maketitle

@@ -148,3 +148,50 @@ Introduction, when the frozen-commit numbers are in:
   build-route vertex ids are row ids up to the next row id (deleted rows count as vertices); pairs are not
   deduplicated by default; per-group memory of the single-source traversal 13 B/vertex (+12 with parents), all groups
   live until the scatter; NULL pairs count toward the ratio rule and disable the single-source zero-copy shortcut.
+- Re-audit Sections 3 and 4 against the frozen commit (decided 27 Oct). The desk is working on the memory bandwidth
+  of the multi-source traversal and other optimizations whose fate is open; once the dust settles and the frozen commit
+  is tagged, run the claim-by-claim code audit again (same procedure as 26 Oct: each mechanism and number in 3.x and
+  4.x checked against the code with file:line verdicts) and apply the corrections before the final numbers go in.
+  Sections most exposed: 3.3 (traversal costs, batch scheduling, thresholds), 3.4 (phases), 4.2-4.4 (snapshot cost,
+  fold trigger, load), the Evolution table.
+- Every number in Sections 3 and 4 must come from the evaluation setup or say where it comes from (author, 27 Oct).
+  Section 3 now states its source in the opening and cites Tables 2 and 3 for the build cost. Four passages still
+  carry laptop numbers from the synthetic 2M-vertex, 8M-edge graph (build time and bytes per edge, the 0.12 s sweep
+  for one pair, the single-source switch 0.11 -> 0.01 s and 1.5 -> 0.13 s, paths 0.24 vs 0.22 s and 0.43 s), marked
+  red; replace them from the frozen rerun or move them into the Evolution table. Check Section 4 in the same pass.
+
+## TODO after the frozen-commit sweep (eval-freeze-rc1)
+
+- Verify every number in the paper against the frozen sweep, not only Sections 3 and 4: abstract, introduction,
+  every section's prose, every caption, Tables 1-5, the figures, and the appendix. For each number: find the table,
+  figure or result CSV it comes from, check the value, and make the text cite it. Numbers that come from no table
+  are either added to one or removed.
+- In particular the build-cost sentence of Section 3.2 (282 ms vs 9 ms and 1.6 s vs 0.98 s at SF300, 97% and two
+  fifths), the "a fifth" of Sections 4 and 6.2, and the per-row check cost (8 to 124 ms at SF10) in Section 4.2.
+- Replace the laptop numbers on the synthetic 8M-edge graph (four passages in Section 3, marked red).
+- Then the code re-audit of Sections 3 and 4 (listed above), the two pending introduction edits, and the abstract's
+  provisional numbers.
+
+## Frozen-commit audit (28 Oct, eval-freeze-rc1 = 7e9778c0)
+
+Text and figures of Sections 3, 4 and 5, the background, the abstract and Figures 1 to 3 now state the frozen code's
+behaviour. Probes are in /tmp/foldbug/test (sqllogictests, two connections); none is in the repo.
+
+Code defects in the CSR index, found by the audit; the paper carries red TODOs for each:
+- Fold race, reproduced. Fold does not compare its bound with epochs.back()->bound. An older transaction folding
+  after a newer one installs the older epoch as the newest; compaction drops entries only the newer epoch covered;
+  a new transaction misses a committed edge. Automatic folds by concurrent readers can take this path, and every
+  reader that saw the log too long folds again after the first (serial redundant rebuilds). Fix: recheck under
+  fold_lock and skip when the newest epoch's bound is not older than the folder's.
+- Row-id reuse after a failed commit, reproduced. A unique-key conflict at commit reverts an append the CSR index
+  already logged; the next insert gets the same row id and the failed commit's edge becomes visible. Not tested: a
+  checkpoint dropping a fully deleted trailing row group.
+- Duplicate overlay edges, by reading. BuildSnapshot ignores covered_epoch, so a snapshot of the newest epoch re-adds
+  log entries that epoch contains while the older epoch is retained. Lengths unaffected.
+- Not reproduced: the cache-key collision through fully deleted groups (probe passed).
+- Unexplained: a delete of a log row also records a tombstone (stats count it); every answer in six probes was right,
+  so the log entry is stamped as well. Fully deleted groups are never compacted (by reading).
+
+Decide: fix the code (breaks the freeze; the sequential update workload has no failed commits and no concurrent
+folds, so its numbers stand, but the concurrent-reader run can hit the race) or qualify Section 4.6.
+Also not in the paper: the FactorizedJoinOptimizer is registered by the extension and unmentioned in Section 5.

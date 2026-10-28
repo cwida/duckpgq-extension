@@ -29,9 +29,9 @@
 
 % ---------------------------------------------------------------- row 1: MATCH -> SQL with marker
 \node[sql, text width=3.75cm] (match) at (0,-0.95)
-  {\kw{MATCH} p = \kw{ANY SHORTEST}\\ \ (a)-[k:Knows]->\{1,8\}(b)\\ \ \kw{WHERE} a.id = 7\\ \kw{COLUMNS} (b.id, \fn{path\_length}(p))};
+  {\kw{MATCH} p = \kw{ANY SHORTEST}\\ \ (a)-[k:Knows]->\{1,8\}(b)\\ \ \kw{WHERE} a.id = 7 \kw{AND} b.id < 50\\ \kw{COLUMNS} (b.id, \fn{path\_length}(p))};
 \node[sql, text width=3.6cm] (marker) at (4.25,-0.95)
-  {\kw{SELECT} b.id, \fn{iterativelength}(\\ \ \ a.id, b.id, edges, V, E, key, 8)\\ \kw{FROM} Person a, Person b, edges\\ \kw{WHERE} a.id = 7};
+  {\kw{SELECT} b.id, \fn{iterativelengthoperator}(\\ \ a.rowid, b.rowid, edges, V, E, key, 8)\\ \kw{FROM} Person a, Person b, edges\\ \kw{WHERE} a.id = 7 \kw{AND} b.id < 50};
 \draw[flow] (match) -- (marker);
 \draw[hooked] (h-grammar.south) -- (h-grammar.south |- match.north);
 \draw[hooked] (h-opt.south) -- (h-opt.south |- marker.north);
@@ -64,14 +64,14 @@
 
 % ---------------------------------------------------------------- row 5: traversals, phases, result
 \node[op, text width=3.75cm] (ms) at (0,-5.55)
-  {\textbf{multi-source traversal} (\S\ref{sec:traversals})\\ 512 pairs per batch in bit lanes\\ one sweep over all partitions per level};
+  {\textbf{multi-source traversal} (\S\ref{sec:traversals})\\ 512 pairs per wave in bit lanes\\ one sweep over all partitions per level};
 \node[op, text width=3.6cm] (ss) at (4.25,-5.55)
   {\textbf{single-source traversal} (\S\ref{sec:traversals})\\ frontier list, bucket lookups, parents\\ stops at depth bound or last destination};
 \draw[opflow] (csr.south -| ms.north) -- (ms.north);
 \draw[opflow] (csr.south -| ss.north) -- (ss.north);
 \node[op, text width=\W cm-4pt] (phases) at (0,-6.5)
-  {\textbf{phases as events} (\S\ref{sec:phases}): one event per BFS level, no task waits for a task\\
-   one row per pair, \texttt{(b.id, len, [7,e1,19,e2,42])}; the query keeps the rows with $1 \leq$ len $\leq 8$};
+  {\textbf{phases as events} (\S\ref{sec:phases}): one or two events per BFS level, no task waits for a task\\
+   one row per pair, \texttt{(b.id, len)}; the query keeps the rows with $1 \leq$ len $\leq 8$};
 \draw[opflow] (ms.south) -- (ms.south |- phases.north);
 \draw[opflow] (ss.south) -- (ss.south |- phases.north);
 \end{tikzpicture}

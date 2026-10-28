@@ -2,57 +2,61 @@
 \section{Query Formulations}
 \label{sec:appendix-queries}
 
-% Draft 26 Oct 2026, extracted from scripts/pathfinding_benchmark.py and scripts/tools/update_concurrent_driver.cpp.
-% The text is what the harness ran; the paper's description of the baselines must agree with it.
+% Revised 28 Oct 2026 against scripts/pathfinding_benchmark.py and scripts/tools/update_concurrent_driver.cpp at the
+% frozen commit 7e9778c0. The text is what the harness runs; the paper's description of the baselines must agree with it.
 
 Every number in Section~\ref{sec:eval} comes from the query text below, which is the fastest formulation we found for
 each system; the harness and the result archive are released with the paper. Conventions: \texttt{\$name} is a
-parameter bound by the driver, \texttt{\{name\}} a literal interpolated into the text. All systems return the count of
-reached pairs and the sum of the hop lengths; self pairs are removed before a query and counted client-side for every
-system, so the totals agree by construction when the searches do. Every Cypher pattern carries an upper bound of 30
-hops, the largest Kuzu accepts, which no path in the LDBC knows graph reaches; the \duckpgq queries carry none.
+parameter bound by the driver, \texttt{\{name\}} a literal interpolated into the text. Every query returns the count of
+reached pairs and the sum of the hop lengths. For the native systems self pairs are removed before the query and
+counted client-side (and in sources $\times$ all the sources themselves are added); \duckpgq receives the full pair
+table and answers a self pair with length 0. Every Cypher pattern carries an upper bound of 30 hops, Kuzu's default
+maximum; the GDS procedures and the \duckpgq queries carry none.
 
 \paragraph{\duckpgq.} The sweeps drive the operator through the marker function that the \texttt{MATCH} rewrite of
-Section~\ref{sec:planner} produces, so that the pairs come from a table rather than from the cross product of two
-vertex patterns. The equivalent \sqlpgq for one pair is
+Section~\ref{sec:planner} produces, so that the pairs come from a table and not from the cross product of two vertex
+patterns. The equivalent \sqlpgq for one pair is
 \begin{lstlisting}[language=SQL]
 SELECT path_length(p) FROM GRAPH_TABLE (snb MATCH p = ANY SHORTEST
   (a:Person WHERE a.id = {src})-[k:Knows]->*(b:Person WHERE b.id = {dst}) COLUMNS (p));
 \end{lstlisting}
-and the two forms the harness runs for a pair table are, for the build route,
+Every run is a fresh \duckdb process with \texttt{SET experimental\_path\_finding\_operator=true}; the database is
+attached read-only. The build route runs
 \begin{lstlisting}[language=SQL]
-SELECT count(len), coalesce(sum(len), 0) FROM (
-  SELECT iterativelengthoperator(src, dst,
-      struct_pack(src := e.src_rowid, dst := e.dst_rowid), {V}::BIGINT, {E}::BIGINT, 'graph') AS len
-  FROM benchmark_pairs_{n}, (SELECT a.rowid AS src_rowid, c.rowid AS dst_rowid
-       FROM person_knows_person k JOIN person a ON a.id = k.person1id
-                                  JOIN person c ON c.id = k.person2id) e);
+SELECT count(len), coalesce(sum(len), 0) FROM (SELECT iterativelengthoperator(src, dst,
+    struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+    {V}::BIGINT, {E}::BIGINT, 'graph:sweep') AS len
+  FROM ldbc.benchmark_pairs_{n} AS pathfinding_pairs,
+    (SELECT a.rowid::BIGINT AS pathfinding_edge_src, c.rowid::BIGINT AS pathfinding_edge_dst
+     FROM ldbc.person_knows_person k JOIN ldbc.person a ON a.id = k.person1id
+                                     JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges);
 \end{lstlisting}
-and for the index route, after \texttt{CREATE INDEX ... USING CSR (person1id, person2id)} once,
+The index route creates \texttt{CREATE INDEX IF NOT EXISTS pathfinding\_benchmark\_csr ON ldbc.person\_knows\_person
+USING CSR (person1id, person2id)} once, untimed, materializes the key pairs untimed into
+\texttt{pathfinding\_index\_pairs} (the pair table joined to \texttt{person} on row id), and runs
 \begin{lstlisting}[language=SQL]
-SELECT count(len), coalesce(sum(len), 0) FROM (
-  SELECT iterativelengthoperator(src, dst, 0, 0, 'csr-index|ldbc|main|person_knows_person|csr') AS len
-  FROM pairs_by_key);  -- (src, dst) keys, materialized from the pair table before the timed statement
+SELECT count(len), coalesce(sum(len), 0) FROM (SELECT iterativelengthoperator(src, dst,
+    0::BIGINT, 0::BIGINT, 'csr-index|ldbc|main|person_knows_person|pathfinding_benchmark_csr') AS len
+  FROM pathfinding_index_pairs);
 \end{lstlisting}
-Sources $\times$ all uses \texttt{reachoperator} in place of \texttt{iterativelengthoperator} with the source as both
-source and destination and returns one $(\mathit{destination}, \mathit{length})$ per reached vertex. Undirected queries (the LDBC
-set) use the symmetric closure of the edge table on the build route and an index created \texttt{WITH (undirected =
-true)} on the index route. One \duckdb process per measured query; one untimed warm-up repetition precedes the timed
-statement.
+Sources $\times$ all uses \texttt{reachoperator} in place of \texttt{iterativelengthoperator}, with each source as both
+source and destination, and sums the length of every reached vertex. The LDBC queries are undirected. On the build
+route they use \texttt{person\_knows\_person\_sym}, the union of both directions, and the key
+\texttt{'graph:sweep|undirected'}, which tells the operator that the edge set is symmetric; on the index route they use
+an index created \texttt{WITH (undirected = true)}. In each process the timed statement is preceded by one untimed run
+of the same statement, which also loads the index from disk.
 
-\paragraph{Kuzu 0.11.3.} One query per pair, with literal ids; a pair table bound at both ends ran two orders of
-magnitude slower (15\,s against 0.15\,s for 64 pairs at SF1), and a source bound through \texttt{WITH} made the
-recursive join start from every vertex.
+\paragraph{Kuzu 0.11.3.} Embedded, on a read-only database, with 32 threads. One query per pair, with literal ids; a
+pair table bound at both ends ran two orders of magnitude slower (15\,s against 0.15\,s for 64 pairs at SF1), and a
+source bound through \texttt{WITH} made the recursive join start from every vertex.
 \begin{lstlisting}
 MATCH (a:Person {id: {src}})-[e:Knows* SHORTEST 1..30]->(b:Person {id: {dst}}) RETURN length(e)
 MATCH (a:Person {id: {source}})-[e:Knows* SHORTEST 1..30]->(b:Person) RETURN count(*), sum(length(e))
 \end{lstlisting}
 The 32-connection variant opens 32 connections on one database with $\mathit{threads}/32$ threads each and sends each
-connection its share of the pairs.
+connection its share of the pairs, assigned round-robin.
 
-\paragraph{Neo4j 5.26 Enterprise.} One query per pair list with the parallel runtime; the destination list of the
-single-source query is unrolled with \texttt{UNWIND} because \texttt{b.id IN \$dsts} planned a
-\texttt{MultiNodeIndexSeek} that handed the parallel runtime one row (10.3\,s against 0.76\,s at SF10).
+\paragraph{Neo4j 5.26.32 Enterprise.} One query per pair list with the parallel runtime:
 \begin{lstlisting}
 CYPHER runtime=parallel UNWIND $pairs AS pr MATCH (a:Person {id: pr[0]}), (b:Person {id: pr[1]})
   MATCH p = shortestPath((a)-[:KNOWS*..30]->(b)) RETURN count(p), sum(length(p))
@@ -63,9 +67,9 @@ The GDS rows use a projection built once after loading and the library's unlicen
 \texttt{gds.shortestPath.dijkstra.stream} per pair and \texttt{gds.allShortestPaths.delta.stream} per source. GDS
 cannot run under the parallel runtime and is absent from the update workload because its projection is static.
 
-\paragraph{Memgraph.} Bounded BFS; the \texttt{WITH a} barrier is required, without it Memgraph scans every $b$ and
-filters $a$ after the search (35\,s against 10\,ms at SF1), and BI19 passes its source ids as a list for the same
-reason.
+\paragraph{Memgraph 3.14.0.} Bounded BFS, one thread per query. The \texttt{WITH a} barrier is required; without it
+Memgraph scans every $b$ and filters $a$ after the search (35\,s against 10\,ms at SF1). BI19 passes its source ids as
+a list for the same reason.
 \begin{lstlisting}
 UNWIND $pairs AS pr MATCH (a:Person {id: pr[0]}), (b:Person {id: pr[1]})
   MATCH p = (a)-[:KNOWS *BFS ..30]->(b) RETURN count(p), sum(size(p))
@@ -73,31 +77,52 @@ MATCH (a:Person) WHERE a.id IN $srcs WITH a MATCH p = (a)-[:KNOWS *BFS ..30]->(b
   RETURN count(p), sum(size(p))
 \end{lstlisting}
 
-\paragraph{FalkorDB.} \texttt{shortestPath} is allowed only in \texttt{WITH} or \texttt{RETURN}; there is no
-single-source form, so sources $\times$ all is one \texttt{shortestPath} per destination, and no undirected form, so the
-LDBC queries run on a graph with every edge inserted in both directions.
+\paragraph{FalkorDB 4.2.2.} One thread per query. \texttt{shortestPath} is allowed only in \texttt{WITH} or
+\texttt{RETURN}; there is no single-source form, so sources $\times$ all is one \texttt{shortestPath} per destination,
+and no undirected form, so the LDBC queries run on a graph with every edge inserted in both directions.
 \begin{lstlisting}
 UNWIND $pairs AS pr MATCH (a:Person {id: pr[0]}), (b:Person {id: pr[1]})
   WITH shortestPath((a)-[:KNOWS*..30]->(b)) AS p RETURN count(p), sum(length(p))
 MATCH (a:Person {id: $src}), (b:Person) WITH shortestPath((a)-[:KNOWS*..30]->(b)) AS p RETURN count(p), sum(length(p))
 \end{lstlisting}
 
-\paragraph{LDBC queries.} IC13 binds both persons by id; BI19 binds the two cities and takes every person of each;
-BI20 takes every employee of a company and one person. The Cypher systems use undirected patterns
-(\texttt{-[:KNOWS*..30]-}, \texttt{-[e:Knows* SHORTEST 1..30]-}), GDS an undirected projection. Kuzu runs BI19 as one
-single-source query per person of the first city with the destinations filtered by city, and BI20 as one query per
-(employee, person) pair. With 32 client connections the source ids are fetched first and split over the connections.
+\paragraph{LDBC queries.} We run hop-count variants of IC13, BI19 and BI20 with five parameter sets each, chosen by the
+harness: IC13 takes its pairs from the random pair table, BI19 pairs the cities ranked $i$ and $i+5$ by population,
+and BI20 takes the five largest companies, each with a random person. Neo4j, Memgraph and Kuzu use undirected patterns
+(\texttt{-[:KNOWS*..30]-}, \texttt{-[e:Knows* SHORTEST 1..30]-}), GDS an undirected projection, and FalkorDB its
+directed pattern over the doubled edges. Kuzu runs BI19 as one single-source query per person of the first city with
+the destinations filtered by city, and BI20 as one query per (employee, person) pair. With 32 client connections the
+source ids are fetched first, inside the timed region, and split over the connections.
 
-\paragraph{Update workload.} The LDBC insert and delete stream for \texttt{Person\_knows\_Person}, restricted to the
-persons of the snapshot, is applied in batches of 2000 operations. \duckdb applies a batch as one transaction,
-\texttt{INSERT ... SELECT} from the staged log followed by \texttt{DELETE ... USING}; Neo4j and Memgraph run the inserts
-and the deletes as two \texttt{UNWIND \$ops} statements in one explicit transaction; Kuzu uses two transactions
-because a \texttt{MATCH ... DELETE} in the transaction that created the relationship did not see it; FalkorDB runs
-two autocommit queries. After each batch every system answers the single-source query to the same 1024 destinations
-(\texttt{WHERE b.id IN \$dsts}, or \texttt{UNWIND \$dsts} on Neo4j). The concurrent driver runs the same statements
-from one writer thread and $R$ reader threads against \duckdb, each reader query in its own transaction.
+\paragraph{Update workload.} The LDBC insert and delete stream for \texttt{Person\_knows\_Person} is restricted to the
+persons of the snapshot, with duplicate inserts and unmatched or repeated deletes dropped, and applied in batches of
+2000 operations. \duckdb applies a batch as one transaction, \texttt{INSERT ... SELECT} from the staged log followed by
+\texttt{DELETE ... USING}. Neo4j and Memgraph run the inserts and the deletes as two \texttt{UNWIND \$ops} statements
+in one explicit transaction; Kuzu reads the batch from an \texttt{Op} node table and uses two transactions, because a
+\texttt{MATCH ... DELETE} in the transaction that created the relationship did not see it; FalkorDB runs two
+autocommit queries. After each batch every system answers the single-source query to the same 1024 destinations.
+Memgraph and FalkorDB filter with \texttt{WHERE b.id IN \$dsts}; Neo4j unrolls the list, because \texttt{b.id IN
+\$dsts} planned a \texttt{MultiNodeIndexSeek} that handed the parallel runtime one row (10.3\,s against 0.76\,s at
+SF10):
+\begin{lstlisting}
+CYPHER runtime=parallel MATCH (a:Person {id: $src}) UNWIND $dsts AS d MATCH (b:Person {id: d})
+  MATCH p = shortestPath((a)-[:KNOWS*..30]->(b)) RETURN count(p), sum(length(p))
+\end{lstlisting}
+and Kuzu joins the reached vertices against the destination table:
+\begin{lstlisting}
+MATCH (a:Person {id: {source}})-[e:Knows* SHORTEST 1..30]->(b:Person)
+  WITH b.id AS d, length(e) AS l MATCH (p:benchmark_pairs_same_src_1024 {dst: d}) RETURN count(*), sum(l)
+\end{lstlisting}
+The whole stream runs in one process per system, without a warm-up. The concurrent driver runs one writer thread and
+$R$ reader threads on connections to one \duckdb instance with 32 threads. The writer applies the same batch
+statements and pauses 200\,ms after each commit; each reader iteration is one transaction that runs the query on the
+index route and on the build route and compares the two results.
 
-\paragraph{Timeouts and measurement.} 600\,s per query, enforced by killing the \duckdb process or by cancelling the
-transaction on the servers; an exceeded budget is reported, not dropped. Sources $\times$ all is skipped, not timed
-out, for the native systems when the number of (source, person) pairs exceeds $5 \times 10^8$. Three timed runs per
-point after one warm-up; the mean is reported.
+\paragraph{Timeouts and measurement.} 600\,s per query. \duckpgq's limit is enforced by killing its process and covers
+the whole process, including the untimed warm-up run; Kuzu is interrupted through its connection; Neo4j and Memgraph
+transactions are terminated on the server; FalkorDB gets a per-query server timeout of 600\,s. An exceeded budget is
+reported, not dropped, and the larger points of the same shape are then recorded as timed out without running them.
+Sources $\times$ all is skipped, not timed out, for the native systems when the number of (source, person) pairs
+exceeds $5 \times 10^8$. Each point is the mean of three timed runs; the native systems' runs follow each other
+without a separate warm-up. \duckpgq's time is the statement time reported by the \duckdb client; the native systems'
+times are client-side wall clock, including the driver round trips.

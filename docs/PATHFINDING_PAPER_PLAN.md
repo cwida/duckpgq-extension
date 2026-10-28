@@ -734,6 +734,9 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   summary bitmap and visit-line prefetch written (W31 step 3, memory traffic of the explore phase), with the
   microbenchmark group `memory`; lane-activity instrumentation now records the vertices with any lane active per
   level.
+- 27 Oct: paper Sections 3 and 4 audited against the code (26 Oct, two claim-by-claim passes; eleven corrections
+  applied, `44aa6ccd`, `74534530`). Decision: repeat the audit on the frozen commit after the memory-bandwidth work on
+  the multi-source traversal and the other open optimizations have settled; recorded in `paper/NOTES.md`.
 - 27 Oct (midday): frontier bitmap and prefetch measured (`microbench_memory_sf10/100.out`, 3 repeats). SF100, the
   per-source bitmap test on every level: index 65536 pairs 6.35 s vs 7.76 s without (1.22x), 16384 pairs 1.91 vs
   2.62 s (1.37x); build 9.46 vs 12.87 s (1.36x) and 2.94 vs 4.63 s (1.57x). SF10: the test costs 10% at 65536
@@ -843,6 +846,9 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   builds them under the tagged geometry; containers up (Memgraph 3.14.0, FalkorDB 4.2.2, Neo4j 5.26.32 Enterprise
   with GDS 2.13.14). Expected about 3.5 days; nothing else runs on the machine meanwhile. Afterwards:
   `./repro/collect.sh`, commit `repro/results` and `paper/`, compare with the 25 Oct archive.
+- 27 Oct (paper): after the frozen sweep on eval-freeze-rc1, verify every number in the paper against the sweep's
+  tables, figures and CSVs and make the text cite its source; replace the laptop numbers in Section 3. Checklist in
+  `paper/NOTES.md` under "TODO after the frozen-commit sweep".
 - 28 Oct: frozen run steps 1-6 done (sweeps and LDBC at all three scale factors, 20 h, no errors, every point
   agreeing). Decided: the LDBC table and figure report medians (the baselines' first repeats are cold: Kuzu IC13 at
   SF300 mean 186 ms vs median 51 ms, Memgraph BI20 at SF10 578 vs 275 ms; DuckPGQ medians equal its means because

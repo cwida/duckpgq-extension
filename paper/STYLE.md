@@ -87,3 +87,43 @@ what the axes are with their units and scales, what each line or row is, what a 
 the number averages. Our own words for the experiment (shape, point, route, budget) do not appear; say "random
 pairs", "65 536 pairs", "over the index", "600 s limit". One sentence of interpretation at the end is allowed when
 the figure cannot be misread without it.
+
+## Shapes that read as generated
+
+Not to disguise machine writing; these shapes are weaker prose. They perform emphasis instead of stating the fact,
+and a reader who has seen them elsewhere stops trusting the text. Pass over every section for them before it is shown.
+
+**Sentence shapes**
+- Negative parallelism: "not X but Y", "not just X, it's Y", "X rather than Y" as a reveal. Say what it is.
+- Tricolon: three parallel items or three semicolon-joined clauses of equal length. Two items, a plain list, or
+  separate sentences.
+- Colon reveal: a clause, a colon, then the punchy explanation. Make it a sentence with "because" or a full stop.
+- Aphoristic one-liners as paragraph pivots. Fold them into the sentence they support.
+- Anaphora and mirrored pairs: "right when X ... right when Y".
+- Uniform rhythm: every sentence "X does Y, so Z." Vary length and joiner.
+- Rhetorical question then answer; "here's the thing"; "think of it as".
+
+**Words**
+- Inflation: pivotal, crucial, robust, seamless, delve, leverage, landscape, tapestry, underscore, showcase,
+  intricate, nuanced, comprehensive.
+- Copula dodging: "serves as", "functions as", "marks", "stands as" for "is".
+- Empty transitions: "it is worth noting", "importantly", "notably", "in conclusion", "overall".
+- Personified machinery as a habit: the planner "knows", the scan "beats". One is fine; a page of it is a tic.
+  Prefer the plain verb: uses, assigns, reduces, is faster than.
+- Vague attribution: "observers note", "research shows".
+- Magic adverbs: quietly, deeply, fundamentally, truly.
+
+**Structure**
+- Fractal summaries: the point restated at intro, section and end.
+- Signposted conclusions, "despite challenges" formulas, bold-first bullets, em-dash asides, heading-only sections,
+  section-ending recaps.
+- Promotional significance: "marking a shift", "paving the way".
+
+**What better prose does**
+- Uneven sentence length; a short sentence next to a long one.
+- Specific numbers and names in place of adjectives.
+- Plain "is"; concrete verbs; asides that do not land a punchline.
+- Each claim stated once, where it is used.
+
+Most frequent in this paper's drafts so far: colon reveals, "not X but Y", triads, and personified verbs (the
+operator "pays", the index "gives", the sweep "costs"). Check those first.

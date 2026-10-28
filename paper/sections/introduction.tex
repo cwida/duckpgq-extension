@@ -10,81 +10,82 @@
   transaction-consistent snapshot of a CSR index (Section~\ref{sec:index}); both have the same layout. Two
   traversals, multi-source lanes for many pairs and a frontier search for few, run as chains of per-phase events
   (Sections~\ref{sec:traversals} and~\ref{sec:phases}). Everything in colour is the extension; the grey band is
-  \duckdb and the four interfaces it exposes.}
+  \duckdb, with the four of its extension interfaces that carry the query (Section~\ref{sec:strategy} lists all
+  of them).}
   \label{fig:overview}
 \end{figure}
 
 % Draft 22 Oct 2026 in the style of paper/STYLE.md. Every number is provisional until the frozen-commit rerun.
 
-SQL:2023 added graph pattern matching to SQL, and with it a query type relational engines have never executed
-well: the shortest path. Its \sqlpgq part lets a query declare a property graph over existing tables and match
-patterns against it, including variable-length and shortest-path patterns~\cite{deutsch2022gql}. A user whose
-data lives in a relational engine has three options for such queries: copy the data into a graph database and keep
-the two in sync; write the path pattern as a recursive join and accept its performance; or have the engine answer it
-with graph storage and operators of its own. The third is the one users want, and so far it has meant waiting for
-the engine's developers to build it. This paper shows that it does not have to: a loadable extension can add it.
+SQL:2023 added graph pattern matching to SQL, and with it a query type relational systems have never executed
+well, the shortest path. Its \sqlpgq part lets a query declare a property graph over existing tables and match
+patterns against it, including variable-length and shortest-path patterns~\cite{deutsch2022gql}. A user whose data
+lives in a relational system has three options for such queries. Copy the data into a graph database and keep the
+two in sync. Write the path pattern as a recursive join and accept its performance. Or have the system answer it
+with graph storage and operators of its own, which so far has meant waiting for its developers to build them. This
+paper shows that a loadable extension can add them.
 
-\duckpgq~\cite{tenwolde2023duckpgq} was the first attempt at that. It is an extension of \duckdb that parses \sqlpgq and
-rewrites it into relational SQL, and it argued that a competent graph system should build on everything a
-state-of-the-art analytical engine already has, columnar storage, vectorized execution, morsel-driven parallelism and
-a cost-based optimizer, and add only two things: a compact graph representation and a bulk path-finding algorithm.
-It implemented both as scalar user-defined functions (UDFs): one set of UDFs builds a compressed sparse row (CSR)
-representation on the fly while the query streams the edge table past them, and another runs multi-source
-breadth-first search (\msbfs)~\cite{then2014msbfs} over that CSR, 512 source-destination pairs per invocation. UDFs
-were the right choice for a first system. They are as fast as built-in functions, they inherit the engine's
-parallelism for free, and they kept the extension small enough to survive \duckdb's release cadence.
+\duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb that parses \sqlpgq and
+rewrites it into relational SQL. We argued there that a graph system should build on everything a state-of-the-art
+analytical system already has, columnar storage, vectorized execution, morsel-driven parallelism and a cost-based
+optimizer, and add two things, a compact graph representation and a bulk path-finding algorithm. We implemented both
+as scalar user-defined functions (UDFs). One set of UDFs builds a compressed sparse row (CSR) representation on the
+fly while the query streams the edge table past them; another runs multi-source breadth-first search
+(\msbfs)~\cite{then2014msbfs} over that CSR, 512 source-destination pairs per invocation. UDFs were the right choice
+for a first system. They are as fast as built-in functions, they inherit \duckdb's parallelism, and they kept the
+extension small enough to follow \duckdb's release cadence.
 
-They also have a ceiling, and the CIDR paper named it: ``morsel-driven parallelism is tuple-driven and without tuples
-there is not enough parallelism''~\cite{tenwolde2023duckpgq}. A UDF gets work when the pipeline hands it a vector of
-tuples. A single shortest-path query hands it one tuple, so one core runs a BFS over the whole graph while the
-other fifteen idle; with 16K pairs the same engine scaled by a factor six on 16 threads, not sixteen. The CSR itself
-is a second problem the UDF design could not solve. It is global state built by ``the first thread to touch it'',
-rebuilt for every query, invisible to the optimizer, and unrelated to the transaction that reads it: a concurrent
-insert into the edge table is either in the CSR or not, depending on timing. The paper left both as a research
-challenge: ``to reconcile this elegantly with any query-pipeline-driven parallelization method''.
+They also have a ceiling, which the CIDR paper named: ``morsel-driven parallelism is tuple-driven and without tuples
+there is not enough parallelism''~\cite{tenwolde2023duckpgq}. A UDF receives work when the pipeline hands it a vector
+of tuples. A single shortest-path query hands it one tuple, so one core runs a BFS over the whole graph while the
+other fifteen idle, and with 16K pairs the same code scaled by a factor six on 16 threads. The CSR is a second problem
+the UDF design could not solve. It is global state built by ``the first thread to touch it'', rebuilt for every
+query, invisible to the optimizer, and unrelated to the transaction that reads it, so a concurrent insert into the
+edge table is in the CSR or not depending on timing. The paper left both as a research challenge, ``to reconcile this
+elegantly with any query-pipeline-driven parallelization method''.
 
-This paper takes up that challenge, under the same constraint that made \duckpgq viable: everything stays in a
-loadable extension, and the engine is not forked. % TODO(final): say 'the interfaces a modern engine already offers to extensions' without naming the four here
-Our thesis is that the extension interfaces a modern engine
-offers, a parser extension, an optimizer extension, a custom physical operator and a custom index type, are enough to
-give a relational engine graph-native path finding, including a graph index that is consistent with the engine's
-multi-version concurrency control (MVCC), and that the places where they fall short are few and nameable.
+This paper takes up that challenge under the constraint that made \duckpgq viable, that everything stays in a
+loadable extension. Our thesis is that the interfaces \duckdb already offers to extensions are enough to give it
+graph-native path finding, including a graph index that is consistent with its multi-version concurrency control
+(MVCC), and that the places where they fall short are few and can be named.
 
-The first half of the answer is a \emph{path-finding operator}. It is a physical operator with its own inputs and
-its own schedule, so its parallelism comes from the graph and not from the tuples: the edges are partitioned by
-destination range, the partitions are built and traversed in parallel, and the traversal proceeds level by level as
-a chain of events that never wait for each other. One traversal serves many pairs at once, the multi-source lanes of
-the CIDR design; a second, a frontier search per source, serves the single pair that the lanes handle badly. The
-planner reaches the operator through an optimizer rule, so it sees an ordinary operator with a cardinality.
+The first half of the answer is a \emph{path-finding operator}. It is a physical operator with its own inputs and its
+own schedule, so its parallelism comes from the graph and not from the tuples. The edges are partitioned by
+destination range, the partitions are built and traversed in parallel, and the traversal proceeds level by level as a
+chain of events in which no task blocks its thread waiting for another. One traversal serves many pairs at once, the multi-source lanes of the
+CIDR design; a second, a frontier search per source, serves the single pair that the lanes handle badly. The planner
+reaches the operator through an optimizer rule and sees an ordinary operator with a cardinality.
 
 The second half is a \emph{CSR index}. \texttt{CREATE INDEX ... USING CSR (src, dst)} keeps the graph representation
-across queries, restarts and checkpoints, maintained through the engine's index interface like any other index. The
-difficulty is consistency: a transaction must traverse exactly the edges it is allowed to see, and the interface tells
-an extension which rows changed but nothing about who may see them. The index resolves this with immutable epochs and
-a change log whose entries the engine's own row-version check classifies, once per commit rather than once per edge;
-every reader gets a snapshot of its own transaction's view, writers pay a constant cost per edge, and a background
-fold turns the log into the next epoch. Section~\ref{sec:index} gives the design and its correctness argument.
+across queries, restarts and checkpoints, maintained through \duckdb's index interface like any other index. The
+difficulty is consistency. A transaction must traverse exactly the edges it is allowed to see, and the interface
+tells an extension which rows changed but nothing about who may see them. The index stores immutable epochs and a
+change log whose entries \duckdb's own row-version check classifies, once per commit instead of once per edge. Every
+transaction gets a snapshot of its own transaction's view, a writer spends a constant amount of work per edge, and a
+background fold turns the log into the next epoch. Section~\ref{sec:index} gives the design and its correctness
+argument.
 
 We evaluate on LDBC SNB scale factors 1 to 300 and the Graphalytics data sets against Kuzu, Neo4j, Memgraph and
-FalkorDB, read-only and under LDBC update streams with concurrent readers. \todo{FINAL: pick three numbers, one per claim (single pair over the index, many pairs vs the native systems, update cost per commit). Provisional, m7a.8xlarge, 32 threads:
-at SF300 a single-source query takes 0.30\,s when the CSR is built per query and 0.031\,s over the index; the index
-loads from disk in 0.09\,s; under a stream of 2000 edge updates every 200\,ms with 16 concurrent readers, the index
-answers single-source queries in 72\,ms and the build-per-query route in 84\,ms, both with results identical to Kuzu
-at every step; Kuzu needs 16\,ms per query but 342\,ms per update batch where \duckdb needs 9. Replace with
-frozen-commit numbers.}
+FalkorDB, read-only and under LDBC update streams with concurrent transactions. \todo{FINAL: pick three numbers, one per
+claim (single pair over the index, many pairs vs the native systems, update cost per commit). Provisional,
+m7a.8xlarge, 32 threads: at SF300 a single-source query takes 0.30\,s when the CSR is built per query and 0.031\,s
+over the index; the index loads from disk in 0.09\,s; under a stream of 2000 edge updates every 200\,ms with 16
+concurrent transactions, the index answers single-source queries in 72\,ms and the build-per-query route in 84\,ms, both
+with results identical to Kuzu at every step; Kuzu needs 16\,ms per query but 342\,ms per update batch where \duckdb
+needs 9. Replace with frozen-commit numbers.}
 
 Our contributions are:
 \begin{enumerate}
-  \item A path-finding operator for a vectorized, morsel-driven engine whose parallelism comes from a partitioned
-        CSR and per-level events rather than from input tuples, with multi-source and single-source traversals and a
+  \item A path-finding operator for a vectorized, morsel-driven system whose parallelism comes from a partitioned
+        CSR and per-level events instead of from input tuples, with multi-source and single-source traversals and a
         rule that selects between them (Section~\ref{sec:operator}).
   \item An MVCC-consistent CSR index built behind a general-purpose extension index interface: epochs, a commit-group
-        change log, per-reader snapshots, folds, checkpoints and recovery, with a correctness argument
+        change log, per-transaction snapshots, folds, checkpoints and recovery, with a correctness argument
         (Section~\ref{sec:index}).
-  \item The planner integration from \sqlpgq \texttt{MATCH} to operator and index without engine changes, and the
-        list of what an engine would have to expose to make such an extension simpler (Section~\ref{sec:strategy}).
-  \item An evaluation against four native graph systems, read-only and under updates, showing that a relational
-        engine with the index matches them on point and single-source queries while keeping every update in the
+  \item The planner integration from \sqlpgq \texttt{MATCH} to operator and index without changes to \duckdb, and the
+        list of what a system would have to expose to make such an extension simpler (Section~\ref{sec:strategy}).
+  \item An evaluation against four native graph systems, read-only and under updates, showing that \duckdb
+        with the index matches them on point and single-source queries while keeping every update in the
         same transaction as the tables (Section~\ref{sec:eval}).
 \end{enumerate}
 \duckpgq is open source under the MIT licence\footnote{\url{https://github.com/cwida/duckpgq-extension}}; the
