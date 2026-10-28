@@ -171,3 +171,27 @@ Introduction, when the frozen-commit numbers are in:
 - Replace the laptop numbers on the synthetic 8M-edge graph (four passages in Section 3, marked red).
 - Then the code re-audit of Sections 3 and 4 (listed above), the two pending introduction edits, and the abstract's
   provisional numbers.
+
+## Frozen-commit audit (28 Oct, eval-freeze-rc1 = 7e9778c0)
+
+Text and figures of Sections 3, 4 and 5, the background, the abstract and Figures 1 to 3 now state the frozen code's
+behaviour. Probes are in /tmp/foldbug/test (sqllogictests, two connections); none is in the repo.
+
+Code defects in the CSR index, found by the audit; the paper carries red TODOs for each:
+- Fold race, reproduced. Fold does not compare its bound with epochs.back()->bound. An older transaction folding
+  after a newer one installs the older epoch as the newest; compaction drops entries only the newer epoch covered;
+  a new transaction misses a committed edge. Automatic folds by concurrent readers can take this path, and every
+  reader that saw the log too long folds again after the first (serial redundant rebuilds). Fix: recheck under
+  fold_lock and skip when the newest epoch's bound is not older than the folder's.
+- Row-id reuse after a failed commit, reproduced. A unique-key conflict at commit reverts an append the CSR index
+  already logged; the next insert gets the same row id and the failed commit's edge becomes visible. Not tested: a
+  checkpoint dropping a fully deleted trailing row group.
+- Duplicate overlay edges, by reading. BuildSnapshot ignores covered_epoch, so a snapshot of the newest epoch re-adds
+  log entries that epoch contains while the older epoch is retained. Lengths unaffected.
+- Not reproduced: the cache-key collision through fully deleted groups (probe passed).
+- Unexplained: a delete of a log row also records a tombstone (stats count it); every answer in six probes was right,
+  so the log entry is stamped as well. Fully deleted groups are never compacted (by reading).
+
+Decide: fix the code (breaks the freeze; the sequential update workload has no failed commits and no concurrent
+folds, so its numbers stand, but the concurrent-reader run can hit the race) or qualify Section 4.6.
+Also not in the paper: the FactorizedJoinOptimizer is registered by the extension and unmentioned in Section 5.
