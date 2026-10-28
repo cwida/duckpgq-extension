@@ -1,0 +1,78 @@
+# name: test/sql/path_finding/csr_index_failed_commit.test
+# description: An edge of a commit that fails after the CSR index saw its append stays invisible when its row id is reused
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 1000;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(1, 11);
+
+statement ok
+CREATE TABLE knows(eid BIGINT, src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows VALUES (1, 1, 2), (2, 2, 3);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+statement ok
+CREATE UNIQUE INDEX knows_eid ON knows (eid);
+
+statement ok con1
+BEGIN;
+
+statement ok con1
+INSERT INTO knows VALUES (3, 1, 9);
+
+statement ok con2
+BEGIN;
+
+statement ok con2
+INSERT INTO knows VALUES (3, 5, 6);
+
+statement ok con1
+COMMIT;
+
+# The second insert of key 3 fails at commit, after the CSR index saw its append
+statement error con2
+COMMIT;
+----
+<REGEX>:.*Failed to commit.*duplicate key.*
+
+query I
+SELECT list(rowid || ':' || src || '->' || dst ORDER BY rowid) FROM knows;
+----
+['0:1->2', '1:2->3', '2:1->9']
+
+statement ok
+INSERT INTO knows VALUES (4, 7, 8);
+
+# The next insert reuses the row id of the reverted append
+query I
+SELECT list(rowid || ':' || src || '->' || dst ORDER BY rowid) FROM knows;
+----
+['0:1->2', '1:2->3', '2:1->9', '3:7->8']
+
+# 5 -> 6 belonged to the failed commit
+query I
+SELECT len FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 5)-[k:Knows]->*(b:Person WHERE b.id = 6)
+    COLUMNS (path_length(p) AS len));
+----
