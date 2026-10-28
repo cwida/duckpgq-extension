@@ -25,8 +25,8 @@
   \node[data, minimum width=0.95cm] (b\i) at (2.2+\i*1.15,-1.25) {\t};
 }
 \draw[->, semithick, opblue] (f1.south) -- node[lbl, right, pos=0.45] {high bits select the bucket (sink)} (f1.south |- b1.north);
-% one task per range
-\node[opstep, text width=7.3cm] (task) at (0.3,-1.95) {one task per range: radix sort by source $\rightarrow$ emit sparse rows $\rightarrow$ attach bucket index};
+% tasks take the ranges largest first
+\node[opstep, text width=7.3cm] (task) at (0.3,-1.95) {per range, largest first: radix sort by source $\rightarrow$ emit sparse rows $\rightarrow$ attach bucket index};
 \foreach \i in {0,1,2,4} {\draw[->, opblue] (b\i.south) -- (b\i.south |- task.north);}
 
 % ------------------------------------------------------------------ (b) one partition

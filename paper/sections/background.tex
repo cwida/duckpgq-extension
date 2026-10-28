@@ -27,12 +27,13 @@ parsing, the path-finding operator and the CSR index through these interfaces, a
 format, the transaction manager and the executor are \duckdb's and are unchanged.
 
 \paragraph{MVCC and row visibility.} \duckdb keeps multiple versions of a row and gives each transaction a
-\emph{visibility bound}. A row inserted by a commit at or before the bound, and not deleted by a commit at or before
-it, is visible. The check is \texttt{CanFetch(transaction, row)}; a table scan applies it to every row it reads, and
+\emph{visibility bound}. A row inserted by a commit before the bound, and not deleted by a commit before it, is
+visible. The check is \texttt{CanFetch(transaction, row)}; a table scan applies it to every row it reads, and
 an index such as \duckdb's ART returns row identifiers without checking, because the scan that fetches the rows
 checks for it. Versions are garbage-collected once no active transaction can observe the earlier state, so
 visibility can be asked about a live transaction only. Row identifiers are stable while a table carries any index
-other than an ART.
+other than an ART. \todo{Audit 28 Oct: an identifier can be handed out again after a failed commit reverts its
+append, and after a checkpoint drops a fully deleted trailing row group; qualify, or show that the index handles both.}
 
 \paragraph{Compressed sparse row.} A CSR stores a graph with $V$ vertices and $E$ edges in two arrays. The vertices are
 numbered $0$ to $V-1$; an offset array of $V+1$ entries gives, for vertex $v$, the range $[\mathit{off}[v],
@@ -50,4 +51,4 @@ register, and keeps for each vertex a bit set of the searches that have seen it 
 frontier it is on. Relaxing an edge $u \to v$ becomes $\mathit{next}[v] \mathrel{|}= \mathit{visit}[u]$, one read and one write
 of $w$ bits for all $w$ searches at once, and a search terminates when its destination's bit is set. Its cost per
 level is a sweep over all vertices whose visit bits are non-zero, which is cheap per search when many searches are
-live and expensive when one is. \duckpgq runs 512 lanes per batch, the width of eight 64-bit words.
+live and expensive when one is. \duckpgq runs 512 lanes per wave, the width of eight 64-bit words.
