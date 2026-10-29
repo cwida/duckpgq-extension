@@ -1,8 +1,7 @@
 \section{The Path-Finding Operator}
 \label{sec:operator}
 
-% Revised 27 Oct 2026 against paper/STYLE.md. Numbers are provisional (laptop, 8M-edge graph; SF300 from the
-% m7a.8xlarge) until the frozen-commit rerun; mechanics marked for the re-audit.
+% Revised 27 Oct 2026 against paper/STYLE.md; numbers from eval-freeze-rc1 except the red laptop passages.
 
 A path pattern in \sqlpgq asks, for a set of candidate (source, destination) pairs, whether a path of the allowed
 length exists and how long it is, or which vertices and edges it uses. The operator takes exactly that. Its inputs are
@@ -43,10 +42,9 @@ by key.
 \label{sec:csr}
 
 Without an index the operator builds the CSR on the fly, inside every query, as the CIDR design did. The build is cheap, but
-when the traversal is cheaper still, the build takes most of the query. At SF300 a query from one source to every
-person takes 282\,ms with the build and 9\,ms over the index (Table~\ref{tab:sources-all}), so the build is 97\% of
-it. For 1024 random pairs, where the traversal does more work, the build is two fifths of the query (1.6\,s
-against 0.98\,s, Table~\ref{tab:random-pairs}). \todo{Verify against the frozen sweep.} Figure~\ref{fig:partitioned-csr} shows the build. The
+when the traversal is cheaper still, the build takes most of the query. At SF300 a query for one pair takes 274\,ms with
+the build and 10\,ms over the index (Table~\ref{tab:random-pairs}), so the build is 96\% of it. For 1024 random
+pairs, where the traversal does more work, the build is two fifths of the query (1.3\,s against 0.77\,s). Figure~\ref{fig:partitioned-csr} shows the build. The
 edges arrive as (source, destination) row-id pairs from a join of the edge table with its two vertex tables. The sink
 packs each edge into 64 bits and scatters it into a bucket selected by the high bits of its destination id, similar to
 \duckdb's hash join partitioning. A range spans at most 65,535 destinations, so that a destination fits in 16 bits as an offset into its range, and
@@ -80,10 +78,9 @@ Section~\ref{sec:index} share it for a reason. A partition holds every edge into
 step that processes partition $p$ writes only to vertices of range $p$, and the tasks of one level never write the
 same vertex. Destinations inside a
 partition are 16-bit offsets, half the size of 32-bit ids, and an index epoch stores exactly this layout plus the
-row ids. \todo{Laptop measurement on a synthetic 2M-vertex, 8M-edge graph that is not part of Section~\ref{sec:eval}; replace
-with SF10--SF300 numbers from the frozen rerun.} On that graph the build
-takes \todo{0.03--0.06\,s on 18 threads; verify} and the CSR occupies \todo{2.5 bytes per edge plus 8 bytes per sparse
-row}.
+row ids. The difference between the two routes for a single pair puts the build at 22, 128 and 264\,ms for the
+1.84, 18.7 and 55.7\,M edges of SF10, SF100 and SF300. \todo{The CSR's size in bytes per edge is not measured in the
+frozen run; measure it or drop the size claim.}
 
 \subsection{Traversals}
 \label{sec:traversals}

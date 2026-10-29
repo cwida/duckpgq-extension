@@ -10,7 +10,8 @@ each system; the harness and the result archive are released with the paper. Con
 parameter bound by the driver, \texttt{\{name\}} a literal interpolated into the text. Every query returns the count of
 reached pairs and the sum of the hop lengths. For the native systems self pairs are removed before the query and
 counted client-side (and in sources $\times$ all the sources themselves are added); \duckpgq receives the full pair
-table and answers a self pair with length 0. Every Cypher pattern carries an upper bound of 30 hops, Kuzu's default
+table and answers a self pair with length 0. The comparisons below that justify a formulation were measured while the
+harness was developed, not in the frozen run. Every Cypher pattern carries an upper bound of 30 hops, Kuzu's default
 maximum; the GDS procedures and the \duckpgq queries carry none.
 
 \paragraph{\duckpgq.} The sweeps drive the operator through the marker function that the \texttt{MATCH} rewrite of

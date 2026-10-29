@@ -195,3 +195,18 @@ Code defects in the CSR index, found by the audit; the paper carries red TODOs f
 Decide: fix the code (breaks the freeze; the sequential update workload has no failed commits and no concurrent
 folds, so its numbers stand, but the concurrent-reader run can hit the race) or qualify Section 4.6.
 Also not in the paper: the FactorizedJoinOptimizer is registered by the extension and unmentioned in Section 5.
+
+## Numbers checked against eval-freeze-rc1 (29 Oct)
+
+Every number in the abstract, introduction, Sections 3, 4 and 6 and the captions now comes from repro/results
+(rc1), checked point by point; recheck against rc2 when it lands. Still pre-freeze and marked red: the fixed-costs
+table (create, load, size), the per-row visibility number (8 to 124 ms, Sections 4, 6, related work), the unpaced
+concurrent writer, the laptop passages of Section 3 (single pair 0.12 s, the traversal switch, paths), the CSR bytes
+per edge. Findings from the check:
+- The single sampled source at SF300 has no outgoing edge (reaches 1 vertex), so sources x all at k=1 on SF300 is a
+  fixed-cost query. Noted in the figure and table captions; consider another source sample for rc2/rc3.
+- The single random pair at SF10 has no path (reachable 0).
+- The LDBC table and figure now use medians per parameter set (plan decision of 28 Oct); the sweep tables use means.
+- The plot script now orders result files by the run timestamp in the file name, not by mtime (copies and checkouts
+  reset mtimes); the tables came out identical.
+- All seven update configurations agree on all 191 steps; one automatic fold, in the query after commit 94 (162 ms).

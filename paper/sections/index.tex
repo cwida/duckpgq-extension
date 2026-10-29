@@ -79,7 +79,8 @@ destination range, and, once per new tombstone, a share of one parallel scan ove
 tombstone's position; the epoch's adjacency is not read. The version checks are paid even when the cached
 snapshot is returned, because they are what identifies it. Groups whose rows have all been deleted again, and the log entries loaded with the index after a
 restart, which carry no group, fall back to one check per row until the next fold. The per-row alternative, one version check per log entry, grew a single-source query at SF10 from 8 to 124\,ms as
-the pending operations accumulated (Section~\ref{sec:eval-updates}), and is why change groups exist.
+the pending operations accumulated (Section~\ref{sec:eval-updates}), and is why change groups exist. \todo{Pre-freeze
+number; the frozen matrix has no per-row visibility switch.}
 
 Keys are resolved to dense ids when the group is appended, so that a snapshot can place inserted edges without a
 dictionary lookup per edge. A key that is not in the epoch's dictionary, a new vertex, gets an id above the epoch's
@@ -121,7 +122,7 @@ serialized state in the record that creates the index, so an index created after
 restart with its epoch. Inserts and deletes that happened after the checkpoint are replayed through \texttt{Append}
 and \texttt{Delete} like any other index and become change groups like any commit.
 On opening the database the index is bound on its first use and loaded in parallel, partition by partition, in
-0.03\,s at SF10 and 0.41\,s at SF300 (Table~\ref{tab:fixed-costs}). Only an index whose stored format is missing or
+0.03\,s at SF10 and 0.41\,s at SF300 (Table~\ref{tab:fixed-costs}, pre-freeze). Only an index whose stored format is missing or
 outdated, or that has a reverse side its stored state lacks, comes up empty and rebuilds itself on first use. A table with a CSR index keeps its delete gaps until the
 index is dropped, since \duckdb compacts row ids only for tables whose indexes are all ARTs; we document this as the
 price of the design.

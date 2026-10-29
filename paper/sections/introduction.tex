@@ -27,7 +27,7 @@
   \label{fig:overview}
 \end{figure}
 
-% Draft 22 Oct 2026 in the style of paper/STYLE.md. Every number is provisional until the frozen-commit rerun.
+% Draft 22 Oct 2026 in the style of paper/STYLE.md. Numbers from eval-freeze-rc1 (29 Oct).
 
 SQL:2023 added graph pattern matching to SQL, and with it a query type relational systems have never executed
 well, the shortest path. Its \sqlpgq part lets a query declare a property graph over existing tables and match
@@ -72,33 +72,33 @@ The second half is a \emph{CSR index}. \texttt{CREATE INDEX ... USING CSR (src, 
 across queries, restarts and checkpoints, maintained through \duckdb's index interface like any other index. The
 difficulty is consistency. A transaction must traverse exactly the edges it is allowed to see, and the interface
 tells an extension which rows changed but nothing about who may see them. The index stores immutable epochs and a
-change log whose entries \duckdb's own row-version check classifies, once per commit instead of once per edge. Every
-transaction gets a snapshot of its own transaction's view, a writer spends a constant amount of work per edge, and a
-background fold turns the log into the next epoch. Section~\ref{sec:index} gives the design and its correctness
+change log whose entries \duckdb's own row-version check classifies, once per change group instead of once per edge.
+Every transaction gets a snapshot of its own view, a writer spends a constant amount of work per edge, and a fold,
+triggered by a transaction that finds the log too long, turns the log into the next epoch. Section~\ref{sec:index} gives the design and its correctness
 argument.
 
-We evaluate on LDBC SNB scale factors 1 to 300 and the Graphalytics data sets against Kuzu, Neo4j, Memgraph and
-FalkorDB, read-only and under LDBC update streams with concurrent transactions. \todo{FINAL: pick three numbers, one per
-claim (single pair over the index, many pairs vs the native systems, update cost per commit). Provisional,
-m7a.8xlarge, 32 threads: at SF300 a single-source query takes 0.30\,s when the CSR is built per query and 0.031\,s
-over the index; the index loads from disk in 0.09\,s; under a stream of 2000 edge updates every 200\,ms with 16
-concurrent transactions, the index answers single-source queries in 72\,ms and the build-per-query route in 84\,ms, both
-with results identical to Kuzu at every step; Kuzu needs 16\,ms per query but 342\,ms per update batch where \duckdb
-needs 9. Replace with frozen-commit numbers.}
+We evaluate on LDBC SNB scale factors 10, 100 and 300 against Kuzu, Neo4j, Memgraph and FalkorDB, read-only and
+under the LDBC update stream with concurrent transactions. Over the index a single pair takes 10\,ms at SF300, the
+fastest of all systems. With many pairs the gap opens (Figure~\ref{fig:teaser}). At SF100 one query for 65\,536 pairs
+takes 3.5\,s, against 155\,s for Neo4j and 169\,s for Kuzu, and at SF300 it takes 10\,s while every other system
+exceeds ten minutes. Under the update stream \duckdb applies a commit of 2000 edge changes in 15\,ms and Kuzu in
+342\,ms, and all systems return the same answers at every step. \todo{Numbers from eval-freeze-rc1; confirm against
+rc2.}
 
 Our contributions are:
 \begin{enumerate}
   \item A path-finding operator for a vectorized, morsel-driven system whose parallelism comes from a partitioned
         CSR and per-level events instead of from input tuples, with multi-source and single-source traversals and a
         rule that selects between them (Section~\ref{sec:operator}).
-  \item An MVCC-consistent CSR index built behind a general-purpose extension index interface: epochs, a commit-group
-        change log, per-transaction snapshots, folds, checkpoints and recovery, with a correctness argument
+  \item An MVCC-consistent CSR index built behind a general-purpose extension index interface: epochs, a change-group
+        log, per-transaction snapshots, folds, checkpoints and recovery, with a correctness argument
         (Section~\ref{sec:index}).
   \item The planner integration from \sqlpgq \texttt{MATCH} to operator and index without changes to \duckdb, and the
         list of what a system would have to expose to make such an extension simpler (Section~\ref{sec:strategy}).
   \item An evaluation against four native graph systems, read-only and under updates, showing that \duckdb
-        with the index matches them on point and single-source queries while keeping every update in the
-        same transaction as the tables (Section~\ref{sec:eval}).
+        with the index matches them on point and single-source queries, is one to two orders of magnitude faster
+        when a query asks for many pairs, and keeps every update in the same transaction as the tables
+        (Section~\ref{sec:eval}).
 \end{enumerate}
 \duckpgq is open source under the MIT licence\footnote{\url{https://github.com/cwida/duckpgq-extension}}; the
 operator and the index are part of it, and the benchmark harness and result archive are released with this paper.

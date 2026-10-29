@@ -60,7 +60,8 @@ plt.rcParams.update({
 
 def load(prefix, sf):
     """{(system, shape_or_query, count_or_param): {"mean": s, "status": ok|exceeded|not_run|error}}"""
-    files = sorted((RESULTS / f"sf{sf}").glob(f"{prefix}_*.csv"), key=lambda p: p.stat().st_mtime)
+    # The run's start time is the last field of the file name; modification times change with every copy or checkout
+    files = sorted((RESULTS / f"sf{sf}").glob(f"{prefix}_*.csv"), key=lambda p: int(p.stem.rsplit("_", 1)[1]))
     points = {}
     for path in files:
         groups = defaultdict(list)
@@ -75,7 +76,7 @@ def load(prefix, sf):
             ok = [float(r["query_s"]) for r in rows if r["status"] == "ok"]
             if ok:
                 reached = [float(r["reachable_count"]) for r in rows if r["status"] == "ok" and r.get("reachable_count")]
-                points[key] = {"mean": statistics.mean(ok), "status": "ok",
+                points[key] = {"mean": statistics.mean(ok), "median": statistics.median(ok), "status": "ok",
                                "reachable": statistics.mean(reached) if reached else None}
             elif any(r["status"].startswith(("timed_out", "budget_exceeded")) for r in rows):
                 points[key] = {"mean": None, "status": "exceeded"}
@@ -226,7 +227,7 @@ def ldbc_figure(filename):
                     if point is None:
                         continue
                     if point["status"] == "ok":
-                        values.append(point["mean"])
+                        values.append(point["median"])
                     elif point["status"] == "exceeded":
                         exceeded = True
                 x = column + offsets[system]
@@ -250,7 +251,7 @@ def ldbc_figure(filename):
     handles.append(Line2D([], [], linestyle="none", marker="^", markersize=5.5, markerfacecolor=SURFACE, markeredgecolor=INK2))
     labels = [n for _, n, _ in SYSTEMS] + ["timed out"]
     fig.legend(handles, labels, loc="lower center", ncol=7, bbox_to_anchor=(0.5, -0.02), handlelength=1.2, columnspacing=1.2)
-    fig.suptitle("LDBC queries as hop-count shortest paths on undirected knows, mean over 5 parameter sets; baselines on their best path",
+    fig.suptitle("LDBC queries as hop-count shortest paths on undirected knows, median of 3 runs per parameter set, mean over 5 sets; baselines on their best path",
                  x=0.01, ha="left", fontsize=9.5, color=INK)
     fig.tight_layout(rect=(0, 0.07, 1, 0.94))
     save(fig, filename)
@@ -665,7 +666,7 @@ def sweep_table(shape, filename, caption, label, head):
 def ldbc_table(filename):
     queries = ["ic13", "bi19", "bi20"]
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
-             r"\caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, mean seconds per query over five parameter sets; rows marked conn.\ split the sources over 32 client connections.}\label{tab:ldbc}",
+             r"\caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, seconds per query, the median of three runs per parameter set averaged over five parameter sets; rows marked conn.\ split the sources over 32 client connections.}\label{tab:ldbc}",
              r"\begin{tabular}{lrrr}\toprule", r"system & IC13 & BI19 & BI20 \\ \midrule"]
     for sf in SCALE_FACTORS:
         points = load("ldbc_queries", sf)
@@ -678,7 +679,7 @@ def ldbc_table(filename):
                 if not values:
                     aggregated.append(None)
                 elif all(v["status"] == "ok" for v in values):
-                    aggregated.append({"status": "ok", "mean": statistics.mean(v["mean"] for v in values)})
+                    aggregated.append({"status": "ok", "mean": statistics.mean(v["median"] for v in values)})
                 elif any(v["status"] == "exceeded" for v in values):
                     aggregated.append({"status": "exceeded"})
                 else:
@@ -791,6 +792,6 @@ if __name__ == "__main__":
                 r"Shortest-path lengths for $n$ random pairs per query, mean seconds over three runs, 32 threads, 600\,s timeout; "
                 r"rows marked conn.\ split the pairs over 32 client connections.", "tab:random-pairs", "system / pairs")
     sweep_table("multi_source", "sources_all",
-                r"Distances from $k$ sources to every reachable person, mean seconds over three runs; n/r: not run above 500M pairs.",
+                r"Distances from $k$ sources to every reachable person, mean seconds over three runs; n/r: not run above 500M pairs. The one sampled source at SF300 has no outgoing edge.",
                 "tab:sources-all", "system / sources")
     ldbc_table("ldbc_queries")
