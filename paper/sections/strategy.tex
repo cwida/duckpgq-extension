@@ -1,7 +1,7 @@
 \section{Extending (Almost) All That DuckDB Has to Offer}
 \label{sec:strategy}
 
-% Draft 26 Oct 2026. The hook table is written; the cost-model part is still an outline (W12/W13).
+% Draft 26 Oct 2026; cost-model half written 29 Oct from the rc1 numbers.
 
 \subsection{The interfaces and their limits}
 \label{sec:hooks}
@@ -50,11 +50,44 @@ made earlier, at bind time, by the rewrite, which takes the index whenever one e
 \subsection{Build or index, lanes or frontier, forward or reverse}
 \label{sec:cost}
 
-\todo{1 page, after W12/W13. The operator has: the pair count and HyperLogLog sketches of distinct sources and
-destinations from its sink; the edge count and vertex count from the marker; whether an index snapshot exists and
-how many change groups it carries. The choices today are thresholds (16 distinct sources or four pairs per source for
-the single-source traversal; reverse when destinations are far fewer than sources and reverse partitions exist). The
-sweeps of Section~\ref{sec:eval} give the crossovers: the build costs 0.02 to 0.3\,s per query from SF10 to SF300 and
-is amortized over a batch; the single-source traversal wins up to tens of sources; the overlay rebuild after a commit
-is O(pending operations) and the fold has to be triggered from the read side. Cost model skeleton and calibration
-from the frozen rerun.}
+The operator makes three choices for every query, and each is a threshold today. We describe what is known when each
+choice is made, what the thresholds are, and what a cost model would need to replace them. The numbers are from the
+eval-freeze-rc1 run. \todo{Recheck every crossover against rc2.}
+
+\paragraph{Build or index.} The rewrite chooses at bind time, and it takes the index whenever the edge table has one.
+On the read-only queries of Section~\ref{sec:eval} that choice is never wrong, because the index route is faster at
+every point. The build costs 22, 128 and 264\,ms per query at SF10, SF100 and SF300, close to linear in the edges,
+and a snapshot of an index without pending changes costs a few milliseconds. The choice gets harder under updates. A
+snapshot then costs one version check per change group and one pass over the pending log entries, and with 16
+concurrent readers the index and the build route both answer in 71\,ms. A cost model would compare the build, which
+depends on the edge count, with the snapshot, which depends on the pending entries. The rewrite can read both at bind
+time, the edge count from the table statistics and the log length from the index.
+
+\paragraph{Lanes or frontier.} The operator chooses after its sink has seen every pair, from the pair count and
+HyperLogLog estimates of the distinct sources and destinations. With at most 16 distinct sources, or with at least
+four pairs per source, it runs the single-source traversal, and otherwise the multi-source traversal; paths and
+reach always use the single-source traversal. The two costs scale differently. A single-source search costs the
+part of the graph it reaches before its last destination is found, once per source. A multi-source wave of 512 lanes
+costs a dense sweep over the partitions per level, shared by its lanes, plus sparse levels that touch only the live
+vertices. The multi-source traversal therefore wins when many sources each reach a large part of the graph, which is
+the random-pairs sweep, and loses for a handful of sources. What the threshold cannot see is how far each search
+runs. An unreachable pair searches the whole component of its source, a reachable one stops early, and about two
+thirds of the random pairs are unreachable in the directed graph. A cost model needs an estimate of that reach, for
+example from the degree of the sources and the number of levels a search takes on the graph, which the index could
+record at a fold.
+
+\paragraph{Forward or reverse.} When the estimated distinct sources are at least four times the distinct
+destinations and reverse partitions exist, the search starts from the destinations. This is the shape of BI20, many
+persons of one company to one target, which the index answers in 5 to 57\,ms against 22\,ms to 1.1\,s for Neo4j. The
+cost model for the orientation is the one above with sources and destinations exchanged, so it needs nothing new.
+
+\paragraph{When to fold.} A fold is triggered by the first transaction that finds the log longer than a tenth of the
+epoch's edges, and that transaction pays for it. In the SF10 update stream the one automatic fold, after the 94th
+commit, made that query take 162\,ms instead of about 20\,ms, and the stream's mean query time fell from 22\,ms
+without folds to 18\,ms with them. A policy should weigh the rebuild against the overlay cost that every later
+query saves, which depends on the query rate as much as on the log length. It would also run the fold in the
+background, which needs the task interface Table~\ref{tab:hooks} lists as missing for index work.
+
+\paragraph{What the optimizer could do with a cost.} The operator reports a cardinality, and join ordering treats it
+as an opaque node. With a cost the optimizer could weigh a selective filter on the vertex side, which shrinks the pair
+input, against the traversal that the pairs feed, and it could make the build-or-index choice itself.
