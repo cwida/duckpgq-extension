@@ -645,6 +645,8 @@ void CSRIndex::CompactChangeLogLocked() const {
 	RebuildDeltaRowIndexLocked();
 	for (auto &epoch : epochs) {
 		epoch->tombstone_positions.clear();
+		epoch->reverse_tombstone_positions.clear();
+		epoch->mirror_tombstone_positions.clear();
 	}
 }
 
@@ -658,7 +660,7 @@ shared_ptr<CSRIndexEpoch> CSRIndex::EpochForLocked(VisibilityBound bound) const 
 }
 
 void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_count) const {
-	vector<row_t> pending;
+	vector<CSRIndexTombstone> pending_entries;
 	idx_t known;
 	{
 		IndexLock l(*this);
@@ -667,34 +669,99 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 			return;
 		}
 		for (idx_t i = known; i < tombstone_count && i < tombstones.size(); i++) {
-			pending.push_back(tombstones[i].row);
+			pending_entries.push_back(tombstones[i]);
 		}
 	}
-	// One scan over the epoch's row ids finds the positions of all pending rows; rows not found are not epoch edges
+	vector<row_t> pending;
+	pending.reserve(pending_entries.size());
+	// Forward position of each pending row, and for undirected indexes the position of the mirrored edge
 	std::unordered_map<row_t, idx_t> positions;
-	positions.reserve(pending.size());
-	for (auto row : pending) {
-		positions.emplace(row, DConstants::INVALID_INDEX);
-	}
+	std::unordered_map<row_t, idx_t> mirror_positions;
+	positions.reserve(pending_entries.size());
+	// A tombstone with keys names its edge: the destination's partition, the source's sparse row, and the row id
+	// among that row's edges (a few dozen comparisons). Rows without keys (loaded from storage) are found by one
+	// scan over the epoch's row ids below.
+	std::unordered_set<row_t> scan_rows;
+	auto &dictionary = *epoch.dictionary;
+	auto width = std::max<idx_t>(1, epoch.partition_width);
 	auto &partition_row_ids = epoch.partition_row_ids;
-	mutex positions_lock;
-	ParallelFor(partition_row_ids.size(), std::thread::hardware_concurrency(), [&](idx_t begin, idx_t end, idx_t) {
-		vector<std::pair<row_t, idx_t>> found;
-		for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
+	// The position of the edge src -> dst with row id `row`, or INVALID_INDEX; false when the partition layout does
+	// not allow the lookup (then the scan decides)
+	auto locate = [&](idx_t src, idx_t dst, row_t row, idx_t &position) -> bool {
+		position = DConstants::INVALID_INDEX;
+		auto partition_idx = dst / width;
+		if (partition_idx >= epoch.csr->forward_partitions.size() || partition_idx >= partition_row_ids.size()) {
+			return false;
+		}
+		auto &forward = *epoch.csr->forward_partitions[partition_idx];
+		if (forward.start_vertex != partition_idx * width) {
+			return false;
+		}
+		auto row_idx = forward.FindSparseRow(src);
+		if (row_idx != std::numeric_limits<idx_t>::max() && row_idx + 1 < forward.row_offsets.size()) {
 			auto &rows = partition_row_ids[partition_idx];
-			for (idx_t offset = 0; offset < rows.size(); offset++) {
-				if (positions.find(rows[offset]) != positions.end()) {
-					found.emplace_back(rows[offset], (partition_idx << 32) | offset);
+			for (idx_t o = forward.row_offsets[row_idx]; o < forward.row_offsets[row_idx + 1]; o++) {
+				if (rows[o] == row) {
+					position = (partition_idx << 32) | o;
+					break;
 				}
 			}
 		}
-		if (!found.empty()) {
-			lock_guard<mutex> guard(positions_lock);
-			for (auto &entry : found) {
-				positions[entry.first] = entry.second;
+		return true;
+	};
+	for (auto &tombstone : pending_entries) {
+		pending.push_back(tombstone.row);
+		idx_t position = DConstants::INVALID_INDEX;
+		idx_t mirror = DConstants::INVALID_INDEX;
+		bool resolved = false;
+		if (tombstone.has_keys) {
+			auto src = dictionary.Lookup(tombstone.src_key);
+			auto dst = dictionary.Lookup(tombstone.dst_key);
+			if (src == DConstants::INVALID_INDEX || dst == DConstants::INVALID_INDEX) {
+				resolved = true; // a vertex the epoch does not know: not an epoch edge
+			} else {
+				resolved = locate(src, dst, tombstone.row, position);
+				if (resolved && undirected && src != dst) {
+					resolved = locate(dst, src, tombstone.row, mirror);
+				}
 			}
 		}
-	});
+		if (!resolved) {
+			scan_rows.insert(tombstone.row);
+		}
+		positions.emplace(tombstone.row, position);
+		mirror_positions.emplace(tombstone.row, mirror);
+	}
+	if (!scan_rows.empty()) {
+		// Every position of a scanned row: one for a directed edge, two for an undirected one (both directions carry
+		// the row id)
+		mutex positions_lock;
+		std::unordered_map<row_t, vector<idx_t>> found_positions;
+		ParallelFor(partition_row_ids.size(), std::thread::hardware_concurrency(), [&](idx_t begin, idx_t end, idx_t) {
+			vector<std::pair<row_t, idx_t>> found;
+			for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
+				auto &rows = partition_row_ids[partition_idx];
+				for (idx_t offset = 0; offset < rows.size(); offset++) {
+					if (scan_rows.find(rows[offset]) != scan_rows.end()) {
+						found.emplace_back(rows[offset], (partition_idx << 32) | offset);
+					}
+				}
+			}
+			if (!found.empty()) {
+				lock_guard<mutex> guard(positions_lock);
+				for (auto &entry : found) {
+					found_positions[entry.first].push_back(entry.second);
+				}
+			}
+		});
+		for (auto &entry : found_positions) {
+			std::sort(entry.second.begin(), entry.second.end());
+			positions[entry.first] = entry.second[0];
+			if (entry.second.size() > 1) {
+				mirror_positions[entry.first] = entry.second[1];
+			}
+		}
+	}
 	// The same rows on the reverse side: the forward position names the edge (its source row and destination
 	// offset); the reverse partition of the source's range holds it in the destination's row
 	vector<idx_t> reverse_positions;
@@ -737,6 +804,7 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 	}
 	for (idx_t i = 0; i < pending.size(); i++) {
 		epoch.tombstone_positions.push_back(positions[pending[i]]);
+		epoch.mirror_tombstone_positions.push_back(mirror_positions[pending[i]]);
 		if (!reverse_positions.empty()) {
 			epoch.reverse_tombstone_positions.push_back(reverse_positions[i]);
 		}
@@ -756,6 +824,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	vector<uint32_t> tombstone_groups;
 	vector<idx_t> tombstone_positions;
 	vector<idx_t> reverse_tombstone_positions;
+	vector<idx_t> mirror_tombstone_positions;
 	if (tombstone_count > 0) {
 		ResolveTombstonePositions(epoch, tombstone_count);
 	}
@@ -770,6 +839,11 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		}
 		tombstone_positions.assign(epoch.tombstone_positions.begin(),
 		                           epoch.tombstone_positions.begin() + NumericCast<int64_t>(tombstone_count));
+		if (epoch.mirror_tombstone_positions.size() >= tombstone_count) {
+			mirror_tombstone_positions.assign(epoch.mirror_tombstone_positions.begin(),
+			                                  epoch.mirror_tombstone_positions.begin() +
+			                                      NumericCast<int64_t>(tombstone_count));
+		}
 		if (epoch.reverse_tombstone_positions.size() >= tombstone_count) {
 			reverse_tombstone_positions.assign(epoch.reverse_tombstone_positions.begin(),
 			                                   epoch.reverse_tombstone_positions.begin() +
@@ -916,6 +990,10 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			}
 			suppress(snapshot->suppressed, snapshot->partitions, tombstone_positions[i]);
 			snapshot->edge_count--;
+			if (i < mirror_tombstone_positions.size() && mirror_tombstone_positions[i] != DConstants::INVALID_INDEX) {
+				// Undirected: the mirrored edge of the same row goes too
+				suppress(snapshot->suppressed, snapshot->partitions, mirror_tombstone_positions[i]);
+			}
 			if (stored_reverse && i < reverse_tombstone_positions.size() &&
 			    reverse_tombstone_positions[i] != DConstants::INVALID_INDEX) {
 				suppress(snapshot->reverse_suppressed, snapshot->reverse_partitions, reverse_tombstone_positions[i]);
@@ -1458,6 +1536,17 @@ idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifi
 	UnifiedVectorFormat row_format;
 	row_identifiers.ToUnifiedFormat(count, row_format);
 	auto row_data = UnifiedVectorFormat::GetData<row_t>(row_format);
+	// The deleted rows' keys, so that a tombstone's epoch position is a lookup rather than a scan
+	DataChunk key_chunk;
+	key_chunk.Initialize(Allocator::DefaultAllocator(), logical_types);
+	ExecuteExpressions(entries, key_chunk);
+	vector<int64_t> src_keys;
+	vector<int64_t> dst_keys;
+	vector<uint8_t> src_valid;
+	vector<uint8_t> dst_valid;
+	ReadKeys(key_chunk.data[0], key_chunk.size(), src_keys, src_valid);
+	ReadKeys(key_chunk.data[1], key_chunk.size(), dst_keys, dst_valid);
+	bool keys_available = key_chunk.size() == count;
 	auto group = next_change_group++;
 	for (idx_t row = 0; row < count; row++) {
 		auto row_id = row_data[row_format.sel->get_index(row)];
@@ -1467,7 +1556,9 @@ idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifi
 			delta[delta_entry->second].deleted_group = group;
 		} else {
 			// An epoch row (or one the index never saw); its position is resolved lazily by the readers
-			tombstones.push_back({row_id, NumericLimits<uint32_t>::Maximum(), group});
+			bool has_keys = keys_available && src_valid[row] && dst_valid[row];
+			tombstones.push_back({row_id, NumericLimits<uint32_t>::Maximum(), group, has_keys,
+			                      has_keys ? src_keys[row] : 0, has_keys ? dst_keys[row] : 0});
 		}
 		if (deleted_sel) {
 			deleted_sel->set_index(row, row);
