@@ -1,0 +1,8 @@
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf10 in 0.06s
+Loading sf10 into falkordb
+Loaded 1839354 edges in 85.6s (expected 1839354)
+== falkordb: query mean 9.5166s (min 6.2717, max 10.2198), update mean 0.1116s, load 85.6s, wall 1838.9s, final reachable 399 total 1423
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf10/update_falkordb_sssp_pairs1024_threads32_batch2000x190_1793228475614568527.csv

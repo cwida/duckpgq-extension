@@ -1,6 +1,7 @@
 #include "duckpgq/core/operator/physical_path_finding_operator.hpp"
 
 #include <functional>
+#include "duckpgq/core/operator/iterative_length/iterative_length_state.hpp"
 #include "duckpgq/core/utils/csr_build.hpp"
 #include "duckpgq/core/utils/parallel_for.hpp"
 #include "duckpgq/core/operator/phased_kernel_event.hpp"
@@ -213,11 +214,14 @@ private:
 //! between phases merges their discoveries into the next frontier.
 class SourceGroupedIterativeLengthState : public PhasedKernel {
 public:
+	//! lane_mode: the group is one lane of a LaneWaveState (an MS-BFS wave of up to LANE_LIMIT source groups); it
+	//! keeps only its destination list and their distances, none of the per-vertex arrays
 	SourceGroupedIterativeLengthState(ClientContext &context_p, int64_t source_p,
 	                                  std::vector<shared_ptr<LocalCSR>> &local_csrs_p, idx_t num_threads_p,
-	                                  int64_t v_size_p)
+	                                  int64_t v_size_p, bool lane_mode_p = false)
 	    : context(context_p), source(source_p), local_csrs(local_csrs_p), num_threads(num_threads_p), v_size(v_size_p),
-	      distances(v_size, -1), seen(v_size), frontier_stamp(v_size, 0), iter(1), change(false) {
+	      distances(lane_mode_p ? 0 : v_size, -1), seen(lane_mode_p ? 0 : v_size),
+	      frontier_stamp(lane_mode_p ? 0 : v_size, 0), iter(1), change(false), lane_mode(lane_mode_p) {
 		benchmark_enabled = GetPathFindingBenchmarkOption(context);
 		benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
 		target_early_termination = GetPathFindingTargetEarlyTermination(context);
@@ -329,6 +333,10 @@ public:
 		if (target < 0 || target >= v_size) {
 			return -1;
 		}
+		if (lane_mode) {
+			auto found = target_distance.find(NumericCast<uint32_t>(target));
+			return found == target_distance.end() ? -1 : found->second;
+		}
 		return distances[target];
 	}
 
@@ -407,14 +415,29 @@ public:
 		targets.Reserve(expected_count, NumericCast<idx_t>(v_size));
 	}
 
-	//! Registers the destinations of this group so the search can stop when all of them are found
+	//! Registers the destinations of this group so the search can stop when all of them are found; in lane mode the
+	//! destinations are the lane's work list
 	void AddTarget(int64_t target) {
-		if (!target_early_termination || target < 0 || target >= v_size) {
+		if (target < 0 || target >= v_size || (!lane_mode && !target_early_termination)) {
 			return;
 		}
 		if (targets.Insert(NumericCast<uint32_t>(target))) {
 			remaining_targets.fetch_add(1, std::memory_order_relaxed);
+			if (lane_mode) {
+				pending_targets.push_back(NumericCast<uint32_t>(target));
+			}
 		}
+	}
+
+	//! ---- Lane mode
+	bool LaneMode() const {
+		return lane_mode;
+	}
+	vector<uint32_t> &PendingTargets() {
+		return pending_targets;
+	}
+	void SetTargetDistance(uint32_t target, int64_t distance) {
+		target_distance[target] = distance;
 	}
 
 	ClientContext &context;
@@ -431,6 +454,10 @@ public:
 	//! Source groups scheduled together with this one (they share the threads), set by the scheduler
 	idx_t concurrent_groups = 1;
 	SourceGroupTargets targets;
+	//! Lane mode: the destinations still to find and the distances of those found
+	bool lane_mode = false;
+	vector<uint32_t> pending_targets;
+	std::unordered_map<uint32_t, int64_t> target_distance;
 	bool track_parents = false;
 	vector<uint32_t> parent_vertex;
 	vector<uint64_t> parent_edge;
@@ -1113,6 +1140,119 @@ bool TryGetExactSingleSearchSource(const PathFindingGlobalSinkState &gstate, int
 	return true;
 }
 
+
+//! One MS-BFS wave whose lanes are source groups (Then et al.): lane i starts at group i's source and carries that
+//! group's destination list; after every check phase each lane records the level of the destinations it has newly
+//! reached and a lane with none left stops propagating. BI19 at SF300 (1.4K sources x 1.7K destinations each) is
+//! three waves instead of 1.4K single-source searches or 4.6K lane-per-pair waves.
+class LaneWaveState : public IterativeLengthState {
+public:
+	LaneWaveState(vector<shared_ptr<SourceGroupedIterativeLengthState>> groups_p,
+	              std::vector<shared_ptr<LocalCSR>> &local_csrs_p, idx_t num_threads_p, ClientContext &context_p,
+	              int64_t vsize_p)
+	    : IterativeLengthState(MakeLaneBatch(groups_p, context_p), local_csrs_p, num_threads_p, context_p, vsize_p),
+	      groups(std::move(groups_p)) {
+		SetTimingLabel("bfs_lane_wave");
+	}
+
+	void InitializeLanes() override {
+		std::bitset<LANE_LIMIT> seen_mask;
+		seen_mask.set();
+		for (idx_t lane = 0; lane < LANE_LIMIT; lane++) {
+			lane_to_num[lane] = -1;
+			lane_active[lane] = false;
+		}
+		for (idx_t lane = 0; lane < groups.size() && lane < LANE_LIMIT; lane++) {
+			auto &group = *groups[lane];
+			auto &pending = group.PendingTargets();
+			// The source reaches itself at distance 0
+			auto self = std::find(pending.begin(), pending.end(), NumericCast<uint32_t>(group.source));
+			if (self != pending.end()) {
+				group.SetTargetDistance(*self, 0);
+				pending.erase(self);
+			}
+			if (pending.empty() || !IsVertexInRange(group.source)) {
+				continue;
+			}
+			visit1[group.source][lane] = true;
+			if (active_bitmap) {
+				active_bitmap[group.source >> 6] |= uint64_t(1) << (group.source & 63);
+			}
+			lane_to_num[lane] = NumericCast<int64_t>(lane);
+			lane_active[lane] = true;
+			active++;
+			seen_mask[lane] = false;
+		}
+		for (int64_t i = 0; i < v_size; i++) {
+			seen[i] = seen_mask;
+		}
+		started_searches = pairs->size();
+	}
+
+	void DetectReached() override {
+		for (idx_t lane = 0; lane < groups.size() && lane < LANE_LIMIT; lane++) {
+			if (!lane_active[lane]) {
+				continue;
+			}
+			auto &group = *groups[lane];
+			auto &pending = group.PendingTargets();
+			idx_t kept = 0;
+			for (idx_t i = 0; i < pending.size(); i++) {
+				auto target = pending[i];
+				if (seen[target][lane]) {
+					group.SetTargetDistance(target, iter);
+				} else {
+					pending[kept++] = target;
+				}
+			}
+			pending.resize(kept);
+			if (pending.empty()) {
+				lane_active[lane] = false;
+				lane_to_num[lane] = -1;
+				active--;
+			}
+		}
+		if (active == 0) {
+			change = false;
+		}
+		iter++;
+		if (max_depth > 0 && static_cast<idx_t>(iter) > max_depth) {
+			change = false;
+		}
+	}
+
+	void MarkUnreachable() override {
+		// Destinations still pending have no path (within the bound): Distance() answers -1 for them
+		for (idx_t lane = 0; lane < groups.size() && lane < LANE_LIMIT; lane++) {
+			lane_active[lane] = false;
+			lane_to_num[lane] = -1;
+		}
+		active = 0;
+	}
+
+	bool StartNextWave() override {
+		return false; // one wave per state
+	}
+
+private:
+	//! The lane kernel is built around a chunk of pairs; a wave's chunk holds one row per lane (its source twice)
+	static shared_ptr<PathFindingBatch> MakeLaneBatch(const vector<shared_ptr<SourceGroupedIterativeLengthState>> &groups,
+	                                                  ClientContext &context) {
+		auto chunk = make_shared_ptr<DataChunk>();
+		chunk->Initialize(context, {LogicalType::BIGINT, LogicalType::BIGINT});
+		auto src = FlatVector::GetDataMutable<int64_t>(chunk->data[0]);
+		auto dst = FlatVector::GetDataMutable<int64_t>(chunk->data[1]);
+		for (idx_t i = 0; i < groups.size(); i++) {
+			src[i] = groups[i]->source;
+			dst[i] = groups[i]->source;
+		}
+		chunk->SetCardinality(groups.size());
+		return make_shared_ptr<PathFindingBatch>(chunk, chunk, 0);
+	}
+
+	vector<shared_ptr<SourceGroupedIterativeLengthState>> groups;
+};
+
 //! Returns the batch events to register, or an empty vector when a single grouped event was inserted directly.
 vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkState &gstate,
                                                        vector<shared_ptr<PathFindingBatch>> &batches,
@@ -1216,6 +1356,13 @@ public:
 		                           : gstate.local_csr_state->partition_csrs;
 		RecordStrategy(context, "source_groups", std::to_string(gstate.source_group_sources.size()));
 		auto group_count = gstate.source_group_sources.size();
+		// Many sources with destination lists run as MS-BFS waves of one lane per source (LaneWaveState) instead of
+		// one single-source search per group: lengths only, more groups than the few-sources limit
+		auto few_sources_limit = GetPathFindingFewSourcesLimit(context);
+		bool lane_waves = gstate.path_finding_mode == PathFindingOperatorMode::ITERATIVE_LENGTH &&
+		                  GetPathFindingLaneWaves(context) && group_count > 1 &&
+		                  (few_sources_limit <= 0 || group_count > NumericCast<idx_t>(few_sources_limit));
+		RecordStrategy(context, "source_group_kernel", lane_waves ? "lane_waves" : "per_source");
 		// The per-group arrays (distances, seen, frontier stamps, parents) are sized by the vertex count; with
 		// many groups their allocation is spread over the threads
 		vector<shared_ptr<SourceGroupedIterativeLengthState>> states(group_count);
@@ -1223,7 +1370,7 @@ public:
 			for (idx_t group_idx = begin; group_idx < end; group_idx++) {
 				auto state = make_shared_ptr<SourceGroupedIterativeLengthState>(
 				    context, gstate.source_group_sources[group_idx], partition_csrs, gstate.num_threads,
-				    GetPathFindingVSize(gstate));
+				    GetPathFindingVSize(gstate), lane_waves);
 				state->delta_csrs = SearchDeltaCSRs(gstate);
 				state->suppressed = SearchSuppressed(gstate);
 				state->max_depth = gstate.max_depth;
@@ -1262,7 +1409,9 @@ public:
 				}
 			}
 			gstate.source_group_states.push_back(state);
-			batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(state, *pipeline, op));
+			if (!lane_waves) {
+				batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(state, *pipeline, op));
+			}
 		}
 		if (gstate.path_finding_mode == PathFindingOperatorMode::REACH) {
 			gstate.source_group_rows.resize(group_count);
@@ -1282,6 +1431,24 @@ public:
 				    });
 				gstate.source_group_output_refs.emplace_back(DConstants::INVALID_INDEX, chunk_idx);
 			}
+		}
+		if (lane_waves) {
+			// Targets are registered now: pack the groups into waves of LANE_LIMIT lanes
+			idx_t waves = 0;
+			for (idx_t begin = 0; begin < gstate.source_group_states.size(); begin += LANE_LIMIT) {
+				auto end = std::min<idx_t>(gstate.source_group_states.size(), begin + LANE_LIMIT);
+				vector<shared_ptr<SourceGroupedIterativeLengthState>> wave_groups(
+				    gstate.source_group_states.begin() + begin, gstate.source_group_states.begin() + end);
+				auto wave = make_shared_ptr<LaneWaveState>(std::move(wave_groups), partition_csrs, gstate.num_threads,
+				                                           context, GetPathFindingVSize(gstate));
+				wave->delta_csrs = SearchDeltaCSRs(gstate);
+				wave->suppressed = SearchSuppressed(gstate);
+				wave->max_depth = gstate.max_depth;
+				gstate.bfs_states.push_back(wave);
+				batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(wave, *pipeline, op));
+				waves++;
+			}
+			RecordStrategy(context, "lane_waves", std::to_string(waves));
 		}
 		ScheduleBatchEvents(std::move(batch_events));
 	}

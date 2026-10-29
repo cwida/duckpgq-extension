@@ -1,0 +1,1 @@
+[run ] sweep_pairs_sf10: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --notes W27 sweep SF10 repro 688baee6 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com

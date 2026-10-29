@@ -1,0 +1,13 @@
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/figures/random_pairs.pdf/.png
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/figures/sources_all.pdf/.png
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/figures/ldbc_queries.pdf/.png
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/figures/client_threads.pdf/.png
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/figures/speedup.pdf/.png
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/figures/scaling.pdf/.png
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/figures/throughput.pdf/.png
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/figures/first_query.pdf/.png
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/figures/updates.pdf/.png
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/tables/random_pairs.tex
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/tables/sources_all.tex
+wrote /local/home/dwolde/bootstrap/duckpgq-extension/paper/tables/ldbc_queries.tex
+figures: paper/figures/*.pdf   tables: paper/tables/*.tex   archive: /local/home/dwolde/bootstrap/duckpgq-extension/repro/results

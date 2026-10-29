@@ -76,7 +76,10 @@ def load(prefix, sf):
             ok = [float(r["query_s"]) for r in rows if r["status"] == "ok"]
             if ok:
                 reached = [float(r["reachable_count"]) for r in rows if r["status"] == "ok" and r.get("reachable_count")]
-                points[key] = {"mean": statistics.mean(ok), "median": statistics.median(ok), "status": "ok",
+                # "mean" is the summary every figure and table plots: the median of the repeats (decided 29 Oct, a
+                # baseline's first repeat is often cold); the arithmetic mean stays available as "arith_mean"
+                points[key] = {"mean": statistics.median(ok), "median": statistics.median(ok),
+                               "arith_mean": statistics.mean(ok), "status": "ok",
                                "reachable": statistics.mean(reached) if reached else None}
             elif any(r["status"].startswith(("timed_out", "budget_exceeded")) for r in rows):
                 points[key] = {"mean": None, "status": "exceeded"}
@@ -198,7 +201,7 @@ def sweep_figure(shape, xlabel, filename, title):
         ax.set_xticklabels([count_label(c) for c in counts], fontsize=6)
         style_axes(ax)
     axes[1].set_xlabel(xlabel)
-    axes[0].set_ylabel("seconds per query (mean of 3)")
+    axes[0].set_ylabel("seconds per query (median of 3)")
     series_legend(fig, systems, ncol=5)
     fig.suptitle(title, x=0.01, ha="left", fontsize=9.5, color=INK)
     fig.tight_layout(rect=(0, 0.06, 0.9, 0.95))
@@ -292,7 +295,7 @@ def client_threads_figure(filename):
         ax.set_xticklabels([count_label(c) for c in counts], fontsize=6)
         ax.set_ylim(0.001, 3000)
         style_axes(ax)
-    axes[0].set_ylabel("seconds per query (mean of 3)")
+    axes[0].set_ylabel("seconds per query (median of 3)")
     handles = [Line2D([], [], color=c, linewidth=1.8) for _, _, c in systems]
     handles += [Line2D([], [], color=COLOR["duckpgq_index"], linewidth=1.6),
                 Line2D([], [], color=INK2, linewidth=1.8), Line2D([], [], color=INK2, linewidth=1.2, linestyle=(0, (3, 2)))]
@@ -404,7 +407,7 @@ def scaling_figure(filename):
         ax.set_xlabel("scale factor, edges")
         ax.set_title(title, loc="left")
         style_axes(ax)
-    axes[0].set_ylabel("seconds per query (mean of 3)")
+    axes[0].set_ylabel("seconds per query (median of 3)")
     series_legend(fig, without_build(sparse_systems("random_pairs", "multi_source")), ncol=6)
     fig.suptitle("Growth with the graph: the heaviest query of each sweep from SF10 to SF300", x=0.01, ha="left",
                  fontsize=9.5, color=INK)
@@ -538,7 +541,7 @@ def first_query_figure(filename):
 
 def update_rows(pattern, system):
     """Rows of the newest one-query-per-batch update run for a system at SF10"""
-    files = sorted((RESULTS / "sf10").glob(pattern), key=lambda p: p.stat().st_mtime)
+    files = sorted((RESULTS / "sf10").glob(pattern), key=lambda p: int(p.stem.rsplit("_", 1)[1]))
     for path in reversed(files):
         rows = list(csv.DictReader(open(path)))
         if rows and rows[0].get("queries_per_batch", "1") == "1":
@@ -591,7 +594,9 @@ def updates_figure(filename):
 TABLES = REPO / "paper" / "tables"
 NAME_OF = {key: name for key, name, _ in SYSTEMS}
 NAME_OF["neo4j_gds"] = "Neo4j GDS (4 thr.)"
-ORDER = [key for key, _, _ in SYSTEMS] + ["neo4j_gds"]
+NAME_OF["duckpgq_recursive"] = "DuckDB recursive CTE"
+NAME_OF["duckpgq_scalar"] = "DuckPGQ 2023 UDFs"
+ORDER = [key for key, _, _ in SYSTEMS] + ["duckpgq_scalar", "duckpgq_recursive", "neo4j_gds"]
 
 
 def cell(point, bold=False):
@@ -696,12 +701,16 @@ def teaser_figure(filename, sf="100"):
     """Page-one figure: seconds against random pairs per query on linear axes, each system on its fastest path"""
     points = load("sweep_pairs", sf)
     shape = "random_pairs"
-    order = ["memgraph", "falkordb", "kuzu", "neo4j", "duckpgq_index"]
+    # DuckDB's own recursive CTE (WITH RECURSIVE ... USING KEY) is the in-engine reference: drawn in ink, not in a
+    # system colour, since it is the same engine without the operator
+    order = ["duckpgq_recursive", "memgraph", "falkordb", "kuzu", "neo4j", "duckpgq_index"]
     names = {"duckpgq_index": "DuckPGQ", "neo4j": "Neo4j", "kuzu": "Kuzu", "falkordb": "FalkorDB",
-             "memgraph": "Memgraph"}
+             "memgraph": "Memgraph", "duckpgq_recursive": "DuckDB recursive CTE"}
+    colors = dict(COLOR)
+    colors["duckpgq_recursive"] = INK2
     fig, ax = plt.subplots(figsize=(3.33, 2.05))
     ax.axhline(TIMEOUT_S, color=MUTED, linewidth=0.8, linestyle=(0, (4, 3)), zorder=1)
-    ax.text(24000, TIMEOUT_S + 8, "600 s limit", color=MUTED, fontsize=6.5, va="bottom", ha="left")
+    ax.text(40000, TIMEOUT_S + 8, "600 s limit", color=MUTED, fontsize=6.5, va="bottom", ha="left")
     ends = []
     for system in order:
         counts = sorted({k[2] for k in points if k[1] == shape and k[0] in (system, f"{system}@32")})
@@ -715,9 +724,13 @@ def teaser_figure(filename, sf="100"):
             elif any(c and c["status"] == "exceeded" for c in candidates):
                 exceeded_at = count
                 break
-        color = COLOR[system]
+        if not xs and exceeded_at is None:
+            continue  # not measured at this scale factor (yet)
+        color = colors[system]
         ours = system == "duckpgq_index"
         lw, z = (2.4, 5) if ours else (1.5, 3)
+        if system == "duckpgq_recursive" and exceeded_at is not None and not xs:
+            xs, ys = [exceeded_at], [TIMEOUT_S]
         ax.plot(xs, ys, color=color, linewidth=lw, marker="o", markersize=2.8 if ours else 2.4,
                 markeredgecolor=SURFACE, markeredgewidth=0.5, zorder=z, clip_on=False)
         if exceeded_at is not None:
@@ -725,7 +738,13 @@ def teaser_figure(filename, sf="100"):
                     zorder=z)
             ax.plot([exceeded_at], [TIMEOUT_S], linestyle="none", marker="^", markersize=5, markerfacecolor=SURFACE,
                     markeredgecolor=color, markeredgewidth=1.1, zorder=z + 1, clip_on=False)
-            ends.append((TIMEOUT_S, exceeded_at, f"{names[system]} > 600 s", color))
+            if system == "duckpgq_recursive":
+                # Dies within the first percent of the axis: label it at its triangle, not at the right edge
+                k = f"{exceeded_at // 1024}k" if exceeded_at >= 1024 else str(exceeded_at)
+                ax.annotate(f"{names[system]}: > 600 s at {k} pairs", (exceeded_at, TIMEOUT_S), xytext=(7, -9),
+                            textcoords="offset points", color=color, fontsize=6.5, va="top", ha="left")
+            else:
+                ends.append((TIMEOUT_S, exceeded_at, f"{names[system]} > 600 s", color))
         else:
             value = ys[-1]
             text = f"{value:.1f} s" if value < 10 else f"{value:.0f} s"
@@ -901,9 +920,9 @@ if __name__ == "__main__":
     first_query_figure("first_query")
     updates_figure("updates")
     sweep_table("random_pairs", "random_pairs",
-                r"Shortest-path lengths for $n$ random pairs per query, mean seconds over three runs, 32 threads, 600\,s timeout; "
+                r"Shortest-path lengths for $n$ random pairs per query, median of three runs, 32 threads, 600\,s timeout; "
                 r"rows marked conn.\ split the pairs over 32 client connections.", "tab:random-pairs", "system / pairs")
     sweep_table("multi_source", "sources_all",
-                r"Distances from $k$ sources to every reachable person, mean seconds over three runs; n/r: not run above 500M pairs. The one sampled source at SF300 has no outgoing edge.",
+                r"Distances from $k$ sources to every reachable person, median of three runs; n/r: not run above 500M pairs. The one sampled source at SF300 has no outgoing edge.",
                 "tab:sources-all", "system / sources")
     ldbc_table("ldbc_queries")

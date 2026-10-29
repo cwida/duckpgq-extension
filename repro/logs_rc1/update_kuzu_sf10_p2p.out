@@ -1,0 +1,8 @@
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf10 in 0.06s
+== kuzu: query mean 6.2451s (min 5.1768, max 7.5309), update mean 0.3123s, wall 137.4s, final reachable 365 total 1254
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf10/update_kuzu_point_to_point_pairs1024_threads32_batch2000x20_1793229095305930218.csv

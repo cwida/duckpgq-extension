@@ -783,6 +783,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	// visible group identifies the visible set.
 	unordered_map<uint32_t, bool> commit_visible;
 	uint32_t newest_visible_group = 0;
+	// Microbenchmark switch: decide every logged row by its own row version instead of once per change group
+	bool per_row = !GetCSRIndexChangeGroups(context);
 	auto group_commit_visible = [&](uint32_t group, bool visible_if_fetchable, row_t representative) {
 		auto known = commit_visible.find(group);
 		if (known == commit_visible.end()) {
@@ -796,7 +798,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	};
 	// Insert groups are decided on an undeleted row (a deleted row is unfetchable for two possible reasons)
 	for (auto &entry : delta_edges) {
-		if (entry.group != 0 && entry.group != CSRIndexDeltaEdge::DEAD_GROUP && entry.deleted_group == 0) {
+		if (!per_row && entry.group != 0 && entry.group != CSRIndexDeltaEdge::DEAD_GROUP && entry.deleted_group == 0) {
 			group_commit_visible(entry.group, true, entry.row);
 		}
 	}
@@ -806,6 +808,16 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		bool insert_visible;
 		if (entry.group == CSRIndexDeltaEdge::DEAD_GROUP) {
 			delta_visible[i] = false;
+			continue;
+		}
+		if (per_row) {
+			// Insert visible when the row fetches; a deleted delta row is unfetchable for either reason, so the
+			// deleting commit is checked through its group's visibility like the storage-loaded entries
+			if (entry.deleted_group == 0) {
+				delta_visible[i] = table.CanFetch(transaction, entry.row);
+				continue;
+			}
+			delta_visible[i] = !group_commit_visible(entry.deleted_group, false, entry.row);
 			continue;
 		}
 		if (entry.group == 0) {
@@ -840,7 +852,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		}
 		// An epoch row is visible to every reader of the epoch, so it is not fetchable exactly when the reader sees
 		// the deleting commit
-		tombstone_applied[i] = tombstone_groups[i] == 0
+		tombstone_applied[i] = (per_row || tombstone_groups[i] == 0)
 		                           ? !table.CanFetch(transaction, tombstone_rows[i])
 		                           : group_commit_visible(tombstone_groups[i], false, tombstone_rows[i]);
 	}
@@ -1182,6 +1194,16 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 		return nullptr;
 	}
 	return BuildSnapshot(context, transaction, table, current, delta_count, tombstone_count, true);
+}
+
+idx_t CSRIndex::InMemoryBytes() const {
+	IndexLock l(*this);
+	return GetInMemorySize(l);
+}
+
+idx_t CSRIndex::EpochEdgeCount() const {
+	IndexLock l(*this);
+	return epochs.empty() ? 0 : epochs.back()->edge_count;
 }
 
 idx_t CSRIndex::DeltaSize() const {

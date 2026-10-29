@@ -1,0 +1,71 @@
+[run ] sweep_pairs_sf10: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --notes W27 sweep SF10 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] sweep_pairs_sf10 in 9132 s
+[run ] sweep_pairs_sf100: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --notes W27 sweep SF100 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] sweep_pairs_sf100 in 11841 s
+[run ] sweep_pairs_sf300: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 300 --threads 32 --repeats 3 --timeout-s 600 --notes W27 sweep SF300 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] sweep_pairs_sf300 in 14582 s
+[run ] ldbc_queries_sf10: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --notes W17 SF10 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] ldbc_queries_sf10 in 2756 s
+[run ] ldbc_queries_sf100: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --notes W17 SF100 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] ldbc_queries_sf100 in 19914 s
+[run ] ldbc_queries_sf300: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 300 --threads 32 --repeats 3 --timeout-s 600 --notes W17 SF300 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] ldbc_queries_sf300 in 20101 s
+[run ] sweep_pairs_sf10_client32: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --client-threads 32 --systems memgraph falkordb kuzu --notes W27 SF10 client threads 32 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] sweep_pairs_sf10_client32 in 2555 s
+[run ] ldbc_queries_sf10_client32: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --client-threads 32 --systems memgraph falkordb kuzu --notes W17 SF10 client threads 32 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] ldbc_queries_sf10_client32 in 555 s
+[run ] sweep_pairs_sf100_client32: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --client-threads 32 --systems memgraph falkordb kuzu --notes W27 SF100 client threads 32 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] sweep_pairs_sf100_client32 in 6524 s
+[run ] ldbc_queries_sf100_client32: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --client-threads 32 --systems memgraph falkordb kuzu --notes W17 SF100 client threads 32 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] ldbc_queries_sf100_client32 in 6988 s
+[run ] microbench_sf10: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs all --notes W19 microbenchmark SF10 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_sf10 in 1371 s
+[run ] microbench_memory_sf10: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs memory --shapes random --pair-counts 2048 16384 65536 --notes W31 explore memory traffic SF10 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_memory_sf10 in 134 s
+[run ] microbench_partitions_sf10: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs partitions --shapes random multi_source --pair-counts 128 2048 16384 65536 --source-counts 1 1024 --notes W32 partition geometry SF10 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_partitions_sf10 in 193 s
+[run ] microbench_scheduling_sf10: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs scheduling --shapes random --pair-counts 2048 16384 65536 --notes W31 scheduling SF10 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_scheduling_sf10 in 357 s
+[run ] microbench_sf100: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs all --notes W19 microbenchmark SF100 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_sf100 in 9495 s
+[run ] microbench_memory_sf100: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs memory --shapes random --pair-counts 2048 16384 65536 --notes W31 explore memory traffic SF100 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_memory_sf100 in 745 s
+[run ] microbench_partitions_sf100: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs partitions --shapes random multi_source --pair-counts 128 2048 16384 65536 --source-counts 1 1024 --notes W32 partition geometry SF100 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_partitions_sf100 in 1264 s
+[run ] microbench_scheduling_sf100: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs scheduling --shapes random --pair-counts 2048 16384 65536 --notes W31 scheduling SF100 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_scheduling_sf100 in 1925 s
+[run ] microbench_scheduling_sf300: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 300 --threads 32 --repeats 3 --timeout-s 600 --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes W31 scheduling SF300 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_scheduling_sf300 in 1770 s
+[run ] update_sf10_sssp: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_sf10_sssp in 31 s
+[run ] update_sf10_p2p: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern point_to_point --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_sf10_p2p in 74 s
+[run ] update_sf10_sssp_t1: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 10 --threads 1 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_sf10_sssp_t1 in 61 s
+[run ] update_sf100_sssp: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 100 --threads 32 --batch-size 10000 --batches 150 --query-pattern sssp --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_sf100_sssp in 219 s
+[run ] concurrent_sf10_r1: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 1 --writer-pause-ms 200 --notes W16 concurrent repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r1 in 44 s
+[run ] concurrent_sf10_r4: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 4 --writer-pause-ms 200 --notes W16 concurrent repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r4 in 46 s
+[run ] concurrent_sf10_r8: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 8 --writer-pause-ms 200 --notes W16 concurrent repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r8 in 51 s
+[run ] concurrent_sf10_r16: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 16 --writer-pause-ms 200 --notes W16 concurrent repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r16 in 68 s
+[run ] update_kuzu_sf10_sssp: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-kuzu --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_kuzu_sf10_sssp in 70 s
+[run ] update_memgraph_sf10_sssp: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-memgraph --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_memgraph_sf10_sssp in 36 s
+[run ] update_falkordb_sf10_sssp: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-falkordb --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_falkordb_sf10_sssp in 1926 s
+[run ] update_neo4j_sf10_sssp: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-neo4j --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_neo4j_sf10_sssp in 310 s
+[run ] update_neo4j_sf10_p2p: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-neo4j --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern point_to_point --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_neo4j_sf10_p2p in 171 s
+[run ] update_kuzu_sf10_p2p: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-kuzu --scale-factor 10 --threads 32 --batch-size 2000 --batches 20 --query-pattern point_to_point --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_kuzu_sf10_p2p in 139 s
+[run ] update_memgraph_sf10_p2p: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-memgraph --scale-factor 10 --threads 32 --batch-size 2000 --batches 20 --query-pattern point_to_point --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_memgraph_sf10_p2p in 852 s
+[run ] update_falkordb_sf10_p2p: python3 /home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-falkordb --scale-factor 10 --threads 32 --batch-size 2000 --batches 20 --query-pattern point_to_point --notes W16 repro 7e9778c0 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_falkordb_sf10_p2p in 262 s
+matrix finished; next: ./collect.sh

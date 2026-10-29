@@ -882,3 +882,50 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   the agreement check, no warm-up query for the native routes. Smoke at SF1: all 5 points agree across the three
   routes. Queued as `repro/run_native_baselines.sh`: waits for "matrix finished", then SF10 and SF100, random pairs
   and sources x all, 32 threads, 600 s, 3 repeats. Report: time per point and the first timed-out point per shape.
+- 29 Oct: teaser figure gains DuckDB's recursive CTE (author's request), drawn in ink rather than a system colour
+  as the in-engine reference, labelled at its timeout triangle ("DuckDB recursive CTE: > 600 s at 1k pairs" on the
+  SF10 probe, 4 threads during the matrix: 128 pairs 15.8 s, 1024 pairs over 120 s; sources x all 128 in 13.6 s vs
+  0.11 s on the index). The SF100 line appears once the native-baselines step has run after the rc2 matrix;
+  `collect.sh` re-renders it. Caption in `paper/sections/introduction.tex` needs the recursive CTE sentence then
+  (author's file). DuckDB version under test: v2.0.0-dev1 at submodule `45f4fdf3`, to be cited as the commit.
+- 29 Oct (late morning): rc2 run stopped at 1.6 h (author's check): the rc1 SF300 single-source sample had no
+  outgoing edge, so that point measured nothing (Memgraph 2 ms, Neo4j 141 ms there); the SF10 single pair has no
+  path (valid, the text says so); the LDBC table and figure now use medians (the author implemented it); result files
+  are ordered by the run time in the file name, not by modification time (the author's fix; the last such sort in the
+  updates figure fixed here). Changes for the restart: multi-source samples require an outgoing edge
+  (`ensure_multi_source_table`, deterministic hash order kept), the multi-source tables, their exports and every
+  benchmark index dropped at all scale factors; the two DuckDB-native baselines are regular harness systems
+  (`duckpgq_recursive`, `duckpgq_scalar`, class `DuckPGQNativeSystem`) with a `native` step in `run_all.sh` (SF10 and
+  SF100 with the index route for the agreement check); table names "DuckDB recursive CTE" and "DuckPGQ 2023 UDFs".
+  Smoke at SF1: all points agree across the three routes. Sources identical to rc2; tag `eval-freeze-rc3` on the
+  harness state; full matrix restarted.
+- 29 Oct (midday): rc3 stopped minutes in for the author's list. In the tree now: medians in the sweep tables, the
+  figures and the teaser (`load()` summarises repeats by the median; the harness printers too; the LDBC table stays
+  median per parameter set, mean over sets); `fixed-costs` subcommand and matrix step (database file size, CSR index
+  build time x3 and bytes per edge from the new `duckpgq_csr_index_size`, every baseline's fresh load time and store
+  size: Kuzu database file, Memgraph process resident memory, FalkorDB graph memory, Neo4j store directory after a
+  checkpoint; SF1 smoke: index 11.9 B/edge, Kuzu 104, FalkorDB 42, Neo4j 33 B/edge); per-row visibility switch
+  `duckpgq_csr_index_change_groups` (false decides every logged row by its own row version) with the update-run
+  configuration `index_per_row` for the per-row cost claim; the unpaced concurrent writer step (4 readers, pause 0);
+  Section 3 switches as the microbenchmark group `section3` (1 pair with and without the per-source kernel, 20
+  sources x 200 destinations as the `all_pairs` shape with source grouping on and off, paths vs lengths through
+  `shortestpathoperator`, all agreeing at SF1). MAGE: the Memgraph image's query modules (community detection,
+  PageRank, node2vec, text and vector search) include no shortest-path procedure; the built-in BFS the harness uses
+  is Memgraph's path operator. Sources: one new option and one new function (95 tests pass). Tag `eval-freeze-rc4`,
+  full matrix restarted.
+- 29 Oct (afternoon): lane-per-source MS-BFS waves (author's diagnosis of BI19: 1.4K sources x 1.7K destinations at
+  SF300 ran 1.4K single-source searches, Neo4j's work in parallel; one lane per pair would need 4.6K waves). New
+  kernel `LaneWaveState` on the lane kernel's explore and check phases (virtual hooks `DetectReached`,
+  `MarkUnreachable`, `StartNextWave` in `IterativeLengthState`; finished lanes are masked out of `next` in the check
+  phase, Then et al.): a wave is up to 512 source groups, one lane each, with the group's destination list; after
+  every check phase a lane records the level of newly reached destinations and stops when none is left; groups in
+  lane mode keep a destination-distance map instead of the per-vertex arrays. Rule: lengths, more groups than the
+  few-sources limit (`experimental_path_finding_operator_lane_waves`, default true; `source_group_kernel` and
+  `lane_waves` in the strategy string). 96 tests pass (new `path_finding_lane_waves.test`). BI19 on the index, all
+  counts equal to the rc1 archive: SF10 61 -> 15 ms (4x faster), SF100 3.6 s -> 252 ms (14x faster), SF300 30.6 s
+  -> 1.6 s (19x faster; Neo4j 46 s, so 29x faster than Neo4j instead of 1.5x); build route SF300 39.4 -> 2.6 s.
+  Section 3 microbenchmarks (`section3` group, 1 repeat): 20 sources x 200 destinations on the index SF10 20 ms lane
+  waves vs 13 ms per-source searches (1.5x slower at this size) vs 86 ms lane-per-pair; SF100 79 vs 91 ms (1.15x
+  faster) vs 509 ms; one pair on the index: per-source kernel 4 / 9 ms vs lanes 13 / 45 ms (SF10 / SF100); paths
+  vs lengths at 2048 random pairs: 3.6x / 4.5x slower (index), 3.9x / 5.3x (build). Tag `eval-freeze-rc5`, matrix
+  restarted.

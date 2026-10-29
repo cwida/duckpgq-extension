@@ -30,6 +30,16 @@ public:
 
 	//! Workers the kernel runs with; set before Start when a group shares its workers and working set
 	void SetWorkerCount(idx_t workers);
+
+	//! ---- Lane bookkeeping hooks (the lane-per-pair batch is the default; LaneWaveState gives every lane a source
+	//! group with a set of destinations)
+	//! After a check phase: which lanes reached what they were looking for; advances `iter`, clears `change` when no
+	//! lane is active or the depth bound is hit
+	virtual void DetectReached();
+	//! After a wave ends: lanes still active found nothing (within the bound)
+	virtual void MarkUnreachable();
+	//! Starts the next wave of this batch (lanes from the pairs not yet searched); false when none is left
+	virtual bool StartNextWave();
 	//! Label of the batch timing row ("bfs_batch" or "bfs_batch_grouped")
 	void SetTimingLabel(const string &label);
 
