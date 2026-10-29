@@ -868,3 +868,9 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   decision. Then build, suite incl. the three new tests, tag `eval-freeze-rc2`, rerun the full matrix (about 1.5
   days); rc1 serves as the validation set. The author's paper commits (sections audited against the frozen commit)
   came in with the same merge.
+- 29 Oct (morning): rc1 matrix finished 28 Oct about 23:00 UTC (35 steps, 32.4 h of step time, every step exit 0,
+  every point agreeing); `collect.sh` run, archive, figures and tables committed (`7c65bed0`). Index fixes built and
+  tested: 95 test cases pass including the three audit tests (`2517ebc2`); soak on the fixed build: update-run
+  (190 x 2000, 0 mismatches on all three configs, index query mean 18-23 ms, commit 15 ms), update-concurrent 4
+  readers (7834 events, 0 mismatches), read-only spot check equal to the rc1 counts. Tag `eval-freeze-rc2`; the full
+  matrix reruns on it (rc1 is the validation set: every read-only number should reproduce within noise).
