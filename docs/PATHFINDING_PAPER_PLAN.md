@@ -874,3 +874,11 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   (190 x 2000, 0 mismatches on all three configs, index query mean 18-23 ms, commit 15 ms), update-concurrent 4
   readers (7834 events, 0 mismatches), read-only spot check equal to the rc1 counts. Tag `eval-freeze-rc2`; the full
   matrix reruns on it (rc1 is the validation set: every read-only number should reproduce within noise).
+- 29 Oct: two DuckDB-native baselines added to the matrix (author's request): `duckpgq_recursive` (WITH RECURSIVE ...
+  USING KEY, shortest lengths by keyed minimum, depth cap 1000) and `duckpgq_scalar` (the CIDR 2023 UDF route:
+  create_csr_edge / create_csr_vertex + iterativelength per pair). Driver `scripts/native_baselines_sweep.py` on top
+  of the harness (kept outside `pathfinding_benchmark.py` while the rc2 matrix re-reads it per step; to be folded in
+  after the run), same pair tables, repeats, timeout and CSV as `sweep-pairs`, the index route in the same sweep for
+  the agreement check, no warm-up query for the native routes. Smoke at SF1: all 5 points agree across the three
+  routes. Queued as `repro/run_native_baselines.sh`: waits for "matrix finished", then SF10 and SF100, random pairs
+  and sources x all, 32 threads, 600 s, 3 repeats. Report: time per point and the first timed-out point per shape.
