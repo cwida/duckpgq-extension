@@ -4,12 +4,13 @@
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/teaser.pdf}
-  \caption{LDBC BI19 at SF300 (55.7\,M \texttt{knows} edges, undirected): the hop-count shortest-path length between
-  every person of one city and every person of another, 1.2 to 2.4\,M pairs per query. Seconds per query on a linear
-  axis, the median of three runs per parameter set averaged over five parameter sets, one m7a.8xlarge, 32 threads.
-  \duckpgq over its CSR index, the other systems in their fastest formulation; hatched bars exceeded the 600\,s limit.
-  Table~\ref{tab:ldbc} has SF10 and SF100. \todo{The \duckpgq bar is from the BI19 run after rc1 (lanes per
-  source); the rerun replaces it.}}
+  \caption{LDBC BI19, the hop-count shortest-path length between every person of one city and every person of
+  another, on the undirected \texttt{knows} graph of SF10, SF100 and SF300 (1.84, 18.7 and 55.7\,M edges; up to 10\,k,
+  0.39\,M and 2.4\,M pairs per query). Seconds per query, the median of three runs per parameter set averaged over
+  five parameter sets, one m7a.8xlarge, 32 threads. Each panel has its own linear axis, ending at 2.1 times Neo4j's
+  time; a bar with a break continues beyond the panel, and a hatched bar exceeded the 600\,s limit. The factor after
+  a time is that system's time divided by \duckpgq's. \duckpgq over its CSR index, the other systems in their fastest
+  formulation. \todo{The \duckpgq bars are from the BI19 run after rc1 (lanes per source); the rerun replaces them.}}
   \label{fig:teaser}
 \end{figure}
 

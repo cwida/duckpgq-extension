@@ -754,7 +754,7 @@ def teaser_figure(filename, sf="100"):
 
 
 # BI19 over the index with lanes per distinct source, measured after rc1 (29 Oct); remove once the rerun has it
-BI19_OVERRIDE_S = {"300": 1.6}
+BI19_OVERRIDE_S = {"10": 0.015, "100": 0.252, "300": 1.6}
 
 
 def ldbc_query_seconds(points, system, query):
@@ -820,6 +820,63 @@ def teaser_bi19_figure(filename, sf="300"):
     save(fig, filename)
 
 
+def teaser_bi19_scales_figure(filename):
+    """Page-one figure: LDBC BI19 at SF10, SF100 and SF300, one linear panel each, scaled to Neo4j's time so that the
+    DuckPGQ bar is read against the strongest baseline; slower systems run off the panel with their value"""
+    systems = [("duckpgq_index", "DuckPGQ"), ("neo4j", "Neo4j"), ("kuzu", "Kuzu"), ("memgraph", "Memgraph"),
+               ("falkordb", "FalkorDB"), ("neo4j_gds", "Neo4j GDS")]
+    colors = dict(COLOR)
+    colors["neo4j_gds"] = "#7fcfae"
+    fig, axes = plt.subplots(1, 3, figsize=(3.33, 1.85), sharey=True)
+    for ax, sf in zip(axes, SCALE_FACTORS):
+        points = load("ldbc_queries", sf)
+        rows = []
+        for system, name in systems:
+            value = ldbc_query_seconds(points, system, "bi19")
+            if system == "duckpgq_index" and sf in BI19_OVERRIDE_S:
+                value = BI19_OVERRIDE_S[sf]
+            rows.append((name, value, colors[system], system == "duckpgq_index"))
+        ours = rows[0][1]
+        edge = rows[1][1] * 2.1
+        ys = list(range(len(rows)))[::-1]
+        for y, (name, value, color, is_ours) in zip(ys, rows):
+            timed_out = not isinstance(value, float)
+            if timed_out or value > edge:
+                ax.barh(y, edge, height=0.64, color=SURFACE if timed_out else color, edgecolor=color,
+                        hatch="////" if timed_out else None, linewidth=0.5, alpha=0.5 if timed_out else 0.55, zorder=3)
+                # Break marks: the bar continues beyond the panel
+                for dx in (0.10, 0.13):
+                    ax.plot([edge * (1 - dx) - edge * 0.012, edge * (1 - dx) + edge * 0.012], [y - 0.38, y + 0.38],
+                            color=SURFACE, linewidth=1.4, zorder=3.5, solid_capstyle="butt")
+                if timed_out:
+                    text = "> 600 s"
+                else:
+                    text = f"{value * 1000:.0f} ms" if value < 1 else (f"{value:.1f} s" if value < 10 else f"{value:.0f} s")
+                    text += f" {value / ours:.0f}×"
+                ax.text(edge * 0.84, y, text, va="center", ha="right", fontsize=5.4, color=INK2, zorder=4,
+                        bbox=dict(boxstyle="square,pad=0.1", facecolor=SURFACE, edgecolor="none"))
+                continue
+            ax.barh(y, value, height=0.64, color=color, zorder=3)
+            text = f"{value * 1000:.0f} ms" if value < 1 else (f"{value:.1f} s" if value < 10 else f"{value:.0f} s")
+            if not is_ours:
+                text += f" {value / ours:.0f}×" if value / ours >= 10 else f" {value / ours:.1f}×"
+            ax.text(value + edge * 0.03, y, text, va="center", ha="left", fontsize=6 if is_ours else 5.4,
+                    fontweight="bold" if is_ours else "normal", color=color if is_ours else INK2, zorder=4)
+        ax.set_xlim(0, edge)
+        ax.set_xticks([])
+        ax.set_title(f"SF{sf}", loc="left", fontsize=7, pad=2)
+        ax.grid(False)
+        style_axes(ax)
+        ax.spines["bottom"].set_visible(False)
+    axes[0].set_yticks(list(range(len(systems)))[::-1])
+    axes[0].set_yticklabels([n for _, n in systems], fontsize=6.3)
+    for label in axes[0].get_yticklabels():
+        if label.get_text() == "DuckPGQ":
+            label.set_fontweight("bold")
+            label.set_color(colors["duckpgq_index"])
+    fig.subplots_adjust(left=0.20, right=0.99, bottom=0.03, top=0.90, wspace=0.12)
+    save(fig, filename)
+
 def save(fig, filename):
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / f"{filename}.pdf")
@@ -837,7 +894,8 @@ if __name__ == "__main__":
     client_threads_figure("client_threads")
     speedup_figure("speedup")
     teaser_figure("teaser_pairs")
-    teaser_bi19_figure("teaser")
+    teaser_bi19_figure("teaser_bi19_sf300")
+    teaser_bi19_scales_figure("teaser")
     scaling_figure("scaling")
     throughput_figure("throughput")
     first_query_figure("first_query")
