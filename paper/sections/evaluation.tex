@@ -249,7 +249,7 @@ random pairs, one source to all) at SF10 and SF100, 32 threads, from the switch 
 (1) the CIDR 2023 UDF design (CSR built by UDFs, MS-BFS in a UDF, one core for one pair);
 (2) the operator with multi-source lanes only (parallelism from the partitioned CSR: the 16-thread factor six becomes X);
 (3) plus the single-source traversal for few sources (one pair 0.11 to 0.01\,s on the 8M-edge graph);
-(4) plus the bucket index over the sparse rows (twenty sources 0.28 to 0.13\,s);
+(4) plus the source index over the sparse rows (twenty sources 0.28 to 0.13\,s);
 (5) plus per-phase events instead of barriers (SF300 build route sssp 0.39 to 0.30\,s; concurrent readers);
 (5c) plus lanes per source with destination sets (BI19 over the index, SF300: 30.6 to 1.6\,s, peak memory 43.8 to
 4.7\,GiB);
