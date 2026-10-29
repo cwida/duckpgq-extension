@@ -1,0 +1,61 @@
+system,config,settings,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,timeout_s,benchmark_notes,repo_commit
+duckpgq_index,baseline,,random_pairs,128,,1,ok,0.021000,43,146,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,baseline,,random_pairs,128,,2,ok,0.022000,43,146,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,baseline,,random_pairs,2048,,1,ok,0.136000,745,2612,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,baseline,,random_pairs,2048,,2,ok,0.137000,745,2612,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,baseline,,random_pairs,65536,,1,ok,0.459000,22189,79155,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,baseline,,random_pairs,65536,,2,ok,0.364000,22189,79155,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,baseline,,same_dst,128,,1,ok,0.020000,47,188,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,baseline,,same_dst,128,,2,ok,0.019000,47,188,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,baseline,,same_dst,2048,,1,ok,0.140000,806,3102,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,baseline,,same_dst,2048,,2,ok,0.138000,806,3102,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,baseline,,same_dst,65536,,1,ok,0.481000,23907,91970,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,baseline,,same_dst,65536,,2,ok,0.473000,23907,91970,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,random_pairs,128,,1,ok,0.020000,43,146,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,random_pairs,128,,2,ok,0.021000,43,146,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,random_pairs,2048,,1,ok,0.141000,745,2612,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,random_pairs,2048,,2,ok,0.140000,745,2612,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,random_pairs,65536,,1,ok,0.447000,22189,79155,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,random_pairs,65536,,2,ok,0.353000,22189,79155,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,same_dst,128,,1,ok,0.018000,47,188,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,same_dst,128,,2,ok,0.019000,47,188,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,same_dst,2048,,1,ok,0.141000,806,3102,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,same_dst,2048,,2,ok,0.145000,806,3102,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,same_dst,65536,,1,ok,0.360000,23907,91970,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,same_dst,65536,,2,ok,0.378000,23907,91970,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),random_pairs,128,,1,ok,0.021000,43,146,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),random_pairs,128,,2,ok,0.020000,43,146,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),random_pairs,2048,,1,ok,0.141000,745,2612,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),random_pairs,2048,,2,ok,0.141000,745,2612,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),random_pairs,65536,,1,ok,0.353000,22189,79155,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),random_pairs,65536,,2,ok,0.449000,22189,79155,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),same_dst,128,,1,ok,0.004000,47,188,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),same_dst,128,,2,ok,0.004000,47,188,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),same_dst,2048,,1,ok,0.004000,806,3102,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),same_dst,2048,,2,ok,0.005000,806,3102,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),same_dst,65536,,1,ok,0.011000,23907,91970,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index,index WITH (reverse = true),same_dst,65536,,2,ok,0.012000,23907,91970,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,128,,1,ok,0.021000,43,146,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,128,,2,ok,0.018000,43,146,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,2048,,1,ok,0.145000,745,2612,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,2048,,2,ok,0.139000,745,2612,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,65536,,1,ok,0.446000,22189,79155,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,65536,,2,ok,0.447000,22189,79155,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,128,,1,ok,0.019000,47,188,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,128,,2,ok,0.019000,47,188,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,2048,,1,ok,0.141000,806,3102,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,2048,,2,ok,0.142000,806,3102,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,65536,,1,ok,0.472000,23907,91970,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,65536,,2,ok,0.479000,23907,91970,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,128,,1,ok,0.021000,43,146,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,128,,2,ok,0.021000,43,146,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,2048,,1,ok,0.140000,745,2612,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,2048,,2,ok,0.137000,745,2612,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,65536,,1,ok,0.350000,22189,79155,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,65536,,2,ok,0.450000,22189,79155,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,128,,1,ok,0.021000,47,188,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,128,,2,ok,0.021000,47,188,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,2048,,1,ok,0.141000,806,3102,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,2048,,2,ok,0.138000,806,3102,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,65536,,1,ok,0.479000,23907,91970,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,65536,,2,ok,0.365000,23907,91970,32,600.0,soak index group 1cc48dc2,4762d90e33a3938440d2788b289e6bddc519ad10

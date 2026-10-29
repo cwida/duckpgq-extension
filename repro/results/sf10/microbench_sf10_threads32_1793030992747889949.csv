@@ -1,0 +1,13 @@
+system,config,settings,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,timeout_s,benchmark_notes,repo_commit
+duckpgq_index,baseline,,multi_source,,128,1,ok,0.045000,2945336,10549235,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7
+duckpgq_index,baseline,,multi_source,,128,2,ok,0.046000,2945336,10549235,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7
+duckpgq_index,baseline,,multi_source,,128,3,ok,0.044000,2945336,10549235,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7
+duckpgq_index,baseline,,multi_source,,1024,1,ok,0.230000,22513530,79941209,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7
+duckpgq_index,baseline,,multi_source,,1024,2,ok,0.230000,22513530,79941209,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7
+duckpgq_index,baseline,,multi_source,,1024,3,ok,0.236000,22513530,79941209,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7
+duckpgq_index,reverse_index,index WITH (reverse = true),multi_source,,128,1,ok,0.044000,2945336,10549235,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7
+duckpgq_index,reverse_index,index WITH (reverse = true),multi_source,,128,2,ok,0.048000,2945336,10549235,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7
+duckpgq_index,reverse_index,index WITH (reverse = true),multi_source,,128,3,ok,0.043000,2945336,10549235,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7
+duckpgq_index,reverse_index,index WITH (reverse = true),multi_source,,1024,1,ok,0.235000,22513530,79941209,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7
+duckpgq_index,reverse_index,index WITH (reverse = true),multi_source,,1024,2,ok,0.234000,22513530,79941209,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7
+duckpgq_index,reverse_index,index WITH (reverse = true),multi_source,,1024,3,ok,0.228000,22513530,79941209,32,600.0,"reverse-side confound check, fresh indexes",b5ac8b34806bd73de86bf6cd2b5d9b479ac31fd7

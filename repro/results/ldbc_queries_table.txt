@@ -1,15 +1,42 @@
 
+## LDBC queries (hop-count variants, undirected knows): mean seconds per query, SF10, 32 threads, timeout 600.0 s
+
+| system | ic13 | bi19 | bi20 |
+|---|---|---|---|
+| duckpgq_build | 35 ms | 102 ms | 38 ms |
+| duckpgq_index | 4 ms | 61 ms | 5 ms |
+| kuzu | 12 ms | 1.6 s | 7.6 s |
+| memgraph | 433 ms | 1.6 s | 578 ms |
+| falkordb | 15 ms | 69.7 s | 11.3 s |
+| neo4j | 8 ms | 47 ms | 29 ms |
+| neo4j_gds | 67 ms | 10.3 s | 60.5 s |
+| memgraph@32 | 403 ms | 138 ms | 100 ms |
+| falkordb@32 | 15 ms | 18.8 s | 3.0 s |
+| kuzu@32 | 9 ms | 516 ms | 1.4 s |
+
 ## LDBC queries (hop-count variants, undirected knows): mean seconds per query, SF100, 32 threads, timeout 600.0 s
 
 | system | ic13 | bi19 | bi20 |
 |---|---|---|---|
-| memgraph@32 | 8.8 s | 16.1 s | 641 ms |
-| falkordb@32 | 60 ms | > 600.0 s | 210.6 s |
-| kuzu@32 | 65 ms | 22.4 s | 29.6 s |
-| kuzu | 53 ms | 328.5 s | > 600.0 s |
-| memgraph | 33.2 s | > 600.0 s | 47.9 s |
-| falkordb | 118 ms | > 600.0 s | > 600.0 s |
-| neo4j | 5 ms | 48.4 s | 1.2 s |
-| neo4j_gds | 1.8 s | > 600.0 s | > 600.0 s |
-| duckpgq_build | 535 ms | 59.9 s | 573 ms |
-| duckpgq_index | 27 ms | 43.7 s | 55 ms |
+| duckpgq_build | 273 ms | 4.7 s | 287 ms |
+| duckpgq_index | 14 ms | 3.6 s | 25 ms |
+| kuzu | 61 ms | 65.1 s | 165.4 s |
+| memgraph | 8.9 s | 369.3 s | 6.4 s |
+| falkordb | 63 ms | > 600.0 s | 402.8 s |
+| neo4j | 9 ms | 3.9 s | 120 ms |
+| neo4j_gds | 555 ms | > 600.0 s | > 600.0 s |
+| memgraph@32 | 8.9 s | 17.0 s | 656 ms |
+| falkordb@32 | 61 ms | > 600.0 s | 212.9 s |
+| kuzu@32 | 28 ms | 25.0 s | 32.9 s |
+
+## LDBC queries (hop-count variants, undirected knows): mean seconds per query, SF300, 32 threads, timeout 600.0 s
+
+| system | ic13 | bi19 | bi20 |
+|---|---|---|---|
+| duckpgq_build | 619 ms | 39.4 s | 669 ms |
+| duckpgq_index | 28 ms | 30.6 s | 57 ms |
+| kuzu | 186 ms | 323.1 s | > 600.0 s |
+| memgraph | 32.7 s | > 600.0 s | 48.3 s |
+| falkordb | 121 ms | > 600.0 s | > 600.0 s |
+| neo4j | 6 ms | 46.1 s | 1.1 s |
+| neo4j_gds | 1.9 s | > 600.0 s | > 600.0 s |

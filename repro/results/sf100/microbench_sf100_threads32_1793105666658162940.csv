@@ -1,0 +1,21 @@
+system,config,settings,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,timeout_s,benchmark_notes,repo_commit
+duckpgq_index,baseline,,random_pairs,2048,,1,ok,0.517000,775,2926,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827
+duckpgq_index,baseline,,random_pairs,16384,,1,ok,1.538000,6095,23030,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827
+duckpgq_index,baseline,,random_pairs,65536,,1,ok,5.168000,23822,90059,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827
+duckpgq_index,partitions_65535,experimental_path_finding_operator_partition_vertices=65535,random_pairs,2048,,1,ok,0.887000,775,2926,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827
+duckpgq_index,partitions_65535,experimental_path_finding_operator_partition_vertices=65535,random_pairs,16384,,1,ok,2.622000,6095,23030,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827
+duckpgq_index,partitions_65535,experimental_path_finding_operator_partition_vertices=65535,random_pairs,65536,,1,ok,9.882000,23822,90059,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827
+duckpgq_index,partitions_65535_nosub,experimental_path_finding_operator_partition_vertices=65535 experimental_path_finding_operator_sub_range_tasks=false,random_pairs,2048,,1,"error: duckpgq_state_init
+false
+count(len),""COALESCE(sum(len), 0)""
+Run Time (s): real 0.000 user 0.000175 sys 0.000276
+INTERNAL Error: Attempted to access index 18 within vector of size 7
+
+Stack Trace:
+
+/loc",0.000000,,,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827
+duckpgq_index,partitions_65535_nosub,experimental_path_finding_operator_partition_vertices=65535 experimental_path_finding_operator_sub_range_tasks=false,random_pairs,16384,,1,timed_out_inferred,,,,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827
+duckpgq_index,partitions_65535_nosub,experimental_path_finding_operator_partition_vertices=65535 experimental_path_finding_operator_sub_range_tasks=false,random_pairs,65536,,1,timed_out_inferred,,,,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827
+duckpgq_index,partitions_16384,experimental_path_finding_operator_partition_vertices=16384,random_pairs,2048,,1,ok,0.719000,775,2926,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827
+duckpgq_index,partitions_16384,experimental_path_finding_operator_partition_vertices=16384,random_pairs,16384,,1,ok,2.220000,6095,23030,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827
+duckpgq_index,partitions_16384,experimental_path_finding_operator_partition_vertices=16384,random_pairs,65536,,1,ok,8.436000,23822,90059,32,600.0,W32 sub-range tasks second look SF100 a38a5db8+subrange2,a38a5db83965e82c7b89acd0e85970c180754827

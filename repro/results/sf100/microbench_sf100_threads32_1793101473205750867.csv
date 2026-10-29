@@ -1,0 +1,25 @@
+system,config,settings,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,timeout_s,benchmark_notes,repo_commit
+duckpgq_index,baseline,,random_pairs,16384,,1,ok,1.903000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_index,baseline,,random_pairs,16384,,2,ok,1.961000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_index,baseline,,random_pairs,16384,,3,ok,1.923000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_index,baseline,,random_pairs,65536,,1,ok,5.868000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_index,baseline,,random_pairs,65536,,2,ok,5.881000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_index,baseline,,random_pairs,65536,,3,ok,5.845000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,16384,,1,ok,1.581000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,16384,,2,ok,1.614000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,16384,,3,ok,1.555000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,65536,,1,ok,5.454000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,65536,,2,ok,5.273000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,65536,,3,ok,5.252000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,baseline,,random_pairs,16384,,1,ok,3.471000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,baseline,,random_pairs,16384,,2,ok,3.436000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,baseline,,random_pairs,16384,,3,ok,3.484000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,baseline,,random_pairs,65536,,1,ok,8.615000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,baseline,,random_pairs,65536,,2,ok,8.521000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,baseline,,random_pairs,65536,,3,ok,8.673000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,16384,,1,ok,2.422000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,16384,,2,ok,2.461000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,16384,,3,ok,2.414000,6095,23030,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,65536,,1,ok,8.169000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,65536,,2,ok,8.118000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,65536,,3,ok,8.104000,23822,90059,32,600.0,W31 ramp start 8 check SF100,4dd78ba8b8aa880d7b0eb1b751f574cf027d0190

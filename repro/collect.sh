@@ -14,7 +14,11 @@ else
     mkdir -p "${ARCHIVE_DIR}/sf${sf}"
     cp -n "${RESULTS_DIR}/sf${sf}/"*.csv "${ARCHIVE_DIR}/sf${sf}/" 2>/dev/null || true
   done
-  ${HARNESS} sweep-pairs-table  "${ARCHIVE_DIR}"/sf*/sweep_pairs_*.csv  > "${ARCHIVE_DIR}/sweep_pairs_table.txt"
-  ${HARNESS} ldbc-queries-table "${ARCHIVE_DIR}"/sf*/ldbc_queries_*.csv > "${ARCHIVE_DIR}/ldbc_queries_table.txt"
+  # One text table per scale factor (the table printers take the newest file per system and shape)
+  : > "${ARCHIVE_DIR}/sweep_pairs_table.txt"; : > "${ARCHIVE_DIR}/ldbc_queries_table.txt"
+  for sf in ${SCALE_FACTORS}; do
+    ${HARNESS} sweep-pairs-table  "${ARCHIVE_DIR}"/sf${sf}/sweep_pairs_*.csv  >> "${ARCHIVE_DIR}/sweep_pairs_table.txt"
+    ${HARNESS} ldbc-queries-table "${ARCHIVE_DIR}"/sf${sf}/ldbc_queries_*.csv >> "${ARCHIVE_DIR}/ldbc_queries_table.txt"
+  done
 fi
 echo "figures: paper/figures/*.pdf   tables: paper/tables/*.tex   archive: ${ARCHIVE_DIR}"

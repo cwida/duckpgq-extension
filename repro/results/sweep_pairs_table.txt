@@ -1,30 +1,84 @@
 
+## random_pairs: mean seconds per query, SF10, 32 threads, timeout 600.0 s
+
+| system | pairs=1 | pairs=16 | pairs=128 | pairs=1024 | pairs=2048 | pairs=16384 | pairs=65536 |
+|---|---|---|---|---|---|---|---|
+| duckpgq_build | 26 ms | 39 ms | 44 ms | 101 ms | 161 ms | 291 ms | 560 ms |
+| duckpgq_index | 4 ms | 17 ms | 18 ms | 75 ms | 141 ms | 247 ms | 442 ms |
+| kuzu | 44 ms | 101 ms | 639 ms | 5.1 s | 10.3 s | 82.4 s | 326.5 s |
+| memgraph | 44 ms | 472 ms | 5.1 s | 39.2 s | 79.4 s | > 600.0 s | > 600.0 s |
+| falkordb | 24 ms | 93 ms | 719 ms | 5.8 s | 11.6 s | 92.8 s | 363.4 s |
+| neo4j | 69 ms | 108 ms | 530 ms | 671 ms | 746 ms | 2.6 s | 10.2 s |
+| neo4j_gds | 49 ms | 162 ms | 1.3 s | 9.7 s | 19.4 s | 151.9 s | 572.4 s |
+| memgraph@32 | 43 ms | 178 ms | 505 ms | 2.6 s | 4.5 s | 31.9 s | 114.0 s |
+| falkordb@32 | 20 ms | 41 ms | 201 ms | 1.4 s | 2.7 s | 21.5 s | 84.2 s |
+| kuzu@32 | 11 ms | 24 ms | 92 ms | 560 ms | 999 ms | 7.6 s | 29.1 s |
+
+## multi_source: mean seconds per query, SF10, 32 threads, timeout 600.0 s
+
+| system | sources=1 | sources=16 | sources=128 | sources=1024 |
+|---|---|---|---|---|
+| duckpgq_build | 25 ms | 32 ms | 57 ms | 247 ms |
+| duckpgq_index | 3 ms | 9 ms | 23 ms | 110 ms |
+| kuzu | 6 ms | 65 ms | 508 ms | 4.0 s |
+| memgraph | 14 ms | 560 ms | 4.9 s | 37.4 s |
+| falkordb | 301.2 s | > 600.0 s | > 600.0 s | > 600.0 s |
+| neo4j | 18.5 s | 179.8 s | > 600.0 s | > 600.0 s |
+| neo4j_gds | 62 ms | 377 ms | 2.9 s | 21.7 s |
+| memgraph@32 | 14 ms | 146 ms | 358 ms | 2.4 s |
+| falkordb@32 | 298.4 s | > 600.0 s | > 600.0 s | > 600.0 s |
+| kuzu@32 | 6 ms | 23 ms | 100 ms | 614 ms |
+
 ## random_pairs: mean seconds per query, SF100, 32 threads, timeout 600.0 s
 
 | system | pairs=1 | pairs=16 | pairs=128 | pairs=1024 | pairs=2048 | pairs=16384 | pairs=65536 |
 |---|---|---|---|---|---|---|---|
-| memgraph@32 | 578 ms | 2.6 s | 7.3 s | 38.4 s | 81.4 s | 560.9 s | > 600.0 s |
-| falkordb@32 | 71 ms | 230 ms | 1.7 s | 13.4 s | 26.9 s | 215.2 s | > 600.0 s |
-| kuzu@32 | 134 ms | 189 ms | 572 ms | 3.0 s | 6.3 s | 44.3 s | 170.0 s |
-| kuzu | 33 ms | 647 ms | 5.8 s | 46.2 s | 95.9 s | > 600.0 s | > 600.0 s |
-| memgraph | 2.4 s | 27.3 s | 307.4 s | > 600.0 s | > 600.0 s | > 600.0 s | > 600.0 s |
-| falkordb | 113 ms | 927 ms | 8.3 s | 68.7 s | 136.7 s | > 600.0 s | > 600.0 s |
-| neo4j | 15 ms | 515 ms | 24.0 s | 39.0 s | 43.2 s | 191.6 s | > 600.0 s |
-| neo4j_gds | 79 ms | 3.4 s | 49.0 s | 404.2 s | > 600.0 s | > 600.0 s | > 600.0 s |
-| duckpgq_build | 288 ms | 1.0 s | 995 ms | 1.6 s | 2.8 s | 17.9 s | 70.3 s |
-| duckpgq_index | 9 ms | 106 ms | 514 ms | 984 ms | 1.9 s | 14.0 s | 55.2 s |
+| duckpgq_build | 137 ms | 225 ms | 232 ms | 550 ms | 914 ms | 1.3 s | 4.3 s |
+| duckpgq_index | 9 ms | 37 ms | 109 ms | 397 ms | 775 ms | 1.0 s | 3.5 s |
+| kuzu | 133 ms | 369 ms | 2.6 s | 21.2 s | 42.6 s | 339.1 s | > 600.0 s |
+| memgraph | 581 ms | 8.2 s | 82.2 s | > 600.0 s | > 600.0 s | > 600.0 s | > 600.0 s |
+| falkordb | 80 ms | 470 ms | 3.8 s | 31.0 s | 63.0 s | 503.7 s | > 600.0 s |
+| neo4j | 16 ms | 975 ms | 7.3 s | 7.8 s | 10.2 s | 43.2 s | 155.0 s |
+| neo4j_gds | 71 ms | 1.3 s | 12.3 s | 108.9 s | 232.8 s | > 600.0 s | > 600.0 s |
+| memgraph@32 | 593 ms | 2.7 s | 7.6 s | 39.5 s | 84.0 s | 571.9 s | > 600.0 s |
+| falkordb@32 | 71 ms | 243 ms | 1.7 s | 14.0 s | 28.7 s | 229.4 s | > 600.0 s |
+| kuzu@32 | 23 ms | 126 ms | 572 ms | 3.0 s | 6.3 s | 44.2 s | 168.9 s |
 
 ## multi_source: mean seconds per query, SF100, 32 threads, timeout 600.0 s
 
 | system | sources=1 | sources=16 | sources=128 | sources=1024 |
 |---|---|---|---|---|
-| memgraph@32 | 1.1 s | 2.4 s | 6.2 s | 35.7 s |
-| falkordb@32 | > 600.0 s | > 600.0 s | > 600.0 s | > 600.0 s |
-| kuzu@32 | 14 ms | 158 ms | 708 ms | 4.3 s |
-| kuzu | 3 ms | 151 ms | 2.0 s | not run |
-| memgraph | 1 ms | 17.1 s | 283.7 s | not run |
+| duckpgq_build | 150 ms | 197 ms | 375 ms | 2.2 s |
+| duckpgq_index | 18 ms | 52 ms | 184 ms | 1.5 s |
+| kuzu | 13 ms | 149 ms | 1.2 s | 9.4 s |
+| memgraph | 1.2 s | 12.1 s | 92.2 s | > 600.0 s |
 | falkordb | > 600.0 s | > 600.0 s | > 600.0 s | > 600.0 s |
-| neo4j | 119 ms | > 600.0 s | > 600.0 s | > 600.0 s |
-| neo4j_gds | 51 ms | 4.1 s | 57.3 s | not run |
-| duckpgq_build | 282 ms | 542 ms | 1.7 s | 9.7 s |
-| duckpgq_index | 9 ms | 135 ms | 657 ms | 4.2 s |
+| neo4j | > 600.0 s | > 600.0 s | > 600.0 s | > 600.0 s |
+| neo4j_gds | 312 ms | 3.3 s | 24.0 s | 189.2 s |
+| memgraph@32 | 1.1 s | 2.5 s | 6.4 s | 36.6 s |
+| falkordb@32 | > 600.0 s | > 600.0 s | > 600.0 s | > 600.0 s |
+| kuzu@32 | 15 ms | 159 ms | 705 ms | 4.2 s |
+
+## random_pairs: mean seconds per query, SF300, 32 threads, timeout 600.0 s
+
+| system | pairs=1 | pairs=16 | pairs=128 | pairs=1024 | pairs=2048 | pairs=16384 | pairs=65536 |
+|---|---|---|---|---|---|---|---|
+| duckpgq_build | 274 ms | 498 ms | 562 ms | 1.3 s | 2.2 s | 3.6 s | 12.9 s |
+| duckpgq_index | 10 ms | 102 ms | 213 ms | 767 ms | 1.5 s | 2.7 s | 10.1 s |
+| kuzu | 96 ms | 1.3 s | 5.8 s | 46.5 s | 93.4 s | > 600.0 s | > 600.0 s |
+| memgraph | 2.4 s | 27.9 s | 302.7 s | > 600.0 s | > 600.0 s | > 600.0 s | > 600.0 s |
+| falkordb | 107 ms | 909 ms | 8.4 s | 68.3 s | 137.3 s | > 600.0 s | > 600.0 s |
+| neo4j | 14 ms | 472 ms | 22.0 s | 36.4 s | 40.9 s | 188.2 s | > 600.0 s |
+| neo4j_gds | 98 ms | 3.5 s | 49.3 s | 414.3 s | > 600.0 s | > 600.0 s | > 600.0 s |
+
+## multi_source: mean seconds per query, SF300, 32 threads, timeout 600.0 s
+
+| system | sources=1 | sources=16 | sources=128 | sources=1024 |
+|---|---|---|---|---|
+| duckpgq_build | 276 ms | 437 ms | 1.2 s | 6.8 s |
+| duckpgq_index | 9 ms | 132 ms | 542 ms | 4.2 s |
+| kuzu | 3 ms | 150 ms | 2.0 s | not run |
+| memgraph | 2 ms | 17.2 s | 290.4 s | not run |
+| falkordb | > 600.0 s | > 600.0 s | > 600.0 s | > 600.0 s |
+| neo4j | 141 ms | > 600.0 s | > 600.0 s | > 600.0 s |
+| neo4j_gds | 72 ms | 4.3 s | 60.2 s | not run |

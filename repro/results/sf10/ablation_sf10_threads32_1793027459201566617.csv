@@ -1,0 +1,329 @@
+system,config,settings,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,timeout_s,benchmark_notes,repo_commit
+duckpgq_build,baseline,,random_pairs,1,,1,ok,0.022000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,baseline,,random_pairs,128,,1,ok,0.049000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,baseline,,random_pairs,1024,,1,ok,0.073000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,baseline,,same_dst,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,baseline,,same_dst,128,,1,ok,0.050000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,baseline,,same_dst,1024,,1,ok,0.075000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,baseline,,multi_source,,1,1,ok,0.022000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,baseline,,multi_source,,128,1,ok,0.087000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,1,,1,ok,0.022000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,128,,1,ok,0.051000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,1024,,1,ok,0.075000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,same_dst,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,same_dst,128,,1,ok,0.050000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,same_dst,1024,,1,ok,0.075000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,multi_source,,1,1,ok,0.022000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,multi_source,,128,1,ok,0.085000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,random_pairs,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,random_pairs,128,,1,ok,0.050000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,random_pairs,1024,,1,ok,0.076000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,same_dst,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,same_dst,128,,1,ok,0.046000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,same_dst,1024,,1,ok,0.077000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,multi_source,,1,1,ok,0.022000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,multi_source,,128,1,ok,0.086000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,random_pairs,1,,1,ok,0.024000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,random_pairs,128,,1,ok,0.097000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,random_pairs,1024,,1,ok,0.174000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,same_dst,1,,1,ok,0.026000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,same_dst,128,,1,ok,0.099000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,same_dst,1024,,1,ok,0.175000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,multi_source,,1,1,ok,0.024000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,multi_source,,128,1,ok,0.087000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,random_pairs,1,,1,ok,0.045000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,random_pairs,128,,1,ok,0.051000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,random_pairs,1024,,1,ok,0.075000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,same_dst,1,,1,ok,0.046000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,same_dst,128,,1,ok,0.051000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,same_dst,1024,,1,ok,0.074000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,multi_source,,1,1,ok,0.022000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,multi_source,,128,1,ok,0.085000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,random_pairs,1,,1,ok,0.045000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,random_pairs,128,,1,ok,0.054000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,random_pairs,1024,,1,ok,0.074000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,same_dst,1,,1,ok,0.044000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,same_dst,128,,1,ok,0.052000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,same_dst,1024,,1,ok,0.073000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,multi_source,,1,1,ok,0.022000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,multi_source,,128,1,ok,0.086000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,random_pairs,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,random_pairs,128,,1,ok,0.074000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,random_pairs,1024,,1,ok,0.076000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,same_dst,1,,1,ok,0.024000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,same_dst,128,,1,ok,0.071000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,same_dst,1024,,1,ok,0.075000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,multi_source,,1,1,ok,0.023000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,multi_source,,128,1,ok,0.085000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,random_pairs,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,random_pairs,128,,1,ok,0.054000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,random_pairs,1024,,1,ok,0.075000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,same_dst,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,same_dst,128,,1,ok,0.050000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,same_dst,1024,,1,ok,0.071000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,multi_source,,1,1,ok,0.022000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,multi_source,,128,1,ok,0.087000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_early_termination,experimental_path_finding_operator_target_early_termination=false,random_pairs,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_early_termination,experimental_path_finding_operator_target_early_termination=false,random_pairs,128,,1,ok,0.050000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_early_termination,experimental_path_finding_operator_target_early_termination=false,random_pairs,1024,,1,ok,0.073000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_early_termination,experimental_path_finding_operator_target_early_termination=false,same_dst,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_early_termination,experimental_path_finding_operator_target_early_termination=false,same_dst,128,,1,ok,0.052000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_early_termination,experimental_path_finding_operator_target_early_termination=false,same_dst,1024,,1,ok,0.075000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_early_termination,experimental_path_finding_operator_target_early_termination=false,multi_source,,1,1,ok,0.023000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_early_termination,experimental_path_finding_operator_target_early_termination=false,multi_source,,128,1,ok,0.087000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,random_pairs,1,,1,ok,0.020000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,random_pairs,128,,1,ok,0.049000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,random_pairs,1024,,1,ok,0.074000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,same_dst,1,,1,ok,0.021000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,same_dst,128,,1,ok,0.049000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,same_dst,1024,,1,ok,0.074000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,multi_source,,1,1,ok,0.021000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,multi_source,,128,1,ok,0.119000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,random_pairs,1,,1,ok,0.022000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,random_pairs,128,,1,ok,0.051000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,random_pairs,1024,,1,ok,0.076000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,same_dst,1,,1,ok,0.021000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,same_dst,128,,1,ok,0.050000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,same_dst,1024,,1,ok,0.073000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,multi_source,,1,1,ok,0.021000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,multi_source,,128,1,ok,0.116000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,random_pairs,1,,1,ok,0.030000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,random_pairs,128,,1,ok,0.052000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,random_pairs,1024,,1,ok,0.077000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,same_dst,1,,1,ok,0.031000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,same_dst,128,,1,ok,0.054000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,same_dst,1024,,1,ok,0.079000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,multi_source,,1,1,ok,0.029000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,multi_source,,128,1,ok,0.105000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,1,,1,ok,0.024000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,128,,1,ok,0.051000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,1024,,1,ok,0.075000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,128,,1,ok,0.049000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,1024,,1,ok,0.075000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,multi_source,,1,1,ok,0.023000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,multi_source,,128,1,ok,0.084000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,pair_mode,pair_mode,random_pairs,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,pair_mode,pair_mode,random_pairs,128,,1,ok,0.051000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,pair_mode,pair_mode,random_pairs,1024,,1,ok,0.076000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,pair_mode,pair_mode,same_dst,1,,1,ok,0.024000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,pair_mode,pair_mode,same_dst,128,,1,ok,0.050000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,pair_mode,pair_mode,same_dst,1024,,1,ok,0.075000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,pair_mode,pair_mode,multi_source,,1,1,ok,0.027000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,pair_mode,pair_mode,multi_source,,128,1,ok,0.609000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_1,threads=1,random_pairs,1,,1,ok,0.109000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_1,threads=1,random_pairs,128,,1,ok,0.149000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_1,threads=1,random_pairs,1024,,1,ok,0.210000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_1,threads=1,same_dst,1,,1,ok,0.107000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_1,threads=1,same_dst,128,,1,ok,0.149000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_1,threads=1,same_dst,1024,,1,ok,0.208000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_1,threads=1,multi_source,,1,1,ok,0.109000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_1,threads=1,multi_source,,128,1,ok,0.450000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_2,threads=2,random_pairs,1,,1,ok,0.065000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_2,threads=2,random_pairs,128,,1,ok,0.141000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_2,threads=2,random_pairs,1024,,1,ok,0.239000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_2,threads=2,same_dst,1,,1,ok,0.065000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_2,threads=2,same_dst,128,,1,ok,0.143000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_2,threads=2,same_dst,1024,,1,ok,0.233000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_2,threads=2,multi_source,,1,1,ok,0.065000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_2,threads=2,multi_source,,128,1,ok,0.316000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_4,threads=4,random_pairs,1,,1,ok,0.043000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_4,threads=4,random_pairs,128,,1,ok,0.095000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_4,threads=4,random_pairs,1024,,1,ok,0.142000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_4,threads=4,same_dst,1,,1,ok,0.043000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_4,threads=4,same_dst,128,,1,ok,0.094000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_4,threads=4,same_dst,1024,,1,ok,0.144000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_4,threads=4,multi_source,,1,1,ok,0.036000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_4,threads=4,multi_source,,128,1,ok,0.203000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_8,threads=8,random_pairs,1,,1,ok,0.027000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_8,threads=8,random_pairs,128,,1,ok,0.067000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_8,threads=8,random_pairs,1024,,1,ok,0.104000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_8,threads=8,same_dst,1,,1,ok,0.028000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_8,threads=8,same_dst,128,,1,ok,0.064000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_8,threads=8,same_dst,1024,,1,ok,0.104000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_8,threads=8,multi_source,,1,1,ok,0.028000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_8,threads=8,multi_source,,128,1,ok,0.143000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_16,threads=16,random_pairs,1,,1,ok,0.023000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_16,threads=16,random_pairs,128,,1,ok,0.053000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_16,threads=16,random_pairs,1024,,1,ok,0.079000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_16,threads=16,same_dst,1,,1,ok,0.022000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_16,threads=16,same_dst,128,,1,ok,0.053000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_16,threads=16,same_dst,1024,,1,ok,0.079000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_16,threads=16,multi_source,,1,1,ok,0.022000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_build,threads_16,threads=16,multi_source,,128,1,ok,0.105000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,baseline,,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,baseline,,random_pairs,128,,1,ok,0.022000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,baseline,,random_pairs,1024,,1,ok,0.044000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,baseline,,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,baseline,,same_dst,128,,1,ok,0.022000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,baseline,,same_dst,1024,,1,ok,0.043000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,baseline,,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,baseline,,multi_source,,128,1,ok,0.044000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,1,,1,ok,0.005000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,128,,1,ok,0.028000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,random_pairs,1024,,1,ok,0.044000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,same_dst,1,,1,ok,0.005000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,same_dst,128,,1,ok,0.028000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,same_dst,1024,,1,ok,0.050000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_grouped_batches,experimental_path_finding_operator_grouped_batches=false,multi_source,,128,1,ok,0.044000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,random_pairs,128,,1,ok,0.023000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,random_pairs,1024,,1,ok,0.043000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,same_dst,128,,1,ok,0.022000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,same_dst,1024,,1,ok,0.044000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dedupe_pairs,experimental_path_finding_operator_deduplicate_pairs=true,multi_source,,128,1,ok,0.043000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,random_pairs,1,,1,ok,0.005000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,random_pairs,128,,1,ok,0.058000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,random_pairs,1024,,1,ok,0.125000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,same_dst,1,,1,ok,0.005000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,same_dst,128,,1,ok,0.067000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,same_dst,1024,,1,ok,0.122000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_per_batch_4,experimental_path_finding_operator_threads_per_batch=4,multi_source,,128,1,ok,0.044000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,random_pairs,1,,1,ok,0.017000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,random_pairs,128,,1,ok,0.022000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,random_pairs,1024,,1,ok,0.049000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,same_dst,1,,1,ok,0.017000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,same_dst,128,,1,ok,0.028000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,same_dst,1024,,1,ok,0.044000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,multi_source,,1,1,ok,0.003000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,multi_source,,128,1,ok,0.045000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,random_pairs,1,,1,ok,0.018000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,random_pairs,128,,1,ok,0.022000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,random_pairs,1024,,1,ok,0.044000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,same_dst,1,,1,ok,0.022000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,same_dst,128,,1,ok,0.022000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,same_dst,1024,,1,ok,0.049000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_few_sources_rule,experimental_path_finding_operator_few_sources_limit=0,multi_source,,128,1,ok,0.044000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,random_pairs,128,,1,ok,0.029000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,random_pairs,1024,,1,ok,0.152000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,same_dst,128,,1,ok,0.027000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,same_dst,1024,,1,ok,0.049000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_1,experimental_path_finding_operator_source_group_ratio=1,multi_source,,128,1,ok,0.043000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,random_pairs,128,,1,ok,0.029000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,random_pairs,1024,,1,ok,0.050000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,same_dst,128,,1,ok,0.028000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,same_dst,1024,,1,ok,0.049000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,source_group_ratio_16,experimental_path_finding_operator_source_group_ratio=16,multi_source,,128,1,ok,0.046000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_early_termination,experimental_path_finding_operator_target_early_termination=false,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_early_termination,experimental_path_finding_operator_target_early_termination=false,random_pairs,128,,1,ok,0.028000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_early_termination,experimental_path_finding_operator_target_early_termination=false,random_pairs,1024,,1,ok,0.049000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_early_termination,experimental_path_finding_operator_target_early_termination=false,same_dst,1,,1,ok,0.005000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_early_termination,experimental_path_finding_operator_target_early_termination=false,same_dst,128,,1,ok,0.023000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_early_termination,experimental_path_finding_operator_target_early_termination=false,same_dst,1024,,1,ok,0.045000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_early_termination,experimental_path_finding_operator_target_early_termination=false,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_early_termination,experimental_path_finding_operator_target_early_termination=false,multi_source,,128,1,ok,0.044000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,random_pairs,128,,1,ok,0.028000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,random_pairs,1024,,1,ok,0.050000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,same_dst,128,,1,ok,0.022000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,same_dst,1024,,1,ok,0.044000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,dense_frontier,experimental_path_finding_operator_sparse_frontier_divisor=0,multi_source,,128,1,ok,0.068000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,random_pairs,128,,1,ok,0.022000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,random_pairs,1024,,1,ok,0.051000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,same_dst,128,,1,ok,0.022000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,same_dst,1024,,1,ok,0.044000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,sparse_frontier,experimental_path_finding_operator_sparse_frontier_divisor=2000000000,multi_source,,128,1,ok,0.067000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,random_pairs,1,,1,ok,0.005000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,random_pairs,128,,1,ok,0.028000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,random_pairs,1024,,1,ok,0.044000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,same_dst,1,,1,ok,0.005000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,same_dst,128,,1,ok,0.028000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,same_dst,1024,,1,ok,0.049000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,light_partitions_4,experimental_path_finding_operator_light_partition_multiplier=4,multi_source,,128,1,ok,0.055000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,random_pairs,1,,1,ok,0.005000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,random_pairs,128,,1,ok,0.028000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,random_pairs,1024,,1,ok,0.049000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,same_dst,1,,1,ok,0.005000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,same_dst,128,,1,ok,0.022000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,same_dst,1024,,1,ok,0.050000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,multi_source,,1,1,ok,0.003000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_snapshot_cache,experimental_path_finding_operator_snapshot_cache=false,multi_source,,128,1,ok,0.043000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index,index WITH (reverse = true),random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index,index WITH (reverse = true),random_pairs,128,,1,ok,0.028000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index,index WITH (reverse = true),random_pairs,1024,,1,ok,0.048000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index,index WITH (reverse = true),same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index,index WITH (reverse = true),same_dst,128,,1,ok,0.004000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index,index WITH (reverse = true),same_dst,1024,,1,ok,0.005000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index,index WITH (reverse = true),multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index,index WITH (reverse = true),multi_source,,128,1,ok,0.053000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,1,,1,ok,0.005000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,128,,1,ok,0.027000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,1024,,1,ok,0.044000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,128,,1,ok,0.022000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,1024,,1,ok,0.044000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,reverse_index_forward_only,index WITH (reverse = true) experimental_path_finding_operator_reverse_orientation_ratio=0,multi_source,,128,1,ok,0.055000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,128,,1,ok,0.022000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,random_pairs,1024,,1,ok,0.050000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,128,,1,ok,0.028000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,same_dst,1024,,1,ok,0.049000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,multi_source,,1,1,ok,0.004000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,no_reverse_orientation,experimental_path_finding_operator_reverse_orientation_ratio=0,multi_source,,128,1,ok,0.044000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,pair_mode,pair_mode,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,pair_mode,pair_mode,random_pairs,128,,1,ok,0.024000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,pair_mode,pair_mode,random_pairs,1024,,1,ok,0.050000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,pair_mode,pair_mode,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,pair_mode,pair_mode,same_dst,128,,1,ok,0.028000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,pair_mode,pair_mode,same_dst,1024,,1,ok,0.049000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,pair_mode,pair_mode,multi_source,,1,1,ok,0.010000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,pair_mode,pair_mode,multi_source,,128,1,ok,0.419000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_1,threads=1,random_pairs,1,,1,ok,0.003000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_1,threads=1,random_pairs,128,,1,ok,0.042000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_1,threads=1,random_pairs,1024,,1,ok,0.098000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_1,threads=1,same_dst,1,,1,ok,0.003000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_1,threads=1,same_dst,128,,1,ok,0.042000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_1,threads=1,same_dst,1024,,1,ok,0.097000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_1,threads=1,multi_source,,1,1,ok,0.002000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_1,threads=1,multi_source,,128,1,ok,0.287000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_2,threads=2,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_2,threads=2,random_pairs,128,,1,ok,0.084000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_2,threads=2,random_pairs,1024,,1,ok,0.167000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_2,threads=2,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_2,threads=2,same_dst,128,,1,ok,0.083000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_2,threads=2,same_dst,1024,,1,ok,0.162000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_2,threads=2,multi_source,,1,1,ok,0.003000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_2,threads=2,multi_source,,128,1,ok,0.185000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_4,threads=4,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_4,threads=4,random_pairs,128,,1,ok,0.048000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_4,threads=4,random_pairs,1024,,1,ok,0.110000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_4,threads=4,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_4,threads=4,same_dst,128,,1,ok,0.052000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_4,threads=4,same_dst,1024,,1,ok,0.108000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_4,threads=4,multi_source,,1,1,ok,0.003000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_4,threads=4,multi_source,,128,1,ok,0.112000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_8,threads=8,random_pairs,1,,1,ok,0.003000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_8,threads=8,random_pairs,128,,1,ok,0.032000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_8,threads=8,random_pairs,1024,,1,ok,0.056000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_8,threads=8,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_8,threads=8,same_dst,128,,1,ok,0.032000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_8,threads=8,same_dst,1024,,1,ok,0.066000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_8,threads=8,multi_source,,1,1,ok,0.003000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_8,threads=8,multi_source,,128,1,ok,0.073000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_16,threads=16,random_pairs,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_16,threads=16,random_pairs,128,,1,ok,0.025000,43,146,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_16,threads=16,random_pairs,1024,,1,ok,0.049000,364,1257,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_16,threads=16,same_dst,1,,1,ok,0.004000,0,0,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_16,threads=16,same_dst,128,,1,ok,0.025000,47,188,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_16,threads=16,same_dst,1024,,1,ok,0.056000,403,1560,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_16,threads=16,multi_source,,1,1,ok,0.003000,9158,36249,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
+duckpgq_index,threads_16,threads=16,multi_source,,128,1,ok,0.055000,2945336,10549235,32,300.0,ablation smoke SF10,0ab6768fdb1ef32b46f65b3155f41223de2991fc
