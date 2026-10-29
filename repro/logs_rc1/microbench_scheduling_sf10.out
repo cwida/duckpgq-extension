@@ -1,0 +1,288 @@
+Ensuring sf10 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_16384 exists
+Prepared benchmark_pairs_16384 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for sf10 in 0.07s
+== duckpgq_build [baseline] loaded in 0.0s
+   baseline                     random_pairs pairs=2048    sources=      repeat 1:    0.173s 745/2612
+   baseline                     random_pairs pairs=2048    sources=      repeat 2:    0.170s 745/2612
+   baseline                     random_pairs pairs=2048    sources=      repeat 3:    0.174s 745/2612
+   baseline                     random_pairs pairs=16384   sources=      repeat 1:    0.321s 5969/21171
+   baseline                     random_pairs pairs=16384   sources=      repeat 2:    0.317s 5969/21171
+   baseline                     random_pairs pairs=16384   sources=      repeat 3:    0.316s 5969/21171
+   baseline                     random_pairs pairs=65536   sources=      repeat 1:    0.673s 22189/79155
+   baseline                     random_pairs pairs=65536   sources=      repeat 2:    0.628s 22189/79155
+   baseline                     random_pairs pairs=65536   sources=      repeat 3:    0.520s 22189/79155
+== duckpgq_build [no_grouped_batches] loaded in 0.0s
+   no_grouped_batches           random_pairs pairs=2048    sources=      repeat 1:    0.167s 745/2612
+   no_grouped_batches           random_pairs pairs=2048    sources=      repeat 2:    0.171s 745/2612
+   no_grouped_batches           random_pairs pairs=2048    sources=      repeat 3:    0.167s 745/2612
+   no_grouped_batches           random_pairs pairs=16384   sources=      repeat 1:    0.617s 5969/21171
+   no_grouped_batches           random_pairs pairs=16384   sources=      repeat 2:    0.618s 5969/21171
+   no_grouped_batches           random_pairs pairs=16384   sources=      repeat 3:    0.621s 5969/21171
+   no_grouped_batches           random_pairs pairs=65536   sources=      repeat 1:    2.190s 22189/79155
+   no_grouped_batches           random_pairs pairs=65536   sources=      repeat 2:    2.186s 22189/79155
+   no_grouped_batches           random_pairs pairs=65536   sources=      repeat 3:    2.199s 22189/79155
+== duckpgq_build [adaptive] loaded in 0.0s
+   adaptive                     random_pairs pairs=2048    sources=      repeat 1:    0.172s 745/2612
+   adaptive                     random_pairs pairs=2048    sources=      repeat 2:    0.180s 745/2612
+   adaptive                     random_pairs pairs=2048    sources=      repeat 3:    0.169s 745/2612
+   adaptive                     random_pairs pairs=16384   sources=      repeat 1:    0.286s 5969/21171
+   adaptive                     random_pairs pairs=16384   sources=      repeat 2:    0.285s 5969/21171
+   adaptive                     random_pairs pairs=16384   sources=      repeat 3:    0.281s 5969/21171
+   adaptive                     random_pairs pairs=65536   sources=      repeat 1:    0.956s 22189/79155
+   adaptive                     random_pairs pairs=65536   sources=      repeat 2:    0.913s 22189/79155
+   adaptive                     random_pairs pairs=65536   sources=      repeat 3:    0.907s 22189/79155
+== duckpgq_build [adaptive_os4] loaded in 0.0s
+   adaptive_os4                 random_pairs pairs=2048    sources=      repeat 1:    0.166s 745/2612
+   adaptive_os4                 random_pairs pairs=2048    sources=      repeat 2:    0.169s 745/2612
+   adaptive_os4                 random_pairs pairs=2048    sources=      repeat 3:    0.165s 745/2612
+   adaptive_os4                 random_pairs pairs=16384   sources=      repeat 1:    0.257s 5969/21171
+   adaptive_os4                 random_pairs pairs=16384   sources=      repeat 2:    0.262s 5969/21171
+   adaptive_os4                 random_pairs pairs=16384   sources=      repeat 3:    0.260s 5969/21171
+   adaptive_os4                 random_pairs pairs=65536   sources=      repeat 1:    0.897s 22189/79155
+   adaptive_os4                 random_pairs pairs=65536   sources=      repeat 2:    0.925s 22189/79155
+   adaptive_os4                 random_pairs pairs=65536   sources=      repeat 3:    0.944s 22189/79155
+== duckpgq_build [adaptive_os32] loaded in 0.0s
+   adaptive_os32                random_pairs pairs=2048    sources=      repeat 1:    0.166s 745/2612
+   adaptive_os32                random_pairs pairs=2048    sources=      repeat 2:    0.164s 745/2612
+   adaptive_os32                random_pairs pairs=2048    sources=      repeat 3:    0.166s 745/2612
+   adaptive_os32                random_pairs pairs=16384   sources=      repeat 1:    0.272s 5969/21171
+   adaptive_os32                random_pairs pairs=16384   sources=      repeat 2:    0.272s 5969/21171
+   adaptive_os32                random_pairs pairs=16384   sources=      repeat 3:    0.272s 5969/21171
+   adaptive_os32                random_pairs pairs=65536   sources=      repeat 1:    0.899s 22189/79155
+   adaptive_os32                random_pairs pairs=65536   sources=      repeat 2:    0.898s 22189/79155
+   adaptive_os32                random_pairs pairs=65536   sources=      repeat 3:    0.908s 22189/79155
+== duckpgq_build [sched_g1_w32] loaded in 0.0s
+   sched_g1_w32                 random_pairs pairs=2048    sources=      repeat 1:    0.169s 745/2612
+   sched_g1_w32                 random_pairs pairs=2048    sources=      repeat 2:    0.169s 745/2612
+   sched_g1_w32                 random_pairs pairs=2048    sources=      repeat 3:    0.167s 745/2612
+   sched_g1_w32                 random_pairs pairs=16384   sources=      repeat 1:    1.287s 5969/21171
+   sched_g1_w32                 random_pairs pairs=16384   sources=      repeat 2:    1.282s 5969/21171
+   sched_g1_w32                 random_pairs pairs=16384   sources=      repeat 3:    1.287s 5969/21171
+   sched_g1_w32                 random_pairs pairs=65536   sources=      repeat 1:    5.056s 22189/79155
+   sched_g1_w32                 random_pairs pairs=65536   sources=      repeat 2:    5.076s 22189/79155
+   sched_g1_w32                 random_pairs pairs=65536   sources=      repeat 3:    5.062s 22189/79155
+== duckpgq_build [sched_g2_w16] loaded in 0.0s
+   sched_g2_w16                 random_pairs pairs=2048    sources=      repeat 1:    0.169s 745/2612
+   sched_g2_w16                 random_pairs pairs=2048    sources=      repeat 2:    0.168s 745/2612
+   sched_g2_w16                 random_pairs pairs=2048    sources=      repeat 3:    0.164s 745/2612
+   sched_g2_w16                 random_pairs pairs=16384   sources=      repeat 1:    0.659s 5969/21171
+   sched_g2_w16                 random_pairs pairs=16384   sources=      repeat 2:    0.660s 5969/21171
+   sched_g2_w16                 random_pairs pairs=16384   sources=      repeat 3:    0.651s 5969/21171
+   sched_g2_w16                 random_pairs pairs=65536   sources=      repeat 1:    2.519s 22189/79155
+   sched_g2_w16                 random_pairs pairs=65536   sources=      repeat 2:    2.520s 22189/79155
+   sched_g2_w16                 random_pairs pairs=65536   sources=      repeat 3:    2.517s 22189/79155
+== duckpgq_build [sched_g4_w8] loaded in 0.0s
+   sched_g4_w8                  random_pairs pairs=2048    sources=      repeat 1:    0.169s 745/2612
+   sched_g4_w8                  random_pairs pairs=2048    sources=      repeat 2:    0.167s 745/2612
+   sched_g4_w8                  random_pairs pairs=2048    sources=      repeat 3:    0.167s 745/2612
+   sched_g4_w8                  random_pairs pairs=16384   sources=      repeat 1:    0.356s 5969/21171
+   sched_g4_w8                  random_pairs pairs=16384   sources=      repeat 2:    0.355s 5969/21171
+   sched_g4_w8                  random_pairs pairs=16384   sources=      repeat 3:    0.354s 5969/21171
+   sched_g4_w8                  random_pairs pairs=65536   sources=      repeat 1:    1.296s 22189/79155
+   sched_g4_w8                  random_pairs pairs=65536   sources=      repeat 2:    1.299s 22189/79155
+   sched_g4_w8                  random_pairs pairs=65536   sources=      repeat 3:    1.302s 22189/79155
+== duckpgq_build [sched_g8_w4] loaded in 0.0s
+   sched_g8_w4                  random_pairs pairs=2048    sources=      repeat 1:    0.180s 745/2612
+   sched_g8_w4                  random_pairs pairs=2048    sources=      repeat 2:    0.166s 745/2612
+   sched_g8_w4                  random_pairs pairs=2048    sources=      repeat 3:    0.171s 745/2612
+   sched_g8_w4                  random_pairs pairs=16384   sources=      repeat 1:    0.268s 5969/21171
+   sched_g8_w4                  random_pairs pairs=16384   sources=      repeat 2:    0.271s 5969/21171
+   sched_g8_w4                  random_pairs pairs=16384   sources=      repeat 3:    0.265s 5969/21171
+   sched_g8_w4                  random_pairs pairs=65536   sources=      repeat 1:    0.959s 22189/79155
+   sched_g8_w4                  random_pairs pairs=65536   sources=      repeat 2:    0.951s 22189/79155
+   sched_g8_w4                  random_pairs pairs=65536   sources=      repeat 3:    0.949s 22189/79155
+== duckpgq_build [sched_g16_w2] loaded in 0.0s
+   sched_g16_w2                 random_pairs pairs=2048    sources=      repeat 1:    0.169s 745/2612
+   sched_g16_w2                 random_pairs pairs=2048    sources=      repeat 2:    0.169s 745/2612
+   sched_g16_w2                 random_pairs pairs=2048    sources=      repeat 3:    0.165s 745/2612
+   sched_g16_w2                 random_pairs pairs=16384   sources=      repeat 1:    0.268s 5969/21171
+   sched_g16_w2                 random_pairs pairs=16384   sources=      repeat 2:    0.271s 5969/21171
+   sched_g16_w2                 random_pairs pairs=16384   sources=      repeat 3:    0.267s 5969/21171
+   sched_g16_w2                 random_pairs pairs=65536   sources=      repeat 1:    0.907s 22189/79155
+   sched_g16_w2                 random_pairs pairs=65536   sources=      repeat 2:    0.907s 22189/79155
+   sched_g16_w2                 random_pairs pairs=65536   sources=      repeat 3:    0.916s 22189/79155
+== duckpgq_build [sched_g32_w1] loaded in 0.0s
+   sched_g32_w1                 random_pairs pairs=2048    sources=      repeat 1:    0.166s 745/2612
+   sched_g32_w1                 random_pairs pairs=2048    sources=      repeat 2:    0.177s 745/2612
+   sched_g32_w1                 random_pairs pairs=2048    sources=      repeat 3:    0.174s 745/2612
+   sched_g32_w1                 random_pairs pairs=16384   sources=      repeat 1:    0.276s 5969/21171
+   sched_g32_w1                 random_pairs pairs=16384   sources=      repeat 2:    0.274s 5969/21171
+   sched_g32_w1                 random_pairs pairs=16384   sources=      repeat 3:    0.272s 5969/21171
+   sched_g32_w1                 random_pairs pairs=65536   sources=      repeat 1:    0.898s 22189/79155
+   sched_g32_w1                 random_pairs pairs=65536   sources=      repeat 2:    0.903s 22189/79155
+   sched_g32_w1                 random_pairs pairs=65536   sources=      repeat 3:    0.900s 22189/79155
+== duckpgq_build [sched_g4_w32] loaded in 0.0s
+   sched_g4_w32                 random_pairs pairs=2048    sources=      repeat 1:    0.167s 745/2612
+   sched_g4_w32                 random_pairs pairs=2048    sources=      repeat 2:    0.167s 745/2612
+   sched_g4_w32                 random_pairs pairs=2048    sources=      repeat 3:    0.165s 745/2612
+   sched_g4_w32                 random_pairs pairs=16384   sources=      repeat 1:    0.355s 5969/21171
+   sched_g4_w32                 random_pairs pairs=16384   sources=      repeat 2:    0.355s 5969/21171
+   sched_g4_w32                 random_pairs pairs=16384   sources=      repeat 3:    0.354s 5969/21171
+   sched_g4_w32                 random_pairs pairs=65536   sources=      repeat 1:    1.314s 22189/79155
+   sched_g4_w32                 random_pairs pairs=65536   sources=      repeat 2:    1.303s 22189/79155
+   sched_g4_w32                 random_pairs pairs=65536   sources=      repeat 3:    1.298s 22189/79155
+== duckpgq_build [sched_g8_w32] loaded in 0.0s
+   sched_g8_w32                 random_pairs pairs=2048    sources=      repeat 1:    0.164s 745/2612
+   sched_g8_w32                 random_pairs pairs=2048    sources=      repeat 2:    0.167s 745/2612
+   sched_g8_w32                 random_pairs pairs=2048    sources=      repeat 3:    0.166s 745/2612
+   sched_g8_w32                 random_pairs pairs=16384   sources=      repeat 1:    0.262s 5969/21171
+   sched_g8_w32                 random_pairs pairs=16384   sources=      repeat 2:    0.263s 5969/21171
+   sched_g8_w32                 random_pairs pairs=16384   sources=      repeat 3:    0.268s 5969/21171
+   sched_g8_w32                 random_pairs pairs=65536   sources=      repeat 1:    1.013s 22189/79155
+   sched_g8_w32                 random_pairs pairs=65536   sources=      repeat 2:    1.026s 22189/79155
+   sched_g8_w32                 random_pairs pairs=65536   sources=      repeat 3:    1.017s 22189/79155
+== duckpgq_build [sched_g16_w32] loaded in 0.0s
+   sched_g16_w32                random_pairs pairs=2048    sources=      repeat 1:    0.178s 745/2612
+   sched_g16_w32                random_pairs pairs=2048    sources=      repeat 2:    0.175s 745/2612
+   sched_g16_w32                random_pairs pairs=2048    sources=      repeat 3:    0.182s 745/2612
+   sched_g16_w32                random_pairs pairs=16384   sources=      repeat 1:    0.287s 5969/21171
+   sched_g16_w32                random_pairs pairs=16384   sources=      repeat 2:    0.278s 5969/21171
+   sched_g16_w32                random_pairs pairs=16384   sources=      repeat 3:    0.289s 5969/21171
+   sched_g16_w32                random_pairs pairs=65536   sources=      repeat 1:    0.952s 22189/79155
+   sched_g16_w32                random_pairs pairs=65536   sources=      repeat 2:    0.906s 22189/79155
+   sched_g16_w32                random_pairs pairs=65536   sources=      repeat 3:    0.915s 22189/79155
+== duckpgq_index [baseline] loaded in 0.1s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=2048    sources=      repeat 1:    0.139s 745/2612
+   baseline                     random_pairs pairs=2048    sources=      repeat 2:    0.146s 745/2612
+   baseline                     random_pairs pairs=2048    sources=      repeat 3:    0.143s 745/2612
+   baseline                     random_pairs pairs=16384   sources=      repeat 1:    0.258s 5969/21171
+   baseline                     random_pairs pairs=16384   sources=      repeat 2:    0.256s 5969/21171
+   baseline                     random_pairs pairs=16384   sources=      repeat 3:    0.256s 5969/21171
+   baseline                     random_pairs pairs=65536   sources=      repeat 1:    0.506s 22189/79155
+   baseline                     random_pairs pairs=65536   sources=      repeat 2:    0.508s 22189/79155
+   baseline                     random_pairs pairs=65536   sources=      repeat 3:    0.506s 22189/79155
+== duckpgq_index [no_grouped_batches] loaded in 0.1s (index pathfinding_benchmark_csr)
+   no_grouped_batches           random_pairs pairs=2048    sources=      repeat 1:    0.151s 745/2612
+   no_grouped_batches           random_pairs pairs=2048    sources=      repeat 2:    0.145s 745/2612
+   no_grouped_batches           random_pairs pairs=2048    sources=      repeat 3:    0.148s 745/2612
+   no_grouped_batches           random_pairs pairs=16384   sources=      repeat 1:    0.449s 5969/21171
+   no_grouped_batches           random_pairs pairs=16384   sources=      repeat 2:    0.462s 5969/21171
+   no_grouped_batches           random_pairs pairs=16384   sources=      repeat 3:    0.452s 5969/21171
+   no_grouped_batches           random_pairs pairs=65536   sources=      repeat 1:    1.642s 22189/79155
+   no_grouped_batches           random_pairs pairs=65536   sources=      repeat 2:    1.636s 22189/79155
+   no_grouped_batches           random_pairs pairs=65536   sources=      repeat 3:    1.631s 22189/79155
+== duckpgq_index [adaptive] loaded in 0.1s (index pathfinding_benchmark_csr)
+   adaptive                     random_pairs pairs=2048    sources=      repeat 1:    0.145s 745/2612
+   adaptive                     random_pairs pairs=2048    sources=      repeat 2:    0.139s 745/2612
+   adaptive                     random_pairs pairs=2048    sources=      repeat 3:    0.145s 745/2612
+   adaptive                     random_pairs pairs=16384   sources=      repeat 1:    0.215s 5969/21171
+   adaptive                     random_pairs pairs=16384   sources=      repeat 2:    0.217s 5969/21171
+   adaptive                     random_pairs pairs=16384   sources=      repeat 3:    0.208s 5969/21171
+   adaptive                     random_pairs pairs=65536   sources=      repeat 1:    0.732s 22189/79155
+   adaptive                     random_pairs pairs=65536   sources=      repeat 2:    0.736s 22189/79155
+   adaptive                     random_pairs pairs=65536   sources=      repeat 3:    0.739s 22189/79155
+== duckpgq_index [adaptive_os4] loaded in 0.1s (index pathfinding_benchmark_csr)
+   adaptive_os4                 random_pairs pairs=2048    sources=      repeat 1:    0.144s 745/2612
+   adaptive_os4                 random_pairs pairs=2048    sources=      repeat 2:    0.143s 745/2612
+   adaptive_os4                 random_pairs pairs=2048    sources=      repeat 3:    0.144s 745/2612
+   adaptive_os4                 random_pairs pairs=16384   sources=      repeat 1:    0.214s 5969/21171
+   adaptive_os4                 random_pairs pairs=16384   sources=      repeat 2:    0.216s 5969/21171
+   adaptive_os4                 random_pairs pairs=16384   sources=      repeat 3:    0.206s 5969/21171
+   adaptive_os4                 random_pairs pairs=65536   sources=      repeat 1:    0.776s 22189/79155
+   adaptive_os4                 random_pairs pairs=65536   sources=      repeat 2:    0.772s 22189/79155
+   adaptive_os4                 random_pairs pairs=65536   sources=      repeat 3:    0.771s 22189/79155
+== duckpgq_index [adaptive_os32] loaded in 0.1s (index pathfinding_benchmark_csr)
+   adaptive_os32                random_pairs pairs=2048    sources=      repeat 1:    0.139s 745/2612
+   adaptive_os32                random_pairs pairs=2048    sources=      repeat 2:    0.143s 745/2612
+   adaptive_os32                random_pairs pairs=2048    sources=      repeat 3:    0.140s 745/2612
+   adaptive_os32                random_pairs pairs=16384   sources=      repeat 1:    0.220s 5969/21171
+   adaptive_os32                random_pairs pairs=16384   sources=      repeat 2:    0.211s 5969/21171
+   adaptive_os32                random_pairs pairs=16384   sources=      repeat 3:    0.207s 5969/21171
+   adaptive_os32                random_pairs pairs=65536   sources=      repeat 1:    0.730s 22189/79155
+   adaptive_os32                random_pairs pairs=65536   sources=      repeat 2:    0.749s 22189/79155
+   adaptive_os32                random_pairs pairs=65536   sources=      repeat 3:    0.733s 22189/79155
+== duckpgq_index [sched_g1_w32] loaded in 0.1s (index pathfinding_benchmark_csr)
+   sched_g1_w32                 random_pairs pairs=2048    sources=      repeat 1:    0.142s 745/2612
+   sched_g1_w32                 random_pairs pairs=2048    sources=      repeat 2:    0.142s 745/2612
+   sched_g1_w32                 random_pairs pairs=2048    sources=      repeat 3:    0.142s 745/2612
+   sched_g1_w32                 random_pairs pairs=16384   sources=      repeat 1:    1.222s 5969/21171
+   sched_g1_w32                 random_pairs pairs=16384   sources=      repeat 2:    1.231s 5969/21171
+   sched_g1_w32                 random_pairs pairs=16384   sources=      repeat 3:    1.242s 5969/21171
+   sched_g1_w32                 random_pairs pairs=65536   sources=      repeat 1:    4.875s 22189/79155
+   sched_g1_w32                 random_pairs pairs=65536   sources=      repeat 2:    4.951s 22189/79155
+   sched_g1_w32                 random_pairs pairs=65536   sources=      repeat 3:    4.956s 22189/79155
+== duckpgq_index [sched_g2_w16] loaded in 0.1s (index pathfinding_benchmark_csr)
+   sched_g2_w16                 random_pairs pairs=2048    sources=      repeat 1:    0.143s 745/2612
+   sched_g2_w16                 random_pairs pairs=2048    sources=      repeat 2:    0.143s 745/2612
+   sched_g2_w16                 random_pairs pairs=2048    sources=      repeat 3:    0.139s 745/2612
+   sched_g2_w16                 random_pairs pairs=16384   sources=      repeat 1:    0.619s 5969/21171
+   sched_g2_w16                 random_pairs pairs=16384   sources=      repeat 2:    0.622s 5969/21171
+   sched_g2_w16                 random_pairs pairs=16384   sources=      repeat 3:    0.619s 5969/21171
+   sched_g2_w16                 random_pairs pairs=65536   sources=      repeat 1:    2.426s 22189/79155
+   sched_g2_w16                 random_pairs pairs=65536   sources=      repeat 2:    2.446s 22189/79155
+   sched_g2_w16                 random_pairs pairs=65536   sources=      repeat 3:    2.432s 22189/79155
+== duckpgq_index [sched_g4_w8] loaded in 0.1s (index pathfinding_benchmark_csr)
+   sched_g4_w8                  random_pairs pairs=2048    sources=      repeat 1:    0.145s 745/2612
+   sched_g4_w8                  random_pairs pairs=2048    sources=      repeat 2:    0.144s 745/2612
+   sched_g4_w8                  random_pairs pairs=2048    sources=      repeat 3:    0.144s 745/2612
+   sched_g4_w8                  random_pairs pairs=16384   sources=      repeat 1:    0.315s 5969/21171
+   sched_g4_w8                  random_pairs pairs=16384   sources=      repeat 2:    0.312s 5969/21171
+   sched_g4_w8                  random_pairs pairs=16384   sources=      repeat 3:    0.314s 5969/21171
+   sched_g4_w8                  random_pairs pairs=65536   sources=      repeat 1:    1.239s 22189/79155
+   sched_g4_w8                  random_pairs pairs=65536   sources=      repeat 2:    1.237s 22189/79155
+   sched_g4_w8                  random_pairs pairs=65536   sources=      repeat 3:    1.240s 22189/79155
+== duckpgq_index [sched_g8_w4] loaded in 0.1s (index pathfinding_benchmark_csr)
+   sched_g8_w4                  random_pairs pairs=2048    sources=      repeat 1:    0.144s 745/2612
+   sched_g8_w4                  random_pairs pairs=2048    sources=      repeat 2:    0.143s 745/2612
+   sched_g8_w4                  random_pairs pairs=2048    sources=      repeat 3:    0.146s 745/2612
+   sched_g8_w4                  random_pairs pairs=16384   sources=      repeat 1:    0.213s 5969/21171
+   sched_g8_w4                  random_pairs pairs=16384   sources=      repeat 2:    0.214s 5969/21171
+   sched_g8_w4                  random_pairs pairs=16384   sources=      repeat 3:    0.217s 5969/21171
+   sched_g8_w4                  random_pairs pairs=65536   sources=      repeat 1:    0.794s 22189/79155
+   sched_g8_w4                  random_pairs pairs=65536   sources=      repeat 2:    0.805s 22189/79155
+   sched_g8_w4                  random_pairs pairs=65536   sources=      repeat 3:    0.823s 22189/79155
+== duckpgq_index [sched_g16_w2] loaded in 0.1s (index pathfinding_benchmark_csr)
+   sched_g16_w2                 random_pairs pairs=2048    sources=      repeat 1:    0.144s 745/2612
+   sched_g16_w2                 random_pairs pairs=2048    sources=      repeat 2:    0.145s 745/2612
+   sched_g16_w2                 random_pairs pairs=2048    sources=      repeat 3:    0.141s 745/2612
+   sched_g16_w2                 random_pairs pairs=16384   sources=      repeat 1:    0.211s 5969/21171
+   sched_g16_w2                 random_pairs pairs=16384   sources=      repeat 2:    0.210s 5969/21171
+   sched_g16_w2                 random_pairs pairs=16384   sources=      repeat 3:    0.209s 5969/21171
+   sched_g16_w2                 random_pairs pairs=65536   sources=      repeat 1:    0.734s 22189/79155
+   sched_g16_w2                 random_pairs pairs=65536   sources=      repeat 2:    0.734s 22189/79155
+   sched_g16_w2                 random_pairs pairs=65536   sources=      repeat 3:    0.737s 22189/79155
+== duckpgq_index [sched_g32_w1] loaded in 0.1s (index pathfinding_benchmark_csr)
+   sched_g32_w1                 random_pairs pairs=2048    sources=      repeat 1:    0.140s 745/2612
+   sched_g32_w1                 random_pairs pairs=2048    sources=      repeat 2:    0.142s 745/2612
+   sched_g32_w1                 random_pairs pairs=2048    sources=      repeat 3:    0.142s 745/2612
+   sched_g32_w1                 random_pairs pairs=16384   sources=      repeat 1:    0.213s 5969/21171
+   sched_g32_w1                 random_pairs pairs=16384   sources=      repeat 2:    0.219s 5969/21171
+   sched_g32_w1                 random_pairs pairs=16384   sources=      repeat 3:    0.219s 5969/21171
+   sched_g32_w1                 random_pairs pairs=65536   sources=      repeat 1:    0.761s 22189/79155
+   sched_g32_w1                 random_pairs pairs=65536   sources=      repeat 2:    0.751s 22189/79155
+   sched_g32_w1                 random_pairs pairs=65536   sources=      repeat 3:    0.753s 22189/79155
+== duckpgq_index [sched_g4_w32] loaded in 0.1s (index pathfinding_benchmark_csr)
+   sched_g4_w32                 random_pairs pairs=2048    sources=      repeat 1:    0.142s 745/2612
+   sched_g4_w32                 random_pairs pairs=2048    sources=      repeat 2:    0.143s 745/2612
+   sched_g4_w32                 random_pairs pairs=2048    sources=      repeat 3:    0.140s 745/2612
+   sched_g4_w32                 random_pairs pairs=16384   sources=      repeat 1:    0.324s 5969/21171
+   sched_g4_w32                 random_pairs pairs=16384   sources=      repeat 2:    0.320s 5969/21171
+   sched_g4_w32                 random_pairs pairs=16384   sources=      repeat 3:    0.321s 5969/21171
+   sched_g4_w32                 random_pairs pairs=65536   sources=      repeat 1:    1.235s 22189/79155
+   sched_g4_w32                 random_pairs pairs=65536   sources=      repeat 2:    1.234s 22189/79155
+   sched_g4_w32                 random_pairs pairs=65536   sources=      repeat 3:    1.239s 22189/79155
+== duckpgq_index [sched_g8_w32] loaded in 0.1s (index pathfinding_benchmark_csr)
+   sched_g8_w32                 random_pairs pairs=2048    sources=      repeat 1:    0.143s 745/2612
+   sched_g8_w32                 random_pairs pairs=2048    sources=      repeat 2:    0.145s 745/2612
+   sched_g8_w32                 random_pairs pairs=2048    sources=      repeat 3:    0.142s 745/2612
+   sched_g8_w32                 random_pairs pairs=16384   sources=      repeat 1:    0.214s 5969/21171
+   sched_g8_w32                 random_pairs pairs=16384   sources=      repeat 2:    0.215s 5969/21171
+   sched_g8_w32                 random_pairs pairs=16384   sources=      repeat 3:    0.219s 5969/21171
+   sched_g8_w32                 random_pairs pairs=65536   sources=      repeat 1:    0.794s 22189/79155
+   sched_g8_w32                 random_pairs pairs=65536   sources=      repeat 2:    0.798s 22189/79155
+   sched_g8_w32                 random_pairs pairs=65536   sources=      repeat 3:    0.775s 22189/79155
+== duckpgq_index [sched_g16_w32] loaded in 0.1s (index pathfinding_benchmark_csr)
+   sched_g16_w32                random_pairs pairs=2048    sources=      repeat 1:    0.140s 745/2612
+   sched_g16_w32                random_pairs pairs=2048    sources=      repeat 2:    0.140s 745/2612
+   sched_g16_w32                random_pairs pairs=2048    sources=      repeat 3:    0.139s 745/2612
+   sched_g16_w32                random_pairs pairs=16384   sources=      repeat 1:    0.216s 5969/21171
+   sched_g16_w32                random_pairs pairs=16384   sources=      repeat 2:    0.208s 5969/21171
+   sched_g16_w32                random_pairs pairs=16384   sources=      repeat 3:    0.219s 5969/21171
+   sched_g16_w32                random_pairs pairs=65536   sources=      repeat 1:    0.732s 22189/79155
+   sched_g16_w32                random_pairs pairs=65536   sources=      repeat 2:    0.730s 22189/79155
+   sched_g16_w32                random_pairs pairs=65536   sources=      repeat 3:    0.734s 22189/79155
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf10/microbench_sf10_threads32_1793210294023882591.csv
+All 3 points agree across configurations 

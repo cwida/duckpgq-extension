@@ -4971,6 +4971,91 @@ SELECT delete_csr(2147483647) AS duckpgq_state_init;
         return self.timed(rowid_pairs, key_pairs)
 
 
+class DuckPGQNativeSystem(DuckPGQSystem):
+    """DuckDB-native routes through the same CLI-per-query runner as the operator routes: 'recursive' is WITH
+    RECURSIVE ... USING KEY (shortest lengths by keyed minimum, depth cap 1000 that LDBC knows never reaches, longest
+    shortest path seen 26 at SF300); 'scalar' is the CIDR 2023 UDF route (create_csr_edge / create_csr_vertex build
+    the CSR, iterativelength() answers each pair, MS-BFS lanes per vector of pairs). No warm-up query: a native query
+    of minutes would count twice against the timeout, and both routes rebuild their state per query by construction."""
+
+    RECURSIVE_DEPTH_CAP = 1000
+
+    def __init__(self, route, scale_factor, threads, timeout_s):
+        super().__init__("build", scale_factor, threads, timeout_s)
+        self.native_route = route
+        self.name = f"duckpgq_{route}"
+
+    def script(self, rowid_pairs, key_pairs, warm):
+        reach = "/*reach*/" in rowid_pairs
+        query = self.recursive_query(rowid_pairs, reach) if self.native_route == "recursive" else self.scalar_query(rowid_pairs, reach)
+        return f"""LOAD {sql_string(DUCKPGQ_EXTENSION)};
+SET threads={self.threads};
+ATTACH {sql_string(self.database)} AS ldbc (READ_ONLY);
+.timer on
+{query}
+"""
+
+    def recursive_query(self, rowid_pairs, reach):
+        edges = """edges AS (
+    SELECT a.rowid::BIGINT AS src, c.rowid::BIGINT AS dst
+    FROM ldbc.person_knows_person k
+    JOIN ldbc.person a ON a.id = k.person1id
+    JOIN ldbc.person c ON c.id = k.person2id
+)"""
+        cap = self.RECURSIVE_DEPTH_CAP
+        if reach:
+            # Every vertex each source reaches, the source itself at length 0, as the operator's reach mode counts
+            return f"""WITH RECURSIVE
+sources AS (SELECT DISTINCT src FROM {rowid_pairs} s),
+{edges},
+reach(source, here, len) USING KEY (source, here) AS (
+    SELECT sources.src AS source, sources.src AS here, 0::BIGINT AS len FROM sources
+    UNION ALL (
+        SELECT reach.source, edges.dst, reach.len + 1 AS len
+        FROM reach
+        JOIN edges ON edges.src = reach.here
+        LEFT JOIN recurring.reach rec ON rec.source = reach.source AND rec.here = edges.dst
+        WHERE reach.len < {cap}
+          AND reach.len + 1 < coalesce(rec.len, 9223372036854775807)
+        ORDER BY len DESC
+    )
+)
+SELECT count(*), coalesce(sum(len), 0) FROM reach;"""
+        return f"""WITH RECURSIVE
+pairs AS (SELECT src, dst FROM {rowid_pairs} p),
+targets AS (SELECT DISTINCT dst FROM pairs),
+{edges},
+dvr(here, there, len) USING KEY (here, there) AS (
+    SELECT edges.src, edges.dst, 1::BIGINT AS len
+    FROM edges JOIN targets ON targets.dst = edges.dst
+    UNION ALL (
+        SELECT edges.src, dvr.there, dvr.len + 1 AS len
+        FROM dvr
+        JOIN edges ON edges.dst = dvr.here
+        LEFT JOIN recurring.dvr rec ON rec.here = edges.src AND rec.there = dvr.there
+        WHERE edges.src <> dvr.there
+          AND dvr.len < {cap}
+          AND dvr.len + 1 < coalesce(rec.len, 9223372036854775807)
+        ORDER BY len DESC
+    )
+),
+lengths AS (
+    SELECT CASE WHEN pairs.src = pairs.dst THEN 0 ELSE dvr.len END AS len
+    FROM pairs LEFT JOIN dvr ON dvr.here = pairs.src AND dvr.there = pairs.dst
+)
+SELECT count(len), coalesce(sum(len), 0) FROM lengths;"""
+
+    def scalar_query(self, rowid_pairs, reach):
+        pairs = (f"(SELECT s.src AS src, p.rowid::BIGINT AS dst FROM {rowid_pairs} s, ldbc.person p)" if reach
+                 else rowid_pairs)
+        return f"""{csr_cte("ldbc")},
+csr_ready AS (SELECT multiply(0, count(csr_cte.csr_id)) AS temp FROM csr_cte)
+SELECT count(len), coalesce(sum(len), 0) FROM (
+    SELECT (__x.temp * 0 + iterativelength(0, (SELECT count(*) FROM ldbc.person), p.src, p.dst)) AS len
+    FROM {pairs} p CROSS JOIN csr_ready __x
+);"""
+
+
 SWEEP_PAIR_COUNTS = [1, 16, 128, 1024, 2048, 16384, 65536]
 SWEEP_SOURCE_COUNTS = [1, 16, 128, 1024]
 
@@ -4980,13 +5065,16 @@ def multi_source_table_name(source_count):
 
 
 def ensure_multi_source_table(scale_factor, source_count):
-    """source_count sampled persons as row ids (src = dst); the sources x all persons product is never materialised,
-    the queries stream it from a cross join (1024 x 1.2M persons at SF300)"""
+    """source_count sampled persons as row ids (src = dst), each with at least one outgoing knows edge (the rc1
+    SF300 single source had none and reached only itself, so the point measured nothing); the sources x all persons
+    product is never materialised, the queries stream it from a cross join (1024 x 1.2M persons at SF300)"""
     table = multi_source_table_name(source_count)
     sql = f"""
 CREATE TABLE IF NOT EXISTS {table} AS
 SELECT s.rowid::BIGINT AS src, s.rowid::BIGINT AS dst
-FROM (SELECT rowid FROM person ORDER BY hash(id + 7) LIMIT {source_count}) s;
+FROM (SELECT p.rowid AS rowid FROM person p
+      WHERE EXISTS (SELECT 1 FROM person_knows_person k WHERE k.person1id = p.id)
+      ORDER BY hash(p.id + 7) LIMIT {source_count}) s;
 """
     run_duckdb(BENCH_DUCKDB, db_path(scale_factor), sql, quiet=True)
     return table
@@ -5495,6 +5583,8 @@ def make_systems(args, scale_factor, symmetric=False):
             systems.append(DuckPGQSystem("build", scale_factor, args.threads, args.timeout_s, symmetric))
         elif name == "duckpgq_index":
             systems.append(DuckPGQSystem("index", scale_factor, args.threads, args.timeout_s, symmetric))
+        elif name in ("duckpgq_recursive", "duckpgq_scalar"):
+            systems.append(DuckPGQNativeSystem(name.split("_", 1)[1], scale_factor, args.threads, args.timeout_s))
         elif name == "kuzu":
             systems.append(KuzuSystem(args.threads))
         elif name == "memgraph":

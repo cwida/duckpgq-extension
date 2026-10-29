@@ -1,0 +1,8 @@
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf10 in 0.06s
+Loading sf10 into neo4j
+Loaded 1839354 edges in 21.3s (expected 1839354)
+== neo4j: query mean 0.7126s (min 0.5991, max 0.9200), update mean 0.0661s, load 21.3s, wall 148.7s, final reachable 371 total 1259
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf10/update_neo4j_point_to_point_pairs1024_threads32_batch2000x190_1793228956688625745.csv

@@ -4,7 +4,7 @@
 # machine was roughly 3.5 days, dominated by the baselines at SF300 (10 minute timeouts) and the
 # FalkorDB/Neo4j update workloads (about 30 minutes each).
 #
-# Subsets:  ./run_all.sh sweep | ldbc | client | microbench | updates | all   (default all)
+# Subsets:  ./run_all.sh sweep | ldbc | client | native | microbench | updates | all   (default all)
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 cd "${REPO_ROOT}"
@@ -34,6 +34,14 @@ if [ "$what" = all ] || [ "$what" = client ]; then
       --client-threads "${CLIENT_THREADS}" --systems memgraph falkordb kuzu --notes "W27 SF${sf} client threads ${CLIENT_THREADS} ${NOTE}"
     step "ldbc_queries_sf${sf}_client${CLIENT_THREADS}" ${HARNESS} ldbc-queries --scale-factor "$sf" "${COMMON[@]}" \
       --client-threads "${CLIENT_THREADS}" --systems memgraph falkordb kuzu --notes "W17 SF${sf} client threads ${CLIENT_THREADS} ${NOTE}"
+  done
+fi
+
+if [ "$what" = all ] || [ "$what" = native ]; then
+  # DuckDB-native baselines: WITH RECURSIVE ... USING KEY and the CIDR 2023 scalar UDF route, next to the index route
+  # for the agreement check (SF10 and SF100; both time out early on the large points)
+  for sf in 10 100; do
+    step "native_baselines_sf${sf}" ${HARNESS} sweep-pairs --scale-factor "$sf" "${COMMON[@]}" --systems duckpgq_index duckpgq_recursive duckpgq_scalar --notes "native baselines SF${sf} ${NOTE}"
   done
 fi
 

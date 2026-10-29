@@ -538,7 +538,7 @@ def first_query_figure(filename):
 
 def update_rows(pattern, system):
     """Rows of the newest one-query-per-batch update run for a system at SF10"""
-    files = sorted((RESULTS / "sf10").glob(pattern), key=lambda p: p.stat().st_mtime)
+    files = sorted((RESULTS / "sf10").glob(pattern), key=lambda p: int(p.stem.rsplit("_", 1)[1]))
     for path in reversed(files):
         rows = list(csv.DictReader(open(path)))
         if rows and rows[0].get("queries_per_batch", "1") == "1":
@@ -591,7 +591,9 @@ def updates_figure(filename):
 TABLES = REPO / "paper" / "tables"
 NAME_OF = {key: name for key, name, _ in SYSTEMS}
 NAME_OF["neo4j_gds"] = "Neo4j GDS (4 thr.)"
-ORDER = [key for key, _, _ in SYSTEMS] + ["neo4j_gds"]
+NAME_OF["duckpgq_recursive"] = "DuckDB recursive CTE"
+NAME_OF["duckpgq_scalar"] = "DuckPGQ 2023 UDFs"
+ORDER = [key for key, _, _ in SYSTEMS] + ["duckpgq_scalar", "duckpgq_recursive", "neo4j_gds"]
 
 
 def cell(point, bold=False):

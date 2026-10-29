@@ -888,3 +888,14 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   0.11 s on the index). The SF100 line appears once the native-baselines step has run after the rc2 matrix;
   `collect.sh` re-renders it. Caption in `paper/sections/introduction.tex` needs the recursive CTE sentence then
   (author's file). DuckDB version under test: v2.0.0-dev1 at submodule `45f4fdf3`, to be cited as the commit.
+- 29 Oct (late morning): rc2 run stopped at 1.6 h (author's check): the rc1 SF300 single-source sample had no
+  outgoing edge, so that point measured nothing (Memgraph 2 ms, Neo4j 141 ms there); the SF10 single pair has no
+  path (valid, the text says so); the LDBC table and figure now use medians (the author implemented it); result files
+  are ordered by the run time in the file name, not by modification time (the author's fix; the last such sort in the
+  updates figure fixed here). Changes for the restart: multi-source samples require an outgoing edge
+  (`ensure_multi_source_table`, deterministic hash order kept), the multi-source tables, their exports and every
+  benchmark index dropped at all scale factors; the two DuckDB-native baselines are regular harness systems
+  (`duckpgq_recursive`, `duckpgq_scalar`, class `DuckPGQNativeSystem`) with a `native` step in `run_all.sh` (SF10 and
+  SF100 with the index route for the agreement check); table names "DuckDB recursive CTE" and "DuckPGQ 2023 UDFs".
+  Smoke at SF1: all points agree across the three routes. Sources identical to rc2; tag `eval-freeze-rc3` on the
+  harness state; full matrix restarted.

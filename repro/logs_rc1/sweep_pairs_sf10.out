@@ -1,0 +1,249 @@
+Ensuring sf10 benchmark_pairs_1 exists
+Prepared benchmark_pairs_1 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_16 exists
+Prepared benchmark_pairs_16 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_128 exists
+Prepared benchmark_pairs_128 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_16384 exists
+Prepared benchmark_pairs_16384 for sf10 in 0.06s
+Ensuring sf10 benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for sf10 in 0.07s
+== duckpgq_build: loading sf10
+   loaded in 0.0s, 1839354 edges
+   duckpgq_build  random_pairs pairs=1       sources=      repeat 1:    0.026s 0/0
+   duckpgq_build  random_pairs pairs=1       sources=      repeat 2:    0.027s 0/0
+   duckpgq_build  random_pairs pairs=1       sources=      repeat 3:    0.026s 0/0
+   duckpgq_build  random_pairs pairs=16      sources=      repeat 1:    0.039s 1/3
+   duckpgq_build  random_pairs pairs=16      sources=      repeat 2:    0.039s 1/3
+   duckpgq_build  random_pairs pairs=16      sources=      repeat 3:    0.039s 1/3
+   duckpgq_build  random_pairs pairs=128     sources=      repeat 1:    0.044s 43/146
+   duckpgq_build  random_pairs pairs=128     sources=      repeat 2:    0.043s 43/146
+   duckpgq_build  random_pairs pairs=128     sources=      repeat 3:    0.044s 43/146
+   duckpgq_build  random_pairs pairs=1024    sources=      repeat 1:    0.101s 364/1257
+   duckpgq_build  random_pairs pairs=1024    sources=      repeat 2:    0.103s 364/1257
+   duckpgq_build  random_pairs pairs=1024    sources=      repeat 3:    0.100s 364/1257
+   duckpgq_build  random_pairs pairs=2048    sources=      repeat 1:    0.161s 745/2612
+   duckpgq_build  random_pairs pairs=2048    sources=      repeat 2:    0.160s 745/2612
+   duckpgq_build  random_pairs pairs=2048    sources=      repeat 3:    0.163s 745/2612
+   duckpgq_build  random_pairs pairs=16384   sources=      repeat 1:    0.290s 5969/21171
+   duckpgq_build  random_pairs pairs=16384   sources=      repeat 2:    0.290s 5969/21171
+   duckpgq_build  random_pairs pairs=16384   sources=      repeat 3:    0.292s 5969/21171
+   duckpgq_build  random_pairs pairs=65536   sources=      repeat 1:    0.563s 22189/79155
+   duckpgq_build  random_pairs pairs=65536   sources=      repeat 2:    0.563s 22189/79155
+   duckpgq_build  random_pairs pairs=65536   sources=      repeat 3:    0.554s 22189/79155
+   duckpgq_build  multi_source pairs=        sources=1     repeat 1:    0.025s 9158/36249
+   duckpgq_build  multi_source pairs=        sources=1     repeat 2:    0.025s 9158/36249
+   duckpgq_build  multi_source pairs=        sources=1     repeat 3:    0.025s 9158/36249
+   duckpgq_build  multi_source pairs=        sources=16    repeat 1:    0.032s 348510/1249123
+   duckpgq_build  multi_source pairs=        sources=16    repeat 2:    0.032s 348510/1249123
+   duckpgq_build  multi_source pairs=        sources=16    repeat 3:    0.032s 348510/1249123
+   duckpgq_build  multi_source pairs=        sources=128   repeat 1:    0.057s 2945336/10549235
+   duckpgq_build  multi_source pairs=        sources=128   repeat 2:    0.057s 2945336/10549235
+   duckpgq_build  multi_source pairs=        sources=128   repeat 3:    0.058s 2945336/10549235
+   duckpgq_build  multi_source pairs=        sources=1024  repeat 1:    0.247s 22513530/79941209
+   duckpgq_build  multi_source pairs=        sources=1024  repeat 2:    0.247s 22513530/79941209
+   duckpgq_build  multi_source pairs=        sources=1024  repeat 3:    0.246s 22513530/79941209
+== duckpgq_index: loading sf10
+   loaded in 0.2s, 1839354 edges
+   duckpgq_index  random_pairs pairs=1       sources=      repeat 1:    0.004s 0/0
+   duckpgq_index  random_pairs pairs=1       sources=      repeat 2:    0.004s 0/0
+   duckpgq_index  random_pairs pairs=1       sources=      repeat 3:    0.004s 0/0
+   duckpgq_index  random_pairs pairs=16      sources=      repeat 1:    0.018s 1/3
+   duckpgq_index  random_pairs pairs=16      sources=      repeat 2:    0.016s 1/3
+   duckpgq_index  random_pairs pairs=16      sources=      repeat 3:    0.017s 1/3
+   duckpgq_index  random_pairs pairs=128     sources=      repeat 1:    0.017s 43/146
+   duckpgq_index  random_pairs pairs=128     sources=      repeat 2:    0.018s 43/146
+   duckpgq_index  random_pairs pairs=128     sources=      repeat 3:    0.019s 43/146
+   duckpgq_index  random_pairs pairs=1024    sources=      repeat 1:    0.074s 364/1257
+   duckpgq_index  random_pairs pairs=1024    sources=      repeat 2:    0.075s 364/1257
+   duckpgq_index  random_pairs pairs=1024    sources=      repeat 3:    0.076s 364/1257
+   duckpgq_index  random_pairs pairs=2048    sources=      repeat 1:    0.140s 745/2612
+   duckpgq_index  random_pairs pairs=2048    sources=      repeat 2:    0.142s 745/2612
+   duckpgq_index  random_pairs pairs=2048    sources=      repeat 3:    0.141s 745/2612
+   duckpgq_index  random_pairs pairs=16384   sources=      repeat 1:    0.246s 5969/21171
+   duckpgq_index  random_pairs pairs=16384   sources=      repeat 2:    0.244s 5969/21171
+   duckpgq_index  random_pairs pairs=16384   sources=      repeat 3:    0.251s 5969/21171
+   duckpgq_index  random_pairs pairs=65536   sources=      repeat 1:    0.438s 22189/79155
+   duckpgq_index  random_pairs pairs=65536   sources=      repeat 2:    0.444s 22189/79155
+   duckpgq_index  random_pairs pairs=65536   sources=      repeat 3:    0.444s 22189/79155
+   duckpgq_index  multi_source pairs=        sources=1     repeat 1:    0.003s 9158/36249
+   duckpgq_index  multi_source pairs=        sources=1     repeat 2:    0.003s 9158/36249
+   duckpgq_index  multi_source pairs=        sources=1     repeat 3:    0.003s 9158/36249
+   duckpgq_index  multi_source pairs=        sources=16    repeat 1:    0.009s 348510/1249123
+   duckpgq_index  multi_source pairs=        sources=16    repeat 2:    0.009s 348510/1249123
+   duckpgq_index  multi_source pairs=        sources=16    repeat 3:    0.009s 348510/1249123
+   duckpgq_index  multi_source pairs=        sources=128   repeat 1:    0.023s 2945336/10549235
+   duckpgq_index  multi_source pairs=        sources=128   repeat 2:    0.023s 2945336/10549235
+   duckpgq_index  multi_source pairs=        sources=128   repeat 3:    0.024s 2945336/10549235
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 1:    0.109s 22513530/79941209
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 2:    0.109s 22513530/79941209
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 3:    0.111s 22513530/79941209
+== kuzu: loading sf10
+   loaded in 0.6s, 1839354 edges
+   kuzu           random_pairs pairs=1       sources=      repeat 1:    0.113s 0/0
+   kuzu           random_pairs pairs=1       sources=      repeat 2:    0.010s 0/0
+   kuzu           random_pairs pairs=1       sources=      repeat 3:    0.009s 0/0
+   kuzu           random_pairs pairs=16      sources=      repeat 1:    0.132s 1/3
+   kuzu           random_pairs pairs=16      sources=      repeat 2:    0.087s 1/3
+   kuzu           random_pairs pairs=16      sources=      repeat 3:    0.085s 1/3
+   kuzu           random_pairs pairs=128     sources=      repeat 1:    0.654s 43/146
+   kuzu           random_pairs pairs=128     sources=      repeat 2:    0.631s 43/146
+   kuzu           random_pairs pairs=128     sources=      repeat 3:    0.631s 43/146
+   kuzu           random_pairs pairs=1024    sources=      repeat 1:    5.134s 364/1257
+   kuzu           random_pairs pairs=1024    sources=      repeat 2:    5.148s 364/1257
+   kuzu           random_pairs pairs=1024    sources=      repeat 3:    5.138s 364/1257
+   kuzu           random_pairs pairs=2048    sources=      repeat 1:   10.299s 745/2612
+   kuzu           random_pairs pairs=2048    sources=      repeat 2:   10.288s 745/2612
+   kuzu           random_pairs pairs=2048    sources=      repeat 3:   10.293s 745/2612
+   kuzu           random_pairs pairs=16384   sources=      repeat 1:   82.391s 5969/21171
+   kuzu           random_pairs pairs=16384   sources=      repeat 2:   82.419s 5969/21171
+   kuzu           random_pairs pairs=16384   sources=      repeat 3:   82.330s 5969/21171
+   kuzu           random_pairs pairs=65536   sources=      repeat 1:  326.577s 22189/79155
+   kuzu           random_pairs pairs=65536   sources=      repeat 2:  326.346s 22189/79155
+   kuzu           random_pairs pairs=65536   sources=      repeat 3:  326.636s 22189/79155
+   kuzu           multi_source pairs=        sources=1     repeat 1:    0.008s 9158/36249
+   kuzu           multi_source pairs=        sources=1     repeat 2:    0.004s 9158/36249
+   kuzu           multi_source pairs=        sources=1     repeat 3:    0.004s 9158/36249
+   kuzu           multi_source pairs=        sources=16    repeat 1:    0.065s 348510/1249123
+   kuzu           multi_source pairs=        sources=16    repeat 2:    0.065s 348510/1249123
+   kuzu           multi_source pairs=        sources=16    repeat 3:    0.065s 348510/1249123
+   kuzu           multi_source pairs=        sources=128   repeat 1:    0.504s 2945336/10549235
+   kuzu           multi_source pairs=        sources=128   repeat 2:    0.510s 2945336/10549235
+   kuzu           multi_source pairs=        sources=128   repeat 3:    0.510s 2945336/10549235
+   kuzu           multi_source pairs=        sources=1024  repeat 1:    3.974s 22513530/79941209
+   kuzu           multi_source pairs=        sources=1024  repeat 2:    3.977s 22513530/79941209
+   kuzu           multi_source pairs=        sources=1024  repeat 3:    3.982s 22513530/79941209
+== memgraph: loading sf10
+   loaded in 20.9s, 1839354 edges
+   memgraph       random_pairs pairs=1       sources=      repeat 1:    0.053s 0/0
+   memgraph       random_pairs pairs=1       sources=      repeat 2:    0.039s 0/0
+   memgraph       random_pairs pairs=1       sources=      repeat 3:    0.041s 0/0
+   memgraph       random_pairs pairs=16      sources=      repeat 1:    0.477s 1/3
+   memgraph       random_pairs pairs=16      sources=      repeat 2:    0.478s 1/3
+   memgraph       random_pairs pairs=16      sources=      repeat 3:    0.460s 1/3
+   memgraph       random_pairs pairs=128     sources=      repeat 1:    5.069s 43/146
+   memgraph       random_pairs pairs=128     sources=      repeat 2:    5.059s 43/146
+   memgraph       random_pairs pairs=128     sources=      repeat 3:    5.069s 43/146
+   memgraph       random_pairs pairs=1024    sources=      repeat 1:   39.097s 364/1257
+   memgraph       random_pairs pairs=1024    sources=      repeat 2:   39.123s 364/1257
+   memgraph       random_pairs pairs=1024    sources=      repeat 3:   39.417s 364/1257
+   memgraph       random_pairs pairs=2048    sources=      repeat 1:   77.601s 745/2612
+   memgraph       random_pairs pairs=2048    sources=      repeat 2:   79.624s 745/2612
+   memgraph       random_pairs pairs=2048    sources=      repeat 3:   80.841s 745/2612
+   memgraph       random_pairs pairs=16384   sources=      repeat 1:  600.011s timed_out
+   memgraph       random_pairs pairs=65536   sources=      repeat 1:    0.000s timed_out_inferred
+   memgraph       multi_source pairs=        sources=1     repeat 1:    0.015s 9158/36249
+   memgraph       multi_source pairs=        sources=1     repeat 2:    0.014s 9158/36249
+   memgraph       multi_source pairs=        sources=1     repeat 3:    0.014s 9158/36249
+   memgraph       multi_source pairs=        sources=16    repeat 1:    0.565s 348510/1249123
+   memgraph       multi_source pairs=        sources=16    repeat 2:    0.563s 348510/1249123
+   memgraph       multi_source pairs=        sources=16    repeat 3:    0.552s 348510/1249123
+   memgraph       multi_source pairs=        sources=128   repeat 1:    4.957s 2945336/10549235
+   memgraph       multi_source pairs=        sources=128   repeat 2:    4.937s 2945336/10549235
+   memgraph       multi_source pairs=        sources=128   repeat 3:    4.813s 2945336/10549235
+   memgraph       multi_source pairs=        sources=1024  repeat 1:   37.771s 22513530/79941209
+   memgraph       multi_source pairs=        sources=1024  repeat 2:   37.396s 22513530/79941209
+   memgraph       multi_source pairs=        sources=1024  repeat 3:   37.078s 22513530/79941209
+== falkordb: loading sf10
+   loaded in 85.4s, 1839354 edges
+   falkordb       random_pairs pairs=1       sources=      repeat 1:    0.054s 0/0
+   falkordb       random_pairs pairs=1       sources=      repeat 2:    0.009s 0/0
+   falkordb       random_pairs pairs=1       sources=      repeat 3:    0.009s 0/0
+   falkordb       random_pairs pairs=16      sources=      repeat 1:    0.095s 1/3
+   falkordb       random_pairs pairs=16      sources=      repeat 2:    0.092s 1/3
+   falkordb       random_pairs pairs=16      sources=      repeat 3:    0.092s 1/3
+   falkordb       random_pairs pairs=128     sources=      repeat 1:    0.721s 43/146
+   falkordb       random_pairs pairs=128     sources=      repeat 2:    0.714s 43/146
+   falkordb       random_pairs pairs=128     sources=      repeat 3:    0.722s 43/146
+   falkordb       random_pairs pairs=1024    sources=      repeat 1:    5.813s 364/1257
+   falkordb       random_pairs pairs=1024    sources=      repeat 2:    5.765s 364/1257
+   falkordb       random_pairs pairs=1024    sources=      repeat 3:    5.795s 364/1257
+   falkordb       random_pairs pairs=2048    sources=      repeat 1:   11.483s 745/2612
+   falkordb       random_pairs pairs=2048    sources=      repeat 2:   11.589s 745/2612
+   falkordb       random_pairs pairs=2048    sources=      repeat 3:   11.637s 745/2612
+   falkordb       random_pairs pairs=16384   sources=      repeat 1:   92.696s 5969/21171
+   falkordb       random_pairs pairs=16384   sources=      repeat 2:   92.928s 5969/21171
+   falkordb       random_pairs pairs=16384   sources=      repeat 3:   92.793s 5969/21171
+   falkordb       random_pairs pairs=65536   sources=      repeat 1:  363.045s 22189/79155
+   falkordb       random_pairs pairs=65536   sources=      repeat 2:  363.395s 22189/79155
+   falkordb       random_pairs pairs=65536   sources=      repeat 3:  363.688s 22189/79155
+   falkordb       multi_source pairs=        sources=1     repeat 1:  304.707s 9158/36249
+   falkordb       multi_source pairs=        sources=1     repeat 2:  298.015s 9158/36249
+   falkordb       multi_source pairs=        sources=1     repeat 3:  300.821s 9158/36249
+   falkordb       multi_source pairs=        sources=16    repeat 1:  660.001s timed_out
+   falkordb       multi_source pairs=        sources=128   repeat 1:    0.000s timed_out_inferred
+   falkordb       multi_source pairs=        sources=1024  repeat 1:    0.000s timed_out_inferred
+== neo4j: loading sf10
+   loaded in 21.9s, 1839354 edges
+   neo4j          random_pairs pairs=1       sources=      repeat 1:    0.110s 0/0
+   neo4j          random_pairs pairs=1       sources=      repeat 2:    0.049s 0/0
+   neo4j          random_pairs pairs=1       sources=      repeat 3:    0.047s 0/0
+   neo4j          random_pairs pairs=16      sources=      repeat 1:    0.126s 1/3
+   neo4j          random_pairs pairs=16      sources=      repeat 2:    0.100s 1/3
+   neo4j          random_pairs pairs=16      sources=      repeat 3:    0.097s 1/3
+   neo4j          random_pairs pairs=128     sources=      repeat 1:    0.546s 43/146
+   neo4j          random_pairs pairs=128     sources=      repeat 2:    0.518s 43/146
+   neo4j          random_pairs pairs=128     sources=      repeat 3:    0.525s 43/146
+   neo4j          random_pairs pairs=1024    sources=      repeat 1:    0.680s 364/1257
+   neo4j          random_pairs pairs=1024    sources=      repeat 2:    0.676s 364/1257
+   neo4j          random_pairs pairs=1024    sources=      repeat 3:    0.657s 364/1257
+   neo4j          random_pairs pairs=2048    sources=      repeat 1:    0.721s 745/2612
+   neo4j          random_pairs pairs=2048    sources=      repeat 2:    0.754s 745/2612
+   neo4j          random_pairs pairs=2048    sources=      repeat 3:    0.764s 745/2612
+   neo4j          random_pairs pairs=16384   sources=      repeat 1:    2.713s 5969/21171
+   neo4j          random_pairs pairs=16384   sources=      repeat 2:    2.627s 5969/21171
+   neo4j          random_pairs pairs=16384   sources=      repeat 3:    2.575s 5969/21171
+   neo4j          random_pairs pairs=65536   sources=      repeat 1:    9.966s 22189/79155
+   neo4j          random_pairs pairs=65536   sources=      repeat 2:   10.084s 22189/79155
+   neo4j          random_pairs pairs=65536   sources=      repeat 3:   10.424s 22189/79155
+   neo4j          multi_source pairs=        sources=1     repeat 1:   19.499s 9158/36249
+   neo4j          multi_source pairs=        sources=1     repeat 2:   18.038s 9158/36249
+   neo4j          multi_source pairs=        sources=1     repeat 3:   17.848s 9158/36249
+   neo4j          multi_source pairs=        sources=16    repeat 1:  186.915s 348510/1249123
+   neo4j          multi_source pairs=        sources=16    repeat 2:  176.917s 348510/1249123
+   neo4j          multi_source pairs=        sources=16    repeat 3:  175.422s 348510/1249123
+   neo4j          multi_source pairs=        sources=128   repeat 1:  600.318s timed_out
+   neo4j          multi_source pairs=        sources=1024  repeat 1:    0.000s timed_out_inferred
+== neo4j_gds: loading sf10
+Received notification from DBMS server: {severity: WARNING} {code: Neo.ClientNotification.Statement.FeatureDeprecationWarning} {category: DEPRECATION} {title: This feature is deprecated and will be removed in future versions.} {description: The query used a deprecated field from a procedure. ('schema' returned by 'gds.graph.drop' is deprecated.)} {position: line: 1, column: 1, offset: 0} for query: "CALL gds.graph.drop('knows', false)"
+   GDS projection in 1.8s
+   loaded in 23.0s, 1839354 edges
+   neo4j_gds      random_pairs pairs=1       sources=      repeat 1:    0.096s 0/0
+   neo4j_gds      random_pairs pairs=1       sources=      repeat 2:    0.032s 0/0
+   neo4j_gds      random_pairs pairs=1       sources=      repeat 3:    0.019s 0/0
+   neo4j_gds      random_pairs pairs=16      sources=      repeat 1:    0.184s 1/3
+   neo4j_gds      random_pairs pairs=16      sources=      repeat 2:    0.154s 1/3
+   neo4j_gds      random_pairs pairs=16      sources=      repeat 3:    0.148s 1/3
+   neo4j_gds      random_pairs pairs=128     sources=      repeat 1:    1.342s 43/146
+   neo4j_gds      random_pairs pairs=128     sources=      repeat 2:    1.287s 43/146
+   neo4j_gds      random_pairs pairs=128     sources=      repeat 3:    1.268s 43/146
+   neo4j_gds      random_pairs pairs=1024    sources=      repeat 1:    9.809s 364/1257
+   neo4j_gds      random_pairs pairs=1024    sources=      repeat 2:    9.705s 364/1257
+   neo4j_gds      random_pairs pairs=1024    sources=      repeat 3:    9.677s 364/1257
+   neo4j_gds      random_pairs pairs=2048    sources=      repeat 1:   19.439s 745/2612
+   neo4j_gds      random_pairs pairs=2048    sources=      repeat 2:   19.416s 745/2612
+   neo4j_gds      random_pairs pairs=2048    sources=      repeat 3:   19.213s 745/2612
+   neo4j_gds      random_pairs pairs=16384   sources=      repeat 1:  151.768s 5969/21171
+   neo4j_gds      random_pairs pairs=16384   sources=      repeat 2:  151.966s 5969/21171
+   neo4j_gds      random_pairs pairs=16384   sources=      repeat 3:  151.853s 5969/21171
+   neo4j_gds      random_pairs pairs=65536   sources=      repeat 1:  572.222s 22189/79155
+   neo4j_gds      random_pairs pairs=65536   sources=      repeat 2:  572.073s 22189/79155
+   neo4j_gds      random_pairs pairs=65536   sources=      repeat 3:  572.767s 22189/79155
+   neo4j_gds      multi_source pairs=        sources=1     repeat 1:    0.127s 9158/36249
+   neo4j_gds      multi_source pairs=        sources=1     repeat 2:    0.032s 9158/36249
+   neo4j_gds      multi_source pairs=        sources=1     repeat 3:    0.026s 9158/36249
+   neo4j_gds      multi_source pairs=        sources=16    repeat 1:    0.422s 348510/1249123
+   neo4j_gds      multi_source pairs=        sources=16    repeat 2:    0.354s 348510/1249123
+   neo4j_gds      multi_source pairs=        sources=16    repeat 3:    0.354s 348510/1249123
+   neo4j_gds      multi_source pairs=        sources=128   repeat 1:    2.975s 2945336/10549235
+   neo4j_gds      multi_source pairs=        sources=128   repeat 2:    2.898s 2945336/10549235
+   neo4j_gds      multi_source pairs=        sources=128   repeat 3:    2.974s 2945336/10549235
+   neo4j_gds      multi_source pairs=        sources=1024  repeat 1:   21.606s 22513530/79941209
+   neo4j_gds      multi_source pairs=        sources=1024  repeat 2:   21.564s 22513530/79941209
+   neo4j_gds      multi_source pairs=        sources=1024  repeat 3:   21.885s 22513530/79941209
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf10/sweep_pairs_sf10_threads32_1793113648279504401.csv
+All 11 points agree across the systems that completed them
