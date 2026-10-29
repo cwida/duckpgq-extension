@@ -85,26 +85,34 @@ frozen run; measure it or drop the size claim.}
 \subsection{Traversals}
 \label{sec:traversals}
 
-The operator has two traversals and a rule that picks one. Both run breadth-first over the partitions and both honour
-the depth bound. They differ in what a step costs.
+The operator has two traversals and a rule that picks one; the multi-source traversal assigns its lanes in one of
+two ways. Both traversals run breadth-first over the partitions and both honour the depth bound. They differ in what a
+step costs.
 
 \paragraph{Multi-source traversal.} For many pairs we keep \msbfs~\cite{then2014msbfs}. 512 searches share one sweep
 over the adjacency, each search owns a bit in three bit-set arrays per vertex (seen, this frontier, next frontier),
-and relaxing an edge is a 512-bit \texttt{or}. Each input vector of up to 2048 pairs becomes one batch, in the order
-the vectors arrive, and a batch runs as waves of 512 lanes. A batch holds its three bit sets per vertex, 192 bytes at
-512 lanes, which is 86\,MB at SF100. Batches run in worker groups, at most one per thread. When the working sets of
+and relaxing an edge is a 512-bit \texttt{or}. A lane is either one pair or one source. With a lane per pair, each
+input vector of up to 2048 pairs becomes one batch, in the order the vectors arrive, and a batch runs as waves of 512
+lanes. With a lane per source, the formulation of Then et al., a wave packs up to 512 distinct sources, each with the
+list of destinations its pairs ask for. After every level a lane records the level of the destinations it has newly
+reached and drops them from its list, and a lane whose list is empty is masked out of the next frontier, so it stops
+spreading. LDBC BI19 at SF300 asks for 2.4\,M pairs from 1.4\,K sources; that is three waves with a lane per source
+and 4.6\,K waves with a lane per pair. A wave holds its three bit sets per vertex, 192 bytes at 512 lanes, which is
+86\,MB at SF100. The batches of a lane-per-pair query run in worker groups, at most one per thread. When the working sets of
 all groups fit a budget of 512\,MiB, all groups start at once and the bit sets stay in cache; otherwise the scheduler
 starts 16 groups, doubles their number while the throughput rises by more than a tenth and steps back when it falls by
 more than a tenth. A group whose working set is at most a sixteenth of the budget has its own threads; larger groups
-pool their tasks, so a group that waits at the end of its level leaves no thread idle.
+pool their tasks, so a group that waits at the end of its level leaves no thread idle. The waves of a lane-per-source
+query run side by side, each with its own working set. \todo{They bypass the worker groups and their memory budget:
+a query with many waves allocates all their working sets at once. Route them through the scheduler, or say so.}
 
 A level has two phases, an explore phase that relaxes the frontier into the next bit sets and a check phase that folds
 the next bit sets into the seen bits. A summary bitmap marks the vertices with a live lane, and a level whose live
 vertices are fewer than a sixteenth of all vertices visits only those, through the bucket index. A dense level sweeps
 all sparse rows of all partitions and costs the same whether one lane or five hundred are alive. That is a good trade
-when hundreds of lanes are alive and a bad one when one is. On a synthetic 8M-edge graph a single pair
-took 0.12\,s of sweeps over 2M vertices, the same as 512 pairs. \todo{Laptop number from before the summary bitmap;
-replace from the frozen rerun or move to Section~\ref{sec:eval-ablation}.}
+when hundreds of lanes are alive and a bad one when one is. One pair over the index takes 13\,ms on the lanes against
+4\,ms on the single-source traversal at SF10, and 45 against 9\,ms at SF100. \todo{Single runs before rc5; the rerun's
+Section 3 microbenchmarks replace them.}
 
 \paragraph{Single-source traversal.} For few sources we run one search per source with a frontier list, in the shape
 Ligra~\cite{shun2013ligra} made standard. The frontier is a vector of vertex ids. While it is smaller than a
@@ -118,18 +126,22 @@ vertex and the edge through which it was first reached, and the result scatter w
 the memory.
 
 \paragraph{Choosing.} When the pairs are complete, the operator estimates the distinct sources and destinations with
-HyperLogLog sketches (64 registers, about 13\% error, enough for a threshold). With at most 16 distinct sources, or
-with at least four pairs per distinct source, the single-source traversal runs, one group per source and the threads
-divided over the groups; otherwise the multi-source traversal runs. Paths and reach always use the single-source traversal. The same sketches decide the orientation. When
+HyperLogLog sketches (64 registers, about 13\% error, enough for a threshold). With at most 16 distinct sources the
+single-source traversal runs, one group per source and the threads divided over the groups. With more sources and at
+least four pairs per source the multi-source traversal runs with a lane per source, and otherwise with a lane per
+pair. Paths and reach always use the single-source traversal, because a path needs a parent per vertex and reach
+returns a distance per vertex, and the lanes keep neither. The same sketches decide the orientation. When
 there are at least four times as many distinct sources as destinations and reverse partitions are available, which is
 the case for an undirected pattern and for an index that stores its reverse side (Section~\ref{sec:index}), the
 search starts from the destinations; the on-the-fly build produces forward partitions only. Both rules are
 thresholds today, and Section~\ref{sec:strategy} discusses what a cost model needs in order to replace them. The
 reverse orientation pays off when many sources share one destination, the shape of LDBC BI20
 (Section~\ref{sec:eval-ablation}). \todo{Confirm after the full sweep whether the reverse side stays; then describe it
-in Sections 3.2 and 4.} \todo{Laptop numbers; the Evolution table of Section~\ref{sec:eval-ablation} replaces them.} On a
-synthetic 8M-edge graph the switch to the single-source traversal took a single pair from
-0.11\,s to 0.01\,s and twenty sources with 200 destinations each from 1.5\,s to 0.13\,s, with identical answers.
+in Sections 3.2 and 4.} Twenty sources with 200 destinations each, over the index, take 13\,ms on the single-source
+traversal, 20\,ms with a lane per source and 86\,ms with a lane per pair at SF10, and 91, 79 and 509\,ms at SF100.
+On BI19 at SF300 the lanes per source take 1.6\,s against 30.6\,s for one search per source, and 4.7 against
+43.8\,GiB of memory at the peak, because each single-source search keeps a distance, a seen byte and a level stamp
+per vertex and 1.4\,K of them run at once. \todo{Single runs before rc5; confirm from the rerun.}
 
 \paragraph{Unbound destinations.} A pattern whose destination carries no condition, every person reachable from $a$,
 would produce one candidate pair per vertex. The rewrite recognises this case and asks the operator for the
@@ -170,6 +182,7 @@ maps vertex ids to row ids or keys and edge positions to row ids, and reverses t
 $\lfloor\text{len}/2\rfloor$, and \texttt{vertices} and \texttt{edges} are the even and odd positions, which is also
 how the SQL fallback of \duckpgq defines them, so the build route and the fallback return the same lists. Edge row ids are available because
 the build keeps one per edge position when paths are requested and the index keeps them always
-(Section~\ref{sec:index}), so a path can be joined back to the edge table for its properties. \todo{Laptop numbers; replace from the frozen rerun.} On a synthetic 8M-edge graph,
-returning paths instead of lengths for twenty sources with 200 destinations each costs 0.24\,s against 0.22\,s, and
-all 158,396 paths from one source take 0.43\,s.
+(Section~\ref{sec:index}), so a path can be joined back to the edge table for its properties. Paths cost more than
+lengths when the pairs have many sources, because paths need the single-source traversal and lengths use the lanes.
+For 2048 random pairs over the index, paths take 3.6 times as long as lengths at SF10 and 4.5 times at SF100.
+\todo{Single runs before rc5; confirm from the rerun.}
