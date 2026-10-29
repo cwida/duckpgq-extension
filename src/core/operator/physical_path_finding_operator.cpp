@@ -196,6 +196,32 @@ public:
 		return use_bits ? count == 0 : set.empty();
 	}
 
+	//! Every registered value, in ascending order for the bitmap and in set order otherwise
+	template <class FUNC>
+	void ForEach(FUNC &&fn) const {
+		if (use_bits) {
+			for (idx_t word_idx = 0; word_idx < bits.size(); word_idx++) {
+				auto word = bits[word_idx];
+				while (word) {
+					auto bit = static_cast<idx_t>(__builtin_ctzll(word));
+					fn(NumericCast<uint32_t>(word_idx * 64 + bit));
+					word &= word - 1;
+				}
+			}
+			return;
+		}
+		for (auto value : set) {
+			fn(value);
+		}
+	}
+
+	void Release() {
+		std::unordered_set<uint32_t>().swap(set);
+		vector<uint64_t>().swap(bits);
+		use_bits = false;
+		count = 0;
+	}
+
 private:
 	std::unordered_set<uint32_t> set;
 	vector<uint64_t> bits;
@@ -238,8 +264,10 @@ public:
 	                                  std::vector<shared_ptr<LocalCSR>> &local_csrs_p, idx_t num_threads_p,
 	                                  int64_t v_size_p, const Settings &settings, bool lane_mode_p = false)
 	    : context(context_p), source(source_p), local_csrs(local_csrs_p), num_threads(num_threads_p), v_size(v_size_p),
-	      distances(lane_mode_p ? 0 : v_size, -1), seen(lane_mode_p ? 0 : v_size),
-	      frontier_stamp(lane_mode_p ? 0 : v_size, 0), iter(1), change(false), lane_mode(lane_mode_p) {
+	      iter(1), change(false), lane_mode(lane_mode_p) {
+		// The per-vertex arrays are allocated in Start() and freed in Finished(), once the results of the group's
+		// pairs have been extracted (29 Oct: a many-source path query held every search's arrays from the scheduler's
+		// start to the result scatter, 72 GiB for BI19 at SF300)
 		benchmark_enabled = settings.benchmark_enabled;
 		benchmark_output_prefix = settings.benchmark_output_prefix;
 		target_early_termination = settings.target_early_termination;
@@ -248,11 +276,17 @@ public:
 	}
 
 	//! ---- PhasedKernel
+	//! Bytes of the per-vertex arrays of one search: distances, seen, frontier stamp, and the parents for paths
+	static idx_t BytesPerVertex(bool paths) {
+		return sizeof(int64_t) + sizeof(uint8_t) + sizeof(uint32_t) + (paths ? sizeof(uint32_t) + sizeof(uint64_t) : 0);
+	}
+
 	bool Start() override {
 		phase_start_time = std::chrono::steady_clock::now();
 		worker_count = ChooseWorkerCount();
 		tasks_scheduled = worker_count;
 		next_lists.assign(worker_count, {});
+		AllocateArrays();
 		Initialize();
 		if (!change) {
 			return false;
@@ -332,6 +366,10 @@ public:
 	}
 
 	void Finished() override {
+		if (!lane_mode) {
+			ExtractResults();
+			ReleaseWorkingSets();
+		}
 		if (!benchmark_enabled) {
 			return;
 		}
@@ -351,11 +389,11 @@ public:
 		if (target < 0 || target >= v_size) {
 			return -1;
 		}
-		if (lane_mode) {
+		if (lane_mode || results_extracted) {
 			auto found = target_distance.find(NumericCast<uint32_t>(target));
 			return found == target_distance.end() ? -1 : found->second;
 		}
-		return distances[target];
+		return distances.empty() ? -1 : distances[target];
 	}
 
 	//! Path reconstruction: the vertex and the edge through which each vertex was first discovered. Edges are
@@ -364,8 +402,63 @@ public:
 
 	void EnableParentTracking() {
 		track_parents = true;
-		parent_vertex.assign(v_size, NumericLimits<uint32_t>::Maximum());
-		parent_edge.assign(v_size, INVALID_EDGE);
+	}
+
+	//! Allocates the per-vertex arrays of the search (Start); lane-mode groups have none
+	void AllocateArrays() {
+		if (lane_mode || arrays_allocated) {
+			return;
+		}
+		distances.assign(v_size, -1);
+		vector<atomic<uint8_t>>(v_size).swap(seen);
+		frontier_stamp.assign(v_size, 0);
+		if (track_parents) {
+			parent_vertex.assign(v_size, NumericLimits<uint32_t>::Maximum());
+			parent_edge.assign(v_size, INVALID_EDGE);
+		}
+		arrays_allocated = true;
+	}
+
+	//! Copies what the group's pairs need out of the per-vertex arrays: lengths, the distance of every registered
+	//! destination; paths, the path of every reached destination (dense vertex ids, mapped to keys at the scatter);
+	//! reach, every reached (vertex, distance). After this the arrays can go.
+	void ExtractResults() {
+		if (results_extracted || !arrays_allocated) {
+			results_extracted = true;
+			return;
+		}
+		if (reach_mode) {
+			idx_t count = 0;
+			for (int64_t v = 0; v < v_size; v++) {
+				count += distances[v] >= 0;
+			}
+			reached.reserve(count);
+			for (int64_t v = 0; v < v_size; v++) {
+				if (distances[v] >= 0) {
+					reached.push_back({NumericCast<uint32_t>(v), NumericCast<int32_t>(distances[v])});
+				}
+			}
+		} else {
+			auto identity = [](uint32_t id) { return static_cast<int64_t>(id); };
+			targets.ForEach([&](uint32_t target) {
+				auto distance = distances[target];
+				if (distance < 0) {
+					return;
+				}
+				target_distance[target] = distance;
+				if (track_parents) {
+					auto offset = path_values.size();
+					WalkPath(target, identity, path_values, path_valid);
+					path_index[target] = {offset, path_values.size() - offset};
+				}
+			});
+		}
+		targets.Release();
+		results_extracted = true;
+	}
+
+	bool ResultsExtracted() const {
+		return results_extracted;
 	}
 
 	static uint64_t PackEdge(idx_t partition_idx, uint32_t offset, bool is_delta) {
@@ -390,9 +483,30 @@ public:
 	}
 
 	//! Appends the path from the group's source to `target` as [v0, e0, v1, ..., vk]: vertices through
-	//! `vertex_value` (dense id -> key or row id), edges as edge-table row ids, NULL when unknown
+	//! `vertex_value` (dense id -> key or row id), edges as edge-table row ids, NULL when unknown. After the search
+	//! has ended the path comes from the extracted lists (vertices at even positions still need the mapping).
 	template <class VERTEX_VALUE>
 	void AppendPath(int64_t target, VERTEX_VALUE vertex_value, vector<int64_t> &values, vector<bool> &valid) const {
+		if (results_extracted) {
+			auto found = path_index.find(NumericCast<uint32_t>(target));
+			if (found == path_index.end()) {
+				return;
+			}
+			auto offset = found->second.first;
+			auto length = found->second.second;
+			for (idx_t i = 0; i < length; i++) {
+				bool is_vertex = (i % 2) == 0;
+				values.push_back(is_vertex ? vertex_value(NumericCast<uint32_t>(path_values[offset + i]))
+				                           : path_values[offset + i]);
+				valid.push_back(path_valid[offset + i]);
+			}
+			return;
+		}
+		WalkPath(target, vertex_value, values, valid);
+	}
+
+	template <class VERTEX_VALUE>
+	void WalkPath(int64_t target, VERTEX_VALUE vertex_value, vector<int64_t> &values, vector<bool> &valid) const {
 		vector<int64_t> reversed;
 		vector<bool> reversed_valid;
 		auto current = NumericCast<uint32_t>(target);
@@ -417,15 +531,31 @@ public:
 		}
 	}
 
-	//! Frees the per-vertex arrays once every reached vertex has been emitted (REACH mode)
+	//! Frees the per-vertex arrays (after ExtractResults)
 	void ReleaseWorkingSets() {
 		vector<int64_t>().swap(distances);
 		vector<atomic<uint8_t>>().swap(seen);
 		vector<uint32_t>().swap(frontier_stamp);
+		vector<uint32_t>().swap(parent_vertex);
+		vector<uint64_t>().swap(parent_edge);
+		vector<uint32_t>().swap(frontier_list);
+		vector<vector<uint32_t>>().swap(next_lists);
+		arrays_allocated = false;
 	}
 
-	const vector<int64_t> &Distances() const {
-		return distances;
+	//! REACH: every (vertex, distance) the source reached, ascending by vertex, valid after the search ended; 8 bytes
+	//! per entry (1024 sources x all at SF300 reach 530M vertices: 4.2 GB instead of 9.8 GB of distance arrays)
+	struct ReachedEntry {
+		uint32_t vertex;
+		int32_t distance;
+	};
+	const vector<ReachedEntry> &Reached() const {
+		return reached;
+	}
+
+	//! Frees the extracted results once the scatter has emitted them (REACH mode)
+	void ReleaseResults() {
+		vector<ReachedEntry>().swap(reached);
 	}
 
 	//! Sizes the destination set before the destinations are registered
@@ -436,7 +566,7 @@ public:
 	//! Registers the destinations of this group so the search can stop when all of them are found; in lane mode the
 	//! destinations are the lane's work list
 	void AddTarget(int64_t target) {
-		if (target < 0 || target >= v_size || (!lane_mode && !target_early_termination)) {
+		if (target < 0 || target >= v_size) {
 			return;
 		}
 		if (targets.Insert(NumericCast<uint32_t>(target))) {
@@ -481,6 +611,17 @@ public:
 	vector<uint64_t> parent_edge;
 	idx_t tasks_scheduled = 0;
 	vector<shared_ptr<DataChunk>> output_chunks;
+	//! REACH: the group emits every reached vertex (set by the scheduler)
+	bool reach_mode = false;
+	//! Set by Start() / ReleaseWorkingSets()
+	bool arrays_allocated = false;
+	//! Set by ExtractResults(): Distance(), AppendPath() and Reached() answer from the extracted results
+	bool results_extracted = false;
+	//! Extracted paths: [v0, e0, v1, ...] per destination as (offset, length) into path_values / path_valid
+	vector<int64_t> path_values;
+	vector<bool> path_valid;
+	std::unordered_map<uint32_t, std::pair<idx_t, idx_t>> path_index;
+	vector<ReachedEntry> reached;
 
 private:
 	//! A frontier this small is cheaper to expand by vertex lookups than by a sweep over the partitions.
@@ -539,7 +680,7 @@ private:
 
 	bool Exhausted() const {
 		return (max_depth > 0 && static_cast<idx_t>(iter) > max_depth) ||
-		       (!targets.Empty() && remaining_targets.load(std::memory_order_relaxed) <= 0);
+		       (target_early_termination && !targets.Empty() && remaining_targets.load(std::memory_order_relaxed) <= 0);
 	}
 
 	//! Workers for one source: never more than the configured per-batch limit or than there are partitions, and
@@ -1372,6 +1513,72 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 	return batch_events;
 }
 
+//! The per-source searches of one query and how many run at once (29 Oct): a round kernel claims the next search
+//! when its current one ends, so at most `in_flight` searches hold their per-vertex arrays, chosen so that the
+//! arrays fit the grouped-batches budget (at least one search, at most one per thread); the threads are divided
+//! over the searches in flight (SourceGroupedIterativeLengthState::concurrent_groups).
+struct SourceSearchQueue {
+	explicit SourceSearchQueue(vector<shared_ptr<SourceGroupedIterativeLengthState>> searches_p)
+	    : searches(std::move(searches_p)) {
+	}
+	shared_ptr<SourceGroupedIterativeLengthState> Claim() {
+		auto idx = next.fetch_add(1);
+		return idx < searches.size() ? searches[idx] : nullptr;
+	}
+	vector<shared_ptr<SourceGroupedIterativeLengthState>> searches;
+	atomic<idx_t> next {0};
+};
+
+class SourceSearchRoundKernel : public PhasedKernel {
+public:
+	explicit SourceSearchRoundKernel(shared_ptr<SourceSearchQueue> queue_p) : queue(std::move(queue_p)) {
+	}
+
+	bool Start() override {
+		return StartNextSearch();
+	}
+	idx_t WorkerCount() const override {
+		return current ? current->WorkerCount() : 1;
+	}
+	void RunPhase(idx_t worker_id) override {
+		current->RunPhase(worker_id);
+	}
+	bool AdvancePhase() override {
+		if (current->AdvancePhase()) {
+			return true;
+		}
+		current->Finished();
+		current.reset();
+		return StartNextSearch();
+	}
+	void Finished() override {
+		if (current) {
+			current->Finished();
+			current.reset();
+		}
+	}
+
+private:
+	//! Claims searches until one has levels to run; false when none is left
+	bool StartNextSearch() {
+		while (true) {
+			current = queue->Claim();
+			if (!current) {
+				return false;
+			}
+			if (current->Start()) {
+				return true;
+			}
+			// Nothing to search (source outside the graph, or exhausted at once): its results are still extracted
+			current->Finished();
+			current.reset();
+		}
+	}
+
+	shared_ptr<SourceSearchQueue> queue;
+	shared_ptr<SourceGroupedIterativeLengthState> current;
+};
+
 class SourceGroupedScheduleEvent : public PathFindingBatchSchedulerEvent {
 public:
 	SourceGroupedScheduleEvent(PathFindingGlobalSinkState &gstate_p, Pipeline &pipeline_p,
@@ -1407,7 +1614,7 @@ public:
 				state->delta_csrs = SearchDeltaCSRs(gstate);
 				state->suppressed = SearchSuppressed(gstate);
 				state->max_depth = gstate.max_depth;
-				state->concurrent_groups = group_count;
+				state->reach_mode = gstate.path_finding_mode == PathFindingOperatorMode::REACH;
 				if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH) {
 					state->EnableParentTracking();
 				}
@@ -1442,9 +1649,6 @@ public:
 				}
 			}
 			gstate.source_group_states.push_back(state);
-			if (!lane_waves) {
-				batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(state, *pipeline, op));
-			}
 		}
 		if (gstate.path_finding_mode == PathFindingOperatorMode::REACH) {
 			gstate.source_group_rows.resize(group_count);
@@ -1464,6 +1668,9 @@ public:
 				    });
 				gstate.source_group_output_refs.emplace_back(DConstants::INVALID_INDEX, chunk_idx);
 			}
+		}
+		if (!lane_waves) {
+			ScheduleSourceSearches(batch_events);
 		}
 		if (lane_waves) {
 			// Targets are registered now: pack the groups into waves of LANE_LIMIT lanes
@@ -1503,6 +1710,49 @@ public:
 	}
 
 private:
+	//! Events for the per-source searches: in rounds bounded by the grouped-batches budget (default), or every
+	//! search at once (the former behaviour, experimental_path_finding_operator_source_search_rounds = false)
+	void ScheduleSourceSearches(vector<shared_ptr<Event>> &batch_events) const {
+		auto &searches = gstate.source_group_states;
+		if (searches.empty()) {
+			return;
+		}
+		auto threads = std::max<idx_t>(1, gstate.num_threads);
+		bool paths = gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH;
+		auto bytes_per_search = static_cast<double>(GetPathFindingVSize(gstate)) *
+		                        static_cast<double>(SourceGroupedIterativeLengthState::BytesPerVertex(paths));
+		RecordStrategy(context, "source_search_mb",
+		               std::to_string(static_cast<idx_t>(bytes_per_search / (1024 * 1024))));
+		bool rounds = GetPathFindingSourceSearchRounds(context) && searches.size() > 1;
+		if (!rounds) {
+			RecordStrategy(context, "source_search_rounds", "off");
+			for (auto &state : searches) {
+				state->concurrent_groups = searches.size();
+				batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(state, *pipeline, op));
+			}
+			return;
+		}
+		auto budget = GetPathFindingGroupedBatchesBudget(context);
+		idx_t in_flight = threads;
+		if (budget > 0) {
+			in_flight = static_cast<idx_t>(std::max<double>(1, std::floor(static_cast<double>(budget) / bytes_per_search)));
+		}
+		in_flight = std::max<idx_t>(1, std::min<idx_t>(in_flight, std::min<idx_t>(threads, searches.size())));
+		// The threads divided over the searches in flight, rounded up so that every core has a task (18 searches of
+		// one worker each left 14 of 32 cores idle: BI19 paths at SF300 took 63 s instead of 38 s)
+		auto workers = (threads + in_flight - 1) / in_flight;
+		RecordStrategy(context, "source_search_rounds", std::to_string(in_flight));
+		RecordStrategy(context, "source_search_workers", std::to_string(workers));
+		for (auto &state : searches) {
+			state->concurrent_groups = std::max<idx_t>(1, threads / workers);
+		}
+		auto queue = make_shared_ptr<SourceSearchQueue>(searches);
+		for (idx_t i = 0; i < in_flight; i++) {
+			batch_events.push_back(
+			    make_shared_ptr<PhasedKernelEvent>(make_shared_ptr<SourceSearchRoundKernel>(queue), *pipeline, op));
+		}
+	}
+
 	//! Registers the search endpoint of every row of an output chunk with the group state that searches it, so
 	//! that group can stop once all of its destinations are found
 	template <class GROUP_OF_ROW>
@@ -3015,8 +3265,10 @@ static SourceResultType GetReachData(ExecutionContext &context, DataChunk &resul
 		auto range_end = std::min<idx_t>(v_size, ((lstate.reach_slice % slices_per_group) + 1) * REACH_SLICE);
 		auto &rows = pf_sink.source_group_rows[group_idx];
 		auto &group = *pf_sink.source_group_states[group_idx];
-		auto &distances = group.Distances();
-		bool slice_done = rows.empty() || distances.empty();
+		// The slice covers positions of the group's extracted (vertex, distance) list; slices past its end are empty
+		auto &reached = group.Reached();
+		range_end = std::min<idx_t>(range_end, reached.size());
+		bool slice_done = rows.empty() || reached.empty() || lstate.reach_vertex_pos >= range_end;
 		if (!slice_done) {
 			auto &row = rows[lstate.reach_row_idx];
 			if (out > 0 && (row.first != chunk_of_output || row.second != row_of_output)) {
@@ -3026,13 +3278,10 @@ static SourceResultType GetReachData(ExecutionContext &context, DataChunk &resul
 			row_of_output = row.second;
 			auto vertex = lstate.reach_vertex_pos;
 			for (; vertex < range_end && out < STANDARD_VECTOR_SIZE; vertex++) {
-				auto distance = distances[vertex];
-				if (distance < 0) {
-					continue;
-				}
+				auto &entry = reached[vertex];
 				list_entries[out] = list_entry_t(2 * out, 2);
-				list_child[2 * out] = snapshot ? snapshot->KeyOf(vertex) : static_cast<int64_t>(vertex);
-				list_child[2 * out + 1] = distance;
+				list_child[2 * out] = snapshot ? snapshot->KeyOf(entry.vertex) : static_cast<int64_t>(entry.vertex);
+				list_child[2 * out + 1] = entry.distance;
 				out++;
 			}
 			lstate.reach_vertex_pos = vertex;
@@ -3046,7 +3295,7 @@ static SourceResultType GetReachData(ExecutionContext &context, DataChunk &resul
 			lstate.reach_slice = DConstants::INVALID_INDEX;
 			auto done = pf_sink.reach_slices_done[group_idx]->fetch_add(1) + 1;
 			if (done == slices_per_group) {
-				group.ReleaseWorkingSets();
+				group.ReleaseResults();
 			}
 		}
 	}

@@ -17,6 +17,10 @@ CREATE TABLE e AS SELECT id AS src, (id + 1) % 1000 AS dst FROM v UNION ALL SELE
 statement ok
 CREATE INDEX und ON e USING CSR (src, dst) WITH (undirected = true);
 
+# The extension's internal table is created on first use; two operator instances in one statement would race for it
+statement ok
+SELECT delete_csr(2147483647);
+
 query II
 SELECT (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') FROM (SELECT 6::BIGINT AS src, 5::BIGINT AS dst)),
        (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') FROM (SELECT 5::BIGINT AS src, 6::BIGINT AS dst));

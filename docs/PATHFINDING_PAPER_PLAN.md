@@ -1021,3 +1021,26 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   update-run SF10 (20 batches, 4 configs) agrees on every step. Scheduler switches act on the waves (`wave_*` keys).
   The matrix is NOT restarted: the author asked to hold the sweep until told, clean up, and use rc1's results
   meanwhile. Tag `eval-freeze-rc7` marks the state.
+- 29 Oct (night, 2): bounded memory for per-source searches (author's request; paths and reach always run on the
+  per-source kernel and used to allocate every search's per-vertex arrays up front and keep them until the scatter).
+  (1) A search extracts what its pairs need when it ends and frees its arrays: lengths, the distances of its
+  destinations (`target_distance`, as lane mode); paths, the path list of every reached destination (dense ids,
+  mapped to keys at the scatter); reach, the reached (vertex, distance) entries at 8 bytes each. Destinations are
+  registered for every length search now (the early-termination switch only decides stopping). (2) Arrays are
+  allocated in Start and the searches run in rounds (`SourceSearchQueue`, `SourceSearchRoundKernel`): at most
+  budget / (vertices x 13 B, 25 B for paths) in flight, at least one and at most the thread count, the threads
+  divided over them rounded up (18 searches of one worker left 14 cores idle: BI19 paths SF300 63 s; with 2 workers
+  33 s). `experimental_path_finding_operator_source_search_rounds = false` keeps the former behaviour; strategy keys
+  `source_search_mb`, `source_search_rounds`, `source_search_workers`. (3) New test
+  `path_finding_source_search_rounds.test` (100 sources x 40 destinations with paths and 100 sources x all reach,
+  budgets of 1 and 3 searches in flight, equal to the unbounded run and to the pair-mode lengths); 98 tests pass.
+  Measurements (index route, one process each, peak RSS of the process):
+  | query | rc7 | rc8 |
+  | BI19 returning paths, SF300 (2186 sources, 2.56M pairs) | 71.9 GiB, 37.7 s | 5.6 GiB, 33.1 s (12.8x less memory, 1.14x faster) |
+  | BI19 returning paths, SF100 (884 sources, 420k pairs) | 12.0 GiB, 5.24 s | 1.6 GiB, 4.13 s (7.6x less, 1.27x faster) |
+  | 1024 sources x all (reach), SF300 (530M reached entries) | 19.4 GiB, 5.24 s | 7.8 GiB, 4.08 s (2.5x less, 1.28x faster) |
+  | IC13 single pair, SF10 | 0.19 GiB, 4 ms | 0.19 GiB, 4 ms |
+  | 16 sources x 64 destinations (lengths, per-source kernel), SF10 | 0.20 GiB, 9 ms | 0.20 GiB, 10 ms |
+  | 2048 random pairs (lengths, lane waves), SF10 | 0.26 GiB, 41 ms | 0.21 GiB, 41 ms |
+  Neo4j's BI19 at SF300 (rc1, parameter set 1) is 53.6 s with its shortestPath materialising a path per pair.
+  Tag `eval-freeze-rc8`; the sweep stays on hold.

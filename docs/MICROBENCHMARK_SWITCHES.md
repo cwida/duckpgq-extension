@@ -55,6 +55,7 @@ has no switch; the right-hand column says what a microbenchmark would need.
 |---|---|---|---|
 | Source grouping | `source_group_ratio` | 4 (<= 0 off) | lengths always group by source since 29 Oct (the ratio threshold is gone); <= 0 runs the former MS-BFS batches of one lane per pair, the microbenchmark baseline; SHORTEST_PATH and REACH always group |
 | Few-sources rule | `few_sources_limit` (new, 26 Oct) | 16 (0 off) | at most this many distinct sources always uses the per-source kernel |
+| Per-source searches in rounds (29 Oct) | `source_search_rounds` | true | paths, reach and few-source lengths run at most budget / (vertices x 13 or 25 B) searches at once (at least 1, at most the threads), threads divided over them, arrays allocated at start and freed at the end after the pairs' results are extracted; false starts every search at once (the former behaviour) |
 | Target early termination | `target_early_termination` (new) | true | a group stops once every destination is reached; `SourceGroupTargets` set/bitmap switch at 64 x expected > V stays hard-coded |
 | Sparse vs dense frontier expansion | `sparse_frontier_divisor` (new) | 64 (0 always sweeps; a huge value always looks up rows) | per-source kernel only; needs row lookup (not on streaming segments) |
 | Frontier summary bitmap (lane kernel) | `frontier_bitmap` | true | one bit per vertex in the working set, built in the check phase; lists the frontier of sparse levels |

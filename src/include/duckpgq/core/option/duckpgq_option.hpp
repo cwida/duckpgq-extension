@@ -34,6 +34,7 @@ int32_t GetPathFindingPartitionVertices(ClientContext &context);
 bool GetPathFindingSubRangeTasks(ClientContext &context);
 bool GetCSRIndexChangeGroups(ClientContext &context);
 bool GetPathFindingLaneWaves(ClientContext &context);
+bool GetPathFindingSourceSearchRounds(ClientContext &context);
 int32_t GetPathFindingVisitPrefetch(ClientContext &context);
 
 struct CorePGQOptions {
@@ -68,6 +69,7 @@ struct CorePGQOptions {
 		RegisterPathFindingSubRangeTasks(loader);
 		RegisterCSRIndexChangeGroups(loader);
 		RegisterPathFindingLaneWaves(loader);
+		RegisterPathFindingSourceSearchRounds(loader);
 		RegisterPathFindingVisitPrefetch(loader);
 	}
 
@@ -102,6 +104,7 @@ private:
 	static void RegisterPathFindingSubRangeTasks(ExtensionLoader &loader);
 	static void RegisterCSRIndexChangeGroups(ExtensionLoader &loader);
 	static void RegisterPathFindingLaneWaves(ExtensionLoader &loader);
+	static void RegisterPathFindingSourceSearchRounds(ExtensionLoader &loader);
 	static void RegisterPathFindingVisitPrefetch(ExtensionLoader &loader);
 };
 

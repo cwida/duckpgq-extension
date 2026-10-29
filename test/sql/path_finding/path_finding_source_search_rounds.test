@@ -1,0 +1,113 @@
+# name: test/sql/path_finding/path_finding_source_search_rounds.test
+# description: per-source searches (paths, reach) run in rounds bounded by the grouped-batches budget; results equal the unbounded run and the pair-mode reference
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_path_finding_operator_reach = false;
+
+statement ok
+CREATE TABLE pv AS SELECT range AS id FROM range(2000);
+
+# A ring with chords; every vertex reaches every other within a few hops
+statement ok
+CREATE TABLE pe AS SELECT id AS src, (id + 1) % 2000 AS dst FROM pv UNION ALL SELECT id, (id + 23) % 2000 FROM pv UNION ALL SELECT id, (id + 401) % 2000 FROM pv;
+
+# 100 sources x 40 destinations, one destination equal to its source
+statement ok
+CREATE TABLE pairs AS SELECT s.id AS s, (s.id * 11 + d.k * 97) % 2000 AS d FROM (SELECT id FROM pv WHERE id % 20 = 0) s, range(40) d(k);
+
+# Reference for paths: the unbounded run (every search at once), checked as a whole through a digest of the paths
+statement ok
+SET experimental_path_finding_operator_source_search_rounds = false;
+
+statement ok
+CREATE TABLE reference_paths AS SELECT count(p) AS c, sum(len(p)) AS l, sum(hash(p::VARCHAR)::HUGEINT) AS h FROM (
+    SELECT shortestpathoperator(s, d, struct_pack(src := src, dst := dst, id := pe.rowid), 2000::BIGINT, 6000::BIGINT, 'graph:rounds') AS p
+    FROM pairs, pe);
+
+query I
+SELECT s LIKE '%source_search_rounds=off%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# A budget of 60 KB holds one search's arrays (2000 vertices x 25 B): the searches run one at a time
+statement ok
+SET experimental_path_finding_operator_source_search_rounds = true;
+
+statement ok
+SET experimental_path_finding_operator_grouped_batches_budget = 60000;
+
+query I
+SELECT (SELECT c FROM reference_paths) = count(p) AND (SELECT l FROM reference_paths) = sum(len(p)) AND (SELECT h FROM reference_paths) = sum(hash(p::VARCHAR)::HUGEINT) FROM (
+    SELECT shortestpathoperator(s, d, struct_pack(src := src, dst := dst, id := pe.rowid), 2000::BIGINT, 6000::BIGINT, 'graph:rounds') AS p
+    FROM pairs, pe);
+----
+true
+
+query I
+SELECT s LIKE '%source_search_rounds=1%' AND s LIKE '%source_group_kernel=per_source%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Three searches in flight
+statement ok
+SET experimental_path_finding_operator_grouped_batches_budget = 160000;
+
+query I
+SELECT (SELECT c FROM reference_paths) = count(p) AND (SELECT h FROM reference_paths) = sum(hash(p::VARCHAR)::HUGEINT) FROM (
+    SELECT shortestpathoperator(s, d, struct_pack(src := src, dst := dst, id := pe.rowid), 2000::BIGINT, 6000::BIGINT, 'graph:rounds') AS p
+    FROM pairs, pe);
+----
+true
+
+query I
+SELECT s LIKE '%source_search_rounds=3%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# The path lengths equal the lengths of the pair mode
+query I
+SELECT (SELECT sum((len(p) - 1) // 2) FROM (SELECT shortestpathoperator(s, d, struct_pack(src := src, dst := dst, id := pe.rowid), 2000::BIGINT, 6000::BIGINT, 'graph:rounds') AS p FROM pairs, pe))
+     = (SELECT sum(len) FROM (SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 2000::BIGINT, 6000::BIGINT, 'graph:rounds') AS len FROM pairs, pe));
+----
+true
+
+# Reach from the 100 sources: one search per source, bounded to one in flight (13 B per vertex: 26 KB per search)
+statement ok
+SET experimental_path_finding_operator_grouped_batches_budget = 30000;
+
+statement ok
+CREATE TABLE sources AS SELECT DISTINCT s AS s, s AS d FROM pairs;
+
+statement ok
+CREATE TABLE reference_reach AS SELECT count(*) AS c, sum(len) AS l FROM (
+    SELECT iterativelengthoperator(p.s, p.d, struct_pack(src := src, dst := dst), 2000::BIGINT, 6000::BIGINT, 'graph:rounds') AS len
+    FROM (SELECT a.s AS s, b.id AS d FROM sources a, pv b) p, pe) WHERE len IS NOT NULL;
+
+query I
+SELECT (SELECT c FROM reference_reach) = count(r[2]) AND (SELECT l FROM reference_reach) = sum(r[2]) FROM (
+    SELECT reachoperator(s, d, struct_pack(src := src, dst := dst), 2000::BIGINT, 6000::BIGINT, 'graph:rounds') AS r
+    FROM sources, pe);
+----
+true
+
+query I
+SELECT s LIKE '%mode=reach%' AND s LIKE '%source_search_rounds=1%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Unbounded reach gives the same
+statement ok
+SET experimental_path_finding_operator_source_search_rounds = false;
+
+query I
+SELECT (SELECT c FROM reference_reach) = count(r[2]) AND (SELECT l FROM reference_reach) = sum(r[2]) FROM (
+    SELECT reachoperator(s, d, struct_pack(src := src, dst := dst), 2000::BIGINT, 6000::BIGINT, 'graph:rounds') AS r
+    FROM sources, pe);
+----
+true

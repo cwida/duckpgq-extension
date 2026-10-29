@@ -214,3 +214,11 @@ steps are skipped). Then `./repro/collect.sh`, commit the archive and the figure
   unless `source_group_ratio <= 0`); waves and batches share `AppendGroupedKernelEvents`; group settings in
   `SourceGroupedIterativeLengthState::Settings`; the pair modes' result scan is parallel (`result_scan_idx` is atomic,
   `MaxThreads` = threads for every mode). The sweep is on hold at the author's request (tag `eval-freeze-rc7` ready).
+- 29 Oct (night, 2): per-source searches extract their results in `Finished()` (`ExtractResults`: `target_distance`,
+  `path_values/path_valid/path_index`, `reached` as 8-byte entries) and free their arrays (`ReleaseWorkingSets`);
+  arrays are allocated in `Start()` (`AllocateArrays`). Searches run through `SourceSearchQueue` /
+  `SourceSearchRoundKernel` with `in_flight = budget / bytes_per_search` (1..threads) and `ceil(threads / in_flight)`
+  workers each (`ScheduleSourceSearches`); `experimental_path_finding_operator_source_search_rounds = false` restores
+  one event per search. The reach scan reads `Reached()` instead of the distance array. Pitfall: two operator
+  instances in one statement race to create `__duckpgq_internal` on first use (write-write conflict); tests run a
+  `SELECT delete_csr(2147483647)` first.

@@ -189,6 +189,12 @@ bool GetPathFindingLaneWaves(ClientContext &context) {
 	return value.GetValue<bool>();
 }
 
+bool GetPathFindingSourceSearchRounds(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("experimental_path_finding_operator_source_search_rounds", value);
+	return value.GetValue<bool>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -536,6 +542,17 @@ void CorePGQOptions::RegisterCSRIndexChangeGroups(ExtensionLoader &loader) {
 	                          "A CSR index snapshot decides the visibility of a change group (one commit chunk of one "
 	                          "transaction) with one row-version check and applies it to every row of the group; false "
 	                          "checks every logged row individually (the microbenchmark of the per-row cost)",
+	                          LogicalType::BOOLEAN, Value(true));
+}
+
+void CorePGQOptions::RegisterPathFindingSourceSearchRounds(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("experimental_path_finding_operator_source_search_rounds",
+	                          "Per-source searches (paths, reach, few sources) run in rounds whose per-vertex arrays "
+	                          "fit the grouped-batches budget, at most one per thread, each search allocating its "
+	                          "arrays when it starts and freeing them when it ends; false starts every search at "
+	                          "once (the former behaviour, for the microbenchmark)",
 	                          LogicalType::BOOLEAN, Value(true));
 }
 
