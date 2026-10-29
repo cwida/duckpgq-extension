@@ -3,6 +3,18 @@
 
 \begin{figure}[t]
   \centering
+  \includegraphics[width=\linewidth]{figures/teaser.pdf}
+  \caption{Time for one query that asks the shortest-path length of $n$ random (source, destination) pairs, LDBC SNB
+  SF100 (18.7\,M \texttt{knows} edges), one m7a.8xlarge, 32 threads, linear axes. At 65\,536 pairs \duckpgq over its
+  CSR index answers in 3.5\,s, Neo4j in 155\,s and Kuzu in 169\,s; Memgraph and FalkorDB exceed the 600\,s limit
+  (triangle, joined by a dotted line to their last finished point). Each baseline is shown in its faster
+  configuration at each point, one query or the pairs split over 32 client connections. Mean of three runs;
+  Figure~\ref{fig:random-pairs} has the full sweep on log axes.}
+  \label{fig:teaser}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
   \input{figures/overview}
   \caption{Path finding in \duckpgq. A \texttt{MATCH} path pattern is rewritten to SQL with a marker function that an
   optimizer extension replaces by the path-finding operator (Section~\ref{sec:planner}). The operator traverses a

@@ -691,6 +691,67 @@ def ldbc_table(filename):
     write_table(filename, lines)
 
 
+def teaser_figure(filename, sf="100"):
+    """Page-one figure: seconds against random pairs per query on linear axes, each system on its fastest path"""
+    points = load("sweep_pairs", sf)
+    shape = "random_pairs"
+    order = ["memgraph", "falkordb", "kuzu", "neo4j", "duckpgq_index"]
+    names = {"duckpgq_index": "DuckPGQ", "neo4j": "Neo4j", "kuzu": "Kuzu", "falkordb": "FalkorDB",
+             "memgraph": "Memgraph"}
+    fig, ax = plt.subplots(figsize=(3.33, 2.05))
+    ax.axhline(TIMEOUT_S, color=MUTED, linewidth=0.8, linestyle=(0, (4, 3)), zorder=1)
+    ax.text(24000, TIMEOUT_S + 8, "600 s limit", color=MUTED, fontsize=6.5, va="bottom", ha="left")
+    ends = []
+    for system in order:
+        counts = sorted({k[2] for k in points if k[1] == shape and k[0] in (system, f"{system}@32")})
+        xs, ys, exceeded_at = [], [], None
+        for count in counts:
+            candidates = [points.get((label, shape, count)) for label in (system, f"{system}@32")]
+            ok = [c["mean"] for c in candidates if c and c["status"] == "ok"]
+            if ok:
+                xs.append(count)
+                ys.append(min(ok))
+            elif any(c and c["status"] == "exceeded" for c in candidates):
+                exceeded_at = count
+                break
+        color = COLOR[system]
+        ours = system == "duckpgq_index"
+        lw, z = (2.4, 5) if ours else (1.5, 3)
+        ax.plot(xs, ys, color=color, linewidth=lw, marker="o", markersize=2.8 if ours else 2.4,
+                markeredgecolor=SURFACE, markeredgewidth=0.5, zorder=z, clip_on=False)
+        if exceeded_at is not None:
+            ax.plot([xs[-1], exceeded_at], [ys[-1], TIMEOUT_S], color=color, linewidth=1.2, linestyle=(0, (1.5, 1.5)),
+                    zorder=z)
+            ax.plot([exceeded_at], [TIMEOUT_S], linestyle="none", marker="^", markersize=5, markerfacecolor=SURFACE,
+                    markeredgecolor=color, markeredgewidth=1.1, zorder=z + 1, clip_on=False)
+            ends.append((TIMEOUT_S, exceeded_at, f"{names[system]} > 600 s", color))
+        else:
+            value = ys[-1]
+            text = f"{value:.1f} s" if value < 10 else f"{value:.0f} s"
+            ends.append((value, xs[-1], f"{names[system]} {text}", color))
+    ax.set_xlim(0, 65536)
+    ax.set_ylim(0, 640)
+    ax.set_xticks([0, 16384, 32768, 49152, 65536])
+    ax.set_xticklabels(["0", "16k", "32k", "48k", "64k"])
+    ax.set_yticks([0, 150, 300, 450, 600])
+    ax.set_xlabel("shortest-path pairs in one query", labelpad=2)
+    ax.set_ylabel("seconds", labelpad=2)
+    ax.grid(axis="x", visible=False)
+    style_axes(ax)
+    # Line-end labels right of the panel, pushed apart on the linear axis
+    ends.sort()
+    placed = []
+    for y, x, name, color in ends:
+        placed.append(y if not placed or y - placed[-1] >= 48 else placed[-1] + 48)
+    for (y, x, name, color), yy in zip(ends, placed):
+        bold = name.startswith("DuckPGQ")
+        ax.annotate(name, (65536, yy), xytext=(6, 0), textcoords="offset points", color=color, va="center",
+                    ha="left", fontsize=7 if bold else 6.5, fontweight="bold" if bold else "normal",
+                    annotation_clip=False)
+    fig.subplots_adjust(left=0.13, right=0.70, bottom=0.19, top=0.95)
+    save(fig, filename)
+
+
 def save(fig, filename):
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / f"{filename}.pdf")
@@ -707,6 +768,7 @@ if __name__ == "__main__":
     ldbc_figure("ldbc_queries")
     client_threads_figure("client_threads")
     speedup_figure("speedup")
+    teaser_figure("teaser")
     scaling_figure("scaling")
     throughput_figure("throughput")
     first_query_figure("first_query")
