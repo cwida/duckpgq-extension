@@ -2,6 +2,7 @@
 
 #include <duckpgq/core/operator/shortest_path/shortest_path_event.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
+#include <duckpgq/core/utils/parallel_for.hpp>
 #include <fstream>
 
 namespace duckdb {
@@ -32,14 +33,9 @@ void IterativeLengthState::Clear() {
 	active = 0;
 	change = false;
 	std::fill(worker_changed.begin(), worker_changed.end(), 0);
-	// empty visit vectors
-	for (auto i = 0; i < v_size; i++) {
-		visit1[i] = 0;
-		visit2[i] = 0;
-		seen[i] = 0; // reset
-	}
-	if (active_bitmap) {
-		std::fill(active_bitmap, active_bitmap + BFSWorkingSet::ActiveWordsFor(static_cast<idx_t>(v_size)), 0);
+	// The working set's arrays are zeroed in parallel (the serial loop was the fixed cost of small batches)
+	if (working_set) {
+		working_set->Zero(num_threads);
 	}
 	lane_completed.reset();
 }

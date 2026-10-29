@@ -21,6 +21,7 @@
 #include "duckdb/execution/index/index_type.hpp"
 
 #include <unordered_map>
+#include <unordered_set>
 
 namespace duckdb {
 
@@ -89,6 +90,9 @@ struct CSRIndexEpoch {
 	vector<idx_t> tombstone_positions;
 	//! The same rows' positions in the reverse partitions (indexes with a stored reverse side), aligned
 	vector<idx_t> reverse_tombstone_positions;
+	//! Undirected indexes: the position of the mirrored edge (dst -> src, same row id) in the forward partitions,
+	//! aligned; INVALID_INDEX when absent (29 Oct: a deleted undirected edge stayed traversable in one direction)
+	vector<idx_t> mirror_tombstone_positions;
 };
 
 //! An edge committed after the epoch was built (keys, since the vertex may be new) and its row id
@@ -122,6 +126,12 @@ struct CSRIndexTombstone {
 	uint32_t excluded_epoch = NumericLimits<uint32_t>::Maximum();
 	//! Change group of the TryDelete call, see CSRIndexDeltaEdge::group; 0 means "decide per row"
 	uint32_t group = 0;
+	//! The deleted edge's keys when the delete carried them: its epoch position is then found in the source's row of
+	//! the destination's partition (29 Oct; before, every reader scanned all of the epoch's row ids after a commit
+	//! with deletes, 46% of the CPU of 16 readers at SF300). Entries loaded from storage have no keys and keep the scan.
+	bool has_keys = false;
+	int64_t src_key = 0;
+	int64_t dst_key = 0;
 };
 
 //! What one reader traverses: the shared epoch plus an overlay for the changes visible to its transaction.

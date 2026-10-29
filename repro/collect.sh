@@ -14,11 +14,25 @@ else
     mkdir -p "${ARCHIVE_DIR}/sf${sf}"
     cp -n "${RESULTS_DIR}/sf${sf}/"*.csv "${ARCHIVE_DIR}/sf${sf}/" 2>/dev/null || true
   done
+  for dir in "${RESULTS_DIR}"/graphalytics_*/; do
+    [ -d "$dir" ] || continue
+    name="$(basename "$dir")"
+    mkdir -p "${ARCHIVE_DIR}/${name}"
+    cp -n "${dir}"*.csv "${ARCHIVE_DIR}/${name}/" 2>/dev/null || true
+  done
   # One text table per scale factor (the table printers take the newest file per system and shape)
   : > "${ARCHIVE_DIR}/sweep_pairs_table.txt"; : > "${ARCHIVE_DIR}/ldbc_queries_table.txt"
   for sf in ${SCALE_FACTORS}; do
     ${HARNESS} sweep-pairs-table  "${ARCHIVE_DIR}"/sf${sf}/sweep_pairs_*.csv  >> "${ARCHIVE_DIR}/sweep_pairs_table.txt"
     ${HARNESS} ldbc-queries-table "${ARCHIVE_DIR}"/sf${sf}/ldbc_queries_*.csv >> "${ARCHIVE_DIR}/ldbc_queries_table.txt"
+  done
+  : > "${ARCHIVE_DIR}/throughput_table.txt"
+  for sf in ${SCALE_FACTORS}; do
+    ls "${ARCHIVE_DIR}"/sf${sf}/throughput_*.csv >/dev/null 2>&1 && ${HARNESS} throughput-table "${ARCHIVE_DIR}"/sf${sf}/throughput_*.csv >> "${ARCHIVE_DIR}/throughput_table.txt"
+  done
+  for dir in "${ARCHIVE_DIR}"/graphalytics_*/; do
+    [ -d "$dir" ] || continue
+    ls "${dir}"sweep_pairs_*.csv >/dev/null 2>&1 && ${HARNESS} sweep-pairs-table "${dir}"sweep_pairs_*.csv >> "${ARCHIVE_DIR}/sweep_pairs_table.txt"
   done
 fi
 echo "figures: paper/figures/*.pdf   tables: paper/tables/*.tex   archive: ${ARCHIVE_DIR}"

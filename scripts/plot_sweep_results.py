@@ -61,7 +61,9 @@ plt.rcParams.update({
 def load(prefix, sf):
     """{(system, shape_or_query, count_or_param): {"mean": s, "status": ok|exceeded|not_run|error}}"""
     # The run's start time is the last field of the file name; modification times change with every copy or checkout
-    files = sorted((RESULTS / f"sf{sf}").glob(f"{prefix}_*.csv"), key=lambda p: int(p.stem.rsplit("_", 1)[1]))
+    # sf is an LDBC scale factor ("10") or a Graphalytics results directory ("graphalytics_cit_Patents")
+    directory = RESULTS / (f"sf{sf}" if sf.replace(".", "").isdigit() else sf)
+    files = sorted(directory.glob(f"{prefix}_*.csv"), key=lambda p: int(p.stem.rsplit("_", 1)[1]))
     points = {}
     for path in files:
         groups = defaultdict(list)
@@ -205,6 +207,74 @@ def sweep_figure(shape, xlabel, filename, title):
     series_legend(fig, systems, ncol=5)
     fig.suptitle(title, x=0.01, ha="left", fontsize=9.5, color=INK)
     fig.tight_layout(rect=(0, 0.06, 0.9, 0.95))
+    save(fig, filename)
+
+
+# W30: the Graphalytics graphs next to LDBC knows (results directory, display name, what differs from LDBC)
+GRAPHALYTICS = [
+    ("graphalytics_cit_Patents", "cit-Patents", "3.8M V, 16.5M E, directed, deep levels"),
+    ("graphalytics_graph500_24", "graph500-24", "8.9M V, 521M E, hubs"),
+    ("graphalytics_datagen_8_4_fb", "datagen-8_4-fb", "3.8M V, 539M E, dense"),
+]
+
+
+def graphalytics_figure(filename):
+    """Both sweep shapes on the three Graphalytics graphs: one column per graph, random pairs above sources x all;
+    every system that has a result on the graph (cit-Patents runs every baseline, the two large graphs Kuzu only)"""
+    datasets = [entry for entry in GRAPHALYTICS if load("sweep_pairs", entry[0])]
+    if not datasets:
+        print("no Graphalytics sweep results yet, skipping", filename)
+        return
+    shapes = [("random_pairs", "pairs per query"), ("multi_source", "sources per query (each to every vertex)")]
+    fig, axes = plt.subplots(2, len(datasets), figsize=(2.4 * len(datasets) + 0.6, 4.4), sharey="row", squeeze=False)
+    used = []
+    for col, (directory, name, note) in enumerate(datasets):
+        points = load("sweep_pairs", directory)
+        for row, (shape, xlabel) in enumerate(shapes):
+            ax = axes[row][col]
+            counts = sorted({k[2] for k in points if k[1] == shape})
+            if not counts:
+                ax.set_axis_off()
+                continue
+            ax.set_xscale("log", base=2)
+            ax.set_yscale("log")
+            ax.axhline(TIMEOUT_S, color=AXIS, linewidth=0.6)
+            if col == 0:
+                ax.text(counts[0], TIMEOUT_S * 1.25, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
+            label_positions = []
+            for system, sysname, color in SYSTEMS:
+                xs, ys, exceeded_x = [], [], []
+                for count in counts:
+                    point = best_path(points, system, shape, count)
+                    if point is None:
+                        continue
+                    if point["status"] == "ok":
+                        xs.append(count)
+                        ys.append(point["mean"])
+                    elif point["status"] == "exceeded":
+                        exceeded_x.append(count)
+                if not xs and not exceeded_x:
+                    continue
+                if (system, sysname, color) not in used:
+                    used.append((system, sysname, color))
+                linewidth, alpha, zorder = emphasis(system)
+                plot_series(ax, xs, ys, exceeded_x, color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+                if xs:
+                    label_positions.append((ys[-1], xs[-1], sysname, color))
+            ax.set_ylim(0.001, 3000)
+            if col == len(datasets) - 1:
+                direct_labels(ax, label_positions, max(counts) * 1.3)
+            if row == 0:
+                ax.set_title(f"{name}\n{note}", loc="left", fontsize=8)
+            ax.set_xticks(counts)
+            ax.set_xticklabels([count_label(c) for c in counts], fontsize=6)
+            ax.set_xlabel(xlabel, fontsize=7.5)
+            style_axes(ax)
+    axes[0][0].set_ylabel("seconds per query (median of 3)")
+    axes[1][0].set_ylabel("seconds per query (median of 3)")
+    series_legend(fig, [entry for entry in SYSTEMS if entry in used], ncol=4)
+    fig.suptitle("Graph structure: the sweep shapes on three Graphalytics graphs", x=0.01, ha="left", fontsize=9.5, color=INK)
+    fig.tight_layout(rect=(0, 0.05, 0.9, 0.96))
     save(fig, filename)
 
 
@@ -591,6 +661,106 @@ def updates_figure(filename):
     save(fig, filename)
 
 
+def newest_files(directory, pattern):
+    """Result files matching pattern in a results directory, oldest first by the run time in the name"""
+    if not directory.is_dir():
+        return []
+    return sorted(directory.glob(pattern), key=lambda p: int(p.stem.rsplit("_", 1)[1]))
+
+
+def concurrent_figure(filename):
+    """Readers against query latency under a writer committing every 200 ms (W16 concurrent pass): index route
+    against build-per-query route, one panel per scale factor. At SF10 building the graph inside the query costs
+    22 ms and the saving disappears into CPU contention; at SF100 and SF300 (128 and 264 ms per build) the index's
+    saving shows (29 Oct)."""
+    panels = []
+    for sf in SCALE_FACTORS:
+        series = {"query_index": {}, "query_build": {}}
+        for path in newest_files(RESULTS / f"sf{sf}", "concurrent_sssp_pairs1024_threads32_readers*_pause200_*.csv"):
+            rows = list(csv.DictReader(open(path)))
+            if not rows:
+                continue
+            readers = int(rows[0]["readers"])
+            for kind in series:
+                values = [float(r["elapsed_s"]) for r in rows if r["kind"] == kind]
+                if values:
+                    series[kind][readers] = statistics.mean(values)  # the newest file per reader count wins
+        if series["query_index"] or series["query_build"]:
+            panels.append((sf, series))
+    if not panels:
+        print("no concurrent results yet, skipping", filename)
+        return
+    fig, axes = plt.subplots(1, len(panels), figsize=(2.4 * len(panels) + 0.4, 2.5), sharey=True, squeeze=False)
+    entries = [("query_index", "DuckPGQ index", COLOR["duckpgq_index"]), ("query_build", "DuckPGQ build", COLOR["duckpgq_build"])]
+    for ax, (sf, series) in zip(axes[0], panels):
+        readers = sorted(set(series["query_index"]) | set(series["query_build"]))
+        ax.set_xscale("log", base=2)
+        ax.set_yscale("log")
+        for kind, name, color in entries:
+            xs = [r for r in readers if r in series[kind]]
+            ys = [series[kind][r] for r in xs]
+            linewidth, alpha, zorder = emphasis("duckpgq_index" if kind == "query_index" else "duckpgq_build")
+            plot_series(ax, xs, ys, [], color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+            for x, y in zip(xs[-1:], ys[-1:]):
+                ax.annotate(f"{y * 1000:.0f} ms", (x, y), xytext=(4, 0), textcoords="offset points", fontsize=6.5,
+                            color=color, va="center")
+        ax.set_title(f"LDBC SF{sf}", loc="left")
+        ax.set_xticks(readers)
+        ax.set_xticklabels([str(r) for r in readers], fontsize=6.5)
+        ax.set_xlabel("concurrent readers")
+        style_axes(ax)
+    axes[0][0].set_ylabel("mean query latency (s)")
+    series_legend(fig, [("duckpgq_index", "DuckPGQ index", COLOR["duckpgq_index"]),
+                        ("duckpgq_build", "DuckPGQ build", COLOR["duckpgq_build"])], ncol=2)
+    fig.suptitle("Readers under a writer committing 2000 operations every 200 ms: one source to 1024 destinations",
+                 x=0.01, ha="left", fontsize=9.5, color=INK)
+    fig.tight_layout(rect=(0, 0.08, 0.96, 0.92))
+    save(fig, filename)
+
+
+def throughput_figure(filename):
+    """Single-pair queries per second from 1 to 32 clients, index route against build-per-query route, one panel per
+    scale factor (W35, 29 Oct): the index's natural workload is many short queries from many clients."""
+    panels = []
+    for sf in SCALE_FACTORS:
+        points = {}
+        for path in newest_files(RESULTS / f"sf{sf}", "throughput_sf*_threads32_*.csv"):
+            for r in csv.DictReader(open(path)):
+                if r["queries_per_s"]:
+                    points[(r["route"], int(r["clients"]))] = float(r["queries_per_s"])
+        if points:
+            panels.append((sf, points))
+    if not panels:
+        print("no throughput results yet, skipping", filename)
+        return
+    fig, axes = plt.subplots(1, len(panels), figsize=(2.4 * len(panels) + 0.4, 2.5), sharey=True, squeeze=False)
+    entries = [("index", "DuckPGQ index", COLOR["duckpgq_index"]), ("build", "DuckPGQ build", COLOR["duckpgq_build"])]
+    for ax, (sf, points) in zip(axes[0], panels):
+        clients = sorted({c for _, c in points})
+        ax.set_xscale("log", base=2)
+        ax.set_yscale("log")
+        for route, name, color in entries:
+            xs = [c for c in clients if (route, c) in points]
+            ys = [points[(route, c)] for c in xs]
+            linewidth, alpha, zorder = emphasis("duckpgq_" + route)
+            plot_series(ax, xs, ys, [], color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+            for x, y in zip(xs[-1:], ys[-1:]):
+                ax.annotate(f"{y:.0f}/s", (x, y), xytext=(4, 0), textcoords="offset points", fontsize=6.5, color=color,
+                            va="center")
+        ax.set_title(f"LDBC SF{sf}", loc="left")
+        ax.set_xticks(clients)
+        ax.set_xticklabels([str(c) for c in clients], fontsize=6.5)
+        ax.set_xlabel("clients")
+        style_axes(ax)
+    axes[0][0].set_ylabel("single-pair queries per second")
+    series_legend(fig, [("duckpgq_index", "DuckPGQ index", COLOR["duckpgq_index"]),
+                        ("duckpgq_build", "DuckPGQ build", COLOR["duckpgq_build"])], ncol=2)
+    fig.suptitle("Throughput of single-pair queries: concurrent clients, 32 threads shared", x=0.01, ha="left",
+                 fontsize=9.5, color=INK)
+    fig.tight_layout(rect=(0, 0.08, 0.96, 0.92))
+    save(fig, filename)
+
+
 TABLES = REPO / "paper" / "tables"
 NAME_OF = {key: name for key, name, _ in SYSTEMS}
 NAME_OF["neo4j_gds"] = "Neo4j GDS (4 thr.)"
@@ -919,10 +1089,13 @@ if __name__ == "__main__":
     throughput_figure("throughput")
     first_query_figure("first_query")
     updates_figure("updates")
+    graphalytics_figure("graphalytics")
+    concurrent_figure("concurrent")
+    throughput_figure("throughput")
     sweep_table("random_pairs", "random_pairs",
                 r"Shortest-path lengths for $n$ random pairs per query, median of three runs, 32 threads, 600\,s timeout; "
                 r"rows marked conn.\ split the pairs over 32 client connections.", "tab:random-pairs", "system / pairs")
     sweep_table("multi_source", "sources_all",
-                r"Distances from $k$ sources to every reachable person, median of three runs; n/r: not run above 500M pairs. The one sampled source at SF300 has no outgoing edge.",
+                r"Distances from $k$ sources to every reachable person, median of three runs; n/r: not run above 500M pairs.",
                 "tab:sources-all", "system / sources")
     ldbc_table("ldbc_queries")

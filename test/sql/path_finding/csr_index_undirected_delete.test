@@ -1,0 +1,47 @@
+# name: test/sql/path_finding/csr_index_undirected_delete.test
+# description: deleting an edge from an undirected CSR index removes both traversal directions (29 Oct: only the stored direction was suppressed)
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+CREATE TABLE v AS SELECT range AS id FROM range(1000);
+
+# A ring with chords, stored in one direction; the undirected index adds the mirrored edges
+statement ok
+CREATE TABLE e AS SELECT id AS src, (id + 1) % 1000 AS dst FROM v UNION ALL SELECT id, (id + 37) % 1000 FROM v;
+
+statement ok
+CREATE INDEX und ON e USING CSR (src, dst) WITH (undirected = true);
+
+query II
+SELECT (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') FROM (SELECT 6::BIGINT AS src, 5::BIGINT AS dst)),
+       (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') FROM (SELECT 5::BIGINT AS src, 6::BIGINT AS dst));
+----
+1	1
+
+statement ok
+DELETE FROM e WHERE src = 5 AND dst = 6;
+
+# Both directions now go around: 5 -> 4 -> ... or via the chords; the two distances are equal and larger than 1
+query II
+SELECT (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') FROM (SELECT 6::BIGINT AS src, 5::BIGINT AS dst)),
+       (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') FROM (SELECT 5::BIGINT AS src, 6::BIGINT AS dst));
+----
+3	3
+
+# The same after a fold (the epoch is rebuilt without the row)
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0.0000001;
+
+statement ok
+INSERT INTO e VALUES (999, 500);
+
+query II
+SELECT (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') FROM (SELECT 6::BIGINT AS src, 5::BIGINT AS dst)),
+       (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') FROM (SELECT 5::BIGINT AS src, 6::BIGINT AS dst));
+----
+3	3

@@ -517,13 +517,22 @@ bool IterativeLengthState::AdvancePhase() {
 		return true;
 	}
 	MarkUnreachable();
-	Clear();
-	if (StartNextWave()) {
+	if (HasNextWave()) {
+		Clear();
+		StartNextWave();
 		BeginIteration();
 		PrepareLevel(active);
 		return true;
 	}
+	// The last wave leaves its bits behind: whoever attaches this working set next zeroes it (BFSState::AttachWorkingSet)
+	if (working_set) {
+		working_set->dirty = true;
+	}
 	return false;
+}
+
+bool IterativeLengthState::HasNextWave() {
+	return started_searches < pairs->size();
 }
 
 void IterativeLengthState::DetectReached() {

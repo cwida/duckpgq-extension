@@ -4,7 +4,7 @@
 # machine was roughly 3.5 days, dominated by the baselines at SF300 (10 minute timeouts) and the
 # FalkorDB/Neo4j update workloads (about 30 minutes each).
 #
-# Subsets:  ./run_all.sh fixed | sweep | ldbc | client | native | microbench | updates | all   (default all)
+# Subsets:  ./run_all.sh fixed | sweep | graphalytics | ldbc | client | native | microbench | throughput | updates | all   (default all)
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 cd "${REPO_ROOT}"
@@ -25,6 +25,25 @@ if [ "$what" = all ] || [ "$what" = sweep ]; then
   for sf in ${SCALE_FACTORS}; do
     step "sweep_pairs_sf${sf}" ${HARNESS} sweep-pairs --scale-factor "$sf" "${COMMON[@]}" --notes "W27 sweep SF${sf} ${NOTE}"
   done
+fi
+
+if [ "$what" = all ] || [ "$what" = graphalytics ]; then
+  # W30: three Graphalytics graphs next to LDBC. cit-Patents (3.8M vertices, 16.5M edges, directed, long tail of BFS
+  # levels) is small enough for every baseline; graph500-24 (8.9M, 260M, heavy hubs) and datagen-8_4-fb (3.8M, 269M,
+  # dense LDBC family) run DuckPGQ and Kuzu only. Pairs and sources are sampled from vertices with edges; the Cypher
+  # systems run without the ..30 hop bound and Kuzu with var_length_extend_max_depth raised.
+  step "fixed_costs_cit_patents" ${HARNESS} fixed-costs --dataset cit-Patents --threads "${THREADS}" --repeats "${REPEATS}" --notes "fixed costs cit-Patents ${NOTE}"
+  step "sweep_pairs_cit_patents" ${HARNESS} sweep-pairs --dataset cit-Patents "${COMMON[@]}" --notes "W30 sweep cit-Patents ${NOTE}"
+  step "sweep_pairs_cit_patents_client${CLIENT_THREADS}" ${HARNESS} sweep-pairs --dataset cit-Patents "${COMMON[@]}" \
+    --client-threads "${CLIENT_THREADS}" --systems memgraph falkordb kuzu --notes "W30 cit-Patents client threads ${CLIENT_THREADS} ${NOTE}"
+  for ds in graph500-24 datagen-8_4-fb; do
+    name="${ds//-/_}"
+    step "fixed_costs_${name}" ${HARNESS} fixed-costs --dataset "$ds" --threads "${THREADS}" --repeats "${REPEATS}" --systems kuzu --notes "fixed costs ${ds} ${NOTE}"
+    step "sweep_pairs_${name}" ${HARNESS} sweep-pairs --dataset "$ds" "${COMMON[@]}" --systems duckpgq_build duckpgq_index kuzu --notes "W30 sweep ${ds} ${NOTE}"
+  done
+  # The batch scheduler on a graph whose multi-source working set (192 B per vertex, 1.7 GB per wave) exceeds the
+  # 512 MiB budget: the memory-bound regime of the adaptive scheduler, index route
+  step "microbench_scheduling_graph500_24" ${HARNESS} microbench --dataset graph500-24 "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes "W31 scheduling graph500-24 ${NOTE}"
 fi
 
 if [ "$what" = all ] || [ "$what" = ldbc ]; then
@@ -69,6 +88,14 @@ if [ "$what" = all ] || [ "$what" = microbench ]; then
   step "microbench_scheduling_sf300" ${HARNESS} microbench --scale-factor 300 "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes "W31 scheduling SF300 ${NOTE}"
 fi
 
+if [ "$what" = all ] || [ "$what" = throughput ]; then
+  # W35 (29 Oct): single-pair queries per second from 1 to 32 clients, index route against build-per-query route;
+  # the index's natural workload (many short queries from many clients)
+  for sf in ${SCALE_FACTORS}; do
+    step "throughput_sf${sf}" ${HARNESS} throughput --scale-factor "$sf" --threads "${THREADS}" --clients 1 2 4 8 16 32 --duration-s 20 --notes "W35 throughput SF${sf} ${NOTE}"
+  done
+fi
+
 if [ "$what" = all ] || [ "$what" = updates ]; then
   # W16: a stream of 190 commits of 2000 knows insert/delete operations, one query per commit.
   UPD=(--scale-factor 10 --threads "${THREADS}" --batch-size 2000 --batches 190)
@@ -81,6 +108,12 @@ if [ "$what" = all ] || [ "$what" = updates ]; then
   done
   # The unpaced writer: commits as fast as it can while 4 readers query
   step "concurrent_sf10_r4_unpaced" ${HARNESS} update-concurrent "${UPD[@]}" --readers 4 --writer-pause-ms 0 --notes "W16 concurrent unpaced ${NOTE}"
+  # Where the index matters (29 Oct): the same concurrent readers at SF100 and SF300, where building the graph inside
+  # the query costs 128 ms and 264 ms instead of SF10's 22 ms (the SF300 log is staged from the generator's batches)
+  for readers in 1 4 16; do
+    step "concurrent_sf100_r${readers}" ${HARNESS} update-concurrent --scale-factor 100 --threads "${THREADS}" --batch-size 2000 --batches 100 --readers "$readers" --writer-pause-ms 200 --notes "W16 concurrent SF100 ${NOTE}"
+    step "concurrent_sf300_r${readers}" ${HARNESS} update-concurrent --scale-factor 300 --threads "${THREADS}" --batch-size 2000 --batches 60 --readers "$readers" --writer-pause-ms 200 --notes "W16 concurrent SF300 ${NOTE}"
+  done
   step "update_kuzu_sf10_sssp"      ${HARNESS} update-kuzu     "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"
   step "update_memgraph_sf10_sssp"  ${HARNESS} update-memgraph "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"
   step "update_falkordb_sf10_sssp"  ${HARNESS} update-falkordb "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"

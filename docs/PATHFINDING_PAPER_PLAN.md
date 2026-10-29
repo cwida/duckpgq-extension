@@ -158,9 +158,10 @@ Effort in person-days (pd). P1 = must for Round 1, P2 = strongly desired, P3 = i
 | W24 | Teseo/Sortledton or GraphBLAS baseline (D4) | eval | 4 | P3 | W16 | open |
 | W25 | WCC table function reads the index snapshot (generality argument, build vs index for a whole-graph algorithm) | op+index | 2 | P3 | W12 | open |
 | W33 | Lane-width microbenchmark (decided 27 Oct). MS-BFS lanes per wave decide the bytes per vertex of the working set (3 x LANE_LIMIT / 8: 192 B at 512, 96 B at 256, 48 B at 128) against the number of waves per batch. Builds with `-DDUCKPGQ_LANE_LIMIT=128|256|512|1024` kept as separate extension files (`data/ldbc-pathfinding/builds/`), the harness picks one through `DUCKPGQ_EXTENSION`; measured with `microbench` at SF10 and SF100 on random pairs 16384 / 65536 and sources x all 1024, both routes, under the default, grouped-always and per-batch schedules. One row of the microbenchmark table and the memory-boundness argument of the paper (W31). Repro: `run_all.sh lanes` | eval | 1 | P1 | W31 | first probe (256 lanes) running 27 Oct |
+| W35 | Where the index matters (author's list, 29 Oct). Throughput of single-pair queries from 1 to 32 clients, index against build-per-query (`throughput` subcommand, driver mode `--mode throughput`, 20 s per point, SF10/100/300); concurrent readers at SF100 and SF300 (1, 4, 16 readers); Section 6 opens with the one-thread result. Fixes found by profiling: parallel and lazy working-set zeroing, tombstones resolved by edge keys, undirected delete suppression | eval, index | 1 | P1 | W16 | in the rc6 matrix; figures `throughput`, `concurrent` |
 | W34 | Locality-aware dense ids at CREATE INDEX (retry, decided 27 Oct). Tried before on the old CSR without gain because LDBC knows is close to random at the scale of a cache line; retry on the radix-partitioned CSR, where a partition's destination slice of `next` is already local and the scattered reads are `visit[src]`. Variant: assign dense ids in BFS order from the highest-degree vertex (or degree-sorted), behind an index option (`WITH (ordering = 'bfs')`), dictionary translates both ways so nothing else changes. Measure with perf (cache misses per edge) and the microbench at SF100; expect a modest effect, report it either way as the honest limit of reordering on small-world graphs | index | 1-2 | P2 | W33 | open |
 | W31 | Batch scheduling rule (found by the 26 Oct microbenchmarks). Grouped scheduling derives one group of 32 workers, so 65536 pairs run their 32 batches one after another; grouping off or 4 workers per batch is 0.41-0.56x the time at SF10. Study: a two-dimensional sweep groups x workers per batch over the divisors of 32 at 65536 pairs on SF10, SF100, SF300, both routes; derive workers per batch = threads / batches (floored at 1) bounded by a working-set budget (192 B per vertex per group); validate the rule lands at the optimum per scale factor. Paper: a microbenchmark figure (time vs group count, one line per SF, memory column), framed as intra- vs inter-batch parallelism and tied to the baselines needing 32 client threads. Changes the headline numbers, so before the freeze | op | 1 | P1 | W19 | open, next after the SF10 microbenchmark |
-| W30 | Graph structure microbenchmark (decided 26 Oct). LDBC knows is the operator's friendliest graph (small world, diameter about 6, mild skew). One figure on LDBC Graphalytics datasets that differ where it matters: graph500-24 (hubs; 8.9M V, 260M E), cit-Patents (long level tail; 3.8M V, 16.5M E), datagen-8_4-fb (same family, other density; 3.8M V, 269M E), optionally dota-league or wiki-Talk. Shapes 65536 random pairs and 1024 sources x all, both DuckPGQ routes plus the fastest-loading baseline (Kuzu or Ladybug), reporting levels reached. Harness has download, materialisation and BFS reference validation (`prepare --graphalytics-datasets`). About a day of machine time; measured on the frozen build. Writing: one paragraph naming where the operator degrades and why | eval | 2 | P1 | W19, W31 | open, scheduled after the microbenchmarks and the freeze |
+| W30 | Graph structure microbenchmark (decided 26 Oct). LDBC knows is the operator's friendliest graph (small world, diameter about 6, mild skew). One figure on LDBC Graphalytics datasets that differ where it matters: graph500-24 (hubs; 8.9M V, 260M E), cit-Patents (long level tail; 3.8M V, 16.5M E), datagen-8_4-fb (same family, other density; 3.8M V, 269M E), optionally dota-league or wiki-Talk. Shapes 65536 random pairs and 1024 sources x all, both DuckPGQ routes plus the fastest-loading baseline (Kuzu or Ladybug), reporting levels reached. Harness has download, materialisation and BFS reference validation (`prepare --graphalytics-datasets`). About a day of machine time; measured on the frozen build. Writing: one paragraph naming where the operator degrades and why | eval | 2 | P1 | W19, W31 | in the rc6 matrix (29 Oct): cit-Patents on every system, graph500-24 and datagen-8_4-fb on DuckPGQ and Kuzu, scheduling microbenchmark on graph500-24; smoke findings in the 29 Oct entries |
 | W29 | Reach mode: sources x all vertices without a pair list (done 23 Oct). `reachoperator(src, src, ...)` has the argument forms of `iterativelengthoperator` and yields one row per vertex each source reaches, a list [dst, len] (a struct crashed DuckDB's statistics pass after the unused-columns optimizer pulled the field extraction up). One group per distinct source, no destination sets, the search runs to exhaustion or the pattern's bound; the parallel source emits slices of each group's distance array (65536 vertices per slice), one output chunk per input row with constant pass-through columns, and frees a group's arrays once emitted; a source absent from the graph reaches only itself. SF10, 32 threads, 1024 sources x all persons: build 0.43 s / index 0.22 s (pair mode 4.4 / 4.1 s, Kuzu 4.0 s); 1 source: index 3 ms (Kuzu 7 ms). Open: MATCH planning of an unbound or weakly bound destination onto reach mode (today the harness calls the marker); the cost rule between pair and reach mode belongs to W12 | op | 3 | P1 | W27 | done 26 Oct: MATCH plans an unbound destination onto reach mode (`9272fcb4`); a filtered destination keeps the pair mode by default (option `experimental_path_finding_operator_reach_filtered`), see the 26 Oct entry; cost rule proper is W12 |
 | W28 | Reverse direction in the CSR index for directed graphs (decided to look into 23 Oct). Nx1 shapes and the bidirectional kernel need reverse partitions; today only the legacy CSR route builds them, symmetric edge sets reuse the forward partitions (`7fdfe65e`). Plan: one index holding both directions (`WITH (reverse = true)` or similar, one maintenance path, lengths-only reverse side ~5 B/edge), the operator resolving both from one cache key and choosing forward / reverse / bidirectional at runtime from the pair statistics; then bidirectional search over the index for the random-pair shape at scale (SF300: 0.8-1 ms per pair forward MS-BFS vs Neo4j's bidirectional shortestPath). Effort 1-2 days each step | op/index | 3 | P1 | W27 | steps 1-3 done 26 Oct (`WITH (reverse = true)`, storage format 2, reverse companions and suppression, reverse orientation over the index: SF10 directed 2000 sources x 1 destination 5 ms reverse vs 91 ms forward); step 4 (bidirectional over the index) open |
 | W27 | Multi-source and all-pairs comparison (decided 22 Oct). Present query shapes by cardinality (1x1 point lookup, 1xN sssp, Nx1, NxM from a predicate on the source table or a join) rather than by pattern name; sweep the pair count 1, 16, 128, 1024, 2048, 16384, 65536 and all pairs on every system with the same pair tables, at SF10, SF100 and SF300 (decided 22 Oct: no reason to stay at small scale factors; DuckPGQ handled 65536 pairs at SF300 in the 21 Oct pair-count axis, build 74 s / index 52 s at 32 threads). Give every baseline a per-query timeout (e.g. 10 minutes) and report a timed-out point as such rather than skipping the point, since the per-pair systems grow linearly (at SF10: Neo4j ~0.7 ms, Kuzu ~6 ms, FalkorDB ~8 ms, Memgraph ~39 ms per pair); add a predicate-driven multi-source query (sources selected by an attribute, as in LDBC BI 19/20) so the many-pair case is not a synthetic pair table; run the systems' set-oriented procedures where they exist (Neo4j GDS single-source and all-pairs, Memgraph MAGE) so no baseline is shown on its slow path, and note that those procedures do not compose with a Cypher predicate in the same query; include all-pairs shortest path as the extreme of the sweep (our source-grouped kernel per source vs their per-pair searches). The absence of a batched, set-oriented path-finding operator is a design limitation of the graph databases to be stated as such, with the sweep as evidence | eval | 4 | P1 | W16, W17 | harness done 22 Oct (`sweep-pairs`, `sweep-pairs-table`): random pairs 1..65536 and k sources x all persons (k = 1, 16, 128, 1024; V^2 all pairs is not materialisable), 600 s timeout per query with server-side cancellation, larger counts after an exceeded one recorded as inferred, cross-system agreement check. SF10 run in progress 22 Oct; SF100 and SF300 next |
@@ -929,3 +930,94 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   faster) vs 509 ms; one pair on the index: per-source kernel 4 / 9 ms vs lanes 13 / 45 ms (SF10 / SF100); paths
   vs lengths at 2048 random pairs: 3.6x / 4.5x slower (index), 3.9x / 5.3x (build). Tag `eval-freeze-rc5`, matrix
   restarted.
+- 29 Oct (evening): W30 brought forward (author's request before the rc5 matrix restarted; rc5 stopped after its
+  three fixed-costs steps). Three Graphalytics graphs join the matrix: cit-Patents (3.77M vertices, 16.5M edges,
+  directed, 55% of the vertices have an outgoing edge, 86% an incoming one), graph500-24 (8.87M vertices, 521M
+  directed edges after symmetrising the undirected generator output, hubs) and datagen-8_4-fb (3.81M vertices, 539M
+  directed edges, dense LDBC family); download and DuckDB materialisation took four minutes in total
+  (`prepare --graphalytics-datasets`, `repro/prepare.sh`). Harness: a benchmark target is an LDBC scale factor or a
+  Graphalytics dataset (`--dataset` on `sweep-pairs`, `microbench`, `fixed-costs`; `sf_name`/`db_path` dispatch,
+  the Graphalytics databases carry the LDBC table names so every driver and baseline loader runs unchanged, an empty
+  update log stands in for the LDBC one). Sampling (author's rule, all targets): sources are drawn from the vertices
+  with an outgoing edge and destinations from those with an incoming edge, deterministic positions in the candidate
+  lists, so the LDBC random-pair tables change too (15% of SF10 persons have no outgoing knows edge); the cached pair
+  exports and Kuzu snapshots were removed and rebuild on first use. Hop bounds: LDBC keeps `..30`; on the
+  Graphalytics graphs the Cypher systems run unbounded and Kuzu's cap (a binder error above 30) is lifted per
+  connection with `CALL var_length_extend_max_depth=1000` (`kuzu_connect`). `sweep-pairs` prints the graph's
+  sampling populations and the reachable fraction per point; the table printer adds a reachable-pairs row and
+  vertices reached per source. Matrix subset `graphalytics` in `run_all.sh`: fixed costs and the full sweep plus the
+  32-client pass on cit-Patents for every system (16.5M edges, every baseline loads in minutes: Kuzu 2 s, Neo4j 282 s),
+  DuckPGQ and Kuzu on the two large graphs, the scheduling microbenchmark on graph500-24 (index route; one wave's
+  working set, 192 B x 8.87M vertices = 1.7 GB, is three times the 512 MiB budget, so the adaptive scheduler starts
+  in its memory-bound regime). Figure `graphalytics` (plot script, two shapes x three graphs) and the archive
+  directories `repro/results/graphalytics_*`.
+  Smoke on cit-Patents (1 repeat, 300 s timeout): DuckPGQ index and Kuzu agree on all 5 points; 1024 random pairs
+  index 0.60 s vs Kuzu 40.1 s (67x slower than the index); 16 sources x all: index 46 ms, Kuzu 76 ms. Two findings
+  for the writing: (1) even with the edge-aware sample 0.0% of the random pairs are reachable on cit-Patents (a
+  citation DAG: a source reaches about 2200 vertices, 0.06% of the graph; LDBC random pairs are 34-38% reachable at
+  every SF), so the random-pairs shape there measures exhaustive searches without early termination; the sources x
+  all shape does reach the deep levels (16 sources: deepest level 19, median 7, p99 16). (2) The lane kernel has a
+  fixed cost per batch proportional to the vertex count: 128 unreachable pairs take 0.29 s on the index (strategy
+  `grouped_working_sets_mb=346`, user 0.35-0.5 s and sys 0.2 s for a 0.29 s wall, so a serial allocation and first
+  touch of the working set, not memory bandwidth; the same with sparse levels or the frontier bitmap off), Neo4j's
+  bidirectional shortestPath answers the same 128 pairs in 24 ms; with one thread the 128 pairs take the same
+  0.33 s, and 1024 pairs 0.60 s (one batch, user 1.8 s). Neo4j's
+  sources x all form (one shortestPath per destination over 3.77M vertices) takes 30 s per source and times out at
+  16 sources. Candidate operator fix after the freeze: pool or lazily touch the per-batch working sets (W31 follow-up).
+- 29 Oct (late evening): the author's second list before the relaunch: measure where the index matters, two code
+  changes, and two lane-wave points. Done in the tree:
+  (1) Lane waves through the worker-group controller (author's point 1): `AppendGroupedKernelEvents` builds the
+  controller for a list of lane-kernel states, the MS-BFS batches of a pair list or the waves of a source-grouped
+  query, so the window bounds live working sets and the workers per group the tasks (strategy keys `wave_*`;
+  `grouped_batches=false` keeps one event per wave as the microbenchmark baseline). BI19 index: SF10 15 -> 17 ms
+  (noise), SF300 1.74 s before, see (3) for after. The serial destination check (point 2) is 0.08% of the BI19 SF300
+  samples, about 23 ms per run; left as is.
+  (2) Single pair at SF300 over the index: the harness's 9-10 ms is the search, not the setup. In one process the
+  time per pair ranges 3-17 ms by pair (a 3-4 hop frontier expansion on a 1.19M-vertex, 55M-edge graph; profile:
+  Relax 25%, ExplorePartition 21%, ExpandVertex 18%, frontier emplace_back 16%, memset 2%, Clear 2%), so reusing the
+  per-source arrays would gain a few percent; Neo4j's 2 ms comes from its bidirectional search. An *empty* search (a
+  source without outgoing edges: no dictionary entry, distinct sources 0, so the MS-BFS lane kernel ran) cost 66 ms:
+  a serial memset of the 229 MB working set at allocation and again in `Clear()` at the end of the batch; on
+  cit-Patents (724 MB) that was the 0.29 s fixed cost of 128 pairs. Fixed: `BFSWorkingSet::Zero` zeroes in parallel
+  (one thread per 8 MB), the last wave of a batch marks the set dirty instead of clearing it and the next batch that
+  attaches it zeroes it (`HasNextWave`), `FillSeen` fills the seen mask in parallel. Index route after: SF300 empty
+  pair 66 -> 6 ms (11x faster), 65536 random pairs 9.2 s (rc1 10.1 s), BI19 1.74 -> 1.26-1.30 s (1.35x faster);
+  cit-Patents 128 pairs 0.29 -> 0.056 s (5x faster), 1024 pairs 0.60 -> 0.115 s; SF10 65536 pairs 0.33-0.43 s.
+  (3) One snapshot per commit (author's point 2): the profile of 16 readers at SF10 shows BuildSnapshot at 1.4%
+  and the DuckDB scheduler and mutexes at about 45% (short queries, CPU contention); at SF300 the duplicated work is
+  elsewhere: `ResolveTombstonePositions` scanned all 55M epoch row ids after every commit with deletes, outside the
+  lock, so every reader repeated it: 46% of all CPU with 16 readers. Tombstones now carry the deleted edge's keys
+  (TryDelete evaluates the key expressions as Append does) and resolve by lookup: dictionary ids, the destination's
+  partition, the source's sparse row, the row id among its edges; entries loaded from storage keep the scan. SF300,
+  16 readers, 20 commits, index route: mean query 166 -> 69 ms (2.4x faster), p99 359 -> 122 ms, commit 178 -> 101 ms;
+  tombstone and snapshot work 0.19% of the CPU. update-run SF10 (30 batches, 4 configs) agrees on every step.
+  (4) Found on the way: an undirected index suppressed only one direction of a deleted epoch edge (the old scan kept
+  one position per row id; the mirrored edge stayed traversable). Fixed with `mirror_tombstone_positions`; new test
+  `csr_index_undirected_delete.test`.
+  (5) Measurements added to the matrix: `throughput` subcommand and `run_all.sh throughput` (driver mode
+  `--mode throughput`: C clients run single-pair queries round robin over the 1024 random pairs for 20 s, index
+  against build, clients 1 2 4 8 16 32, SF10/100/300; W35); SF10 smoke with 4 clients: index 1594 q/s at 2.4 ms
+  median vs build 169 q/s at 23 ms (9.4x more queries per second). Concurrent readers at SF100 (100 commits) and
+  SF300 (60 commits) with 1, 4 and 16 readers (the SF300 update log is staged from the generator's batches). Figures
+  `concurrent` (readers vs latency per SF) and `throughput` (clients vs queries per second per SF) in the plot script.
+  Section 6 should open with the one-thread result (index 6x faster under updates), the author's text.
+- 29 Oct (night): simplification of the kernel choice (author's trace of both routes; "section 3 is hard to read
+  because of the different modes and schedulers"). Lengths now always group by source: a few distinct sources (the
+  few-sources limit, 16) run the per-source frontier kernel, more run as MS-BFS waves of one lane per source with
+  its destination list, scheduled by the worker-group controller like any batch list. The ratio threshold
+  (`source_group_ratio`: pairs >= 4 x distinct sources) is gone; `source_group_ratio <= 0` keeps the former
+  one-lane-per-pair batches as the microbenchmark baseline (`no_source_grouping`; the push-pull and bidirectional
+  variants still use them). The group settings are read once per query (`SourceGroupedIterativeLengthState::Settings`,
+  65536 groups used to cost about 300,000 setting lookups). Measured first (operator phase timings): the serial
+  grouping pass is 6 ms for 65536 random pairs at SF10 and 27-32 ms for BI19's 2.56M pairs at SF300, so it stays
+  serial; the result scatter of the grouped path, however, ran on one thread (`MaxThreads` 1 for every mode but
+  reach): 406 ms of BI19's 1.3 s were 2.56M distance-map lookups. The pair modes' result scan is now parallel (the
+  source threads claim output chunks with `fetch_add`). A/B on the index, 65536 random pairs, grouped waves vs the
+  former lanes per pair: SF10 0.40-0.46 vs 0.44-0.46 s (neutral), SF100 3.02 vs 3.28 s (1.09x faster), SF300 9.2 vs
+  9.65 s (1.05x faster); build route SF10 0.55 vs 0.56-0.59 s. With the parallel scatter: BI19 SF300 1.3 -> 0.92-1.07 s
+  (1.3x faster), 65536 pairs SF10 0.44-0.46 s, SF300 9.15-9.29 s. Section 3 microbenchmark at SF10 (1 repeat, index):
+  2048 random pairs 57 ms grouped waves vs 115 ms lanes per pair (2x faster) vs 386 ms per-source searches; 20 x 200
+  all pairs 16 ms (waves) vs 62 ms (lanes per pair) vs 13 ms (per-source); every configuration agrees. 97 tests pass;
+  update-run SF10 (20 batches, 4 configs) agrees on every step. Scheduler switches act on the waves (`wave_*` keys).
+  The matrix is NOT restarted: the author asked to hold the sweep until told, clean up, and use rc1's results
+  meanwhile. Tag `eval-freeze-rc7` marks the state.

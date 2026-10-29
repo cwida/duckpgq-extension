@@ -42,9 +42,24 @@ SELECT s LIKE '%scheduling=source_grouped%' FROM (SELECT duckpgq_path_finding_st
 ----
 true
 
-# Few-sources rule off: 6 pairs over 2 sources is below the default ratio of 4, so MS-BFS lanes run instead
+# Few-sources rule off: lengths still group by source (29 Oct), now as MS-BFS waves of one lane per source
 statement ok
 SET experimental_path_finding_operator_few_sources_limit = 0;
+
+query II
+SELECT count(len), sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 7::BIGINT, 6::BIGINT, 'graph:abl') AS len FROM pairs, pe);
+----
+4	8
+
+query I
+SELECT s LIKE '%scheduling=source_grouped%' AND s LIKE '%source_group_kernel=lane_waves%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Source grouping off (ratio 0): the former lanes-per-pair batches, kept as the microbenchmark baseline
+statement ok
+SET experimental_path_finding_operator_source_group_ratio = 0;
 
 query II
 SELECT count(len), sum(len) FROM (
@@ -56,6 +71,9 @@ query I
 SELECT s LIKE '%scheduling=source_grouped%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
 ----
 false
+
+statement ok
+SET experimental_path_finding_operator_source_group_ratio = 4;
 
 statement ok
 RESET experimental_path_finding_operator_few_sources_limit;

@@ -404,8 +404,31 @@ def read_neo4j_benchmark_metadata(dataset):
     return {f"dataset_metadata_{key}": value for key, value in raw_metadata.items()}
 
 
+def is_graphalytics_target(target):
+    """A benchmark target is an LDBC scale factor ("10") or a Graphalytics dataset name ("cit-Patents"); the
+    Graphalytics databases carry the LDBC table names (person, person_knows_person), so every driver runs unchanged"""
+    return graphalytics_name(str(target)) in GRAPHALYTICS_DATASETS
+
+
 def sf_name(scale_factor):
+    if is_graphalytics_target(scale_factor):
+        return graphalytics_label(scale_factor)
     return f"sf{str(scale_factor).replace('.', '_')}"
+
+
+def target_description(target):
+    return f"Graphalytics {graphalytics_name(str(target))}" if is_graphalytics_target(target) else f"SF{target}"
+
+
+def resolve_target(args):
+    dataset = getattr(args, "dataset", None)
+    if dataset:
+        if not is_graphalytics_target(dataset):
+            raise SystemExit(f"Unsupported Graphalytics dataset: {dataset}. Known: {', '.join(GRAPHALYTICS_DATASETS)}")
+        return graphalytics_name(dataset)
+    if not getattr(args, "scale_factor", None):
+        raise SystemExit("Pass --scale-factor <LDBC SF> or --dataset <Graphalytics dataset>")
+    return args.scale_factor
 
 
 def graphalytics_name(dataset):
@@ -444,6 +467,8 @@ def source_dir(scale_factor):
 
 
 def db_path(scale_factor):
+    if is_graphalytics_target(scale_factor):
+        return graphalytics_db_path(scale_factor)
     return DATA_ROOT / "db" / f"ldbc_{sf_name(scale_factor)}.duckdb"
 
 
@@ -1093,50 +1118,59 @@ def generated_pair_shape(query_pattern, pair_shape):
     raise ValueError(f"Unsupported query pattern: {query_pattern}")
 
 
-def pair_table_sql_for_shape(pair_count, pair_shape, source_count=None, target_count=None):
-    if pair_shape == "random":
-        return f"""
-CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape, source_count, target_count)} AS
-WITH rows AS (
-    SELECT range::BIGINT AS rn
-    FROM range({pair_count})
+PAIR_CANDIDATES_SQL = """
+srcs AS (
+    SELECT p.rowid::BIGINT AS rid, row_number() OVER (ORDER BY p.rowid) - 1 AS pos
+    FROM person p WHERE EXISTS (SELECT 1 FROM person_knows_person k WHERE k.person1id = p.id)
+),
+dsts AS (
+    SELECT p.rowid::BIGINT AS rid, row_number() OVER (ORDER BY p.rowid) - 1 AS pos
+    FROM person p WHERE EXISTS (SELECT 1 FROM person_knows_person k WHERE k.person2id = p.id)
 ),
 n AS (
-    SELECT count(*)::BIGINT AS vertex_count
-    FROM person
-)
-SELECT (rn % vertex_count)::BIGINT AS src,
-       ((rn * 104729 + 15485863) % vertex_count)::BIGINT AS dst
-FROM rows, n;
+    SELECT (SELECT count(*) FROM srcs)::BIGINT AS src_count, (SELECT count(*) FROM dsts)::BIGINT AS dst_count
+)"""
+
+
+def pair_table_sql_for_shape(pair_count, pair_shape, source_count=None, target_count=None):
+    """Deterministic samples as person row ids. Sources are drawn from the vertices with an outgoing edge and
+    destinations from those with an incoming edge (since 29 Oct 2026: Graphalytics generators leave many vertices
+    without edges and 15% of LDBC persons have no outgoing knows edge; uniform samples measured empty searches).
+    The i-th sample is the candidate at position i % count (sources) or (i * 104729 + 15485863) % count
+    (destinations), so the tables are reproducible from the database alone."""
+    name = pair_table_name(pair_count, pair_shape, source_count, target_count)
+    if pair_shape == "random":
+        return f"""
+CREATE OR REPLACE TABLE {name} AS
+WITH rows AS (SELECT range::BIGINT AS rn FROM range({pair_count})),
+{PAIR_CANDIDATES_SQL}
+SELECT s.rid AS src, d.rid AS dst
+FROM rows, n
+JOIN srcs s ON s.pos = rn % src_count
+JOIN dsts d ON d.pos = (rn * 104729 + 15485863) % dst_count
+ORDER BY rn;
 """
     if pair_shape == "same_dst":
         return f"""
-CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape, source_count, target_count)} AS
-WITH rows AS (
-    SELECT range::BIGINT AS rn
-    FROM range({pair_count})
-),
-n AS (
-    SELECT count(*)::BIGINT AS vertex_count
-    FROM person
-)
-SELECT (rn % vertex_count)::BIGINT AS src,
-       (15485863 % vertex_count)::BIGINT AS dst
-FROM rows, n;
+CREATE OR REPLACE TABLE {name} AS
+WITH rows AS (SELECT range::BIGINT AS rn FROM range({pair_count})),
+{PAIR_CANDIDATES_SQL}
+SELECT s.rid AS src, d.rid AS dst
+FROM rows, n
+JOIN srcs s ON s.pos = rn % src_count
+JOIN dsts d ON d.pos = 15485863 % dst_count
+ORDER BY rn;
 """
     if pair_shape == "same_src":
         return f"""
-CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape, source_count, target_count)} AS
-WITH rows AS (
-    SELECT range::BIGINT AS rn
-    FROM range({pair_count})
-),
-n AS (
-    SELECT count(*)::BIGINT AS vertex_count
-    FROM person
-)
-SELECT 0::BIGINT AS src, ((rn * 104729 + 15485863) % vertex_count)::BIGINT AS dst
-FROM rows, n;
+CREATE OR REPLACE TABLE {name} AS
+WITH rows AS (SELECT range::BIGINT AS rn FROM range({pair_count})),
+{PAIR_CANDIDATES_SQL}
+SELECT s.rid AS src, d.rid AS dst
+FROM rows, n
+JOIN srcs s ON s.pos = 0
+JOIN dsts d ON d.pos = (rn * 104729 + 15485863) % dst_count
+ORDER BY rn;
 """
     if pair_shape == "all_pairs":
         if source_count is None:
@@ -1144,22 +1178,15 @@ FROM rows, n;
         if target_count is None:
             target_count = pair_count
         return f"""
-CREATE OR REPLACE TABLE {pair_table_name(pair_count, pair_shape, source_count, target_count)} AS
-WITH srcs AS (
-    SELECT range::BIGINT AS src_rn
-    FROM range({source_count})
-),
-dsts AS (
-    SELECT range::BIGINT AS dst_rn
-    FROM range({target_count})
-),
-n AS (
-    SELECT count(*)::BIGINT AS vertex_count
-    FROM person
-)
-SELECT (src_rn % vertex_count)::BIGINT AS src,
-       (dst_rn % vertex_count)::BIGINT AS dst
-FROM srcs, dsts, n;
+CREATE OR REPLACE TABLE {name} AS
+WITH src_rows AS (SELECT range::BIGINT AS src_rn FROM range({source_count})),
+dst_rows AS (SELECT range::BIGINT AS dst_rn FROM range({target_count})),
+{PAIR_CANDIDATES_SQL}
+SELECT s.rid AS src, d.rid AS dst
+FROM src_rows, dst_rows, n
+JOIN srcs s ON s.pos = src_rn % src_count
+JOIN dsts d ON d.pos = dst_rn % dst_count
+ORDER BY src_rn, dst_rn;
 """
     raise ValueError(f"Unsupported pair shape: {pair_shape}")
 
@@ -3394,6 +3421,10 @@ def ensure_update_log(scale_factor):
                        quiet=True)[0]
     if probe.strip().splitlines()[-1].strip() == "1":
         return
+    if is_graphalytics_target(scale_factor):
+        run_duckdb(BENCH_DUCKDB, database, f"CREATE TABLE {UPDATE_LOG_TABLE} (seq BIGINT, op VARCHAR, person1id BIGINT, "
+                                           f"person2id BIGINT, event_time TIMESTAMP);", quiet=True)
+        return
     # The generator writes the dynamic batches as <op>/dynamic/Person_knows_Person/batch_id=<date>/*.parquet
     dynamic = source_dir(scale_factor) / "graphs" / "parquet" / "bi" / "composite-merged-fk"
     inserts = dynamic / "inserts" / "dynamic" / "Person_knows_Person"
@@ -3780,12 +3811,105 @@ def run_update_concurrent(args):
     print(f"Wrote {output}")
 
 
+def throughput(args):
+    """Queries per second of single-pair queries from C concurrent clients, index route against build-per-query route
+    (W35, 29 Oct): the index's natural workload is many short queries from many clients. One driver process per
+    (route, clients): the clients run single-pair queries round robin over the random pair table for duration_s."""
+    sys.stdout.reconfigure(line_buffering=True)
+    scale_factor = resolve_target(args)
+    ensure_update_log(scale_factor)
+    pair_table = pair_table_name(args.pairs, "random")
+    ensure_pair_table(scale_factor, args.pairs, "random")
+    build_concurrent_driver()
+    WORK_ROOT.mkdir(parents=True, exist_ok=True)
+    work_db = WORK_ROOT / f"{sf_name(scale_factor)}_throughput.duckdb"
+    for stale in (work_db, Path(str(work_db) + ".wal")):
+        if stale.exists():
+            stale.unlink()
+    shutil.copyfile(db_path(scale_factor), work_db)
+    results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.time_ns()
+    path = results_dir / f"throughput_{sf_name(scale_factor)}_threads{args.threads}_{stamp}.csv"
+    writer = ResultWriter(path, ["route", "clients", "queries", "duration_s", "queries_per_s", "median_ms", "p99_ms",
+                                 "mean_ms", "errors", "scale_factor", "threads", "pairs", "benchmark_notes",
+                                 "repo_commit", "events_file"])
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
+    events_dir = results_dir / f"throughput_events_{stamp}"
+    events_dir.mkdir(exist_ok=True)
+    for route in args.routes:
+        for clients in args.clients:
+            events = events_dir / f"{route}_clients{clients}.csv"
+            cmd = [str(CONCURRENT_DRIVER_BINARY), "--database", str(work_db), "--extension", str(DUCKPGQ_EXTENSION),
+                   "--output", str(events), "--pair-table", pair_table, "--index-name", CSR_INDEX_NAME,
+                   "--threads", str(args.threads), "--readers", str(clients), "--mode", "throughput",
+                   "--duration-s", str(args.duration_s), "--no-build" if route == "index" else "--no-index"]
+            result = subprocess.run(cmd, cwd=REPO_ROOT, text=True, capture_output=True, timeout=args.timeout)
+            if result.returncode != 0:
+                sys.stdout.write(result.stdout)
+                sys.stderr.write(result.stderr)
+                raise SystemExit(f"throughput driver failed with exit code {result.returncode}")
+            rows = list(csv.DictReader(events.open()))
+            latencies = sorted(float(r["elapsed_s"]) for r in rows if r["kind"].startswith("query_"))
+            errors = sum(r["kind"] == "error" for r in rows)
+            # The clients stop at the deadline: the span is the deadline, not the last query's end
+            span = args.duration_s
+            summary = {"route": route, "clients": clients, "queries": len(latencies), "duration_s": f"{span:.1f}",
+                       "queries_per_s": f"{len(latencies) / span:.2f}" if latencies else "",
+                       "median_ms": f"{1000 * statistics.median(latencies):.3f}" if latencies else "",
+                       "p99_ms": f"{1000 * latencies[int(0.99 * (len(latencies) - 1))]:.3f}" if latencies else "",
+                       "mean_ms": f"{1000 * statistics.mean(latencies):.3f}" if latencies else "",
+                       "errors": errors, "scale_factor": scale_factor, "threads": args.threads, "pairs": args.pairs,
+                       "benchmark_notes": args.notes, "repo_commit": commit, "events_file": events.name}
+            writer.add(summary)
+            print(f"   {route:6s} clients={clients:<3} {summary['queries_per_s']:>9s} q/s  median {summary['median_ms']:>8s} ms"
+                  f"  p99 {summary['p99_ms']:>8s} ms  ({len(latencies)} queries, {errors} errors)")
+    work_db.unlink()
+    print(f"Wrote {path}")
+
+
+def throughput_table(args):
+    """Prints a throughput CSV as one table per route: clients x (queries per second, median latency)"""
+    rows = read_result_files_plain(args.files)
+    routes = []
+    for r in rows:
+        if r["route"] not in routes:
+            routes.append(r["route"])
+    clients = sorted({int(r["clients"]) for r in rows})
+    print(f"\n## single-pair throughput, SF{rows[0]['scale_factor']}, {rows[0]['threads']} threads, {rows[0]['duration_s']} s per point")
+    print("| route | " + " | ".join(f"{c} clients" for c in clients) + " |")
+    print("|---|" + "---|" * len(clients))
+    for route in routes:
+        cells = []
+        for c in clients:
+            point = [r for r in rows if r["route"] == route and int(r["clients"]) == c]
+            cells.append(f"{float(point[-1]['queries_per_s']):.0f} q/s, {float(point[-1]['median_ms']):.1f} ms" if point and point[-1]["queries_per_s"] else "")
+        print(f"| {route} | " + " | ".join(cells) + " |")
+
+
+def read_result_files_plain(files):
+    rows = []
+    for path in files:
+        rows.extend(csv.DictReader(open(path)))
+    return rows
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Kuzu: the same update workload (snapshot, pairs, committed batches, query stream) on Kuzu.
 # ---------------------------------------------------------------------------------------------------------------------
 
 KUZU_ROOT = DATA_ROOT / "kuzu"
-KUZU_MAX_DEPTH = 30  # Kuzu caps the upper bound of a recursive pattern at 30; LDBC knows paths are far shorter
+KUZU_MAX_DEPTH = 30  # Kuzu's default cap on the upper bound of a recursive pattern; LDBC knows paths are far shorter
+KUZU_GRAPHALYTICS_MAX_DEPTH = 1000  # lifted with CALL var_length_extend_max_depth on every connection (see kuzu_connect)
+
+
+def kuzu_connect(kuzu, db, threads=None):
+    """A Kuzu connection with the recursive-pattern depth cap raised to KUZU_MAX_DEPTH when a target needs more
+    than Kuzu's default 30 (cit-Patents has shortest paths longer than 30 hops; Kuzu would miss those pairs)"""
+    conn = kuzu.Connection(db, num_threads=threads) if threads else kuzu.Connection(db)
+    if KUZU_MAX_DEPTH > 30:
+        conn.execute(f"CALL var_length_extend_max_depth={KUZU_MAX_DEPTH}")
+    return conn
 
 
 def kuzu_export_dir(scale_factor):
@@ -3975,6 +4099,20 @@ def run_update_kuzu(args):
 
 GRAPHDB_EXPORT_ROOT = DATA_ROOT / "graphdb-export"
 GRAPHDB_MAX_DEPTH = 30
+# The upper bound of the Cypher systems' variable-length patterns: "..30" on LDBC (unchanged since the first runs;
+# knows paths are far shorter), unbounded on the Graphalytics graphs (cit-Patents has a long tail of BFS levels)
+GRAPHDB_DEPTH_SUFFIX = f"..{GRAPHDB_MAX_DEPTH}"
+
+
+def configure_depth_bound(target):
+    """Sets the module-level depth bounds for one benchmark target before the systems are built"""
+    global GRAPHDB_DEPTH_SUFFIX, KUZU_MAX_DEPTH
+    if is_graphalytics_target(target):
+        GRAPHDB_DEPTH_SUFFIX = ""
+        KUZU_MAX_DEPTH = KUZU_GRAPHALYTICS_MAX_DEPTH
+    else:
+        GRAPHDB_DEPTH_SUFFIX = f"..{GRAPHDB_MAX_DEPTH}"
+        KUZU_MAX_DEPTH = 30
 
 
 def ensure_graphdb_export(scale_factor, pair_tables):
@@ -4161,7 +4299,7 @@ class MemgraphSystem(GraphDBSystem):
         return [int(r["id"]) for r in self.run("MATCH (a:Person {cityId: $c1}) RETURN a.id AS id", c1=city1)]
 
     def bi19_from(self, sources, city2):
-        rows = self.run(f"MATCH (a:Person) WHERE a.id IN $srcs WITH a MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]-(b:Person) "
+        rows = self.run(f"MATCH (a:Person) WHERE a.id IN $srcs WITH a MATCH p = (a)-[:KNOWS *BFS {GRAPHDB_DEPTH_SUFFIX}]-(b:Person) "
                         f"WHERE b.cityId = $c2 RETURN count(p) AS c, sum(size(p)) AS s", srcs=sources, c2=city2)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
@@ -4172,7 +4310,7 @@ class MemgraphSystem(GraphDBSystem):
         # Same shape as the single-query form (WITH barriers); the UNWIND form took 26.8 s at SF10 over 32 connections
         # where this one takes 540 ms on one
         rows = self.run(f"MATCH (a:Person) WHERE a.id IN $srcs WITH a MATCH (b:Person {{id: $p2}}) WHERE a <> b WITH a, b "
-                        f"MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]-(b) RETURN count(p) AS c, sum(size(p)) AS s",
+                        f"MATCH p = (a)-[:KNOWS *BFS {GRAPHDB_DEPTH_SUFFIX}]-(b) RETURN count(p) AS c, sum(size(p)) AS s",
                         srcs=sources, p2=person2)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
@@ -4192,13 +4330,13 @@ class MemgraphSystem(GraphDBSystem):
         self.run("STORAGE MODE IN_MEMORY_TRANSACTIONAL")
 
     def sssp(self, source, destinations):
-        rows = self.run(f"MATCH (a:Person {{id: $src}}) MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]->(b:Person) "
+        rows = self.run(f"MATCH (a:Person {{id: $src}}) MATCH p = (a)-[:KNOWS *BFS {GRAPHDB_DEPTH_SUFFIX}]->(b:Person) "
                         f"WHERE b.id IN $dsts RETURN count(p) AS c, sum(size(p)) AS s", src=source, dsts=destinations)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
     def point_to_point(self, pairs):
         rows = self.run(f"UNWIND $pairs AS pr MATCH (a:Person {{id: pr[0]}}), (b:Person {{id: pr[1]}}) "
-                        f"MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]->(b) RETURN count(p) AS c, sum(size(p)) AS s",
+                        f"MATCH p = (a)-[:KNOWS *BFS {GRAPHDB_DEPTH_SUFFIX}]->(b) RETURN count(p) AS c, sum(size(p)) AS s",
                         pairs=[list(pair) for pair in pairs if pair[0] != pair[1]])
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
@@ -4229,7 +4367,7 @@ class MemgraphSystem(GraphDBSystem):
         self.run("STORAGE MODE IN_MEMORY_TRANSACTIONAL")
 
     def ic13(self, person1, person2):
-        rows = self.run(f"MATCH (a:Person {{id: $p1}}), (b:Person {{id: $p2}}) MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]-(b) "
+        rows = self.run(f"MATCH (a:Person {{id: $p1}}), (b:Person {{id: $p2}}) MATCH p = (a)-[:KNOWS *BFS {GRAPHDB_DEPTH_SUFFIX}]-(b) "
                         f"RETURN count(p) AS c, sum(size(p)) AS s", p1=person1, p2=person2)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
@@ -4241,13 +4379,13 @@ class MemgraphSystem(GraphDBSystem):
     def bi20(self, company, person2):
         rows = self.run(f"MATCH (a:Person)-[:WORK_AT]->(:Company {{id: $co}}) WITH DISTINCT a "
                         f"MATCH (b:Person {{id: $p2}}) WHERE a <> b WITH a, b "
-                        f"MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]-(b) RETURN count(p) AS c, sum(size(p)) AS s",
+                        f"MATCH p = (a)-[:KNOWS *BFS {GRAPHDB_DEPTH_SUFFIX}]-(b) RETURN count(p) AS c, sum(size(p)) AS s",
                         co=company, p2=person2)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
     def multi_source(self, sources):
         # Without the WITH barrier Memgraph scans every b and filters a after the BFS (35 s instead of 10 ms at SF1)
-        rows = self.run(f"MATCH (a:Person) WHERE a.id IN $srcs WITH a MATCH p = (a)-[:KNOWS *BFS ..{GRAPHDB_MAX_DEPTH}]->(b:Person) "
+        rows = self.run(f"MATCH (a:Person) WHERE a.id IN $srcs WITH a MATCH p = (a)-[:KNOWS *BFS {GRAPHDB_DEPTH_SUFFIX}]->(b:Person) "
                         f"RETURN count(p) AS c, sum(size(p)) AS s", srcs=sources)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
@@ -4283,7 +4421,7 @@ class FalkorDBSystem(GraphDBSystem):
 
     def bi19_from(self, sources, city2):
         rows = self.query(f"UNWIND $srcs AS sid MATCH (a:Person {{id: sid}}), (b:Person {{cityId: $c2}}) WHERE a <> b "
-                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          f"WITH shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]->(b)) AS p RETURN count(p), sum(length(p))",
                           {"srcs": sources, "c2": city2})
         return int(rows[0][0]), int(rows[0][1] or 0)
 
@@ -4292,7 +4430,7 @@ class FalkorDBSystem(GraphDBSystem):
 
     def bi20_from(self, sources, person2):
         rows = self.query(f"UNWIND $srcs AS sid MATCH (a:Person {{id: sid}}), (b:Person {{id: $p2}}) WHERE a <> b "
-                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          f"WITH shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]->(b)) AS p RETURN count(p), sum(length(p))",
                           {"srcs": sources, "p2": person2})
         return int(rows[0][0]), int(rows[0][1] or 0)
 
@@ -4321,13 +4459,13 @@ class FalkorDBSystem(GraphDBSystem):
     def sssp(self, source, destinations):
         # FalkorDB only allows shortestPath in WITH or RETURN; count(p) counts the non-NULL paths
         rows = self.query(f"MATCH (a:Person {{id: $src}}), (b:Person) WHERE b.id IN $dsts "
-                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          f"WITH shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]->(b)) AS p RETURN count(p), sum(length(p))",
                           {"src": source, "dsts": destinations})
         return int(rows[0][0]), int(rows[0][1] or 0)
 
     def point_to_point(self, pairs):
         rows = self.query(f"UNWIND $pairs AS pr MATCH (a:Person {{id: pr[0]}}), (b:Person {{id: pr[1]}}) "
-                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          f"WITH shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]->(b)) AS p RETURN count(p), sum(length(p))",
                           {"pairs": [list(pair) for pair in pairs if pair[0] != pair[1]]})
         return int(rows[0][0]), int(rows[0][1] or 0)
 
@@ -4369,20 +4507,20 @@ class FalkorDBSystem(GraphDBSystem):
 
     def ic13(self, person1, person2):
         rows = self.query(f"MATCH (a:Person {{id: $p1}}), (b:Person {{id: $p2}}) "
-                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          f"WITH shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]->(b)) AS p RETURN count(p), sum(length(p))",
                           {"p1": person1, "p2": person2})
         return int(rows[0][0]), int(rows[0][1] or 0)
 
     def bi19(self, city1, city2):
         rows = self.query(f"MATCH (a:Person {{cityId: $c1}}), (b:Person {{cityId: $c2}}) WHERE a <> b "
-                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          f"WITH shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]->(b)) AS p RETURN count(p), sum(length(p))",
                           {"c1": city1, "c2": city2})
         return int(rows[0][0]), int(rows[0][1] or 0)
 
     def bi20(self, company, person2):
         rows = self.query(f"MATCH (a:Person)-[:WORK_AT]->(:Company {{id: $co}}) WITH DISTINCT a "
                           f"MATCH (b:Person {{id: $p2}}) WHERE a <> b "
-                          f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                          f"WITH shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]->(b)) AS p RETURN count(p), sum(length(p))",
                           {"co": company, "p2": person2})
         return int(rows[0][0]), int(rows[0][1] or 0)
 
@@ -4393,7 +4531,7 @@ class FalkorDBSystem(GraphDBSystem):
             if self.stop_requested:
                 raise RuntimeError("timeout: stop requested")
             rows = self.query(f"MATCH (a:Person {{id: $src}}), (b:Person) "
-                              f"WITH shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) AS p RETURN count(p), sum(length(p))",
+                              f"WITH shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]->(b)) AS p RETURN count(p), sum(length(p))",
                               {"src": source})
             reachable += int(rows[0][0])
             total += int(rows[0][1] or 0)
@@ -4533,13 +4671,13 @@ class Neo4jSystem(GraphDBSystem):
         # UNWIND rather than `b.id IN $dsts`: the IN form plans a MultiNodeIndexSeek that hands the parallel runtime
         # one row, so every shortestPath runs on a single worker (SF10: 10.3 s vs 0.76 s for the same 1024 paths)
         rows = self.read(f"MATCH (a:Person {{id: $src}}) UNWIND $dsts AS d MATCH (b:Person {{id: d}}) "
-                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) "
+                         f"MATCH p = shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]->(b)) "
                          f"RETURN count(p) AS c, sum(length(p)) AS s", src=source, dsts=destinations)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
     def point_to_point(self, pairs):
         rows = self.read(f"UNWIND $pairs AS pr MATCH (a:Person {{id: pr[0]}}), (b:Person {{id: pr[1]}}) "
-                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) "
+                         f"MATCH p = shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]->(b)) "
                          f"RETURN count(p) AS c, sum(length(p)) AS s",
                          pairs=[list(pair) for pair in pairs if pair[0] != pair[1]])
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
@@ -4573,26 +4711,26 @@ class Neo4jSystem(GraphDBSystem):
 
     def ic13(self, person1, person2):
         rows = self.read(f"MATCH (a:Person {{id: $p1}}), (b:Person {{id: $p2}}) "
-                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]-(b)) RETURN count(p) AS c, sum(length(p)) AS s",
+                         f"MATCH p = shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]-(b)) RETURN count(p) AS c, sum(length(p)) AS s",
                          p1=person1, p2=person2)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
     def bi19(self, city1, city2):
         rows = self.read(f"MATCH (a:Person {{cityId: $c1}}) MATCH (b:Person {{cityId: $c2}}) WHERE a <> b "
-                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]-(b)) RETURN count(p) AS c, sum(length(p)) AS s",
+                         f"MATCH p = shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]-(b)) RETURN count(p) AS c, sum(length(p)) AS s",
                          c1=city1, c2=city2)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
     def bi20(self, company, person2):
         rows = self.read(f"MATCH (a:Person)-[:WORK_AT]->(:Company {{id: $co}}) WITH DISTINCT a "
                          f"MATCH (b:Person {{id: $p2}}) WHERE a <> b "
-                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]-(b)) RETURN count(p) AS c, sum(length(p)) AS s",
+                         f"MATCH p = shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]-(b)) RETURN count(p) AS c, sum(length(p)) AS s",
                          co=company, p2=person2)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
     def multi_source(self, sources):
         rows = self.read(f"UNWIND $srcs AS sid MATCH (a:Person {{id: sid}}) MATCH (b:Person) WHERE a <> b "
-                         f"MATCH p = shortestPath((a)-[:KNOWS*..{GRAPHDB_MAX_DEPTH}]->(b)) RETURN count(p) AS c, sum(length(p)) AS s",
+                         f"MATCH p = shortestPath((a)-[:KNOWS*{GRAPHDB_DEPTH_SUFFIX}]->(b)) RETURN count(p) AS c, sum(length(p)) AS s",
                          srcs=sources)
         return int(rows[0]["c"]), int(rows[0]["s"] or 0)
 
@@ -4708,7 +4846,7 @@ class KuzuSystem(GraphDBSystem):
         self.kuzu = require_kuzu()
         self.threads = threads
         self.db = db
-        self.conn = self.kuzu.Connection(db, num_threads=threads) if db is not None else None
+        self.conn = kuzu_connect(self.kuzu, db, threads) if db is not None else None
         self.shared_db = db is not None
 
     def worker(self, share):
@@ -4737,12 +4875,14 @@ class KuzuSystem(GraphDBSystem):
 
     def load(self, export_dir, scale_factor):
         all_pair_tables = [pair_table_name(1024, "random"), pair_table_name(1024, "same_src")]
+        ensure_pair_table(scale_factor, 1024, "random")
+        ensure_pair_table(scale_factor, 1024, "same_src")
         self.snapshot = ensure_kuzu_update_database(scale_factor, all_pair_tables)
         self.open()
 
     def open(self):
         self.db = self.kuzu.Database(str(self.snapshot), read_only=True)
-        self.conn = self.kuzu.Connection(self.db, num_threads=self.threads)
+        self.conn = kuzu_connect(self.kuzu, self.db, self.threads)
 
     def load_ldbc(self, export_dir, scale_factor):
         # PersonCity, Company and WorkAt tables are added to the snapshot database once
@@ -5075,6 +5215,17 @@ SWEEP_PAIR_COUNTS = [1, 16, 128, 1024, 2048, 16384, 65536]
 SWEEP_SOURCE_COUNTS = [1, 16, 128, 1024]
 
 
+def graph_statistics(scale_factor):
+    """Vertex and edge counts and how many vertices have an outgoing / incoming edge (the sampling populations)"""
+    out = run_duckdb(BENCH_DUCKDB, db_path(scale_factor), """
+SELECT (SELECT count(*) FROM person) AS vertices, (SELECT count(*) FROM person_knows_person) AS edges,
+       (SELECT count(*) FROM person p WHERE EXISTS (SELECT 1 FROM person_knows_person k WHERE k.person1id = p.id)) AS with_out_edge,
+       (SELECT count(*) FROM person p WHERE EXISTS (SELECT 1 FROM person_knows_person k WHERE k.person2id = p.id)) AS with_in_edge;
+""", quiet=True)[0]
+    row = list(csv.DictReader(out.strip().splitlines()))[-1]
+    return {key: int(value) for key, value in row.items()}
+
+
 def multi_source_table_name(source_count):
     return f"benchmark_pairs_multi_{source_count}"
 
@@ -5130,7 +5281,8 @@ def run_with_timeout(system, fn, timeout_s):
 def sweep_pairs(args):
     """Pair-count and source-count sweep over DuckPGQ and the graph databases, with a per-query timeout."""
     sys.stdout.reconfigure(line_buffering=True)
-    scale_factor = args.scale_factor
+    scale_factor = resolve_target(args)
+    configure_depth_bound(scale_factor)
     ensure_update_log(scale_factor)
     pair_tables = [pair_table_name(n, "random") for n in args.pair_counts]
     for n in args.pair_counts:
@@ -5139,6 +5291,11 @@ def sweep_pairs(args):
     export_dir = ensure_graphdb_export(scale_factor, pair_tables + source_tables)
     with (export_dir / "person.csv").open() as handle:
         vertex_count = sum(1 for _ in handle) - 1
+    stats = graph_statistics(scale_factor)
+    print(f"== {target_description(scale_factor)}: {stats['vertices']} vertices, {stats['edges']} edges, "
+          f"{stats['with_out_edge']} vertices with an outgoing edge ({100 * stats['with_out_edge'] / stats['vertices']:.1f}%), "
+          f"{stats['with_in_edge']} with an incoming edge ({100 * stats['with_in_edge'] / stats['vertices']:.1f}%); "
+          f"sources are sampled from the former, destinations from the latter")
     systems = make_systems(args, scale_factor)
     results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -5160,6 +5317,10 @@ def sweep_pairs(args):
             writer.writeheader()
             writer.writerows(rows)
         shown = f"{value[0]}/{value[1]}" if value else status
+        if value and shape == "random_pairs":
+            shown += f" ({100 * value[0] / pairs:.1f}% of the pairs reachable)"
+        elif value and shape == "multi_source":
+            shown += f" ({100 * value[0] / (sources * vertex_count):.1f}% of the vertices reached per source)"
         print(f"   {system_label(system, args):14s} {shape:12s} pairs={pairs:<7} sources={sources:<5} repeat {repeat}: {elapsed:8.3f}s {shown}")
 
     for system in systems:
@@ -5298,6 +5459,18 @@ def sweep_pairs_table(args):
                 else:
                     cells.append("")
             print(f"| {system} | " + " | ".join(cells) + " |")
+        if shape == "random_pairs":
+            fractions = []
+            for c in counts:
+                ok = [r for r in shape_rows if int(r[column]) == c and r["status"] == "ok" and r["reachable_count"]]
+                fractions.append(f"{100 * int(ok[0]['reachable_count']) / c:.1f}%" if ok else "")
+            print("| reachable pairs | " + " | ".join(fractions) + " |")
+        else:
+            reached = []
+            for c in counts:
+                ok = [r for r in shape_rows if int(r[column]) == c and r["status"] == "ok" and r["reachable_count"]]
+                reached.append(f"{int(ok[0]['reachable_count']) // c}" if ok else "")
+            print("| vertices reached per source | " + " | ".join(reached) + " |")
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -5311,11 +5484,10 @@ MICROBENCH_CONFIGS = {
     "no_grouped_batches": ({OPT + "grouped_batches": "false"}, None, False),
     "dedupe_pairs": ({OPT + "deduplicate_pairs": "true"}, None, False),
     "threads_per_batch_4": ({OPT + "threads_per_batch": 4}, None, False),
-    # Kernel choice: MS-BFS lanes vs the per-source frontier kernel
+    # Kernel choice: lengths group by source (per-source frontier kernel for few sources, MS-BFS waves of one lane per
+    # source otherwise); ratio 0 runs the former MS-BFS batches of one lane per pair instead
     "no_source_grouping": ({OPT + "source_group_ratio": 0, OPT + "few_sources_limit": 0}, None, False),
     "no_few_sources_rule": ({OPT + "few_sources_limit": 0}, None, False),
-    "source_group_ratio_1": ({OPT + "source_group_ratio": 1}, None, False),
-    "source_group_ratio_16": ({OPT + "source_group_ratio": 16}, None, False),
     # Per-source frontier kernel internals
     "no_early_termination": ({OPT + "target_early_termination": "false"}, None, False),
     "dense_frontier": ({OPT + "sparse_frontier_divisor": 0}, None, False),
@@ -5370,7 +5542,7 @@ MICROBENCH_CONFIGS["sparse_levels_64"] = ({OPT + "sparse_level_divisor": 64}, No
 MICROBENCH_CONFIGS["plain_explore"] = ({OPT + "frontier_bitmap": "false", OPT + "frontier_bitmap_filter": 0, OPT + "sparse_level_divisor": 0}, None, False)
 MICROBENCH_GROUPS = {
     "kernel": ["baseline", "no_grouped_batches", "dedupe_pairs", "threads_per_batch_4", "no_source_grouping",
-               "no_few_sources_rule", "source_group_ratio_1", "source_group_ratio_16", "no_early_termination",
+               "no_few_sources_rule", "no_early_termination",
                "dense_frontier", "sparse_frontier", "light_partitions_4"],
     "index": ["baseline", "no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "no_reverse_orientation"],
     "reach": ["baseline", "pair_mode"],
@@ -5404,7 +5576,7 @@ def microbenchmarks(args):
     """One DuckPGQ route x one configuration at a time over the sweep shapes, each point repeated with a timeout.
     A configuration is a set of SET overrides and, for the index route, a CREATE INDEX WITH clause."""
     sys.stdout.reconfigure(line_buffering=True)
-    scale_factor = args.scale_factor
+    scale_factor = resolve_target(args)
     ensure_update_log(scale_factor)
     points = []  # (shape, table, pairs, sources)
     if "random" in args.shapes:
@@ -5549,7 +5721,8 @@ def fixed_costs(args):
     """The fixed costs of every system at one scale factor: DuckDB database size, CSR index creation time and bytes
     per edge, and each baseline's fresh load time and store size (the paper's fixed-costs table)."""
     sys.stdout.reconfigure(line_buffering=True)
-    scale_factor = args.scale_factor
+    scale_factor = resolve_target(args)
+    configure_depth_bound(scale_factor)
     ensure_update_log(scale_factor)
     export_dir = ensure_graphdb_export(scale_factor, [pair_table_name(1024, "random")])
     results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
@@ -6176,6 +6349,22 @@ def main():
     concurrent_parser.add_argument("--timeout", type=int, default=7200)
     concurrent_parser.set_defaults(func=run_update_concurrent)
 
+    throughput_parser = subcommands.add_parser("throughput", help="Single-pair queries per second from C clients, index vs build route")
+    throughput_parser.add_argument("--scale-factor", default=None)
+    throughput_parser.add_argument("--dataset", default=None)
+    throughput_parser.add_argument("--threads", type=int, default=os.cpu_count())
+    throughput_parser.add_argument("--clients", nargs="+", type=int, default=[1, 2, 4, 8, 16, 32])
+    throughput_parser.add_argument("--routes", nargs="+", choices=["index", "build"], default=["index", "build"])
+    throughput_parser.add_argument("--duration-s", type=float, default=20.0, help="seconds per (route, clients) point")
+    throughput_parser.add_argument("--pairs", type=int, default=1024, help="random pair table the clients draw from")
+    throughput_parser.add_argument("--notes", default="")
+    throughput_parser.add_argument("--timeout", type=int, default=3600)
+    throughput_parser.set_defaults(func=throughput)
+
+    throughput_table_parser = subcommands.add_parser("throughput-table", help="Print throughput CSVs as a table")
+    throughput_table_parser.add_argument("files", nargs="+")
+    throughput_table_parser.set_defaults(func=throughput_table)
+
     kuzu_parser = subcommands.add_parser("update-kuzu", help="The update workload on Kuzu (sequential)")
     kuzu_parser.add_argument("--scale-factor", required=True)
     kuzu_parser.add_argument("--threads", type=int, default=os.cpu_count())
@@ -6212,7 +6401,8 @@ def main():
         gp.set_defaults(func=func)
 
     sweep_pairs_parser = subcommands.add_parser("sweep-pairs", help="Pair-count and source-count sweep across systems")
-    sweep_pairs_parser.add_argument("--scale-factor", required=True)
+    sweep_pairs_parser.add_argument("--scale-factor", default=None, help="LDBC scale factor")
+    sweep_pairs_parser.add_argument("--dataset", default=None, help="Graphalytics dataset instead of an LDBC scale factor (prepare --graphalytics-datasets first)")
     sweep_pairs_parser.add_argument("--threads", type=int, default=os.cpu_count())
     sweep_pairs_parser.add_argument("--systems", nargs="+",
                                     default=["duckpgq_build", "duckpgq_index", "kuzu", "memgraph", "falkordb", "neo4j",
@@ -6235,7 +6425,8 @@ def main():
     sweep_pairs_parser.set_defaults(func=sweep_pairs)
 
     microbench_parser = subcommands.add_parser("microbench", aliases=["ablation"], help="Microbenchmarks: DuckPGQ routes with one mechanism switched off at a time")
-    microbench_parser.add_argument("--scale-factor", required=True)
+    microbench_parser.add_argument("--scale-factor", default=None, help="LDBC scale factor")
+    microbench_parser.add_argument("--dataset", default=None, help="Graphalytics dataset instead of an LDBC scale factor (prepare --graphalytics-datasets first)")
     microbench_parser.add_argument("--threads", type=int, default=os.cpu_count())
     microbench_parser.add_argument("--routes", nargs="+", choices=["build", "index"], default=["build", "index"])
     microbench_parser.add_argument("--configs", nargs="+", default=["all"],
@@ -6254,7 +6445,8 @@ def main():
     microbench_table_parser = subcommands.add_parser("microbench-table", aliases=["ablation-table"], help="Print microbenchmark CSVs as tables")
 
     fixed_parser = subcommands.add_parser("fixed-costs", help="Database size, index build time and bytes per edge, baseline load times and store sizes")
-    fixed_parser.add_argument("--scale-factor", required=True)
+    fixed_parser.add_argument("--scale-factor", default=None, help="LDBC scale factor")
+    fixed_parser.add_argument("--dataset", default=None, help="Graphalytics dataset instead of an LDBC scale factor (prepare --graphalytics-datasets first)")
     fixed_parser.add_argument("--threads", type=int, default=os.cpu_count())
     fixed_parser.add_argument("--repeats", type=int, default=3, help="index build repeats")
     fixed_parser.add_argument("--systems", nargs="+", default=["kuzu", "memgraph", "falkordb", "neo4j"])

@@ -167,7 +167,10 @@ public:
 	mutex global_endpoints_lock;
 	mutex endpoint_init_lock;
 	ColumnDataScanState global_scan_state;
-	idx_t result_scan_idx;
+	//! Next output chunk to scatter; the source threads claim chunks with fetch_add (29 Oct: the pair modes read their
+	//! results on one thread, 406 ms of the 1.3 s of BI19 at SF300 were the 2.56M map lookups of the scatter)
+	atomic<idx_t> result_scan_idx {0};
+	mutex scatter_lock;
 	idx_t next_batch_index;
 	vector<shared_ptr<BFSState>> bfs_states;
 	//! The adaptive batch scheduler of this query (grouped MS-BFS scheduling), for its trace

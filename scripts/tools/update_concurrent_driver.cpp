@@ -5,6 +5,10 @@
 // iteration is one read transaction that runs the index query and the build-per-query operator over the same
 // snapshot, so their results are compared exactly under concurrent writes. Per-event rows go to a CSV.
 //
+// Throughput mode (--mode throughput, 29 Oct): no writer; C client connections each run single-pair queries
+// (one row of the pair table per query, round robin) for --duration-s seconds on one route, so the queries per
+// second of the index route against the build-per-query route can be compared from 1 to 32 clients.
+//
 // Build: see scripts/pathfinding_benchmark.py (build_concurrent_driver) or
 //   g++ -O2 -std=c++17 -Iduckdb/src/include scripts/tools/update_concurrent_driver.cpp \
 //       -Lbuild/release/src -lduckdb -Wl,-rpath,$PWD/build/release/src -o build/release/update_concurrent_driver
@@ -42,6 +46,9 @@ struct Options {
 	bool run_index = true;
 	idx_t vertex_count = 0;
 	std::string catalog = "memory";
+	//! "updates" (writer + readers) or "throughput" (clients running single-pair queries for duration_s)
+	std::string mode = "updates";
+	double duration_s = 20;
 };
 
 struct BenchEvent {
@@ -59,6 +66,7 @@ struct BenchEvent {
 static std::mutex events_lock;
 static std::vector<BenchEvent> events;
 static std::atomic<bool> writer_done {false};
+static std::atomic<bool> failed {false};
 static std::atomic<idx_t> commits_done {0};
 static std::chrono::steady_clock::time_point t0;
 
@@ -113,22 +121,70 @@ static std::string IndexKey(const Options &options) {
 	return "csr-index|" + options.catalog + "|main|person_knows_person|" + options.index_name;
 }
 
-static std::string IndexQuery(const Options &options) {
+//! pair_filter: "" for the whole pair table, or " WHERE k = <n>" for one pair (throughput mode)
+static std::string IndexQuery(const Options &options, const std::string &pair_filter = "") {
 	return "SELECT count(len), sum(len) FROM (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, " +
-	       Quote(IndexKey(options)) + ") AS len FROM pathfinding_index_pairs);";
+	       Quote(IndexKey(options)) + ") AS len FROM pathfinding_index_pairs" + pair_filter + ");";
 }
 
-static std::string BuildQuery(const Options &options, const std::string &edge_count) {
+static std::string BuildQuery(const Options &options, const std::string &edge_count, const std::string &pair_filter = "") {
 	return "SELECT count(len), sum(len) FROM (SELECT iterativelengthoperator(src, dst, struct_pack(src := "
 	       "pathfinding_edge_src, dst := pathfinding_edge_dst), " +
 	       std::to_string(options.vertex_count) + "::BIGINT, " + edge_count +
-	       "::BIGINT, 'graph:concurrent') AS len FROM " + options.pair_table +
+	       "::BIGINT, 'graph:concurrent') AS len FROM (SELECT src, dst FROM pathfinding_rowid_pairs" + pair_filter +
+	       ") pathfinding_pairs"
 	       ", (SELECT a.rowid::BIGINT AS pathfinding_edge_src, c.rowid::BIGINT AS pathfinding_edge_dst FROM "
 	       "person_knows_person k JOIN person a ON a.id = k.person1id JOIN person c ON c.id = k.person2id) "
 	       "pathfinding_edges);";
 }
 
-static std::atomic<bool> failed {false};
+//! Both pair forms with a row number k, in the pair table's order
+static void CreatePairTables(Connection &con, const Options &options) {
+	Must(con, "CREATE TEMP TABLE pathfinding_rowid_pairs AS SELECT row_number() OVER () - 1 AS k, src, dst FROM " +
+	              options.pair_table + ";");
+	Must(con, "CREATE TEMP TABLE pathfinding_index_pairs AS SELECT p.k, a.id::BIGINT AS src, b.id::BIGINT AS dst FROM "
+	          "pathfinding_rowid_pairs p JOIN person a ON a.rowid = p.src JOIN person b ON b.rowid = p.dst;");
+}
+
+//! Throughput client: single-pair queries, round robin over the pair table, until the duration has elapsed
+static void ThroughputClientBody(DuckDB &db, const Options &options, idx_t client_id) {
+	Connection con(db);
+	Setup(con, options);
+	CreatePairTables(con, options);
+	auto pair_count = std::stoull(Scalar(*Must(con, "SELECT count(*) FROM pathfinding_rowid_pairs;"), 0));
+	auto edges = Scalar(*Must(con, "SELECT count(*) FROM person_knows_person;"), 0);
+	idx_t seq = 0;
+	while (Now() < options.duration_s && !failed.load()) {
+		auto k = (seq * options.readers + client_id - 1) % pair_count;
+		auto filter = " WHERE k = " + std::to_string(k);
+		seq++;
+		auto query = options.run_index ? IndexQuery(options, filter) : BuildQuery(options, edges, filter);
+		auto start = Now();
+		auto t_start = std::chrono::steady_clock::now();
+		auto result = Must(con, query);
+		auto chunk = result->Fetch();
+		auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count();
+		auto reach = chunk->GetValue(0, 0).ToString();
+		auto total = chunk->GetValue(1, 0).IsNull() ? "NULL" : chunk->GetValue(1, 0).ToString();
+		Record({options.run_index ? "query_index" : "query_build", client_id, seq, start, elapsed, reach, total, edges,
+		        "pair=" + std::to_string(k)});
+	}
+}
+
+static void ThroughputClient(DuckDB &db, const Options &options, idx_t client_id) {
+	try {
+		ThroughputClientBody(db, options, client_id);
+	} catch (std::exception &ex) {
+		std::string what = ex.what();
+		for (auto &c : what) {
+			if (c == '\n' || c == '"')
+				c = ' ';
+		}
+		Record({"error", client_id, 0, Now(), 0, "", "", "", what});
+		failed = true;
+	}
+}
+
 
 static void WriterBody(DuckDB &db, const Options &options) {
 	Connection con(db);
@@ -173,8 +229,7 @@ static void Writer(DuckDB &db, const Options &options) {
 static void ReaderBody(DuckDB &db, const Options &options, idx_t reader_id) {
 	Connection con(db);
 	Setup(con, options);
-	Must(con, "CREATE TEMP TABLE pathfinding_index_pairs AS SELECT a.id::BIGINT AS src, b.id::BIGINT AS dst FROM " +
-	              options.pair_table + " p JOIN person a ON a.rowid = p.src JOIN person b ON b.rowid = p.dst;");
+	CreatePairTables(con, options);
 	auto index_query = IndexQuery(options);
 	idx_t seq = 0;
 	while (true) {
@@ -272,6 +327,10 @@ int main(int argc, char **argv) {
 			options.run_build = false;
 		else if (arg == "--no-index")
 			options.run_index = false;
+		else if (arg == "--mode")
+			options.mode = next();
+		else if (arg == "--duration-s")
+			options.duration_s = std::stod(next());
 		else {
 			fprintf(stderr, "unknown argument %s\n", arg.c_str());
 			return 2;
@@ -280,7 +339,7 @@ int main(int argc, char **argv) {
 	if (options.database.empty() || options.extension.empty() || options.output.empty()) {
 		fprintf(stderr, "usage: --database <db> --extension <ext> --output <csv> [--readers R --batches N "
 		                "--batch-size B --threads T --fold-ratio F --writer-pause-ms P --pair-table name "
-		                "--no-build|--no-index]\n");
+		                "--no-build|--no-index --mode updates|throughput --duration-s S]\n");
 		return 2;
 	}
 	try {
@@ -306,9 +365,18 @@ int main(int argc, char **argv) {
 		}
 		t0 = std::chrono::steady_clock::now();
 		std::vector<std::thread> threads;
-		threads.emplace_back(Writer, std::ref(db), std::cref(options));
-		for (idx_t r = 0; r < options.readers; r++) {
-			threads.emplace_back(Reader, std::ref(db), std::cref(options), r + 1);
+		if (options.mode == "throughput") {
+			if (options.run_index == options.run_build) {
+				throw std::runtime_error("throughput mode runs one route: pass --no-build or --no-index");
+			}
+			for (idx_t r = 0; r < options.readers; r++) {
+				threads.emplace_back(ThroughputClient, std::ref(db), std::cref(options), r + 1);
+			}
+		} else {
+			threads.emplace_back(Writer, std::ref(db), std::cref(options));
+			for (idx_t r = 0; r < options.readers; r++) {
+				threads.emplace_back(Reader, std::ref(db), std::cref(options), r + 1);
+			}
 		}
 		for (auto &thread : threads) {
 			thread.join();
