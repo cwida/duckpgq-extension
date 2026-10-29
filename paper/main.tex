@@ -59,12 +59,12 @@ parallelism from a partitioned CSR, uses a multi-source traversal for many pairs
 and is reached from \sqlpgq's \texttt{MATCH} through an optimizer rule. A CSR index keeps the representation across
 queries, restarts and checkpoints behind \duckdb's general index interface. That interface reports which rows changed
 and nothing about which transactions may see them, so the index stores immutable epochs and a change log that \duckdb's own
-row-version check classifies once per change group, and every transaction traverses exactly the edges its transaction may see.
+row-version check classifies once per change group, and every transaction traverses exactly the edges it may see.
 On LDBC SNB at scale factor 300, against Kuzu, Neo4j, Memgraph and FalkorDB, \duckpgq answers a single pair in
-9\,ms where Kuzu needs 33\,ms and Neo4j 15\,ms, and 65\,536 pairs in 55\,s where both exceed ten minutes, because
-they search once per pair and \duckpgq once per traversal. Under a stream of 2000 edge updates per commit at scale
-factor 10 it answers a single-source query in 19\,ms and applies a commit in 9\,ms; Kuzu needs 16 and 342\,ms.
-\todo{Provisional numbers; replace from the frozen rerun.}
+10\,ms where Neo4j needs 14\,ms and Kuzu 96\,ms, and 65\,536 pairs in 10\,s where every other system exceeds ten
+minutes, because they search once per pair and \duckpgq once per traversal. Under a stream of 2000 edge updates per
+commit at scale factor 10 it answers a single-source query in 18\,ms and applies a commit in 15\,ms; Kuzu needs 16
+and 342\,ms. \todo{Numbers from the eval-freeze-rc1 run; confirm against rc2.}
 \end{abstract}
 
 \maketitle
