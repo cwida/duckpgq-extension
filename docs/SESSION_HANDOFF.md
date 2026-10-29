@@ -210,3 +210,7 @@ steps are skipped). Then `./repro/collect.sh`, commit the archive and the figure
   row number `k`); harness `throughput` / `throughput-table`; `run_all.sh throughput`.
 - The harness's single-pair number at SF300 (9-10 ms) is the search itself (3-17 ms by pair in one process); an
   empty search was 66 ms because of the serial working-set memset, now 6 ms.
+- 29 Oct (night): lengths always group by source (`ShouldUseSourceGroupedIterativeLength` returns true for lengths
+  unless `source_group_ratio <= 0`); waves and batches share `AppendGroupedKernelEvents`; group settings in
+  `SourceGroupedIterativeLengthState::Settings`; the pair modes' result scan is parallel (`result_scan_idx` is atomic,
+  `MaxThreads` = threads for every mode). The sweep is on hold at the author's request (tag `eval-freeze-rc7` ready).

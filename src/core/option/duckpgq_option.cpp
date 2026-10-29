@@ -382,8 +382,8 @@ void CorePGQOptions::RegisterPathFindingSourceGroupRatio(ExtensionLoader &loader
 
 	config.AddExtensionOption(
 	    "experimental_path_finding_operator_source_group_ratio",
-	    "Use source-grouped regular path-finding when pair_count >= ratio * oriented_distinct_source_count; "
-	    "values <= 0 disable adaptive source grouping",
+	    "Group length queries by source (a few sources run the per-source frontier kernel, more run as MS-BFS waves of "
+	    "one lane per source); values <= 0 switch grouping off and run the former MS-BFS batches of one lane per pair",
 	    LogicalType::INTEGER, Value(4));
 }
 

@@ -29,7 +29,7 @@ what the decision is worth, measured on the shapes where it applies (SF10 and SF
 
 | # | Decision | Switch (config name in the harness) | Shapes where it shows |
 |---|---|---|---|
-| A1 | Per-source frontier kernel for few sources, MS-BFS lanes otherwise | `no_source_grouping`, `no_few_sources_rule`, `source_group_ratio_1/16` | many-pair lists (lanes win), same destination and sources x all (per-source wins) |
+| A1 | Lengths group by source (29 Oct): per-source frontier kernel for few sources, MS-BFS waves of one lane per source otherwise; `no_source_grouping` runs the former one-lane-per-pair batches | `no_source_grouping`, `no_few_sources_rule`, `no_lane_waves` | many-pair lists (lanes win), same destination and sources x all (per-source wins) |
 | A2 | Batch scheduling: adaptive worker groups vs one event per batch, fixed shapes G x W, pooled vs own threads | `scheduling` group: `no_grouped_batches`, `adaptive`, `adaptive_os4/os32`, `sched_g<G>_w<W>` | random pairs 2048 / 16384 / 65536 at SF10, SF100, SF300 (the crossover figure) |
 | A3 | Stop a source's search once its destinations are found | `no_early_termination` | random pairs with few sources, same destination |
 | A4 | Sparse expansion by row lookup vs partition sweep | `dense_frontier`, `sparse_frontier` | sources x all (frontier grows to the whole graph), same destination (small frontiers) |
@@ -53,7 +53,7 @@ has no switch; the right-hand column says what a microbenchmark would need.
 
 | Mechanism | Control | Default | Notes |
 |---|---|---|---|
-| Source grouping (per-source frontier kernel vs MS-BFS) | `source_group_ratio` | 4 (<= 0 off) | pair_count >= ratio x distinct sources selects the per-source kernel; SHORTEST_PATH and REACH always use it |
+| Source grouping | `source_group_ratio` | 4 (<= 0 off) | lengths always group by source since 29 Oct (the ratio threshold is gone); <= 0 runs the former MS-BFS batches of one lane per pair, the microbenchmark baseline; SHORTEST_PATH and REACH always group |
 | Few-sources rule | `few_sources_limit` (new, 26 Oct) | 16 (0 off) | at most this many distinct sources always uses the per-source kernel |
 | Target early termination | `target_early_termination` (new) | true | a group stops once every destination is reached; `SourceGroupTargets` set/bitmap switch at 64 x expected > V stays hard-coded |
 | Sparse vs dense frontier expansion | `sparse_frontier_divisor` (new) | 64 (0 always sweeps; a huge value always looks up rows) | per-source kernel only; needs row lookup (not on streaming segments) |
@@ -142,7 +142,7 @@ the baseline. The driver checks that every configuration returns the same reacha
 point.
 
 Configurations (groups in `MICROBENCH_GROUPS`): `kernel` = baseline, no_grouped_batches, dedupe_pairs,
-threads_per_batch_4, no_source_grouping, no_few_sources_rule, source_group_ratio_1, source_group_ratio_16,
+threads_per_batch_4, no_source_grouping, no_few_sources_rule,
 no_early_termination, dense_frontier, sparse_frontier, light_partitions_4; `index` = baseline, no_snapshot_cache,
 reverse_index, reverse_index_forward_only, no_reverse_orientation; `reach` = baseline, pair_mode; `threads` =
 baseline, threads_1/2/4/8/16.

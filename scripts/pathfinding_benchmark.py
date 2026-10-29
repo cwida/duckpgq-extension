@@ -5484,11 +5484,10 @@ MICROBENCH_CONFIGS = {
     "no_grouped_batches": ({OPT + "grouped_batches": "false"}, None, False),
     "dedupe_pairs": ({OPT + "deduplicate_pairs": "true"}, None, False),
     "threads_per_batch_4": ({OPT + "threads_per_batch": 4}, None, False),
-    # Kernel choice: MS-BFS lanes vs the per-source frontier kernel
+    # Kernel choice: lengths group by source (per-source frontier kernel for few sources, MS-BFS waves of one lane per
+    # source otherwise); ratio 0 runs the former MS-BFS batches of one lane per pair instead
     "no_source_grouping": ({OPT + "source_group_ratio": 0, OPT + "few_sources_limit": 0}, None, False),
     "no_few_sources_rule": ({OPT + "few_sources_limit": 0}, None, False),
-    "source_group_ratio_1": ({OPT + "source_group_ratio": 1}, None, False),
-    "source_group_ratio_16": ({OPT + "source_group_ratio": 16}, None, False),
     # Per-source frontier kernel internals
     "no_early_termination": ({OPT + "target_early_termination": "false"}, None, False),
     "dense_frontier": ({OPT + "sparse_frontier_divisor": 0}, None, False),
@@ -5543,7 +5542,7 @@ MICROBENCH_CONFIGS["sparse_levels_64"] = ({OPT + "sparse_level_divisor": 64}, No
 MICROBENCH_CONFIGS["plain_explore"] = ({OPT + "frontier_bitmap": "false", OPT + "frontier_bitmap_filter": 0, OPT + "sparse_level_divisor": 0}, None, False)
 MICROBENCH_GROUPS = {
     "kernel": ["baseline", "no_grouped_batches", "dedupe_pairs", "threads_per_batch_4", "no_source_grouping",
-               "no_few_sources_rule", "source_group_ratio_1", "source_group_ratio_16", "no_early_termination",
+               "no_few_sources_rule", "no_early_termination",
                "dense_frontier", "sparse_frontier", "light_partitions_4"],
     "index": ["baseline", "no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "no_reverse_orientation"],
     "reach": ["baseline", "pair_mode"],

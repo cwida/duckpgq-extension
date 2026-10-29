@@ -216,17 +216,35 @@ class SourceGroupedIterativeLengthState : public PhasedKernel {
 public:
 	//! lane_mode: the group is one lane of a LaneWaveState (an MS-BFS wave of up to LANE_LIMIT source groups); it
 	//! keeps only its destination list and their distances, none of the per-vertex arrays
+	//! The settings a group reads, looked up once per query (a random-pair query has one group per pair, 65536 groups
+	//! would otherwise cost about 300,000 setting lookups)
+	struct Settings {
+		explicit Settings(ClientContext &context)
+		    : benchmark_enabled(GetPathFindingBenchmarkOption(context)),
+		      benchmark_output_prefix(GetPathFindingBenchmarkPrefix(context)),
+		      target_early_termination(GetPathFindingTargetEarlyTermination(context)),
+		      threads_per_batch(GetPathFindingThreadsPerBatch(context)) {
+			auto divisor = GetPathFindingSparseFrontierDivisor(context);
+			sparse_frontier_divisor = divisor > 0 ? NumericCast<idx_t>(divisor) : 0;
+		}
+		bool benchmark_enabled;
+		string benchmark_output_prefix;
+		bool target_early_termination;
+		int64_t threads_per_batch;
+		idx_t sparse_frontier_divisor;
+	};
+
 	SourceGroupedIterativeLengthState(ClientContext &context_p, int64_t source_p,
 	                                  std::vector<shared_ptr<LocalCSR>> &local_csrs_p, idx_t num_threads_p,
-	                                  int64_t v_size_p, bool lane_mode_p = false)
+	                                  int64_t v_size_p, const Settings &settings, bool lane_mode_p = false)
 	    : context(context_p), source(source_p), local_csrs(local_csrs_p), num_threads(num_threads_p), v_size(v_size_p),
 	      distances(lane_mode_p ? 0 : v_size, -1), seen(lane_mode_p ? 0 : v_size),
 	      frontier_stamp(lane_mode_p ? 0 : v_size, 0), iter(1), change(false), lane_mode(lane_mode_p) {
-		benchmark_enabled = GetPathFindingBenchmarkOption(context);
-		benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
-		target_early_termination = GetPathFindingTargetEarlyTermination(context);
-		auto divisor = GetPathFindingSparseFrontierDivisor(context);
-		sparse_frontier_divisor = divisor > 0 ? NumericCast<idx_t>(divisor) : 0;
+		benchmark_enabled = settings.benchmark_enabled;
+		benchmark_output_prefix = settings.benchmark_output_prefix;
+		target_early_termination = settings.target_early_termination;
+		sparse_frontier_divisor = settings.sparse_frontier_divisor;
+		threads_per_batch = settings.threads_per_batch;
 	}
 
 	//! ---- PhasedKernel
@@ -532,9 +550,8 @@ private:
 		// Groups scheduled together share the threads: each gets its slice, down to one worker that runs the
 		// whole search without an event per level (1024 sources x all vertices at SF10: 13.6 s -> see plan)
 		workers = std::max<idx_t>(1, workers / std::max<idx_t>(1, concurrent_groups));
-		auto configured = GetPathFindingThreadsPerBatch(context);
-		if (configured > 0) {
-			workers = std::min<idx_t>(workers, static_cast<idx_t>(configured));
+		if (threads_per_batch > 0) {
+			workers = std::min<idx_t>(workers, static_cast<idx_t>(threads_per_batch));
 		}
 		// Not capped by the partition count: the dense sweep splits a partition's rows between workers
 		idx_t edge_count = 0;
@@ -692,6 +709,8 @@ private:
 	idx_t worker_count = 1;
 	bool benchmark_enabled;
 	string benchmark_output_prefix;
+	//! experimental_path_finding_operator_threads_per_batch (0: not capped)
+	int64_t threads_per_batch = 0;
 	std::chrono::steady_clock::time_point phase_start_time;
 };
 
@@ -1112,14 +1131,12 @@ bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, C
 	if (distinct_search_sources == 0) {
 		return false;
 	}
-	// A handful of sources is always cheaper to search one at a time with the frontier kernel than with 512-lane
-	// bitsets over every vertex
-	auto few_sources_limit = GetPathFindingFewSourcesLimit(context);
-	if (few_sources_limit > 0 && distinct_search_sources <= NumericCast<idx_t>(few_sources_limit)) {
-		return true;
-	}
-	return static_cast<double>(gstate.pair_stats.pair_count) >=
-	       static_cast<double>(ratio) * static_cast<double>(distinct_search_sources);
+	// Lengths always group by source (29 Oct): a few sources run the per-source frontier kernel, more run as MS-BFS
+	// waves of one lane per source with its destination list (SourceGroupedScheduleEvent). A pair whose source is
+	// unique is a lane with one destination, the same per-level work as the former lanes-per-pair batches. Those
+	// batches remain behind source_group_ratio <= 0 (the microbenchmark switch no_source_grouping) and for the
+	// push-pull and bidirectional variants.
+	return true;
 }
 
 bool TryGetExactSingleSearchSource(const PathFindingGlobalSinkState &gstate, int64_t &source) {
@@ -1381,11 +1398,12 @@ public:
 		// The per-group arrays (distances, seen, frontier stamps, parents) are sized by the vertex count; with
 		// many groups their allocation is spread over the threads
 		vector<shared_ptr<SourceGroupedIterativeLengthState>> states(group_count);
+		SourceGroupedIterativeLengthState::Settings group_settings(context);
 		ParallelFor(group_count, gstate.num_threads, [&](idx_t begin, idx_t end, idx_t) {
 			for (idx_t group_idx = begin; group_idx < end; group_idx++) {
 				auto state = make_shared_ptr<SourceGroupedIterativeLengthState>(
 				    context, gstate.source_group_sources[group_idx], partition_csrs, gstate.num_threads,
-				    GetPathFindingVSize(gstate), lane_waves);
+				    GetPathFindingVSize(gstate), group_settings, lane_waves);
 				state->delta_csrs = SearchDeltaCSRs(gstate);
 				state->suppressed = SearchSuppressed(gstate);
 				state->max_depth = gstate.max_depth;
@@ -2956,9 +2974,9 @@ public:
 };
 
 unique_ptr<GlobalSourceState> PhysicalPathFinding::GetGlobalSourceState(ClientContext &context) const {
-	// Only the reach output is read by several threads (slices of a group's distance array); the other result
-	// scans share one cursor
-	idx_t max_threads = mode == "reach" ? std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads()) : 1;
+	// Every mode's result scan is parallel: reach hands out slices of a group's distance array, the pair modes hand
+	// out output chunks (result_scan_idx is claimed with fetch_add)
+	idx_t max_threads = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
 	return make_uniq<PathFindingGlobalSourceState>(*this, max_threads);
 }
 
@@ -3086,8 +3104,11 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 
 	if (pf_sink.use_source_grouping) {
 		auto scatter_start = std::chrono::steady_clock::now();
-		D_ASSERT(pf_sink.result_scan_idx < pf_sink.source_group_output_refs.size());
-		auto output_ref = pf_sink.source_group_output_refs[pf_sink.result_scan_idx];
+		auto scan_idx = pf_sink.result_scan_idx.fetch_add(1);
+		if (scan_idx >= pf_sink.source_group_output_refs.size()) {
+			return SourceResultType::FINISHED;
+		}
+		auto output_ref = pf_sink.source_group_output_refs[scan_idx];
 		shared_ptr<DataChunk> output_pairs;
 		optional_ptr<vector<idx_t>> output_states;
 		optional_ptr<SourceGroupedIterativeLengthState> single_source_group;
@@ -3169,32 +3190,38 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 
 		EmitPathFindingOutput(result, *output_pairs, output_results->data[0]);
 		auto scatter_end = std::chrono::steady_clock::now();
-		pf_sink.source_group_scatter_ms +=
-		    std::chrono::duration<double, std::milli>(scatter_end - scatter_start).count();
-		pf_sink.source_group_scatter_rows += output_size;
-		pf_sink.source_group_scatter_chunks++;
-
-		pf_sink.result_scan_idx++;
-		if (pf_sink.result_scan_idx == pf_sink.source_group_output_refs.size()) {
-			AppendOperatorPhaseTiming(context.client, "source_group_scatter", pf_sink.num_threads,
-			                          pf_sink.source_group_scatter_rows, pf_sink.source_group_scatter_chunks,
-			                          pf_sink.source_group_zero_copy ? 1 : 0, pf_sink.source_group_scatter_ms, 0);
-			return SourceResultType::FINISHED;
+		{
+			lock_guard<mutex> guard(pf_sink.scatter_lock);
+			pf_sink.source_group_scatter_ms +=
+			    std::chrono::duration<double, std::milli>(scatter_end - scatter_start).count();
+			pf_sink.source_group_scatter_rows += output_size;
+			pf_sink.source_group_scatter_chunks++;
+			if (pf_sink.source_group_scatter_chunks == pf_sink.source_group_output_refs.size()) {
+				// Summed over the threads (CPU time of the scatter, not its wall time)
+				AppendOperatorPhaseTiming(context.client, "source_group_scatter", pf_sink.num_threads,
+				                          pf_sink.source_group_scatter_rows, pf_sink.source_group_scatter_chunks,
+				                          pf_sink.source_group_zero_copy ? 1 : 0, pf_sink.source_group_scatter_ms, 0);
+			}
 		}
 		return SourceResultType::HAVE_MORE_OUTPUT;
 	}
 
 	if (pf_sink.use_global_deduplication) {
-		if (!pf_sink.global_dedupe_results_initialized) {
-			for (auto &state : pf_sink.bfs_states) {
-				state->pf_results->SetChildCardinality(state->pairs->size());
+		{
+			lock_guard<mutex> guard(pf_sink.scatter_lock);
+			if (!pf_sink.global_dedupe_results_initialized) {
+				for (auto &state : pf_sink.bfs_states) {
+					state->pf_results->SetChildCardinality(state->pairs->size());
+				}
+				pf_sink.global_dedupe_results_initialized = true;
 			}
-			pf_sink.global_dedupe_results_initialized = true;
 		}
-
-		D_ASSERT(pf_sink.result_scan_idx < pf_sink.global_output_batches.size());
-		auto output_pairs = pf_sink.global_output_batches[pf_sink.result_scan_idx];
-		auto &output_to_search = pf_sink.global_output_to_search[pf_sink.result_scan_idx];
+		auto scan_idx = pf_sink.result_scan_idx.fetch_add(1);
+		if (scan_idx >= pf_sink.global_output_batches.size()) {
+			return SourceResultType::FINISHED;
+		}
+		auto output_pairs = pf_sink.global_output_batches[scan_idx];
+		auto &output_to_search = pf_sink.global_output_to_search[scan_idx];
 		D_ASSERT(output_to_search.size() == output_pairs->size());
 
 		auto scatter_start = std::chrono::steady_clock::now();
@@ -3215,24 +3242,17 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 		auto scatter_ms = std::chrono::duration<double, std::milli>(scatter_end - scatter_start).count();
 		AppendOperatorPhaseTiming(context.client, "dedupe_scatter", pf_sink.num_threads, output_to_search.size(), 0, 0,
 		                          scatter_ms, output_to_search.capacity() * sizeof(idx_t));
-
-		pf_sink.result_scan_idx++;
-		if (pf_sink.result_scan_idx == pf_sink.global_output_batches.size()) {
-			return SourceResultType::FINISHED;
-		}
 		return SourceResultType::HAVE_MORE_OUTPUT;
 	}
 
-	D_ASSERT(pf_sink.result_scan_idx < pf_sink.bfs_states.size());
-	auto current_state = pf_sink.bfs_states[pf_sink.result_scan_idx];
-	D_ASSERT(current_state->batch->output_index == pf_sink.result_scan_idx);
-	current_state->pf_results->SetChildCardinality(current_state->pairs->size());
-	EmitPathFindingOutput(result, *current_state->batch->output_pairs, current_state->pf_results->data[0]);
-
-	pf_sink.result_scan_idx++;
-	if (pf_sink.result_scan_idx == pf_sink.bfs_states.size()) {
+	auto scan_idx = pf_sink.result_scan_idx.fetch_add(1);
+	if (scan_idx >= pf_sink.bfs_states.size()) {
 		return SourceResultType::FINISHED;
 	}
+	auto current_state = pf_sink.bfs_states[scan_idx];
+	D_ASSERT(current_state->batch->output_index == scan_idx);
+	current_state->pf_results->SetChildCardinality(current_state->pairs->size());
+	EmitPathFindingOutput(result, *current_state->batch->output_pairs, current_state->pf_results->data[0]);
 	return SourceResultType::HAVE_MORE_OUTPUT;
 }
 

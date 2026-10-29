@@ -1001,3 +1001,23 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   SF300 (60 commits) with 1, 4 and 16 readers (the SF300 update log is staged from the generator's batches). Figures
   `concurrent` (readers vs latency per SF) and `throughput` (clients vs queries per second per SF) in the plot script.
   Section 6 should open with the one-thread result (index 6x faster under updates), the author's text.
+- 29 Oct (night): simplification of the kernel choice (author's trace of both routes; "section 3 is hard to read
+  because of the different modes and schedulers"). Lengths now always group by source: a few distinct sources (the
+  few-sources limit, 16) run the per-source frontier kernel, more run as MS-BFS waves of one lane per source with
+  its destination list, scheduled by the worker-group controller like any batch list. The ratio threshold
+  (`source_group_ratio`: pairs >= 4 x distinct sources) is gone; `source_group_ratio <= 0` keeps the former
+  one-lane-per-pair batches as the microbenchmark baseline (`no_source_grouping`; the push-pull and bidirectional
+  variants still use them). The group settings are read once per query (`SourceGroupedIterativeLengthState::Settings`,
+  65536 groups used to cost about 300,000 setting lookups). Measured first (operator phase timings): the serial
+  grouping pass is 6 ms for 65536 random pairs at SF10 and 27-32 ms for BI19's 2.56M pairs at SF300, so it stays
+  serial; the result scatter of the grouped path, however, ran on one thread (`MaxThreads` 1 for every mode but
+  reach): 406 ms of BI19's 1.3 s were 2.56M distance-map lookups. The pair modes' result scan is now parallel (the
+  source threads claim output chunks with `fetch_add`). A/B on the index, 65536 random pairs, grouped waves vs the
+  former lanes per pair: SF10 0.40-0.46 vs 0.44-0.46 s (neutral), SF100 3.02 vs 3.28 s (1.09x faster), SF300 9.2 vs
+  9.65 s (1.05x faster); build route SF10 0.55 vs 0.56-0.59 s. With the parallel scatter: BI19 SF300 1.3 -> 0.92-1.07 s
+  (1.3x faster), 65536 pairs SF10 0.44-0.46 s, SF300 9.15-9.29 s. Section 3 microbenchmark at SF10 (1 repeat, index):
+  2048 random pairs 57 ms grouped waves vs 115 ms lanes per pair (2x faster) vs 386 ms per-source searches; 20 x 200
+  all pairs 16 ms (waves) vs 62 ms (lanes per pair) vs 13 ms (per-source); every configuration agrees. 97 tests pass;
+  update-run SF10 (20 batches, 4 configs) agrees on every step. Scheduler switches act on the waves (`wave_*` keys).
+  The matrix is NOT restarted: the author asked to hold the sweep until told, clean up, and use rc1's results
+  meanwhile. Tag `eval-freeze-rc7` marks the state.
