@@ -899,3 +899,17 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   SF100 with the index route for the agreement check); table names "DuckDB recursive CTE" and "DuckPGQ 2023 UDFs".
   Smoke at SF1: all points agree across the three routes. Sources identical to rc2; tag `eval-freeze-rc3` on the
   harness state; full matrix restarted.
+- 29 Oct (midday): rc3 stopped minutes in for the author's list. In the tree now: medians in the sweep tables, the
+  figures and the teaser (`load()` summarises repeats by the median; the harness printers too; the LDBC table stays
+  median per parameter set, mean over sets); `fixed-costs` subcommand and matrix step (database file size, CSR index
+  build time x3 and bytes per edge from the new `duckpgq_csr_index_size`, every baseline's fresh load time and store
+  size: Kuzu database file, Memgraph process resident memory, FalkorDB graph memory, Neo4j store directory after a
+  checkpoint; SF1 smoke: index 11.9 B/edge, Kuzu 104, FalkorDB 42, Neo4j 33 B/edge); per-row visibility switch
+  `duckpgq_csr_index_change_groups` (false decides every logged row by its own row version) with the update-run
+  configuration `index_per_row` for the per-row cost claim; the unpaced concurrent writer step (4 readers, pause 0);
+  Section 3 switches as the microbenchmark group `section3` (1 pair with and without the per-source kernel, 20
+  sources x 200 destinations as the `all_pairs` shape with source grouping on and off, paths vs lengths through
+  `shortestpathoperator`, all agreeing at SF1). MAGE: the Memgraph image's query modules (community detection,
+  PageRank, node2vec, text and vector search) include no shortest-path procedure; the built-in BFS the harness uses
+  is Memgraph's path operator. Sources: one new option and one new function (95 tests pass). Tag `eval-freeze-rc4`,
+  full matrix restarted.

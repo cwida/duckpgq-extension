@@ -43,6 +43,19 @@ void CSRIndexFoldFunction(DataChunk &args, ExpressionState &state, Vector &resul
 	result.SetValue(0, Value::BOOLEAN(true));
 }
 
+//! duckpgq_csr_index_size(table, index): 'edges=..;bytes=..' (edges of the newest epoch, bytes held in memory by
+//! the retained epochs and the change log; the fixed-costs table reports bytes per edge from it)
+void CSRIndexSizeFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &context = state.GetContext();
+	auto table_name = args.data[0].GetValue(0).GetValue<string>();
+	auto index_name = args.data[1].GetValue(0).GetValue<string>();
+	auto resolved = ResolveCSRIndex(context, table_name, index_name);
+	auto handle = resolved.entry->GetReadHandle<CSRIndex>();
+	auto size = StringUtil::Format("edges=%llu;bytes=%llu", handle->EpochEdgeCount(), handle->InMemoryBytes());
+	result.SetVectorType(VectorType::CONSTANT_VECTOR);
+	result.SetValue(0, Value(size));
+}
+
 //! duckpgq_csr_index_stats(table, index): 'epochs=..;delta=..;tombstones=..'
 void CSRIndexStatsFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &context = state.GetContext();
@@ -69,6 +82,11 @@ void CoreScalarFunctions::RegisterCSRIndexScalarFunctions(ExtensionLoader &loade
 	stats.SetStability(FunctionStability::VOLATILE);
 	stats.SetFallible();
 	loader.RegisterFunction(stats);
+	auto size = ScalarFunction("duckpgq_csr_index_size", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                           LogicalType::VARCHAR, CSRIndexSizeFunction);
+	size.SetStability(FunctionStability::VOLATILE);
+	size.SetFallible();
+	loader.RegisterFunction(size);
 }
 
 } // namespace duckdb

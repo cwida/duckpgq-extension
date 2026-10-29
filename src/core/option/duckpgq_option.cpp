@@ -177,6 +177,12 @@ bool GetPathFindingSubRangeTasks(ClientContext &context) {
 	return value.GetValue<bool>();
 }
 
+bool GetCSRIndexChangeGroups(ClientContext &context) {
+	Value value;
+	context.TryGetCurrentSetting("duckpgq_csr_index_change_groups", value);
+	return value.GetValue<bool>();
+}
+
 //------------------------------------------------------------------------------
 // Register option
 //------------------------------------------------------------------------------
@@ -514,6 +520,16 @@ void CorePGQOptions::RegisterPathFindingSubRangeTasks(ExtensionLoader &loader) {
 	                          "When an MS-BFS batch has more workers than partitions, split each partition's "
 	                          "destination range into sub-range tasks so the batch keeps its parallelism on coarse "
 	                          "partitions (W32); false gives one task per partition",
+	                          LogicalType::BOOLEAN, Value(true));
+}
+
+void CorePGQOptions::RegisterCSRIndexChangeGroups(ExtensionLoader &loader) {
+	auto &db = loader.GetDatabaseInstance();
+	auto &config = DBConfig::GetConfig(db);
+	config.AddExtensionOption("duckpgq_csr_index_change_groups",
+	                          "A CSR index snapshot decides the visibility of a change group (one commit chunk of one "
+	                          "transaction) with one row-version check and applies it to every row of the group; false "
+	                          "checks every logged row individually (the microbenchmark of the per-row cost)",
 	                          LogicalType::BOOLEAN, Value(true));
 }
 

@@ -208,6 +208,10 @@ public:
 	idx_t DeltaSize() const;
 	idx_t TombstoneCount() const;
 	idx_t EpochCount() const;
+	//! Bytes held by the retained epochs and the change log (the fixed-costs table: bytes per edge)
+	idx_t InMemoryBytes() const;
+	//! Edges of the newest retained epoch
+	idx_t EpochEdgeCount() const;
 
 	//! Builds a new epoch at the transaction's bound and drops the change-log entries no retained epoch needs. The
 	//! transaction must not have uncommitted changes. Also run automatically by Snapshot when the change log exceeds

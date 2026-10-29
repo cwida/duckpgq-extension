@@ -32,6 +32,7 @@ int32_t GetPathFindingFrontierBitmapFilter(ClientContext &context);
 int32_t GetPathFindingSparseLevelDivisor(ClientContext &context);
 int32_t GetPathFindingPartitionVertices(ClientContext &context);
 bool GetPathFindingSubRangeTasks(ClientContext &context);
+bool GetCSRIndexChangeGroups(ClientContext &context);
 int32_t GetPathFindingVisitPrefetch(ClientContext &context);
 
 struct CorePGQOptions {
@@ -64,6 +65,7 @@ struct CorePGQOptions {
 		RegisterPathFindingSparseLevelDivisor(loader);
 		RegisterPathFindingPartitionVertices(loader);
 		RegisterPathFindingSubRangeTasks(loader);
+		RegisterCSRIndexChangeGroups(loader);
 		RegisterPathFindingVisitPrefetch(loader);
 	}
 
@@ -96,6 +98,7 @@ private:
 	static void RegisterPathFindingSparseLevelDivisor(ExtensionLoader &loader);
 	static void RegisterPathFindingPartitionVertices(ExtensionLoader &loader);
 	static void RegisterPathFindingSubRangeTasks(ExtensionLoader &loader);
+	static void RegisterCSRIndexChangeGroups(ExtensionLoader &loader);
 	static void RegisterPathFindingVisitPrefetch(ExtensionLoader &loader);
 };
 

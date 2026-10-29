@@ -4,13 +4,20 @@
 # machine was roughly 3.5 days, dominated by the baselines at SF300 (10 minute timeouts) and the
 # FalkorDB/Neo4j update workloads (about 30 minutes each).
 #
-# Subsets:  ./run_all.sh sweep | ldbc | client | native | microbench | updates | all   (default all)
+# Subsets:  ./run_all.sh fixed | sweep | ldbc | client | native | microbench | updates | all   (default all)
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 cd "${REPO_ROOT}"
 what="${1:-all}"
 COMMON=(--threads "${THREADS}" --repeats "${REPEATS}" --timeout-s "${TIMEOUT_S}")
 NOTE="repro $(git rev-parse --short HEAD) $(hostname)"
+
+if [ "$what" = all ] || [ "$what" = fixed ]; then
+  # Fixed costs: database size, CSR index build time and bytes per edge, every baseline's fresh load and store size
+  for sf in ${SCALE_FACTORS}; do
+    step "fixed_costs_sf${sf}" ${HARNESS} fixed-costs --scale-factor "$sf" --threads "${THREADS}" --repeats "${REPEATS}" --notes "fixed costs SF${sf} ${NOTE}"
+  done
+fi
 
 if [ "$what" = all ] || [ "$what" = sweep ]; then
   # W27: random pairs 1..65536 and sources x all persons (1, 16, 128, 1024) on every system.
@@ -53,6 +60,11 @@ if [ "$what" = all ] || [ "$what" = microbench ]; then
     step "microbench_partitions_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs partitions --shapes random multi_source --pair-counts 128 2048 16384 65536 --source-counts 1 1024 --notes "W32 partition geometry SF${sf} ${NOTE}"
     step "microbench_scheduling_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --notes "W31 scheduling SF${sf} ${NOTE}"
   done
+  # Section 3 of the paper: one pair on the lane kernel vs the per-source kernel (1 pair, no_source_grouping),
+  # 20 sources x 200 destinations with and without source grouping, paths against lengths
+  for sf in 10 100; do
+    step "microbench_section3_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs section3 --shapes random all_pairs --pair-counts 1 2048 65536 --source-count 20 --target-count 200 --notes "Section 3 switches SF${sf} ${NOTE}"
+  done
   # The scheduling crossover figure needs SF300 as well; index route only
   step "microbench_scheduling_sf300" ${HARNESS} microbench --scale-factor 300 "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes "W31 scheduling SF300 ${NOTE}"
 fi
@@ -67,6 +79,8 @@ if [ "$what" = all ] || [ "$what" = updates ]; then
   for readers in 1 4 8 16; do
     step "concurrent_sf10_r${readers}" ${HARNESS} update-concurrent "${UPD[@]}" --readers "$readers" --writer-pause-ms 200 --notes "W16 concurrent ${NOTE}"
   done
+  # The unpaced writer: commits as fast as it can while 4 readers query
+  step "concurrent_sf10_r4_unpaced" ${HARNESS} update-concurrent "${UPD[@]}" --readers 4 --writer-pause-ms 0 --notes "W16 concurrent unpaced ${NOTE}"
   step "update_kuzu_sf10_sssp"      ${HARNESS} update-kuzu     "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"
   step "update_memgraph_sf10_sssp"  ${HARNESS} update-memgraph "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"
   step "update_falkordb_sf10_sssp"  ${HARNESS} update-falkordb "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"

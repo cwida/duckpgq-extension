@@ -3379,7 +3379,7 @@ def sweep_graphalytics_bfs(args):
 # ---------------------------------------------------------------------------------------------------------------------
 
 UPDATE_LOG_TABLE = "knows_update_log"
-UPDATE_CONFIGS = ("build", "index_auto", "index_nofold")
+UPDATE_CONFIGS = ("build", "index_auto", "index_nofold", "index_per_row")
 WORK_ROOT = DATA_ROOT / "work"
 
 
@@ -3506,6 +3506,9 @@ def update_run_statements(config, args, options, batch_rows, work_db):
     else:
         ratio = args.fold_ratio if config == "index_auto" else 0
         add("setup", 0, f"SET duckpgq_csr_index_fold_ratio = {ratio};")
+        if config == "index_per_row":
+            # Snapshot visibility decided per logged row instead of per change group (the per-row cost claim)
+            add("setup", 0, "SET duckpgq_csr_index_change_groups = false;")
         add("index_build", 0, f"DROP INDEX IF EXISTS ldbc.main.{CSR_INDEX_NAME};")
         add("index_build", 0, create_csr_index_sql(if_not_exists=False))
         add("setup", 0, f"""CREATE OR REPLACE TEMP TABLE pathfinding_index_pairs AS
@@ -4830,7 +4833,7 @@ class DuckPGQSystem(GraphDBSystem):
     the symmetric closure of knows (LDBC's undirected semantics)."""
 
     def __init__(self, route, scale_factor, threads, timeout_s, symmetric=False, settings=None, index_with=None,
-                 multi_source_pair_mode=False, index_suffix=None):
+                 multi_source_pair_mode=False, index_suffix=None, paths=False):
         self.route = route
         self.name = f"duckpgq_{route}"
         self.scale_factor = scale_factor
@@ -4842,6 +4845,9 @@ class DuckPGQSystem(GraphDBSystem):
         self.settings = dict(settings or {})
         self.index_with = index_with
         self.multi_source_pair_mode = multi_source_pair_mode
+        # paths: shortestpathoperator (vertex and edge ids of one shortest path per pair) instead of lengths; the
+        # counts reported are the number of paths and the sum of their lengths, so they agree with the length routes
+        self.paths = paths
         self.database = db_path(scale_factor)
         # Build route: the symmetric closure table and a cache key that tells the operator the edge set is
         # symmetric (a reverse search may use the forward partitions); index route: an undirected index on knows
@@ -4901,18 +4907,27 @@ class DuckPGQSystem(GraphDBSystem):
 
     def script(self, rowid_pairs, key_pairs, warm):
         reach = "/*reach*/" in rowid_pairs
+        edge_struct = "struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst)"
+        edge_columns = "a.rowid::BIGINT AS pathfinding_edge_src, c.rowid::BIGINT AS pathfinding_edge_dst"
         if reach:
             # reachoperator yields [dst, len] per reached vertex; count and sum over the lengths as in pair mode
             select = "SELECT count(r[2]), coalesce(sum(r[2]), 0) FROM (SELECT reachoperator(src, dst, "
             result = ") AS r"
+        elif self.paths:
+            # A path is [v0, e0, v1, e1, ..., vk]: its length is (list length - 1) / 2; the build route carries the
+            # edge row ids through the endpoint input
+            select = "SELECT count(p), coalesce(sum((len(p) - 1) // 2), 0) FROM (SELECT shortestpathoperator(src, dst, "
+            result = ") AS p"
+            edge_struct = "struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst, id := pathfinding_edge_id)"
+            edge_columns = edge_columns + ", k.rowid::BIGINT AS pathfinding_edge_id"
         else:
             select = "SELECT count(len), coalesce(sum(len), 0) FROM (SELECT iterativelengthoperator(src, dst, "
             result = ") AS len"
         if self.route == "build":
-            query = f"""{select}struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),
+            query = f"""{select}{edge_struct},
         {self.vertex_count}::BIGINT, {self.edge_count_value}::BIGINT, {sql_string(self.cache_key)}{result}
     FROM {rowid_pairs} AS pathfinding_pairs,
-        (SELECT a.rowid::BIGINT AS pathfinding_edge_src, c.rowid::BIGINT AS pathfinding_edge_dst
+        (SELECT {edge_columns}
          FROM ldbc.{self.edge_table} k JOIN ldbc.person a ON a.id = k.person1id JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges);"""
             prelude = ""
         else:
@@ -5251,7 +5266,8 @@ def read_result_files(files):
 
 
 def sweep_pairs_table(args):
-    """Prints the sweep as one table per shape: systems x pair counts, mean seconds or the timeout status."""
+    """Prints the sweep as one table per shape: systems x pair counts, median seconds of the repeats or the timeout
+    status (medians since 29 Oct: a baseline's first repeat is often cold)."""
     rows = read_result_files(args.files)
     for shape, column in (("random_pairs", "pairs"), ("multi_source", "sources")):
         shape_rows = [r for r in rows if r["shape"] == shape]
@@ -5262,7 +5278,7 @@ def sweep_pairs_table(args):
         for r in shape_rows:
             if r["system"] not in systems:
                 systems.append(r["system"])
-        print(f"\n## {shape}: mean seconds per query, SF{shape_rows[0]['scale_factor']}, {shape_rows[0]['threads']} threads, timeout {shape_rows[0].get('timeout_s') or shape_rows[0].get('budget_s')} s\n")
+        print(f"\n## {shape}: median seconds per query, SF{shape_rows[0]['scale_factor']}, {shape_rows[0]['threads']} threads, timeout {shape_rows[0].get('timeout_s') or shape_rows[0].get('budget_s')} s\n")
         print("| system | " + " | ".join(f"{column}={c}" for c in counts) + " |")
         print("|---|" + "---|" * len(counts))
         for system in systems:
@@ -5271,7 +5287,7 @@ def sweep_pairs_table(args):
                 point = [r for r in shape_rows if r["system"] == system and int(r[column]) == c]
                 ok = [float(r["query_s"]) for r in point if r["status"] == "ok"]
                 if ok:
-                    mean = statistics.mean(ok)
+                    mean = statistics.median(ok)
                     cells.append(f"{mean*1000:.0f} ms" if mean < 1 else f"{mean:.1f} s")
                 elif any(r["status"].startswith(("timed_out", "budget_exceeded")) for r in point):
                     cells.append(f"> {point[0].get('timeout_s') or point[0].get('budget_s')} s")
@@ -5328,6 +5344,8 @@ MICROBENCH_CONFIGS["adaptive"] = ({OPT + "grouped_batches_budget": 0}, None, Fal
 MICROBENCH_CONFIGS["adaptive_os4"] = ({OPT + "grouped_batches_budget": 0, OPT + "batch_oversubscription": 4}, None, False)
 MICROBENCH_CONFIGS["adaptive_os32"] = ({OPT + "grouped_batches_budget": 0, OPT + "batch_oversubscription": 32}, None, False)
 MICROBENCH_CONFIGS["grouped_always"] = MICROBENCH_CONFIGS["adaptive"]
+# Paths (shortestpathoperator: one shortest path per pair with vertex and edge ids) against lengths; 5th tuple element
+MICROBENCH_CONFIGS["paths"] = ({}, None, False, None, True)
 # Partition geometry (W32): vertices per partition instead of 2 x threads partitions; the index route builds one
 # index per geometry (4th tuple element: index name suffix)
 for _pv in (4096, 8192, 16384, 32768, 65535):
@@ -5357,6 +5375,8 @@ MICROBENCH_GROUPS = {
     "threads": ["baseline"] + [f"threads_{n}" for n in (1, 2, 4, 8, 16)],
     "memory": ["baseline", "no_frontier_bitmap", "no_sparse_levels", "sparse_levels_8", "sparse_levels_64",
                "bitmap_filter_on", "bitmap_filter_off", "visit_prefetch_8", "plain_explore"],
+    # Section 3 of the paper: the kernel switch for one pair, 20 sources x 200 destinations, paths against lengths
+    "section3": ["baseline", "no_source_grouping", "paths"],
     "partitions": ["baseline"] + [f"partitions_{pv}" for pv in (4096, 8192, 16384, 32768, 65535)]
                   + ["partitions_65535_nosub", "no_sub_range_tasks", "threads_rule_partitions"],
     "scheduling": ["baseline", "no_grouped_batches", "adaptive", "adaptive_os4", "adaptive_os32",
@@ -5396,6 +5416,12 @@ def microbenchmarks(args):
     if "multi_source" in args.shapes:
         for k in args.source_counts:
             points.append(("multi_source", ensure_multi_source_table(scale_factor, k), "", k))
+    if "all_pairs" in args.shapes:
+        # s sources x t destinations as a pair list (Section 3: 20 x 200); recorded as pairs = s*t, sources = s
+        s_count, t_count = args.source_count, args.target_count
+        ensure_pair_table(scale_factor, s_count * t_count, "all_pairs", source_count=s_count, target_count=t_count)
+        points.append(("all_pairs", pair_table_name(s_count * t_count, "all_pairs", s_count, t_count),
+                       s_count * t_count, s_count))
     configs = microbench_configs(args.configs)
     results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -5409,10 +5435,12 @@ def microbenchmarks(args):
             entry = MICROBENCH_CONFIGS[config]
             settings, index_with, pair_mode = entry[0], entry[1], entry[2]
             index_suffix = entry[3] if len(entry) > 3 else None
+            paths = entry[4] if len(entry) > 4 else False
             if route == "build" and config in MICROBENCH_INDEX_ONLY:
                 continue
             system = DuckPGQSystem(route, scale_factor, args.threads, args.timeout_s, settings=settings,
-                                   index_with=index_with, multi_source_pair_mode=pair_mode, index_suffix=index_suffix)
+                                   index_with=index_with, multi_source_pair_mode=pair_mode, index_suffix=index_suffix,
+                                   paths=paths)
             started = time.perf_counter()
             system.load(None, scale_factor)
             print(f"== duckpgq_{route} [{config}] loaded in {time.perf_counter() - started:.1f}s"
@@ -5462,19 +5490,20 @@ def microbenchmarks(args):
 
 
 def microbenchmarks_table(args):
-    """One table per route and shape: configurations x points, mean seconds and the ratio to the baseline."""
+    """One table per route and shape: configurations x points, median seconds and the ratio to the baseline."""
     rows = []
     for file in args.files:
         rows.extend(csv.DictReader(open(file)))
     for route in sorted({r["system"] for r in rows}):
-        for shape, column in (("random_pairs", "pairs"), ("same_dst", "pairs"), ("multi_source", "sources")):
+        for shape, column in (("random_pairs", "pairs"), ("same_dst", "pairs"), ("multi_source", "sources"),
+                              ("all_pairs", "pairs")):
             shape_rows = [r for r in rows if r["system"] == route and r["shape"] == shape]
             if not shape_rows:
                 continue
             counts = sorted({int(r[column]) for r in shape_rows})
             configs = list(dict.fromkeys(r["config"] for r in shape_rows))
             sf = shape_rows[0].get("benchmark_notes", "")
-            print(f"\n## {route} {shape}: mean seconds (x baseline), {shape_rows[0]['threads']} threads, "
+            print(f"\n## {route} {shape}: median seconds (x baseline), {shape_rows[0]['threads']} threads, "
                   f"timeout {shape_rows[0]['timeout_s']} s")
             print("| config | " + " | ".join(f"{column}={c}" for c in counts) + " |")
             print("|---|" + "---|" * len(counts))
@@ -5483,7 +5512,7 @@ def microbenchmarks_table(args):
                 ok = [float(r["query_s"]) for r in shape_rows
                       if r["config"] == config and int(r[column]) == count and r["status"] == "ok"]
                 point = [r for r in shape_rows if r["config"] == config and int(r[column]) == count]
-                return (statistics.mean(ok) if ok else None), point
+                return (statistics.median(ok) if ok else None), point
 
             for config in configs:
                 cells = []
@@ -5501,6 +5530,106 @@ def microbenchmarks_table(args):
                         text += f" ({mean / base:.2f}x)"
                     cells.append(text)
                 print(f"| {config} | " + " | ".join(cells) + " |")
+
+
+def directory_bytes(path):
+    total = 0
+    for root, _, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass
+    return total
+
+
+def fixed_costs(args):
+    """The fixed costs of every system at one scale factor: DuckDB database size, CSR index creation time and bytes
+    per edge, and each baseline's fresh load time and store size (the paper's fixed-costs table)."""
+    sys.stdout.reconfigure(line_buffering=True)
+    scale_factor = args.scale_factor
+    ensure_update_log(scale_factor)
+    export_dir = ensure_graphdb_export(scale_factor, [pair_table_name(1024, "random")])
+    results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    path = results_dir / f"fixed_costs_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
+    writer = ResultWriter(path, ["system", "scale_factor", "measure", "seconds", "bytes", "edges", "bytes_per_edge",
+                                 "threads", "benchmark_notes", "repo_commit"])
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
+
+    def record(system, measure, seconds=None, nbytes=None, edges=None):
+        row = {"system": system, "scale_factor": scale_factor, "measure": measure,
+               "seconds": f"{seconds:.3f}" if seconds is not None else "",
+               "bytes": nbytes if nbytes is not None else "", "edges": edges if edges is not None else "",
+               "bytes_per_edge": f"{nbytes / edges:.2f}" if nbytes and edges else "", "threads": args.threads,
+               "benchmark_notes": args.notes, "repo_commit": commit}
+        writer.add(row)
+        print(f"   {system:16s} {measure:22s} {row['seconds']:>10s} s {str(row['bytes']):>14s} B {row['bytes_per_edge']:>8s} B/edge")
+
+    database = db_path(scale_factor)
+    edges = int(run_duckdb(BENCH_DUCKDB, database, "SELECT count(*) FROM person_knows_person;", quiet=True)[0].strip().splitlines()[-1])
+    record("duckdb", "database_file", nbytes=os.path.getsize(database), edges=edges)
+    # CSR index: creation time (fresh) and bytes in memory, repeated
+    for repeat in range(1, args.repeats + 1):
+        run_duckdb(BENCH_DUCKDB, None, f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; ATTACH {sql_string(database)} AS ldbc; "
+                                      f"DROP INDEX IF EXISTS ldbc.{CSR_INDEX_NAME};", quiet=True)
+        # Dot commands need the CLI's stdin, as the timed queries of the sweep do
+        script = f"""LOAD {sql_string(DUCKPGQ_EXTENSION)};
+SET threads={args.threads};
+ATTACH {sql_string(database)} AS ldbc;
+USE ldbc;
+.timer on
+CREATE INDEX {CSR_INDEX_NAME} ON person_knows_person USING CSR (person1id, person2id);
+.timer off
+SELECT duckpgq_csr_index_size('person_knows_person', '{CSR_INDEX_NAME}');
+"""
+        completed = subprocess.run([str(BENCH_DUCKDB), "-unsigned", "-csv"], cwd=REPO_ROOT, text=True, input=script,
+                                   capture_output=True, timeout=args.timeout_s)
+        out = completed.stdout + completed.stderr
+        timers = re.findall(r"Run Time \(s\): real ([0-9.]+)", out)
+        size = re.search(r"edges=(\d+);bytes=(\d+)", out)
+        record("duckpgq_index", f"index_build_repeat{repeat}", seconds=float(timers[-1]) if timers else None,
+               nbytes=int(size.group(2)) if size else None, edges=int(size.group(1)) if size else None)
+    # Baselines: fresh load (every load() rebuilds the server-side graph; the Kuzu snapshot is removed first) and size
+    systems = make_systems(args, scale_factor)
+    for system in systems:
+        if isinstance(system, DuckPGQSystem):
+            continue
+        if isinstance(system, KuzuSystem):
+            snapshot = kuzu_snapshot_db(scale_factor)
+            shutil.rmtree(snapshot, ignore_errors=True) if snapshot.is_dir() else snapshot.unlink(missing_ok=True)
+            for extra in snapshot.parent.glob(snapshot.name + ".*"):
+                extra.unlink(missing_ok=True)
+        started = time.perf_counter()
+        system.load(export_dir, scale_factor)
+        load_s = time.perf_counter() - started
+        store = None
+        try:
+            if isinstance(system, KuzuSystem):
+                snapshot = kuzu_snapshot_db(scale_factor)
+                store = directory_bytes(snapshot) if snapshot.is_dir() else sum(
+                    f.stat().st_size for f in [snapshot] + list(snapshot.parent.glob(snapshot.name + ".*")) if f.exists())
+            elif isinstance(system, MemgraphSystem):
+                rows = system.run("SHOW STORAGE INFO")
+                info = {r["storage info"]: str(r["value"]) for r in rows}
+                text = info.get("memory_res", info.get("memory_usage", "0"))
+                units = {"B": 1, "KiB": 1024, "MiB": 1024 ** 2, "GiB": 1024 ** 3, "TiB": 1024 ** 4}
+                match = re.match(r"([0-9.]+)\s*([KMGT]?i?B)?", text)
+                store = int(float(match.group(1)) * units.get(match.group(2) or "B", 1)) if match else None
+            elif isinstance(system, FalkorDBSystem):
+                usage = system.db.connection.execute_command("GRAPH.MEMORY", "USAGE", system.graph_name)
+                values = {usage[i]: usage[i + 1] for i in range(0, len(usage) - 1, 2)}
+                store = int(values.get("total_graph_sz_mb", 0)) * 1024 * 1024
+            elif isinstance(system, Neo4jSystem):
+                system.run("CALL db.checkpoint()")  # flush the page cache so the store files hold the graph
+                du = subprocess.run(["docker", "exec", "pf-neo4j", "du", "-sb", f"/data/databases/{system.database}"],
+                                    text=True, capture_output=True).stdout.split()
+                store = int(du[0]) if du else None
+        except Exception as ex:  # noqa: BLE001
+            print(f"   {system.name}: store size unavailable ({str(ex)[:80]})")
+        record(system.name, "load", seconds=load_s, nbytes=store, edges=system.edge_count())
+        system.close()
+    print(f"Wrote {path}")
 
 
 LDBC_QUERIES = ["ic13", "bi19", "bi20"]
@@ -5689,14 +5818,14 @@ def ldbc_queries(args):
 
 
 def ldbc_queries_table(args):
-    """systems x queries: mean seconds over the parameter sets (each the mean of its repeats), or the timeout status"""
+    """systems x queries: mean over the parameter sets of the median of each set's repeats, or the timeout status"""
     rows = read_result_files(args.files)
     queries = [q for q in LDBC_QUERIES if any(r["query"] == q for r in rows)]
     systems = []
     for r in rows:
         if r["system"] not in systems:
             systems.append(r["system"])
-    print(f"\n## LDBC queries (hop-count variants, undirected knows): mean seconds per query, SF{rows[0]['scale_factor']}, "
+    print(f"\n## LDBC queries (hop-count variants, undirected knows): seconds per query (median of the repeats per parameter set, mean over the sets), SF{rows[0]['scale_factor']}, "
           f"{rows[0]['threads']} threads, timeout {rows[0].get('timeout_s') or rows[0].get('budget_s')} s\n")
     print("| system | " + " | ".join(queries) + " |")
     print("|---|" + "---|" * len(queries))
@@ -5709,7 +5838,7 @@ def ldbc_queries_table(args):
                 if r["status"] == "ok":
                     per_param.setdefault(r["param_index"], []).append(float(r["query_s"]))
             if per_param and len(per_param) == len({r["param_index"] for r in point}):
-                mean = statistics.mean(statistics.mean(v) for v in per_param.values())
+                mean = statistics.mean(statistics.median(v) for v in per_param.values())
                 cells.append(f"{mean*1000:.0f} ms" if mean < 1 else f"{mean:.1f} s")
             elif any(r["status"].startswith(("timed_out", "budget_exceeded")) for r in point):
                 cells.append(f"> {point[0].get('timeout_s') or point[0].get('budget_s')} s")
@@ -6109,8 +6238,10 @@ def main():
     microbench_parser.add_argument("--routes", nargs="+", choices=["build", "index"], default=["build", "index"])
     microbench_parser.add_argument("--configs", nargs="+", default=["all"],
                                  help=f"config names or groups {', '.join(MICROBENCH_GROUPS)}; configs: {', '.join(MICROBENCH_CONFIGS)}")
-    microbench_parser.add_argument("--shapes", nargs="+", choices=["random", "same_dst", "multi_source"],
+    microbench_parser.add_argument("--shapes", nargs="+", choices=["random", "same_dst", "multi_source", "all_pairs"],
                                  default=["random", "same_dst", "multi_source"])
+    microbench_parser.add_argument("--source-count", type=int, default=20, help="all_pairs shape: sources")
+    microbench_parser.add_argument("--target-count", type=int, default=200, help="all_pairs shape: destinations per source")
     microbench_parser.add_argument("--pair-counts", nargs="*", type=int, default=[1, 128, 1024, 65536])
     microbench_parser.add_argument("--source-counts", nargs="*", type=int, default=[1, 128, 1024])
     microbench_parser.add_argument("--repeats", type=int, default=3)
@@ -6119,6 +6250,22 @@ def main():
     microbench_parser.set_defaults(func=microbenchmarks)
 
     microbench_table_parser = subcommands.add_parser("microbench-table", aliases=["ablation-table"], help="Print microbenchmark CSVs as tables")
+
+    fixed_parser = subcommands.add_parser("fixed-costs", help="Database size, index build time and bytes per edge, baseline load times and store sizes")
+    fixed_parser.add_argument("--scale-factor", required=True)
+    fixed_parser.add_argument("--threads", type=int, default=os.cpu_count())
+    fixed_parser.add_argument("--repeats", type=int, default=3, help="index build repeats")
+    fixed_parser.add_argument("--systems", nargs="+", default=["kuzu", "memgraph", "falkordb", "neo4j"])
+    fixed_parser.add_argument("--timeout-s", type=float, default=600)
+    fixed_parser.add_argument("--client-threads", type=int, default=1)
+    fixed_parser.add_argument("--memgraph-uri", default="bolt://localhost:7687")
+    fixed_parser.add_argument("--neo4j-uri", default="bolt://localhost:7688")
+    fixed_parser.add_argument("--neo4j-database", default="pathfinding")
+    fixed_parser.add_argument("--neo4j-runtime", default="parallel")
+    fixed_parser.add_argument("--falkordb-host", default="localhost")
+    fixed_parser.add_argument("--falkordb-port", type=int, default=6379)
+    fixed_parser.add_argument("--notes", default="")
+    fixed_parser.set_defaults(func=fixed_costs)
     microbench_table_parser.add_argument("files", nargs="+")
     microbench_table_parser.set_defaults(func=microbenchmarks_table)
 
