@@ -753,6 +753,73 @@ def teaser_figure(filename, sf="100"):
     save(fig, filename)
 
 
+# BI19 over the index with lanes per distinct source, measured after rc1 (29 Oct); remove once the rerun has it
+BI19_OVERRIDE_S = {"300": 1.6}
+
+
+def ldbc_query_seconds(points, system, query):
+    """Median of the runs per parameter set, averaged over the sets, on the system's faster configuration; None for
+    no result, "exceeded" when any set timed out"""
+    best = None
+    for label in (system, f"{system}@32"):
+        params = sorted({k[2] for k in points if k[0] == label and k[1] == query})
+        if not params:
+            continue
+        values = [points[(label, query, pr)] for pr in params]
+        if any(v["status"] == "exceeded" for v in values):
+            value = "exceeded"
+        elif all(v["status"] == "ok" for v in values):
+            value = statistics.mean(v["median"] for v in values)
+        else:
+            continue
+        if best is None or best == "exceeded" or (value != "exceeded" and value < best):
+            best = value
+    return best
+
+
+def teaser_bi19_figure(filename, sf="300"):
+    """Page-one figure: LDBC BI19 at one scale factor, seconds on a linear axis, one bar per system"""
+    points = load("ldbc_queries", sf)
+    systems = [("duckpgq_index", "DuckPGQ"), ("neo4j", "Neo4j"), ("kuzu", "Kuzu"), ("memgraph", "Memgraph"),
+               ("falkordb", "FalkorDB"), ("neo4j_gds", "Neo4j GDS")]
+    colors = dict(COLOR)
+    colors["neo4j_gds"] = "#7fcfae"
+    rows = []
+    for system, name in systems:
+        value = ldbc_query_seconds(points, system, "bi19")
+        if system == "duckpgq_index" and sf in BI19_OVERRIDE_S:
+            value = BI19_OVERRIDE_S[sf]
+        if value is not None:
+            rows.append((name, value, colors[system], system == "duckpgq_index"))
+    fig, ax = plt.subplots(figsize=(3.33, 1.75))
+    ys = list(range(len(rows)))[::-1]
+    for y, (name, value, color, ours) in zip(ys, rows):
+        if value == "exceeded":
+            ax.barh(y, TIMEOUT_S, height=0.62, color=SURFACE, edgecolor=color, hatch="////", linewidth=0.6,
+                    alpha=0.55, zorder=3)
+            ax.text(TIMEOUT_S - 10, y, "timed out, > 600 s", va="center", ha="right", fontsize=6.3, color=INK2,
+                    zorder=4, bbox=dict(boxstyle="square,pad=0.15", facecolor=SURFACE, edgecolor="none"))
+        else:
+            ax.barh(y, value, height=0.62, color=color, zorder=3)
+            text = f"{value:.1f} s" if value < 10 else f"{value:.0f} s"
+            ax.text(value + 8, y, text, va="center", ha="left", fontsize=7.5 if ours else 6.5,
+                    fontweight="bold" if ours else "normal", color=color if ours else INK2, zorder=4)
+    ax.set_yticks(ys)
+    ax.set_yticklabels([r[0] for r in rows], fontsize=7)
+    for label, row in zip(ax.get_yticklabels(), rows):
+        if row[3]:
+            label.set_fontweight("bold")
+            label.set_color(colors["duckpgq_index"])
+    ax.set_xlim(0, 640)
+    ax.set_xticks([0, 150, 300, 450, 600])
+    ax.set_xlabel(f"seconds per query, LDBC BI19 at SF{sf}", labelpad=2)
+    ax.axvline(TIMEOUT_S, color=MUTED, linewidth=0.8, linestyle=(0, (4, 3)), zorder=2)
+    ax.grid(axis="y", visible=False)
+    style_axes(ax)
+    fig.subplots_adjust(left=0.22, right=0.97, bottom=0.22, top=0.97)
+    save(fig, filename)
+
+
 def save(fig, filename):
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / f"{filename}.pdf")
@@ -769,7 +836,8 @@ if __name__ == "__main__":
     ldbc_figure("ldbc_queries")
     client_threads_figure("client_threads")
     speedup_figure("speedup")
-    teaser_figure("teaser")
+    teaser_figure("teaser_pairs")
+    teaser_bi19_figure("teaser")
     scaling_figure("scaling")
     throughput_figure("throughput")
     first_query_figure("first_query")
