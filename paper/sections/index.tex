@@ -35,10 +35,11 @@ rows; it never learns the row ids of the vertex table, and vertex row ids are no
 table either. The index therefore identifies vertices by their key, which is what the \sqlpgq definition of the graph
 does anyway, and edges by their edge-table row id. Row ids are safe to store because \duckdb changes them only when it
 compacts a table at a checkpoint, and it compacts only tables whose indexes are all ARTs; with a CSR index present
-every row keeps its id until the index is dropped. \todo{Audit 28 Oct: false for a commit that fails after the
-index saw its append. The append is reverted, the next insert gets the same row id, and the failed commit's edge
-becomes visible (reproduced with a unique-key conflict). A checkpoint that drops a fully deleted trailing row group
-may do the same (not tested). Fix in the code or qualify here and in Section~\ref{sec:index-correctness}.}
+every row keeps its id until the index is dropped. There is one exception. A commit can fail after the index has
+logged its append, for example on a unique-key conflict, and \duckdb then reverts the append and gives the same row
+id to the next insert. The index sees the id appended a second time and marks the earlier entry dead, so no
+transaction sees it. \todo{Not tested: whether a checkpoint that drops a fully deleted trailing row group also hands
+its ids out again. If so, a reused id of an epoch row would bring the deleted edge back.}
 
 \subsection{Epochs, change groups and snapshots}
 \label{sec:index-snapshots}
@@ -69,10 +70,11 @@ companion in one step.
 Visibility is decided by \duckdb, once per group. A group of inserts came from one commit of one transaction, so its
 rows are visible to a transaction either all or none; the transaction asks \texttt{CanFetch} about one row of the group and
 knows the answer for the whole group. A group of deletes applies when one row it deleted, whose insert the transaction
-sees, is no longer fetchable. Commits are serialized, so the visible groups of a transaction form a prefix of the log and
-the newest visible group identifies the transaction's view completely. The snapshot is therefore cacheable. The index keeps
-the last snapshot it built, keyed by epoch and newest visible group, and every transaction between two commits receives
-the same one. A transaction with uncommitted changes of its own gets a private CSR built from its own view of the
+sees, is no longer fetchable. Commits are serialized, so the visible groups of a transaction form a prefix of the log, and
+the newest visible group identifies which of them the transaction sees. The snapshot is therefore cacheable. The index
+keeps the last snapshot it built, keyed by the epoch, the newest visible group and a hash of the decisions made per
+row, because those rows are not covered by the newest group, and every transaction between two commits receives the
+same one. A transaction with uncommitted changes of its own gets a private CSR built from its own view of the
 table, a full build and not an overlay, because its view is its own and nothing it builds may be published. Building a
 snapshot costs one version check per group since the fold, one pass over the inserted edges to bucket them by
 destination range, and, once per new tombstone, a share of one parallel scan over the epoch's row ids that finds the
@@ -96,11 +98,11 @@ by a transaction without uncommitted changes of its own, with that transaction's
 visible to it on one thread, builds the partitioned CSR with the same parallel build as \texttt{CREATE INDEX}, and installs the
 result as the newest epoch; the log entries the new epoch contains are the ones visible at $b_f$. A fold is triggered
 explicitly through a function, or automatically by the first transaction that finds the log larger than a configurable
-fraction of the epoch, one tenth by default, before that transaction's snapshot is built. Folds are serialized by a lock. \todo{Audit 28 Oct: a fold does not check that its
-bound is newer than the newest epoch's. When an older transaction folds after a newer one, the older epoch is
-installed as the newest, compaction drops the entries only the newer epoch covered, and a new transaction misses
-committed edges (reproduced with two connections and explicit folds; automatic folds of concurrent readers can take
-the same path). Concurrent readers that find the log too long also fold one after the other. Fix in the code.}
+fraction of the epoch, one tenth by default, before that transaction's snapshot is built. Folds are serialized by a lock, and a fold
+does nothing when the newest epoch is at least as new as its transaction. Epochs are therefore installed in the
+order of their bounds. Without the check, an older transaction that folds after a newer one would install its epoch
+as the newest, and compaction would drop the log entries that only the newer epoch contains. The check also means
+that when several transactions find the log too long at once, only the first rebuilds.
 Section~\ref{sec:cost} discusses why the trigger belongs to the transaction side and what a policy should look at.
 
 Two consequences of the interface shape the fold. The old epoch cannot be dropped at once, because a transaction that
@@ -109,7 +111,8 @@ retains the previous epoch until the next fold, two epochs in all, and serves ea
 whose bound does not exceed its own. The log cannot be compacted by re-evaluating visibility at $b_f$ after the fact, because the
 row versions that would answer the question are gone. Instead the folding transaction, while it is live, stamps every
 log entry with the generation of the first epoch that accounts for it, and compaction drops the entries whose
-generation is at most the oldest retained epoch's. A transaction whose bound is older than every retained epoch, a long
+generation is at most the oldest retained epoch's. Until then an entry stays in the log for the older epoch, and a
+snapshot of the newer epoch skips it, so no edge is traversed twice. A transaction whose bound is older than every retained epoch, a long
 transaction that started before two folds, gets no snapshot. Today its query fails with an error, and succeeds
 when rerun in a new transaction; falling back to a build inside the query is the obvious fix.
 
@@ -150,11 +153,10 @@ anyone. A row of $E$ leaves $\mathit{Vis}(b)$ only through a delete that committ
 reached \texttt{Delete} and became a tombstone or a stamp whose group applies exactly when the delete is visible to
 $b$. Entries appended to the log after the transaction copied its length belong to commits that cannot be visible to the
 transaction, since \texttt{Append} runs during the commit, before the rows become visible. The fold preserves the claim
-with $b_e := b_f$. The argument rests on three invariants of \duckdb and none of ours: the hooks fire at every commit,
-row ids are not reused while the index exists, and \texttt{CanFetch} implements $\mathit{Vis}$. \todo{Audit 28 Oct:
-the second invariant fails after a failed commit, and the fold race breaks the claim for concurrent folds (both above).
-Snapshots of the newest epoch also add log entries that epoch already contains while the older epoch is retained;
-lengths are unaffected, but the overlay carries duplicate edges.} What it does not
+with $b_e := b_f$. The argument rests on three invariants of \duckdb, that the hooks fire at every commit, that a row id
+is reused only after its append was reverted, and that \texttt{CanFetch} implements $\mathit{Vis}$, and on two of
+ours: a reused id marks the reverted entry dead, so $\Delta$ contains no row of a failed commit, and folds install
+epochs in the order of their bounds, so the epoch a transaction is served from is the newest one its bound allows. What it does not
 cover is a vertex deleted while its edges remain. The source and destination of a pair come from the vertex tables,
 so a deleted source or destination yields no pair; an intermediate vertex deleted with its edges in place is still
 traversed, where the SQL rewrite would have dropped those edges through its join with the vertex table. We document
