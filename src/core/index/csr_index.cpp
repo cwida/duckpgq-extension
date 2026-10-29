@@ -574,6 +574,10 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	unordered_map<uint32_t, bool> group_insert_visible;
 	for (idx_t i = 0; i < delta_prefix.size(); i++) {
 		auto &entry = delta_prefix[i];
+		if (entry.group == CSRIndexDeltaEdge::DEAD_GROUP) {
+			delta_covered[i] = true; // never visible: every epoch accounts for it by not containing it
+			continue;
+		}
 		if (entry.group != 0 && entry.deleted_group == 0) {
 			auto known = group_insert_visible.find(entry.group);
 			if (known == group_insert_visible.end()) {
@@ -626,7 +630,7 @@ void CSRIndex::CompactChangeLogLocked() const {
 	auto oldest_generation = epochs.front()->generation;
 	vector<CSRIndexDeltaEdge> new_delta;
 	for (auto &edge : delta) {
-		if (edge.covered_epoch > oldest_generation) {
+		if (edge.covered_epoch > oldest_generation && edge.group != CSRIndexDeltaEdge::DEAD_GROUP) {
 			new_delta.push_back(edge);
 		}
 	}
@@ -792,7 +796,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	};
 	// Insert groups are decided on an undeleted row (a deleted row is unfetchable for two possible reasons)
 	for (auto &entry : delta_edges) {
-		if (entry.group != 0 && entry.deleted_group == 0) {
+		if (entry.group != 0 && entry.group != CSRIndexDeltaEdge::DEAD_GROUP && entry.deleted_group == 0) {
 			group_commit_visible(entry.group, true, entry.row);
 		}
 	}
@@ -800,6 +804,10 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	for (idx_t i = 0; i < delta_edges.size(); i++) {
 		auto &entry = delta_edges[i];
 		bool insert_visible;
+		if (entry.group == CSRIndexDeltaEdge::DEAD_GROUP) {
+			delta_visible[i] = false;
+			continue;
+		}
 		if (entry.group == 0) {
 			// Loaded from storage: committed before the restart, so visible unless deleted
 			if (entry.deleted_group == 0) {
@@ -837,12 +845,27 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		                           : group_commit_visible(tombstone_groups[i], false, tombstone_rows[i]);
 	}
 
-	// The cache is a microbenchmark switch: off, every query packs its own overlay
+	// The cache is a microbenchmark switch: off, every query packs its own overlay. Two readers share a snapshot only
+	// when they see the same visible groups and made the same per-row decisions (a fully deleted change group is
+	// decided per row, so the newest visible group alone does not identify the view; 28 Oct audit).
 	shareable = shareable && GetPathFindingSnapshotCache(context);
+	uint64_t visibility_hash = 1469598103934665603ULL;
+	auto mix = [&](uint64_t value) {
+		visibility_hash = (visibility_hash ^ value) * 1099511628211ULL;
+	};
+	mix(newest_visible_group);
+	for (idx_t i = 0; i < delta_visible.size(); i++) {
+		mix(delta_visible[i] ? i * 2 + 1 : i * 2);
+	}
+	for (idx_t i = 0; i < tombstone_applied.size(); i++) {
+		mix(tombstone_applied[i] ? i * 2 + 1 : i * 2);
+	}
+	mix(delta_visible.size());
+	mix(tombstone_applied.size());
 	if (shareable) {
 		IndexLock l(*this);
 		if (cached_snapshot && cached_snapshot->epoch == epoch_p && cached_snapshot_generation == epoch.generation &&
-		    cached_snapshot_group == newest_visible_group) {
+		    cached_snapshot_group == newest_visible_group && cached_snapshot_visibility == visibility_hash) {
 			return cached_snapshot;
 		}
 	}
@@ -919,6 +942,11 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			continue;
 		}
 		auto &edge = delta_edges[i];
+		if (edge.covered_epoch <= epoch.generation) {
+			// Already an edge of this epoch (the entry stays in the log for readers of an older retained epoch);
+			// adding it again would traverse it twice (28 Oct audit)
+			continue;
+		}
 		bool ids_valid = edge.id_generation == epoch.generation;
 		auto src = ids_valid && edge.src_id < epoch_vertex_count ? edge.src_id : lookup_or_add(edge.src_key);
 		auto dst = ids_valid && edge.dst_id < epoch_vertex_count ? edge.dst_id : lookup_or_add(edge.dst_key);
@@ -1076,6 +1104,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		cached_snapshot = snapshot;
 		cached_snapshot_generation = epoch.generation;
 		cached_snapshot_group = newest_visible_group;
+		cached_snapshot_visibility = visibility_hash;
 	}
 	return snapshot;
 }
@@ -1085,6 +1114,20 @@ void CSRIndex::Fold(ClientContext &context, DuckTransaction &transaction, DataTa
 		throw InvalidInputException("A CSR index cannot be folded by a transaction with uncommitted changes");
 	}
 	lock_guard<mutex> fold_guard(fold_lock);
+	{
+		// Folds install epochs in visibility order. An older transaction that folds after a newer one would install
+		// an older epoch as the newest, and compaction would then drop the log entries only the newer epoch covered,
+		// hiding committed edges from new transactions (28 Oct audit). Readers that all saw the log grow past the
+		// ratio take the same path, so only the first of them rebuilds.
+		IndexLock l(*this);
+		if (!epochs.empty()) {
+			auto &newest = epochs.back()->bound;
+			auto mine = transaction.view.visibility_bound;
+			if (VisibilityBound::Min(newest, mine) == mine) {
+				return;
+			}
+		}
+	}
 	InstallEpochAndCompact(transaction, table, RebuildFromTable(context, transaction, table));
 }
 
@@ -1351,6 +1394,13 @@ ErrorData CSRIndex::Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 			continue;
 		}
 		auto row_id = row_data[row_format.sel->get_index(row)];
+		auto previous = delta_row_index.find(row_id);
+		if (previous != delta_row_index.end()) {
+			// The row id is reused: its previous append was reverted (a commit that failed after the index logged it)
+			// and the revert reached the index as a delete. That entry must never become visible, which it would once
+			// this row commits and its row id fetches again (28 Oct audit); mark it dead.
+			delta[previous->second].group = CSRIndexDeltaEdge::DEAD_GROUP;
+		}
 		delta_row_index[row_id] = delta.size();
 		delta.push_back({src_keys[row], dst_keys[row], row_id, NumericLimits<uint32_t>::Maximum(), group, 0,
 		                 resolve(src_keys[row]), resolve(dst_keys[row]), id_generation});
@@ -1613,7 +1663,7 @@ vector<uint8_t> CSRIndex::SerializeState() const {
 	// Only the change-log entries the persisted epoch does not account for; the stamps restart from zero on load
 	vector<CSRIndexDeltaEdge> pending_delta;
 	for (auto &edge : delta) {
-		if (edge.covered_epoch > epoch.generation) {
+		if (edge.covered_epoch > epoch.generation && edge.group != CSRIndexDeltaEdge::DEAD_GROUP) {
 			pending_delta.push_back(edge);
 		}
 	}

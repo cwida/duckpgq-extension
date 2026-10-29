@@ -104,6 +104,9 @@ struct CSRIndexDeltaEdge {
 	uint32_t group = 0;
 	//! Change group of the TryDelete call that deleted this delta row, 0 while it is not deleted
 	uint32_t deleted_group = 0;
+	//! `group` of an entry whose append was reverted and whose row id was reused: never visible, dropped by the
+	//! next compaction, never persisted
+	static constexpr uint32_t DEAD_GROUP = NumericLimits<uint32_t>::Maximum();
 	//! Dense ids of the keys in the dictionary of epoch `id_generation` (UINT32_MAX when unknown to it), resolved
 	//! at append time and again at every fold. A fold rebuilds the dictionary in key order, so ids are only valid
 	//! for the epoch they were resolved against.
@@ -282,6 +285,8 @@ private:
 	mutable shared_ptr<CSRIndexSnapshot> cached_snapshot;
 	mutable uint32_t cached_snapshot_generation = 0;
 	mutable uint32_t cached_snapshot_group = 0;
+	//! Hash of the per-entry visibility decisions of the cached snapshot's reader
+	mutable uint64_t cached_snapshot_visibility = 0;
 	//! One fold at a time
 	mutable mutex fold_lock;
 	//! Segments of the last checkpoint or WAL serialization, kept until the next one replaces them
