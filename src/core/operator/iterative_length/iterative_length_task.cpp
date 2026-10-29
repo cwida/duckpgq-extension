@@ -34,7 +34,8 @@ inline void StoreActiveWord(uint64_t *active, idx_t word_idx, uint64_t range_mas
 }
 
 bool CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next, std::bitset<LANE_LIMIT> *visit,
-                 uint64_t *active, idx_t range_begin, idx_t range_end, idx_t &active_count) {
+                 uint64_t *active, idx_t range_begin, idx_t range_end, idx_t &active_count,
+                 const std::bitset<LANE_LIMIT> &active_lanes) {
 	bool local_change = false;
 	idx_t word_idx = range_begin >> 6;
 	uint64_t word_bits = 0;
@@ -42,6 +43,8 @@ bool CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next, s
 	for (auto i = range_begin; i < range_end; i++) {
 		bool now_active = false;
 		if (next[i].any()) {
+			// A lane that found everything it looked for stops propagating (Then et al.)
+			next[i] &= active_lanes;
 			next[i] &= ~seen[i];
 			seen[i] |= next[i];
 			now_active = next[i].any();
@@ -485,7 +488,7 @@ void IterativeLengthState::RunPhase(idx_t worker_id) {
 		idx_t range_end;
 		SubRange(*local_csrs[partition_idx], static_cast<idx_t>(task_idx % static_cast<int64_t>(sub_ranges)),
 		         range_begin, range_end);
-		local_change |= CheckChange(seen, next, visit, active_bitmap, range_begin, range_end, active_count);
+		local_change |= CheckChange(seen, next, visit, active_bitmap, range_begin, range_end, active_count, lane_active);
 	}
 	worker_changed[worker_id] = local_change ? 1 : 0;
 	worker_active_counts[worker_id] = active_count;
@@ -507,18 +510,33 @@ bool IterativeLengthState::AdvancePhase() {
 		active_total += worker_active_counts[i];
 	}
 	change = any_change;
-	ReachDetect(*this);
+	DetectReached();
 	if (change) {
 		BeginIteration();
 		PrepareLevel(active_total);
 		return true;
 	}
-	UnReachableSet(*this);
+	MarkUnreachable();
 	Clear();
-	if (started_searches < pairs->size()) {
-		InitializeLanes();
+	if (StartNextWave()) {
 		BeginIteration();
 		PrepareLevel(active);
+		return true;
+	}
+	return false;
+}
+
+void IterativeLengthState::DetectReached() {
+	ReachDetect(*this);
+}
+
+void IterativeLengthState::MarkUnreachable() {
+	UnReachableSet(*this);
+}
+
+bool IterativeLengthState::StartNextWave() {
+	if (started_searches < pairs->size()) {
+		InitializeLanes();
 		return true;
 	}
 	return false;

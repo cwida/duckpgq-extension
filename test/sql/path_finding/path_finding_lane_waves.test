@@ -1,0 +1,68 @@
+# name: test/sql/path_finding/path_finding_lane_waves.test
+# description: many sources with destination lists run as MS-BFS waves of one lane per source; the answers equal the per-source searches and the pair-mode lanes
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET experimental_path_finding_operator_reach = false;
+
+statement ok
+CREATE TABLE pv AS SELECT range AS id FROM range(400);
+
+# A ring with chords; distances up to a few hops between most pairs
+statement ok
+CREATE TABLE pe AS SELECT id AS src, (id + 1) % 400 AS dst FROM pv UNION ALL SELECT id, (id + 11) % 400 FROM pv UNION ALL SELECT id, (id + 97) % 400 FROM pv;
+
+# 40 sources x 30 destinations each (one destination equals its source), 1200 pairs over 40 distinct sources
+statement ok
+CREATE TABLE pairs AS SELECT s.id AS s, (s.id * 7 + d.k * 13) % 400 AS d FROM (SELECT id FROM pv WHERE id % 10 = 0) s, range(30) d(k);
+
+statement ok
+CREATE TABLE reference AS SELECT count(len) AS c, sum(len) AS s FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 400::BIGINT, 1200::BIGINT, 'graph:waves') AS len
+    FROM pairs, pe);
+
+query I
+SELECT s LIKE '%scheduling=source_grouped%' AND s LIKE '%source_group_kernel=lane_waves%' AND s LIKE '%lane_waves=1%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# The per-source searches give the same answer
+statement ok
+SET experimental_path_finding_operator_lane_waves = false;
+
+query I
+SELECT (SELECT c FROM reference) = count(len) AND (SELECT s FROM reference) = sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 400::BIGINT, 1200::BIGINT, 'graph:waves') AS len
+    FROM pairs, pe);
+----
+true
+
+query I
+SELECT s LIKE '%source_group_kernel=per_source%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# And so do the lane-per-pair batches (source grouping off)
+statement ok
+SET experimental_path_finding_operator_source_group_ratio = 0;
+
+statement ok
+SET experimental_path_finding_operator_few_sources_limit = 0;
+
+query I
+SELECT (SELECT c FROM reference) = count(len) AND (SELECT s FROM reference) = sum(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 400::BIGINT, 1200::BIGINT, 'graph:waves') AS len
+    FROM pairs, pe);
+----
+true
+
+# Every pair is reachable on this ring and the sources count at distance 0
+query I
+SELECT c = 1200 FROM reference;
+----
+true

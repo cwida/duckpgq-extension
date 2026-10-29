@@ -913,3 +913,19 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   PageRank, node2vec, text and vector search) include no shortest-path procedure; the built-in BFS the harness uses
   is Memgraph's path operator. Sources: one new option and one new function (95 tests pass). Tag `eval-freeze-rc4`,
   full matrix restarted.
+- 29 Oct (afternoon): lane-per-source MS-BFS waves (author's diagnosis of BI19: 1.4K sources x 1.7K destinations at
+  SF300 ran 1.4K single-source searches, Neo4j's work in parallel; one lane per pair would need 4.6K waves). New
+  kernel `LaneWaveState` on the lane kernel's explore and check phases (virtual hooks `DetectReached`,
+  `MarkUnreachable`, `StartNextWave` in `IterativeLengthState`; finished lanes are masked out of `next` in the check
+  phase, Then et al.): a wave is up to 512 source groups, one lane each, with the group's destination list; after
+  every check phase a lane records the level of newly reached destinations and stops when none is left; groups in
+  lane mode keep a destination-distance map instead of the per-vertex arrays. Rule: lengths, more groups than the
+  few-sources limit (`experimental_path_finding_operator_lane_waves`, default true; `source_group_kernel` and
+  `lane_waves` in the strategy string). 96 tests pass (new `path_finding_lane_waves.test`). BI19 on the index, all
+  counts equal to the rc1 archive: SF10 61 -> 15 ms (4x faster), SF100 3.6 s -> 252 ms (14x faster), SF300 30.6 s
+  -> 1.6 s (19x faster; Neo4j 46 s, so 29x faster than Neo4j instead of 1.5x); build route SF300 39.4 -> 2.6 s.
+  Section 3 microbenchmarks (`section3` group, 1 repeat): 20 sources x 200 destinations on the index SF10 20 ms lane
+  waves vs 13 ms per-source searches (1.5x slower at this size) vs 86 ms lane-per-pair; SF100 79 vs 91 ms (1.15x
+  faster) vs 509 ms; one pair on the index: per-source kernel 4 / 9 ms vs lanes 13 / 45 ms (SF10 / SF100); paths
+  vs lengths at 2048 random pairs: 3.6x / 4.5x slower (index), 3.9x / 5.3x (build). Tag `eval-freeze-rc5`, matrix
+  restarted.

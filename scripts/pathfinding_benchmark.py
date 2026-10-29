@@ -5346,6 +5346,8 @@ MICROBENCH_CONFIGS["adaptive_os32"] = ({OPT + "grouped_batches_budget": 0, OPT +
 MICROBENCH_CONFIGS["grouped_always"] = MICROBENCH_CONFIGS["adaptive"]
 # Paths (shortestpathoperator: one shortest path per pair with vertex and edge ids) against lengths; 5th tuple element
 MICROBENCH_CONFIGS["paths"] = ({}, None, False, None, True)
+# Lane-per-source waves off: many-source pair lists fall back to one single-source search per group
+MICROBENCH_CONFIGS["no_lane_waves"] = ({OPT + "lane_waves": "false"}, None, False)
 # Partition geometry (W32): vertices per partition instead of 2 x threads partitions; the index route builds one
 # index per geometry (4th tuple element: index name suffix)
 for _pv in (4096, 8192, 16384, 32768, 65535):
@@ -5376,7 +5378,7 @@ MICROBENCH_GROUPS = {
     "memory": ["baseline", "no_frontier_bitmap", "no_sparse_levels", "sparse_levels_8", "sparse_levels_64",
                "bitmap_filter_on", "bitmap_filter_off", "visit_prefetch_8", "plain_explore"],
     # Section 3 of the paper: the kernel switch for one pair, 20 sources x 200 destinations, paths against lengths
-    "section3": ["baseline", "no_source_grouping", "paths"],
+    "section3": ["baseline", "no_source_grouping", "no_lane_waves", "paths"],
     "partitions": ["baseline"] + [f"partitions_{pv}" for pv in (4096, 8192, 16384, 32768, 65535)]
                   + ["partitions_65535_nosub", "no_sub_range_tasks", "threads_rule_partitions"],
     "scheduling": ["baseline", "no_grouped_batches", "adaptive", "adaptive_os4", "adaptive_os32",

@@ -1,4 +1,4 @@
-date:        2026-10-29T10:25Z
+date:        2026-10-29T10:50Z
 instance:    m7a.8xlarge
 cpu:         AMD EPYC 9R14  cores=32
 memory:      123 GiB
@@ -6,7 +6,7 @@ disk:        980G /dev/nvme0n1p1  nvme0n1 Amazon Elastic Block Store  980G
 kernel:      6.12.111-136.204.amzn2023.x86_64  Amazon Linux 2023.12.20261026
 toolchain:   gcc 11.5.0 cmake 3.22.2 ninja 1.10.2 python 3.9.25
 docker:      25.0.14
-duckpgq:     tag eval-freeze-rc4 (pathfindingoperator-forward-port)  duckdb submodule 45f4fdf3
+duckpgq:     tag eval-freeze-rc5 (pathfindingoperator-forward-port)  duckdb submodule 45f4fdf3
 generator:   1add85f at /home/dwolde/git/ldbc-data-gen
 python pkgs: FalkorDB 1.2.2  kuzu 0.11.3  matplotlib 3.9.4  neo4j 5.28.8  
 container:   pf-memgraph memgraph/memgraph:latest sha256:f26585d548f5be007e59449af681
@@ -32,6 +32,7 @@ duckpgq operator option defaults (the measured configuration):
   experimental_path_finding_operator_grouped_batches,true
   experimental_path_finding_operator_grouped_batches_budget,536870912
   experimental_path_finding_operator_heavy_partition_fraction,0.75
+  experimental_path_finding_operator_lane_waves,true
   experimental_path_finding_operator_light_partition_multiplier,1
   experimental_path_finding_operator_max_concurrent_batches,0
   experimental_path_finding_operator_partition_vertices,65535
