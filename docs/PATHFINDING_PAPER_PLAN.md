@@ -1044,3 +1044,11 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   | 2048 random pairs (lengths, lane waves), SF10 | 0.26 GiB, 41 ms | 0.21 GiB, 41 ms |
   Neo4j's BI19 at SF300 (rc1, parameter set 1) is 53.6 s with its shortestPath materialising a path per pair.
   Tag `eval-freeze-rc8`; the sweep stays on hold.
+- 29 Oct (night, 3): Neo4j comparison for the rc8 numbers (SF300 reloaded into the container, 885 s + 36 s for the
+  city attributes; BI19 parameter set 1, cities 1425 -> 1303): the harness form (shortestPath per pair, count and sum
+  of length) 48.3 / 48.4 s, with the paths materialised (sum of size(nodes(p))) 49.4 / 48.5 s, same counts
+  (2376182 paths, 8254011 edges; 10630193 path nodes); the container stays at 21.04 GiB throughout (JVM heap 16 GB
+  reserved, page cache 16 GB: the per-query memory is invisible from outside, the heap is preallocated). Against
+  DuckPGQ rc8 on the index: paths 33.1 s at a 5.6 GiB process peak (1.5x faster than Neo4j), lengths 1.0 s via lane
+  waves (48x faster). Neo4j cannot run the reach shape at scale (SF300: 16 sources x all timed out at 600 s, one
+  shortestPath per destination).
