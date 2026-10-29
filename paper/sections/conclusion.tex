@@ -1,6 +1,25 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-\todo{0.25 page. Restate thesis with the numbers; what the extension interface was missing (commit ids, custom
-index visibility hooks, scheduler-level barriers); future work: cost model, weighted paths, index on multiple edge
-tables, multi-source path reconstruction.}
+% Written 29 Oct 2026 from the rc1 numbers.
+
+The CIDR version of \duckpgq answered shortest-path queries with UDFs, and the UDFs inherited \duckdb's
+tuple-driven parallelism, so a query with few pairs ran on one core and every query rebuilt the CSR. This paper
+removed both limits without leaving the extension. The path-finding operator takes its parallelism from a CSR
+partitioned by destination range and runs every traversal as a chain of events in \duckdb's scheduler. The CSR index
+keeps the graph across queries and stays consistent with \duckdb's MVCC through epochs and a change log whose
+visibility \duckdb itself decides, once per change group. Because the operator answers many pairs with one
+traversal, the gap to the native graph systems grows with the number of pairs. At SF100 one query for 65\,536 pairs
+takes 3.5\,s, against 155\,s for Neo4j and 169\,s for Kuzu, and at SF300 it takes 10\,s while every other system
+exceeds ten minutes. Under the LDBC update stream a commit costs 15\,ms, against 342\,ms for Kuzu, and every
+transaction sees exactly the edges it may see. \todo{Confirm the numbers against rc2.}
+
+\duckdb's extension interfaces were enough, and where they fell short the gaps are specific. An index callback does
+not say which transaction or commit made a change, and nothing can ask about visibility in the past. The scheduler has
+no tasks for index work, so a fold runs in the transaction that triggers it. An extension operator can report a
+cardinality but not a cost. Each gap cost us a mechanism in this paper, and each would be small to close in the
+host system.
+
+In the future, we will replace the thresholds of Section~\ref{sec:cost} with a cost model calibrated on these runs,
+move the fold into the background, and extend the operator to weighted shortest paths, to an index over several edge
+tables of one property graph, and to path reconstruction in the multi-source traversal.

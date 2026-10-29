@@ -4,12 +4,13 @@
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/teaser.pdf}
-  \caption{Time for one query that asks the shortest-path length of $n$ random (source, destination) pairs, LDBC SNB
-  SF100 (18.7\,M \texttt{knows} edges), one m7a.8xlarge, 32 threads, linear axes. At 65\,536 pairs \duckpgq over its
-  CSR index answers in 3.5\,s, Neo4j in 155\,s and Kuzu in 169\,s; Memgraph and FalkorDB exceed the 600\,s limit
-  (triangle, joined by a dotted line to their last finished point). Each baseline is shown in its faster
-  configuration at each point, one query or the pairs split over 32 client connections. Mean of three runs;
-  Figure~\ref{fig:random-pairs} has the full sweep on log axes.}
+  \caption{LDBC BI19, the hop-count shortest-path length between every person of one city and every person of
+  another, on the undirected \texttt{knows} graph of SF10, SF100 and SF300 (1.84, 18.7 and 55.7\,M edges; up to 10\,k,
+  0.39\,M and 2.4\,M pairs per query). Seconds per query, the median of three runs per parameter set averaged over
+  five parameter sets, one m7a.8xlarge, 32 threads. Each panel has its own linear axis, ending at 2.1 times Neo4j's
+  time; a bar with a break continues beyond the panel, and a hatched bar exceeded the 600\,s limit. The factor after
+  a time is that system's time divided by \duckpgq's. \duckpgq over its CSR index, the other systems in their fastest
+  formulation. \todo{The \duckpgq bars are from the BI19 run after rc1 (lanes per source); the rerun replaces them.}}
   \label{fig:teaser}
 \end{figure}
 
@@ -78,10 +79,10 @@ triggered by a transaction that finds the log too long, turns the log into the n
 argument.
 
 We evaluate on LDBC SNB scale factors 10, 100 and 300 against Kuzu, Neo4j, Memgraph and FalkorDB, read-only and
-under the LDBC update stream with concurrent transactions. Over the index a single pair takes 10\,ms at SF300, the
-fastest of all systems. With many pairs the gap opens (Figure~\ref{fig:teaser}). At SF100 one query for 65\,536 pairs
-takes 3.5\,s, against 155\,s for Neo4j and 169\,s for Kuzu, and at SF300 it takes 10\,s while every other system
-exceeds ten minutes. Under the update stream \duckdb applies a commit of 2000 edge changes in 15\,ms and Kuzu in
+under the LDBC update stream with concurrent transactions. Over the index a single pair takes 10\,ms at SF300, where
+Neo4j's bidirectional search needs 2\,ms. With many pairs the gap opens. LDBC BI19 at SF300 asks for up to 2.4\,M
+pairs and takes 1.6\,s, against 46\,s for Neo4j and 323\,s for Kuzu (Figure~\ref{fig:teaser}). On 65\,536 random
+pairs at SF300 \duckpgq takes 10\,s, and every other system exceeds ten minutes. Under the update stream \duckdb applies a commit of 2000 edge changes in 15\,ms and Kuzu in
 342\,ms, and all systems return the same answers at every step. \todo{Numbers from eval-freeze-rc1; confirm against
 rc2.}
 

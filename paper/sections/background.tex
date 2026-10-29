@@ -32,8 +32,8 @@ visible. The check is \texttt{CanFetch(transaction, row)}; a table scan applies 
 an index such as \duckdb's ART returns row identifiers without checking, because the scan that fetches the rows
 checks for it. Versions are garbage-collected once no active transaction can observe the earlier state, so
 visibility can be asked about a live transaction only. Row identifiers are stable while a table carries any index
-other than an ART. \todo{Audit 28 Oct: an identifier can be handed out again after a failed commit reverts its
-append, and after a checkpoint drops a fully deleted trailing row group; qualify, or show that the index handles both.}
+other than an ART, except that a commit that fails reverts its appends and their identifiers go to the next insert
+(Section~\ref{sec:index-interface}).
 
 \paragraph{Compressed sparse row.} A CSR stores a graph with $V$ vertices and $E$ edges in two arrays. The vertices are
 numbered $0$ to $V-1$; an offset array of $V+1$ entries gives, for vertex $v$, the range $[\mathit{off}[v],

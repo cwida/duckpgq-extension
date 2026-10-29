@@ -210,3 +210,8 @@ per edge. Findings from the check:
 - The plot script now orders result files by the run timestamp in the file name, not by mtime (copies and checkouts
   reset mtimes); the tables came out identical.
 - All seven update configurations agree on all 191 steps; one automatic fold, in the query after commit 94 (162 ms).
+
+29 Oct: the fold race, the row-id reuse after a failed commit, the duplicate overlay edges and the cache key are fixed
+in 2517ebc2 (rc2 runs on it); Section 4 and the background now describe the fixed behaviour. Open: a reused id of an
+epoch row (only possible if a checkpoint that drops a fully deleted trailing row group hands its ids out again,
+untested) would resurrect the deleted edge, because the dead marking covers log entries only.

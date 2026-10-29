@@ -228,7 +228,7 @@ Table~\ref{tab:ldbc} reports the three LDBC queries. IC13 is one pair, and every
 in milliseconds. Neo4j ties the index at SF10 and is fastest at SF100 and SF300 (4 and 3\,ms against 14 and 28\,ms
 over the index) because a single bidirectional search from two literals is what it is built for; Memgraph is slowest
 (8.9\,s at SF100) because its BFS expands from one side only. BI19 is the pair-heavy query, every pair between the
-persons of two cities, 10\,k to 40\,k pairs with a result for each. Neo4j, which runs its searches in parallel, is
+persons of two cities, 5 to 10\,k pairs at SF10, 0.18 to 0.39\,M at SF100 and 1.2 to 2.4\,M at SF300. Neo4j, which runs its searches in parallel, is
 fastest at SF10 (41 against 61\,ms over the index), and the two are close at SF100 (3.9 against 3.6\,s); Memgraph
 and Kuzu over 32 connections take 17 and 25\,s there, and FalkorDB times out. At SF300 BI19 takes 31\,s over the
 index, 46\,s on Neo4j and 323\,s on Kuzu, and no other system finishes. BI20 has one target and many sources, which
