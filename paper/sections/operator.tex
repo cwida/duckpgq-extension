@@ -5,8 +5,8 @@
 % from eval-freeze-rc1; the traversal crossovers are single runs before the rerun and marked.
 
 A path pattern in \sqlpgq asks, for a set of candidate (source, destination) pairs, whether a path of the allowed
-length exists and how long it is, or which vertices and edges it uses. The operator answers exactly that and nothing
-else. Its input is the stream of candidate pairs, and the graph either as the edge table, from which it builds a CSR
+length exists and how long it is, or which vertices and edges it uses, and the operator computes that answer. Its
+input is the stream of candidate pairs, and the graph either as the edge table, from which it builds a CSR
 inside the query, or as the name of a CSR index. Its output takes one of three forms, which we call modes:
 \emph{lengths}, one hop count per pair; \emph{paths}, one list of vertices and edges per pair; and \emph{reach}, every
 vertex a source reaches, with its distance. Label tests, filters on the source and destination vertices, the join
@@ -39,8 +39,9 @@ reordering, because the two inputs are easy to identify there and hard to find a
 into them.
 
 Three details of the rewrite matter for performance. First, the filters on the source and destination vertices are
-applied to each vertex set before the two are combined, so a query with one source and a selective filter on the
-destination yields few candidate pairs, and the unfiltered cross product of the vertex tables is never formed.
+applied to each vertex set before the two are combined. A query with one source and a selective filter on the
+destination therefore yields few candidate pairs, and the unfiltered cross product of the vertex tables is never
+formed.
 Second, the upper bound of the quantifier travels with the marker, so a search stops at that depth instead of
 exploring paths that a filter would discard afterwards. Third, when a CSR index exists for the edge table at bind
 time, the rewrite drops the edge input and passes the index name in the key. The operator then resolves the key to a
@@ -72,10 +73,9 @@ position also carries the edge's row id. A partition can be built in the reverse
 their source range, grouped by destination; an index stores these reverse partitions when it is created with
 \texttt{WITH (reverse = true)}, and for an undirected graph the forward partitions serve both directions.
 
-The layout has three properties the traversals rely on. A step of a traversal that processes partition $p$ writes
-only to vertices of range $p$, so the tasks of one level never write the same vertex. A destination costs 16 bits
-instead of 32. And no array has one entry per vertex, so the memory is proportional to the edges, which matters for
-graphs in which most vertices have no edge into most ranges.
+The traversals rely on two properties of the layout. A traversal step that processes partition $p$ writes only to
+vertices of range $p$, which keeps the tasks of one level from ever writing the same vertex. The layout is also small.
+A destination takes 16 bits and no array has one entry per vertex, which leaves the memory proportional to the edges.
 
 \begin{figure}[t]
   \centering
@@ -103,18 +103,18 @@ the 1.84, 18.7 and 55.7\,M edges of SF10, SF100 and SF300, which is the whole of
 Partitioning an adjacency by destination range, so that a traversal step writes only a cache-sized slice of the
 vertices, is an established idea, known as CSR segmenting~\cite{zhang2017cagra} and propagation
 blocking~\cite{beamer2017blocking}; GraphChi's shards partition edges by destination interval for the same
-reason~\cite{kyrola2012graphchi}. What is specific here is that the layout is produced in one pass from a join stream
-inside a relational operator, with radix partitioning and no per-vertex array, and that the same layout, plus the row
-ids, is the on-disk format of a transactional index (Section~\ref{sec:index}).
+reason~\cite{kyrola2012graphchi}. Our layout differs in two respects. It is produced in one pass from a join stream inside a
+relational operator, with radix partitioning and no per-vertex array, and the same layout, plus the row ids, is the
+on-disk format of a transactional index (Section~\ref{sec:index}).
 
 \subsection{Two traversals}
 \label{sec:traversals}
 
 A \emph{search} is one breadth-first search from one source. It ends when it has reached every destination its pairs
-ask for, at the depth bound, or when no new vertex is left to visit. The operator runs searches in one of two ways,
-one at a time per source, or many together as the lanes of one sweep. Both proceed level by level, and both choose
-per level between a \emph{sparse level}, which visits only the vertices on the frontier, and a \emph{dense level},
-which sweeps every sparse row of every partition.
+ask for, at the depth bound, or when no new vertex is left to visit. The operator runs searches in one of two ways, each search
+with a frontier of its own, or many searches as the lanes of one sweep. The two traversals proceed level by level and
+decide per level between a \emph{sparse level}, which visits only the vertices on the frontier, and a \emph{dense
+level}, which sweeps every sparse row of every partition.
 
 \paragraph{Single-source traversal.} Each search has its own frontier, a vector of vertex ids, in the shape
 Ligra~\cite{shun2013ligra} made standard. On a sparse level, used while the frontier is smaller than a sixty-fourth of
@@ -132,15 +132,14 @@ has seen, the current frontier and the next one, 192 bytes per vertex at 512 lan
 phases. The explore phase relaxes the frontier into the next bit sets, one 512-bit \texttt{or} per edge for all lanes
 at once. The check phase folds the next bit sets into the seen bits; each lane then records the level of the
 destinations it has newly reached and drops them from its list, and a lane whose list is empty is masked out of the
-frontier, so it stops spreading. A summary bitmap marks the vertices with a live lane, and a level with fewer such
+frontier and stops spreading. A summary bitmap marks the vertices with a live lane, and a level with fewer such
 vertices than a sixteenth of all vertices is sparse and visits only them, through the source index. A dense level
-costs the same whether one lane or five hundred are alive. That is a good trade when hundreds of lanes are alive and
-a bad one when one is.
+costs the same whether one lane or five hundred are alive, which is why a wave pays off only when many lanes are.
 
-Because a lane is a source and not a pair, the number of waves follows the distinct sources. LDBC BI19 at SF300 asks
+The number of waves follows the distinct sources, because each lane is one source. LDBC BI19 at SF300 asks
 for 2.4\,M pairs from 1.4\,K sources, which is three waves; with a lane per pair, the formulation of the CIDR design,
-it would be 4.6\,K. A pair whose source is unique is a lane with one destination, so the random pairs of
-Section~\ref{sec:eval}, almost all from different sources, cost the same per level either way.
+it would be 4.6\,K. A pair whose source is unique is a lane with one destination. The random pairs of
+Section~\ref{sec:eval}, almost all from different sources, therefore cost the same per level as with a lane per pair.
 
 \subsection{Choosing a traversal and an orientation}
 \label{sec:choice}
@@ -177,24 +176,24 @@ off when many sources share one destination, the shape of LDBC BI20, which then 
 
 Table~\ref{tab:traversal-choice} shows the two thresholds at work. One pair is cheapest as one search, because a wave
 pays for its working set and its dense levels whatever its number of lanes. At 20 sources with 200 destinations each
-the single-source traversal is still slightly faster at SF10 and the operator already runs waves, which is the price
-of a fixed threshold. With many sources the waves win by a wide margin, in time because the sweeps are shared and in
-memory because a lane needs no per-vertex arrays. Both rules are thresholds, and Section~\ref{sec:cost} discusses what
+the single-source traversal is still slightly faster at SF10, while the operator already runs waves; a fixed threshold
+cannot place that crossover for every graph. With many sources the waves are far ahead. On BI19 at SF300 they are 30
+times faster and need a ninth of the memory, because the lanes share the sweeps and keep no per-vertex arrays. Both rules are thresholds, and Section~\ref{sec:cost} discusses what
 a cost model needs in order to replace them.
 
 \subsection{Parallel execution as a chain of events}
 \label{sec:phases}
 
-A level is a parallel sweep followed by a serial decision about which vertices were reached, whether any search is
-still alive and whether the depth bound is hit. The operator runs both traversals and the build as a \emph{chain of
+A level is a parallel sweep followed by a short serial step that records what was reached and decides whether to
+go on. The operator runs both traversals and the build as a \emph{chain of
 per-phase events}. A phase is a set of tasks that run independently and finish; when the last one finishes, the
 event's completion callback runs the serial step once and inserts the event of the next phase. The build is the sink,
 which partitions the edges as they stream in, and one event, whose tasks sort and emit the partitions and whose
 callback publishes them. A level of the multi-source traversal is two phases, the explore and the check phase, and a
 level of the single-source traversal is one; a search that runs on a single thread runs all its levels in one task,
 because an event per level would cost more than the level. Each phase still waits for the one before it, but no task
-ever blocks its thread waiting for another task. This is the shape of \duckdb's own operators, and it is what lets the
-operator share \duckdb's fixed thread pool with other queries. The scheduler may interleave the tasks of concurrent
+ever blocks its thread waiting for another task. \duckdb's own operators have this shape, and it lets the operator share
+\duckdb's fixed thread pool with other queries. The scheduler may interleave the tasks of concurrent
 queries freely, and an error or an interrupt stops the operator at the next task boundary.
 
 \paragraph{Scheduling the waves.} The waves of a query run on \emph{worker groups}, at most one per thread; each
@@ -204,8 +203,7 @@ all start at once and the bit sets stay in cache. Otherwise the scheduler starts
 while the throughput, in edges swept per second, rises by more than a tenth, and steps back when it falls by more than
 a tenth. A worker group whose working set is at most a sixteenth of the budget has threads of its own; larger ones
 pool their tasks, so a worker group that waits at the end of its level leaves no thread idle. A working set is zeroed
-in parallel, and only when the next wave attaches it, so a query with one small wave does not pay for clearing it
-twice.
+in parallel, and only when the next wave attaches it; a query with one small wave clears it once.
 
 \paragraph{What stays serial.} The completion callbacks are serial by construction, and so is the grouping of the
 pairs by source in the finalize step, which takes 6\,ms for 65\,536 random pairs at SF10 and about 30\,ms for BI19's
