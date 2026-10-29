@@ -695,12 +695,16 @@ def teaser_figure(filename, sf="100"):
     """Page-one figure: seconds against random pairs per query on linear axes, each system on its fastest path"""
     points = load("sweep_pairs", sf)
     shape = "random_pairs"
-    order = ["memgraph", "falkordb", "kuzu", "neo4j", "duckpgq_index"]
+    # DuckDB's own recursive CTE (WITH RECURSIVE ... USING KEY) is the in-engine reference: drawn in ink, not in a
+    # system colour, since it is the same engine without the operator
+    order = ["duckpgq_recursive", "memgraph", "falkordb", "kuzu", "neo4j", "duckpgq_index"]
     names = {"duckpgq_index": "DuckPGQ", "neo4j": "Neo4j", "kuzu": "Kuzu", "falkordb": "FalkorDB",
-             "memgraph": "Memgraph"}
+             "memgraph": "Memgraph", "duckpgq_recursive": "DuckDB recursive CTE"}
+    colors = dict(COLOR)
+    colors["duckpgq_recursive"] = INK2
     fig, ax = plt.subplots(figsize=(3.33, 2.05))
     ax.axhline(TIMEOUT_S, color=MUTED, linewidth=0.8, linestyle=(0, (4, 3)), zorder=1)
-    ax.text(24000, TIMEOUT_S + 8, "600 s limit", color=MUTED, fontsize=6.5, va="bottom", ha="left")
+    ax.text(40000, TIMEOUT_S + 8, "600 s limit", color=MUTED, fontsize=6.5, va="bottom", ha="left")
     ends = []
     for system in order:
         counts = sorted({k[2] for k in points if k[1] == shape and k[0] in (system, f"{system}@32")})
@@ -714,9 +718,13 @@ def teaser_figure(filename, sf="100"):
             elif any(c and c["status"] == "exceeded" for c in candidates):
                 exceeded_at = count
                 break
-        color = COLOR[system]
+        if not xs and exceeded_at is None:
+            continue  # not measured at this scale factor (yet)
+        color = colors[system]
         ours = system == "duckpgq_index"
         lw, z = (2.4, 5) if ours else (1.5, 3)
+        if system == "duckpgq_recursive" and exceeded_at is not None and not xs:
+            xs, ys = [exceeded_at], [TIMEOUT_S]
         ax.plot(xs, ys, color=color, linewidth=lw, marker="o", markersize=2.8 if ours else 2.4,
                 markeredgecolor=SURFACE, markeredgewidth=0.5, zorder=z, clip_on=False)
         if exceeded_at is not None:
@@ -724,7 +732,13 @@ def teaser_figure(filename, sf="100"):
                     zorder=z)
             ax.plot([exceeded_at], [TIMEOUT_S], linestyle="none", marker="^", markersize=5, markerfacecolor=SURFACE,
                     markeredgecolor=color, markeredgewidth=1.1, zorder=z + 1, clip_on=False)
-            ends.append((TIMEOUT_S, exceeded_at, f"{names[system]} > 600 s", color))
+            if system == "duckpgq_recursive":
+                # Dies within the first percent of the axis: label it at its triangle, not at the right edge
+                k = f"{exceeded_at // 1024}k" if exceeded_at >= 1024 else str(exceeded_at)
+                ax.annotate(f"{names[system]}: > 600 s at {k} pairs", (exceeded_at, TIMEOUT_S), xytext=(7, -9),
+                            textcoords="offset points", color=color, fontsize=6.5, va="top", ha="left")
+            else:
+                ends.append((TIMEOUT_S, exceeded_at, f"{names[system]} > 600 s", color))
         else:
             value = ys[-1]
             text = f"{value:.1f} s" if value < 10 else f"{value:.0f} s"

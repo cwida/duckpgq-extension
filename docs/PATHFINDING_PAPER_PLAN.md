@@ -882,3 +882,9 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   the agreement check, no warm-up query for the native routes. Smoke at SF1: all 5 points agree across the three
   routes. Queued as `repro/run_native_baselines.sh`: waits for "matrix finished", then SF10 and SF100, random pairs
   and sources x all, 32 threads, 600 s, 3 repeats. Report: time per point and the first timed-out point per shape.
+- 29 Oct: teaser figure gains DuckDB's recursive CTE (author's request), drawn in ink rather than a system colour
+  as the in-engine reference, labelled at its timeout triangle ("DuckDB recursive CTE: > 600 s at 1k pairs" on the
+  SF10 probe, 4 threads during the matrix: 128 pairs 15.8 s, 1024 pairs over 120 s; sources x all 128 in 13.6 s vs
+  0.11 s on the index). The SF100 line appears once the native-baselines step has run after the rc2 matrix;
+  `collect.sh` re-renders it. Caption in `paper/sections/introduction.tex` needs the recursive CTE sentence then
+  (author's file). DuckDB version under test: v2.0.0-dev1 at submodule `45f4fdf3`, to be cited as the commit.
