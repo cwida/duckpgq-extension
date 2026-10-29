@@ -3,6 +3,7 @@
 #include "duckdb/storage/buffer_manager.hpp"
 
 #include <cstring>
+#include <duckpgq/core/utils/parallel_for.hpp>
 
 #include <duckpgq/core/operator/shortest_path/shortest_path_event.hpp>
 #include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
@@ -62,22 +63,37 @@ BFSState::BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<share
 
 BFSState::~BFSState() = default; // Define the virtual destructor
 
-BFSWorkingSet::BFSWorkingSet(ClientContext &context, idx_t v_size_p) : v_size(v_size_p) {
+BFSWorkingSet::BFSWorkingSet(ClientContext &context, idx_t v_size_p, idx_t threads) : v_size(v_size_p) {
 	if (v_size == 0) {
 		return;
 	}
 	auto &buffer_manager = BufferManager::GetBufferManager(context);
 	handle = buffer_manager.Allocate(MemoryTag::EXTENSION, BytesFor(v_size), true);
-	memset(handle.GetDataMutable(), 0, BytesFor(v_size));
 	auto base = reinterpret_cast<std::bitset<LANE_LIMIT> *>(handle.GetDataMutable());
 	visit1 = base;
 	visit2 = base + v_size;
 	seen = base + 2 * v_size;
 	active_bitmap = reinterpret_cast<uint64_t *>(base + 3 * v_size);
+	Zero(threads);
+}
+
+void BFSWorkingSet::Zero(idx_t threads) {
+	if (v_size == 0) {
+		return;
+	}
+	auto bytes = BytesFor(v_size);
+	auto base = handle.GetDataMutable();
+	// One thread per 8 MB at most: small sets are not worth the thread start-up
+	threads = std::max<idx_t>(1, std::min<idx_t>(threads, bytes / (8 * 1024 * 1024) + 1));
+	ParallelFor(bytes, threads, [&](idx_t begin, idx_t end, idx_t) { memset(base + begin, 0, end - begin); });
+	dirty = false;
 }
 
 void BFSState::AttachWorkingSet(shared_ptr<BFSWorkingSet> set) {
 	D_ASSERT(set && set->v_size == static_cast<idx_t>(v_size));
+	if (set->dirty) {
+		set->Zero(num_threads);
+	}
 	working_set = std::move(set);
 	visit1 = working_set->visit1;
 	visit2 = working_set->visit2;
@@ -89,7 +105,7 @@ void BFSState::EnsureWorkingSet() {
 	if (working_set) {
 		return;
 	}
-	AttachWorkingSet(make_shared_ptr<BFSWorkingSet>(context, static_cast<idx_t>(v_size)));
+	AttachWorkingSet(make_shared_ptr<BFSWorkingSet>(context, static_cast<idx_t>(v_size), num_threads));
 }
 
 void BFSState::ReleaseWorkingSet() {
@@ -140,9 +156,17 @@ void BFSState::InitializeLanes() {
 			}
 		}
 	}
-	for (int64_t i = 0; i < v_size; i++) {
-		seen[i] = seen_mask;
-	}
+	FillSeen(seen_mask);
+}
+
+void BFSState::FillSeen(const std::bitset<LANE_LIMIT> &seen_mask) {
+	// 64 B per vertex: 76 MB at SF300, 241 MB on cit-Patents, so in parallel like the zeroing
+	auto threads = std::max<idx_t>(1, std::min<idx_t>(num_threads, static_cast<idx_t>(v_size) / 131072 + 1));
+	ParallelFor(static_cast<idx_t>(v_size), threads, [&](idx_t begin, idx_t end, idx_t) {
+		for (idx_t i = begin; i < end; i++) {
+			seen[i] = seen_mask;
+		}
+	});
 }
 
 } // namespace duckdb

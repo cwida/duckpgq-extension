@@ -1183,9 +1183,7 @@ public:
 			active++;
 			seen_mask[lane] = false;
 		}
-		for (int64_t i = 0; i < v_size; i++) {
-			seen[i] = seen_mask;
-		}
+		FillSeen(seen_mask);
 		started_searches = pairs->size();
 	}
 
@@ -1234,6 +1232,10 @@ public:
 		return false; // one wave per state
 	}
 
+	bool HasNextWave() override {
+		return false;
+	}
+
 private:
 	//! The lane kernel is built around a chunk of pairs; a wave's chunk holds one row per lane (its source twice)
 	static shared_ptr<PathFindingBatch> MakeLaneBatch(const vector<shared_ptr<SourceGroupedIterativeLengthState>> &groups,
@@ -1253,33 +1255,21 @@ private:
 	vector<shared_ptr<SourceGroupedIterativeLengthState>> groups;
 };
 
-//! Returns the batch events to register, or an empty vector when a single grouped event was inserted directly.
-vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkState &gstate,
-                                                       vector<shared_ptr<PathFindingBatch>> &batches,
-                                                       Pipeline &pipeline, Event &event, const PhysicalPathFinding &op,
-                                                       ClientContext &context) {
-	vector<shared_ptr<Event>> batch_events;
-	RecordStrategy(context, "batches", std::to_string(batches.size()));
-	if (!ShouldUseGroupedIterativeLengthBatches(gstate, context, batches.size())) {
-		RecordStrategy(context, "scheduling", "per_batch");
-		batch_events.reserve(batches.size());
-		for (auto &batch : batches) {
-			batch_events.push_back(CreateBFSEventForMode(gstate, batch, pipeline, &op, context));
-		}
-		return batch_events;
-	}
-
+//! Worker-group events (GroupedIterativeLengthKernel) over lane-kernel states: the MS-BFS batches of a pair list or
+//! the lane waves of a source-grouped query (29 Oct: waves used to start all at once as independent events, each
+//! with its own working set and a task per thread; through the controller their memory and tasks are bounded like
+//! the batches'). prefix names the strategy keys ("" for batches, "wave_" for waves).
+void AppendGroupedKernelEvents(PathFindingGlobalSinkState &gstate, vector<shared_ptr<IterativeLengthState>> states,
+                               idx_t partitions, Pipeline &pipeline, const PhysicalPathFinding &op,
+                               ClientContext &context, const string &prefix, vector<shared_ptr<Event>> &batch_events) {
 	// Adaptive grouped scheduling (W31): the controller starts a few worker groups and grows the window while the
 	// throughput improves; max_concurrent_batches > 0 fixes the window, threads_per_batch > 0 fixes the workers
-	auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
-	                           ? gstate.local_csr_state->reverse_partition_csrs
-	                           : gstate.local_csr_state->partition_csrs;
 	auto threads = std::max<idx_t>(1, gstate.num_threads);
 	auto configured_groups = GetPathFindingMaxConcurrentBatches(context);
 	bool adaptive = configured_groups <= 0;
 	// Working sets that fit the budget start wide (one group per batch, up to the threads: the cache-resident
 	// regime of SF10, where every doubling pays); larger ones start at four groups and ramp on measured throughput
-	auto max_groups = std::max<idx_t>(1, std::min<idx_t>(batches.size(), threads));
+	auto max_groups = std::max<idx_t>(1, std::min<idx_t>(states.size(), threads));
 	auto working_sets = static_cast<double>(max_groups) *
 	                    static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
 	auto budget = GetPathFindingGroupedBatchesBudget(context);
@@ -1306,10 +1296,49 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 	auto oversubscription = configured_oversubscription > 0 ? NumericCast<idx_t>(configured_oversubscription)
 	                        : small_working_set             ? idx_t(1)
 	                                                        : threads;
-	RecordStrategy(context, "scheduling", adaptive ? "grouped_adaptive" : "grouped");
-	RecordStrategy(context, "regime", start_wide ? "cache_resident" : "memory_bound");
-	RecordStrategy(context, "tasks", small_working_set ? "own_threads" : "pooled");
-	RecordStrategy(context, "grouped_working_sets_mb", std::to_string(static_cast<idx_t>(working_sets / (1024 * 1024))));
+	RecordStrategy(context, prefix + "scheduling", adaptive ? "grouped_adaptive" : "grouped");
+	RecordStrategy(context, prefix + "regime", start_wide ? "cache_resident" : "memory_bound");
+	RecordStrategy(context, prefix + "tasks", small_working_set ? "own_threads" : "pooled");
+	RecordStrategy(context, prefix + "grouped_working_sets_mb",
+	               std::to_string(static_cast<idx_t>(working_sets / (1024 * 1024))));
+	if (!states.empty()) {
+		RecordStrategy(context, prefix + "bitmap_filter", states.front()->bitmap_filter ? "on" : "off");
+		RecordStrategy(context, prefix + "sparse_level_divisor", std::to_string(states.front()->sparse_level_divisor));
+	}
+	auto grouped_batches = make_shared_ptr<GroupedIterativeLengthBatches>(
+	    std::move(states), context, GetPathFindingVSize(gstate), threads, partitions, GetPathFindingEdgeCount(gstate),
+	    initial_window, adaptive, fixed_workers, NumericCast<idx_t>(oversubscription));
+	auto initial_groups = grouped_batches->InitialGroups();
+	RecordStrategy(context, prefix + "groups", std::to_string(initial_groups));
+	RecordStrategy(context, prefix + "workers_per_batch", std::to_string(grouped_batches->WorkersPerGroup()));
+	for (idx_t group = 0; group < initial_groups; group++) {
+		grouped_batches->NoteGroupStarted();
+		auto kernel = make_shared_ptr<GroupedIterativeLengthKernel>(grouped_batches);
+		batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(std::move(kernel), pipeline, op));
+	}
+	gstate.grouped_batches = grouped_batches;
+}
+
+//! Returns the batch events to register, or an empty vector when a single grouped event was inserted directly.
+vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkState &gstate,
+                                                       vector<shared_ptr<PathFindingBatch>> &batches,
+                                                       Pipeline &pipeline, Event &event, const PhysicalPathFinding &op,
+                                                       ClientContext &context) {
+	vector<shared_ptr<Event>> batch_events;
+	RecordStrategy(context, "batches", std::to_string(batches.size()));
+	if (!ShouldUseGroupedIterativeLengthBatches(gstate, context, batches.size())) {
+		RecordStrategy(context, "scheduling", "per_batch");
+		batch_events.reserve(batches.size());
+		for (auto &batch : batches) {
+			batch_events.push_back(CreateBFSEventForMode(gstate, batch, pipeline, &op, context));
+		}
+		return batch_events;
+	}
+
+	auto &partition_csrs = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
+	                           ? gstate.local_csr_state->reverse_partition_csrs
+	                           : gstate.local_csr_state->partition_csrs;
+	auto threads = std::max<idx_t>(1, gstate.num_threads);
 	vector<shared_ptr<IterativeLengthState>> iterative_states;
 	iterative_states.reserve(batches.size());
 	for (auto &batch : batches) {
@@ -1321,22 +1350,8 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 		iterative_states.push_back(state);
 		gstate.bfs_states.push_back(state);
 	}
-	if (!iterative_states.empty()) {
-		RecordStrategy(context, "bitmap_filter", iterative_states.front()->bitmap_filter ? "on" : "off");
-		RecordStrategy(context, "sparse_level_divisor", std::to_string(iterative_states.front()->sparse_level_divisor));
-	}
-	auto grouped_batches = make_shared_ptr<GroupedIterativeLengthBatches>(
-	    std::move(iterative_states), context, GetPathFindingVSize(gstate), threads, partition_csrs.size(),
-	    GetPathFindingEdgeCount(gstate), initial_window, adaptive, fixed_workers, NumericCast<idx_t>(oversubscription));
-	auto initial_groups = grouped_batches->InitialGroups();
-	RecordStrategy(context, "groups", std::to_string(initial_groups));
-	RecordStrategy(context, "workers_per_batch", std::to_string(grouped_batches->WorkersPerGroup()));
-	for (idx_t group = 0; group < initial_groups; group++) {
-		grouped_batches->NoteGroupStarted();
-		auto kernel = make_shared_ptr<GroupedIterativeLengthKernel>(grouped_batches);
-		batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(std::move(kernel), pipeline, op));
-	}
-	gstate.grouped_batches = grouped_batches;
+	AppendGroupedKernelEvents(gstate, std::move(iterative_states), partition_csrs.size(), pipeline, op, context, "",
+	                          batch_events);
 	return batch_events;
 }
 
@@ -1434,7 +1449,7 @@ public:
 		}
 		if (lane_waves) {
 			// Targets are registered now: pack the groups into waves of LANE_LIMIT lanes
-			idx_t waves = 0;
+			vector<shared_ptr<IterativeLengthState>> waves;
 			for (idx_t begin = 0; begin < gstate.source_group_states.size(); begin += LANE_LIMIT) {
 				auto end = std::min<idx_t>(gstate.source_group_states.size(), begin + LANE_LIMIT);
 				vector<shared_ptr<SourceGroupedIterativeLengthState>> wave_groups(
@@ -1445,12 +1460,28 @@ public:
 				wave->suppressed = SearchSuppressed(gstate);
 				wave->max_depth = gstate.max_depth;
 				gstate.bfs_states.push_back(wave);
-				batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(wave, *pipeline, op));
-				waves++;
+				waves.push_back(std::move(wave));
 			}
-			RecordStrategy(context, "lane_waves", std::to_string(waves));
+			RecordStrategy(context, "lane_waves", std::to_string(waves.size()));
+			if (GetPathFindingGroupedBatches(context)) {
+				// The waves run as batches of the worker-group controller: its window bounds how many working sets
+				// (192 B per vertex each) are live and its workers per group the tasks, as for a pair list's batches
+				AppendGroupedKernelEvents(gstate, std::move(waves), partition_csrs.size(), *pipeline, op, context,
+				                          "wave_", batch_events);
+			} else {
+				// Microbenchmark baseline (grouped_batches off): one independent event per wave
+				for (auto &wave : waves) {
+					batch_events.push_back(make_shared_ptr<PhasedKernelEvent>(wave, *pipeline, op));
+				}
+			}
 		}
-		ScheduleBatchEvents(std::move(batch_events));
+		auto &gstate_ref = gstate;
+		auto &context_ref = context;
+		ScheduleBatchEvents(std::move(batch_events), [&gstate_ref, &context_ref]() {
+			if (gstate_ref.grouped_batches) {
+				RecordStrategy(context_ref, "wave_window_trace", gstate_ref.grouped_batches->Trace());
+			}
+		});
 	}
 
 private:

@@ -40,6 +40,8 @@ public:
 	virtual void MarkUnreachable();
 	//! Starts the next wave of this batch (lanes from the pairs not yet searched); false when none is left
 	virtual bool StartNextWave();
+	//! Whether StartNextWave() has pairs left to start; false lets the finished batch skip the clear
+	virtual bool HasNextWave();
 	//! Label of the batch timing row ("bfs_batch" or "bfs_batch_grouped")
 	void SetTimingLabel(const string &label);
 

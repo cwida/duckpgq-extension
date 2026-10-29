@@ -16,11 +16,18 @@ class PhysicalPathFinding; // Forward declaration
 //!
 //! The memory comes from the buffer manager so that it counts towards memory_limit, and a working set is handed from
 //! batch to batch within a worker group, so the footprint scales with the number of concurrently running batches
-//! rather than with the number of batches of the query. A working set is zero when allocated and every batch leaves it
-//! zero again (the last step of a wave is Clear()).
+//! rather than with the number of batches of the query. A working set is zero when allocated; a finished batch marks
+//! it dirty and the next batch that attaches it zeroes it (29 Oct: a serial memset of 229 MB per batch at SF300 and
+//! 724 MB on cit-Patents was the lane kernel's fixed cost for small searches, 66 ms per empty single pair; zeroing is
+//! now parallel and skipped for the last batch of a group).
 class BFSWorkingSet {
 public:
-	BFSWorkingSet(ClientContext &context, idx_t v_size);
+	BFSWorkingSet(ClientContext &context, idx_t v_size, idx_t threads = 1);
+
+	//! Zeroes every array with up to `threads` threads
+	void Zero(idx_t threads);
+	//! Set by a finished batch: the arrays hold its last frontier and seen bits
+	bool dirty = false;
 
 	//! Words of the frontier summary bitmap: one bit per vertex, set when any lane is active at the vertex
 	static idx_t ActiveWordsFor(idx_t v_size) {
@@ -52,6 +59,8 @@ public:
 	//! Creates the event that runs this batch. The caller registers it with the executor.
 	virtual shared_ptr<Event> CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op);
 	virtual void InitializeLanes();
+	//! seen[v] = seen_mask for every vertex, in parallel
+	void FillSeen(const std::bitset<LANE_LIMIT> &seen_mask);
 	//! Whether a pair endpoint can index the per-vertex lane arrays
 	bool IsVertexInRange(int64_t vertex) const {
 		return vertex >= 0 && vertex < v_size;
