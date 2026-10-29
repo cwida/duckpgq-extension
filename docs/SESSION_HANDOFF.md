@@ -178,3 +178,35 @@ Tag `eval-freeze-rc1`. `ls repro/logs/*.done` shows finished steps; `repro/logs/
 `~/sweep/wait_step.sh <seconds>` blocks until the next step ends. Do not run anything else on the box until
 `matrix finished` appears. A failed step: read `repro/logs/<step>.out`, fix, rerun `./repro/run_all.sh` (finished
 steps are skipped). Then `./repro/collect.sh`, commit the archive and the figures.
+
+## 29 Oct: Graphalytics targets in the harness (W30)
+
+- A benchmark target is an LDBC scale factor or a Graphalytics dataset name: `sweep-pairs`, `microbench` and
+  `fixed-costs` take `--dataset cit-Patents` instead of `--scale-factor`; `sf_name()` and `db_path()` dispatch, so
+  results land in `data/ldbc-pathfinding/results/graphalytics_<name>/`, exports in `graphdb-export/graphalytics_<name>/`,
+  the Kuzu snapshot in `kuzu/graphalytics_<name>.kuzu`. The databases come from `prepare --graphalytics-datasets ...`
+  (`repro/prepare.sh` runs it) and carry the LDBC table names; undirected graphs are stored as the symmetric edge set.
+- Pair tables: sources from vertices with an outgoing edge, destinations from vertices with an incoming edge
+  (`PAIR_CANDIDATES_SQL`), for every target. Changing the sampling SQL invalidates `graphdb-export/*/pairs_*.csv` and
+  `kuzu/*-export/pairs_*.parquet` (delete them; the Kuzu snapshot rebuilds when an export is missing).
+- Hop bounds: `configure_depth_bound(target)` sets `GRAPHDB_DEPTH_SUFFIX` ("..30" on LDBC, "" on Graphalytics) and
+  `KUZU_MAX_DEPTH` (30 / 1000); Kuzu connections go through `kuzu_connect`, which issues
+  `CALL var_length_extend_max_depth=N` (Kuzu 0.11.3 rejects bounds above 30 otherwise).
+- cit-Patents is a citation DAG: random pairs are 0% reachable, a source reaches about 2200 vertices; the lane
+  kernel's fixed cost per batch (working-set allocation, about 0.3 s at 3.8M vertices) dominates there.
+
+## 29 Oct (evening): index and operator fixes before eval-freeze-rc6
+
+- Working sets: `BFSWorkingSet::Zero(threads)` zeroes in parallel; a finished batch marks the set `dirty` and
+  `BFSState::AttachWorkingSet` zeroes a dirty set; `IterativeLengthState::HasNextWave()` decides whether `Clear()`
+  runs at all. `FillSeen` parallelises the seen-mask fill. Lane waves run through `AppendGroupedKernelEvents`
+  (strategy keys `wave_*`), one event per wave only with `grouped_batches=false`.
+- Tombstones carry the deleted edge's keys (`CSRIndexTombstone::has_keys/src_key/dst_key`, set in `TryDelete` via
+  `ExecuteExpressions` + `ReadKeys`); `ResolveTombstonePositions` resolves by lookup (`locate` lambda) and falls back
+  to the row-id scan only for entries loaded from storage. Undirected indexes also fill
+  `CSRIndexEpoch::mirror_tombstone_positions`, suppressed in `BuildSnapshot` (test `csr_index_undirected_delete`).
+- Throughput experiment: `update_concurrent_driver --mode throughput --duration-s S --readers C --no-build|--no-index`
+  (clients run single-pair queries round robin over `pathfinding_rowid_pairs`/`pathfinding_index_pairs`, both with a
+  row number `k`); harness `throughput` / `throughput-table`; `run_all.sh throughput`.
+- The harness's single-pair number at SF300 (9-10 ms) is the search itself (3-17 ms by pair in one process); an
+  empty search was 66 ms because of the serial working-set memset, now 6 ms.

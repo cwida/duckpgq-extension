@@ -12,6 +12,7 @@ export DUCKPGQ_GENERATOR_ROOT
 
 # Scale factors and thread count used in the paper
 : "${SCALE_FACTORS:=10 100 300}"
+: "${GRAPHALYTICS_DATASETS:=cit-Patents graph500-24 datagen-8_4-fb}"
 : "${THREADS:=$(nproc)}"
 : "${REPEATS:=3}"
 : "${TIMEOUT_S:=600}"
