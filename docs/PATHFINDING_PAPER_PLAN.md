@@ -159,6 +159,7 @@ Effort in person-days (pd). P1 = must for Round 1, P2 = strongly desired, P3 = i
 | W25 | WCC table function reads the index snapshot (generality argument, build vs index for a whole-graph algorithm) | op+index | 2 | P3 | W12 | open |
 | W33 | Lane-width microbenchmark (decided 27 Oct). MS-BFS lanes per wave decide the bytes per vertex of the working set (3 x LANE_LIMIT / 8: 192 B at 512, 96 B at 256, 48 B at 128) against the number of waves per batch. Builds with `-DDUCKPGQ_LANE_LIMIT=128|256|512|1024` kept as separate extension files (`data/ldbc-pathfinding/builds/`), the harness picks one through `DUCKPGQ_EXTENSION`; measured with `microbench` at SF10 and SF100 on random pairs 16384 / 65536 and sources x all 1024, both routes, under the default, grouped-always and per-batch schedules. One row of the microbenchmark table and the memory-boundness argument of the paper (W31). Repro: `run_all.sh lanes` | eval | 1 | P1 | W31 | first probe (256 lanes) running 27 Oct |
 | W35 | Where the index matters (author's list, 29 Oct). Throughput of single-pair queries from 1 to 32 clients, index against build-per-query (`throughput` subcommand, driver mode `--mode throughput`, 20 s per point, SF10/100/300); concurrent readers at SF100 and SF300 (1, 4, 16 readers); Section 6 opens with the one-thread result. Fixes found by profiling: parallel and lazy working-set zeroing, tombstones resolved by edge keys, undirected delete suppression | eval, index | 1 | P1 | W16 | in the rc6 matrix; figures `throughput`, `concurrent` |
+| W36 | Making the index's case (reviewer note, 30 Oct: the index's measured benefit looks modest, the headline comes from the traversal). Evidence to lead with (probes 30 Oct, SF300): single-pair throughput index 61 -> 323 q/s from 1 to 32 clients against build 3.5 -> 6.0 q/s (17x to 54x); 16 readers under a writer: index 73 ms per query, build 3.7 s (51x), writer commits 158 vs 604 ms, process peak 5.9 vs 13.3 GiB. Weak spots to fix or explain: RSS of the loaded index 3.0 GiB against 610 MB accounted (LoadFromStorage transients, allocator), first use 0.47 s > one build, row ids 8 of the 11 B/edge. Candidates: load without double buffering, lazy per-partition load, compressed row ids | eval, index | 2 | P1 | W35 | investigated 30 Oct; see the 30 Oct entry |
 | W34 | Locality-aware dense ids at CREATE INDEX (retry, decided 27 Oct). Tried before on the old CSR without gain because LDBC knows is close to random at the scale of a cache line; retry on the radix-partitioned CSR, where a partition's destination slice of `next` is already local and the scattered reads are `visit[src]`. Variant: assign dense ids in BFS order from the highest-degree vertex (or degree-sorted), behind an index option (`WITH (ordering = 'bfs')`), dictionary translates both ways so nothing else changes. Measure with perf (cache misses per edge) and the microbench at SF100; expect a modest effect, report it either way as the honest limit of reordering on small-world graphs | index | 1-2 | P2 | W33 | open |
 | W31 | Batch scheduling rule (found by the 26 Oct microbenchmarks). Grouped scheduling derives one group of 32 workers, so 65536 pairs run their 32 batches one after another; grouping off or 4 workers per batch is 0.41-0.56x the time at SF10. Study: a two-dimensional sweep groups x workers per batch over the divisors of 32 at 65536 pairs on SF10, SF100, SF300, both routes; derive workers per batch = threads / batches (floored at 1) bounded by a working-set budget (192 B per vertex per group); validate the rule lands at the optimum per scale factor. Paper: a microbenchmark figure (time vs group count, one line per SF, memory column), framed as intra- vs inter-batch parallelism and tied to the baselines needing 32 client threads. Changes the headline numbers, so before the freeze | op | 1 | P1 | W19 | open, next after the SF10 microbenchmark |
 | W30 | Graph structure microbenchmark (decided 26 Oct). LDBC knows is the operator's friendliest graph (small world, diameter about 6, mild skew). One figure on LDBC Graphalytics datasets that differ where it matters: graph500-24 (hubs; 8.9M V, 260M E), cit-Patents (long level tail; 3.8M V, 16.5M E), datagen-8_4-fb (same family, other density; 3.8M V, 269M E), optionally dota-league or wiki-Talk. Shapes 65536 random pairs and 1024 sources x all, both DuckPGQ routes plus the fastest-loading baseline (Kuzu or Ladybug), reporting levels reached. Harness has download, materialisation and BFS reference validation (`prepare --graphalytics-datasets`). About a day of machine time; measured on the frozen build. Writing: one paragraph naming where the operator degrades and why | eval | 2 | P1 | W19, W31 | in the rc6 matrix (29 Oct): cit-Patents on every system, graph500-24 and datagen-8_4-fb on DuckPGQ and Kuzu, scheduling microbenchmark on graph500-24; smoke findings in the 29 Oct entries |
@@ -1052,3 +1053,36 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   DuckPGQ rc8 on the index: paths 33.1 s at a 5.6 GiB process peak (1.5x faster than Neo4j), lengths 1.0 s via lane
   waves (48x faster). Neo4j cannot run the reach shape at scale (SF300: 16 sources x all timed out at 600 s, one
   shortestPath per destination).
+- 30 Oct: W36, the index's case (the reviewer session calls the CSR index the paper's weakest point: it saves the
+  22-264 ms build, ties the build route under updates at 32 threads at SF10 and with 16 readers at SF10, and wins
+  clearly only on one thread and on single queries at SF300). Probes on the rc8 build, machine idle, SF300 unless
+  stated, index route against build-per-query route:
+  (1) Single-pair throughput (driver `--mode throughput`, 10 s per point): index 61 / 202 / 289 / 323 q/s at 1 / 4 /
+  16 / 32 clients (median 16 / 19 / 50 / 86 ms); build 3.5 / 4.7 / 5.5 / 6.0 q/s (median 0.29 / 0.85 / 3.7 / 5.8 s):
+  17x more queries per second at one client, 54x at 32. The build route saturates at 6 q/s because every query's
+  build takes all cores for 264 ms; the index route saturates the CPU at about 90 ms of CPU per single-pair search
+  (355 q/s bound). Capping the workers per query to threads / clients does not move it (290 q/s at 32 clients), so
+  the per-source search itself is the cost there, not scheduling. (2) 16 readers under a writer committing 2000
+  operations every 200 ms (20 commits): index 73 ms per query (p99 118 ms), build 3.7 s (p99 6.0 s), 51x faster;
+  the writer's commits 158 ms with index readers vs 604 ms with build readers (each build scans the table); process
+  peak 5.9 GiB vs 13.3 GiB (one shared snapshot vs a transient CSR per query). (3) One single-pair query: index
+  28 ms, build 284-323 ms; process peak 4.1 GiB (index) vs 2.5 GiB (build): the loaded index costs 3.0 GiB of RSS
+  against 610 MB accounted by duckpgq_csr_index_size (duckdb_memory() sees 4 MiB; the index lives in std::vectors);
+  LoadFromStorage apparently buffers the serialised form and the deserialised structures at once and the allocator
+  keeps the peak. (4) Already in the archive: under updates at SF100 (one source to 1024 destinations after each of
+  150 commits of 10000 operations) index 114 vs build 143 ms per query and commits 148 vs 218 ms; at SF10 on one
+  thread 22 vs 135 ms.
+  What this says: the index pays off where the build is paid per query and multiplies with load (throughput,
+  concurrent readers, writer latency, memory under concurrency), and for short queries; for one heavy query the
+  traversal dominates on both routes, which the paper should say plainly. Section 6's index part should open with
+  (1) and (2) once the rerun (W35 steps) reproduces them.
+  Candidates, ranked: (a) writing: lead with throughput and the 16-reader numbers, state the single heavy query
+  honestly; (b) RSS of the loaded index: stream LoadFromStorage block by block, avoid the double buffer, release the
+  serialised buffer before building the partitions, malloc_trim after the load; target RSS within 1.3x of the
+  accounted bytes, then report bytes per edge as RSS; (c) compressed row ids (8 of the 11 B/edge; row ids are
+  near-sequential per partition: delta or bit packing would bring the index to about 5 B/edge; they serve tombstone
+  resolution and path edge ids only); (d) lazy per-partition load on first touch for the cold first query (0.47 s at
+  SF300, more than one build); (e) fold latency at SF300 (a fold rebuilds and persists, about the 4.6 s of CREATE
+  INDEX) is a p99 spike for the reader that triggers it: measure in the rerun's update steps, keep the background
+  fold as future work; (f) not the index: a bidirectional single-pair search would cut the 90 ms of CPU per
+  single-pair query on both routes. (a) and (b) before the camera-ready; (c) and (d) if time allows.
