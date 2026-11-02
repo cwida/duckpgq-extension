@@ -1832,9 +1832,9 @@ static idx_t BuildCSRFromEndpointPartitionEntries(PathFindingGlobalSinkState &gs
 	vector<idx_t> histogram;
 	CSRRadixSortBySource(edges, scratch, histogram, CSRSourceBits(gstate.vertex_count));
 	vector<row_t> rows(with_rows ? edges.size() : 0);
-	auto partition =
-	    CSREmitSparsePartition(start_vertex, end_vertex, gstate.vertex_count, edges,
-	                           [&](idx_t position, const ENTRY &entry) { StoreEntryRow(rows, position, entry); });
+	auto partition = CSREmitSparsePartition(
+	    start_vertex, end_vertex, gstate.vertex_count, edges,
+	    [&](idx_t position, const ENTRY &entry) { StoreEntryRow(rows, position, entry); }, gstate.settings.row_bucket_rows);
 	if (with_rows) {
 		partition->owned_row_ids = std::move(rows);
 		partition->row_ids = partition->owned_row_ids.data();

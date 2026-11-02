@@ -5633,11 +5633,16 @@ MICROBENCH_CONFIGS["no_sparse_levels"] = ({OPT + "sparse_level_divisor": 0}, Non
 MICROBENCH_CONFIGS["sparse_levels_8"] = ({OPT + "sparse_level_divisor": 8}, None, False)
 MICROBENCH_CONFIGS["sparse_levels_64"] = ({OPT + "sparse_level_divisor": 64}, None, False)
 MICROBENCH_CONFIGS["plain_explore"] = ({OPT + "frontier_bitmap": "false", OPT + "frontier_bitmap_filter": 0, OPT + "sparse_level_divisor": 0}, None, False)
+# Row index of the sparse rows (20 Oct): rows per bucket; the index route builds one index per value (the buckets are
+# built with the CSR), 0 is the binary search the buckets replaced
+for _rb in (0, 1, 2, 4, 8, 16, 64):
+    MICROBENCH_CONFIGS[f"row_buckets_{_rb}"] = ({OPT + "row_bucket_rows": _rb}, None, False, f"rb{_rb}")
 MICROBENCH_GROUPS = {
     "kernel": ["baseline", "no_grouped_batches", "dedupe_pairs", "threads_per_batch_4", "no_source_grouping",
                "no_few_sources_rule", "no_early_termination",
                "dense_frontier", "sparse_frontier", "light_partitions_4"],
     "index": ["baseline", "no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "no_reverse_orientation"],
+    "row_buckets": [f"row_buckets_{_rb}" for _rb in (0, 1, 2, 4, 8, 16, 64)],
     "reach": ["baseline", "pair_mode"],
     "threads": ["baseline"] + [f"threads_{n}" for n in (1, 2, 4, 8, 16)],
     "memory": ["baseline", "no_frontier_bitmap", "no_sparse_levels", "sparse_levels_8", "sparse_levels_64",

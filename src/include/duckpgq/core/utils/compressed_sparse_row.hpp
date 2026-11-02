@@ -108,18 +108,24 @@ public:
 		return sparse_rows_initialized;
 	}
 
+	//! Target rows per bucket of the row index (experimental_path_finding_operator_row_bucket_rows); 2 since 20 Oct,
+	//! a default rather than a tuned value: a lookup reads one bucket entry and then the 4-byte source ids of the
+	//! bucket's rows, and a 64-byte line holds 16 of them, so 2 or 8 rows cost about the same memory access
+	static constexpr int32_t DEFAULT_ROWS_PER_BUCKET = 2;
+
 	//! Builds the bucket index over the sorted sparse rows. Buckets are source-id ranges of 2^bucket_shift ids,
-	//! sized to hold about two rows each, so looking up a source costs one bucket read and a scan of a few
-	//! adjacent rows instead of a binary search over every row of the partition. Costs ~2 bytes per row.
-	void BuildRowBuckets(idx_t vertex_count) {
+	//! sized to hold about `rows_per_bucket` rows each, so looking up a source costs one bucket read and a scan of
+	//! a few adjacent rows instead of a binary search over every row of the partition. Costs 4 / rows_per_bucket
+	//! bytes per row; rows_per_bucket <= 0 builds no index and FindSparseRow falls back to the binary search.
+	void BuildRowBuckets(idx_t vertex_count, int32_t rows_per_bucket = DEFAULT_ROWS_PER_BUCKET) {
 		row_buckets.clear();
-		if (!sparse_rows_initialized || source_vertices.empty()) {
+		if (!sparse_rows_initialized || source_vertices.empty() || rows_per_bucket <= 0) {
 			return;
 		}
 		idx_t rows = source_vertices.size();
 		idx_t id_range = std::max<idx_t>(vertex_count, static_cast<idx_t>(source_vertices.back()) + 1);
 		uint8_t shift = 0;
-		while (shift < 32 && (id_range >> shift) > rows / 2 + 1) {
+		while (shift < 32 && (id_range >> shift) > rows / NumericCast<idx_t>(rows_per_bucket) + 1) {
 			shift++;
 		}
 		bucket_shift = shift;

@@ -1209,3 +1209,19 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   unrelated checkpoints, reused blocks survive a restart, rewrite after an edge insert, release on drop). The
   correctness oracle (item 2): `concurrent_sf10_r4_check` runs both routes in one process with fold ratio 0.01 and
   the harness fails a concurrent run with mismatches or errors (`b68fd8c2`). All 100 SQL test files pass.
+- 2 Nov (late): row-bucket block size (the author's question: two rows per bucket was a default, not a tuned value).
+  New setting `experimental_path_finding_operator_row_bucket_rows` (default 2; 0 = no bucket index, binary search
+  over the partition's rows) threaded through every CSR build (per-query build, CREATE INDEX, fold, delta overlay;
+  the loader takes the global value) and microbenchmark configs `row_buckets_{0,1,2,4,8,16,64}` (group
+  `row_buckets`, one index per value). Index route, 32 threads, median of 3. SF100: no difference at any point
+  (1 source x all 20 ms for every value; 16 sources 70-75 ms; random pairs 1 / 16 / 128 / 2048 / 65536: 14-15 ms /
+  55-61 / 63-64 / 128-130 ms / 3.17-3.19 s), including the binary search (0). SF300: 1 source x all 45-47 ms,
+  16 sources 178-188 ms, 1 / 16 / 2048 random pairs 21-23 / 132-143 / 329-343 ms, again with no ordering by block
+  size (the binary search is within noise of every bucket size). So the block size does not matter, and the row
+  lookup is no longer where a sparse level spends its time: the 20 Oct gain of the bucket index (twenty sources
+  0.28 -> 0.13 s, `43a37a0f`) predates the lazy working sets, the few-sources rule and the per-source kernel, which
+  removed the lookups that made the binary search visible. For the paper: the description of the index stands (one
+  bucket entry, a scan of about two rows); the evolution step's "0.28 to 0.13 s" is a historical measurement that
+  no longer reproduces as a difference against the binary search on today's kernels (evaluation.tex, step (4);
+  operator.tex's logarithmic-probes argument). Memory: 4 / rows-per-bucket bytes per sparse row either way (about
+  2 bytes per row at the default). Not worth rerun time; the default stays 2.

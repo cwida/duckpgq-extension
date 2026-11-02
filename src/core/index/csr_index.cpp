@@ -458,6 +458,7 @@ unique_ptr<BoundIndex> CSRIndex::Create(CreateIndexInput &input) {
 
 shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CSRIndexEdgeList> &lists, bool undirected,
                                                bool reverse, VisibilityBound bound) {
+	auto rows_per_bucket = GetPathFindingRowBucketRows(context);
 	auto epoch = make_shared_ptr<CSRIndexEpoch>();
 	epoch->bound = bound;
 	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
@@ -549,9 +550,9 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 			auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
 			auto &row_ids = epoch->partition_row_ids[partition_idx];
 			row_ids.resize(edges.size());
-			csr->forward_partitions[partition_idx] =
-			    CSREmitSparsePartition(start_vertex, end_vertex, vertex_count, edges,
-			                           [&](idx_t position, const BuildEdge &edge) { row_ids[position] = edge.row; });
+			csr->forward_partitions[partition_idx] = CSREmitSparsePartition(
+			    start_vertex, end_vertex, vertex_count, edges,
+			    [&](idx_t position, const BuildEdge &edge) { row_ids[position] = edge.row; }, rows_per_bucket);
 			csr->forward_partitions[partition_idx]->row_ids = row_ids.data();
 			total_edge_count.fetch_add(edges.size(), std::memory_order_relaxed);
 		}
@@ -576,7 +577,7 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 				auto start_vertex = partition_idx * width;
 				auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
 				csr->reverse_partitions[partition_idx] = CSREmitSparsePartition(
-				    start_vertex, end_vertex, vertex_count, edges, [](idx_t, const BuildEdge &) {});
+				    start_vertex, end_vertex, vertex_count, edges, [](idx_t, const BuildEdge &) {}, rows_per_bucket);
 			}
 		});
 	}
@@ -1274,7 +1275,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 					    if (keep_rows) {
 						    delta_rows[position] = entry.row;
 					    }
-				    });
+				    }, GetPathFindingRowBucketRows(context));
 				if (keep_rows) {
 					delta_partition->owned_row_ids = std::move(delta_rows);
 					delta_partition->row_ids = delta_partition->owned_row_ids.data();
@@ -1938,7 +1939,8 @@ void SkipPartition(ByteReader &reader, bool with_row_ids) {
 
 //! Reads a partition written by WritePartition as a finalized LocalCSR (sparse rows and bucket index, no vertex
 //! array); the row ids go to `*row_ids`, which the partition then points at
-shared_ptr<LocalCSR> ReadPartition(ByteReader &reader, idx_t vertex_count, vector<row_t> *row_ids) {
+shared_ptr<LocalCSR> ReadPartition(ByteReader &reader, idx_t vertex_count, vector<row_t> *row_ids,
+                                   int32_t rows_per_bucket) {
 	auto start_vertex = reader.Read<uint64_t>();
 	auto end_vertex = reader.Read<uint64_t>();
 	auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, vertex_count, false);
@@ -1953,7 +1955,7 @@ shared_ptr<LocalCSR> ReadPartition(ByteReader &reader, idx_t vertex_count, vecto
 	partition->v_array_size = 0;
 	partition->initialized_e = true;
 	partition->sparse_rows_initialized = true;
-	partition->BuildRowBuckets(vertex_count);
+	partition->BuildRowBuckets(vertex_count, rows_per_bucket);
 	return partition;
 }
 
@@ -1961,7 +1963,7 @@ shared_ptr<LocalCSR> ReadPartition(ByteReader &reader, idx_t vertex_count, vecto
 //! deserialized in parallel, each by its own reader over the same bytes. Forward partitions pass `row_ids`, which
 //! receives one row-id vector per partition; the reverse side passes nullptr.
 void ReadPartitions(ByteReader &reader, idx_t count, idx_t vertex_count, idx_t thread_count,
-                    std::vector<shared_ptr<LocalCSR>> &partitions, vector<vector<row_t>> *row_ids) {
+                    std::vector<shared_ptr<LocalCSR>> &partitions, vector<vector<row_t>> *row_ids, int32_t rows_per_bucket) {
 	vector<idx_t> offsets(count);
 	for (idx_t partition_idx = 0; partition_idx < count; partition_idx++) {
 		offsets[partition_idx] = reader.position;
@@ -1976,7 +1978,7 @@ void ReadPartitions(ByteReader &reader, idx_t count, idx_t vertex_count, idx_t t
 			ByteReader partition_reader(reader.bytes, reader.size);
 			partition_reader.position = offsets[partition_idx];
 			partitions[partition_idx] =
-			    ReadPartition(partition_reader, vertex_count, row_ids ? &(*row_ids)[partition_idx] : nullptr);
+			    ReadPartition(partition_reader, vertex_count, row_ids ? &(*row_ids)[partition_idx] : nullptr, rows_per_bucket);
 		}
 	});
 }
@@ -2248,13 +2250,20 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 	csr->edge_count = epoch->edge_count;
 	csr->capabilities = PartitionedCSRCapabilities::FORWARD;
 	auto partition_count = reader.Read<uint64_t>();
+	// A session setting is not visible here (no client context at load): the global value applies
+	int32_t rows_per_bucket = LocalCSR::DEFAULT_ROWS_PER_BUCKET;
+	Value row_bucket_setting;
+	if (DBConfig::GetConfig(db.GetDatabase())
+	        .TryGetCurrentSetting(Identifier("experimental_path_finding_operator_row_bucket_rows"), row_bucket_setting)) {
+		rows_per_bucket = row_bucket_setting.GetValue<int32_t>();
+	}
 	ReadPartitions(reader, partition_count, epoch->vertex_count, thread_count, csr->forward_partitions,
-	               &epoch->partition_row_ids);
+	               &epoch->partition_row_ids, rows_per_bucket);
 	// The reverse side (edges by source range, no row ids), present when the index stored one
 	bool stored_reverse = reader.Read<uint8_t>() != 0;
 	if (stored_reverse) {
 		auto reverse_count = reader.Read<uint64_t>();
-		ReadPartitions(reader, reverse_count, epoch->vertex_count, thread_count, csr->reverse_partitions, nullptr);
+		ReadPartitions(reader, reverse_count, epoch->vertex_count, thread_count, csr->reverse_partitions, nullptr, rows_per_bucket);
 		csr->capabilities |= PartitionedCSRCapabilities::REVERSE;
 	}
 	epoch->csr = std::move(csr);

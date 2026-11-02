@@ -20,7 +20,8 @@ struct PathFindingSettings {
 	      grouped_batches_budget(GetPathFindingGroupedBatchesBudget(context)),
 	      visit_prefetch(NonNegative(GetPathFindingVisitPrefetch(context))),
 	      sub_range_tasks(GetPathFindingSubRangeTasks(context)),
-	      sparse_level_divisor(NonNegative(GetPathFindingSparseLevelDivisor(context))) {
+	      sparse_level_divisor(NonNegative(GetPathFindingSparseLevelDivisor(context))),
+	      row_bucket_rows(GetPathFindingRowBucketRows(context)) {
 	}
 
 	//! experimental_path_finding_operator_benchmark, _benchmark_lane_activity, _benchmark_prefix
@@ -39,6 +40,8 @@ struct PathFindingSettings {
 	idx_t visit_prefetch;
 	bool sub_range_tasks;
 	idx_t sparse_level_divisor;
+	//! CSR build: _row_bucket_rows (rows per bucket of a partition's row index; 0 = binary search)
+	int32_t row_bucket_rows;
 
 private:
 	static idx_t NonNegative(int32_t value) {

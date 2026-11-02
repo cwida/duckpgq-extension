@@ -126,6 +126,13 @@ const vector<DuckPGQSetting> &Settings() {
 	     "its parallelism through destination sub-range tasks and pays 1.3-1.5x. <= 0 derives "
 	     "the count from the thread count (threads x (1 + light_partition_multiplier))",
 	     LogicalType::INTEGER, Value(65535)},
+	    {"experimental_path_finding_operator_row_bucket_rows",
+	     "Target sparse rows per bucket of a partition's row index (a bucket covers 2^k source ids, "
+	     "k chosen so a bucket holds about this many rows; a lookup reads one bucket entry and scans "
+	     "its rows). 2 since 20 Oct, a default rather than a tuned value; 0 builds no index and "
+	     "looks rows up by binary search. Read when a CSR is built (per-query build, CREATE INDEX, "
+	     "fold); a persisted index loads with the global value (microbenchmark row_buckets)",
+	     LogicalType::INTEGER, Value(2)},
 	    {"experimental_path_finding_operator_sub_range_tasks",
 	     "When an MS-BFS batch has more workers than partitions, split each partition's "
 	     "destination range into sub-range tasks so the batch keeps its parallelism on coarse "
@@ -280,6 +287,10 @@ int32_t GetPathFindingSparseLevelDivisor(ClientContext &context) {
 
 int32_t GetPathFindingPartitionVertices(ClientContext &context) {
 	return GetSetting<int32_t>(context, "experimental_path_finding_operator_partition_vertices");
+}
+
+int32_t GetPathFindingRowBucketRows(ClientContext &context) {
+	return GetSetting<int32_t>(context, "experimental_path_finding_operator_row_bucket_rows");
 }
 
 bool GetPathFindingSubRangeTasks(ClientContext &context) {

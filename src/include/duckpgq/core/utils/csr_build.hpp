@@ -69,7 +69,8 @@ void CSRRadixSortBySource(vector<ENTRY> &entries, vector<ENTRY> &scratch, vector
 //! `local_dst` (destination offset within the partition); on_edge(position, entry) stores any per-edge payload.
 template <class ENTRY, class ON_EDGE>
 shared_ptr<LocalCSR> CSREmitSparsePartition(idx_t start_vertex, idx_t end_vertex, idx_t vertex_count,
-                                            const vector<ENTRY> &sorted, ON_EDGE &&on_edge) {
+                                            const vector<ENTRY> &sorted, ON_EDGE &&on_edge,
+                                            int32_t rows_per_bucket = LocalCSR::DEFAULT_ROWS_PER_BUCKET) {
 	auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, vertex_count, false);
 	partition->e.resize(sorted.size());
 	if (!sorted.empty()) {
@@ -93,7 +94,7 @@ shared_ptr<LocalCSR> CSREmitSparsePartition(idx_t start_vertex, idx_t end_vertex
 	partition->v_array_size = 0;
 	partition->initialized_e = true;
 	partition->sparse_rows_initialized = true;
-	partition->BuildRowBuckets(vertex_count);
+	partition->BuildRowBuckets(vertex_count, rows_per_bucket);
 	return partition;
 }
 
