@@ -69,9 +69,26 @@ void CSRIndexStatsFunction(DataChunk &args, ExpressionState &state, Vector &resu
 	result.SetValue(0, Value(stats));
 }
 
+//! duckpgq_csr_index_fold_stats(table, index): 'folds=..;last_fold_ms=..;fold_ms=..' (folds run since the index was
+//! bound; the update experiments report the fold latency a reader pays)
+void CSRIndexFoldStatsFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &context = state.GetContext();
+	auto table_name = args.data[0].GetValue(0).GetValue<string>();
+	auto index_name = args.data[1].GetValue(0).GetValue<string>();
+	auto resolved = ResolveCSRIndex(context, table_name, index_name);
+	auto handle = resolved.entry->GetReadHandle<CSRIndex>();
+	result.SetVectorType(VectorType::CONSTANT_VECTOR);
+	result.SetValue(0, Value(handle->FoldStats()));
+}
+
 } // namespace
 
 void CoreScalarFunctions::RegisterCSRIndexScalarFunctions(ExtensionLoader &loader) {
+	auto fold_stats = ScalarFunction("duckpgq_csr_index_fold_stats", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                 LogicalType::VARCHAR, CSRIndexFoldStatsFunction);
+	fold_stats.SetStability(FunctionStability::VOLATILE);
+	fold_stats.SetFallible();
+	loader.RegisterFunction(fold_stats);
 	auto fold = ScalarFunction("duckpgq_csr_index_fold", {LogicalType::VARCHAR, LogicalType::VARCHAR},
 	                           LogicalType::BOOLEAN, CSRIndexFoldFunction);
 	fold.SetStability(FunctionStability::VOLATILE);

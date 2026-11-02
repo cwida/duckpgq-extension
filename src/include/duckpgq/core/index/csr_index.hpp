@@ -11,6 +11,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "duckpgq/common.hpp"
 #include "duckdb/common/unordered_map.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
@@ -222,6 +224,8 @@ public:
 	idx_t InMemoryBytes() const;
 	//! Edges of the newest retained epoch
 	idx_t EpochEdgeCount() const;
+	//! 'folds=..;last_fold_ms=..;fold_ms=..': the folds this index ran since it was bound, for the update experiments
+	string FoldStats() const;
 
 	//! Builds a new epoch at the transaction's bound and drops the change-log entries no retained epoch needs. The
 	//! transaction must not have uncommitted changes. Also run automatically by Snapshot when the change log exceeds
@@ -279,7 +283,12 @@ private:
 	static constexpr idx_t STORAGE_FORMAT_VERSION = 2;
 	vector<uint8_t> SerializeState() const;
 	IndexStorageInfo WriteSegments(const vector<uint8_t> &bytes, optional_ptr<QueryContext> checkpoint_context);
-	void LoadFromStorage(const IndexStorageInfo &info);
+	//! Remembers where the checkpointed state lives. The index is deserialized on first use (EnsureLoadedLocked):
+	//! DuckDB binds every index of a table together, so an eager load would read every CSR index of the table (and
+	//! hold it in memory) for a query that reads one of them
+	void DeferLoad(const IndexStorageInfo &info);
+	void EnsureLoadedLocked(IndexLock &l) const;
+	void LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info) const;
 
 private:
 	bool undirected = false;
@@ -304,7 +313,14 @@ private:
 	//! One fold at a time
 	mutable mutex fold_lock;
 	//! Segments of the last checkpoint or WAL serialization, kept until the next one replaces them
-	unique_ptr<FixedSizeAllocator> storage_allocator;
+	mutable unique_ptr<FixedSizeAllocator> storage_allocator;
+	//! Checkpointed state not deserialized yet (see DeferLoad)
+	mutable IndexStorageInfo pending_storage;
+	mutable bool storage_pending = false;
+	//! Fold timing (see FoldStats)
+	mutable std::atomic<uint64_t> fold_count {0};
+	mutable std::atomic<uint64_t> fold_total_us {0};
+	mutable std::atomic<uint64_t> fold_last_us {0};
 };
 
 //! Registration entry point called from the core module

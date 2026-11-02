@@ -86,6 +86,10 @@ void CoreScalarFunctions::RegisterBidirectionalIterativeLengthOperatorScalarFunc
 	functions.AddFunction(
 	    PathFindingMarkerFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
 	                              BidirectionalIterativeLengthOperatorFunction));
+	// Over a CSR index (cache-only marker: vertex count, edge count, cache key), like iterativelengthoperator
+	functions.AddFunction(PathFindingMarkerFunction(
+	    {LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::VARCHAR},
+	    BidirectionalIterativeLengthOperatorFunction));
 	loader.RegisterFunction(functions);
 }
 

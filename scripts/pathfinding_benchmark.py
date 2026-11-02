@@ -3548,6 +3548,7 @@ FROM ldbc.{options.pair_table} p
 JOIN ldbc.person a ON a.rowid = p.src
 JOIN ldbc.person b ON b.rowid = p.dst;""")
     stats_sql = (f"SELECT 'stats' AS kind, {{step}} AS step, duckpgq_csr_index_stats('ldbc.main.person_knows_person', "
+                 f"'{CSR_INDEX_NAME}') || ';' || duckpgq_csr_index_fold_stats('ldbc.main.person_knows_person', "
                  f"'{CSR_INDEX_NAME}') AS stats;")
     snapshot_edges = int(batch_rows[0]["edges"]) - int(batch_rows[0]["ins"]) + int(batch_rows[0]["del"])
     for step in range(0, args.batches + 1):
@@ -3660,6 +3661,9 @@ def run_update_config(config, args, options, batch_rows, run_metadata):
             "epochs": stats.get("epochs", ""),
             "delta": stats.get("delta", ""),
             "tombstones": stats.get("tombstones", ""),
+            "folds": stats.get("folds", ""),
+            "last_fold_ms": stats.get("last_fold_ms", ""),
+            "fold_ms": stats.get("fold_ms", ""),
             "index_build_s": f"{index_build_s:.6f}",
             "config_wall_s": f"{wall_s:.3f}",
         })

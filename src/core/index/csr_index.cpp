@@ -20,6 +20,7 @@
 #include "duckdb/planner/expression/bound_columnref_expression.hpp"
 #include "duckdb/storage/data_table.hpp"
 #include "duckdb/storage/partial_block_manager.hpp"
+#include "duckdb/common/allocator.hpp"
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/storage/table/data_table_info.hpp"
 #include "duckdb/storage/table/index_entry.hpp"
@@ -29,10 +30,18 @@
 
 #include <algorithm>
 #include <bitset>
+#include <chrono>
 #include <cstring>
 #include <thread>
 
 namespace duckdb {
+
+namespace {
+//! Keys of the index's entries in IndexStorageInfo::options
+constexpr const char *STORAGE_OPTION_FORMAT = "csr_format";
+constexpr const char *STORAGE_OPTION_BYTES = "csr_bytes";
+constexpr const char *STORAGE_OPTION_SEGMENTS = "csr_segments";
+} // namespace
 
 namespace {
 
@@ -386,7 +395,7 @@ unique_ptr<BoundIndex> CSRIndex::Create(CreateIndexInput &input) {
 	// on first use
 	auto index = make_uniq<CSRIndex>(input.name, input.constraint_type, input.column_ids, input.table_io_manager,
 	                                 input.unbound_expressions, input.db, input.options);
-	index->LoadFromStorage(input.storage_info);
+	index->DeferLoad(input.storage_info);
 	return std::move(index);
 }
 
@@ -563,6 +572,7 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	vector<CSRIndexTombstone> tombstone_prefix;
 	{
 		IndexLock l(*this);
+		EnsureLoadedLocked(l);
 		delta_prefix = delta;
 		tombstone_prefix = tombstones;
 	}
@@ -1210,6 +1220,7 @@ void CSRIndex::Fold(ClientContext &context, DuckTransaction &transaction, DataTa
 		// hiding committed edges from new transactions (28 Oct audit). Readers that all saw the log grow past the
 		// ratio take the same path, so only the first of them rebuilds.
 		IndexLock l(*this);
+		EnsureLoadedLocked(l);
 		if (!epochs.empty()) {
 			auto &newest = epochs.back()->bound;
 			auto mine = transaction.view.visibility_bound;
@@ -1218,7 +1229,19 @@ void CSRIndex::Fold(ClientContext &context, DuckTransaction &transaction, DataTa
 			}
 		}
 	}
+	auto fold_start = std::chrono::steady_clock::now();
 	InstallEpochAndCompact(transaction, table, RebuildFromTable(context, transaction, table));
+	auto fold_us = static_cast<uint64_t>(
+	    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fold_start).count());
+	fold_count++;
+	fold_total_us += fold_us;
+	fold_last_us = fold_us;
+}
+
+string CSRIndex::FoldStats() const {
+	return StringUtil::Format("folds=%llu;last_fold_ms=%.1f;fold_ms=%.1f", fold_count.load(),
+	                          static_cast<double>(fold_last_us.load()) / 1000.0,
+	                          static_cast<double>(fold_total_us.load()) / 1000.0);
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTransaction &transaction,
@@ -1235,6 +1258,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 	idx_t tombstone_count;
 	{
 		IndexLock l(*this);
+		EnsureLoadedLocked(l);
 		have_epochs = !epochs.empty();
 		current = EpochForLocked(bound);
 		delta_count = delta.size();
@@ -1276,26 +1300,31 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 
 idx_t CSRIndex::InMemoryBytes() const {
 	IndexLock l(*this);
+	EnsureLoadedLocked(l);
 	return GetInMemorySize(l);
 }
 
 idx_t CSRIndex::EpochEdgeCount() const {
 	IndexLock l(*this);
+	EnsureLoadedLocked(l);
 	return epochs.empty() ? 0 : epochs.back()->edge_count;
 }
 
 idx_t CSRIndex::DeltaSize() const {
 	IndexLock l(*this);
+	EnsureLoadedLocked(l);
 	return delta.size();
 }
 
 idx_t CSRIndex::TombstoneCount() const {
 	IndexLock l(*this);
+	EnsureLoadedLocked(l);
 	return tombstones.size();
 }
 
 idx_t CSRIndex::EpochCount() const {
 	IndexLock l(*this);
+	EnsureLoadedLocked(l);
 	return epochs.size();
 }
 
@@ -1463,6 +1492,7 @@ void ReadKeys(Vector &input, idx_t count, vector<int64_t> &keys, vector<uint8_t>
 
 ErrorData CSRIndex::Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 	l.AssertHeld(*this);
+	EnsureLoadedLocked(l);
 	// Evaluate the key expressions on the incoming rows, like the ART does
 	DataChunk key_chunk;
 	key_chunk.Initialize(Allocator::DefaultAllocator(), logical_types);
@@ -1532,6 +1562,7 @@ ErrorData CSRIndex::Insert(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifiers,
                           optional_ptr<SelectionVector> deleted_sel, optional_ptr<SelectionVector>) {
 	l.AssertHeld(*this);
+	EnsureLoadedLocked(l);
 	auto count = entries.size();
 	UnifiedVectorFormat row_format;
 	row_identifiers.ToUnifiedFormat(count, row_format);
@@ -1569,6 +1600,8 @@ idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifi
 
 void CSRIndex::ResetStorage(IndexLock &l) {
 	l.AssertHeld(*this);
+	storage_pending = false;
+	pending_storage = IndexStorageInfo();
 	epochs.clear();
 	delta.clear();
 	tombstones.clear();
@@ -1593,6 +1626,11 @@ void CSRIndex::Vacuum(IndexLock &) {
 
 idx_t CSRIndex::GetInMemorySize(IndexLock &l) const {
 	l.AssertHeld(*this);
+	if (storage_pending) {
+		// Not deserialized yet: the serialized size is the estimate, and DuckDB's accounting must not force the load
+		auto byte_count = pending_storage.options.find(STORAGE_OPTION_BYTES);
+		return byte_count == pending_storage.options.end() ? 0 : byte_count->second.GetValue<uint64_t>();
+	}
 	idx_t bytes = delta.size() * sizeof(CSRIndexDeltaEdge) + tombstones.size() * sizeof(CSRIndexTombstone);
 	for (auto &epoch : epochs) {
 		bytes += epoch->tombstone_positions.size() * sizeof(idx_t);
@@ -1615,6 +1653,7 @@ void CSRIndex::Verify(IndexLock &) {
 
 string CSRIndex::ToString(IndexLock &l, bool) {
 	l.AssertHeld(*this);
+	EnsureLoadedLocked(l);
 	if (epochs.empty()) {
 		return StringUtil::Format("CSR index (no epoch, %llu delta edges, %llu tombstones)", delta.size(),
 		                          tombstones.size());
@@ -1719,14 +1758,11 @@ struct ByteReader {
 	}
 };
 
-constexpr const char *STORAGE_OPTION_FORMAT = "csr_format";
-constexpr const char *STORAGE_OPTION_BYTES = "csr_bytes";
-constexpr const char *STORAGE_OPTION_SEGMENTS = "csr_segments";
-
 } // namespace
 
 vector<uint8_t> CSRIndex::SerializeState() const {
 	IndexLock l(*this);
+	EnsureLoadedLocked(l);
 	ByteWriter writer;
 	if (epochs.empty()) {
 		return writer.bytes;
@@ -1827,7 +1863,7 @@ IndexStorageInfo CSRIndex::WriteSegments(const vector<uint8_t> &bytes, optional_
 	return info;
 }
 
-void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
+void CSRIndex::DeferLoad(const IndexStorageInfo &info) {
 	if (!info.IsValid() || info.allocator_infos.empty()) {
 		return;
 	}
@@ -1841,35 +1877,94 @@ void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
 		// Unknown layout: start empty and rebuild from the table on first use
 		return;
 	}
+	// IndexStorageInfo is not copyable; the fields are (the WAL's transient block handles are shared)
+	IndexStorageInfo copy(info.name);
+	copy.root = info.root;
+	copy.options = info.options;
+	copy.allocator_infos = info.allocator_infos;
+	copy.buffers = info.buffers;
+	copy.root_block_ptr = info.root_block_ptr;
+	pending_storage = std::move(copy);
+	storage_pending = true;
+}
+
+void CSRIndex::EnsureLoadedLocked(IndexLock &l) const {
+	if (!storage_pending) {
+		return;
+	}
+	storage_pending = false;
+	auto info = std::move(pending_storage);
+	pending_storage = IndexStorageInfo();
+	LoadFromStorageLocked(l, info);
+}
+
+void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info) const {
+	l.AssertHeld(*this);
+	auto byte_count = info.options.find(STORAGE_OPTION_BYTES);
+	auto segment_list = info.options.find(STORAGE_OPTION_SEGMENTS);
 	auto &block_manager = table_io_manager.GetIndexBlockManager();
 	auto &allocator_info = info.allocator_infos[0];
-	storage_allocator = make_uniq<FixedSizeAllocator>(allocator_info.segment_size, block_manager, MemoryTag::EXTENSION);
-	storage_allocator->Init(allocator_info);
 	auto total_bytes = byte_count->second.GetValue<uint64_t>();
 	// Uninitialized staging buffer: every byte is written by the segment copy below
 	auto bytes_buffer = make_unsafe_uniq_array_uninitialized<uint8_t>(total_bytes);
 	auto bytes = bytes_buffer.get();
-	// One segment per block: the blocks are pinned and copied in parallel (each buffer has its own lock)
 	vector<uint64_t> packed_segments;
 	for (auto &segment : ListValue::GetChildren(segment_list->second)) {
 		packed_segments.push_back(segment.GetValue<uint64_t>());
 	}
 	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(db.GetDatabase()).NumberOfThreads());
 	auto segment_size = allocator_info.segment_size;
-	ParallelFor(packed_segments.size(), thread_count, [&](idx_t begin, idx_t end, idx_t) {
-		for (idx_t segment_idx = begin; segment_idx < end; segment_idx++) {
-			auto packed = packed_segments[segment_idx];
-			IndexPointer pointer(NumericCast<uint32_t>(packed >> 32), NumericCast<uint32_t>(packed & 0xFFFFFFFF));
-			auto offset = segment_idx * segment_size;
-			if (offset >= total_bytes) {
-				throw SerializationException("CSR index storage has more segments than bytes");
+	// One segment per block: the blocks are pinned and copied in parallel (each buffer has its own lock), in rounds
+	// of a bounded number of blocks. A FixedSizeAllocator keeps every block it has handed out in memory until it is
+	// destroyed, so one allocator for the whole index would hold the serialized bytes twice (blocks and staging
+	// buffer) on top of the deserialized structures while loading (SF300: 1.2 GB more peak RSS for the undirected
+	// index). Each round gets an allocator over its own blocks only, so every block is registered, loaded and
+	// released once. WAL replay hands over transient block handles that Init moves out of the shared vector, so that
+	// case runs as one round over the full info.
+	unordered_map<idx_t, idx_t> buffer_positions;
+	for (idx_t i = 0; i < allocator_info.buffer_ids.size(); i++) {
+		buffer_positions[allocator_info.buffer_ids[i]] = i;
+	}
+	idx_t round_segments = allocator_info.transient_block_handles ? packed_segments.size()
+	                                                               : std::max<idx_t>(thread_count * 8, 256);
+	for (idx_t round_begin = 0; round_begin < packed_segments.size(); round_begin += round_segments) {
+		auto round_end = std::min<idx_t>(packed_segments.size(), round_begin + round_segments);
+		storage_allocator = make_uniq<FixedSizeAllocator>(segment_size, block_manager, MemoryTag::EXTENSION);
+		if (allocator_info.transient_block_handles) {
+			storage_allocator->Init(allocator_info);
+		} else {
+			FixedSizeAllocatorInfo round_info;
+			round_info.segment_size = segment_size;
+			for (idx_t segment_idx = round_begin; segment_idx < round_end; segment_idx++) {
+				auto buffer_id = packed_segments[segment_idx] >> 32;
+				auto position = buffer_positions.find(buffer_id);
+				if (position == buffer_positions.end()) {
+					throw SerializationException("CSR index storage refers to an unknown buffer");
+				}
+				auto i = position->second;
+				round_info.buffer_ids.push_back(allocator_info.buffer_ids[i]);
+				round_info.block_pointers.push_back(allocator_info.block_pointers[i]);
+				round_info.segment_counts.push_back(allocator_info.segment_counts[i]);
+				round_info.allocation_sizes.push_back(allocator_info.allocation_sizes[i]);
 			}
-			auto length = std::min<idx_t>(segment_size, total_bytes - offset);
-			memcpy(bytes + offset, storage_allocator->Get(pointer, false), length);
+			storage_allocator->Init(round_info);
 		}
-	});
-	// The loaded buffers are no longer needed in memory; the blocks stay referenced until the next serialization
-	storage_allocator.reset();
+		ParallelFor(round_end - round_begin, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+			for (idx_t i = begin; i < end; i++) {
+				auto segment_idx = round_begin + i;
+				auto packed = packed_segments[segment_idx];
+				IndexPointer pointer(NumericCast<uint32_t>(packed >> 32), NumericCast<uint32_t>(packed & 0xFFFFFFFF));
+				auto offset = segment_idx * segment_size;
+				if (offset >= total_bytes) {
+					throw SerializationException("CSR index storage has more segments than bytes");
+				}
+				auto length = std::min<idx_t>(segment_size, total_bytes - offset);
+				memcpy(bytes + offset, storage_allocator->Get(pointer, false), length);
+			}
+		});
+		// The copied blocks are no longer needed in memory; they stay referenced on disk until the next serialization
+		storage_allocator.reset();
+	}
 
 	ByteReader reader(bytes, total_bytes);
 	auto stored_version = reader.Read<uint32_t>();
@@ -1983,8 +2078,11 @@ void CSRIndex::LoadFromStorage(const IndexStorageInfo &info) {
 	}
 	vector<row_t> loaded_tombstones;
 	reader.ReadVector<row_t>(loaded_tombstones);
+	// The staging buffer is returned to the system here; the blocks' pages went back to jemalloc, which keeps them
+	// dirty for its decay period (SF300: 1.2 GiB of RSS over the index for seconds to minutes) unless purged
+	bytes_buffer.reset();
+	Allocator::FlushAll();
 
-	IndexLock l(*this);
 	if (reverse && !stored_reverse) {
 		// Stored before the index had a reverse side: the first reader rebuilds the epoch from the table
 		epochs.clear();

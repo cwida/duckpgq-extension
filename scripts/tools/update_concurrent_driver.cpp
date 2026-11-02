@@ -240,9 +240,10 @@ static void ReaderBody(DuckDB &db, const Options &options, idx_t reader_id) {
 		auto commits = std::to_string(commits_done.load());
 		std::string index_reach, index_total, build_reach, build_total;
 		if (options.run_index) {
-			auto stats = Scalar(
-			    *Must(con, "SELECT duckpgq_csr_index_stats('person_knows_person', " + Quote(options.index_name) + ");"),
-			    0);
+			auto stats = Scalar(*Must(con, "SELECT duckpgq_csr_index_stats('person_knows_person', " +
+			                                   Quote(options.index_name) + ") || ';' || duckpgq_csr_index_fold_stats(" +
+			                                   "'person_knows_person', " + Quote(options.index_name) + ");"),
+			                    0);
 			auto start = Now();
 			auto t_start = std::chrono::steady_clock::now();
 			auto result = Must(con, index_query);
