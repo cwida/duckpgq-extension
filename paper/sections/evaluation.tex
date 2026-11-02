@@ -253,7 +253,7 @@ index (one pair 0.11 to 0.01\,s on the 8M-edge graph);
 (4) plus per-phase events instead of barriers (SF300 build route sssp 0.39 to 0.30\,s; concurrent readers);
 (5) plus lanes per source with destination sets (BI19 over the index, SF300: 30.6 to 1.6\,s, peak memory 43.8 to
 4.7\,GiB);
-(6) plus worker groups for the multi-source batches; rc1 microbenchmark, 65\,536 random pairs over the index, one
+(6) plus the scheduler that decides how many multi-source batches are in progress; rc1 microbenchmark, 65\,536 random pairs over the index, one
 batch at a time on all 32 threads against the default: 4.9 against 0.51\,s at SF10, 32 against 3.5\,s at SF100,
 50 against 10.3\,s at SF300;
 (7) plus the CSR index (the build disappears: one pair 23 to 4\,ms at SF10);

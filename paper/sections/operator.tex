@@ -133,7 +133,7 @@ on its list, at the depth bound, or when no new vertex is left to visit.
 
 The operator runs the searches in one of two ways. In the single-source traversal every search runs on its own, with a
 frontier and per-vertex arrays of its own. In the multi-source traversal up to 512 searches run together, each in one
-bit lane of a multi-source BFS. Both traversals proceed level by level and decide \rev{at every level} between a
+bit lane of a multi-source BFS. Both traversals proceed level by level and decide at every level between a
 \emph{sparse level}, which visits only the vertices on the frontier, and a \emph{dense level}, which sweeps every
 sparse row of every partition; a search can return to sparse levels when its frontier shrinks again.
 
@@ -157,7 +157,7 @@ al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up 
 per vertex, so a working set takes 192 bytes per vertex. A level has two phases. The explore phase relaxes
 \texttt{frontier} into \texttt{next} with one 512-bit \texttt{or} per edge for all lanes at once. In our measurements
 the \texttt{or} is two 256-bit AVX2 instructions. The explore tasks are split by destination range; no two of them
-write the same vertex, and the \texttt{or} needs no atomic. The check phase \rev{\texttt{or}s} \texttt{next} into \texttt{seen};
+write the same vertex, and the \texttt{or} needs no atomic. The check phase \texttt{or}s \texttt{next} into \texttt{seen};
 each lane then records the level of the destinations it has newly reached and drops them from its list, and a lane
 whose list is empty is masked out of \texttt{next} and becomes inactive. A summary bitmap marks the vertices with an
 active lane. A level is sparse when fewer than a sixteenth of all vertices are marked, and visits only those, through
@@ -174,65 +174,76 @@ deduplication.
 \subsection{Choosing a traversal and an orientation}
 \label{sec:choice}
 
-\rev{The operator's finalize step, which \duckdb calls once the sink has received all pairs and before any search
-starts (Section~\ref{sec:planner}),} groups the pairs by source and counts the groups. Up to 16 distinct sources run
+The operator's finalize step, which \duckdb calls once the sink has received all pairs and before any search
+starts (Section~\ref{sec:planner}), groups the pairs by source and counts the groups. Up to 16 distinct sources run
 on the single-source traversal, side by side, with the threads divided among them; more sources run as batches of the
-multi-source traversal. \rev{The \texttt{paths} mode always uses the single-source traversal, because a path needs a
+multi-source traversal. The \texttt{paths} mode always uses the single-source traversal, because a path needs a
 parent per vertex and a lane keeps none. The \texttt{reach} mode uses it too, although the lanes could serve it: the
 check phase knows, for every lane, the vertices it reached at the current level and could emit their distances. We
 have not built this. The per-source searches run in rounds, as many at once as their per-vertex arrays fit into the
 512\,MiB budget of Section~\ref{sec:phases}, and a search hands its results over and frees its arrays when it ends.
-BI19 returning paths at SF300 then peaks at 5.6\,GiB.} \todo{Single run on the rc8 build; confirm from the rerun.}
+BI19 returning paths at SF300 then peaks at 5.6\,GiB. \todo{Single run on the rc8 build; confirm from the rerun.}
 
-\rev{The orientation is decided before the grouping, from HyperLogLog estimates of the distinct sources and
-destinations.} When there are at least four times as many distinct sources as destinations and reverse partitions
+The orientation is decided before the grouping, from HyperLogLog estimates of the distinct sources and
+destinations. When there are at least four times as many distinct sources as destinations and reverse partitions
 are available, the searches start from the destinations and run over the reverse partitions; the build route has
-reverse partitions only for an undirected graph, and the \rev{\texttt{paths} and \texttt{reach} modes} always search
-forward. \rev{The reverse orientation pays off when many sources share one destination. LDBC BI20 asks for the
+reverse partitions only for an undirected graph, and the \texttt{paths} and \texttt{reach} modes always search
+forward. The reverse orientation pays off when many sources share one destination. LDBC BI20 asks for the
 distance from every employee of one company to one person; in the reverse orientation it runs as a single search from
-that person, where the forward orientation would run one lane per employee.}
+that person, where the forward orientation would run one lane per employee.
 \todo{Decide after the rerun whether the reverse side of the index stays.}
 
-\rev{The number of distinct sources decides which way of running searches is fastest.} \todo{Figure from the rerun's
+The number of distinct sources decides which way of running searches is fastest. \todo{Figure from the rerun's
 Section 3 microbenchmark, replacing the former table: time against the number of distinct sources $k$ (1 to 4096), with
 200 destinations per source and with one, at SF10, SF100 and SF300 over the index, for the single-source traversal,
 the multi-source traversal with deduplicated sources, and the multi-source traversal with one search per pair; peak
 memory as a second panel. Write the paragraph from it: where the single-source traversal stops winning, how the
 deduplicated batches grow with $k$ and the per-pair batches with the number of pairs, and whether the crossover moves
-with the scale factor.} \rev{Few sources are cheapest as single-source searches, because a batch pays for its working
+with the scale factor.} Few sources are cheapest as single-source searches, because a batch pays for its working
 set and its dense levels whatever its number of lanes. With many sources the batches win, because their lanes share
 the work of every level and keep no per-vertex arrays; on BI19 at SF300 the deduplicated batches are 30 times faster
 than single-source searches and need a ninth of the memory. The threshold of 16 sits near the crossover on LDBC, and
-Section~\ref{sec:cost} discusses what a cost model needs in order to replace it.}
+Section~\ref{sec:cost} discusses what a cost model needs in order to replace it.
 
 \subsection{Parallel execution as a chain of events}
 \label{sec:phases}
 
-A level is a parallel sweep followed by a short serial step that records what was reached and decides whether to
-go on. The operator runs both traversals and the build as a \emph{chain of
-per-phase events}. A phase is a set of tasks that run independently and finish; when the last one finishes, the
-event's completion callback runs the serial step once and inserts the event of the next phase. The build is the sink,
-which partitions the edges as they stream in, and one event, whose tasks sort and emit the partitions and whose
-callback publishes them. A level of the multi-source traversal is two phases, the explore and the check phase, and a
-level of the single-source traversal is one; a search that runs on a single thread runs all its levels in one task,
-because an event per level would cost more than the level. Each phase still waits for the one before it, but no task
-blocks its thread waiting for another task. \duckdb's own operators have this shape, and it lets the operator share
-\duckdb's fixed thread pool with other queries. The scheduler may interleave the tasks of concurrent
-queries freely, and an error or an interrupt stops the operator at the next task boundary.
+\rev{The operator runs its work on \duckdb's scheduler, with \duckdb's own primitives. A \duckdb \emph{task} is a unit
+of work that one thread of the fixed pool runs to completion, and an \emph{event} is a set of tasks with dependencies
+on other events. When the last task of an event finishes, the event's completion callback runs once, on one thread,
+and can insert further events; \duckdb's own operators run multi-phase work this way. The operator runs the build
+and both traversals as a chain of such events, one per phase. At the end of a level the callback of its last phase
+records which searches reached their destinations, decides whether another level is needed, and inserts the event of
+the next phase.}
 
-\paragraph{Scheduling the batches.} The batches of a query run on \emph{worker groups}, at most one per thread; each
-worker group runs one batch at a time and reuses its working set for the next. How many worker groups run at once is
-decided by a memory budget of 512\,MiB. When the working sets of as many worker groups as threads fit the budget, they
-all start at once and the bit sets stay in cache. Otherwise the scheduler starts 16 worker groups, doubles their number
-while the throughput, in edges swept per second, rises by more than a tenth, and steps back when it falls by more than
-a tenth. A worker group whose working set is at most a sixteenth of the budget has threads of its own; larger ones
-pool their tasks, which keeps every thread busy while a worker group waits at the end of its level. A working set is zeroed
-in parallel, and only when the next batch attaches it; a query with one small batch clears it once.
+\rev{The build is the sink, which partitions the edges as they stream in, followed by one event whose tasks sort and
+emit the partitions and whose callback publishes them. A level of the multi-source traversal is two events, the
+explore and the check phase, and a level of the single-source traversal is one; a search that runs on a single thread
+runs all its levels in one task, because an event per level would cost more than the level.} \rev{Each phase still waits
+for the one before it, but no task blocks its thread waiting for another task, so the operator shares \duckdb's
+fixed thread pool with other queries.} The scheduler may interleave the tasks of concurrent queries freely,
+and an error or an interrupt stops the operator at the next task boundary.
 
-\paragraph{What stays serial.} The completion callbacks are serial by construction, and so is the grouping of the
-pairs by source in the finalize step, which takes 6\,ms for 65\,536 random pairs at SF10 and about 30\,ms for BI19's
-2.4\,M pairs at SF300. Everything that touches every pair or every vertex runs on all threads: the translation of
-keys, the build, the levels and the emission of results (Section~\ref{sec:results}).
+\paragraph{Scheduling the batches.} \rev{A query with more batches than threads cannot run them all at once, and the
+operator decides how many batches are in progress. Each batch in progress holds a working set, and when it finishes,
+the next batch reuses that working set. If one working set per thread fits into a budget of 512\,MiB, as many batches
+as there are threads start at once. That holds at SF10, where a working set takes 14\,MB, and not at SF100, where it
+takes 86\,MB; the budget is a setting, chosen to separate these two cases on our machine. Otherwise the operator
+starts 16 batches and adjusts their number by measurement. A shared counter adds up the edges the level tasks sweep;
+after each change, once every batch then in progress has finished, the operator compares the edges swept per second
+with the rate before the change. It doubles the number of batches while the rate rises by more than a tenth and steps
+back once when it falls by more than a tenth.}
+
+\rev{The working-set size also decides how a batch splits its phases into tasks. A batch whose working set is at most
+a sixteenth of the budget divides each phase into as many tasks as its share of the threads, so that the batches in
+progress run side by side. A larger batch divides each phase into one task per thread. While such a batch waits for
+the last task of its level, \duckdb's scheduler runs the tasks of the other batches on the idle threads; for small
+working sets the extra tasks would cost more than they save. A working set is zeroed in parallel, and only when the
+next batch attaches it.}
+
+\paragraph{What stays serial.} \rev{Two steps run on one thread: the completion callbacks, by construction, and the
+grouping of the pairs by source in the finalize step, which takes 6\,ms for 65\,536 random pairs at SF10 and about
+30\,ms for BI19's 2.4\,M pairs at SF300.}
 
 \subsection{Results}
 \label{sec:results}

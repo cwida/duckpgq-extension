@@ -91,7 +91,7 @@ One name per thing, used the same way in the text, the figures and the captions.
 | lane | one search inside a batch: one source with its destination list | |
 | batch | up to 512 lanes traversed together over one working set (renamed from wave, 2 Nov) | wave |
 | working set | a batch's three bit sets per vertex plus the summary bitmap | |
-| worker group | the threads that run one batch at a time | group |
+| batches in progress | the batches the scheduler runs at once, each with its working set (replaces "worker group", 2 Nov) | worker group, group |
 | level | one breadth-first step; in the multi-source traversal an explore phase and a check phase | iteration |
 | distance | the level at which a search first reached a vertex | level stamp |
 | sparse level, dense level | a level that visits only the frontier, or one that sweeps every sparse row of every partition | (the 1/64 and 1/16 thresholds are details of each) |
