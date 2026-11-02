@@ -247,8 +247,9 @@ inline PartitionedCSRCapabilities operator|(PartitionedCSRCapabilities left, Par
 	return static_cast<PartitionedCSRCapabilities>(static_cast<uint8_t>(left) | static_cast<uint8_t>(right));
 }
 
-inline bool HasPartitionedCSRCapabilities(PartitionedCSRCapabilities available, PartitionedCSRCapabilities required) {
-	return (static_cast<uint8_t>(available) & static_cast<uint8_t>(required)) == static_cast<uint8_t>(required);
+inline PartitionedCSRCapabilities &operator|=(PartitionedCSRCapabilities &left, PartitionedCSRCapabilities right) {
+	left = left | right;
+	return left;
 }
 
 struct PartitionedCSRIndex {

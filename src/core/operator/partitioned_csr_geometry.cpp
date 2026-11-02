@@ -1,8 +1,8 @@
-#include "duckpgq/core/operator/partitioned_csr_cache.hpp"
+#include "duckpgq/core/operator/partitioned_csr_geometry.hpp"
 
-#include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
 #include "duckdb/common/radix_partitioning.hpp"
+#include "duckpgq/core/index/csr_index.hpp"
 #include "duckpgq/core/option/duckpgq_option.hpp"
 #include "duckpgq/core/utils/duckpgq_sql.hpp"
 #include "duckpgq/parser/property_graph_table.hpp"
@@ -16,15 +16,6 @@
 #include <sstream>
 
 namespace duckdb {
-
-static optional_ptr<DuckTableEntry> GetDuckTableEntry(ClientContext &context, const PropertyGraphTable &table) {
-	auto entry = Catalog::GetEntry<TableCatalogEntry>(
-	    context, QualifiedName(table.catalog_name, table.schema_name, table.table_name), OnEntryNotFound::RETURN_NULL);
-	if (!entry || !entry->IsDuckTable()) {
-		return nullptr;
-	}
-	return &entry->Cast<DuckTableEntry>();
-}
 
 static idx_t GetVisibleRowCount(ClientContext &context, DuckTableEntry &entry) {
 	auto &storage = entry.GetStorage();
@@ -45,15 +36,15 @@ bool GetDirectedPathFindingStorageCounts(ClientContext &context, const PropertyG
 	    !edge_table.source_pg_table->SameTableIdentity(*edge_table.destination_pg_table)) {
 		return false;
 	}
-	auto vertex_entry = GetDuckTableEntry(context, *edge_table.source_pg_table);
-	auto edge_entry = GetDuckTableEntry(context, edge_table);
+	auto vertex_entry = CSRIndex::FindTable(context, *edge_table.source_pg_table);
+	auto edge_entry = CSRIndex::FindTable(context, edge_table);
 	if (!vertex_entry || !edge_entry) {
 		return false;
 	}
 	// Row IDs can contain gaps after deletes. The next row ID is the required CSR range.
 	vertex_count = vertex_entry->GetStorage().GetNextRowId();
-	// GetTotalRows includes committed delete slots. The operator needs the exact transaction-visible edge count both
-	// for allocation and for generation validation, especially after DELETE and in older read snapshots.
+	// GetTotalRows includes committed delete slots. The operator sizes its edge arrays from the exact
+	// transaction-visible edge count, which differs after DELETE and in older read snapshots.
 	edge_count = GetVisibleRowCount(context, *edge_entry);
 	return true;
 }

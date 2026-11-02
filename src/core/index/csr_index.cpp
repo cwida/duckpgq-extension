@@ -2,7 +2,7 @@
 #include "duckpgq/core/index/csr_index.hpp"
 #include "duckdb/main/attached_database.hpp"
 
-#include "duckpgq/core/operator/partitioned_csr_cache.hpp"
+#include "duckpgq/core/operator/partitioned_csr_geometry.hpp"
 #include "duckpgq/core/option/duckpgq_option.hpp"
 #include "duckpgq/core/utils/csr_build.hpp"
 #include "duckpgq/parser/property_graph_table.hpp"
@@ -32,7 +32,6 @@
 #include <bitset>
 #include <chrono>
 #include <cstring>
-#include <thread>
 
 namespace duckdb {
 
@@ -41,6 +40,39 @@ namespace {
 constexpr const char *STORAGE_OPTION_FORMAT = "csr_format";
 constexpr const char *STORAGE_OPTION_BYTES = "csr_bytes";
 constexpr const char *STORAGE_OPTION_SEGMENTS = "csr_segments";
+
+//! An epoch position names an edge by its partition and its offset in that partition's edge array, packed into one
+//! idx_t (the tombstone position vectors and the suppression bitmaps address epoch edges this way)
+inline idx_t PackPosition(idx_t partition_idx, idx_t offset) {
+	return (partition_idx << 32) | offset;
+}
+inline idx_t PositionPartition(idx_t position) {
+	return position >> 32;
+}
+inline idx_t PositionOffset(idx_t position) {
+	return position & 0xFFFFFFFF;
+}
+
+//! A storage segment pointer travels in the storage options as one UBIGINT: buffer id high, offset low
+inline uint64_t PackSegment(const IndexPointer &pointer) {
+	return (static_cast<uint64_t>(pointer.GetBufferId()) << 32) | pointer.GetOffset();
+}
+inline idx_t SegmentBufferId(uint64_t packed) {
+	return packed >> 32;
+}
+inline IndexPointer UnpackSegment(uint64_t packed) {
+	return IndexPointer(NumericCast<uint32_t>(SegmentBufferId(packed)), NumericCast<uint32_t>(packed & 0xFFFFFFFF));
+}
+
+//! Bytes of a block that WriteSegments leaves to the FixedSizeAllocator so that one segment fits per block: the
+//! allocator puts an 8-byte validity word in front of the segment and rejects anything larger than block size minus
+//! that word. 64 is more than it needs, but every existing file was written with this segment size, so it stays.
+constexpr idx_t SEGMENT_HEADER_RESERVE = 64;
+
+//! Mixing constants of the snapshot cache's visibility hash (FNV-1a style: xor the value, multiply by the 64-bit FNV
+//! prime; the seed is arbitrary). The hash only compares decisions within one process, it is never persisted.
+constexpr uint64_t VISIBILITY_HASH_SEED = 1469598103934665603ULL;
+constexpr uint64_t VISIBILITY_HASH_PRIME = 1099511628211ULL;
 } // namespace
 
 namespace {
@@ -501,8 +533,7 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 	});
 	csr->edge_count = total_edge_count.load();
 	if (reverse) {
-		csr->capabilities = static_cast<PartitionedCSRCapabilities>(static_cast<uint8_t>(csr->capabilities) |
-		                                                            static_cast<uint8_t>(PartitionedCSRCapabilities::REVERSE));
+		csr->capabilities |= PartitionedCSRCapabilities::REVERSE;
 		csr->reverse_partitions.resize(partition_count);
 		ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
 			vector<BuildEdge> edges;
@@ -531,11 +562,20 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 
 void CSRIndex::InstallEpoch(shared_ptr<CSRIndexEpoch> epoch_p) {
 	IndexLock l(*this);
+	// CREATE INDEX builds a fresh index: no earlier state (or pending load) applies
+	ClearStateLocked();
 	epoch_p->generation = next_generation++;
-	epochs.clear();
 	epochs.push_back(std::move(epoch_p));
+}
+
+void CSRIndex::ClearStateLocked() const {
+	storage_pending = false;
+	pending_storage = IndexStorageInfo();
+	epochs.clear();
 	delta.clear();
 	tombstones.clear();
+	delta_row_index.clear();
+	cached_snapshot.reset();
 }
 
 shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
@@ -567,14 +607,25 @@ shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, Duc
 void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table,
                                       shared_ptr<CSRIndexEpoch> epoch_p) const {
 	// Decide, with the live transaction that built the epoch, which existing entries it accounts for. Entries appended
-	// after this point are stamped by a later epoch.
-	vector<CSRIndexDeltaEdge> delta_prefix;
-	vector<CSRIndexTombstone> tombstone_prefix;
+	// after this point are stamped by a later epoch. Only the fields the decision reads are copied under the lock.
+	struct PendingDelta {
+		row_t row;
+		uint32_t group;
+		uint32_t deleted_group;
+	};
+	vector<PendingDelta> delta_prefix;
+	vector<row_t> tombstone_prefix;
 	{
 		IndexLock l(*this);
 		EnsureLoadedLocked(l);
-		delta_prefix = delta;
-		tombstone_prefix = tombstones;
+		delta_prefix.reserve(delta.size());
+		for (auto &entry : delta) {
+			delta_prefix.push_back({entry.row, entry.group, entry.deleted_group});
+		}
+		tombstone_prefix.reserve(tombstones.size());
+		for (auto &tombstone : tombstones) {
+			tombstone_prefix.push_back(tombstone.row);
+		}
 	}
 	vector<uint8_t> delta_covered(delta_prefix.size());
 	vector<uint8_t> tombstone_excluded(tombstone_prefix.size());
@@ -606,7 +657,7 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 		}
 	}
 	for (idx_t i = 0; i < tombstone_prefix.size(); i++) {
-		tombstone_excluded[i] = !table.CanFetch(transaction, tombstone_prefix[i].row);
+		tombstone_excluded[i] = !table.CanFetch(transaction, tombstone_prefix[i]);
 	}
 	IndexLock l(*this);
 	auto generation = next_generation++;
@@ -693,51 +744,50 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 	// scan over the epoch's row ids below.
 	std::unordered_set<row_t> scan_rows;
 	auto &dictionary = *epoch.dictionary;
-	auto width = std::max<idx_t>(1, epoch.partition_width);
+	auto width = epoch.partition_width;
 	auto &partition_row_ids = epoch.partition_row_ids;
-	// The position of the edge src -> dst with row id `row`, or INVALID_INDEX; false when the partition layout does
-	// not allow the lookup (then the scan decides)
-	auto locate = [&](idx_t src, idx_t dst, row_t row, idx_t &position) -> bool {
-		position = DConstants::INVALID_INDEX;
+	// The position of the edge src -> dst with row id `row`, or INVALID_INDEX when the epoch has no such edge. Both
+	// BuildEpoch and the loader lay the partitions out as consecutive ranges of `width` ids over every vertex, so the
+	// destination names its partition; anything else is a broken epoch.
+	auto locate = [&](idx_t src, idx_t dst, row_t row) -> idx_t {
 		auto partition_idx = dst / width;
 		if (partition_idx >= epoch.csr->forward_partitions.size() || partition_idx >= partition_row_ids.size()) {
-			return false;
+			throw InternalException("CSR index: vertex %llu has no partition in an epoch of %llu partitions", dst,
+			                        epoch.csr->forward_partitions.size());
 		}
 		auto &forward = *epoch.csr->forward_partitions[partition_idx];
 		if (forward.start_vertex != partition_idx * width) {
-			return false;
+			throw InternalException("CSR index: partition %llu starts at vertex %llu, expected %llu", partition_idx,
+			                        forward.start_vertex, partition_idx * width);
 		}
 		auto row_idx = forward.FindSparseRow(src);
-		if (row_idx != std::numeric_limits<idx_t>::max() && row_idx + 1 < forward.row_offsets.size()) {
-			auto &rows = partition_row_ids[partition_idx];
-			for (idx_t o = forward.row_offsets[row_idx]; o < forward.row_offsets[row_idx + 1]; o++) {
-				if (rows[o] == row) {
-					position = (partition_idx << 32) | o;
-					break;
-				}
+		if (row_idx == std::numeric_limits<idx_t>::max() || row_idx + 1 >= forward.row_offsets.size()) {
+			return DConstants::INVALID_INDEX;
+		}
+		auto &rows = partition_row_ids[partition_idx];
+		for (idx_t o = forward.row_offsets[row_idx]; o < forward.row_offsets[row_idx + 1]; o++) {
+			if (rows[o] == row) {
+				return PackPosition(partition_idx, o);
 			}
 		}
-		return true;
+		return DConstants::INVALID_INDEX;
 	};
 	for (auto &tombstone : pending_entries) {
 		pending.push_back(tombstone.row);
 		idx_t position = DConstants::INVALID_INDEX;
 		idx_t mirror = DConstants::INVALID_INDEX;
-		bool resolved = false;
-		if (tombstone.has_keys) {
+		if (!tombstone.has_keys) {
+			scan_rows.insert(tombstone.row);
+		} else {
 			auto src = dictionary.Lookup(tombstone.src_key);
 			auto dst = dictionary.Lookup(tombstone.dst_key);
-			if (src == DConstants::INVALID_INDEX || dst == DConstants::INVALID_INDEX) {
-				resolved = true; // a vertex the epoch does not know: not an epoch edge
-			} else {
-				resolved = locate(src, dst, tombstone.row, position);
-				if (resolved && undirected && src != dst) {
-					resolved = locate(dst, src, tombstone.row, mirror);
+			// A vertex the epoch does not know means the row is not an epoch edge: the positions stay INVALID_INDEX
+			if (src != DConstants::INVALID_INDEX && dst != DConstants::INVALID_INDEX) {
+				position = locate(src, dst, tombstone.row);
+				if (undirected && src != dst) {
+					mirror = locate(dst, src, tombstone.row);
 				}
 			}
-		}
-		if (!resolved) {
-			scan_rows.insert(tombstone.row);
 		}
 		positions.emplace(tombstone.row, position);
 		mirror_positions.emplace(tombstone.row, mirror);
@@ -747,13 +797,14 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 		// the row id)
 		mutex positions_lock;
 		std::unordered_map<row_t, vector<idx_t>> found_positions;
-		ParallelFor(partition_row_ids.size(), std::thread::hardware_concurrency(), [&](idx_t begin, idx_t end, idx_t) {
+		auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(db.GetDatabase()).NumberOfThreads());
+		ParallelFor(partition_row_ids.size(), thread_count, [&](idx_t begin, idx_t end, idx_t) {
 			vector<std::pair<row_t, idx_t>> found;
 			for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
 				auto &rows = partition_row_ids[partition_idx];
 				for (idx_t offset = 0; offset < rows.size(); offset++) {
 					if (scan_rows.find(rows[offset]) != scan_rows.end()) {
-						found.emplace_back(rows[offset], (partition_idx << 32) | offset);
+						found.emplace_back(rows[offset], PackPosition(partition_idx, offset));
 					}
 				}
 			}
@@ -777,15 +828,14 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 	vector<idx_t> reverse_positions;
 	if (!epoch.csr->reverse_partitions.empty()) {
 		reverse_positions.reserve(pending.size());
-		auto width = epoch.partition_width;
 		for (auto row : pending) {
 			auto position = positions[row];
 			if (position == DConstants::INVALID_INDEX) {
 				reverse_positions.push_back(DConstants::INVALID_INDEX);
 				continue;
 			}
-			auto partition_idx = position >> 32;
-			auto offset = position & 0xFFFFFFFF;
+			auto partition_idx = PositionPartition(position);
+			auto offset = PositionOffset(position);
 			auto &forward = *epoch.csr->forward_partitions[partition_idx];
 			// The sparse row that holds `offset`: row_offsets is sorted, row r covers [row_offsets[r], row_offsets[r+1])
 			auto row_it = std::upper_bound(forward.row_offsets.begin(), forward.row_offsets.end(), offset);
@@ -799,7 +849,7 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 				auto local_src = NumericCast<uint16_t>(src - (src / width) * width);
 				for (auto o = reverse_partition.row_offsets[reverse_row]; o < reverse_partition.row_offsets[reverse_row + 1]; o++) {
 					if (reverse_partition.e[o] == local_src) {
-						reverse_position = ((src / width) << 32) | o;
+						reverse_position = PackPosition(src / width, o);
 						break;
 					}
 				}
@@ -945,9 +995,9 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	// when they see the same visible groups and made the same per-row decisions (a fully deleted change group is
 	// decided per row, so the newest visible group alone does not identify the view; 28 Oct audit).
 	shareable = shareable && GetPathFindingSnapshotCache(context);
-	uint64_t visibility_hash = 1469598103934665603ULL;
+	uint64_t visibility_hash = VISIBILITY_HASH_SEED;
 	auto mix = [&](uint64_t value) {
-		visibility_hash = (visibility_hash ^ value) * 1099511628211ULL;
+		visibility_hash = (visibility_hash ^ value) * VISIBILITY_HASH_PRIME;
 	};
 	mix(newest_visible_group);
 	for (idx_t i = 0; i < delta_visible.size(); i++) {
@@ -981,8 +1031,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	// Tombstones: epoch edges deleted by commits this reader sees are suppressed, on both sides
 	auto suppress = [&](std::vector<shared_ptr<vector<uint64_t>>> &suppressed, const std::vector<shared_ptr<LocalCSR>> &partitions,
 	                    idx_t position) {
-		auto partition_idx = position >> 32;
-		auto offset = position & 0xFFFFFFFF;
+		auto partition_idx = PositionPartition(position);
+		auto offset = PositionOffset(position);
 		auto &bitmap = suppressed[partition_idx];
 		if (!bitmap) {
 			bitmap = make_shared_ptr<vector<uint64_t>>((partitions[partition_idx]->e.size() + 63) / 64);
@@ -1116,7 +1166,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			return;
 		}
 		auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
-		idx_t slice_count = std::min<idx_t>(thread_count, (edges.size() + 65535) / 65536);
+		idx_t slice_count = std::min<idx_t>(thread_count, (edges.size() + EDGE_SLICE_SIZE - 1) / EDGE_SLICE_SIZE);
 		slice_count = std::max<idx_t>(1, slice_count);
 		auto slice_size = (edges.size() + slice_count - 1) / slice_count;
 		vector<vector<idx_t>> slice_histograms(slice_count, vector<idx_t>(total_ranges, 0));
@@ -1252,19 +1302,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 		return BuildSnapshot(context, transaction, table, RebuildFromTable(context, transaction, table), 0, 0, false);
 	}
 	auto bound = transaction.view.visibility_bound;
-	shared_ptr<CSRIndexEpoch> current;
-	bool have_epochs;
-	idx_t delta_count;
-	idx_t tombstone_count;
-	{
-		IndexLock l(*this);
-		EnsureLoadedLocked(l);
-		have_epochs = !epochs.empty();
-		current = EpochForLocked(bound);
-		delta_count = delta.size();
-		tombstone_count = tombstones.size();
-	}
-	if (!have_epochs) {
+	auto state = LogStateFor(bound);
+	if (!state.have_epochs) {
 		// No epoch yet (index created before a restart, or never read): build one at this reader's snapshot
 		lock_guard<mutex> fold_guard(fold_lock);
 		bool still_empty;
@@ -1275,57 +1314,52 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 		if (still_empty) {
 			InstallEpochAndCompact(transaction, table, RebuildFromTable(context, transaction, table));
 		}
-		IndexLock l(*this);
-		current = EpochForLocked(bound);
-		delta_count = delta.size();
-		tombstone_count = tombstones.size();
-	} else if (current && current == epochs.back()) {
+		state = LogStateFor(bound);
+	} else if (state.epoch && state.epoch == epochs.back()) {
 		// Current readers fold when the change log has grown past the configured fraction of the epoch
 		auto ratio = GetCSRIndexFoldRatio(context);
-		if (ratio > 0 && static_cast<double>(delta_count + tombstone_count) >
-		                     ratio * static_cast<double>(std::max<idx_t>(1, current->edge_count))) {
+		if (ratio > 0 && static_cast<double>(state.delta_count + state.tombstone_count) >
+		                     ratio * static_cast<double>(std::max<idx_t>(1, state.epoch->edge_count))) {
 			Fold(context, transaction, table);
-			IndexLock l(*this);
-			current = EpochForLocked(bound);
-			delta_count = delta.size();
-			tombstone_count = tombstones.size();
+			state = LogStateFor(bound);
 		}
 	}
-	if (!current) {
+	if (!state.epoch) {
 		// Every retained epoch is newer than this reader's snapshot
 		return nullptr;
 	}
-	return BuildSnapshot(context, transaction, table, current, delta_count, tombstone_count, true);
+	return BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count, true);
+}
+
+CSRIndex::LogState CSRIndex::LogStateFor(VisibilityBound bound) const {
+	return WithLoadedState([&](IndexLock &) {
+		LogState state;
+		state.epoch = EpochForLocked(bound);
+		state.have_epochs = !epochs.empty();
+		state.delta_count = delta.size();
+		state.tombstone_count = tombstones.size();
+		return state;
+	});
 }
 
 idx_t CSRIndex::InMemoryBytes() const {
-	IndexLock l(*this);
-	EnsureLoadedLocked(l);
-	return GetInMemorySize(l);
+	return WithLoadedState([&](IndexLock &l) { return GetInMemorySize(l); });
 }
 
 idx_t CSRIndex::EpochEdgeCount() const {
-	IndexLock l(*this);
-	EnsureLoadedLocked(l);
-	return epochs.empty() ? 0 : epochs.back()->edge_count;
+	return WithLoadedState([&](IndexLock &) { return epochs.empty() ? 0 : epochs.back()->edge_count; });
 }
 
 idx_t CSRIndex::DeltaSize() const {
-	IndexLock l(*this);
-	EnsureLoadedLocked(l);
-	return delta.size();
+	return WithLoadedState([&](IndexLock &) { return delta.size(); });
 }
 
 idx_t CSRIndex::TombstoneCount() const {
-	IndexLock l(*this);
-	EnsureLoadedLocked(l);
-	return tombstones.size();
+	return WithLoadedState([&](IndexLock &) { return tombstones.size(); });
 }
 
 idx_t CSRIndex::EpochCount() const {
-	IndexLock l(*this);
-	EnsureLoadedLocked(l);
-	return epochs.size();
+	return WithLoadedState([&](IndexLock &) { return epochs.size(); });
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1350,21 +1384,38 @@ int64_t CSRIndexSnapshot::KeyOf(idx_t id) const {
 //----------------------------------------------------------------------------------------------------------------------
 // Lookup helpers for the planner and the operator
 //----------------------------------------------------------------------------------------------------------------------
-static optional_ptr<DuckTableEntry> GetEdgeTableEntry(ClientContext &context, const PropertyGraphTable &edge_table) {
-	auto entry = Catalog::GetEntry<TableCatalogEntry>(
-	    context, QualifiedName(edge_table.catalog_name, edge_table.schema_name, edge_table.table_name),
-	    OnEntryNotFound::RETURN_NULL);
+optional_ptr<DuckTableEntry> CSRIndex::FindTable(ClientContext &context, const QualifiedName &name) {
+	auto entry = Catalog::GetEntry<TableCatalogEntry>(context, name, OnEntryNotFound::RETURN_NULL);
 	if (!entry || !entry->IsDuckTable()) {
 		return nullptr;
 	}
 	return &entry->Cast<DuckTableEntry>();
 }
 
+optional_ptr<DuckTableEntry> CSRIndex::FindTable(ClientContext &context, const string &table_name) {
+	return FindTable(context, QualifiedName::Parse(table_name));
+}
+
+optional_ptr<DuckTableEntry> CSRIndex::FindTable(ClientContext &context, const PropertyGraphTable &table) {
+	return FindTable(context, QualifiedName(table.catalog_name, table.schema_name, table.table_name));
+}
+
+shared_ptr<IndexEntry> CSRIndex::FindIndexEntry(ClientContext &context, DuckTableEntry &table,
+                                                const string &index_name) {
+	auto &storage = table.GetStorage();
+	storage.BindIndexes(context);
+	auto entry = storage.GetDataTableInfo()->GetIndexes().FindEntry(Identifier(index_name));
+	if (!entry || entry->GetIndexType() != TYPE_NAME || entry->GetBindState() != IndexBindState::BOUND) {
+		return nullptr;
+	}
+	return entry;
+}
+
 string CSRIndex::FindForEdgeTable(ClientContext &context, const PropertyGraphTable &edge_table, bool undirected) {
 	if (edge_table.source_fk.size() != 1 || edge_table.destination_fk.size() != 1) {
 		return string();
 	}
-	auto table = GetEdgeTableEntry(context, edge_table);
+	auto table = FindTable(context, edge_table);
 	if (!table) {
 		return string();
 	}
@@ -1394,34 +1445,19 @@ string CSRIndex::FindForEdgeTable(ClientContext &context, const PropertyGraphTab
 	return string();
 }
 
-optional_ptr<DuckTableEntry> CSRIndex::FindTable(ClientContext &context, const string &table_name) {
-	auto qualified = QualifiedName::Parse(table_name);
-	auto entry = Catalog::GetEntry<TableCatalogEntry>(context, qualified, OnEntryNotFound::RETURN_NULL);
-	if (!entry || !entry->IsDuckTable()) {
-		return nullptr;
-	}
-	return &entry->Cast<DuckTableEntry>();
-}
-
 shared_ptr<CSRIndexSnapshot> CSRIndex::Resolve(ClientContext &context, const string &catalog, const string &schema,
                                                const string &table_name, const string &index_name) {
-	auto entry = Catalog::GetEntry<TableCatalogEntry>(
-	    context, QualifiedName(Identifier(catalog), Identifier(schema), Identifier(table_name)),
-	    OnEntryNotFound::RETURN_NULL);
-	if (!entry || !entry->IsDuckTable()) {
+	auto table = FindTable(context, QualifiedName(Identifier(catalog), Identifier(schema), Identifier(table_name)));
+	if (!table) {
 		return nullptr;
 	}
-	auto &table = entry->Cast<DuckTableEntry>();
-	auto &storage = table.GetStorage();
-	storage.BindIndexes(context);
-	auto index_entry = storage.GetDataTableInfo()->GetIndexes().FindEntry(Identifier(index_name));
-	if (!index_entry || index_entry->GetIndexType() != TYPE_NAME ||
-	    index_entry->GetBindState() != IndexBindState::BOUND) {
+	auto index_entry = FindIndexEntry(context, *table, index_name);
+	if (!index_entry) {
 		return nullptr;
 	}
 	auto handle = index_entry->GetReadHandle<CSRIndex>();
-	auto &transaction = DuckTransaction::Get(context, table.catalog);
-	return handle->Snapshot(context, transaction, storage);
+	auto &transaction = DuckTransaction::Get(context, table->catalog);
+	return handle->Snapshot(context, transaction, table->GetStorage());
 }
 
 static constexpr const char *CSR_INDEX_KEY_PREFIX = "csr-index|";
@@ -1532,8 +1568,8 @@ ErrorData CSRIndex::Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 			delta[previous->second].group = CSRIndexDeltaEdge::DEAD_GROUP;
 		}
 		delta_row_index[row_id] = delta.size();
-		delta.push_back({src_keys[row], dst_keys[row], row_id, NumericLimits<uint32_t>::Maximum(), group, 0,
-		                 resolve(src_keys[row]), resolve(dst_keys[row]), id_generation});
+		delta.push_back(CSRIndexDeltaEdge::Appended(src_keys[row], dst_keys[row], row_id, group, resolve(src_keys[row]),
+		                                            resolve(dst_keys[row]), id_generation));
 	}
 	return ErrorData();
 }
@@ -1600,13 +1636,7 @@ idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifi
 
 void CSRIndex::ResetStorage(IndexLock &l) {
 	l.AssertHeld(*this);
-	storage_pending = false;
-	pending_storage = IndexStorageInfo();
-	epochs.clear();
-	delta.clear();
-	tombstones.clear();
-	delta_row_index.clear();
-	cached_snapshot.reset();
+	ClearStateLocked();
 }
 
 void CSRIndex::RebuildDeltaRowIndexLocked() const {
@@ -1624,6 +1654,16 @@ bool CSRIndex::MergeIndexes(IndexLock &, BoundIndex &) {
 void CSRIndex::Vacuum(IndexLock &) {
 }
 
+namespace {
+//! Bytes of one partition's arrays: edges, sparse rows with their offsets and bucket index, owned row ids (epoch
+//! partitions point at the epoch's row ids instead, counted separately)
+idx_t PartitionBytes(const LocalCSR &partition) {
+	return partition.e.size() * sizeof(uint16_t) + partition.row_offsets.size() * sizeof(uint32_t) +
+	       partition.source_vertices.size() * sizeof(uint32_t) + partition.row_buckets.size() * sizeof(uint32_t) +
+	       partition.owned_row_ids.size() * sizeof(row_t);
+}
+} // namespace
+
 idx_t CSRIndex::GetInMemorySize(IndexLock &l) const {
 	l.AssertHeld(*this);
 	if (storage_pending) {
@@ -1632,14 +1672,21 @@ idx_t CSRIndex::GetInMemorySize(IndexLock &l) const {
 		return byte_count == pending_storage.options.end() ? 0 : byte_count->second.GetValue<uint64_t>();
 	}
 	idx_t bytes = delta.size() * sizeof(CSRIndexDeltaEdge) + tombstones.size() * sizeof(CSRIndexTombstone);
+	// The delta row index: one bucket pointer per bucket, one node (next pointer plus the pair) per entry
+	bytes += delta_row_index.bucket_count() * sizeof(void *) +
+	         delta_row_index.size() * (sizeof(void *) + sizeof(std::pair<const row_t, idx_t>));
 	for (auto &epoch : epochs) {
-		bytes += epoch->tombstone_positions.size() * sizeof(idx_t);
+		bytes += (epoch->tombstone_positions.size() + epoch->reverse_tombstone_positions.size() +
+		          epoch->mirror_tombstone_positions.size()) *
+		         sizeof(idx_t);
 		bytes += epoch->dictionary->bitmap.size() * sizeof(uint64_t) +
 		         epoch->dictionary->word_rank.size() * sizeof(uint32_t) +
 		         epoch->dictionary->sorted_keys.size() * sizeof(int64_t);
 		for (auto &partition : epoch->csr->forward_partitions) {
-			bytes += partition->e.size() * sizeof(uint16_t) + partition->row_offsets.size() * sizeof(uint32_t) +
-			         partition->source_vertices.size() * sizeof(uint32_t);
+			bytes += PartitionBytes(*partition);
+		}
+		for (auto &partition : epoch->csr->reverse_partitions) {
+			bytes += PartitionBytes(*partition);
 		}
 		for (auto &row_ids : epoch->partition_row_ids) {
 			bytes += row_ids.size() * sizeof(row_t);
@@ -1686,17 +1733,9 @@ struct ByteWriter {
 		bytes.resize(offset + sizeof(T));
 		memcpy(bytes.data() + offset, &value, sizeof(T));
 	}
+	//! A length-prefixed array; duckdb::vector<T> derives from std::vector<T>, so this takes both
 	template <class T>
-	void WriteVector(const vector<T> &values) {
-		Write<uint64_t>(values.size());
-		auto offset = bytes.size();
-		bytes.resize(offset + values.size() * sizeof(T));
-		if (!values.empty()) {
-			memcpy(bytes.data() + offset, values.data(), values.size() * sizeof(T));
-		}
-	}
-	template <class T>
-	void WriteStdVector(const std::vector<T> &values) {
+	void WriteVector(const std::vector<T> &values) {
 		Write<uint64_t>(values.size());
 		auto offset = bytes.size();
 		bytes.resize(offset + values.size() * sizeof(T));
@@ -1713,8 +1752,6 @@ struct ByteReader {
 	idx_t position = 0;
 
 	ByteReader(const uint8_t *bytes_p, idx_t size_p) : bytes(bytes_p), size(size_p) {
-	}
-	explicit ByteReader(const vector<uint8_t> &bytes_p) : bytes(bytes_p.data()), size(bytes_p.size()) {
 	}
 	template <class T>
 	T Read() {
@@ -1735,19 +1772,10 @@ struct ByteReader {
 		}
 		position += count * sizeof(T);
 	}
-	//! assign() copies once; resize() followed by memcpy would write the memory twice
+	//! A length-prefixed array into a std::vector or a duckdb::vector (which derives from it). assign() copies once;
+	//! resize() followed by memcpy would write the memory twice
 	template <class T>
-	void ReadVector(vector<T> &values) {
-		auto count = Read<uint64_t>();
-		if (position + count * sizeof(T) > size) {
-			throw SerializationException("Truncated CSR index storage");
-		}
-		auto data = reinterpret_cast<const T *>(bytes + position);
-		values.assign(data, data + count);
-		position += count * sizeof(T);
-	}
-	template <class T>
-	void ReadStdVector(std::vector<T> &values) {
+	void ReadVector(std::vector<T> &values) {
 		auto count = Read<uint64_t>();
 		if (position + count * sizeof(T) > size) {
 			throw SerializationException("Truncated CSR index storage");
@@ -1757,6 +1785,76 @@ struct ByteReader {
 		position += count * sizeof(T);
 	}
 };
+
+//! One partition of the stream: start and end vertex, sparse rows, their edge offsets, the edges, and (forward side
+//! only) the row ids aligned with the edges. The three functions below must agree on this layout.
+void WritePartition(ByteWriter &writer, const LocalCSR &partition, const vector<row_t> *row_ids) {
+	writer.Write<uint64_t>(partition.start_vertex);
+	writer.Write<uint64_t>(partition.end_vertex);
+	writer.WriteVector<uint32_t>(partition.source_vertices);
+	writer.WriteVector<uint32_t>(partition.row_offsets);
+	writer.WriteVector<uint16_t>(partition.e);
+	if (row_ids) {
+		writer.WriteVector<row_t>(*row_ids);
+	}
+}
+
+//! Advances over a partition written by WritePartition
+void SkipPartition(ByteReader &reader, bool with_row_ids) {
+	reader.Read<uint64_t>();
+	reader.Read<uint64_t>();
+	reader.SkipVector<uint32_t>();
+	reader.SkipVector<uint32_t>();
+	reader.SkipVector<uint16_t>();
+	if (with_row_ids) {
+		reader.SkipVector<row_t>();
+	}
+}
+
+//! Reads a partition written by WritePartition as a finalized LocalCSR (sparse rows and bucket index, no vertex
+//! array); the row ids go to `*row_ids`, which the partition then points at
+shared_ptr<LocalCSR> ReadPartition(ByteReader &reader, idx_t vertex_count, vector<row_t> *row_ids) {
+	auto start_vertex = reader.Read<uint64_t>();
+	auto end_vertex = reader.Read<uint64_t>();
+	auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, vertex_count, false);
+	reader.ReadVector<uint32_t>(partition->source_vertices);
+	reader.ReadVector<uint32_t>(partition->row_offsets);
+	reader.ReadVector<uint16_t>(partition->e);
+	if (row_ids) {
+		reader.ReadVector<row_t>(*row_ids);
+		partition->row_ids = row_ids->data();
+	}
+	partition->expected_sparse_row_count = partition->source_vertices.size();
+	partition->v_array_size = 0;
+	partition->initialized_e = true;
+	partition->sparse_rows_initialized = true;
+	partition->BuildRowBuckets(vertex_count);
+	return partition;
+}
+
+//! Reads `count` partitions: a skip pass over `reader` locates every partition's bytes, then the partitions are
+//! deserialized in parallel, each by its own reader over the same bytes. Forward partitions pass `row_ids`, which
+//! receives one row-id vector per partition; the reverse side passes nullptr.
+void ReadPartitions(ByteReader &reader, idx_t count, idx_t vertex_count, idx_t thread_count,
+                    std::vector<shared_ptr<LocalCSR>> &partitions, vector<vector<row_t>> *row_ids) {
+	vector<idx_t> offsets(count);
+	for (idx_t partition_idx = 0; partition_idx < count; partition_idx++) {
+		offsets[partition_idx] = reader.position;
+		SkipPartition(reader, row_ids != nullptr);
+	}
+	partitions.resize(count);
+	if (row_ids) {
+		row_ids->resize(count);
+	}
+	ParallelFor(count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+		for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
+			ByteReader partition_reader(reader.bytes, reader.size);
+			partition_reader.position = offsets[partition_idx];
+			partitions[partition_idx] =
+			    ReadPartition(partition_reader, vertex_count, row_ids ? &(*row_ids)[partition_idx] : nullptr);
+		}
+	});
+}
 
 } // namespace
 
@@ -1786,26 +1884,15 @@ vector<uint8_t> CSRIndex::SerializeState() const {
 	auto &partitions = epoch.csr->forward_partitions;
 	writer.Write<uint64_t>(partitions.size());
 	for (idx_t partition_idx = 0; partition_idx < partitions.size(); partition_idx++) {
-		auto &partition = *partitions[partition_idx];
-		writer.Write<uint64_t>(partition.start_vertex);
-		writer.Write<uint64_t>(partition.end_vertex);
-		writer.WriteStdVector<uint32_t>(partition.source_vertices);
-		writer.WriteStdVector<uint32_t>(partition.row_offsets);
-		writer.WriteStdVector<uint16_t>(partition.e);
-		writer.WriteVector<row_t>(epoch.partition_row_ids[partition_idx]);
+		WritePartition(writer, *partitions[partition_idx], &epoch.partition_row_ids[partition_idx]);
 	}
 	// Version 2: the reverse side (edges by source range, no row ids), present when the index stores one
 	auto &reverse_partitions = epoch.csr->reverse_partitions;
 	writer.Write<uint8_t>(reverse_partitions.empty() ? 0 : 1);
 	if (!reverse_partitions.empty()) {
 		writer.Write<uint64_t>(reverse_partitions.size());
-		for (auto &partition_p : reverse_partitions) {
-			auto &partition = *partition_p;
-			writer.Write<uint64_t>(partition.start_vertex);
-			writer.Write<uint64_t>(partition.end_vertex);
-			writer.WriteStdVector<uint32_t>(partition.source_vertices);
-			writer.WriteStdVector<uint32_t>(partition.row_offsets);
-			writer.WriteStdVector<uint16_t>(partition.e);
+		for (auto &partition : reverse_partitions) {
+			WritePartition(writer, *partition, nullptr);
 		}
 	}
 
@@ -1838,15 +1925,15 @@ IndexStorageInfo CSRIndex::WriteSegments(const vector<uint8_t> &bytes, optional_
 		return info;
 	}
 	auto &block_manager = table_io_manager.GetIndexBlockManager();
-	// One segment per block, leaving room for the allocator's bitmask
-	auto segment_size = block_manager.GetBlockSize() - 64;
+	// One segment per block (see SEGMENT_HEADER_RESERVE); the loader takes the size from the allocator info
+	auto segment_size = block_manager.GetBlockSize() - SEGMENT_HEADER_RESERVE;
 	storage_allocator = make_uniq<FixedSizeAllocator>(segment_size, block_manager, MemoryTag::EXTENSION);
 	vector<Value> segments;
 	for (idx_t offset = 0; offset < bytes.size(); offset += segment_size) {
 		auto length = std::min<idx_t>(segment_size, bytes.size() - offset);
 		auto pointer = storage_allocator->New();
 		memcpy(storage_allocator->Get(pointer, true), bytes.data() + offset, length);
-		segments.push_back(Value::UBIGINT((static_cast<uint64_t>(pointer.GetBufferId()) << 32) | pointer.GetOffset()));
+		segments.push_back(Value::UBIGINT(PackSegment(pointer)));
 	}
 	if (checkpoint_context) {
 		PartialBlockManager partial_block_manager(*checkpoint_context, block_manager,
@@ -1936,7 +2023,7 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 			FixedSizeAllocatorInfo round_info;
 			round_info.segment_size = segment_size;
 			for (idx_t segment_idx = round_begin; segment_idx < round_end; segment_idx++) {
-				auto buffer_id = packed_segments[segment_idx] >> 32;
+				auto buffer_id = SegmentBufferId(packed_segments[segment_idx]);
 				auto position = buffer_positions.find(buffer_id);
 				if (position == buffer_positions.end()) {
 					throw SerializationException("CSR index storage refers to an unknown buffer");
@@ -1952,8 +2039,7 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 		ParallelFor(round_end - round_begin, thread_count, [&](idx_t begin, idx_t end, idx_t) {
 			for (idx_t i = begin; i < end; i++) {
 				auto segment_idx = round_begin + i;
-				auto packed = packed_segments[segment_idx];
-				IndexPointer pointer(NumericCast<uint32_t>(packed >> 32), NumericCast<uint32_t>(packed & 0xFFFFFFFF));
+				auto pointer = UnpackSegment(packed_segments[segment_idx]);
 				auto offset = segment_idx * segment_size;
 				if (offset >= total_bytes) {
 					throw SerializationException("CSR index storage has more segments than bytes");
@@ -1967,8 +2053,9 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 	}
 
 	ByteReader reader(bytes, total_bytes);
+	// DeferLoad only accepts the current version in the options; the stream must agree
 	auto stored_version = reader.Read<uint32_t>();
-	if (stored_version != 1 && stored_version != STORAGE_FORMAT_VERSION) {
+	if (stored_version != STORAGE_FORMAT_VERSION) {
 		throw SerializationException("CSR index storage format mismatch");
 	}
 	auto stored_undirected = reader.Read<uint8_t>() != 0;
@@ -1995,75 +2082,14 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 	csr->edge_count = epoch->edge_count;
 	csr->capabilities = PartitionedCSRCapabilities::FORWARD;
 	auto partition_count = reader.Read<uint64_t>();
-	// Locate every partition's bytes first, then deserialize the partitions in parallel
-	vector<idx_t> partition_offsets(partition_count);
-	for (idx_t partition_idx = 0; partition_idx < partition_count; partition_idx++) {
-		partition_offsets[partition_idx] = reader.position;
-		reader.Read<uint64_t>();
-		reader.Read<uint64_t>();
-		reader.SkipVector<uint32_t>();
-		reader.SkipVector<uint32_t>();
-		reader.SkipVector<uint16_t>();
-		reader.SkipVector<row_t>();
-	}
-	epoch->partition_row_ids.resize(partition_count);
-	csr->forward_partitions.resize(partition_count);
-	ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
-		for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
-			ByteReader partition_reader(bytes, total_bytes);
-			partition_reader.position = partition_offsets[partition_idx];
-			auto start_vertex = partition_reader.Read<uint64_t>();
-			auto end_vertex = partition_reader.Read<uint64_t>();
-			auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, epoch->vertex_count, false);
-			partition_reader.ReadStdVector<uint32_t>(partition->source_vertices);
-			partition_reader.ReadStdVector<uint32_t>(partition->row_offsets);
-			partition_reader.ReadStdVector<uint16_t>(partition->e);
-			partition_reader.ReadVector<row_t>(epoch->partition_row_ids[partition_idx]);
-			partition->row_ids = epoch->partition_row_ids[partition_idx].data();
-			partition->expected_sparse_row_count = partition->source_vertices.size();
-			partition->v_array_size = 0;
-			partition->initialized_e = true;
-			partition->sparse_rows_initialized = true;
-			partition->BuildRowBuckets(epoch->vertex_count);
-			csr->forward_partitions[partition_idx] = std::move(partition);
-		}
-	});
-	bool stored_reverse = false;
-	if (stored_version >= 2) {
-		stored_reverse = reader.Read<uint8_t>() != 0;
-		if (stored_reverse) {
-			auto reverse_count = reader.Read<uint64_t>();
-			csr->reverse_partitions.resize(reverse_count);
-			vector<idx_t> reverse_offsets(reverse_count);
-			for (idx_t partition_idx = 0; partition_idx < reverse_count; partition_idx++) {
-				reverse_offsets[partition_idx] = reader.position;
-				reader.Read<uint64_t>();
-				reader.Read<uint64_t>();
-				reader.SkipVector<uint32_t>();
-				reader.SkipVector<uint32_t>();
-				reader.SkipVector<uint16_t>();
-			}
-			ParallelFor(reverse_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
-				for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
-					ByteReader partition_reader(bytes, total_bytes);
-					partition_reader.position = reverse_offsets[partition_idx];
-					auto start_vertex = partition_reader.Read<uint64_t>();
-					auto end_vertex = partition_reader.Read<uint64_t>();
-					auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, epoch->vertex_count, false);
-					partition_reader.ReadStdVector<uint32_t>(partition->source_vertices);
-					partition_reader.ReadStdVector<uint32_t>(partition->row_offsets);
-					partition_reader.ReadStdVector<uint16_t>(partition->e);
-					partition->expected_sparse_row_count = partition->source_vertices.size();
-					partition->v_array_size = 0;
-					partition->initialized_e = true;
-					partition->sparse_rows_initialized = true;
-					partition->BuildRowBuckets(epoch->vertex_count);
-					csr->reverse_partitions[partition_idx] = std::move(partition);
-				}
-			});
-			csr->capabilities = static_cast<PartitionedCSRCapabilities>(
-			    static_cast<uint8_t>(csr->capabilities) | static_cast<uint8_t>(PartitionedCSRCapabilities::REVERSE));
-		}
+	ReadPartitions(reader, partition_count, epoch->vertex_count, thread_count, csr->forward_partitions,
+	               &epoch->partition_row_ids);
+	// The reverse side (edges by source range, no row ids), present when the index stored one
+	bool stored_reverse = reader.Read<uint8_t>() != 0;
+	if (stored_reverse) {
+		auto reverse_count = reader.Read<uint64_t>();
+		ReadPartitions(reader, reverse_count, epoch->vertex_count, thread_count, csr->reverse_partitions, nullptr);
+		csr->capabilities |= PartitionedCSRCapabilities::REVERSE;
 	}
 	epoch->csr = std::move(csr);
 
@@ -2074,7 +2100,7 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 		auto src = reader.Read<int64_t>();
 		auto dst = reader.Read<int64_t>();
 		auto row = reader.Read<int64_t>();
-		loaded_delta.push_back({src, dst, row, NumericLimits<uint32_t>::Maximum()});
+		loaded_delta.push_back(CSRIndexDeltaEdge::Loaded(src, dst, row));
 	}
 	vector<row_t> loaded_tombstones;
 	reader.ReadVector<row_t>(loaded_tombstones);
@@ -2085,11 +2111,7 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 
 	if (reverse && !stored_reverse) {
 		// Stored before the index had a reverse side: the first reader rebuilds the epoch from the table
-		epochs.clear();
-		delta.clear();
-		RebuildDeltaRowIndexLocked();
-		tombstones.clear();
-		cached_snapshot.reset();
+		ClearStateLocked();
 		return;
 	}
 	epoch->generation = next_generation++;

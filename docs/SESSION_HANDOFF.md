@@ -115,7 +115,8 @@ W18 Neo4j Enterprise request, W22 outline.
   (filter between scan and cross product); wrap the sources in a subquery, as the harness does.
 - Reverse side of the CSR index (W28 steps 1-3, 26 Oct): option `reverse = true` (`CSRIndex::reverse`), epoch
   `csr->reverse_partitions` (no row ids), `reverse_tombstone_positions`, snapshot `reverse_partitions /
-  reverse_delta_partitions / reverse_suppressed`, storage format version 2 (version 1 still loads), operator
+  reverse_delta_partitions / reverse_suppressed`, storage format version 2 (a stored state of another version is
+  ignored at bind; the index rebuilds from the table on first use), operator
   `LocalCSRState::reverse_partition_delta_csrs / reverse_partition_suppressed` and the `SearchDeltaCSRs` /
   `SearchSuppressed` helpers. Test `csr_index_reverse.test`. The fold keeps the change log while the previous epoch
   is retained (two epochs), so post-fold stats checks use `LIKE 'epochs=2;%'`.

@@ -430,8 +430,9 @@ epoch and the same change group, so a reader's snapshot is consistent across the
   each forward position its reverse position in a `vector<uint32_t>` per partition, 4 B per edge, or resolve by
   lookup at tombstone time; **D**: lookup at tombstone time, since tombstones are few relative to edges).
 - **Fold, checkpoint, load.** The fold rebuilds both sides. The byte stream gains the reverse partitions after the
-  forward ones (`STORAGE_FORMAT_VERSION` bump, old files load as forward-only and rebuild the reverse side at the
-  first fold, or eagerly at bind). The parallel loader copies the extra segments like the others.
+  forward ones (`STORAGE_FORMAT_VERSION` bump; a stored state of another version is ignored at bind, so the index
+  starts empty and rebuilds its epoch from the table on first use). The parallel loader copies the extra segments
+  like the others.
 - **Snapshot.** `CSRIndexSnapshot` gets `reverse_partitions`, `reverse_delta_partitions`, `reverse_suppressed`,
   empty when the index has no reverse side. `undirected` snapshots alias the forward vectors.
 - **Operator.** `TryLoadPartitionedCSR` fills `local_csr_state->reverse_partition_csrs` and the reverse delta

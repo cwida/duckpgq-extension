@@ -9,7 +9,7 @@
 #include "duckpgq/core/functions/scalar.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
-#include <duckpgq/core/operator/partitioned_csr_cache.hpp>
+#include <duckpgq/core/operator/partitioned_csr_geometry.hpp>
 
 #include "duckdb/common/types/column/column_data_collection.hpp"
 #include "duckdb/planner/expression_iterator.hpp"

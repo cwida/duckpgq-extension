@@ -5,7 +5,7 @@
 
 #include "duckpgq/core/utils/duckpgq_sql.hpp"
 #include "duckpgq/core/option/duckpgq_option.hpp"
-#include "duckpgq/core/operator/partitioned_csr_cache.hpp"
+#include "duckpgq/core/operator/partitioned_csr_geometry.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/parser/parser.hpp"

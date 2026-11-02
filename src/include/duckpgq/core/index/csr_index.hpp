@@ -20,16 +20,19 @@
 #include "duckdb/common/constants.hpp"
 #include "duckdb/execution/index/bound_index.hpp"
 #include "duckdb/execution/index/fixed_size_allocator.hpp"
+#include "duckdb/execution/index/index_lock.hpp"
 #include "duckdb/execution/index/index_type.hpp"
 
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace duckdb {
 
 class DataTable;
 class DuckTransaction;
 class DuckTableEntry;
+class IndexEntry;
 struct PropertyGraphTable;
 
 //! Vertex keys are mapped to dense ids in key order; the dictionary of an epoch is frozen with it.
@@ -99,9 +102,9 @@ struct CSRIndexEpoch {
 
 //! An edge committed after the epoch was built (keys, since the vertex may be new) and its row id
 struct CSRIndexDeltaEdge {
-	int64_t src_key;
-	int64_t dst_key;
-	row_t row;
+	int64_t src_key = 0;
+	int64_t dst_key = 0;
+	row_t row = 0;
 	//! Generation of the first epoch that contains this row (UINT32_MAX while no retained epoch does); epochs are
 	//! built from a superset of their predecessors' committed rows, so every later epoch contains it as well
 	uint32_t covered_epoch = NumericLimits<uint32_t>::Maximum();
@@ -119,6 +122,30 @@ struct CSRIndexDeltaEdge {
 	uint32_t src_id = NumericLimits<uint32_t>::Maximum();
 	uint32_t dst_id = NumericLimits<uint32_t>::Maximum();
 	uint32_t id_generation = NumericLimits<uint32_t>::Maximum();
+
+	//! An edge logged by Append: not in any epoch yet, in change group `group`, with its ids resolved (or not) against
+	//! the dictionary of epoch `id_generation`
+	static CSRIndexDeltaEdge Appended(int64_t src_key, int64_t dst_key, row_t row, uint32_t group, uint32_t src_id,
+	                                  uint32_t dst_id, uint32_t id_generation) {
+		CSRIndexDeltaEdge edge;
+		edge.src_key = src_key;
+		edge.dst_key = dst_key;
+		edge.row = row;
+		edge.group = group;
+		edge.src_id = src_id;
+		edge.dst_id = dst_id;
+		edge.id_generation = id_generation;
+		return edge;
+	}
+	//! An edge read from storage: committed before the restart, so no change group (readers decide per row), not
+	//! deleted, in no retained epoch; ids are resolved by the next fold
+	static CSRIndexDeltaEdge Loaded(int64_t src_key, int64_t dst_key, row_t row) {
+		CSRIndexDeltaEdge edge;
+		edge.src_key = src_key;
+		edge.dst_key = dst_key;
+		edge.row = row;
+		return edge;
+	}
 };
 
 //! A deleted row that may still be an edge of a retained epoch
@@ -232,8 +259,15 @@ public:
 	//! the fold ratio setting.
 	void Fold(ClientContext &context, DuckTransaction &transaction, DataTable &table) const;
 
-	//! Snapshot of the index for a table and index name, for the fold and stats functions
+	//! The DuckDB table a name refers to, or nullptr (not found, or not a DuckDB table): by a possibly qualified name
+	//! string ('[catalog.][schema.]table'), by its parsed parts, or by the table of a property graph
 	static optional_ptr<DuckTableEntry> FindTable(ClientContext &context, const string &table_name);
+	static optional_ptr<DuckTableEntry> FindTable(ClientContext &context, const QualifiedName &name);
+	static optional_ptr<DuckTableEntry> FindTable(ClientContext &context, const PropertyGraphTable &table);
+	//! The bound CSR index named `index_name` on `table`, after binding the table's indexes; nullptr when the table
+	//! has no index of that name or it is not a bound CSR index. Callers decide whether that is an error.
+	static shared_ptr<IndexEntry> FindIndexEntry(ClientContext &context, DuckTableEntry &table,
+	                                             const string &index_name);
 
 public:
 	// BoundIndex interface
@@ -262,7 +296,30 @@ private:
 	void InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch) const;
 	//! Drops change-log entries that every retained epoch already accounts for; the index lock must be held
 	void CompactChangeLogLocked() const;
-	//! Resolves the epoch positions of tombstoned rows [known_count, tombstone_count) by scanning the epoch's row ids
+	//! Drops every epoch, the change log with its row index and cached snapshot, and a checkpointed state not loaded
+	//! yet (ResetStorage, CREATE INDEX on a fresh index, a stored state the index cannot use); the lock must be held
+	void ClearStateLocked() const;
+	//! Runs `fn(lock)` with the index lock held and the checkpointed state loaded: the counters the stats functions
+	//! read and the per-query copy of the log lengths
+	template <class FN>
+	auto WithLoadedState(FN &&fn) const -> decltype(fn(std::declval<IndexLock &>())) {
+		IndexLock l(*this);
+		EnsureLoadedLocked(l);
+		return fn(l);
+	}
+	//! What a reader copies under the lock before building its snapshot: the epoch it may traverse and the lengths
+	//! of the change log it considers (entries appended later belong to commits it cannot see)
+	struct LogState {
+		shared_ptr<CSRIndexEpoch> epoch;
+		bool have_epochs = false;
+		idx_t delta_count = 0;
+		idx_t tombstone_count = 0;
+	};
+	LogState LogStateFor(VisibilityBound bound) const;
+	//! Resolves the epoch positions of tombstoned rows [known_count, tombstone_count), plus the mirrored position of an
+	//! undirected edge and the reverse-side position when the index stores one. A tombstone that carries its keys is
+	//! looked up: the destination's partition, the source's sparse row, the row id among that row's edges. Keyless
+	//! entries (loaded from storage) are found by one scan over the epoch's row ids.
 	void ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_count) const;
 	//! The newest retained epoch a reader at `bound` may traverse, or nullptr; the index lock must be held
 	shared_ptr<CSRIndexEpoch> EpochForLocked(VisibilityBound bound) const;
@@ -278,8 +335,9 @@ private:
 	void ResolveDeltaIdsLocked() const;
 
 	//! Persistence: the newest epoch and the part of the change log it does not account for are written as one byte
-	//! stream into fixed-size segments; the segment list and sizes travel in the storage info's options
-	//! Version 2 adds the reverse side after the forward partitions; version 1 streams still load (forward only)
+	//! stream into fixed-size segments; the segment list and sizes travel in the storage info's options.
+	//! Version 2 adds the reverse side after the forward partitions. Only this version loads: DeferLoad ignores a
+	//! stored state of any other version, so the index starts empty and rebuilds its epoch from the table on first use
 	static constexpr idx_t STORAGE_FORMAT_VERSION = 2;
 	vector<uint8_t> SerializeState() const;
 	IndexStorageInfo WriteSegments(const vector<uint8_t> &bytes, optional_ptr<QueryContext> checkpoint_context);

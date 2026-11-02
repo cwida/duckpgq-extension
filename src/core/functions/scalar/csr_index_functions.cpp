@@ -3,7 +3,6 @@
 
 #include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
 #include "duckdb/storage/data_table.hpp"
-#include "duckdb/storage/table/data_table_info.hpp"
 #include "duckdb/storage/table/index_entry.hpp"
 #include "duckdb/transaction/duck_transaction.hpp"
 
@@ -21,10 +20,8 @@ ResolvedCSRIndex ResolveCSRIndex(ClientContext &context, const string &table_nam
 	if (!table) {
 		throw CatalogException("Table '%s' does not exist", table_name);
 	}
-	auto &storage = table->GetStorage();
-	storage.BindIndexes(context);
-	auto entry = storage.GetDataTableInfo()->GetIndexes().FindEntry(Identifier(index_name));
-	if (!entry || entry->GetIndexType() != CSRIndex::TYPE_NAME) {
+	auto entry = CSRIndex::FindIndexEntry(context, *table, index_name);
+	if (!entry) {
 		throw CatalogException("Table '%s' has no CSR index named '%s'", table_name, index_name);
 	}
 	return {table, entry};
