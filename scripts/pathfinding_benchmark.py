@@ -3833,6 +3833,9 @@ def run_update_concurrent(args):
     print(f"   mismatches={kinds.get('mismatch', 0)} errors={kinds.get('error', 0)} "
           f"peak_rss_mib={metadata['peak_rss_mib'] or '?'}")
     print(f"Wrote {output}")
+    if kinds.get("mismatch", 0) or kinds.get("error", 0):
+        # The index route disagreed with the build route, or a query failed: the run is a correctness failure
+        raise SystemExit(f"concurrent run had {kinds.get('mismatch', 0)} mismatches and {kinds.get('error', 0)} errors")
 
 
 def throughput(args):

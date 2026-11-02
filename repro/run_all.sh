@@ -124,6 +124,10 @@ if [ "$what" = all ] || [ "$what" = updates ]; then
       step "concurrent_sf300_r${readers}_${route}" ${HARNESS} update-concurrent --scale-factor 300 --threads "${THREADS}" --batch-size 2000 --batches 60 --readers "$readers" --writer-pause-ms 200 --routes "$route" --notes "W16 concurrent SF300 ${route} ${NOTE}"
     done
   done
+  # Correctness oracle (2 Nov): one run with both routes in the same process, so the driver compares every index
+  # answer with the build route's answer ("mismatches" must be 0; the harness fails the step otherwise). The low fold
+  # ratio makes folds happen under the readers and the writer (SF10: a fold about every 9 commits). Not a timing step.
+  step "concurrent_sf10_r4_check" ${HARNESS} update-concurrent "${UPD[@]}" --readers 4 --writer-pause-ms 200 --fold-ratio 0.01 --notes "W16 correctness check, both routes ${NOTE}"
   # Fold latency at SF300 (W36 item e, 2 Nov): at the default fold ratio 0.1 the 60 commits above add 120k log entries
   # against 55.6M edges, so no fold happens at SF100 or SF300 in the matrix. This step lowers the ratio so a fold runs
   # under 16 index readers (about every 14 commits); duckpgq_csr_index_fold_stats in the stats column gives its latency
