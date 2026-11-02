@@ -57,18 +57,20 @@
 \def\cw{0.5}       % cell pitch
 % source index above the sources: source >> 3 selects its entry
 \node[lbl, anchor=east] at (\xo-0.1,-3.3) {source index};
-\foreach \k/\x/\t in {0/0.0/0--7,1/1.5/8--15,2/3.0/16--23} {\node[cell, minimum width=7mm] (k\k) at (\xo+\x,-3.12) {\t};}
 \node[lbl, anchor=west, align=left] at (\xo+3.85,-3.3) {one entry per block of 8 source\\ ids: the block's first row};
 % sparse rows: sources spanning their edge groups
 \node[lbl, anchor=east] at (\xo-0.1,-3.95) {source};
 \foreach \i/\v/\o/\n in {0/3/0/2,1/7/2/1,2/12/3/3,3/18/6/1} {
   \node[cell, minimum width=\n*\cw cm-0.4mm, fill=black!6] (s\i) at (\xo+\o*\cw,-3.77) {\v};
 }
-% a bracket over the sparse rows of each block; the entry points at the block's first row
-\foreach \k/\a/\b in {0/s0/s1,1/s2/s2,2/s3/s3} {
-  \draw[black!55, line width=0.5pt] ([xshift=0.25mm, yshift=0.4mm]\a.north west) -- ++(0,0.9mm) coordinate (L\k)
-    -- ([xshift=-0.25mm, yshift=1.3mm]\b.north east) -- ++(0,-0.9mm);
-  \draw[->, black!60] ([xshift=0.6mm]L\k |- k\k.south) -- ([xshift=0.6mm]L\k);
+% a bracket over the sparse rows of each block, its source-index entry centred above it
+\foreach \k/\a/\b/\t in {0/s0/s1/0--7,1/s2/s2/8--15,2/s3/s3/16--23} {
+  \coordinate (BL\k) at ([xshift=0.25mm, yshift=1.3mm]\a.north west);
+  \coordinate (BR\k) at ([xshift=-0.25mm, yshift=1.3mm]\b.north east);
+  \coordinate (BM\k) at ($(BL\k)!0.5!(BR\k)$);
+  \draw[black!55, line width=0.5pt] ([yshift=-0.9mm]BL\k) -- (BL\k) -- (BR\k) -- ([yshift=-0.9mm]BR\k);
+  \node[cell, minimum width=7mm, anchor=north] (k\k) at (BM\k |- 0,-3.12) {\t};
+  \draw[->, black!60] (k\k.south) -- (BM\k);
 }
 \node[lbl, anchor=east] at (\xo-0.1,-4.38) {offset};
 \foreach \o in {0,2,3,6,7} {\node[lbl] at (\xo+\o*\cw,-4.38) {\o};}
