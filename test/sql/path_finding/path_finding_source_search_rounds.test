@@ -77,7 +77,11 @@ SELECT (SELECT sum((len(p) - 1) // 2) FROM (SELECT shortestpathoperator(s, d, st
 ----
 true
 
-# Reach from the 100 sources: one search per source, bounded to one in flight (13 B per vertex: 26 KB per search)
+# Reach from the 100 sources: one search per source, bounded to one in flight (13 B per vertex: 26 KB per search).
+# More sources than the few-sources limit would run as lane waves by default; this tests the per-source rounds
+statement ok
+SET experimental_path_finding_operator_reach_lanes = false;
+
 statement ok
 SET experimental_path_finding_operator_grouped_batches_budget = 30000;
 

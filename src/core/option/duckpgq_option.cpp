@@ -148,6 +148,11 @@ const vector<DuckPGQSetting> &Settings() {
 	     "with a destination set per lane (Then et al.) instead of one single-source search per "
 	     "group; false keeps the per-source searches",
 	     LogicalType::BOOLEAN, Value(true)},
+	    {"experimental_path_finding_operator_reach_lanes",
+	     "Reach queries (sources x all vertices) with more distinct sources than the few-sources "
+	     "limit run as MS-BFS waves of one lane per source, each lane recording every vertex it "
+	     "reaches in the check phase; false runs one single-source search per source",
+	     LogicalType::BOOLEAN, Value(true)},
 	    {"experimental_path_finding_operator_source_search_rounds",
 	     "Per-source searches (paths, reach, few sources) run in rounds whose per-vertex arrays "
 	     "fit the grouped-batches budget, at most one per thread, each search allocating its "
@@ -303,6 +308,10 @@ bool GetCSRIndexChangeGroups(ClientContext &context) {
 
 bool GetPathFindingLaneWaves(ClientContext &context) {
 	return GetSetting<bool>(context, "experimental_path_finding_operator_lane_waves");
+}
+
+bool GetPathFindingReachLanes(ClientContext &context) {
+	return GetSetting<bool>(context, "experimental_path_finding_operator_reach_lanes");
 }
 
 bool GetPathFindingSourceSearchRounds(ClientContext &context) {

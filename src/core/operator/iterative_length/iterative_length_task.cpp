@@ -25,9 +25,12 @@ inline void StoreActiveWord(uint64_t *active, idx_t word_idx, uint64_t range_mas
 	}
 }
 
+//! ON_REACHED(vertex, lanes) is called for every vertex some lane newly reached, with exactly those lanes (the reach
+//! mode records them; the destination check of lengths passes a no-op)
+template <class ON_REACHED>
 bool CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next, std::bitset<LANE_LIMIT> *visit,
                  uint64_t *active, idx_t range_begin, idx_t range_end, idx_t &active_count,
-                 const std::bitset<LANE_LIMIT> &active_lanes) {
+                 const std::bitset<LANE_LIMIT> &active_lanes, ON_REACHED &&on_reached) {
 	bool local_change = false;
 	idx_t word_idx = range_begin >> 6;
 	uint64_t word_bits = 0;
@@ -42,6 +45,9 @@ bool CheckChange(std::bitset<LANE_LIMIT> *seen, std::bitset<LANE_LIMIT> *next, s
 			now_active = next[i].any();
 			local_change |= now_active;
 			active_count += now_active;
+			if (now_active) {
+				on_reached(i, next[i]);
+			}
 		}
 		// Every EXPLORE of this iteration has read `visit`; cleared here it is the empty `next` of the next iteration
 		visit[i] = 0;
@@ -336,6 +342,9 @@ bool IterativeLengthState::Start() {
 	}
 	worker_count = std::max<idx_t>(1, std::min<idx_t>(worker_count, partitions * sub_ranges));
 	worker_changed.assign(worker_count, 0);
+	if (reach_recorder) {
+		reach_recorder->Resize(worker_count);
+	}
 	// The lane bitsets are only allocated once the batch actually runs, and handed back when it is done
 	EnsureWorkingSet();
 	if (started_searches >= pairs->size()) {
@@ -353,6 +362,10 @@ void IterativeLengthState::BeginWave() {
 void IterativeLengthState::RunPhase(idx_t worker_id) {
 	if (phase == Phase::PREPARE) {
 		PrepareWorkingSetSlice(worker_id, worker_count);
+		return;
+	}
+	if (phase == Phase::COLLECT) {
+		RunCollect(worker_id);
 		return;
 	}
 	auto &visit = iter & 1 ? visit1 : visit2;
@@ -406,13 +419,26 @@ void IterativeLengthState::RunPhase(idx_t worker_id) {
 		idx_t range_end;
 		SubRange(*local_csrs[partition_idx], static_cast<idx_t>(task_idx % static_cast<int64_t>(sub_ranges)),
 		         range_begin, range_end);
-		local_change |= CheckChange(seen, next, visit, active_bitmap, range_begin, range_end, active_count, lane_active);
+		if (reach_recorder) {
+			// Reach lanes: every newly reached (vertex, lane) of this range goes to this worker's buffers at `iter`
+			auto level = NumericCast<int32_t>(iter);
+			local_change |= CheckChange(seen, next, visit, active_bitmap, range_begin, range_end, active_count,
+			                            lane_active, [&](idx_t vertex, const std::bitset<LANE_LIMIT> &lanes) {
+				                            reach_recorder->Record(worker_id, vertex, level, lanes);
+			                            });
+		} else {
+			local_change |= CheckChange(seen, next, visit, active_bitmap, range_begin, range_end, active_count,
+			                            lane_active, [](idx_t, const std::bitset<LANE_LIMIT> &) {});
+		}
 	}
 	worker_changed[worker_id] = local_change ? 1 : 0;
 	worker_active_counts[worker_id] = active_count;
 }
 
 bool IterativeLengthState::AdvancePhase() {
+	if (phase == Phase::COLLECT) {
+		return false;
+	}
 	if (phase == Phase::PREPARE) {
 		MarkLaneSources();
 		BeginIteration();
@@ -448,6 +474,10 @@ bool IterativeLengthState::AdvancePhase() {
 		return true;
 	}
 	// The last wave leaves its bits behind: the next batch to attach this working set clears them in its PREPARE phase
+	if (StartCollect()) {
+		phase = Phase::COLLECT;
+		return true;
+	}
 	return false;
 }
 

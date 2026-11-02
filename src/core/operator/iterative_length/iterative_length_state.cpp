@@ -2,6 +2,8 @@
 
 #include <duckpgq/core/operator/physical_path_finding_operator.hpp>
 
+#include <cstring>
+
 namespace duckdb {
 
 IterativeLengthState::IterativeLengthState(const shared_ptr<PathFindingBatch> &batch_,
@@ -31,6 +33,52 @@ void IterativeLengthState::Clear() {
 	active = 0;
 	change = false;
 	std::fill(worker_changed.begin(), worker_changed.end(), 0);
+}
+
+//===--------------------------------------------------------------------===//
+// LaneReachRecorder
+//===--------------------------------------------------------------------===//
+void LaneReachRecorder::Record(idx_t worker, idx_t vertex, int32_t level, const std::bitset<LANE_LIMIT> &lanes) {
+	static_assert(sizeof(std::bitset<LANE_LIMIT>) == LANE_LIMIT / 8, "lane bitsets are read as 64-bit words");
+	static constexpr idx_t WORDS = LANE_LIMIT / 64;
+	touched[worker] |= lanes;
+	auto &lane_buffers = buffers[worker];
+	uint64_t words[WORDS];
+	memcpy(words, &lanes, sizeof(words));
+	ReachedEntry entry {NumericCast<uint32_t>(vertex), level};
+	for (idx_t word_idx = 0; word_idx < WORDS; word_idx++) {
+		auto word = words[word_idx];
+		while (word) {
+			auto lane = (word_idx << 6) + static_cast<idx_t>(__builtin_ctzll(word));
+			lane_buffers[lane].push_back(entry);
+			word &= word - 1;
+		}
+	}
+}
+
+std::bitset<LANE_LIMIT> LaneReachRecorder::TakeTouched() {
+	std::bitset<LANE_LIMIT> result;
+	for (auto &lanes : touched) {
+		result |= lanes;
+		lanes.reset();
+	}
+	return result;
+}
+
+idx_t LaneReachRecorder::CountOf(idx_t lane) const {
+	idx_t count = 0;
+	for (auto &lane_buffers : buffers) {
+		count += lane_buffers[lane].size();
+	}
+	return count;
+}
+
+void LaneReachRecorder::Drain(idx_t lane, vector<ReachedEntry> &out) {
+	for (auto &lane_buffers : buffers) {
+		auto &entries = lane_buffers[lane];
+		out.insert(out.end(), entries.begin(), entries.end());
+		vector<ReachedEntry>().swap(entries);
+	}
 }
 
 shared_ptr<Event> IterativeLengthState::CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op) {

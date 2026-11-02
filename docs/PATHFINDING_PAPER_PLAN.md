@@ -1248,3 +1248,26 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   1.3 GB vs 665 MB of working sets); at SF300 k = 4096 sources x 200: 112 s vs 0.90 s (lanes) vs 15.9 s
   (per-source), 3.4 GB of working sets and a 6.5 GiB process peak. Extremes at SF300, sources x 200: k = 4096 lanes
   0.90 s against 15.9 s per-source (18x faster); random pairs k = 4096 lanes 0.71 s against 9.2 s (13x faster).
+- 2 Nov (evening, 2): reach mode on the lanes (the author's second queued task). `ReachLaneWaveState` on the lane
+  kernel: lane i is source group i with no destination list; `CheckChange` reports the newly reached vertices of
+  each lane after the mask and `& ~seen` to a per-worker, per-lane `LaneReachRecorder` (8-byte (vertex, distance)
+  entries, no lock, no per-entry allocation) inside the check-phase tasks; a COLLECT phase concatenates each lane's
+  buffers (plus the (source, 0) row) and hands them to the group through `SetReached`, so `GetReachData` is unchanged
+  (order within a source is now unspecified; nothing relied on the former ascending order). Lanes deactivate when they
+  reach nothing new or hit the depth bound. Choice rule: reach with more distinct sources than the few-sources limit
+  runs as lane waves through the worker-group scheduler (`experimental_path_finding_operator_reach_lanes`, default
+  true; the microbenchmark config `reach_per_source` forces the per-source searches); paths stay per-source. Tests:
+  `reach_lanes.test` (k = 1, 17, 512, 513, 1100 sources, bound and unbound, index, undirected index and build routes,
+  EXCEPT ALL both ways, kernel and wave count asserted from the strategy string); all 101 test files pass.
+  Measurements, index route, sources x all, 32 threads, median of 3, lanes vs per-source (counts and sums identical):
+  SF10 k = 128: 23 vs 29 ms, k = 1024: 52 vs 121 ms (2.3x faster); SF100 k = 128: 107 vs 230 ms, k = 1024: 0.39 vs
+  1.13 s (2.9x); SF300 k = 128: 0.23 vs 0.70 s (3.0x), k = 1024: 0.79 vs 3.92 s (5.0x faster; 530 M entries); build
+  route SF300 k = 1024: 0.97 vs 7.32 s (7.6x). Peak RSS of the lane route is about 1.5x the per-source route's at
+  k = 1024 (SF300 8.6 vs 5.7 GiB): growth slack of the per-worker per-lane vectors and the collect-time copy; a count
+  pass to reserve, or a scatter that reads the worker segments in place, would remove most of it (follow-up).
+  BUILD FLAG FINDING: `build/release/CMakeCache.txt` has carried `DUCKPGQ_LANE_LIMIT=256` since the W33 lane-width
+  probe (27 Oct), so every binary built from this directory since then, including every measurement of 2 Nov above,
+  ran with 256 lanes (96 B per vertex per working set: the 41 MB at SF100 and 105 MB at SF300 in the crossover
+  tables are the 256-lane values; 512 lanes give 86 and 229 MB). W33 measured 256 and 512 as equally fast at SF10
+  and SF100, so the timings stand within noise, but the rerun must be built with the lane width stated: the build
+  is reconfigured with `-DDUCKPGQ_LANE_LIMIT=512` (next entry), and `repro/` passes the flag explicitly.

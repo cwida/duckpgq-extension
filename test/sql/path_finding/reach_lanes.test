@@ -1,0 +1,202 @@
+# name: test/sql/path_finding/reach_lanes.test
+# description: reach mode (sources x all) with more distinct sources than the few-sources limit runs as lane waves; the answer equals the per-source searches for one, several and partially filled waves of 512 lanes, with and without a depth bound, on the build route, the index route and an undirected index
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# 1190 vertices on a ring with chords; the build route declares 1200 vertices, so 1190..1199 exist without edges
+statement ok
+CREATE TABLE pv AS SELECT range AS id FROM range(1190);
+
+statement ok
+CREATE TABLE pe AS SELECT id AS src, (id + 1) % 1190 AS dst FROM pv UNION ALL SELECT id, (id + 13) % 1190 FROM pv UNION ALL SELECT id, (id + 211) % 1190 FROM pv;
+
+statement ok
+CREATE INDEX pe_csr ON pe USING CSR (src, dst);
+
+statement ok
+CREATE INDEX pe_und ON pe USING CSR (src, dst) WITH (undirected = true);
+
+# k distinct sources (7 is coprime with 1200, so the k values below are distinct and some have no edges) plus a
+# duplicate of the first. One source is the zero-copy per-source group; 17 sources are one wave; 512, 513 and 1100
+# are one full wave, two waves and three waves of 512 lanes (a build with another DUCKPGQ_LANE_LIMIT packs them
+# differently, so the expected wave count below comes from the strategy string's source_groups and lane_limit)
+foreach k 1 17 512 513 1100
+
+statement ok
+CREATE OR REPLACE TABLE srcs AS SELECT (range * 7) % 1200 AS s, range AS tag FROM range({k}) UNION ALL SELECT 0, -1;
+
+# ---- index route, unbounded
+statement ok
+SET experimental_path_finding_operator_reach_lanes = true;
+
+statement ok
+CREATE OR REPLACE TABLE lanes AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM srcs);
+
+query II
+SELECT CASE WHEN {k} > 16 THEN s LIKE '%mode=reach%' AND s LIKE '%source_group_kernel=lane_waves%' AND regexp_extract(s, '(?:^|;)lane_waves=(\d+)', 1)::INT = ceil(regexp_extract(s, '(?:^|;)source_groups=(\d+)', 1)::INT / regexp_extract(s, '(?:^|;)lane_limit=(\d+)', 1)::INT)::INT ELSE s LIKE '%mode=reach%' AND s LIKE '%source_group_kernel=per_source%' END, regexp_extract(s, '(?:^|;)source_groups=(\d+)', 1)::INT = (SELECT count(DISTINCT s) FROM srcs WHERE s < 1190) FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true	true
+
+statement ok
+SET experimental_path_finding_operator_reach_lanes = false;
+
+statement ok
+CREATE OR REPLACE TABLE per_source AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM srcs);
+
+query I
+SELECT s LIKE '%source_group_kernel=per_source%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+query IIII
+SELECT (SELECT count(*) FROM lanes) = (SELECT count(*) FROM per_source),
+       (SELECT sum(len) FROM lanes) = (SELECT sum(len) FROM per_source),
+       (SELECT count(*) FROM (SELECT * FROM lanes EXCEPT ALL SELECT * FROM per_source)),
+       (SELECT count(*) FROM (SELECT * FROM per_source EXCEPT ALL SELECT * FROM lanes));
+----
+true	true	0	0
+
+# Every input row reaches at least itself at distance 0, duplicates included
+query I
+SELECT count(*) = (SELECT count(*) FROM srcs) FROM lanes WHERE dst = s AND len = 0;
+----
+true
+
+# ---- index route, depth bound 3
+statement ok
+SET experimental_path_finding_operator_reach_lanes = true;
+
+statement ok
+CREATE OR REPLACE TABLE lanes AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr', 3::BIGINT) AS r FROM srcs);
+
+statement ok
+SET experimental_path_finding_operator_reach_lanes = false;
+
+statement ok
+CREATE OR REPLACE TABLE per_source AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr', 3::BIGINT) AS r FROM srcs);
+
+query IIIII
+SELECT (SELECT count(*) FROM lanes) = (SELECT count(*) FROM per_source),
+       (SELECT sum(len) FROM lanes) = (SELECT sum(len) FROM per_source),
+       (SELECT count(*) FROM (SELECT * FROM lanes EXCEPT ALL SELECT * FROM per_source)),
+       (SELECT count(*) FROM (SELECT * FROM per_source EXCEPT ALL SELECT * FROM lanes)),
+       (SELECT max(len) FROM lanes) <= 3;
+----
+true	true	0	0	true
+
+# ---- undirected index, unbounded
+statement ok
+SET experimental_path_finding_operator_reach_lanes = true;
+
+statement ok
+CREATE OR REPLACE TABLE lanes AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_und') AS r FROM srcs);
+
+statement ok
+SET experimental_path_finding_operator_reach_lanes = false;
+
+statement ok
+CREATE OR REPLACE TABLE per_source AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_und') AS r FROM srcs);
+
+query IIII
+SELECT (SELECT count(*) FROM lanes) = (SELECT count(*) FROM per_source),
+       (SELECT sum(len) FROM lanes) = (SELECT sum(len) FROM per_source),
+       (SELECT count(*) FROM (SELECT * FROM lanes EXCEPT ALL SELECT * FROM per_source)),
+       (SELECT count(*) FROM (SELECT * FROM per_source EXCEPT ALL SELECT * FROM lanes));
+----
+true	true	0	0
+
+# ---- build route, unbounded
+statement ok
+SET experimental_path_finding_operator_reach_lanes = true;
+
+statement ok
+CREATE OR REPLACE TABLE lanes AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, struct_pack(src := src, dst := dst), 1200::BIGINT, 3570::BIGINT, 'graph:reach_lanes') AS r FROM srcs, pe);
+
+query II
+SELECT CASE WHEN {k} > 16 THEN s LIKE '%csr=built%' AND s LIKE '%source_group_kernel=lane_waves%' AND regexp_extract(s, '(?:^|;)lane_waves=(\d+)', 1)::INT = ceil(regexp_extract(s, '(?:^|;)source_groups=(\d+)', 1)::INT / regexp_extract(s, '(?:^|;)lane_limit=(\d+)', 1)::INT)::INT ELSE s LIKE '%csr=built%' AND s LIKE '%source_group_kernel=per_source%' END, regexp_extract(s, '(?:^|;)source_groups=(\d+)', 1)::INT = (SELECT count(DISTINCT s) FROM srcs) FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true	true
+
+statement ok
+SET experimental_path_finding_operator_reach_lanes = false;
+
+statement ok
+CREATE OR REPLACE TABLE per_source AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, struct_pack(src := src, dst := dst), 1200::BIGINT, 3570::BIGINT, 'graph:reach_lanes') AS r FROM srcs, pe);
+
+query IIII
+SELECT (SELECT count(*) FROM lanes) = (SELECT count(*) FROM per_source),
+       (SELECT sum(len) FROM lanes) = (SELECT sum(len) FROM per_source),
+       (SELECT count(*) FROM (SELECT * FROM lanes EXCEPT ALL SELECT * FROM per_source)),
+       (SELECT count(*) FROM (SELECT * FROM per_source EXCEPT ALL SELECT * FROM lanes));
+----
+true	true	0	0
+
+# ---- build route, depth bound 3
+statement ok
+SET experimental_path_finding_operator_reach_lanes = true;
+
+statement ok
+CREATE OR REPLACE TABLE lanes AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, struct_pack(src := src, dst := dst), 1200::BIGINT, 3570::BIGINT, 'graph:reach_lanes', 3::BIGINT) AS r FROM srcs, pe);
+
+statement ok
+SET experimental_path_finding_operator_reach_lanes = false;
+
+statement ok
+CREATE OR REPLACE TABLE per_source AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, struct_pack(src := src, dst := dst), 1200::BIGINT, 3570::BIGINT, 'graph:reach_lanes', 3::BIGINT) AS r FROM srcs, pe);
+
+query IIIII
+SELECT (SELECT count(*) FROM lanes) = (SELECT count(*) FROM per_source),
+       (SELECT sum(len) FROM lanes) = (SELECT sum(len) FROM per_source),
+       (SELECT count(*) FROM (SELECT * FROM lanes EXCEPT ALL SELECT * FROM per_source)),
+       (SELECT count(*) FROM (SELECT * FROM per_source EXCEPT ALL SELECT * FROM lanes)),
+       (SELECT max(len) FROM lanes) <= 3;
+----
+true	true	0	0	true
+
+endloop
+
+# Across routes on the last k: the lane route over the index against the per-source route of the build (per_source
+# holds it, bound 3; keys equal row ids here). A vertex without edges (1190..1199) is an in-range vertex on the build
+# route and an absent key on the index: one row at distance 0 either way
+statement ok
+SET experimental_path_finding_operator_reach_lanes = true;
+
+statement ok
+CREATE OR REPLACE TABLE lanes AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr', 3::BIGINT) AS r FROM srcs);
+
+query III
+SELECT (SELECT count(*) FROM (SELECT * FROM lanes EXCEPT ALL SELECT * FROM per_source)),
+       (SELECT count(*) FROM (SELECT * FROM per_source EXCEPT ALL SELECT * FROM lanes)),
+       (SELECT count(*) FROM lanes WHERE s >= 1190) = (SELECT count(*) FROM srcs WHERE s >= 1190);
+----
+0	0	true
+
+# A source absent from the graph (index route) reaches only itself, on both kernels; 20 sources keep the lanes
+statement ok
+CREATE OR REPLACE TABLE srcs AS SELECT (range * 7) % 1200 AS s, range AS tag FROM range(20) UNION ALL SELECT 5000, -1;
+
+statement ok
+CREATE OR REPLACE TABLE lanes AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM srcs);
+
+query I
+SELECT s LIKE '%source_group_kernel=lane_waves%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+SET experimental_path_finding_operator_reach_lanes = false;
+
+statement ok
+CREATE OR REPLACE TABLE per_source AS SELECT tag, s, r[1] AS dst, r[2] AS len FROM (SELECT tag, s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM srcs);
+
+query IIII
+SELECT (SELECT count(*) FROM (SELECT * FROM lanes EXCEPT ALL SELECT * FROM per_source)),
+       (SELECT count(*) FROM (SELECT * FROM per_source EXCEPT ALL SELECT * FROM lanes)),
+       (SELECT list(dst || ':' || len) FROM lanes WHERE s = 5000),
+       (SELECT count(*) FROM lanes WHERE s = 0);
+----
+0	0	['5000:0']	1190

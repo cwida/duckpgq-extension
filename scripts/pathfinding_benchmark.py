@@ -5600,6 +5600,8 @@ MICROBENCH_CONFIGS = {
     "no_snapshot_cache": ({OPT + "snapshot_cache": "false"}, None, False),
     "reverse_index": ({}, "reverse = true", False),
     "reverse_index_forward_only": ({OPT + "reverse_orientation_ratio": 0}, "reverse = true", False),
+    # Reach mode on per-source searches instead of lane waves (reach_lanes, 2 Nov)
+    "reach_per_source": ({OPT + "reach_lanes": "false"}, None, False),
     # Reach mode vs the pair list for sources x all persons
     "pair_mode": ({}, None, True),
     # Partitioning (more partitions than 2 x threads)
@@ -5646,11 +5648,19 @@ MICROBENCH_CONFIGS["plain_explore"] = ({OPT + "frontier_bitmap": "false", OPT + 
 # built with the CSR), 0 is the binary search the buckets replaced
 for _rb in (0, 1, 2, 4, 8, 16, 64):
     MICROBENCH_CONFIGS[f"row_buckets_{_rb}"] = ({OPT + "row_bucket_rows": _rb}, None, False, f"rb{_rb}")
+# Section 3 crossover (2 Nov): the three ways of running k distinct sources, forced. The per-source frontier kernel
+# (one traversal per source), MS-BFS waves of one lane per distinct source, and the former MS-BFS batches of one lane
+# per pair; the default picks by the few-sources limit (16) and the source group ratio (4)
+MICROBENCH_CONFIGS["single_source_kernel"] = ({OPT + "few_sources_limit": 1000000}, None, False)
+MICROBENCH_CONFIGS["multi_source_dedup"] = ({OPT + "few_sources_limit": 0}, None, False)
+MICROBENCH_CONFIGS["lane_per_pair"] = ({OPT + "source_group_ratio": 0}, None, False)
 MICROBENCH_GROUPS = {
+    "crossover": ["single_source_kernel", "multi_source_dedup", "lane_per_pair"],
     "kernel": ["baseline", "no_grouped_batches", "dedupe_pairs", "threads_per_batch_4", "no_source_grouping",
                "no_few_sources_rule", "no_early_termination",
                "dense_frontier", "sparse_frontier", "light_partitions_4"],
-    "index": ["baseline", "no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "no_reverse_orientation"],
+    "index": ["baseline", "no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "no_reverse_orientation",
+              "reach_per_source"],
     "row_buckets": [f"row_buckets_{_rb}" for _rb in (0, 1, 2, 4, 8, 16, 64)],
     "reach": ["baseline", "pair_mode"],
     "threads": ["baseline"] + [f"threads_{n}" for n in (1, 2, 4, 8, 16)],
