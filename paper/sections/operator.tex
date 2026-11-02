@@ -5,21 +5,19 @@
 % from eval-freeze-rc1; the traversal crossovers are single runs before the rerun and marked.
 
 A path pattern in \sqlpgq asks, for a set of candidate (source, destination) pairs, whether a path of the allowed
-length exists and how long it is, or which vertices and edges it uses, and the operator computes that answer. Its
-input is the stream of candidate pairs, and the graph either as the edge table, from which it builds a CSR
-inside the query, or as the name of a CSR index. Its output takes one of three forms, which we call modes:
-\emph{lengths}, one hop count per pair; \emph{paths}, one list of vertices and edges per pair; and \emph{reach}, every
-vertex a source reaches, with its distance. Label tests, filters on the source and destination vertices, the join
-back to the vertex tables and the test on the quantifier stay relational and are left to \duckdb's planner. The
-operator is opt-in through the setting \texttt{experimental\_path\_finding\_operator}; without it the rewrite emits
-the UDF calls of the CIDR design.
+length exists and how long it is, or which vertices and edges it uses. The path-finding operator evaluates this part of
+the pattern. Label tests, filters on the source and destination vertices, the join back to the vertex tables and the
+test on the quantifier stay relational and are left to \duckdb's planner. The operator reads the candidate pairs and
+the graph, either as the edge table, from which it builds a CSR inside the query, or as a CSR index.
 
-This section follows a query through the operator. Section~\ref{sec:planner} shows how a \texttt{MATCH} becomes the
-operator and how the operator fits \duckdb's execution model, Section~\ref{sec:csr} the graph layout and its build,
-Section~\ref{sec:traversals} the two traversals, Section~\ref{sec:choice} the rule that picks one,
-Section~\ref{sec:phases} how all of it runs in parallel on \duckdb's threads, and Section~\ref{sec:results} how the
-results come out. Unless stated otherwise, the numbers are from the evaluation of Section~\ref{sec:eval} (LDBC SNB
-\texttt{Person\_knows\_Person}, one m7a.8xlarge, 32 threads).
+The operator answers in one of three modes. In the \emph{lengths} mode it returns one hop count per candidate pair,
+and in the \emph{paths} mode one list of vertices and edges per pair. The \emph{reach} mode serves a pattern whose
+destination has no condition, such as every person reachable from a given one. Listing every vertex as a candidate
+destination would produce one pair per vertex, so in the reach mode the operator receives only the sources and
+returns each vertex a source reaches, with its distance; the destinations are part of the output instead of the
+input. The operator is opt-in through the setting \texttt{experimental\_path\_finding\_operator}; without it the
+rewrite emits the UDF calls of the CIDR design. Unless stated otherwise, the numbers in this section are from the
+evaluation of Section~\ref{sec:eval} (LDBC SNB \texttt{Person\_knows\_Person}, one m7a.8xlarge, 32 threads).
 
 \subsection{From \texttt{MATCH} to an operator}
 \label{sec:planner}
@@ -48,15 +46,18 @@ time, the rewrite drops the edge input and passes the index name in the key. The
 snapshot (Section~\ref{sec:index}), and the pairs carry vertex keys instead of row ids, because the index identifies
 vertices by key.
 
-In \duckdb's execution model the physical operator is a sink for its children's pipelines and the source of the
-pipeline above it. As a sink it receives vectors of pairs, and on the build route vectors of edges, from all of
-\duckdb's threads, each into a thread-local state. The pairs are appended to a column collection and the edges are
-partitioned as they arrive (Section~\ref{sec:csr}). When the last vector is in, the operator's finalize step runs
-once. It translates the pairs to vertex ids, groups them by source, picks the traversal and the orientation
-(Section~\ref{sec:choice}) and schedules the events that build the CSR and traverse it (Section~\ref{sec:phases}).
-Only when those events are done does \duckdb start the pipeline that reads the operator as its source, which emits the
-results in parallel (Section~\ref{sec:results}). \duckdb sees an ordinary operator with one or two children and a
-cardinality, and plans the rest of the query around it.
+In \duckdb's execution model the physical operator is a sink for the pipelines of its children and the source of
+the pipeline above it. Its first child produces the candidate pairs. When the CSR is built inside the query, a second
+child produces the edges, the join of the edge table with its two vertex tables, as (source row id, destination row
+id) pairs. Each of \duckdb's threads pushes vectors from these pipelines into a local state of its own; the pairs
+are appended to a column collection, and the edges are partitioned as they arrive (Section~\ref{sec:csr}). When the
+last vector is in, the operator's finalize step runs once. It translates the pairs to vertex ids, groups them by
+source, picks the traversal and the orientation (Section~\ref{sec:choice}), and schedules the events that build the
+CSR and traverse it (Sections~\ref{sec:traversals} and~\ref{sec:phases}). Only when those events are done does
+\duckdb start the pipeline that reads the operator as its source, and that pipeline emits the results in parallel
+(Section~\ref{sec:results}). The rest of this section follows a query through these steps. To the planner the
+operator is an ordinary operator with one or two children and a cardinality, and \duckdb plans the rest of the
+query around it.
 
 \subsection{The partitioned CSR}
 \label{sec:csr}
