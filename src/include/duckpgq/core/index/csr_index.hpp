@@ -212,6 +212,7 @@ public:
 	//! Registration with DuckDB's index type set
 	static IndexType GetCSRIndexType();
 	static unique_ptr<BoundIndex> Create(CreateIndexInput &input);
+	~CSRIndex() override;
 
 	bool IsUndirected() const {
 		return undirected;
@@ -393,8 +394,19 @@ private:
 	mutable uint64_t cached_snapshot_visibility = 0;
 	//! One fold at a time; shared so that RunFold can hold it while no handle on the entry keeps the index alive
 	mutable shared_ptr<mutex> fold_lock = make_shared_ptr<mutex>();
-	//! Segments of the last checkpoint or WAL serialization, kept until the next one replaces them
+	//! Segments written by this process's last checkpoint, kept until a rewrite or the drop releases their blocks
+	//! (a FixedSizeBuffer marks its block as modified when destroyed); the WAL's transient buffers live apart
 	mutable unique_ptr<FixedSizeAllocator> storage_allocator;
+	mutable unique_ptr<FixedSizeAllocator> wal_allocator;
+	//! The on-disk state (written by this process or loaded at bind) and whether the in-memory state still matches
+	//! it: SerializeToDisk hands `stored_info` back while persisted_change_count == change_count. The loader reads
+	//! these blocks without marking them, so they stay referenced until ReleaseStoredBlocksLocked
+	mutable IndexStorageInfo stored_info;
+	mutable bool stored_info_on_disk = false;
+	mutable uint64_t change_count = 1;
+	mutable uint64_t persisted_change_count = 0;
+	static IndexStorageInfo CopyStorageInfo(const IndexStorageInfo &info);
+	void ReleaseStoredBlocksLocked() const;
 	//! Checkpointed state not deserialized yet (see DeferLoad)
 	mutable IndexStorageInfo pending_storage;
 	mutable bool storage_pending = false;

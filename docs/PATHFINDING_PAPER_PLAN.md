@@ -1190,3 +1190,22 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   (q/s and median-to-p99 bands), `concurrent` (median + p99 bands, commit latency row), `fold_timeline`;
   `throughput-table` and the new `concurrent-table` print median and p99; the driver reports its peak RSS and the
   harness stores `peak_rss_mib`. All 99 test files pass.
+- 2 Nov (night): checkpoint write amplification of the index (W36 follow-up, item 1 of the index review). DuckDB
+  serializes every bound index at every checkpoint (`TableIndexList::SerializeToDisk`, no dirty check) and the index
+  wrote its whole state each time; since the deferred load a checkpoint also forced the load of every CSR index of
+  the table. Measured at SF100 (copy of the benchmark database, one-row insert into an unrelated table, then
+  CHECKPOINT): 3.66 s with the indexes unloaded (both loaded by the checkpoint: RSS 65 -> 927 MB) and 2.8 s on each
+  later checkpoint with nothing changed, the file growing 1.29 -> 1.64 GB until the old blocks were reclaimed. The
+  archived SF100 update run shows commit spikes of 12-23 s at the same three steps in every configuration (DuckDB's
+  own table checkpoint plus, when the index is bound, this rewrite), so the update experiment's commit means and p99
+  carried checkpoints. Fix: `SerializeToDisk` hands back the stored info while nothing changed (change_count vs
+  persisted_change_count: appends, deletes, folds and resets count); the loader reads the on-disk blocks through the
+  block manager instead of a FixedSizeAllocator, whose buffers mark their blocks as modified (freed at the next
+  checkpoint) when destroyed; on a rewrite or when the index is destroyed (DROP INDEX), `ReleaseStoredBlocksLocked`
+  frees the previous blocks; WAL serialization keeps its transient buffers in its own allocator so it never drops
+  on-disk blocks; the data offset inside a fixed-size buffer replicates the allocator's layout
+  (`FixedSizeSegmentDataOffset`). After the fix the same SF100 probe: 15 / 13 / 12 ms per checkpoint, no load forced
+  (RSS 62 MB after the first), file size unchanged. New test `csr_index_checkpoint.test` (block count unchanged by
+  unrelated checkpoints, reused blocks survive a restart, rewrite after an edge insert, release on drop). The
+  correctness oracle (item 2): `concurrent_sf10_r4_check` runs both routes in one process with fold ratio 0.01 and
+  the harness fails a concurrent run with mismatches or errors (`b68fd8c2`). All 100 SQL test files pass.

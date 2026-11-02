@@ -55,6 +55,30 @@ inline idx_t PositionOffset(idx_t position) {
 }
 
 //! A storage segment pointer travels in the storage options as one UBIGINT: buffer id high, offset low
+//! Byte offset of the first segment inside a FixedSizeAllocator buffer: the validity bitmask words come first. This
+//! replicates the constructor of duckdb::FixedSizeAllocator (bitmask_offset is private); the loader reads the blocks
+//! directly, so the layout must match what WriteSegments produced through the allocator
+inline idx_t FixedSizeSegmentDataOffset(idx_t block_size, idx_t segment_size) {
+	const idx_t bits_per_value = sizeof(validity_t) * 8;
+	idx_t byte_count = 0;
+	idx_t bitmask_count = 0;
+	idx_t available_segments = 0;
+	while (byte_count < block_size) {
+		if (!bitmask_count || (bitmask_count * bits_per_value) % available_segments == 0) {
+			bitmask_count++;
+			byte_count += sizeof(validity_t);
+		}
+		auto remaining_bytes = block_size - byte_count;
+		auto remaining_segments = MinValue<idx_t>(remaining_bytes / segment_size, bits_per_value);
+		if (remaining_segments == 0) {
+			break;
+		}
+		available_segments += remaining_segments;
+		byte_count += remaining_segments * segment_size;
+	}
+	return bitmask_count * sizeof(validity_t);
+}
+
 inline uint64_t PackSegment(const IndexPointer &pointer) {
 	return (static_cast<uint64_t>(pointer.GetBufferId()) << 32) | pointer.GetOffset();
 }
@@ -572,6 +596,7 @@ void CSRIndex::InstallEpoch(shared_ptr<CSRIndexEpoch> epoch_p) {
 void CSRIndex::ClearStateLocked() const {
 	storage_pending = false;
 	pending_storage = IndexStorageInfo();
+	change_count++;
 	epochs.clear();
 	delta.clear();
 	tombstones.clear();
@@ -697,6 +722,7 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	for (auto &tombstone : tombstones) {
 		newest_excluded_tombstones += tombstone.excluded_epoch <= generation ? 1 : 0;
 	}
+	change_count++;
 	// The new dictionary is rebuilt in key order: ids resolved against the previous one no longer apply
 	ResolveDeltaIdsLocked();
 }
@@ -1619,6 +1645,7 @@ void ReadKeys(Vector &input, idx_t count, vector<int64_t> &keys, vector<uint8_t>
 ErrorData CSRIndex::Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 	l.AssertHeld(*this);
 	EnsureLoadedLocked(l);
+	change_count++;
 	// Evaluate the key expressions on the incoming rows, like the ART does
 	DataChunk key_chunk;
 	key_chunk.Initialize(Allocator::DefaultAllocator(), logical_types);
@@ -1689,6 +1716,7 @@ idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifi
                           optional_ptr<SelectionVector> deleted_sel, optional_ptr<SelectionVector>) {
 	l.AssertHeld(*this);
 	EnsureLoadedLocked(l);
+	change_count++;
 	auto count = entries.size();
 	UnifiedVectorFormat row_format;
 	row_identifiers.ToUnifiedFormat(count, row_format);
@@ -2024,7 +2052,11 @@ IndexStorageInfo CSRIndex::WriteSegments(const vector<uint8_t> &bytes, optional_
 	auto &block_manager = table_io_manager.GetIndexBlockManager();
 	// One segment per block (see SEGMENT_HEADER_RESERVE); the loader takes the size from the allocator info
 	auto segment_size = block_manager.GetBlockSize() - SEGMENT_HEADER_RESERVE;
-	storage_allocator = make_uniq<FixedSizeAllocator>(segment_size, block_manager, MemoryTag::EXTENSION);
+	// The checkpoint's allocator replaces the previous on-disk state (ReleaseStoredBlocksLocked ran before); the WAL's
+	// transient buffers live in their own allocator so that a WAL serialization never drops the on-disk blocks
+	auto &allocator = checkpoint_context ? storage_allocator : wal_allocator;
+	allocator = make_uniq<FixedSizeAllocator>(segment_size, block_manager, MemoryTag::EXTENSION);
+	auto &storage_allocator = allocator;
 	vector<Value> segments;
 	for (idx_t offset = 0; offset < bytes.size(); offset += segment_size) {
 		auto length = std::min<idx_t>(segment_size, bytes.size() - offset);
@@ -2062,14 +2094,46 @@ void CSRIndex::DeferLoad(const IndexStorageInfo &info) {
 		return;
 	}
 	// IndexStorageInfo is not copyable; the fields are (the WAL's transient block handles are shared)
+	auto copy = CopyStorageInfo(info);
+	// The same info is what SerializeToDisk hands back while nothing changes; WAL-replayed state (transient buffers)
+	// is not on disk and must be written at the next checkpoint
+	stored_info = CopyStorageInfo(info);
+	stored_info_on_disk = !info.allocator_infos[0].transient_block_handles;
+	if (stored_info_on_disk) {
+		persisted_change_count = change_count;
+	}
+	pending_storage = std::move(copy);
+	storage_pending = true;
+}
+
+IndexStorageInfo CSRIndex::CopyStorageInfo(const IndexStorageInfo &info) {
 	IndexStorageInfo copy(info.name);
 	copy.root = info.root;
 	copy.options = info.options;
 	copy.allocator_infos = info.allocator_infos;
 	copy.buffers = info.buffers;
 	copy.root_block_ptr = info.root_block_ptr;
-	pending_storage = std::move(copy);
-	storage_pending = true;
+	return copy;
+}
+
+void CSRIndex::ReleaseStoredBlocksLocked() const {
+	if (storage_allocator) {
+		// Written by this process: the allocator's buffers mark their blocks as modified when destroyed
+		storage_allocator.reset();
+	} else if (stored_info_on_disk && !stored_info.allocator_infos.empty()) {
+		// Loaded from disk without an allocator (see LoadFromStorageLocked): release the blocks ourselves
+		auto &block_manager = table_io_manager.GetIndexBlockManager();
+		for (auto &block_pointer : stored_info.allocator_infos[0].block_pointers) {
+			block_manager.MarkBlockAsModified(block_pointer.block_id);
+		}
+	}
+	stored_info = IndexStorageInfo();
+	stored_info_on_disk = false;
+}
+
+CSRIndex::~CSRIndex() {
+	// A dropped index frees its blocks at the next checkpoint, like the ART's allocator does
+	ReleaseStoredBlocksLocked();
 }
 
 void CSRIndex::EnsureLoadedLocked(IndexLock &l) const {
@@ -2098,55 +2162,60 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 	}
 	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(db.GetDatabase()).NumberOfThreads());
 	auto segment_size = allocator_info.segment_size;
-	// One segment per block: the blocks are pinned and copied in parallel (each buffer has its own lock), in rounds
-	// of a bounded number of blocks. A FixedSizeAllocator keeps every block it has handed out in memory until it is
-	// destroyed, so one allocator for the whole index would hold the serialized bytes twice (blocks and staging
-	// buffer) on top of the deserialized structures while loading (SF300: 1.2 GB more peak RSS for the undirected
-	// index). Each round gets an allocator over its own blocks only, so every block is registered, loaded and
-	// released once. WAL replay hands over transient block handles that Init moves out of the shared vector, so that
-	// case runs as one round over the full info.
 	unordered_map<idx_t, idx_t> buffer_positions;
 	for (idx_t i = 0; i < allocator_info.buffer_ids.size(); i++) {
 		buffer_positions[allocator_info.buffer_ids[i]] = i;
 	}
-	idx_t round_segments = allocator_info.transient_block_handles ? packed_segments.size()
-	                                                               : std::max<idx_t>(thread_count * 8, 256);
-	for (idx_t round_begin = 0; round_begin < packed_segments.size(); round_begin += round_segments) {
-		auto round_end = std::min<idx_t>(packed_segments.size(), round_begin + round_segments);
-		storage_allocator = make_uniq<FixedSizeAllocator>(segment_size, block_manager, MemoryTag::EXTENSION);
-		if (allocator_info.transient_block_handles) {
-			storage_allocator->Init(allocator_info);
-		} else {
-			FixedSizeAllocatorInfo round_info;
-			round_info.segment_size = segment_size;
-			for (idx_t segment_idx = round_begin; segment_idx < round_end; segment_idx++) {
-				auto buffer_id = SegmentBufferId(packed_segments[segment_idx]);
-				auto position = buffer_positions.find(buffer_id);
-				if (position == buffer_positions.end()) {
-					throw SerializationException("CSR index storage refers to an unknown buffer");
-				}
-				auto i = position->second;
-				round_info.buffer_ids.push_back(allocator_info.buffer_ids[i]);
-				round_info.block_pointers.push_back(allocator_info.block_pointers[i]);
-				round_info.segment_counts.push_back(allocator_info.segment_counts[i]);
-				round_info.allocation_sizes.push_back(allocator_info.allocation_sizes[i]);
-			}
-			storage_allocator->Init(round_info);
+	auto position_of = [&](uint64_t packed) {
+		auto position = buffer_positions.find(SegmentBufferId(packed));
+		if (position == buffer_positions.end()) {
+			throw SerializationException("CSR index storage refers to an unknown buffer");
 		}
-		ParallelFor(round_end - round_begin, thread_count, [&](idx_t begin, idx_t end, idx_t) {
-			for (idx_t i = begin; i < end; i++) {
-				auto segment_idx = round_begin + i;
-				auto pointer = UnpackSegment(packed_segments[segment_idx]);
-				auto offset = segment_idx * segment_size;
-				if (offset >= total_bytes) {
-					throw SerializationException("CSR index storage has more segments than bytes");
-				}
-				auto length = std::min<idx_t>(segment_size, total_bytes - offset);
-				memcpy(bytes + offset, storage_allocator->Get(pointer, false), length);
+		return position->second;
+	};
+	auto segment_range = [&](idx_t segment_idx, idx_t &offset, idx_t &length) {
+		offset = segment_idx * segment_size;
+		if (offset >= total_bytes) {
+			throw SerializationException("CSR index storage has more segments than bytes");
+		}
+		length = std::min<idx_t>(segment_size, total_bytes - offset);
+	};
+	if (allocator_info.transient_block_handles) {
+		// WAL replay hands over transient buffers (not on disk): read them through a FixedSizeAllocator, whose Init
+		// moves the handles out of the shared vector; the buffers are released with it
+		FixedSizeAllocator transient(segment_size, block_manager, MemoryTag::EXTENSION);
+		transient.Init(allocator_info);
+		ParallelFor(packed_segments.size(), thread_count, [&](idx_t begin, idx_t end, idx_t) {
+			for (idx_t segment_idx = begin; segment_idx < end; segment_idx++) {
+				idx_t offset, length;
+				segment_range(segment_idx, offset, length);
+				memcpy(bytes + offset, transient.Get(UnpackSegment(packed_segments[segment_idx]), false), length);
 			}
 		});
-		// The copied blocks are no longer needed in memory; they stay referenced on disk until the next serialization
-		storage_allocator.reset();
+	} else {
+		// On-disk state: each block is pinned, copied and unpinned (bounded memory, in parallel). No FixedSizeBuffer
+		// is created for it: a FixedSizeBuffer marks its block as modified when destroyed, which frees the block at
+		// the next checkpoint, and this index keeps the blocks: SerializeToDisk hands the same storage info back
+		// while nothing changed, instead of rewriting the whole index at every checkpoint (SF100: 3 s and 600 MB
+		// per checkpoint before 2 Nov)
+		auto data_offset = FixedSizeSegmentDataOffset(block_manager.GetBlockSize(), segment_size);
+		auto &buffer_manager = block_manager.buffer_manager;
+		ParallelFor(packed_segments.size(), thread_count, [&](idx_t begin, idx_t end, idx_t) {
+			for (idx_t segment_idx = begin; segment_idx < end; segment_idx++) {
+				auto packed = packed_segments[segment_idx];
+				auto i = position_of(packed);
+				idx_t offset, length;
+				segment_range(segment_idx, offset, length);
+				auto &block_pointer = allocator_info.block_pointers[i];
+				auto in_buffer = data_offset + UnpackSegment(packed).GetOffset() * segment_size;
+				if (in_buffer + length > allocator_info.allocation_sizes[i]) {
+					throw SerializationException("CSR index segment exceeds its buffer");
+				}
+				auto handle = block_manager.RegisterBlock(block_pointer.block_id);
+				auto pin = buffer_manager.Pin(handle);
+				memcpy(bytes + offset, pin.Ptr() + block_pointer.offset + in_buffer, length);
+			}
+		});
 	}
 
 	ByteReader reader(bytes, total_bytes);
@@ -2227,7 +2296,25 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 }
 
 IndexStorageInfo CSRIndex::SerializeToDisk(QueryContext context, const case_insensitive_map_t<Value> &) {
-	return WriteSegments(SerializeState(), &context);
+	// DuckDB serializes every bound index at every checkpoint. While nothing changed since the on-disk state was
+	// written or loaded, hand that state back: its blocks are untouched and stay referenced by the new metadata
+	// (SF100 before 2 Nov: every checkpoint loaded and rewrote 600 MB of indexes in 3 s)
+	uint64_t serialized_changes;
+	{
+		IndexLock l(*this);
+		if (stored_info_on_disk && persisted_change_count == change_count) {
+			return CopyStorageInfo(stored_info);
+		}
+		serialized_changes = change_count;
+	}
+	auto bytes = SerializeState();
+	IndexLock l(*this);
+	ReleaseStoredBlocksLocked();
+	auto info = WriteSegments(bytes, &context);
+	stored_info = CopyStorageInfo(info);
+	stored_info_on_disk = !info.allocator_infos.empty();
+	persisted_change_count = serialized_changes;
+	return info;
 }
 
 IndexStorageInfo CSRIndex::SerializeToWAL(const case_insensitive_map_t<Value> &) {

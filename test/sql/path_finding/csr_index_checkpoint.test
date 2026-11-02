@@ -1,0 +1,121 @@
+# name: test/sql/path_finding/csr_index_checkpoint.test
+# description: A checkpoint rewrites a CSR index only when its state changed; unchanged blocks stay in place and are
+#              released on a rewrite or a drop
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_index_checkpoint.db
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(0, 20000);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+# 200000 edges: the serialized index spans about nine 256 KiB blocks, so a rewrite or a release shows in the block count
+statement ok
+INSERT INTO knows SELECT range % 20000, (range * 7919 + 13) % 20000 FROM range(0, 200000);
+
+statement ok
+CREATE TABLE other(x INTEGER);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+statement ok
+CHECKPOINT;
+
+statement ok
+CREATE TEMP TABLE blocks_after_create AS SELECT used_blocks FROM pragma_database_size();
+
+# An unrelated change: the checkpoint must not rewrite the index (one or two blocks for the other table)
+statement ok
+INSERT INTO other VALUES (1);
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT used_blocks - (SELECT used_blocks FROM blocks_after_create) < 4 FROM pragma_database_size();
+----
+true
+
+statement ok
+INSERT INTO other VALUES (2);
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT used_blocks - (SELECT used_blocks FROM blocks_after_create) < 6 FROM pragma_database_size();
+----
+true
+
+# The reused blocks are the ones a restart loads
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=0;tombstones=0
+
+query I
+SELECT count(len) FROM (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|csr_index_checkpoint|main|knows|knows_csr') AS len FROM (SELECT 0::BIGINT AS src, 13::BIGINT AS dst));
+----
+1
+
+# A change to the edge table makes the next checkpoint rewrite the index; the restart then sees the new state
+statement ok
+INSERT INTO knows VALUES (19999, 0);
+
+statement ok
+CHECKPOINT;
+
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=1;tombstones=0
+
+query I
+SELECT len FROM (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|csr_index_checkpoint|main|knows|knows_csr') AS len FROM (SELECT 19999::BIGINT AS src, 0::BIGINT AS dst));
+----
+1
+
+# Dropping the index releases its blocks at the next checkpoint
+statement ok
+CREATE TEMP TABLE blocks_with_index AS SELECT used_blocks FROM pragma_database_size();
+
+statement ok
+DROP INDEX knows_csr;
+
+statement ok
+CHECKPOINT;
+
+query I
+SELECT (SELECT used_blocks FROM blocks_with_index) - used_blocks >= 8 FROM pragma_database_size();
+----
+true
