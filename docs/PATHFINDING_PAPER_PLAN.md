@@ -1174,3 +1174,19 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   The writer's commit that overlaps a fold takes about 3.2 s (CPU competition with the rebuild's 32 threads; the
   rebuild holds no index lock while scanning); commits otherwise 100 ms median. Process peak of the index run with
   folds 7.3 GiB (the rebuild's transient) against 15.3 GiB for the build route.
+- 2 Nov (evening): the fold held a lock on the whole system. The folding reader kept the index entry's read handle
+  (DuckDB `StorageLock`) for the 3 s table rebuild; the writer's next commit queued for the exclusive lock, and
+  `StorageLock::GetSharedLock` makes every later reader wait behind a registered writer, so for the fold's duration
+  no reader started a query (2.7 s gaps in the 16-reader probe) and the overlapping commit took 2.9 s (commit p99
+  2881 ms). Fix (`RunFold`): the automatic fold moved from Snapshot into Resolve; the trigger and ordering checks take
+  the handle briefly (`FoldDue`), the table scan and epoch build run with no handle on the entry
+  (`BuildEpochFromTable`, static; the fold mutex is a shared_ptr so it outlives a dropped index), and the install
+  takes the handle again for milliseconds (`InstallFoldedEpoch`, which re-checks the ordering and skips when the
+  entry was rebound). `duckpgq_csr_index_fold` uses the same path with ratio 0. Probe after the fix (16 index
+  readers, ratio 0.0005, 40 commits): query starts stay at 80-150 per second through each fold, commits 113 ms
+  median, 542 ms max (was 2.9 s), three folds of 3.0-3.5 s paid only by the reader that triggered each (max query
+  3.7 s, 3 of 2109 over 1 s), p99 274 ms (the fold's compaction and the first snapshot over the 44k-entry log that
+  accumulated during the 3.5 s rebuild), peak 7.9 GiB. Figures and tables (`e75b816a`): `throughput_clients`
+  (q/s and median-to-p99 bands), `concurrent` (median + p99 bands, commit latency row), `fold_timeline`;
+  `throughput-table` and the new `concurrent-table` print median and p99; the driver reports its peak RSS and the
+  harness stores `peak_rss_mib`. All 99 test files pass.

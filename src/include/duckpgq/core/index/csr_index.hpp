@@ -12,6 +12,7 @@
 #pragma once
 
 #include <atomic>
+#include <mutex>
 
 #include "duckpgq/common.hpp"
 #include "duckdb/common/unordered_map.hpp"
@@ -254,12 +255,13 @@ public:
 	//! 'folds=..;last_fold_ms=..;fold_ms=..': the folds this index ran since it was bound, for the update experiments
 	string FoldStats() const;
 
-	//! Builds a new epoch at the transaction's bound and drops the change-log entries no retained epoch needs. The
-	//! transaction must not have uncommitted changes. Also run automatically by Snapshot when the change log exceeds
-	//! the fold ratio setting.
-	//! `ratio` > 0 marks an automatic fold: it is skipped when, by the time this caller holds the fold lock, the log
-	//! is no longer above ratio x epoch edges (an earlier queued reader folded already)
-	void Fold(ClientContext &context, DuckTransaction &transaction, DataTable &table, double ratio = 0) const;
+	//! Folds the index behind `entry`: a new epoch at the transaction's bound, and the change-log entries no retained
+	//! epoch needs are dropped. `ratio` > 0 is the automatic fold from Resolve: it runs only when the pending log is
+	//! above ratio x epoch edges and no other fold is running. `ratio` 0 is the explicit fold (duckpgq_csr_index_fold):
+	//! it waits for a running fold and requires a transaction without uncommitted changes. The table rebuild runs
+	//! without the entry's read handle (see the definition). Returns whether an epoch was installed.
+	static bool RunFold(ClientContext &context, const shared_ptr<IndexEntry> &entry, DuckTableEntry &table,
+	                    double ratio);
 
 	//! The DuckDB table a name refers to, or nullptr (not found, or not a DuckDB table): by a possibly qualified name
 	//! string ('[catalog.][schema.]table'), by its parsed parts, or by the table of a property graph
@@ -292,6 +294,16 @@ public:
 private:
 	shared_ptr<CSRIndexEpoch> RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
 	                                           DataTable &table) const;
+	//! The epoch of every row the transaction sees, without touching the index object (RunFold calls it with no
+	//! handle on the index entry)
+	static shared_ptr<CSRIndexEpoch> BuildEpochFromTable(ClientContext &context, DuckTransaction &transaction,
+	                                                     DataTable &table, const vector<column_t> &column_ids,
+	                                                     bool undirected, bool reverse);
+	//! Whether RunFold should build an epoch for this transaction (ordering and, for ratio > 0, the pending log)
+	bool FoldDue(DuckTransaction &transaction, double ratio) const;
+	//! Installs an epoch RunFold built, unless a newer one arrived meanwhile; records the fold time
+	void InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
+	                        uint64_t fold_us) const;
 	//! Stamps the change-log entries that the epoch built by `transaction` accounts for: delta rows it contains and
 	//! tombstoned rows it excludes. Uses the live transaction, so it does not depend on how long DuckDB keeps row
 	//! versions. Then installs the epoch and drops the entries no retained epoch needs any more.
@@ -379,8 +391,8 @@ private:
 	mutable uint32_t cached_snapshot_group = 0;
 	//! Hash of the per-entry visibility decisions of the cached snapshot's reader
 	mutable uint64_t cached_snapshot_visibility = 0;
-	//! One fold at a time
-	mutable mutex fold_lock;
+	//! One fold at a time; shared so that RunFold can hold it while no handle on the entry keeps the index alive
+	mutable shared_ptr<mutex> fold_lock = make_shared_ptr<mutex>();
 	//! Segments of the last checkpoint or WAL serialization, kept until the next one replaces them
 	mutable unique_ptr<FixedSizeAllocator> storage_allocator;
 	//! Checkpointed state not deserialized yet (see DeferLoad)

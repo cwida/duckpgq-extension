@@ -583,6 +583,12 @@ void CSRIndex::ClearStateLocked() const {
 
 shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
                                                      DataTable &table) const {
+	return BuildEpochFromTable(context, transaction, table, column_ids, undirected, reverse);
+}
+
+shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpochFromTable(ClientContext &context, DuckTransaction &transaction,
+                                                        DataTable &table, const vector<column_t> &column_ids,
+                                                        bool undirected, bool reverse) {
 	auto types = table.GetTypes();
 	vector<StorageIndex> scan_columns {StorageIndex(column_ids[0]), StorageIndex(column_ids[1]),
 	                                   StorageIndex(COLUMN_IDENTIFIER_ROW_ID)};
@@ -1275,51 +1281,101 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	return snapshot;
 }
 
-void CSRIndex::Fold(ClientContext &context, DuckTransaction &transaction, DataTable &table, double ratio) const {
-	if (transaction.ChangesMade()) {
-		throw InvalidInputException("A CSR index cannot be folded by a transaction with uncommitted changes");
+bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio) const {
+	IndexLock l(*this);
+	EnsureLoadedLocked(l);
+	if (epochs.empty()) {
+		return false; // the first epoch is built by Snapshot
 	}
-	// An automatic fold that finds another fold running does not wait for it: this reader's epoch and log are valid
-	// as they are, and the fold in progress will install the newer epoch (SF300: a fold takes 3 s, and the readers
-	// that queued behind it paid that as query latency)
-	unique_lock<mutex> fold_guard(fold_lock, std::defer_lock);
-	if (ratio > 0) {
-		if (!fold_guard.try_lock()) {
+	// Folds install epochs in visibility order. An older transaction that folds after a newer one would install an
+	// older epoch as the newest, and compaction would then drop the log entries only the newer epoch covered, hiding
+	// committed edges from new transactions (28 Oct audit).
+	auto &newest = epochs.back()->bound;
+	auto mine = transaction.view.visibility_bound;
+	if (VisibilityBound::Min(newest, mine) == mine) {
+		return false;
+	}
+	// An automatic fold is due when the log the newest epoch does not account for has grown past the ratio. The
+	// raw log also keeps the entries the retained older epoch still needs, so a trigger on its size stayed over the
+	// ratio until a second fold dropped that epoch (two folds per crossing, 2 Nov).
+	return ratio <= 0 || static_cast<double>(PendingLogLocked()) >
+	                         ratio * static_cast<double>(std::max<idx_t>(1, epochs.back()->edge_count));
+}
+
+void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
+                                  uint64_t fold_us) const {
+	{
+		// The ordering check again: the rebuild ran outside the index lock
+		IndexLock l(*this);
+		if (!epochs.empty() &&
+		    VisibilityBound::Min(epochs.back()->bound, transaction.view.visibility_bound) ==
+		        transaction.view.visibility_bound) {
 			return;
 		}
-	} else {
-		fold_guard.lock();
 	}
-	{
-		// Folds install epochs in visibility order. An older transaction that folds after a newer one would install
-		// an older epoch as the newest, and compaction would then drop the log entries only the newer epoch covered,
-		// hiding committed edges from new transactions (28 Oct audit).
-		IndexLock l(*this);
-		EnsureLoadedLocked(l);
-		if (!epochs.empty()) {
-			auto &newest = epochs.back()->bound;
-			auto mine = transaction.view.visibility_bound;
-			if (VisibilityBound::Min(newest, mine) == mine) {
-				return;
-			}
-			// Automatic folds re-check the trigger here: every reader that saw the pending log grow past the ratio
-			// queues on the fold lock, and the ones with a bound newer than the first fold's epoch would otherwise
-			// fold again (SF300, 16 readers, 2 Nov: 12 folds of 3 s in a row, readers stalled 36 s). The pending
-			// log is what the newest epoch does not account for: the raw log keeps the entries the retained older
-			// epoch still needs, so its size stays over the ratio until a second fold drops that epoch
-			if (ratio > 0 && static_cast<double>(PendingLogLocked()) <=
-			                     ratio * static_cast<double>(std::max<idx_t>(1, epochs.back()->edge_count))) {
-				return;
-			}
-		}
-	}
-	auto fold_start = std::chrono::steady_clock::now();
-	InstallEpochAndCompact(transaction, table, RebuildFromTable(context, transaction, table));
-	auto fold_us = static_cast<uint64_t>(
-	    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fold_start).count());
+	InstallEpochAndCompact(transaction, table, std::move(epoch));
 	fold_count++;
 	fold_total_us += fold_us;
 	fold_last_us = fold_us;
+}
+
+bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &entry, DuckTableEntry &table,
+                       double ratio) {
+	auto &transaction = DuckTransaction::Get(context, table.catalog);
+	auto &storage = table.GetStorage();
+	if (transaction.ChangesMade()) {
+		if (ratio > 0) {
+			return false; // a reader with its own changes gets a private epoch from Snapshot
+		}
+		throw InvalidInputException("A CSR index cannot be folded by a transaction with uncommitted changes");
+	}
+	// The table rebuild (3 s at SF300) runs without the entry's read handle. DuckDB's StorageLock lets a writer that
+	// is waiting for the exclusive lock (the next commit's Append) block every later shared lock until the handle is
+	// released, so a fold under the handle stalled the writer and every other reader for its whole duration (2 Nov).
+	// The fold mutex is shared so that it outlives a dropped index; the index object itself is only touched under
+	// a handle, and the install is skipped when the entry was rebound meanwhile.
+	shared_ptr<mutex> fold_mutex;
+	unique_lock<mutex> fold_guard;
+	vector<column_t> columns;
+	bool undirected = false;
+	bool reverse = false;
+	const CSRIndex *identity = nullptr;
+	{
+		auto handle = entry->GetReadHandle<CSRIndex>();
+		auto &index = *handle.operator->();
+		if (!index.FoldDue(transaction, ratio)) {
+			return false;
+		}
+		fold_mutex = index.fold_lock;
+		fold_guard = unique_lock<mutex>(*fold_mutex, std::defer_lock);
+		if (ratio > 0) {
+			// An automatic fold that finds another fold running does not wait: this reader's epoch and log are
+			// valid as they are, and the running fold installs the newer epoch
+			if (!fold_guard.try_lock()) {
+				return false;
+			}
+		} else {
+			fold_guard.lock();
+		}
+		if (!index.FoldDue(transaction, ratio)) {
+			return false; // the fold that just finished did the work
+		}
+		columns = index.column_ids;
+		undirected = index.undirected;
+		reverse = index.reverse;
+		identity = &index;
+	}
+	auto fold_start = std::chrono::steady_clock::now();
+	auto epoch = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse);
+	auto fold_us = static_cast<uint64_t>(
+	    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fold_start).count());
+	auto handle = entry->GetReadHandle<CSRIndex>();
+	auto &index = *handle.operator->();
+	if (&index != identity) {
+		return false; // rebound while the table was scanned: the epoch belongs to an index that no longer exists
+	}
+	index.InstallFoldedEpoch(transaction, storage, std::move(epoch), fold_us);
+	return true;
 }
 
 string CSRIndex::FoldStats() const {
@@ -1339,7 +1395,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 	auto state = LogStateFor(bound);
 	if (!state.have_epochs) {
 		// No epoch yet (index created before a restart, or never read): build one at this reader's snapshot
-		lock_guard<mutex> fold_guard(fold_lock);
+		lock_guard<mutex> fold_guard(*fold_lock);
 		bool still_empty;
 		{
 			IndexLock l(*this);
@@ -1349,15 +1405,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 			InstallEpochAndCompact(transaction, table, RebuildFromTable(context, transaction, table));
 		}
 		state = LogStateFor(bound);
-	} else if (state.epoch && state.epoch == epochs.back()) {
-		// Current readers fold when the change log has grown past the configured fraction of the epoch
-		auto ratio = GetCSRIndexFoldRatio(context);
-		if (ratio > 0 && static_cast<double>(state.pending_count) >
-		                     ratio * static_cast<double>(std::max<idx_t>(1, state.epoch->edge_count))) {
-			Fold(context, transaction, table, ratio);
-			state = LogStateFor(bound);
-		}
 	}
+	// Automatic folds run in Resolve (RunFold), before the snapshot is taken and outside the entry's read handle
 	if (!state.epoch) {
 		// Every retained epoch is newer than this reader's snapshot (two folds since it started): the reader builds a
 		// private epoch from its own view of the table, as a transaction with uncommitted changes does
@@ -1490,6 +1539,11 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Resolve(ClientContext &context, const str
 	auto index_entry = FindIndexEntry(context, *table, index_name);
 	if (!index_entry) {
 		return nullptr;
+	}
+	// Current readers fold when the pending change log has grown past the configured fraction of the epoch
+	auto ratio = GetCSRIndexFoldRatio(context);
+	if (ratio > 0) {
+		RunFold(context, index_entry, *table, ratio);
 	}
 	auto handle = index_entry->GetReadHandle<CSRIndex>();
 	auto &transaction = DuckTransaction::Get(context, table->catalog);

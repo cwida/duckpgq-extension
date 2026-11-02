@@ -33,9 +33,7 @@ void CSRIndexFoldFunction(DataChunk &args, ExpressionState &state, Vector &resul
 	auto table_name = args.data[0].GetValue(0).GetValue<string>();
 	auto index_name = args.data[1].GetValue(0).GetValue<string>();
 	auto resolved = ResolveCSRIndex(context, table_name, index_name);
-	auto handle = resolved.entry->GetReadHandle<CSRIndex>();
-	auto &transaction = DuckTransaction::Get(context, resolved.table->catalog);
-	handle->Fold(context, transaction, resolved.table->GetStorage());
+	CSRIndex::RunFold(context, resolved.entry, *resolved.table, 0);
 	result.SetVectorType(VectorType::CONSTANT_VECTOR);
 	result.SetValue(0, Value::BOOLEAN(true));
 }
