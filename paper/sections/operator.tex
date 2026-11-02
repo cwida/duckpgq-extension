@@ -135,9 +135,9 @@ per vertex while it runs, 25 in the paths mode.
 al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up to 512 lanes that share one
 \emph{working set}: three bit sets per vertex, the vertices each lane has seen, the current frontier and the next
 one, 192 bytes per vertex at 512 lanes or 86\,MB at SF100. A level has two phases. The explore phase relaxes the
-frontier into the next bit sets with one 512-bit \texttt{or} per edge for all lanes at once. The compiler emits
-vector instructions for it, four 128-bit ones in the portable x86-64 build we measure; a build for the m7a's Zen~4
-cores could use a single AVX-512 instruction. The explore tasks are split by destination range, so no two of them
+frontier into the next bit sets with one 512-bit \texttt{or} per edge for all lanes at once. \duckdb compiles for
+x86-64-v3, so the \texttt{or} becomes two 256-bit AVX2 instructions; the AVX-512 units of the m7a's Zen~4 cores
+could do it in one. The explore tasks are split by destination range, so no two of them
 write the same vertex and the \texttt{or} needs no atomic. The check phase folds the next bit sets into the seen
 bits; each lane then records the level of the destinations it has newly reached and drops them from its list, and a
 lane whose list is empty is masked out of the frontier and stops spreading. A summary bitmap marks the vertices with
