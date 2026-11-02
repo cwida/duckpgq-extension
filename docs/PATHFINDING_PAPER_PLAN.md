@@ -1122,3 +1122,24 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   Rerun: the deferred load changes the index route's memory and first-query figures, so the matrix needs a new tag
   (rc9) on this commit before it restarts; the three rc6 fixed-costs steps in `repro/logs` are stale and must be
   removed first.
+- 2 Nov (afternoon): code-quality sweep (three read-only reviews, then three cleanup passes, all approved by the
+  author except upstream-parity deletions). Operator (`8e76d751`): dead shortest-path kernel directory removed; working
+  sets prepared by each kernel's own workers in a prepare phase instead of ParallelFor's raw std::threads inside kernel
+  events; one bfs_benchmark.{hpp,cpp} for the benchmark plumbing copied into every kernel; ReachDetect/UnReachableSet/
+  DepthBoundReached shared, so push-pull and bidirectional honour a hop bound; barrier-era members removed; scheduling,
+  finalize and scatter code de-duplicated; a pre-existing overflow in the pull CSR build fixed (predecessors sized from
+  the exclusive sum's last slot, which lacked the last vertex's count). Index (`8522b1c4`): dead version-1 load branch
+  removed and the docs corrected (an unknown format rebuilds from the table); one partition (de)serializer for both
+  sides; GetInMemorySize counts the reverse side, row buckets, mirror/reverse positions and the delta row index (SF300
+  directed 609.6 -> 616.6 MB, i.e. 11.1 B/edge); tombstone scan follows the thread setting; shared lookups and named
+  position arithmetic; partitioned_csr_cache renamed partitioned_csr_geometry. Planner (this commit): seven-BIGINT
+  direct-endpoint route and four-argument csr_id+key markers removed (no callers), one mode table and an input-route
+  enum, settings read once per query and registered from a table, marker bind data removed, test for the five-argument
+  bidirectional marker. Kept for upstream parity: iterativelength2, iterativelengthbidirectional, reachability, the
+  duckpgq_utils helpers, csr_creation's upstream lines. All 99 SQL test files pass after each pass; SF300 timings
+  unchanged across the three passes (random pairs 1 / 1024 / 65536 on the index: 3-10 ms / 0.20 s / 8.8 s; 1024
+  multi-source pairs 12 ms).
+  Compiler flags, for the paper's SIMD sentence: DuckDB's build (`duckdb/scripts/architecture_flags.cmake`) compiles
+  every benchmark binary with `-march=x86-64-v3 -mtune=generic` (GCC 11.5), i.e. AVX2: a 512-bit lane OR is two 256-bit
+  instructions, not four 128-bit ones. The m7a's Zen 4 cores have AVX-512 (avx512f/bw/dq/vl); `-DNATIVE_ARCH=1` would
+  give `-march=native`. The author decided (2 Nov) not to run a native build: the paper reports the x86-64-v3 build.
