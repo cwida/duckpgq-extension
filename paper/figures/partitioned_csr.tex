@@ -32,22 +32,25 @@
 % ------------------------------------------------------------------ (b) the edges into range p
 \node[head] at (0,-2.75) {(b) the edges into destination range $p$, ids 20--29 of a graph with $V = 30$};
 \def\xd{1.75}
-\node[lbl, anchor=east] at (\xd-0.1,-3.3) {source};
-\foreach \v/\x in {3/0.15,7/1.15,12/2.45,18/3.45} {
-  \node[circle, draw=black!60, fill=black!6, inner sep=0pt, minimum size=3.6mm] (v\v) at (\xd+\x,-3.3) {\v};
+\node[lbl, anchor=east] at (\xd-0.1,-3.25) {source};
+\foreach \v/\x in {3/0.15,7/1.35,12/2.55,18/3.6} {
+  \node[circle, draw=black!60, fill=black!6, inner sep=0pt, minimum size=3.6mm] (v\v) at (\xd+\x,-3.25) {\v};
 }
-\node[circle, draw=black!30, fill=white, text=black!40, inner sep=0pt, minimum size=3.6mm] (v4) at (\xd+4.25,-3.3) {4};
-\node[lbl, anchor=west, align=left, text=black!45] at (\xd+4.5,-3.3) {edges only into other\\ ranges: no row in $p$};
-\node[lbl, anchor=east] at (\xd-0.1,-4.12) {destination};
+\node[circle, draw=black!30, fill=white, text=black!40, inner sep=0pt, minimum size=3.6mm] (v4) at (\xd+0.75,-3.25) {4};
+\node[lbl, anchor=west, align=left, text=black!45] at (\xd+4.1,-3.25) {4: no edge into range $p$,\\ so no row in $p$};
+\node[lbl, anchor=east] at (\xd-0.1,-4.22) {destination};
 \foreach \j in {0,...,9} {
   \pgfmathtruncatemacro{\id}{20+\j}
-  \node[cell, minimum width=4.2mm] (d\j) at (\xd+\j*0.5,-3.95) {\id};
-  \node[lbl] at (\xd+\j*0.5+0.21,-4.47) {\j};
+  \node[cell, minimum width=4.2mm] (d\j) at (\xd+\j*0.5,-4.05) {\id};
+  \node[lbl] at (\xd+\j*0.5+0.21,-4.57) {\j};
 }
-\node[lbl, anchor=east] at (\xd-0.1,-4.47) {local dst};
-\foreach \v/\j in {3/5,3/9,7/1,12/0,12/4,12/8,18/2} {\draw[->, black!65] (v\v) -- (d\j.north);}
+\node[lbl, anchor=east] at (\xd-0.1,-4.57) {local dst};
+% right-angle edges: down from the source, along a rail of its own, down into the destination
+\foreach \v/\j/\r/\dx in {3/9/-3.50/0.05,3/5/-3.56/-0.05,7/1/-3.62/0,12/8/-3.68/0.06,12/4/-3.74/0,12/0/-3.80/-0.06,18/2/-3.86/0} {
+  \draw[->, black!65, rounded corners=1pt] ([xshift=\dx cm]v\v.south) -- ([xshift=\dx cm]v\v.south |- 0,\r) -| (d\j.north);
+}
 
-\begin{scope}[yshift=-2.15cm]
+\begin{scope}[yshift=-2.27cm]
 % ------------------------------------------------------------------ (c) one partition
 \node[head] at (0,-2.75) {(c) the partition of range $p$};
 \def\xo{1.75}      % x of the first edge cell
