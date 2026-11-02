@@ -11,7 +11,7 @@ changes underneath concurrent readers? And how do the three routes behave on the
 \paragraph{Setup.} All experiments run on one AWS m7a.8xlarge (32 AMD EPYC 9R14 cores, one thread per core,
 128\,GiB of which 123\,GiB are usable, Amazon Linux 2023, gp3 EBS volume \todo{throughput: the reproduction README
 says about 250\,MB/s, the plan said 1000\,MB/s; check the volume}). \duckpgq runs on \duckdb v2.0.0-dev (commit
-45f4fdf3) with \texttt{experimental\_path\_finding\_operator} enabled and every other setting at its default, 32
+45f4fdf3), compiled with \duckdb's default flags for x86-64-v3, so with AVX2 and without AVX-512, with \texttt{experimental\_path\_finding\_operator} enabled and every other setting at its default, 32
 threads. The baselines are Kuzu 0.11.3 (embedded, 32 threads, read-only database), Neo4j 5.26.32 Enterprise (16\,GB
 heap, 16\,GB page cache, parallel runtime with the server's default worker count; the GDS library 2.13.14 with its
 unlicensed limit of four threads where marked), Memgraph 3.14.0 and FalkorDB 4.2.2 in Docker with their default
