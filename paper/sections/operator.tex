@@ -21,7 +21,7 @@ evaluation of Section~\ref{sec:eval} (LDBC SNB \texttt{Person\_knows\_Person}, o
 \subsection{From \texttt{MATCH} to an operator}
 \label{sec:planner}
 
-\duckpgq rewrites \texttt{MATCH} into SQL, and the path pattern becomes a scalar function call in that SQL. We call it
+\duckpgq rewrites \texttt{MATCH} into SQL, and the path pattern becomes a scalar function call in that SQL, which we refer to as
 the \emph{marker}. It takes the source and destination columns of the candidate pairs, the edges as a struct column of
 (source, destination) row ids, the vertex and edge counts, a constant key naming the graph, and the upper bound of the
 quantifier. The function the marker calls names the mode. The rewrite asks for \texttt{lengths} when the query projects
@@ -49,7 +49,7 @@ the pipeline above it. Its first child produces the candidate pairs. When the CS
 child produces the edges, the join of the edge table with its two vertex tables, as (source row id, destination row
 id) pairs. Each of \duckdb's threads pushes vectors from these pipelines into a local state of its own; the pairs
 are appended to a column collection, and the edges are partitioned as they arrive (Section~\ref{sec:csr}). When the
-last vector is in, the operator's finalize step runs once. It translates the pairs to vertex ids, groups them by
+last vector has arrived, the operator's finalize step runs once. It translates the pairs to vertex ids, groups them by
 source, picks the traversal and the orientation (Section~\ref{sec:choice}), and schedules the events that build the
 CSR and traverse it (Sections~\ref{sec:traversals} and~\ref{sec:phases}). Once those events are done,
 \duckdb starts the pipeline that reads the operator as its source, and that pipeline emits the results in parallel
@@ -59,22 +59,38 @@ rest of the query around it. The rest of this section follows a query through th
 \subsection{The partitioned CSR}
 \label{sec:csr}
 
-Both routes traverse the same layout, the \emph{partitioned CSR} of Figure~\ref{fig:partitioned-csr}. Vertices are
-numbered $0$ to $V-1$; on the build route the number is the vertex's row id, on the index route the id the index's
-dictionary gives its key. The vertex ids are cut into destination ranges of at most 65,535 ids, and a
-\emph{partition} holds every edge whose destination falls into one range. Inside a partition the edges are grouped by
-source into \emph{sparse rows}. Only a source with at least one edge into the range has a row, which holds the source
-id and the offset of its edges, and each edge stores its destination as a 16-bit offset into the range. A
-\emph{source index} over the rows is keyed by the high bits of the source id; a lookup of one source reads one entry
-of it and then scans about two rows. When paths are asked for, and always in an index, every edge
-position also carries the edge's row id. A partition can be built in the reverse direction too, holding the edges by
-their source range, grouped by destination; an index stores these reverse partitions when it is created with
-\texttt{WITH (reverse = true)}, and for an undirected graph the forward partitions serve both directions.
+Both routes, building the CSR on the fly and reading it from an index, traverse the same layout, the
+\emph{partitioned CSR} of Figure~\ref{fig:partitioned-csr}. It differs from the classic CSR of Section~\ref{sec:background}
+by splitting the edges by destination.
 
-The traversals rely on two properties of the layout. A traversal step that processes partition $p$ writes only to
-vertices of range $p$, and tasks that each own a partition therefore never write the same vertex; the multi-source
-traversal splits its work this way (Section~\ref{sec:traversals}). And the memory is proportional to the edges,
-because a destination takes 16 bits and no array has one entry per vertex.
+Vertices are numbered $0$ to $V-1$. When the CSR is built on the fly, a vertex's number is its row id in the vertex
+table; an index numbers the vertices through a dictionary that maps each vertex key to a dense id. The operator
+divides these ids into equal destination ranges, as many as are needed for a range to span at most 65,535 ids, and a
+\emph{partition} holds every edge whose destination lies in one range. Figure~\ref{fig:partitioned-csr}b shows one
+partition. Inside it the edges are sorted by source, and every source with at least one edge into the range has a
+\emph{sparse row}, which holds the source's id and the position of its first edge. In the figure the edges of
+source~3 are at positions 0 and~1, up to the position the next row starts at, those of source~7 at position~2 and
+those of source~12 at positions 3 to~5. Each edge stores its destination as a 16-bit offset from the start of the
+range, so the 5 of source~3's first edge is the vertex five ids past the start. A source without an edge into the
+range has no row.
+
+The operator finds a source's row without searching the rows. The \emph{source index} divides the source ids into
+blocks of $2^k$ consecutive ids and stores, for each block, the first row whose source falls into it; $k$ is chosen
+so that a block holds about two rows. In the figure $k = 3$, and a lookup of source~7 reads entry $7 \gg 3 = 0$, which
+points at the row of source~3, and moves on to the next row, that of source~7. When the query asks for paths, and
+always in an index, a second array next to the edges holds each edge's row id in the edge table, 8 bytes per edge
+(orange in the figure).
+
+A partition can also be built in the reverse direction, holding the edges by the range of their source, grouped by
+destination. An index stores these reverse partitions when it is created with \texttt{WITH (reverse = true)}. In an
+undirected graph every edge appears in both directions, and the forward partitions are also the reverse ones.
+
+This layout gives the traversals two properties. First, a traversal step that processes partition $p$ writes only to
+vertices of range $p$, so tasks that each own a partition never write the same vertex; the multi-source traversal
+splits its work this way (Section~\ref{sec:traversals}). Second, the memory grows with the edges and not with the
+vertices. A destination takes 16 bits, and where the classic CSR keeps an offset for every vertex, a partition keeps
+a sparse row only for the sources with an edge into its range, at most one per edge. \todo{The CSR's size in bytes per
+edge comes from the rerun's fixed-cost step.}
 
 \begin{figure}[t]
   \centering
@@ -89,22 +105,20 @@ because a destination takes 16 bits and no array has one entry per vertex.
 \end{figure}
 
 \paragraph{Building it on the fly.} Without an index the operator builds the partitioned CSR on the fly, in every
-query, as the CIDR design did. The edges arrive as (source, destination) row-id pairs from a join of the edge table
-with its two vertex tables. The sink packs each edge into 64 bits, the destination range in the high bits, and
-scatters it into its partition with \duckdb's radix partitioning, the same mechanism its hash join uses. There are at
-least eight ranges, so that a small graph still gives eight tasks; the range width is a setting, and
-Section~\ref{sec:eval-ablation} measures it. When the sink is done, tasks take the partitions largest first, sort each
-partition's edges by source, emit its sparse rows and build its source index. The build costs 22, 128 and 264\,ms for
-the 1.84, 18.7 and 55.7\,M edges of SF10, SF100 and SF300, which is the whole of a single-pair query (274 against
-10\,ms over the index at SF300) and two fifths of a query for 1024 random pairs (1.3 against 0.77\,s).
-\todo{The CSR's size in bytes per edge comes from the rerun's fixed-cost step.}
+query, as the CIDR design did. The edges arrive as (source, destination) row-id pairs from the join of the edge table
+with its two vertex tables. The sink packs each edge into 64 bits, with the destination range in the high bits, and
+scatters it into the partition of that range with \duckdb's radix partitioning, the mechanism its hash join uses. A
+small graph would fit into one range of 65,535 ids, so the operator uses at least eight ranges, which gives the next
+step at least eight tasks; the range width is a setting, which Section~\ref{sec:eval-ablation} benchmarks. When the
+sink has received all edges, tasks process the partitions, starting with the largest. Each task sorts a partition's
+edges by source, emits its sparse rows and builds its source index.
 
-Partitioning an adjacency by destination range, so that a traversal step writes only a cache-sized slice of the
+Splitting a graph's edges by destination range, so that a traversal step writes only a cache-sized slice of the
 vertices, is an established idea, known as CSR segmenting~\cite{zhang2017cagra} and propagation
-blocking~\cite{beamer2017blocking}; GraphChi's shards partition edges by destination interval for the same
-reason~\cite{kyrola2012graphchi}. Our layout differs in two respects. It is produced in one pass from a join stream inside a
-relational operator, with radix partitioning and no per-vertex array, and the same layout, plus the row ids, is the
-on-disk format of a transactional index (Section~\ref{sec:index}).
+blocking~\cite{beamer2017blocking}; GraphChi's shards split edges by destination interval for the same
+reason~\cite{kyrola2012graphchi}. Two things differ in our use of it. The operator produces the layout in one pass
+over the output of a join, with \duckdb's radix partitioning and without a per-vertex array. And the index stores the
+same layout, with the row ids, as its on-disk format (Section~\ref{sec:index}).
 
 \subsection{Two traversals}
 \label{sec:traversals}
