@@ -721,7 +721,7 @@ def concurrent_figure(filename):
     save(fig, filename)
 
 
-def throughput_figure(filename):
+def client_throughput_figure(filename):
     """Single-pair queries per second from 1 to 32 clients, index route against build-per-query route, one panel per
     scale factor (W35, 29 Oct): the index's natural workload is many short queries from many clients."""
     panels = []
@@ -1094,7 +1094,9 @@ if __name__ == "__main__":
     updates_figure("updates")
     graphalytics_figure("graphalytics")
     concurrent_figure("concurrent")
-    throughput_figure("throughput")
+    # W35 clients figure; a second def named throughput_figure used to overwrite throughput.pdf (the sweep's
+    # pairs-per-second view that the paper includes) until 2 Nov
+    client_throughput_figure("throughput_clients")
     sweep_table("random_pairs", "random_pairs",
                 r"Shortest-path lengths for $n$ random pairs per query, median of three runs, 32 threads, 600\,s timeout; "
                 r"rows marked conn.\ split the pairs over 32 client connections.", "tab:random-pairs", "system / pairs")
