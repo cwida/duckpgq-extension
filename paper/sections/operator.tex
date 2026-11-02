@@ -154,7 +154,10 @@ mode, records the vertex and the edge through which it arrived (Section~\ref{sec
 al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up to 512 lanes that share one
 \emph{working set} of three bit sets per vertex: \texttt{seen} for the vertices each lane has reached,
 \texttt{frontier} for the current frontier and \texttt{next} for the next one. Each bit set holds 512 bits, 64 bytes,
-per vertex, so a working set takes 192 bytes per vertex. A level has two phases. The explore phase relaxes
+per vertex, so a working set takes 192 bytes per vertex. \rev{A query with $k$ distinct sources therefore has
+$\lceil k/512 \rceil$ batches, 128 for 65\,536 random pairs. Each batch runs its own levels until all its lanes are
+inactive, independently of the other batches, so several batches can run at the same time, each with a working set
+of its own.} A level has two phases. The explore phase relaxes
 \texttt{frontier} into \texttt{next} with one 512-bit \texttt{or} per edge for all lanes at once. In our measurements
 the \texttt{or} is two 256-bit AVX2 instructions. The explore tasks are split by destination range; no two of them
 write the same vertex, and the \texttt{or} needs no atomic. The check phase \texttt{or}s \texttt{next} into \texttt{seen};
@@ -224,8 +227,11 @@ for the one before it, but no task blocks its thread waiting for another task, s
 fixed thread pool with other queries.} The scheduler may interleave the tasks of concurrent queries freely,
 and an error or an interrupt stops the operator at the next task boundary.
 
-\paragraph{Scheduling the batches.} \rev{A query with more batches than threads cannot run them all at once, and the
-operator decides how many batches are in progress. Each batch in progress holds a working set, and when it finishes,
+\paragraph{Scheduling the batches.} \rev{A query with many batches can run them one after another or all at once,
+and neither works well. One at a time leaves threads idle whenever a level waits for its last task, which made
+65\,536 random pairs ten times slower than the operator's default at SF10 (Section~\ref{sec:eval-ablation}). All at
+once needs one working set per batch, 11\,GB for the 128 batches of 65\,536 pairs at SF100, and spreads the memory
+traffic over all of them. The operator therefore decides how many batches are in progress. Each batch in progress holds a working set, and when it finishes,
 the next batch reuses that working set. If one working set per thread fits into a budget of 512\,MiB, as many batches
 as there are threads start at once. That holds at SF10, where a working set takes 14\,MB, and not at SF100, where it
 takes 86\,MB; the budget is a setting, chosen to separate these two cases on our machine. Otherwise the operator
