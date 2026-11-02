@@ -24,6 +24,8 @@
 #include <thread>
 #include <vector>
 
+#include <sys/resource.h>
+
 using namespace duckdb;
 
 struct Options {
@@ -400,6 +402,12 @@ int main(int argc, char **argv) {
 		}
 		fprintf(stderr, "events=%zu commits=%zu mismatches=%zu errors=%zu wall=%.1fs\n", events.size(),
 		        (size_t)commits_done.load(), (size_t)mismatches, (size_t)errors, Now());
+		// Peak resident set of the whole process (database, index epochs, every connection's build graphs), KiB on
+		// Linux; the harness parses this line into the peak_rss_mib column of both modes' result rows
+		struct rusage usage;
+		getrusage(RUSAGE_SELF, &usage);
+		printf("peak_rss_kib=%ld\n", usage.ru_maxrss);
+		fflush(stdout);
 		return (mismatches || errors) ? 1 : 0;
 	} catch (std::exception &ex) {
 		fprintf(stderr, "error: %s\n", ex.what());

@@ -3753,6 +3753,23 @@ def build_concurrent_driver():
     subprocess.run(cmd, cwd=REPO_ROOT, check=True)
 
 
+def parse_peak_rss_mib(stdout):
+    """The driver's last line is peak_rss_kib=<ru_maxrss>; MiB with one decimal, or "" when the line is missing"""
+    match = re.search(r"^peak_rss_kib=(\d+)", stdout, re.MULTILINE)
+    return f"{int(match.group(1)) / 1024:.1f}" if match else ""
+
+
+def p99(values):
+    """The 99th percentile by rank over a non-empty list (the same rule the throughput rows use)"""
+    ordered = sorted(values)
+    return ordered[int(0.99 * (len(ordered) - 1))]
+
+
+def format_ms(ms):
+    """Milliseconds with one decimal under 100 and none above"""
+    return f"{ms:.1f}" if ms < 100 else f"{ms:.0f}"
+
+
 def run_update_concurrent(args):
     ensure_update_log(args.scale_factor)
     pair_shape = generated_pair_shape(args.query_pattern, "random")
@@ -3799,6 +3816,7 @@ def run_update_concurrent(args):
         "benchmark_notes": args.notes,
         "repo_commit": subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True,
                                       capture_output=True).stdout.strip(),
+        "peak_rss_mib": parse_peak_rss_mib(result.stdout),
     }
     for row in rows:
         row.update(metadata)
@@ -3810,8 +3828,10 @@ def run_update_concurrent(args):
     for kind in ("query_index", "query_build", "commit"):
         values = [float(row["elapsed_s"]) for row in rows if row["kind"] == kind]
         if values:
-            print(f"   {kind}: n={len(values)} mean {statistics.mean(values):.4f}s max {max(values):.4f}s")
-    print(f"   mismatches={kinds.get('mismatch', 0)} errors={kinds.get('error', 0)}")
+            print(f"   {kind}: n={len(values)} median {statistics.median(values):.4f}s p99 {p99(values):.4f}s "
+                  f"max {max(values):.4f}s")
+    print(f"   mismatches={kinds.get('mismatch', 0)} errors={kinds.get('error', 0)} "
+          f"peak_rss_mib={metadata['peak_rss_mib'] or '?'}")
     print(f"Wrote {output}")
 
 
@@ -3837,7 +3857,7 @@ def throughput(args):
     path = results_dir / f"throughput_{sf_name(scale_factor)}_threads{args.threads}_{stamp}.csv"
     writer = ResultWriter(path, ["route", "clients", "queries", "duration_s", "queries_per_s", "median_ms", "p99_ms",
                                  "mean_ms", "errors", "scale_factor", "threads", "pairs", "benchmark_notes",
-                                 "repo_commit", "events_file"])
+                                 "repo_commit", "events_file", "peak_rss_mib"])
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
     events_dir = results_dir / f"throughput_events_{stamp}"
     events_dir.mkdir(exist_ok=True)
@@ -3864,16 +3884,21 @@ def throughput(args):
                        "p99_ms": f"{1000 * latencies[int(0.99 * (len(latencies) - 1))]:.3f}" if latencies else "",
                        "mean_ms": f"{1000 * statistics.mean(latencies):.3f}" if latencies else "",
                        "errors": errors, "scale_factor": scale_factor, "threads": args.threads, "pairs": args.pairs,
-                       "benchmark_notes": args.notes, "repo_commit": commit, "events_file": events.name}
+                       "benchmark_notes": args.notes, "repo_commit": commit, "events_file": events.name,
+                       "peak_rss_mib": parse_peak_rss_mib(result.stdout)}
             writer.add(summary)
             print(f"   {route:6s} clients={clients:<3} {summary['queries_per_s']:>9s} q/s  median {summary['median_ms']:>8s} ms"
-                  f"  p99 {summary['p99_ms']:>8s} ms  ({len(latencies)} queries, {errors} errors)")
+                  f"  p99 {summary['p99_ms']:>8s} ms  ({len(latencies)} queries, {errors} errors, "
+                  f"peak {summary['peak_rss_mib'] or '?'} MiB)")
     work_db.unlink()
     print(f"Wrote {path}")
 
 
 def throughput_table(args):
-    """Prints a throughput CSV as one table per route: clients x (queries per second, median latency)"""
+    """Prints throughput CSVs as one table: routes x clients, each cell the queries per second with the per-query
+    median and p99 latency next to it (decided 2 Nov: median and p99, never the mean), and a second row per route
+    with the driver process's peak resident set in GiB when the files carry the peak_rss_mib column. The last row
+    per (route, clients) over the files given wins, so pass them oldest first."""
     rows = read_result_files_plain(args.files)
     routes = []
     for r in rows:
@@ -3884,11 +3909,72 @@ def throughput_table(args):
     print("| route | " + " | ".join(f"{c} clients" for c in clients) + " |")
     print("|---|" + "---|" * len(clients))
     for route in routes:
-        cells = []
+        cells, peaks = [], []
         for c in clients:
             point = [r for r in rows if r["route"] == route and int(r["clients"]) == c]
-            cells.append(f"{float(point[-1]['queries_per_s']):.0f} q/s, {float(point[-1]['median_ms']):.1f} ms" if point and point[-1]["queries_per_s"] else "")
+            if point and point[-1]["queries_per_s"]:
+                cells.append(f"{float(point[-1]['queries_per_s']):.0f} q/s, median {format_ms(float(point[-1]['median_ms']))}"
+                             f" / p99 {format_ms(float(point[-1]['p99_ms']))} ms")
+                peaks.append(f"{float(point[-1]['peak_rss_mib']) / 1024:.1f} GiB" if point[-1].get("peak_rss_mib") else "")
+            else:
+                cells.append("")
+                peaks.append("")
         print(f"| {route} | " + " | ".join(cells) + " |")
+        if any(peaks):
+            print(f"| {route} peak RSS | " + " | ".join(peaks) + " |")
+
+
+def concurrent_run_key(path, rows):
+    """(scale_factor, route, readers, fold_ratio) of a concurrent CSV: from the metadata columns when the harness
+    appended them, else from the file name (a run the driver ended with an error keeps the driver's bare columns)"""
+    first = rows[0] if rows else {}
+    stem = Path(path).stem
+    readers = int(first["readers"]) if first.get("readers") else int(re.search(r"_readers(\d+)_", stem).group(1))
+    fold_ratio = float(first["fold_ratio"]) if first.get("fold_ratio") else float(re.search(r"_fold([\d.]+)_", stem).group(1))
+    scale_factor = first.get("scale_factor") or Path(path).resolve().parent.name.removeprefix("sf")
+    routes = sorted({r["kind"] for r in rows if r["kind"].startswith("query_")})
+    return scale_factor, routes, readers, fold_ratio
+
+
+def concurrent_table(args):
+    """Prints concurrent CSVs (one writer, R readers) as one table per scale factor: per route and reader count the
+    query median, p99 and max, the writer's commit median and p99, the number of queries, the folds the file saw
+    (max folds= in its stats strings) and the process's peak RSS. The fold ratio 0.1 rows are the main workload;
+    fold-step files (other ratios) are extra rows labelled with their ratio. The newest file (run time, last field of
+    the stem) per (route, readers, fold_ratio) wins; a file running both routes contributes one row per route."""
+    chosen = {}
+    for path in args.files:
+        rows = list(csv.DictReader(open(path)))
+        if not rows:
+            continue
+        scale_factor, routes, readers, fold_ratio = concurrent_run_key(path, rows)
+        stamp = int(Path(path).stem.rsplit("_", 1)[1])
+        for route in routes:
+            key = (scale_factor, route, readers, fold_ratio)
+            if key not in chosen or chosen[key][0] < stamp:
+                chosen[key] = (stamp, rows)
+    for scale_factor in sorted({k[0] for k in chosen}, key=lambda v: float(v)):
+        sample = next(rows for (sf, *_), (_, rows) in chosen.items() if sf == scale_factor)[0]
+        print(f"\n## readers under a writer, SF{scale_factor}: {sample.get('batch_size', '?')} operations per commit, "
+              f"{sample.get('writer_pause_ms', '?')} ms pause, {sample.get('threads', '?')} threads, query latency per route "
+              f"(median / p99 / max), the writer's commit latency and the folds of the run\n")
+        print("| route | readers | queries | median ms | p99 ms | max ms | commit median ms | commit p99 ms | folds | peak GiB |")
+        print("|---|---|---|---|---|---|---|---|---|---|")
+        order = sorted((k for k in chosen if k[0] == scale_factor), key=lambda k: (k[3] != 0.1, k[3], k[1], k[2]))
+        for key in order:
+            _, route, readers, fold_ratio = key
+            rows = chosen[key][1]
+            queries = [1000 * float(r["elapsed_s"]) for r in rows if r["kind"] == route]
+            commits = [1000 * float(r["elapsed_s"]) for r in rows if r["kind"] == "commit"]
+            folds = [int(m.group(1)) for r in rows for m in [re.search(r"folds=(\d+)", r["stats"])] if m]
+            peak = rows[0].get("peak_rss_mib")
+            label = route if fold_ratio == 0.1 else f"{route} (fold ratio {fold_ratio:g})"
+            cells = [label, str(readers), str(len(queries)),
+                     format_ms(statistics.median(queries)) if queries else "", format_ms(p99(queries)) if queries else "",
+                     format_ms(max(queries)) if queries else "",
+                     format_ms(statistics.median(commits)) if commits else "", format_ms(p99(commits)) if commits else "",
+                     str(max(folds) if folds else 0), f"{float(peak) / 1024:.1f}" if peak else ""]
+            print("| " + " | ".join(cells) + " |")
 
 
 def read_result_files_plain(files):
@@ -6368,6 +6454,10 @@ def main():
     throughput_table_parser = subcommands.add_parser("throughput-table", help="Print throughput CSVs as a table")
     throughput_table_parser.add_argument("files", nargs="+")
     throughput_table_parser.set_defaults(func=throughput_table)
+
+    concurrent_table_parser = subcommands.add_parser("concurrent-table", help="Print update-concurrent CSVs as a table")
+    concurrent_table_parser.add_argument("files", nargs="+")
+    concurrent_table_parser.set_defaults(func=concurrent_table)
 
     kuzu_parser = subcommands.add_parser("update-kuzu", help="The update workload on Kuzu (sequential)")
     kuzu_parser.add_argument("--scale-factor", required=True)

@@ -30,6 +30,10 @@ else
   for sf in ${SCALE_FACTORS}; do
     ls "${ARCHIVE_DIR}"/sf${sf}/throughput_*.csv >/dev/null 2>&1 && ${HARNESS} throughput-table "${ARCHIVE_DIR}"/sf${sf}/throughput_*.csv >> "${ARCHIVE_DIR}/throughput_table.txt"
   done
+  : > "${ARCHIVE_DIR}/concurrent_table.txt"
+  for sf in ${SCALE_FACTORS}; do
+    ls "${ARCHIVE_DIR}"/sf${sf}/concurrent_*.csv >/dev/null 2>&1 && ${HARNESS} concurrent-table "${ARCHIVE_DIR}"/sf${sf}/concurrent_*.csv >> "${ARCHIVE_DIR}/concurrent_table.txt"
+  done
   for dir in "${ARCHIVE_DIR}"/graphalytics_*/; do
     [ -d "$dir" ] || continue
     ls "${dir}"sweep_pairs_*.csv >/dev/null 2>&1 && ${HARNESS} sweep-pairs-table "${dir}"sweep_pairs_*.csv >> "${ARCHIVE_DIR}/sweep_pairs_table.txt"
