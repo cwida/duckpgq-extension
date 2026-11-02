@@ -20,31 +20,58 @@
 \node[fld, minimum width=1.6cm, fill=white] (f2) at (f1.north east) {source id};
 \node[fld, minimum width=1.25cm, fill=white] (f3) at (f2.north east) {local dst};
 \draw[->, semithick, black!70] (stream.east |- f1.west) -- (f1.west);
-% buckets
+% partitions
 \foreach \i/\t in {0/range 0,1/range 1,2/range 2,3/$\cdots$,4/range $p$} {
   \node[data, minimum width=0.95cm] (b\i) at (2.2+\i*1.15,-1.25) {\t};
 }
-\draw[->, semithick, opblue] (f1.south) -- node[lbl, right, pos=0.45] {high bits select the bucket (sink)} (f1.south |- b1.north);
+\draw[->, semithick, opblue] (f1.south) -- node[lbl, right, pos=0.45] {high bits select the partition (sink)} (f1.south |- b1.north);
 % tasks take the ranges largest first
-\node[opstep, text width=7.3cm] (task) at (0.3,-1.95) {per range, largest first: radix sort by source $\rightarrow$ emit sparse rows $\rightarrow$ attach bucket index};
+\node[opstep, text width=7.3cm] (task) at (0.3,-1.95) {per partition, largest first: radix sort by source $\rightarrow$ emit sparse rows $\rightarrow$ build source index};
 \foreach \i in {0,1,2,4} {\draw[->, opblue] (b\i.south) -- (b\i.south |- task.north);}
 
-% ------------------------------------------------------------------ (b) one partition
-\node[head] at (0,-2.75) {(b) one partition, destination range $p$};
+% ------------------------------------------------------------------ (b) the edges into range p
+\node[head] at (0,-2.75) {(b) the edges into destination range $p$, ids 20--29 of a graph with $V = 30$};
+\def\xd{1.75}
+\node[lbl, anchor=east] at (\xd-0.1,-3.25) {source};
+\foreach \v/\x in {3/0.15,7/1.35,12/2.55,18/3.6} {
+  \node[circle, draw=black!60, fill=black!6, inner sep=0pt, minimum size=3.6mm] (v\v) at (\xd+\x,-3.25) {\v};
+}
+\node[circle, draw=black!30, fill=white, text=black!40, inner sep=0pt, minimum size=3.6mm] (v4) at (\xd+0.75,-3.25) {4};
+\node[lbl, anchor=west, align=left, text=black!45] at (\xd+4.1,-3.25) {4: no edge into range $p$,\\ so no row in $p$};
+\node[lbl, anchor=east] at (\xd-0.1,-4.22) {destination};
+\foreach \j in {0,...,9} {
+  \pgfmathtruncatemacro{\id}{20+\j}
+  \node[cell, minimum width=4.2mm] (d\j) at (\xd+\j*0.5,-4.05) {\id};
+  \node[lbl] at (\xd+\j*0.5+0.21,-4.57) {\j};
+}
+\node[lbl, anchor=east] at (\xd-0.1,-4.57) {local dst};
+% right-angle edges: down from the source, along a rail of its own, down into the destination
+\foreach \v/\j/\r/\dx in {3/9/-3.50/0.05,3/5/-3.56/-0.05,7/1/-3.62/0,12/8/-3.68/0.06,12/4/-3.74/0,12/0/-3.80/-0.06,18/2/-3.86/0} {
+  \draw[->, black!65, rounded corners=1pt] ([xshift=\dx cm]v\v.south) -- ([xshift=\dx cm]v\v.south |- 0,\r) -| (d\j.north);
+}
+
+\begin{scope}[yshift=-2.27cm]
+% ------------------------------------------------------------------ (c) one partition
+\node[head] at (0,-2.75) {(c) the partition of range $p$};
 \def\xo{1.75}      % x of the first edge cell
 \def\cw{0.5}       % cell pitch
-% bucket index above the sources: source >> 3 selects the bucket
-\node[lbl, anchor=east] at (\xo-0.1,-3.3) {bucket index};
-\foreach \k/\x in {0/0.25,1/1.5,2/3.05} {\node[cell, minimum width=4.2mm] (k\k) at (\xo+\x,-3.12) {$b_\k$};}
-\node[lbl, anchor=west] at (\xo+3.65,-3.3) {$b_k$: first row with source $\gg 3 = k$};
+% source index above the sources: source >> 3 selects its entry
+\node[lbl, anchor=east] at (\xo-0.1,-3.3) {source index};
+\node[lbl, anchor=west, align=left] at (\xo+3.85,-3.3) {one entry per block of 8 source\\ ids: the block's first row};
 % sparse rows: sources spanning their edge groups
 \node[lbl, anchor=east] at (\xo-0.1,-3.95) {source};
 \foreach \i/\v/\o/\n in {0/3/0/2,1/7/2/1,2/12/3/3,3/18/6/1} {
   \node[cell, minimum width=\n*\cw cm-0.4mm, fill=black!6] (s\i) at (\xo+\o*\cw,-3.77) {\v};
 }
-\draw[->, black!60] (k0.south) -- (s0.north);
-\draw[->, black!60] (k1.south) -- (s2.north);
-\draw[->, black!60] (k2.south) -- (s3.north);
+% a bracket over the sparse rows of each block, its source-index entry centred above it
+\foreach \k/\a/\b/\t in {0/s0/s1/0--7,1/s2/s2/8--15,2/s3/s3/16--23} {
+  \coordinate (BL\k) at ([xshift=0.25mm, yshift=1.3mm]\a.north west);
+  \coordinate (BR\k) at ([xshift=-0.25mm, yshift=1.3mm]\b.north east);
+  \coordinate (BM\k) at ($(BL\k)!0.5!(BR\k)$);
+  \draw[black!55, line width=0.5pt] ([yshift=-0.9mm]BL\k) -- (BL\k) -- (BR\k) -- ([yshift=-0.9mm]BR\k);
+  \node[cell, minimum width=7mm, anchor=north] (k\k) at (BM\k |- 0,-3.12) {\t};
+  \draw[->, black!60] (k\k.south) -- (BM\k);
+}
 \node[lbl, anchor=east] at (\xo-0.1,-4.38) {offset};
 \foreach \o in {0,2,3,6,7} {\node[lbl] at (\xo+\o*\cw,-4.38) {\o};}
 % edges: 16-bit local destinations and row ids
@@ -54,4 +81,5 @@
 \foreach \j in {0,...,6} {\node[rid] at (\xo+\j*\cw,-5.02) {$r_{\j}$};}
 \node[lbl, anchor=west, align=left] at (\xo+3.65,-4.62) {only sources with an edge into\\ range $p$ have a row};
 \node[lbl, anchor=west, align=left] at (\xo+3.65,-5.13) {\textcolor{ixorange}{kept by the index, and by the}\\ \textcolor{ixorange}{build when paths are asked for}};
+\end{scope}
 \end{tikzpicture}

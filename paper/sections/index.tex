@@ -134,7 +134,7 @@ price of the design.
 \label{sec:index-paths}
 
 The epoch stores an edge-table row id per edge position and the log stores one per inserted edge, so a path
-reconstructed by the single-source traversal (Section~\ref{sec:paths}) carries the row ids of its edges, including
+reconstructed by the single-source traversal (Section~\ref{sec:results}) carries the row ids of its edges, including
 edges inserted by the transaction itself, and vertex keys for its vertices. \texttt{edges(p)} can therefore be
 joined back to the edge table for its properties, and \texttt{vertices(p)} to the vertex table by key, without the
 index knowing either table's schema.

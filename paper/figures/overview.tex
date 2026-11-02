@@ -57,16 +57,16 @@
       \node[draw=black!60, fill=black!4, minimum width=4.6mm, minimum height=3.4mm, anchor=north west] (p\i) at ($(title.south west)+(\i*4.9mm,-0.8mm)$) {\t};
     }
     \node[anchor=north west, align=left, text=black!70] at ($(p4.north east)+(1.2mm,0)$)
-      {sparse rows: source id, offsets, bucket index\\ edges: 16-bit destination (+ row id for paths)};
+      {sparse rows: source id, offsets, source index\\ edges: 16-bit destination (+ row id for paths)};
   \end{tikzpicture}};
 \draw[opflow] (build.south) -- node[lbl, right] {per query} (build.south |- csr.north);
 \draw[ixflow] (index.south) -- node[lbl, right] {snapshot} (index.south |- csr.north);
 
 % ---------------------------------------------------------------- row 5: traversals, phases, result
 \node[op, text width=3.75cm] (ms) at (0,-5.55)
-  {\textbf{multi-source traversal} (\S\ref{sec:traversals})\\ 512 pairs per wave in bit lanes\\ one sweep over all partitions per level};
+  {\textbf{multi-source traversal} (\S\ref{sec:traversals})\\ 512 sources per batch in bit lanes\\ one sweep over all partitions per level};
 \node[op, text width=3.6cm] (ss) at (4.25,-5.55)
-  {\textbf{single-source traversal} (\S\ref{sec:traversals})\\ frontier list, bucket lookups, parents\\ stops at depth bound or last destination};
+  {\textbf{single-source traversal} (\S\ref{sec:traversals})\\ frontier list, source-index lookups, parents\\ stops at depth bound or last destination};
 \draw[opflow] (csr.south -| ms.north) -- (ms.north);
 \draw[opflow] (csr.south -| ss.north) -- (ss.north);
 \node[op, text width=\W cm-4pt] (phases) at (0,-6.5)

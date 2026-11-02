@@ -75,6 +75,29 @@ numbers; then "In the future, we will" with real items.
 | microbenchmark | ablation | the author's term; say what was switched off or varied |
 | vertex key, edge row id | rowid, id | keys identify vertices, row ids identify edges |
 
+## Vocabulary of Section 3 (decided 29 Oct)
+
+One name per thing, used the same way in the text, the figures and the captions.
+
+| term | meaning | not |
+|---|---|---|
+| partition | the edges into one destination range, also while the build collects them | bucket, range (for the edges) |
+| destination range | the vertex ids a partition covers, at most 65,535 | |
+| sparse row | one source with an edge into the partition: its id and the offset of its edges | |
+| source index | the index over a partition's sparse rows by the high bits of the source id | bucket index |
+| search | one breadth-first search from one distinct source (pairs with the same source share it); it ends at its last destination, at the depth bound or when nothing is left | group, per-source search, frontier search |
+| single-source traversal | searches run one per source, each with its own frontier | frontier traversal, per-source kernel |
+| multi-source traversal | searches run as lanes of batches | MS-BFS kernel |
+| lane | one search inside a batch: one source with its destination list | |
+| batch | up to 512 lanes traversed together over one working set (renamed from wave, 2 Nov) | wave |
+| working set | a batch's three bit sets per vertex plus the summary bitmap | |
+| worker group | the threads that run one batch at a time | group |
+| level | one breadth-first step; in the multi-source traversal an explore phase and a check phase | iteration |
+| distance | the level at which a search first reached a vertex | level stamp |
+| sparse level, dense level | a level that visits only the frontier, or one that sweeps every sparse row of every partition | (the 1/64 and 1/16 thresholds are details of each) |
+| lengths, paths, reach | the three output modes | |
+| build route, index route | the CSR built on the fly in every query, or read from a persistent CSR index | inside the query |
+
 ## Out of scope for the text
 
 Bugs we fixed along the way (the barrier deadlock under concurrent queries, the NULL-pair fallback, the stale
