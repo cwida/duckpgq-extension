@@ -154,10 +154,10 @@ mode, records the vertex and the edge through which it arrived (Section~\ref{sec
 al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up to 512 lanes that share one
 \emph{working set} of three bit sets per vertex: \texttt{seen} for the vertices each lane has reached,
 \texttt{frontier} for the current frontier and \texttt{next} for the next one. Each bit set holds 512 bits, 64 bytes,
-per vertex, so a working set takes 192 bytes per vertex. \rev{A query with $k$ distinct sources therefore has
+per vertex, so a working set takes 192 bytes per vertex. A query with $k$ distinct sources therefore has
 $\lceil k/512 \rceil$ batches, 128 for 65\,536 random pairs. Each batch runs its own levels until all its lanes are
 inactive, independently of the other batches, so several batches can run at the same time, each with a working set
-of its own.} A level has two phases. The explore phase relaxes
+of its own. A level has two phases. The explore phase relaxes
 \texttt{frontier} into \texttt{next} with one 512-bit \texttt{or} per edge for all lanes at once. In our measurements
 the \texttt{or} is two 256-bit AVX2 instructions. The explore tasks are split by destination range; no two of them
 write the same vertex, and the \texttt{or} needs no atomic. The check phase \texttt{or}s \texttt{next} into \texttt{seen};
@@ -211,23 +211,24 @@ Section~\ref{sec:cost} discusses what a cost model needs in order to replace it.
 \subsection{Parallel execution as a chain of events}
 \label{sec:phases}
 
-\rev{The operator runs its work on \duckdb's scheduler, with \duckdb's own primitives. A \duckdb \emph{task} is a unit
+The operator runs its work on \duckdb's scheduler, with \duckdb's own primitives. A \duckdb \emph{task} is a unit
 of work that one thread of the fixed pool runs to completion, and an \emph{event} is a set of tasks with dependencies
 on other events. When the last task of an event finishes, the event's completion callback runs once, on one thread,
 and can insert further events; \duckdb's own operators run multi-phase work this way. The operator runs the build
 and both traversals as a chain of such events, one per phase. At the end of a level the callback of its last phase
 records which searches reached their destinations, decides whether another level is needed, and inserts the event of
-the next phase.}
+the next phase.
 
-\rev{The build is the sink, which partitions the edges as they stream in, followed by one event whose tasks sort and
+The build is the sink, which partitions the edges as they stream in, followed by one event whose tasks sort and
 emit the partitions and whose callback publishes them. A level of the multi-source traversal is two events, the
 explore and the check phase, and a level of the single-source traversal is one; a search that runs on a single thread
-runs all its levels in one task, because an event per level would cost more than the level.} \rev{Each phase still waits
+runs all its levels in one task, \rev{because the overhead of scheduling an event per level would exceed the work
+of the level}. Each phase still waits
 for the one before it, but no task blocks its thread waiting for another task, so the operator shares \duckdb's
-fixed thread pool with other queries.} The scheduler may interleave the tasks of concurrent queries freely,
+fixed thread pool with other queries. The scheduler may interleave the tasks of concurrent queries freely,
 and an error or an interrupt stops the operator at the next task boundary.
 
-\paragraph{Scheduling the batches.} \rev{A query with many batches can run them one after another or all at once,
+\paragraph{Scheduling the batches.} A query with many batches can run them one after another or all at once,
 and neither works well. One at a time leaves threads idle whenever a level waits for its last task, which made
 65\,536 random pairs ten times slower than the operator's default at SF10 (Section~\ref{sec:eval-ablation}). All at
 once needs one working set per batch, 11\,GB for the 128 batches of 65\,536 pairs at SF100, and spreads the memory
@@ -238,18 +239,19 @@ takes 86\,MB; the budget is a setting, chosen to separate these two cases on our
 starts 16 batches and adjusts their number by measurement. A shared counter adds up the edges the level tasks sweep;
 after each change, once every batch then in progress has finished, the operator compares the edges swept per second
 with the rate before the change. It doubles the number of batches while the rate rises by more than a tenth and steps
-back once when it falls by more than a tenth.}
+back once when it falls by more than a tenth.
 
-\rev{The working-set size also decides how a batch splits its phases into tasks. A batch whose working set is at most
+\rev{The size of the working set} also decides how a batch splits its phases into tasks. A batch whose working set is at most
 a sixteenth of the budget divides each phase into as many tasks as its share of the threads, so that the batches in
 progress run side by side. A larger batch divides each phase into one task per thread. While such a batch waits for
 the last task of its level, \duckdb's scheduler runs the tasks of the other batches on the idle threads; for small
 working sets the extra tasks would cost more than they save. A working set is zeroed in parallel, and only when the
-next batch attaches it.}
+next batch attaches it.
 
-\paragraph{What stays serial.} \rev{Two steps run on one thread: the completion callbacks, by construction, and the
+\paragraph{What stays serial.} Two steps run on one thread: \rev{the completion callbacks of the events, the serial step at the end of every
+phase,} by construction, and the
 grouping of the pairs by source in the finalize step, which takes 6\,ms for 65\,536 random pairs at SF10 and about
-30\,ms for BI19's 2.4\,M pairs at SF300.}
+30\,ms for BI19's 2.4\,M pairs at SF300.
 
 \subsection{Results}
 \label{sec:results}
