@@ -111,42 +111,51 @@ on-disk format of a transactional index (Section~\ref{sec:index}).
 \subsection{Two traversals}
 \label{sec:traversals}
 
-A \emph{search} is one breadth-first search from one source. It ends when it has reached every destination its pairs
-ask for, at the depth bound, or when no new vertex is left to visit. The operator runs searches in one of two ways, each search
-with a frontier of its own, or many searches as the lanes of one sweep. The two traversals proceed level by level and
-decide per level between a \emph{sparse level}, which visits only the vertices on the frontier, and a \emph{dense
-level}, which sweeps every sparse row of every partition.
+A \emph{search} is one breadth-first search from one source. Before any search runs, the operator deduplicates the
+sources: all pairs with the same source become one search, which carries the list of their destinations. A query
+therefore has as many searches as it has distinct sources, and a search ends when it has reached every destination
+on its list, at the depth bound, or when no new vertex is left to visit. The operator runs the searches in one of two
+ways, each with a frontier of its own, or many of them as the lanes of one sweep. Both traversals proceed level by
+level and decide per level between a \emph{sparse level}, which visits only the vertices on the frontier, and a
+\emph{dense level}, which sweeps every sparse row of every partition.
 
 \paragraph{Single-source traversal.} Each search has its own frontier, a vector of vertex ids, in the shape
-Ligra~\cite{shun2013ligra} made standard. On a sparse level, used while the frontier is smaller than a sixty-fourth of
-the vertices, each frontier vertex is looked up in every partition through the source index, and its edges are
-relaxed with a compare-and-swap on a seen byte per vertex, so a level costs the frontier plus its edges. On a dense
-level the search sweeps the partitions and marks the frontier with a level stamp per vertex. A search knows the
-destinations of its pairs and stops when it has reached the last one. In the paths mode it also records, per vertex,
-the vertex and the edge through which it was first reached (Section~\ref{sec:results}). A search therefore holds a
-distance, a seen byte and a level stamp per vertex, and a parent in the paths mode.
+Ligra~\cite{shun2013ligra} made standard, and records for every vertex the level at which it was first reached,
+which is the vertex's distance. A sparse level, used while the frontier is smaller than a sixty-fourth of the
+vertices, splits the frontier among the workers; each worker looks its vertices up in every partition through the
+source index, so a level costs the frontier plus its edges. A dense level splits the partitions among the workers,
+and a partition's rows as well when there are more workers than partitions; each worker expands the rows whose
+source was reached on the previous level. In both cases two workers can reach the same vertex, so a vertex is
+claimed with a compare-and-swap on a seen flag. The worker that wins records the vertex's distance, adds it to the
+next frontier and, in the paths mode, records the vertex and the edge through which it arrived
+(Section~\ref{sec:results}). A search stops when it has reached the last destination on its list. It holds 13 bytes
+per vertex while it runs, 25 in the paths mode.
 
 \paragraph{Multi-source traversal.} Many searches run as the lanes of one sweep, the multi-source BFS of Then et
-al.~\cite{then2014msbfs}. A \emph{lane} is one search, a source with the list of destinations its pairs ask for, and
-a \emph{wave} is up to 512 lanes that share one \emph{working set}: three bit sets per vertex, the vertices each lane
-has seen, the current frontier and the next one, 192 bytes per vertex at 512 lanes or 86\,MB at SF100. A level has two
-phases. The explore phase relaxes the frontier into the next bit sets, one 512-bit \texttt{or} per edge for all lanes
-at once. The check phase folds the next bit sets into the seen bits; each lane then records the level of the
-destinations it has newly reached and drops them from its list, and a lane whose list is empty is masked out of the
-frontier and stops spreading. A summary bitmap marks the vertices with a live lane, and a level with fewer such
-vertices than a sixteenth of all vertices is sparse and visits only them, through the source index. A dense level
-costs the same whether one lane or five hundred are alive, which is why a wave pays off only when many lanes are.
+al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up to 512 lanes that share one
+\emph{working set}: three bit sets per vertex, the vertices each lane has seen, the current frontier and the next
+one, 192 bytes per vertex at 512 lanes or 86\,MB at SF100. A level has two phases. The explore phase relaxes the
+frontier into the next bit sets with one 512-bit \texttt{or} per edge for all lanes at once. The compiler emits
+vector instructions for it, four 128-bit ones in the portable x86-64 build we measure; a build for the m7a's Zen~4
+cores could use a single AVX-512 instruction. The explore tasks are split by destination range, so no two of them
+write the same vertex and the \texttt{or} needs no atomic. The check phase folds the next bit sets into the seen
+bits; each lane then records the level of the destinations it has newly reached and drops them from its list, and a
+lane whose list is empty is masked out of the frontier and stops spreading. A summary bitmap marks the vertices with
+a live lane, and a level with fewer such vertices than a sixteenth of all vertices is sparse and visits only them,
+through the source index. A dense level costs the same whether one lane or five hundred are alive, which is why a
+batch pays off only when many lanes are.
 
-The number of waves follows the distinct sources, because each lane is one source. LDBC BI19 at SF300 asks
-for 2.4\,M pairs from 1.4\,K sources, which is three waves; with a lane per pair, the formulation of the CIDR design,
-it would be 4.6\,K. A pair whose source is unique is a lane with one destination. The random pairs of
-Section~\ref{sec:eval}, almost all from different sources, therefore cost the same per level as with a lane per pair.
+Deduplicating the sources is what makes the lanes efficient. LDBC BI19 at SF300 pairs every person of one city,
+1.4\,K of them, with every person of another, and asks for 2.4\,M lengths. That is 1.4\,K searches in three batches;
+one search per pair, as in the CIDR design, would have needed 4.6\,K batches. A pair whose source is unique is a
+search with one destination, so for the random pairs of Section~\ref{sec:eval}, almost all from different sources,
+the deduplication changes nothing.
 
 \subsection{Choosing a traversal and an orientation}
 \label{sec:choice}
 
 The finalize step groups the pairs by source and counts the groups. Up to 16 distinct sources run on the
-single-source traversal, side by side, with the threads divided among them; more sources run as waves of the
+single-source traversal, side by side, with the threads divided among them; more sources run as batches of the
 multi-source traversal. Paths and reach always use the single-source traversal, because a path needs a parent per
 vertex and reach returns a distance per vertex, and a lane keeps neither. A query that asks for the paths of many
 sources therefore holds one set of per-vertex arrays per source at once, which is the memory cost the lanes avoid
@@ -175,10 +184,10 @@ off when many sources share one destination, the shape of LDBC BI20, which then 
   \bottomrule\end{tabular}
 \end{table}
 
-Table~\ref{tab:traversal-choice} shows the two thresholds at work. One pair is cheapest as one search, because a wave
+Table~\ref{tab:traversal-choice} shows the two thresholds at work. One pair is cheapest as one search, because a batch
 pays for its working set and its dense levels whatever its number of lanes. At 20 sources with 200 destinations each
-the single-source traversal is still slightly faster at SF10, while the operator already runs waves; a fixed threshold
-cannot place that crossover for every graph. With many sources the waves are far ahead. On BI19 at SF300 they are 30
+the single-source traversal is still slightly faster at SF10, while the operator already runs batches; a fixed threshold
+cannot place that crossover for every graph. With many sources the batches are far ahead. On BI19 at SF300 they are 30
 times faster and need a ninth of the memory, because the lanes share the sweeps and keep no per-vertex arrays. Both rules are thresholds, and Section~\ref{sec:cost} discusses what
 a cost model needs in order to replace them.
 
@@ -197,14 +206,14 @@ ever blocks its thread waiting for another task. \duckdb's own operators have th
 \duckdb's fixed thread pool with other queries. The scheduler may interleave the tasks of concurrent
 queries freely, and an error or an interrupt stops the operator at the next task boundary.
 
-\paragraph{Scheduling the waves.} The waves of a query run on \emph{worker groups}, at most one per thread; each
-worker group runs one wave at a time and reuses its working set for the next. How many worker groups run at once is
+\paragraph{Scheduling the batches.} The batches of a query run on \emph{worker groups}, at most one per thread; each
+worker group runs one batch at a time and reuses its working set for the next. How many worker groups run at once is
 decided by a memory budget of 512\,MiB. When the working sets of as many worker groups as threads fit the budget, they
 all start at once and the bit sets stay in cache. Otherwise the scheduler starts 16 worker groups, doubles their number
 while the throughput, in edges swept per second, rises by more than a tenth, and steps back when it falls by more than
 a tenth. A worker group whose working set is at most a sixteenth of the budget has threads of its own; larger ones
 pool their tasks, so a worker group that waits at the end of its level leaves no thread idle. A working set is zeroed
-in parallel, and only when the next wave attaches it; a query with one small wave clears it once.
+in parallel, and only when the next batch attaches it; a query with one small batch clears it once.
 
 \paragraph{What stays serial.} The completion callbacks are serial by construction, and so is the grouping of the
 pairs by source in the finalize step, which takes 6\,ms for 65\,536 random pairs at SF10 and about 30\,ms for BI19's

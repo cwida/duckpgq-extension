@@ -83,7 +83,7 @@ on SF10 the index route takes 75\,ms, Neo4j 671\,ms, Kuzu 5.1\,s, FalkorDB 5.8\,
 pairs on SF100 the index answers in 3.5\,s, Neo4j in 155\,s and Kuzu over 32 connections in 169\,s
 (Figure~\ref{fig:teaser}); on SF300 the index answers in 10.1\,s and the build route in 12.9\,s, and every baseline
 exceeds the 600\,s budget. Figure~\ref{fig:throughput} shows the same data as pairs answered per second. The
-operator's throughput rises with the batch, to 150\,000 pairs per second at 65\,536 pairs on SF10; the per-pair
+operator's throughput rises with the number of pairs, to 150\,000 pairs per second at 65\,536 pairs on SF10; the per-pair
 systems stay nearly flat.
 
 \begin{figure*}[t]
@@ -92,7 +92,7 @@ systems stay nearly flat.
   \caption{The same runs as Figures~\ref{fig:random-pairs} and~\ref{fig:sources-all} as throughput. Top: random
   pairs answered per second against $n$ pairs per query; bottom: (source, person) distances produced per second
   against $k$ sources per query. Log y, 32 threads, SF10, SF100 and SF300 from left to right; a hollow triangle is an
-  upper bound for a run over 600\,s. \duckpgq's throughput rises with the batch, because one traversal serves 512 pairs; a system that searches
+  upper bound for a run over 600\,s. \duckpgq's throughput rises with the number of pairs, because one traversal serves up to 512 sources; a system that searches
   once per pair has nearly the same throughput at every $n$.}
   \label{fig:throughput}
 \end{figure*}
