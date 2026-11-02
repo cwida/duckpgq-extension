@@ -131,13 +131,13 @@ sources. All pairs with the same source become one search, which carries the lis
 therefore has as many searches as it has distinct sources, and a search ends when it has reached every destination
 on its list, at the depth bound, or when no new vertex is left to visit.
 
-\rev{The operator runs the searches in one of two ways. In the single-source traversal every search runs on its own, with a
+The operator runs the searches in one of two ways. In the single-source traversal every search runs on its own, with a
 frontier and per-vertex arrays of its own. In the multi-source traversal up to 512 searches run together, each in one
-bit lane of a multi-source BFS. Both traversals proceed level by level and decide anew at every level between a
+bit lane of a multi-source BFS. Both traversals proceed level by level and decide \rev{at every level} between a
 \emph{sparse level}, which visits only the vertices on the frontier, and a \emph{dense level}, which sweeps every
-sparse row of every partition; a search can return to sparse levels when its frontier shrinks again.}
+sparse row of every partition; a search can return to sparse levels when its frontier shrinks again.
 
-\paragraph{Single-source traversal.} \rev{Each search has its own frontier, a list of vertex ids, as in
+\paragraph{Single-source traversal.} Each search has its own frontier, a list of vertex ids, as in
 Ligra~\cite{shun2013ligra}, and three arrays with one entry per vertex: the level at which the vertex was first
 reached, which is its distance (8 bytes), a seen flag (1 byte) and a mark for the vertices on the current frontier
 (4 bytes), 13 bytes per vertex. In the \texttt{paths} mode it also keeps, per vertex, the vertex (4 bytes) and the edge
@@ -148,69 +148,62 @@ gives each worker whole partitions to sweep, and when there are more workers tha
 rows into ranges, so that every worker has work; a worker expands the rows whose source is on the frontier. In both
 kinds of level two workers can reach the same vertex, and a vertex is claimed with a compare-and-swap on its seen
 flag. The worker that wins records the vertex's distance, adds it to the next frontier and, in the \texttt{paths}
-mode, records the vertex and the edge through which it arrived (Section~\ref{sec:results}).}
+mode, records the vertex and the edge through which it arrived (Section~\ref{sec:results}).
 
-\paragraph{Multi-source traversal.} \rev{Many searches run as the lanes of one sweep, the multi-source BFS of Then et
+\paragraph{Multi-source traversal.} Many searches run as the lanes of one sweep, the multi-source BFS of Then et
 al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up to 512 lanes that share one
 \emph{working set} of three bit sets per vertex: \texttt{seen} for the vertices each lane has reached,
 \texttt{frontier} for the current frontier and \texttt{next} for the next one. Each bit set holds 512 bits, 64 bytes,
 per vertex, so a working set takes 192 bytes per vertex. A level has two phases. The explore phase relaxes
 \texttt{frontier} into \texttt{next} with one 512-bit \texttt{or} per edge for all lanes at once. In our measurements
 the \texttt{or} is two 256-bit AVX2 instructions. The explore tasks are split by destination range; no two of them
-write the same vertex, and the \texttt{or} needs no atomic. The check phase folds \texttt{next} into \texttt{seen};
+write the same vertex, and the \texttt{or} needs no atomic. The check phase \rev{\texttt{or}s} \texttt{next} into \texttt{seen};
 each lane then records the level of the destinations it has newly reached and drops them from its list, and a lane
 whose list is empty is masked out of \texttt{next} and becomes inactive. A summary bitmap marks the vertices with an
 active lane. A level is sparse when fewer than a sixteenth of all vertices are marked, and visits only those, through
 the source index. A dense level costs the same whether one lane or five hundred are active. Both divisors, the
-sixty-fourth and the sixteenth, are settings of the operator.}
+sixty-fourth and the sixteenth, are settings of the operator.
 
-\rev{The deduplication decides how many batches a query needs. LDBC BI19 at SF300 pairs every person of one city,
+The deduplication decides how many batches a query needs. LDBC BI19 at SF300 pairs every person of one city,
 1.4\,K of them, with every person of another, and asks for 2.4\,M lengths. After deduplication that is 1.4\,K searches
 in three 512-lane batches; without it, one search per pair, as in the CIDR design, would need 4.6\,K batches.
 Deduplication helps only when sources repeat. In the random pairs of Section~\ref{sec:eval} almost every source
 appears in a single pair, so its search has one destination, and the number of batches is the same as without
-deduplication.}
+deduplication.
 
 \subsection{Choosing a traversal and an orientation}
 \label{sec:choice}
 
-The finalize step groups the pairs by source and counts the groups. Up to 16 distinct sources run on the
-single-source traversal, side by side, with the threads divided among them; more sources run as batches of the
-multi-source traversal. The \texttt{paths} and \texttt{reach} modes always use the single-source traversal, because a path needs a parent per
-vertex and reach returns a distance per vertex, and a lane keeps neither. A query that asks for the paths of many
-sources therefore needs per-vertex arrays for each of its searches, the memory the lanes avoid
-(Table~\ref{tab:traversal-choice}). \todo{rc8 runs the per-source searches in rounds within a memory budget and frees
-a search's arrays when it ends (BI19 paths at SF300: 5.6\,GiB); describe from the code once it is merged.}
+\rev{The operator's finalize step, which \duckdb calls once the sink has received all pairs and before any search
+starts (Section~\ref{sec:planner}),} groups the pairs by source and counts the groups. Up to 16 distinct sources run
+on the single-source traversal, side by side, with the threads divided among them; more sources run as batches of the
+multi-source traversal. \rev{The \texttt{paths} mode always uses the single-source traversal, because a path needs a
+parent per vertex and a lane keeps none. The \texttt{reach} mode uses it too, although the lanes could serve it: the
+check phase knows, for every lane, the vertices it reached at the current level and could emit their distances. We
+have not built this. The per-source searches run in rounds, as many at once as their per-vertex arrays fit into the
+512\,MiB budget of Section~\ref{sec:phases}, and a search hands its results over and frees its arrays when it ends.
+BI19 returning paths at SF300 then peaks at 5.6\,GiB.} \todo{Single run on the rc8 build; confirm from the rerun.}
 
-The orientation is decided before the grouping, from HyperLogLog estimates of the distinct sources and destinations
-(64 registers, about 13\% error, enough for a threshold). When there are at least four times as many distinct sources
-as destinations and reverse partitions are available, the searches start from the destinations and run over the
-reverse partitions; the build route has reverse partitions only for an undirected graph, and paths and reach always
-search forward. The reverse orientation pays
-off when many sources share one destination, the shape of LDBC BI20, which then runs as a single search.
+\rev{The orientation is decided before the grouping, from HyperLogLog estimates of the distinct sources and
+destinations.} When there are at least four times as many distinct sources as destinations and reverse partitions
+are available, the searches start from the destinations and run over the reverse partitions; the build route has
+reverse partitions only for an undirected graph, and the \rev{\texttt{paths} and \texttt{reach} modes} always search
+forward. \rev{The reverse orientation pays off when many sources share one destination. LDBC BI20 asks for the
+distance from every employee of one company to one person; in the reverse orientation it runs as a single search from
+that person, where the forward orientation would run one lane per employee.}
 \todo{Decide after the rerun whether the reverse side of the index stays.}
 
-\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
-  \caption{The same queries on the three ways of running searches, over the index, one run each. A dash marks a
-  combination the operator does not run. \todo{Single runs on rc5 to rc7 builds; the rerun's Section 3
-  microbenchmarks replace them.}}
-  \label{tab:traversal-choice}
-  \begin{tabular}{lrrr}\toprule
-  query & one search per source & lanes per source & lanes per pair \\ \midrule
-  1 pair, SF10 & \textbf{4\,ms} & -- & 13\,ms \\
-  20 sources $\times$ 200 destinations, SF10 & \textbf{13\,ms} & 16\,ms & 62\,ms \\
-  2048 random pairs, SF10 & -- & \textbf{57\,ms} & 115\,ms \\
-  BI19, 2.4\,M pairs from 1.4\,K sources, SF300 & 30.6\,s & \textbf{1.0\,s} & -- \\
-  \quad peak memory & 43.8\,GiB & \textbf{4.7\,GiB} & -- \\
-  \bottomrule\end{tabular}
-\end{table}
-
-Table~\ref{tab:traversal-choice} compares the three ways of running searches on four queries. One pair is cheapest as one search, because a batch
-pays for its working set and its dense levels whatever its number of lanes. At 20 sources with 200 destinations each
-the single-source traversal is still slightly faster at SF10, while the operator already runs batches; a fixed threshold
-cannot place that crossover for every graph. With many sources the batches are far ahead. On BI19 at SF300 they are 30
-times faster and need a ninth of the memory, because the lanes of a batch share the work of every level and keep no per-vertex arrays. Both rules are thresholds, and Section~\ref{sec:cost} discusses what
-a cost model needs in order to replace them.
+\rev{The number of distinct sources decides which way of running searches is fastest.} \todo{Figure from the rerun's
+Section 3 microbenchmark, replacing the former table: time against the number of distinct sources $k$ (1 to 4096), with
+200 destinations per source and with one, at SF10, SF100 and SF300 over the index, for the single-source traversal,
+the multi-source traversal with deduplicated sources, and the multi-source traversal with one search per pair; peak
+memory as a second panel. Write the paragraph from it: where the single-source traversal stops winning, how the
+deduplicated batches grow with $k$ and the per-pair batches with the number of pairs, and whether the crossover moves
+with the scale factor.} \rev{Few sources are cheapest as single-source searches, because a batch pays for its working
+set and its dense levels whatever its number of lanes. With many sources the batches win, because their lanes share
+the work of every level and keep no per-vertex arrays; on BI19 at SF300 the deduplicated batches are 30 times faster
+than single-source searches and need a ninth of the memory. The threshold of 16 sits near the crossover on LDBC, and
+Section~\ref{sec:cost} discusses what a cost model needs in order to replace it.}
 
 \subsection{Parallel execution as a chain of events}
 \label{sec:phases}
