@@ -64,17 +64,21 @@ depends on the edge count, with the snapshot, which depends on the pending entri
 time, the edge count from the table statistics and the log length from the index.
 
 \paragraph{Lanes or frontier.} The operator chooses after its sink has seen every pair, from the pair count and
-HyperLogLog estimates of the distinct sources and destinations. With at most 16 distinct sources, or with at least
-four pairs per source, it runs the single-source traversal, and otherwise the multi-source traversal; paths and
-reach always use the single-source traversal. The two costs scale differently. A single-source search costs the
-part of the graph it reaches before its last destination is found, once per source. A multi-source wave of 512 lanes
-costs a dense sweep over the partitions per level, shared by its lanes, plus sparse levels that touch only the live
-vertices. The multi-source traversal therefore wins when many sources each reach a large part of the graph, which is
-the random-pairs sweep, and loses for a handful of sources. What the threshold cannot see is how far each search
-runs. An unreachable pair searches the whole component of its source, a reachable one stops early, and about two
-thirds of the random pairs are unreachable in the directed graph. A cost model needs an estimate of that reach, for
-example from the degree of the sources and the number of levels a search takes on the graph, which the index could
-record at a fold.
+HyperLogLog estimates of the distinct sources and destinations. Up to 16 distinct sources run on the single-source
+traversal. More sources with at least four pairs each run as lanes per source, and the rest as lanes per pair; paths
+and reach always use the single-source traversal. The three costs scale differently. A single-source search costs
+the part of the graph it reaches before its last destination is found, once per source, and holds three arrays per
+vertex while it runs. A wave of 512 lanes costs a dense sweep over the partitions per level, shared by its lanes,
+plus sparse levels that touch only the live vertices, and one working set of 192 bytes per vertex. Lanes per source
+divide the waves by the pairs per source, which is why BI19, with about 1.7\,K destinations per source, gained a
+factor of 19 at SF300. The lanes lose for a handful of sources: 20 sources with 200 destinations each at SF10 take
+20\,ms on lanes per source and 13\,ms on single-source searches, and the order reverses at SF100. What the
+thresholds cannot see is how far each search runs. An unreachable pair searches the whole component of its source,
+a reachable one stops early, and about two thirds of the random pairs are unreachable in the directed graph. A cost
+model needs an estimate of that reach, for example from the degree of the sources and the number of levels a search
+takes on the graph, which the index could record at a fold. Lanes per source also make lanes per pair unnecessary
+in principle, since a pair is a source with one destination; we keep both because the lane-per-pair batches run
+under the worker-group scheduler.
 
 \paragraph{Forward or reverse.} When the estimated distinct sources are at least four times the distinct
 destinations and reverse partitions exist, the search starts from the destinations. This is the shape of BI20, many

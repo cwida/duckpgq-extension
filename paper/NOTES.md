@@ -215,3 +215,15 @@ per edge. Findings from the check:
 in 2517ebc2 (rc2 runs on it); Section 4 and the background now describe the fixed behaviour. Open: a reused id of an
 epoch row (only possible if a checkpoint that drops a fully deleted trailing row group hands its ids out again,
 untested) would resurrect the deleted edge, because the dead marking covers log entries only.
+
+## Lanes per source (8286e9ea), read 29 Oct
+
+Integrated into Sections 3, 5 and 6 (red TODOs where numbers are single runs before rc5). Two implementation
+observations, neither a correctness problem:
+- The waves of a lane-per-source query are scheduled all at once as independent events, outside the worker-group
+  scheduler and its 512 MiB budget; each allocates its 192 B/vertex working set when it starts, with num_threads
+  tasks each. Fine for BI19 (3 waves, 4.7 GiB at SF300); a query with W waves holds W working sets at once, which is
+  W x 1.7 GB on graph500-24. Routing the waves through the grouped scheduler would bound both memory and tasks.
+- DetectReached runs in the serial completion step after every check phase and scans every pending destination of
+  every active lane (a 64-byte bit-set row per lookup): O(pending) serial work per level, about 0.8 M lookups per
+  wave and level on BI19 at SF300. Unmeasured; a profile of the serial step would show whether it matters.

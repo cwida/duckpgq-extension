@@ -231,7 +231,9 @@ over the index) because a single bidirectional search from two literals is what 
 persons of two cities, 5 to 10\,k pairs at SF10, 0.18 to 0.39\,M at SF100 and 1.2 to 2.4\,M at SF300. Neo4j, which runs its searches in parallel, is
 fastest at SF10 (41 against 61\,ms over the index), and the two are close at SF100 (3.9 against 3.6\,s); Memgraph
 and Kuzu over 32 connections take 17 and 25\,s there, and FalkorDB times out. At SF300 BI19 takes 31\,s over the
-index, 46\,s on Neo4j and 323\,s on Kuzu, and no other system finishes. BI20 has one target and many sources, which
+index, 46\,s on Neo4j and 323\,s on Kuzu, and no other system finishes. \todo{rc1 ran BI19 as one single-source search per source. With
+lanes per source (Section~\ref{sec:traversals}) the index takes 15\,ms, 252\,ms and 1.6\,s at SF10, SF100 and SF300,
+2.7, 15 and 29 times faster than Neo4j; rewrite this paragraph from the rerun.} BI20 has one target and many sources, which
 the operator searches in reverse as one single-source traversal, in 5, 25 and 57\,ms over the index at the three
 scales against 22\,ms, 118\,ms and 1.1\,s for Neo4j and 7.6\,s, 165\,s and over 600\,s for Kuzu. The gap to
 the per-pair systems opens on the two queries with many pairs and closes on IC13, which is what the sweep of
@@ -249,6 +251,8 @@ random pairs, one source to all) at SF10 and SF100, 32 threads, from the switch 
 (3) plus the single-source traversal for few sources (one pair 0.11 to 0.01\,s on the 8M-edge graph);
 (4) plus the bucket index over the sparse rows (twenty sources 0.28 to 0.13\,s);
 (5) plus per-phase events instead of barriers (SF300 build route sssp 0.39 to 0.30\,s; concurrent readers);
+(5c) plus lanes per source with destination sets (BI19 over the index, SF300: 30.6 to 1.6\,s, peak memory 43.8 to
+4.7\,GiB);
 (5b) plus worker groups for the multi-source batches; rc1 microbenchmark, 65\,536 random pairs over the index, one
 batch at a time on all 32 threads against the default: 4.9 against 0.51\,s at SF10, 32 against 3.5\,s at SF100,
 50 against 10.3\,s at SF300;
