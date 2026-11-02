@@ -10,11 +10,11 @@ the pattern. Filters on labels and on the source and destination vertices, the j
 filter that the quantifier puts on the path length stay relational and are left to \duckdb's planner. The operator reads the candidate pairs and
 the graph, either as the edge table, from which it builds a CSR on the fly, or as a persistent CSR index.
 
-The operator answers in one of three modes. In the \emph{lengths} mode it returns one hop count per candidate pair,
-and in the \emph{paths} mode one list of vertices and edges per pair. The \emph{reach} mode is for a pattern whose
+The operator answers in one of three modes. In the \texttt{lengths} mode it returns one hop count per candidate pair,
+and in the \texttt{paths} mode one list of vertices and edges per pair. The \texttt{reach} mode is for a pattern whose
 destination has no condition, such as every person reachable from a given one. Listing every vertex as a candidate
-destination would produce one pair per vertex. In the reach mode the operator therefore receives only the sources and
-returns each vertex a source reaches, with its distance, and the destinations come out of the operator. The operator is opt-in through the setting \texttt{experimental\_path\_finding\_operator}; without it the
+destination would produce one pair per vertex. In the \texttt{reach} mode the operator therefore receives only the sources and
+returns each vertex a source reaches, with its distance, and the destinations are produced by the operator. The operator is opt-in through the setting \texttt{experimental\_path\_finding\_operator}; without it the
 rewrite emits the UDF calls of the CIDR design. Unless stated otherwise, the numbers in this section are from the
 evaluation of Section~\ref{sec:eval} (LDBC SNB \texttt{Person\_knows\_Person}, one m7a.8xlarge, 32 threads).
 
@@ -24,9 +24,9 @@ evaluation of Section~\ref{sec:eval} (LDBC SNB \texttt{Person\_knows\_Person}, o
 \duckpgq rewrites \texttt{MATCH} into SQL, and the path pattern becomes a scalar function call in that SQL. We call it
 the \emph{marker}. It takes the source and destination columns of the candidate pairs, the edges as a struct column of
 (source, destination) row ids, the vertex and edge counts, a constant key naming the graph, and the upper bound of the
-quantifier. The function the marker calls names the mode. The rewrite asks for lengths when the query projects
-\texttt{path\_length(p)}, for paths when it projects \texttt{vertices(p)}, \texttt{edges(p)} or
-\texttt{element\_id(p)}, and for reach when the destination carries no condition. The marker is registered as a volatile scalar function so that no
+quantifier. The function the marker calls names the mode. The rewrite asks for \texttt{lengths} when the query projects
+\texttt{path\_length(p)}, for \texttt{paths} when it projects \texttt{vertices(p)}, \texttt{edges(p)} or
+\texttt{element\_id(p)}, and for \texttt{reach} when the destination carries no condition. The marker is registered as a volatile scalar function so that no
 part of \duckdb folds or reorders it, and it is never executed. An optimizer extension runs before \duckdb's own
 optimizer, finds the projection that contains the marker, replaces the marker by a reference to the operator's output
 column, and places a logical path-finding operator beneath the projection, with the pairs as its first child and, when
@@ -125,7 +125,7 @@ source index. A sparse level thus costs the frontier plus its edges. A dense lev
 and a partition's rows as well when there are more workers than partitions; each worker expands the rows whose
 source was reached on the previous level. In both cases two workers can reach the same vertex, and a vertex is
 claimed with a compare-and-swap on a seen flag. The worker that wins records the vertex's distance, adds it to the
-next frontier and, in the paths mode, records the vertex and the edge through which it arrived
+next frontier and, in the \texttt{paths} mode, records the vertex and the edge through which it arrived
 (Section~\ref{sec:results}). A search holds 13 bytes per vertex while it runs, 25 in the paths
 mode.
 
@@ -152,7 +152,7 @@ deduplication changes nothing.
 
 The finalize step groups the pairs by source and counts the groups. Up to 16 distinct sources run on the
 single-source traversal, side by side, with the threads divided among them; more sources run as batches of the
-multi-source traversal. Paths and reach always use the single-source traversal, because a path needs a parent per
+multi-source traversal. The \texttt{paths} and \texttt{reach} modes always use the single-source traversal, because a path needs a parent per
 vertex and reach returns a distance per vertex, and a lane keeps neither. A query that asks for the paths of many
 sources therefore needs per-vertex arrays for each of its searches, the memory the lanes avoid
 (Table~\ref{tab:traversal-choice}). \todo{rc8 runs the per-source searches in rounds within a memory budget and frees
@@ -221,12 +221,12 @@ keys, the build, the levels and the emission of results (Section~\ref{sec:result
 \label{sec:results}
 
 When the traversal is done, \duckdb runs the pipeline that reads the operator as its source, and the operator emits
-one row per input row, in parallel over its output vectors. In the lengths mode each row looks up the distance its
-source's search recorded for its destination, and a pair without a path gets \texttt{NULL}. In the reach mode each source emits every vertex it reached with its distance, and the destination table is
+one row per input row, in parallel over its output vectors. In the \texttt{lengths} mode each row looks up the distance its
+source's search recorded for its destination, and a pair without a path gets \texttt{NULL}. In the \texttt{reach} mode each source emits every vertex it reached with its distance, and the destination table is
 joined back afterwards only when the query projects its columns; the sources $\times$ all queries of
 Section~\ref{sec:eval} run this way.
 
-In the paths mode the operator returns, per pair, the list $[v_0, e_0, v_1, \dots, v_k]$ of vertices and edge row
+In the \texttt{paths} mode the operator returns, per pair, the list $[v_0, e_0, v_1, \dots, v_k]$ of vertices and edge row
 ids. The scatter walks the parents a search recorded from the destination back to the source, maps vertex ids to row
 ids on the build route and to keys on the index route, maps edge positions to row ids, and reverses the list.
 \texttt{path\_length(p)} is then $\lfloor\text{len}/2\rfloor$, and \texttt{vertices} and \texttt{edges} are the even
