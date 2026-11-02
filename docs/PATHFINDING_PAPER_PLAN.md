@@ -1271,3 +1271,23 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   tables are the 256-lane values; 512 lanes give 86 and 229 MB). W33 measured 256 and 512 as equally fast at SF10
   and SF100, so the timings stand within noise, but the rerun must be built with the lane width stated: the build
   is reconfigured with `-DDUCKPGQ_LANE_LIMIT=512` (next entry), and `repro/` passes the flag explicitly.
+- 2 Nov (night, 2): working-set cap and the lane width. (1) `experimental_path_finding_operator_working_set_cap`
+  (BIGINT, default -1 = a quarter of DuckDB's memory_limit from the buffer manager, 0 = no bound, > 0 bytes): the
+  memory safety bound of the schedulers, which bounds the MS-BFS worker groups that run at once (the wide start
+  included; `max_groups` in the strategy string) and the per-source searches in flight per round. The
+  grouped-batches budget keeps its two cache-regime jobs (start wide while the groups' working sets fit it; own
+  threads and bitmap filter off while one working set is under a sixteenth of it) and its description says so;
+  the 512 MiB there is the L3-based threshold, not a memory bound. On this machine (memory_limit 98.5 GiB, cap 24.6
+  GiB) nothing changes at SF10-SF300 (32 working sets are at most 7.3 GB; per-source rounds stay at 32 in flight:
+  BI19 paths SF300 32.7 s against 33.1 s before); graph500-24's wide start is bounded to 14 groups of 1.7 GB instead
+  of 32 (54 GB). The rounds test now sets the cap instead of the budget. (2) Build reconfigured with
+  `-DDUCKPGQ_LANE_LIMIT=512` (CMake cache; `repro/setup.sh` passes the flag), all 101 test files pass. The same
+  SF300 points on the 512-lane build against today's 256-lane numbers (index route, 32 threads): random pairs 65536:
+  10.7 s against 8.8 s (512 is 22% slower); 1024 pairs: 0.27 against 0.20 s (35% slower); reach 1024 sources on the
+  lanes: 0.97 against 0.79 s (22% slower), 128 sources 0.26 against 0.23 s; single pair, throughput (342 q/s at 32
+  clients) and 16 readers under a writer (median 67 ms, p99 116 ms) unchanged, as they run the per-source kernel.
+  W33 (27 Oct) found 256 and 512 equal at SF10 and SF100; at SF300 the 229 MB working set of 512 lanes is memory
+  bound and the halved bytes per vertex win more than the doubled wave count costs. Decision open (the author's):
+  keep 512 (the paper's text: 512 lanes, 192 B per vertex, 512-bit or) or make 256 the default (every probe since
+  27 Oct ran with it; the paper's lane width, bytes per vertex and the SIMD sentence change). rc9 is not tagged
+  until this is decided; the sweep stays on hold.

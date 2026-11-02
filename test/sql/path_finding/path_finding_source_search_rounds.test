@@ -1,5 +1,5 @@
 # name: test/sql/path_finding/path_finding_source_search_rounds.test
-# description: per-source searches (paths, reach) run in rounds bounded by the grouped-batches budget; results equal the unbounded run and the pair-mode reference
+# description: per-source searches (paths, reach) run in rounds bounded by the working-set cap; results equal the unbounded run and the pair-mode reference
 # group: [path_finding]
 
 require duckpgq
@@ -35,12 +35,12 @@ SELECT s LIKE '%source_search_rounds=off%' FROM (SELECT duckpgq_path_finding_str
 ----
 true
 
-# A budget of 60 KB holds one search's arrays (2000 vertices x 25 B): the searches run one at a time
+# A cap of 60 KB holds one search's arrays (2000 vertices x 25 B): the searches run one at a time
 statement ok
 SET experimental_path_finding_operator_source_search_rounds = true;
 
 statement ok
-SET experimental_path_finding_operator_grouped_batches_budget = 60000;
+SET experimental_path_finding_operator_working_set_cap = 60000;
 
 query I
 SELECT (SELECT c FROM reference_paths) = count(p) AND (SELECT l FROM reference_paths) = sum(len(p)) AND (SELECT h FROM reference_paths) = sum(hash(p::VARCHAR)::HUGEINT) FROM (
@@ -56,7 +56,7 @@ true
 
 # Three searches in flight
 statement ok
-SET experimental_path_finding_operator_grouped_batches_budget = 160000;
+SET experimental_path_finding_operator_working_set_cap = 160000;
 
 query I
 SELECT (SELECT c FROM reference_paths) = count(p) AND (SELECT h FROM reference_paths) = sum(hash(p::VARCHAR)::HUGEINT) FROM (
@@ -83,7 +83,7 @@ statement ok
 SET experimental_path_finding_operator_reach_lanes = false;
 
 statement ok
-SET experimental_path_finding_operator_grouped_batches_budget = 30000;
+SET experimental_path_finding_operator_working_set_cap = 30000;
 
 statement ok
 CREATE TABLE sources AS SELECT DISTINCT s AS s, s AS d FROM pairs;

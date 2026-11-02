@@ -1462,9 +1462,12 @@ void AppendGroupedKernelEvents(PathFindingGlobalSinkState &gstate, vector<shared
 	bool adaptive = configured_groups <= 0;
 	// Working sets that fit the budget start wide (one group per batch, up to the threads: the cache-resident
 	// regime of SF10, where every doubling pays); larger ones start at four groups and ramp on measured throughput
-	auto max_groups = std::max<idx_t>(1, std::min<idx_t>(states.size(), threads));
-	auto working_sets = static_cast<double>(max_groups) *
-	                    static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
+	// The working-set cap (a quarter of memory_limit unless set) bounds the live groups, the wide start included:
+	// on graph500-24 one working set is 1.7 GB, so 32 groups would be 54 GB before the first measurement
+	auto working_set_bytes = static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
+	auto max_groups = gstate.settings.CappedCount(working_set_bytes, std::max<idx_t>(1, std::min<idx_t>(states.size(), threads)));
+	auto working_sets = static_cast<double>(max_groups) * working_set_bytes;
+	// The cache-regime threshold (grouped_batches_budget): working sets that fit it start wide
 	auto budget = GetPathFindingGroupedBatchesBudget(context);
 	bool start_wide = budget > 0 && working_sets <= static_cast<double>(budget);
 	// The ramp starts at sixteen groups: with the explore phase's memory traffic reduced (bitmap, sparse levels) the
@@ -1483,7 +1486,6 @@ void AppendGroupedKernelEvents(PathFindingGlobalSinkState &gstate, vector<shared
 	// Own threads per group (no pooling) only while one working set is small (SF10, 14 MB: the levels are too short
 	// for pooled task overhead, 0.68 vs 1.3 s); larger sets pool the level tasks whatever the window (SF100 16384
 	// pairs, 8 groups of 41 MB: pooled 1.50 s vs own threads 1.69 s). Same threshold as the bitmap filter.
-	auto working_set_bytes = static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
 	bool small_working_set = budget > 0 && working_set_bytes <= static_cast<double>(budget) / 16;
 	auto configured_oversubscription = GetPathFindingBatchOversubscription(context);
 	auto oversubscription = configured_oversubscription > 0 ? NumericCast<idx_t>(configured_oversubscription)
@@ -1494,13 +1496,16 @@ void AppendGroupedKernelEvents(PathFindingGlobalSinkState &gstate, vector<shared
 	RecordStrategy(context, prefix + "tasks", small_working_set ? "own_threads" : "pooled");
 	RecordStrategy(context, prefix + "grouped_working_sets_mb",
 	               std::to_string(static_cast<idx_t>(working_sets / (1024 * 1024))));
+	RecordStrategy(context, prefix + "working_set_cap_mb",
+	               std::to_string(static_cast<idx_t>(gstate.settings.working_set_cap / (1024 * 1024))));
+	RecordStrategy(context, prefix + "max_groups", std::to_string(max_groups));
 	if (!states.empty()) {
 		RecordStrategy(context, prefix + "bitmap_filter", states.front()->bitmap_filter ? "on" : "off");
 		RecordStrategy(context, prefix + "sparse_level_divisor", std::to_string(states.front()->sparse_level_divisor));
 	}
 	auto grouped_batches = make_shared_ptr<GroupedIterativeLengthBatches>(
 	    std::move(states), context, GetPathFindingVSize(gstate), threads, partitions, GetPathFindingEdgeCount(gstate),
-	    initial_window, adaptive, fixed_workers, NumericCast<idx_t>(oversubscription));
+	    initial_window, max_groups, adaptive, fixed_workers, NumericCast<idx_t>(oversubscription));
 	auto initial_groups = grouped_batches->InitialGroups();
 	RecordStrategy(context, prefix + "groups", std::to_string(initial_groups));
 	RecordStrategy(context, prefix + "workers_per_batch", std::to_string(grouped_batches->WorkersPerGroup()));
@@ -1780,12 +1785,8 @@ private:
 			}
 			return;
 		}
-		auto budget = GetPathFindingGroupedBatchesBudget(context);
-		idx_t in_flight = threads;
-		if (budget > 0) {
-			in_flight = static_cast<idx_t>(std::max<double>(1, std::floor(static_cast<double>(budget) / bytes_per_search)));
-		}
-		in_flight = std::max<idx_t>(1, std::min<idx_t>(in_flight, std::min<idx_t>(threads, searches.size())));
+		// Searches in flight per round: as many as fit the working-set cap, at most one per thread
+		auto in_flight = gstate.settings.CappedCount(bytes_per_search, std::min<idx_t>(threads, searches.size()));
 		// The threads divided over the searches in flight, rounded up so that every core has a task (18 searches of
 		// one worker each left 14 of 32 cores idle: BI19 paths at SF300 took 63 s instead of 38 s)
 		auto workers = (threads + in_flight - 1) / in_flight;

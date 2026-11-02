@@ -20,7 +20,7 @@ namespace duckdb {
 struct GroupedIterativeLengthBatches {
 	GroupedIterativeLengthBatches(vector<shared_ptr<IterativeLengthState>> states_p, ClientContext &context_p,
 	                              idx_t v_size_p, idx_t threads_p, idx_t partitions_p, idx_t graph_edges_p,
-	                              idx_t initial_window_p, bool adaptive_p, idx_t fixed_workers_p,
+	                              idx_t initial_window_p, idx_t max_groups_p, bool adaptive_p, idx_t fixed_workers_p,
 	                              idx_t oversubscription_p);
 
 	//! The next unclaimed batch, or nullptr

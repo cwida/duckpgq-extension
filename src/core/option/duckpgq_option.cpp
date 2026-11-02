@@ -86,13 +86,22 @@ const vector<DuckPGQSetting> &Settings() {
 	     "Pair queries with at most this many distinct sources always use the per-source frontier "
 	     "kernel instead of MS-BFS lanes; 0 leaves the choice to the source group ratio",
 	     LogicalType::INTEGER, Value(16)},
+	    {"experimental_path_finding_operator_working_set_cap",
+	     "Bytes of path-finding working state that may be live at once: bounds the MS-BFS worker "
+	     "groups that run concurrently (the wide start included) and the per-source searches in "
+	     "flight per round. -1 (default) derives a quarter of DuckDB's memory_limit (the buffer "
+	     "manager's maximum), so the bound follows the machine instead of a constant tuned to one; "
+	     "0 removes the bound",
+	     LogicalType::BIGINT, Value::BIGINT(-1)},
 	    {"experimental_path_finding_operator_grouped_batches_budget",
-	     "The MS-BFS batch scheduler starts wide (one worker group per batch, up to the threads, "
-	     "each with its own threads) while that many working sets (192 B per vertex each) fit "
-	     "this many bytes; above it the groups pool their level tasks and the window of "
-	     "concurrent groups starts at four and grows while the measured throughput improves "
-	     "(W31: 512 MB sits between SF10's 32 x 14 MB and SF100's 32 x 86 MB on a 128 MB L3 "
-	     "machine); 0 always ramps",
+	     "Cache-regime threshold of the MS-BFS batch scheduler, not a memory bound (that is "
+	     "working_set_cap): the scheduler starts wide (one worker group per batch, up to the "
+	     "threads, each with its own threads) while that many working sets (192 B per vertex "
+	     "each at 512 lanes) fit this many bytes; above it the groups pool their level tasks "
+	     "and the window of concurrent groups starts at sixteen and grows while the measured "
+	     "throughput improves. One working set under a sixteenth of it keeps own threads and "
+	     "the bitmap filter off. W31: 512 MiB sits between SF10's 32 x 14 MB and SF100's "
+	     "32 x 86 MB on a 128 MB L3 machine; 0 always ramps",
 	     LogicalType::BIGINT, Value::BIGINT(512LL * 1024 * 1024)},
 	    {"experimental_path_finding_operator_batch_oversubscription",
 	     "Tasks per level of one MS-BFS batch relative to its share of the threads (threads / "
@@ -272,6 +281,10 @@ int32_t GetPathFindingFewSourcesLimit(ClientContext &context) {
 
 int64_t GetPathFindingGroupedBatchesBudget(ClientContext &context) {
 	return GetSetting<int64_t>(context, "experimental_path_finding_operator_grouped_batches_budget");
+}
+
+int64_t GetPathFindingWorkingSetCapSetting(ClientContext &context) {
+	return GetSetting<int64_t>(context, "experimental_path_finding_operator_working_set_cap");
 }
 
 int32_t GetPathFindingBatchOversubscription(ClientContext &context) {
