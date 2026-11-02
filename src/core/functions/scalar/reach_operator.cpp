@@ -1,5 +1,3 @@
-#include "duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp"
-
 #include <duckpgq/core/functions/scalar.hpp>
 
 namespace duckdb {
@@ -21,8 +19,7 @@ static unique_ptr<BaseStatistics> ReachOperatorStatistics(ClientContext &context
 }
 
 static ScalarFunction ReachMarkerFunction(vector<LogicalType> arguments) {
-	auto result = ScalarFunction(std::move(arguments), ReachOperatorResultType(), ReachOperatorFunction,
-	                             ShortestPathOperatorData::ShortestPathOperatorBind);
+	auto result = ScalarFunction(std::move(arguments), ReachOperatorResultType(), ReachOperatorFunction);
 	result.SetStability(FunctionStability::VOLATILE);
 	result.SetStatisticsCallback(ReachOperatorStatistics);
 	return result;

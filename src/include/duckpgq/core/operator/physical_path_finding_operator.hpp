@@ -17,6 +17,9 @@
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/operator/iterative_length/grouped_iterative_length_event.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
+#include "duckpgq/core/operator/path_finding_input.hpp"
+#include "duckpgq/core/operator/path_finding_mode.hpp"
+#include "duckpgq/core/operator/path_finding_settings.hpp"
 #include "duckpgq/core/index/csr_index.hpp"
 #include "local_csr/local_csr_state.hpp"
 
@@ -33,15 +36,6 @@ class PathFindingGlobalSinkState;
 //! unique and duplicate counts of the pair analysis go in the EdgeCount and PartitionCount columns
 void AppendOperatorPhaseTiming(ClientContext &context, const string &phase, idx_t thread_count, idx_t pair_count,
                                idx_t unique_count, idx_t duplicate_count, double time_ms, idx_t memory_bytes);
-
-enum class PathFindingOperatorMode {
-	ITERATIVE_LENGTH,
-	PUSH_PULL_ITERATIVE_LENGTH,
-	BIDIRECTIONAL_ITERATIVE_LENGTH,
-	SHORTEST_PATH,
-	//! One row per vertex reachable from each source (dst, len), no destination input
-	REACH
-};
 
 enum class PathFindingSearchOrientation { FORWARD, REVERSE };
 
@@ -74,19 +68,11 @@ public:
 	//! The path-finding marker function inside a projection expression (possibly wrapped in casts)
 	static BoundFunctionExpression &PathFindingFunction(Expression &expr);
 	static const BoundFunctionExpression &PathFindingFunction(const Expression &expr);
+	//! The marker function (expressions[0]); its source and destination arguments are evaluated over the pairs
 	vector<unique_ptr<Expression>> expressions;
-	//! The marker function's name: iterativelength, pushpulliterativelength, bidirectionaliterativelength,
-	//! shortestpath or reach (ParsePathFindingOperatorMode)
-	string mode;
-	string cache_key;
-	//! Longest path length a query needs; 0 means unbounded. BFS stops after this many iterations.
-	idx_t max_depth = 0;
-	bool edge_input;
-	bool precounted_edge_input;
-	idx_t precounted_vertex_count;
-	idx_t precounted_edge_count;
-	bool cached_partitioned_csr_input;
-	bool buffered_edge_input;
+	PathFindingOperatorMode mode;
+	//! The input route and the constants of the marker (counts, depth bound, key, undirected)
+	PathFindingInput input;
 
 public:
 	InsertionOrderPreservingMap<string> ParamsToString() const override;
@@ -136,7 +122,6 @@ public:
 	PathFindingLocalSinkState(ClientContext &context, const PhysicalPathFinding &op);
 
 	void SinkPairs(DataChunk &input);
-	void SinkEndpoints(DataChunk &input);
 	void SinkBufferedEndpoints(PathFindingGlobalSinkState &gstate, DataChunk &input);
 
 	ColumnDataCollection local_pairs;
@@ -148,13 +133,8 @@ public:
 	unique_ptr<PartitionedColumnDataAppendState> endpoint_partition_append_state;
 	DataChunk endpoint_partition_chunk;
 	ClientContext &context;
-	std::vector<LocalCSRBuildPartition> local_endpoint_partitions;
 	idx_t local_counted_endpoint_count = 0;
 	idx_t local_filled_endpoint_count = 0;
-	idx_t vertex_count = 0;
-	idx_t expected_edge_count = 0;
-	idx_t endpoint_partition_width = 0;
-	bool endpoint_metadata_initialized = false;
 };
 
 class PathFindingGlobalSinkState : public GlobalSinkState {
@@ -199,16 +179,14 @@ public:
 	bool source_group_zero_copy = false;
 	bool source_group_preserve_output_order = false;
 	bool global_dedupe_results_initialized = false;
-	//! experimental_path_finding_operator_benchmark, read once per query
-	bool benchmark_enabled = false;
+	//! The settings the kernels read, looked up once per query
+	PathFindingSettings settings;
 	//! Scatter time of the source-grouped output summed over the threads (benchmark only), under scatter_lock
 	double source_group_scatter_ms = 0;
 	idx_t source_group_scatter_rows = 0;
 	idx_t source_group_scatter_chunks = 0;
-	bool edge_input;
-	bool precounted_edge_input;
-	bool cached_partitioned_csr_input;
-	bool buffered_edge_input;
+	PathFindingInputRoute route;
+	//! Longest path length the query needs; 0 means unbounded
 	idx_t max_depth = 0;
 	//! Set when the operator reads a CSR index: what this query's transaction may traverse
 	shared_ptr<CSRIndexSnapshot> index_snapshot;
@@ -219,7 +197,6 @@ public:
 	std::atomic<idx_t> next_endpoint_partition {0};
 	std::atomic<idx_t> built_endpoint_count {0};
 	std::vector<idx_t> endpoint_partition_build_order;
-	std::vector<std::vector<LocalCSRBuildPartition>> endpoint_build_runs;
 	std::vector<shared_ptr<LocalCSR>> endpoint_partition_csrs;
 	idx_t counted_endpoint_count = 0;
 	idx_t endpoint_count = 0;
@@ -243,10 +220,10 @@ public:
 	//! The global CSR of a csr-id query (the first child's output), null for the endpoint and index inputs
 	CSR *csr = nullptr;
 	int64_t csr_id = 0;
-	//! The child whose Finalize runs next: the CSR id or endpoints come first, then the pairs
+	//! The child whose Sink and Finalize run next: the global CSR id is sunk before the pairs, an endpoint input
+	//! after them (count, then fill on PRECOUNTED_ENDPOINTS); the index route has only the pairs
 	size_t child = 0;
-	string mode;
-	PathFindingOperatorMode path_finding_mode;
+	PathFindingOperatorMode mode;
 	PathFindingSearchOrientation search_orientation = PathFindingSearchOrientation::FORWARD;
 	ClientContext &context_;
 	idx_t num_threads;

@@ -1,73 +1,57 @@
-#include "duckpgq/core/functions/scalar.hpp"
 #include "duckpgq/core/optimizer/path_finding_optimizer_rule.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 
 #include "duckpgq/core/optimizer/duckpgq_optimizer.hpp"
-#include <duckdb/catalog/catalog_entry/duck_table_entry.hpp>
 #include <duckdb/planner/expression/bound_cast_expression.hpp>
 #include <duckdb/planner/expression/bound_columnref_expression.hpp>
 #include <duckdb/planner/expression/bound_constant_expression.hpp>
 #include <duckdb/planner/expression/bound_function_expression.hpp>
 #include <duckdb/planner/expression_iterator.hpp>
-#include <duckdb/planner/operator/logical_aggregate.hpp>
-#include <duckdb/planner/operator/logical_comparison_join.hpp>
 #include <duckdb/planner/operator/logical_cross_product.hpp>
-#include <duckdb/planner/operator/logical_filter.hpp>
-#include <duckdb/planner/operator/logical_get.hpp>
 #include <duckdb/planner/operator/logical_projection.hpp>
 #include "duckdb/main/extension_callback_manager.hpp"
-#include <duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp>
 #include <duckpgq/core/operator/logical_path_finding_operator.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
-#include <duckpgq/core/utils/duckpgq_utils.hpp>
-#include <duckpgq_state.hpp>
 
 namespace duckdb {
 
-static string GetPathFindingFunctionName(const Expression &expr) {
-	if (expr.GetExpressionClass() == ExpressionClass::BOUND_FUNCTION) {
-		auto &function_expr = expr.Cast<BoundFunctionExpression>();
-		auto function_name = function_expr.Function().GetName().GetIdentifierName();
-		if (function_name == "iterativelengthoperator" || function_name == "pushpulliterativelengthoperator" ||
-		    function_name == "bidirectionaliterativelengthoperator" || function_name == "shortestpathoperator" ||
-		    function_name == "reachoperator") {
-			return function_name;
-		}
+//! The marker function of a projection: where it sits in the SELECT list, what it computes and its argument shape
+struct PathFindingMarker {
+	const BoundFunctionExpression *function = nullptr;
+	//! Offset of the SELECT-list expression that contains the marker (the marker may sit inside casts)
+	idx_t offset = DConstants::INVALID_INDEX;
+	PathFindingOperatorMode mode = PathFindingOperatorMode::ITERATIVE_LENGTH;
+	//! Marker arguments without the optional trailing maximum path length
+	idx_t base_arity = 0;
+
+	const Expression &Argument(idx_t index) const {
+		return *function->GetChildren()[index];
 	}
+	bool ArgumentIsStruct(idx_t index) const {
+		return Argument(index).GetReturnType().id() == LogicalTypeId::STRUCT;
+	}
+};
 
-	string result;
-	ExpressionIterator::EnumerateChildren(expr, [&](const Expression &child) {
-		if (!result.empty()) {
-			return;
-		}
-		result = GetPathFindingFunctionName(child);
-	});
-	return result;
-}
-
-static const BoundFunctionExpression *GetPathFindingFunction(const Expression &expr) {
+//! The marker function inside `expr`, or nullptr
+static const BoundFunctionExpression *FindMarkerFunction(const Expression &expr) {
 	if (expr.GetExpressionClass() == ExpressionClass::BOUND_FUNCTION) {
 		auto &function_expr = expr.Cast<BoundFunctionExpression>();
-		auto function_name = function_expr.Function().GetName().GetIdentifierName();
-		if (function_name == "iterativelengthoperator" || function_name == "pushpulliterativelengthoperator" ||
-		    function_name == "bidirectionaliterativelengthoperator" || function_name == "shortestpathoperator" ||
-		    function_name == "reachoperator") {
+		if (IsPathFindingMarkerName(function_expr.Function().GetName().GetIdentifierName())) {
 			return &function_expr;
 		}
 	}
-
 	const BoundFunctionExpression *result = nullptr;
 	ExpressionIterator::EnumerateChildren(expr, [&](const Expression &child) {
 		if (!result) {
-			result = GetPathFindingFunction(child);
+			result = FindMarkerFunction(child);
 		}
 	});
 	return result;
 }
 
 //! The cache key is the last VARCHAR argument; an optional BIGINT maximum path length may follow it
-static idx_t GetPathFindingCacheKeyIndex(const BoundFunctionExpression &function_expr) {
-	auto &children = function_expr.GetChildren();
+static idx_t CacheKeyIndex(const BoundFunctionExpression &function) {
+	auto &children = function.GetChildren();
 	for (idx_t i = children.size(); i > 0; i--) {
 		if (children[i - 1]->GetReturnType().id() == LogicalTypeId::VARCHAR) {
 			return i - 1;
@@ -76,23 +60,38 @@ static idx_t GetPathFindingCacheKeyIndex(const BoundFunctionExpression &function
 	return DConstants::INVALID_INDEX;
 }
 
-static bool HasTrailingMaxDepth(const BoundFunctionExpression &function_expr) {
-	auto key_index = GetPathFindingCacheKeyIndex(function_expr);
-	return key_index != DConstants::INVALID_INDEX && key_index + 2 == function_expr.GetChildren().size();
+static bool HasTrailingMaxDepth(const BoundFunctionExpression &function) {
+	auto key_index = CacheKeyIndex(function);
+	return key_index != DConstants::INVALID_INDEX && key_index + 2 == function.GetChildren().size();
 }
 
-//! Number of marker arguments without the optional trailing maximum path length
-static idx_t GetPathFindingBaseArity(const BoundFunctionExpression &function_expr) {
-	return function_expr.GetChildren().size() - (HasTrailingMaxDepth(function_expr) ? 1 : 0);
+//! Finds the marker of the projection; a SELECT list with more than one is rejected
+static bool FindProjectionMarker(const LogicalProjection &projection, PathFindingMarker &marker) {
+	bool found = false;
+	for (idx_t offset = 0; offset < projection.expressions.size(); offset++) {
+		auto function = FindMarkerFunction(*projection.expressions[offset]);
+		if (!function) {
+			continue;
+		}
+		if (found) {
+			throw BinderException("Only one path-finding function per SELECT list is supported; compute the path "
+			                      "length once and reuse the column");
+		}
+		found = true;
+		marker.function = function;
+		marker.offset = offset;
+		marker.mode = PathFindingModeFromMarkerName(function->Function().GetName().GetIdentifierName());
+		marker.base_arity = function->GetChildren().size() - (HasTrailingMaxDepth(*function) ? 1 : 0);
+	}
+	return found;
 }
 
-static idx_t GetPathFindingMaxDepth(ClientContext &context, const Expression &expr) {
-	auto function_expr = GetPathFindingFunction(expr);
-	if (!function_expr || !HasTrailingMaxDepth(*function_expr)) {
+static idx_t GetMaxDepth(ClientContext &context, const PathFindingMarker &marker) {
+	if (!HasTrailingMaxDepth(*marker.function)) {
 		return 0;
 	}
 	// Before DuckDB's own optimizer runs the literal is still wrapped in a cast, so fold it here
-	auto &depth_expr = *function_expr->GetChildren().back();
+	auto &depth_expr = *marker.function->GetChildren().back();
 	Value depth_value;
 	if (!depth_expr.IsFoldable() || !ExpressionExecutor::TryEvaluateScalar(context, depth_expr, depth_value)) {
 		throw BinderException("The path-finding maximum length must be a constant BIGINT");
@@ -103,21 +102,18 @@ static idx_t GetPathFindingMaxDepth(ClientContext &context, const Expression &ex
 	return NumericCast<idx_t>(depth_value.GetValue<int64_t>());
 }
 
-static string GetPathFindingCacheKey(const Expression &expr) {
-	auto function_expr = GetPathFindingFunction(expr);
-	if (!function_expr || function_expr->GetChildren().size() < 4) {
+//! The marker's constant cache key; empty when the marker has none (the global-CSR form) or it is NULL
+static string GetCacheKey(const PathFindingMarker &marker) {
+	auto key_index = CacheKeyIndex(*marker.function);
+	if (key_index == DConstants::INVALID_INDEX) {
 		return string();
 	}
-	auto cache_key_index = GetPathFindingCacheKeyIndex(*function_expr);
-	if (cache_key_index == DConstants::INVALID_INDEX ||
-	    function_expr->GetChildren()[cache_key_index]->GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
+	auto &key_expr = marker.Argument(key_index);
+	if (key_expr.GetExpressionClass() != ExpressionClass::BOUND_CONSTANT) {
 		throw BinderException("The path-finding cache key must be a constant VARCHAR");
 	}
-	auto &constant = function_expr->GetChildren()[cache_key_index]->Cast<BoundConstantExpression>();
-	if (constant.GetValue().IsNull()) {
-		return string();
-	}
-	return constant.GetValue().GetValue<string>();
+	auto &constant = key_expr.Cast<BoundConstantExpression>();
+	return constant.GetValue().IsNull() ? string() : constant.GetValue().GetValue<string>();
 }
 
 static int64_t GetConstantInt64(const Expression &expr, const string &description) {
@@ -136,10 +132,34 @@ static int64_t GetConstantInt64(const Expression &expr, const string &descriptio
 	return constant.GetValue().GetValue<int64_t>();
 }
 
+//! The vertex count at argument `vertex_index` and the edge count after it; `route_name` names the form in errors
+static void ReadGraphCounts(const PathFindingMarker &marker, idx_t vertex_index, const char *route_name,
+                            PathFindingInput &input) {
+	auto vertex_count = GetConstantInt64(marker.Argument(vertex_index),
+	                                     StringUtil::Format("%s path-finding vertex count", route_name));
+	auto edge_count = GetConstantInt64(marker.Argument(vertex_index + 1),
+	                                   StringUtil::Format("%s path-finding edge count", route_name));
+	if (vertex_count < 0 || static_cast<uint64_t>(vertex_count) > NumericLimits<uint32_t>::Maximum()) {
+		throw OutOfRangeException("%s path-finding vertex count is outside the supported uint32 range: %lld",
+		                          route_name, vertex_count);
+	}
+	if (edge_count < 0) {
+		throw OutOfRangeException("%s path-finding edge count cannot be negative: %lld", route_name, edge_count);
+	}
+	input.vertex_count = static_cast<idx_t>(vertex_count);
+	input.edge_count = static_cast<idx_t>(edge_count);
+}
+
+//! The key of an endpoint route describes the graph; MATCH ends it with |undirected when the endpoint input holds
+//! both directions of every edge (the operator may then search from the destination side)
+static void ReadEndpointKey(const PathFindingMarker &marker, PathFindingInput &input) {
+	input.cache_key = GetCacheKey(marker);
+	input.undirected = StringUtil::EndsWith(input.cache_key, "|undirected");
+}
+
 static bool IsCSRIdProjection(const LogicalProjection &projection) {
 	for (const auto &expr : projection.expressions) {
-		if (expr->GetAlias() == "csr_id" || expr->GetName() == "csr_id" || expr->GetAlias() == "pathfinding_edge_src" ||
-		    expr->GetName() == "pathfinding_edge_src") {
+		if (expr->GetAlias() == "csr_id" || expr->GetName() == "csr_id") {
 			return true;
 		}
 		if (BoundCastExpression::IsCast(*expr)) {
@@ -164,9 +184,6 @@ static bool ContainsCSRIdProjection(const LogicalOperator &op) {
 	return false;
 }
 
-void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_expression, string &mode,
-                        vector<idx_t> &offsets, string &cache_key);
-
 static bool ProjectionContainsName(const LogicalProjection &projection, const string &name) {
 	for (const auto &expr : projection.expressions) {
 		if (expr->GetAlias() == name || expr->GetName() == name) {
@@ -176,7 +193,9 @@ static bool ProjectionContainsName(const LogicalProjection &projection, const st
 	return false;
 }
 
-static void CollectPrecountedInputs(unique_ptr<LogicalOperator> &op, vector<unique_ptr<LogicalOperator>> &inputs) {
+//! The inputs of an endpoint route are the sides of the cross products under the projection, except that a
+//! projection defining pathfinding_count_data or pathfinding_edge_data is one input however it is built
+static void CollectEndpointInputs(unique_ptr<LogicalOperator> &op, vector<unique_ptr<LogicalOperator>> &inputs) {
 	auto defines_count_input = op->type == LogicalOperatorType::LOGICAL_PROJECTION &&
 	                           ProjectionContainsName(op->Cast<LogicalProjection>(), "pathfinding_count_data");
 	auto defines_edge_input = op->type == LogicalOperatorType::LOGICAL_PROJECTION &&
@@ -187,7 +206,7 @@ static void CollectPrecountedInputs(unique_ptr<LogicalOperator> &op, vector<uniq
 	}
 	auto &cross_product = op->Cast<LogicalCrossProduct>();
 	for (auto &child : cross_product.children) {
-		CollectPrecountedInputs(child, inputs);
+		CollectEndpointInputs(child, inputs);
 	}
 }
 
@@ -203,351 +222,160 @@ static bool ExpressionReferencesInput(const Expression &expr, LogicalOperator &i
 	return found;
 }
 
-static unique_ptr<LogicalPathFindingOperator> FindPrecountedEdgesAndPairs(unique_ptr<LogicalOperator> &root,
-                                                                          LogicalProjection &projection) {
-	const BoundFunctionExpression *path_function = nullptr;
-	for (const auto &expr : projection.expressions) {
-		path_function = GetPathFindingFunction(*expr);
-		if (path_function && GetPathFindingBaseArity(*path_function) == 7 &&
-		    path_function->GetChildren()[2]->GetReturnType().id() == LogicalTypeId::STRUCT &&
-		    path_function->GetChildren()[3]->GetReturnType().id() == LogicalTypeId::STRUCT) {
-			break;
+//! The unclaimed input a marker argument reads from, claimed; INVALID_INDEX when there is none
+static idx_t ClaimInput(const Expression &argument, vector<unique_ptr<LogicalOperator>> &inputs,
+                        vector<bool> &claimed) {
+	for (idx_t input_idx = 0; input_idx < inputs.size(); input_idx++) {
+		if (!claimed[input_idx] && ExpressionReferencesInput(argument, *inputs[input_idx])) {
+			claimed[input_idx] = true;
+			return input_idx;
 		}
-		path_function = nullptr;
 	}
-	if (!path_function) {
-		return nullptr;
-	}
-	auto vertex_count_value =
-	    GetConstantInt64(*path_function->GetChildren()[4], "Pre-counted path-finding vertex count");
-	auto edge_count_value = GetConstantInt64(*path_function->GetChildren()[5], "Pre-counted path-finding edge count");
-	if (vertex_count_value < 0 || static_cast<uint64_t>(vertex_count_value) > NumericLimits<uint32_t>::Maximum()) {
-		throw OutOfRangeException("Pre-counted path-finding vertex count is outside the supported uint32 range: %lld",
-		                          vertex_count_value);
-	}
-	if (edge_count_value < 0) {
-		throw OutOfRangeException("Pre-counted path-finding edge count cannot be negative: %lld", edge_count_value);
-	}
+	return DConstants::INVALID_INDEX;
+}
+
+//! Replaces the marker's SELECT-list expression by a reference to the operator's result column and hands the
+//! marker expression to the operator: its source and destination arguments are evaluated over the pairs there
+static unique_ptr<LogicalPathFindingOperator> MakeOperator(vector<unique_ptr<LogicalOperator>> children,
+                                                           LogicalProjection &projection,
+                                                           const PathFindingMarker &marker, PathFindingInput input) {
+	auto &select_expr = projection.expressions[marker.offset];
+	auto marker_expr = std::move(select_expr);
+	select_expr = make_uniq<BoundColumnRefExpression>(
+	    marker_expr->GetAlias(), PathFindingResultType(marker.mode),
+	    ColumnBinding(projection.table_index, ProjectionIndex(marker.offset)));
+	return make_uniq<LogicalPathFindingOperator>(std::move(children), std::move(marker_expr), marker.mode,
+	                                             projection.table_index, marker.offset, std::move(input));
+}
+
+//! (src, dst, {src, dst}, {src, dst}, vertex_count, edge_count, key): pairs, count endpoints and fill endpoints
+//! are the three inputs under the projection
+static unique_ptr<LogicalPathFindingOperator> PlanPrecountedEndpointsRoute(unique_ptr<LogicalOperator> &root,
+                                                                           LogicalProjection &projection,
+                                                                           const PathFindingMarker &marker,
+                                                                           ClientContext &context) {
+	PathFindingInput input;
+	input.route = PathFindingInputRoute::PRECOUNTED_ENDPOINTS;
+	ReadGraphCounts(marker, 4, "Pre-counted", input);
+	ReadEndpointKey(marker, input);
+	input.max_depth = GetMaxDepth(context, marker);
 
 	vector<unique_ptr<LogicalOperator>> inputs;
-	CollectPrecountedInputs(root, inputs);
+	CollectEndpointInputs(root, inputs);
 	if (inputs.size() != 3) {
 		throw BinderException("Pre-counted path finding expects pairs, count endpoints, and fill endpoints");
 	}
-
-	idx_t pair_index = DConstants::INVALID_INDEX;
-	idx_t count_index = DConstants::INVALID_INDEX;
-	idx_t edge_index = DConstants::INVALID_INDEX;
-	for (idx_t input_idx = 0; input_idx < inputs.size(); input_idx++) {
-		if (ExpressionReferencesInput(*path_function->GetChildren()[2], *inputs[input_idx])) {
-			count_index = input_idx;
-		} else if (ExpressionReferencesInput(*path_function->GetChildren()[3], *inputs[input_idx])) {
-			edge_index = input_idx;
-		} else if (ExpressionReferencesInput(*path_function->GetChildren()[0], *inputs[input_idx])) {
-			pair_index = input_idx;
-		}
-	}
+	vector<bool> claimed(inputs.size(), false);
+	auto count_index = ClaimInput(marker.Argument(2), inputs, claimed);
+	auto edge_index = ClaimInput(marker.Argument(3), inputs, claimed);
+	auto pair_index = ClaimInput(marker.Argument(0), inputs, claimed);
 	if (pair_index == DConstants::INVALID_INDEX || count_index == DConstants::INVALID_INDEX ||
 	    edge_index == DConstants::INVALID_INDEX) {
 		throw BinderException("Could not identify all pre-counted path-finding inputs");
 	}
-	vector<unique_ptr<LogicalOperator>> path_finding_children;
-	path_finding_children.push_back(std::move(inputs[pair_index]));
-	path_finding_children.push_back(std::move(inputs[count_index]));
-	path_finding_children.push_back(std::move(inputs[edge_index]));
-	vector<unique_ptr<Expression>> path_finding_expressions;
-	unique_ptr<Expression> function_expression;
-	string mode;
-	vector<idx_t> offsets;
-	string cache_key;
-	ReplaceExpressions(projection, function_expression, mode, offsets, cache_key);
-	path_finding_expressions.push_back(std::move(function_expression));
-	return make_uniq<LogicalPathFindingOperator>(
-	    path_finding_children, path_finding_expressions, mode, projection.table_index, offsets, std::move(cache_key),
-	    true, true, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value));
+	vector<unique_ptr<LogicalOperator>> children;
+	children.push_back(std::move(inputs[pair_index]));
+	children.push_back(std::move(inputs[count_index]));
+	children.push_back(std::move(inputs[edge_index]));
+	return MakeOperator(std::move(children), projection, marker, std::move(input));
 }
 
-static unique_ptr<LogicalPathFindingOperator>
-FindBufferedEdgesAndPairs(unique_ptr<LogicalOperator> &root, LogicalProjection &projection, ClientContext &context) {
-	const BoundFunctionExpression *path_function = nullptr;
-	for (const auto &expr : projection.expressions) {
-		path_function = GetPathFindingFunction(*expr);
-		if (path_function && GetPathFindingBaseArity(*path_function) == 6 &&
-		    path_function->GetChildren()[2]->GetReturnType().id() == LogicalTypeId::STRUCT) {
-			break;
-		}
-		path_function = nullptr;
-	}
-	if (!path_function) {
-		return nullptr;
-	}
-
-	auto vertex_count_value = GetConstantInt64(*path_function->GetChildren()[3], "Buffered path-finding vertex count");
-	auto edge_count_value = GetConstantInt64(*path_function->GetChildren()[4], "Buffered path-finding edge count");
-	if (vertex_count_value < 0 || static_cast<uint64_t>(vertex_count_value) > NumericLimits<uint32_t>::Maximum()) {
-		throw OutOfRangeException("Buffered path-finding vertex count is outside the supported uint32 range: %lld",
-		                          vertex_count_value);
-	}
-	if (edge_count_value < 0) {
-		throw OutOfRangeException("Buffered path-finding edge count cannot be negative: %lld", edge_count_value);
-	}
+//! (src, dst, {src, dst[, id]}, vertex_count, edge_count, key[, max_depth]): pairs and the endpoint input are the
+//! two inputs under the projection
+static unique_ptr<LogicalPathFindingOperator> PlanBufferedEndpointsRoute(unique_ptr<LogicalOperator> &root,
+                                                                         LogicalProjection &projection,
+                                                                         const PathFindingMarker &marker,
+                                                                         ClientContext &context) {
+	PathFindingInput input;
+	input.route = PathFindingInputRoute::BUFFERED_ENDPOINTS;
+	ReadGraphCounts(marker, 3, "Buffered", input);
+	ReadEndpointKey(marker, input);
+	input.max_depth = GetMaxDepth(context, marker);
 
 	vector<unique_ptr<LogicalOperator>> inputs;
-	CollectPrecountedInputs(root, inputs);
+	CollectEndpointInputs(root, inputs);
 	if (inputs.size() != 2) {
 		throw BinderException("Buffered path finding expects pairs and one endpoint input");
 	}
-
-	idx_t pair_index = DConstants::INVALID_INDEX;
-	idx_t edge_index = DConstants::INVALID_INDEX;
-	for (idx_t input_idx = 0; input_idx < inputs.size(); input_idx++) {
-		if (ExpressionReferencesInput(*path_function->GetChildren()[2], *inputs[input_idx])) {
-			edge_index = input_idx;
-		} else if (ExpressionReferencesInput(*path_function->GetChildren()[0], *inputs[input_idx])) {
-			pair_index = input_idx;
-		}
-	}
+	vector<bool> claimed(inputs.size(), false);
+	auto edge_index = ClaimInput(marker.Argument(2), inputs, claimed);
+	auto pair_index = ClaimInput(marker.Argument(0), inputs, claimed);
 	if (pair_index == DConstants::INVALID_INDEX || edge_index == DConstants::INVALID_INDEX) {
 		throw BinderException("Could not identify buffered path-finding inputs");
 	}
-
-	vector<unique_ptr<LogicalOperator>> path_finding_children;
-	path_finding_children.push_back(std::move(inputs[pair_index]));
-	path_finding_children.push_back(std::move(inputs[edge_index]));
-	vector<unique_ptr<Expression>> path_finding_expressions;
-	unique_ptr<Expression> function_expression;
-	string mode;
-	vector<idx_t> offsets;
-	string cache_key;
-	ReplaceExpressions(projection, function_expression, mode, offsets, cache_key);
-	auto max_depth = GetPathFindingMaxDepth(context, *function_expression);
-	path_finding_expressions.push_back(std::move(function_expression));
-	auto result = make_uniq<LogicalPathFindingOperator>(
-	    path_finding_children, path_finding_expressions, mode, projection.table_index, offsets, std::move(cache_key),
-	    true, false, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value), false, true);
-	result->max_depth = max_depth;
-	return result;
+	vector<unique_ptr<LogicalOperator>> children;
+	children.push_back(std::move(inputs[pair_index]));
+	children.push_back(std::move(inputs[edge_index]));
+	return MakeOperator(std::move(children), projection, marker, std::move(input));
 }
 
-static unique_ptr<LogicalPathFindingOperator> FindCachedPartitionedCSRAndPairs(unique_ptr<LogicalOperator> &root,
-                                                                               LogicalProjection &projection,
-                                                                               ClientContext &context) {
-	const BoundFunctionExpression *path_function = nullptr;
-	for (const auto &expr : projection.expressions) {
-		path_function = GetPathFindingFunction(*expr);
-		if (path_function && GetPathFindingBaseArity(*path_function) == 5 &&
-		    path_function->GetChildren()[2]->GetReturnType().id() != LogicalTypeId::STRUCT) {
-			break;
-		}
-		path_function = nullptr;
-	}
-	if (!path_function) {
-		return nullptr;
-	}
-
-	auto vertex_count_value = GetConstantInt64(*path_function->GetChildren()[2], "Cached path-finding vertex count");
-	auto edge_count_value = GetConstantInt64(*path_function->GetChildren()[3], "Cached path-finding edge count");
-	if (vertex_count_value < 0 || static_cast<uint64_t>(vertex_count_value) > NumericLimits<uint32_t>::Maximum()) {
-		throw OutOfRangeException("Cached path-finding vertex count is outside the supported uint32 range: %lld",
-		                          vertex_count_value);
-	}
-	if (edge_count_value < 0) {
-		throw OutOfRangeException("Cached path-finding edge count cannot be negative: %lld", edge_count_value);
-	}
-
-	vector<unique_ptr<LogicalOperator>> path_finding_children;
-	path_finding_children.push_back(std::move(root));
-	vector<unique_ptr<Expression>> path_finding_expressions;
-	unique_ptr<Expression> function_expression;
-	string mode;
-	vector<idx_t> offsets;
-	string cache_key;
-	ReplaceExpressions(projection, function_expression, mode, offsets, cache_key);
-	if (cache_key.empty()) {
+//! (src, dst, vertex_count, edge_count, 'csr-index|...'[, max_depth]): the projection's child is the pair input,
+//! the partitions come from the index named by the key
+static unique_ptr<LogicalPathFindingOperator> PlanCSRIndexRoute(unique_ptr<LogicalOperator> &root,
+                                                                LogicalProjection &projection,
+                                                                const PathFindingMarker &marker,
+                                                                ClientContext &context) {
+	PathFindingInput input;
+	input.route = PathFindingInputRoute::CSR_INDEX;
+	ReadGraphCounts(marker, 2, "Cached", input);
+	input.cache_key = GetCacheKey(marker);
+	if (input.cache_key.empty()) {
 		throw BinderException("Cache-only path finding requires a non-empty constant cache key");
 	}
-	auto max_depth = GetPathFindingMaxDepth(context, *function_expression);
-	path_finding_expressions.push_back(std::move(function_expression));
-	auto result = make_uniq<LogicalPathFindingOperator>(
-	    path_finding_children, path_finding_expressions, mode, projection.table_index, offsets, std::move(cache_key),
-	    false, false, static_cast<idx_t>(vertex_count_value), static_cast<idx_t>(edge_count_value), true);
-	result->max_depth = max_depth;
-	return result;
+	input.max_depth = GetMaxDepth(context, marker);
+
+	vector<unique_ptr<LogicalOperator>> children;
+	children.push_back(std::move(root));
+	return MakeOperator(std::move(children), projection, marker, std::move(input));
 }
 
-// Helper function to create the required BoundColumnRefExpression
-unique_ptr<Expression> CreateReplacementExpression(const Identifier &alias, const string &functionName,
-                                                   TableIndex tableIndex, idx_t position) {
-	if (functionName == "iterativelengthoperator" || functionName == "pushpulliterativelengthoperator" ||
-	    functionName == "bidirectionaliterativelengthoperator") {
-		return make_uniq<BoundColumnRefExpression>(alias, LogicalType::BIGINT,
-		                                           ColumnBinding(tableIndex, ProjectionIndex(position)));
-	}
-	if (functionName == "shortestpathoperator") {
-		return make_uniq<BoundColumnRefExpression>(alias, LogicalType::LIST(LogicalType::BIGINT),
-		                                           ColumnBinding(tableIndex, ProjectionIndex(position)));
-	}
-	if (functionName == "reachoperator") {
-		return make_uniq<BoundColumnRefExpression>(alias, ReachOperatorResultType(),
-		                                           ColumnBinding(tableIndex, ProjectionIndex(position)));
-	}
-	return nullptr;
-}
-
-void ReplaceExpressions(LogicalProjection &op, unique_ptr<Expression> &function_expression, string &mode,
-                        vector<idx_t> &offsets, string &cache_key) {
-	// Create a temporary vector to hold the new expressions
-	vector<unique_ptr<Expression>> new_expressions;
-	new_expressions.reserve(op.expressions.size()); // Reserve space to avoid multiple reallocations
-
-	for (size_t offset = 0; offset < op.expressions.size(); ++offset) {
-		const auto &expr = op.expressions[offset];
-		auto function_name = GetPathFindingFunctionName(*expr);
-		if (function_name.empty()) {
-			// Directly transfer the expression to the new vector if no replacement is needed
-			new_expressions.push_back(std::move(op.expressions[offset]));
-			continue;
-		}
-		auto expression_cache_key = GetPathFindingCacheKey(*expr);
-		if (!cache_key.empty() && !expression_cache_key.empty() && cache_key != expression_cache_key) {
-			throw BinderException("All path-finding expressions in a projection must use the same cache key");
-		}
-		if (!expression_cache_key.empty()) {
-			cache_key = std::move(expression_cache_key);
-		}
-
-		// Create the replacement expression
-		auto replacement_expr = CreateReplacementExpression(expr->GetAlias(), function_name, op.table_index, offset);
-		if (replacement_expr) {
-			// store the offsets of the expressions that need to be replaced
-			offsets.push_back(offset);
-			// Push the replacement into the new vector
-			new_expressions.push_back(std::move(replacement_expr));
-			// Optionally, copy the original expression if it's needed elsewhere
-			function_expression = expr->Copy();
-			if (function_name == "iterativelengthoperator") {
-				mode = "iterativelength";
-			} else if (function_name == "pushpulliterativelengthoperator") {
-				mode = "pushpulliterativelength";
-			} else if (function_name == "bidirectionaliterativelengthoperator") {
-				mode = "bidirectionaliterativelength";
-			} else if (function_name == "reachoperator") {
-				mode = "reach";
-			} else {
-				mode = "shortestpath";
-			}
-		} else {
-			// If no replacement is created, throw an internal exception
-			throw InternalException(
-			    "Found a bound path-finding function that should be replaced but could not be replaced.");
-		}
-	}
-
-	// Replace the old expressions vector with the new one
-	op.expressions = std::move(new_expressions);
-}
-
-unique_ptr<LogicalPathFindingOperator>
-DuckpgqOptimizerExtension::FindCSRAndPairs(unique_ptr<LogicalOperator> &first_child,
-                                           unique_ptr<LogicalOperator> &second_child, LogicalProjection &op_proj,
-                                           ClientContext &context) {
-	bool marker_found = false;
-	for (const auto &expr : op_proj.expressions) {
-		if (!GetPathFindingFunctionName(*expr).empty()) {
-			marker_found = true;
-			break;
-		}
-	}
-	if (!marker_found) {
+//! (src, dst, csr_id): the pairs and the CSR builder (the side projecting csr_id) are the two sides of a cross
+//! product under the projection; any other shape is left for the SQL fallback
+static unique_ptr<LogicalPathFindingOperator> PlanGlobalCSRRoute(unique_ptr<LogicalOperator> &root,
+                                                                 LogicalProjection &projection,
+                                                                 const PathFindingMarker &marker) {
+	if (root->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT || root->children.size() != 2) {
 		return nullptr;
 	}
-
-	bool csr_found = false;
-	vector<unique_ptr<Expression>> path_finding_expressions;
-	vector<unique_ptr<LogicalOperator>> path_finding_children;
-	csr_found = ContainsCSRIdProjection(*first_child);
-
-	if (csr_found) {
-		path_finding_children.push_back(std::move(second_child));
-		path_finding_children.push_back(std::move(first_child));
-		if (path_finding_children.size() != 2) {
-			throw InternalException("Path-finding operator should have 2 children");
-		}
-		unique_ptr<Expression> function_expression;
-		string path_finding_mode;
-		vector<idx_t> offsets;
-		string cache_key;
-		ReplaceExpressions(op_proj, function_expression, path_finding_mode, offsets, cache_key);
-		auto path_finding_function = GetPathFindingFunction(*function_expression);
-		auto edge_input = path_finding_function && path_finding_function->GetChildren().size() >= 7;
-		// The operator evaluates the source and destination arguments over the pair input
-		path_finding_expressions.push_back(std::move(function_expression));
-		return make_uniq<LogicalPathFindingOperator>(path_finding_children, path_finding_expressions, path_finding_mode,
-		                                             op_proj.table_index, offsets, std::move(cache_key), edge_input);
+	auto &left = root->children[0];
+	auto &right = root->children[1];
+	bool csr_left = ContainsCSRIdProjection(*left);
+	if (!csr_left && !ContainsCSRIdProjection(*right)) {
+		return nullptr;
 	}
-	// Didn't find the CSR
-	return nullptr;
+	PathFindingInput input;
+	input.route = PathFindingInputRoute::GLOBAL_CSR;
+	vector<unique_ptr<LogicalOperator>> children;
+	children.push_back(std::move(csr_left ? right : left));
+	children.push_back(std::move(csr_left ? left : right));
+	return MakeOperator(std::move(children), projection, marker, std::move(input));
 }
 
-static idx_t CountPathFindingMarkers(const LogicalProjection &projection) {
-	idx_t count = 0;
-	for (const auto &expr : projection.expressions) {
-		if (!GetPathFindingFunctionName(*expr).empty()) {
-			count++;
-		}
-	}
-	return count;
-}
-
-//! Replaces the path-finding marker in this projection with the operator. Returns whether the plan changed.
-static bool TryReplaceProjection(LogicalProjection &op_proj, ClientContext &context) {
-	auto marker_count = CountPathFindingMarkers(op_proj);
-	if (marker_count == 0) {
+//! Replaces the path-finding marker in this projection with the operator; the marker's argument shape names the
+//! route (PathFindingInputRoute). Returns whether the plan changed.
+static bool TryReplaceProjection(LogicalProjection &projection, ClientContext &context) {
+	PathFindingMarker marker;
+	if (!FindProjectionMarker(projection, marker)) {
 		return false;
 	}
-	if (marker_count > 1) {
-		throw BinderException("Only one path-finding function per SELECT list is supported; compute the path length "
-		                      "once and reuse the column");
+	D_ASSERT(projection.children.size() == 1);
+	auto &root = projection.children[0];
+	unique_ptr<LogicalPathFindingOperator> path_finding_operator;
+	if (marker.base_arity == 5 && !marker.ArgumentIsStruct(2)) {
+		path_finding_operator = PlanCSRIndexRoute(root, projection, marker, context);
+	} else if (marker.base_arity == 6 && marker.ArgumentIsStruct(2)) {
+		path_finding_operator = PlanBufferedEndpointsRoute(root, projection, marker, context);
+	} else if (marker.base_arity == 7 && marker.ArgumentIsStruct(2) && marker.ArgumentIsStruct(3)) {
+		path_finding_operator = PlanPrecountedEndpointsRoute(root, projection, marker, context);
+	} else {
+		path_finding_operator = PlanGlobalCSRRoute(root, projection, marker);
 	}
-	if (op_proj.children.size() == 1) {
-		auto path_finding_operator = FindCachedPartitionedCSRAndPairs(op_proj.children[0], op_proj, context);
-		if (!path_finding_operator) {
-			path_finding_operator = FindBufferedEdgesAndPairs(op_proj.children[0], op_proj, context);
-		}
-		if (!path_finding_operator) {
-			path_finding_operator = FindPrecountedEdgesAndPairs(op_proj.children[0], op_proj);
-		}
-		if (path_finding_operator) {
-			op_proj.children.clear();
-			op_proj.children.push_back(std::move(path_finding_operator));
-			return true;
-		}
+	if (!path_finding_operator) {
+		return false;
 	}
-
-	// Legacy marker over a global CSR id: the pairs and the CSR builder are the two sides of a cross product
-	for (auto &child : op_proj.children) {
-		if (child->type != LogicalOperatorType::LOGICAL_CROSS_PRODUCT) {
-			continue;
-		}
-		auto &get_join = child->Cast<LogicalCrossProduct>();
-		if (get_join.children.size() != 2) {
-			continue;
-		}
-		auto &left_child = get_join.children[0];
-		auto &right_child = get_join.children[1];
-		auto path_finding_operator =
-		    DuckpgqOptimizerExtension::FindCSRAndPairs(left_child, right_child, op_proj, context);
-		if (!path_finding_operator) {
-			path_finding_operator =
-			    DuckpgqOptimizerExtension::FindCSRAndPairs(right_child, left_child, op_proj, context);
-		}
-		if (path_finding_operator) {
-			op_proj.children.clear();
-			op_proj.children.push_back(std::move(path_finding_operator));
-			return true;
-		}
-	}
-	return false;
+	projection.children.clear();
+	projection.children.push_back(std::move(path_finding_operator));
+	return true;
 }
 
 bool DuckpgqOptimizerExtension::InsertPathFindingOperator(LogicalOperator &op, ClientContext &context) {

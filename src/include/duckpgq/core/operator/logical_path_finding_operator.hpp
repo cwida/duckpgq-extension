@@ -1,29 +1,21 @@
 #pragma once
 #include "duckpgq/common.hpp"
+#include "duckpgq/core/operator/path_finding_input.hpp"
+#include "duckpgq/core/operator/path_finding_mode.hpp"
 #include <duckdb/planner/operator/logical_extension_operator.hpp>
 
 namespace duckdb {
 
+//! The path-finding operator in the logical plan: the pairs (children[0]) and the edge input of the route, with the
+//! marker function as its only expression (the source and destination arguments are evaluated over the pairs)
 class LogicalPathFindingOperator : public LogicalExtensionOperator {
 public:
-	explicit LogicalPathFindingOperator(vector<unique_ptr<LogicalOperator>> &children_,
-	                                    vector<unique_ptr<Expression>> &expressions_, const string &mode_,
-	                                    TableIndex table_index_, vector<idx_t> &offsets_, string cache_key_,
-	                                    bool edge_input_, bool precounted_edge_input_ = false,
-	                                    idx_t precounted_vertex_count_ = 0, idx_t precounted_edge_count_ = 0,
-	                                    bool cached_partitioned_csr_input_ = false, bool buffered_edge_input_ = false)
-	    : LogicalExtensionOperator(std::move(expressions_)) {
-		children = std::move(children_);
-		mode = mode_;
-		table_index = table_index_;
-		offsets = offsets_;
-		cache_key = std::move(cache_key_);
-		edge_input = edge_input_;
-		precounted_edge_input = precounted_edge_input_;
-		precounted_vertex_count = precounted_vertex_count_;
-		precounted_edge_count = precounted_edge_count_;
-		cached_partitioned_csr_input = cached_partitioned_csr_input_;
-		buffered_edge_input = buffered_edge_input_;
+	LogicalPathFindingOperator(vector<unique_ptr<LogicalOperator>> children_p, unique_ptr<Expression> marker,
+	                           PathFindingOperatorMode mode_p, TableIndex table_index_p, idx_t result_offset_p,
+	                           PathFindingInput input_p)
+	    : mode(mode_p), table_index(table_index_p), result_offset(result_offset_p), input(std::move(input_p)) {
+		children = std::move(children_p);
+		expressions.push_back(std::move(marker));
 	}
 
 	void Serialize(Serializer &serializer) const override {
@@ -44,17 +36,10 @@ public:
 	InsertionOrderPreservingMap<string> ParamsToString() const override;
 
 public:
-	string mode;
+	PathFindingOperatorMode mode;
+	//! The replaced projection's table index and the SELECT-list offset of the marker: the result column's binding
 	TableIndex table_index;
-	vector<idx_t> offsets;
-	string cache_key;
-	//! Longest path length a query needs; 0 means unbounded
-	idx_t max_depth = 0;
-	bool edge_input;
-	bool precounted_edge_input;
-	idx_t precounted_vertex_count;
-	idx_t precounted_edge_count;
-	bool cached_partitioned_csr_input;
-	bool buffered_edge_input;
+	idx_t result_offset;
+	PathFindingInput input;
 };
 } // namespace duckdb

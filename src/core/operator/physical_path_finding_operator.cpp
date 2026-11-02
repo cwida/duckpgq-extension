@@ -104,15 +104,20 @@ void AppendOperatorPhaseTiming(ClientContext &context, const string &phase, idx_
 
 namespace {
 
+//! Vertices of the CSR the kernels index, including the two padding vertices
 idx_t GetPathFindingVSize(const PathFindingGlobalSinkState &gstate) {
-	return gstate.edge_input || gstate.cached_partitioned_csr_input ? gstate.vertex_count + 2 : gstate.csr->vsize;
+	return gstate.route == PathFindingInputRoute::GLOBAL_CSR ? gstate.csr->vsize : gstate.vertex_count + 2;
 }
 
 idx_t GetPathFindingEdgeCount(const PathFindingGlobalSinkState &gstate) {
-	if (gstate.cached_partitioned_csr_input) {
+	switch (gstate.route) {
+	case PathFindingInputRoute::GLOBAL_CSR:
+		return gstate.csr->e.size();
+	case PathFindingInputRoute::CSR_INDEX:
 		return gstate.expected_edge_count;
+	default:
+		return gstate.endpoint_count;
 	}
-	return gstate.edge_input ? gstate.endpoint_count : gstate.csr->e.size();
 }
 
 void RecordStrategy(ClientContext &context, const string &key, const string &value) {
@@ -124,7 +129,7 @@ const char *OrientationName(PathFindingSearchOrientation orientation) {
 }
 
 void MarkTransientGlobalCSRForDeletion(PathFindingGlobalSinkState &gstate, ClientContext &context) {
-	if (!gstate.edge_input && !gstate.cached_partitioned_csr_input) {
+	if (gstate.route == PathFindingInputRoute::GLOBAL_CSR) {
 		GetDuckPGQState(context)->csr_to_delete.insert(NumericCast<int32_t>(gstate.csr_id));
 	}
 }
@@ -226,27 +231,9 @@ class SourceGroupedIterativeLengthState : public PhasedKernel {
 public:
 	//! lane_mode: the group is one lane of a LaneWaveState (an MS-BFS wave of up to LANE_LIMIT source groups); it
 	//! keeps only its destination list and their distances, none of the per-vertex arrays
-	//! The settings a group reads, looked up once per query (a random-pair query has one group per pair, 65536 groups
-	//! would otherwise cost about 300,000 setting lookups)
-	struct Settings {
-		explicit Settings(ClientContext &context)
-		    : benchmark_enabled(GetPathFindingBenchmarkOption(context)),
-		      benchmark_output_prefix(GetPathFindingBenchmarkPrefix(context)),
-		      target_early_termination(GetPathFindingTargetEarlyTermination(context)),
-		      threads_per_batch(GetPathFindingThreadsPerBatch(context)) {
-			auto divisor = GetPathFindingSparseFrontierDivisor(context);
-			sparse_frontier_divisor = divisor > 0 ? NumericCast<idx_t>(divisor) : 0;
-		}
-		bool benchmark_enabled;
-		string benchmark_output_prefix;
-		bool target_early_termination;
-		int64_t threads_per_batch;
-		idx_t sparse_frontier_divisor;
-	};
-
 	SourceGroupedIterativeLengthState(ClientContext &context_p, int64_t source_p,
 	                                  std::vector<shared_ptr<LocalCSR>> &local_csrs_p, idx_t num_threads_p,
-	                                  int64_t v_size_p, const Settings &settings, bool lane_mode_p = false)
+	                                  int64_t v_size_p, const PathFindingSettings &settings, bool lane_mode_p = false)
 	    : context(context_p), source(source_p), local_csrs(local_csrs_p), num_threads(num_threads_p), v_size(v_size_p),
 	      iter(1), change(false), lane_mode(lane_mode_p) {
 		// The per-vertex arrays are allocated in Start() and freed in Finished(), once the results of the group's
@@ -920,7 +907,7 @@ static bool CanSearchInReverse(const PathFindingGlobalSinkState &gstate) {
 	if (gstate.index_snapshot && !gstate.index_snapshot->reverse_partitions.empty()) {
 		return true; // the index stores the reverse side
 	}
-	return !(gstate.precounted_edge_input || gstate.buffered_edge_input || gstate.cached_partitioned_csr_input);
+	return gstate.route == PathFindingInputRoute::GLOBAL_CSR;
 }
 
 //! The snapshot overlay that goes with the partitions of the search orientation
@@ -938,11 +925,11 @@ static const std::vector<shared_ptr<vector<uint64_t>>> &SearchSuppressed(const P
 
 static PathFindingSearchOrientation ChooseSupportedSearchOrientation(const PathFindingGlobalSinkState &gstate,
                                                                      ClientContext &context) {
-	if (!CanSearchInReverse(gstate) || gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH ||
-	    gstate.path_finding_mode == PathFindingOperatorMode::REACH) {
+	if (!CanSearchInReverse(gstate) || gstate.mode == PathFindingOperatorMode::SHORTEST_PATH ||
+	    gstate.mode == PathFindingOperatorMode::REACH) {
 		return PathFindingSearchOrientation::FORWARD;
 	}
-	return ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
+	return ChooseSearchOrientation(gstate.pair_stats, gstate.mode, context);
 }
 
 //! Maps the pair keys of an index-backed query to the epoch's dense vertex ids in place; unknown keys become NULL
@@ -1061,25 +1048,6 @@ void FinalizePairStats(PathFindingGlobalSinkState &gstate, PathFindingPairStats 
 	gstate.pair_stats = stats;
 }
 
-PathFindingOperatorMode ParsePathFindingOperatorMode(const string &mode) {
-	if (mode == "iterativelength") {
-		return PathFindingOperatorMode::ITERATIVE_LENGTH;
-	}
-	if (mode == "pushpulliterativelength") {
-		return PathFindingOperatorMode::PUSH_PULL_ITERATIVE_LENGTH;
-	}
-	if (mode == "bidirectionaliterativelength") {
-		return PathFindingOperatorMode::BIDIRECTIONAL_ITERATIVE_LENGTH;
-	}
-	if (mode == "shortestpath") {
-		return PathFindingOperatorMode::SHORTEST_PATH;
-	}
-	if (mode == "reach") {
-		return PathFindingOperatorMode::REACH;
-	}
-	throw InvalidInputException("Unknown mode specified %s", mode);
-}
-
 void ConfigureLocalCSRStateForMode(LocalCSRState &local_csr_state, PathFindingOperatorMode mode) {
 	switch (mode) {
 	case PathFindingOperatorMode::BIDIRECTIONAL_ITERATIVE_LENGTH:
@@ -1134,17 +1102,19 @@ void RecordPartitionedCSRBuild(PathFindingGlobalSinkState &gstate, ClientContext
 	                          GetPathFindingEdgeCount(gstate), local_csr_state.partition_csrs.size(), build_ms, 0);
 }
 
-shared_ptr<BFSState> CreateBFSStateForMode(PathFindingOperatorMode mode, const shared_ptr<PathFindingBatch> &batch,
-                                           PathFindingSearchOrientation orientation, LocalCSRState &local_csr_state,
-                                           idx_t num_threads, ClientContext &context, int64_t vsize) {
-	switch (mode) {
+shared_ptr<BFSState> CreateBFSStateForMode(const PathFindingGlobalSinkState &gstate,
+                                           const shared_ptr<PathFindingBatch> &batch, ClientContext &context) {
+	auto &local_csr_state = *gstate.local_csr_state;
+	auto num_threads = gstate.num_threads;
+	auto vsize = GetPathFindingVSize(gstate);
+	switch (gstate.mode) {
 	case PathFindingOperatorMode::ITERATIVE_LENGTH:
-		if (orientation == PathFindingSearchOrientation::REVERSE) {
+		if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
 			return make_shared_ptr<IterativeLengthState>(batch, local_csr_state.reverse_partition_csrs, num_threads,
-			                                             context, vsize);
+			                                             context, vsize, gstate.settings);
 		}
 		return make_shared_ptr<IterativeLengthState>(batch, local_csr_state.partition_csrs, num_threads, context,
-		                                             vsize);
+		                                             vsize, gstate.settings);
 	case PathFindingOperatorMode::PUSH_PULL_ITERATIVE_LENGTH:
 		return make_shared_ptr<PushPullIterativeLengthState>(
 		    batch, local_csr_state.partition_csrs, local_csr_state.pull_partition_csrs, num_threads, context, vsize);
@@ -1161,9 +1131,7 @@ shared_ptr<BFSState> CreateBFSStateForMode(PathFindingOperatorMode mode, const s
 
 shared_ptr<Event> CreateBFSEventForMode(PathFindingGlobalSinkState &gstate, const shared_ptr<PathFindingBatch> &batch,
                                         Pipeline &pipeline, const PhysicalPathFinding *op, ClientContext &context) {
-	auto bfs_state =
-	    CreateBFSStateForMode(gstate.path_finding_mode, batch, gstate.search_orientation, *gstate.local_csr_state,
-	                          gstate.num_threads, context, GetPathFindingVSize(gstate));
+	auto bfs_state = CreateBFSStateForMode(gstate, batch, context);
 	bfs_state->delta_csrs = SearchDeltaCSRs(gstate);
 	bfs_state->suppressed = SearchSuppressed(gstate);
 	bfs_state->max_depth = gstate.max_depth;
@@ -1228,7 +1196,7 @@ protected:
 //! baseline); see CreatePathFindingBatchEvents for its two regimes
 bool ShouldUseGroupedIterativeLengthBatches(PathFindingGlobalSinkState &gstate, ClientContext &context,
                                             idx_t batch_count) {
-	if (batch_count == 0 || gstate.path_finding_mode != PathFindingOperatorMode::ITERATIVE_LENGTH ||
+	if (batch_count == 0 || gstate.mode != PathFindingOperatorMode::ITERATIVE_LENGTH ||
 	    !GetPathFindingGroupedBatches(context)) {
 		return false;
 	}
@@ -1236,15 +1204,15 @@ bool ShouldUseGroupedIterativeLengthBatches(PathFindingGlobalSinkState &gstate, 
 }
 
 bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, ClientContext &context) {
-	if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH ||
-	    gstate.path_finding_mode == PathFindingOperatorMode::REACH) {
+	if (gstate.mode == PathFindingOperatorMode::SHORTEST_PATH ||
+	    gstate.mode == PathFindingOperatorMode::REACH) {
 		// Paths need parent pointers per vertex, which only the per-source kernel keeps; reach emits each
 		// group's whole distance array
 		return true;
 	}
 	auto ratio = GetPathFindingSourceGroupRatio(context);
 	// Pairs with a NULL endpoint (a key absent from the graph) are answered NULL without joining a group
-	if (gstate.path_finding_mode != PathFindingOperatorMode::ITERATIVE_LENGTH || ratio <= 0) {
+	if (gstate.mode != PathFindingOperatorMode::ITERATIVE_LENGTH || ratio <= 0) {
 		return false;
 	}
 	auto distinct_search_sources = gstate.search_orientation == PathFindingSearchOrientation::REVERSE
@@ -1288,8 +1256,9 @@ class LaneWaveState : public IterativeLengthState {
 public:
 	LaneWaveState(vector<shared_ptr<SourceGroupedIterativeLengthState>> groups_p,
 	              std::vector<shared_ptr<LocalCSR>> &local_csrs_p, idx_t num_threads_p, ClientContext &context_p,
-	              int64_t vsize_p)
-	    : IterativeLengthState(MakeLaneBatch(groups_p, context_p), local_csrs_p, num_threads_p, context_p, vsize_p),
+	              int64_t vsize_p, const PathFindingSettings &settings)
+	    : IterativeLengthState(MakeLaneBatch(groups_p, context_p), local_csrs_p, num_threads_p, context_p, vsize_p,
+	                           settings),
 	      groups(std::move(groups_p)) {
 		SetTimingLabel("bfs_lane_wave");
 	}
@@ -1482,7 +1451,7 @@ vector<shared_ptr<Event>> CreatePathFindingBatchEvents(PathFindingGlobalSinkStat
 	iterative_states.reserve(batches.size());
 	for (auto &batch : batches) {
 		auto state = make_shared_ptr<IterativeLengthState>(batch, partition_csrs, threads, context,
-		                                                   GetPathFindingVSize(gstate));
+		                                                   GetPathFindingVSize(gstate), gstate.settings);
 		state->delta_csrs = SearchDeltaCSRs(gstate);
 		state->suppressed = SearchSuppressed(gstate);
 		state->max_depth = gstate.max_depth;
@@ -1579,24 +1548,23 @@ public:
 		// Many sources with destination lists run as MS-BFS waves of one lane per source (LaneWaveState) instead of
 		// one single-source search per group: lengths only, more groups than the few-sources limit
 		auto few_sources_limit = GetPathFindingFewSourcesLimit(context);
-		bool lane_waves = gstate.path_finding_mode == PathFindingOperatorMode::ITERATIVE_LENGTH &&
+		bool lane_waves = gstate.mode == PathFindingOperatorMode::ITERATIVE_LENGTH &&
 		                  GetPathFindingLaneWaves(context) && group_count > 1 &&
 		                  (few_sources_limit <= 0 || group_count > NumericCast<idx_t>(few_sources_limit));
 		RecordStrategy(context, "source_group_kernel", lane_waves ? "lane_waves" : "per_source");
 		// The per-group arrays (distances, seen, frontier stamps, parents) are sized by the vertex count; with
 		// many groups their allocation is spread over the threads
 		vector<shared_ptr<SourceGroupedIterativeLengthState>> states(group_count);
-		SourceGroupedIterativeLengthState::Settings group_settings(context);
 		ParallelFor(group_count, gstate.num_threads, [&](idx_t begin, idx_t end, idx_t) {
 			for (idx_t group_idx = begin; group_idx < end; group_idx++) {
 				auto state = make_shared_ptr<SourceGroupedIterativeLengthState>(
 				    context, gstate.source_group_sources[group_idx], partition_csrs, gstate.num_threads,
-				    GetPathFindingVSize(gstate), group_settings, lane_waves);
+				    GetPathFindingVSize(gstate), gstate.settings, lane_waves);
 				state->delta_csrs = SearchDeltaCSRs(gstate);
 				state->suppressed = SearchSuppressed(gstate);
 				state->max_depth = gstate.max_depth;
-				state->reach_mode = gstate.path_finding_mode == PathFindingOperatorMode::REACH;
-				if (gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH) {
+				state->reach_mode = gstate.mode == PathFindingOperatorMode::REACH;
+				if (gstate.mode == PathFindingOperatorMode::SHORTEST_PATH) {
 					state->EnableParentTracking();
 				}
 				if (group_idx < gstate.source_group_row_counts.size()) {
@@ -1608,7 +1576,7 @@ public:
 		for (idx_t group_idx = 0; group_idx < group_count; group_idx++) {
 			auto state = std::move(states[group_idx]);
 			state->output_chunks = std::move(gstate.source_group_output_chunks[group_idx]);
-			bool reach = gstate.path_finding_mode == PathFindingOperatorMode::REACH;
+			bool reach = gstate.mode == PathFindingOperatorMode::REACH;
 			if (reach && !gstate.source_group_preserve_output_order) {
 				// Single group: every input row belongs to it
 				gstate.source_group_rows.resize(group_count);
@@ -1631,7 +1599,7 @@ public:
 			}
 			gstate.source_group_states.push_back(state);
 		}
-		if (gstate.path_finding_mode == PathFindingOperatorMode::REACH) {
+		if (gstate.mode == PathFindingOperatorMode::REACH) {
 			gstate.source_group_rows.resize(group_count);
 			gstate.reach_slices_done.clear();
 			for (idx_t group_idx = 0; group_idx < group_count; group_idx++) {
@@ -1661,7 +1629,7 @@ public:
 				vector<shared_ptr<SourceGroupedIterativeLengthState>> wave_groups(
 				    gstate.source_group_states.begin() + begin, gstate.source_group_states.begin() + end);
 				auto wave = make_shared_ptr<LaneWaveState>(std::move(wave_groups), partition_csrs, gstate.num_threads,
-				                                           context, GetPathFindingVSize(gstate));
+				                                           context, GetPathFindingVSize(gstate), gstate.settings);
 				wave->delta_csrs = SearchDeltaCSRs(gstate);
 				wave->suppressed = SearchSuppressed(gstate);
 				wave->max_depth = gstate.max_depth;
@@ -1699,7 +1667,7 @@ private:
 			return;
 		}
 		auto threads = std::max<idx_t>(1, gstate.num_threads);
-		bool paths = gstate.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH;
+		bool paths = gstate.mode == PathFindingOperatorMode::SHORTEST_PATH;
 		auto bytes_per_search = static_cast<double>(GetPathFindingVSize(gstate)) *
 		                        static_cast<double>(SourceGroupedIterativeLengthState::BytesPerVertex(paths));
 		RecordStrategy(context, "source_search_mb",
@@ -2001,18 +1969,22 @@ private:
 template <class MAKE_NEXT>
 void ScheduleLocalCSRBuildThen(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
                                const PhysicalPathFinding &op, ClientContext &context, MAKE_NEXT &&make_next) {
+	auto route = gstate.route;
+	bool endpoint_input = route == PathFindingInputRoute::BUFFERED_ENDPOINTS ||
+	                      route == PathFindingInputRoute::PRECOUNTED_ENDPOINTS;
 	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE && !gstate.symmetric_edges &&
-	    (gstate.precounted_edge_input || gstate.buffered_edge_input)) {
+	    endpoint_input) {
 		throw NotImplementedException(
-		    "Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the "
-		    "forward orientation");
+		    "Reverse search requires a reverse PartitionCSR; endpoint inputs build only the forward orientation");
 	}
-	if (gstate.cached_partitioned_csr_input && gstate.endpoint_partition_width == 0) {
+	if (route == PathFindingInputRoute::CSR_INDEX && gstate.endpoint_partition_width == 0) {
 		gstate.endpoint_partition_width =
 		    GetBufferedPartitionedCSRWidth(gstate.vertex_count, gstate.num_threads, context);
 	}
 	shared_ptr<LocalCSRState> local_csr_state;
-	if (gstate.cached_partitioned_csr_input || gstate.precounted_edge_input || gstate.buffered_edge_input) {
+	if (route == PathFindingInputRoute::GLOBAL_CSR) {
+		local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
+	} else {
 		std::vector<std::vector<LocalCSRBuildPartition>> empty_buffers;
 		local_csr_state = make_shared_ptr<LocalCSRState>(context, std::move(empty_buffers), gstate.vertex_count,
 		                                                 GetPathFindingEdgeCount(gstate),
@@ -2021,14 +1993,8 @@ void ScheduleLocalCSRBuildThen(PathFindingGlobalSinkState &gstate, Pipeline &pip
 		if (gstate.symmetric_edges) {
 			local_csr_state->reverse_partition_csrs = local_csr_state->partition_csrs;
 		}
-	} else if (gstate.edge_input) {
-		local_csr_state =
-		    make_shared_ptr<LocalCSRState>(context, std::move(gstate.endpoint_build_runs), gstate.vertex_count,
-		                                   gstate.endpoint_count, gstate.endpoint_partition_width, gstate.num_threads);
-	} else {
-		local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
 	}
-	ConfigureLocalCSRStateForMode(*local_csr_state, gstate.path_finding_mode);
+	ConfigureLocalCSRStateForMode(*local_csr_state, gstate.mode);
 	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
 		local_csr_state->build_forward_csr = false;
 		local_csr_state->build_reverse_csr = true;
@@ -2038,25 +2004,29 @@ void ScheduleLocalCSRBuildThen(PathFindingGlobalSinkState &gstate, Pipeline &pip
 		event.InsertEvent(make_next());
 		return;
 	}
-	if (gstate.cached_partitioned_csr_input) {
+	switch (route) {
+	case PathFindingInputRoute::CSR_INDEX:
 		throw ConstraintException("The cache-only path-finding form needs a CSR index; no index snapshot was found for "
 		                          "key '%s'",
-		                          op.cache_key);
-	}
-	if (gstate.buffered_edge_input) {
+		                          op.input.cache_key);
+	case PathFindingInputRoute::BUFFERED_ENDPOINTS: {
 		auto build_event = make_shared_ptr<PartitionedEndpointBuildEvent>(gstate, pipeline, op, context);
 		event.InsertEvent(build_event);
 		build_event->InsertEvent(make_next());
 		return;
 	}
-	if (gstate.precounted_edge_input) {
+	case PathFindingInputRoute::PRECOUNTED_ENDPOINTS:
+		// The partitions were filled during the sink
 		event.InsertEvent(make_next());
 		return;
+	case PathFindingInputRoute::GLOBAL_CSR: {
+		auto local_csr_event =
+		    make_shared_ptr<PhasedKernelEvent>(make_shared_ptr<LocalCSRBuildKernel>(local_csr_state), pipeline, op);
+		event.InsertEvent(local_csr_event);
+		local_csr_event->InsertEvent(make_next());
+		return;
 	}
-	auto local_csr_event =
-	    make_shared_ptr<PhasedKernelEvent>(make_shared_ptr<LocalCSRBuildKernel>(local_csr_state), pipeline, op);
-	event.InsertEvent(local_csr_event);
-	local_csr_event->InsertEvent(make_next());
+	}
 }
 
 void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
@@ -2102,7 +2072,7 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
 
 	std::unordered_map<int64_t, idx_t> source_to_group;
 	vector<SourceGroupBuildState> groups;
-	bool reach = gstate.path_finding_mode == PathFindingOperatorMode::REACH;
+	bool reach = gstate.mode == PathFindingOperatorMode::REACH;
 
 	for (auto &chunk : gstate.global_output_batches) {
 		vector<idx_t> output_states;
@@ -2340,8 +2310,7 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	                          gstate.pair_stats.distinct_src_count, gstate.pair_stats.distinct_dst_count,
 	                          std::chrono::duration<double, std::milli>(analysis_end - analysis_start).count(), 0);
 	gstate.search_orientation = ChooseSupportedSearchOrientation(gstate, context);
-	RecordStrategy(context, "mode",
-	               gstate.path_finding_mode == PathFindingOperatorMode::ITERATIVE_LENGTH ? "iterativelength" : op.mode);
+	RecordStrategy(context, "mode", PathFindingModeName(gstate.mode));
 	RecordStrategy(context, "pairs", std::to_string(gstate.pair_stats.pair_count));
 	RecordStrategy(context, "distinct_src", std::to_string(gstate.pair_stats.distinct_src_count));
 	RecordStrategy(context, "distinct_dst", std::to_string(gstate.pair_stats.distinct_dst_count));
@@ -2359,7 +2328,7 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 
 	// The dedupe path rescans the raw pairs, which for an index-backed query are keys rather than ids
 	if (GetPathFindingDeduplicatePairs(context) && !gstate.index_snapshot &&
-	    gstate.path_finding_mode == PathFindingOperatorMode::ITERATIVE_LENGTH) {
+	    gstate.mode == PathFindingOperatorMode::ITERATIVE_LENGTH) {
 		gstate.global_output_batches.clear();
 		gstate.global_pairs->InitializeScan(gstate.global_scan_state, ColumnDataScanProperties::DISALLOW_ZERO_COPY);
 		return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
@@ -2395,14 +2364,7 @@ PhysicalPathFinding::PhysicalPathFinding(PhysicalPlan &physical_plan, LogicalExt
 	estimated_cardinality = op.estimated_cardinality;
 	auto &path_finding_op = op.Cast<LogicalPathFindingOperator>();
 	mode = path_finding_op.mode;
-	cache_key = path_finding_op.cache_key;
-	max_depth = path_finding_op.max_depth;
-	edge_input = path_finding_op.edge_input;
-	precounted_edge_input = path_finding_op.precounted_edge_input;
-	precounted_vertex_count = path_finding_op.precounted_vertex_count;
-	precounted_edge_count = path_finding_op.precounted_edge_count;
-	cached_partitioned_csr_input = path_finding_op.cached_partitioned_csr_input;
-	buffered_edge_input = path_finding_op.buffered_edge_input;
+	input = path_finding_op.input;
 }
 
 vector<LogicalType> PhysicalPathFinding::PairTypes() const {
@@ -2413,13 +2375,8 @@ vector<LogicalType> PhysicalPathFinding::PairTypes() const {
 }
 
 static bool IsPathFindingFunction(const Expression &expr) {
-	if (expr.GetExpressionClass() != ExpressionClass::BOUND_FUNCTION) {
-		return false;
-	}
-	auto name = expr.Cast<BoundFunctionExpression>().Function().GetName().GetIdentifierName();
-	return name == "iterativelengthoperator" || name == "pushpulliterativelengthoperator" ||
-	       name == "bidirectionaliterativelengthoperator" || name == "shortestpathoperator" ||
-	       name == "reachoperator";
+	return expr.GetExpressionClass() == ExpressionClass::BOUND_FUNCTION &&
+	       IsPathFindingMarkerName(expr.Cast<BoundFunctionExpression>().Function().GetName().GetIdentifierName());
 }
 
 static BoundFunctionExpression *FindPathFindingFunction(Expression &expr) {
@@ -2518,56 +2475,6 @@ void PathFindingLocalSinkState::SinkPairs(DataChunk &input) {
 	}
 	pair_chunk.SetChildCardinality(input.size());
 	local_pairs.Append(pair_chunk);
-}
-
-void PathFindingLocalSinkState::SinkEndpoints(DataChunk &input) {
-	if (input.size() == 0) {
-		return;
-	}
-	auto input_vertex_count = input.GetValue(2, 0).GetValue<int64_t>();
-	auto input_edge_count = input.GetValue(3, 0).GetValue<int64_t>();
-	if (input_vertex_count < 0 || static_cast<uint64_t>(input_vertex_count) > NumericLimits<uint32_t>::Maximum()) {
-		throw OutOfRangeException("Direct endpoint CSR vertex count is outside the supported uint32 range: %lld",
-		                          input_vertex_count);
-	}
-	if (input_edge_count < 0) {
-		throw OutOfRangeException("Direct endpoint CSR edge count cannot be negative: %lld", input_edge_count);
-	}
-	if (endpoint_metadata_initialized && (vertex_count != static_cast<idx_t>(input_vertex_count) ||
-	                                      expected_edge_count != static_cast<idx_t>(input_edge_count))) {
-		throw InvalidInputException("Inconsistent direct endpoint CSR metadata");
-	}
-	vertex_count = static_cast<idx_t>(input_vertex_count);
-	expected_edge_count = static_cast<idx_t>(input_edge_count);
-	endpoint_metadata_initialized = true;
-	if (endpoint_partition_width == 0) {
-		auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
-		endpoint_partition_width = GetBufferedPartitionedCSRWidth(vertex_count, thread_count, context);
-		auto partition_count = (vertex_count + 2 + endpoint_partition_width - 1) / endpoint_partition_width;
-		local_endpoint_partitions.resize(partition_count);
-	}
-
-	UnifiedVectorFormat src_format;
-	UnifiedVectorFormat dst_format;
-	input.data[0].ToUnifiedFormat(src_format);
-	input.data[1].ToUnifiedFormat(dst_format);
-	auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
-	auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
-	for (idx_t row = 0; row < input.size(); row++) {
-		auto src_idx = src_format.sel->get_index(row);
-		auto dst_idx = dst_format.sel->get_index(row);
-		if (!src_format.validity.RowIsValid(src_idx) || !dst_format.validity.RowIsValid(dst_idx)) {
-			throw ConstraintException("Path-finding graph endpoints cannot be NULL");
-		}
-		auto src = src_data[src_idx];
-		auto dst = dst_data[dst_idx];
-		if (src < 0 || dst < 0 || static_cast<idx_t>(src) >= vertex_count || static_cast<idx_t>(dst) >= vertex_count) {
-			throw ConstraintException("Path-finding graph endpoint is outside the vertex rowid range");
-		}
-		auto partition_idx = static_cast<idx_t>(dst) / endpoint_partition_width;
-		auto destination = static_cast<idx_t>(dst) - partition_idx * endpoint_partition_width;
-		local_endpoint_partitions[partition_idx].Append(static_cast<idx_t>(src), destination);
-	}
 }
 
 static void InitializePrecountedEndpointState(PathFindingGlobalSinkState &gstate) {
@@ -2742,36 +2649,32 @@ static void SinkPreallocatedEndpoints(PathFindingGlobalSinkState &gstate, PathFi
 }
 
 PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, const PhysicalPathFinding &op)
-    : context_(context) {
+    : settings(context), context_(context) {
 	global_pairs = make_uniq<ColumnDataCollection>(context, op.PairTypes());
 
 	global_pairs->InitializeScan(global_scan_state);
-	benchmark_enabled = GetPathFindingBenchmarkOption(context);
-	edge_input = op.edge_input;
-	precounted_edge_input = op.precounted_edge_input;
-	cached_partitioned_csr_input = op.cached_partitioned_csr_input;
-	buffered_edge_input = op.buffered_edge_input;
-	vertex_count = op.precounted_vertex_count;
-	expected_edge_count = op.precounted_edge_count;
-	max_depth = op.max_depth;
-	if (cached_partitioned_csr_input && CSRIndex::IsCacheKey(op.cache_key)) {
-		index_snapshot = CSRIndex::ResolveCacheKey(context, op.cache_key);
+	route = op.input.route;
+	vertex_count = op.input.vertex_count;
+	expected_edge_count = op.input.edge_count;
+	max_depth = op.input.max_depth;
+	if (route == PathFindingInputRoute::CSR_INDEX && CSRIndex::IsCacheKey(op.input.cache_key)) {
+		index_snapshot = CSRIndex::ResolveCacheKey(context, op.input.cache_key);
 		if (!index_snapshot) {
 			throw InvalidInputException(
-			    "The CSR index behind '%s' has no snapshot for this transaction; rerun the query", op.cache_key);
+			    "The CSR index behind '%s' has no snapshot for this transaction; rerun the query", op.input.cache_key);
 		}
 		vertex_count = index_snapshot->vertex_count;
 		expected_edge_count = index_snapshot->edge_count;
 		endpoint_partition_width = index_snapshot->partition_width;
 	}
-	symmetric_edges = (index_snapshot && index_snapshot->undirected) || StringUtil::EndsWith(op.cache_key, "|undirected");
+	symmetric_edges = (index_snapshot && index_snapshot->undirected) || op.input.undirected;
 	auto &scheduler = TaskScheduler::GetScheduler(context);
 	num_threads = scheduler.NumberOfThreads();
 	mode = op.mode;
-	path_finding_mode = ParsePathFindingOperatorMode(mode);
 	// Paths report edges by row id, so the endpoint input of a path query carries them through the build
-	track_edge_rows = buffered_edge_input && path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH;
-	if (buffered_edge_input) {
+	bool buffered_endpoints = route == PathFindingInputRoute::BUFFERED_ENDPOINTS;
+	track_edge_rows = buffered_endpoints && mode == PathFindingOperatorMode::SHORTEST_PATH;
+	if (buffered_endpoints) {
 		endpoint_radix_bits = GetBufferedPartitionedCSRRadixBits(vertex_count, num_threads, context);
 		endpoint_partition_width = GetBufferedPartitionedCSRWidth(vertex_count, num_threads, context);
 		endpoint_logical_partition_count =
@@ -2785,7 +2688,7 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 		// Ensure that an empty graph also has all destination partitions.
 		auto empty_partitions = endpoint_partition_data->CreateShared();
 		endpoint_partition_data->Combine(*empty_partitions);
-		if (benchmark_enabled) {
+		if (settings.benchmark_enabled) {
 			auto &buffer_manager = BufferManager::GetBufferManager(context);
 			csr_build_buffer_baseline_bytes = buffer_manager.GetUsedMemory();
 			csr_build_swap_baseline_bytes = buffer_manager.GetUsedSwap();
@@ -2795,33 +2698,37 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 	}
 }
 
+//! The children sink one after the other (`child` counts them): the global CSR id comes before the pairs, the
+//! endpoint inputs after them, and the index route has only the pairs
 void PathFindingGlobalSinkState::Sink(DataChunk &input, PathFindingLocalSinkState &lstate) {
-	if (cached_partitioned_csr_input) {
+	switch (route) {
+	case PathFindingInputRoute::CSR_INDEX:
 		lstate.SinkPairs(input);
 		return;
-	}
-	if (edge_input) {
+	case PathFindingInputRoute::GLOBAL_CSR:
 		if (child == 0) {
-			lstate.SinkPairs(input);
-		} else if (buffered_edge_input) {
-			lstate.SinkBufferedEndpoints(*this, input);
-		} else if (precounted_edge_input && child == 1) {
-			SinkPrecountEndpoints(*this, lstate, input);
-		} else if (precounted_edge_input) {
-			SinkPreallocatedEndpoints(*this, lstate, input);
+			csr_id = input.GetValue(0, 0).GetValue<int64_t>();
+			csr = GetDuckPGQState(context_)->GetCSR(NumericCast<int32_t>(csr_id));
 		} else {
-			lstate.SinkEndpoints(input);
+			lstate.SinkPairs(input);
 		}
 		return;
-	}
-	if (child == 0) {
-		// CSR phase
-		auto duckpgq_state = GetDuckPGQState(context_);
-		csr_id = input.GetValue(0, 0).GetValue<int64_t>();
-		csr = duckpgq_state->GetCSR(NumericCast<int32_t>(csr_id));
-	} else {
-		// path-finding phase
-		lstate.SinkPairs(input);
+	case PathFindingInputRoute::BUFFERED_ENDPOINTS:
+		if (child == 0) {
+			lstate.SinkPairs(input);
+		} else {
+			lstate.SinkBufferedEndpoints(*this, input);
+		}
+		return;
+	case PathFindingInputRoute::PRECOUNTED_ENDPOINTS:
+		if (child == 0) {
+			lstate.SinkPairs(input);
+		} else if (child == 1) {
+			SinkPrecountEndpoints(*this, lstate, input);
+		} else {
+			SinkPreallocatedEndpoints(*this, lstate, input);
+		}
+		return;
 	}
 }
 
@@ -2845,76 +2752,41 @@ SinkResultType PhysicalPathFinding::Sink(ExecutionContext &context, DataChunk &c
 SinkCombineResultType PhysicalPathFinding::Combine(ExecutionContext &context, OperatorSinkCombineInput &input) const {
 	auto &gstate = input.global_state.Cast<PathFindingGlobalSinkState>();
 	auto &lstate = input.local_state.Cast<PathFindingLocalSinkState>();
-	if (gstate.cached_partitioned_csr_input) {
+	bool pairs_child = gstate.route == PathFindingInputRoute::CSR_INDEX ||
+	                   (gstate.route == PathFindingInputRoute::GLOBAL_CSR ? gstate.child == 1 : gstate.child == 0);
+	if (pairs_child) {
 		if (lstate.local_pairs.Count() > 0) {
 			lock_guard<mutex> pair_lock(gstate.global_pairs_lock);
 			gstate.global_pairs->Combine(lstate.local_pairs);
 		}
 		return SinkCombineResultType::FINISHED;
 	}
-	if (gstate.edge_input) {
-		if (gstate.child == 0) {
-			if (lstate.local_pairs.Count() > 0) {
-				lock_guard<mutex> pair_lock(gstate.global_pairs_lock);
-				gstate.global_pairs->Combine(lstate.local_pairs);
-			}
-			return SinkCombineResultType::FINISHED;
-		}
-		if (gstate.precounted_edge_input) {
-			lock_guard<mutex> endpoint_lock(gstate.global_endpoints_lock);
-			if (gstate.child == 1) {
-				gstate.counted_endpoint_count += lstate.local_counted_endpoint_count;
-			} else {
-				gstate.endpoint_count += lstate.local_filled_endpoint_count;
-			}
-			return SinkCombineResultType::FINISHED;
-		}
-		if (gstate.buffered_edge_input) {
-			lock_guard<mutex> endpoint_lock(gstate.global_endpoints_lock);
-			gstate.counted_endpoint_count += lstate.local_counted_endpoint_count;
-			if (lstate.local_endpoint_partition_data) {
-				lstate.local_endpoint_partition_data->FlushAppendState(*lstate.endpoint_partition_append_state);
-				gstate.endpoint_partition_data->Combine(*lstate.local_endpoint_partition_data);
-				lstate.local_endpoint_partition_data.reset();
-				lstate.endpoint_partition_append_state.reset();
-			}
-			SampleCSRBuildMemory(gstate);
-			return SinkCombineResultType::FINISHED;
-		}
-		if (!lstate.endpoint_metadata_initialized) {
-			return SinkCombineResultType::FINISHED;
-		}
+	switch (gstate.route) {
+	case PathFindingInputRoute::PRECOUNTED_ENDPOINTS: {
 		lock_guard<mutex> endpoint_lock(gstate.global_endpoints_lock);
-		if (gstate.endpoint_count > 0 &&
-		    (gstate.vertex_count != lstate.vertex_count || gstate.expected_edge_count != lstate.expected_edge_count)) {
-			throw InvalidInputException("Inconsistent direct endpoint CSR metadata across workers");
-		}
-		gstate.vertex_count = lstate.vertex_count;
-		gstate.expected_edge_count = lstate.expected_edge_count;
-		if (gstate.endpoint_partition_width != 0 &&
-		    gstate.endpoint_partition_width != lstate.endpoint_partition_width) {
-			throw InvalidInputException("Inconsistent direct streaming CSR partition width across workers");
-		}
-		gstate.endpoint_partition_width = lstate.endpoint_partition_width;
-		idx_t local_edge_count = 0;
-		for (auto &partition : lstate.local_endpoint_partitions) {
-			partition.Finalize();
-			local_edge_count += partition.destinations.size();
-		}
-		gstate.endpoint_count += local_edge_count;
-		if (local_edge_count > 0) {
-			gstate.endpoint_build_runs.push_back(std::move(lstate.local_endpoint_partitions));
+		if (gstate.child == 1) {
+			gstate.counted_endpoint_count += lstate.local_counted_endpoint_count;
+		} else {
+			gstate.endpoint_count += lstate.local_filled_endpoint_count;
 		}
 		return SinkCombineResultType::FINISHED;
 	}
-	if (gstate.child == 0) {
+	case PathFindingInputRoute::BUFFERED_ENDPOINTS: {
+		lock_guard<mutex> endpoint_lock(gstate.global_endpoints_lock);
+		gstate.counted_endpoint_count += lstate.local_counted_endpoint_count;
+		if (lstate.local_endpoint_partition_data) {
+			lstate.local_endpoint_partition_data->FlushAppendState(*lstate.endpoint_partition_append_state);
+			gstate.endpoint_partition_data->Combine(*lstate.local_endpoint_partition_data);
+			lstate.local_endpoint_partition_data.reset();
+			lstate.endpoint_partition_append_state.reset();
+		}
+		SampleCSRBuildMemory(gstate);
 		return SinkCombineResultType::FINISHED;
 	}
-	if (lstate.local_pairs.Count() > 0) {
-		lock_guard<mutex> pair_lock(gstate.global_pairs_lock);
-		gstate.global_pairs->Combine(lstate.local_pairs);
+	default:
+		// The global CSR id child has nothing to combine
+		return SinkCombineResultType::FINISHED;
 	}
-	return SinkCombineResultType::FINISHED;
 }
 
 //===--------------------------------------------------------------------===//
@@ -3025,51 +2897,52 @@ static void FinalizePrecountedEndpointRows(PathFindingGlobalSinkState &gstate) {
 SinkFinalizeType PhysicalPathFinding::Finalize(Pipeline &pipeline, Event &event, ClientContext &context,
                                                OperatorSinkFinalizeInput &input) const {
 	auto &gstate = input.global_state.Cast<PathFindingGlobalSinkState>();
-	if (gstate.cached_partitioned_csr_input) {
+	switch (gstate.route) {
+	case PathFindingInputRoute::CSR_INDEX:
 		return FinalizePathFindingPhase(gstate, pipeline, event, *this, context);
-	}
-	if (gstate.edge_input) {
+	case PathFindingInputRoute::GLOBAL_CSR:
+		if (gstate.csr == nullptr) {
+			throw InternalException("CSR not initialized");
+		}
+		if (gstate.child == 0) {
+			return FinalizeCSRIdPhase(gstate);
+		}
+		return FinalizePathFindingPhase(gstate, pipeline, event, *this, context);
+	case PathFindingInputRoute::BUFFERED_ENDPOINTS:
 		if (gstate.child == 0) {
 			return FinalizeEndpointPairPhase(gstate, context);
 		}
-		if (gstate.buffered_edge_input) {
-			FinalizePartitionedEndpointInput(gstate, context);
-			return FinalizePathFindingPhase(gstate, pipeline, event, *this, context);
+		FinalizePartitionedEndpointInput(gstate, context);
+		return FinalizePathFindingPhase(gstate, pipeline, event, *this, context);
+	case PathFindingInputRoute::PRECOUNTED_ENDPOINTS:
+		if (gstate.child == 0) {
+			return FinalizeEndpointPairPhase(gstate, context);
 		}
-		if (gstate.precounted_edge_input && gstate.child == 1) {
+		if (gstate.child == 1) {
 			return FinalizePrecountedEndpointCounts(gstate, context);
 		}
 		if (gstate.endpoint_count != gstate.expected_edge_count) {
-			throw ConstraintException("Direct endpoint CSR expected %llu graph edges but received %llu; check vertex "
-			                          "uniqueness and references",
+			throw ConstraintException("Pre-counted endpoint fill expected %llu graph edges but received %llu; check "
+			                          "vertex uniqueness and references",
 			                          gstate.expected_edge_count, gstate.endpoint_count);
 		}
-		if (gstate.precounted_edge_input) {
-			FinalizePrecountedEndpointRows(gstate);
-		}
+		FinalizePrecountedEndpointRows(gstate);
 		return FinalizePathFindingPhase(gstate, pipeline, event, *this, context);
 	}
-	if (gstate.csr == nullptr) {
-		throw InternalException("CSR not initialized");
-	}
-
-	if (gstate.child == 0) {
-		return FinalizeCSRIdPhase(gstate);
-	}
-	return FinalizePathFindingPhase(gstate, pipeline, event, *this, context);
+	throw InternalException("Unhandled path-finding input route");
 }
 
 InsertionOrderPreservingMap<string> PhysicalPathFinding::ParamsToString() const {
 	InsertionOrderPreservingMap<string> result;
-	result["Mode"] = mode;
-	if (buffered_edge_input) {
+	result["Mode"] = PathFindingModeName(mode);
+	if (input.route == PathFindingInputRoute::BUFFERED_ENDPOINTS) {
 		result["CSR Input"] = "radix-partitioned endpoints";
 	}
-	if (cached_partitioned_csr_input) {
+	if (input.route == PathFindingInputRoute::CSR_INDEX) {
 		result["CSR Input"] = "cached PartitionCSR";
 	}
-	if (!cache_key.empty()) {
-		result["CSR Cache Key"] = cache_key;
+	if (!input.cache_key.empty()) {
+		result["CSR Cache Key"] = input.cache_key;
 	}
 	SetEstimatedCardinality(result, estimated_cardinality);
 	return result;
@@ -3223,7 +3096,7 @@ static SourceResultType GetReachData(ExecutionContext &context, DataChunk &resul
 //! otherwise every chunk belongs to one group.
 static SourceResultType GetSourceGroupedData(ExecutionContext &context, DataChunk &result,
                                              PathFindingGlobalSinkState &pf_sink) {
-	PhaseTimer scatter_timer(pf_sink.benchmark_enabled);
+	PhaseTimer scatter_timer(pf_sink.settings.benchmark_enabled);
 	auto scan_idx = pf_sink.result_scan_idx.fetch_add(1);
 	if (scan_idx >= pf_sink.source_group_output_refs.size()) {
 		return SourceResultType::FINISHED;
@@ -3242,7 +3115,7 @@ static SourceResultType GetSourceGroupedData(ExecutionContext &context, DataChun
 	}
 
 	auto output_size = output_pairs->size();
-	bool return_paths = pf_sink.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH;
+	bool return_paths = pf_sink.mode == PathFindingOperatorMode::SHORTEST_PATH;
 	auto output_results = make_shared_ptr<DataChunk>();
 	output_results->Initialize(
 	    context.client, {return_paths ? LogicalType::LIST(LogicalType::BIGINT) : LogicalType::BIGINT}, output_size);
@@ -3309,7 +3182,7 @@ static SourceResultType GetSourceGroupedData(ExecutionContext &context, DataChun
 	}
 
 	EmitPathFindingOutput(result, *output_pairs, output_results->data[0]);
-	if (pf_sink.benchmark_enabled) {
+	if (pf_sink.settings.benchmark_enabled) {
 		lock_guard<mutex> guard(pf_sink.scatter_lock);
 		pf_sink.source_group_scatter_ms += scatter_timer.ElapsedMs();
 		pf_sink.source_group_scatter_rows += output_size;
@@ -3344,7 +3217,7 @@ static SourceResultType GetDeduplicatedData(ExecutionContext &context, DataChunk
 	auto &output_to_search = pf_sink.global_output_to_search[scan_idx];
 	D_ASSERT(output_to_search.size() == output_pairs->size());
 
-	PhaseTimer scatter_timer(pf_sink.benchmark_enabled);
+	PhaseTimer scatter_timer(pf_sink.settings.benchmark_enabled);
 	auto output_results = make_shared_ptr<DataChunk>();
 	output_results->Initialize(context.client, {pf_sink.bfs_states[0]->bfs_type}, output_pairs->size());
 	output_results->SetChildCardinality(output_pairs->size());
@@ -3375,7 +3248,7 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 	if (pf_sink.global_pairs->Count() == 0) {
 		return SourceResultType::FINISHED;
 	}
-	if (pf_sink.path_finding_mode == PathFindingOperatorMode::REACH) {
+	if (pf_sink.mode == PathFindingOperatorMode::REACH) {
 		return GetReachData(context, result, pf_sink, input.local_state.Cast<PathFindingLocalSourceState>());
 	}
 	if (pf_sink.use_source_grouping) {
@@ -3410,13 +3283,14 @@ void PhysicalPathFinding::BuildPipelines(Pipeline &current, MetaPipeline &meta_p
 
 	// Create one child meta pipeline that will hold the LHS and RHS pipelines
 	auto &child_meta_pipeline = meta_pipeline.CreateChildMetaPipeline(current, *this);
-	if (cached_partitioned_csr_input) {
+	switch (input.route) {
+	case PathFindingInputRoute::CSR_INDEX: {
 		D_ASSERT(children.size() == 1);
 		auto pair_pipeline = child_meta_pipeline.GetBasePipeline();
 		children[0].get().BuildPipelines(*pair_pipeline, child_meta_pipeline);
 		return;
 	}
-	if (precounted_edge_input) {
+	case PathFindingInputRoute::PRECOUNTED_ENDPOINTS: {
 		// Nest the phases in reverse dependency order. Each meta-pipeline has its own finalize event, so the
 		// count prefix sums and exact allocation complete before the fill scan starts.
 		auto fill_pipeline = child_meta_pipeline.GetBasePipeline();
@@ -3431,21 +3305,16 @@ void PhysicalPathFinding::BuildPipelines(Pipeline &current, MetaPipeline &meta_p
 		children[0].get().BuildPipelines(*pair_pipeline, pair_meta_pipeline);
 		return;
 	}
-
-	vector<idx_t> child_order;
-	if (edge_input) {
-		child_order = {0, 1};
-	} else {
-		child_order = {1, 0};
+	default: {
+		// The global CSR is sunk before the pairs; an endpoint input after them
+		idx_t first = input.route == PathFindingInputRoute::GLOBAL_CSR ? 1 : 0;
+		auto first_pipeline = child_meta_pipeline.GetBasePipeline();
+		children[first].get().BuildPipelines(*first_pipeline, child_meta_pipeline);
+		auto &second_pipeline = child_meta_pipeline.CreatePipeline();
+		children[1 - first].get().BuildPipelines(second_pipeline, child_meta_pipeline);
+		child_meta_pipeline.AddFinishEvent(second_pipeline);
+		return;
 	}
-
-	// Endpoint inputs sink pairs before the edge scan.
-	auto first_pipeline = child_meta_pipeline.GetBasePipeline();
-	children[child_order[0]].get().BuildPipelines(*first_pipeline, child_meta_pipeline);
-	for (idx_t order_idx = 1; order_idx < child_order.size(); order_idx++) {
-		auto &pipeline = child_meta_pipeline.CreatePipeline();
-		children[child_order[order_idx]].get().BuildPipelines(pipeline, child_meta_pipeline);
-		child_meta_pipeline.AddFinishEvent(pipeline);
 	}
 }
 

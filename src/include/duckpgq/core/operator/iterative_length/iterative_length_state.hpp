@@ -2,7 +2,6 @@
 #include "duckpgq/common.hpp"
 #include <duckpgq/core/operator/bfs_state.hpp>
 #include <duckpgq/core/operator/phased_kernel_event.hpp>
-#include <duckpgq/core/option/duckpgq_option.hpp>
 
 namespace duckdb {
 
@@ -15,7 +14,8 @@ class PhysicalPathFinding; // Forward declaration
 class IterativeLengthState : public BFSState, public PhasedKernel {
 public:
 	IterativeLengthState(const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
-	                     idx_t num_threads_, ClientContext &context_, int64_t vsize_);
+	                     idx_t num_threads_, ClientContext &context_, int64_t vsize_,
+	                     const PathFindingSettings &settings);
 
 	shared_ptr<Event> CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op) override;
 	void Clear() override;
@@ -55,13 +55,12 @@ public:
 	//! Applies the option: -1 decides from the size of one working set (on when it exceeds a sixteenth of the grouped
 	//! batches budget, 32 MB by default: SF10's 14 MB stays off, SF100's 86 MB goes on; measured 27 Oct: the test
 	//! also pays for a single SF100 batch, so the total of the working sets is not the right measure)
-	void SetBitmapFilter() {
-		auto configured = GetPathFindingFrontierBitmapFilter(context);
-		if (configured >= 0) {
-			bitmap_filter = configured > 0;
+	void SetBitmapFilter(const PathFindingSettings &settings) {
+		if (settings.frontier_bitmap_filter >= 0) {
+			bitmap_filter = settings.frontier_bitmap_filter > 0;
 			return;
 		}
-		auto budget = GetPathFindingGroupedBatchesBudget(context);
+		auto budget = settings.grouped_batches_budget;
 		auto threshold = budget > 0 ? static_cast<double>(budget) / 16 : 32.0 * 1024 * 1024;
 		bitmap_filter = static_cast<double>(BFSWorkingSet::BytesFor(static_cast<idx_t>(v_size))) > threshold;
 	}

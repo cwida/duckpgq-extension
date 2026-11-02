@@ -3,6 +3,8 @@
 #include "duckpgq/common.hpp"
 #include "duckpgq/core/operator/bfs_benchmark.hpp"
 #include "duckpgq/core/operator/path_finding_batch.hpp"
+#include "duckpgq/core/operator/path_finding_mode.hpp"
+#include "duckpgq/core/operator/path_finding_settings.hpp"
 #include "duckpgq/core/utils/compressed_sparse_row.hpp"
 
 #include "duckdb/storage/buffer/buffer_handle.hpp"
@@ -57,7 +59,8 @@ private:
 class BFSState : public enable_shared_from_this<BFSState> {
 public:
 	BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
-	         idx_t num_threads_, string mode_, ClientContext &context_, int64_t vsize_);
+	         idx_t num_threads_, PathFindingOperatorMode mode_, ClientContext &context_, int64_t vsize_,
+	         const PathFindingSettings &settings);
 
 	virtual ~BFSState();
 
@@ -109,7 +112,7 @@ public:
 	std::vector<shared_ptr<LocalCSR>> delta_csrs;
 	std::vector<shared_ptr<vector<uint64_t>>> suppressed;
 	atomic<int64_t> partition_counter;
-	string mode;
+	PathFindingOperatorMode mode;
 	shared_ptr<DataChunk> pf_results;
 	LogicalType bfs_type;
 	int64_t iter;
@@ -130,6 +133,7 @@ public:
 	//! Explore samples of the batch (benchmark only), appended under log_mutex
 	mutex log_mutex;
 	vector<ExploreTiming> timing_data;
+	//! The query's benchmark settings (PathFindingSettings), copied so the kernels read them without the operator
 	bool benchmark_enabled;
 	bool benchmark_lane_activity_enabled;
 	string benchmark_output_prefix;

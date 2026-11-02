@@ -1,6 +1,4 @@
 
-#include "duckpgq/core/functions/function_data/shortest_path_operator_function_data.hpp"
-
 #include <duckpgq/core/functions/scalar.hpp>
 
 namespace duckdb {
@@ -12,8 +10,8 @@ static void ShortestPathOperatorFunction(DataChunk &args, ExpressionState &state
 }
 
 static ScalarFunction ShortestPathMarkerFunction(vector<LogicalType> arguments) {
-	auto result = ScalarFunction(std::move(arguments), LogicalType::LIST(LogicalType::BIGINT),
-	                             ShortestPathOperatorFunction, ShortestPathOperatorData::ShortestPathOperatorBind);
+	auto result =
+	    ScalarFunction(std::move(arguments), LogicalType::LIST(LogicalType::BIGINT), ShortestPathOperatorFunction);
 	// The optimizer must replace this marker with the physical operator before execution.
 	result.SetStability(FunctionStability::VOLATILE);
 	return result;

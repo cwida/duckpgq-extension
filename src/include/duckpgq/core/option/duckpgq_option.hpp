@@ -4,6 +4,11 @@
 
 namespace duckdb {
 
+//! The extension's settings, registered from one table (duckpgq_option.cpp) and read through the typed getters
+struct CorePGQOptions {
+	static void Register(ExtensionLoader &loader);
+};
+
 bool GetPathFindingOption(ClientContext &context);
 int32_t GetLightPartitionMultiplier(ClientContext &context);
 double_t GetHeavyPartitionFraction(ClientContext &context);
@@ -36,76 +41,5 @@ bool GetCSRIndexChangeGroups(ClientContext &context);
 bool GetPathFindingLaneWaves(ClientContext &context);
 bool GetPathFindingSourceSearchRounds(ClientContext &context);
 int32_t GetPathFindingVisitPrefetch(ClientContext &context);
-
-struct CorePGQOptions {
-	static void Register(ExtensionLoader &loader) {
-		RegisterExperimentalPathFindingOperator(loader);
-		RegisterPathFindingLightPartitionMultiplier(loader);
-		RegisterPathFindingHeavyPartitionFraction(loader);
-		RegisterPathFindingBenchmark(loader);
-		RegisterPathFindingBenchmarkLaneActivity(loader);
-		RegisterPathFindingBenchmarkPrefix(loader);
-		RegisterPathFindingBuildReverseCSR(loader);
-		RegisterPathFindingPushPullFrontierGate(loader);
-		RegisterPathFindingDeduplicatePairs(loader);
-		RegisterPathFindingGroupedBatches(loader);
-		RegisterPathFindingReach(loader);
-		RegisterPathFindingReachFiltered(loader);
-		RegisterPathFindingThreadsPerBatch(loader);
-		RegisterPathFindingMaxConcurrentBatches(loader);
-		RegisterPathFindingReverseOrientationRatio(loader);
-		RegisterPathFindingSourceGroupRatio(loader);
-		RegisterCSRIndexFoldRatio(loader);
-		RegisterPathFindingSnapshotCache(loader);
-		RegisterPathFindingTargetEarlyTermination(loader);
-		RegisterPathFindingSparseFrontierDivisor(loader);
-		RegisterPathFindingFewSourcesLimit(loader);
-		RegisterPathFindingGroupedBatchesBudget(loader);
-		RegisterPathFindingBatchOversubscription(loader);
-		RegisterPathFindingFrontierBitmap(loader);
-		RegisterPathFindingFrontierBitmapFilter(loader);
-		RegisterPathFindingSparseLevelDivisor(loader);
-		RegisterPathFindingPartitionVertices(loader);
-		RegisterPathFindingSubRangeTasks(loader);
-		RegisterCSRIndexChangeGroups(loader);
-		RegisterPathFindingLaneWaves(loader);
-		RegisterPathFindingSourceSearchRounds(loader);
-		RegisterPathFindingVisitPrefetch(loader);
-	}
-
-private:
-	static void RegisterExperimentalPathFindingOperator(ExtensionLoader &loader);
-	static void RegisterPathFindingLightPartitionMultiplier(ExtensionLoader &loader);
-	static void RegisterPathFindingHeavyPartitionFraction(ExtensionLoader &loader);
-	static void RegisterPathFindingBenchmark(ExtensionLoader &loader);
-	static void RegisterPathFindingBenchmarkLaneActivity(ExtensionLoader &loader);
-	static void RegisterPathFindingBenchmarkPrefix(ExtensionLoader &loader);
-	static void RegisterPathFindingBuildReverseCSR(ExtensionLoader &loader);
-	static void RegisterPathFindingPushPullFrontierGate(ExtensionLoader &loader);
-	static void RegisterPathFindingDeduplicatePairs(ExtensionLoader &loader);
-	static void RegisterPathFindingGroupedBatches(ExtensionLoader &loader);
-	static void RegisterPathFindingReach(ExtensionLoader &loader);
-	static void RegisterPathFindingReachFiltered(ExtensionLoader &loader);
-	static void RegisterPathFindingThreadsPerBatch(ExtensionLoader &loader);
-	static void RegisterPathFindingMaxConcurrentBatches(ExtensionLoader &loader);
-	static void RegisterPathFindingReverseOrientationRatio(ExtensionLoader &loader);
-	static void RegisterPathFindingSourceGroupRatio(ExtensionLoader &loader);
-	static void RegisterCSRIndexFoldRatio(ExtensionLoader &loader);
-	static void RegisterPathFindingSnapshotCache(ExtensionLoader &loader);
-	static void RegisterPathFindingTargetEarlyTermination(ExtensionLoader &loader);
-	static void RegisterPathFindingSparseFrontierDivisor(ExtensionLoader &loader);
-	static void RegisterPathFindingFewSourcesLimit(ExtensionLoader &loader);
-	static void RegisterPathFindingGroupedBatchesBudget(ExtensionLoader &loader);
-	static void RegisterPathFindingBatchOversubscription(ExtensionLoader &loader);
-	static void RegisterPathFindingFrontierBitmap(ExtensionLoader &loader);
-	static void RegisterPathFindingFrontierBitmapFilter(ExtensionLoader &loader);
-	static void RegisterPathFindingSparseLevelDivisor(ExtensionLoader &loader);
-	static void RegisterPathFindingPartitionVertices(ExtensionLoader &loader);
-	static void RegisterPathFindingSubRangeTasks(ExtensionLoader &loader);
-	static void RegisterCSRIndexChangeGroups(ExtensionLoader &loader);
-	static void RegisterPathFindingLaneWaves(ExtensionLoader &loader);
-	static void RegisterPathFindingSourceSearchRounds(ExtensionLoader &loader);
-	static void RegisterPathFindingVisitPrefetch(ExtensionLoader &loader);
-};
 
 } // namespace duckdb

@@ -1,0 +1,57 @@
+# name: test/sql/path_finding/csr_index_bidirectional.test
+# description: the bidirectional MS-BFS kernel over an undirected CSR index (cache-only marker form) agrees with the forward kernel
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# A chain 0 - 1 - 2 - 3 - 4 and a separate edge 5 - 6, stored in one direction; the undirected index adds the mirrors
+statement ok
+CREATE TABLE e(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO e VALUES (0, 1), (1, 2), (2, 3), (3, 4), (5, 6);
+
+statement ok
+CREATE INDEX e_und ON e USING CSR (src, dst) WITH (undirected = true);
+
+# Pairs along and against the stored direction, a self pair, and an unreachable pair
+statement ok
+CREATE TABLE pairs(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO pairs VALUES (0, 4), (4, 0), (1, 3), (3, 3), (0, 6), (6, 5);
+
+query III
+SELECT src, dst, iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|e_und') AS len
+FROM pairs ORDER BY src, dst;
+----
+0	4	4
+0	6	NULL
+1	3	2
+3	3	0
+4	0	4
+6	5	1
+
+query I
+SELECT s LIKE '%mode=iterativelength%' AND s LIKE '%csr=index%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+query III
+SELECT src, dst, bidirectionaliterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|e_und') AS len
+FROM pairs ORDER BY src, dst;
+----
+0	4	4
+0	6	NULL
+1	3	2
+3	3	0
+4	0	4
+6	5	1
+
+query I
+SELECT s LIKE '%mode=bidirectionaliterativelength%' AND s LIKE '%csr=index%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true

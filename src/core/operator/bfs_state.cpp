@@ -4,17 +4,17 @@
 
 #include <cstring>
 
-#include <duckpgq/core/option/duckpgq_option.hpp>
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
 namespace duckdb {
 
 BFSState::BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
-                   idx_t num_threads_, string mode_, ClientContext &context_, int64_t vsize_)
+                   idx_t num_threads_, PathFindingOperatorMode mode_, ClientContext &context_, int64_t vsize_,
+                   const PathFindingSettings &settings)
     : batch(batch_), pairs(batch->search_pairs), local_csrs(local_csrs_), context(context_), num_threads(num_threads_),
-      mode(std::move(mode_)), v_size(vsize_), src_data(pairs->data[0]), dst_data(pairs->data[1]) {
-	bfs_type = mode == "shortestpath" ? LogicalType::LIST(LogicalType::BIGINT) : LogicalType::BIGINT;
+      mode(mode_), v_size(vsize_), src_data(pairs->data[0]), dst_data(pairs->data[1]) {
+	bfs_type = PathFindingResultType(mode);
 	started_searches = 0;
 	active = 0;
 	iter = 1;
@@ -31,9 +31,9 @@ BFSState::BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<share
 	src = FlatVector::GetData<int64_t>(src_data);
 	dst = FlatVector::GetData<int64_t>(dst_data);
 
-	benchmark_enabled = GetPathFindingBenchmarkOption(context);
-	benchmark_lane_activity_enabled = benchmark_enabled && GetPathFindingBenchmarkLaneActivityOption(context);
-	benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
+	benchmark_enabled = settings.benchmark_enabled;
+	benchmark_lane_activity_enabled = settings.benchmark_lane_activity_enabled;
+	benchmark_output_prefix = settings.benchmark_output_prefix;
 	benchmark_run_id = CreateBenchmarkRunId();
 }
 

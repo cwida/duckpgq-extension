@@ -13,7 +13,8 @@ PushPullIterativeLengthState::PushPullIterativeLengthState(const shared_ptr<Path
                                                            std::vector<shared_ptr<LocalCSR>> &local_csrs_,
                                                            std::vector<shared_ptr<PullCSR>> &pull_local_csrs_,
                                                            idx_t num_threads_, ClientContext &context_, int64_t vsize_)
-    : BFSState(batch_, local_csrs_, num_threads_, "pushpulliterativelength", context_, vsize_),
+    : BFSState(batch_, local_csrs_, num_threads_, PathFindingOperatorMode::PUSH_PULL_ITERATIVE_LENGTH, context_,
+               vsize_, PathFindingSettings(context_)),
       pull_local_csrs(pull_local_csrs_) {
 	worker_timing_data.resize(num_threads_);
 	phase_timing_data.resize(num_threads_);
