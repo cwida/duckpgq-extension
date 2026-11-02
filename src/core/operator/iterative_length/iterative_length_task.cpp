@@ -4,16 +4,8 @@
 #include <duckpgq/core/option/duckpgq_option.hpp>
 
 #include <algorithm>
-#include <chrono>
-#include <filesystem>
 #include <fstream>
 #include <mutex>
-#include <thread>
-#ifdef __linux__
-#include <sched.h>
-#elif defined(__APPLE__)
-#include <pthread.h>
-#endif
 
 namespace duckdb {
 
@@ -217,29 +209,14 @@ void RunExplore(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visi
 			Explore<true>(visit, next, local_csr, suppressed, active, state.visit_prefetch, dst_begin, dst_end);
 		}
 	};
+	PhaseTimer timer(state.benchmark_enabled);
+	explore();
 	if (!state.benchmark_enabled) {
-		explore();
 		return;
 	}
-	auto start_time = std::chrono::high_resolution_clock::now();
-	explore();
-	auto end_time = std::chrono::high_resolution_clock::now();
-	auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-	std::thread::id thread_id = std::this_thread::get_id();
-	int core_id = -1;
-#ifdef __linux__
-	core_id = sched_getcpu();
-#elif defined(__APPLE__)
-	uint64_t tid;
-	pthread_threadid_np(nullptr, &tid);
-	auto hardware_threads = std::thread::hardware_concurrency();
-	if (hardware_threads > 0) {
-		core_id = static_cast<int>(tid % hardware_threads);
-	}
-#endif
 	std::lock_guard<std::mutex> guard(state.log_mutex);
-	state.timing_data.emplace_back(thread_id, core_id, duration_ms, state.num_threads, local_csr.GetVertexSize(),
-	                               local_csr.GetEdgeSize(), state.local_csrs.size(), state.iter);
+	RecordExploreTiming(state.timing_data, timer.ElapsedMs(), state.num_threads, local_csr.GetVertexSize(),
+	                    local_csr.GetEdgeSize(), state.local_csrs.size(), state.iter);
 }
 
 uint64_t GetWord(const std::bitset<LANE_LIMIT> &bitset, idx_t word_idx) {
@@ -284,70 +261,6 @@ void WriteLaneActivity(IterativeLengthState &state, const std::bitset<LANE_LIMIT
 		any_active += visit[v].any();
 	}
 	outfile << state.iter << ",-1," << any_active << "\n";
-}
-
-void ReachDetect(IterativeLengthState &state) {
-	auto result_data = FlatVector::GetDataMutable<int64_t>(state.pf_results->data[0]);
-	for (idx_t lane = 0; lane < LANE_LIMIT; lane++) {
-		int64_t search_num = state.lane_to_num[lane];
-		if (search_num >= 0) {
-			int64_t dst_pos = state.vdata_dst.sel->get_index(search_num);
-			if (state.seen[state.dst[dst_pos]][lane]) {
-				result_data[search_num] = state.iter;
-				state.lane_to_num[lane] = -1;
-				state.active--;
-				state.lane_active[lane] = false;
-			}
-		}
-	}
-	if (state.active == 0) {
-		state.change = false;
-	}
-	state.iter++;
-	// Lanes still active after the bound have no path within it; UnReachableSet marks them NULL
-	if (state.max_depth > 0 && static_cast<idx_t>(state.iter) > state.max_depth) {
-		state.change = false;
-	}
-}
-
-void UnReachableSet(IterativeLengthState &state) {
-	auto result_data = FlatVector::GetDataMutable<int64_t>(state.pf_results->data[0]);
-	auto &result_validity = FlatVector::ValidityMutable(state.pf_results->data[0]);
-	for (idx_t lane = 0; lane < LANE_LIMIT; lane++) {
-		int64_t search_num = state.lane_to_num[lane];
-		if (search_num >= 0) {
-			result_validity.SetInvalid(search_num);
-			result_data[search_num] = (int64_t)-1;
-			state.lane_to_num[lane] = -1;
-			state.lane_active[lane] = false;
-		}
-	}
-}
-
-mutex bfs_phase_timing_lock;
-
-size_t GetLocalCSREdgeCount(const std::vector<shared_ptr<LocalCSR>> &partition_csrs) {
-	size_t edge_count = 0;
-	for (const auto &local_csr : partition_csrs) {
-		edge_count += local_csr->GetEdgeSize();
-	}
-	return edge_count;
-}
-
-void AppendBFSPhaseTiming(const IterativeLengthState &state, const string &label, double time_ms) {
-	auto file_name = state.benchmark_output_prefix + "_phase_timing.csv";
-	lock_guard<mutex> lock(bfs_phase_timing_lock);
-	bool write_header = !std::filesystem::exists(file_name);
-	std::ofstream outfile(file_name, std::ios::app);
-	if (!outfile.is_open()) {
-		throw IOException("Could not open path-finding phase benchmark file \"%s\"", file_name);
-	}
-	if (write_header) {
-		outfile << "Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes\n";
-	}
-	outfile << label << "," << state.benchmark_run_id << "," << state.num_threads << "," << state.pairs->size() << ","
-	        << state.v_size - 2 << "," << GetLocalCSREdgeCount(state.local_csrs) << "," << state.local_csrs.size()
-	        << "," << time_ms << ",0\n";
 }
 
 } // namespace
@@ -422,21 +335,26 @@ bool IterativeLengthState::Start() {
 		sub_ranges = std::max<idx_t>(1, std::min<idx_t>(16, wanted));
 	}
 	worker_count = std::max<idx_t>(1, std::min<idx_t>(worker_count, partitions * sub_ranges));
-	tasks_scheduled = worker_count;
 	worker_changed.assign(worker_count, 0);
 	// The lane bitsets are only allocated once the batch actually runs, and handed back when it is done
 	EnsureWorkingSet();
 	if (started_searches >= pairs->size()) {
 		return false;
 	}
-	InitializeLanes();
-	BeginIteration();
-	// The first level has at most one active vertex per lane
-	PrepareLevel(active);
+	BeginWave();
 	return true;
 }
 
+void IterativeLengthState::BeginWave() {
+	AssignLanes();
+	phase = Phase::PREPARE;
+}
+
 void IterativeLengthState::RunPhase(idx_t worker_id) {
+	if (phase == Phase::PREPARE) {
+		PrepareWorkingSetSlice(worker_id, worker_count);
+		return;
+	}
 	auto &visit = iter & 1 ? visit1 : visit2;
 	auto &next = iter & 1 ? visit2 : visit1;
 	if (phase == Phase::EXPLORE) {
@@ -495,6 +413,13 @@ void IterativeLengthState::RunPhase(idx_t worker_id) {
 }
 
 bool IterativeLengthState::AdvancePhase() {
+	if (phase == Phase::PREPARE) {
+		MarkLaneSources();
+		BeginIteration();
+		// The first level has at most one active vertex per lane
+		PrepareLevel(active);
+		return true;
+	}
 	if (phase == Phase::EXPLORE) {
 		if (benchmark_lane_activity_enabled) {
 			WriteLaneActivity(*this, iter & 1 ? visit1 : visit2);
@@ -519,15 +444,10 @@ bool IterativeLengthState::AdvancePhase() {
 	MarkUnreachable();
 	if (HasNextWave()) {
 		Clear();
-		StartNextWave();
-		BeginIteration();
-		PrepareLevel(active);
+		BeginWave();
 		return true;
 	}
-	// The last wave leaves its bits behind: whoever attaches this working set next zeroes it (BFSState::AttachWorkingSet)
-	if (working_set) {
-		working_set->dirty = true;
-	}
+	// The last wave leaves its bits behind: the next batch to attach this working set clears them in its PREPARE phase
 	return false;
 }
 
@@ -536,19 +456,11 @@ bool IterativeLengthState::HasNextWave() {
 }
 
 void IterativeLengthState::DetectReached() {
-	ReachDetect(*this);
+	ReachDetect();
 }
 
 void IterativeLengthState::MarkUnreachable() {
-	UnReachableSet(*this);
-}
-
-bool IterativeLengthState::StartNextWave() {
-	if (started_searches < pairs->size()) {
-		InitializeLanes();
-		return true;
-	}
-	return false;
+	UnReachableSet();
 }
 
 void IterativeLengthState::Finished() {
@@ -556,15 +468,13 @@ void IterativeLengthState::Finished() {
 	if (!benchmark_enabled) {
 		return;
 	}
-	auto phase_end_time = std::chrono::steady_clock::now();
-	auto time_ms = std::chrono::duration<double, std::milli>(phase_end_time - phase_start_time).count();
-	AppendBFSPhaseTiming(*this, timing_label, time_ms);
+	AppendBatchPhaseTiming(timing_label, ElapsedMs(phase_start_time));
 	auto heavy_partition_fraction = std::to_string(GetHeavyPartitionFraction(context));
 	auto light_partition_multiplier = std::to_string(GetLightPartitionMultiplier(context));
 	auto file_name = benchmark_output_prefix + "_explore_timing_" + benchmark_run_id + "_threads_" +
 	                 std::to_string(num_threads) + "_" + heavy_partition_fraction + "_" + light_partition_multiplier +
 	                 ".csv";
-	WriteTimingResults(file_name);
+	WriteExploreTimings(file_name, timing_data);
 }
 
 } // namespace duckdb

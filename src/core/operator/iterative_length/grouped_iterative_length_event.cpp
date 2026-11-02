@@ -31,7 +31,7 @@ shared_ptr<BFSWorkingSet> GroupedIterativeLengthBatches::AcquireWorkingSet() {
 			return set;
 		}
 	}
-	return make_shared_ptr<BFSWorkingSet>(context, v_size, threads);
+	return make_shared_ptr<BFSWorkingSet>(context, v_size);
 }
 
 void GroupedIterativeLengthBatches::ReleaseWorkingSet(shared_ptr<BFSWorkingSet> set) {

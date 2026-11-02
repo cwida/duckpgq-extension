@@ -1,21 +1,10 @@
 #include "duckpgq/core/operator/local_csr/local_csr_state.hpp"
 
+#include <duckpgq/core/operator/bfs_benchmark.hpp>
 #include <duckpgq/core/operator/local_csr/local_csr_event.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
 
-#include <chrono>
-#include <iomanip>
-#include <sstream>
-
 namespace duckdb {
-
-static string CreateLocalCSRBenchmarkRunId() {
-	auto now = std::chrono::system_clock::now();
-	auto time_t_now = std::chrono::system_clock::to_time_t(now);
-	std::stringstream ss;
-	ss << std::put_time(std::localtime(&time_t_now), "%Y-%m-%d_%H-%M-%S");
-	return ss.str();
-}
 
 LocalCSRState::LocalCSRState(ClientContext &context_p, CSR *csr_p, idx_t num_threads_p)
     : context(context_p), num_threads(num_threads_p), statistics_chunks(BUCKET_COUNT, 0),
@@ -23,7 +12,6 @@ LocalCSRState::LocalCSRState(ClientContext &context_p, CSR *csr_p, idx_t num_thr
 	global_csr = csr_p;
 	vsize = csr_p->vsize;
 	edge_count = csr_p->e.size();
-	tasks_scheduled = 0;
 	partition_index = 0;
 	build_forward_csr = true;
 	build_reverse_csr = GetPathFindingBuildReverseCSR(context);
@@ -31,7 +19,7 @@ LocalCSRState::LocalCSRState(ClientContext &context_p, CSR *csr_p, idx_t num_thr
 	finalize_sparse_rows = true;
 	benchmark_enabled = GetPathFindingBenchmarkOption(context);
 	benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
-	benchmark_run_id = CreateLocalCSRBenchmarkRunId();
+	benchmark_run_id = CreateBenchmarkRunId();
 }
 
 LocalCSRState::LocalCSRState(ClientContext &context_p,
@@ -41,7 +29,6 @@ LocalCSRState::LocalCSRState(ClientContext &context_p,
 	      streaming_partition_width(partition_width_p), streaming_endpoint_input(true), context(context_p),
 	      num_threads(num_threads_p), statistics_chunks(BUCKET_COUNT, 0), reverse_statistics_chunks(BUCKET_COUNT, 0),
 	      forward_build_buffers(std::move(streaming_build_buffers_p)) {
-	tasks_scheduled = 0;
 	partition_index = 0;
 	build_forward_csr = true;
 	build_reverse_csr = false;
@@ -49,7 +36,7 @@ LocalCSRState::LocalCSRState(ClientContext &context_p,
 	finalize_sparse_rows = true;
 	benchmark_enabled = GetPathFindingBenchmarkOption(context);
 	benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
-	benchmark_run_id = CreateLocalCSRBenchmarkRunId();
+	benchmark_run_id = CreateBenchmarkRunId();
 }
 
 } // namespace duckdb

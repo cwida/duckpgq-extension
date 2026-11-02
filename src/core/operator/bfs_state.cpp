@@ -3,40 +3,19 @@
 #include "duckdb/storage/buffer_manager.hpp"
 
 #include <cstring>
-#include <duckpgq/core/utils/parallel_for.hpp>
-
-#include <duckpgq/core/operator/shortest_path/shortest_path_event.hpp>
-#include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
 
 #include <duckpgq/core/option/duckpgq_option.hpp>
 #include <duckpgq/core/utils/compressed_sparse_row.hpp>
 #include <duckpgq/core/utils/duckpgq_utils.hpp>
 
-#include <chrono>
-#include <iomanip>
-#include <sstream>
-
 namespace duckdb {
-
-static string CreateBenchmarkRunId() {
-	auto now = std::chrono::system_clock::now();
-	auto time_t_now = std::chrono::system_clock::to_time_t(now);
-	auto micros = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count() % 1000000;
-	std::stringstream ss;
-	ss << std::put_time(std::localtime(&time_t_now), "%Y-%m-%d_%H-%M-%S") << "_" << std::setfill('0') << std::setw(6)
-	   << micros;
-	return ss.str();
-}
 
 BFSState::BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
                    idx_t num_threads_, string mode_, ClientContext &context_, int64_t vsize_)
     : batch(batch_), pairs(batch->search_pairs), local_csrs(local_csrs_), context(context_), num_threads(num_threads_),
       mode(std::move(mode_)), v_size(vsize_), src_data(pairs->data[0]), dst_data(pairs->data[1]) {
 	bfs_type = mode == "shortestpath" ? LogicalType::LIST(LogicalType::BIGINT) : LogicalType::BIGINT;
-	// Only have to initialize the current batch and state once.
-	total_pairs_processed = 0; // Initialize the total pairs processed
-	current_batch_path_list_len = 0;
-	started_searches = 0; // reset
+	started_searches = 0;
 	active = 0;
 	iter = 1;
 	change = false;
@@ -52,18 +31,15 @@ BFSState::BFSState(const shared_ptr<PathFindingBatch> &batch_, std::vector<share
 	src = FlatVector::GetData<int64_t>(src_data);
 	dst = FlatVector::GetData<int64_t>(dst_data);
 
-	tasks_scheduled = 0;
 	benchmark_enabled = GetPathFindingBenchmarkOption(context);
 	benchmark_lane_activity_enabled = benchmark_enabled && GetPathFindingBenchmarkLaneActivityOption(context);
 	benchmark_output_prefix = GetPathFindingBenchmarkPrefix(context);
 	benchmark_run_id = CreateBenchmarkRunId();
-
-	// CreateTasks();
 }
 
 BFSState::~BFSState() = default; // Define the virtual destructor
 
-BFSWorkingSet::BFSWorkingSet(ClientContext &context, idx_t v_size_p, idx_t threads) : v_size(v_size_p) {
+BFSWorkingSet::BFSWorkingSet(ClientContext &context, idx_t v_size_p) : v_size(v_size_p) {
 	if (v_size == 0) {
 		return;
 	}
@@ -74,26 +50,32 @@ BFSWorkingSet::BFSWorkingSet(ClientContext &context, idx_t v_size_p, idx_t threa
 	visit2 = base + v_size;
 	seen = base + 2 * v_size;
 	active_bitmap = reinterpret_cast<uint64_t *>(base + 3 * v_size);
-	Zero(threads);
 }
 
-void BFSWorkingSet::Zero(idx_t threads) {
-	if (v_size == 0) {
+void BFSWorkingSet::Slice(idx_t worker, idx_t workers, idx_t &begin, idx_t &end) const {
+	auto words = (v_size + 63) / 64;
+	auto words_per_worker = (words + workers - 1) / workers;
+	begin = std::min(v_size, worker * words_per_worker * 64);
+	end = std::min(v_size, (worker + 1) * words_per_worker * 64);
+}
+
+void BFSWorkingSet::Prepare(idx_t begin, idx_t end, const std::bitset<LANE_LIMIT> &seen_mask) {
+	if (begin >= end) {
 		return;
 	}
-	auto bytes = BytesFor(v_size);
-	auto base = handle.GetDataMutable();
-	// One thread per 8 MB at most: small sets are not worth the thread start-up
-	threads = std::max<idx_t>(1, std::min<idx_t>(threads, bytes / (8 * 1024 * 1024) + 1));
-	ParallelFor(bytes, threads, [&](idx_t begin, idx_t end, idx_t) { memset(base + begin, 0, end - begin); });
-	dirty = false;
+	auto bytes = (end - begin) * sizeof(std::bitset<LANE_LIMIT>);
+	memset(visit1 + begin, 0, bytes);
+	memset(visit2 + begin, 0, bytes);
+	for (idx_t i = begin; i < end; i++) {
+		seen[i] = seen_mask;
+	}
+	// The slice starts on a word; the padding word of the bitmap goes with the last slice
+	auto word_end = end == v_size ? ActiveWordsFor(v_size) : end >> 6;
+	memset(active_bitmap + (begin >> 6), 0, (word_end - (begin >> 6)) * sizeof(uint64_t));
 }
 
 void BFSState::AttachWorkingSet(shared_ptr<BFSWorkingSet> set) {
 	D_ASSERT(set && set->v_size == static_cast<idx_t>(v_size));
-	if (set->dirty) {
-		set->Zero(num_threads);
-	}
 	working_set = std::move(set);
 	visit1 = working_set->visit1;
 	visit2 = working_set->visit2;
@@ -105,7 +87,7 @@ void BFSState::EnsureWorkingSet() {
 	if (working_set) {
 		return;
 	}
-	AttachWorkingSet(make_shared_ptr<BFSWorkingSet>(context, static_cast<idx_t>(v_size), num_threads));
+	AttachWorkingSet(make_shared_ptr<BFSWorkingSet>(context, static_cast<idx_t>(v_size)));
 }
 
 void BFSState::ReleaseWorkingSet() {
@@ -124,9 +106,8 @@ shared_ptr<Event> BFSState::CreateBFSEvent(Pipeline &, const PhysicalPathFinding
 	throw NotImplementedException("CreateBFSEvent must be implemented in a derived class.");
 }
 
-void BFSState::InitializeLanes() {
+void BFSState::AssignLanes() {
 	auto &result_validity = FlatVector::ValidityMutable(pf_results->data[0]);
-	std::bitset<LANE_LIMIT> seen_mask;
 	seen_mask.set();
 
 	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
@@ -143,11 +124,6 @@ void BFSState::InitializeLanes() {
 			} else if (src[src_pos] == dst[dst_pos]) {
 				pf_results->data[0].SetValue(search_num, 0);
 			} else {
-				visit1[src[src_pos]][lane] = true;
-				if (active_bitmap) {
-					active_bitmap[src[src_pos] >> 6] |= uint64_t(1) << (src[src_pos] & 63);
-				}
-				// bfs_state->seen[bfs_state->src[src_pos]][lane] = true;
 				lane_to_num[lane] = search_num; // active lane
 				lane_active[lane] = true;
 				active++;
@@ -156,17 +132,67 @@ void BFSState::InitializeLanes() {
 			}
 		}
 	}
-	FillSeen(seen_mask);
 }
 
-void BFSState::FillSeen(const std::bitset<LANE_LIMIT> &seen_mask) {
-	// 64 B per vertex: 76 MB at SF300, 241 MB on cit-Patents, so in parallel like the zeroing
-	auto threads = std::max<idx_t>(1, std::min<idx_t>(num_threads, static_cast<idx_t>(v_size) / 131072 + 1));
-	ParallelFor(static_cast<idx_t>(v_size), threads, [&](idx_t begin, idx_t end, idx_t) {
-		for (idx_t i = begin; i < end; i++) {
-			seen[i] = seen_mask;
+void BFSState::PrepareWorkingSetSlice(idx_t worker, idx_t workers) {
+	idx_t begin;
+	idx_t end;
+	working_set->Slice(worker, workers, begin, end);
+	working_set->Prepare(begin, end, seen_mask);
+}
+
+void BFSState::MarkLaneSources() {
+	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
+		auto search_num = lane_to_num[lane];
+		if (search_num < 0) {
+			continue;
 		}
-	});
+		auto source = src[vdata_src.sel->get_index(search_num)];
+		visit1[source][lane] = true;
+		if (active_bitmap) {
+			active_bitmap[source >> 6] |= uint64_t(1) << (source & 63);
+		}
+	}
+}
+
+void BFSState::ReachDetect() {
+	auto result_data = FlatVector::GetDataMutable<int64_t>(pf_results->data[0]);
+	for (idx_t lane = 0; lane < LANE_LIMIT; lane++) {
+		int64_t search_num = lane_to_num[lane];
+		if (search_num >= 0) {
+			int64_t dst_pos = vdata_dst.sel->get_index(search_num);
+			if (seen[dst[dst_pos]][lane]) {
+				result_data[search_num] = iter;
+				lane_to_num[lane] = -1;
+				active--;
+				lane_active[lane] = false;
+			}
+		}
+	}
+	// Lanes still active after the bound have no path within it; UnReachableSet marks them NULL
+	if (active == 0 || DepthBoundReached(iter)) {
+		change = false;
+	}
+	iter++;
+}
+
+void BFSState::UnReachableSet() {
+	auto result_data = FlatVector::GetDataMutable<int64_t>(pf_results->data[0]);
+	auto &result_validity = FlatVector::ValidityMutable(pf_results->data[0]);
+	for (idx_t lane = 0; lane < LANE_LIMIT; lane++) {
+		int64_t search_num = lane_to_num[lane];
+		if (search_num >= 0) {
+			result_validity.SetInvalid(search_num);
+			result_data[search_num] = (int64_t)-1;
+			lane_to_num[lane] = -1;
+			lane_active[lane] = false;
+		}
+	}
+}
+
+void BFSState::AppendBatchPhaseTiming(const string &label, double time_ms) const {
+	AppendPhaseTimingRow(benchmark_output_prefix, label, benchmark_run_id, num_threads, pairs->size(), v_size - 2,
+	                     GetLocalCSREdgeCount(local_csrs), local_csrs.size(), time_ms, 0);
 }
 
 } // namespace duckdb

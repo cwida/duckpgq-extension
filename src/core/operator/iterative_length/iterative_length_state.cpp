@@ -1,9 +1,7 @@
 #include "duckpgq/core/operator/iterative_length/iterative_length_state.hpp"
 
-#include <duckpgq/core/operator/shortest_path/shortest_path_event.hpp>
+#include <duckpgq/core/operator/physical_path_finding_operator.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
-#include <duckpgq/core/utils/parallel_for.hpp>
-#include <fstream>
 
 namespace duckdb {
 
@@ -29,34 +27,16 @@ IterativeLengthState::IterativeLengthState(const shared_ptr<PathFindingBatch> &b
 }
 
 void IterativeLengthState::Clear() {
+	// The working set keeps the last wave's bits: the PREPARE phase of the next wave clears them on the workers
 	iter = 1;
 	active = 0;
 	change = false;
 	std::fill(worker_changed.begin(), worker_changed.end(), 0);
-	// The working set's arrays are zeroed in parallel (the serial loop was the fixed cost of small batches)
-	if (working_set) {
-		working_set->Zero(num_threads);
-	}
-	lane_completed.reset();
 }
 
 shared_ptr<Event> IterativeLengthState::CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op) {
 	auto self = shared_ptr_cast<BFSState, IterativeLengthState>(shared_from_this());
 	return make_shared_ptr<PhasedKernelEvent>(shared_ptr<PhasedKernel>(self), pipeline, *op);
-}
-
-// Function to write timing results to a file
-void IterativeLengthState::WriteTimingResults(const std::string &filename) {
-	std::ofstream file(filename);
-	if (file.is_open()) {
-		file << "ThreadID,CoreID,Time_ms,ThreadCount,vsize,esize,numPartitions,Iter\n";
-		for (const auto &entry : timing_data) {
-			file << std::get<0>(entry) << "," << std::get<1>(entry) << "," << std::get<2>(entry) << ","
-			     << std::get<3>(entry) << "," << std::get<4>(entry) << "," << std::get<5>(entry) << ","
-			     << std::get<6>(entry) << "," << std::get<7>(entry) << "\n";
-		}
-		file.close();
-	}
 }
 
 } // namespace duckdb

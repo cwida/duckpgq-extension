@@ -1,15 +1,5 @@
 #include "duckpgq/core/operator/iterative_length/push_pull_iterative_length_task.hpp"
 
-#include <chrono>
-#include <fstream>
-#include <thread>
-
-#ifdef __linux__
-#include <sched.h>
-#elif defined(__APPLE__)
-#include <pthread.h>
-#endif
-
 namespace duckdb {
 
 PushPullIterativeLengthWorker::PushPullIterativeLengthWorker(shared_ptr<PushPullIterativeLengthState> state_p,
@@ -28,6 +18,17 @@ idx_t PushPullIterativeLengthWorker::CountFrontierVertices(const std::bitset<LAN
 	return frontier_vertices;
 }
 
+//! INITIALIZE phase of a batch: this worker's slice of the working set is zeroed and its `seen` lines filled
+void PushPullIterativeLengthWorker::InitializePhase() {
+	PhaseTimer timer(state->benchmark_enabled);
+	idx_t begin;
+	idx_t end;
+	state->working_set->Slice(worker_id, state->WorkerCount(), begin, end);
+	state->working_set->Prepare(begin, end, state->seen_mask);
+	RecordPhaseTiming("initialize_slice", "batch", static_cast<idx_t>(state->iter), 0, end - begin, 0, 0, 0,
+	                  timer.ElapsedMs());
+}
+
 //! PREPARE phase: counts the frontier of this worker's vertex range and clears `next` for the partitions it claims;
 //! the two touch different arrays, so they run as one phase
 void PushPullIterativeLengthWorker::PreparePhase() {
@@ -35,19 +36,17 @@ void PushPullIterativeLengthWorker::PreparePhase() {
 	auto &next = state->iter & 1 ? state->visit2 : state->visit1;
 	auto iteration = static_cast<idx_t>(state->iter);
 
-	idx_t vertices_per_worker =
-	    (static_cast<idx_t>(state->v_size) + state->tasks_scheduled - 1) / state->tasks_scheduled;
+	auto workers = state->WorkerCount();
+	idx_t vertices_per_worker = (static_cast<idx_t>(state->v_size) + workers - 1) / workers;
 	idx_t vertex_start = worker_id * vertices_per_worker;
 	idx_t vertex_end = std::min(vertex_start + vertices_per_worker, static_cast<idx_t>(state->v_size));
-	auto frontier_count_start_time = std::chrono::steady_clock::now();
+	PhaseTimer frontier_timer(state->benchmark_enabled);
 	auto local_frontier_vertices = CountFrontierVertices(visit, vertex_start, vertex_end);
-	auto frontier_count_end_time = std::chrono::steady_clock::now();
 	state->frontier_count_by_worker[worker_id] = local_frontier_vertices;
-	RecordPhaseTiming(
-	    "frontier_count", "decide", iteration, 0, vertex_end - vertex_start, 0, local_frontier_vertices, 0,
-	    std::chrono::duration<double, std::milli>(frontier_count_end_time - frontier_count_start_time).count());
+	RecordPhaseTiming("frontier_count", "decide", iteration, 0, vertex_end - vertex_start, 0, local_frontier_vertices,
+	                  0, frontier_timer.ElapsedMs());
 
-	auto clear_start_time = std::chrono::steady_clock::now();
+	PhaseTimer clear_timer(state->benchmark_enabled);
 	idx_t cleared_vertices = 0;
 	idx_t cleared_partitions = 0;
 	while (true) {
@@ -62,22 +61,20 @@ void PushPullIterativeLengthWorker::PreparePhase() {
 		}
 		cleared_partitions++;
 	}
-	auto clear_end_time = std::chrono::steady_clock::now();
 	RecordPhaseTiming("clear_next", "decide", iteration, cleared_partitions, cleared_vertices, 0, 0, 0,
-	                  std::chrono::duration<double, std::milli>(clear_end_time - clear_start_time).count());
+	                  clear_timer.ElapsedMs());
 }
 
 //! Serial step after PREPARE: pull when the frontier is large enough; resets the shared cursors
 void PushPullIterativeLengthWorker::DecideMode() {
 	auto iteration = static_cast<idx_t>(state->iter);
 	idx_t total_frontier_vertices = 0;
-	auto decide_start_time = std::chrono::steady_clock::now();
-	for (idx_t i = 0; i < state->tasks_scheduled; i++) {
+	PhaseTimer timer(state->benchmark_enabled);
+	for (idx_t i = 0; i < state->WorkerCount(); i++) {
 		total_frontier_vertices += state->frontier_count_by_worker[i];
 	}
 	state->frontier_vertices = total_frontier_vertices;
 	state->use_pull = state->frontier_vertices * state->pull_frontier_gate >= static_cast<idx_t>(state->v_size);
-	auto decide_end_time = std::chrono::steady_clock::now();
 	if (state->benchmark_enabled) {
 		state->iteration_stats.push_back({state->current_batch, static_cast<idx_t>(state->iter),
 		                                  state->use_pull ? "pull" : "push", state->active, state->frontier_vertices,
@@ -86,9 +83,8 @@ void PushPullIterativeLengthWorker::DecideMode() {
 	state->partition_counter = 0;
 	state->local_csr_counter = 0;
 	state->pull_block_counter = 0;
-	RecordPhaseTiming("choose_mode", state->use_pull ? "pull" : "push", iteration, 0, state->tasks_scheduled, 0,
-	                  state->frontier_vertices, 0,
-	                  std::chrono::duration<double, std::milli>(decide_end_time - decide_start_time).count());
+	RecordPhaseTiming("choose_mode", state->use_pull ? "pull" : "push", iteration, 0, state->WorkerCount(), 0,
+	                  state->frontier_vertices, 0, timer.ElapsedMs());
 }
 
 idx_t PushPullIterativeLengthWorker::Explore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next,
@@ -135,32 +131,13 @@ idx_t PushPullIterativeLengthWorker::Explore(const std::bitset<LANE_LIMIT> *visi
 
 idx_t PushPullIterativeLengthWorker::RunExplore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next,
                                                 const LocalCSR &local_csr) {
+	PhaseTimer timer(state->benchmark_enabled);
+	auto explored_edges = Explore(visit, next, local_csr);
 	if (!state->benchmark_enabled) {
-		Explore(visit, next, local_csr);
 		return 0;
 	}
-
-	auto start_time = std::chrono::high_resolution_clock::now();
-	auto explored_edges = Explore(visit, next, local_csr);
-	auto end_time = std::chrono::high_resolution_clock::now();
-	auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-
-	std::thread::id thread_id = std::this_thread::get_id();
-	int core_id = -1;
-#ifdef __linux__
-	core_id = sched_getcpu();
-#elif defined(__APPLE__)
-	uint64_t tid;
-	pthread_threadid_np(nullptr, &tid);
-	auto hardware_threads = std::thread::hardware_concurrency();
-	if (hardware_threads > 0) {
-		core_id = static_cast<int>(tid % hardware_threads);
-	}
-#endif
-
-	state->worker_timing_data[worker_id].emplace_back(thread_id, core_id, duration_ms, state->num_threads,
-	                                                  local_csr.GetVertexSize(), explored_edges,
-	                                                  state->local_csrs.size(), state->iter);
+	RecordExploreTiming(state->worker_timing_data[worker_id], timer.ElapsedMs(), state->num_threads,
+	                    local_csr.GetVertexSize(), explored_edges, state->local_csrs.size(), state->iter);
 	return explored_edges;
 }
 
@@ -168,7 +145,7 @@ void PushPullIterativeLengthWorker::PushExplore(idx_t iteration) {
 	auto &visit = state->iter & 1 ? state->visit1 : state->visit2;
 	auto &next = state->iter & 1 ? state->visit2 : state->visit1;
 
-	auto explore_start_time = std::chrono::steady_clock::now();
+	PhaseTimer timer(state->benchmark_enabled);
 	idx_t explored_partitions = 0;
 	idx_t explored_vertices = 0;
 	idx_t explored_edges = 0;
@@ -185,14 +162,13 @@ void PushPullIterativeLengthWorker::PushExplore(idx_t iteration) {
 		explored_vertices += local_csr->GetVertexSize();
 		explored_partitions++;
 	}
-	auto explore_end_time = std::chrono::steady_clock::now();
 	RecordPhaseTiming("push_explore", "push", iteration, explored_partitions, explored_vertices, explored_edges, 0, 0,
-	                  std::chrono::duration<double, std::milli>(explore_end_time - explore_start_time).count());
+	                  timer.ElapsedMs());
 }
 
 void PushPullIterativeLengthWorker::PushCheck(idx_t iteration) {
 	auto &next = state->iter & 1 ? state->visit2 : state->visit1;
-	auto check_start_time = std::chrono::steady_clock::now();
+	PhaseTimer timer(state->benchmark_enabled);
 	idx_t checked_partitions = 0;
 	idx_t checked_vertices = 0;
 	idx_t candidate_vertices = 0;
@@ -209,10 +185,8 @@ void PushPullIterativeLengthWorker::PushCheck(idx_t iteration) {
 		    state->local_csrs[partition_idx]->end_vertex - state->local_csrs[partition_idx]->start_vertex;
 		checked_partitions++;
 	}
-	auto check_end_time = std::chrono::steady_clock::now();
 	RecordPhaseTiming("push_check", "push", iteration, checked_partitions, checked_vertices, 0, candidate_vertices,
-	                  changed_vertices,
-	                  std::chrono::duration<double, std::milli>(check_end_time - check_start_time).count());
+	                  changed_vertices, timer.ElapsedMs());
 }
 
 void PushPullIterativeLengthWorker::Pull(idx_t iteration) {
@@ -224,7 +198,7 @@ void PushPullIterativeLengthWorker::Pull(idx_t iteration) {
 	auto &next = state->iter & 1 ? state->visit2 : state->visit1;
 	bool local_change = false;
 
-	auto pull_start_time = std::chrono::steady_clock::now();
+	PhaseTimer timer(state->benchmark_enabled);
 	idx_t pulled_partitions = 0;
 	idx_t scanned_vertices = 0;
 	idx_t scanned_edges = 0;
@@ -274,18 +248,10 @@ void PushPullIterativeLengthWorker::Pull(idx_t iteration) {
 			}
 		}
 	}
-	auto pull_end_time = std::chrono::steady_clock::now();
 	RecordPhaseTiming("pull_scan", "pull", iteration, pulled_partitions, scanned_vertices, scanned_edges,
-	                  candidate_vertices, changed_vertices,
-	                  std::chrono::duration<double, std::milli>(pull_end_time - pull_start_time).count());
-
+	                  candidate_vertices, changed_vertices, timer.ElapsedMs());
 	if (local_change) {
-		auto change_start_time = std::chrono::steady_clock::now();
-		std::lock_guard<std::mutex> lock(state->change_lock);
-		state->change = true;
-		auto change_end_time = std::chrono::steady_clock::now();
-		RecordPhaseTiming("set_change", "pull", iteration, 0, 0, 0, 0, 0,
-		                  std::chrono::duration<double, std::milli>(change_end_time - change_start_time).count());
+		state->worker_changed[worker_id] = 1;
 	}
 }
 
@@ -309,8 +275,7 @@ idx_t PushPullIterativeLengthWorker::CheckChange(std::bitset<LANE_LIMIT> *seen, 
 		}
 	}
 	if (changed_vertices > 0) {
-		std::lock_guard<std::mutex> lock(state->change_lock);
-		state->change = true;
+		state->worker_changed[worker_id] = 1;
 	}
 	return changed_vertices;
 }
@@ -324,42 +289,6 @@ void PushPullIterativeLengthWorker::RecordPhaseTiming(const char *phase, const c
 	state->phase_timing_data[worker_id].push_back(
 	    {state->current_batch, iteration, mode, phase, worker_id, state->active, state->frontier_vertices,
 	     static_cast<idx_t>(state->v_size), partition_count, vertices, edges, candidates, changed_vertices, time_ms});
-}
-
-void PushPullIterativeLengthWorker::ReachDetect() const {
-	auto result_data = FlatVector::GetDataMutable<int64_t>(state->pf_results->data[0]);
-
-	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-		int64_t search_num = state->lane_to_num[lane];
-		if (search_num >= 0) {
-			int64_t dst_pos = state->vdata_dst.sel->get_index(search_num);
-			if (state->seen[state->dst[dst_pos]][lane]) {
-				result_data[search_num] = state->iter;
-				state->lane_to_num[lane] = -1;
-				state->active--;
-				state->lane_active[lane] = false;
-			}
-		}
-	}
-	if (state->active == 0) {
-		state->change = false;
-	}
-	state->iter++;
-}
-
-void PushPullIterativeLengthWorker::UnReachableSet() const {
-	auto result_data = FlatVector::GetDataMutable<int64_t>(state->pf_results->data[0]);
-	auto &result_validity = FlatVector::ValidityMutable(state->pf_results->data[0]);
-
-	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-		int64_t search_num = state->lane_to_num[lane];
-		if (search_num >= 0) {
-			result_validity.SetInvalid(search_num);
-			result_data[search_num] = (int64_t)-1;
-			state->lane_to_num[lane] = -1;
-			state->lane_active[lane] = false;
-		}
-	}
 }
 
 } // namespace duckdb

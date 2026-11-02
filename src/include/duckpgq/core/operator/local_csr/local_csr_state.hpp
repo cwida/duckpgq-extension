@@ -54,8 +54,8 @@ public:
 	bool streaming_endpoint_input = false;
 	ClientContext &context;
 
+	//! Workers of the build kernel (LocalCSRBuildKernel::Start caps it at one per thread)
 	idx_t num_threads;
-	idx_t tasks_scheduled;
 
 	std::vector<int64_t> statistics_chunks;
 	std::vector<int64_t> reverse_statistics_chunks;

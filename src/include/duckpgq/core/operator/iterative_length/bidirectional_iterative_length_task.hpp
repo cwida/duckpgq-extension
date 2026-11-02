@@ -19,7 +19,6 @@ public:
 	void PrepareExplore(BidirectionalSearchSide side);
 	void PrepareCheck(BidirectionalSearchSide side);
 	void Aggregate(BidirectionalSearchSide side);
-	void UnReachableSet() const;
 	void RecordGlobalPhaseTiming(idx_t batch_id, idx_t step_id, const string &phase, idx_t completed_lanes,
 	                             double time_ms) const;
 

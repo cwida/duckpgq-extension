@@ -11,14 +11,13 @@ public:
 	PushPullIterativeLengthWorker(shared_ptr<PushPullIterativeLengthState> state_p, idx_t worker_id_p);
 
 	//! Parallel phases
+	void InitializePhase();
 	void PreparePhase();
 	void PushExplore(idx_t iteration);
 	void PushCheck(idx_t iteration);
 	void Pull(idx_t iteration);
-	//! Serial steps, run through worker 0
+	//! Serial step, run through worker 0
 	void DecideMode();
-	void ReachDetect() const;
-	void UnReachableSet() const;
 	void RecordPhaseTiming(const char *phase, const char *mode, idx_t iteration, idx_t partition_count, idx_t vertices,
 	                       idx_t edges, idx_t candidates, idx_t changed_vertices, double time_ms) const;
 

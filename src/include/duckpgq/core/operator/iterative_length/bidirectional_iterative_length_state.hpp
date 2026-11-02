@@ -53,7 +53,6 @@ public:
 	void InitializeBidirectionalLanes();
 	void Clear() override;
 
-	void WriteTimingResults(const std::string &filename);
 	void WritePhaseTimingResults(const std::string &filename);
 
 public:
@@ -67,6 +66,8 @@ public:
 	vector<bitset<LANE_LIMIT>> dst_visit2;
 
 	vector<bitset<LANE_LIMIT>> worker_meet_masks;
+	//! Set by a worker whose check discovered a vertex; folded into `change` after the phase
+	vector<uint8_t> worker_changed;
 	vector<idx_t> worker_frontier_counts;
 	vector<vector<idx_t>> worker_frontier_vertices;
 	vector<vector<uint64_t>> worker_candidate_words;

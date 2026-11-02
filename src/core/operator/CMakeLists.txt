@@ -1,8 +1,8 @@
 add_subdirectory(iterative_length)
 add_subdirectory(local_csr)
-add_subdirectory(shortest_path)
 
 set(EXTENSION_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/bfs_benchmark.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bfs_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/logical_path_finding_operator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/partitioned_csr_cache.cpp

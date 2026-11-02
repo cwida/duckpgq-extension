@@ -37,20 +37,14 @@
 #include <atomic>
 #include <chrono>
 #include <unordered_set>
-#include <filesystem>
 #include <fstream>
-#include <iomanip>
 #include <mutex>
 #include <numeric>
-#include <sstream>
-#include <thread>
 #include <unordered_map>
 
 namespace duckdb {
 
 namespace {
-
-static mutex path_finding_operator_phase_timing_lock;
 
 static void UpdatePeak(std::atomic<idx_t> &peak, idx_t value) {
 	auto previous = peak.load(std::memory_order_relaxed);
@@ -103,30 +97,12 @@ void AppendOperatorPhaseTiming(ClientContext &context, const string &phase, idx_
 	if (!GetPathFindingBenchmarkOption(context)) {
 		return;
 	}
-
-	auto file_name = GetPathFindingBenchmarkPrefix(context) + "_phase_timing.csv";
-	lock_guard<mutex> lock(path_finding_operator_phase_timing_lock);
-	bool write_header = !std::filesystem::exists(file_name);
-	std::ofstream outfile(file_name, std::ios::app);
-	if (!outfile.is_open()) {
-		throw IOException("Could not open path-finding phase benchmark file \"%s\"", file_name);
-	}
-	if (write_header) {
-		outfile << "Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes\n";
-	}
-	outfile << phase << ",operator," << thread_count << "," << pair_count << ",0," << unique_count << ","
-	        << duplicate_count << "," << time_ms << "," << memory_bytes << "\n";
+	// The operator's rows reuse the EdgeCount and PartitionCount columns for the unique and duplicate counts
+	AppendPhaseTimingRow(GetPathFindingBenchmarkPrefix(context), phase, "operator", thread_count, pair_count, 0,
+	                     unique_count, duplicate_count, time_ms, memory_bytes);
 }
 
 namespace {
-
-size_t GetLocalCSREdgeCount(const std::vector<shared_ptr<LocalCSR>> &partition_csrs) {
-	size_t edge_count = 0;
-	for (const auto &local_csr : partition_csrs) {
-		edge_count += local_csr->GetEdgeSize();
-	}
-	return edge_count;
-}
 
 idx_t GetPathFindingVSize(const PathFindingGlobalSinkState &gstate) {
 	return gstate.edge_input || gstate.cached_partitioned_csr_input ? gstate.vertex_count + 2 : gstate.csr->vsize;
@@ -149,8 +125,16 @@ const char *OrientationName(PathFindingSearchOrientation orientation) {
 
 void MarkTransientGlobalCSRForDeletion(PathFindingGlobalSinkState &gstate, ClientContext &context) {
 	if (!gstate.edge_input && !gstate.cached_partitioned_csr_input) {
-		GetDuckPGQState(context)->csr_to_delete.insert(gstate.csr_id);
+		GetDuckPGQState(context)->csr_to_delete.insert(NumericCast<int32_t>(gstate.csr_id));
 	}
+}
+
+//! The tail of every Finalize phase that scheduled this child's work: the next Finalize call handles the next
+//! child, and a global CSR built for this query alone goes with the query
+SinkFinalizeType FinishPathFindingChild(PathFindingGlobalSinkState &gstate, ClientContext &context) {
+	++gstate.child;
+	MarkTransientGlobalCSRForDeletion(gstate, context);
+	return SinkFinalizeType::READY;
 }
 
 } // namespace
@@ -284,7 +268,6 @@ public:
 	bool Start() override {
 		phase_start_time = std::chrono::steady_clock::now();
 		worker_count = ChooseWorkerCount();
-		tasks_scheduled = worker_count;
 		next_lists.assign(worker_count, {});
 		AllocateArrays();
 		Initialize();
@@ -380,7 +363,7 @@ public:
 			output_count += chunk->size();
 		}
 		// Report the workers that actually ran: small graphs have fewer partitions than configured threads
-		AppendOperatorPhaseTiming(context, "source_group_bfs", tasks_scheduled, output_count, v_size - 2,
+		AppendOperatorPhaseTiming(context, "source_group_bfs", worker_count, output_count, v_size - 2,
 		                          local_csrs.size(), time_ms, 0);
 	}
 
@@ -609,7 +592,6 @@ public:
 	bool track_parents = false;
 	vector<uint32_t> parent_vertex;
 	vector<uint64_t> parent_edge;
-	idx_t tasks_scheduled = 0;
 	vector<shared_ptr<DataChunk>> output_chunks;
 	//! REACH: the group emits every reached vertex (set by the scheduler)
 	bool reach_mode = false;
@@ -963,7 +945,6 @@ static PathFindingSearchOrientation ChooseSupportedSearchOrientation(const PathF
 	return ChooseSearchOrientation(gstate.pair_stats, gstate.path_finding_mode, context);
 }
 
-//! Maps the pair keys of an index-backed query to the epoch's dense vertex ids; unknown keys become NULL (unreachable)
 //! Maps the pair keys of an index-backed query to the epoch's dense vertex ids in place; unknown keys become NULL
 //! (unreachable). The hidden pair columns are never returned to the user, so overwriting them is safe.
 void TranslatePairKeysInPlace(const CSRIndexSnapshot &snapshot, DataChunk &pairs) {
@@ -1313,8 +1294,7 @@ public:
 		SetTimingLabel("bfs_lane_wave");
 	}
 
-	void InitializeLanes() override {
-		std::bitset<LANE_LIMIT> seen_mask;
+	void AssignLanes() override {
 		seen_mask.set();
 		for (idx_t lane = 0; lane < LANE_LIMIT; lane++) {
 			lane_to_num[lane] = -1;
@@ -1332,17 +1312,25 @@ public:
 			if (pending.empty() || !IsVertexInRange(group.source)) {
 				continue;
 			}
-			visit1[group.source][lane] = true;
-			if (active_bitmap) {
-				active_bitmap[group.source >> 6] |= uint64_t(1) << (group.source & 63);
-			}
 			lane_to_num[lane] = NumericCast<int64_t>(lane);
 			lane_active[lane] = true;
 			active++;
 			seen_mask[lane] = false;
 		}
-		FillSeen(seen_mask);
 		started_searches = pairs->size();
+	}
+
+	void MarkLaneSources() override {
+		for (idx_t lane = 0; lane < groups.size() && lane < LANE_LIMIT; lane++) {
+			if (!lane_active[lane]) {
+				continue;
+			}
+			auto source = groups[lane]->source;
+			visit1[source][lane] = true;
+			if (active_bitmap) {
+				active_bitmap[source >> 6] |= uint64_t(1) << (source & 63);
+			}
+		}
 	}
 
 	void DetectReached() override {
@@ -1368,13 +1356,10 @@ public:
 				active--;
 			}
 		}
-		if (active == 0) {
+		if (active == 0 || DepthBoundReached(iter)) {
 			change = false;
 		}
 		iter++;
-		if (max_depth > 0 && static_cast<idx_t>(iter) > max_depth) {
-			change = false;
-		}
 	}
 
 	void MarkUnreachable() override {
@@ -1386,12 +1371,8 @@ public:
 		active = 0;
 	}
 
-	bool StartNextWave() override {
-		return false; // one wave per state
-	}
-
 	bool HasNextWave() override {
-		return false;
+		return false; // one wave per state
 	}
 
 private:
@@ -1804,134 +1785,6 @@ private:
 	ClientContext &context;
 };
 
-void SchedulePartitionedEndpointBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
-                                                     vector<shared_ptr<PathFindingBatch>> batches, Pipeline &pipeline,
-                                                     Event &event, const PhysicalPathFinding &op,
-                                                     ClientContext &context);
-void SchedulePartitionedEndpointBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, Pipeline &pipeline,
-                                                       Event &event, const PhysicalPathFinding &op,
-                                                       ClientContext &context);
-
-void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
-                                          vector<shared_ptr<PathFindingBatch>> batches, Pipeline &pipeline,
-                                          Event &event, const PhysicalPathFinding &op, ClientContext &context) {
-	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE && !gstate.symmetric_edges &&
-	    (gstate.precounted_edge_input || gstate.buffered_edge_input)) {
-		throw NotImplementedException(
-		    "Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the "
-		    "forward orientation");
-	}
-	if (gstate.cached_partitioned_csr_input && gstate.endpoint_partition_width == 0) {
-		gstate.endpoint_partition_width =
-		    GetBufferedPartitionedCSRWidth(gstate.vertex_count, gstate.num_threads, context);
-	}
-	shared_ptr<LocalCSRState> local_csr_state;
-	if (gstate.cached_partitioned_csr_input || gstate.precounted_edge_input || gstate.buffered_edge_input) {
-		std::vector<std::vector<LocalCSRBuildPartition>> empty_buffers;
-		local_csr_state = make_shared_ptr<LocalCSRState>(context, std::move(empty_buffers), gstate.vertex_count,
-		                                                 GetPathFindingEdgeCount(gstate),
-		                                                 gstate.endpoint_partition_width, gstate.num_threads);
-		local_csr_state->partition_csrs = gstate.endpoint_partition_csrs;
-		if (gstate.symmetric_edges) {
-			local_csr_state->reverse_partition_csrs = local_csr_state->partition_csrs;
-		}
-	} else if (gstate.edge_input) {
-		local_csr_state =
-		    make_shared_ptr<LocalCSRState>(context, std::move(gstate.endpoint_build_runs), gstate.vertex_count,
-		                                   gstate.endpoint_count, gstate.endpoint_partition_width, gstate.num_threads);
-	} else {
-		local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
-	}
-	ConfigureLocalCSRStateForMode(*local_csr_state, gstate.path_finding_mode);
-	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
-		local_csr_state->build_forward_csr = false;
-		local_csr_state->build_reverse_csr = true;
-	}
-	gstate.local_csr_state = local_csr_state;
-	if (TryLoadPartitionedCSR(gstate, *local_csr_state, context)) {
-		event.InsertEvent(make_shared_ptr<PathFindingScheduleEvent>(std::move(batches), gstate, pipeline, op, context));
-		return;
-	}
-	if (gstate.cached_partitioned_csr_input) {
-		throw ConstraintException("The cache-only path-finding form needs a CSR index; no index snapshot was found for "
-		                          "key '%s'",
-		                          op.cache_key);
-	}
-	if (gstate.buffered_edge_input) {
-		SchedulePartitionedEndpointBuildThenPathFinding(gstate, std::move(batches), pipeline, event, op, context);
-		return;
-	}
-	if (gstate.precounted_edge_input) {
-		event.InsertEvent(make_shared_ptr<PathFindingScheduleEvent>(std::move(batches), gstate, pipeline, op, context));
-		return;
-	}
-
-	auto local_csr_event =
-	    make_shared_ptr<PhasedKernelEvent>(make_shared_ptr<LocalCSRBuildKernel>(local_csr_state), pipeline, op);
-	event.InsertEvent(local_csr_event);
-	local_csr_event->InsertEvent(
-	    make_shared_ptr<PathFindingScheduleEvent>(std::move(batches), gstate, pipeline, op, context));
-}
-
-void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
-                                            const PhysicalPathFinding &op, ClientContext &context) {
-	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE && !gstate.symmetric_edges &&
-	    (gstate.precounted_edge_input || gstate.buffered_edge_input)) {
-		throw NotImplementedException(
-		    "Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the "
-		    "forward orientation");
-	}
-	if (gstate.cached_partitioned_csr_input && gstate.endpoint_partition_width == 0) {
-		gstate.endpoint_partition_width =
-		    GetBufferedPartitionedCSRWidth(gstate.vertex_count, gstate.num_threads, context);
-	}
-	shared_ptr<LocalCSRState> local_csr_state;
-	if (gstate.cached_partitioned_csr_input || gstate.precounted_edge_input || gstate.buffered_edge_input) {
-		std::vector<std::vector<LocalCSRBuildPartition>> empty_buffers;
-		local_csr_state = make_shared_ptr<LocalCSRState>(context, std::move(empty_buffers), gstate.vertex_count,
-		                                                 GetPathFindingEdgeCount(gstate),
-		                                                 gstate.endpoint_partition_width, gstate.num_threads);
-		local_csr_state->partition_csrs = gstate.endpoint_partition_csrs;
-		if (gstate.symmetric_edges) {
-			local_csr_state->reverse_partition_csrs = local_csr_state->partition_csrs;
-		}
-	} else if (gstate.edge_input) {
-		local_csr_state =
-		    make_shared_ptr<LocalCSRState>(context, std::move(gstate.endpoint_build_runs), gstate.vertex_count,
-		                                   gstate.endpoint_count, gstate.endpoint_partition_width, gstate.num_threads);
-	} else {
-		local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
-	}
-	ConfigureLocalCSRStateForMode(*local_csr_state, gstate.path_finding_mode);
-	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
-		local_csr_state->build_forward_csr = false;
-		local_csr_state->build_reverse_csr = true;
-	}
-	gstate.local_csr_state = local_csr_state;
-	if (TryLoadPartitionedCSR(gstate, *local_csr_state, context)) {
-		event.InsertEvent(make_shared_ptr<SourceGroupedScheduleEvent>(gstate, pipeline, op, context));
-		return;
-	}
-	if (gstate.cached_partitioned_csr_input) {
-		throw ConstraintException("The cache-only path-finding form needs a CSR index; no index snapshot was found for "
-		                          "key '%s'",
-		                          op.cache_key);
-	}
-	if (gstate.buffered_edge_input) {
-		SchedulePartitionedEndpointBuildThenSourceGrouped(gstate, pipeline, event, op, context);
-		return;
-	}
-	if (gstate.precounted_edge_input) {
-		event.InsertEvent(make_shared_ptr<SourceGroupedScheduleEvent>(gstate, pipeline, op, context));
-		return;
-	}
-
-	auto local_csr_event =
-	    make_shared_ptr<PhasedKernelEvent>(make_shared_ptr<LocalCSRBuildKernel>(local_csr_state), pipeline, op);
-	event.InsertEvent(local_csr_event);
-	local_csr_event->InsertEvent(make_shared_ptr<SourceGroupedScheduleEvent>(gstate, pipeline, op, context));
-}
-
 struct EndpointBuildEntry {
 	uint32_t src;
 	uint16_t local_dst;
@@ -2142,22 +1995,83 @@ private:
 	ClientContext &context;
 };
 
-void SchedulePartitionedEndpointBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
-                                                     vector<shared_ptr<PathFindingBatch>> batches, Pipeline &pipeline,
-                                                     Event &event, const PhysicalPathFinding &op,
-                                                     ClientContext &context) {
-	auto build_event = make_shared_ptr<PartitionedEndpointBuildEvent>(gstate, pipeline, op, context);
-	event.InsertEvent(build_event);
-	build_event->InsertEvent(
-	    make_shared_ptr<PathFindingScheduleEvent>(std::move(batches), gstate, pipeline, op, context));
+//! Schedules the partitioned CSR the searches traverse, then the event `make_next` creates (the scheduler of the
+//! searches). An index snapshot serves the partitions without a build; otherwise they are built from the global CSR
+//! (LocalCSRBuildKernel), from buffered endpoints (PartitionedEndpointBuildEvent) or were built during the sink.
+template <class MAKE_NEXT>
+void ScheduleLocalCSRBuildThen(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
+                               const PhysicalPathFinding &op, ClientContext &context, MAKE_NEXT &&make_next) {
+	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE && !gstate.symmetric_edges &&
+	    (gstate.precounted_edge_input || gstate.buffered_edge_input)) {
+		throw NotImplementedException(
+		    "Reverse search requires a reverse PartitionCSR; direct endpoint construction currently builds only the "
+		    "forward orientation");
+	}
+	if (gstate.cached_partitioned_csr_input && gstate.endpoint_partition_width == 0) {
+		gstate.endpoint_partition_width =
+		    GetBufferedPartitionedCSRWidth(gstate.vertex_count, gstate.num_threads, context);
+	}
+	shared_ptr<LocalCSRState> local_csr_state;
+	if (gstate.cached_partitioned_csr_input || gstate.precounted_edge_input || gstate.buffered_edge_input) {
+		std::vector<std::vector<LocalCSRBuildPartition>> empty_buffers;
+		local_csr_state = make_shared_ptr<LocalCSRState>(context, std::move(empty_buffers), gstate.vertex_count,
+		                                                 GetPathFindingEdgeCount(gstate),
+		                                                 gstate.endpoint_partition_width, gstate.num_threads);
+		local_csr_state->partition_csrs = gstate.endpoint_partition_csrs;
+		if (gstate.symmetric_edges) {
+			local_csr_state->reverse_partition_csrs = local_csr_state->partition_csrs;
+		}
+	} else if (gstate.edge_input) {
+		local_csr_state =
+		    make_shared_ptr<LocalCSRState>(context, std::move(gstate.endpoint_build_runs), gstate.vertex_count,
+		                                   gstate.endpoint_count, gstate.endpoint_partition_width, gstate.num_threads);
+	} else {
+		local_csr_state = make_shared_ptr<LocalCSRState>(context, gstate.csr, gstate.num_threads);
+	}
+	ConfigureLocalCSRStateForMode(*local_csr_state, gstate.path_finding_mode);
+	if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
+		local_csr_state->build_forward_csr = false;
+		local_csr_state->build_reverse_csr = true;
+	}
+	gstate.local_csr_state = local_csr_state;
+	if (TryLoadPartitionedCSR(gstate, *local_csr_state, context)) {
+		event.InsertEvent(make_next());
+		return;
+	}
+	if (gstate.cached_partitioned_csr_input) {
+		throw ConstraintException("The cache-only path-finding form needs a CSR index; no index snapshot was found for "
+		                          "key '%s'",
+		                          op.cache_key);
+	}
+	if (gstate.buffered_edge_input) {
+		auto build_event = make_shared_ptr<PartitionedEndpointBuildEvent>(gstate, pipeline, op, context);
+		event.InsertEvent(build_event);
+		build_event->InsertEvent(make_next());
+		return;
+	}
+	if (gstate.precounted_edge_input) {
+		event.InsertEvent(make_next());
+		return;
+	}
+	auto local_csr_event =
+	    make_shared_ptr<PhasedKernelEvent>(make_shared_ptr<LocalCSRBuildKernel>(local_csr_state), pipeline, op);
+	event.InsertEvent(local_csr_event);
+	local_csr_event->InsertEvent(make_next());
 }
 
-void SchedulePartitionedEndpointBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, Pipeline &pipeline,
-                                                       Event &event, const PhysicalPathFinding &op,
-                                                       ClientContext &context) {
-	auto build_event = make_shared_ptr<PartitionedEndpointBuildEvent>(gstate, pipeline, op, context);
-	event.InsertEvent(build_event);
-	build_event->InsertEvent(make_shared_ptr<SourceGroupedScheduleEvent>(gstate, pipeline, op, context));
+void ScheduleLocalCSRBuildThenPathFinding(PathFindingGlobalSinkState &gstate,
+                                          vector<shared_ptr<PathFindingBatch>> batches, Pipeline &pipeline,
+                                          Event &event, const PhysicalPathFinding &op, ClientContext &context) {
+	ScheduleLocalCSRBuildThen(gstate, pipeline, event, op, context, [&]() {
+		return make_shared_ptr<PathFindingScheduleEvent>(std::move(batches), gstate, pipeline, op, context);
+	});
+}
+
+void ScheduleLocalCSRBuildThenSourceGrouped(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
+                                            const PhysicalPathFinding &op, ClientContext &context) {
+	ScheduleLocalCSRBuildThen(gstate, pipeline, event, op, context, [&]() {
+		return make_shared_ptr<SourceGroupedScheduleEvent>(gstate, pipeline, op, context);
+	});
 }
 
 struct SourceGroupBuildState {
@@ -2165,15 +2079,15 @@ struct SourceGroupBuildState {
 	idx_t row_count = 0;
 };
 
+//! single_source: the source every pair searches from, when TryGetExactSingleSearchSource found one
 SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkState &gstate, Pipeline &pipeline,
                                                        Event &event, const PhysicalPathFinding &op,
-                                                       ClientContext &context) {
+                                                       ClientContext &context, optional_idx single_source) {
 	auto start_time = std::chrono::steady_clock::now();
 	RecordStrategy(context, "scheduling", "source_grouped");
-	int64_t single_source;
-	if (TryGetExactSingleSearchSource(gstate, single_source)) {
+	if (single_source.IsValid()) {
 		auto output_chunk_count = gstate.global_output_batches.size();
-		gstate.source_group_sources.push_back(single_source);
+		gstate.source_group_sources.push_back(NumericCast<int64_t>(single_source.GetIndex()));
 		gstate.source_group_row_counts.push_back(gstate.pair_stats.pair_count);
 		gstate.source_group_output_chunks.push_back(std::move(gstate.global_output_batches));
 		gstate.source_group_zero_copy = true;
@@ -2183,10 +2097,7 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
 		AppendOperatorPhaseTiming(context, "source_group_zero_copy", gstate.num_threads, gstate.pair_stats.pair_count,
 		                          1, output_chunk_count, build_ms, 0);
 		ScheduleLocalCSRBuildThenSourceGrouped(gstate, pipeline, event, op, context);
-
-		++gstate.child;
-		MarkTransientGlobalCSRForDeletion(gstate, context);
-		return SinkFinalizeType::READY;
+		return FinishPathFindingChild(gstate, context);
 	}
 
 	std::unordered_map<int64_t, idx_t> source_to_group;
@@ -2250,10 +2161,7 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
 	gstate.source_group_preserve_output_order = true;
 	gstate.use_source_grouping = true;
 	ScheduleLocalCSRBuildThenSourceGrouped(gstate, pipeline, event, op, context);
-
-	++gstate.child;
-	MarkTransientGlobalCSRForDeletion(gstate, context);
-	return SinkFinalizeType::READY;
+	return FinishPathFindingChild(gstate, context);
 }
 
 SinkFinalizeType FinalizeCSRIdPhase(PathFindingGlobalSinkState &gstate) {
@@ -2348,9 +2256,7 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 		gstate.global_output_batches.clear();
 		gstate.global_output_to_search.clear();
 		gstate.use_global_deduplication = false;
-		++gstate.child;
-		MarkTransientGlobalCSRForDeletion(gstate, context);
-		return SinkFinalizeType::READY;
+		return FinishPathFindingChild(gstate, context);
 	}
 
 	gstate.use_global_deduplication = true;
@@ -2378,10 +2284,7 @@ SinkFinalizeType FinalizeGlobalDeduplicatedPathFindingPhase(PathFindingGlobalSin
 		batches.push_back(std::move(batch));
 	}
 	ScheduleLocalCSRBuildThenPathFinding(gstate, std::move(batches), pipeline, event, op, context);
-
-	++gstate.child;
-	MarkTransientGlobalCSRForDeletion(gstate, context);
-	return SinkFinalizeType::READY;
+	return FinishPathFindingChild(gstate, context);
 }
 
 SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pipeline &pipeline, Event &event,
@@ -2443,10 +2346,15 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 	RecordStrategy(context, "distinct_src", std::to_string(gstate.pair_stats.distinct_src_count));
 	RecordStrategy(context, "distinct_dst", std::to_string(gstate.pair_stats.distinct_dst_count));
 	RecordStrategy(context, "orientation", OrientationName(gstate.search_orientation));
-	int64_t single_source;
-	if (ShouldUseSourceGroupedIterativeLength(gstate, context) &&
-	    TryGetExactSingleSearchSource(gstate, single_source)) {
-		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
+	bool source_grouped = ShouldUseSourceGroupedIterativeLength(gstate, context);
+	int64_t single_source_value;
+	optional_idx single_source;
+	if (TryGetExactSingleSearchSource(gstate, single_source_value)) {
+		single_source = NumericCast<idx_t>(single_source_value);
+	}
+	// Every pair from one source: the pairs are the group's destination list as they are, no rescan
+	if (source_grouped && single_source.IsValid()) {
+		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context, single_source);
 	}
 
 	// The dedupe path rescans the raw pairs, which for an index-backed query are keys rather than ids
@@ -2457,8 +2365,8 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 		return FinalizeGlobalDeduplicatedPathFindingPhase(gstate, pipeline, event, op, context);
 	}
 
-	if (ShouldUseSourceGroupedIterativeLength(gstate, context)) {
-		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context);
+	if (source_grouped) {
+		return FinalizeSourceGroupedPathFindingPhase(gstate, pipeline, event, op, context, single_source);
 	}
 
 	vector<shared_ptr<PathFindingBatch>> oriented_batches;
@@ -2468,10 +2376,7 @@ SinkFinalizeType FinalizePathFindingPhase(PathFindingGlobalSinkState &gstate, Pi
 		                                                          gstate.next_batch_index++));
 	}
 	ScheduleLocalCSRBuildThenPathFinding(gstate, std::move(oriented_batches), pipeline, event, op, context);
-
-	++gstate.child;
-	MarkTransientGlobalCSRForDeletion(gstate, context);
-	return SinkFinalizeType::READY;
+	return FinishPathFindingChild(gstate, context);
 }
 
 } // namespace
@@ -2841,13 +2746,7 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 	global_pairs = make_uniq<ColumnDataCollection>(context, op.PairTypes());
 
 	global_pairs->InitializeScan(global_scan_state);
-	result_scan_idx = 0;
-	next_batch_index = 0;
-	use_global_deduplication = false;
-	use_source_grouping = false;
-	source_group_zero_copy = false;
-	source_group_preserve_output_order = false;
-	global_dedupe_results_initialized = false;
+	benchmark_enabled = GetPathFindingBenchmarkOption(context);
 	edge_input = op.edge_input;
 	precounted_edge_input = op.precounted_edge_input;
 	cached_partitioned_csr_input = op.cached_partitioned_csr_input;
@@ -2886,7 +2785,7 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 		// Ensure that an empty graph also has all destination partitions.
 		auto empty_partitions = endpoint_partition_data->CreateShared();
 		endpoint_partition_data->Combine(*empty_partitions);
-		if (GetPathFindingBenchmarkOption(context)) {
+		if (benchmark_enabled) {
 			auto &buffer_manager = BufferManager::GetBufferManager(context);
 			csr_build_buffer_baseline_bytes = buffer_manager.GetUsedMemory();
 			csr_build_swap_baseline_bytes = buffer_manager.GetUsedSwap();
@@ -2894,12 +2793,6 @@ PathFindingGlobalSinkState::PathFindingGlobalSinkState(ClientContext &context, c
 			csr_build_swap_peak_bytes.store(csr_build_swap_baseline_bytes, std::memory_order_relaxed);
 		}
 	}
-	csr = nullptr;
-
-	child = 0;
-	mode = op.mode;
-	path_finding_mode = ParsePathFindingOperatorMode(mode);
-	search_orientation = PathFindingSearchOrientation::FORWARD;
 }
 
 void PathFindingGlobalSinkState::Sink(DataChunk &input, PathFindingLocalSinkState &lstate) {
@@ -2925,7 +2818,7 @@ void PathFindingGlobalSinkState::Sink(DataChunk &input, PathFindingLocalSinkStat
 		// CSR phase
 		auto duckpgq_state = GetDuckPGQState(context_);
 		csr_id = input.GetValue(0, 0).GetValue<int64_t>();
-		csr = duckpgq_state->GetCSR(csr_id);
+		csr = duckpgq_state->GetCSR(NumericCast<int32_t>(csr_id));
 	} else {
 		// path-finding phase
 		lstate.SinkPairs(input);
@@ -3196,10 +3089,6 @@ OperatorResultType PhysicalPathFinding::ExecuteInternal(ExecutionContext &contex
 
 class PathFindingLocalSourceState : public LocalSourceState {
 public:
-	explicit PathFindingLocalSourceState(ClientContext &context, const PhysicalPathFinding &op) : op(op) {
-	}
-
-	const PhysicalPathFinding &op;
 	//! REACH mode cursor: the slice this thread is emitting, the input row of its group and the vertex position
 	idx_t reach_slice = DConstants::INVALID_INDEX;
 	idx_t reach_row_idx = 0;
@@ -3208,18 +3097,13 @@ public:
 
 class PathFindingGlobalSourceState : public GlobalSourceState {
 public:
-	PathFindingGlobalSourceState(const PhysicalPathFinding &op, idx_t max_threads_p)
-	    : op(op), initialized(false), max_threads(max_threads_p) {
+	explicit PathFindingGlobalSourceState(idx_t max_threads_p) : max_threads(max_threads_p) {
 	}
 
-public:
 	idx_t MaxThreads() override {
 		return max_threads;
 	}
-	const PhysicalPathFinding &op;
 
-	mutex lock;
-	bool initialized;
 	idx_t max_threads;
 };
 
@@ -3227,7 +3111,7 @@ unique_ptr<GlobalSourceState> PhysicalPathFinding::GetGlobalSourceState(ClientCo
 	// Every mode's result scan is parallel: reach hands out slices of a group's distance array, the pair modes hand
 	// out output chunks (result_scan_idx is claimed with fetch_add)
 	idx_t max_threads = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
-	return make_uniq<PathFindingGlobalSourceState>(*this, max_threads);
+	return make_uniq<PathFindingGlobalSourceState>(max_threads);
 }
 
 //! Vertices per slice of a group's distance array handed to one GetData call sequence
@@ -3334,9 +3218,154 @@ static SourceResultType GetReachData(ExecutionContext &context, DataChunk &resul
 	return SourceResultType::HAVE_MORE_OUTPUT;
 }
 
+//! Source-grouped output: the threads claim output chunks; every row's length (or path) is read from the group of
+//! its search source. With output order preserved the rows of a chunk map to groups through the per-row group list;
+//! otherwise every chunk belongs to one group.
+static SourceResultType GetSourceGroupedData(ExecutionContext &context, DataChunk &result,
+                                             PathFindingGlobalSinkState &pf_sink) {
+	PhaseTimer scatter_timer(pf_sink.benchmark_enabled);
+	auto scan_idx = pf_sink.result_scan_idx.fetch_add(1);
+	if (scan_idx >= pf_sink.source_group_output_refs.size()) {
+		return SourceResultType::FINISHED;
+	}
+	auto output_ref = pf_sink.source_group_output_refs[scan_idx];
+	shared_ptr<DataChunk> output_pairs;
+	optional_ptr<vector<idx_t>> output_states;
+	optional_ptr<SourceGroupedIterativeLengthState> single_source_group;
+	if (pf_sink.source_group_preserve_output_order) {
+		output_pairs = pf_sink.global_output_batches[output_ref.second];
+		output_states = pf_sink.source_group_output_states[output_ref.second];
+		D_ASSERT(output_states->size() == output_pairs->size());
+	} else {
+		single_source_group = pf_sink.source_group_states[output_ref.first].get();
+		output_pairs = single_source_group->output_chunks[output_ref.second];
+	}
+
+	auto output_size = output_pairs->size();
+	bool return_paths = pf_sink.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH;
+	auto output_results = make_shared_ptr<DataChunk>();
+	output_results->Initialize(
+	    context.client, {return_paths ? LogicalType::LIST(LogicalType::BIGINT) : LogicalType::BIGINT}, output_size);
+	output_results->SetChildCardinality(output_size);
+	auto &result_vector = output_results->data[0];
+	auto result_data = return_paths ? nullptr : FlatVector::GetDataMutable<int64_t>(result_vector);
+	auto list_data = return_paths ? FlatVector::GetDataMutable<list_entry_t>(result_vector) : nullptr;
+	auto &result_validity = FlatVector::ValidityMutable(result_vector);
+	// Path elements of this chunk, flattened; vertices are keys with an index and row ids otherwise
+	vector<int64_t> path_values;
+	vector<bool> path_valid;
+	auto snapshot = pf_sink.index_snapshot.get();
+	auto vertex_value = [snapshot](uint32_t id) -> int64_t {
+		return snapshot ? snapshot->KeyOf(id) : static_cast<int64_t>(id);
+	};
+
+	UnifiedVectorFormat src_format;
+	UnifiedVectorFormat dst_format;
+	output_pairs->data[0].ToUnifiedFormat(src_format);
+	output_pairs->data[1].ToUnifiedFormat(dst_format);
+	auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
+	auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
+
+	for (idx_t row = 0; row < output_size; row++) {
+		auto src_idx = src_format.sel->get_index(row);
+		auto dst_idx = dst_format.sel->get_index(row);
+		auto target =
+		    pf_sink.search_orientation == PathFindingSearchOrientation::REVERSE ? src_data[src_idx] : dst_data[dst_idx];
+		optional_ptr<SourceGroupedIterativeLengthState> source_group = single_source_group;
+		if (pf_sink.source_group_preserve_output_order) {
+			auto group_idx = (*output_states)[row];
+			source_group =
+			    group_idx == DConstants::INVALID_INDEX ? nullptr : pf_sink.source_group_states[group_idx].get();
+		}
+		// Rows without a group have a NULL endpoint and no path
+		auto distance = source_group ? source_group->Distance(target) : -1;
+		if (distance < 0) {
+			result_validity.SetInvalid(row);
+			if (return_paths) {
+				list_data[row] = list_entry_t(path_values.size(), 0);
+			} else {
+				result_data[row] = -1;
+			}
+		} else if (return_paths) {
+			auto offset = path_values.size();
+			source_group->AppendPath(target, vertex_value, path_values, path_valid);
+			list_data[row] = list_entry_t(offset, path_values.size() - offset);
+		} else {
+			result_data[row] = distance;
+		}
+	}
+	if (return_paths) {
+		ListVector::Reserve(result_vector, path_values.size());
+		ListVector::SetListSize(result_vector, path_values.size());
+		auto &child = ListVector::GetChildMutable(result_vector);
+		auto child_data = FlatVector::GetDataMutable<int64_t>(child);
+		auto &child_validity = FlatVector::ValidityMutable(child);
+		for (idx_t i = 0; i < path_values.size(); i++) {
+			child_data[i] = path_values[i];
+			if (!path_valid[i]) {
+				child_validity.SetInvalid(i);
+			}
+		}
+	}
+
+	EmitPathFindingOutput(result, *output_pairs, output_results->data[0]);
+	if (pf_sink.benchmark_enabled) {
+		lock_guard<mutex> guard(pf_sink.scatter_lock);
+		pf_sink.source_group_scatter_ms += scatter_timer.ElapsedMs();
+		pf_sink.source_group_scatter_rows += output_size;
+		pf_sink.source_group_scatter_chunks++;
+		if (pf_sink.source_group_scatter_chunks == pf_sink.source_group_output_refs.size()) {
+			// Summed over the threads (CPU time of the scatter, not its wall time)
+			AppendOperatorPhaseTiming(context.client, "source_group_scatter", pf_sink.num_threads,
+			                          pf_sink.source_group_scatter_rows, pf_sink.source_group_scatter_chunks,
+			                          pf_sink.source_group_zero_copy ? 1 : 0, pf_sink.source_group_scatter_ms, 0);
+		}
+	}
+	return SourceResultType::HAVE_MORE_OUTPUT;
+}
+
+//! Deduplicated output: every output row reads the result of the unique pair it maps to (global_output_to_search)
+static SourceResultType GetDeduplicatedData(ExecutionContext &context, DataChunk &result,
+                                            PathFindingGlobalSinkState &pf_sink) {
+	{
+		lock_guard<mutex> guard(pf_sink.scatter_lock);
+		if (!pf_sink.global_dedupe_results_initialized) {
+			for (auto &state : pf_sink.bfs_states) {
+				state->pf_results->SetChildCardinality(state->pairs->size());
+			}
+			pf_sink.global_dedupe_results_initialized = true;
+		}
+	}
+	auto scan_idx = pf_sink.result_scan_idx.fetch_add(1);
+	if (scan_idx >= pf_sink.global_output_batches.size()) {
+		return SourceResultType::FINISHED;
+	}
+	auto output_pairs = pf_sink.global_output_batches[scan_idx];
+	auto &output_to_search = pf_sink.global_output_to_search[scan_idx];
+	D_ASSERT(output_to_search.size() == output_pairs->size());
+
+	PhaseTimer scatter_timer(pf_sink.benchmark_enabled);
+	auto output_results = make_shared_ptr<DataChunk>();
+	output_results->Initialize(context.client, {pf_sink.bfs_states[0]->bfs_type}, output_pairs->size());
+	output_results->SetChildCardinality(output_pairs->size());
+	for (idx_t output_row = 0; output_row < output_pairs->size(); output_row++) {
+		auto global_search_row = output_to_search[output_row];
+		auto search_batch_idx = global_search_row / STANDARD_VECTOR_SIZE;
+		auto search_row = global_search_row - search_batch_idx * STANDARD_VECTOR_SIZE;
+		D_ASSERT(search_batch_idx < pf_sink.bfs_states.size());
+		auto &search_state = pf_sink.bfs_states[search_batch_idx];
+		D_ASSERT(search_row < search_state->pf_results->size());
+		output_results->data[0].SetValue(output_row, search_state->pf_results->GetValue(0, search_row));
+	}
+	EmitPathFindingOutput(result, *output_pairs, output_results->data[0]);
+	AppendOperatorPhaseTiming(context.client, "dedupe_scatter", pf_sink.num_threads, output_to_search.size(), 0, 0,
+	                          scatter_timer.ElapsedMs(), output_to_search.capacity() * sizeof(idx_t));
+	return SourceResultType::HAVE_MORE_OUTPUT;
+}
+
 unique_ptr<LocalSourceState> PhysicalPathFinding::GetLocalSourceState(ExecutionContext &context,
                                                                       GlobalSourceState &gstate) const {
-	return make_uniq<PathFindingLocalSourceState>(context.client, *this);
+	return make_uniq<PathFindingLocalSourceState>();
 }
 
 SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context, DataChunk &result,
@@ -3346,154 +3375,16 @@ SourceResultType PhysicalPathFinding::GetDataInternal(ExecutionContext &context,
 	if (pf_sink.global_pairs->Count() == 0) {
 		return SourceResultType::FINISHED;
 	}
-
 	if (pf_sink.path_finding_mode == PathFindingOperatorMode::REACH) {
 		return GetReachData(context, result, pf_sink, input.local_state.Cast<PathFindingLocalSourceState>());
 	}
-
 	if (pf_sink.use_source_grouping) {
-		auto scatter_start = std::chrono::steady_clock::now();
-		auto scan_idx = pf_sink.result_scan_idx.fetch_add(1);
-		if (scan_idx >= pf_sink.source_group_output_refs.size()) {
-			return SourceResultType::FINISHED;
-		}
-		auto output_ref = pf_sink.source_group_output_refs[scan_idx];
-		shared_ptr<DataChunk> output_pairs;
-		optional_ptr<vector<idx_t>> output_states;
-		optional_ptr<SourceGroupedIterativeLengthState> single_source_group;
-		if (pf_sink.source_group_preserve_output_order) {
-			output_pairs = pf_sink.global_output_batches[output_ref.second];
-			output_states = pf_sink.source_group_output_states[output_ref.second];
-			D_ASSERT(output_states->size() == output_pairs->size());
-		} else {
-			single_source_group = pf_sink.source_group_states[output_ref.first].get();
-			output_pairs = single_source_group->output_chunks[output_ref.second];
-		}
-
-		auto output_size = output_pairs->size();
-		bool return_paths = pf_sink.path_finding_mode == PathFindingOperatorMode::SHORTEST_PATH;
-		auto output_results = make_shared_ptr<DataChunk>();
-		output_results->Initialize(
-		    context.client, {return_paths ? LogicalType::LIST(LogicalType::BIGINT) : LogicalType::BIGINT}, output_size);
-		output_results->SetChildCardinality(output_size);
-		auto &result_vector = output_results->data[0];
-		auto result_data = return_paths ? nullptr : FlatVector::GetDataMutable<int64_t>(result_vector);
-		auto list_data = return_paths ? FlatVector::GetDataMutable<list_entry_t>(result_vector) : nullptr;
-		auto &result_validity = FlatVector::ValidityMutable(result_vector);
-		// Path elements of this chunk, flattened; vertices are keys with an index and row ids otherwise
-		vector<int64_t> path_values;
-		vector<bool> path_valid;
-		auto snapshot = pf_sink.index_snapshot.get();
-		auto vertex_value = [snapshot](uint32_t id) -> int64_t {
-			return snapshot ? snapshot->KeyOf(id) : static_cast<int64_t>(id);
-		};
-
-		UnifiedVectorFormat src_format;
-		UnifiedVectorFormat dst_format;
-		output_pairs->data[0].ToUnifiedFormat(src_format);
-		output_pairs->data[1].ToUnifiedFormat(dst_format);
-		auto src_data = UnifiedVectorFormat::GetData<int64_t>(src_format);
-		auto dst_data = UnifiedVectorFormat::GetData<int64_t>(dst_format);
-
-		for (idx_t row = 0; row < output_size; row++) {
-			auto src_idx = src_format.sel->get_index(row);
-			auto dst_idx = dst_format.sel->get_index(row);
-			auto target = pf_sink.search_orientation == PathFindingSearchOrientation::REVERSE ? src_data[src_idx]
-			                                                                                  : dst_data[dst_idx];
-			optional_ptr<SourceGroupedIterativeLengthState> source_group = single_source_group;
-			if (pf_sink.source_group_preserve_output_order) {
-				auto group_idx = (*output_states)[row];
-				source_group =
-				    group_idx == DConstants::INVALID_INDEX ? nullptr : pf_sink.source_group_states[group_idx].get();
-			}
-			// Rows without a group have a NULL endpoint and no path
-			auto distance = source_group ? source_group->Distance(target) : -1;
-			if (distance < 0) {
-				result_validity.SetInvalid(row);
-				if (return_paths) {
-					list_data[row] = list_entry_t(path_values.size(), 0);
-				} else {
-					result_data[row] = -1;
-				}
-			} else if (return_paths) {
-				auto offset = path_values.size();
-				source_group->AppendPath(target, vertex_value, path_values, path_valid);
-				list_data[row] = list_entry_t(offset, path_values.size() - offset);
-			} else {
-				result_data[row] = distance;
-			}
-		}
-		if (return_paths) {
-			ListVector::Reserve(result_vector, path_values.size());
-			ListVector::SetListSize(result_vector, path_values.size());
-			auto &child = ListVector::GetChildMutable(result_vector);
-			auto child_data = FlatVector::GetDataMutable<int64_t>(child);
-			auto &child_validity = FlatVector::ValidityMutable(child);
-			for (idx_t i = 0; i < path_values.size(); i++) {
-				child_data[i] = path_values[i];
-				if (!path_valid[i]) {
-					child_validity.SetInvalid(i);
-				}
-			}
-		}
-
-		EmitPathFindingOutput(result, *output_pairs, output_results->data[0]);
-		auto scatter_end = std::chrono::steady_clock::now();
-		{
-			lock_guard<mutex> guard(pf_sink.scatter_lock);
-			pf_sink.source_group_scatter_ms +=
-			    std::chrono::duration<double, std::milli>(scatter_end - scatter_start).count();
-			pf_sink.source_group_scatter_rows += output_size;
-			pf_sink.source_group_scatter_chunks++;
-			if (pf_sink.source_group_scatter_chunks == pf_sink.source_group_output_refs.size()) {
-				// Summed over the threads (CPU time of the scatter, not its wall time)
-				AppendOperatorPhaseTiming(context.client, "source_group_scatter", pf_sink.num_threads,
-				                          pf_sink.source_group_scatter_rows, pf_sink.source_group_scatter_chunks,
-				                          pf_sink.source_group_zero_copy ? 1 : 0, pf_sink.source_group_scatter_ms, 0);
-			}
-		}
-		return SourceResultType::HAVE_MORE_OUTPUT;
+		return GetSourceGroupedData(context, result, pf_sink);
 	}
-
 	if (pf_sink.use_global_deduplication) {
-		{
-			lock_guard<mutex> guard(pf_sink.scatter_lock);
-			if (!pf_sink.global_dedupe_results_initialized) {
-				for (auto &state : pf_sink.bfs_states) {
-					state->pf_results->SetChildCardinality(state->pairs->size());
-				}
-				pf_sink.global_dedupe_results_initialized = true;
-			}
-		}
-		auto scan_idx = pf_sink.result_scan_idx.fetch_add(1);
-		if (scan_idx >= pf_sink.global_output_batches.size()) {
-			return SourceResultType::FINISHED;
-		}
-		auto output_pairs = pf_sink.global_output_batches[scan_idx];
-		auto &output_to_search = pf_sink.global_output_to_search[scan_idx];
-		D_ASSERT(output_to_search.size() == output_pairs->size());
-
-		auto scatter_start = std::chrono::steady_clock::now();
-		auto output_results = make_shared_ptr<DataChunk>();
-		output_results->Initialize(context.client, {pf_sink.bfs_states[0]->bfs_type}, output_pairs->size());
-		output_results->SetChildCardinality(output_pairs->size());
-		for (idx_t output_row = 0; output_row < output_pairs->size(); output_row++) {
-			auto global_search_row = output_to_search[output_row];
-			auto search_batch_idx = global_search_row / STANDARD_VECTOR_SIZE;
-			auto search_row = global_search_row - search_batch_idx * STANDARD_VECTOR_SIZE;
-			D_ASSERT(search_batch_idx < pf_sink.bfs_states.size());
-			auto &search_state = pf_sink.bfs_states[search_batch_idx];
-			D_ASSERT(search_row < search_state->pf_results->size());
-			output_results->data[0].SetValue(output_row, search_state->pf_results->GetValue(0, search_row));
-		}
-		EmitPathFindingOutput(result, *output_pairs, output_results->data[0]);
-		auto scatter_end = std::chrono::steady_clock::now();
-		auto scatter_ms = std::chrono::duration<double, std::milli>(scatter_end - scatter_start).count();
-		AppendOperatorPhaseTiming(context.client, "dedupe_scatter", pf_sink.num_threads, output_to_search.size(), 0, 0,
-		                          scatter_ms, output_to_search.capacity() * sizeof(idx_t));
-		return SourceResultType::HAVE_MORE_OUTPUT;
+		return GetDeduplicatedData(context, result, pf_sink);
 	}
-
+	// One batch per output chunk: the results are in the batch's order
 	auto scan_idx = pf_sink.result_scan_idx.fetch_add(1);
 	if (scan_idx >= pf_sink.bfs_states.size()) {
 		return SourceResultType::FINISHED;

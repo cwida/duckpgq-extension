@@ -58,8 +58,7 @@ void LocalCSRWorker::BufferForwardEdges(std::vector<shared_ptr<LocalCSR>> &parti
 	auto &global_csr = *local_csr_state->global_csr;
 	auto &worker_buffers = local_csr_state->forward_build_buffers[worker_id];
 	const idx_t vertex_count = global_csr.vsize - 2;
-	const idx_t vertices_per_worker =
-	    (vertex_count + local_csr_state->tasks_scheduled - 1) / local_csr_state->tasks_scheduled;
+	const idx_t vertices_per_worker = (vertex_count + local_csr_state->num_threads - 1) / local_csr_state->num_threads;
 	const idx_t src_start = worker_id * vertices_per_worker;
 	const idx_t src_end = std::min(src_start + vertices_per_worker, vertex_count);
 
@@ -126,8 +125,7 @@ void LocalCSRWorker::DistributeEdges(bool reverse, std::vector<shared_ptr<LocalC
 	idx_t total_vertices = local_csr_state->global_csr->vsize - 1;
 
 	// Determine per-thread vertex range
-	idx_t vertices_per_worker =
-	    (total_vertices + local_csr_state->tasks_scheduled - 1) / local_csr_state->tasks_scheduled;
+	idx_t vertices_per_worker = (total_vertices + local_csr_state->num_threads - 1) / local_csr_state->num_threads;
 	idx_t src_start = worker_id * vertices_per_worker;
 	idx_t src_end = std::min(src_start + vertices_per_worker, total_vertices);
 
@@ -155,21 +153,12 @@ void LocalCSRWorker::FinalizeSparseRows(std::vector<shared_ptr<LocalCSR>> &parti
 	}
 }
 
-void LocalCSRWorker::PrepareDistributePullEdges(std::vector<shared_ptr<PullCSR>> &pull_partition_csrs) const {
-	for (auto &pull_csr_ptr : pull_partition_csrs) {
-		auto &pull_csr = *pull_csr_ptr;
-		auto edge_count = pull_csr.offsets[pull_csr.offsets_size - 1].load(std::memory_order_relaxed);
-		pull_csr.predecessors.resize(edge_count);
-	}
-}
-
 void LocalCSRWorker::DistributePullEdges(std::vector<shared_ptr<PullCSR>> &pull_partition_csrs) {
 	auto &v = local_csr_state->global_csr->v;
 	auto &e = local_csr_state->global_csr->e;
 	idx_t total_vertices = local_csr_state->global_csr->vsize - 1;
 
-	idx_t vertices_per_worker =
-	    (total_vertices + local_csr_state->tasks_scheduled - 1) / local_csr_state->tasks_scheduled;
+	idx_t vertices_per_worker = (total_vertices + local_csr_state->num_threads - 1) / local_csr_state->num_threads;
 	idx_t src_start = worker_id * vertices_per_worker;
 	idx_t src_end = std::min(src_start + vertices_per_worker, total_vertices);
 
@@ -211,14 +200,17 @@ void LocalCSRWorker::CreatePullRunningSum(std::vector<shared_ptr<PullCSR>> &pull
 			break;
 		}
 
-		auto &offsets = pull_partition_csrs[partition_idx]->offsets;
-		auto offsets_size = pull_partition_csrs[partition_idx]->offsets_size;
+		auto &pull_csr = *pull_partition_csrs[partition_idx];
 		uint64_t sum = 0;
-		for (idx_t offset_idx = 0; offset_idx < offsets_size; offset_idx++) {
-			auto current = offsets[offset_idx].load(std::memory_order_relaxed);
-			offsets[offset_idx].store(static_cast<uint32_t>(sum), std::memory_order_relaxed);
+		for (idx_t offset_idx = 0; offset_idx < pull_csr.offsets_size; offset_idx++) {
+			auto current = pull_csr.offsets[offset_idx].load(std::memory_order_relaxed);
+			pull_csr.offsets[offset_idx].store(static_cast<uint32_t>(sum), std::memory_order_relaxed);
 			sum += current;
 		}
+		// The count of vertex v sits at offsets[v + 1] and the array has one slot per vertex plus one, so after the
+		// exclusive sum the last slot lacks the last vertex's count: the total is only known here (2 Nov: sizing the
+		// predecessors from the last slot overflowed the array by that count)
+		pull_csr.predecessors.resize(sum);
 	}
 }
 
@@ -311,7 +303,7 @@ void LocalCSRWorker::CountIncomingEdgesPerPullPartition(std::vector<shared_ptr<P
 	auto &e = local_csr_state->global_csr->e;
 	idx_t total_edges = e.size();
 
-	idx_t edges_per_worker = (total_edges + local_csr_state->tasks_scheduled - 1) / local_csr_state->tasks_scheduled;
+	idx_t edges_per_worker = (total_edges + local_csr_state->num_threads - 1) / local_csr_state->num_threads;
 	idx_t start_edge = worker_id * edges_per_worker;
 	idx_t end_edge = std::min(start_edge + edges_per_worker, total_edges);
 
@@ -428,7 +420,7 @@ void LocalCSRWorker::CreateStatistics(bool reverse, std::vector<int64_t> &statis
 	idx_t max_col = local_csr_state->global_csr->vsize; // max column index is #vertices
 
 	// Determine work range for this worker
-	idx_t edges_per_worker = (total_edges + local_csr_state->tasks_scheduled - 1) / local_csr_state->tasks_scheduled;
+	idx_t edges_per_worker = (total_edges + local_csr_state->num_threads - 1) / local_csr_state->num_threads;
 	idx_t start_edge = worker_id * edges_per_worker;
 	idx_t end_edge = std::min(start_edge + edges_per_worker, total_edges);
 
@@ -444,8 +436,7 @@ void LocalCSRWorker::CreateStatistics(bool reverse, std::vector<int64_t> &statis
 
 	if (reverse) {
 		idx_t total_vertices = local_csr_state->global_csr->vsize - 1;
-		idx_t vertices_per_worker =
-		    (total_vertices + local_csr_state->tasks_scheduled - 1) / local_csr_state->tasks_scheduled;
+		idx_t vertices_per_worker = (total_vertices + local_csr_state->num_threads - 1) / local_csr_state->num_threads;
 		idx_t src_start = worker_id * vertices_per_worker;
 		idx_t src_end = std::min(src_start + vertices_per_worker, total_vertices);
 		for (idx_t src = src_start; src < src_end; src++) {

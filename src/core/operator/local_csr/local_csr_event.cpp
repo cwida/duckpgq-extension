@@ -1,26 +1,10 @@
 #include "duckpgq/core/operator/local_csr/local_csr_event.hpp"
 
+#include <duckpgq/core/operator/bfs_benchmark.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
-#include <chrono>
-#include <filesystem>
 #include <fstream>
-#include <mutex>
 
 namespace duckdb {
-
-static mutex local_csr_phase_timing_lock;
-
-static double ElapsedMs(std::chrono::steady_clock::time_point start, std::chrono::steady_clock::time_point end) {
-	return std::chrono::duration<double, std::milli>(end - start).count();
-}
-
-static size_t GetLocalCSREdgeCount(const std::vector<shared_ptr<LocalCSR>> &partition_csrs) {
-	size_t edge_count = 0;
-	for (const auto &local_csr : partition_csrs) {
-		edge_count += local_csr->GetEdgeSize();
-	}
-	return edge_count;
-}
 
 static size_t GetLocalCSRMemory(const std::vector<shared_ptr<LocalCSR>> &partition_csrs) {
 	size_t memory = 0;
@@ -62,42 +46,18 @@ static void AppendPhaseTiming(const LocalCSRState &state, const string &phase,
 	if (!state.benchmark_enabled) {
 		return;
 	}
-
-	auto file_name = state.benchmark_output_prefix + "_phase_timing.csv";
-	lock_guard<mutex> lock(local_csr_phase_timing_lock);
-	bool write_header = !std::filesystem::exists(file_name);
-	std::ofstream outfile(file_name, std::ios::app);
-	if (!outfile.is_open()) {
-		throw IOException("Could not open path-finding phase benchmark file \"%s\"", file_name);
-	}
-	if (write_header) {
-		outfile << "Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes\n";
-	}
-	auto vertex_count = state.vsize - 2;
-	outfile << phase << "," << state.benchmark_run_id << "," << state.num_threads << ",0," << vertex_count << ","
-	        << GetLocalCSREdgeCount(partition_csrs) << "," << partition_csrs.size() << "," << time_ms << ","
-	        << GetLocalCSRMemory(partition_csrs) << "\n";
+	AppendPhaseTimingRow(state.benchmark_output_prefix, phase, state.benchmark_run_id, state.num_threads, 0,
+	                     state.vsize - 2, GetLocalCSREdgeCount(partition_csrs), partition_csrs.size(), time_ms,
+	                     GetLocalCSRMemory(partition_csrs));
 }
 
 static void AppendPullPhaseTiming(const LocalCSRState &state, double time_ms) {
 	if (!state.benchmark_enabled) {
 		return;
 	}
-
-	auto file_name = state.benchmark_output_prefix + "_phase_timing.csv";
-	lock_guard<mutex> lock(local_csr_phase_timing_lock);
-	bool write_header = !std::filesystem::exists(file_name);
-	std::ofstream outfile(file_name, std::ios::app);
-	if (!outfile.is_open()) {
-		throw IOException("Could not open path-finding phase benchmark file \"%s\"", file_name);
-	}
-	if (write_header) {
-		outfile << "Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes\n";
-	}
-	auto vertex_count = state.vsize - 2;
-	outfile << "local_csr_pull," << state.benchmark_run_id << "," << state.num_threads << ",0," << vertex_count << ","
-	        << GetPullCSREdgeCount(state.pull_partition_csrs) << "," << state.pull_partition_csrs.size() << ","
-	        << time_ms << "," << GetPullCSRMemory(state.pull_partition_csrs) << "\n";
+	AppendPhaseTimingRow(state.benchmark_output_prefix, "local_csr_pull", state.benchmark_run_id, state.num_threads, 0,
+	                     state.vsize - 2, GetPullCSREdgeCount(state.pull_partition_csrs),
+	                     state.pull_partition_csrs.size(), time_ms, GetPullCSRMemory(state.pull_partition_csrs));
 }
 
 static void AppendSubphaseTimings(const LocalCSRState &state) {
@@ -292,7 +252,7 @@ void LocalCSRBuildKernel::PlanSparseForwardBuild() {
 	    [this, st, record]() {
 		    subphase_start = std::chrono::steady_clock::now();
 		    workers[0]->DeterminePartitions(st->statistics_chunks, st->partition_csrs, false);
-		    st->forward_build_buffers.resize(st->tasks_scheduled);
+		    st->forward_build_buffers.resize(st->num_threads);
 		    for (auto &worker_buffers : st->forward_build_buffers) {
 			    worker_buffers.resize(st->partition_csrs.size());
 		    }
@@ -327,15 +287,14 @@ void LocalCSRBuildKernel::PlanPullBuild() {
 	    [st]() { st->partition_index = 0; });
 	AddStep(
 	    nullptr, [st](LocalCSRWorker &worker) { worker.CreatePullRunningSum(st->pull_partition_csrs); }, nullptr);
-	AddStep([this, st]() { workers[0]->PrepareDistributePullEdges(st->pull_partition_csrs); },
-	        [st](LocalCSRWorker &worker) { worker.DistributePullEdges(st->pull_partition_csrs); },
-	        [st]() { st->pull_end_time = std::chrono::steady_clock::now(); });
+	AddStep(
+	    nullptr, [st](LocalCSRWorker &worker) { worker.DistributePullEdges(st->pull_partition_csrs); },
+	    [st]() { st->pull_end_time = std::chrono::steady_clock::now(); });
 }
 
 bool LocalCSRBuildKernel::Start() {
 	auto worker_count = std::max<idx_t>(1, state->num_threads);
 	state->num_threads = worker_count;
-	state->tasks_scheduled = worker_count;
 	for (idx_t worker = 0; worker < worker_count; worker++) {
 		workers.push_back(make_uniq<LocalCSRWorker>(state, worker));
 	}

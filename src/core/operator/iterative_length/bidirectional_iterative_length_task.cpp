@@ -2,15 +2,6 @@
 
 #include <duckpgq/core/operator/physical_path_finding_operator.hpp>
 
-#include <chrono>
-#include <thread>
-
-#ifdef __linux__
-#include <sched.h>
-#elif defined(__APPLE__)
-#include <pthread.h>
-#endif
-
 namespace duckdb {
 
 static constexpr idx_t CANDIDATE_WORD_BITS = 64;
@@ -47,10 +38,11 @@ void BidirectionalIterativeLengthWorker::PrepareSide(BidirectionalSearchSide sid
 	auto refs = Refs(side);
 	auto batch_id = state->current_batch_id;
 	auto step_id = state->current_step_id;
-	auto prepare_start_time = std::chrono::high_resolution_clock::now();
+	PhaseTimer timer(state->benchmark_enabled);
 	state->partition_counter = 0;
 	state->local_csr_counter = 0;
 	state->change = false;
+	std::fill(state->worker_changed.begin(), state->worker_changed.end(), 0);
 	state->last_side_changed = false;
 	state->candidate_dirty_word_count = 0;
 	state->use_candidate_check =
@@ -64,12 +56,8 @@ void BidirectionalIterativeLengthWorker::PrepareSide(BidirectionalSearchSide sid
 	for (auto &worker_frontier_vertices : state->worker_frontier_vertices) {
 		worker_frontier_vertices.clear();
 	}
-	if (state->benchmark_enabled) {
-		auto prepare_end_time = std::chrono::high_resolution_clock::now();
-		auto duration_ms = std::chrono::duration<double, std::milli>(prepare_end_time - prepare_start_time).count();
-		RecordPhaseTiming(batch_id, step_id, side, "prepare", refs.frontier_vertices.size(), 0, 0, 0, 0, 0,
-		                  duration_ms);
-	}
+	RecordPhaseTiming(batch_id, step_id, side, "prepare", refs.frontier_vertices.size(), 0, 0, 0, 0, 0,
+	                  timer.ElapsedMs());
 }
 
 //! CLEAR phase: this worker's candidate words from the previous step, and `next` of the partitions it claims
@@ -78,7 +66,7 @@ void BidirectionalIterativeLengthWorker::ClearPhase(BidirectionalSearchSide side
 	auto batch_id = state->current_batch_id;
 	auto step_id = state->current_step_id;
 
-	auto candidate_clear_start_time = std::chrono::high_resolution_clock::now();
+	PhaseTimer candidate_timer(state->benchmark_enabled);
 	auto &dirty_candidate_words = state->worker_dirty_candidate_words[worker_id];
 	auto &candidate_words = state->worker_candidate_words[worker_id];
 	auto cleared_candidate_words = dirty_candidate_words.size();
@@ -86,17 +74,12 @@ void BidirectionalIterativeLengthWorker::ClearPhase(BidirectionalSearchSide side
 		candidate_words[word_idx] = 0;
 	}
 	dirty_candidate_words.clear();
-	if (state->benchmark_enabled) {
-		auto candidate_clear_end_time = std::chrono::high_resolution_clock::now();
-		auto duration_ms =
-		    std::chrono::duration<double, std::milli>(candidate_clear_end_time - candidate_clear_start_time).count();
-		RecordPhaseTiming(batch_id, step_id, side, "candidate_clear", refs.frontier_vertices.size(), 0,
-		                  cleared_candidate_words * CANDIDATE_WORD_BITS, 0, 0, 0, duration_ms);
-	}
+	RecordPhaseTiming(batch_id, step_id, side, "candidate_clear", refs.frontier_vertices.size(), 0,
+	                  cleared_candidate_words * CANDIDATE_WORD_BITS, 0, 0, 0, candidate_timer.ElapsedMs());
 
 	idx_t cleared_partitions = 0;
 	idx_t cleared_vertices = 0;
-	auto clear_start_time = std::chrono::high_resolution_clock::now();
+	PhaseTimer clear_timer(state->benchmark_enabled);
 	while (true) {
 		auto partition_idx = state->partition_counter.fetch_add(1);
 		if (partition_idx >= static_cast<int64_t>(refs.partition_csrs.size())) {
@@ -109,26 +92,17 @@ void BidirectionalIterativeLengthWorker::ClearPhase(BidirectionalSearchSide side
 			refs.next[i] = 0;
 		}
 	}
-	if (state->benchmark_enabled) {
-		auto clear_end_time = std::chrono::high_resolution_clock::now();
-		auto duration_ms = std::chrono::duration<double, std::milli>(clear_end_time - clear_start_time).count();
-		RecordPhaseTiming(batch_id, step_id, side, "clear_next", refs.frontier_vertices.size(), cleared_partitions,
-		                  cleared_vertices, 0, 0, 0, duration_ms);
-	}
+	RecordPhaseTiming(batch_id, step_id, side, "clear_next", refs.frontier_vertices.size(), cleared_partitions,
+	                  cleared_vertices, 0, 0, 0, clear_timer.ElapsedMs());
 }
 
 //! Serial, between CLEAR and EXPLORE
 void BidirectionalIterativeLengthWorker::PrepareExplore(BidirectionalSearchSide side) {
 	auto refs = Refs(side);
-	auto prepare_explore_start_time = std::chrono::high_resolution_clock::now();
+	PhaseTimer timer(state->benchmark_enabled);
 	state->partition_counter = 0;
-	if (state->benchmark_enabled) {
-		auto prepare_explore_end_time = std::chrono::high_resolution_clock::now();
-		auto duration_ms =
-		    std::chrono::duration<double, std::milli>(prepare_explore_end_time - prepare_explore_start_time).count();
-		RecordPhaseTiming(state->current_batch_id, state->current_step_id, side, "prepare_explore",
-		                  refs.frontier_vertices.size(), 0, 0, 0, 0, 0, duration_ms);
-	}
+	RecordPhaseTiming(state->current_batch_id, state->current_step_id, side, "prepare_explore",
+	                  refs.frontier_vertices.size(), 0, 0, 0, 0, 0, timer.ElapsedMs());
 }
 
 //! EXPLORE phase: expands the partitions this worker claims
@@ -136,7 +110,7 @@ void BidirectionalIterativeLengthWorker::ExplorePhase(BidirectionalSearchSide si
 	auto refs = Refs(side);
 	idx_t explored_partitions = 0;
 	idx_t explored_edges = 0;
-	auto explore_start_time = std::chrono::high_resolution_clock::now();
+	PhaseTimer timer(state->benchmark_enabled);
 	while (true) {
 		auto partition_idx = state->local_csr_counter.fetch_add(1);
 		if (partition_idx >= static_cast<int64_t>(refs.partition_csrs.size())) {
@@ -149,18 +123,14 @@ void BidirectionalIterativeLengthWorker::ExplorePhase(BidirectionalSearchSide si
 		explored_partitions++;
 		explored_edges += RunExplore(refs.visit, refs.next, *local_csr, refs.frontier_vertices);
 	}
-	if (state->benchmark_enabled) {
-		auto explore_end_time = std::chrono::high_resolution_clock::now();
-		auto duration_ms = std::chrono::duration<double, std::milli>(explore_end_time - explore_start_time).count();
-		RecordPhaseTiming(state->current_batch_id, state->current_step_id, side, "explore",
-		                  refs.frontier_vertices.size(), explored_partitions, 0, explored_edges, 0, 0, duration_ms);
-	}
+	RecordPhaseTiming(state->current_batch_id, state->current_step_id, side, "explore", refs.frontier_vertices.size(),
+	                  explored_partitions, 0, explored_edges, 0, 0, timer.ElapsedMs());
 }
 
 //! Serial, between EXPLORE and CHECK: decides whether the check walks candidate words or whole partitions
 void BidirectionalIterativeLengthWorker::PrepareCheck(BidirectionalSearchSide side) {
 	auto refs = Refs(side);
-	auto prepare_check_start_time = std::chrono::high_resolution_clock::now();
+	PhaseTimer timer(state->benchmark_enabled);
 	state->local_csr_counter = 0;
 	state->partition_counter = 0;
 	if (state->use_candidate_check) {
@@ -170,13 +140,8 @@ void BidirectionalIterativeLengthWorker::PrepareCheck(BidirectionalSearchSide si
 		state->use_candidate_check =
 		    state->candidate_dirty_word_count * CANDIDATE_WORD_BITS <= static_cast<idx_t>(state->v_size);
 	}
-	if (state->benchmark_enabled) {
-		auto prepare_check_end_time = std::chrono::high_resolution_clock::now();
-		auto duration_ms =
-		    std::chrono::duration<double, std::milli>(prepare_check_end_time - prepare_check_start_time).count();
-		RecordPhaseTiming(state->current_batch_id, state->current_step_id, side, "prepare_check",
-		                  refs.frontier_vertices.size(), 0, 0, 0, 0, 0, duration_ms);
-	}
+	RecordPhaseTiming(state->current_batch_id, state->current_step_id, side, "prepare_check",
+	                  refs.frontier_vertices.size(), 0, 0, 0, 0, 0, timer.ElapsedMs());
 }
 
 //! CHECK phase: folds `next` into `seen` and finds the lanes that met the other side
@@ -185,7 +150,7 @@ void BidirectionalIterativeLengthWorker::CheckPhase(BidirectionalSearchSide side
 	idx_t checked_partitions = 0;
 	idx_t checked_vertices = 0;
 	auto frontier_count_before_check = state->worker_frontier_counts[worker_id];
-	auto check_start_time = std::chrono::high_resolution_clock::now();
+	PhaseTimer timer(state->benchmark_enabled);
 	while (true) {
 		auto partition_idx = state->partition_counter.fetch_add(1);
 		if (partition_idx >= static_cast<int64_t>(refs.partition_csrs.size())) {
@@ -200,14 +165,10 @@ void BidirectionalIterativeLengthWorker::CheckPhase(BidirectionalSearchSide side
 			CheckChange(refs.side_seen, refs.next, refs.other_seen, local_csr);
 		}
 	}
-	if (state->benchmark_enabled) {
-		auto check_end_time = std::chrono::high_resolution_clock::now();
-		auto duration_ms = std::chrono::duration<double, std::milli>(check_end_time - check_start_time).count();
-		auto new_frontier_count = state->worker_frontier_counts[worker_id] - frontier_count_before_check;
-		RecordPhaseTiming(state->current_batch_id, state->current_step_id, side, "check_change",
-		                  refs.frontier_vertices.size(), checked_partitions, checked_vertices, 0, new_frontier_count, 0,
-		                  duration_ms);
-	}
+	auto new_frontier_count = state->worker_frontier_counts[worker_id] - frontier_count_before_check;
+	RecordPhaseTiming(state->current_batch_id, state->current_step_id, side, "check_change",
+	                  refs.frontier_vertices.size(), checked_partitions, checked_vertices, 0, new_frontier_count, 0,
+	                  timer.ElapsedMs());
 }
 
 //! Serial, after CHECK: completes the lanes that met, builds the side's next frontier and picks the next side
@@ -215,7 +176,7 @@ void BidirectionalIterativeLengthWorker::Aggregate(BidirectionalSearchSide side)
 	auto refs = Refs(side);
 	auto batch_id = state->current_batch_id;
 	auto step_id = state->current_step_id;
-	auto aggregate_start_time = std::chrono::high_resolution_clock::now();
+	PhaseTimer timer(state->benchmark_enabled);
 	std::bitset<LANE_LIMIT> found_lanes;
 	idx_t frontier_size = 0;
 	idx_t completed_lanes = 0;
@@ -247,12 +208,8 @@ void BidirectionalIterativeLengthWorker::Aggregate(BidirectionalSearchSide side)
 		refs.side_frontier_size = frontier_size;
 	}
 	state->expand_source_next = state->src_frontier_size <= state->dst_frontier_size;
-	if (state->benchmark_enabled) {
-		auto aggregate_end_time = std::chrono::high_resolution_clock::now();
-		auto duration_ms = std::chrono::duration<double, std::milli>(aggregate_end_time - aggregate_start_time).count();
-		RecordPhaseTiming(batch_id, step_id, side, "aggregate_prune", refs.frontier_vertices.size(), 0, 0, 0,
-		                  frontier_size, completed_lanes, duration_ms);
-	}
+	RecordPhaseTiming(batch_id, step_id, side, "aggregate_prune", refs.frontier_vertices.size(), 0, 0, 0, frontier_size,
+	                  completed_lanes, timer.ElapsedMs());
 	state->current_step_id++;
 }
 
@@ -297,8 +254,7 @@ void BidirectionalIterativeLengthWorker::CheckChange(std::vector<std::bitset<LAN
 	}
 
 	if (local_change) {
-		std::lock_guard<std::mutex> guard(state->change_lock);
-		state->change = true;
+		state->worker_changed[worker_id] = 1;
 	}
 	state->worker_meet_masks[worker_id] |= found_lanes;
 	if (state->benchmark_enabled) {
@@ -323,7 +279,7 @@ idx_t BidirectionalIterativeLengthWorker::CheckCandidateChange(std::vector<std::
 
 	for (auto word_idx = start_word; word_idx < end_word; word_idx++) {
 		uint64_t candidate_word = 0;
-		for (idx_t worker = 0; worker < state->tasks_scheduled; worker++) {
+		for (idx_t worker = 0; worker < state->WorkerCount(); worker++) {
 			candidate_word |= state->worker_candidate_words[worker][word_idx];
 		}
 		if (word_idx == start_word && start_bit != 0) {
@@ -367,8 +323,7 @@ idx_t BidirectionalIterativeLengthWorker::CheckCandidateChange(std::vector<std::
 	}
 
 	if (local_change) {
-		std::lock_guard<std::mutex> guard(state->change_lock);
-		state->change = true;
+		state->worker_changed[worker_id] = 1;
 	}
 	state->worker_meet_masks[worker_id] |= found_lanes;
 	if (state->benchmark_enabled) {
@@ -396,21 +351,6 @@ idx_t BidirectionalIterativeLengthWorker::CompleteFoundLanes(std::bitset<LANE_LI
 		}
 	}
 	return completed_lanes;
-}
-
-void BidirectionalIterativeLengthWorker::UnReachableSet() const {
-	auto result_data = FlatVector::GetDataMutable<int64_t>(state->pf_results->data[0]);
-	auto &result_validity = FlatVector::ValidityMutable(state->pf_results->data[0]);
-
-	for (int64_t lane = 0; lane < LANE_LIMIT; lane++) {
-		int64_t search_num = state->lane_to_num[lane];
-		if (search_num >= 0) {
-			result_validity.SetInvalid(search_num);
-			result_data[search_num] = (int64_t)-1;
-			state->lane_to_num[lane] = -1;
-			state->lane_active[lane] = false;
-		}
-	}
 }
 
 void BidirectionalIterativeLengthWorker::RecordGlobalPhaseTiming(idx_t batch_id, idx_t step_id, const string &phase,
@@ -454,9 +394,7 @@ idx_t BidirectionalIterativeLengthWorker::Explore(const std::vector<std::bitset<
 				if (!local_csr.GetRowEdges(i, start_edges, end_edges)) {
 					continue;
 				}
-				if (state->benchmark_enabled) {
-					explored_edges += end_edges - start_edges;
-				}
+				explored_edges += end_edges - start_edges;
 				for (auto offset = start_edges; offset < end_edges; offset++) {
 					auto n = local_csr.e[offset] + local_csr.start_vertex;
 					auto word_idx = n / CANDIDATE_WORD_BITS;
@@ -477,9 +415,7 @@ idx_t BidirectionalIterativeLengthWorker::Explore(const std::vector<std::bitset<
 				if (!local_csr.GetRowEdges(i, start_edges, end_edges)) {
 					continue;
 				}
-				if (state->benchmark_enabled) {
-					explored_edges += end_edges - start_edges;
-				}
+				explored_edges += end_edges - start_edges;
 				for (auto offset = start_edges; offset < end_edges; offset++) {
 					auto n = local_csr.e[offset] + local_csr.start_vertex;
 					next[n] |= visit[i];
@@ -495,9 +431,7 @@ idx_t BidirectionalIterativeLengthWorker::Explore(const std::vector<std::bitset<
 				if (!local_csr.GetRowEdges(i, start_edges, end_edges)) {
 					continue;
 				}
-				if (state->benchmark_enabled) {
-					explored_edges += end_edges - start_edges;
-				}
+				explored_edges += end_edges - start_edges;
 				for (auto offset = start_edges; offset < end_edges; offset++) {
 					auto n = local_csr.e[offset] + local_csr.start_vertex;
 					auto word_idx = n / CANDIDATE_WORD_BITS;
@@ -519,9 +453,7 @@ idx_t BidirectionalIterativeLengthWorker::Explore(const std::vector<std::bitset<
 				if (!local_csr.GetRowEdges(i, start_edges, end_edges)) {
 					continue;
 				}
-				if (state->benchmark_enabled) {
-					explored_edges += end_edges - start_edges;
-				}
+				explored_edges += end_edges - start_edges;
 				for (auto offset = start_edges; offset < end_edges; offset++) {
 					auto n = local_csr.e[offset] + local_csr.start_vertex;
 					next[n] |= active_visit;
@@ -536,32 +468,14 @@ idx_t BidirectionalIterativeLengthWorker::RunExplore(const std::vector<std::bits
                                                      std::vector<std::bitset<LANE_LIMIT>> &next,
                                                      const LocalCSR &local_csr,
                                                      const std::vector<idx_t> &frontier_vertices) {
+	PhaseTimer timer(state->benchmark_enabled);
+	auto explored_edges = Explore(visit, next, local_csr, frontier_vertices);
 	if (!state->benchmark_enabled) {
-		Explore(visit, next, local_csr, frontier_vertices);
 		return 0;
 	}
-
-	auto start_time = std::chrono::high_resolution_clock::now();
-	auto explored_edges = Explore(visit, next, local_csr, frontier_vertices);
-	auto end_time = std::chrono::high_resolution_clock::now();
-	auto duration_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-
-	std::thread::id thread_id = std::this_thread::get_id();
-	int core_id = -1;
-#ifdef __linux__
-	core_id = sched_getcpu();
-#elif defined(__APPLE__)
-	uint64_t tid;
-	pthread_threadid_np(nullptr, &tid);
-	auto hardware_threads = std::thread::hardware_concurrency();
-	if (hardware_threads > 0) {
-		core_id = static_cast<int>(tid % hardware_threads);
-	}
-#endif
-
 	std::lock_guard<std::mutex> guard(state->log_mutex);
-	state->timing_data.emplace_back(thread_id, core_id, duration_ms, state->num_threads, local_csr.GetVertexSize(),
-	                                local_csr.e.size(), state->local_csrs.size(), state->src_depth + state->dst_depth);
+	RecordExploreTiming(state->timing_data, timer.ElapsedMs(), state->num_threads, local_csr.GetVertexSize(),
+	                    local_csr.e.size(), state->local_csrs.size(), state->src_depth + state->dst_depth);
 	return explored_edges;
 }
 

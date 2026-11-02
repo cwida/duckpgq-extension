@@ -44,8 +44,9 @@ struct PushPullPullBlock {
 
 class PushPullIterativeLengthWorker;
 
-//! Push/pull MS-BFS as a phased kernel: PREPARE (frontier count and clear), then PUSH_EXPLORE + PUSH_CHECK or PULL,
-//! and a serial reach detection between iterations
+//! Push/pull MS-BFS as a phased kernel: a batch opens with an INITIALIZE phase (the workers clear the working set
+//! and fill `seen`), then every iteration is PREPARE (frontier count and clear), then PUSH_EXPLORE + PUSH_CHECK or
+//! PULL, and a serial reach detection between iterations
 class PushPullIterativeLengthState : public BFSState, public PhasedKernel {
 public:
 	PushPullIterativeLengthState(const shared_ptr<PathFindingBatch> &batch_,
@@ -63,17 +64,19 @@ public:
 	void Finished() override;
 	void Clear() override;
 
-	void WriteTimingResults(const std::string &filename);
 	void WriteIterationStats(const std::string &filename);
 	void WritePhaseTimingResults(const std::string &filename);
 
 public:
 	std::vector<shared_ptr<PullCSR>> pull_local_csrs;
 	vector<PushPullIterationStats> iteration_stats;
-	vector<vector<std::tuple<std::thread::id, int, double, idx_t, size_t, size_t, size_t, int64_t>>> worker_timing_data;
+	//! Explore samples per worker (benchmark only)
+	vector<vector<ExploreTiming>> worker_timing_data;
 	vector<vector<PushPullPhaseTiming>> phase_timing_data;
 	vector<PushPullPullBlock> pull_blocks;
 	vector<idx_t> frontier_count_by_worker;
+	//! Set by a worker whose check or pull discovered a vertex; folded into `change` after the phase
+	vector<uint8_t> worker_changed;
 	atomic<int64_t> pull_block_counter;
 	idx_t current_batch;
 	idx_t frontier_vertices;
@@ -83,11 +86,11 @@ public:
 	bool has_more_batches;
 
 private:
-	enum class Phase : uint8_t { PREPARE, PUSH_EXPLORE, PUSH_CHECK, PULL };
+	enum class Phase : uint8_t { INITIALIZE, PREPARE, PUSH_EXPLORE, PUSH_CHECK, PULL };
 	void BeginBatch();
 	void BeginIteration();
 
-	Phase phase = Phase::PREPARE;
+	Phase phase = Phase::INITIALIZE;
 	idx_t worker_count = 1;
 	vector<unique_ptr<PushPullIterativeLengthWorker>> workers;
 };

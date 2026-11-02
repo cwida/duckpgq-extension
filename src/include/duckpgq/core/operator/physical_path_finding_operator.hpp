@@ -29,8 +29,8 @@ class LocalCSRState; // Forward declaration
 class SourceGroupedIterativeLengthState;
 class PathFindingGlobalSinkState;
 
-//! Appends one row to the optional path-finding phase timing file.
-//! Persistence and invalidation use the same sink as construction and traversal so benchmark runs can be reconciled.
+//! Appends one row of the operator (RunID "operator") to the optional path-finding phase timing file; the
+//! unique and duplicate counts of the pair analysis go in the EdgeCount and PartitionCount columns
 void AppendOperatorPhaseTiming(ClientContext &context, const string &phase, idx_t thread_count, idx_t pair_count,
                                idx_t unique_count, idx_t duplicate_count, double time_ms, idx_t memory_bytes);
 
@@ -51,7 +51,6 @@ struct PathFindingPairStats {
 	idx_t distinct_dst_count = 0;
 	idx_t null_pair_count = 0;
 	idx_t self_pair_count = 0;
-	bool distinct_counts_are_exact = false;
 	bool src_value_initialized = false;
 	bool dst_value_initialized = false;
 	bool all_src_equal = true;
@@ -76,7 +75,9 @@ public:
 	static BoundFunctionExpression &PathFindingFunction(Expression &expr);
 	static const BoundFunctionExpression &PathFindingFunction(const Expression &expr);
 	vector<unique_ptr<Expression>> expressions;
-	string mode; // "iterativelength" or "shortestpath"
+	//! The marker function's name: iterativelength, pushpulliterativelength, bidirectionaliterativelength,
+	//! shortestpath or reach (ParsePathFindingOperatorMode)
+	string mode;
 	string cache_key;
 	//! Longest path length a query needs; 0 means unbounded. BFS stops after this many iterations.
 	idx_t max_depth = 0;
@@ -171,7 +172,7 @@ public:
 	//! results on one thread, 406 ms of the 1.3 s of BI19 at SF300 were the 2.56M map lookups of the scatter)
 	atomic<idx_t> result_scan_idx {0};
 	mutex scatter_lock;
-	idx_t next_batch_index;
+	idx_t next_batch_index = 0;
 	vector<shared_ptr<BFSState>> bfs_states;
 	//! The adaptive batch scheduler of this query (grouped MS-BFS scheduling), for its trace
 	shared_ptr<GroupedIterativeLengthBatches> grouped_batches;
@@ -193,11 +194,14 @@ public:
 	std::atomic<idx_t> reach_next_ungrouped {0};
 	vector<shared_ptr<DataChunk>> global_output_batches;
 	vector<vector<idx_t>> global_output_to_search;
-	bool use_global_deduplication;
-	bool use_source_grouping;
-	bool source_group_zero_copy;
-	bool source_group_preserve_output_order;
-	bool global_dedupe_results_initialized;
+	bool use_global_deduplication = false;
+	bool use_source_grouping = false;
+	bool source_group_zero_copy = false;
+	bool source_group_preserve_output_order = false;
+	bool global_dedupe_results_initialized = false;
+	//! experimental_path_finding_operator_benchmark, read once per query
+	bool benchmark_enabled = false;
+	//! Scatter time of the source-grouped output summed over the threads (benchmark only), under scatter_lock
 	double source_group_scatter_ms = 0;
 	idx_t source_group_scatter_rows = 0;
 	idx_t source_group_scatter_chunks = 0;
@@ -236,12 +240,14 @@ public:
 	bool endpoint_build_started = false;
 	std::chrono::steady_clock::time_point endpoint_build_start;
 	std::chrono::steady_clock::time_point endpoint_fill_start;
-	CSR *csr;
-	int32_t csr_id;
-	size_t child;
+	//! The global CSR of a csr-id query (the first child's output), null for the endpoint and index inputs
+	CSR *csr = nullptr;
+	int64_t csr_id = 0;
+	//! The child whose Finalize runs next: the CSR id or endpoints come first, then the pairs
+	size_t child = 0;
 	string mode;
 	PathFindingOperatorMode path_finding_mode;
-	PathFindingSearchOrientation search_orientation;
+	PathFindingSearchOrientation search_orientation = PathFindingSearchOrientation::FORWARD;
 	ClientContext &context_;
 	idx_t num_threads;
 	shared_ptr<LocalCSRState> local_csr_state;

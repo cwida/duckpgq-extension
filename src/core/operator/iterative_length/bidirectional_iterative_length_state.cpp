@@ -3,11 +3,9 @@
 #include <duckpgq/core/operator/iterative_length/bidirectional_iterative_length_task.hpp>
 #include <duckpgq/core/option/duckpgq_option.hpp>
 #include <duckpgq/core/operator/physical_path_finding_operator.hpp>
-#include <chrono>
-#include <filesystem>
-#include <mutex>
 #include <algorithm>
 #include <fstream>
+#include <mutex>
 
 namespace duckdb {
 
@@ -25,6 +23,7 @@ BidirectionalIterativeLengthState::BidirectionalIterativeLengthState(
 	dst_visit1 = vector<std::bitset<LANE_LIMIT>>(v_size);
 	dst_visit2 = vector<std::bitset<LANE_LIMIT>>(v_size);
 	worker_meet_masks = vector<std::bitset<LANE_LIMIT>>(num_threads);
+	worker_changed = vector<uint8_t>(num_threads, 0);
 	worker_frontier_counts = vector<idx_t>(num_threads);
 	worker_frontier_vertices = vector<vector<idx_t>>(num_threads);
 	candidate_word_count = (v_size + 63) / 64;
@@ -130,6 +129,7 @@ void BidirectionalIterativeLengthState::Clear() {
 	for (auto &meet_mask : worker_meet_masks) {
 		meet_mask.reset();
 	}
+	std::fill(worker_changed.begin(), worker_changed.end(), 0);
 	for (auto &frontier_count : worker_frontier_counts) {
 		frontier_count = 0;
 	}
@@ -137,7 +137,6 @@ void BidirectionalIterativeLengthState::Clear() {
 		frontier_vertices.clear();
 	}
 	lane_active.reset();
-	lane_completed.reset();
 }
 
 BidirectionalIterativeLengthState::~BidirectionalIterativeLengthState() {
@@ -151,40 +150,6 @@ shared_ptr<Event> BidirectionalIterativeLengthState::CreateBFSEvent(Pipeline &pi
 //===--------------------------------------------------------------------===//
 // PhasedKernel
 //===--------------------------------------------------------------------===//
-namespace {
-
-mutex bidirectional_phase_timing_file_lock;
-
-size_t GetLocalCSREdgeCount(const std::vector<shared_ptr<LocalCSR>> &partition_csrs) {
-	size_t edge_count = 0;
-	for (const auto &local_csr : partition_csrs) {
-		edge_count += local_csr->GetEdgeSize();
-	}
-	return edge_count;
-}
-
-void AppendBFSPhaseTiming(const BidirectionalIterativeLengthState &state, double time_ms) {
-	auto file_name = state.benchmark_output_prefix + "_phase_timing.csv";
-	lock_guard<mutex> lock(bidirectional_phase_timing_file_lock);
-	bool write_header = !std::filesystem::exists(file_name);
-	std::ofstream outfile(file_name, std::ios::app);
-	if (!outfile.is_open()) {
-		throw IOException("Could not open path-finding phase benchmark file \"%s\"", file_name);
-	}
-	if (write_header) {
-		outfile << "Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes\n";
-	}
-	outfile << "bfs_batch," << state.benchmark_run_id << "," << state.num_threads << "," << state.pairs->size() << ","
-	        << state.v_size - 2 << "," << GetLocalCSREdgeCount(state.local_csrs) << "," << state.local_csrs.size()
-	        << "," << time_ms << ",0\n";
-}
-
-double ElapsedMs(std::chrono::high_resolution_clock::time_point start) {
-	return std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - start).count();
-}
-
-} // namespace
-
 bool BidirectionalIterativeLengthState::BeginStep() {
 	side = expand_source_next ? BidirectionalSearchSide::SOURCE : BidirectionalSearchSide::DESTINATION;
 	workers[0]->PrepareSide(side);
@@ -194,29 +159,22 @@ bool BidirectionalIterativeLengthState::BeginStep() {
 
 bool BidirectionalIterativeLengthState::FinishBatch() {
 	while (true) {
-		auto unreachable_start = std::chrono::high_resolution_clock::now();
-		workers[0]->UnReachableSet();
-		if (benchmark_enabled) {
-			workers[0]->RecordGlobalPhaseTiming(current_batch_id, current_step_id, "unreachable_set", 0,
-			                                    ElapsedMs(unreachable_start));
-		}
+		PhaseTimer unreachable_timer(benchmark_enabled);
+		UnReachableSet();
+		workers[0]->RecordGlobalPhaseTiming(current_batch_id, current_step_id, "unreachable_set", 0,
+		                                    unreachable_timer.ElapsedMs());
 		auto batch_id = current_batch_id;
 		auto step_id = current_step_id;
-		auto clear_start = std::chrono::high_resolution_clock::now();
+		PhaseTimer clear_timer(benchmark_enabled);
 		Clear();
-		if (benchmark_enabled) {
-			workers[0]->RecordGlobalPhaseTiming(batch_id, step_id, "state_clear", 0, ElapsedMs(clear_start));
-		}
+		workers[0]->RecordGlobalPhaseTiming(batch_id, step_id, "state_clear", 0, clear_timer.ElapsedMs());
 		has_more_batches = started_searches < pairs->size();
 		if (!has_more_batches) {
 			return false;
 		}
-		auto initialize_start = std::chrono::high_resolution_clock::now();
+		PhaseTimer initialize_timer(benchmark_enabled);
 		InitializeBidirectionalLanes();
-		if (benchmark_enabled) {
-			workers[0]->RecordGlobalPhaseTiming(current_batch_id, 0, "batch_initialize", 0,
-			                                    ElapsedMs(initialize_start));
-		}
+		workers[0]->RecordGlobalPhaseTiming(current_batch_id, 0, "batch_initialize", 0, initialize_timer.ElapsedMs());
 		if (active > 0) {
 			return BeginStep();
 		}
@@ -228,7 +186,6 @@ bool BidirectionalIterativeLengthState::Start() {
 	phase_start_time = std::chrono::steady_clock::now();
 	idx_t num_partitions = std::max(local_csrs.size(), reverse_local_csrs.size());
 	worker_count = std::max<idx_t>(1, std::min<idx_t>(num_threads, std::max<idx_t>(1, num_partitions)));
-	tasks_scheduled = worker_count;
 	auto self = shared_ptr_cast<BFSState, BidirectionalIterativeLengthState>(shared_from_this());
 	for (idx_t worker = 0; worker < worker_count; worker++) {
 		workers.push_back(make_uniq<BidirectionalIterativeLengthWorker>(self, worker));
@@ -237,11 +194,9 @@ bool BidirectionalIterativeLengthState::Start() {
 	if (!has_more_batches) {
 		return false;
 	}
-	auto initialize_start = std::chrono::high_resolution_clock::now();
+	PhaseTimer initialize_timer(benchmark_enabled);
 	InitializeBidirectionalLanes();
-	if (benchmark_enabled) {
-		workers[0]->RecordGlobalPhaseTiming(current_batch_id, 0, "batch_initialize", 0, ElapsedMs(initialize_start));
-	}
+	workers[0]->RecordGlobalPhaseTiming(current_batch_id, 0, "batch_initialize", 0, initialize_timer.ElapsedMs());
 	if (active > 0) {
 		return BeginStep();
 	}
@@ -279,8 +234,12 @@ bool BidirectionalIterativeLengthState::AdvancePhase() {
 	case Phase::CHECK:
 		break;
 	}
+	for (idx_t worker = 0; worker < worker_count; worker++) {
+		change |= worker_changed[worker] != 0;
+	}
 	workers[0]->Aggregate(side);
-	continue_search = active > 0 && last_side_changed;
+	// A lane not met after this step needs more than src_depth + dst_depth hops: none when that is the bound
+	continue_search = active > 0 && last_side_changed && !DepthBoundReached(src_depth + dst_depth);
 	if (continue_search) {
 		return BeginStep();
 	}
@@ -291,30 +250,15 @@ void BidirectionalIterativeLengthState::Finished() {
 	if (!benchmark_enabled) {
 		return;
 	}
-	auto phase_end_time = std::chrono::steady_clock::now();
-	auto time_ms = std::chrono::duration<double, std::milli>(phase_end_time - phase_start_time).count();
-	AppendBFSPhaseTiming(*this, time_ms);
+	AppendBatchPhaseTiming("bfs_batch", ElapsedMs(phase_start_time));
 	auto heavy_partition_fraction = std::to_string(GetHeavyPartitionFraction(context));
 	auto light_partition_multiplier = std::to_string(GetLightPartitionMultiplier(context));
 	auto file_name = benchmark_output_prefix + "_bidirectional_explore_timing_" + benchmark_run_id + "_threads_" +
 	                 std::to_string(num_threads) + "_" + heavy_partition_fraction + "_" + light_partition_multiplier +
 	                 ".csv";
-	WriteTimingResults(file_name);
+	WriteExploreTimings(file_name, timing_data);
 	auto phase_detail_file_name = benchmark_output_prefix + "_bidirectional_phase_detail.csv";
 	WritePhaseTimingResults(phase_detail_file_name);
-}
-
-void BidirectionalIterativeLengthState::WriteTimingResults(const std::string &filename) {
-	std::ofstream file(filename);
-	if (file.is_open()) {
-		file << "ThreadID,CoreID,Time_ms,ThreadCount,vsize,esize,numPartitions,Iter\n";
-		for (const auto &entry : timing_data) {
-			file << std::get<0>(entry) << "," << std::get<1>(entry) << "," << std::get<2>(entry) << ","
-			     << std::get<3>(entry) << "," << std::get<4>(entry) << "," << std::get<5>(entry) << ","
-			     << std::get<6>(entry) << "," << std::get<7>(entry) << "\n";
-		}
-		file.close();
-	}
 }
 
 void BidirectionalIterativeLengthState::WritePhaseTimingResults(const std::string &filename) {

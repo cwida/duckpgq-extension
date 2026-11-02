@@ -8,9 +8,10 @@ namespace duckdb {
 
 class PhysicalPathFinding; // Forward declaration
 
-//! MS-BFS over one batch of up to LANE_LIMIT pairs, written as a phased kernel: every BFS iteration is an EXPLORE
-//! phase (partitions expanded in parallel) followed by a CHECK phase (newly reached lanes folded into `seen` per
-//! partition); the serial step after CHECK detects reached destinations and starts the next iteration or wave.
+//! MS-BFS over one batch of up to LANE_LIMIT pairs, written as a phased kernel: a wave opens with a PREPARE phase
+//! (every worker zeroes its slice of the working set and fills its slice of `seen`), then every BFS iteration is an
+//! EXPLORE phase (partitions expanded in parallel) followed by a CHECK phase (newly reached lanes folded into `seen`
+//! per partition); the serial step after CHECK detects reached destinations and starts the next iteration or wave.
 class IterativeLengthState : public BFSState, public PhasedKernel {
 public:
 	IterativeLengthState(const shared_ptr<PathFindingBatch> &batch_, std::vector<shared_ptr<LocalCSR>> &local_csrs_,
@@ -18,8 +19,6 @@ public:
 
 	shared_ptr<Event> CreateBFSEvent(Pipeline &pipeline, const PhysicalPathFinding *op) override;
 	void Clear() override;
-	// Function to write timing results to a file
-	void WriteTimingResults(const std::string &filename);
 
 	//! ---- PhasedKernel
 	bool Start() override;
@@ -38,9 +37,7 @@ public:
 	virtual void DetectReached();
 	//! After a wave ends: lanes still active found nothing (within the bound)
 	virtual void MarkUnreachable();
-	//! Starts the next wave of this batch (lanes from the pairs not yet searched); false when none is left
-	virtual bool StartNextWave();
-	//! Whether StartNextWave() has pairs left to start; false lets the finished batch skip the clear
+	//! Whether pairs are left for another wave of this batch; false lets the finished batch skip the clear
 	virtual bool HasNextWave();
 	//! Label of the batch timing row ("bfs_batch" or "bfs_batch_grouped")
 	void SetTimingLabel(const string &label);
@@ -86,12 +83,14 @@ public:
 	idx_t sub_range_hint = 0;
 
 private:
-	enum class Phase : uint8_t { EXPLORE, CHECK };
+	enum class Phase : uint8_t { PREPARE, EXPLORE, CHECK };
+	//! Assigns the lanes of the next wave and queues the PREPARE phase
+	void BeginWave();
 	void BeginIteration();
 	void PrepareLevel(idx_t active_total);
 	void SubRange(const LocalCSR &local_csr, idx_t sub_idx, idx_t &begin, idx_t &end) const;
 
-	Phase phase = Phase::EXPLORE;
+	Phase phase = Phase::PREPARE;
 	idx_t worker_count = 1;
 	string timing_label = "bfs_batch";
 };
