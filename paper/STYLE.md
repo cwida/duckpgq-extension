@@ -96,7 +96,7 @@ One name per thing, used the same way in the text, the figures and the captions.
 | distance | the level at which a search first reached a vertex | level stamp |
 | sparse level, dense level | a level that visits only the frontier, or one that sweeps every sparse row of every partition | (the 1/64 and 1/16 thresholds are details of each) |
 | lengths, paths, reach | the three output modes | |
-| build route, index route | the CSR built inside the query, or read from a CSR index | |
+| build route, index route | the CSR built on the fly in every query, or read from a persistent CSR index | inside the query |
 
 ## Out of scope for the text
 

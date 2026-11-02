@@ -8,7 +8,7 @@ A path pattern in \sqlpgq asks, for a set of candidate (source, destination) pai
 length exists and how long it is, or which vertices and edges it uses. The path-finding operator evaluates this part of
 the pattern. Filters on labels and on the source and destination vertices, the join back to the vertex tables and the
 filter that the quantifier puts on the path length stay relational and are left to \duckdb's planner. The operator reads the candidate pairs and
-the graph, either as the edge table, from which it builds a CSR inside the query, or as a CSR index.
+the graph, either as the edge table, from which it builds a CSR on the fly, or as a persistent CSR index.
 
 The operator answers in one of three modes. In the \emph{lengths} mode it returns one hop count per candidate pair,
 and in the \emph{paths} mode one list of vertices and edges per pair. The \emph{reach} mode is for a pattern whose
@@ -30,7 +30,7 @@ quantifier. The function the marker calls names the mode. The rewrite asks for l
 part of \duckdb folds or reorders it, and it is never executed. An optimizer extension runs before \duckdb's own
 optimizer, finds the projection that contains the marker, replaces the marker by a reference to the operator's output
 column, and places a logical path-finding operator beneath the projection, with the pairs as its first child and, when
-the CSR is built in the query, the edges as its second. The rule runs on the binder's plan shape, before join
+the CSR is built on the fly, the edges as its second. The rule runs on the binder's plan shape, before join
 reordering, because the two inputs are easy to identify there and hard to find after the optimizer has pushed filters
 into them.
 
@@ -45,7 +45,7 @@ snapshot (Section~\ref{sec:index}), and the pairs carry vertex keys instead of r
 vertices by key.
 
 In \duckdb's execution model the physical operator is a sink for the pipelines of its children and the source of
-the pipeline above it. Its first child produces the candidate pairs. When the CSR is built inside the query, a second
+the pipeline above it. Its first child produces the candidate pairs. When the CSR is built on the fly, a second
 child produces the edges, the join of the edge table with its two vertex tables, as (source row id, destination row
 id) pairs. Each of \duckdb's threads pushes vectors from these pipelines into a local state of its own; the pairs
 are appended to a column collection, and the edges are partitioned as they arrive (Section~\ref{sec:csr}). When the
@@ -79,7 +79,7 @@ because a destination takes 16 bits and no array has one entry per vertex.
 \begin{figure}[t]
   \centering
   \input{figures/partitioned_csr}
-  \caption{The partitioned CSR. (a) The build inside the query: the sink packs each edge into 64 bits, and the high
+  \caption{The partitioned CSR. (a) The build on the fly: the sink packs each edge into 64 bits, and the high
   bits, the destination range, select its partition; tasks take the partitions largest first, sort each by source and
   emit it. (b) One partition. Only sources with an edge into the range have a sparse row; a source's edges are the
   slice between its offset and the next, stored as 16-bit offsets into the range. The source index maps the high bits
@@ -88,7 +88,7 @@ because a destination takes 16 bits and no array has one entry per vertex.
   \label{fig:partitioned-csr}
 \end{figure}
 
-\paragraph{Building it inside the query.} Without an index the operator builds the partitioned CSR inside every
+\paragraph{Building it on the fly.} Without an index the operator builds the partitioned CSR on the fly, in every
 query, as the CIDR design did. The edges arrive as (source, destination) row-id pairs from a join of the edge table
 with its two vertex tables. The sink packs each edge into 64 bits, the destination range in the high bits, and
 scatters it into its partition with \duckdb's radix partitioning, the same mechanism its hash join uses. There are at
