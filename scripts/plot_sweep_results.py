@@ -715,16 +715,17 @@ def wrapped_title(fig, text):
 
 def concurrent_figure(filename):
     """Readers against query latency under a writer committing every 200 ms (W16 concurrent pass): index route
-    against build-per-query route, one column per scale factor. Top: the per-query latency, the median as the line
-    and a band up to the p99 (from the per-query rows; the mean dropped 2 Nov, the tail is what a reader notices).
-    Bottom, shorter: the writer's commit latency under each route's readers, median and p99, so what the readers
-    cost the writer sits next to what the writer costs them. One route per file since 2 Nov, the newest file per
-    (route, readers) wins; the fold-latency step (fold ratio 0.0005) is excluded, its readers pay for the folds it
-    forces (see fold_timeline_figure). At SF10 building the graph inside the query costs 22 ms and the saving
-    disappears into CPU contention; at SF100 and SF300 (128 and 264 ms per build) the index's saving shows."""
+    against build-per-query route, one panel per scale factor. The median is the line; the p99 of the same queries
+    is a hollow marker above each point, joined to it by a hairline (no band: a band spanning an order of magnitude
+    hides the line). The writer's commit latency under each route's readers is written into the panel at the
+    largest reader count both routes ran; the full numbers are in the concurrent table. One route per file since
+    2 Nov, the newest file per (route, readers) wins; the fold-latency step (fold ratio 0.0005) is excluded, its
+    readers pay for the folds it forces (see fold_timeline_figure). At SF10 building the graph inside the query
+    costs 22 ms and the saving disappears into CPU contention; at SF100 and SF300 (128 and 264 ms per build) the
+    index's saving shows."""
     panels = []
     for sf in SCALE_FACTORS:
-        # route -> readers -> (query median, query p99, commit median, commit p99), all ms
+        # route -> readers -> (query median, query p99, commit median), all ms
         series = {"query_index": {}, "query_build": {}}
         for path in newest_files(RESULTS / f"sf{sf}",
                                  "concurrent_sssp_pairs1024_threads32_readers*_pause200_fold0.1_*.csv"):
@@ -737,22 +738,18 @@ def concurrent_figure(filename):
                 values = [1000 * float(r["elapsed_s"]) for r in rows if r["kind"] == kind]
                 if values:
                     series[kind][readers] = (statistics.median(values), p99(values),
-                                             statistics.median(commits) if commits else None,
-                                             p99(commits) if commits else None)
+                                             statistics.median(commits) if commits else None)
         if series["query_index"] or series["query_build"]:
             panels.append((sf, series))
     if not panels:
         print("no concurrent results yet, skipping", filename)
         return
-    fig, axes = plt.subplots(2, len(panels), figsize=(2.4 * len(panels) + 0.9, 4.0), sharex="col", sharey="row",
-                             squeeze=False, gridspec_kw={"height_ratios": [2, 1]})
-    for col, (sf, series) in enumerate(panels):
-        top, bottom = axes[0][col], axes[1][col]
+    fig, axes = plt.subplots(1, len(panels), figsize=(2.4 * len(panels) + 0.9, 2.7), sharey=True, squeeze=False)
+    for ax, (sf, series) in zip(axes[0], panels):
         readers = sorted(set(series["query_index"]) | set(series["query_build"]))
-        for ax in (top, bottom):
-            ax.set_xscale("log", base=2)
-            ax.set_yscale("log")
-            style_axes(ax)
+        ax.set_xscale("log", base=2)
+        ax.set_yscale("log")
+        style_axes(ax)
         for (system, name, color), kind in zip(ROUTES, ("query_index", "query_build")):
             xs = [r for r in readers if r in series[kind]]
             if not xs:
@@ -760,25 +757,33 @@ def concurrent_figure(filename):
             medians = [series[kind][r][0] for r in xs]
             tails = [series[kind][r][1] for r in xs]
             linewidth, alpha, zorder = emphasis(system)
-            latency_band(top, xs, medians, tails, color, linewidth=linewidth, alpha=alpha, zorder=zorder)
-            top.annotate(f"p99 {ms_label(tails[-1])} ms", (xs[-1], tails[-1]), xytext=(5, 0), textcoords="offset points",
-                         fontsize=6.5, color=color, va="center", annotation_clip=False)
-            commit_xs = [r for r in xs if series[kind][r][2] is not None]
-            if commit_xs:
-                # A legacy file running both routes gives both the same commits: the index line is drawn on top
-                latency_band(bottom, commit_xs, [series[kind][r][2] for r in commit_xs],
-                             [series[kind][r][3] for r in commit_xs], color, linewidth=linewidth, alpha=alpha,
-                             zorder=zorder + (kind == "query_index"))
-        top.set_title(f"LDBC SF{sf}", loc="left")
-        bottom.set_xticks(readers)
-        bottom.set_xticklabels([str(r) for r in readers], fontsize=6.5)
-        bottom.set_xlabel("concurrent readers")
+            plot_series(ax, xs, medians, [], color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+            ax.vlines(xs, medians, tails, color=color, alpha=0.5 * alpha, linewidth=0.7, zorder=zorder - 1)
+            ax.plot(xs, tails, linestyle="none", marker="o", markersize=3.6, markerfacecolor=SURFACE,
+                    markeredgecolor=color, markeredgewidth=1.0, alpha=alpha, zorder=zorder)
+            ax.annotate(f"p99 {ms_label(tails[-1])}", (xs[-1], tails[-1]), xytext=(4, 0), textcoords="offset points",
+                        fontsize=6, color=color, va="center", annotation_clip=False)
+        both = [r for r in readers if r in series["query_index"] and r in series["query_build"]
+                and series["query_index"][r][2] is not None and series["query_build"][r][2] is not None]
+        if both:
+            r = both[-1]
+            ax.text(0.03, 0.03, f"writer commits at {r} readers\nindex {ms_label(series['query_index'][r][2])} ms, "
+                                f"build {ms_label(series['query_build'][r][2])} ms",
+                    transform=ax.transAxes, fontsize=6, color=INK2, va="bottom", ha="left", linespacing=1.3)
+        ax.set_title(f"LDBC SF{sf}", loc="left")
+        ax.set_xticks(readers)
+        ax.set_xticklabels([str(r) for r in readers], fontsize=6.5)
+        ax.set_xlabel("concurrent readers")
     axes[0][0].set_ylabel("query latency (ms)")
-    axes[1][0].set_ylabel("commit latency (ms)")
-    series_legend(fig, ROUTES, ncol=2, y=-0.02, timed_out=False)
+    handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE)
+               for _, _, c in ROUTES]
+    handles.append(Line2D([], [], linestyle="none", marker="o", markersize=3.6, markerfacecolor=SURFACE,
+                          markeredgecolor=INK2, markeredgewidth=1.0))
+    fig.legend(handles, [n for _, n, _ in ROUTES] + ["p99 of the same queries"], loc="lower center", ncol=3,
+               bbox_to_anchor=(0.5, -0.02), handlelength=2.4, columnspacing=1.2)
     top = wrapped_title(fig, "Readers under a writer committing 2000 operations every 200 ms, one source to 1024 "
-                             "destinations: median as the line, band to the p99")
-    fig.tight_layout(rect=(0, 0.06, 0.9, top))
+                             "destinations: median latency per reader count, p99 above it")
+    fig.tight_layout(rect=(0, 0.08, 0.92, top))
     save(fig, filename)
 
 
@@ -838,13 +843,15 @@ def client_throughput_figure(filename):
 
 
 def fold_timeline_figure(filename):
-    """Every event of the fold-latency step at SF300 (16 readers, a writer committing every 200 ms, fold ratio
-    0.0005 so the pending delta crosses the trigger a few times in one run) on a wall-clock axis: each index query
-    is a dot, each commit a marker, each fold a shaded span. A span ends at the first query that saw the fold
-    counted in the stats it reads before running and reaches back the fold's last_fold_ms; the reader that crossed
-    the trigger ran the fold inside its query (the dot at the top of the span) while the other readers' dots stay at
-    their usual latency through the span and the writer keeps committing: the fold is one reader's latency, not a
-    pause for the rest."""
+    """The fold-latency step at SF300 (16 readers, a writer committing every 200 ms, fold ratio 0.0005 so the
+    pending log crosses the trigger a few times in one run) on a wall-clock axis. Top: the median and the p99 of the
+    index queries started in each half-second window; the query that ran a fold (the reader that crossed the
+    trigger folds inside its own query) is taken out of the windows and drawn as one marker at its start, so the
+    lines show what the other 15 readers see. Each fold is a shaded span: it ends at the first query that saw the
+    fold counted in the stats it reads before running and reaches back the fold's last_fold_ms. Bottom strip: the
+    writer's commits. The reading: the p99 line stays near its usual level through a fold, one point sits at the
+    fold's duration, and the commits do not move (before 2 Nov the fold held the index entry's read handle and
+    every reader and the writer waited for it)."""
     files = newest_files(RESULTS / "sf300", "concurrent_sssp_pairs1024_threads32_readers16_*_pause200_fold0.0005_*.csv")
     if not files:
         print("no fold-latency step results yet, skipping", filename)
@@ -857,33 +864,68 @@ def fold_timeline_figure(filename):
     if not queries:
         print("no index queries in", files[-1].name, "skipping", filename)
         return
-    fig, ax = plt.subplots(figsize=(7.2, 3.0))
-    ax.set_yscale("log")
-    index_color = COLOR["duckpgq_index"]
-    ax.scatter([q[0] for q in queries], [q[1] for q in queries], s=5, color=index_color, alpha=0.45, linewidths=0, zorder=3)
-    ax.scatter([c[0] for c in commits], [c[1] for c in commits], s=11, marker="D", color=INK2, linewidths=0, zorder=4)
-    top = max(q[1] for q in queries)
-    ax.set_ylim(min(q[1] for q in queries) / 1.5, top * 3.2)
+    # Fold spans and the queries that ran them (a query longer than a second here is a fold: the others take ~60 ms)
     fold_count = int(max(q[2] for q in queries))
+    spans = []
     for k in range(1, fold_count + 1):
         first = next(q for q in queries if q[2] >= k)
-        end = first[0]
-        start = max(0.0, end - first[3] / 1000)
-        ax.axvspan(start, end, color=index_color, alpha=0.13, linewidth=0, zorder=1)
-        ax.annotate(f"{end - start:.1f} s fold", ((start + end) / 2, top * 1.6), ha="center", va="bottom", fontsize=6.5,
-                    color=INK2)
-    ax.set_xlim(left=0)
-    ax.set_xlabel("wall time (s)")
-    ax.set_ylabel("latency (ms)")
-    style_axes(ax)
-    handles = [Line2D([], [], linestyle="none", marker="o", markersize=3.5, color=index_color, alpha=0.7),
-               Line2D([], [], linestyle="none", marker="D", markersize=3.5, color=INK2),
-               plt.Rectangle((0, 0), 1, 1, color=index_color, alpha=0.2, linewidth=0)]
-    fig.legend(handles, ["queries (16 readers, at their start time)", "writer commits", "fold"], loc="lower center",
-               ncol=3, bbox_to_anchor=(0.5, -0.02), handlelength=1.6, columnspacing=1.6)
-    top = wrapped_title(fig, "16 readers under a writer at SF300, fold ratio 0.0005: the triggering reader pays the fold, "
-                             "the others do not wait")
-    fig.tight_layout(rect=(0, 0.07, 1, top))
+        spans.append((max(0.0, first[0] - first[3] / 1000), first[0]))
+    # The load ends with the writer's last commit: the readers then stop one by one and the windows after it would
+    # show the thinning reader count, not the steady state, so the axis stops there (a fold still running at that
+    # point shows as a clipped span)
+    end_of_run = max(c[0] + c[1] / 1000 for c in commits) if commits else max(q[0] + q[1] / 1000 for q in queries)
+    folding = [q for q in queries if q[1] > 1000 and q[0] <= end_of_run]
+    regular = [q for q in queries if q[1] <= 1000 and q[0] <= end_of_run]
+    window = 0.5
+    windows = defaultdict(list)
+    for start, latency, _, _ in regular:
+        windows[int(start / window)].append(latency)
+    centers = sorted(windows)
+    xs = [(w + 0.5) * window for w in centers]
+    medians = [statistics.median(windows[w]) for w in centers]
+    tails = [p99(windows[w]) for w in centers]
+
+    fig, (ax, strip) = plt.subplots(2, 1, figsize=(7.2, 3.2), sharex=True, gridspec_kw={"height_ratios": [4, 1]})
+    index_color = COLOR["duckpgq_index"]
+    for a, b in spans:
+        if a >= end_of_run:
+            continue
+        for axis in (ax, strip):
+            axis.axvspan(a, min(b, end_of_run), color=index_color, alpha=0.12, linewidth=0, zorder=1)
+        label = f"{b - a:.1f} s fold" if b <= end_of_run else f"{b - a:.1f} s fold (runs past the writer's last commit)"
+        ax.annotate(label, ((a + min(b, end_of_run)) / 2, 0.97), xycoords=("data", "axes fraction"), ha="center",
+                    va="top", fontsize=6.5, color=INK2, annotation_clip=False)
+    ax.set_yscale("log")
+    ax.plot(xs, tails, color=index_color, linewidth=1.0, linestyle=(0, (2, 1.5)), zorder=3)
+    ax.plot(xs, medians, color=index_color, linewidth=1.8, zorder=4)
+    if folding:
+        ax.plot([q[0] for q in folding], [q[1] for q in folding], linestyle="none", marker="D", markersize=5,
+                markerfacecolor=index_color, markeredgecolor=SURFACE, markeredgewidth=0.8, zorder=5)
+        for q in folding:
+            ax.annotate(f"{q[1] / 1000:.1f} s", (q[0], q[1]), xytext=(5, -2), textcoords="offset points", fontsize=6,
+                        color=index_color, va="top")
+    ax.set_ylim(min(medians) / 2, max(q[1] for q in queries) * 2.5)
+    ax.set_ylabel("query latency (ms)")
+    strip.set_yscale("log")
+    strip.plot([c[0] for c in commits], [c[1] for c in commits], linestyle="none", marker="D", markersize=3,
+               color=INK2, zorder=3)
+    commit_values = [c[1] for c in commits]
+    strip.set_ylim(min(commit_values) / 2, max(commit_values) * 2.5)
+    strip.set_ylabel("commit (ms)", fontsize=7)
+    strip.set_xlabel("wall time (s)")
+    strip.set_xlim(0, end_of_run)
+    for axis in (ax, strip):
+        style_axes(axis)
+    handles = [Line2D([], [], color=index_color, linewidth=1.8),
+               Line2D([], [], color=index_color, linewidth=1.0, linestyle=(0, (2, 1.5))),
+               Line2D([], [], linestyle="none", marker="D", markersize=4.5, color=index_color),
+               plt.Rectangle((0, 0), 1, 1, color=index_color, alpha=0.18, linewidth=0),
+               Line2D([], [], linestyle="none", marker="D", markersize=3, color=INK2)]
+    fig.legend(handles, ["median per 0.5 s window", "p99 per window", "the query that ran the fold", "fold",
+                         "writer commits"], loc="lower center", ncol=5, bbox_to_anchor=(0.5, -0.02), handlelength=1.6,
+               columnspacing=1.4, fontsize=7)
+    top = wrapped_title(fig, "Folds under load at SF300: 16 readers, a writer every 200 ms, fold ratio 0.0005")
+    fig.tight_layout(rect=(0, 0.08, 1, top))
     save(fig, filename)
 
 
