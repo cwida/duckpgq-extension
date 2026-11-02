@@ -5177,6 +5177,9 @@ SELECT delete_csr(2147483647) AS duckpgq_state_init;
 {prelude}
 {warm_up}.timer on
 {query}
+.timer off
+SELECT 'strategy=' || duckpgq_path_finding_strategy();
+SELECT 'peak_rss_kib=' || regexp_extract(content, 'VmHWM:\\s+(\\d+)', 1) FROM read_text('/proc/self/status');
 """
 
     def timed(self, rowid_pairs, key_pairs, warm=True):
@@ -5192,6 +5195,12 @@ SELECT delete_csr(2147483647) AS duckpgq_state_init;
         timers = re.findall(r"Run Time \(s\): real ([0-9.]+)", output)
         rows = [line for line in output.splitlines() if re.match(r"^\d+,", line)]
         reachable, total = rows[-1].split(",")[:2]
+        # The strategy the operator chose and the process peak RSS (the index load is part of it), for the
+        # microbenchmarks; kept on the object so the three-value return stays
+        strategy = re.search(r"^strategy=(.*)$", output, re.M)
+        self.last_strategy = strategy.group(1).strip().strip('"') if strategy else ""
+        peak = re.search(r"peak_rss_kib=(\d+)", output)
+        self.last_peak_rss_mib = f"{int(peak.group(1)) / 1024:.1f}" if peak else ""
         return float(timers[-1]), int(reachable), int(0 if total in ("", "NULL") else total)
 
     def timed_table(self, pair_table, warm=True):
@@ -5689,17 +5698,20 @@ def microbenchmarks(args):
         for k in args.source_counts:
             points.append(("multi_source", ensure_multi_source_table(scale_factor, k), "", k))
     if "all_pairs" in args.shapes:
-        # s sources x t destinations as a pair list (Section 3: 20 x 200); recorded as pairs = s*t, sources = s
-        s_count, t_count = args.source_count, args.target_count
-        ensure_pair_table(scale_factor, s_count * t_count, "all_pairs", source_count=s_count, target_count=t_count)
-        points.append(("all_pairs", pair_table_name(s_count * t_count, "all_pairs", s_count, t_count),
-                       s_count * t_count, s_count))
+        # s sources x t destinations as a pair list (Section 3: 20 x 200; the crossover sweep: every s of a list);
+        # recorded as pairs = s*t, sources = s
+        for s_count in args.source_count:
+            t_count = args.target_count
+            ensure_pair_table(scale_factor, s_count * t_count, "all_pairs", source_count=s_count, target_count=t_count)
+            points.append(("all_pairs", pair_table_name(s_count * t_count, "all_pairs", s_count, t_count),
+                           s_count * t_count, s_count))
     configs = microbench_configs(args.configs)
     results_dir = DATA_ROOT / "results" / sf_name(scale_factor)
     results_dir.mkdir(parents=True, exist_ok=True)
     path = results_dir / f"microbench_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
     fieldnames = ["system", "config", "settings", "shape", "pairs", "sources", "repeat", "status", "query_s",
-                  "reachable_count", "total_len", "threads", "timeout_s", "benchmark_notes", "repo_commit"]
+                  "reachable_count", "total_len", "threads", "timeout_s", "benchmark_notes", "repo_commit",
+                  "peak_rss_mib", "strategy"]
     writer = ResultWriter(path, fieldnames)
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
     for route in args.routes:
@@ -5728,9 +5740,11 @@ def microbenchmarks(args):
                     writer.add({"system": system.name, "config": config, "settings": settings_text, "shape": shape,
                                 "pairs": pairs, "sources": sources, "repeat": 1, "status": "timed_out_inferred",
                                 "query_s": "", "reachable_count": "", "total_len": "", "threads": args.threads,
-                                "timeout_s": args.timeout_s, "benchmark_notes": args.notes, "repo_commit": commit})
+                                "timeout_s": args.timeout_s, "benchmark_notes": args.notes, "repo_commit": commit,
+                                "peak_rss_mib": "", "strategy": ""})
                     continue
                 for repeat in range(1, args.repeats + 1):
+                    system.last_strategy, system.last_peak_rss_mib = "", ""
                     try:
                         elapsed, reachable, total = system.timed_table(table)
                         value, status = (reachable, total), "ok"
@@ -5742,7 +5756,8 @@ def microbenchmarks(args):
                                 "pairs": pairs, "sources": sources, "repeat": repeat, "status": status,
                                 "query_s": f"{elapsed:.6f}", "reachable_count": value[0] if value else "",
                                 "total_len": value[1] if value else "", "threads": args.threads,
-                                "timeout_s": args.timeout_s, "benchmark_notes": args.notes, "repo_commit": commit})
+                                "timeout_s": args.timeout_s, "benchmark_notes": args.notes, "repo_commit": commit,
+                                "peak_rss_mib": system.last_peak_rss_mib, "strategy": system.last_strategy})
                     shown = f"{value[0]}/{value[1]}" if value else status
                     print(f"   {config:28s} {shape:12s} pairs={pairs!s:<7} sources={sources!s:<5} repeat {repeat}: "
                           f"{elapsed:8.3f}s {shown}")
@@ -5790,7 +5805,7 @@ def microbenchmarks_table(args):
                 cells = []
                 for count in counts:
                     mean, point = mean_of(config, count)
-                    base, _ = mean_of("baseline", count)
+                    base, _ = mean_of("baseline" if "baseline" in configs else configs[0], count)
                     if mean is None:
                         if any(r["status"].startswith("timed_out") for r in point):
                             cells.append(f"> {point[0]['timeout_s']} s")
@@ -5798,10 +5813,96 @@ def microbenchmarks_table(args):
                             cells.append("error" if point else "")
                         continue
                     text = f"{mean*1000:.0f} ms" if mean < 1 else f"{mean:.2f} s"
-                    if base and config != "baseline":
+                    if base and config != ("baseline" if "baseline" in configs else configs[0]):
                         text += f" ({mean / base:.2f}x)"
                     cells.append(text)
                 print(f"| {config} | " + " | ".join(cells) + " |")
+
+
+CROSSOVER_KERNELS = [("single_source_kernel", "single-source traversal"), ("multi_source_dedup", "lanes per distinct source"),
+                     ("lane_per_pair", "one lane per pair")]
+
+
+def strategy_working_set_mb(strategy):
+    """The kernel's working memory from the strategy string: the per-source search's bytes, the MS-BFS waves' or the
+    batches' working sets (whichever the run recorded), in MB"""
+    for key in ("wave_grouped_working_sets_mb", "grouped_working_sets_mb", "source_search_mb"):
+        match = re.search(rf"(?:^|;){key}=(\d+)", strategy or "")
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def crossover_points(rows):
+    """{(shape, k): {config: (median_s, working_set_mb, peak_rss_mib)}} over the ok rows of the crossover configs; k is
+    the distinct source count (the pair count for random pairs, the source count for sources x destinations)"""
+    points = {}
+    for shape in ("random_pairs", "all_pairs"):
+        for config, _ in CROSSOVER_KERNELS:
+            by_k = {}
+            for r in rows:
+                if r["shape"] != shape or r["config"] != config or r["status"] != "ok":
+                    continue
+                k = int(r["pairs"]) if shape == "random_pairs" else int(r["sources"])
+                by_k.setdefault(k, []).append(r)
+            for k, point_rows in by_k.items():
+                medians = statistics.median(float(r["query_s"]) for r in point_rows)
+                sets = [strategy_working_set_mb(r.get("strategy")) for r in point_rows]
+                sets = [x for x in sets if x is not None]
+                peaks = [float(r["peak_rss_mib"]) for r in point_rows if r.get("peak_rss_mib")]
+                points.setdefault((shape, k), {})[config] = (medians, max(sets) if sets else None,
+                                                             max(peaks) if peaks else None)
+    return points
+
+
+def crossover_k(points, shape):
+    """The k from which the single-source traversal stays slower than the best of the other two by more than 10%
+    (the next k after the largest one where it is still within the margin); None when it never falls behind. The
+    margin absorbs noise, and for one source every way runs the same per-source search."""
+    ks = sorted(k for (point_shape, k) in points if point_shape == shape)
+    last_winning = None
+    for k in ks:
+        kernels = points[(shape, k)]
+        if "single_source_kernel" not in kernels or len(kernels) < 2:
+            continue
+        others = min(kernels[c][0] for c in kernels if c != "single_source_kernel")
+        if kernels["single_source_kernel"][0] <= 1.1 * others:
+            last_winning = k
+    later = [k for k in ks if last_winning is None or k > last_winning]
+    return later[0] if later and (last_winning is None or last_winning != ks[-1]) else None
+
+
+def crossover_table(args):
+    """Section 3 crossover: per scale factor and shape, k distinct sources x the three kernels (median, the kernel's
+    working set, the process peak RSS), and the k where the single-source traversal stops being the fastest"""
+    rows = [r for r in read_result_files_plain(args.files) if r["config"] in dict(CROSSOVER_KERNELS)]
+    if not rows:
+        return
+    for sf in sorted({r["benchmark_notes"] for r in rows}):
+        sf_rows = [r for r in rows if r["benchmark_notes"] == sf]
+        points = crossover_points(sf_rows)
+        for shape, title in (("random_pairs", "k random pairs (one destination per source)"),
+                             ("all_pairs", "k sources x 200 destinations each")):
+            ks = sorted(k for (point_shape, k) in points if point_shape == shape)
+            if not ks:
+                continue
+            cross = crossover_k(points, shape)
+            print(f"\n## crossover, {sf}: {title}, index route, {sf_rows[0]['threads']} threads; median s / working set MB / "
+                  f"peak RSS MiB; single-source traversal stops winning at k = {cross if cross else 'never in this range'}")
+            print("| k | " + " | ".join(name for _, name in CROSSOVER_KERNELS) + " |")
+            print("|---|" + "---|" * len(CROSSOVER_KERNELS))
+            for k in ks:
+                cells = []
+                for config, _ in CROSSOVER_KERNELS:
+                    entry = points[(shape, k)].get(config)
+                    if not entry:
+                        cells.append("")
+                        continue
+                    median_s, working_set, peak = entry
+                    time_text = f"{median_s * 1000:.0f} ms" if median_s < 1 else f"{median_s:.2f} s"
+                    cells.append(f"{time_text} / {working_set if working_set is not None else '?'} MB / "
+                                 f"{peak:.0f} MiB" if peak is not None else f"{time_text} / {working_set} MB")
+                print(f"| {k} | " + " | ".join(cells) + " |")
 
 
 def directory_bytes(path):
@@ -6535,7 +6636,8 @@ def main():
                                  help=f"config names or groups {', '.join(MICROBENCH_GROUPS)}; configs: {', '.join(MICROBENCH_CONFIGS)}")
     microbench_parser.add_argument("--shapes", nargs="+", choices=["random", "same_dst", "multi_source", "all_pairs"],
                                  default=["random", "same_dst", "multi_source"])
-    microbench_parser.add_argument("--source-count", type=int, default=20, help="all_pairs shape: sources")
+    microbench_parser.add_argument("--source-count", nargs="+", type=int, default=[20],
+                                   help="all_pairs shape: sources (several values give one point each)")
     microbench_parser.add_argument("--target-count", type=int, default=200, help="all_pairs shape: destinations per source")
     microbench_parser.add_argument("--pair-counts", nargs="*", type=int, default=[1, 128, 1024, 65536])
     microbench_parser.add_argument("--source-counts", nargs="*", type=int, default=[1, 128, 1024])
@@ -6564,6 +6666,9 @@ def main():
     fixed_parser.set_defaults(func=fixed_costs)
     microbench_table_parser.add_argument("files", nargs="+")
     microbench_table_parser.set_defaults(func=microbenchmarks_table)
+    crossover_table_parser = subcommands.add_parser("crossover-table", help="Print the Section 3 crossover microbenchmark as tables")
+    crossover_table_parser.add_argument("files", nargs="+")
+    crossover_table_parser.set_defaults(func=crossover_table)
 
     table_parser = subcommands.add_parser("sweep-pairs-table", help="Print sweep-pairs CSVs as tables")
     table_parser.add_argument("files", nargs="+")

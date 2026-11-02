@@ -1225,3 +1225,26 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   no longer reproduces as a difference against the binary search on today's kernels (evaluation.tex, step (4);
   operator.tex's logarithmic-probes argument). Memory: 4 / rows-per-bucket bytes per sparse row either way (about
   2 bytes per row at the default). Not worth rerun time; the default stays 2.
+- 2 Nov (late, 2): Section 3 crossover microbenchmark (`microbench --configs crossover`, group of three forced
+  kernels: `single_source_kernel` = few_sources_limit 1000000, `multi_source_dedup` = few_sources_limit 0 (MS-BFS
+  waves, one lane per distinct source), `lane_per_pair` = source_group_ratio 0 (the former batches of one lane per
+  pair); `--source-count` takes a list for the sources x destinations shape; every microbenchmark row now records
+  `peak_rss_mib` (process VmHWM, includes the index load) and the `strategy` string, whose working-set keys give the
+  kernel's memory). Index route, SF10/100/300, k = 1 ... 4096 distinct sources, k random pairs and k sources x 200
+  destinations, 3 repeats, all 72 points agree across the three kernels. Matrix step `microbench_crossover_sf*`,
+  `crossover-table` subcommand (collect.sh writes crossover_table.txt), figure `crossover` (time row and working-set
+  row per shape, one column per scale factor, dotted line at the crossover = the k after the last k at which the
+  single-source traversal is within 10% of the best other kernel).
+  Crossovers: SF10 k = 64 (random pairs) / 32 (sources x 200); SF100 16 / 16; SF300 16 / 16. At k = 16 the per-source
+  kernel is 35% slower than the lanes at SF100 (random pairs 58 vs 43 ms; sources x 200 77 vs 51 ms) and 23% / 69%
+  slower at SF300 (139 vs 115 ms; 204 vs 121 ms), while at k = 8 it still wins or ties everywhere (SF300 85 vs 107
+  ms and 113 vs 109 ms). So the default few-sources limit of 16 is at the boundary and one step too high at SF100
+  and SF300; 8 would cost SF10 one or two ms at k = 9-16 (8 vs 9-10 ms) and gain 25-40% at SF100/SF300 for k = 9-16.
+  Decision open (the author's). Memory: the per-source kernel holds 5 MB (SF100) / 14 MB (SF300) of working set
+  whatever k is; the lanes hold one working set per wave batch (41 MB at SF100, 105 MB at SF300), 420 MB at
+  k = 1024 and 1.7 GB at k = 4096 at SF300 (process peak 3.4-3.7 GiB on top of the 1.24 GiB loaded index).
+  One lane per pair is never the best choice: equal to the deduplicated lanes while sources are distinct anyway
+  (random pairs up to k = 256), 4x slower at k = 8 and 47x at k = 4096 for sources x 200 at SF100 (16.8 s vs 0.36 s,
+  1.3 GB vs 665 MB of working sets); at SF300 k = 4096 sources x 200: 112 s vs 0.90 s (lanes) vs 15.9 s
+  (per-source), 3.4 GB of working sets and a 6.5 GiB process peak. Extremes at SF300, sources x 200: k = 4096 lanes
+  0.90 s against 15.9 s per-source (18x faster); random pairs k = 4096 lanes 0.71 s against 9.2 s (13x faster).

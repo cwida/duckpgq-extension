@@ -83,6 +83,10 @@ if [ "$what" = all ] || [ "$what" = microbench ]; then
   # 20 sources x 200 destinations with and without source grouping, paths against lengths
   for sf in 10 100; do
     step "microbench_section3_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs section3 --shapes random all_pairs --pair-counts 1 2048 65536 --source-count 20 --target-count 200 --notes "Section 3 switches SF${sf} ${NOTE}"
+    # Section 3 crossover (2 Nov): where the single-source traversal stops winning, by k distinct sources, for k
+    # random pairs and for k sources x 200 destinations, the three kernels forced (index route; median and the
+    # kernel's working set per point from the strategy string, process peak RSS per point)
+    step "microbench_crossover_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs crossover --shapes random all_pairs --pair-counts 1 2 4 8 16 32 64 128 256 512 1024 4096 --source-count 1 2 4 8 16 32 64 128 256 512 1024 4096 --target-count 200 --routes index --notes "Section 3 crossover SF${sf} ${NOTE}"
   done
   # The scheduling crossover figure needs SF300 as well; index route only
   step "microbench_scheduling_sf300" ${HARNESS} microbench --scale-factor 300 "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes "W31 scheduling SF300 ${NOTE}"
