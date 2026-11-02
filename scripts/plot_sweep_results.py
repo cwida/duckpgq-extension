@@ -676,7 +676,10 @@ def concurrent_figure(filename):
     panels = []
     for sf in SCALE_FACTORS:
         series = {"query_index": {}, "query_build": {}}
-        for path in newest_files(RESULTS / f"sf{sf}", "concurrent_sssp_pairs1024_threads32_readers*_pause200_*.csv"):
+        # One route per file since 2 Nov (the newest file per reader count and kind wins); the fold-latency step
+        # (fold ratio 0.0005) is excluded, its readers pay for the folds it forces
+        for path in newest_files(RESULTS / f"sf{sf}",
+                                 "concurrent_sssp_pairs1024_threads32_readers*_pause200_fold0.1_*.csv"):
             rows = list(csv.DictReader(open(path)))
             if not rows:
                 continue

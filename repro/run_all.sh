@@ -103,17 +103,31 @@ if [ "$what" = all ] || [ "$what" = updates ]; then
   step "update_sf10_p2p"            ${HARNESS} update-run "${UPD[@]}" --query-pattern point_to_point --notes "W16 ${NOTE}"
   step "update_sf10_sssp_t1"        ${HARNESS} update-run --scale-factor 10 --threads 1 --batch-size 2000 --batches 190 --query-pattern sssp --notes "W16 ${NOTE}"
   step "update_sf100_sssp"          ${HARNESS} update-run --scale-factor 100 --threads "${THREADS}" --batch-size 10000 --batches 150 --query-pattern sssp --notes "W16 ${NOTE}"
+  # One route per run (2 Nov): with both routes in one driver run every reader alternates an index and a build
+  # query, so the index latency is measured while the other readers saturate the cores with per-query builds and the
+  # writer's commit latency mixes both routes (SF300, 16 readers: index 142 ms per query in a shared run against
+  # 68 ms alone; commits 846 ms shared, 126 ms with index readers, 883 ms with build readers)
   for readers in 1 4 8 16; do
-    step "concurrent_sf10_r${readers}" ${HARNESS} update-concurrent "${UPD[@]}" --readers "$readers" --writer-pause-ms 200 --notes "W16 concurrent ${NOTE}"
+    for route in index build; do
+      step "concurrent_sf10_r${readers}_${route}" ${HARNESS} update-concurrent "${UPD[@]}" --readers "$readers" --writer-pause-ms 200 --routes "$route" --notes "W16 concurrent ${route} ${NOTE}"
+    done
   done
   # The unpaced writer: commits as fast as it can while 4 readers query
-  step "concurrent_sf10_r4_unpaced" ${HARNESS} update-concurrent "${UPD[@]}" --readers 4 --writer-pause-ms 0 --notes "W16 concurrent unpaced ${NOTE}"
+  for route in index build; do
+    step "concurrent_sf10_r4_unpaced_${route}" ${HARNESS} update-concurrent "${UPD[@]}" --readers 4 --writer-pause-ms 0 --routes "$route" --notes "W16 concurrent unpaced ${route} ${NOTE}"
+  done
   # Where the index matters (29 Oct): the same concurrent readers at SF100 and SF300, where building the graph inside
   # the query costs 128 ms and 264 ms instead of SF10's 22 ms (the SF300 log is staged from the generator's batches)
   for readers in 1 4 16; do
-    step "concurrent_sf100_r${readers}" ${HARNESS} update-concurrent --scale-factor 100 --threads "${THREADS}" --batch-size 2000 --batches 100 --readers "$readers" --writer-pause-ms 200 --notes "W16 concurrent SF100 ${NOTE}"
-    step "concurrent_sf300_r${readers}" ${HARNESS} update-concurrent --scale-factor 300 --threads "${THREADS}" --batch-size 2000 --batches 60 --readers "$readers" --writer-pause-ms 200 --notes "W16 concurrent SF300 ${NOTE}"
+    for route in index build; do
+      step "concurrent_sf100_r${readers}_${route}" ${HARNESS} update-concurrent --scale-factor 100 --threads "${THREADS}" --batch-size 2000 --batches 100 --readers "$readers" --writer-pause-ms 200 --routes "$route" --notes "W16 concurrent SF100 ${route} ${NOTE}"
+      step "concurrent_sf300_r${readers}_${route}" ${HARNESS} update-concurrent --scale-factor 300 --threads "${THREADS}" --batch-size 2000 --batches 60 --readers "$readers" --writer-pause-ms 200 --routes "$route" --notes "W16 concurrent SF300 ${route} ${NOTE}"
+    done
   done
+  # Fold latency at SF300 (W36 item e, 2 Nov): at the default fold ratio 0.1 the 60 commits above add 120k log entries
+  # against 55.6M edges, so no fold happens at SF100 or SF300 in the matrix. This step lowers the ratio so a fold runs
+  # under 16 index readers (about every 14 commits); duckpgq_csr_index_fold_stats in the stats column gives its latency
+  step "concurrent_sf300_r16_fold" ${HARNESS} update-concurrent --scale-factor 300 --threads "${THREADS}" --batch-size 2000 --batches 60 --readers 16 --writer-pause-ms 200 --routes index --fold-ratio 0.0005 --notes "W36 fold latency SF300 ${NOTE}"
   step "update_kuzu_sf10_sssp"      ${HARNESS} update-kuzu     "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"
   step "update_memgraph_sf10_sssp"  ${HARNESS} update-memgraph "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"
   step "update_falkordb_sf10_sssp"  ${HARNESS} update-falkordb "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"

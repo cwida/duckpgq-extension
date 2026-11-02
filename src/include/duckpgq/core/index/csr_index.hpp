@@ -220,7 +220,7 @@ public:
 	}
 
 	//! Returns what a reader with this transaction may traverse, building the epoch from `table` when the index has
-	//! none yet. Returns nullptr when the epoch was built at a newer snapshot than the reader's.
+	//! none yet. A reader outlived by two folds gets a private epoch built from its own view of the table.
 	shared_ptr<CSRIndexSnapshot> Snapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table) const;
 
 	//! Installs an epoch built by the CREATE INDEX pipeline
@@ -257,7 +257,9 @@ public:
 	//! Builds a new epoch at the transaction's bound and drops the change-log entries no retained epoch needs. The
 	//! transaction must not have uncommitted changes. Also run automatically by Snapshot when the change log exceeds
 	//! the fold ratio setting.
-	void Fold(ClientContext &context, DuckTransaction &transaction, DataTable &table) const;
+	//! `ratio` > 0 marks an automatic fold: it is skipped when, by the time this caller holds the fold lock, the log
+	//! is no longer above ratio x epoch edges (an earlier queued reader folded already)
+	void Fold(ClientContext &context, DuckTransaction &transaction, DataTable &table, double ratio = 0) const;
 
 	//! The DuckDB table a name refers to, or nullptr (not found, or not a DuckDB table): by a possibly qualified name
 	//! string ('[catalog.][schema.]table'), by its parsed parts, or by the table of a property graph
@@ -314,8 +316,13 @@ private:
 		bool have_epochs = false;
 		idx_t delta_count = 0;
 		idx_t tombstone_count = 0;
+		//! Entries the newest epoch does not account for (what the automatic fold trigger measures)
+		idx_t pending_count = 0;
 	};
 	LogState LogStateFor(VisibilityBound bound) const;
+	//! Log entries not accounted for by the newest epoch: the raw log also keeps entries only the retained older
+	//! epoch needs, so a trigger on the raw size would fold twice per crossing (2 Nov)
+	idx_t PendingLogLocked() const;
 	//! Resolves the epoch positions of tombstoned rows [known_count, tombstone_count), plus the mirrored position of an
 	//! undirected edge and the reverse-side position when the index stores one. A tombstone that carries its keys is
 	//! looked up: the destination's partition, the source's sparse row, the row id among that row's edges. Keyless
@@ -358,6 +365,10 @@ private:
 	mutable uint32_t next_generation = 0;
 	mutable vector<CSRIndexDeltaEdge> delta;
 	mutable vector<CSRIndexTombstone> tombstones;
+	//! Entries of `delta` / `tombstones` the newest epoch accounts for (recomputed by each fold; appends add
+	//! unaccounted entries, so the pending log is the sizes minus these)
+	mutable idx_t newest_covered_delta = 0;
+	mutable idx_t newest_excluded_tombstones = 0;
 	//! Next change group id handed to an Append or TryDelete call (commits are serialized, so ids follow commit order)
 	mutable uint32_t next_change_group = 1;
 	//! Position in `delta` of every delta row, so TryDelete can stamp the row's deleted_group without a scan

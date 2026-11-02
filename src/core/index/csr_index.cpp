@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <bitset>
 #include <chrono>
+#include <mutex>
 #include <cstring>
 
 namespace duckdb {
@@ -574,6 +575,8 @@ void CSRIndex::ClearStateLocked() const {
 	epochs.clear();
 	delta.clear();
 	tombstones.clear();
+	newest_covered_delta = 0;
+	newest_excluded_tombstones = 0;
 	delta_row_index.clear();
 	cached_snapshot.reset();
 }
@@ -679,8 +682,21 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	}
 	cached_snapshot.reset();
 	CompactChangeLogLocked();
+	// What the newest epoch accounts for; the fold trigger measures the rest (entries appended later are uncovered)
+	newest_covered_delta = 0;
+	for (auto &edge : delta) {
+		newest_covered_delta += edge.covered_epoch <= generation ? 1 : 0;
+	}
+	newest_excluded_tombstones = 0;
+	for (auto &tombstone : tombstones) {
+		newest_excluded_tombstones += tombstone.excluded_epoch <= generation ? 1 : 0;
+	}
 	// The new dictionary is rebuilt in key order: ids resolved against the previous one no longer apply
 	ResolveDeltaIdsLocked();
+}
+
+idx_t CSRIndex::PendingLogLocked() const {
+	return delta.size() - newest_covered_delta + tombstones.size() - newest_excluded_tombstones;
 }
 
 void CSRIndex::CompactChangeLogLocked() const {
@@ -1259,22 +1275,40 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	return snapshot;
 }
 
-void CSRIndex::Fold(ClientContext &context, DuckTransaction &transaction, DataTable &table) const {
+void CSRIndex::Fold(ClientContext &context, DuckTransaction &transaction, DataTable &table, double ratio) const {
 	if (transaction.ChangesMade()) {
 		throw InvalidInputException("A CSR index cannot be folded by a transaction with uncommitted changes");
 	}
-	lock_guard<mutex> fold_guard(fold_lock);
+	// An automatic fold that finds another fold running does not wait for it: this reader's epoch and log are valid
+	// as they are, and the fold in progress will install the newer epoch (SF300: a fold takes 3 s, and the readers
+	// that queued behind it paid that as query latency)
+	unique_lock<mutex> fold_guard(fold_lock, std::defer_lock);
+	if (ratio > 0) {
+		if (!fold_guard.try_lock()) {
+			return;
+		}
+	} else {
+		fold_guard.lock();
+	}
 	{
 		// Folds install epochs in visibility order. An older transaction that folds after a newer one would install
 		// an older epoch as the newest, and compaction would then drop the log entries only the newer epoch covered,
-		// hiding committed edges from new transactions (28 Oct audit). Readers that all saw the log grow past the
-		// ratio take the same path, so only the first of them rebuilds.
+		// hiding committed edges from new transactions (28 Oct audit).
 		IndexLock l(*this);
 		EnsureLoadedLocked(l);
 		if (!epochs.empty()) {
 			auto &newest = epochs.back()->bound;
 			auto mine = transaction.view.visibility_bound;
 			if (VisibilityBound::Min(newest, mine) == mine) {
+				return;
+			}
+			// Automatic folds re-check the trigger here: every reader that saw the pending log grow past the ratio
+			// queues on the fold lock, and the ones with a bound newer than the first fold's epoch would otherwise
+			// fold again (SF300, 16 readers, 2 Nov: 12 folds of 3 s in a row, readers stalled 36 s). The pending
+			// log is what the newest epoch does not account for: the raw log keeps the entries the retained older
+			// epoch still needs, so its size stays over the ratio until a second fold drops that epoch
+			if (ratio > 0 && static_cast<double>(PendingLogLocked()) <=
+			                     ratio * static_cast<double>(std::max<idx_t>(1, epochs.back()->edge_count))) {
 				return;
 			}
 		}
@@ -1318,15 +1352,16 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 	} else if (state.epoch && state.epoch == epochs.back()) {
 		// Current readers fold when the change log has grown past the configured fraction of the epoch
 		auto ratio = GetCSRIndexFoldRatio(context);
-		if (ratio > 0 && static_cast<double>(state.delta_count + state.tombstone_count) >
+		if (ratio > 0 && static_cast<double>(state.pending_count) >
 		                     ratio * static_cast<double>(std::max<idx_t>(1, state.epoch->edge_count))) {
-			Fold(context, transaction, table);
+			Fold(context, transaction, table, ratio);
 			state = LogStateFor(bound);
 		}
 	}
 	if (!state.epoch) {
-		// Every retained epoch is newer than this reader's snapshot
-		return nullptr;
+		// Every retained epoch is newer than this reader's snapshot (two folds since it started): the reader builds a
+		// private epoch from its own view of the table, as a transaction with uncommitted changes does
+		return BuildSnapshot(context, transaction, table, RebuildFromTable(context, transaction, table), 0, 0, false);
 	}
 	return BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count, true);
 }
@@ -1338,6 +1373,7 @@ CSRIndex::LogState CSRIndex::LogStateFor(VisibilityBound bound) const {
 		state.have_epochs = !epochs.empty();
 		state.delta_count = delta.size();
 		state.tombstone_count = tombstones.size();
+		state.pending_count = PendingLogLocked();
 		return state;
 	});
 }
@@ -1618,10 +1654,17 @@ idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifi
 	for (idx_t row = 0; row < count; row++) {
 		auto row_id = row_data[row_format.sel->get_index(row)];
 		auto delta_entry = delta_row_index.find(row_id);
+		bool epoch_row = true;
 		if (delta_entry != delta_row_index.end()) {
-			// A delta row: readers drop it once they see this deleting commit
-			delta[delta_entry->second].deleted_group = group;
-		} else {
+			// A delta row: readers drop it once they see this deleting commit. When a fold has already pulled the row
+			// into a retained epoch, readers on that epoch need a tombstone as well (the entry only stays in the log
+			// for the older epoch); the tombstone resolves to no position in epochs without the row (2 Nov: a deleted
+			// shortcut edge stayed visible after one fold, hidden before by a second fold that always followed)
+			auto &entry = delta[delta_entry->second];
+			entry.deleted_group = group;
+			epoch_row = entry.covered_epoch != NumericLimits<uint32_t>::Maximum();
+		}
+		if (epoch_row) {
 			// An epoch row (or one the index never saw); its position is resolved lazily by the readers
 			bool has_keys = keys_available && src_valid[row] && dst_valid[row];
 			tombstones.push_back({row_id, NumericLimits<uint32_t>::Maximum(), group, has_keys,
@@ -2120,6 +2163,8 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 	// Loaded entries carry no change group (0): readers decide their visibility per row until the next fold
 	delta = std::move(loaded_delta);
 	RebuildDeltaRowIndexLocked();
+	newest_covered_delta = 0;
+	newest_excluded_tombstones = 0;
 	tombstones.clear();
 	for (auto row : loaded_tombstones) {
 		tombstones.push_back({row, NumericLimits<uint32_t>::Maximum(), 0});

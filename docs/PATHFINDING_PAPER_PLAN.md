@@ -1143,3 +1143,34 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   every benchmark binary with `-march=x86-64-v3 -mtune=generic` (GCC 11.5), i.e. AVX2: a 512-bit lane OR is two 256-bit
   instructions, not four 128-bit ones. The m7a's Zen 4 cores have AVX-512 (avx512f/bw/dq/vl); `-DNATIVE_ARCH=1` would
   give `-march=native`. The author decided (2 Nov) not to run a native build: the paper reports the x86-64-v3 build.
+- 2 Nov (late afternoon): W36 numbers on the cleaned build (`b096d329`), SF300, machine idle. Throughput of single
+  random pairs, 32 threads shared, 10 s per point: index 62.8 / 210 / 303 / 336 q/s at 1 / 4 / 16 / 32 clients
+  (median 15.5 / 18.3 / 47.6 / 82.7 ms), build 3.7 / 4.8 / 5.4 / 6.2 q/s (median 273 ms / 853 ms / 3.4 s / 6.1 s):
+  17x / 44x / 56x / 54x more queries per second. Sixteen readers under a writer (2000 operations every 200 ms, 20
+  commits), one route per run: index 68 ms mean, 124 ms p99, commits 126 ms mean; build 3.6 s mean, 5.4 s p99,
+  commits 883 ms mean: 53x faster per query, 7x faster commits; process peak 15.3 GiB for the build run.
+  Two matrix problems found by these probes, both fixed in `repro/run_all.sh`: (1) the concurrent steps ran both
+  routes in one driver run, so every reader alternated an index and a build query and the index was measured while
+  the other readers saturated the cores with builds (shared run: index 142 ms per query, commits 846 ms; alone: 68 ms
+  and 126 ms). Every concurrent step now runs one route (`--routes index|build`, step names carry the route; the
+  figure script takes the newest file per reader count and kind). (2) At the default fold ratio 0.1 no fold happens
+  at SF100 or SF300 in the matrix (120k log entries against 55.6M edges), so item (e), the fold latency, had no
+  step: `concurrent_sf300_r16_fold` runs 16 index readers with `--fold-ratio 0.0005` (a fold about every 14 commits);
+  the figure script excludes that file.
+  The fold step found three index bugs (fixed, all 99 test files pass): (a) fold herd: every reader that saw the
+  log past the ratio queued on the fold lock and, once its turn came, folded again if its bound was newer than the
+  fresh epoch (12 folds of 3 s in a row, readers stalled 36 s); automatic folds now re-check the trigger under the
+  lock and skip when another fold is running (`Fold(..., ratio)`, try-lock). (b) The trigger measured the raw log,
+  which keeps the entries the retained older epoch still needs, so it stayed over the ratio until a second fold
+  dropped that epoch (two folds per crossing); it now measures the entries the newest epoch does not account for
+  (`PendingLogLocked`, counters recomputed by each fold). (c) Deleting a row that a fold had already pulled into an
+  epoch only stamped its log entry, so readers on that epoch kept seeing the edge; the second fold had hidden this.
+  `TryDelete` writes a tombstone for such rows (`csr_index_operator.test:105` caught it once the double fold was
+  gone). Also: a reader outlived by two folds builds a private epoch instead of failing with "no snapshot for this
+  transaction" (one reader hit it in the herd run).
+  Fold latency at SF300 after the fixes (16 index readers, ratio 0.0005, 40 commits): 3 folds of 2.96 / 2.98 / 3.07 s
+  (RebuildFromTable + BuildEpoch, about the 4.6 s of CREATE INDEX minus the persist); the folding reader pays it as
+  query latency (max 3.1 s), the other readers no longer wait: mean 72 ms, p99 120 ms, 7 of 2326 queries over 1 s.
+  The writer's commit that overlaps a fold takes about 3.2 s (CPU competition with the rebuild's 32 threads; the
+  rebuild holds no index lock while scanning); commits otherwise 100 ms median. Process peak of the index run with
+  folds 7.3 GiB (the rebuild's transient) against 15.3 GiB for the build route.
