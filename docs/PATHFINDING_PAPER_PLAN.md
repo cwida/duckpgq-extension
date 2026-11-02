@@ -1291,3 +1291,21 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   keep 512 (the paper's text: 512 lanes, 192 B per vertex, 512-bit or) or make 256 the default (every probe since
   27 Oct ran with it; the paper's lane width, bytes per vertex and the SIMD sentence change). rc9 is not tagged
   until this is decided; the sweep stays on hold.
+- 2 Nov (night, 3): the few-sources limit is a graph property (the author's question: a limit tuned on LDBC SNB only is
+  arbitrary). Crossover sweep on the three Graphalytics graphs (index route, 512-lane build, 2 repeats, k up to
+  1024/4096; results in `results/graphalytics_*/microbench_*.csv`, all points agree): the single-source traversal
+  stops winning at k = 256 on cit-Patents (3.8M vertices, 16.5M edges, a search reaches about 2200 vertices; per-source
+  k = 64: 73 ms against 94 ms lanes; k = 1024: 469 ms against 171 ms), at k = 4 on datagen-8_4-fb (3.8M, 269M, dense:
+  k = 16 per-source 1.34 s against 344 ms lanes; k = 1024 35.7 s against 1.13 s, 32x slower), at k = 16 on
+  graph500-24 (8.9M, 260M: k = 16 3.52 s against 822 ms; k = 1024 88 s against 2.35 s), and at k = 16-64 on LDBC.
+  So the crossover spans 4 to 256 across graphs and a fixed 16 is wrong by 4x in both directions. What drives it is
+  the work of one per-source search (the edges it reaches: nearly all of a dense social graph, a few thousand on the
+  citation DAG) against a wave's cost, which is one sweep of the whole graph per level whatever k is. A rule the
+  operator can evaluate: run the first round of sources per-source, read the edges (or vertices) the searches
+  reached, and move the remaining sources to lanes when k x reach exceeds a constant times the graph's edge count
+  (the constant from these sweeps, about 8 x levels). Effort M (the lane batches must start after a per-source
+  round; the reach is known from the searches' results). Alternative without code: a per-graph setting in the harness,
+  which is tuning. Decision open (the author's); the default stays 16 for now.
+  The working-set cap did its job here: one lane per pair on cit-Patents k = 1024 x 200 reached 22.1 GB of working
+  sets (cap 24.6 GB), on graph500-24 k = 256 x 200 24.4 GB with a 30.9 GiB process peak, and k = 1024 x 200 did not
+  finish within the timeout; per-source and deduplicated lanes stayed at 109 MB and 1.6-3.3 GB.
