@@ -248,16 +248,16 @@ Section~\ref{sec:eval-pairs} measured along one axis.
 random pairs, one source to all) at SF10 and SF100, 32 threads, from the switch runs of the harness:
 (1) the CIDR 2023 UDF design (CSR built by UDFs, MS-BFS in a UDF, one core for one pair);
 (2) the operator with multi-source lanes only (parallelism from the partitioned CSR: the 16-thread factor six becomes X);
-(3) plus the single-source traversal for few sources (one pair 0.11 to 0.01\,s on the 8M-edge graph);
-(4) plus the source index over the sparse rows (twenty sources 0.28 to 0.13\,s);
-(5) plus per-phase events instead of barriers (SF300 build route sssp 0.39 to 0.30\,s; concurrent readers);
-(5c) plus lanes per source with destination sets (BI19 over the index, SF300: 30.6 to 1.6\,s, peak memory 43.8 to
+(3) plus the single-source traversal for few sources, which finds its frontier vertices' rows through the source
+index (one pair 0.11 to 0.01\,s on the 8M-edge graph);
+(4) plus per-phase events instead of barriers (SF300 build route sssp 0.39 to 0.30\,s; concurrent readers);
+(5) plus lanes per source with destination sets (BI19 over the index, SF300: 30.6 to 1.6\,s, peak memory 43.8 to
 4.7\,GiB);
-(5b) plus worker groups for the multi-source batches; rc1 microbenchmark, 65\,536 random pairs over the index, one
+(6) plus worker groups for the multi-source batches; rc1 microbenchmark, 65\,536 random pairs over the index, one
 batch at a time on all 32 threads against the default: 4.9 against 0.51\,s at SF10, 32 against 3.5\,s at SF100,
 50 against 10.3\,s at SF300;
-(6) plus the CSR index (the build disappears: one pair 23 to 4\,ms at SF10);
-(7) plus the reverse side (1024 sources to one destination 43 to 5\,ms), pending the frozen-commit decision.
+(7) plus the CSR index (the build disappears: one pair 23 to 4\,ms at SF10);
+(8) plus the reverse side (1024 sources to one destination 43 to 5\,ms), pending the frozen-commit decision.
 One table, one row per step, three columns of times, and a fourth column with the section that describes the step.
 Narrow measurements that do not fit the chain, thread scaling of both routes, the width of a destination range
 (default 65\,535 destinations) and the snapshot cost against pending operations, follow as short

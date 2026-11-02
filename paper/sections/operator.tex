@@ -74,7 +74,7 @@ those of source~12 at positions 3 to~5. Each edge stores its destination as a 16
 range, so source~3's edge to vertex~25 stores 5, its offset from the range's start at~20. A source without an edge into the
 range has no row.
 
-The operator finds a source's row without searching the rows. The \emph{source index} divides the source ids into
+The operator finds a source's row through a \emph{source index}. It divides the source ids into
 blocks of $2^k$ consecutive ids and stores, for each block, the first row whose source falls into it; $k$ is chosen
 so that a block holds about two rows. In the figure $k = 3$, and a lookup of source~7 reads entry $7 \gg 3 = 0$, which
 points at the row of source~3, and moves on to the next row, that of source~7. When the query asks for paths, and
