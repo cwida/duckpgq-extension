@@ -66,12 +66,12 @@ by splitting the edges by destination.
 Vertices are numbered $0$ to $V-1$. When the CSR is built on the fly, a vertex's number is its row id in the vertex
 table; an index numbers the vertices through a dictionary that maps each vertex key to a dense id. The operator
 divides these ids into equal destination ranges, as many as are needed for a range to span at most 65,535 ids, and a
-\emph{partition} holds every edge whose destination lies in one range. Figure~\ref{fig:partitioned-csr}b shows one
-partition. Inside it the edges are sorted by source, and every source with at least one edge into the range has a
+\emph{partition} holds every edge whose destination lies in one range. Figure~\ref{fig:partitioned-csr}b shows the
+edges of a small graph that fall into one range, ids 20 to 29, and Figure~\ref{fig:partitioned-csr}c the partition they form. Inside it the edges are sorted by source, and every source with at least one edge into the range has a
 \emph{sparse row}, which holds the source's id and the position of its first edge. In the figure the edges of
 source~3 are at positions 0 and~1, up to the position the next row starts at, those of source~7 at position~2 and
 those of source~12 at positions 3 to~5. Each edge stores its destination as a 16-bit offset from the start of the
-range, so the 5 of source~3's first edge is the vertex five ids past the start. A source without an edge into the
+range, so source~3's edge to vertex~25 stores 5, its offset from the range's start at~20. A source without an edge into the
 range has no row.
 
 The operator finds a source's row without searching the rows. The \emph{source index} divides the source ids into
@@ -96,11 +96,13 @@ edge comes from the rerun's fixed-cost step.}
   \centering
   \input{figures/partitioned_csr}
   \caption{The partitioned CSR. (a) The build on the fly: the sink packs each edge into 64 bits, and the high
-  bits, the destination range, select its partition; tasks take the partitions largest first, sort each by source and
-  emit it. (b) One partition. Only sources with an edge into the range have a sparse row; a source's edges are the
-  slice between its offset and the next, stored as 16-bit offsets into the range. The source index maps the high bits
-  of a source id to its first row. The row ids (orange) are what the CSR index adds, and what the build adds when a
-  query asks for paths.}
+  bits, the destination range, select its partition; tasks process the partitions, starting with the largest, sort
+  each by source and emit it. (b) The edges of a graph with $V = 30$ whose destinations fall into range $p$, ids 20 to
+  29; source~4 has edges only into other ranges. (c) The partition these edges form. Each source with an edge into the
+  range has a sparse row, its edges are the slice between its offset and the next, and each edge stores its
+  destination as an offset into the range (25 becomes 5). The source index stores the first row of each block of
+  $2^3$ source ids. The row ids (orange) are what the CSR index adds, and what the build adds when a query asks for
+  paths.}
   \label{fig:partitioned-csr}
 \end{figure}
 
