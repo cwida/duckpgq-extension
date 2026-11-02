@@ -7,7 +7,7 @@
 A path pattern in \sqlpgq asks, for a set of candidate (source, destination) pairs, whether a path of the allowed
 length exists and how long it is, or which vertices and edges it uses. The path-finding operator evaluates this part of
 the pattern. Label tests, filters on the source and destination vertices, the join back to the vertex tables and the
-test on the quantifier stay relational and are left to \duckdb's planner. The operator reads the candidate pairs and
+filter that the quantifier puts on the path length stay relational and are left to \duckdb's planner. The operator reads the candidate pairs and
 the graph, either as the edge table, from which it builds a CSR inside the query, or as a CSR index.
 
 The operator answers in one of three modes. In the \emph{lengths} mode it returns one hop count per candidate pair,
