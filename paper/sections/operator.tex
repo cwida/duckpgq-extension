@@ -97,12 +97,12 @@ edge comes from the rerun's fixed-cost step.}
   \input{figures/partitioned_csr}
   \caption{The partitioned CSR. (a) The build on the fly: the sink packs each edge into 64 bits, and the high
   bits, the destination range, select its partition; tasks process the partitions, starting with the largest, sort
-  each by source and emit it. (b) The edges of a graph with $V = 30$ whose destinations fall into range $p$, ids 20 to
+  each by source, emit its sparse rows and build its source index. (b) The edges of a graph with $V = 30$ whose destinations fall into range $p$, ids 20 to
   29; source~4 has edges only into other ranges. (c) The partition these edges form. Each source with an edge into the
   range has a sparse row, its edges are the slice between its offset and the next, and each edge stores its
   destination as an offset into the range (25 becomes 5). The source index has one entry per block of $2^3 = 8$
-  source ids, labelled with the block's ids, that points at the first of the rows its bracket marks; source~7 is found from the entry of
-  block 0--7, one row after source~3. The row ids (orange) are what the CSR index adds, and what the build adds when a query asks for
+  source ids; the bracket under an entry marks the sparse rows of its block, and the entry stores the first of them.
+  Source~7 is found from the entry of block 0--7, one row after source~3. The row ids (orange) are what the CSR index adds, and what the build adds when a query asks for
   paths.}
   \label{fig:partitioned-csr}
 \end{figure}
