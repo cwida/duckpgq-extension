@@ -131,13 +131,13 @@ sources. All pairs with the same source become one search, which carries the lis
 therefore has as many searches as it has distinct sources, and a search ends when it has reached every destination
 on its list, at the depth bound, or when no new vertex is left to visit.
 
-The operator runs the searches in one of two ways. In the single-source traversal every search runs on its own, with a
+\rev{The operator runs the searches in one of two ways. In the single-source traversal every search runs on its own, with a
 frontier and per-vertex arrays of its own. In the multi-source traversal up to 512 searches run together, each in one
 bit lane of a multi-source BFS. Both traversals proceed level by level and decide anew at every level between a
 \emph{sparse level}, which visits only the vertices on the frontier, and a \emph{dense level}, which sweeps every
-sparse row of every partition; a search can return to sparse levels when its frontier shrinks again.
+sparse row of every partition; a search can return to sparse levels when its frontier shrinks again.}
 
-\paragraph{Single-source traversal.} Each search has its own frontier, a list of vertex ids, as in
+\paragraph{Single-source traversal.} \rev{Each search has its own frontier, a list of vertex ids, as in
 Ligra~\cite{shun2013ligra}, and three arrays with one entry per vertex: the level at which the vertex was first
 reached, which is its distance (8 bytes), a seen flag (1 byte) and a mark for the vertices on the current frontier
 (4 bytes), 13 bytes per vertex. In the \texttt{paths} mode it also keeps, per vertex, the vertex (4 bytes) and the edge
@@ -148,9 +148,9 @@ gives each worker whole partitions to sweep, and when there are more workers tha
 rows into ranges, so that every worker has work; a worker expands the rows whose source is on the frontier. In both
 kinds of level two workers can reach the same vertex, and a vertex is claimed with a compare-and-swap on its seen
 flag. The worker that wins records the vertex's distance, adds it to the next frontier and, in the \texttt{paths}
-mode, records the vertex and the edge through which it arrived (Section~\ref{sec:results}).
+mode, records the vertex and the edge through which it arrived (Section~\ref{sec:results}).}
 
-\paragraph{Multi-source traversal.} Many searches run as the lanes of one sweep, the multi-source BFS of Then et
+\paragraph{Multi-source traversal.} \rev{Many searches run as the lanes of one sweep, the multi-source BFS of Then et
 al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up to 512 lanes that share one
 \emph{working set} of three bit sets per vertex: \texttt{seen} for the vertices each lane has reached,
 \texttt{frontier} for the current frontier and \texttt{next} for the next one. Each bit set holds 512 bits, 64 bytes,
@@ -162,14 +162,14 @@ each lane then records the level of the destinations it has newly reached and dr
 whose list is empty is masked out of \texttt{next} and becomes inactive. A summary bitmap marks the vertices with an
 active lane. A level is sparse when fewer than a sixteenth of all vertices are marked, and visits only those, through
 the source index. A dense level costs the same whether one lane or five hundred are active. Both divisors, the
-sixty-fourth and the sixteenth, are settings of the operator.
+sixty-fourth and the sixteenth, are settings of the operator.}
 
-The deduplication decides how many batches a query needs. LDBC BI19 at SF300 pairs every person of one city,
+\rev{The deduplication decides how many batches a query needs. LDBC BI19 at SF300 pairs every person of one city,
 1.4\,K of them, with every person of another, and asks for 2.4\,M lengths. After deduplication that is 1.4\,K searches
 in three 512-lane batches; without it, one search per pair, as in the CIDR design, would need 4.6\,K batches.
 Deduplication helps only when sources repeat. In the random pairs of Section~\ref{sec:eval} almost every source
 appears in a single pair, so its search has one destination, and the number of batches is the same as without
-deduplication.
+deduplication.}
 
 \subsection{Choosing a traversal and an orientation}
 \label{sec:choice}
