@@ -37,7 +37,7 @@ made earlier, at bind time, by the rewrite, which takes the index whenever one e
   \addlinespace[2pt]
   logical and physical operator & sink for pairs and edges, source for results, own events and tasks & a cardinality, but no cost, and join ordering treats the operator as opaque; no task groups in the scheduler \\
   \addlinespace[2pt]
-  index type & build, append and delete callbacks; serialization into the block manager; WAL replay & rows but not transactions; no visibility at past points in time; \rev{stable row ids and \texttt{CanFetch} are implementation behaviour, not guarantees}; no scan interface, so the operator finds the index in the catalog by name; no tasks for index work, so its build, fold and load start threads of their own \\
+  index type & build, append and delete callbacks; serialization into the block manager; WAL replay & rows but not transactions; no visibility at past points in time; stable row ids and \texttt{CanFetch} are implementation behaviour, not guarantees; no scan interface, so the operator finds the index in the catalog by name; no tasks for index work, so its build, fold and load start threads of their own \\
   \addlinespace[2pt]
   client context state & per-connection registry of property graphs and operator state & -- \\
   \addlinespace[2pt]

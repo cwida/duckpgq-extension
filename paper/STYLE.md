@@ -98,6 +98,25 @@ One name per thing, used the same way in the text, the figures and the captions.
 | lengths, paths, reach | the three output modes | |
 | build route, index route | the CSR built on the fly in every query, or read from a persistent CSR index | inside the query |
 
+## Vocabulary of Section 4 (decided 3 Nov)
+
+| term | meaning | not |
+|---|---|---|
+| CSR index | the index created with `CREATE INDEX ... USING CSR` | graph index, cache |
+| epoch | an immutable partitioned CSR with its dictionary and one edge row id per edge, built by one transaction | version, snapshot |
+| dictionary | the map from vertex keys to the dense ids of one epoch | |
+| change log, log entry | the inserts and deletes committed after the newest epoch; one entry per inserted or deleted row | delta (in text) |
+| change group | the entries of one `Append` or `Delete` call; visibility is decided once per group | commit group |
+| stamp | the mark of the deleting group on the log entry of a deleted row | |
+| tombstone | the entry for a deleted row that an epoch contains | |
+| snapshot | what one transaction traverses: an epoch plus its overlay | |
+| overlay | the suppressed epoch positions and the inserted edges, in the epoch's partitions | delta CSR, companion |
+| fold | building a new epoch from the table | compaction (that is the log's cleanup) |
+| generation, accounts for | an epoch's number in installation order; an epoch accounts for an entry it already contains or excludes | covered, covered_epoch |
+| retained epoch | an older epoch kept for transactions that started before a fold | |
+| private epoch | an epoch built for one transaction from its own view (uncommitted changes, or older than every retained epoch) | private CSR |
+| transaction | the reader of the index | reader |
+
 ## Out of scope for the text
 
 Bugs we fixed along the way (the barrier deadlock under concurrent queries, the NULL-pair fallback, the stale
