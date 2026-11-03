@@ -3928,15 +3928,17 @@ def throughput_table(args):
 
 
 def concurrent_run_key(path, rows):
-    """(scale_factor, route, readers, fold_ratio) of a concurrent CSV: from the metadata columns when the harness
-    appended them, else from the file name (a run the driver ended with an error keeps the driver's bare columns)"""
+    """(scale_factor, route, readers, fold_ratio, writer_pause_ms) of a concurrent CSV: from the metadata columns when
+    the harness appended them, else from the file name (a run the driver ended with an error keeps the driver's bare
+    columns)"""
     first = rows[0] if rows else {}
     stem = Path(path).stem
     readers = int(first["readers"]) if first.get("readers") else int(re.search(r"_readers(\d+)_", stem).group(1))
     fold_ratio = float(first["fold_ratio"]) if first.get("fold_ratio") else float(re.search(r"_fold([\d.]+)_", stem).group(1))
+    pause = int(first["writer_pause_ms"]) if first.get("writer_pause_ms") else int(re.search(r"_pause(\d+)_", stem).group(1))
     scale_factor = first.get("scale_factor") or Path(path).resolve().parent.name.removeprefix("sf")
     routes = sorted({r["kind"] for r in rows if r["kind"].startswith("query_")})
-    return scale_factor, routes, readers, fold_ratio
+    return scale_factor, routes, readers, fold_ratio, pause
 
 
 def concurrent_table(args):
@@ -3950,22 +3952,24 @@ def concurrent_table(args):
         rows = list(csv.DictReader(open(path)))
         if not rows:
             continue
-        scale_factor, routes, readers, fold_ratio = concurrent_run_key(path, rows)
+        scale_factor, routes, readers, fold_ratio, pause = concurrent_run_key(path, rows)
         stamp = int(Path(path).stem.rsplit("_", 1)[1])
         for route in routes:
-            key = (scale_factor, route, readers, fold_ratio)
+            key = (scale_factor, pause, route, readers, fold_ratio)
             if key not in chosen or chosen[key][0] < stamp:
                 chosen[key] = (stamp, rows)
-    for scale_factor in sorted({k[0] for k in chosen}, key=lambda v: float(v)):
-        sample = next(rows for (sf, *_), (_, rows) in chosen.items() if sf == scale_factor)[0]
+    # One table per scale factor and writer pause: the unpaced writer is a separate experiment from the 200 ms one
+    for scale_factor, pause in sorted({(k[0], k[1]) for k in chosen}, key=lambda v: (float(v[0]), v[1])):
+        sample = next(rows for (sf, p, *_), (_, rows) in chosen.items() if sf == scale_factor and p == pause)[0]
         print(f"\n## readers under a writer, SF{scale_factor}: {sample.get('batch_size', '?')} operations per commit, "
-              f"{sample.get('writer_pause_ms', '?')} ms pause, {sample.get('threads', '?')} threads, query latency per route "
+              f"{pause} ms pause, {sample.get('threads', '?')} threads, query latency per route "
               f"(median / p99 / max), the writer's commit latency and the folds of the run\n")
         print("| route | readers | queries | median ms | p99 ms | max ms | commit median ms | commit p99 ms | folds | peak GiB |")
         print("|---|---|---|---|---|---|---|---|---|---|")
-        order = sorted((k for k in chosen if k[0] == scale_factor), key=lambda k: (k[3] != 0.1, k[3], k[1], k[2]))
+        order = sorted((k for k in chosen if k[0] == scale_factor and k[1] == pause),
+                       key=lambda k: (k[4] != 0.1, k[4], k[2], k[3]))
         for key in order:
-            _, route, readers, fold_ratio = key
+            _, _, route, readers, fold_ratio = key
             rows = chosen[key][1]
             queries = [1000 * float(r["elapsed_s"]) for r in rows if r["kind"] == route]
             commits = [1000 * float(r["elapsed_s"]) for r in rows if r["kind"] == "commit"]
@@ -5888,9 +5892,8 @@ def crossover_table(args):
     rows = [r for r in read_result_files_plain(args.files) if r["config"] in dict(CROSSOVER_KERNELS)]
     if not rows:
         return
-    # One table per run label and writer pause: the unpaced runs are a different experiment from the 200 ms ones
-    for sf, pause in sorted({(r["benchmark_notes"], r.get("writer_pause_ms", "")) for r in rows}):
-        sf_rows = [r for r in rows if r["benchmark_notes"] == sf and r.get("writer_pause_ms", "") == pause]
+    for sf in sorted({r["benchmark_notes"] for r in rows}):
+        sf_rows = [r for r in rows if r["benchmark_notes"] == sf]
         points = crossover_points(sf_rows)
         for shape, title in (("random_pairs", "k random pairs (one destination per source)"),
                              ("all_pairs", "k sources x 200 destinations each")):
