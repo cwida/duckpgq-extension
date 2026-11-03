@@ -5,8 +5,8 @@
 % re-audit on the frozen commit. Numbers provisional.
 
 Building the partitioned CSR costs 0.02 to 0.3\,s per query on our graphs (Section~\ref{sec:eval}), which is the
-whole cost of a single-pair query and a fifth of a 65\,536-pair one (Table~\ref{tab:random-pairs}). The remedy is to keep the CSR, and the place
-to keep it is an index. \texttt{CREATE INDEX knows\_csr ON knows USING CSR (src, dst)} asks \duckdb to maintain the
+whole cost of a single-pair query and a fifth of a 65\,536-pair one (Table~\ref{tab:random-pairs}). \rev{Keeping the CSR between queries removes that
+cost, and the structure \duckdb maintains over a table is an index.} \texttt{CREATE INDEX knows\_csr ON knows USING CSR (src, dst)} asks \duckdb to maintain the
 structure across queries, transactions, checkpoints and restarts, and its planner to use it when a path pattern
 matches the edge table. This section describes what \duckdb's index interface gives such a structure, what it
 withholds, and the design that follows from both.
@@ -20,8 +20,8 @@ and row ids of the table that produces the initial index; (2) \emph{append}, cal
 rows the transaction inserted, with their keys and row ids; (3) \emph{delete}, called the same way with the rows the
 transaction deleted;
 (4) \emph{serialize}, the index's bytes written into \duckdb's block manager at a checkpoint and into the write-ahead
-log, replayed after a restart; and (5) \emph{lookup}, the planner finding the index by table and index name. \duckdb
-serializes commits, so appends and deletes arrive in commit order, and each call runs under the index lock.
+log, replayed after a restart; and (5) \emph{lookup}, the planner finding the index by table and index name. \rev{Because \duckdb
+serializes commits, appends and deletes arrive in commit order, and each call runs under the index lock.}
 
 It withholds three things an index for traversals needs. The first is visibility. The calls carry row ids and keys,
 never the transaction or the commit that made the change, and a transaction cannot ask the index what it may see. An
@@ -29,16 +29,16 @@ ART index does not need that, because it returns row ids that the table scan fil
 probe at a time. A traversal that touches ten million edges cannot afford a version check per edge, and it never goes
 back to the table. The second is the past. \texttt{CanFetch(transaction, row)} answers whether a row is visible to a
 live transaction, and only to a live one, because \duckdb garbage collects row versions as soon as no active
-transaction can observe the earlier state, after which every row looks as if it had always been there. Nothing may be
-decided retroactively. The third is the vertex side. The index is attached to the edge table and learns about its
+transaction can observe the earlier state, \rev{after which every row looks as if it had always been there, and visibility cannot be
+decided after the fact.} The third is the vertex side. The index is attached to the edge table and learns about its
 rows; it never learns the row ids of the vertex table, and vertex row ids are not stable without an index on that
-table either. The index therefore identifies vertices by their key, which is what the \sqlpgq definition of the graph
-does anyway, and edges by their edge-table row id. Row ids are safe to store because \duckdb changes them only when it
+table either. The index therefore identifies vertices by their key, \rev{which is how the \sqlpgq definition of the graph
+identifies them,} and edges by their edge-table row id. Row ids are safe to store because \duckdb changes them only when it
 compacts a table at a checkpoint, and it compacts only tables whose indexes are all ARTs; with a CSR index present
-every row keeps its id until the index is dropped. There is one exception. A commit can fail after the index has
-logged its append, for example on a unique-key conflict, and \duckdb then reverts the append and gives the same row
-id to the next insert. The index sees the id appended a second time and marks the earlier entry dead, so no
-transaction sees it. \todo{Not tested: whether a checkpoint that drops a fully deleted trailing row group also hands
+every row keeps its id until the index is dropped. \rev{The one exception is a commit that fails after the index has
+logged its append, for example on a unique-key conflict; \duckdb then reverts the append and gives the same row id to
+the next insert. When the index sees the id appended a second time, it marks the earlier entry dead, and no
+transaction sees it.} \todo{Not tested: whether a checkpoint that drops a fully deleted trailing row group also hands
 its ids out again. If so, a reused id of an epoch row would bring the deleted edge back.}
 
 \subsection{Epochs, change groups and snapshots}
@@ -71,27 +71,27 @@ epoch. \rev{Every installed epoch has a \emph{generation}, its number in the ord
 log stores no commit identifier, transaction id or timestamp with an entry; what a transaction may see is
 decided later, by \duckdb, when the transaction reads the log. A \emph{snapshot} is what a transaction that runs a path query traverses: the epoch
 plus an overlay, which is a bitmap of suppressed epoch positions and a small adjacency of the inserted edges laid out
-in the same destination-range partitions as the epoch, so that the traversal explores an epoch partition and its
-companion in one step.
+\rev{in the same destination-range partitions as the epoch; the traversal explores an epoch partition and its
+companion in one step.}
 
-Visibility is decided by \duckdb, once per group. A group of inserts came from one commit of one transaction, so its
-rows are visible to a transaction either all or none; the transaction asks \texttt{CanFetch} about one row of the group and
+Visibility is decided by \duckdb, once per group. \rev{The inserts of one group came from one commit of one transaction, and
+its rows are visible to a transaction either all or none;} the transaction asks \texttt{CanFetch} about one row of the group and
 knows the answer for the whole group. A group of deletes applies when one row it deleted, whose insert the transaction
 sees, is no longer fetchable. \rev{Commits are serialized and groups are numbered in commit order. A transaction therefore sees every group up to
 some point of the log, except the groups of commits that failed, which no transaction sees, and the newest group it
-sees identifies its view.} The snapshot is therefore cacheable. The index
+sees identifies its view.} \rev{Because the newest group identifies the view, the snapshot can be cached.} The index
 keeps the last snapshot it built, keyed by the epoch, the newest visible group and a hash of the decisions made per
 row, because those rows are not covered by the newest group, and every transaction between two commits receives the
-same one. A transaction with uncommitted changes of its own gets a private CSR built from its own view of the
-table, a full build and not an overlay, because its view is its own and nothing it builds may be published. Building a
+same one. \rev{A transaction with uncommitted changes of its own gets a private CSR, a full build from its view of the
+table, because the log holds only committed changes and nothing such a transaction builds may be shared.} Building a
 snapshot costs one version check per group since the fold and one pass over the inserted edges to bucket them by
 destination range. A new tombstone is placed by a lookup from the keys it carries, through the dictionary, the
 destination's partition, the source's sparse row and the row id among its edges; in an undirected index the lookup
 also finds the mirrored edge, and both directions are suppressed. Only tombstones loaded with the index after a
-restart carry no keys and are placed by one parallel scan over the epoch's row ids. The version checks are paid even when the cached
-snapshot is returned, because they are what identifies it. Groups whose rows have all been deleted again, and the log entries loaded with the index after a
+restart carry no keys and are placed by one parallel scan over the epoch's row ids. \rev{The version checks are paid even when the cached
+snapshot is returned, because the cache key is computed from them.} Groups whose rows have all been deleted again, and the log entries loaded with the index after a
 restart, which carry no group, fall back to one check per row until the next fold. The per-row alternative, one version check per log entry, grew a single-source query at SF10 from 8 to 124\,ms as
-the pending operations accumulated (Section~\ref{sec:eval-updates}), and is why change groups exist. \todo{Pre-freeze
+the pending operations accumulated (Section~\ref{sec:eval-updates}); \rev{change groups avoid that cost.} \todo{Pre-freeze
 number; the frozen matrix has no per-row visibility switch.}
 
 Keys are resolved to dense ids when the group is appended, so that a snapshot can place inserted edges without a
@@ -108,8 +108,8 @@ visible to it on one thread, builds the partitioned CSR with the same parallel b
 result as the newest epoch; the log entries the new epoch contains are the ones visible at $b_f$. A fold is triggered
 explicitly through a function, or automatically, before its snapshot is built, by a transaction that finds the log
 entries the newest epoch does not account for more than a configurable fraction of the epoch, one tenth by default.
-The fold scans the table and builds the new epoch without holding the index; it takes the index only to check the
-trigger and the order of epochs and to install the epoch, so commits and other queries continue while it runs. Folds
+\rev{The scan and the build run without holding the index, which the fold takes only to check the trigger and the order
+of epochs and to install the epoch; commits and other queries continue while a fold runs.} Folds
 are serialized by a lock, and an automatic fold that finds another fold running does not wait for it; its
 transaction continues on the current epoch and log. A fold does nothing when the newest epoch is at least as new as
 its transaction, and epochs are therefore installed in the order of their bounds. Without the check, an older
@@ -123,8 +123,8 @@ retains the previous epoch until the next fold, two epochs in all, and serves ea
 whose bound does not exceed its own. The log cannot be compacted by re-evaluating visibility at $b_f$ after the fact, because the
 row versions that would answer the question are gone. Instead the folding transaction, while it is live, \rev{records in every
 log entry the generation of the first epoch that accounts for it}, and compaction drops the entries whose
-generation is at most the oldest retained epoch's. Until then an entry stays in the log for the older epoch, and a
-snapshot of the newer epoch skips it, so no edge is traversed twice. A transaction whose bound is older than every retained epoch, a long
+generation is at most the oldest retained epoch's. Until then an entry stays in the log for the older epoch, \rev{and a
+snapshot of the newer epoch skips it to avoid traversing an edge twice.} A transaction whose bound is older than every retained epoch, a long
 transaction that started before two folds, builds a private epoch from its own view of the table, as a
 transaction with uncommitted changes does.
 
@@ -132,9 +132,9 @@ transaction with uncommitted changes does.
 \label{sec:index-storage}
 
 At a checkpoint the newest epoch and the log entries it does not account for are written through \duckdb's index allocator as a sequence of
-one-block segments with a small manifest in the index's storage options. The write-ahead log carries the same
-serialized state in the record that creates the index, so an index created after the last checkpoint survives a
-restart with its epoch. A checkpoint at which the index has not changed since the previous one reuses the stored
+one-block segments with a small manifest in the index's storage options. \rev{The write-ahead log carries the same
+serialized state in the record that creates the index, and an index created after the last checkpoint
+survives a restart with its epoch.} A checkpoint at which the index has not changed since the previous one reuses the stored
 blocks instead of writing them again. Inserts and deletes that happened after the checkpoint are replayed through \texttt{Append}
 and \texttt{Delete} like any other index and become change groups like any commit.
 An index is loaded on its first use, not when the database opens or its table is bound. The loader reads the
@@ -148,9 +148,9 @@ price of the design.
 \subsection{Paths}
 \label{sec:index-paths}
 
-The epoch stores an edge-table row id per edge position and the log stores one per inserted edge, so a path
-reconstructed by the single-source traversal (Section~\ref{sec:results}) carries the row ids of its edges, including
-edges inserted by the transaction itself, and vertex keys for its vertices. \texttt{edges(p)} can therefore be
+\rev{Because the epoch stores an edge-table row id per edge position and the log stores one per inserted edge, a
+path reconstructed} by the single-source traversal (Section~\ref{sec:results}) carries the row ids of its edges, including
+edges inserted by the transaction itself, and vertex keys for its vertices. \texttt{edges(p)} can be
 joined back to the edge table for its properties, and \texttt{vertices(p)} to the vertex table by key, without the
 index knowing either table's schema.
 
@@ -171,8 +171,8 @@ visible to the transaction, since \texttt{Append} runs during the commit, before
 
 \rev{Two retained epochs make the argument harder. A fold installs epoch $E'$ with bound $b_f$, and the claim holds for
 $E'$ with $b_e := b_f$, because the fold records in each entry whether $E'$ accounts for it. An entry that $E'$
-contains is left out of $\Delta$ for readers of $E'$, so no edge is counted twice, and compaction drops
-an entry only once the oldest retained epoch accounts for it, so every retained epoch still finds the entries it
+contains is left out of $\Delta$ for readers of $E'$, so no edge is counted twice. Compaction drops
+an entry only once the oldest retained epoch accounts for it, and every retained epoch still finds the entries it
 needs. A logged row that $E'$ contains and that is deleted afterwards gets a stamp and a tombstone; readers of the
 older epoch remove it through the stamp, readers of $E'$ through the tombstone. Groups that are decided per row, the
 fully deleted ones and the entries loaded after a restart, enter the cache key through the hash of their decisions,
@@ -185,7 +185,7 @@ in commit order, is part of the interface an extension is promised. The other tw
 implementation, that a row id is reused only after its append was reverted and that \texttt{CanFetch} implements
 $\mathit{Vis}$; Section~\ref{sec:hooks} counts the missing guarantees among the interface's gaps. Two properties are
 ours: a reused id marks the reverted entry dead, so $\Delta$ contains no row of a failed commit, and folds install
-epochs in the order of their bounds, so a transaction is served from the newest epoch its bound allows.}
+epochs in the order of their bounds, and a transaction is always served from the newest epoch its bound allows.}
 
 \rev{We test the claim in two ways. In the concurrent runs every reader transaction answers its query twice, over the
 index and with a CSR built from the same transaction's view of the table, and the two answers must agree; the rc1
@@ -196,8 +196,8 @@ of the 191 commits. Fourteen regression test files cover the cases singled out a
 that fold in either order, a commit that fails after the index logged its append, deletes after a fold, deletes in
 an undirected index, transactions that differ only in a fully deleted group, and checkpoints and restarts.}
 
-What it does not
-cover is a vertex deleted while its edges remain. The source and destination of a pair come from the vertex tables,
+\rev{The argument does not
+cover a vertex deleted while its edges remain.} The source and destination of a pair come from the vertex tables,
 so a deleted source or destination yields no pair; an intermediate vertex deleted with its edges in place is still
 traversed, where the SQL rewrite would have dropped those edges through its join with the vertex table. We document
 this as a semantic difference of the index. \texttt{CREATE INDEX} rejects keys that are not
