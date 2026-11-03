@@ -85,25 +85,20 @@ public:
 
 public:
 	vector<uint8_t> worker_changed;
-	//! Shared with the scheduler: edges swept by the explore phases of this batch (the throughput clock of the
-	//! adaptive batch scheduler); null when nobody listens
-	atomic<idx_t> *edges_scanned = nullptr;
 	//! experimental_path_finding_operator_frontier_bitmap: skip inactive sources through the summary bitmap
 	bool use_frontier_bitmap = true;
-	//! Test the bitmap per source on dense levels too: set by the scheduler from the regime (memory bound: on,
-	//! SF100 1.2-1.6x; cache resident: off, SF10 10% overhead) unless the option fixes it
+	//! Test the bitmap per source on dense levels too: on when one working set no longer stays cache resident
+	//! (SF100 1.2-1.6x faster), off when it does (SF10: 10% overhead) unless the option fixes it
 	bool bitmap_filter = false;
-	//! Applies the option: -1 decides from the size of one working set (on when it exceeds a sixteenth of the grouped
-	//! batches budget, 32 MB by default: SF10's 14 MB stays off, SF100's 86 MB goes on; measured 27 Oct: the test
-	//! also pays for a single SF100 batch, so the total of the working sets is not the right measure)
+	//! Applies the option: -1 decides from the size of one working set (on when it exceeds
+	//! bitmap_filter_working_set, 32 MiB by default: SF10's 14 MB stays off, SF100's 41 MB goes on; measured 27 Oct:
+	//! the test also pays for a single SF100 batch, so the total of the working sets is not the right measure)
 	void SetBitmapFilter(const PathFindingSettings &settings) {
 		if (settings.frontier_bitmap_filter >= 0) {
 			bitmap_filter = settings.frontier_bitmap_filter > 0;
 			return;
 		}
-		auto budget = settings.grouped_batches_budget;
-		auto threshold = budget > 0 ? static_cast<double>(budget) / 16 : 32.0 * 1024 * 1024;
-		bitmap_filter = static_cast<double>(BFSWorkingSet::BytesFor(static_cast<idx_t>(v_size))) > threshold;
+		bitmap_filter = BFSWorkingSet::BytesFor(static_cast<idx_t>(v_size)) > settings.bitmap_filter_working_set;
 	}
 	//! experimental_path_finding_operator_visit_prefetch: visit lines prefetched this many sources ahead (0 off)
 	idx_t visit_prefetch = 8;

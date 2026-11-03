@@ -5,18 +5,11 @@ namespace duckdb {
 GroupedIterativeLengthBatches::GroupedIterativeLengthBatches(vector<shared_ptr<IterativeLengthState>> states_p,
                                                              ClientContext &context_p, idx_t v_size_p,
                                                              idx_t threads_p, idx_t partitions_p, idx_t graph_edges_p,
-                                                             idx_t initial_window_p, idx_t max_groups_p,
-                                                             bool adaptive_p, idx_t fixed_workers_p,
-                                                             idx_t oversubscription_p)
+                                                             idx_t window_p, idx_t fixed_workers_p,
+                                                             idx_t task_edges_p)
     : states(std::move(states_p)), context(context_p), v_size(v_size_p), threads(std::max<idx_t>(1, threads_p)),
       partitions(std::max<idx_t>(1, partitions_p)), graph_edges(std::max<idx_t>(1, graph_edges_p)),
-      adaptive(adaptive_p), fixed_workers(fixed_workers_p), oversubscription(std::max<idx_t>(1, oversubscription_p)) {
-	// The window never exceeds the threads, the batches, or the groups whose working sets fit the working-set cap
-	max_groups = std::max<idx_t>(1, std::min<idx_t>(std::min<idx_t>(states.size(), threads), max_groups_p));
-	window = std::max<idx_t>(1, std::min<idx_t>(initial_window_p, max_groups));
-	converged = !adaptive || window == max_groups;
-	window_start = std::chrono::steady_clock::now();
-	trace = "window=" + std::to_string(window);
+      window(std::max<idx_t>(1, window_p)), fixed_workers(fixed_workers_p), task_edges(task_edges_p) {
 }
 
 shared_ptr<IterativeLengthState> GroupedIterativeLengthBatches::Claim() {
@@ -44,78 +37,26 @@ void GroupedIterativeLengthBatches::ReleaseWorkingSet(shared_ptr<BFSWorkingSet> 
 	pool.push_back(std::move(set));
 }
 
-idx_t GroupedIterativeLengthBatches::SubRangeHint() {
+idx_t GroupedIterativeLengthBatches::SubRangeHint() const {
 	// Parallelism a query lacks when it has few batches on coarse partitions: threads / (partitions x batches)
 	auto batch_slots = std::max<idx_t>(1, std::min<idx_t>(states.size(), threads));
 	return std::max<idx_t>(1, (threads + partitions * batch_slots - 1) / (partitions * batch_slots));
 }
 
-idx_t GroupedIterativeLengthBatches::WorkersPerGroup() {
-	lock_guard<mutex> guard(lock);
-	idx_t workers = fixed_workers > 0 ? fixed_workers : std::max<idx_t>(1, threads / std::max<idx_t>(1, window));
-	// Not capped by the partition count: a batch with more workers than partitions splits the partitions into
+idx_t GroupedIterativeLengthBatches::WorkersPerGroup() const {
+	if (fixed_workers > 0) {
+		return std::max<idx_t>(1, std::min<idx_t>(fixed_workers, threads));
+	}
+	// A group's share of the threads, each split into one task per task_edges edges of the graph: on a large graph
+	// the level tasks of all groups pool in the executor, so a core waiting at one group's level barrier runs
+	// another group's task (SF100 and SF300: 65536 to 4M edges per task within 2% at 32 groups, the share alone
+	// 5-28% slower at SF300; at 8 and 4 groups 32 tasks beat 5-14 by 7-13%), while a small graph keeps its share
+	// (SF10, 1.8M edges: one task per group at 32 groups, 1.5-1.8x faster than 2-29 tasks). Measured 3 Nov.
+	idx_t share = std::max<idx_t>(1, threads / window);
+	idx_t splits = task_edges > 0 ? (graph_edges + task_edges - 1) / task_edges : 1;
+	// Not capped by the partition count: a batch with more tasks than partitions splits the partitions into
 	// destination sub-ranges (IterativeLengthState::Start), which is what keeps coarse partitions parallel
-	return std::max<idx_t>(1, std::min<idx_t>(workers * oversubscription, threads));
-}
-
-void GroupedIterativeLengthBatches::Decide(idx_t edges_now, std::chrono::steady_clock::time_point now) {
-	// A decision waits until every live group has finished about one batch under the current window and the window
-	// has swept the graph a few times, so neither a light level nor the start-up of freshly spawned groups decides
-	if (converged || batches_done_in_window < window || edges_now - window_start_edges < 4 * graph_edges) {
-		return;
-	}
-	auto seconds = std::chrono::duration<double>(now - window_start).count();
-	if (seconds <= 0) {
-		return;
-	}
-	double rate = static_cast<double>(edges_now - window_start_edges) / seconds;
-	rate_at.emplace_back(window, rate);
-	trace += " rate=" + std::to_string(static_cast<idx_t>(rate / 1000000)) + "M/s";
-	double previous_rate = 0;
-	for (auto &entry : rate_at) {
-		if (entry.first == previous_window) {
-			previous_rate = entry.second;
-		}
-	}
-	if (previous_window != 0 && rate < 0.9 * previous_rate) {
-		// The last doubling hurt: step back and stay
-		window = previous_window;
-		converged = true;
-		trace += " < back to window=" + std::to_string(window);
-	} else if (window < max_groups && (previous_window == 0 || rate > 1.1 * previous_rate)) {
-		previous_window = window;
-		window = std::min<idx_t>(max_groups, window * 2);
-		trace += " > window=" + std::to_string(window);
-	} else {
-		converged = true;
-		trace += " = hold";
-	}
-	window_start = now;
-	window_start_edges = edges_now;
-	batches_done_in_window = 0;
-}
-
-bool GroupedIterativeLengthBatches::OnBatchDone(idx_t &spawn_count) {
-	lock_guard<mutex> guard(lock);
-	spawn_count = 0;
-	batches_done_in_window++;
-	Decide(edges_scanned.load(std::memory_order_relaxed), std::chrono::steady_clock::now());
-	auto remaining = next_batch.load() < states.size() ? states.size() - next_batch.load() : 0;
-	if (remaining == 0 || live_groups > window) {
-		// Nothing left, or the window shrank: this group ends (NoteGroupEnded runs when its kernel finishes)
-		return false;
-	}
-	// This group continues; others are spawned up to the window, never more than the batches left to claim
-	auto wanted = std::min<idx_t>(window, remaining);
-	if (wanted > live_groups) {
-		spawn_count = wanted - live_groups;
-		live_groups += spawn_count;
-	}
-	return true;
-}
-
-string GroupedIterativeLengthBatches::Trace() const {
-	return trace;
+	return std::max<idx_t>(1, std::min<idx_t>(share * splits, threads));
 }
 
 GroupedIterativeLengthKernel::GroupedIterativeLengthKernel(shared_ptr<GroupedIterativeLengthBatches> batches_p)
@@ -135,7 +76,6 @@ bool GroupedIterativeLengthKernel::StartNextBatch() {
 		current->AttachWorkingSet(working_set);
 		current->SetWorkerCount(workers);
 		current->SetTimingLabel("bfs_batch_grouped");
-		current->edges_scanned = &batches->edges_scanned;
 		current->sub_range_hint = batches->SubRangeHint();
 		if (current->Start()) {
 			// The batch may have fewer tasks than the group's workers (partitions x sub-ranges)
@@ -164,10 +104,7 @@ bool GroupedIterativeLengthKernel::AdvancePhase() {
 	}
 	current->Finished();
 	current.reset();
-	idx_t spawn_count = 0;
-	bool continues = batches->OnBatchDone(spawn_count);
-	pending_spawns += spawn_count;
-	return continues && StartNextBatch();
+	return StartNextBatch();
 }
 
 void GroupedIterativeLengthKernel::Finished() {
@@ -177,14 +114,6 @@ void GroupedIterativeLengthKernel::Finished() {
 		current.reset();
 	}
 	batches->ReleaseWorkingSet(std::move(working_set));
-	batches->NoteGroupEnded();
-}
-
-void GroupedIterativeLengthKernel::CollectSpawned(vector<shared_ptr<PhasedKernel>> &spawned) {
-	for (idx_t i = 0; i < pending_spawns; i++) {
-		spawned.push_back(make_shared_ptr<GroupedIterativeLengthKernel>(batches));
-	}
-	pending_spawns = 0;
 }
 
 } // namespace duckdb

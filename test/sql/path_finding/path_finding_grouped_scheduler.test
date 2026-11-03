@@ -1,5 +1,5 @@
-# name: test/sql/path_finding/path_finding_adaptive_scheduler.test
-# description: the MS-BFS batch scheduler ramps its window of worker groups on measured throughput and records the trace; results equal the per-batch schedule
+# name: test/sql/path_finding/path_finding_grouped_scheduler.test
+# description: the MS-BFS batch scheduler runs min(batches, threads) worker groups with task_edges-sized level tasks and records them; results equal the per-batch schedule
 # group: [path_finding]
 
 require duckpgq
@@ -42,7 +42,7 @@ true
 statement ok
 SET experimental_path_finding_operator_grouped_batches = true;
 
-# Cache-resident regime: the window starts at one group per batch
+# Default: one worker group per batch (10000 pairs are five batches), tasks per group by the task_edges rule
 query I
 SELECT (SELECT c FROM reference) = count(len) AND (SELECT s FROM reference) = sum(len) FROM (
     SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 300::BIGINT, 900::BIGINT, 'graph:sched') AS len FROM pairs, pe);
@@ -50,13 +50,13 @@ SELECT (SELECT c FROM reference) = count(len) AND (SELECT s FROM reference) = su
 true
 
 query I
-SELECT s LIKE '%scheduling=grouped_adaptive%' AND s LIKE '%regime=cache_resident%' AND s LIKE '%window_trace=window=%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+SELECT s LIKE '%scheduling=grouped;%' AND s LIKE '%groups=5;%' AND s LIKE '%task_edges=4194304;%' AND s LIKE '%workers_per_batch=%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
 ----
 true
 
-# Forced ramp (no budget): starts at four groups, pooled tasks, same answer
+# Smaller tasks (one per 100 edges of the 900): same answer
 statement ok
-SET experimental_path_finding_operator_grouped_batches_budget = 0;
+SET experimental_path_finding_operator_task_edges = 100;
 
 query I
 SELECT (SELECT c FROM reference) = count(len) AND (SELECT s FROM reference) = sum(len) FROM (
@@ -65,14 +65,11 @@ SELECT (SELECT c FROM reference) = count(len) AND (SELECT s FROM reference) = su
 true
 
 query I
-SELECT s LIKE '%regime=memory_bound%' AND s LIKE '%groups=5%' AND s LIKE '%window_trace=window=5%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+SELECT s LIKE '%scheduling=grouped;%' AND s LIKE '%groups=5;%' AND s LIKE '%task_edges=100;%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
 ----
 true
 
-# A fixed shape through the options (own threads per group, so the worker count is exactly the setting)
-statement ok
-SET experimental_path_finding_operator_batch_oversubscription = 1;
-
+# A fixed shape through the options: two groups of one task each
 statement ok
 SET experimental_path_finding_operator_max_concurrent_batches = 2;
 
@@ -86,6 +83,6 @@ SELECT (SELECT c FROM reference) = count(len) AND (SELECT s FROM reference) = su
 true
 
 query I
-SELECT s LIKE '%scheduling=grouped;%' AND s LIKE '%groups=2%' AND s LIKE '%workers_per_batch=1%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+SELECT s LIKE '%scheduling=grouped;%' AND s LIKE '%groups=2;%' AND s LIKE '%workers_per_batch=1;%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
 ----
 true
