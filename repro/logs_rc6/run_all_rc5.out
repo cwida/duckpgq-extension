@@ -1,0 +1,5 @@
+[run ] fixed_costs_sf10: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --scale-factor 10 --threads 32 --repeats 3 --notes fixed costs SF10 repro 8286e9ea dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] fixed_costs_sf10 in 131 s
+[run ] fixed_costs_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --scale-factor 100 --threads 32 --repeats 3 --notes fixed costs SF100 repro 8286e9ea dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] fixed_costs_sf100 in 1236 s
+[run ] fixed_costs_sf300: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --scale-factor 300 --threads 32 --repeats 3 --notes fixed costs SF300 repro 8286e9ea dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com

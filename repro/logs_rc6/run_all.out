@@ -1,0 +1,5 @@
+[skip] fixed_costs_sf10 (done)
+[skip] fixed_costs_sf100 (done)
+[run ] fixed_costs_sf300: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --scale-factor 300 --threads 32 --repeats 3 --notes fixed costs SF300 repro 1ca3f271 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] fixed_costs_sf300 in 3784 s
+[run ] sweep_pairs_sf10: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --notes W27 sweep SF10 repro 1ca3f271 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
