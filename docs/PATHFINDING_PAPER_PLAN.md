@@ -1309,3 +1309,17 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   The working-set cap did its job here: one lane per pair on cit-Patents k = 1024 x 200 reached 22.1 GB of working
   sets (cap 24.6 GB), on graph500-24 k = 256 x 200 24.4 GB with a 30.9 GiB process peak, and k = 1024 x 200 did not
   finish within the timeout; per-source and deduplicated lanes stayed at 109 MB and 1.6-3.3 GB.
+- 3 Nov: lane width measured properly (W33 had only ever run the 256 build, at SF10 and SF100, on the 27 Oct kernel).
+  Three extension builds of commit `dff0c0eb` (`-DDUCKPGQ_LANE_LIMIT=128|256|512`, kept in
+  `data/ldbc-pathfinding/builds/lanes<w>/duckpgq.duckdb_extension`, selected through `DUCKPGQ_EXTENSION`), index
+  route, 32 threads, median of 3. SF300: random pairs 65536 10.55 / 9.62 / 11.67 s (128 / 256 / 512 lanes), 16384
+  2.80 / 2.62 / 3.15 s, 2048 385 / 356 / 416 ms; sources x all on the lanes 1024 742 / 777 / 965 ms, 128 195 / 222 /
+  258 ms; process peak at 65536 pairs 3.3 / 6.1 / 8.6 GiB. SF100: 65536 pairs 3.37 / 3.23 / 3.63 s, 16384 949 / 866
+  / 991 ms, 1024 sources 337 / 390 / 439 ms. 256 is fastest on random pairs at both scales (11-21% ahead of 512 at
+  SF300) and halves 512's peak memory; 128 is fastest on reach (23% ahead of 512 at 1024 sources) and leanest, 5-10%
+  behind 256 on pairs; 512 is slowest everywhere on the lane kernel. Vector width is a second-order part of it (512
+  lanes are two AVX2 instructions per edge on the x86-64-v3 build, 256 one, 128 one SSE instruction): if it were the
+  lever, 128 would gain nothing over 256, and it does on reach. The lever is bytes per vertex (3 x lanes / 8 per
+  working set) in a memory-bound sweep. Recommendation: 256 as the default (the width every probe since 27 Oct ran
+  with; the paper's 512 lanes / 192 B per vertex / 512-bit or become 256 / 96 B / one 256-bit or); 128 if memory
+  under concurrency should lead. Decision open (the author's); the active build is at 512 until then.
