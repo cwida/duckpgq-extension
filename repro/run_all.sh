@@ -58,6 +58,7 @@ fi
 if [ "$what" = all ] || [ "$what" = client ]; then
   # Client-side concurrency for the per-query baselines (SF10 and SF100 only; SF300 times out).
   for sf in 10 100; do
+    has_sf "$sf" || continue
     step "sweep_pairs_sf${sf}_client${CLIENT_THREADS}" ${HARNESS} sweep-pairs --scale-factor "$sf" "${COMMON[@]}" \
       --client-threads "${CLIENT_THREADS}" --systems memgraph falkordb kuzu --notes "W27 SF${sf} client threads ${CLIENT_THREADS} ${NOTE}"
     step "ldbc_queries_sf${sf}_client${CLIENT_THREADS}" ${HARNESS} ldbc-queries --scale-factor "$sf" "${COMMON[@]}" \
@@ -69,6 +70,7 @@ if [ "$what" = all ] || [ "$what" = native ]; then
   # DuckDB-native baselines: WITH RECURSIVE ... USING KEY and the CIDR 2023 scalar UDF route, next to the index route
   # for the agreement check (SF10 and SF100; both time out early on the large points)
   for sf in 10 100; do
+    has_sf "$sf" || continue
     step "native_baselines_sf${sf}" ${HARNESS} sweep-pairs --scale-factor "$sf" "${COMMON[@]}" --systems duckpgq_index duckpgq_recursive duckpgq_scalar --notes "native baselines SF${sf} ${NOTE}"
   done
 fi
@@ -76,6 +78,7 @@ fi
 if [ "$what" = all ] || [ "$what" = microbench ]; then
   # W19: one mechanism switched off at a time on the DuckPGQ routes (docs/MICROBENCHMARK_SWITCHES.md)
   for sf in 10 100; do
+    has_sf "$sf" || continue
     step "microbench_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs all --notes "W19 microbenchmark SF${sf} ${NOTE}"
     step "microbench_memory_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs memory --shapes random --pair-counts 2048 16384 65536 --notes "W31 explore memory traffic SF${sf} ${NOTE}"
     step "microbench_partitions_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs partitions --shapes random multi_source --pair-counts 128 2048 16384 65536 --source-counts 1 1024 --notes "W32 partition geometry SF${sf} ${NOTE}"
@@ -84,6 +87,7 @@ if [ "$what" = all ] || [ "$what" = microbench ]; then
   # Section 3 of the paper: one pair on the lane kernel vs the per-source kernel (1 pair, no_source_grouping),
   # 20 sources x 200 destinations with and without source grouping, paths against lengths
   for sf in 10 100; do
+    has_sf "$sf" || continue
     step "microbench_section3_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs section3 --shapes random all_pairs --pair-counts 1 2048 65536 --source-count 20 --target-count 200 --notes "Section 3 switches SF${sf} ${NOTE}"
     # Section 3 crossover (2 Nov): where the single-source traversal stops winning, by k distinct sources, for k
     # random pairs and for k sources x 200 destinations, the three kernels forced (index route; median and the
