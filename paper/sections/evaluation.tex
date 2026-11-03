@@ -48,7 +48,7 @@ path lengths, which the harness checks.
   SF300. Y: seconds per query, log scale, mean of three runs at 32 threads; x: $n$ from 1 to 65\,536. Lines: \duckpgq
   over the CSR index, \duckpgq building the CSR inside the query, Neo4j and Kuzu in their fastest formulation; the Kuzu
   line at SF10 and SF100 is the run with the pairs split over 32 connections, at SF300 the single-connection run. A
-  triangle at the top marks a run over the 600\,s limit. \todo{Plot one configuration consistently, or keep this note.} \duckpgq shares one traversal among 512 pairs; Neo4j and
+  triangle at the top marks a run over the 600\,s limit. \todo{Plot one configuration consistently, or keep this note.} \duckpgq shares one traversal among up to 256 sources; Neo4j and
   Kuzu run one search per pair.}
   \label{fig:random-pairs}
 \end{figure*}
@@ -77,7 +77,7 @@ and that cost is the whole difference between the two \duckpgq lines at the left
 The picture changes with the number of pairs, for a reason of design. Every native system answers a list of pairs one
 search at a time. Kuzu runs its recursive join once per pair, Neo4j, FalkorDB and Memgraph call \texttt{shortestPath}
 or a bounded BFS once per pair, and their time grows with $n$; Neo4j's parallel runtime runs those searches side by
-side, and the others run them one after the other. The operator shares one traversal among 512 pairs, and its time
+side, and the others run them one after the other. The operator shares one traversal among up to 256 sources \todo{rc1 ran 512 lanes; the rerun runs 256}, and its time
 grows by a factor of 110 from one pair to 65\,536 pairs at SF10 while the pair count grows by 65\,536. At 1024 pairs
 on SF10 the index route takes 75\,ms, Neo4j 671\,ms, Kuzu 5.1\,s, FalkorDB 5.8\,s and Memgraph 39\,s. At 65\,536
 pairs on SF100 the index answers in 3.5\,s, Neo4j in 155\,s and Kuzu over 32 connections in 169\,s
@@ -92,7 +92,7 @@ systems stay nearly flat.
   \caption{The same runs as Figures~\ref{fig:random-pairs} and~\ref{fig:sources-all} as throughput. Top: random
   pairs answered per second against $n$ pairs per query; bottom: (source, person) distances produced per second
   against $k$ sources per query. Log y, 32 threads, SF10, SF100 and SF300 from left to right; a hollow triangle is an
-  upper bound for a run over 600\,s. \duckpgq's throughput rises with the number of pairs, because one traversal serves up to 512 sources; a system that searches
+  upper bound for a run over 600\,s. \duckpgq's throughput rises with the number of pairs, because one traversal serves up to 256 sources; a system that searches
   once per pair has nearly the same throughput at every $n$.}
   \label{fig:throughput}
 \end{figure*}
@@ -253,7 +253,7 @@ index (one pair 0.11 to 0.01\,s on the 8M-edge graph);
 (4) plus per-phase events instead of barriers (SF300 build route sssp 0.39 to 0.30\,s; concurrent readers);
 (5) plus lanes per source with destination sets (BI19 over the index, SF300: 30.6 to 1.6\,s, peak memory 43.8 to
 4.7\,GiB);
-(6) plus worker groups for the multi-source batches; rc1 microbenchmark, 65\,536 random pairs over the index, one
+(6) plus the scheduler that decides how many multi-source batches are in progress; rc1 microbenchmark, 65\,536 random pairs over the index, one
 batch at a time on all 32 threads against the default: 4.9 against 0.51\,s at SF10, 32 against 3.5\,s at SF100,
 50 against 10.3\,s at SF300;
 (7) plus the CSR index (the build disappears: one pair 23 to 4\,ms at SF10);

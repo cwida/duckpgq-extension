@@ -51,4 +51,4 @@ register, and keeps for each vertex a bit set of the searches that have seen it 
 frontier it is on. Relaxing an edge $u \to v$ becomes $\mathit{next}[v] \mathrel{|}= \mathit{visit}[u]$, one read and one write
 of $w$ bits for all $w$ searches at once, and a search terminates when its destination's bit is set. Its cost per
 level is a sweep over all vertices whose visit bits are non-zero, which is cheap per search when many searches are
-live and expensive when one is. \duckpgq runs 512 lanes per batch, the width of eight 64-bit words.
+live and expensive when one is. \duckpgq runs 256 lanes per batch, the width of one AVX2 register.

@@ -37,7 +37,7 @@ made earlier, at bind time, by the rewrite, which takes the index whenever one e
   \addlinespace[2pt]
   logical and physical operator & sink for pairs and edges, source for results, own events and tasks & a cardinality, but no cost, and join ordering treats the operator as opaque; no task groups in the scheduler \\
   \addlinespace[2pt]
-  index type & build, append and delete callbacks; serialization into the block manager; WAL replay & rows but not transactions; no visibility at past points in time; no scan interface, so the operator finds the index in the catalog by name; no tasks for index work, so its build, fold and load start threads of their own \\
+  index type & build, append and delete callbacks; serialization into the block manager; WAL replay & rows but not transactions; no visibility at past points in time; \rev{stable row ids and \texttt{CanFetch} are implementation behaviour, not guarantees}; no scan interface, so the operator finds the index in the catalog by name; no tasks for index work, so its build, fold and load start threads of their own \\
   \addlinespace[2pt]
   client context state & per-connection registry of property graphs and operator state & -- \\
   \addlinespace[2pt]
@@ -67,12 +67,13 @@ time, the edge count from the table statistics and the log length from the index
 source. Up to 16 distinct sources run on the single-source traversal, and more run as batches with one lane per
 source; paths and reach always use the single-source traversal. The two costs scale differently. A single-source
 search costs the part of the graph it reaches before its last destination is found, once per source, and holds three
-arrays per vertex while it runs. A batch costs a dense sweep over the partitions per level, shared by up to 512 lanes,
-plus sparse levels that touch only the live vertices, and one working set of 192 bytes per vertex. The batches
+arrays per vertex while it runs. A batch costs a dense sweep over the partitions per level, shared by up to 256 lanes,
+plus sparse levels that touch only the live vertices, and one working set of 96 bytes per vertex. The batches
 therefore win when there are many sources, which is why BI19, 1.4\,K sources with about 1.7\,K destinations each,
 became 30 times faster at SF300. They lose for a handful of sources: 20 sources with 200 destinations each at SF10
 take 16\,ms as one batch and 13\,ms as single-source searches, and the order reverses at SF100. The threshold of 16
-sits near that crossover on LDBC, but nothing in it depends on the graph. What it cannot see is how far each search
+sits near that crossover on LDBC, but the crossover moves with the graph, from 4 sources on datagen-8\_4-fb to 256
+on cit-Patents. What it cannot see is how far each search
 runs. An unreachable pair searches the whole component of its source, a reachable one stops early, and about two
 thirds of the random pairs are unreachable in the directed graph. A cost model needs an estimate of that reach, for
 example from the degree of the sources and the number of levels a search takes on the graph, which the index could
