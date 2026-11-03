@@ -1323,3 +1323,16 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   working set) in a memory-bound sweep. Recommendation: 256 as the default (the width every probe since 27 Oct ran
   with; the paper's 512 lanes / 192 B per vertex / 512-bit or become 256 / 96 B / one 256-bit or); 128 if memory
   under concurrency should lead. Decision open (the author's); the active build is at 512 until then.
+- 3 Nov (2): lane width 256 is the default (`b2f6043c`; the author's decision: the right trade between memory and
+  speed); the build is reconfigured to 256, all 101 test files pass. For the paper: 256 lanes, 96 B per vertex per
+  working set, one 256-bit or per edge on the x86-64-v3 build (the SIMD sentence). Two things found on the way:
+  (1) the SF300 `benchmark_pairs_65536` table had not been regenerated since the edge-aware sampling of 29 Oct (the
+  rc6 run stopped before its SF300 sweep), so every 65536-pair probe of SF300 up to 2 Nov ran on the old uniform
+  sample (23202 reachable pairs, 8.8 s at 256 lanes); the 3 Nov lane-width runs rebuilt it (31747 reachable, 9.6 s at
+  256 lanes, every kernel and the build route agree). The sampling is deterministic (row_number over rowid); rc9
+  regenerates every table, so its numbers are comparable among themselves, not to the probes. (2) Follow-ups:
+  `distinct_src` in the strategy string is a HyperLogLog estimate and reported 76718 for 65536 distinct sources
+  (17% high; it feeds the source-group ratio, where the exact group count is used anyway); a pair whose vertex id
+  exceeds the vertex count on the build route fails with an internal cast assertion instead of an input error.
+  Tag `eval-freeze-rc9` at `b2f6043c` + this entry; the stale rc6 markers moved to `repro/logs_rc6/`; the sweep stays
+  on hold until the author says go. Open for the author: the few-sources rule (default 16 kept for rc9).
