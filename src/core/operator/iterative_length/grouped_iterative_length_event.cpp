@@ -5,12 +5,14 @@ namespace duckdb {
 GroupedIterativeLengthBatches::GroupedIterativeLengthBatches(vector<shared_ptr<IterativeLengthState>> states_p,
                                                              ClientContext &context_p, idx_t v_size_p,
                                                              idx_t threads_p, idx_t partitions_p, idx_t graph_edges_p,
-                                                             idx_t initial_window_p, bool adaptive_p,
-                                                             idx_t fixed_workers_p, idx_t oversubscription_p)
+                                                             idx_t initial_window_p, idx_t max_groups_p,
+                                                             bool adaptive_p, idx_t fixed_workers_p,
+                                                             idx_t oversubscription_p)
     : states(std::move(states_p)), context(context_p), v_size(v_size_p), threads(std::max<idx_t>(1, threads_p)),
       partitions(std::max<idx_t>(1, partitions_p)), graph_edges(std::max<idx_t>(1, graph_edges_p)),
       adaptive(adaptive_p), fixed_workers(fixed_workers_p), oversubscription(std::max<idx_t>(1, oversubscription_p)) {
-	max_groups = std::max<idx_t>(1, std::min<idx_t>(states.size(), threads));
+	// The window never exceeds the threads, the batches, or the groups whose working sets fit the working-set cap
+	max_groups = std::max<idx_t>(1, std::min<idx_t>(std::min<idx_t>(states.size(), threads), max_groups_p));
 	window = std::max<idx_t>(1, std::min<idx_t>(initial_window_p, max_groups));
 	converged = !adaptive || window == max_groups;
 	window_start = std::chrono::steady_clock::now();

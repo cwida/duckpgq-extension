@@ -513,14 +513,19 @@ public:
 		arrays_allocated = false;
 	}
 
-	//! REACH: every (vertex, distance) the source reached, ascending by vertex, valid after the search ended; 8 bytes
-	//! per entry (1024 sources x all at SF300 reach 530M vertices: 4.2 GB instead of 9.8 GB of distance arrays)
-	struct ReachedEntry {
-		uint32_t vertex;
-		int32_t distance;
-	};
+	//! REACH: every (vertex, distance) the source reached, valid after the search ended; 8 bytes per entry (1024
+	//! sources x all at SF300 reach 530M vertices: 4.2 GB instead of 9.8 GB of distance arrays). The order of the
+	//! entries is unspecified: the per-source search extracts them ascending by vertex, a reach lane in level order
+	//! per check-phase worker (ReachLaneWaveState); the scatter (GetReachData) emits them by position and the output
+	//! rows carry no order
 	const vector<ReachedEntry> &Reached() const {
 		return reached;
+	}
+
+	//! REACH on the lane kernel: the wave hands the lane's entries over when it ends (the group has no arrays)
+	void SetReached(vector<ReachedEntry> entries) {
+		reached = std::move(entries);
+		results_extracted = true;
 	}
 
 	//! Frees the extracted results once the scatter has emitted them (REACH mode)
@@ -1206,8 +1211,8 @@ bool ShouldUseGroupedIterativeLengthBatches(PathFindingGlobalSinkState &gstate, 
 bool ShouldUseSourceGroupedIterativeLength(PathFindingGlobalSinkState &gstate, ClientContext &context) {
 	if (gstate.mode == PathFindingOperatorMode::SHORTEST_PATH ||
 	    gstate.mode == PathFindingOperatorMode::REACH) {
-		// Paths need parent pointers per vertex, which only the per-source kernel keeps; reach emits each
-		// group's whole distance array
+		// Paths need parent pointers per vertex, which only the per-source kernel keeps; reach emits what each
+		// source group reaches (per-source searches, or lane waves beyond the few-sources limit)
 		return true;
 	}
 	auto ratio = GetPathFindingSourceGroupRatio(context);
@@ -1344,7 +1349,7 @@ public:
 		return false; // one wave per state
 	}
 
-private:
+protected:
 	//! The lane kernel is built around a chunk of pairs; a wave's chunk holds one row per lane (its source twice)
 	static shared_ptr<PathFindingBatch> MakeLaneBatch(const vector<shared_ptr<SourceGroupedIterativeLengthState>> &groups,
 	                                                  ClientContext &context) {
@@ -1363,6 +1368,86 @@ private:
 	vector<shared_ptr<SourceGroupedIterativeLengthState>> groups;
 };
 
+//! The reach mode (sources x all) as one lane wave: lane i is source group i with no destination list; it stays
+//! active until a level reaches nothing new or the depth bound is hit. The check phase records every newly reached
+//! (vertex, level) of every lane into the worker's buffers (IterativeLengthState::reach_recorder), and the COLLECT
+//! phase at the end of the wave hands every lane its entries in parallel: at SF300 1024 sources reach 530M vertices,
+//! so nothing per entry runs in the serial step. The result equals the per-source route's: the source itself at
+//! distance 0, levels 1..max_depth, an out-of-range source reaching nothing.
+class ReachLaneWaveState : public LaneWaveState {
+public:
+	ReachLaneWaveState(vector<shared_ptr<SourceGroupedIterativeLengthState>> groups_p,
+	                   std::vector<shared_ptr<LocalCSR>> &local_csrs_p, idx_t num_threads_p, ClientContext &context_p,
+	                   int64_t vsize_p, const PathFindingSettings &settings)
+	    : LaneWaveState(std::move(groups_p), local_csrs_p, num_threads_p, context_p, vsize_p, settings) {
+		reach_recorder = make_uniq<LaneReachRecorder>();
+		SetTimingLabel("bfs_reach_wave");
+	}
+
+	void AssignLanes() override {
+		seen_mask.set();
+		for (idx_t lane = 0; lane < LANE_LIMIT; lane++) {
+			lane_to_num[lane] = -1;
+			lane_active[lane] = false;
+		}
+		for (idx_t lane = 0; lane < groups.size() && lane < LANE_LIMIT; lane++) {
+			if (!IsVertexInRange(groups[lane]->source)) {
+				continue; // reaches nothing, as the per-source search (Initialize returns before the source)
+			}
+			lane_to_num[lane] = NumericCast<int64_t>(lane);
+			lane_active[lane] = true;
+			active++;
+			seen_mask[lane] = false;
+		}
+		started_searches = pairs->size();
+	}
+
+	void MarkLaneSources() override {
+		LaneWaveState::MarkLaneSources();
+		// The source is reached at distance 0 (recorded at collect time); seen keeps a cycle from reporting it again
+		for (idx_t lane = 0; lane < groups.size() && lane < LANE_LIMIT; lane++) {
+			if (lane_active[lane]) {
+				seen[groups[lane]->source][lane] = true;
+			}
+		}
+	}
+
+	void DetectReached() override {
+		// A lane that reached nothing new at this level has no frontier left: done
+		auto touched = reach_recorder->TakeTouched();
+		for (idx_t lane = 0; lane < groups.size() && lane < LANE_LIMIT; lane++) {
+			if (lane_active[lane] && !touched[lane]) {
+				lane_active[lane] = false;
+				lane_to_num[lane] = -1;
+				active--;
+			}
+		}
+		if (active == 0 || DepthBoundReached(iter)) {
+			change = false;
+		}
+		iter++;
+	}
+
+	bool StartCollect() override {
+		return !groups.empty();
+	}
+
+	//! Lanes worker_id, worker_id + workers, ...: the source at distance 0, then the workers' recorded entries
+	void RunCollect(idx_t worker_id) override {
+		auto workers = WorkerCount();
+		for (idx_t lane = worker_id; lane < groups.size() && lane < LANE_LIMIT; lane += workers) {
+			auto &group = *groups[lane];
+			vector<ReachedEntry> entries;
+			if (IsVertexInRange(group.source)) {
+				entries.reserve(reach_recorder->CountOf(lane) + 1);
+				entries.push_back({NumericCast<uint32_t>(group.source), 0});
+				reach_recorder->Drain(lane, entries);
+			}
+			group.SetReached(std::move(entries));
+		}
+	}
+};
+
 //! Worker-group events (GroupedIterativeLengthKernel) over lane-kernel states: the MS-BFS batches of a pair list or
 //! the lane waves of a source-grouped query (29 Oct: waves used to start all at once as independent events, each
 //! with its own working set and a task per thread; through the controller their memory and tasks are bounded like
@@ -1377,9 +1462,12 @@ void AppendGroupedKernelEvents(PathFindingGlobalSinkState &gstate, vector<shared
 	bool adaptive = configured_groups <= 0;
 	// Working sets that fit the budget start wide (one group per batch, up to the threads: the cache-resident
 	// regime of SF10, where every doubling pays); larger ones start at four groups and ramp on measured throughput
-	auto max_groups = std::max<idx_t>(1, std::min<idx_t>(states.size(), threads));
-	auto working_sets = static_cast<double>(max_groups) *
-	                    static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
+	// The working-set cap (a quarter of memory_limit unless set) bounds the live groups, the wide start included:
+	// on graph500-24 one working set is 1.7 GB, so 32 groups would be 54 GB before the first measurement
+	auto working_set_bytes = static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
+	auto max_groups = gstate.settings.CappedCount(working_set_bytes, std::max<idx_t>(1, std::min<idx_t>(states.size(), threads)));
+	auto working_sets = static_cast<double>(max_groups) * working_set_bytes;
+	// The cache-regime threshold (grouped_batches_budget): working sets that fit it start wide
 	auto budget = GetPathFindingGroupedBatchesBudget(context);
 	bool start_wide = budget > 0 && working_sets <= static_cast<double>(budget);
 	// The ramp starts at sixteen groups: with the explore phase's memory traffic reduced (bitmap, sparse levels) the
@@ -1398,7 +1486,6 @@ void AppendGroupedKernelEvents(PathFindingGlobalSinkState &gstate, vector<shared
 	// Own threads per group (no pooling) only while one working set is small (SF10, 14 MB: the levels are too short
 	// for pooled task overhead, 0.68 vs 1.3 s); larger sets pool the level tasks whatever the window (SF100 16384
 	// pairs, 8 groups of 41 MB: pooled 1.50 s vs own threads 1.69 s). Same threshold as the bitmap filter.
-	auto working_set_bytes = static_cast<double>(BFSWorkingSet::BytesFor(GetPathFindingVSize(gstate)));
 	bool small_working_set = budget > 0 && working_set_bytes <= static_cast<double>(budget) / 16;
 	auto configured_oversubscription = GetPathFindingBatchOversubscription(context);
 	auto oversubscription = configured_oversubscription > 0 ? NumericCast<idx_t>(configured_oversubscription)
@@ -1409,13 +1496,16 @@ void AppendGroupedKernelEvents(PathFindingGlobalSinkState &gstate, vector<shared
 	RecordStrategy(context, prefix + "tasks", small_working_set ? "own_threads" : "pooled");
 	RecordStrategy(context, prefix + "grouped_working_sets_mb",
 	               std::to_string(static_cast<idx_t>(working_sets / (1024 * 1024))));
+	RecordStrategy(context, prefix + "working_set_cap_mb",
+	               std::to_string(static_cast<idx_t>(gstate.settings.working_set_cap / (1024 * 1024))));
+	RecordStrategy(context, prefix + "max_groups", std::to_string(max_groups));
 	if (!states.empty()) {
 		RecordStrategy(context, prefix + "bitmap_filter", states.front()->bitmap_filter ? "on" : "off");
 		RecordStrategy(context, prefix + "sparse_level_divisor", std::to_string(states.front()->sparse_level_divisor));
 	}
 	auto grouped_batches = make_shared_ptr<GroupedIterativeLengthBatches>(
 	    std::move(states), context, GetPathFindingVSize(gstate), threads, partitions, GetPathFindingEdgeCount(gstate),
-	    initial_window, adaptive, fixed_workers, NumericCast<idx_t>(oversubscription));
+	    initial_window, max_groups, adaptive, fixed_workers, NumericCast<idx_t>(oversubscription));
 	auto initial_groups = grouped_batches->InitialGroups();
 	RecordStrategy(context, prefix + "groups", std::to_string(initial_groups));
 	RecordStrategy(context, prefix + "workers_per_batch", std::to_string(grouped_batches->WorkersPerGroup()));
@@ -1545,11 +1635,19 @@ public:
 		                           : gstate.local_csr_state->partition_csrs;
 		RecordStrategy(context, "source_groups", std::to_string(gstate.source_group_sources.size()));
 		auto group_count = gstate.source_group_sources.size();
-		// Many sources with destination lists run as MS-BFS waves of one lane per source (LaneWaveState) instead of
-		// one single-source search per group: lengths only, more groups than the few-sources limit
+		bool reach = gstate.mode == PathFindingOperatorMode::REACH;
+		// Many sources run as MS-BFS waves of one lane per source instead of one single-source search per group:
+		// lengths with destination lists (LaneWaveState) and reach (ReachLaneWaveState, each lane recording every
+		// vertex it reaches), each behind its switch, more groups than the few-sources limit; paths keep the
+		// per-source kernel for its parent pointers
 		auto few_sources_limit = GetPathFindingFewSourcesLimit(context);
-		bool lane_waves = gstate.mode == PathFindingOperatorMode::ITERATIVE_LENGTH &&
-		                  GetPathFindingLaneWaves(context) && group_count > 1 &&
+		bool lane_kernel = false;
+		if (gstate.mode == PathFindingOperatorMode::ITERATIVE_LENGTH) {
+			lane_kernel = GetPathFindingLaneWaves(context);
+		} else if (reach) {
+			lane_kernel = gstate.settings.reach_lanes;
+		}
+		bool lane_waves = lane_kernel && group_count > 1 &&
 		                  (few_sources_limit <= 0 || group_count > NumericCast<idx_t>(few_sources_limit));
 		RecordStrategy(context, "source_group_kernel", lane_waves ? "lane_waves" : "per_source");
 		// The per-group arrays (distances, seen, frontier stamps, parents) are sized by the vertex count; with
@@ -1563,7 +1661,7 @@ public:
 				state->delta_csrs = SearchDeltaCSRs(gstate);
 				state->suppressed = SearchSuppressed(gstate);
 				state->max_depth = gstate.max_depth;
-				state->reach_mode = gstate.mode == PathFindingOperatorMode::REACH;
+				state->reach_mode = reach;
 				if (gstate.mode == PathFindingOperatorMode::SHORTEST_PATH) {
 					state->EnableParentTracking();
 				}
@@ -1576,7 +1674,6 @@ public:
 		for (idx_t group_idx = 0; group_idx < group_count; group_idx++) {
 			auto state = std::move(states[group_idx]);
 			state->output_chunks = std::move(gstate.source_group_output_chunks[group_idx]);
-			bool reach = gstate.mode == PathFindingOperatorMode::REACH;
 			if (reach && !gstate.source_group_preserve_output_order) {
 				// Single group: every input row belongs to it
 				gstate.source_group_rows.resize(group_count);
@@ -1628,8 +1725,14 @@ public:
 				auto end = std::min<idx_t>(gstate.source_group_states.size(), begin + LANE_LIMIT);
 				vector<shared_ptr<SourceGroupedIterativeLengthState>> wave_groups(
 				    gstate.source_group_states.begin() + begin, gstate.source_group_states.begin() + end);
-				auto wave = make_shared_ptr<LaneWaveState>(std::move(wave_groups), partition_csrs, gstate.num_threads,
-				                                           context, GetPathFindingVSize(gstate), gstate.settings);
+				shared_ptr<LaneWaveState> wave;
+				if (reach) {
+					wave = make_shared_ptr<ReachLaneWaveState>(std::move(wave_groups), partition_csrs, gstate.num_threads,
+					                                           context, GetPathFindingVSize(gstate), gstate.settings);
+				} else {
+					wave = make_shared_ptr<LaneWaveState>(std::move(wave_groups), partition_csrs, gstate.num_threads,
+					                                      context, GetPathFindingVSize(gstate), gstate.settings);
+				}
 				wave->delta_csrs = SearchDeltaCSRs(gstate);
 				wave->suppressed = SearchSuppressed(gstate);
 				wave->max_depth = gstate.max_depth;
@@ -1637,6 +1740,7 @@ public:
 				waves.push_back(std::move(wave));
 			}
 			RecordStrategy(context, "lane_waves", std::to_string(waves.size()));
+			RecordStrategy(context, "lane_limit", std::to_string(LANE_LIMIT));
 			if (GetPathFindingGroupedBatches(context)) {
 				// The waves run as batches of the worker-group controller: its window bounds how many working sets
 				// (192 B per vertex each) are live and its workers per group the tasks, as for a pair list's batches
@@ -1681,12 +1785,8 @@ private:
 			}
 			return;
 		}
-		auto budget = GetPathFindingGroupedBatchesBudget(context);
-		idx_t in_flight = threads;
-		if (budget > 0) {
-			in_flight = static_cast<idx_t>(std::max<double>(1, std::floor(static_cast<double>(budget) / bytes_per_search)));
-		}
-		in_flight = std::max<idx_t>(1, std::min<idx_t>(in_flight, std::min<idx_t>(threads, searches.size())));
+		// Searches in flight per round: as many as fit the working-set cap, at most one per thread
+		auto in_flight = gstate.settings.CappedCount(bytes_per_search, std::min<idx_t>(threads, searches.size()));
 		// The threads divided over the searches in flight, rounded up so that every core has a task (18 searches of
 		// one worker each left 14 of 32 cores idle: BI19 paths at SF300 took 63 s instead of 38 s)
 		auto workers = (threads + in_flight - 1) / in_flight;

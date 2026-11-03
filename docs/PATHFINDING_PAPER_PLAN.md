@@ -1225,3 +1225,114 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   no longer reproduces as a difference against the binary search on today's kernels (evaluation.tex, step (4);
   operator.tex's logarithmic-probes argument). Memory: 4 / rows-per-bucket bytes per sparse row either way (about
   2 bytes per row at the default). Not worth rerun time; the default stays 2.
+- 2 Nov (late, 2): Section 3 crossover microbenchmark (`microbench --configs crossover`, group of three forced
+  kernels: `single_source_kernel` = few_sources_limit 1000000, `multi_source_dedup` = few_sources_limit 0 (MS-BFS
+  waves, one lane per distinct source), `lane_per_pair` = source_group_ratio 0 (the former batches of one lane per
+  pair); `--source-count` takes a list for the sources x destinations shape; every microbenchmark row now records
+  `peak_rss_mib` (process VmHWM, includes the index load) and the `strategy` string, whose working-set keys give the
+  kernel's memory). Index route, SF10/100/300, k = 1 ... 4096 distinct sources, k random pairs and k sources x 200
+  destinations, 3 repeats, all 72 points agree across the three kernels. Matrix step `microbench_crossover_sf*`,
+  `crossover-table` subcommand (collect.sh writes crossover_table.txt), figure `crossover` (time row and working-set
+  row per shape, one column per scale factor, dotted line at the crossover = the k after the last k at which the
+  single-source traversal is within 10% of the best other kernel).
+  Crossovers: SF10 k = 64 (random pairs) / 32 (sources x 200); SF100 16 / 16; SF300 16 / 16. At k = 16 the per-source
+  kernel is 35% slower than the lanes at SF100 (random pairs 58 vs 43 ms; sources x 200 77 vs 51 ms) and 23% / 69%
+  slower at SF300 (139 vs 115 ms; 204 vs 121 ms), while at k = 8 it still wins or ties everywhere (SF300 85 vs 107
+  ms and 113 vs 109 ms). So the default few-sources limit of 16 is at the boundary and one step too high at SF100
+  and SF300; 8 would cost SF10 one or two ms at k = 9-16 (8 vs 9-10 ms) and gain 25-40% at SF100/SF300 for k = 9-16.
+  Decision open (the author's). Memory: the per-source kernel holds 5 MB (SF100) / 14 MB (SF300) of working set
+  whatever k is; the lanes hold one working set per wave batch (41 MB at SF100, 105 MB at SF300), 420 MB at
+  k = 1024 and 1.7 GB at k = 4096 at SF300 (process peak 3.4-3.7 GiB on top of the 1.24 GiB loaded index).
+  One lane per pair is never the best choice: equal to the deduplicated lanes while sources are distinct anyway
+  (random pairs up to k = 256), 4x slower at k = 8 and 47x at k = 4096 for sources x 200 at SF100 (16.8 s vs 0.36 s,
+  1.3 GB vs 665 MB of working sets); at SF300 k = 4096 sources x 200: 112 s vs 0.90 s (lanes) vs 15.9 s
+  (per-source), 3.4 GB of working sets and a 6.5 GiB process peak. Extremes at SF300, sources x 200: k = 4096 lanes
+  0.90 s against 15.9 s per-source (18x faster); random pairs k = 4096 lanes 0.71 s against 9.2 s (13x faster).
+- 2 Nov (evening, 2): reach mode on the lanes (the author's second queued task). `ReachLaneWaveState` on the lane
+  kernel: lane i is source group i with no destination list; `CheckChange` reports the newly reached vertices of
+  each lane after the mask and `& ~seen` to a per-worker, per-lane `LaneReachRecorder` (8-byte (vertex, distance)
+  entries, no lock, no per-entry allocation) inside the check-phase tasks; a COLLECT phase concatenates each lane's
+  buffers (plus the (source, 0) row) and hands them to the group through `SetReached`, so `GetReachData` is unchanged
+  (order within a source is now unspecified; nothing relied on the former ascending order). Lanes deactivate when they
+  reach nothing new or hit the depth bound. Choice rule: reach with more distinct sources than the few-sources limit
+  runs as lane waves through the worker-group scheduler (`experimental_path_finding_operator_reach_lanes`, default
+  true; the microbenchmark config `reach_per_source` forces the per-source searches); paths stay per-source. Tests:
+  `reach_lanes.test` (k = 1, 17, 512, 513, 1100 sources, bound and unbound, index, undirected index and build routes,
+  EXCEPT ALL both ways, kernel and wave count asserted from the strategy string); all 101 test files pass.
+  Measurements, index route, sources x all, 32 threads, median of 3, lanes vs per-source (counts and sums identical):
+  SF10 k = 128: 23 vs 29 ms, k = 1024: 52 vs 121 ms (2.3x faster); SF100 k = 128: 107 vs 230 ms, k = 1024: 0.39 vs
+  1.13 s (2.9x); SF300 k = 128: 0.23 vs 0.70 s (3.0x), k = 1024: 0.79 vs 3.92 s (5.0x faster; 530 M entries); build
+  route SF300 k = 1024: 0.97 vs 7.32 s (7.6x). Peak RSS of the lane route is about 1.5x the per-source route's at
+  k = 1024 (SF300 8.6 vs 5.7 GiB): growth slack of the per-worker per-lane vectors and the collect-time copy; a count
+  pass to reserve, or a scatter that reads the worker segments in place, would remove most of it (follow-up).
+  BUILD FLAG FINDING: `build/release/CMakeCache.txt` has carried `DUCKPGQ_LANE_LIMIT=256` since the W33 lane-width
+  probe (27 Oct), so every binary built from this directory since then, including every measurement of 2 Nov above,
+  ran with 256 lanes (96 B per vertex per working set: the 41 MB at SF100 and 105 MB at SF300 in the crossover
+  tables are the 256-lane values; 512 lanes give 86 and 229 MB). W33 measured 256 and 512 as equally fast at SF10
+  and SF100, so the timings stand within noise, but the rerun must be built with the lane width stated: the build
+  is reconfigured with `-DDUCKPGQ_LANE_LIMIT=512` (next entry), and `repro/` passes the flag explicitly.
+- 2 Nov (night, 2): working-set cap and the lane width. (1) `experimental_path_finding_operator_working_set_cap`
+  (BIGINT, default -1 = a quarter of DuckDB's memory_limit from the buffer manager, 0 = no bound, > 0 bytes): the
+  memory safety bound of the schedulers, which bounds the MS-BFS worker groups that run at once (the wide start
+  included; `max_groups` in the strategy string) and the per-source searches in flight per round. The
+  grouped-batches budget keeps its two cache-regime jobs (start wide while the groups' working sets fit it; own
+  threads and bitmap filter off while one working set is under a sixteenth of it) and its description says so;
+  the 512 MiB there is the L3-based threshold, not a memory bound. On this machine (memory_limit 98.5 GiB, cap 24.6
+  GiB) nothing changes at SF10-SF300 (32 working sets are at most 7.3 GB; per-source rounds stay at 32 in flight:
+  BI19 paths SF300 32.7 s against 33.1 s before); graph500-24's wide start is bounded to 14 groups of 1.7 GB instead
+  of 32 (54 GB). The rounds test now sets the cap instead of the budget. (2) Build reconfigured with
+  `-DDUCKPGQ_LANE_LIMIT=512` (CMake cache; `repro/setup.sh` passes the flag), all 101 test files pass. The same
+  SF300 points on the 512-lane build against today's 256-lane numbers (index route, 32 threads): random pairs 65536:
+  10.7 s against 8.8 s (512 is 22% slower); 1024 pairs: 0.27 against 0.20 s (35% slower); reach 1024 sources on the
+  lanes: 0.97 against 0.79 s (22% slower), 128 sources 0.26 against 0.23 s; single pair, throughput (342 q/s at 32
+  clients) and 16 readers under a writer (median 67 ms, p99 116 ms) unchanged, as they run the per-source kernel.
+  W33 (27 Oct) found 256 and 512 equal at SF10 and SF100; at SF300 the 229 MB working set of 512 lanes is memory
+  bound and the halved bytes per vertex win more than the doubled wave count costs. Decision open (the author's):
+  keep 512 (the paper's text: 512 lanes, 192 B per vertex, 512-bit or) or make 256 the default (every probe since
+  27 Oct ran with it; the paper's lane width, bytes per vertex and the SIMD sentence change). rc9 is not tagged
+  until this is decided; the sweep stays on hold.
+- 2 Nov (night, 3): the few-sources limit is a graph property (the author's question: a limit tuned on LDBC SNB only is
+  arbitrary). Crossover sweep on the three Graphalytics graphs (index route, 512-lane build, 2 repeats, k up to
+  1024/4096; results in `results/graphalytics_*/microbench_*.csv`, all points agree): the single-source traversal
+  stops winning at k = 256 on cit-Patents (3.8M vertices, 16.5M edges, a search reaches about 2200 vertices; per-source
+  k = 64: 73 ms against 94 ms lanes; k = 1024: 469 ms against 171 ms), at k = 4 on datagen-8_4-fb (3.8M, 269M, dense:
+  k = 16 per-source 1.34 s against 344 ms lanes; k = 1024 35.7 s against 1.13 s, 32x slower), at k = 16 on
+  graph500-24 (8.9M, 260M: k = 16 3.52 s against 822 ms; k = 1024 88 s against 2.35 s), and at k = 16-64 on LDBC.
+  So the crossover spans 4 to 256 across graphs and a fixed 16 is wrong by 4x in both directions. What drives it is
+  the work of one per-source search (the edges it reaches: nearly all of a dense social graph, a few thousand on the
+  citation DAG) against a wave's cost, which is one sweep of the whole graph per level whatever k is. A rule the
+  operator can evaluate: run the first round of sources per-source, read the edges (or vertices) the searches
+  reached, and move the remaining sources to lanes when k x reach exceeds a constant times the graph's edge count
+  (the constant from these sweeps, about 8 x levels). Effort M (the lane batches must start after a per-source
+  round; the reach is known from the searches' results). Alternative without code: a per-graph setting in the harness,
+  which is tuning. Decision open (the author's); the default stays 16 for now.
+  The working-set cap did its job here: one lane per pair on cit-Patents k = 1024 x 200 reached 22.1 GB of working
+  sets (cap 24.6 GB), on graph500-24 k = 256 x 200 24.4 GB with a 30.9 GiB process peak, and k = 1024 x 200 did not
+  finish within the timeout; per-source and deduplicated lanes stayed at 109 MB and 1.6-3.3 GB.
+- 3 Nov: lane width measured properly (W33 had only ever run the 256 build, at SF10 and SF100, on the 27 Oct kernel).
+  Three extension builds of commit `dff0c0eb` (`-DDUCKPGQ_LANE_LIMIT=128|256|512`, kept in
+  `data/ldbc-pathfinding/builds/lanes<w>/duckpgq.duckdb_extension`, selected through `DUCKPGQ_EXTENSION`), index
+  route, 32 threads, median of 3. SF300: random pairs 65536 10.55 / 9.62 / 11.67 s (128 / 256 / 512 lanes), 16384
+  2.80 / 2.62 / 3.15 s, 2048 385 / 356 / 416 ms; sources x all on the lanes 1024 742 / 777 / 965 ms, 128 195 / 222 /
+  258 ms; process peak at 65536 pairs 3.3 / 6.1 / 8.6 GiB. SF100: 65536 pairs 3.37 / 3.23 / 3.63 s, 16384 949 / 866
+  / 991 ms, 1024 sources 337 / 390 / 439 ms. 256 is fastest on random pairs at both scales (11-21% ahead of 512 at
+  SF300) and halves 512's peak memory; 128 is fastest on reach (23% ahead of 512 at 1024 sources) and leanest, 5-10%
+  behind 256 on pairs; 512 is slowest everywhere on the lane kernel. Vector width is a second-order part of it (512
+  lanes are two AVX2 instructions per edge on the x86-64-v3 build, 256 one, 128 one SSE instruction): if it were the
+  lever, 128 would gain nothing over 256, and it does on reach. The lever is bytes per vertex (3 x lanes / 8 per
+  working set) in a memory-bound sweep. Recommendation: 256 as the default (the width every probe since 27 Oct ran
+  with; the paper's 512 lanes / 192 B per vertex / 512-bit or become 256 / 96 B / one 256-bit or); 128 if memory
+  under concurrency should lead. Decision open (the author's); the active build is at 512 until then.
+- 3 Nov (2): lane width 256 is the default (`b2f6043c`; the author's decision: the right trade between memory and
+  speed); the build is reconfigured to 256, all 101 test files pass. For the paper: 256 lanes, 96 B per vertex per
+  working set, one 256-bit or per edge on the x86-64-v3 build (the SIMD sentence). Two things found on the way:
+  (1) the SF300 `benchmark_pairs_65536` table had not been regenerated since the edge-aware sampling of 29 Oct (the
+  rc6 run stopped before its SF300 sweep), so every 65536-pair probe of SF300 up to 2 Nov ran on the old uniform
+  sample (23202 reachable pairs, 8.8 s at 256 lanes); the 3 Nov lane-width runs rebuilt it (31747 reachable, 9.6 s at
+  256 lanes, every kernel and the build route agree). The sampling is deterministic (row_number over rowid); rc9
+  regenerates every table, so its numbers are comparable among themselves, not to the probes. (2) Follow-ups:
+  `distinct_src` in the strategy string is a HyperLogLog estimate and reported 76718 for 65536 distinct sources
+  (17% high; it feeds the source-group ratio, where the exact group count is used anyway); a pair whose vertex id
+  exceeds the vertex count on the build route fails with an internal cast assertion instead of an input error.
+  Tag `eval-freeze-rc9` at `b2f6043c` + this entry; the stale rc6 markers moved to `repro/logs_rc6/`; the sweep stays
+  on hold until the author says go. Open for the author: the few-sources rule (default 16 kept for rc9).

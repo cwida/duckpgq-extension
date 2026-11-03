@@ -929,6 +929,111 @@ def fold_timeline_figure(filename):
     save(fig, filename)
 
 
+CROSSOVER_KERNELS = [("single_source_kernel", "single-source traversal", "#2a78d6"),
+                     ("multi_source_dedup", "MS-BFS, lane per distinct source", "#1baf7a"),
+                     ("lane_per_pair", "MS-BFS, lane per pair", "#eb6834")]
+
+
+def crossover_figure(filename):
+    """Section 3: where the single-source traversal stops winning, and what the lanes pay for it. Rows: k random
+    pairs (one destination per source) and k sources x 200 destinations, each as a time row and a memory row below
+    it; columns: scale factors. For each k the three ways of running the searches are forced by settings
+    (few_sources_limit, source_group_ratio) and timed on the index route; the line is the median of the repeats.
+    Memory is the kernel's working set from the strategy string (the per-source search's bytes, or the MS-BFS
+    batches' working sets), not the process peak, which the index load dominates. A dotted vertical line marks the
+    smallest k at which the single-source traversal is no longer the fastest; the default kernel choice (few-sources
+    limit) should sit at or below it. The reading: the lanes buy time with memory that grows with k, the per-source
+    kernel holds a few MB whatever k is, and one lane per pair is never the best choice."""
+    kernels = {c for c, _, _ in CROSSOVER_KERNELS}
+    panels = {}
+    for sf in SCALE_FACTORS:
+        # newest rows per (config, shape, k) across the microbenchmark files of the scale factor
+        latest = {}
+        for path in newest_files(RESULTS / f"sf{sf}", "microbench_sf*_threads32_*.csv"):
+            for r in csv.DictReader(open(path)):
+                if r["config"] not in kernels or r["status"] != "ok":
+                    continue
+                k = int(r["pairs"]) if r["shape"] == "random_pairs" else int(r["sources"] or 0)
+                latest.setdefault((r["config"], r["shape"], k, path.name), []).append(r)
+        series = {}
+        for (config, shape, k, _), rows in sorted(latest.items(), key=lambda item: item[0][3]):
+            working = [m for m in (strategy_working_set_mb(r.get("strategy")) for r in rows) if m is not None]
+            series[(config, shape, k)] = (statistics.median(float(r["query_s"]) for r in rows),
+                                          max(working) if working else None)  # the newest file wins
+        if series:
+            panels[sf] = series
+    if not panels:
+        print("no crossover results yet, skipping", filename)
+        return
+    shapes = [("random_pairs", "k random pairs, one destination per source"),
+              ("all_pairs", "k sources × 200 destinations each")]
+    sfs = [sf for sf in SCALE_FACTORS if sf in panels]
+    fig, axes = plt.subplots(2 * len(shapes), len(sfs), figsize=(2.4 * len(sfs) + 0.6, 6.4), sharex=True,
+                             squeeze=False, gridspec_kw={"height_ratios": [3, 2] * len(shapes)})
+    for shape_idx, (shape, shape_title) in enumerate(shapes):
+        time_row, memory_row = 2 * shape_idx, 2 * shape_idx + 1
+        for col, sf in enumerate(sfs):
+            series = panels[sf]
+            ks = sorted({k for (c, s_, k) in series if s_ == shape})
+            # The same rule as the harness's crossover-table: the k after the largest one where the single-source
+            # traversal is still within 10% of the best other way (the margin absorbs noise; for one source every
+            # way runs the same per-source search)
+            last_winning = None
+            for k in ks:
+                times = {c: series[(c, shape, k)][0] for c, _, _ in CROSSOVER_KERNELS if (c, shape, k) in series}
+                if "single_source_kernel" in times and len(times) >= 2 and times["single_source_kernel"] <= 1.1 * min(
+                        t for c, t in times.items() if c != "single_source_kernel"):
+                    last_winning = k
+            later = [k for k in ks if last_winning is None or k > last_winning]
+            crossover = later[0] if later else None
+            for row, value_idx in ((time_row, 0), (memory_row, 1)):
+                ax = axes[row][col]
+                ax.set_xscale("log", base=2)
+                ax.set_yscale("log")
+                style_axes(ax)
+                for config, name, color in CROSSOVER_KERNELS:
+                    xs = [k for k in ks if (config, shape, k) in series and series[(config, shape, k)][value_idx]]
+                    ys = [series[(config, shape, k)][value_idx] for k in xs]
+                    plot_series(ax, xs, ys, [], color, linewidth=1.6 if config == "single_source_kernel" else 1.3,
+                                zorder=5 if config == "single_source_kernel" else 3)
+                if crossover is not None:
+                    ax.axvline(crossover, color=INK2, linestyle=(0, (1.5, 2)), linewidth=0.8, zorder=2)
+                    if value_idx == 0:
+                        ax.annotate(f"k = {crossover}", (crossover, ax.get_ylim()[1]), xytext=(3, -2),
+                                    textcoords="offset points", fontsize=6.5, color=INK2, va="top", ha="left")
+                if ks:
+                    ax.set_xticks(ks)
+                    ax.set_xticklabels([str(k) if k in (1, 4, 16, 64, 256, 1024, 4096) else "" for k in ks],
+                                       fontsize=6.5)
+            if time_row == 0:
+                axes[0][col].set_title(f"LDBC SF{sf}", loc="left")
+            if memory_row == 2 * len(shapes) - 1:
+                axes[memory_row][col].set_xlabel("distinct sources k")
+        axes[time_row][0].set_ylabel("query time (s)")
+        axes[memory_row][0].set_ylabel("working set (MB)", fontsize=7)
+        axes[time_row][0].annotate(shape_title, (0, 1.0), xycoords="axes fraction",
+                                   xytext=(0, 16 if time_row == 0 else 4), textcoords="offset points", fontsize=7,
+                                   color=INK2, va="bottom", ha="left")
+    handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE)
+               for _, _, c in CROSSOVER_KERNELS]
+    fig.legend(handles, [n for _, n, _ in CROSSOVER_KERNELS], loc="lower center", ncol=3, bbox_to_anchor=(0.5, -0.01),
+               handlelength=2.0, columnspacing=1.0, fontsize=7)
+    top = wrapped_title(fig, "Where the single-source traversal stops winning, and what the lanes pay: the three ways "
+                             "of running k distinct sources, forced, on the index route")
+    fig.tight_layout(rect=(0, 0.05, 1, top))
+    save(fig, filename)
+
+
+def strategy_working_set_mb(strategy):
+    """The kernel's working memory from the strategy string: the MS-BFS waves' or batches' working sets, or the
+    per-source search's bytes (whichever the run recorded), in MB"""
+    for key in ("wave_grouped_working_sets_mb", "grouped_working_sets_mb", "source_search_mb"):
+        match = re.search(rf"(?:^|;){key}=(\d+)", strategy or "")
+        if match:
+            return int(match.group(1))
+    return None
+
+
 TABLES = Path(os.environ.get("DUCKPGQ_TABLES_DIR", str(REPO / "paper" / "tables")))
 NAME_OF = {key: name for key, name, _ in SYSTEMS}
 NAME_OF["neo4j_gds"] = "Neo4j GDS (4 thr.)"
@@ -1263,6 +1368,7 @@ if __name__ == "__main__":
     # W35 clients figure; a second def named throughput_figure used to overwrite throughput.pdf (the sweep's
     # pairs-per-second view that the paper includes) until 2 Nov
     client_throughput_figure("throughput_clients")
+    crossover_figure("crossover")
     sweep_table("random_pairs", "random_pairs",
                 r"Shortest-path lengths for $n$ random pairs per query, median of three runs, 32 threads, 600\,s timeout; "
                 r"rows marked conn.\ split the pairs over 32 client connections.", "tab:random-pairs", "system / pairs")

@@ -26,6 +26,10 @@ else
     ${HARNESS} sweep-pairs-table  "${ARCHIVE_DIR}"/sf${sf}/sweep_pairs_*.csv  >> "${ARCHIVE_DIR}/sweep_pairs_table.txt"
     ${HARNESS} ldbc-queries-table "${ARCHIVE_DIR}"/sf${sf}/ldbc_queries_*.csv >> "${ARCHIVE_DIR}/ldbc_queries_table.txt"
   done
+  : > "${ARCHIVE_DIR}/crossover_table.txt"
+  for sf in ${SCALE_FACTORS}; do
+    ls "${ARCHIVE_DIR}"/sf${sf}/microbench_*.csv >/dev/null 2>&1 && ${HARNESS} crossover-table "${ARCHIVE_DIR}"/sf${sf}/microbench_*.csv >> "${ARCHIVE_DIR}/crossover_table.txt"
+  done
   : > "${ARCHIVE_DIR}/throughput_table.txt"
   for sf in ${SCALE_FACTORS}; do
     ls "${ARCHIVE_DIR}"/sf${sf}/throughput_*.csv >/dev/null 2>&1 && ${HARNESS} throughput-table "${ARCHIVE_DIR}"/sf${sf}/throughput_*.csv >> "${ARCHIVE_DIR}/throughput_table.txt"

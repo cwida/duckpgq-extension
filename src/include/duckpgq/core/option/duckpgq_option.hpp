@@ -31,6 +31,7 @@ bool GetPathFindingTargetEarlyTermination(ClientContext &context);
 int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context);
 int32_t GetPathFindingFewSourcesLimit(ClientContext &context);
 int64_t GetPathFindingGroupedBatchesBudget(ClientContext &context);
+int64_t GetPathFindingWorkingSetCapSetting(ClientContext &context);
 int32_t GetPathFindingBatchOversubscription(ClientContext &context);
 bool GetPathFindingFrontierBitmap(ClientContext &context);
 int32_t GetPathFindingFrontierBitmapFilter(ClientContext &context);
@@ -40,6 +41,7 @@ int32_t GetPathFindingRowBucketRows(ClientContext &context);
 bool GetPathFindingSubRangeTasks(ClientContext &context);
 bool GetCSRIndexChangeGroups(ClientContext &context);
 bool GetPathFindingLaneWaves(ClientContext &context);
+bool GetPathFindingReachLanes(ClientContext &context);
 bool GetPathFindingSourceSearchRounds(ClientContext &context);
 int32_t GetPathFindingVisitPrefetch(ClientContext &context);
 
