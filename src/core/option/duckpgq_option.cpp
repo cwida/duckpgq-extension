@@ -96,8 +96,8 @@ const vector<DuckPGQSetting> &Settings() {
 	    {"experimental_path_finding_operator_grouped_batches_budget",
 	     "Cache-regime threshold of the MS-BFS batch scheduler, not a memory bound (that is "
 	     "working_set_cap): the scheduler starts wide (one worker group per batch, up to the "
-	     "threads, each with its own threads) while that many working sets (192 B per vertex "
-	     "each at 512 lanes) fit this many bytes; above it the groups pool their level tasks "
+	     "threads, each with its own threads) while that many working sets (96 B per vertex "
+	     "each at 256 lanes) fit this many bytes; above it the groups pool their level tasks "
 	     "and the window of concurrent groups starts at sixteen and grows while the measured "
 	     "throughput improves. One working set under a sixteenth of it keeps own threads and "
 	     "the bitmap filter off. W31: 512 MiB sits between SF10's 32 x 14 MB and SF100's "

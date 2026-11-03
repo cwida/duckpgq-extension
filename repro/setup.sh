@@ -16,9 +16,9 @@ python3 -m pip install --user --quiet -r "${REPRO_DIR}/requirements.txt"
 echo "== DuckPGQ (this checkout, submodules pinned by the repository)"
 cd "${REPO_ROOT}"
 git submodule update --init --recursive
-# The MS-BFS lane width is a compile-time constant (LANE_LIMIT, default 512); stated explicitly because a CMake cache
-# can carry another value from a probe build (2 Nov: the build directory had 256 since the 27 Oct lane-width probe)
-GEN=ninja EXT_FLAGS="-DDUCKPGQ_LANE_LIMIT=512" make release
+# The MS-BFS lane width is a compile-time constant (LANE_LIMIT, default 256 since 3 Nov); stated explicitly because a
+# CMake cache can carry another value from a probe build
+GEN=ninja EXT_FLAGS="-DDUCKPGQ_LANE_LIMIT=256" make release
 test -f build/release/extension/duckpgq/duckpgq.duckdb_extension
 
 echo "== LDBC SNB generator at ${DUCKPGQ_GENERATOR_ROOT} (${GENERATOR_REPO} @ ${GENERATOR_COMMIT})"
