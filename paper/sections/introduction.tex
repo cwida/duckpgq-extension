@@ -21,7 +21,7 @@
   optimizer extension replaces by the path-finding operator (Section~\ref{sec:planner}). The operator traverses a
   partitioned CSR that is either built inside the query from the edge table (Section~\ref{sec:csr}) or read as a
   transaction-consistent snapshot of a CSR index (Section~\ref{sec:index}); both have the same layout. Two
-  traversals, \rev{multi-source lanes for many distinct sources and a frontier search for few,} run as chains of per-phase events
+  traversals, multi-source lanes for many distinct sources and a frontier search for few, run as chains of per-phase events
   (Sections~\ref{sec:traversals} and~\ref{sec:phases}). Everything in colour is the extension; the grey band is
   \duckdb, with the four of its extension interfaces that carry the query (Section~\ref{sec:strategy} lists all
   of them).}
@@ -36,11 +36,11 @@ patterns against it, including variable-length and shortest-path patterns~\cite{
 lives in a relational system has three options for such queries. Copy the data into a graph database and keep the
 two in sync. Write the path pattern as a recursive join and accept its performance. Or have the system answer it
 with graph storage and operators of its own, which so far has meant waiting for its developers to build them.
-\rev{Extensions have brought graph queries to relational systems before. Apache AGE adds Cypher to
+Extensions have brought graph queries to relational systems before. Apache AGE adds Cypher to
 PostgreSQL~\cite{apacheage}, pgRouting runs shortest-path algorithms over a graph it builds from a SQL query on every
 call~\cite{pgrouting}, and some engines implement \sqlpgq inside their own code~\cite{oraclesqlpgq}. As far as we
 know, no extension combines a path-finding operator inside the host's planner with a graph index that stays
-consistent with the host's transactions, built only on the interfaces the host offers to every extension.} This paper shows that
+consistent with the host's transactions, built only on the interfaces the host offers to every extension. This paper shows that
 a loadable extension can add them.
 
 \duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb that parses \sqlpgq and
@@ -70,10 +70,10 @@ graph-native path finding, including a graph index that is consistent with its m
 The first half of the answer is a \emph{path-finding operator}. It is a physical operator with its own inputs and its
 own schedule, so its parallelism comes from the graph and not from the tuples. The edges are partitioned by
 destination range, the partitions are built and traversed in parallel, and the traversal proceeds level by level as a
-chain of \duckdb events in which no task blocks its thread waiting for another. \rev{The operator first deduplicates
+chain of \duckdb events in which no task blocks its thread waiting for another. The operator first deduplicates
 the sources of the candidate pairs, so that a query runs one search per distinct source instead of one per pair, as
 the CIDR design did. A few searches run one by one, each with a frontier of its own; many run together, 256 at a
-time, as the bit lanes of a multi-source BFS.} The planner reaches the operator through an optimizer rule and sees an
+time, as the bit lanes of a multi-source BFS. The planner reaches the operator through an optimizer rule and sees an
 ordinary operator with a cardinality.
 
 The second half is a \emph{CSR index}. \texttt{CREATE INDEX ... USING CSR (src, dst)} keeps the graph representation
@@ -95,7 +95,7 @@ pairs at SF300 \duckpgq takes 10\,s, and every other system exceeds ten minutes.
 Our contributions are:
 \begin{enumerate}
   \item A path-finding operator for a vectorized, morsel-driven system whose parallelism comes from a partitioned
-        CSR and per-level events instead of from input tuples, with multi-source and single-source traversals \rev{over deduplicated sources} and a
+        CSR and per-level events instead of from input tuples, with multi-source and single-source traversals over deduplicated sources and a
         rule that selects between them (Section~\ref{sec:operator}).
   \item An MVCC-consistent CSR index built behind a general-purpose extension index interface: epochs, a change-group
         log, per-transaction snapshots, folds, checkpoints and recovery, with a correctness argument

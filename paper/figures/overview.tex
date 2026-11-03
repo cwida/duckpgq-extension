@@ -64,7 +64,7 @@
 
 % ---------------------------------------------------------------- row 5: traversals, phases, result
 \node[op, text width=3.75cm] (ms) at (0,-5.55)
-  {\textbf{multi-source traversal} (\S\ref{sec:traversals})\\ \rev{256} sources per batch in bit lanes\\ one sweep over all partitions per level};
+  {\textbf{multi-source traversal} (\S\ref{sec:traversals})\\ 256 sources per batch in bit lanes\\ one sweep over all partitions per level};
 \node[op, text width=3.6cm] (ss) at (4.25,-5.55)
   {\textbf{single-source traversal} (\S\ref{sec:traversals})\\ frontier list, source-index lookups, parents\\ stops at depth bound or last destination};
 \draw[opflow] (csr.south -| ms.north) -- (ms.north);
