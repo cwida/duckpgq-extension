@@ -222,34 +222,33 @@ the next phase.
 The build is the sink, which partitions the edges as they stream in, followed by one event whose tasks sort and
 emit the partitions and whose callback publishes them. A level of the multi-source traversal is two events, the
 explore and the check phase, and a level of the single-source traversal is one; a search that runs on a single thread
-runs all its levels in one task, \rev{because the overhead of scheduling an event per level would exceed the work
-of the level}. Each phase still waits
+runs all its levels in one task, because the overhead of scheduling an event per level would exceed the work
+of the level. Each phase still waits
 for the one before it, but no task blocks its thread waiting for another task, so the operator shares \duckdb's
 fixed thread pool with other queries. The scheduler may interleave the tasks of concurrent queries freely,
 and an error or an interrupt stops the operator at the next task boundary.
 
-\paragraph{Scheduling the batches.} A query with many batches can run them one after another or all at once,
-and neither works well. One at a time leaves threads idle whenever a level waits for its last task, which made
-65\,536 random pairs ten times slower than the operator's default at SF10 (Section~\ref{sec:eval-ablation}). All at
-once needs one working set per batch, 11\,GB for the 128 batches of 65\,536 pairs at SF100, and spreads the memory
-traffic over all of them. The operator therefore decides how many batches are in progress. Each batch in progress holds a working set, and when it finishes,
-the next batch reuses that working set. If one working set per thread fits into a budget of 512\,MiB, as many batches
-as there are threads start at once. That holds at SF10, where a working set takes 14\,MB, and not at SF100, where it
-takes 86\,MB; the budget is a setting, chosen to separate these two cases on our machine. Otherwise the operator
-starts 16 batches and adjusts their number by measurement. A shared counter adds up the edges the level tasks sweep;
-after each change, once every batch then in progress has finished, the operator compares the edges swept per second
-with the rate before the change. It doubles the number of batches while the rate rises by more than a tenth and steps
-back once when it falls by more than a tenth.
+\paragraph{Scheduling the batches.} \rev{The operator decides at run time how many batches run at the same time,
+because the number costs performance in both directions. With one batch at a time, the threads are idle whenever a
+level waits for its last task; 65\,536 random pairs at SF10 run ten times slower this way than with the default
+(Section~\ref{sec:eval-ablation}). With all batches at once, every batch needs its working set, 11\,GB for the 128
+batches of the same query at SF100, and the memory traffic of all of them competes. The operator starts with one
+batch per thread when that many working sets fit into 512\,MiB, a setting chosen for our machine. That holds at
+SF10, where a working set takes 14\,MB, and not at SF100, where it takes 86\,MB. Otherwise it starts with 16 batches
+and changes their number while the query runs. The level tasks count the edges they sweep, and after each change the
+operator compares the edges swept per second with the rate before. It doubles the number of batches while the rate
+rises by more than a tenth, and steps back once when it falls by more than a tenth. A batch that finishes passes its
+working set on to the next one.}
 
-\rev{The size of the working set} also decides how a batch splits its phases into tasks. A batch whose working set is at most
+The size of the working set also decides how a batch splits its phases into tasks. A batch whose working set is at most
 a sixteenth of the budget divides each phase into as many tasks as its share of the threads, so that the batches in
 progress run side by side. A larger batch divides each phase into one task per thread. While such a batch waits for
 the last task of its level, \duckdb's scheduler runs the tasks of the other batches on the idle threads; for small
 working sets the extra tasks would cost more than they save. A working set is zeroed in parallel, and only when the
 next batch attaches it.
 
-\paragraph{What stays serial.} Two steps run on one thread: \rev{the completion callbacks of the events, the serial step at the end of every
-phase,} by construction, and the
+\paragraph{What stays serial.} Two steps run on one thread: the completion callbacks of the events, the serial step at the end of every
+phase, by construction, and the
 grouping of the pairs by source in the finalize step, which takes 6\,ms for 65\,536 random pairs at SF10 and about
 30\,ms for BI19's 2.4\,M pairs at SF300.
 
@@ -258,7 +257,7 @@ grouping of the pairs by source in the finalize step, which takes 6\,ms for 65\,
 
 When the traversal is done, \duckdb runs the pipeline that reads the operator as its source, and the operator emits
 one row per input row, in parallel over its output vectors. In the \texttt{lengths} mode each row looks up the distance its
-source's search recorded for its destination, and a pair without a path gets \texttt{NULL}. In the \texttt{reach} mode each source emits every vertex it reached with its distance, and the destination table is
+source's search recorded for its destination, and \rev{the result of a pair without a path is set to} \texttt{NULL}. In the \texttt{reach} mode each source emits every vertex it reached with its distance, and the destination table is
 joined back afterwards only when the query projects its columns; the sources $\times$ all queries of
 Section~\ref{sec:eval} run this way.
 
