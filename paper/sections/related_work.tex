@@ -24,8 +24,9 @@ common table expression evaluates them as a chain of joins with one frontier tab
 and the T\"ubingen work on recursion in SQL~\cite{hirn2019recursion} make that chain faster and keep its shape. We
 take the other route, in the tradition of Grail~\cite{fan2015grail} and of in-database BFS
 operators~\cite{jindal2014vertexica}, and build a compressed sparse row (CSR) layout to traverse. The traversal is
-multi-source BFS~\cite{then2014msbfs}, which runs 512 searches through one sweep over the adjacency by keeping each
-search in a bit lane. Its cost per iteration is a sweep over all vertices regardless of how many of the 512 lanes are
+multi-source BFS~\cite{then2014msbfs}, which runs \rev{as many searches as a machine word or vector register has bits}
+through one sweep over the adjacency by keeping each
+search in a bit lane. Its cost per iteration is a sweep over all vertices regardless of how many of \rev{its} lanes are
 alive, which is wrong for a single pair (Section~\ref{sec:operator}); for that case we use a frontier traversal of
 the kind Ligra~\cite{shun2013ligra} made standard. Direction-optimizing BFS~\cite{beamer2012direction} is the
 push/pull variant we also implemented. The GraphBLAS~\cite{davis2019graphblas} expresses the same traversals as

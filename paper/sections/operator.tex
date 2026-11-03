@@ -132,7 +132,7 @@ therefore has as many searches as it has distinct sources, and a search ends whe
 on its list, at the depth bound, or when no new vertex is left to visit.
 
 The operator runs the searches in one of two ways. In the single-source traversal every search runs on its own, with a
-frontier and per-vertex arrays of its own. In the multi-source traversal up to 512 searches run together, each in one
+frontier and per-vertex arrays of its own. In the multi-source traversal up to \rev{256} searches run together, each in one
 bit lane of a multi-source BFS. Both traversals proceed level by level and decide at every level between a
 \emph{sparse level}, which visits only the vertices on the frontier, and a \emph{dense level}, which sweeps every
 sparse row of every partition; a search can return to sparse levels when its frontier shrinks again.
@@ -151,25 +151,28 @@ flag. The worker that wins records the vertex's distance, adds it to the next fr
 mode, records the vertex and the edge through which it arrived (Section~\ref{sec:results}).
 
 \paragraph{Multi-source traversal.} Many searches run as the lanes of one sweep, the multi-source BFS of Then et
-al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up to 512 lanes that share one
+al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up to \rev{256} lanes that share one
 \emph{working set} of three bit sets per vertex: \texttt{seen} for the vertices each lane has reached,
-\texttt{frontier} for the current frontier and \texttt{next} for the next one. Each bit set holds 512 bits, 64 bytes,
-per vertex, so a working set takes 192 bytes per vertex. A query with $k$ distinct sources therefore has
-$\lceil k/512 \rceil$ batches, 128 for 65\,536 random pairs. Each batch runs its own levels until all its lanes are
+\texttt{frontier} for the current frontier and \texttt{next} for the next one. Each bit set holds \rev{256 bits, 32 bytes,
+per vertex, so a working set takes 96 bytes per vertex.} A query with $k$ distinct sources therefore has
+\rev{$\lceil k/256 \rceil$ batches, 256 for 65\,536 random pairs.} Each batch runs its own levels until all its lanes are
 inactive, independently of the other batches, so several batches can run at the same time, each with a working set
 of its own. A level has two phases. The explore phase relaxes
-\texttt{frontier} into \texttt{next} with one 512-bit \texttt{or} per edge for all lanes at once. In our measurements
-the \texttt{or} is two 256-bit AVX2 instructions. The explore tasks are split by destination range; no two of them
+\texttt{frontier} into \texttt{next} with one \rev{256-bit \texttt{or} per edge for all lanes at once, a single AVX2
+instruction in our measurements. The sweep is bound by memory traffic, so the bytes per vertex matter more than the
+lanes per sweep: 256 lanes were faster than 128 and 512 on random pairs and need half the memory of 512
+(Section~\ref{sec:eval-ablation}).} \todo{Lane-width microbenchmark of 2 Nov (128, 256, 512 at SF100 and SF300);
+from the rerun.} The explore tasks are split by destination range; no two of them
 write the same vertex, and the \texttt{or} needs no atomic. The check phase \texttt{or}s \texttt{next} into \texttt{seen};
 each lane then records the level of the destinations it has newly reached and drops them from its list, and a lane
 whose list is empty is masked out of \texttt{next} and becomes inactive. A summary bitmap marks the vertices with an
 active lane. A level is sparse when fewer than a sixteenth of all vertices are marked, and visits only those, through
-the source index. A dense level costs the same whether one lane or five hundred are active. Both divisors, the
+the source index. A dense level costs the same whether one lane or \rev{two hundred} are active. Both divisors, the
 sixty-fourth and the sixteenth, are settings of the operator.
 
 The deduplication decides how many batches a query needs. LDBC BI19 at SF300 pairs every person of one city,
 1.4\,K of them, with every person of another, and asks for 2.4\,M lengths. After deduplication that is 1.4\,K searches
-in three 512-lane batches; without it, one search per pair, as in the CIDR design, would need 4.6\,K batches.
+in \rev{six batches of 256 lanes; without it, one search per pair, as in the CIDR design, would need 9.4\,K batches.}
 Deduplication helps only when sources repeat. In the random pairs of Section~\ref{sec:eval} almost every source
 appears in a single pair, so its search has one destination, and the number of batches is the same as without
 deduplication.
@@ -181,10 +184,11 @@ The operator's finalize step, which \duckdb calls once the sink has received all
 starts (Section~\ref{sec:planner}), groups the pairs by source and counts the groups. Up to 16 distinct sources run
 on the single-source traversal, side by side, with the threads divided among them; more sources run as batches of the
 multi-source traversal. The \texttt{paths} mode always uses the single-source traversal, because a path needs a
-parent per vertex and a lane keeps none. The \texttt{reach} mode uses it too, although the lanes could serve it: the
-check phase knows, for every lane, the vertices it reached at the current level and could emit their distances. We
-have not built this. The per-source searches run in rounds, as many at once as their per-vertex arrays fit into the
-512\,MiB budget of Section~\ref{sec:phases}, and a search hands its results over and frees its arrays when it ends.
+parent per vertex and a lane keeps none. \rev{The \texttt{reach} mode runs on the lanes as well: inside the parallel check-phase tasks, every lane records the
+vertices it newly reached, with the current level as their distance. For 1024 sources to every person at SF300 this
+is five times faster than single-source searches, 0.79 against 3.92\,s over the index.} \todo{Single run on the
+reach-lanes build; from the rerun.} The per-source searches run in rounds, as many at once as their per-vertex arrays fit into \rev{the working-set cap
+of Section~\ref{sec:phases}}, and a search hands its results over and frees its arrays when it ends.
 BI19 returning paths at SF300 then peaks at 5.6\,GiB. \todo{Single run on the rc8 build; confirm from the rerun.}
 
 The orientation is decided before the grouping, from HyperLogLog estimates of the distinct sources and
@@ -205,8 +209,10 @@ deduplicated batches grow with $k$ and the per-pair batches with the number of p
 with the scale factor.} Few sources are cheapest as single-source searches, because a batch pays for its working
 set and its dense levels whatever its number of lanes. With many sources the batches win, because their lanes share
 the work of every level and keep no per-vertex arrays; on BI19 at SF300 the deduplicated batches are 30 times faster
-than single-source searches and need a ninth of the memory. The threshold of 16 sits near the crossover on LDBC, and
-Section~\ref{sec:cost} discusses what a cost model needs in order to replace it.
+than single-source searches and need a ninth of the memory. \rev{The crossover depends on the graph. On the Graphalytics graphs of Section~\ref{sec:eval} it lies at 4 sources on
+datagen-8\_4-fb, at 16 on graph500-24 and at 256 on cit-Patents, so a fixed threshold of 16 fits some graphs and not
+others;} Section~\ref{sec:cost} discusses what a cost model needs in order to replace it. \todo{Crossovers from the
+2 Nov Graphalytics probe; from the rerun.}
 
 \subsection{Parallel execution as a chain of events}
 \label{sec:phases}
@@ -231,14 +237,17 @@ and an error or an interrupt stops the operator at the next task boundary.
 \paragraph{Scheduling the batches.} \rev{The operator decides at run time how many batches run at the same time,
 because the number costs performance in both directions. With one batch at a time, the threads are idle whenever a
 level waits for its last task; 65\,536 random pairs at SF10 run ten times slower this way than with the default
-(Section~\ref{sec:eval-ablation}). With all batches at once, every batch needs its working set, 11\,GB for the 128
-batches of the same query at SF100, and the memory traffic of all of them competes. The operator starts with one
-batch per thread when that many working sets fit into 512\,MiB, a setting chosen for our machine. That holds at
-SF10, where a working set takes 14\,MB, and not at SF100, where it takes 86\,MB. Otherwise it starts with 16 batches
-and changes their number while the query runs. The level tasks count the edges they sweep, and after each change the
-operator compares the edges swept per second with the rate before. It doubles the number of batches while the rate
-rises by more than a tenth, and steps back once when it falls by more than a tenth. A batch that finishes passes its
-working set on to the next one.}
+(Section~\ref{sec:eval-ablation}). With all batches at once, every batch needs its working set, 11\,GB for the 256
+batches of the same query at SF100, and the memory traffic of all of them competes. Two limits govern the number. A
+cache threshold of 512\,MiB, a setting chosen for our machine, decides how the operator starts. When one working set
+per thread fits into it, as at SF10 with 7\,MB per working set, all those batches start at once; otherwise, as at
+SF100 with 43\,MB, it starts with 16 batches and changes their number while the query runs. The level tasks count the
+edges they sweep, and after each change the operator compares the edges swept per second with the rate before. It
+doubles the number of batches while the rate rises by more than a tenth, and steps back once when it falls by more
+than a tenth. A working-set cap, a quarter of \duckdb's memory limit, bounds the batches running at once in every
+case, so the bound follows the machine and the user's configuration; on our machine the cap is
+24.6\,GiB, which limits graph500-24's start to 14 batches of 1.7\,GB. A batch that finishes passes its working set on
+to the next one.}
 
 The size of the working set also decides how a batch splits its phases into tasks. A batch whose working set is at most
 a sixteenth of the budget divides each phase into as many tasks as its share of the threads, so that the batches in
