@@ -41,7 +41,8 @@ const vector<DuckPGQSetting> &Settings() {
 	     "Deduplicate exact source/destination pairs inside each experimental path-finding operator batch",
 	     LogicalType::BOOLEAN, Value(false)},
 	    {"experimental_path_finding_operator_grouped_batches",
-	     "Run regular MS-BFS batches with bounded concurrent worker groups instead of one event per batch",
+	     "Run MS-BFS batches on min(batches, threads) worker groups that reuse their working sets instead of "
+	     "one event per batch (the microbenchmark baseline)",
 	     LogicalType::BOOLEAN, Value(true)},
 	    {"experimental_path_finding_operator_reach",
 	     "Plan a path pattern whose destination is unbound or only filtered as a reach query: "
@@ -53,10 +54,13 @@ const vector<DuckPGQSetting> &Settings() {
 	     "each search early (LDBC BI19 at SF100: 5.9 s pair mode vs 7.1 s reach)",
 	     LogicalType::BOOLEAN, Value(false)},
 	    {"experimental_path_finding_operator_threads_per_batch",
-	     "Maximum number of DuckDB tasks assigned to each grouped regular MS-BFS batch; values <= 0 use all threads",
+	     "Tasks per phase of one MS-BFS worker group (a microbenchmark switch); values <= 0 derive them: the "
+	     "group's share of the threads (threads / groups), each split into one task per task_edges edges of the "
+	     "graph, at most the threads",
 	     LogicalType::INTEGER, Value(0)},
 	    {"experimental_path_finding_operator_max_concurrent_batches",
-	     "Maximum number of grouped regular MS-BFS batches admitted concurrently; values <= 0 derive from thread budget",
+	     "Worker groups of the MS-BFS batch scheduler, each running one batch at a time on its own working set (a "
+	     "microbenchmark switch); values <= 0 derive min(batches, threads), bounded by working_set_cap",
 	     LogicalType::INTEGER, Value(0)},
 	    {"experimental_path_finding_operator_reverse_orientation_ratio",
 	     "Use reverse MS-BFS for regular path-finding when estimated distinct_src >= ratio * estimated distinct_dst; "
@@ -88,28 +92,22 @@ const vector<DuckPGQSetting> &Settings() {
 	     LogicalType::INTEGER, Value(16)},
 	    {"experimental_path_finding_operator_working_set_cap",
 	     "Bytes of path-finding working state that may be live at once: bounds the MS-BFS worker "
-	     "groups that run concurrently (the wide start included) and the per-source searches in "
-	     "flight per round. -1 (default) derives a quarter of DuckDB's memory_limit (the buffer "
-	     "manager's maximum), so the bound follows the machine instead of a constant tuned to one; "
-	     "0 removes the bound",
+	     "groups that run concurrently and the per-source searches in flight per round. -1 "
+	     "(default) derives a quarter of DuckDB's memory_limit (the buffer manager's maximum), so "
+	     "the bound follows the machine instead of a constant tuned to one; 0 removes the bound",
 	     LogicalType::BIGINT, Value::BIGINT(-1)},
-	    {"experimental_path_finding_operator_grouped_batches_budget",
-	     "Cache-regime threshold of the MS-BFS batch scheduler, not a memory bound (that is "
-	     "working_set_cap): the scheduler starts wide (one worker group per batch, up to the "
-	     "threads, each with its own threads) while that many working sets (96 B per vertex "
-	     "each at 256 lanes) fit this many bytes; above it the groups pool their level tasks "
-	     "and the window of concurrent groups starts at sixteen and grows while the measured "
-	     "throughput improves. One working set under a sixteenth of it keeps own threads and "
-	     "the bitmap filter off. W31: 512 MiB sits between SF10's 32 x 14 MB and SF100's "
-	     "32 x 86 MB on a 128 MB L3 machine; 0 always ramps",
-	     LogicalType::BIGINT, Value::BIGINT(512LL * 1024 * 1024)},
-	    {"experimental_path_finding_operator_batch_oversubscription",
-	     "Tasks per level of one MS-BFS batch relative to its share of the threads (threads / "
-	     "concurrent groups): 1 gives every group its own threads, higher values pool the "
-	     "level tasks of all groups in the executor so idle time at a group's level barrier is "
-	     "filled with another group's work; 0 (default) chooses 1 while the working sets fit "
-	     "the grouped batches budget and the thread count above it",
-	     LogicalType::INTEGER, Value(0)},
+	    {"experimental_path_finding_operator_task_edges",
+	     "Edges of the graph per level task of an MS-BFS worker group: the group's share of the "
+	     "threads (threads / groups) is split into ceil(edges / task_edges) tasks each, at most the "
+	     "threads in all, so the level tasks of all groups fill the executor on a large graph while a "
+	     "small graph (SF10, 1.8M edges) keeps one task per thread of its share and no barrier spin at "
+	     "its short levels; 0 never splits (the share only). 4 Mi measured 3 Nov",
+	     LogicalType::BIGINT, Value::BIGINT(4LL * 1024 * 1024)},
+	    {"experimental_path_finding_operator_bitmap_filter_working_set",
+	     "Bytes of one MS-BFS working set (3 x lanes / 8 per vertex) above which one source's "
+	     "visit line no longer stays cache resident, so frontier_bitmap_filter = -1 turns the "
+	     "per-source bitmap test on (SF10's 14 MB stays off, SF100's 41 MB goes on)",
+	     LogicalType::BIGINT, Value::BIGINT(32LL * 1024 * 1024)},
 	    {"experimental_path_finding_operator_frontier_bitmap",
 	     "MS-BFS keeps a one-bit-per-vertex summary of the frontier; a level with few active "
 	     "vertices (count x sparse_frontier_divisor < V) expands them by row lookup from that "
@@ -117,9 +115,8 @@ const vector<DuckPGQSetting> &Settings() {
 	     LogicalType::BOOLEAN, Value(true)},
 	    {"experimental_path_finding_operator_frontier_bitmap_filter",
 	     "On dense MS-BFS levels test the frontier bitmap per source before reading its visit "
-	     "line: 1 on, 0 off, -1 (default) on when the working sets exceed the grouped batches "
-	     "budget (SF100: 1.2-1.6x faster) and off when they are cache resident (SF10: 10% "
-	     "overhead)",
+	     "line: 1 on, 0 off, -1 (default) on when one working set exceeds bitmap_filter_working_set "
+	     "(SF100: 1.2-1.6x faster) and off when it is cache resident (SF10: 10% overhead)",
 	     LogicalType::INTEGER, Value(-1)},
 	    {"experimental_path_finding_operator_sparse_level_divisor",
 	     "An MS-BFS level whose active vertices x divisor < V expands the active vertices by row "
@@ -279,16 +276,16 @@ int32_t GetPathFindingFewSourcesLimit(ClientContext &context) {
 	return GetSetting<int32_t>(context, "experimental_path_finding_operator_few_sources_limit");
 }
 
-int64_t GetPathFindingGroupedBatchesBudget(ClientContext &context) {
-	return GetSetting<int64_t>(context, "experimental_path_finding_operator_grouped_batches_budget");
-}
-
 int64_t GetPathFindingWorkingSetCapSetting(ClientContext &context) {
 	return GetSetting<int64_t>(context, "experimental_path_finding_operator_working_set_cap");
 }
 
-int32_t GetPathFindingBatchOversubscription(ClientContext &context) {
-	return GetSetting<int32_t>(context, "experimental_path_finding_operator_batch_oversubscription");
+int64_t GetPathFindingTaskEdges(ClientContext &context) {
+	return GetSetting<int64_t>(context, "experimental_path_finding_operator_task_edges");
+}
+
+int64_t GetPathFindingBitmapFilterWorkingSet(ClientContext &context) {
+	return GetSetting<int64_t>(context, "experimental_path_finding_operator_bitmap_filter_working_set");
 }
 
 bool GetPathFindingFrontierBitmap(ClientContext &context) {

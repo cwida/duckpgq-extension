@@ -1336,3 +1336,24 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   exceeds the vertex count on the build route fails with an internal cast assertion instead of an input error.
   Tag `eval-freeze-rc9` at `b2f6043c` + this entry; the stale rc6 markers moved to `repro/logs_rc6/`; the sweep stays
   on hold until the author says go. Open for the author: the few-sources rule (default 16 kept for rc9).
+- 3 Nov (3): the batch scheduler simplified (the author's decision: simplify rather than defend the 512 MiB rule).
+  Gone: the adaptive ramp (rate rule, window controller, edges-swept clock, kernel spawning), the start-wide /
+  cache-regime decision and the 512 MiB `grouped_batches_budget`, the own-threads / pooled switch and
+  `batch_oversubscription`. Now: the batches (or lane waves) queue, min(batches, threads) worker groups take them,
+  bounded by the working-set cap (a quarter of memory_limit); each group's level runs as its share of the threads
+  (threads / groups), split into tasks of at least `experimental_path_finding_operator_task_edges` edges (default
+  4 Mi, measured) and at most the threads: SF10 (1.8M edges) gets one task per group at 32 groups, SF100 (18.7M) 5,
+  SF300 (55.7M) 14, and a lone batch 32. The bitmap filter's threshold is its own setting
+  (`bitmap_filter_working_set`, 32 MiB: the working set above which a source's visit line is no longer cache
+  resident), the one cache constant left. `max_concurrent_batches` and `threads_per_batch` stay as fixed shapes for
+  the microbenchmark; configs adaptive*/grouped_always removed, `task_edges_*` added (group `task_edges`),
+  `sched_g32_w32` added. Test `path_finding_adaptive_scheduler.test` -> `path_finding_grouped_scheduler.test`; all
+  101 test files pass. task_edges sweep (index, 32 threads, median of 3): SF10 needs one task per group (4 Mi or
+  more; 1 Mi = two tasks is already 1.5-1.7x slower on 16384/65536 pairs: 192/649 ms against 131/389 ms); SF100 and
+  SF300 are flat within 2% from 64 Ki to 4 Mi at 32 groups and lose 5-28% at 16 Mi or no split. Against rc9 on the
+  same tables: SF300 65536 pairs 9.88 s against 9.62 s (2.7% slower, inside the 9.67-9.80 s band of identical shapes),
+  16384 2.69 against 2.62 s, 2048 341 against 356 ms, 1024 sources x all 794 against 777 ms; SF100 65536 3.24 against
+  3.23 s, 16384 889 against 866 ms, 1024 sources 381 against 390 ms. For Section 6.5 at 256 lanes: one batch at a time
+  (`sched_g1_w32`) is 3.6-9x slower than the default (SF300 65536 pairs 38.9 s, SF10 3.53 s against 0.39 s); one event
+  per batch (`no_grouped_batches`) 1.6-2.4x slower at SF100/SF300 (SF300 16.6 s), since 256-lane waves start 256
+  independent events each with its own working set. Tag `eval-freeze-rc10` on this commit; the sweep stays on hold.

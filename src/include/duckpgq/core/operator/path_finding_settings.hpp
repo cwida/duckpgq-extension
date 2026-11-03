@@ -18,7 +18,8 @@ struct PathFindingSettings {
 	      sparse_frontier_divisor(NonNegative(GetPathFindingSparseFrontierDivisor(context))),
 	      frontier_bitmap(GetPathFindingFrontierBitmap(context)),
 	      frontier_bitmap_filter(GetPathFindingFrontierBitmapFilter(context)),
-	      grouped_batches_budget(GetPathFindingGroupedBatchesBudget(context)),
+	      bitmap_filter_working_set(NonNegative(GetPathFindingBitmapFilterWorkingSet(context))),
+	      task_edges(NonNegative(GetPathFindingTaskEdges(context))),
 	      working_set_cap(ResolveWorkingSetCap(context)),
 	      visit_prefetch(NonNegative(GetPathFindingVisitPrefetch(context))),
 	      sub_range_tasks(GetPathFindingSubRangeTasks(context)),
@@ -34,11 +35,13 @@ struct PathFindingSettings {
 	bool target_early_termination;
 	int64_t threads_per_batch;
 	idx_t sparse_frontier_divisor;
-	//! MS-BFS lane kernel: _frontier_bitmap, _frontier_bitmap_filter (-1 decides from the working set size),
-	//! _grouped_batches_budget, _visit_prefetch (0 off), _sub_range_tasks, _sparse_level_divisor (0 sweeps)
+	//! MS-BFS lane kernel: _frontier_bitmap, _frontier_bitmap_filter (-1 decides from the working set size against
+	//! _bitmap_filter_working_set bytes), _task_edges (edges per task of a worker group's phase; 0 = no split by
+	//! edges), _visit_prefetch (0 off), _sub_range_tasks, _sparse_level_divisor (0 sweeps)
 	bool frontier_bitmap;
 	int32_t frontier_bitmap_filter;
-	int64_t grouped_batches_budget;
+	idx_t bitmap_filter_working_set;
+	idx_t task_edges;
 	//! _working_set_cap resolved to bytes (0 = no bound): the memory safety bound of the schedulers, a quarter of
 	//! DuckDB's memory_limit unless set explicitly
 	idx_t working_set_cap;
@@ -75,7 +78,7 @@ private:
 		return limit / 4;
 	}
 
-	static idx_t NonNegative(int32_t value) {
+	static idx_t NonNegative(int64_t value) {
 		return value > 0 ? NumericCast<idx_t>(value) : 0;
 	}
 };
