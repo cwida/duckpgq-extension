@@ -1357,3 +1357,29 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   (`sched_g1_w32`) is 3.6-9x slower than the default (SF300 65536 pairs 38.9 s, SF10 3.53 s against 0.39 s); one event
   per batch (`no_grouped_batches`) 1.6-2.4x slower at SF100/SF300 (SF300 16.6 s), since 256-lane waves start 256
   independent events each with its own working set. Tag `eval-freeze-rc10` on this commit; the sweep stays on hold.
+- 3 Nov (4): SF10 dry run of the whole matrix on tag `eval-freeze-rc10` (SCALE_FACTORS=10, every subset but
+  graphalytics; the Memgraph, FalkorDB and Neo4j containers were restarted first, their ports 7687 / 6379 / 7688).
+  35 steps, all exit 0, 7 h 20 min (the pair sweep over all systems 2 h 19 min, LDBC queries 46 min, native baselines
+  54 min, the baselines' update workloads 1 h 15 min); every point agrees across systems and configurations, the
+  both-routes oracle compared 4536 index answers against the build route under folds with 0 mismatches. Two matrix
+  script fixes on the way (`66169da3`, tag moved): steps written for SF100/SF300 and the `for sf in 10 100` loops
+  honour SCALE_FACTORS, and `STEP_LIST_ONLY=1` lists the planned steps (`~/sweep/follow.sh` shows step k of N live).
+  SF10 headline numbers (index route, median of 3): random pairs 1 / 1024 / 65536: 3 / 21 / 383 ms (Neo4j 12 ms /
+  783 ms / 12.9 s; Kuzu 7 ms / 5.6 s / 358 s, 31.7 s with 32 clients); sources x all 1024: 51 ms (Kuzu 4.4 s, 687 ms
+  with 32 clients); IC13 / BI19 / BI20 4 / 12 / 5 ms (Neo4j 3 / 40 / 22 ms; BI19 was 61 ms in rc1); throughput 396 ->
+  5583 q/s from 1 to 32 clients against 56 -> 187 q/s for the build route (30x), p99 19 ms against 295 ms, peak 291
+  MiB against 2.0 GiB; updates: index 15 ms against build 20 ms median per query, one fold of 95 ms in 190 commits
+  (query max 158 ms); 16 readers under a writer: index 49 / 243 ms median / p99 against build 100 / 164 ms, commits
+  176 against 86 ms. Microbenchmarks confirm the 3 Nov defaults from inside the matrix: task_edges 4 Mi at the
+  optimum (64 Ki 1.8x slower at 65536 pairs; 32 groups x 32 tasks 1.84x slower, 32 x 1 equal); one batch at a time
+  9.3x slower (the Section 6.5 sentence); coarse partitions 1.6-1.8x ahead of the thread rule; crossover k = 64 / 32
+  as in the probe. Observations for the paper, none a defect: (a) at SF10 with 65536 random pairs one lane per pair is
+  13% faster than lanes per distinct source (nearly every pair has its own source; at SF300 the grouped lanes win
+  1.7x), so "never the best choice" should read "never at scale"; (b) at SF10 the index route's p99 under 8-16 readers
+  is worse than the build route's and the writer's commits are 2x slower with index readers (every commit appends to
+  the index and invalidates the shared snapshot that the readers rebuild), while the median is 2x better; at SF300
+  the index wins 53x on the median and 7x on commits; (c) 20 sources x 200 runs 20% faster per-source than on the
+  lanes at SF10 (the k = 32 crossover again: the fixed limit 16 is one step low at SF10, one step high at SF300);
+  (d) sparse level divisor 8 is 13% faster than 16 at 16384 pairs at SF10. Verdict: ready; the SF10 markers are
+  valid rc10 results and the full sweep (`SCALE_FACTORS="10 100 300" ./repro/run_all.sh all`) skips them. The
+  collector ran with the figure and table directories redirected (nothing under paper/ written).
