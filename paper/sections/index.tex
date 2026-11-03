@@ -4,36 +4,16 @@
 % Restructured 3 Nov 2026 around when the index pays off and its life cycle (build, change, read, fold, store),
 % against the code at 9dfa2f98 and the vocabulary of paper/STYLE.md. Facts as audited on 3 Nov; numbers marked.
 
-Without an index the operator builds the partitioned CSR inside every query. \texttt{CREATE INDEX knows\_csr ON
-knows USING CSR (src, dst)} keeps it instead. \duckdb maintains the index across queries, transactions,
-checkpoints and restarts, the rewrite of Section~\ref{sec:planner} uses it whenever the edge table has one, and every
-transaction traverses exactly the edges it may see. This section first says when the index is worth having, then
-what \duckdb's index interface offers it, and then follows the index through its life: how it is built and changed,
-how a transaction reads it, how it is folded into a new version, and how it is stored. It ends with the argument and
-the tests for its correctness.
-
-\subsection{When the index pays off}
-\label{sec:index-when}
-
-The index saves the build, and the build is a fixed cost per query, 22, 128 and 264\,ms at SF10, SF100 and SF300
-(Section~\ref{sec:csr}). For one heavy query that saving is small, because the traversal dominates; 65\,536 random
-pairs at SF300 take a fifth less time over the index. For short queries it is the whole cost. A single pair at SF300
-takes 28\,ms over the index and 284\,ms with the build, and because every query pays the build again, the gap grows
-with the load. With 32 clients the index answers 323 single-pair queries per second at SF300 and the build 6, and
-with 16 transactions reading under a writer a query takes 73\,ms over the index and 3.7\,s with the build, which also
-holds the writer's commits back, 158 against 604\,ms. \todo{Probes of 30 Oct on rc9; the rerun's throughput and
-concurrent steps replace them.} The index therefore pays off for workloads that run many queries over the same graph,
-and helps a single heavy query little.
-
-The index has four costs. It holds the graph in memory, about 11 bytes per edge of which 8 are the edge's row id,
-617\,MB for the 55.7\,M edges of SF300. \todo{From the rerun's fixed-cost step.} Its overlay grows with the changes
-since the last fold, and so does the time to build a snapshot, until a fold, a rebuild of the CSR from the table,
-resets it; the transaction that triggers the fold pays for it, about 3\,s at SF300. \todo{Fold latency from the
-rerun's SF300 fold step.} A transaction that has changed the edge table itself cannot use the shared index and builds
-its own CSR, and for it the index saves nothing. And a table with the index keeps its deleted row ids instead of
-compacting them (Section~\ref{sec:index-storage}). Commits are not slowed down. The index records a change in its log
-and does no other work at commit, and a commit of 2000 edge changes costs 15\,ms with and without the index
-(Section~\ref{sec:eval-updates}).
+\rev{A CSR index keeps the partitioned CSR of Section~\ref{sec:csr} between queries. It is created on the edge table
+with \texttt{CREATE INDEX knows\_csr ON knows USING CSR (src, dst)}, and from then on it is an index like any other
+in \duckdb: it follows every insert and delete of the edge table, it is written at checkpoints and recovered from the
+write-ahead log, and it is used whenever a path pattern matches a table that has one. What sets it apart from an ART
+index is that a transaction traverses it in place and therefore never consults the table's row versions. The index has to
+provide the same view of the graph that \duckdb's snapshot isolation would give the transaction on the table, and this
+section is about how it does that. It first describes what \duckdb's index interface offers an index and what it
+withholds, then follows the index through its life: how it is built and changed, how a transaction reads it, how its
+changes are folded into a new version, and how it is stored. It then argues and tests the view it provides, and ends with
+when the index pays off.}
 
 \subsection{What the interface gives, and what it withholds}
 \label{sec:index-interface}
@@ -177,8 +157,10 @@ since \duckdb compacts only tables whose indexes are all ARTs.
 \subsection{Correctness}
 \label{sec:index-correctness}
 
-Let $\mathit{Vis}(b)$ be the set of edge rows visible to a transaction with bound $b$, as \duckdb defines it through
-\texttt{CanFetch}, and let epoch $E$ be built by a transaction with bound $b_e$, so $E = \mathit{Vis}(b_e)$. For a
+\rev{The claim is that a transaction traverses the same edge set over the index that a table scan would show it. We
+argue it informally, by case, and then say how it is tested; the argument depends on properties of \duckdb that are
+named at the end.} Let $\mathit{Vis}(b)$ be the set of edge rows visible to a transaction with bound $b$, as \duckdb
+defines it through \texttt{CanFetch}, and let epoch $E$ be built by a transaction with bound $b_e$, so $E = \mathit{Vis}(b_e)$. For a
 transaction with bound $b \geq b_e$ the snapshot is $E \,\cup\, \Delta_b \setminus T_b$, where $\Delta_b$ are the inserted
 rows of the groups visible to $b$ that $E$ does not account for, and $T_b$ the rows of the delete groups that apply to
 $b$; we claim it equals $\mathit{Vis}(b)$. Every row inserted after $b_e$ reached the index through \texttt{Append} at
@@ -219,3 +201,22 @@ the vertex tables, and a deleted source or destination yields no pair, but an in
 edges in place is still traversed, where the SQL rewrite would drop those edges through its join with the vertex
 table. We document this as a semantic difference of the index. \texttt{CREATE INDEX} rejects keys that are not two
 plain integer columns and a \texttt{UNIQUE} index, and a build fails for a graph with more than $2^{32}-1$ vertices.
+
+\subsection{When the index pays off}
+\label{sec:index-when}
+
+\rev{The index saves rebuilding the CSR for every query, a fixed cost that depends only on the graph: 22, 128 and 264\,ms
+at SF10, SF100 and SF300 (Section~\ref{sec:csr}). Whether that matters depends on the queries. One heavy query is
+dominated by its traversal, and 65\,536 random pairs at SF300 take a fifth less time over the index. A short query is
+dominated by the build, and a single pair at SF300 takes 28\,ms over the index against 284\,ms with it. Because every
+query pays the build again, the difference grows with the load: with 32 clients the index answers 323 single-pair
+queries per second at SF300 and the build 6, and with 16 transactions reading under a writer a query takes 73\,ms over
+the index and 3.7\,s with the build, which also holds the writer's commits back, 158 against 604\,ms. The index
+therefore pays off for workloads that run many queries over the same graph, and helps a single heavy query little.} \todo{Probes of 30 Oct on rc9; the rerun's throughput and concurrent steps replace them.}
+
+\rev{Its costs are the memory for the epoch, about 11 bytes per edge, of which 8 are the edge's row id; the overlay,
+which grows with the changes since the last fold and with it the time to build a snapshot; and the fold itself, which
+the transaction that triggers it pays for, about 3\,s at SF300. A table with the index also keeps its deleted row ids
+instead of compacting them. Commits are not slowed down. The index records a change in its log and does no other work
+at commit, and a commit of 2000 edge changes costs 15\,ms with and without the index
+(Section~\ref{sec:eval-updates}).} \todo{Bytes per edge and fold latency from the rerun.}
