@@ -5888,8 +5888,9 @@ def crossover_table(args):
     rows = [r for r in read_result_files_plain(args.files) if r["config"] in dict(CROSSOVER_KERNELS)]
     if not rows:
         return
-    for sf in sorted({r["benchmark_notes"] for r in rows}):
-        sf_rows = [r for r in rows if r["benchmark_notes"] == sf]
+    # One table per run label and writer pause: the unpaced runs are a different experiment from the 200 ms ones
+    for sf, pause in sorted({(r["benchmark_notes"], r.get("writer_pause_ms", "")) for r in rows}):
+        sf_rows = [r for r in rows if r["benchmark_notes"] == sf and r.get("writer_pause_ms", "") == pause]
         points = crossover_points(sf_rows)
         for shape, title in (("random_pairs", "k random pairs (one destination per source)"),
                              ("all_pairs", "k sources x 200 destinations each")):
