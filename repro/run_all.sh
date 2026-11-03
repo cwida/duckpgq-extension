@@ -11,6 +11,8 @@ cd "${REPO_ROOT}"
 what="${1:-all}"
 COMMON=(--threads "${THREADS}" --repeats "${REPEATS}" --timeout-s "${TIMEOUT_S}")
 NOTE="repro $(git rev-parse --short HEAD) $(hostname)"
+# Steps written for one scale factor run only when SCALE_FACTORS lists it (SCALE_FACTORS=10 is the dry run of the matrix)
+has_sf() { [[ " ${SCALE_FACTORS} " == *" $1 "* ]]; }
 
 if [ "$what" = all ] || [ "$what" = fixed ]; then
   # Fixed costs: database size, CSR index build time and bytes per edge, every baseline's fresh load and store size
@@ -89,7 +91,7 @@ if [ "$what" = all ] || [ "$what" = microbench ]; then
     step "microbench_crossover_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs crossover --shapes random all_pairs --pair-counts 1 2 4 8 16 32 64 128 256 512 1024 4096 --source-count 1 2 4 8 16 32 64 128 256 512 1024 4096 --target-count 200 --routes index --notes "Section 3 crossover SF${sf} ${NOTE}"
   done
   # The scheduling crossover figure needs SF300 as well; index route only
-  step "microbench_scheduling_sf300" ${HARNESS} microbench --scale-factor 300 "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes "W31 scheduling SF300 ${NOTE}"
+  has_sf 300 && step "microbench_scheduling_sf300" ${HARNESS} microbench --scale-factor 300 "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes "W31 scheduling SF300 ${NOTE}"
 fi
 
 if [ "$what" = all ] || [ "$what" = throughput ]; then
@@ -106,7 +108,7 @@ if [ "$what" = all ] || [ "$what" = updates ]; then
   step "update_sf10_sssp"           ${HARNESS} update-run "${UPD[@]}" --query-pattern sssp           --notes "W16 ${NOTE}"
   step "update_sf10_p2p"            ${HARNESS} update-run "${UPD[@]}" --query-pattern point_to_point --notes "W16 ${NOTE}"
   step "update_sf10_sssp_t1"        ${HARNESS} update-run --scale-factor 10 --threads 1 --batch-size 2000 --batches 190 --query-pattern sssp --notes "W16 ${NOTE}"
-  step "update_sf100_sssp"          ${HARNESS} update-run --scale-factor 100 --threads "${THREADS}" --batch-size 10000 --batches 150 --query-pattern sssp --notes "W16 ${NOTE}"
+  has_sf 100 && step "update_sf100_sssp"          ${HARNESS} update-run --scale-factor 100 --threads "${THREADS}" --batch-size 10000 --batches 150 --query-pattern sssp --notes "W16 ${NOTE}"
   # One route per run (2 Nov): with both routes in one driver run every reader alternates an index and a build
   # query, so the index latency is measured while the other readers saturate the cores with per-query builds and the
   # writer's commit latency mixes both routes (SF300, 16 readers: index 142 ms per query in a shared run against
@@ -124,8 +126,8 @@ if [ "$what" = all ] || [ "$what" = updates ]; then
   # the query costs 128 ms and 264 ms instead of SF10's 22 ms (the SF300 log is staged from the generator's batches)
   for readers in 1 4 16; do
     for route in index build; do
-      step "concurrent_sf100_r${readers}_${route}" ${HARNESS} update-concurrent --scale-factor 100 --threads "${THREADS}" --batch-size 2000 --batches 100 --readers "$readers" --writer-pause-ms 200 --routes "$route" --notes "W16 concurrent SF100 ${route} ${NOTE}"
-      step "concurrent_sf300_r${readers}_${route}" ${HARNESS} update-concurrent --scale-factor 300 --threads "${THREADS}" --batch-size 2000 --batches 60 --readers "$readers" --writer-pause-ms 200 --routes "$route" --notes "W16 concurrent SF300 ${route} ${NOTE}"
+      has_sf 100 && step "concurrent_sf100_r${readers}_${route}" ${HARNESS} update-concurrent --scale-factor 100 --threads "${THREADS}" --batch-size 2000 --batches 100 --readers "$readers" --writer-pause-ms 200 --routes "$route" --notes "W16 concurrent SF100 ${route} ${NOTE}"
+      has_sf 300 && step "concurrent_sf300_r${readers}_${route}" ${HARNESS} update-concurrent --scale-factor 300 --threads "${THREADS}" --batch-size 2000 --batches 60 --readers "$readers" --writer-pause-ms 200 --routes "$route" --notes "W16 concurrent SF300 ${route} ${NOTE}"
     done
   done
   # Correctness oracle (2 Nov): one run with both routes in the same process, so the driver compares every index
@@ -135,7 +137,7 @@ if [ "$what" = all ] || [ "$what" = updates ]; then
   # Fold latency at SF300 (W36 item e, 2 Nov): at the default fold ratio 0.1 the 60 commits above add 120k log entries
   # against 55.6M edges, so no fold happens at SF100 or SF300 in the matrix. This step lowers the ratio so a fold runs
   # under 16 index readers (about every 14 commits); duckpgq_csr_index_fold_stats in the stats column gives its latency
-  step "concurrent_sf300_r16_fold" ${HARNESS} update-concurrent --scale-factor 300 --threads "${THREADS}" --batch-size 2000 --batches 60 --readers 16 --writer-pause-ms 200 --routes index --fold-ratio 0.0005 --notes "W36 fold latency SF300 ${NOTE}"
+  has_sf 300 && step "concurrent_sf300_r16_fold" ${HARNESS} update-concurrent --scale-factor 300 --threads "${THREADS}" --batch-size 2000 --batches 60 --readers 16 --writer-pause-ms 200 --routes index --fold-ratio 0.0005 --notes "W36 fold latency SF300 ${NOTE}"
   step "update_kuzu_sf10_sssp"      ${HARNESS} update-kuzu     "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"
   step "update_memgraph_sf10_sssp"  ${HARNESS} update-memgraph "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"
   step "update_falkordb_sf10_sssp"  ${HARNESS} update-falkordb "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"
