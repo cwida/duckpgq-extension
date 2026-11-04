@@ -85,7 +85,7 @@ epoch's partition of a range skips the suppressed positions and processes the in
 it.
 
 Which changes a transaction is allowed to see is a question of \duckdb's snapshot isolation. A transaction sees the
-rows that were committed before it started, and nothing that was committed later or never\rev{ ($T_a$ in
+rows that were committed before it started, and nothing that was committed later or never \rev{($T_a$ in
 Figure~\ref{fig:index-timeline} sees $g_1$ to $g_3$, $T_b$ sees all six groups)}. The index answers it with
 \texttt{CanFetch}, once per change group. The edges of one group were inserted, or deleted, by one commit of one transaction, so a transaction sees either
 all of the group's changes or none of them. For an insert group the index calls \texttt{CanFetch} on one of the
@@ -118,7 +118,7 @@ joined back to both tables without the index knowing their schemas.
 \subsection{Folding the log into a new epoch}
 \label{sec:index-fold}
 
-The log grows with every commit and the overlay with it, so the index periodically builds a new epoch, a \emph{fold}\rev{ (epoch~1 in
+The log grows with every commit and the overlay with it, so the index periodically builds a new epoch, a \emph{fold} \rev{(epoch~1 in
 Figure~\ref{fig:index-timeline})}.
 A fold runs in a transaction without uncommitted changes of its own, at that transaction's bound $b_f$. It scans the
 edges visible to the transaction, on one thread, builds the partitioned CSR with the parallel build of
@@ -133,7 +133,7 @@ lies with the transactions and what a better policy would weigh.
 
 The old epoch cannot be dropped at once. A transaction that started before the fold has a bound below $b_f$, and the
 new epoch contains edges it must not see. The index keeps the previous epoch, a \emph{retained epoch}, until the next
-fold, and serves each transaction from the newest epoch whose bound does not exceed its own\rev{ ($T_c$ in
+fold, and serves each transaction from the newest epoch whose bound does not exceed its own \rev{($T_c$ in
 Figure~\ref{fig:index-timeline} started before the fold and reads epoch~0)}. A transaction older than
 both builds a private epoch. The log cannot be cleaned up by deciding visibility at $b_f$ after the fact, because the
 row versions that would answer the question may be gone. Instead every epoch has a \emph{generation}, its number in
