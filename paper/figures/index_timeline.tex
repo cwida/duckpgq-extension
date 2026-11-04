@@ -11,7 +11,7 @@
 ]
 % time axis
 \draw[->, black!50] (0,0) -- (8.2,0);
-\node[lbl, anchor=north east] at (8.2,-0.02) {commit order};
+\node[lbl, anchor=north east] at (8.2,-0.02) {commits, in commit order};
 % epoch 0
 \node[epoch, anchor=south west, text width=1.75cm] (e0) at (0,0.3) {\textbf{epoch 0}\\ CSR, dictionary,\\ row ids; bound $b_0$};
 \draw[tick] (e0.south east) -- ++(0,-0.3) node[lbl, below] {$b_0$};
@@ -19,17 +19,21 @@
 \foreach \i/\t/\s in {1/$g_1$/ins,2/$g_2$/ins,3/$g_3$/del,4/$g_4$/ins,5/$g_5$/ins,6/$g_6$/del} {
   \node[\s, anchor=south west] (g\i) at (2.2+\i*0.62-0.62,0.3) {\t};
 }
-\node[lbl, anchor=south west] at ($(g1.north west)+(0,0.02)$) {change log: one group per append or delete call};
+\node[lbl, anchor=south west] at ($(g1.north west)+(0,0.02)$) {change log: one group per commit};
+% one tick per commit on the axis
+\foreach \i in {1,...,6} {\draw[tick] ($(g\i.south)+(0,-0.3)$) -- ++(0,0.08);}
 % fold
-\draw[tick] ($(g4.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$b_f$};
-\node[epoch, anchor=south west, text width=1.65cm] (e1) at (6.3,0.3) {\textbf{epoch 1}\\ rebuilt from the table\\ at $b_f$, has $g_1$--$g_4$};
+\draw[tick] ($(g4.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_f$: $b_f$};
+\node[epoch, anchor=south west, text width=1.65cm] (e1) at (6.3,0.3) {\textbf{epoch 1}\\ the table as $T_f$\\ sees it: $g_1$--$g_4$};
 \draw[->, ixorange, semithick] (e0.north) .. controls (2.5,1.7) and (5.8,1.7) .. node[lbl, above, pos=0.5] {fold} (e1.north);
 % transaction bounds on the axis
-\draw[tick] ($(g3.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_a$, $T_c$};
+\draw[tick] ($(g2.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_a$, $T_c$};
 \draw[tick] ($(g6.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_b$};
 % transactions
 \node[lbl, font=\scriptsize, anchor=north west, text width=8.1cm, align=left] at (0,-0.55) {%
-  $T_a$ (bound after $g_3$): epoch 0 + overlay, $g_1$ and $g_2$ visible, the deletes of $g_3$ applied.\\
-  $T_b$ (bound after $g_6$): epoch 1 + overlay, $g_5$ visible, $g_6$ applied; $g_1$--$g_4$ are inside epoch 1.\\
-  $T_c$ (bound after $g_3$, started before the fold): served from epoch 0, which is retained until the next fold.};
+  A transaction's bound is its start in the commit order; it sees only the commits before it.\\
+  $T_f$ (after $g_4$) folds: epoch 1 is the table as $T_f$ sees it, exactly $g_1$--$g_4$.\\
+  $T_a$ (after $g_2$): epoch 0 + overlay with $g_1$ and $g_2$ visible.\\
+  $T_b$ (after $g_6$): epoch 1 + overlay with $g_5$ visible and $g_6$ applied; $g_1$--$g_4$ are inside epoch 1.\\
+  $T_c$ (after $g_2$, before the fold): served from epoch 0, which is retained until the next fold.};
 \end{tikzpicture}
