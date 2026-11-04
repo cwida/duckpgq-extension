@@ -237,3 +237,12 @@ measure the scan's share (expected a quarter to a third of 3 s); then paralleliz
 checkpoint drops a fully deleted trailing row group; rc1's 15,765 compared concurrent transactions with no mismatch;
 the fourteen regression test files; CREATE INDEX rejects non-integer or more than two key columns and UNIQUE, and a
 build fails above 2^32-1 vertices. The concurrent-comparison count goes into Section 6.3 from rc10's check step.
+
+## Reproduction package (decided 4 Nov, deferred until rc10 lands)
+
+Separate private repository with its own history, populated once from the frozen commit by a copy script under
+repro/package/: README (machine, setup, one command per matrix step, how to regenerate figures and tables), repro/,
+scripts/pathfinding_benchmark.py, scripts/plot_sweep_results.py, scripts/tools/, repro/results from rc10,
+ENVIRONMENT.txt, and the query appendix as markdown once it leaves the paper. Paper sources, plan, NOTES and the LDBC
+data stay out. First commit message names cwida/duckpgq-extension and the eval-freeze tag. Private for submission
+(single-blind), public at camera-ready.
