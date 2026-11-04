@@ -161,8 +161,8 @@ keys up again.
 \subsection{Checkpoint, recovery and load}
 \label{sec:index-storage}
 
-\rev{The index persists like any other in \duckdb; rebuilding it after every restart would cost 4.8\,s at SF300
-(Table~\ref{tab:fixed-costs}) before the first query.} At a checkpoint it writes the newest epoch and the log entries that epoch
+The index persists like any other in \duckdb; rebuilding it after every restart would cost 4.8\,s at SF300
+(Table~\ref{tab:fixed-costs}) before the first query. At a checkpoint it writes the newest epoch and the log entries that epoch
 does not account for, through \duckdb's index allocator, one block per segment, with a short manifest in the index's
 storage options. Only the newest epoch is written, because a retained epoch exists for running transactions, which a
 restart ends. A checkpoint at which the index has not changed leaves the stored blocks in place. The write-ahead log carries the same state in the record that creates the index, so an index created after
@@ -183,34 +183,41 @@ Loaded tombstones carry no keys, so one parallel scan over the epoch's row ids p
 \subsection{Assumptions and tests}
 \label{sec:index-correctness}
 
-\rev{The argument of Sections~\ref{sec:index-structure} to~\ref{sec:index-storage}, that a transaction traverses over
+The argument of Sections~\ref{sec:index-structure} to~\ref{sec:index-storage}, that a transaction traverses over
 the index the same edges a scan of the edge table would show it, rests on three properties of \duckdb. Only the first, that
 the index calls happen at every commit and in commit order, is part of the interface an extension is promised. The other
 two are behaviour of the current implementation. A row id is reused only after its append was reverted by a failed
 commit, and \texttt{CanFetch} answers the visibility question snapshot isolation defines. Section~\ref{sec:hooks}
-counts both among the interface's gaps.}
+counts both among the interface's gaps.
 
-\rev{We test the claim under concurrent writes by having every reader transaction answer its query twice, over the
+We test the claim under concurrent writes by having every reader transaction answer its query twice, over the
 index and with a CSR built from the same transaction's view of the table, and comparing the two; the results of these
 runs are part of Section~\ref{sec:eval-updates}. Regression tests cover the cases of Sections~\ref{sec:index-read}
 and~\ref{sec:index-fold}, among them folds in either order, a commit that fails after its append, deletes after a fold
-and transactions that differ only in a fully deleted group.}
+and transactions that differ only in a fully deleted group.
 
-\rev{The index differs from the SQL rewrite in one case, which we accept. Pairs come from the vertex tables, so a deleted
+The index differs from the SQL rewrite in one case, which we accept. Pairs come from the vertex tables, so a deleted
 source or destination yields no pair, but an intermediate vertex deleted with its edges in place is still traversed;
-the rewrite would drop those edges through its join with the vertex table.}
+the rewrite would drop those edges through its join with the vertex table.
 
 \subsection{When the index pays off}
 \label{sec:index-when}
 
-The index saves rebuilding the CSR for every query, a fixed cost that depends only on the graph: 22, 128 and 264\,ms
-at SF10, SF100 and SF300 (Section~\ref{sec:csr}). Whether that matters depends on the queries. One heavy query is
-dominated by its traversal, and 65\,536 random pairs at SF300 take a fifth less time over the index. A short query is
-dominated by the build, and a single pair at SF300 takes 28\,ms over the index against 284\,ms with it. Because every
-query pays the build again, the difference grows with the load: with 32 clients the index answers 323 single-pair
-queries per second at SF300 and the build 6, and with 16 transactions reading under a writer a query takes 73\,ms over
-the index and 3.7\,s with the build, which also holds the writer's commits back, 158 against 604\,ms. The index
-therefore pays off for workloads that run many queries over the same graph, and helps a single heavy query little. \todo{Probes of 30 Oct on rc9; the rerun's throughput and concurrent steps replace them.}
+\rev{Without the index, every query rebuilds the CSR, and the build is a fixed cost that depends on the graph alone: 22,
+128 and 264\,ms at SF10, SF100 and SF300 (Section~\ref{sec:csr}). Whether that cost matters depends on how much
+traversal the query does for it. A query that traverses a large part of the graph many times over, such as thousands of
+pairs, amortizes the build and gains little from the index; 65\,536 random pairs at SF300 take a fifth less time over
+it. A query that traverses a small part once, such as a single pair or a single source on a large graph, is dominated
+by the build; a single pair at SF300 takes 28\,ms over the index against 284\,ms with the build. The first argument for
+the index is therefore the workload of short queries, and it grows with the query rate because every query pays the
+build again: with 32 clients the index answers 323 single-pair queries per second at SF300 and the build 6.}
+
+\rev{The second argument is concurrency. Readers share one index, each reading the snapshot its transaction is entitled
+to, while a per-query build gives every reader its own CSR and every build competes for the same cores. With 16
+transactions reading under a writer, a query takes 73\,ms over the index and 3.7\,s with the build, and the builds also
+hold the writer's commits back, 158 against 604\,ms. The index therefore pays off for workloads with many or
+concurrent queries over the same graph, and helps a single heavy query little.}
+\todo{Probes of 30 Oct on rc9; the rerun's throughput and concurrent steps replace them.}
 
 Its costs are the memory for the epoch, about 11 bytes per edge, of which 8 are the edge's row id; the overlay,
 which grows with the changes since the last fold and with it the time to build a snapshot (one version check per
