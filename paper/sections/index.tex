@@ -204,11 +204,11 @@ the rewrite would drop those edges through its join with the vertex table.
 \label{sec:index-when}
 
 Without the index, every query rebuilds the CSR, and the build is a fixed cost that depends on the graph alone: 22,
-128 and 264\,ms at SF10, SF100 and SF300 (Section~\ref{sec:csr}). Whether that cost matters depends on how much
-traversal the query does for it. A query that traverses a large part of the graph many times over, such as thousands of
-pairs, amortizes the build and gains little from the index; over the index, 65\,536 random pairs at SF300 run 20\%
-faster than with the build. A query that traverses a small part once, such as a single pair or a single source on a large graph, is dominated
-by the build; a single pair at SF300 takes 28\,ms over the index against 284\,ms with the CSR built on the fly. The first argument for
+128 and 264\,ms at SF10, SF100 and SF300 (Section~\ref{sec:csr}). \rev{The index removes that cost from every query, and because the cost is fixed, its share of a query shrinks as the
+query grows. For a single pair at SF300 the build is 90\% of the query, 284\,ms with the CSR built on the fly against
+28\,ms over the index. For 65\,536 random pairs, whose traversal does most of the work, the saving is 20\%, still
+2.6\,s of a 12.9\,s query. The index is faster on every read-only point of Section~\ref{sec:eval}; what varies is by
+how much, and that is the fixed build cost against the query's own time.} The first argument for
 the index is therefore the workload of short queries, and it grows with the query rate because every query pays the
 build again: with 32 clients the index answers 323 single-pair queries per second at SF300 and the on-the-fly build 6.
 
@@ -216,8 +216,8 @@ The second argument is concurrency. Readers share one index, each reading the sn
 to, while a per-query build gives every reader its own CSR and every build competes for the same cores. The concurrent run of Section~\ref{sec:eval-updates} shows the
 difference: with one writer committing 2000 edge changes every 200\,ms and 16 transactions querying single-source
 distances at SF300, a query takes 73\,ms over the index and 3.7\,s with the on-the-fly build, and the builds also hold
-the writer's commits back, 158 against 604\,ms. The index therefore pays off for workloads with many or
-concurrent queries over the same graph, and helps a single heavy query little.
+the writer's commits back, 158 against 604\,ms. \rev{The index therefore pays off most for workloads with many short or concurrent queries over the same graph, and
+least for a single heavy query, where it still saves the build.}
 \todo{Probes of 30 Oct on rc9; the rerun's throughput and concurrent steps replace them.}
 
 Its costs are the memory for the epoch, about 11 bytes per edge, of which 8 are the edge's row id; the overlay,
