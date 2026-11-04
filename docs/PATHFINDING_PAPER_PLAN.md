@@ -1420,3 +1420,5 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   one-to-two-day change to the execution model of every reach query, with the whole reach path to re-validate; not
   before this sweep. Recorded as future work for the paper: the reach output is materialized per query, bounded by
   the budget, where per-wave or per-level emission would bound it by one wave (18 GB here) or one level.
+  Decided 4 Nov (author): hold off on the streaming reach output; the 1024-source graph500-24 point stays an
+  out-of-memory row for DuckPGQ, explained by the materialized reach set, with per-wave emission as future work.
