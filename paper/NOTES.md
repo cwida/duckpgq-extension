@@ -227,3 +227,8 @@ observations, neither a correctness problem:
 - DetectReached runs in the serial completion step after every check phase and scans every pending destination of
   every active lane (a 64-byte bit-set row per lookup): O(pending) serial work per level, about 0.8 M lookups per
   wave and level on BI19 at SF300. Unmeasured; a profile of the serial step would show whether it matters.
+
+4 Nov: the fold's serial table scan is an implementation shortcut (single TableScanState in BuildEpochFromTable),
+not a design constraint; the desk confirmed visibility, locking and the build side all permit a parallel scan
+(about forty lines, per-thread edge lists into BuildEpoch). Pending: a FoldStats timing field and three SF300 folds to
+measure the scan's share (expected a quarter to a third of 3 s); then parallelize or state the share in 4.4.

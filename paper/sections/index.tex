@@ -120,8 +120,11 @@ including edges inserted after the epoch, and the keys of its vertices (Section~
 The log grows with every commit and the overlay with it, so the index periodically builds a new epoch from the
 table, a \emph{fold} (epoch~1 in Figure~\ref{fig:index-timeline}). A fold runs inside an ordinary transaction without uncommitted changes, and the bound $b_f$ in the figure is
 where that transaction started. \rev{\duckdb fixes a transaction's bound when the transaction starts, so the new epoch
-holds the commits that transaction can see.} The transaction scans the edges it can see, on one thread, builds the
-partitioned CSR with the parallel build of \texttt{CREATE INDEX}, and makes the result the index's newest epoch. A fold
+holds the commits that transaction can see.} The transaction scans the edges it can see \rev{(serially, an implementation shortcut; the parallel scan of
+\texttt{CREATE INDEX} would apply unchanged)}, builds the
+partitioned CSR with the parallel build of \texttt{CREATE INDEX}, and makes the result the index's newest epoch.
+\todo{Desk measures the scan's share of the 3\,s SF300 fold after the Graphalytics block; then either parallelize
+it or state the share here.} A fold
 can be triggered explicitly, through a function, or automatically. Before a transaction builds its snapshot, it counts
 the log entries that the newest epoch does not yet contain, and if they exceed a configurable fraction of that epoch's
 edge count, a tenth by default, it folds first. \rev{That transaction pays for the fold, a scan and a build of the whole
