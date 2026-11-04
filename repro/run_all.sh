@@ -13,11 +13,21 @@ COMMON=(--threads "${THREADS}" --repeats "${REPEATS}" --timeout-s "${TIMEOUT_S}"
 NOTE="repro $(git rev-parse --short HEAD) $(hostname)"
 # Steps written for one scale factor run only when SCALE_FACTORS lists it (SCALE_FACTORS=10 is the dry run of the matrix)
 has_sf() { [[ " ${SCALE_FACTORS} " == *" $1 "* ]]; }
+# REUSE_BASELINES=1: the steps whose baseline inputs did not change (fixed costs: the loads; LDBC queries: fixed
+# parameter sets) run DuckPGQ only, under step names with a _duckpgq suffix, and the baseline-only client step of the
+# LDBC queries is skipped; the table printers take the newest file per system and shape, so the baselines' earlier
+# rows stand. The pair sweeps are never reused: their pair and source samples changed on 29 Oct (edge-aware sampling).
+REUSE_BASELINES="${REUSE_BASELINES:-}"
+if [ -n "${REUSE_BASELINES}" ]; then
+  FIXED_SYSTEMS=(--systems none); LDBC_SYSTEMS=(--systems duckpgq_build duckpgq_index); REUSE_SUFFIX="_duckpgq"
+else
+  FIXED_SYSTEMS=(); LDBC_SYSTEMS=(); REUSE_SUFFIX=""
+fi
 
 if [ "$what" = all ] || [ "$what" = fixed ]; then
   # Fixed costs: database size, CSR index build time and bytes per edge, every baseline's fresh load and store size
   for sf in ${SCALE_FACTORS}; do
-    step "fixed_costs_sf${sf}" ${HARNESS} fixed-costs --scale-factor "$sf" --threads "${THREADS}" --repeats "${REPEATS}" --notes "fixed costs SF${sf} ${NOTE}"
+    step "fixed_costs_sf${sf}${REUSE_SUFFIX}" ${HARNESS} fixed-costs --scale-factor "$sf" --threads "${THREADS}" --repeats "${REPEATS}" "${FIXED_SYSTEMS[@]}" --notes "fixed costs SF${sf} ${NOTE}"
   done
 fi
 
@@ -53,7 +63,7 @@ fi
 if [ "$what" = all ] || [ "$what" = ldbc ]; then
   # W17: LDBC IC13, BI19, BI20 (hop-count variants) on every system.
   for sf in ${SCALE_FACTORS}; do
-    step "ldbc_queries_sf${sf}" ${HARNESS} ldbc-queries --scale-factor "$sf" "${COMMON[@]}" --notes "W17 SF${sf} ${NOTE}"
+    step "ldbc_queries_sf${sf}${REUSE_SUFFIX}" ${HARNESS} ldbc-queries --scale-factor "$sf" "${COMMON[@]}" "${LDBC_SYSTEMS[@]}" --notes "W17 SF${sf} ${NOTE}"
   done
 fi
 
@@ -63,6 +73,7 @@ if [ "$what" = all ] || [ "$what" = client ]; then
     has_sf "$sf" || continue
     step "sweep_pairs_sf${sf}_client${CLIENT_THREADS}" ${HARNESS} sweep-pairs --scale-factor "$sf" "${COMMON[@]}" \
       --client-threads "${CLIENT_THREADS}" --systems memgraph falkordb kuzu --notes "W27 SF${sf} client threads ${CLIENT_THREADS} ${NOTE}"
+    [ -n "${REUSE_BASELINES}" ] && continue
     step "ldbc_queries_sf${sf}_client${CLIENT_THREADS}" ${HARNESS} ldbc-queries --scale-factor "$sf" "${COMMON[@]}" \
       --client-threads "${CLIENT_THREADS}" --systems memgraph falkordb kuzu --notes "W17 SF${sf} client threads ${CLIENT_THREADS} ${NOTE}"
   done

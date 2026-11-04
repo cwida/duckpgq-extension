@@ -614,27 +614,51 @@ shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, Duc
 
 shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpochFromTable(ClientContext &context, DuckTransaction &transaction,
                                                         DataTable &table, const vector<column_t> &column_ids,
-                                                        bool undirected, bool reverse) {
+                                                        bool undirected, bool reverse, uint64_t *scan_us) {
 	auto types = table.GetTypes();
 	vector<StorageIndex> scan_columns {StorageIndex(column_ids[0]), StorageIndex(column_ids[1]),
 	                                   StorageIndex(COLUMN_IDENTIFIER_ROW_ID)};
 	vector<LogicalType> scan_types {types[column_ids[0]], types[column_ids[1]], LogicalType::ROW_TYPE};
-	TableScanState state;
-	table.InitializeScan(context, transaction, state, scan_columns);
-	DataChunk chunk;
-	chunk.Initialize(context, scan_types);
-	vector<CSRIndexEdgeList> lists(1);
-	while (true) {
-		chunk.Reset();
-		table.Scan(transaction, chunk, state);
-		if (chunk.size() == 0) {
-			break;
+	auto scan_start = std::chrono::steady_clock::now();
+	// The row groups are claimed by the threads one at a time (DataTable::NextParallelScan, the mechanism of the
+	// table scan operator) and every thread collects into its own edge list; the version checks of a row group are
+	// made against the transaction's start time and need no shared scan state, which is how CREATE INDEX's parallel
+	// sink reads the same table. BuildEpoch slices the lists in parallel as it does for the sink's lists. (Until 4 Nov
+	// the fold scanned on one thread.)
+	auto thread_count = std::max<idx_t>(
+	    1, std::min<idx_t>(TaskScheduler::GetScheduler(context).NumberOfThreads(), table.MaxThreads(context)));
+	vector<ColumnIndex> column_indexes;
+	for (auto &column : scan_columns) {
+		column_indexes.emplace_back(column.GetPrimaryIndex());
+	}
+	ParallelTableScanState parallel_state;
+	table.InitializeParallelScan(context, parallel_state, column_indexes);
+	vector<CSRIndexEdgeList> lists(thread_count);
+	ParallelFor(thread_count, thread_count, [&](idx_t, idx_t, idx_t thread_idx) {
+		auto &list = lists[thread_idx];
+		TableScanState state;
+		state.Initialize(scan_columns, context);
+		DataChunk chunk;
+		chunk.Initialize(context, scan_types);
+		while (table.NextParallelScan(context, parallel_state, state).IsValid()) {
+			while (true) {
+				chunk.Reset();
+				table.Scan(transaction, chunk, state);
+				if (chunk.size() == 0) {
+					break;
+				}
+				DataChunk key_chunk;
+				key_chunk.InitializeEmpty({scan_types[0], scan_types[1]});
+				key_chunk.ReferenceColumns(chunk, {0, 1});
+				key_chunk.SetCardinality(chunk.size());
+				CollectEdges(context, key_chunk, chunk.data[2], chunk.size(), list);
+			}
 		}
-		DataChunk key_chunk;
-		key_chunk.InitializeEmpty({scan_types[0], scan_types[1]});
-		key_chunk.ReferenceColumns(chunk, {0, 1});
-		key_chunk.SetCardinality(chunk.size());
-		CollectEdges(context, key_chunk, chunk.data[2], chunk.size(), lists[0]);
+	});
+	if (scan_us) {
+		*scan_us = static_cast<uint64_t>(
+		    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - scan_start)
+		        .count());
 	}
 	return BuildEpoch(context, lists, undirected, reverse, transaction.view.visibility_bound);
 }
@@ -1330,7 +1354,7 @@ bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio) const {
 }
 
 void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
-                                  uint64_t fold_us) const {
+                                  uint64_t fold_us, uint64_t scan_us) const {
 	{
 		// The ordering check again: the rebuild ran outside the index lock
 		IndexLock l(*this);
@@ -1344,6 +1368,7 @@ void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table
 	fold_count++;
 	fold_total_us += fold_us;
 	fold_last_us = fold_us;
+	fold_last_scan_us = scan_us;
 }
 
 bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &entry, DuckTableEntry &table,
@@ -1393,7 +1418,8 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 		identity = &index;
 	}
 	auto fold_start = std::chrono::steady_clock::now();
-	auto epoch = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse);
+	uint64_t scan_us = 0;
+	auto epoch = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse, &scan_us);
 	auto fold_us = static_cast<uint64_t>(
 	    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fold_start).count());
 	auto handle = entry->GetReadHandle<CSRIndex>();
@@ -1401,13 +1427,14 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 	if (&index != identity) {
 		return false; // rebound while the table was scanned: the epoch belongs to an index that no longer exists
 	}
-	index.InstallFoldedEpoch(transaction, storage, std::move(epoch), fold_us);
+	index.InstallFoldedEpoch(transaction, storage, std::move(epoch), fold_us, scan_us);
 	return true;
 }
 
 string CSRIndex::FoldStats() const {
-	return StringUtil::Format("folds=%llu;last_fold_ms=%.1f;fold_ms=%.1f", fold_count.load(),
+	return StringUtil::Format("folds=%llu;last_fold_ms=%.1f;last_fold_scan_ms=%.1f;fold_ms=%.1f", fold_count.load(),
 	                          static_cast<double>(fold_last_us.load()) / 1000.0,
+	                          static_cast<double>(fold_last_scan_us.load()) / 1000.0,
 	                          static_cast<double>(fold_total_us.load()) / 1000.0);
 }
 

@@ -296,15 +296,16 @@ private:
 	shared_ptr<CSRIndexEpoch> RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
 	                                           DataTable &table) const;
 	//! The epoch of every row the transaction sees, without touching the index object (RunFold calls it with no
-	//! handle on the index entry)
+	//! handle on the index entry). The table is scanned in parallel, a row group at a time per thread, as the
+	//! index-build pipeline of CREATE INDEX scans it; scan_us receives the scan's duration when given
 	static shared_ptr<CSRIndexEpoch> BuildEpochFromTable(ClientContext &context, DuckTransaction &transaction,
 	                                                     DataTable &table, const vector<column_t> &column_ids,
-	                                                     bool undirected, bool reverse);
+	                                                     bool undirected, bool reverse, uint64_t *scan_us = nullptr);
 	//! Whether RunFold should build an epoch for this transaction (ordering and, for ratio > 0, the pending log)
 	bool FoldDue(DuckTransaction &transaction, double ratio) const;
 	//! Installs an epoch RunFold built, unless a newer one arrived meanwhile; records the fold time
 	void InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
-	                        uint64_t fold_us) const;
+	                        uint64_t fold_us, uint64_t scan_us) const;
 	//! Stamps the change-log entries that the epoch built by `transaction` accounts for: delta rows it contains and
 	//! tombstoned rows it excludes. Uses the live transaction, so it does not depend on how long DuckDB keeps row
 	//! versions. Then installs the epoch and drops the entries no retained epoch needs any more.
@@ -414,6 +415,8 @@ private:
 	mutable std::atomic<uint64_t> fold_count {0};
 	mutable std::atomic<uint64_t> fold_total_us {0};
 	mutable std::atomic<uint64_t> fold_last_us {0};
+	//! Table scan (edge collection) part of the last fold
+	mutable std::atomic<uint64_t> fold_last_scan_us {0};
 };
 
 //! Registration entry point called from the core module

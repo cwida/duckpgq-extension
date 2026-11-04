@@ -3682,6 +3682,7 @@ def run_update_config(config, args, options, batch_rows, run_metadata):
             "tombstones": stats.get("tombstones", ""),
             "folds": stats.get("folds", ""),
             "last_fold_ms": stats.get("last_fold_ms", ""),
+            "last_fold_scan_ms": stats.get("last_fold_scan_ms", ""),
             "fold_ms": stats.get("fold_ms", ""),
             "wal_bytes": wal_by_step.get(step, ""),
             # A checkpoint ran during this step's commit when the WAL is smaller than after the previous step
@@ -5218,7 +5219,9 @@ SELECT 'peak_rss_kib=' || regexp_extract(content, 'VmHWM:\\s+(\\d+)', 1) FROM re
         if result.returncode < 0:
             raise RuntimeError(f"duckdb killed by signal {-result.returncode} (out of memory?)")
         if result.returncode != 0 or "Error" in output:
-            raise RuntimeError(output[-2000:])
+            # The error line first (the sweep log prints the first line of the message), then the output tail
+            errors = [line for line in output.splitlines() if "Error" in line]
+            raise RuntimeError("\n".join(errors[:3] + ["--- output tail ---", output[-2000:]]))
         timers = re.findall(r"Run Time \(s\): real ([0-9.]+)", output)
         rows = [line for line in output.splitlines() if re.match(r"^\d+,", line)]
         reachable, total = rows[-1].split(",")[:2]
@@ -6123,6 +6126,8 @@ def system_label(system, args):
 def make_systems(args, scale_factor, symmetric=False):
     systems = []
     for name in args.systems:
+        if name == "none":
+            continue  # --systems none: no baseline (a DuckPGQ-only rerun of a step reuses the baselines' earlier rows)
         if name == "duckpgq_build":
             systems.append(DuckPGQSystem("build", scale_factor, args.threads, args.timeout_s, symmetric))
         elif name == "duckpgq_index":

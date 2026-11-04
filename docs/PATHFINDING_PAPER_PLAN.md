@@ -1422,3 +1422,28 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   the budget, where per-wave or per-level emission would bound it by one wave (18 GB here) or one level.
   Decided 4 Nov (author): hold off on the streaming reach output; the 1024-source graph500-24 point stays an
   out-of-memory row for DuckPGQ, explained by the materialized reach set, with per-wave emission as future work.
+- 4 Nov (2): the fold's table scan ran on one thread (one `TableScanState` into one edge list, since the first index
+  commit of 19 Oct; CREATE INDEX got DuckDB's parallel index-build sink for free, the fold runs inside a reader's query
+  outside any pipeline). No reason forced it: row groups are claimed per thread as the table scan operator does
+  (`DataTable::NextParallelScan`), the version checks are against the transaction's start time with no shared scan
+  state, and the fold holds only its own mutex during the rebuild. Now the fold scans with min(threads, row groups)
+  threads into per-thread edge lists and `BuildEpoch` slices them as it slices the sink's lists; `FoldStats` reports
+  `last_fold_scan_ms`, the update-run rows carry it. SF300 (55.7M edges, 32 threads, a fresh copy of the database,
+  three forced folds): serial scan 3.16 / 2.83 / 2.92 s per fold; parallel scan 1.26 / 1.05 / 1.16 s, of which the
+  scan is 220 / 80 / 77 ms. The serial scan and edge collection was about 1.8 s of the 2.9 s fold (62%); the fold is
+  now 2.5x faster, 1.1 s at SF300, and the reader that triggers a fold pays that instead of 3 s. Test
+  `csr_index_fold_parallel_scan.test` (five row groups; the folded epoch equals the log overlay, a CREATE INDEX epoch
+  of the same rows, and the fold with one thread). Section 4.4 should drop "on one thread". Also: `REUSE_BASELINES=1`
+  switch in `repro/run_all.sh` (DuckPGQ-only fixed-costs and LDBC steps under `_duckpgq` step names; the table
+  printers take the newest file per system and shape) for DuckPGQ-only reruns after the sweep; off for the sweep
+  itself (one run on one commit; the pair sweeps' samples changed on 29 Oct so their baselines can never be reused
+  from before that). The sweep log now prints DuckDB's error line for a failed point instead of the first output line.
+  graph500-24 sweep (rc11): sources x all 1 / 16 / 128 / 1024: index 0.44 / 5.1 / 4.7 s / out of memory, build 2.9 /
+  7.2 / 6.2 s / out of memory, Kuzu 0.34 / 8.1 / 61.6 / 495 s (9.08 B result rows, streamed per source, inside the
+  600 s timeout). A baseline completing where DuckPGQ fails is the worst outcome for the row, so the reach result
+  storage changes before the full sweep (decided 4 Nov): per lane, lists while sparse and one byte per vertex
+  (distance + 1, zero-filled pages, lane-major) once a lane's reach passes a sixteenth of the vertices, switched
+  between rounds; the budget charges real bytes. 9 GB for the 1024-source point instead of 73 GB; the alternatives
+  weighed (4-byte lists 36 GB, per-level bitmaps 7 GB with per-level bookkeeping, vertex-major bytes with a strided
+  scatter, streaming) are in the conversation record of 4 Nov. Limit to state: all results are alive at emission, so
+  sources x vertices above about 80 B on a 123 GB machine still needs streaming.
