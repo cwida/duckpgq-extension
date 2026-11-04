@@ -232,3 +232,8 @@ observations, neither a correctness problem:
 not a design constraint; the desk confirmed visibility, locking and the build side all permit a parallel scan
 (about forty lines, per-thread edge lists into BuildEpoch). Pending: a FoldStats timing field and three SF300 folds to
 measure the scan's share (expected a quarter to a third of 3 s); then parallelize or state the share in 4.4.
+
+4 Nov: moved out of the paper text (Section 4.6), kept here as our record: the untested corner of row-id reuse after a
+checkpoint drops a fully deleted trailing row group; rc1's 15,765 compared concurrent transactions with no mismatch;
+the fourteen regression test files; CREATE INDEX rejects non-integer or more than two key columns and UNIQUE, and a
+build fails above 2^32-1 vertices. The concurrent-comparison count goes into Section 6.3 from rc10's check step.

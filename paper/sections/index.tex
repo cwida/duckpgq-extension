@@ -183,30 +183,22 @@ Loaded tombstones carry no keys, so one parallel scan over the epoch's row ids p
 \subsection{Assumptions and tests}
 \label{sec:index-correctness}
 
-\rev{Sections~\ref{sec:index-structure} to~\ref{sec:index-storage} argued, next to each mechanism, that a transaction
-traverses over the index the same edges that a scan of the edge table would show it. The argument rests on three
-properties of \duckdb, of which only the first is part of the interface an extension is promised: the index calls happen
-at every commit, in commit order. The other two are behaviour of the current implementation, that a row id is reused
-only after its append was reverted by a failed commit, and that \texttt{CanFetch} answers the visibility question
-snapshot isolation defines; Section~\ref{sec:hooks} counts both among the interface's gaps. Two invariants are ours: a
-reused row id marks the earlier entry dead, so no transaction sees a row of a failed commit, and epochs follow the
-order of their bounds, so a transaction is served from the newest epoch its bound allows
-(Section~\ref{sec:index-fold}).} \todo{Not tested: whether a checkpoint that drops a fully deleted trailing row group also
-hands its ids out again.}
+\rev{The argument of Sections~\ref{sec:index-structure} to~\ref{sec:index-storage}, that a transaction traverses over
+the index the same edges a scan of the edge table would show it, rests on three properties of \duckdb. Only the first is
+part of the interface an extension is promised: the index calls happen at every commit, in commit order. The other two
+are behaviour of the current implementation, that a row id is reused only after its append was reverted by a failed
+commit, and that \texttt{CanFetch} answers the visibility question snapshot isolation defines. Section~\ref{sec:hooks}
+counts both among the interface's gaps.}
 
-\rev{We test the claim three ways. In the concurrent runs every reader transaction answers its query over the index and
-with a CSR built from its own view of the table, and the two answers must agree; the rc1 runs compared 15\,765
-transactions under a writer without a mismatch, and the rerun repeats the comparison with a fold about every ten
-commits.} \todo{Counts from rc10's check step.} \rev{Under the update stream all configurations, the index with and
-without folds, the build and the four native systems, agree after each of the 191 commits. Fourteen regression test
-files cover the cases of Sections~\ref{sec:index-read} and~\ref{sec:index-fold}: folds in either order, a commit that
-fails after its append, deletes after a fold and in an undirected index, fully deleted groups, checkpoints and
-restarts.}
+\rev{We test the claim under concurrent writes by having every reader transaction answer its query twice, over the
+index and with a CSR built from the same transaction's view of the table, and comparing the two; the results of these
+runs are part of Section~\ref{sec:eval-updates}. Regression tests cover the cases of Sections~\ref{sec:index-read}
+and~\ref{sec:index-fold}, among them folds in either order, a commit that fails after its append, deletes after a fold
+and transactions that differ only in a fully deleted group.}
 
 \rev{One semantic difference remains by design. A deleted source or destination yields no pair, because pairs come from
 the vertex tables, but an intermediate vertex deleted with its edges in place is still traversed, where the SQL rewrite
-would drop those edges through its join with the vertex table. \texttt{CREATE INDEX} rejects keys that are not two plain
-integer columns and a \texttt{UNIQUE} index, and a build fails for a graph with more than $2^{32}-1$ vertices.}
+would drop those edges through its join with the vertex table.}
 
 \subsection{When the index pays off}
 \label{sec:index-when}
