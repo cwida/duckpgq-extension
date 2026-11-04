@@ -1383,3 +1383,40 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   (d) sparse level divisor 8 is 13% faster than 16 at 16384 pairs at SF10. Verdict: ready; the SF10 markers are
   valid rc10 results and the full sweep (`SCALE_FACTORS="10 100 300" ./repro/run_all.sh all`) skips them. The
   collector ran with the figure and table directories redirected (nothing under paper/ written).
+- 4 Nov: Graphalytics block of the rc10 dry run (`SCALE_FACTORS=10 ./repro/run_all.sh graphalytics`). Decisions on
+  the way: (a) FalkorDB stays in the matrix (its loads are the long pole: 13 min for cit-Patents, 43 min at SF300,
+  about 11 h of loads and timeouts over the full matrix) because dropping a system after seeing its numbers is not
+  defensible; (b) cit-Patents runs sources x all only (`7ea3ab4a`): a random pair on the citation DAG is unreachable
+  by construction (every pair of the 65536 sample had no path), so the random shape would measure the cost of finding
+  no path at hours of baseline timeouts; (c) the harness's 500M pair limit skipped Kuzu at 1024 sources on cit-Patents
+  while DuckPGQ ran the point in reach mode; the limit now applies only to DuckPGQ's pair-list formulation of
+  sources x all (the microbenchmark), every baseline runs every point under the timeout (`28da74d9`). cit-Patents
+  (3.77M vertices, 16.5M edges, 32 threads, median of 3, sources x all with 1 / 16 / 128 / 1024 sources, a source
+  reaches about 2200 vertices): index 35 / 124 / 180 / 407 ms, build 148 / 240 / 285 / 534 ms, Kuzu 8 / 71 / 392 ms /
+  3.33 s (32 clients: 7 / 118 / 299 ms / 1.55 s), Memgraph 4 / 59 / 376 ms / 3.35 s (32 clients 498 ms at 1024),
+  Neo4j GDS 68 ms / 1.04 / 8.3 / 66.7 s, Neo4j 27 s / 309 s / timeout, FalkorDB timeout at one source. The single
+  source is the one point where the per-pair engines win (Kuzu 8 ms, Memgraph 4 ms against the index's 35 ms): a
+  2200-vertex reach is below the operator's fixed cost (the 3.8M-vertex working set and the output path), to state
+  as such. Fixed costs: DuckDB file 323 MB, CSR index 282 MB (17.1 B/edge, 1.0 s to build), Kuzu 398 MB (2.8 s
+  load), Neo4j 881 MB (267 s), Memgraph 1.95 GB (88 s), FalkorDB 1.17 GB (797 s). graph500-24 (8.9M vertices, 260M
+  edges loaded in both directions, 521M CSR entries): DuckDB file 8.0 GB, index 6.7 GB (12.9 B/edge, 50 s), Kuzu
+  9.2 GB (68 s). The graph500-24 sweep then killed the DuckDB process twice (signal 9) at 1024 sources x all on the
+  build route: the reach of 1024 sources on this graph is 99.9% of the vertices each, 9.1 B (vertex, distance)
+  entries, 73 GB of entries alone before the recorder vectors' growth slack, held until the output scatter (128
+  sources were 1.1 B entries, 6.4 s, 28.9 GB RSS). No DuckDB memory accounting covers these vectors, so the kernel
+  killed the process instead of the query failing. Fix (`a146ffee`, tag `eval-freeze-rc11`): reach mode charges its
+  materialized result against a budget of memory_limit minus the working-set cap (three quarters of memory_limit by
+  default, 73.7 GB on the sweep machine), 16 bytes per entry (twice the entry: the vectors double), charged by the
+  recording workers in blocks of 1 Mi entries and at the end of every level, shared by the waves and per-source
+  searches of a query; a result that does not fit fails with an out-of-memory error naming the cap and the entry
+  count, the strategy string carries `reach_result_cap_mb`. Test `reach_result_budget.test` (102 test files pass).
+  The point will therefore read "out of memory" for both DuckPGQ routes at 1024 sources on graph500-24 (Kuzu runs the
+  same point and will time out); the rc10 Graphalytics results stand (the budget changes no number). Streaming the
+  reach output instead (asked 4 Nov) would mean running the waves from the operator's source phase so finished waves
+  are emitted and freed while later waves run: DuckDB starts an operator's source only after its Finalize events are
+  done, so the lane kernel's phases would have to be driven by the parallel source's tasks (claim a worker slot of
+  the current phase, run it, the last one advances the phase), and one 256-lane wave on this graph still holds 2.3 B
+  entries (18 GB) before it can be emitted, so waves would also run one at a time once the budget is reached. A
+  one-to-two-day change to the execution model of every reach query, with the whole reach path to re-validate; not
+  before this sweep. Recorded as future work for the paper: the reach output is materialized per query, bounded by
+  the budget, where per-wave or per-level emission would bound it by one wave (18 GB here) or one level.
