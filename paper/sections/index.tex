@@ -73,34 +73,37 @@ decided when it reads the index (Section~\ref{sec:index-read}).
 \subsection{Reading the index}
 \label{sec:index-read}
 
-\rev{A transaction that runs a path query reads a \emph{snapshot}, the epoch plus an \emph{overlay} that corrects it for
+A transaction that runs a path query reads a \emph{snapshot}, the epoch plus an \emph{overlay} that corrects it for
 the changes the transaction is allowed to see. The epoch stores its edges at fixed positions in its partitions
 (Section~\ref{sec:csr}), and the overlay has two parts. The first is a bitmap with one bit per edge position, set
 for the epoch edges that are deleted from the transaction's point of view. The second holds the inserted edges the
 transaction is allowed to see, in a small CSR of their own with the same destination ranges as the epoch. A traversal step that processes the
 epoch's partition of a range skips the suppressed positions and processes the inserted edges of the same range with
-it.}
+it.
 
-\rev{Which changes a transaction is allowed to see is a question of \duckdb's snapshot isolation. A transaction sees the
+Which changes a transaction is allowed to see is a question of \duckdb's snapshot isolation. A transaction sees the
 rows that were committed before it started, and nothing that was committed later or never. The index answers it with
-\texttt{CanFetch}, once per change group. The inserts of one group were committed together, by one transaction, so a
-transaction sees either all of them or none, and one \texttt{CanFetch} on one undeleted row of the group decides for
-the whole group. A delete group likewise applies as a whole; a transaction that sees a deleted row's insert and finds
-the row no longer fetchable sees the delete. Because commits are serialized and groups are numbered in commit order,
+\texttt{CanFetch}, once per change group. \rev{The edges of one group were inserted, or deleted, by one commit of one transaction, so a transaction sees either
+all of the group's changes or none of them. For an insert group the index calls \texttt{CanFetch} on one of the
+group's edges that has not been deleted since; the answer holds for the whole group. For a delete group it calls
+\texttt{CanFetch} on one of the deleted edges whose insert the transaction sees; if that edge is no longer fetchable,
+the transaction sees the whole delete group. Because commits are serialized and groups are numbered in commit order,
 the groups a transaction sees are the first $n$ groups of the log for some $n$, except the groups of failed commits,
-which no transaction sees. The groups of a transaction's snapshot are therefore identified by $n$, and the index
-caches the snapshot it built last under the epoch and $n$; every transaction that starts between two commits gets the
-same $n$ and receives the cached snapshot. Groups whose rows were all deleted again are decided row by row, and a hash
-of those decisions is part of the cache key. The \texttt{CanFetch} calls are made even when the cached snapshot is
-returned, because the cache key is computed from them.}
+which no transaction sees.}
+
+\rev{This makes the snapshot cacheable. The index computes a key from the epoch, $n$ and the \texttt{CanFetch}
+answers for the edges that have no group to decide for them, the edges of an insert group that were all deleted again
+and, after a restart, the loaded entries (Section~\ref{sec:index-storage}), hashed together. If the key equals that of
+the snapshot built last, the transaction receives that snapshot, which is the usual case for every transaction that
+starts between two commits. The \texttt{CanFetch} calls are therefore made even when the cached snapshot is returned.}
 
 Building the overlay costs one version check per group and one pass over the visible inserted edges, which places each
 of them in its destination range. The entries carry their dictionary ids, and the pass needs no dictionary lookup per
 edge; a key that is not in the epoch's dictionary, a new vertex, gets an id above the epoch's vertex count. A
 tombstone is placed by a lookup from its keys, through the dictionary, the destination's partition, the source's
 sparse row and the row id among its edges. In an undirected index the lookup also finds the mirrored edge, and both
-directions are suppressed. \rev{The cost of a snapshot thus grows with the number of groups and inserted edges since the last fold, and not with
-the number of log entries.}
+directions are suppressed. The cost of a snapshot thus grows with the number of groups and inserted edges since the last fold, and not with
+the number of log entries.
 
 A transaction that has changed the edge table itself sees rows that no other transaction may see, and the log holds
 only committed changes. Such a transaction builds a \emph{private epoch} from its own view of the table, a full build
@@ -219,9 +222,9 @@ the index and 3.7\,s with the build, which also holds the writer's commits back,
 therefore pays off for workloads that run many queries over the same graph, and helps a single heavy query little. \todo{Probes of 30 Oct on rc9; the rerun's throughput and concurrent steps replace them.}
 
 Its costs are the memory for the epoch, about 11 bytes per edge, of which 8 are the edge's row id; the overlay,
-which grows with the changes since the last fold and with it the time to build a snapshot \rev{(one version check per
+which grows with the changes since the last fold and with it the time to build a snapshot (one version check per
 log entry instead of per group would have grown a single-source query at SF10 from 8 to 124\,ms over the update
-stream of Section~\ref{sec:eval-updates})} \todo{pre-freeze number; from the rerun's per-row step}; and the fold itself, which
+stream of Section~\ref{sec:eval-updates}) \todo{pre-freeze number; from the rerun's per-row step}; and the fold itself, which
 the transaction that triggers it pays for, about 3\,s at SF300. A table with the index also keeps its deleted row ids
 instead of compacting them. Commits are not slowed down. The index records a change in its log and does no other work
 at commit, and a commit of 2000 edge changes costs 15\,ms with and without the index
