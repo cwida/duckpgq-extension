@@ -1467,3 +1467,13 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   pair sweep rows now carry `peak_rss_mib` for DuckPGQ. Tag `eval-freeze-rc13`. DuckPGQ-only reruns of the pair
   sweeps at SF10, cit-Patents and graph500-24 follow the remaining Graphalytics steps (reach rows changed; the table
   printers take the newest file per system and shape, the baselines' rows of 3-4 Nov stand on the same samples).
+- 4 Nov (4): Graphalytics block complete on rc13 (datagen-8_4-fb fixed costs 4 min, sweep 65 min: index 1024 sources
+  x all 4.2 s for 3.9 B rows against Kuzu 191 s, 1024 random pairs 0.98 s against 156 s, Kuzu times out from 16384
+  pairs; the scheduling microbenchmark on graph500-24 took 4 h: 12 configurations x 3 repeats of 5 / 38 / 144 s at
+  2048 / 16384 / 65536 pairs; the window shapes are within 2% at 65536 pairs (g4..g32 with 32 workers 144-149 s),
+  one batch at a time 175 s (1.2x slower, not the 9x of SF10: a 1.7 GB working set per wave is memory-bound work
+  that 32 threads saturate), 32 groups of 1 worker 185 s, `no_grouped_batches` at 65536 pairs failed (see the step
+  log)). DuckPGQ-only sweep reruns on rc13: SF10 18 s, cit-Patents 17 s, graph500-24 47 min (index 1 / 16 / 128 /
+  1024 sources 0.35 / 4.5 / 2.7 / 8.6 s). Full sweep started 2026-11-04 20:21 UTC on `cf4d88ce` (eval-freeze-rc13),
+  `SCALE_FACTORS="10 100 300" ./repro/run_all.sh all`, log `repro/logs/run_all.out`, SF10 and Graphalytics steps
+  skipped; expected about 33 h.
