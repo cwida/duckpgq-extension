@@ -205,7 +205,11 @@ static void WriterBody(DuckDB &db, const Options &options) {
 		Must(con, "COMMIT;");
 		auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count();
 		commits_done++;
-		Record({"commit", 0, batch + 1, start, elapsed, "", "", "", ""});
+		// The WAL size after the commit: a drop against the previous commit marks a DuckDB checkpoint inside it
+		auto wal_size = Scalar(*Must(con, "SELECT wal_size FROM pragma_database_size() WHERE database_name NOT IN "
+		                                  "('memory', 'temp', 'system') ORDER BY database_name LIMIT 1;"),
+		                       0);
+		Record({"commit", 0, batch + 1, start, elapsed, "", "", "", "wal_size=" + wal_size});
 		if (options.writer_pause_ms > 0) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(options.writer_pause_ms));
 		}

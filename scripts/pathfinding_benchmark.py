@@ -3559,6 +3559,11 @@ JOIN ldbc.person b ON b.rowid = p.dst;""")
             add("stats", step, stats_sql.format(step=step))
         add("count", step, f"SELECT 'count' AS kind, {step} AS step, count(*) AS edges, {edge_count} AS expected "
                            f"FROM ldbc.person_knows_person;")
+        # The WAL size after the step: a drop marks a DuckDB checkpoint (automatic at checkpoint_threshold, 16 MB by
+        # default), which rewrites the table's modified row groups and the dirty index; the paper reports where they
+        # fall instead of changing the default
+        add("wal", step, f"SELECT 'wal' AS kind, {step} AS step, (SELECT wal_size FROM pragma_database_size() "
+                         f"WHERE database_name = 'ldbc') AS wal_size;")
         if step == args.batches:
             break
         lo = step * args.batch_size
@@ -3597,6 +3602,17 @@ def run_update_script(statements, timeout_s):
     return timers, blocks
 
 
+def parse_pretty_bytes(text):
+    """Bytes from DuckDB's pretty-printed sizes ('0 bytes', '12.3 MiB', '1.2 GiB')"""
+    match = re.match(r"\s*([\d.]+)\s*([KMGT]i?B|bytes?)\s*$", text or "")
+    if not match:
+        return ""
+    value, unit = float(match.group(1)), match.group(2)
+    scale = {"bytes": 1, "byte": 1, "KiB": 1024, "MiB": 1024 ** 2, "GiB": 1024 ** 3, "TiB": 1024 ** 4,
+             "KB": 1000, "MB": 1000 ** 2, "GB": 1000 ** 3, "TB": 1000 ** 4}[unit]
+    return int(value * scale)
+
+
 def parse_kind_row(block):
     rows = list(csv.DictReader(block.splitlines()))
     if len(rows) != 1:
@@ -3625,17 +3641,20 @@ def run_update_config(config, args, options, batch_rows, run_metadata):
             index_build_s += elapsed
         elif tag == "update":
             update_time[step] = update_time.get(step, 0.0) + elapsed
-        elif tag in ("query", "stats", "count"):
+        elif tag in ("query", "stats", "count", "wal"):
             row = parse_kind_row(block)
             row["elapsed_s"] = elapsed
             events.append((tag, step, row))
 
     rows = []
     stats_by_step = {}
+    wal_by_step = {}
     for tag, step, row in events:
         if tag == "stats":
             parts = dict(part.split("=") for part in row["stats"].split(";"))
             stats_by_step[step] = parts
+        elif tag == "wal":
+            wal_by_step[step] = parse_pretty_bytes(row["wal_size"])
     for tag, step, row in events:
         if tag == "count":
             if row["edges"] != row["expected"]:
@@ -3664,6 +3683,10 @@ def run_update_config(config, args, options, batch_rows, run_metadata):
             "folds": stats.get("folds", ""),
             "last_fold_ms": stats.get("last_fold_ms", ""),
             "fold_ms": stats.get("fold_ms", ""),
+            "wal_bytes": wal_by_step.get(step, ""),
+            # A checkpoint ran during this step's commit when the WAL is smaller than after the previous step
+            "checkpoint": "1" if step > 0 and step in wal_by_step and (step - 1) in wal_by_step
+                                 and wal_by_step[step] < wal_by_step[step - 1] else "0",
             "index_build_s": f"{index_build_s:.6f}",
             "config_wall_s": f"{wall_s:.3f}",
         })
