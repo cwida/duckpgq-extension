@@ -19,7 +19,7 @@
 \foreach \i/\t/\s in {1/$g_1$/ins,2/$g_2$/ins,3/$g_3$/del,4/$g_4$/ins,5/$g_5$/ins,6/$g_6$/del} {
   \node[\s, anchor=south west] (g\i) at (2.2+\i*0.62-0.62,0.3) {\t};
 }
-\node[lbl, anchor=south west] at ($(g1.north west)+(0,0.02)$) {change log: one group per commit};
+\node[lbl, anchor=south west] at ($(g1.north west)+(0,0.02)$) {\rev{change log: $g_i$ is the group of commit $i$}};
 % one tick per commit on the axis
 \foreach \i in {1,...,6} {\draw[tick] ($(g\i.south)+(0,-0.3)$) -- ++(0,0.08);}
 % fold

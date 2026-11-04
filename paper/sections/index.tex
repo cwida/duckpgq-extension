@@ -7,13 +7,14 @@
 A CSR index keeps the partitioned CSR of Section~\ref{sec:csr} between queries. It is created on the edge table
 with \texttt{CREATE INDEX knows\_csr ON knows USING CSR (src, dst)}, and from then on it is an index like any other
 in \duckdb: it follows every insert and delete of the edge table, it is written at checkpoints and recovered from the
-write-ahead log, and it is used whenever a path pattern matches a table that has one. Unlike an index that returns row ids for the table to check, a
+write-ahead log, and it is used whenever a path pattern matches a table that has one. \rev{Without it, every query
+rebuilds the CSR, 22\,ms at SF10 and 268\,ms at SF300 (Section~\ref{sec:eval-index}), a cost the index pays once.}
+Unlike an index that returns row ids for the table to check, a
 transaction traverses the CSR index in place, without consulting the table's row versions. The index must therefore
 show a transaction the same graph that \duckdb's snapshot isolation would show it on the table. Section~\ref{sec:index-interface}
 describes what \duckdb's index interface offers for this and what it withholds. Sections~\ref{sec:index-structure}
 to~\ref{sec:index-storage} follow the index through its life, from the build and the changes that follow it, through
-reading and folding, to checkpoint and recovery. Section~\ref{sec:index-correctness} argues that the view is right and
-says how we test it, and Section~\ref{sec:index-when} weighs the index's benefit against its costs.
+reading and folding, to checkpoint and recovery. Section~\ref{sec:index-correctness} \rev{states what that view rests on and how we test it}, and Section~\ref{sec:index-when} weighs the index's benefit against its costs.
 
 \subsection{What the interface gives, and what it withholds}
 \label{sec:index-interface}
@@ -59,6 +60,8 @@ The versions instead stay in the table, and the index asks \duckdb about them on
 \texttt{CREATE INDEX} runs the bulk build and produces the first \emph{epoch} (Figure~\ref{fig:index-timeline}): the
 partitioned CSR of Section~\ref{sec:csr} over every edge that the creating transaction can see, the \emph{dictionary}
 that maps vertex keys to the dense ids the CSR uses, and the row id of every edge, stored next to the edge's position.
+\rev{A path found over the index therefore names its edges by row id and its vertices by key, as a path found over a
+CSR built per query does (Section~\ref{sec:results}), and joins back to both tables.}
 Created \texttt{WITH (reverse = true)}, the epoch also holds the reverse partitions, and an index on an undirected edge
 table holds each edge in both directions.
 
@@ -67,7 +70,8 @@ rebuilding the CSR at every commit would make each commit pay for the whole grap
 \emph{change log}, which a commit only appends to; the work of applying them falls on the transactions that read the
 index (Section~\ref{sec:index-read}). Each \texttt{Append} call adds one entry per inserted row, with its keys and
 its row id, and the entries of one call form a \emph{change group}; a commit that inserts more than one vector of rows
-makes several calls and therefore several groups. Each \texttt{Delete} call forms a group as well. A deleted row that
+makes several calls and therefore several groups. Each \texttt{Delete} call forms a group as well\rev{, and an update of a key column reaches the index as a delete
+and an insert, as for any indexed column in \duckdb}. A deleted row that
 is in the log gets a \emph{stamp}, the number of the deleting group, on its entry. A deleted row that the epoch
 contains cannot be marked in the epoch, so it gets a \emph{tombstone}, an entry that names the row and carries its
 keys. The log records nothing about which transaction or commit made a change; which entries a transaction may see is
@@ -95,9 +99,10 @@ the transaction sees the whole delete group. Because commits are serialized and 
 the groups a transaction sees are the first $n$ groups of the log for some $n$, except the groups of failed commits,
 which no transaction sees.
 
-This makes the snapshot cacheable. The index computes a key from the epoch, $n$ and the \texttt{CanFetch}
-answers for the edges that have no group to decide for them, the edges of an insert group that were all deleted again
-and, after a restart, the loaded entries (Section~\ref{sec:index-storage}), hashed together. If the key equals that of
+This makes the snapshot cacheable. \rev{Two kinds of entry have no group to decide for them, the edges of an insert
+group that were all deleted again and, after a restart, the loaded entries (Section~\ref{sec:index-storage}); the
+index asks \texttt{CanFetch} about those per row. The key of a snapshot is the epoch, $n$ and the hash of those
+per-row answers.} If the key equals that of
 the snapshot built last, the transaction receives that snapshot, which is the usual case for every transaction that
 starts between two commits. The \texttt{CanFetch} calls are therefore made even when the cached snapshot is returned.
 
@@ -111,8 +116,7 @@ the number of log entries.
 
 A transaction that has changed the edge table itself sees rows that no other transaction may see, and the log holds
 only committed changes. Such a transaction builds a \emph{private epoch} from its own view of the table, a full build
-inside its query, and nothing it builds is shared. The path of a pair over the index carries the row ids of its edges,
-including edges inserted after the epoch, and the keys of its vertices (Section~\ref{sec:results}), and can therefore be joined back to both tables.
+inside its query, and nothing it builds is shared.
 
 \subsection{Folding the log into a new epoch}
 \label{sec:index-fold}
@@ -171,8 +175,7 @@ through \texttt{Append} and \texttt{Delete} like those of any index.
 
 An index is loaded on its first use after a restart, not when the database opens, because a database may hold
 indexes its queries never touch. The loader reads the stored blocks through \duckdb's block manager in rounds of
-bounded size, deserializes the partitions in parallel, and returns the memory it freed to the system afterwards; the
-load takes 0.03\,s at SF10 and 0.41\,s at SF300 (Table~\ref{tab:fixed-costs}). \todo{Pre-freeze; from the
+bounded size and deserializes the partitions in parallel; the load takes 0.03\,s at SF10 and 0.41\,s at SF300 (Table~\ref{tab:fixed-costs}). \todo{Pre-freeze; from the
 rerun's fixed-cost step.}
 
 Loaded log entries lose two things until the next fold. The change groups are gone, and cannot be restored, because
@@ -196,19 +199,20 @@ runs are part of Section~\ref{sec:eval-updates}. Regression tests cover the case
 and~\ref{sec:index-fold}, among them folds in either order, a commit that fails after its append, deletes after a fold
 and transactions that differ only in a fully deleted group.
 
-The index differs from the SQL rewrite in one case, which we accept. Pairs come from the vertex tables, so a deleted
+The index \rev{route} differs from the \rev{build route} in one case, which we accept. Pairs come from the vertex tables, so a deleted
 source or destination yields no pair, but an intermediate vertex deleted with its edges in place is still traversed;
-the rewrite would drop those edges through its join with the vertex table.
+the \rev{build route} would drop those edges through its join with the vertex table.
 
 \subsection{When the index pays off}
 \label{sec:index-when}
 
-Without the index, every query rebuilds the CSR, and the build is a fixed cost that depends on the graph alone, 22,
-128 and 264\,ms at SF10, SF100 and SF300 (Section~\ref{sec:csr}). \rev{The index removes that cost from every query, and because the cost is fixed, its share of a query shrinks as the
-query grows. For a single pair at SF300 the build is 96\% of the query, 278\,ms with the CSR built on the fly against
-10\,ms over the index. For 65\,536 random pairs, whose traversal does most of the work, the saving is 22\%,
-2.8\,s of a 12.9\,s query. The index is faster on every read-only point of Section~\ref{sec:eval}, by the fixed build
-cost against the query's own time.} The first argument for
+\rev{The build that the index saves is a fixed cost that depends on the graph alone, 22, 128 and 268\,ms at SF10,
+SF100 and SF300, the gap between the two \duckpgq rows for one pair in Table~\ref{tab:random-pairs}. Because the cost
+is fixed, its share of a query shrinks as the query grows.} For a single pair at SF300 the build is 96\% of the query,
+278\,ms with the CSR built on the fly against 10\,ms over the index. For 65\,536 random pairs, whose traversal does
+most of the work, the saving is 22\%, 2.8\,s of a 12.9\,s query. \todo{That gap is ten times the build; the desk
+should say what else the build route pays at 65\,536 pairs before the rerun's numbers go in.} \rev{The index is
+faster on every read-only point of Section~\ref{sec:eval}.} The first argument for
 the index is therefore the workload of short queries, and it grows with the query rate because every query pays the
 build again. With 32 clients the index answers 323 single-pair queries per second at SF300 and the on-the-fly build 6.
 
@@ -216,15 +220,18 @@ The second argument is concurrency. Readers share one index, each reading the sn
 to, while a per-query build gives every reader its own CSR and every build competes for the same cores. The concurrent run of Section~\ref{sec:eval-updates} shows the
 difference. With one writer committing 2000 edge changes every 200\,ms and 16 transactions querying single-source
 distances at SF300, a query takes 73\,ms over the index and 3.7\,s with the on-the-fly build, and the builds also hold
-the writer's commits back, 158 against 604\,ms. \rev{The index therefore pays off most for workloads with many short or concurrent queries over the same graph, and
-least for a single heavy query, where it saves the build and no more.}
+the writer's commits back, 158 against 604\,ms. The index therefore pays off most for workloads with many short or concurrent queries over the same graph, and
+least for a single heavy query, where it saves the build and no more.
 \todo{Probes of 30 Oct on rc9; the rerun's throughput and concurrent steps replace them.}
 
-The index has three costs. The epoch takes about 11 bytes per edge of memory, of which 8 are the edge's row id. The
+\rev{The index has five costs.} The epoch takes about 11 bytes per edge of memory, of which 8 are the edge's row
+id\rev{, and a retained epoch doubles that until the next fold}. The
 overlay grows with the changes since the last fold, and with it the time to build a snapshot; deciding visibility per
 log entry instead of per group would have grown a single-source query at SF10 from 8 to 124\,ms over the update stream
 of Section~\ref{sec:eval-updates}. \todo{Pre-freeze number; from the rerun's per-row step.} The fold is paid for by the
-transaction that triggers it, about 1\,s at SF300 with the parallel scan. \todo{Verify the fold latency after rc13.} A
-table with the index also keeps its deleted row ids instead of compacting them. Commits are not slowed down. The index records a change in its log and does no other work
-at commit, and a commit of 2000 edge changes costs 15\,ms with and without the index
-(Section~\ref{sec:eval-updates}). \todo{Bytes per edge and fold latency from the rerun.}
+transaction that triggers it, about 1\,s at SF300 with the parallel scan. \todo{Verify the fold latency after rc13.} \rev{A transaction that has changed the edge table itself builds a
+private epoch inside its query (Section~\ref{sec:index-read}), the full build the index saves everyone else.} A
+table with the index also keeps its deleted row ids instead of compacting them. \rev{The commit itself is not among
+the costs. The index records a change in its log and does no other work at commit, and a commit of 2000 edge changes
+costs 15\,ms with and without the index (Section~\ref{sec:eval-updates}). The 158 and 604\,ms of the concurrent
+run are that commit competing with the readers for cores, and the per-query builds are what it competes with.} \todo{Bytes per edge and fold latency from the rerun.}

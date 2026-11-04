@@ -238,6 +238,30 @@ checkpoint drops a fully deleted trailing row group; rc1's 15,765 compared concu
 the fourteen regression test files; CREATE INDEX rejects non-integer or more than two key columns and UNIQUE, and a
 build fails above 2^32-1 vertices. The concurrent-comparison count goes into Section 6.3 from rc10's check step.
 
+4 Nov: the Section 6 tables and figures were still means. paper/tables/random_pairs.tex and sources_all.tex were
+written by 7c65bed0 (29 Oct 08:56 UTC, caption "mean seconds over three runs"); the plot script switched to medians in
+2620a9b6 (10:25 UTC); 0e4c9287 regenerated the figures at 09:59 UTC, before the switch, and only the teaser was
+regenerated after it. Regenerated everything from the rc1 archive (DUCKPGQ_RESULTS_DIR=repro/results, /tmp/plotvenv).
+Changes: DuckPGQ values move by a few ms (one pair at SF300 274 -> 278 ms on the build route, so the build cost
+derived from the one-pair gap is 22/128/268 ms, not 264; updated in 4.7, 5 and 6.2). Baseline single-pair values lose
+their cold first run (Neo4j 14 -> 2 ms at SF300, Kuzu 96 -> 30 ms), and Neo4j is now the fastest single-pair system
+at SF100 (3 ms) and SF300 (2 ms) against 9 and 10 ms over the index; 6.2's "fastest at every scale" rewritten, TODO
+left. The sources_all caption no longer carries the degenerate-SF300-source note (the script's caption dropped it);
+the figure caption still explains it. The script also writes figures/concurrent.{pdf,png}, not yet referenced;
+not added.
+
+4 Nov: the 65,536-pair gap between the routes at SF300 is 2.8 s (12.9 against 10.1 s), ten times the 268 ms build,
+and it grows along the pair axis (398 ms at 16 pairs, 550 at 1024, 900 at 8192). The build route pays something
+beyond the build per traversal; candidates: CSR without source index or reverse partitions on the build route,
+id assignment (vertex row numbers vs dictionary order) and locality, per-pair key mapping. 4.7 and 6.2 no longer
+attribute the gap to the build; TODOs ask the desk to profile before the rerun's numbers go in.
+
+4 Nov: Section 4 storyline pass after the proofreading rounds: the opening states the build cost the index saves;
+the paths-carry-row-ids sentence moved from 4.3 to 4.2; updates of a key column named as delete plus insert; the
+cache-key sentence split; 4.6 uses "build route"; 4.7 counts five costs (retained epoch, private epoch added) and
+separates commit work (15 ms) from the contention of the concurrent run (158/604 ms). Row-id stability stays a fact
+in 4.1 and implementation behaviour in 4.6 (both true; Section 5's hook table rests on the distinction).
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under

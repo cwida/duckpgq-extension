@@ -1,37 +1,37 @@
 \begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.6pt}
-\caption{Distances from $k$ sources to every reachable person, mean seconds over three runs; n/r: not run above 500M pairs. The one sampled source at SF300 has no outgoing edge.}\label{tab:sources-all}
+\caption{Distances from $k$ sources to every reachable person, median of three runs; n/r: not run above 500M pairs.}\label{tab:sources-all}
 \begin{tabular}{lrrrr}\toprule
 system / sources & 1 & 16 & 128 & 1k \\ \midrule
 \multicolumn{5}{l}{\textit{LDBC SF10}} \\
-\quad DuckPGQ index & \textbf{3\,ms} & \textbf{9\,ms} & \textbf{23\,ms} & \textbf{110\,ms} \\
+\quad DuckPGQ index & \textbf{3\,ms} & \textbf{9\,ms} & \textbf{23\,ms} & \textbf{109\,ms} \\
 \quad DuckPGQ build & 25\,ms & 32\,ms & 57\,ms & 247\,ms \\
-\quad Neo4j & 18.5\,s & 180\,s & timeout & timeout \\
-\quad Kuzu & 6\,ms & 65\,ms & 508\,ms & 4.0\,s \\
-\quad Kuzu (32 conn.) & 6\,ms & 23\,ms & 100\,ms & 614\,ms \\
+\quad Neo4j & 18.0\,s & 177\,s & timeout & timeout \\
+\quad Kuzu & 4\,ms & 65\,ms & 510\,ms & 4.0\,s \\
+\quad Kuzu (32 conn.) & 5\,ms & 22\,ms & 100\,ms & 615\,ms \\
 \quad FalkorDB & 301\,s & timeout & timeout & timeout \\
-\quad FalkorDB (32 conn.) & 298\,s & timeout & timeout & timeout \\
-\quad Memgraph & 14\,ms & 560\,ms & 4.9\,s & 37.4\,s \\
-\quad Memgraph (32 conn.) & 14\,ms & 146\,ms & 358\,ms & 2.4\,s \\
-\quad Neo4j GDS (4 thr.) & 62\,ms & 377\,ms & 2.9\,s & 21.7\,s \\
+\quad FalkorDB (32 conn.) & 299\,s & timeout & timeout & timeout \\
+\quad Memgraph & 14\,ms & 563\,ms & 4.9\,s & 37.4\,s \\
+\quad Memgraph (32 conn.) & 14\,ms & 149\,ms & 357\,ms & 2.3\,s \\
+\quad Neo4j GDS (4 thr.) & 32\,ms & 354\,ms & 3.0\,s & 21.6\,s \\
 \addlinespace
 \multicolumn{5}{l}{\textit{LDBC SF100}} \\
-\quad DuckPGQ index & 18\,ms & \textbf{52\,ms} & \textbf{184\,ms} & \textbf{1.5\,s} \\
-\quad DuckPGQ build & 150\,ms & 197\,ms & 375\,ms & 2.2\,s \\
+\quad DuckPGQ index & 18\,ms & \textbf{52\,ms} & \textbf{185\,ms} & \textbf{1.5\,s} \\
+\quad DuckPGQ build & 151\,ms & 197\,ms & 373\,ms & 2.2\,s \\
 \quad Neo4j & timeout & timeout & timeout & timeout \\
-\quad Kuzu & \textbf{13\,ms} & 149\,ms & 1.2\,s & 9.4\,s \\
-\quad Kuzu (32 conn.) & 15\,ms & 159\,ms & 705\,ms & 4.2\,s \\
+\quad Kuzu & \textbf{13\,ms} & 148\,ms & 1.2\,s & 9.4\,s \\
+\quad Kuzu (32 conn.) & 14\,ms & 160\,ms & 708\,ms & 4.2\,s \\
 \quad FalkorDB & timeout & timeout & timeout & timeout \\
 \quad FalkorDB (32 conn.) & timeout & timeout & timeout & timeout \\
-\quad Memgraph & 1.2\,s & 12.1\,s & 92.2\,s & timeout \\
-\quad Memgraph (32 conn.) & 1.1\,s & 2.5\,s & 6.4\,s & 36.6\,s \\
-\quad Neo4j GDS (4 thr.) & 312\,ms & 3.3\,s & 24.0\,s & 189\,s \\
+\quad Memgraph & 1.2\,s & 12.0\,s & 92.3\,s & timeout \\
+\quad Memgraph (32 conn.) & 1.1\,s & 2.5\,s & 6.4\,s & 36.7\,s \\
+\quad Neo4j GDS (4 thr.) & 303\,ms & 3.3\,s & 24.0\,s & 190\,s \\
 \addlinespace
 \multicolumn{5}{l}{\textit{LDBC SF300}} \\
-\quad DuckPGQ index & 9\,ms & \textbf{132\,ms} & \textbf{542\,ms} & \textbf{4.2\,s} \\
-\quad DuckPGQ build & 276\,ms & 437\,ms & 1.2\,s & 6.8\,s \\
-\quad Neo4j & 141\,ms & timeout & timeout & timeout \\
-\quad Kuzu & 3\,ms & 150\,ms & 2.0\,s & n/r \\
+\quad DuckPGQ index & 9\,ms & \textbf{131\,ms} & \textbf{543\,ms} & \textbf{4.2\,s} \\
+\quad DuckPGQ build & 274\,ms & 434\,ms & 1.2\,s & 6.9\,s \\
+\quad Neo4j & 94\,ms & timeout & timeout & timeout \\
+\quad Kuzu & 2\,ms & 150\,ms & 2.0\,s & n/r \\
 \quad FalkorDB & timeout & timeout & timeout & timeout \\
-\quad Memgraph & \textbf{2\,ms} & 17.2\,s & 290\,s & n/r \\
-\quad Neo4j GDS (4 thr.) & 72\,ms & 4.3\,s & 60.2\,s & n/r \\
+\quad Memgraph & \textbf{2\,ms} & 17.2\,s & 289\,s & n/r \\
+\quad Neo4j GDS (4 thr.) & 35\,ms & 4.3\,s & 60.1\,s & n/r \\
 \bottomrule\end{tabular}\end{table}
