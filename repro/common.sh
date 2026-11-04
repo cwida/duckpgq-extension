@@ -41,6 +41,11 @@ PLOT="python3 ${REPO_ROOT}/scripts/plot_sweep_results.py"
 # step NAME CMD...: run CMD unless logs/NAME.done exists; log to logs/NAME.out
 step() {
   local name="$1"; shift
+  # STEP_LIST_ONLY=1 prints the planned step names instead of running them (progress views count them)
+  if [ -n "${STEP_LIST_ONLY:-}" ]; then
+    echo "${name}"
+    return 0
+  fi
   if [ -f "${LOG_DIR}/${name}.done" ]; then
     echo "[skip] ${name} (done)"
     return 0

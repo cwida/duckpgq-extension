@@ -3559,6 +3559,11 @@ JOIN ldbc.person b ON b.rowid = p.dst;""")
             add("stats", step, stats_sql.format(step=step))
         add("count", step, f"SELECT 'count' AS kind, {step} AS step, count(*) AS edges, {edge_count} AS expected "
                            f"FROM ldbc.person_knows_person;")
+        # The WAL size after the step: a drop marks a DuckDB checkpoint (automatic at checkpoint_threshold, 16 MB by
+        # default), which rewrites the table's modified row groups and the dirty index; the paper reports where they
+        # fall instead of changing the default
+        add("wal", step, f"SELECT 'wal' AS kind, {step} AS step, (SELECT wal_size FROM pragma_database_size() "
+                         f"WHERE database_name = 'ldbc') AS wal_size;")
         if step == args.batches:
             break
         lo = step * args.batch_size
@@ -3597,6 +3602,17 @@ def run_update_script(statements, timeout_s):
     return timers, blocks
 
 
+def parse_pretty_bytes(text):
+    """Bytes from DuckDB's pretty-printed sizes ('0 bytes', '12.3 MiB', '1.2 GiB')"""
+    match = re.match(r"\s*([\d.]+)\s*([KMGT]i?B|bytes?)\s*$", text or "")
+    if not match:
+        return ""
+    value, unit = float(match.group(1)), match.group(2)
+    scale = {"bytes": 1, "byte": 1, "KiB": 1024, "MiB": 1024 ** 2, "GiB": 1024 ** 3, "TiB": 1024 ** 4,
+             "KB": 1000, "MB": 1000 ** 2, "GB": 1000 ** 3, "TB": 1000 ** 4}[unit]
+    return int(value * scale)
+
+
 def parse_kind_row(block):
     rows = list(csv.DictReader(block.splitlines()))
     if len(rows) != 1:
@@ -3625,17 +3641,20 @@ def run_update_config(config, args, options, batch_rows, run_metadata):
             index_build_s += elapsed
         elif tag == "update":
             update_time[step] = update_time.get(step, 0.0) + elapsed
-        elif tag in ("query", "stats", "count"):
+        elif tag in ("query", "stats", "count", "wal"):
             row = parse_kind_row(block)
             row["elapsed_s"] = elapsed
             events.append((tag, step, row))
 
     rows = []
     stats_by_step = {}
+    wal_by_step = {}
     for tag, step, row in events:
         if tag == "stats":
             parts = dict(part.split("=") for part in row["stats"].split(";"))
             stats_by_step[step] = parts
+        elif tag == "wal":
+            wal_by_step[step] = parse_pretty_bytes(row["wal_size"])
     for tag, step, row in events:
         if tag == "count":
             if row["edges"] != row["expected"]:
@@ -3664,6 +3683,10 @@ def run_update_config(config, args, options, batch_rows, run_metadata):
             "folds": stats.get("folds", ""),
             "last_fold_ms": stats.get("last_fold_ms", ""),
             "fold_ms": stats.get("fold_ms", ""),
+            "wal_bytes": wal_by_step.get(step, ""),
+            # A checkpoint ran during this step's commit when the WAL is smaller than after the previous step
+            "checkpoint": "1" if step > 0 and step in wal_by_step and (step - 1) in wal_by_step
+                                 and wal_by_step[step] < wal_by_step[step - 1] else "0",
             "index_build_s": f"{index_build_s:.6f}",
             "config_wall_s": f"{wall_s:.3f}",
         })
@@ -3928,15 +3951,17 @@ def throughput_table(args):
 
 
 def concurrent_run_key(path, rows):
-    """(scale_factor, route, readers, fold_ratio) of a concurrent CSV: from the metadata columns when the harness
-    appended them, else from the file name (a run the driver ended with an error keeps the driver's bare columns)"""
+    """(scale_factor, route, readers, fold_ratio, writer_pause_ms) of a concurrent CSV: from the metadata columns when
+    the harness appended them, else from the file name (a run the driver ended with an error keeps the driver's bare
+    columns)"""
     first = rows[0] if rows else {}
     stem = Path(path).stem
     readers = int(first["readers"]) if first.get("readers") else int(re.search(r"_readers(\d+)_", stem).group(1))
     fold_ratio = float(first["fold_ratio"]) if first.get("fold_ratio") else float(re.search(r"_fold([\d.]+)_", stem).group(1))
+    pause = int(first["writer_pause_ms"]) if first.get("writer_pause_ms") else int(re.search(r"_pause(\d+)_", stem).group(1))
     scale_factor = first.get("scale_factor") or Path(path).resolve().parent.name.removeprefix("sf")
     routes = sorted({r["kind"] for r in rows if r["kind"].startswith("query_")})
-    return scale_factor, routes, readers, fold_ratio
+    return scale_factor, routes, readers, fold_ratio, pause
 
 
 def concurrent_table(args):
@@ -3950,22 +3975,24 @@ def concurrent_table(args):
         rows = list(csv.DictReader(open(path)))
         if not rows:
             continue
-        scale_factor, routes, readers, fold_ratio = concurrent_run_key(path, rows)
+        scale_factor, routes, readers, fold_ratio, pause = concurrent_run_key(path, rows)
         stamp = int(Path(path).stem.rsplit("_", 1)[1])
         for route in routes:
-            key = (scale_factor, route, readers, fold_ratio)
+            key = (scale_factor, pause, route, readers, fold_ratio)
             if key not in chosen or chosen[key][0] < stamp:
                 chosen[key] = (stamp, rows)
-    for scale_factor in sorted({k[0] for k in chosen}, key=lambda v: float(v)):
-        sample = next(rows for (sf, *_), (_, rows) in chosen.items() if sf == scale_factor)[0]
+    # One table per scale factor and writer pause: the unpaced writer is a separate experiment from the 200 ms one
+    for scale_factor, pause in sorted({(k[0], k[1]) for k in chosen}, key=lambda v: (float(v[0]), v[1])):
+        sample = next(rows for (sf, p, *_), (_, rows) in chosen.items() if sf == scale_factor and p == pause)[0]
         print(f"\n## readers under a writer, SF{scale_factor}: {sample.get('batch_size', '?')} operations per commit, "
-              f"{sample.get('writer_pause_ms', '?')} ms pause, {sample.get('threads', '?')} threads, query latency per route "
+              f"{pause} ms pause, {sample.get('threads', '?')} threads, query latency per route "
               f"(median / p99 / max), the writer's commit latency and the folds of the run\n")
         print("| route | readers | queries | median ms | p99 ms | max ms | commit median ms | commit p99 ms | folds | peak GiB |")
         print("|---|---|---|---|---|---|---|---|---|---|")
-        order = sorted((k for k in chosen if k[0] == scale_factor), key=lambda k: (k[3] != 0.1, k[3], k[1], k[2]))
+        order = sorted((k for k in chosen if k[0] == scale_factor and k[1] == pause),
+                       key=lambda k: (k[4] != 0.1, k[4], k[2], k[3]))
         for key in order:
-            _, route, readers, fold_ratio = key
+            _, _, route, readers, fold_ratio = key
             rows = chosen[key][1]
             queries = [1000 * float(r["elapsed_s"]) for r in rows if r["kind"] == route]
             commits = [1000 * float(r["elapsed_s"]) for r in rows if r["kind"] == "commit"]

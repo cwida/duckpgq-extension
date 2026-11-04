@@ -666,6 +666,58 @@ def updates_figure(filename):
     save(fig, filename)
 
 
+def updates_timeline_figure(filename):
+    """The update stream commit by commit: the cost of applying each commit on the build route and on the index with
+    automatic folds, over the steps of the sequential update run, one panel per scale factor with data. Commits in
+    which DuckDB ran an automatic checkpoint (the WAL shrank; checkpoint_threshold at its default) are marked, and so
+    are the index's folds: the two kinds of spike the medians hide and the text explains. The defaults are kept; the
+    figure shows where their costs fall."""
+    panels = []
+    for sf in SCALE_FACTORS:
+        files = newest_files(RESULTS / f"sf{sf}", "update_sssp_pairs1024_threads32_batch*.csv")
+        if not files:
+            continue
+        rows = [r for r in csv.DictReader(open(files[-1])) if r.get("step") and int(r["step"]) > 0 and r.get("update_s")]
+        if not rows or "checkpoint" not in rows[0]:
+            continue
+        panels.append((sf, rows))
+    if not panels:
+        print("no update runs with checkpoint markers yet, skipping", filename)
+        return
+    fig, axes = plt.subplots(1, len(panels), figsize=(3.4 * len(panels) + 0.4, 2.6), sharey=False, squeeze=False)
+    configs = [("build", "DuckPGQ build", COLOR["duckpgq_build"]), ("index_auto", "DuckPGQ index", COLOR["duckpgq_index"])]
+    for ax, (sf, rows) in zip(axes[0], panels):
+        ax.set_yscale("log")
+        style_axes(ax)
+        for config, name, color in configs:
+            series = sorted((int(r["step"]), 1000 * float(r["update_s"]), r.get("checkpoint") == "1",
+                             int(r["folds"] or 0) if r.get("folds") else 0) for r in rows if r["config"] == config)
+            if not series:
+                continue
+            xs = [s_ for s_, *_ in series]
+            ys = [y for _, y, *_ in series]
+            ax.plot(xs, ys, color=color, linewidth=1.0, alpha=0.9, zorder=3)
+            checkpoints = [(s_, y) for s_, y, ck, _ in series if ck]
+            if checkpoints:
+                ax.plot([c[0] for c in checkpoints], [c[1] for c in checkpoints], linestyle="none", marker="s",
+                        markersize=5, markerfacecolor=SURFACE, markeredgecolor=color, markeredgewidth=1.2, zorder=5)
+            folds = [(s_, y) for (s_, y, _, f), (_, _, _, f_prev) in zip(series[1:], series[:-1]) if f > f_prev]
+            if folds:
+                ax.plot([f[0] for f in folds], [f[1] for f in folds], linestyle="none", marker="D", markersize=4.5,
+                        color=color, markeredgecolor=SURFACE, zorder=6)
+        ax.set_title(f"LDBC SF{sf}", loc="left")
+        ax.set_xlabel("commit")
+        ax.set_ylabel("commit latency (ms)")
+    handles = [Line2D([], [], color=c, linewidth=1.2) for _, _, c in configs]
+    handles.append(Line2D([], [], linestyle="none", marker="s", markersize=5, markerfacecolor=SURFACE, markeredgecolor=INK2, markeredgewidth=1.2))
+    handles.append(Line2D([], [], linestyle="none", marker="D", markersize=4.5, color=INK2))
+    fig.legend(handles, [n for _, n, _ in configs] + ["DuckDB checkpoint in this commit", "index fold after this commit"],
+               loc="lower center", ncol=4, bbox_to_anchor=(0.5, -0.02), handlelength=1.8, columnspacing=1.2, fontsize=7)
+    top = wrapped_title(fig, "Applying the LDBC knows update stream commit by commit: checkpoints and folds are the spikes")
+    fig.tight_layout(rect=(0, 0.1, 1, top))
+    save(fig, filename)
+
+
 def newest_files(directory, pattern):
     """Result files matching pattern in a results directory, oldest first by the run time in the name"""
     if not directory.is_dir():
@@ -1362,6 +1414,7 @@ if __name__ == "__main__":
     throughput_figure("throughput")
     first_query_figure("first_query")
     updates_figure("updates")
+    updates_timeline_figure("updates_timeline")
     graphalytics_figure("graphalytics")
     concurrent_figure("concurrent")
     fold_timeline_figure("fold_timeline")
