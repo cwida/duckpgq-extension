@@ -28,7 +28,7 @@
 \draw[tick] ($(g3.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_a$, $T_c$};
 \draw[tick] ($(g6.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_b$};
 % transactions
-\node[lbl, anchor=north west, text width=8.1cm, align=left] at (0,-0.55) {%
+\node[lbl, font=\scriptsize, anchor=north west, text width=8.1cm, align=left] at (0,-0.55) {%
   $T_a$ (bound after $g_3$): epoch 0 + overlay, $g_1$ and $g_2$ visible, the deletes of $g_3$ applied.\\
   $T_b$ (bound after $g_6$): epoch 1 + overlay, $g_5$ visible, $g_6$ applied; $g_1$--$g_4$ are inside epoch 1.\\
   $T_c$ (bound after $g_3$, started before the fold): served from epoch 0, which is retained until the next fold.};
