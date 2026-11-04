@@ -139,7 +139,7 @@ One name per thing, used the same way in the text, the figures and the captions.
 | snapshot | what one transaction traverses: an epoch plus its overlay | |
 | overlay | the suppressed epoch positions and the inserted edges, in the epoch's partitions | delta CSR, companion |
 | fold | building a new epoch from the table | compaction (that is the log's cleanup) |
-| generation, accounts for | an epoch's number in installation order; an epoch accounts for an entry it already contains or excludes | covered, covered_epoch |
+| generation, accounts for | an epoch's number in the order the epochs were built; an epoch accounts for an entry it already contains or excludes | covered, covered_epoch |
 | retained epoch | an older epoch kept for transactions that started before a fold | |
 | private epoch | an epoch built for one transaction from its own view (uncommitted changes, or older than every retained epoch) | private CSR |
 | transaction | the reader of the index | reader |

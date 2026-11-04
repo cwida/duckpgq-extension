@@ -118,19 +118,18 @@ including edges inserted after the epoch, and the keys of its vertices \rev{(Sec
 \label{sec:index-fold}
 
 \rev{The log grows with every commit and the overlay with it, so the index periodically builds a new epoch from the
-table, a \emph{fold} (epoch~1 in Figure~\ref{fig:index-timeline}). A fold has no point in the commit order of its own.
-It runs inside an ordinary transaction without uncommitted changes, and \duckdb fixes a transaction's bound when the
-transaction starts, so the new epoch holds exactly the commits that transaction can see and the bound $b_f$ in the figure
-is simply where the folding transaction started. The transaction scans the edges it can see, on one thread, builds the
+table, a \emph{fold} (epoch~1 in Figure~\ref{fig:index-timeline}). A fold runs inside an ordinary transaction without uncommitted changes, and the bound $b_f$ in the figure is
+where that transaction started. \duckdb fixes a transaction's bound when the transaction starts, and the new epoch
+holds the commits that transaction can see, no more and no fewer. The transaction scans the edges it can see, on one thread, builds the
 partitioned CSR with the parallel build of \texttt{CREATE INDEX}, and makes the result the index's newest epoch. A fold
-can be triggered explicitly, through a function, or automatically: before a transaction builds its snapshot, it counts
+can be triggered explicitly, through a function, or automatically. Before a transaction builds its snapshot, it counts
 the log entries that the newest epoch does not yet contain, and if they exceed a configurable fraction of that epoch's
-edge count, a tenth by default, it folds first. The scan and the build run without holding the index. The fold holds it
-only twice, briefly: once to recount the log under the lock, so that two transactions that crossed the threshold at the
-same time do not both fold, and once to make the new epoch the newest. Commits and other queries continue during a fold.
+edge count, a tenth by default, it folds first. The scan and the build run without holding the index. The fold takes the index
+twice, each time for a moment, once to recount the log under the lock, so that two transactions that crossed the
+threshold at the same time do not both fold, and once to make the new epoch the newest. Commits and other queries continue during a fold.
 Folds are serialized; an automatic fold that finds another fold running does not wait, and its transaction reads the
-current epoch and log instead. A fold whose transaction is older than the newest epoch does nothing, so epochs are
-always installed in the order of their bounds. Section~\ref{sec:cost} discusses why the trigger lies with the
+current epoch and log instead. A fold whose transaction is older than the newest epoch does nothing, so the epochs
+always follow the order of their bounds. Section~\ref{sec:cost} discusses why the trigger lies with the
 transactions and what a better policy would weigh.}
 
 \rev{The new epoch does not replace the old one at once, because a transaction that started before the fold
@@ -141,15 +140,16 @@ both epochs builds a private one.}
 
 \rev{Two epochs also decide how the log is cleaned up. A log entry is no longer needed once every retained epoch already
 contains its inserted edge or already excludes its deleted one, which we call \emph{accounting for} the entry. An epoch
-accounts for an entry exactly when the entry's commit is visible at the epoch's bound, and that cannot be computed
-later, because \duckdb discards row versions once no live transaction needs them (Section~\ref{sec:index-interface}).
-The folding transaction therefore records the answer while it is live: every epoch has a \emph{generation}, its number
-in installation order, and the fold writes into each log entry the generation of the first epoch that accounts for it.
+accounts for an entry when the entry's commit is visible at the epoch's bound, and that cannot be computed later,
+because \duckdb discards row versions once no live transaction needs them (Section~\ref{sec:index-interface}). The
+folding transaction therefore records the answer while it is live. Every epoch has a \emph{generation}, its number in
+the order the epochs were built, and the fold writes into each log entry the generation of the first epoch that
+accounts for it.
 From then on a snapshot of an epoch skips the entries that epoch accounts for, and the log drops an entry once the
-oldest retained epoch accounts for it. Two details follow. A row that the fold pulled into the new epoch and that is
+oldest retained epoch accounts for it. Two cases need care. A row that the fold pulled into the new epoch and that is
 deleted afterwards gets both a stamp and a tombstone, because transactions on the retained epoch find it in the log and
-transactions on the new epoch find it in the epoch. And an entry resolved its keys against the old epoch's dictionary,
-so a snapshot of the new epoch looks its keys up again.}
+transactions on the new epoch find it in the epoch. An entry resolved its keys against the old epoch's dictionary, and
+a snapshot of the new epoch looks its keys up again.}
 
 \subsection{Checkpoint, recovery and load}
 \label{sec:index-storage}
@@ -187,7 +187,7 @@ delete reached \texttt{Delete} and became a stamp, a tombstone or both, whose gr
 visible to $b$. Entries appended to the log after the transaction copied its length belong to commits that cannot be
 visible to the transaction, since \texttt{Append} runs during the commit, before the rows become visible.
 
-Two retained epochs make the argument harder. A fold installs epoch $E'$ with bound $b_f$, and the claim holds for
+Two retained epochs make the argument harder. A fold builds epoch $E'$ with bound $b_f$, and the claim holds for
 $E'$ with $b_e := b_f$, because the fold records in each entry whether $E'$ accounts for it. An entry that $E'$
 contains is left out of $\Delta$ for transactions on $E'$, so no edge is counted twice. The log drops an entry only once
 the oldest retained epoch accounts for it, and every retained epoch still finds the entries it needs. A logged row that
@@ -203,7 +203,7 @@ $\mathit{Vis}$. Section~\ref{sec:hooks} counts these missing guarantees among th
 the one case in which the index sees a row twice. A commit can fail after the index has logged its append, for example
 on a unique-key conflict; \duckdb then reverts the append and gives the same row ids to the next insert. When the
 index sees a row id it already holds, it marks the earlier entry dead, so $\Delta$ contains no row of a failed commit.
-The second property of ours is that folds install epochs in the order of their bounds, so a transaction is always
+The second property of ours is that the epochs follow the order of their bounds, so a transaction is always
 served from the newest epoch its bound allows. \todo{Not tested: whether a checkpoint that drops a fully deleted
 trailing row group also hands its ids out again.}
 
