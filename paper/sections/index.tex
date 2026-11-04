@@ -124,7 +124,10 @@ holds the commits that transaction can see.} The transaction scans the edges it 
 partitioned CSR with the parallel build of \texttt{CREATE INDEX}, and makes the result the index's newest epoch. A fold
 can be triggered explicitly, through a function, or automatically. Before a transaction builds its snapshot, it counts
 the log entries that the newest epoch does not yet contain, and if they exceed a configurable fraction of that epoch's
-edge count, a tenth by default, it folds first. The scan and the build run without holding the index. \rev{The fold locks the index
+edge count, a tenth by default, it folds first. \rev{That transaction pays for the fold, a scan and a build of the whole
+graph, before its own query runs, about 3\,s at SF300 (Section~\ref{sec:index-when}); the fold is not background
+work. A transaction with uncommitted changes of its own never folds; it builds a private epoch instead
+(Section~\ref{sec:index-read}).} The scan and the build run without holding the index. \rev{The fold locks the index
 twice, once to recount the log, so that two transactions that crossed the threshold at the same time do not both
 fold, and once to make the new epoch the newest.} Commits and other queries continue during a fold.
 Folds are serialized; an automatic fold that finds another fold running does not wait, and its transaction reads the
@@ -134,11 +137,11 @@ transactions and what a better policy would weigh.
 
 The new epoch does not replace the old one at once, because a transaction that started before the fold
 (\mbox{$T_c$} in Figure~\ref{fig:index-timeline}) \rev{must not see the commits between its own start and $b_f$, which are visible in the
-new epoch.} The index therefore keeps the previous epoch as a \emph{retained epoch} until the next fold and
-gives every transaction the newest epoch that started before the transaction did; a transaction that is older than
-both epochs builds a private one.
+new epoch.} \rev{The index therefore keeps the previous epoch as a \emph{retained epoch} until the next fold, two epochs at most,
+and serves every transaction from the newest epoch whose bound is not after the transaction's own. A transaction that
+started before both epochs were built gets neither and builds a private one.}
 
-Two epochs also decide how the log is cleaned up. A log entry is no longer needed once every retained epoch already
+\rev{With two epochs in use, the log cannot be truncated at a fold. A log entry is no longer needed once every retained epoch already}
 contains its inserted edge or already excludes its deleted one, which we call \emph{accounting for} the entry. \rev{An epoch
 accounts for an entry when the entry's commit is visible at the epoch's bound. That cannot be computed later, because
 \duckdb discards row versions once no live transaction needs them (Section~\ref{sec:index-interface}), so the folding
