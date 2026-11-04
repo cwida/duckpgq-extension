@@ -35,8 +35,10 @@ if [ "$what" = all ] || [ "$what" = graphalytics ]; then
   # dense LDBC family) run DuckPGQ and Kuzu only. Pairs and sources are sampled from vertices with edges; the Cypher
   # systems run without the ..30 hop bound and Kuzu with var_length_extend_max_depth raised.
   step "fixed_costs_cit_patents" ${HARNESS} fixed-costs --dataset cit-Patents --threads "${THREADS}" --repeats "${REPEATS}" --notes "fixed costs cit-Patents ${NOTE}"
-  step "sweep_pairs_cit_patents" ${HARNESS} sweep-pairs --dataset cit-Patents "${COMMON[@]}" --notes "W30 sweep cit-Patents ${NOTE}"
-  step "sweep_pairs_cit_patents_client${CLIENT_THREADS}" ${HARNESS} sweep-pairs --dataset cit-Patents "${COMMON[@]}" \
+  # cit-Patents runs sources x all only (4 Nov): a random pair on the citation DAG is unreachable by construction, so
+  # random pairs would measure each system's cost of finding no path, at hours of baseline timeouts
+  step "sweep_pairs_cit_patents" ${HARNESS} sweep-pairs --dataset cit-Patents "${COMMON[@]}" --pair-counts --notes "W30 sweep cit-Patents ${NOTE}"
+  step "sweep_pairs_cit_patents_client${CLIENT_THREADS}" ${HARNESS} sweep-pairs --dataset cit-Patents "${COMMON[@]}" --pair-counts \
     --client-threads "${CLIENT_THREADS}" --systems memgraph falkordb kuzu --notes "W30 cit-Patents client threads ${CLIENT_THREADS} ${NOTE}"
   for ds in graph500-24 datagen-8_4-fb; do
     name="${ds//-/_}"
