@@ -21,6 +21,7 @@ struct PathFindingSettings {
 	      bitmap_filter_working_set(NonNegative(GetPathFindingBitmapFilterWorkingSet(context))),
 	      task_edges(NonNegative(GetPathFindingTaskEdges(context))),
 	      working_set_cap(ResolveWorkingSetCap(context)),
+	      reach_result_cap(ResolveReachResultCap(context, working_set_cap)),
 	      visit_prefetch(NonNegative(GetPathFindingVisitPrefetch(context))),
 	      sub_range_tasks(GetPathFindingSubRangeTasks(context)),
 	      sparse_level_divisor(NonNegative(GetPathFindingSparseLevelDivisor(context))),
@@ -45,6 +46,9 @@ struct PathFindingSettings {
 	//! _working_set_cap resolved to bytes (0 = no bound): the memory safety bound of the schedulers, a quarter of
 	//! DuckDB's memory_limit unless set explicitly
 	idx_t working_set_cap;
+	//! REACH mode: bytes the materialized reach result may take (0 = no bound), memory_limit minus the working-set cap
+	//! (ReachResultBudget)
+	idx_t reach_result_cap;
 	idx_t visit_prefetch;
 	bool sub_range_tasks;
 	idx_t sparse_level_divisor;
@@ -76,6 +80,14 @@ private:
 			return 0; // no memory limit: no bound
 		}
 		return limit / 4;
+	}
+
+	static idx_t ResolveReachResultCap(ClientContext &context, idx_t working_set_cap) {
+		auto limit = BufferManager::GetBufferManager(context).GetMaxMemory();
+		if (limit == DConstants::INVALID_INDEX || limit == 0) {
+			return 0; // no memory limit: no bound
+		}
+		return working_set_cap < limit / 2 ? limit - working_set_cap : limit / 2;
 	}
 
 	static idx_t NonNegative(int64_t value) {

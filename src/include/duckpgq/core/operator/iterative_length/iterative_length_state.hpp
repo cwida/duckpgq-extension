@@ -14,6 +14,28 @@ struct ReachedEntry {
 	int32_t distance;
 };
 
+//! REACH mode materializes every (vertex, distance) a source reached until the scatter emits them. The entries are
+//! charged against this budget as they are recorded, so a result that does not fit fails the query with an
+//! out-of-memory error instead of growing the process past memory_limit, which no buffer-manager accounting covers
+//! (4 Nov: graph500-24, 1024 sources x all, 9.1 B entries = 73 GB of entries alone; the kernel killed the process).
+//! Each entry is charged twice its size: the recorder's vectors grow by doubling, so their capacity is up to twice the
+//! entries they hold. Shared by the waves and per-source searches of one query.
+class ReachResultBudget {
+public:
+	explicit ReachResultBudget(idx_t cap_bytes_p) : cap_bytes(cap_bytes_p) {
+	}
+	static constexpr idx_t BYTES_PER_ENTRY = 2 * sizeof(ReachedEntry);
+	//! Charges `entries` further entries; throws OutOfMemoryException when the total exceeds the cap (cap 0: none)
+	void Charge(idx_t entries);
+	idx_t ChargedEntries() const {
+		return charged_entries.load();
+	}
+
+private:
+	idx_t cap_bytes;
+	atomic<idx_t> charged_entries {0};
+};
+
 //! Reach mode on the lane kernel (W29 on lane waves): what every lane of a wave newly reached, recorded in the check
 //! phase by the worker that owns the vertex range. After CheckChange has masked `next` with the active lanes and
 //! `~seen`, next[v] holds exactly the lanes that reached v at this level, so the worker appends (v, level) to its own
@@ -24,11 +46,19 @@ struct LaneReachRecorder {
 	vector<vector<vector<ReachedEntry>>> buffers;
 	//! touched[worker]: lanes with new entries in the current level (DetectReached stops the untouched lanes)
 	vector<std::bitset<LANE_LIMIT>> touched;
+	//! The query's reach result budget (null: unbounded); pending[worker] entries recorded but not yet charged, charged
+	//! in blocks of CHARGE_ENTRIES on the worker and at the end of every level
+	shared_ptr<ReachResultBudget> budget;
+	vector<idx_t> pending;
+	static constexpr idx_t CHARGE_ENTRIES = 1 << 20;
 
 	void Resize(idx_t workers) {
 		buffers.assign(workers, vector<vector<ReachedEntry>>(LANE_LIMIT));
 		touched.assign(workers, std::bitset<LANE_LIMIT>());
+		pending.assign(workers, 0);
 	}
+	//! Charges the pending entries of every worker (serial step after a level)
+	void ChargePending();
 	//! Appends vertex `vertex` at `level` to every lane set in `lanes`, on worker `worker`
 	void Record(idx_t worker, idx_t vertex, int32_t level, const std::bitset<LANE_LIMIT> &lanes);
 	//! Lanes any worker touched in this level; clears the per-worker sets for the next level

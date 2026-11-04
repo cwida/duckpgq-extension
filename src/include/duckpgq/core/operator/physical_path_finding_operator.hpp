@@ -30,6 +30,7 @@ class BFSState;      // Forward declaration
 class LocalCSRState; // Forward declaration
 class SourceGroupedIterativeLengthState;
 class PathFindingGlobalSinkState;
+class ReachResultBudget;
 
 //! Appends one row of the operator (RunID "operator") to the optional path-finding phase timing file; the
 //! unique and duplicate counts of the pair analysis go in the EdgeCount and PartitionCount columns
@@ -166,6 +167,8 @@ public:
 	//! REACH mode: slices of (group, vertex range) handed to the parallel source, and finished slices per group
 	std::atomic<idx_t> reach_next_slice {0};
 	vector<unique_ptr<std::atomic<idx_t>>> reach_slices_done;
+	//! REACH mode: the memory budget of the materialized reach result, shared by the query's searches
+	shared_ptr<ReachResultBudget> reach_budget;
 	//! REACH mode: input rows whose source key is not in the graph (no group); each reaches only itself
 	vector<std::pair<DataChunk *, idx_t>> reach_ungrouped_rows;
 	std::atomic<idx_t> reach_next_ungrouped {0};

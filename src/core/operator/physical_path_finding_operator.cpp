@@ -402,6 +402,9 @@ public:
 			for (int64_t v = 0; v < v_size; v++) {
 				count += distances[v] >= 0;
 			}
+			if (reach_budget) {
+				reach_budget->Charge(count);
+			}
 			reached.reserve(count);
 			for (int64_t v = 0; v < v_size; v++) {
 				if (distances[v] >= 0) {
@@ -587,6 +590,8 @@ public:
 	vector<shared_ptr<DataChunk>> output_chunks;
 	//! REACH: the group emits every reached vertex (set by the scheduler)
 	bool reach_mode = false;
+	//! REACH: the query's result budget, charged when the reached entries are extracted (null: unbounded)
+	shared_ptr<ReachResultBudget> reach_budget;
 	//! Set by Start() / ReleaseWorkingSets()
 	bool arrays_allocated = false;
 	//! Set by ExtractResults(): Distance(), AppendPath() and Reached() answer from the extracted results
@@ -1366,9 +1371,10 @@ class ReachLaneWaveState : public LaneWaveState {
 public:
 	ReachLaneWaveState(vector<shared_ptr<SourceGroupedIterativeLengthState>> groups_p,
 	                   std::vector<shared_ptr<LocalCSR>> &local_csrs_p, idx_t num_threads_p, ClientContext &context_p,
-	                   int64_t vsize_p, const PathFindingSettings &settings)
+	                   int64_t vsize_p, const PathFindingSettings &settings, shared_ptr<ReachResultBudget> budget_p)
 	    : LaneWaveState(std::move(groups_p), local_csrs_p, num_threads_p, context_p, vsize_p, settings) {
 		reach_recorder = make_uniq<LaneReachRecorder>();
+		reach_recorder->budget = std::move(budget_p);
 		SetTimingLabel("bfs_reach_wave");
 	}
 
@@ -1401,6 +1407,7 @@ public:
 	}
 
 	void DetectReached() override {
+		reach_recorder->ChargePending();
 		// A lane that reached nothing new at this level has no frontier left: done
 		auto touched = reach_recorder->TakeTouched();
 		for (idx_t lane = 0; lane < groups.size() && lane < LANE_LIMIT; lane++) {
@@ -1616,6 +1623,12 @@ public:
 		bool lane_waves = lane_kernel && group_count > 1 &&
 		                  (few_sources_limit <= 0 || group_count > NumericCast<idx_t>(few_sources_limit));
 		RecordStrategy(context, "source_group_kernel", lane_waves ? "lane_waves" : "per_source");
+		if (reach) {
+			// The materialized reach result is bounded by memory_limit minus the working-set cap (ReachResultBudget)
+			gstate.reach_budget = make_shared_ptr<ReachResultBudget>(gstate.settings.reach_result_cap);
+			RecordStrategy(context, "reach_result_cap_mb",
+			               std::to_string(gstate.settings.reach_result_cap / (1024 * 1024)));
+		}
 		// The per-group arrays (distances, seen, frontier stamps, parents) are sized by the vertex count; with
 		// many groups their allocation is spread over the threads
 		vector<shared_ptr<SourceGroupedIterativeLengthState>> states(group_count);
@@ -1628,6 +1641,7 @@ public:
 				state->suppressed = SearchSuppressed(gstate);
 				state->max_depth = gstate.max_depth;
 				state->reach_mode = reach;
+				state->reach_budget = gstate.reach_budget;
 				if (gstate.mode == PathFindingOperatorMode::SHORTEST_PATH) {
 					state->EnableParentTracking();
 				}
@@ -1694,7 +1708,8 @@ public:
 				shared_ptr<LaneWaveState> wave;
 				if (reach) {
 					wave = make_shared_ptr<ReachLaneWaveState>(std::move(wave_groups), partition_csrs, gstate.num_threads,
-					                                           context, GetPathFindingVSize(gstate), gstate.settings);
+					                                           context, GetPathFindingVSize(gstate), gstate.settings,
+					                                           gstate.reach_budget);
 				} else {
 					wave = make_shared_ptr<LaneWaveState>(std::move(wave_groups), partition_csrs, gstate.num_threads,
 					                                      context, GetPathFindingVSize(gstate), gstate.settings);
