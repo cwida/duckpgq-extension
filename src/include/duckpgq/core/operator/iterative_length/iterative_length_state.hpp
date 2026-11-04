@@ -14,48 +14,105 @@ struct ReachedEntry {
 	int32_t distance;
 };
 
-//! REACH mode materializes every (vertex, distance) a source reached until the scatter emits them. The entries are
-//! charged against this budget as they are recorded, so a result that does not fit fails the query with an
-//! out-of-memory error instead of growing the process past memory_limit, which no buffer-manager accounting covers
-//! (4 Nov: graph500-24, 1024 sources x all, 9.1 B entries = 73 GB of entries alone; the kernel killed the process).
-//! Each entry is charged twice its size: the recorder's vectors grow by doubling, so their capacity is up to twice the
-//! entries they hold. Shared by the waves and per-source searches of one query.
+//! Zero-filled bytes from calloc: the pages are mapped on first touch, so an array over all vertices costs memory only
+//! where the source reached, and needs no clearing pass
+struct ZeroedBytes {
+	uint8_t *data = nullptr;
+	idx_t size = 0;
+	ZeroedBytes() = default;
+	explicit ZeroedBytes(idx_t size_p);
+	~ZeroedBytes();
+	ZeroedBytes(ZeroedBytes &&other) noexcept : data(other.data), size(other.size) {
+		other.data = nullptr;
+		other.size = 0;
+	}
+	ZeroedBytes &operator=(ZeroedBytes &&other) noexcept;
+	ZeroedBytes(const ZeroedBytes &) = delete;
+	ZeroedBytes &operator=(const ZeroedBytes &) = delete;
+};
+
+//! The reached set of one source, held until the scatter emits it (REACH mode). Sparse: (vertex, distance) entries in
+//! unspecified order. Dense: one byte per vertex holding distance + 1 (0 = not reached), 1 byte per vertex instead of
+//! 8 per entry when a source reaches most of the graph (graph500-24, 1024 sources x all: 9.1 B entries, 73 GB as
+//! entries, 9 GB as bytes). A lane switches to the dense form between rounds once its entries pass 1/divisor of the
+//! vertices (PathFindingSettings::reach_dense_divisor); distances above MAX_DENSE_DISTANCE turn a dense lane back
+//! into entries.
+struct ReachResult {
+	vector<ReachedEntry> entries;
+	ZeroedBytes distances;
+	//! Reached entries in either form
+	idx_t count = 0;
+	static constexpr idx_t MAX_DENSE_DISTANCE = 254;
+
+	bool IsDense() const {
+		return distances.data != nullptr;
+	}
+	//! What the scatter slices: vertices of the dense array, or entries
+	idx_t Positions() const {
+		return IsDense() ? distances.size : entries.size();
+	}
+	//! Bytes the result holds (what the budget is charged)
+	idx_t Bytes() const {
+		return IsDense() ? distances.size : entries.size() * sizeof(ReachedEntry);
+	}
+	//! Turns the dense array into entries (a lane whose search went past MAX_DENSE_DISTANCE)
+	void ToEntries();
+	void Release();
+};
+
+//! REACH mode materializes every source's reached set until the scatter emits it. The results are charged against this
+//! budget as they are recorded, so a result that does not fit fails the query with an out-of-memory error instead of
+//! growing the process past memory_limit, which no buffer-manager accounting covers (4 Nov: graph500-24, 1024 sources
+//! x all, 9.1 B entries = 73 GB of entries alone; the kernel killed the process). Entries are charged at twice their
+//! size while they sit in the recorder's growing vectors (capacity up to twice the entries); dense arrays at their
+//! size. Shared by the waves and per-source searches of one query.
 class ReachResultBudget {
 public:
 	explicit ReachResultBudget(idx_t cap_bytes_p) : cap_bytes(cap_bytes_p) {
 	}
-	static constexpr idx_t BYTES_PER_ENTRY = 2 * sizeof(ReachedEntry);
-	//! Charges `entries` further entries; throws OutOfMemoryException when the total exceeds the cap (cap 0: none)
-	void Charge(idx_t entries);
-	idx_t ChargedEntries() const {
-		return charged_entries.load();
+	static constexpr idx_t ENTRY_GROWTH_BYTES = 2 * sizeof(ReachedEntry);
+	//! Charges `bytes` more; throws OutOfMemoryException when the total exceeds the cap (cap 0: none)
+	void Charge(idx_t bytes);
+	void Release(idx_t bytes) {
+		charged_bytes.fetch_sub(bytes);
+	}
+	idx_t ChargedBytes() const {
+		return charged_bytes.load();
 	}
 
 private:
 	idx_t cap_bytes;
-	atomic<idx_t> charged_entries {0};
+	atomic<idx_t> charged_bytes {0};
 };
 
 //! Reach mode on the lane kernel (W29 on lane waves): what every lane of a wave newly reached, recorded in the check
 //! phase by the worker that owns the vertex range. After CheckChange has masked `next` with the active lanes and
 //! `~seen`, next[v] holds exactly the lanes that reached v at this level, so the worker appends (v, level) to its own
-//! buffer of that lane: no lock, no per-entry allocation, and the entries are grouped by lane as they are written.
-//! The collect phase at the end of the wave concatenates the workers' buffers of a lane into the lane's result.
+//! buffer of that lane, or writes the byte of a dense lane: no lock, no per-entry allocation, and the entries are
+//! grouped by lane as they are written. The collect phase at the end of the wave hands every lane its result.
 struct LaneReachRecorder {
-	//! buffers[worker][lane]: the entries worker `worker` recorded for `lane`, in level order
+	//! buffers[worker][lane]: the entries worker `worker` recorded for `lane` while sparse, in level order
 	vector<vector<vector<ReachedEntry>>> buffers;
+	//! dense[lane]: the lane's byte array once it switched (null while sparse); workers write disjoint vertices
+	vector<ZeroedBytes> dense;
 	//! touched[worker]: lanes with new entries in the current level (DetectReached stops the untouched lanes)
 	vector<std::bitset<LANE_LIMIT>> touched;
 	//! The query's reach result budget (null: unbounded); pending[worker] entries recorded but not yet charged, charged
 	//! in blocks of CHARGE_ENTRIES on the worker and at the end of every level
 	shared_ptr<ReachResultBudget> budget;
 	vector<idx_t> pending;
+	idx_t vertex_count = 0;
+	idx_t dense_divisor = 0;
 	static constexpr idx_t CHARGE_ENTRIES = 1 << 20;
 
-	void Resize(idx_t workers) {
+	void Resize(idx_t workers, idx_t vertex_count_p, idx_t dense_divisor_p) {
 		buffers.assign(workers, vector<vector<ReachedEntry>>(LANE_LIMIT));
+		dense.clear();
+		dense.resize(LANE_LIMIT);
 		touched.assign(workers, std::bitset<LANE_LIMIT>());
 		pending.assign(workers, 0);
+		vertex_count = vertex_count_p;
+		dense_divisor = dense_divisor_p;
 	}
 	//! Charges the pending entries of every worker (serial step after a level)
 	void ChargePending();
@@ -65,8 +122,12 @@ struct LaneReachRecorder {
 	std::bitset<LANE_LIMIT> TakeTouched();
 	//! Entries recorded for `lane` over all workers
 	idx_t CountOf(idx_t lane) const;
-	//! Appends the workers' entries of `lane` to `out` (worker order, each in level order) and frees them
-	void Drain(idx_t lane, vector<ReachedEntry> &out);
+	//! Serial step between rounds: sparse lanes past the dense threshold get a byte array and their entries replayed
+	//! into it (when the next level still fits a byte); dense lanes turn back into entries when it does not
+	void SwitchForms(idx_t next_level);
+	//! The lane's result (entries of every worker in worker order, each in level order, or the dense array); frees
+	//! the recorder's storage of the lane. `source` is recorded at distance 0 first when in range.
+	ReachResult Take(idx_t lane, idx_t source, bool source_in_range);
 };
 
 //! MS-BFS over one batch of up to LANE_LIMIT pairs, written as a phased kernel: a wave opens with a PREPARE phase
@@ -136,6 +197,8 @@ public:
 	//! expands the active vertices by row lookup in each partition instead of sweeping the partition's source list;
 	//! the tail of a wave, kept alive by a few long-distance lanes, runs ten or more such levels on LDBC knows
 	idx_t sparse_level_divisor = 16;
+	//! Reach lanes: dense result past 1/divisor of the vertices (0 never)
+	idx_t reach_dense_divisor = 0;
 	bool sparse_level = false;
 	bool row_lookup_available = true;
 	vector<uint32_t> frontier_list;

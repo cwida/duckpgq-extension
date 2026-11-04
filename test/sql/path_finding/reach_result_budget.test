@@ -23,8 +23,9 @@ CREATE TABLE lane_sources AS SELECT range * 3281 AS s FROM range(64);
 statement ok
 CREATE TABLE few_sources AS SELECT range * 14000 AS s FROM range(15);
 
-# 64 sources x 210000 vertices = 13.4M entries, 16 bytes each in the budget: 215 MB against a cap of 48 MB (three
-# quarters of memory_limit)
+# 64 sources x 210000 vertices = 13.4M entries, 16 bytes each in the budget while they sit in the recorder's growing
+# vectors: 215 MB against a cap of 48 MiB (three quarters of memory_limit). The ring is 105000 levels deep, so no
+# lane ever takes the dense byte form (reach_dense_results.test covers that form)
 statement ok
 SET memory_limit = '64MiB';
 
@@ -38,11 +39,14 @@ SELECT s LIKE '%source_group_kernel=lane_waves%' AND s LIKE '%reach_result_cap_m
 ----
 true
 
-# 15 sources run as per-source searches: 3.15M entries, 50 MB against the 48 MB cap
+# 15 sources run as per-source searches and extract exactly 3.15M entries of 8 bytes, 25 MB, against an 18 MiB cap
+statement ok
+SET memory_limit = '24MiB';
+
 statement error
 SELECT count(*) FROM (SELECT reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM few_sources);
 ----
-the reach result exceeds 48.0 MiB
+the reach result exceeds 18.0 MiB
 
 query I
 SELECT s LIKE '%source_group_kernel=per_source%' FROM (SELECT duckpgq_path_finding_strategy() AS s);

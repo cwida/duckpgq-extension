@@ -5433,7 +5433,8 @@ def sweep_pairs(args):
     results_dir.mkdir(parents=True, exist_ok=True)
     path = results_dir / f"sweep_pairs_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
     fieldnames = ["system", "scale_factor", "shape", "pairs", "sources", "repeat", "status", "query_s",
-                  "reachable_count", "total_len", "threads", "client_threads", "timeout_s", "benchmark_notes", "repo_commit"]
+                  "reachable_count", "total_len", "threads", "client_threads", "timeout_s", "benchmark_notes", "repo_commit",
+                  "peak_rss_mib"]
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
     rows = []
 
@@ -5442,7 +5443,9 @@ def sweep_pairs(args):
                "sources": sources, "repeat": repeat, "status": status, "query_s": f"{elapsed:.6f}",
                "reachable_count": value[0] if value else "", "total_len": value[1] if value else "",
                "threads": args.threads, "client_threads": args.client_threads, "timeout_s": args.timeout_s,
-               "benchmark_notes": args.notes, "repo_commit": commit}
+               "benchmark_notes": args.notes, "repo_commit": commit,
+               # DuckPGQ: the process peak RSS of the timed run (the reach result storage shows here)
+               "peak_rss_mib": getattr(system, "last_peak_rss_mib", "") if status == "ok" else ""}
         rows.append(row)
         with path.open("w", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames)

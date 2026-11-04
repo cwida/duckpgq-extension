@@ -60,6 +60,24 @@ struct CSRIndexDictionary {
 	idx_t Size() const {
 		return count;
 	}
+
+	//! Keys of ascending ids: walks the dense dictionary's bitmap forward from the last id and re-seeks only when the
+	//! ids jump by a word or more, where KeyOf does a binary search over the word ranks and a bit scan per id (the
+	//! reach scatter emits a dense result in vertex order: 9.1 B rows on graph500-24 for 1024 sources)
+	struct KeyCursor {
+		explicit KeyCursor(const CSRIndexDictionary &dictionary_p) : dictionary(dictionary_p) {
+		}
+		int64_t KeyOf(idx_t id);
+
+	private:
+		void Seek(idx_t id);
+		const CSRIndexDictionary &dictionary;
+		//! The lowest set bit of `word` (bits of bitmap[word_idx] not yet passed) is the bit of id `next_id`
+		idx_t next_id = 0;
+		idx_t word_idx = 0;
+		uint64_t word = 0;
+		bool positioned = false;
+	};
 };
 
 //! Edges collected by one build thread, keys already cast to BIGINT
@@ -191,6 +209,8 @@ struct CSRIndexSnapshot {
 
 	idx_t Lookup(int64_t key) const;
 	int64_t KeyOf(idx_t id) const;
+	//! KeyOf for ascending ids (CSRIndexDictionary::KeyCursor over the epoch's dictionary)
+	int64_t KeyOf(idx_t id, CSRIndexDictionary::KeyCursor &cursor) const;
 };
 
 //! The CSR index: one immutable epoch (the edges visible at the bound of the transaction that built it), an

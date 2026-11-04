@@ -420,6 +420,37 @@ int64_t CSRIndexDictionary::KeyOf(idx_t id) const {
 	throw InternalException("CSR index dictionary rank out of range");
 }
 
+void CSRIndexDictionary::KeyCursor::Seek(idx_t id) {
+	auto word_entry =
+	    std::upper_bound(dictionary.word_rank.begin(), dictionary.word_rank.end(), NumericCast<uint32_t>(id));
+	word_idx = static_cast<idx_t>(word_entry - dictionary.word_rank.begin()) - 1;
+	word = dictionary.bitmap[word_idx];
+	for (idx_t skip = id - dictionary.word_rank[word_idx]; skip > 0; skip--) {
+		word &= word - 1;
+	}
+	next_id = id;
+	positioned = true;
+}
+
+int64_t CSRIndexDictionary::KeyCursor::KeyOf(idx_t id) {
+	D_ASSERT(id < dictionary.count);
+	if (!dictionary.dense || dictionary.identity) {
+		return dictionary.KeyOf(id);
+	}
+	if (!positioned || id < next_id || id >= next_id + 64) {
+		Seek(id);
+	}
+	while (next_id < id) {
+		word &= word - 1;
+		next_id++;
+		while (word == 0) {
+			word_idx++;
+			word = dictionary.bitmap[word_idx];
+		}
+	}
+	return dictionary.min_key + NumericCast<int64_t>(word_idx * 64 + static_cast<idx_t>(__builtin_ctzll(word)));
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 // CSRIndex
 //----------------------------------------------------------------------------------------------------------------------
@@ -1516,6 +1547,13 @@ idx_t CSRIndexSnapshot::Lookup(int64_t key) const {
 int64_t CSRIndexSnapshot::KeyOf(idx_t id) const {
 	if (id < epoch->vertex_count) {
 		return epoch->dictionary->KeyOf(id);
+	}
+	return extra_keys[id - epoch->vertex_count];
+}
+
+int64_t CSRIndexSnapshot::KeyOf(idx_t id, CSRIndexDictionary::KeyCursor &cursor) const {
+	if (id < epoch->vertex_count) {
+		return cursor.KeyOf(id);
 	}
 	return extra_keys[id - epoch->vertex_count];
 }

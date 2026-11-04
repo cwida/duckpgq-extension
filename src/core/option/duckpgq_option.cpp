@@ -159,6 +159,12 @@ const vector<DuckPGQSetting> &Settings() {
 	     "limit run as MS-BFS waves of one lane per source, each lane recording every vertex it "
 	     "reaches in the check phase; false runs one single-source search per source",
 	     LogicalType::BOOLEAN, Value(true)},
+	    {"experimental_path_finding_operator_reach_dense_divisor",
+	     "Reach results: a source whose reached set passes 1/divisor of the vertices is stored as one "
+	     "byte per vertex (distance + 1) instead of a list of (vertex, distance) entries; 0 keeps every "
+	     "source as a list. The switch happens between BFS rounds; a lower divisor keeps more entries "
+	     "in the lists first (at 64 the lists of a lane stay under an eighth of the array's bytes)",
+	     LogicalType::INTEGER, Value::INTEGER(64)},
 	    {"experimental_path_finding_operator_source_search_rounds",
 	     "Per-source searches (paths, reach, few sources) run in rounds whose per-vertex arrays "
 	     "fit the grouped-batches budget, at most one per thread, each search allocating its "
@@ -322,6 +328,10 @@ bool GetPathFindingLaneWaves(ClientContext &context) {
 
 bool GetPathFindingReachLanes(ClientContext &context) {
 	return GetSetting<bool>(context, "experimental_path_finding_operator_reach_lanes");
+}
+
+int32_t GetPathFindingReachDenseDivisor(ClientContext &context) {
+	return GetSetting<int32_t>(context, "experimental_path_finding_operator_reach_dense_divisor");
 }
 
 bool GetPathFindingSourceSearchRounds(ClientContext &context) {

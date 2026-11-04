@@ -1447,3 +1447,23 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   weighed (4-byte lists 36 GB, per-level bitmaps 7 GB with per-level bookkeeping, vertex-major bytes with a strided
   scatter, streaming) are in the conversation record of 4 Nov. Limit to state: all results are alive at emission, so
   sources x vertices above about 80 B on a 123 GB machine still needs streaming.
+- 4 Nov (3): reach result storage (decided above, `ReachResult`). Per lane the result starts as (vertex, distance)
+  entries; between BFS rounds a lane whose entries pass 1/64 of the vertices switches to one byte per vertex holding
+  distance + 1 (0 = not reached), allocated zero-filled with calloc so untouched pages cost nothing, and the entries
+  are replayed into it; a lane whose next level would not fit a byte (254) switches back. The per-source searches
+  extract the same dense form. The scatter slices a dense lane by vertex range and a sparse lane by position; the
+  index route resolves keys of a dense result with a forward cursor over the dictionary bitmap
+  (`CSRIndexDictionary::KeyCursor`: a binary search plus bit scan per key made the index route 2x slower than the
+  build route at 9.1 B rows). The budget charges real bytes (entries at 16 while they sit in growing vectors, arrays
+  at their size). Setting `experimental_path_finding_operator_reach_dense_divisor` (64; 0 = entries only, the
+  microbenchmark switch). graph500-24, 32 threads, one repeat, sources x all: index 128 sources 4.66 -> 2.62 s, 1024
+  sources out of memory -> 8.8 s (peak RSS 36 GB; 46 GB with the divisor at 16, the lists before the switch); build
+  128 sources 6.2 -> 5.6 s, 1024 sources 10.8 s (33 GB). Kuzu's 495 s for the same 9.08 B rows (equal count and
+  total length) is now 56x slower than the index route. Tests `reach_dense_results.test` (entries against bytes on
+  lanes and per-source searches, the 254-level fallback on a ring, a 64 MiB limit the entries exceed and the bytes
+  fit, gap keys for the cursor) and `reach_result_budget.test` adjusted; 104 test files pass. Peak RSS still holds
+  about 13 GB beyond results + index + working sets at 1024 sources (freed list memory the allocator keeps, the
+  buffer pool's copy of the index blocks after the load): a follow-up for the memory column, not for the sweep. The
+  pair sweep rows now carry `peak_rss_mib` for DuckPGQ. Tag `eval-freeze-rc13`. DuckPGQ-only reruns of the pair
+  sweeps at SF10, cit-Patents and graph500-24 follow the remaining Graphalytics steps (reach rows changed; the table
+  printers take the newest file per system and shape, the baselines' rows of 3-4 Nov stand on the same samples).

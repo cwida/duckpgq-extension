@@ -25,7 +25,8 @@ struct PathFindingSettings {
 	      visit_prefetch(NonNegative(GetPathFindingVisitPrefetch(context))),
 	      sub_range_tasks(GetPathFindingSubRangeTasks(context)),
 	      sparse_level_divisor(NonNegative(GetPathFindingSparseLevelDivisor(context))),
-	      row_bucket_rows(GetPathFindingRowBucketRows(context)), reach_lanes(GetPathFindingReachLanes(context)) {
+	      row_bucket_rows(GetPathFindingRowBucketRows(context)), reach_lanes(GetPathFindingReachLanes(context)),
+	      reach_dense_divisor(NonNegative(GetPathFindingReachDenseDivisor(context))) {
 	}
 
 	//! experimental_path_finding_operator_benchmark, _benchmark_lane_activity, _benchmark_prefix
@@ -54,8 +55,10 @@ struct PathFindingSettings {
 	idx_t sparse_level_divisor;
 	//! CSR build: _row_bucket_rows (rows per bucket of a partition's row index; 0 = binary search)
 	int32_t row_bucket_rows;
-	//! Reach mode: _reach_lanes (more distinct sources than the few-sources limit run as lane waves)
+	//! Reach mode: _reach_lanes (more distinct sources than the few-sources limit run as lane waves),
+	//! _reach_dense_divisor (a source's result becomes a byte per vertex past 1/divisor of the vertices; 0 never)
 	bool reach_lanes;
+	idx_t reach_dense_divisor;
 
 	//! Groups or searches of `bytes_each` that fit the cap (at least one); `at_most` when the cap is off
 	idx_t CappedCount(double bytes_each, idx_t at_most) const {

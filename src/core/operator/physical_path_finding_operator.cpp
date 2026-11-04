@@ -240,6 +240,7 @@ public:
 		// pairs have been extracted (29 Oct: a many-source path query held every search's arrays from the scheduler's
 		// start to the result scatter, 72 GiB for BI19 at SF300)
 		benchmark_enabled = settings.benchmark_enabled;
+		reach_dense_divisor = settings.reach_dense_divisor;
 		benchmark_output_prefix = settings.benchmark_output_prefix;
 		target_early_termination = settings.target_early_termination;
 		sparse_frontier_divisor = settings.sparse_frontier_divisor;
@@ -399,16 +400,35 @@ public:
 		}
 		if (reach_mode) {
 			idx_t count = 0;
+			int64_t max_distance = 0;
 			for (int64_t v = 0; v < v_size; v++) {
 				count += distances[v] >= 0;
+				max_distance = std::max(max_distance, distances[v]);
 			}
-			if (reach_budget) {
-				reach_budget->Charge(count);
-			}
-			reached.reserve(count);
-			for (int64_t v = 0; v < v_size; v++) {
-				if (distances[v] >= 0) {
-					reached.push_back({NumericCast<uint32_t>(v), NumericCast<int32_t>(distances[v])});
+			reached.count = count;
+			auto vertices = NumericCast<idx_t>(v_size);
+			bool dense = reach_dense_divisor > 0 && count > vertices / reach_dense_divisor &&
+			             max_distance <= static_cast<int64_t>(ReachResult::MAX_DENSE_DISTANCE);
+			if (dense) {
+				// A byte per vertex (distance + 1): the per-source form of the lanes' dense result
+				if (reach_budget) {
+					reach_budget->Charge(vertices);
+				}
+				reached.distances = ZeroedBytes(vertices);
+				for (int64_t v = 0; v < v_size; v++) {
+					if (distances[v] >= 0) {
+						reached.distances.data[v] = static_cast<uint8_t>(distances[v] + 1);
+					}
+				}
+			} else {
+				if (reach_budget) {
+					reach_budget->Charge(count * sizeof(ReachedEntry));
+				}
+				reached.entries.reserve(count);
+				for (int64_t v = 0; v < v_size; v++) {
+					if (distances[v] >= 0) {
+						reached.entries.push_back({NumericCast<uint32_t>(v), NumericCast<int32_t>(distances[v])});
+					}
 				}
 			}
 		} else {
@@ -516,24 +536,23 @@ public:
 		arrays_allocated = false;
 	}
 
-	//! REACH: every (vertex, distance) the source reached, valid after the search ended; 8 bytes per entry (1024
-	//! sources x all at SF300 reach 530M vertices: 4.2 GB instead of 9.8 GB of distance arrays). The order of the
-	//! entries is unspecified: the per-source search extracts them ascending by vertex, a reach lane in level order
-	//! per check-phase worker (ReachLaneWaveState); the scatter (GetReachData) emits them by position and the output
-	//! rows carry no order
-	const vector<ReachedEntry> &Reached() const {
+	//! REACH: what the source reached, valid after the search ended (ReachResult: entries while sparse, a byte per
+	//! vertex once dense). The order of the entries is unspecified: the per-source search extracts them ascending
+	//! by vertex, a reach lane in level order per check-phase worker (ReachLaneWaveState); the scatter
+	//! (GetReachData) emits them by position and the output rows carry no order
+	const ReachResult &Reached() const {
 		return reached;
 	}
 
-	//! REACH on the lane kernel: the wave hands the lane's entries over when it ends (the group has no arrays)
-	void SetReached(vector<ReachedEntry> entries) {
-		reached = std::move(entries);
+	//! REACH on the lane kernel: the wave hands the lane's result over when it ends (the group has no arrays)
+	void SetReached(ReachResult result) {
+		reached = std::move(result);
 		results_extracted = true;
 	}
 
 	//! Frees the extracted results once the scatter has emitted them (REACH mode)
 	void ReleaseResults() {
-		vector<ReachedEntry>().swap(reached);
+		reached.Release();
 	}
 
 	//! Sizes the destination set before the destinations are registered
@@ -590,6 +609,7 @@ public:
 	vector<shared_ptr<DataChunk>> output_chunks;
 	//! REACH: the group emits every reached vertex (set by the scheduler)
 	bool reach_mode = false;
+	idx_t reach_dense_divisor = 0;
 	//! REACH: the query's result budget, charged when the reached entries are extracted (null: unbounded)
 	shared_ptr<ReachResultBudget> reach_budget;
 	//! Set by Start() / ReleaseWorkingSets()
@@ -600,7 +620,7 @@ public:
 	vector<int64_t> path_values;
 	vector<bool> path_valid;
 	std::unordered_map<uint32_t, std::pair<idx_t, idx_t>> path_index;
-	vector<ReachedEntry> reached;
+	ReachResult reached;
 
 private:
 	//! A frontier this small is cheaper to expand by vertex lookups than by a sweep over the partitions.
@@ -1421,24 +1441,24 @@ public:
 			change = false;
 		}
 		iter++;
+		if (change) {
+			// Between rounds: lanes past the dense threshold switch to a byte per vertex before the next level
+			// (`iter`) is recorded; dense lanes whose next level no byte holds switch back
+			reach_recorder->SwitchForms(NumericCast<idx_t>(iter));
+		}
 	}
 
 	bool StartCollect() override {
 		return !groups.empty();
 	}
 
-	//! Lanes worker_id, worker_id + workers, ...: the source at distance 0, then the workers' recorded entries
+	//! Lanes worker_id, worker_id + workers, ...: the source at distance 0, then what the lane recorded
 	void RunCollect(idx_t worker_id) override {
 		auto workers = WorkerCount();
 		for (idx_t lane = worker_id; lane < groups.size() && lane < LANE_LIMIT; lane += workers) {
 			auto &group = *groups[lane];
-			vector<ReachedEntry> entries;
-			if (IsVertexInRange(group.source)) {
-				entries.reserve(reach_recorder->CountOf(lane) + 1);
-				entries.push_back({NumericCast<uint32_t>(group.source), 0});
-				reach_recorder->Drain(lane, entries);
-			}
-			group.SetReached(std::move(entries));
+			bool in_range = IsVertexInRange(group.source);
+			group.SetReached(reach_recorder->Take(lane, in_range ? NumericCast<idx_t>(group.source) : 0, in_range));
 		}
 	}
 };
@@ -3092,10 +3112,11 @@ static SourceResultType GetReachData(ExecutionContext &context, DataChunk &resul
 		auto range_end = std::min<idx_t>(v_size, ((lstate.reach_slice % slices_per_group) + 1) * REACH_SLICE);
 		auto &rows = pf_sink.source_group_rows[group_idx];
 		auto &group = *pf_sink.source_group_states[group_idx];
-		// The slice covers positions of the group's extracted (vertex, distance) list; slices past its end are empty
+		// The slice covers positions of the group's result: entries of a sparse result, vertices of a dense one
+		// (ReachResult); slices past its end are empty
 		auto &reached = group.Reached();
-		range_end = std::min<idx_t>(range_end, reached.size());
-		bool slice_done = rows.empty() || reached.empty() || lstate.reach_vertex_pos >= range_end;
+		range_end = std::min<idx_t>(range_end, reached.Positions());
+		bool slice_done = rows.empty() || reached.count == 0 || lstate.reach_vertex_pos >= range_end;
 		if (!slice_done) {
 			auto &row = rows[lstate.reach_row_idx];
 			if (out > 0 && (row.first != chunk_of_output || row.second != row_of_output)) {
@@ -3104,12 +3125,33 @@ static SourceResultType GetReachData(ExecutionContext &context, DataChunk &resul
 			chunk_of_output = row.first;
 			row_of_output = row.second;
 			auto vertex = lstate.reach_vertex_pos;
-			for (; vertex < range_end && out < STANDARD_VECTOR_SIZE; vertex++) {
-				auto &entry = reached[vertex];
-				list_entries[out] = list_entry_t(2 * out, 2);
-				list_child[2 * out] = snapshot ? snapshot->KeyOf(entry.vertex) : static_cast<int64_t>(entry.vertex);
-				list_child[2 * out + 1] = entry.distance;
-				out++;
+			if (reached.IsDense()) {
+				// Vertices ascend within the slice: the index route resolves keys with a forward cursor
+				auto bytes = reached.distances.data;
+				unique_ptr<CSRIndexDictionary::KeyCursor> cursor;
+				if (snapshot) {
+					cursor = make_uniq<CSRIndexDictionary::KeyCursor>(*snapshot->epoch->dictionary);
+				}
+				for (; vertex < range_end && out < STANDARD_VECTOR_SIZE; vertex++) {
+					auto byte = bytes[vertex];
+					if (!byte) {
+						continue;
+					}
+					list_entries[out] = list_entry_t(2 * out, 2);
+					list_child[2 * out] = snapshot ? snapshot->KeyOf(vertex, *cursor) : static_cast<int64_t>(vertex);
+					list_child[2 * out + 1] = static_cast<int64_t>(byte) - 1;
+					out++;
+				}
+			} else {
+				auto &entries = reached.entries;
+				for (; vertex < range_end && out < STANDARD_VECTOR_SIZE; vertex++) {
+					auto &entry = entries[vertex];
+					list_entries[out] = list_entry_t(2 * out, 2);
+					list_child[2 * out] =
+					    snapshot ? snapshot->KeyOf(entry.vertex) : static_cast<int64_t>(entry.vertex);
+					list_child[2 * out + 1] = entry.distance;
+					out++;
+				}
 			}
 			lstate.reach_vertex_pos = vertex;
 			if (vertex >= range_end) {

@@ -343,7 +343,7 @@ bool IterativeLengthState::Start() {
 	worker_count = std::max<idx_t>(1, std::min<idx_t>(worker_count, partitions * sub_ranges));
 	worker_changed.assign(worker_count, 0);
 	if (reach_recorder) {
-		reach_recorder->Resize(worker_count);
+		reach_recorder->Resize(worker_count, NumericCast<idx_t>(v_size), reach_dense_divisor);
 	}
 	// The lane bitsets are only allocated once the batch actually runs, and handed back when it is done
 	EnsureWorkingSet();
