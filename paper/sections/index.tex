@@ -85,8 +85,8 @@ epoch's partition of a range skips the suppressed positions and processes the in
 it.
 
 Which changes a transaction is allowed to see is a question of \duckdb's snapshot isolation. A transaction sees the
-rows that were committed before it started, and nothing that was committed later or never ($T_a$ in
-Figure~\ref{fig:index-timeline} sees $g_1$ to $g_3$, $T_b$ sees all six groups). The index answers it with
+rows that were committed before it started, and nothing that was committed later or never (\rev{$T_c$ in
+Figure~\ref{fig:index-timeline} sees $g_1$ and $g_2$, $T_b$ sees all six groups}). The index answers it with
 \texttt{CanFetch}, once per change group. The edges of one group were inserted, or deleted, by one commit of one transaction, so a transaction sees either
 all of the group's changes or none of them. For an insert group the index calls \texttt{CanFetch} on one of the
 group's edges that has not been deleted since; the answer holds for the whole group. For a delete group it calls

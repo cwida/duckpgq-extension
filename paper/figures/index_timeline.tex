@@ -27,13 +27,13 @@
 \node[epoch, anchor=south west, text width=1.65cm] (e1) at (6.3,0.3) {\textbf{epoch 1}\\ the table as $T_f$\\ sees it: $g_1$--$g_4$};
 \draw[->, ixorange, semithick] (e0.north) .. controls (2.5,1.7) and (5.8,1.7) .. node[lbl, above, pos=0.5] {fold} (e1.north);
 % transaction bounds on the axis
-\draw[tick] ($(g2.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_a$, $T_c$};
+\draw[tick] ($(g2.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_c$};
 \draw[tick] ($(g6.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_b$};
 % transactions
 \node[lbl, font=\scriptsize, anchor=north west, text width=8.1cm, align=left] at (0,-0.55) {%
   A transaction's bound is its start in the commit order; it sees only the commits before it.\\
   $T_f$ (after $g_4$) folds: epoch 1 is the table as $T_f$ sees it, exactly $g_1$--$g_4$.\\
-  $T_a$ (after $g_2$): epoch 0 + overlay with $g_1$ and $g_2$ visible.\\
   $T_b$ (after $g_6$): epoch 1 + overlay with $g_5$ visible and $g_6$ applied; $g_1$--$g_4$ are inside epoch 1.\\
-  $T_c$ (after $g_2$, before the fold): served from epoch 0, which is retained until the next fold.};
+  $T_c$ (after $g_2$, still running after the fold): epoch 0 + overlay with $g_1$ and $g_2$ visible; epoch 0 is
+  retained until the next fold.};
 \end{tikzpicture}
