@@ -75,6 +75,33 @@ numbers; then "In the future, we will" with real items.
 | microbenchmark | ablation | the author's term; say what was switched off or varied |
 | vertex key, edge row id | rowid, id | keys identify vertices, row ids identify edges |
 
+## Lessons from the author's proofreading (3 and 4 Nov, about ninety notes on Sections 3 and 4)
+
+The same faults recurred, in this order of frequency. Check a section for them before it is shown.
+
+1. **Terms used before they are defined.** The text grew with the implementation, so it explained things in the
+   order they were built. Before writing or restructuring a section, list its terms and the line where each is first
+   used and first defined (a script over `\emph{...}` and the vocabulary tables does it); introduce each term where it
+   is first needed, with a one-clause definition, and never rely on a later subsection.
+2. **A mechanism without its reason.** Every mechanism gets its reason in the same sentence or the next, as a
+   measured fact where one exists. If the reason cannot be stated, say so instead of describing around it; twice
+   (the row-bucket size, the scheduler's own-threads switch) that was a design smell and the code was simplified.
+3. **Pronouns and generic verbs where a vocabulary noun belongs.** No "it", "its view", "reaches", "arrives",
+   "gets", "may see" when the referent is more than one sentence back or the meaning has a name in the tables.
+   Repeating the noun is right.
+4. **Numbers in the wrong place.** A number belongs where the claim it supports is made: the evaluation, or one
+   trade-off paragraph. Not inside the description of a mechanism.
+5. **Short sentences as pivots.** "The first is visibility." "There is one exception." They read as choppy, not
+   emphatic. Fold them into the sentence they introduce.
+6. **Implementation detail at the level of overview.** Keep a detail only if a reviewer needs it to believe the
+   claim; otherwise it moves down a level or out (dictionary generations, the tombstone lookup path, exact sizes).
+7. **Set-up before the point.** A paragraph that lists alternatives and knocks them down before stating its point
+   reads as generated. Lead with the point, then give the evidence.
+
+Process lesson: sections patched while the design changed (3 before rc7, 4 before the restructure) drew structural
+notes; sections written in one pass from settled code drew wording notes only. Write Sections 5 and 6 once, from the
+final code and numbers, rather than patching the current text.
+
 ## Vocabulary of Section 3 (decided 29 Oct)
 
 One name per thing, used the same way in the text, the figures and the captions.
