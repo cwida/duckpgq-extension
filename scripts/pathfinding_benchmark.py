@@ -5500,9 +5500,13 @@ def sweep_pairs(args):
             for repeat in range(1, args.repeats + 1):
                 if exceeded:
                     break
-                if not isinstance(system, DuckPGQSystem) and len(source_keys) * system_vertex_count > args.max_pairs:
-                    # The per-source systems answer this shape in time proportional to the result; DuckPGQ's reach
-                    # mode has no pair list and runs every point
+                if (isinstance(system, DuckPGQSystem) and system.multi_source_pair_mode
+                        and len(source_keys) * system_vertex_count > args.max_pairs):
+                    # Only the pair-list formulation materialises sources x vertices rows (SF300, 1024 sources: 1.2G
+                    # pairs, 58 GB, the process was killed on 23 Oct). The baselines answer per source and DuckPGQ's
+                    # reach mode has no pair list: both run every point under the timeout (4 Nov; the guard applied
+                    # to the baselines until then and skipped points they could run, e.g. Kuzu 1024 sources on
+                    # cit-Patents, where a source reaches 0.1% of the vertices)
                     value, elapsed, status = None, 0.0, f"exceeds_pair_limit_{args.max_pairs}"
                 elif isinstance(system, DuckPGQSystem):
                     try:
@@ -6654,7 +6658,7 @@ def main():
     sweep_pairs_parser.add_argument("--client-threads", type=int, default=1,
                                     help="split pair and source lists over this many connections for Memgraph, FalkorDB, Kuzu")
     sweep_pairs_parser.add_argument("--max-pairs", type=int, default=500_000_000,
-                                    help="sources x all points above this many pairs are recorded as not run")
+                                    help="sources x all points above this many pairs are recorded as not run for the DuckPGQ pair-list formulation (pair_mode); per-source systems and the reach mode run every point")
     sweep_pairs_parser.add_argument("--memgraph-uri", default="bolt://localhost:7687")
     sweep_pairs_parser.add_argument("--neo4j-uri", default="bolt://localhost:7688")
     sweep_pairs_parser.add_argument("--neo4j-database", default="pathfinding")
