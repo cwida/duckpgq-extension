@@ -184,10 +184,10 @@ Loaded tombstones carry no keys, so one parallel scan over the epoch's row ids p
 \label{sec:index-correctness}
 
 \rev{The argument of Sections~\ref{sec:index-structure} to~\ref{sec:index-storage}, that a transaction traverses over
-the index the same edges a scan of the edge table would show it, rests on three properties of \duckdb. Only the first is
-part of the interface an extension is promised: the index calls happen at every commit, in commit order. The other two
-are behaviour of the current implementation, that a row id is reused only after its append was reverted by a failed
-commit, and that \texttt{CanFetch} answers the visibility question snapshot isolation defines. Section~\ref{sec:hooks}
+the index the same edges a scan of the edge table would show it, rests on three properties of \duckdb. Only the first, that
+the index calls happen at every commit and in commit order, is part of the interface an extension is promised. The other
+two are behaviour of the current implementation. A row id is reused only after its append was reverted by a failed
+commit, and \texttt{CanFetch} answers the visibility question snapshot isolation defines. Section~\ref{sec:hooks}
 counts both among the interface's gaps.}
 
 \rev{We test the claim under concurrent writes by having every reader transaction answer its query twice, over the
@@ -196,9 +196,9 @@ runs are part of Section~\ref{sec:eval-updates}. Regression tests cover the case
 and~\ref{sec:index-fold}, among them folds in either order, a commit that fails after its append, deletes after a fold
 and transactions that differ only in a fully deleted group.}
 
-\rev{One semantic difference remains by design. A deleted source or destination yields no pair, because pairs come from
-the vertex tables, but an intermediate vertex deleted with its edges in place is still traversed, where the SQL rewrite
-would drop those edges through its join with the vertex table.}
+\rev{The index differs from the SQL rewrite in one case, which we accept. Pairs come from the vertex tables, so a deleted
+source or destination yields no pair, but an intermediate vertex deleted with its edges in place is still traversed;
+the rewrite would drop those edges through its join with the vertex table.}
 
 \subsection{When the index pays off}
 \label{sec:index-when}
