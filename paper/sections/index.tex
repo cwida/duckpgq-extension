@@ -48,27 +48,30 @@ The versions instead stay in the table, and the index asks \duckdb about them on
 \begin{figure}[t]
   \centering
   \input{figures/index_timeline}
-  \caption{The index over time. Epoch 0 is the partitioned CSR of the edges visible to the transaction that built it
-  (bound $b_0$); every later commit appends its change groups to the log, one per append or delete call, inserts in
-  blue and deletes in red. A transaction takes the newest epoch its bound allows and decides once per group whether the
-  group is visible to it. A fold rebuilds epoch 1 from the table as a transaction with bound $b_f$ sees it, which
-  includes $g_1$ to $g_4$; epoch 0 stays until the next fold, for transactions that started before this one.}
+  \caption{\rev{The index over time. Epoch 0 is the partitioned CSR of the edges that the transaction creating the index
+  could see; it is never modified. Every later commit appends its change groups $g_1, g_2, \dots$ to the log, one
+  group per append or delete call, inserts in blue and deletes in red. At $b_f$ a fold builds epoch 1 from the table
+  (Section~\ref{sec:index-fold}). The transactions $T_a$, $T_b$ and $T_c$ below the axis show which epoch and which
+  groups a transaction reads (Section~\ref{sec:index-read}).}}
   \label{fig:index-timeline}
 \end{figure}
 
-\texttt{CREATE INDEX} runs the bulk build and produces the first \emph{epoch}: the partitioned CSR of
-Section~\ref{sec:csr} over every edge that the creating transaction can see, the \emph{dictionary} that maps vertex
-keys to the dense ids the CSR uses, and the row id of every edge, next to its position (Figure~\ref{fig:index-timeline}).
-An epoch is never modified. With \texttt{WITH (reverse = true)} the epoch also holds the reverse partitions, and an
-index on an undirected edge table holds each edge in both directions.
+\rev{\texttt{CREATE INDEX} runs the bulk build and produces the first \emph{epoch} (Figure~\ref{fig:index-timeline}): the
+partitioned CSR of Section~\ref{sec:csr} over every edge that the creating transaction can see, the \emph{dictionary}
+that maps vertex keys to the dense ids the CSR uses, and the row id of every edge, stored next to the edge's position.
+Created \texttt{WITH (reverse = true)}, the epoch also holds the reverse partitions, and an index on an undirected edge
+table holds each edge in both directions.}
 
-Later changes go into a \emph{change log}. Each \texttt{Append} call adds one entry per inserted row, with its keys,
-its row id and the ids the keys have in the current dictionary, and the entries of one call form a \emph{change group}.
-A commit that inserts more than one vector of rows makes several calls and therefore several groups. Each
-\texttt{Delete} call forms a group as well. A deleted row that is in the log gets a \emph{stamp}, the number of the
-deleting group, on its entry; a deleted row that the epoch contains gets a \emph{tombstone}, an entry that names the
-row and carries its keys. The log records nothing about who made a change. Which entries a transaction may see is
-decided when it reads the index (Section~\ref{sec:index-read}).
+\rev{An epoch is never modified. A CSR is packed and sorted, so inserting an edge would move every edge behind it, and
+rebuilding the CSR at every commit would make each commit pay for the whole graph. Changes therefore go into a
+\emph{change log}, which a commit only appends to; the work of applying them falls on the transactions that read the
+index (Section~\ref{sec:index-read}). Each \texttt{Append} call adds one entry per inserted row, with its keys and
+its row id, and the entries of one call form a \emph{change group}; a commit that inserts more than one vector of rows
+makes several calls and therefore several groups. Each \texttt{Delete} call forms a group as well. A deleted row that
+is in the log gets a \emph{stamp}, the number of the deleting group, on its entry. A deleted row that the epoch
+contains cannot be marked in the epoch, so it gets a \emph{tombstone}, an entry that names the row and carries its
+keys. The log records nothing about which transaction or commit made a change; which entries a transaction may see is
+decided when it reads the index.}
 
 \subsection{Reading the index}
 \label{sec:index-read}
@@ -82,20 +85,21 @@ epoch's partition of a range skips the suppressed positions and processes the in
 it.
 
 Which changes a transaction is allowed to see is a question of \duckdb's snapshot isolation. A transaction sees the
-rows that were committed before it started, and nothing that was committed later or never. The index answers it with
-\texttt{CanFetch}, once per change group. \rev{The edges of one group were inserted, or deleted, by one commit of one transaction, so a transaction sees either
+rows that were committed before it started, and nothing that was committed later or never\rev{ ($T_a$ in
+Figure~\ref{fig:index-timeline} sees $g_1$ to $g_3$, $T_b$ sees all six groups)}. The index answers it with
+\texttt{CanFetch}, once per change group. The edges of one group were inserted, or deleted, by one commit of one transaction, so a transaction sees either
 all of the group's changes or none of them. For an insert group the index calls \texttt{CanFetch} on one of the
 group's edges that has not been deleted since; the answer holds for the whole group. For a delete group it calls
 \texttt{CanFetch} on one of the deleted edges whose insert the transaction sees; if that edge is no longer fetchable,
 the transaction sees the whole delete group. Because commits are serialized and groups are numbered in commit order,
 the groups a transaction sees are the first $n$ groups of the log for some $n$, except the groups of failed commits,
-which no transaction sees.}
+which no transaction sees.
 
-\rev{This makes the snapshot cacheable. The index computes a key from the epoch, $n$ and the \texttt{CanFetch}
+This makes the snapshot cacheable. The index computes a key from the epoch, $n$ and the \texttt{CanFetch}
 answers for the edges that have no group to decide for them, the edges of an insert group that were all deleted again
 and, after a restart, the loaded entries (Section~\ref{sec:index-storage}), hashed together. If the key equals that of
 the snapshot built last, the transaction receives that snapshot, which is the usual case for every transaction that
-starts between two commits. The \texttt{CanFetch} calls are therefore made even when the cached snapshot is returned.}
+starts between two commits. The \texttt{CanFetch} calls are therefore made even when the cached snapshot is returned.
 
 Building the overlay costs one version check per group and one pass over the visible inserted edges, which places each
 of them in its destination range. The entries carry their dictionary ids, and the pass needs no dictionary lookup per
@@ -114,7 +118,8 @@ joined back to both tables without the index knowing their schemas.
 \subsection{Folding the log into a new epoch}
 \label{sec:index-fold}
 
-The log grows with every commit and the overlay with it, so the index periodically builds a new epoch, a \emph{fold}.
+The log grows with every commit and the overlay with it, so the index periodically builds a new epoch, a \emph{fold}\rev{ (epoch~1 in
+Figure~\ref{fig:index-timeline})}.
 A fold runs in a transaction without uncommitted changes of its own, at that transaction's bound $b_f$. It scans the
 edges visible to the transaction, on one thread, builds the partitioned CSR with the parallel build of
 \texttt{CREATE INDEX}, and installs the result as the newest epoch. It is started explicitly through a function, or
@@ -128,7 +133,8 @@ lies with the transactions and what a better policy would weigh.
 
 The old epoch cannot be dropped at once. A transaction that started before the fold has a bound below $b_f$, and the
 new epoch contains edges it must not see. The index keeps the previous epoch, a \emph{retained epoch}, until the next
-fold, and serves each transaction from the newest epoch whose bound does not exceed its own. A transaction older than
+fold, and serves each transaction from the newest epoch whose bound does not exceed its own\rev{ ($T_c$ in
+Figure~\ref{fig:index-timeline} started before the fold and reads epoch~0)}. A transaction older than
 both builds a private epoch. The log cannot be cleaned up by deciding visibility at $b_f$ after the fact, because the
 row versions that would answer the question may be gone. Instead every epoch has a \emph{generation}, its number in
 installation order, and the folding transaction records in every log entry the generation of the first epoch that
