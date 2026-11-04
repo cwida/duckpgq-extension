@@ -161,12 +161,11 @@ keys up again.
 \subsection{Checkpoint, recovery and load}
 \label{sec:index-storage}
 
-\rev{An index that was lost at every restart would have to be rebuilt before the first query, 4.6\,s at SF300, so the
+\rev{An index that was lost at every restart would have to be rebuilt before the first query, 4.8\,s at SF300 (Table~\ref{tab:fixed-costs}), so the
 index persists like any other in \duckdb. At a checkpoint it writes the newest epoch and the log entries that epoch
 does not account for, through \duckdb's index allocator, one block per segment, with a short manifest in the index's
 storage options. Only the newest epoch is written, because a retained epoch exists for running transactions, which a
-restart ends. A checkpoint at which the index has not changed reuses the stored blocks rather than writing them
-again. The write-ahead log carries the same state in the record that creates the index, so an index created after
+restart ends. A checkpoint at which the index has not changed leaves the stored blocks in place. The write-ahead log carries the same state in the record that creates the index, so an index created after
 the last checkpoint survives a restart, and the inserts and deletes committed after the checkpoint are replayed
 through \texttt{Append} and \texttt{Delete} like those of any index.}
 
@@ -180,8 +179,7 @@ state lacks, starts empty and rebuilds itself from the table on first use.}
 \rev{Loaded log entries lose two things until the next fold. The change groups are gone, and cannot be restored, because
 after a restart every stored row is committed and the groups' commits are indistinguishable; the loaded entries are
 therefore decided per row, with the row-by-row decisions in the snapshot cache key (Section~\ref{sec:index-read}).
-Loaded tombstones carry no keys, so they are placed by one parallel scan over the epoch's row ids instead of a
-lookup. Both costs disappear at the first fold, which rebuilds the epoch and empties the log.}
+Loaded tombstones carry no keys, so one parallel scan over the epoch's row ids places them. Both costs disappear at the first fold, which rebuilds the epoch and empties the log.}
 
 \subsection{Correctness}
 \label{sec:index-correctness}
