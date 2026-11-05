@@ -262,6 +262,44 @@ cache-key sentence split; 4.6 uses "build route"; 4.7 counts five costs (retaine
 separates commit work (15 ms) from the contention of the concurrent run (158/604 ms). Row-id stability stays a fact
 in 4.1 and implementation behaviour in 4.6 (both true; Section 5's hook table rests on the distinction).
 
+5 Nov: desk status on the final sweep (parts of the message arrived truncated; marked ?). Build: eval-freeze-rc13 =
+cf4d88ce, 256 lanes, x86-64-v3. Three system changes since the 3 Nov dry run: (1) reach results stored densely, a
+source's result starts as a list of entries and switches to one byte per vertex once it has reached more than 1/64 of
+the graph; the 1024-source point on graph500-24 used to be killed and now completes, peak memory about 8x lower.
+Results are still materialised per query before emission, which bounds the reach set by memory; streaming the output
+is future work (for Section 3's reach description and the conclusion). (2) The fold scans the table in parallel,
+claiming row groups per thread as CREATE INDEX does; SF300 fold about 2.5x faster; fold statistics record the scan's
+share. 4.4's serial remark dropped (this commit); 4.7's fold latency still a TODO. (3) A memory budget for reach
+results: exceeding memory_limit minus the working-set cap fails with a DuckDB out-of-memory error instead of a kernel
+kill; no point in the matrix hits it with dense storage.
+Benchmark decisions: FalkorDB stays; cit-Patents runs sources-to-all only (random pairs on the citation DAG are
+unreachable by construction); the harness pair limit applies only to DuckPGQ's pair-list formulation in the
+microbenchmark, every baseline runs every point under 600 s; every number from one run on one commit, nothing older.
+Done: SF10 matrix (35 steps) on the 3 Nov dry run with reach rows re-measured on rc13 (tension with "one commit": the
+SF10 update-stream fold latency is from the pre-parallel-fold build; raised with the author); Graphalytics
+(cit-Patents, datagen-8_4-fb with DuckPGQ and Kuzu, scheduling microbenchmark on graph500-24) on rc13; SF100/SF300
+fixed costs and pair sweeps with all seven systems. Running: LDBC queries, then concurrency, microbenchmarks,
+throughput, update and concurrent-reader experiments at SF100/SF300; finish expected early 6 Nov; no numbers into the
+text before the collector runs.
+Qualitative: operator time grows slowly with pairs/sources, per-pair baselines grow linearly and time out at the
+large points; Kuzu completes the 1024-source reach on graph500-24 (streaming its results?), the operator about 1.5
+orders of magnitude faster (?). Single-source points: per-source engines start at once, the operator pays a fixed cost
+of a few to a few tens of ms for snapshot and working set; on cit-Patents (a source reaches ~2000 vertices) Kuzu and
+Memgraph win the one-source point outright; state plainly: shared traversal pays from a handful of sources on. Two
+baseline failure modes: per-pair engines (Neo4j Cypher, FalkorDB, Memgraph) time out on pair lists; Neo4j Cypher
+shortestPath times out on every sources-to-all point because it enumerates every destination; per-source engines
+(Kuzu, Neo4j GDS) (?). DuckDB-native: recursive CTE scales with pairs and times out from tens of thousands; CIDR UDF
+route about an order of magnitude behind the operator and collapses on sources-to-all. Index vs build: both routes
+complete every point; index leads by the build cost on single queries and by a smaller margin (?) elsewhere; the
+strong case is concurrency and updates (throughput under a writer, commit cost, memory), reported with medians and
+p99. Scheduling: at SF10 the window of concurrent batches matters a lot; on graph500-24 window shapes land within a
+few percent because a wave's working set is memory-bound; one out-of-memory event at 65536 pairs on graph500-24 is the
+memory argument for bounded scheduling. Fixed costs: index 11-13 B/edge on every graph, 17 on sparse cit-Patents;
+builds at roughly ten million edges per second (?); smaller than Kuzu's store on the large Graphalytics graphs.
+Open: the few-sources threshold is a default whose ideal is graph-dependent (4 datagen to 256 cit-Patents), present it
+as a default; peak memory of the largest reach point is several times the result (allocator/buffer, unexplained), no
+precise memory claims for that point.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under
