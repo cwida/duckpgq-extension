@@ -275,27 +275,34 @@ kill; no point in the matrix hits it with dense storage.
 Benchmark decisions: FalkorDB stays; cit-Patents runs sources-to-all only (random pairs on the citation DAG are
 unreachable by construction); the harness pair limit applies only to DuckPGQ's pair-list formulation in the
 microbenchmark, every baseline runs every point under 600 s; every number from one run on one commit, nothing older.
-Done: SF10 matrix (35 steps) on the 3 Nov dry run with reach rows re-measured on rc13 (tension with "one commit": the
-SF10 update-stream fold latency is from the pre-parallel-fold build; raised with the author); Graphalytics
+Done: SF10 matrix (35 steps) on the 3 Nov dry run with reach rows re-measured on rc13 (author's view 5 Nov: nothing changed between the dry run and the sweep start, so SF10 counts as the same
+sweep; my objection: the desk lists the parallel fold among the three changes made after the dry run, and the SF10
+update stream measures fold latency); Graphalytics
 (cit-Patents, datagen-8_4-fb with DuckPGQ and Kuzu, scheduling microbenchmark on graph500-24) on rc13; SF100/SF300
 fixed costs and pair sweeps with all seven systems. Running: LDBC queries, then concurrency, microbenchmarks,
 throughput, update and concurrent-reader experiments at SF100/SF300; finish expected early 6 Nov; no numbers into the
 text before the collector runs.
-Qualitative: operator time grows slowly with pairs/sources, per-pair baselines grow linearly and time out at the
-large points; Kuzu completes the 1024-source reach on graph500-24 (streaming its results?), the operator about 1.5
-orders of magnitude faster (?). Single-source points: per-source engines start at once, the operator pays a fixed cost
-of a few to a few tens of ms for snapshot and working set; on cit-Patents (a source reaches ~2000 vertices) Kuzu and
-Memgraph win the one-source point outright; state plainly: shared traversal pays from a handful of sources on. Two
-baseline failure modes: per-pair engines (Neo4j Cypher, FalkorDB, Memgraph) time out on pair lists; Neo4j Cypher
-shortestPath times out on every sources-to-all point because it enumerates every destination; per-source engines
-(Kuzu, Neo4j GDS) (?). DuckDB-native: recursive CTE scales with pairs and times out from tens of thousands; CIDR UDF
-route about an order of magnitude behind the operator and collapses on sources-to-all. Index vs build: both routes
-complete every point; index leads by the build cost on single queries and by a smaller margin (?) elsewhere; the
-strong case is concurrency and updates (throughput under a writer, commit cost, memory), reported with medians and
-p99. Scheduling: at SF10 the window of concurrent batches matters a lot; on graph500-24 window shapes land within a
-few percent because a wave's working set is memory-bound; one out-of-memory event at 65536 pairs on graph500-24 is the
-memory argument for bounded scheduling. Fixed costs: index 11-13 B/edge on every graph, 17 on sparse cit-Patents;
-builds at roughly ten million edges per second (?); smaller than Kuzu's store on the large Graphalytics graphs.
+Qualitative (resent in full): operator time grows slowly with pairs and sources on LDBC and Graphalytics, every
+per-pair baseline grows linearly and times out at the large points; at the largest SF300 point no baseline finishes;
+on graph500-24 Kuzu completes the 1024-source reach, streaming its result per source, and the index route is about 1.5
+orders of magnitude faster on it rather than failing. Baselines lead at the single pair and the single source: a
+per-source engine starts answering at once, the operator pays a fixed cost of a few to a few tens of ms for snapshot
+and working set; on cit-Patents (a source reaches ~2000 vertices) Kuzu and Memgraph win the one-source point outright,
+on datagen it is a tie; state plainly: shared traversal pays from a handful of sources on. Two baseline failure modes:
+per-pair engines (Neo4j Cypher, FalkorDB, Memgraph) time out; per-source engines (Kuzu, Neo4j GDS) run longer but
+complete more; Neo4j Cypher shortestPath times out on every sources-to-all point, a single source included, because it
+enumerates every destination. DuckDB-native: the recursive CTE scales with pairs and times out from the tens of
+thousands; the CIDR 2023 UDF route holds on random pairs about an order of magnitude behind the operator and collapses
+on sources-to-all. Index vs build: both routes complete every point; the index leads by the build cost on single
+queries and by a smaller margin on large batches (so the rc1 2.8 s gap at 65,536 pairs may have been an rc1 artefact,
+512 lanes and the old scheduler; keep the 4.7/6.2 TODOs until the numbers land); the strong case is concurrency and
+updates: throughput with many clients, latency under a writer, commit cost, memory, reported with medians and p99;
+reader-paid fold latency should drop with the parallel scan. Scheduling: at SF10 the window of concurrently running
+batches matters a lot; on graph500-24 the window shapes land within a few percent because a wave's working set is
+memory-bound and saturates the machine; the one-event-per-batch ablation runs out of memory on graph500-24 at 65,536
+pairs, the memory argument for grouped scheduling in one sentence. Fixed costs: index 11-13 B/edge on every graph, 17
+on sparse cit-Patents; builds at roughly ten million edges per second; smaller than Kuzu's store on the two large
+Graphalytics graphs.
 Open: the few-sources threshold is a default whose ideal is graph-dependent (4 datagen to 256 cit-Patents), present it
 as a default; peak memory of the largest reach point is several times the result (allocator/buffer, unexplained), no
 precise memory claims for that point.
