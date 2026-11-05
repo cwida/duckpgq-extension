@@ -6,8 +6,11 @@
 \paragraph{Path patterns in \sqlpgq} A property graph in \sqlpgq is a view over tables. \texttt{CREATE PROPERTY
 GRAPH} names vertex tables and edge tables and says which edge columns reference which vertex keys. A \texttt{MATCH}
 clause inside \texttt{GRAPH\_TABLE} binds a pattern against it. A \emph{path pattern} such as
-\texttt{p = ANY SHORTEST \rev{(a:Person)}-[k:Knows]->\{1,8\}\rev{(b:Person)}} asks for one shortest path of one to eight
-\texttt{Knows} edges between every pair of \rev{persons} $a$ and $b$ that \rev{satisfies} the rest of the pattern; the quantifier bounds the length, and
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize, aboveskip=3pt, belowskip=3pt, xleftmargin=0pt]
+p = ANY SHORTEST (a:Person)-[k:Knows]->{1,8}(b:Person)
+\end{lstlisting}
+asks for one shortest path of one to eight \texttt{Knows} edges between every pair of \rev{persons} $a$ and $b$ that
+\rev{satisfies} the rest of the pattern; the quantifier bounds the length, and
 \texttt{ANY SHORTEST} fixes which of the possibly many paths is returned. Four functions expose the path,
 \texttt{path\_length(p)}, \texttt{vertices(p)}, \texttt{edges(p)} and \texttt{element\_id(p)}; \rev{the last returns the whole path as the alternating list of vertex and edge identifiers, $v_a, e_0, v_1, \dots, v_b$.} Everything in this paper concerns these patterns on a single
 edge table, directed or undirected. In \duckpgq's rewrite of \texttt{MATCH} into SQL, vertex and edge patterns become
