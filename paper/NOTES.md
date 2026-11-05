@@ -327,6 +327,27 @@ rebuilt about as often as it is used (a build is 270 ms at SF300), and transacti
 not share it. Ask the desk to record the build route's peak memory at SF300 in rc13 (memory is one of the four
 index arguments).
 
+5 Nov: read the rc13 pair sweeps directly on the desk (ssh devdesk2, files under
+data/ldbc-pathfinding/results/sf{100,300}/sweep_pairs_*_1793828631973236496.csv and _1793841659700078410.csv, commit
+cf4d88ce, 3 repeats each, tight). Medians, build route / index route, ms:
+  SF300 pairs 1: 285/22  16: 472/139  128: 459/142  1024: 498/209  2048: 714/345  16384: 3629/2777  65536: 12809/10011
+  SF100 pairs 1: 141/15  16: 223/63   128: 207/65   1024: 242/110  2048: 283/132  16384: 1213/877   65536: 4134/3251
+  Gap build-index at SF300: 263, 333, 317, 289, 369, 852, 2798 ms; at SF100: 126, 160, 142, 132, 151, 336, 883 ms.
+Two findings. (1) The 65,536-pair gap reproduces on rc13 (2.8 s at SF300, 0.9 s at SF100), so it is not an rc1
+artefact: up to 2048 pairs the gap is the build plus ~50-100 ms, from 16,384 pairs it grows about linearly, ~38 us per
+pair at SF300 and ~12 us at SF100. Something on the build route costs per pair (or per source) what the index route
+does not; the desk's "smaller margin on large batches" is the relative share (22% vs 92%), the absolute gap is ten
+times the build. 4.7/6.2 TODOs stay; the desk should profile the build route at 65,536 pairs (candidates: the
+dense-id mapping of the pairs through the vertex table, a CSR without source index or reverse partitions on the
+build route, id assignment and locality). Peak RSS at 65,536 pairs SF300: build 6.7-6.8 GiB, index 4.4-5.4 GiB.
+(2) The index route's single-pair latency rose since rc1: SF300 10 -> 22 ms, SF100 9 -> 15 ms, SF10 unchanged (3-4
+ms); the build route did not move (278 -> 285). A fixed cost proportional to the vertex count appeared, about 4 ns
+per vertex, the size of zeroing or page-faulting a fresh per-vertex working set (13 B x 2.9 M vertices = 38 MB at
+SF300); suspect the working-set cache behaviour after dff0c0eb (512 MiB budget became the cache-regime threshold).
+It matters for the "baselines lead at the single pair" sentence (Neo4j 2 ms, Kuzu 30 ms at SF300; the index is now
+22 ms, not 10) and for 4.7's 96% share (now 92%). Ask the desk what added it and whether the working set is still
+reused across queries.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under
