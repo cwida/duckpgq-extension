@@ -307,6 +307,26 @@ Open: the few-sources threshold is a default whose ideal is graph-dependent (4 d
 as a default; peak memory of the largest reach point is several times the result (allocator/buffer, unexplained), no
 precise memory claims for that point.
 
+5 Nov: the index's case at SF300, tentative (desk, 2 Nov runs on the rc9-era build, same index and scheduler as rc13
+apart from the faster fold; single runs; rc13's last block, due early 6 Nov, replaces them). SF300, 32 threads, index
+route vs build route: 16 readers under a writer, query median/p99 67/116 ms vs 3606/5183 ms; the writer's commit
+117/165 vs 582/962 ms; with folds every 0.05% of edges 66/268/3685 ms (median/p99/max, 3 folds; the max is the reader
+that triggered a fold, expected ~1.3 s with the parallel scan); single-pair throughput 1 client 62 q/s (p99 30 ms) vs
+4 q/s (p99 294 ms), 32 clients 342 q/s (p99 267 ms) vs 6 q/s (p99 11 s); peak memory at 32 clients 1.6 GiB index,
+build route not recorded at SF300 (2.0 GiB at SF10). Why SF10 shows near parity: a build is ~18 ms for 1.9 M edges
+there, so 16 readers rebuilding still fit the machine; at SF300 16 concurrent builds each wanting 32 threads degrade
+to ~3.4 s per query and the build route's throughput stays at 5-6 q/s however many clients. At SF10 the commit side
+favours the build route, 86 vs 176 ms, because every commit appends to the index and invalidates the shared snapshot.
+Consequences for the text once rc13 confirms: 4.7 leads with concurrency and updates (one to two orders), then the
+read-only saving (the build cost, a fifth on heavy queries); the abstract's index numbers move from the SF10 update
+stream (18 ms, 15 ms commits) to SF300 concurrency; "Commits are not slowed" gets the qualification that under
+concurrent readers at SF10 the index route's commit is slower (176 vs 86 ms) and at SF300 faster (117 vs 582);
+the fold max latency is stated plainly as one query per fold. Reviewer question to pre-empt in 4.7 or the opening:
+why not a CSR cached across queries and dropped at every commit? Under a writer committing every 200 ms it would be
+rebuilt about as often as it is used (a build is 270 ms at SF300), and transactions with different snapshots could
+not share it. Ask the desk to record the build route's peak memory at SF300 in rc13 (memory is one of the four
+index arguments).
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under
