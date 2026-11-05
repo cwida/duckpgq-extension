@@ -43,7 +43,7 @@ know, no extension combines a path-finding operator inside the host's planner wi
 consistent with the host's transactions, built only on the interfaces the host offers to every extension. This paper shows that
 a loadable extension can add them.
 
-\duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb that parses \sqlpgq and
+\duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb\rev{~\cite{duckdb2019}} that parses \sqlpgq and
 rewrites it into relational SQL. We argued there that a graph system should build on everything a state-of-the-art
 analytical system already has, columnar storage, vectorized execution, morsel-driven parallelism and a cost-based
 optimizer, and add two things, a compact graph representation and a bulk path-finding algorithm. We implemented both

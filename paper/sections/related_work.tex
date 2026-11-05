@@ -3,7 +3,7 @@
 
 % Revised 27 Oct 2026 against paper/STYLE.md. Entries marked VERIFY in references.bib still need checking.
 
-\paragraph{Graph queries on relational systems.}
+\paragraph{Graph queries on relational systems}
 Relational systems have answered graph queries for a long time, by rewriting pattern matching into joins over edge
 tables~\cite{sun2015sqlgraph,jindal2014vertexica,fan2015grail}, by layering a graph query language on an
 RDBMS~\cite{vanrest2016pgql}, and since SQL:2023 through \sqlpgq, the graph pattern matching part of the SQL
@@ -18,7 +18,7 @@ share the system's storage and transaction code. Ours is a derived structure tha
 public index interface, which tells the index neither which transaction committed a row nor what a transaction may see,
 and Section~\ref{sec:index} describes what follows from that.
 
-\paragraph{Path finding.}
+\paragraph{Path finding}
 Variable-length and shortest-path patterns are the part of \sqlpgq that relational operators serve worst. A recursive
 common table expression evaluates them as a chain of joins with one frontier table per step. RaSQL~\cite{gu2019rasql}
 and the T\"ubingen work on recursion in SQL~\cite{hirn2019recursion} make that chain faster and keep its shape. We
@@ -33,7 +33,7 @@ push/pull variant we also implemented. The GraphBLAS~\cite{davis2019graphblas} e
 sparse matrix products, and RedisGraph, now FalkorDB, is a graph database built on it~\cite{cailliau2019redisgraph}
 that appears in our evaluation.
 
-\paragraph{Native graph database systems.}
+\paragraph{Native graph database systems}
 Neo4j, Kuzu~\cite{feng2023kuzu}, TigerGraph~\cite{deutsch2019tigergraph} and Memgraph store adjacency lists as
 their primary representation, so a shortest-path query never waits for a structure to be built. The price is a second
 system next to the relational data, with its own storage, transactions and copy of the graph. Kuzu is the design
@@ -41,7 +41,7 @@ closest to ours, with columnar storage, vectorized execution and factorized inte
 for variable-length patterns~\cite{feng2023kuzu}. Section~\ref{sec:eval} shows that with the index \duckpgq answers
 point and single-source queries in the same time as Kuzu and keeps every update in the same transaction as the tables.
 
-\paragraph{Dynamic and versioned graph structures.}
+\paragraph{Dynamic and versioned graph structures}
 Updating a CSR is the classic weakness of the layout. A line of work replaces it with structures that absorb edge
 updates, among them packed memory arrays and sparse arrays with gaps~\cite{wheatman2018pcsr,deleo2021teseo}, sorted
 blocked adjacency lists~\cite{fuchs2022sortledton}, log-structured snapshots~\cite{macko2015llama}, and purely
@@ -53,7 +53,7 @@ the index stores an immutable CSR per epoch plus a change log stamped per commit
 materialized view than to a dynamic graph structure. The survey of streaming graph processing~\cite{besta2023dynamic}
 and the experimental comparison of these structures~\cite{deleo2019pma} cover the design space we did not enter.
 
-\paragraph{Indexes under MVCC.}
+\paragraph{Indexes under MVCC}
 An index in a multi-version system either stores version information per entry or, as PostgreSQL and \duckdb's
 ART~\cite{leis2013art} do, stores only row identifiers and checks the row's versions on every
 probe~\cite{wu2017mvcc,neumann2015mvcc}. A traversal that touches millions of edges cannot pay a version check per

@@ -8,7 +8,7 @@ We ask four questions. How does the operator compare with native graph systems w
 when it asks for thousands? What does the index add over building the CSR on the fly? What do both cost when the graph
 changes underneath concurrent readers? And how do the three routes behave on the path queries of a standard benchmark?
 
-\paragraph{Setup.} All experiments run on one AWS m7a.8xlarge (32 AMD EPYC 9R14 cores, one thread per core,
+\paragraph{Setup} All experiments run on one AWS m7a.8xlarge (32 AMD EPYC 9R14 cores, one thread per core,
 128\,GiB of which 123\,GiB are usable, Amazon Linux 2023, gp3 EBS volume \todo{throughput: the reproduction README
 says about 250\,MB/s, the plan said 1000\,MB/s; check the volume}). \duckpgq runs on \duckdb v2.0.0-dev (commit
 45f4fdf3), compiled with \duckdb's default flags for x86-64-v3, so with AVX2 and without AVX-512, with \texttt{experimental\_path\_finding\_operator} enabled and every other setting at its default, 32
@@ -68,11 +68,11 @@ path lengths, which the harness checks.
 \subsection{One path or thousands}
 \label{sec:eval-pairs}
 
-Figure~\ref{fig:random-pairs} and Table~\ref{tab:random-pairs} answer the first question. \rev{For a single pair the index route takes 4\,ms at SF10, 9\,ms at SF100 and 10\,ms at SF300, Neo4j 49, 3 and
+Figure~\ref{fig:random-pairs} and Table~\ref{tab:random-pairs} answer the first question. For a single pair the index route takes 4\,ms at SF10, 9\,ms at SF100 and 10\,ms at SF300, Neo4j 49, 3 and
 2\,ms and Kuzu 10, 20 and 30\,ms, so the index route is the fastest only at SF10, where the pair has no path and every
-system searches until the reachable part of the graph is exhausted.} \todo{The tables and figures now show the medians
+system searches until the reachable part of the graph is exhausted. \todo{The tables and figures now show the medians
 the text has used since 29 Oct; rc1's means had the index fastest for one pair at every scale. Recheck on the rerun.}
-The build route pays for the CSR, 26\,ms at SF10 and \rev{278}\,ms at SF300,
+The build route pays for the CSR, 26\,ms at SF10 and 278\,ms at SF300,
 and that cost is the whole difference between the two \duckpgq lines at the left of each panel.
 
 The picture changes with the number of pairs, for a reason of design. Every native system answers a list of pairs one
@@ -131,12 +131,12 @@ theirs is between independent searches.
 \label{sec:eval-index}
 
 Table~\ref{tab:random-pairs} answers the second question. The index saves the build, and the build is 22\,ms at SF10,
-128\,ms at SF100 and \rev{268}\,ms at SF300 per query. For one pair that is the whole query (26 against 4\,ms at SF10,
-\rev{278} against 10\,ms at SF300). \rev{For 65\,536 pairs the gap is a fifth (12.9 against 10.1\,s at SF300), more
-than the build alone.} \todo{Ask the desk what the build route pays beyond the build at 65\,536 pairs.} The index route pays its creation once instead, which the next paragraph quantifies, and
+128\,ms at SF100 and 268\,ms at SF300 per query. For one pair that is the whole query (26 against 4\,ms at SF10,
+278 against 10\,ms at SF300). For 65\,536 pairs the gap is a fifth (12.9 against 10.1\,s at SF300), more
+than the build alone. \todo{Ask the desk what the build route pays beyond the build at 65\,536 pairs.} The index route pays its creation once instead, which the next paragraph quantifies, and
 Section~\ref{sec:eval-updates} shows what the index costs to keep when the graph changes.
 
-\paragraph{Creating, storing and loading the index.} Table~\ref{tab:fixed-costs} gives the fixed costs before a first
+\paragraph{Creating, storing and loading the index} Table~\ref{tab:fixed-costs} gives the fixed costs before a first
 answer. Creating the index is one partitioned CSR build over the whole table plus the dictionary and the row ids per
 edge, about the time of six on-the-fly builds, 0.14\,s at SF10 and 4.8\,s at SF300. The native systems build their
 whole store from the same CSV files and take between seven times (Kuzu) and five hundred times (FalkorDB) longer. The

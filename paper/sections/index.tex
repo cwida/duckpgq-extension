@@ -40,9 +40,9 @@ compares, and edges by their row id in the edge table. Row ids are stable while 
 \duckdb compacts a table's row ids only at a checkpoint and only when the table has no index other than an ART.
 
 Graph stores that own their transactions, LiveGraph and Teseo among them~\cite{zhu2020livegraph,deleo2021teseo}, keep
-a version with every edge. \rev{In \duckdb this is currently not possible, because the interface never gives the index a
+a version with every edge. In \duckdb this is currently not possible, because the interface never gives the index a
 transaction id to store. The versions stay in the table, and the index asks \duckdb about them once per group of
-changes.}
+changes.
 
 \subsection{Building and changing the index}
 \label{sec:index-structure}
@@ -121,8 +121,8 @@ inside its query, and nothing it builds is shared.
 The log grows with every commit and the overlay with it. From time to time the index builds a new epoch from the
 table, a \emph{fold} (epoch~1 in Figure~\ref{fig:index-timeline}). A fold runs inside an ordinary transaction without uncommitted changes, and the bound $b_f$ in the figure is
 where that transaction started. \duckdb fixes a transaction's bound when the transaction starts, so the new epoch
-holds the commits that transaction can see. The transaction \rev{scans the edges it can see and builds the partitioned CSR, both with the parallel scan and
-build of \texttt{CREATE INDEX},} and makes the result the index's newest epoch. A fold
+holds the commits that transaction can see. The transaction scans the edges it can see and builds the partitioned CSR, both with the parallel scan and
+build of \texttt{CREATE INDEX}, and makes the result the index's newest epoch. A fold
 can be triggered explicitly, through a function, or automatically. Before a transaction builds its snapshot, it counts
 the log entries that the newest epoch does not yet contain, and if they exceed a configurable fraction of that epoch's
 edge count, a tenth by default, it folds first. That transaction pays for the fold, a scan and a build of the whole
@@ -193,9 +193,9 @@ runs are part of Section~\ref{sec:eval-updates}. Regression tests cover the case
 and~\ref{sec:index-fold}, among them folds in either order, a commit that fails after its append, deletes after a fold
 and transactions that differ only in a fully deleted group.
 
-\rev{The index route still traverses an intermediate vertex that was deleted with its edges in place, where the build
+The index route still traverses an intermediate vertex that was deleted with its edges in place, where the build
 route drops those edges through its join with the vertex table; the endpoints of a pair come from the vertex tables on
-both routes, so the difference is confined to intermediate vertices, and we accept it.}
+both routes, so the difference is confined to intermediate vertices, and we accept it.
 
 \subsection{When the index pays off}
 \label{sec:index-when}
@@ -219,11 +219,11 @@ least for a single heavy query, where it saves only the build.
 \todo{Probes of 30 Oct on rc9; the rerun's throughput and concurrent steps replace them.}
 
 The index has five costs. The epoch takes about 11 bytes per edge of memory, of which 8 are the edge's row
-id\rev{; while a retained epoch exists, two epochs are in memory}. The
+id; while a retained epoch exists, two epochs are in memory. The
 overlay grows with the changes since the last fold, and with it the time to build a snapshot; deciding visibility per
 log entry instead of per group would have grown a single-source query at SF10 from 8 to 124\,ms over the update stream
 of Section~\ref{sec:eval-updates}. \todo{Pre-freeze number; from the rerun's per-row step.} The fold is paid for by the
 transaction that triggers it, about 1\,s at SF300 with the parallel scan. \todo{Verify the fold latency after rc13.} A transaction that has changed the edge table itself builds a private epoch inside its query
 (Section~\ref{sec:index-read}) and so pays the build the index saves other transactions. A
-table with the index also keeps its deleted row ids instead of compacting them. \rev{Commits are not slowed. The index records the change in its log and does no other work at commit
-(Section~\ref{sec:eval-updates}).} \todo{Bytes per edge and fold latency from the rerun.}
+table with the index also keeps its deleted row ids instead of compacting them. Commits are not slowed. The index records the change in its log and does no other work at commit
+(Section~\ref{sec:eval-updates}). \todo{Bytes per edge and fold latency from the rerun.}

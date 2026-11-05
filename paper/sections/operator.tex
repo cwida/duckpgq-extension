@@ -106,7 +106,7 @@ edge comes from the rerun's fixed-cost step.}
   \label{fig:partitioned-csr}
 \end{figure}
 
-\paragraph{Building it on the fly.} Without an index the operator builds the partitioned CSR on the fly, in every
+\paragraph{Building it on the fly} Without an index the operator builds the partitioned CSR on the fly, in every
 query, as the CIDR design did. The edges arrive as (source, destination) row-id pairs from the join of the edge table
 with its two vertex tables. The sink packs each edge into 64 bits, with the destination range in the high bits, and
 scatters it into the partition of that range with \duckdb's radix partitioning, the mechanism its hash join uses. A
@@ -136,7 +136,7 @@ bit lane of a multi-source BFS. Both traversals proceed level by level and decid
 \emph{sparse level}, which visits only the vertices on the frontier, and a \emph{dense level}, which sweeps every
 sparse row of every partition; a search can return to sparse levels when its frontier shrinks again.
 
-\paragraph{Single-source traversal.} Each search has its own frontier, a list of vertex ids, as in
+\paragraph{Single-source traversal} Each search has its own frontier, a list of vertex ids, as in
 Ligra~\cite{shun2013ligra}, and three arrays with one entry per vertex: the level at which the vertex was first
 reached, which is its distance (8 bytes), a seen flag (1 byte) and a mark for the vertices on the current frontier
 (4 bytes), 13 bytes per vertex. In the \texttt{paths} mode it also keeps, per vertex, the vertex (4 bytes) and the edge
@@ -149,7 +149,7 @@ kinds of level two workers can reach the same vertex, and a vertex is claimed wi
 flag. The worker that wins records the vertex's distance, adds it to the next frontier and, in the \texttt{paths}
 mode, records the vertex and the edge through which it arrived (Section~\ref{sec:results}).
 
-\paragraph{Multi-source traversal.} Many searches run as the lanes of one sweep, the multi-source BFS of Then et
+\paragraph{Multi-source traversal} Many searches run as the lanes of one sweep, the multi-source BFS of Then et
 al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up to 256 lanes that share one
 \emph{working set} of three bit sets per vertex: \texttt{seen} for the vertices each lane has reached,
 \texttt{frontier} for the current frontier and \texttt{next} for the next one. Each bit set holds 256 bits, 32 bytes,
@@ -232,7 +232,7 @@ for the one before it, but no task blocks its thread waiting for another task, a
 fixed thread pool with other queries. The scheduler may interleave the tasks of concurrent queries freely,
 and an error or an interrupt stops the operator at the next task boundary.
 
-\paragraph{Scheduling the batches.} A query's batches go into a queue. As many batches run at once as there are
+\paragraph{Scheduling the batches} A query's batches go into a queue. As many batches run at once as there are
 batches or threads, whichever is fewer, and a batch that finishes hands its working set to the next batch in the
 queue, which zeroes it in parallel. Running them all at once would need a working set per batch, 11\,GB for the 256
 batches of 65\,536 random pairs at SF100, and a working-set cap, a quarter of \duckdb's memory limit, also bounds
@@ -249,7 +249,7 @@ without waiting on other tasks; at SF100 it has 5 and at SF300 14, and a batch r
 made SF10 1.5 to 1.7 times slower, while SF100 and SF300 stay within 2\% of their best from tasks of 64\,K edges up to
 four million and lose 5 to 28\% beyond; four million edges is a setting. \todo{Task-size sweep of 3 Nov; from rc10.}
 
-\paragraph{What stays serial.} Two steps run on one thread. One is the completion callback at the end of every phase, which is
+\paragraph{What stays serial} Two steps run on one thread. One is the completion callback at the end of every phase, which is
 serial by design; the other is the grouping of the pairs by source in the finalize step, which takes 6\,ms for 65\,536 random pairs at SF10 and about
 30\,ms for BI19's 2.4\,M pairs at SF300.
 
