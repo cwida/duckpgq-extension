@@ -348,6 +348,25 @@ It matters for the "baselines lead at the single pair" sentence (Neo4j 2 ms, Kuz
 22 ms, not 10) and for 4.7's 96% share (now 92%). Ask the desk what added it and whether the working set is still
 reused across queries.
 
+5 Nov, desk's answers (freeze kept). Q4 memory: throughput rows carry peak memory for both routes since 2 Nov
+(SF10 build route 2.0 GiB at 32 clients), concurrent-reader rows per row (build route 2.3 GiB at 16 readers, SF10);
+the SF100/SF300 steps write the same columns. Q6: the empty SF10 index cells came from a partial newest file; the 4
+Nov DuckPGQ-only rerun is now the newest and complete; the desk confirms on the printed table. Q2 single-pair 10 -> 22
+ms at SF300: working-set reuse is out (allocated per batch through the buffer manager since 19 Oct in rc1 and rc13).
+Since 29 Oct lengths always group by source, so one pair runs the per-source frontier kernel, which allocates and
+fills its per-vertex arrays per query: int64 distances, a seen byte, a frontier stamp, 13 B/vertex, 38 MB at SF300,
+23 MB at SF100, filled serially; in rc1 a single pair was one lane of a batch whose working set is zeroed in parallel
+slices. Phase columns to confirm after the sweep. Possible later fix (not in rc13): send a single pair to the lane
+kernel, or narrower arrays. Text: 3.3/3.4 should say the frontier kernel's fixed cost grows with the graph (its
+arrays are filled per query), which is why a single pair on a large graph costs tens of ms. Q1 65,536-pair gap:
+both routes build partitions with the same radix sort and emit function (layout identical); pairs enter both as
+plain tables, the index's key pairs materialised untimed; what differs is the id space: build route = person table
+row ids, index = dense ids in sorted key order. The gap is better described per 256-lane batch, 11-13 ms at SF300 and
+3-5 ms at SF100, which points at traversal locality. Experiment after the sweep: a CSR index on row-id keys puts both
+routes on one id space; if the gap closes, the paper says the build route pays for the table's row order and the
+index gets its locality from sorted keys (a second index benefit beyond the build, for 4.7 and 6.2). Q3 (fold
+numbers) and Q5 (SF10 reruns) wait for the last block.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under
