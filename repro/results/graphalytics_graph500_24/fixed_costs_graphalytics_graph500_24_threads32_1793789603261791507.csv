@@ -1,0 +1,6 @@
+system,scale_factor,measure,seconds,bytes,edges,bytes_per_edge,threads,benchmark_notes,repo_commit
+duckdb,graph500-24,database_file,,8039706624,520759040,15.44,32,fixed costs graph500-24 repro 28da74d9 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,28da74d97c5ff2dcfd536f74603df44e2e1d2b4e
+duckpgq_index,graph500-24,index_build_repeat1,56.025,6712463672,520759040,12.89,32,fixed costs graph500-24 repro 28da74d9 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,28da74d97c5ff2dcfd536f74603df44e2e1d2b4e
+duckpgq_index,graph500-24,index_build_repeat2,50.056,6712463672,520759040,12.89,32,fixed costs graph500-24 repro 28da74d9 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,28da74d97c5ff2dcfd536f74603df44e2e1d2b4e
+duckpgq_index,graph500-24,index_build_repeat3,49.782,6712463672,520759040,12.89,32,fixed costs graph500-24 repro 28da74d9 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,28da74d97c5ff2dcfd536f74603df44e2e1d2b4e
+kuzu,graph500-24,load,68.106,9205817344,520759040,17.68,32,fixed costs graph500-24 repro 28da74d9 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,28da74d97c5ff2dcfd536f74603df44e2e1d2b4e

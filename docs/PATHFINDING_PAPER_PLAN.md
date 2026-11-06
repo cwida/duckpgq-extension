@@ -1477,3 +1477,36 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   1024 sources 0.35 / 4.5 / 2.7 / 8.6 s). Full sweep started 2026-11-04 20:21 UTC on `cf4d88ce` (eval-freeze-rc13),
   `SCALE_FACTORS="10 100 300" ./repro/run_all.sh all`, log `repro/logs/run_all.out`, SF10 and Graphalytics steps
   skipped; expected about 33 h.
+- 6 Nov: FULL SWEEP COMPLETE on `cf4d88ce` (eval-freeze-rc13): started 4 Nov 20:21 UTC, `matrix finished` 6 Nov
+  03:21 UTC, 31 h, every step exit 0 (SF100/SF300: fixed costs 21/62 min, pair sweeps 3.6/4.7 h, LDBC queries
+  5.5/5.0 h, SF100 client steps 1.4/1.9 h, native baselines 50 min, microbenchmarks 4.3 h + 11-27 min each,
+  throughput 4.5 min each, update SF100 7 min, concurrent runs 1-1.5 min each). Post-sweep questions of 5 Nov:
+  Q1 (build-index gap at 65536 pairs SF300, 2.6-2.9 s): phase columns put the whole gap in `bfs` (394.8 CPU-s on
+  the build route against 308.3 on the index route; the build route's own CSR phases are 0.35 s: local_csr_forward
+  0.349, radix partition 0.174, partition build 0.175, overlapping), not in pair analysis, grouping or scatter. Both
+  routes build their partitions with the same radix sort and emit function, so the layout is identical; what differs
+  is the id space: the build route numbers vertices by the person table's row ids, the index by sorted keys. Test on
+  a copy of the SF300 database: a CSR index on an edge table keyed by person row ids (dense ids = row ids) answers the
+  same 65536 pairs in 12.2 / 12.3 / 12.2 s against 9.80 / 9.79 / 9.77 s for the id-keyed index, i.e. 2.4 s of the
+  gap is the vertex numbering (traversal locality of the row-id order), 0.35 s the per-query CSR build. Paper: the
+  build route pays its CSR build plus the table's row order; the index owes 25% of its lead on large batches to the
+  sorted-key numbering, not to avoiding the build. No fix (a renumbering in the build route would cost what it saves).
+  Q2 (single pair SF300 10 -> 22 ms since rc1): not a regression. The rc1 binary (7e9778c0 rebuilt at 256 lanes,
+  the width the rc1 run had) answers today's single pair in 22 / 23 / 23 ms, rc13 in 18 / 24 / 23 ms, both on the
+  per-source kernel (strategy source_groups=1; a single group never runs lanes, so few_sources_limit=0 changes
+  nothing). The pair sample changed on 29 Oct (edge-aware sampling); the single pair is search-bound (3-17 ms by
+  pair, 23 Oct) and the new pair is a longer one. The MS-BFS working set has been allocated per batch through the
+  buffer manager since 19 Oct in both builds (no cross-query reuse ever existed; dff0c0eb did not touch it); the
+  per-source kernel's arrays are 14 MB at SF300 (source_search_mb=14). Q3 (fold step, rc13, repo_commit cc1caf95 =
+  plan commit on cf4d88ce): 16 readers, folds every 0.05% of edges, 3208 queries, median 65.3 ms, p99 277 ms, max
+  1842 ms (the fold payer); 4 folds of 1600 / 1673 / 1766 / 1602 ms with scans of 187 / 140 / 181 / 121 ms (the
+  fold under 16 readers and a writer takes 1.6-1.8 s against 1.1 s idle); commits median 137 ms, p99 343 ms. Q4:
+  peak_rss_mib present for both routes in throughput and concurrent rows (SF300 throughput 32 clients: index 1.7
+  GiB, build 23.3 GiB; 16 readers: index 6.0 GiB, build 17.8 GiB). THE INDEX'S CASE on rc13 (Section 6 lead):
+  SF300 16 readers under a writer: index 81.6 / 188 ms median / p99 against build 3856 / 5916 ms (47x), commits
+  153 against 647 ms (4.2x); SF100: 63.7 / 195 against 1196 / 1679 ms (19x), commits 214 against 348 ms.
+  Throughput 32 clients: SF300 329 against 5 q/s (66x, p99 279 ms against 10.2 s), SF100 928 against 14 q/s. One
+  client: SF300 61 against 4 q/s, SF100 112 against 7. The SF300 probe of 2 Nov reproduces; the title holds.
+  Housekeeping: `~/.claude/CLAUDE.md` forbids trailers; 13 commits of 29 Oct (7c65bed0..d9701272) carry one, rewrite
+  coordinated with the Mac side. SF10 update/concurrent steps (14) rerun on rc13 right after the sweep (author's OK,
+  5 Nov); dry-run markers moved to `repro/logs_sf10_dryrun_updates/`.

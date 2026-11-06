@@ -1,0 +1,15 @@
+   duckdb           database_file                     s      175124480 B    95.21 B/edge
+   duckpgq_index    index_build_repeat1         0.138 s       21051840 B    11.45 B/edge
+   duckpgq_index    index_build_repeat2         0.134 s       21051840 B    11.45 B/edge
+   duckpgq_index    index_build_repeat3         0.132 s       21051840 B    11.45 B/edge
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf10 in 0.08s
+Loading sf10 into Kuzu at /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/kuzu/sf10.kuzu
+Loaded Kuzu database with 1839354 edges in 1.0s
+   kuzu             load                        1.225 s       57708544 B    31.37 B/edge
+   memgraph         load                        6.793 s      363247697 B   197.49 B/edge
+   falkordb         load                       84.708 s       72351744 B    39.34 B/edge
+   neo4j            load                       23.630 s       56246548 B    30.58 B/edge
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf10/fixed_costs_sf10_threads32_1793711619147851545.csv

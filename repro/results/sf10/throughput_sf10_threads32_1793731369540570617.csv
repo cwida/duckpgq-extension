@@ -1,0 +1,13 @@
+route,clients,queries,duration_s,queries_per_s,median_ms,p99_ms,mean_ms,errors,scale_factor,threads,pairs,benchmark_notes,repo_commit,events_file,peak_rss_mib
+index,1,7917,20.0,395.85,2.470,3.747,2.511,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,index_clients1.csv,139.9
+index,2,15858,20.0,792.90,2.461,3.802,2.509,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,index_clients2.csv,161.8
+index,4,29832,20.0,1491.60,2.609,4.205,2.667,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,index_clients4.csv,187.4
+index,8,49862,20.0,2493.10,3.091,5.862,3.193,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,index_clients8.csv,218.1
+index,16,72433,20.0,3621.65,4.046,10.891,4.399,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,index_clients16.csv,248.2
+index,32,111659,20.0,5582.95,4.757,19.046,5.708,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,index_clients32.csv,290.6
+build,1,1110,20.0,55.50,17.909,20.487,17.997,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,build_clients1.csv,497.4
+build,2,2100,20.0,105.00,18.956,22.095,19.020,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,build_clients2.csv,609.8
+build,4,3360,20.0,168.00,23.619,31.709,23.781,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,build_clients4.csv,756.1
+build,8,3791,20.0,189.55,41.401,66.736,42.172,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,build_clients8.csv,1005.3
+build,16,3788,20.0,189.40,83.131,144.599,84.511,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,build_clients16.csv,1347.0
+build,32,3743,20.0,187.15,169.099,295.127,171.450,0,10,32,1024,W35 throughput SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,66169da37efb3e26ae14d0a14fc82b0d5f2c62d9,build_clients32.csv,2005.4

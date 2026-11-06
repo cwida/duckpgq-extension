@@ -1,0 +1,41 @@
+== Graphalytics cit-Patents: 3774768 vertices, 16518947 edges, 2089345 vertices with an outgoing edge (55.4%), 3258983 with an incoming edge (86.3%); sources are sampled from the former, destinations from the latter
+== memgraph: loading graphalytics_cit_Patents
+   loaded in 113.9s, 16518947 edges
+   memgraph@32    multi_source pairs=        sources=1     repeat 1:    0.004s 2194/10440 (0.1% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1     repeat 2:    0.005s 2194/10440 (0.1% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1     repeat 3:    0.004s 2194/10440 (0.1% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=16    repeat 1:    0.065s 50006/345586 (0.1% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=16    repeat 2:    0.048s 50006/345586 (0.1% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=16    repeat 3:    0.046s 50006/345586 (0.1% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=128   repeat 1:    0.127s 338030/2340655 (0.1% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=128   repeat 2:    0.123s 338030/2340655 (0.1% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=128   repeat 3:    0.127s 338030/2340655 (0.1% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1024  repeat 1:    0.498s 2823316/19570377 (0.1% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1024  repeat 2:    0.497s 2823316/19570377 (0.1% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1024  repeat 3:    0.503s 2823316/19570377 (0.1% of the vertices reached per source)
+== falkordb: loading graphalytics_cit_Patents
+   loaded in 803.2s, 16518947 edges
+   falkordb@32    multi_source pairs=        sources=1     repeat 1:  600.013s timed_out
+   falkordb@32    multi_source pairs=        sources=16    repeat 1:    0.000s timed_out_inferred
+   falkordb@32    multi_source pairs=        sources=128   repeat 1:    0.000s timed_out_inferred
+   falkordb@32    multi_source pairs=        sources=1024  repeat 1:    0.000s timed_out_inferred
+== kuzu: loading graphalytics_cit_Patents
+Ensuring graphalytics_cit_Patents benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_cit_Patents in 0.29s
+Ensuring graphalytics_cit_Patents benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for graphalytics_cit_Patents in 0.33s
+   loaded in 0.8s, 16518947 edges
+   kuzu@32        multi_source pairs=        sources=1     repeat 1:    0.014s 2194/10440 (0.1% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1     repeat 2:    0.007s 2194/10440 (0.1% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1     repeat 3:    0.007s 2194/10440 (0.1% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=16    repeat 1:    0.122s 50006/345586 (0.1% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=16    repeat 2:    0.118s 50006/345586 (0.1% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=16    repeat 3:    0.118s 50006/345586 (0.1% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=128   repeat 1:    0.299s 338030/2340655 (0.1% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=128   repeat 2:    0.299s 338030/2340655 (0.1% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=128   repeat 3:    0.299s 338030/2340655 (0.1% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1024  repeat 1:    1.545s 2823316/19570377 (0.1% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1024  repeat 2:    1.550s 2823316/19570377 (0.1% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1024  repeat 3:    1.566s 2823316/19570377 (0.1% of the vertices reached per source)
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_cit_Patents/sweep_pairs_graphalytics_cit_Patents_threads32_1793788069672977810.csv
+All 4 points agree across the systems that completed them

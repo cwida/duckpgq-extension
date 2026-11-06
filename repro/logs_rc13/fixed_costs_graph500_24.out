@@ -1,0 +1,14 @@
+Exporting graphalytics_graph500_24 tables for the graph databases
+   duckdb           database_file                     s     8039706624 B    15.44 B/edge
+   duckpgq_index    index_build_repeat1        56.025 s     6712463672 B    12.89 B/edge
+   duckpgq_index    index_build_repeat2        50.056 s     6712463672 B    12.89 B/edge
+   duckpgq_index    index_build_repeat3        49.782 s     6712463672 B    12.89 B/edge
+Ensuring graphalytics_graph500_24 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_graph500_24 in 1.92s
+Ensuring graphalytics_graph500_24 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for graphalytics_graph500_24 in 1.88s
+Exporting graphalytics_graph500_24 tables for Kuzu
+Loading graphalytics_graph500_24 into Kuzu at /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/kuzu/graphalytics_graph500_24.kuzu
+Loaded Kuzu database with 520759040 edges in 63.0s
+   kuzu             load                       68.106 s     9205817344 B    17.68 B/edge
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_graph500_24/fixed_costs_graphalytics_graph500_24_threads32_1793789603261791507.csv

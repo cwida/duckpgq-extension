@@ -1,0 +1,4 @@
+system,scale_factor,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,client_threads,timeout_s,benchmark_notes,repo_commit
+duckpgq_index,10,random_pairs,2048,,1,ok,0.144000,745,2612,32,1,600.0,rc2 soak,2517ebc208d8649a42faf22cf4fbda24aa8e5534
+duckpgq_index,10,random_pairs,65536,,1,ok,0.463000,22189,79155,32,1,600.0,rc2 soak,2517ebc208d8649a42faf22cf4fbda24aa8e5534
+duckpgq_index,10,multi_source,,1024,1,ok,0.111000,22513530,79941209,32,1,600.0,rc2 soak,2517ebc208d8649a42faf22cf4fbda24aa8e5534

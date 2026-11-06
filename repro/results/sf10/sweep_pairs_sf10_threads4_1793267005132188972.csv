@@ -1,0 +1,15 @@
+system,scale_factor,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,client_threads,timeout_s,benchmark_notes,repo_commit
+duckpgq_index,10,random_pairs,1,,1,ok,0.003000,0,0,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_index,10,random_pairs,16,,1,ok,0.024000,1,3,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_index,10,random_pairs,128,,1,ok,0.013000,43,146,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_index,10,random_pairs,1024,,1,ok,0.111000,364,1257,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_index,10,multi_source,,1,1,ok,0.002000,9158,36249,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_index,10,multi_source,,16,1,ok,0.016000,348510,1249123,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_index,10,multi_source,,128,1,ok,0.108000,2945336,10549235,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_recursive,10,random_pairs,1,,1,ok,0.122000,0,0,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_recursive,10,random_pairs,16,,1,ok,0.910000,1,3,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_recursive,10,random_pairs,128,,1,ok,15.784000,43,146,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_recursive,10,random_pairs,1024,,1,timed_out,120.000000,,,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_recursive,10,multi_source,,1,1,ok,0.625000,9158,36249,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_recursive,10,multi_source,,16,1,ok,1.351000,348510,1249123,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98
+duckpgq_recursive,10,multi_source,,128,1,ok,13.616000,2945336,10549235,4,1,120.0,"recursive early indication, 4 threads during the rc2 matrix",ac3de5eb2259ed313dc208cf78904c382a5c3f98

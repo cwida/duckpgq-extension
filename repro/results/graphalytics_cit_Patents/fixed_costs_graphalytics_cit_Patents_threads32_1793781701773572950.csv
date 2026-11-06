@@ -1,0 +1,9 @@
+system,scale_factor,measure,seconds,bytes,edges,bytes_per_edge,threads,benchmark_notes,repo_commit
+duckdb,cit-Patents,database_file,,323235840,16518947,19.57,32,fixed costs cit-Patents repro a95a3c07 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a95a3c071fbff29432d6afa56edacc5bbd674e18
+duckpgq_index,cit-Patents,index_build_repeat1,1.005,281802826,16518947,17.06,32,fixed costs cit-Patents repro a95a3c07 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a95a3c071fbff29432d6afa56edacc5bbd674e18
+duckpgq_index,cit-Patents,index_build_repeat2,0.978,281802826,16518947,17.06,32,fixed costs cit-Patents repro a95a3c07 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a95a3c071fbff29432d6afa56edacc5bbd674e18
+duckpgq_index,cit-Patents,index_build_repeat3,0.984,281802826,16518947,17.06,32,fixed costs cit-Patents repro a95a3c07 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a95a3c071fbff29432d6afa56edacc5bbd674e18
+kuzu,cit-Patents,load,2.791,398254080,16518947,24.11,32,fixed costs cit-Patents repro a95a3c07 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a95a3c071fbff29432d6afa56edacc5bbd674e18
+memgraph,cit-Patents,load,87.842,1954210119,16518947,118.30,32,fixed costs cit-Patents repro a95a3c07 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a95a3c071fbff29432d6afa56edacc5bbd674e18
+falkordb,cit-Patents,load,797.073,1170210816,16518947,70.84,32,fixed costs cit-Patents repro a95a3c07 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a95a3c071fbff29432d6afa56edacc5bbd674e18
+neo4j,cit-Patents,load,267.227,881007656,16518947,53.33,32,fixed costs cit-Patents repro a95a3c07 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a95a3c071fbff29432d6afa56edacc5bbd674e18

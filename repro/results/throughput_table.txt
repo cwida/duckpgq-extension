@@ -1,0 +1,24 @@
+
+## single-pair throughput, SF10, 32 threads, 20.0 s per point
+| route | 1 clients | 2 clients | 4 clients | 8 clients | 16 clients | 32 clients |
+|---|---|---|---|---|---|---|
+| index | 396 q/s, median 2.5 / p99 3.7 ms | 793 q/s, median 2.5 / p99 3.8 ms | 1492 q/s, median 2.6 / p99 4.2 ms | 2493 q/s, median 3.1 / p99 5.9 ms | 3622 q/s, median 4.0 / p99 10.9 ms | 5583 q/s, median 4.8 / p99 19.0 ms |
+| index peak RSS | 0.1 GiB | 0.2 GiB | 0.2 GiB | 0.2 GiB | 0.2 GiB | 0.3 GiB |
+| build | 56 q/s, median 17.9 / p99 20.5 ms | 105 q/s, median 19.0 / p99 22.1 ms | 168 q/s, median 23.6 / p99 31.7 ms | 190 q/s, median 41.4 / p99 66.7 ms | 189 q/s, median 83.1 / p99 145 ms | 187 q/s, median 169 / p99 295 ms |
+| build peak RSS | 0.5 GiB | 0.6 GiB | 0.7 GiB | 1.0 GiB | 1.3 GiB | 2.0 GiB |
+
+## single-pair throughput, SF100, 32 threads, 20.0 s per point
+| route | 1 clients | 2 clients | 4 clients | 8 clients | 16 clients | 32 clients |
+|---|---|---|---|---|---|---|
+| index | 112 q/s, median 8.7 / p99 15.9 ms | 225 q/s, median 8.7 / p99 16.1 ms | 417 q/s, median 9.3 / p99 18.7 ms | 607 q/s, median 12.4 / p99 30.6 ms | 724 q/s, median 20.0 / p99 61.1 ms | 928 q/s, median 28.9 / p99 112 ms |
+| index peak RSS | 0.5 GiB | 0.5 GiB | 0.6 GiB | 0.6 GiB | 0.6 GiB | 0.7 GiB |
+| build | 7 q/s, median 137 / p99 151 ms | 12 q/s, median 169 / p99 212 ms | 15 q/s, median 267 / p99 349 ms | 15 q/s, median 529 / p99 859 ms | 15 q/s, median 1133 / p99 1747 ms | 14 q/s, median 2425 / p99 3232 ms |
+| build peak RSS | 2.3 GiB | 2.4 GiB | 3.1 GiB | 4.2 GiB | 6.1 GiB | 9.7 GiB |
+
+## single-pair throughput, SF300, 32 threads, 10.0 s per point
+| route | 1 clients | 2 clients | 4 clients | 8 clients | 16 clients | 32 clients |
+|---|---|---|---|---|---|---|
+| index | 61 q/s, median 15.9 / p99 30.7 ms | 118 q/s, median 16.2 / p99 32.5 ms | 203 q/s, median 18.9 / p99 42.1 ms | 259 q/s, median 28.8 / p99 73.2 ms | 291 q/s, median 49.8 / p99 141 ms | 329 q/s, median 85.0 / p99 279 ms |
+| index peak RSS | 1.2 GiB | 1.2 GiB | 1.3 GiB | 1.3 GiB | 1.4 GiB | 1.7 GiB |
+| build | 4 q/s, median 288 / p99 310 ms | 5 q/s, median 429 / p99 565 ms | 5 q/s, median 898 / p99 1137 ms | 5 q/s, median 1763 / p99 2858 ms | 5 q/s, median 3682 / p99 5178 ms | 5 q/s, median 6830 / p99 10192 ms |
+| build peak RSS | 4.0 GiB | 4.6 GiB | 6.6 GiB | 10.2 GiB | 13.5 GiB | 23.3 GiB |

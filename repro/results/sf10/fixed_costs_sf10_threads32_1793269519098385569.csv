@@ -1,0 +1,9 @@
+system,scale_factor,measure,seconds,bytes,edges,bytes_per_edge,threads,benchmark_notes,repo_commit
+duckdb,10,database_file,,175124480,1839354,95.21,32,fixed costs SF10 repro 2620a9b6 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,10,index_build_repeat1,0.147,20734220,1839354,11.27,32,fixed costs SF10 repro 2620a9b6 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,10,index_build_repeat2,0.148,20734220,1839354,11.27,32,fixed costs SF10 repro 2620a9b6 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,10,index_build_repeat3,0.141,20734220,1839354,11.27,32,fixed costs SF10 repro 2620a9b6 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,2620a9b6800500e80785d6596f461fff3ccf5260
+kuzu,10,load,1.050,57708544,1839354,31.37,32,fixed costs SF10 repro 2620a9b6 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,2620a9b6800500e80785d6596f461fff3ccf5260
+memgraph,10,load,5.766,610816491,1839354,332.08,32,fixed costs SF10 repro 2620a9b6 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,2620a9b6800500e80785d6596f461fff3ccf5260
+falkordb,10,load,85.301,72351744,1839354,39.34,32,fixed costs SF10 repro 2620a9b6 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,2620a9b6800500e80785d6596f461fff3ccf5260
+neo4j,10,load,21.199,56246548,1839354,30.58,32,fixed costs SF10 repro 2620a9b6 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,2620a9b6800500e80785d6596f461fff3ccf5260

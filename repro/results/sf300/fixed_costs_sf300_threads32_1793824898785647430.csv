@@ -1,0 +1,9 @@
+system,scale_factor,measure,seconds,bytes,edges,bytes_per_edge,threads,benchmark_notes,repo_commit
+duckdb,300,database_file,,5533347840,55656915,99.42,32,fixed costs SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cc1caf95173faac3b2d07d7781d4fd54e2ad0f53
+duckpgq_index,300,index_build_repeat1,4.497,616640714,55656915,11.08,32,fixed costs SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cc1caf95173faac3b2d07d7781d4fd54e2ad0f53
+duckpgq_index,300,index_build_repeat2,4.480,616640714,55656915,11.08,32,fixed costs SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cc1caf95173faac3b2d07d7781d4fd54e2ad0f53
+duckpgq_index,300,index_build_repeat3,4.451,616640714,55656915,11.08,32,fixed costs SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cc1caf95173faac3b2d07d7781d4fd54e2ad0f53
+kuzu,300,load,8.836,1334120448,55656915,23.97,32,fixed costs SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cc1caf95173faac3b2d07d7781d4fd54e2ad0f53
+memgraph,300,load,247.642,4230542786,55656915,76.01,32,fixed costs SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cc1caf95173faac3b2d07d7781d4fd54e2ad0f53
+falkordb,300,load,2596.484,2038431744,55656915,36.62,32,fixed costs SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cc1caf95173faac3b2d07d7781d4fd54e2ad0f53
+neo4j,300,load,846.695,2315778745,55656915,41.61,32,fixed costs SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cc1caf95173faac3b2d07d7781d4fd54e2ad0f53

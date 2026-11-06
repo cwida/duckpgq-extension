@@ -1,0 +1,147 @@
+Ensuring sf100 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf100 in 0.21s
+== memgraph: loading sf100
+   loaded in 97.5s
+   memgraph@32    ic13 params 21990232555526 19791209333123 repeat 1:    8.828s 1/4
+   memgraph@32    ic13 params 21990232555526 19791209333123 repeat 2:    9.057s 1/4
+   memgraph@32    ic13 params 21990232555526 19791209333123 repeat 3:    8.948s 1/4
+   memgraph@32    ic13 params 35184372088834 32985348922248 repeat 1:    9.099s 1/2
+   memgraph@32    ic13 params 35184372088834 32985348922248 repeat 2:    8.622s 1/2
+   memgraph@32    ic13 params 35184372088834 32985348922248 repeat 3:    9.094s 1/2
+   memgraph@32    ic13 params 21990232555527 13194139674532 repeat 1:    9.152s 1/4
+   memgraph@32    ic13 params 21990232555527 13194139674532 repeat 2:    9.218s 1/4
+   memgraph@32    ic13 params 21990232555527 13194139674532 repeat 3:    8.994s 1/4
+   memgraph@32    ic13 params 30786325577731 24189256008009 repeat 1:    8.794s 1/3
+   memgraph@32    ic13 params 30786325577731 24189256008009 repeat 2:    8.525s 1/3
+   memgraph@32    ic13 params 30786325577731 24189256008009 repeat 3:    8.617s 1/3
+   memgraph@32    ic13 params 26388279066632 8796093271340 repeat 1:    9.111s 1/4
+   memgraph@32    ic13 params 26388279066632 8796093271340 repeat 2:    8.845s 1/4
+   memgraph@32    ic13 params 26388279066632 8796093271340 repeat 3:    8.588s 1/4
+   memgraph@32    bi19 params 1425 1302                    repeat 1:   21.329s 388960/1300456
+   memgraph@32    bi19 params 1425 1302                    repeat 2:   22.027s 388960/1300456
+   memgraph@32    bi19 params 1425 1302                    repeat 3:   21.902s 388960/1300456
+   memgraph@32    bi19 params 1424 1432                    repeat 1:   16.474s 365885/1193277
+   memgraph@32    bi19 params 1424 1432                    repeat 2:   16.513s 365885/1193277
+   memgraph@32    bi19 params 1424 1432                    repeat 3:   17.176s 365885/1193277
+   memgraph@32    bi19 params 1422 1299                    repeat 1:   18.475s 357466/1203492
+   memgraph@32    bi19 params 1422 1299                    repeat 2:   18.202s 357466/1203492
+   memgraph@32    bi19 params 1422 1299                    repeat 3:   18.647s 357466/1203492
+   memgraph@32    bi19 params 1423 1297                    repeat 1:   18.951s 342504/1148828
+   memgraph@32    bi19 params 1423 1297                    repeat 2:   18.599s 342504/1148828
+   memgraph@32    bi19 params 1423 1297                    repeat 3:   18.952s 342504/1148828
+   memgraph@32    bi19 params 1304 1430                    repeat 1:    9.217s 181030/607576
+   memgraph@32    bi19 params 1304 1430                    repeat 2:    9.150s 181030/607576
+   memgraph@32    bi19 params 1304 1430                    repeat 3:    9.297s 181030/607576
+   memgraph@32    bi20 params 549 32985348922248           repeat 1:    0.807s 8452/27314
+   memgraph@32    bi20 params 549 32985348922248           repeat 2:    0.787s 8452/27314
+   memgraph@32    bi20 params 549 32985348922248           repeat 3:    0.826s 8452/27314
+   memgraph@32    bi20 params 543 24189256008009           repeat 1:    0.421s 8435/25527
+   memgraph@32    bi20 params 543 24189256008009           repeat 2:    0.426s 8435/25527
+   memgraph@32    bi20 params 543 24189256008009           repeat 3:    0.419s 8435/25527
+   memgraph@32    bi20 params 544 17592186349326           repeat 1:    0.923s 8401/28338
+   memgraph@32    bi20 params 544 17592186349326           repeat 2:    0.936s 8401/28338
+   memgraph@32    bi20 params 544 17592186349326           repeat 3:    0.879s 8401/28338
+   memgraph@32    bi20 params 542 26388279427367           repeat 1:    0.673s 8405/26630
+   memgraph@32    bi20 params 542 26388279427367           repeat 2:    0.656s 8405/26630
+   memgraph@32    bi20 params 542 26388279427367           repeat 3:    0.685s 8405/26630
+   memgraph@32    bi20 params 548 6597070235367            repeat 1:    0.403s 8382/24876
+   memgraph@32    bi20 params 548 6597070235367            repeat 2:    0.405s 8382/24876
+   memgraph@32    bi20 params 548 6597070235367            repeat 3:    0.404s 8382/24876
+== falkordb: loading sf100
+   loaded in 1825.6s
+   falkordb@32    ic13 params 21990232555526 19791209333123 repeat 1:    0.185s 1/4
+   falkordb@32    ic13 params 21990232555526 19791209333123 repeat 2:    0.063s 1/4
+   falkordb@32    ic13 params 21990232555526 19791209333123 repeat 3:    0.061s 1/4
+   falkordb@32    ic13 params 35184372088834 32985348922248 repeat 1:    0.037s 1/2
+   falkordb@32    ic13 params 35184372088834 32985348922248 repeat 2:    0.035s 1/2
+   falkordb@32    ic13 params 35184372088834 32985348922248 repeat 3:    0.037s 1/2
+   falkordb@32    ic13 params 21990232555527 13194139674532 repeat 1:    0.060s 1/4
+   falkordb@32    ic13 params 21990232555527 13194139674532 repeat 2:    0.059s 1/4
+   falkordb@32    ic13 params 21990232555527 13194139674532 repeat 3:    0.060s 1/4
+   falkordb@32    ic13 params 30786325577731 24189256008009 repeat 1:    0.047s 1/3
+   falkordb@32    ic13 params 30786325577731 24189256008009 repeat 2:    0.046s 1/3
+   falkordb@32    ic13 params 30786325577731 24189256008009 repeat 3:    0.049s 1/3
+   falkordb@32    ic13 params 26388279066632 8796093271340 repeat 1:    0.057s 1/4
+   falkordb@32    ic13 params 26388279066632 8796093271340 repeat 2:    0.059s 1/4
+   falkordb@32    ic13 params 26388279066632 8796093271340 repeat 3:    0.057s 1/4
+   falkordb@32    bi19 params 1425 1302                    repeat 1:  600.630s timed_out
+   falkordb@32    bi19 params 1424 1432                    repeat 1:    0.000s timed_out_inferred
+   falkordb@32    bi19 params 1424 1432                    repeat 2:    0.000s timed_out_inferred
+   falkordb@32    bi19 params 1424 1432                    repeat 3:    0.000s timed_out_inferred
+   falkordb@32    bi19 params 1422 1299                    repeat 1:    0.000s timed_out_inferred
+   falkordb@32    bi19 params 1422 1299                    repeat 2:    0.000s timed_out_inferred
+   falkordb@32    bi19 params 1422 1299                    repeat 3:    0.000s timed_out_inferred
+   falkordb@32    bi19 params 1423 1297                    repeat 1:    0.000s timed_out_inferred
+   falkordb@32    bi19 params 1423 1297                    repeat 2:    0.000s timed_out_inferred
+   falkordb@32    bi19 params 1423 1297                    repeat 3:    0.000s timed_out_inferred
+   falkordb@32    bi19 params 1304 1430                    repeat 1:    0.000s timed_out_inferred
+   falkordb@32    bi19 params 1304 1430                    repeat 2:    0.000s timed_out_inferred
+   falkordb@32    bi19 params 1304 1430                    repeat 3:    0.000s timed_out_inferred
+   falkordb@32    bi20 params 549 32985348922248           repeat 1:  215.194s 8452/27314
+   falkordb@32    bi20 params 549 32985348922248           repeat 2:  215.639s 8452/27314
+   falkordb@32    bi20 params 549 32985348922248           repeat 3:  214.236s 8452/27314
+   falkordb@32    bi20 params 543 24189256008009           repeat 1:  209.648s 8435/25527
+   falkordb@32    bi20 params 543 24189256008009           repeat 2:  209.909s 8435/25527
+   falkordb@32    bi20 params 543 24189256008009           repeat 3:  209.330s 8435/25527
+   falkordb@32    bi20 params 544 17592186349326           repeat 1:  216.355s 8401/28338
+   falkordb@32    bi20 params 544 17592186349326           repeat 2:  216.089s 8401/28338
+   falkordb@32    bi20 params 544 17592186349326           repeat 3:  215.996s 8401/28338
+   falkordb@32    bi20 params 542 26388279427367           repeat 1:  213.250s 8405/26630
+   falkordb@32    bi20 params 542 26388279427367           repeat 2:  212.127s 8405/26630
+   falkordb@32    bi20 params 542 26388279427367           repeat 3:  213.111s 8405/26630
+   falkordb@32    bi20 params 548 6597070235367            repeat 1:  206.017s 8382/24876
+   falkordb@32    bi20 params 548 6597070235367            repeat 2:  206.944s 8382/24876
+   falkordb@32    bi20 params 548 6597070235367            repeat 3:  207.402s 8382/24876
+== kuzu: loading sf100
+Ensuring sf100 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf100 in 0.20s
+Ensuring sf100 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf100 in 0.20s
+   loaded in 0.8s
+   kuzu@32        ic13 params 21990232555526 19791209333123 repeat 1:    0.057s 1/4
+   kuzu@32        ic13 params 21990232555526 19791209333123 repeat 2:    0.030s 1/4
+   kuzu@32        ic13 params 21990232555526 19791209333123 repeat 3:    0.032s 1/4
+   kuzu@32        ic13 params 35184372088834 32985348922248 repeat 1:    0.011s 1/2
+   kuzu@32        ic13 params 35184372088834 32985348922248 repeat 2:    0.010s 1/2
+   kuzu@32        ic13 params 35184372088834 32985348922248 repeat 3:    0.011s 1/2
+   kuzu@32        ic13 params 21990232555527 13194139674532 repeat 1:    0.034s 1/4
+   kuzu@32        ic13 params 21990232555527 13194139674532 repeat 2:    0.035s 1/4
+   kuzu@32        ic13 params 21990232555527 13194139674532 repeat 3:    0.035s 1/4
+   kuzu@32        ic13 params 30786325577731 24189256008009 repeat 1:    0.017s 1/3
+   kuzu@32        ic13 params 30786325577731 24189256008009 repeat 2:    0.018s 1/3
+   kuzu@32        ic13 params 30786325577731 24189256008009 repeat 3:    0.017s 1/3
+   kuzu@32        ic13 params 26388279066632 8796093271340 repeat 1:    0.033s 1/4
+   kuzu@32        ic13 params 26388279066632 8796093271340 repeat 2:    0.032s 1/4
+   kuzu@32        ic13 params 26388279066632 8796093271340 repeat 3:    0.033s 1/4
+   kuzu@32        bi19 params 1425 1302                    repeat 1:   26.053s 388960/1300456
+   kuzu@32        bi19 params 1425 1302                    repeat 2:   24.779s 388960/1300456
+   kuzu@32        bi19 params 1425 1302                    repeat 3:   25.530s 388960/1300456
+   kuzu@32        bi19 params 1424 1432                    repeat 1:   24.872s 365885/1193277
+   kuzu@32        bi19 params 1424 1432                    repeat 2:   25.169s 365885/1193277
+   kuzu@32        bi19 params 1424 1432                    repeat 3:   24.498s 365885/1193277
+   kuzu@32        bi19 params 1422 1299                    repeat 1:   23.654s 357466/1203492
+   kuzu@32        bi19 params 1422 1299                    repeat 2:   23.178s 357466/1203492
+   kuzu@32        bi19 params 1422 1299                    repeat 3:   24.840s 357466/1203492
+   kuzu@32        bi19 params 1423 1297                    repeat 1:   24.165s 342504/1148828
+   kuzu@32        bi19 params 1423 1297                    repeat 2:   23.604s 342504/1148828
+   kuzu@32        bi19 params 1423 1297                    repeat 3:   24.147s 342504/1148828
+   kuzu@32        bi19 params 1304 1430                    repeat 1:   13.186s 181030/607576
+   kuzu@32        bi19 params 1304 1430                    repeat 2:   13.165s 181030/607576
+   kuzu@32        bi19 params 1304 1430                    repeat 3:   13.451s 181030/607576
+   kuzu@32        bi20 params 549 32985348922248           repeat 1:   35.300s 8452/27314
+   kuzu@32        bi20 params 549 32985348922248           repeat 2:   33.528s 8452/27314
+   kuzu@32        bi20 params 549 32985348922248           repeat 3:   34.897s 8452/27314
+   kuzu@32        bi20 params 543 24189256008009           repeat 1:   18.304s 8435/25527
+   kuzu@32        bi20 params 543 24189256008009           repeat 2:   17.307s 8435/25527
+   kuzu@32        bi20 params 543 24189256008009           repeat 3:   17.561s 8435/25527
+   kuzu@32        bi20 params 544 17592186349326           repeat 1:   47.319s 8401/28338
+   kuzu@32        bi20 params 544 17592186349326           repeat 2:   47.484s 8401/28338
+   kuzu@32        bi20 params 544 17592186349326           repeat 3:   51.378s 8401/28338
+   kuzu@32        bi20 params 542 26388279427367           repeat 1:   31.022s 8405/26630
+   kuzu@32        bi20 params 542 26388279427367           repeat 2:   30.561s 8405/26630
+   kuzu@32        bi20 params 542 26388279427367           repeat 3:   30.504s 8405/26630
+   kuzu@32        bi20 params 548 6597070235367            repeat 1:   16.629s 8382/24876
+   kuzu@32        bi20 params 548 6597070235367            repeat 2:   16.330s 8382/24876
+   kuzu@32        bi20 params 548 6597070235367            repeat 3:   16.503s 8382/24876
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf100/ldbc_queries_sf100_threads32_1793901514612907022.csv
+All 15 points agree across the systems that completed them

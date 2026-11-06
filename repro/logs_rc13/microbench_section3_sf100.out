@@ -1,0 +1,114 @@
+Ensuring sf100 benchmark_pairs_1 exists
+Prepared benchmark_pairs_1 for sf100 in 0.20s
+Ensuring sf100 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for sf100 in 0.23s
+Ensuring sf100 benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for sf100 in 1.20s
+Ensuring sf100 benchmark_pairs_all_pairs_s20_t200 exists
+Prepared benchmark_pairs_all_pairs_s20_t200 for sf100 in 0.24s
+== duckpgq_build [baseline] loaded in 0.0s
+   baseline                     random_pairs pairs=1       sources=      repeat 1:    0.151s 0/0
+   baseline                     random_pairs pairs=1       sources=      repeat 2:    0.160s 0/0
+   baseline                     random_pairs pairs=1       sources=      repeat 3:    0.138s 0/0
+   baseline                     random_pairs pairs=2048    sources=      repeat 1:    0.291s 1030/3892
+   baseline                     random_pairs pairs=2048    sources=      repeat 2:    0.296s 1030/3892
+   baseline                     random_pairs pairs=2048    sources=      repeat 3:    0.297s 1030/3892
+   baseline                     random_pairs pairs=65536   sources=      repeat 1:    4.249s 31274/118174
+   baseline                     random_pairs pairs=65536   sources=      repeat 2:    4.183s 31274/118174
+   baseline                     random_pairs pairs=65536   sources=      repeat 3:    4.207s 31274/118174
+   baseline                     all_pairs    pairs=4000    sources=20    repeat 1:    0.196s 1640/6220
+   baseline                     all_pairs    pairs=4000    sources=20    repeat 2:    0.190s 1640/6220
+   baseline                     all_pairs    pairs=4000    sources=20    repeat 3:    0.186s 1640/6220
+== duckpgq_build [no_source_grouping] loaded in 0.1s
+   no_source_grouping           random_pairs pairs=1       sources=      repeat 1:    0.165s 0/0
+   no_source_grouping           random_pairs pairs=1       sources=      repeat 2:    0.164s 0/0
+   no_source_grouping           random_pairs pairs=1       sources=      repeat 3:    0.167s 0/0
+   no_source_grouping           random_pairs pairs=2048    sources=      repeat 1:    0.655s 1030/3892
+   no_source_grouping           random_pairs pairs=2048    sources=      repeat 2:    0.659s 1030/3892
+   no_source_grouping           random_pairs pairs=2048    sources=      repeat 3:    0.685s 1030/3892
+   no_source_grouping           random_pairs pairs=65536   sources=      repeat 1:    4.175s 31274/118174
+   no_source_grouping           random_pairs pairs=65536   sources=      repeat 2:    4.153s 31274/118174
+   no_source_grouping           random_pairs pairs=65536   sources=      repeat 3:    4.146s 31274/118174
+   no_source_grouping           all_pairs    pairs=4000    sources=20    repeat 1:    0.472s 1640/6220
+   no_source_grouping           all_pairs    pairs=4000    sources=20    repeat 2:    0.470s 1640/6220
+   no_source_grouping           all_pairs    pairs=4000    sources=20    repeat 3:    0.487s 1640/6220
+== duckpgq_build [no_lane_waves] loaded in 0.1s
+   no_lane_waves                random_pairs pairs=1       sources=      repeat 1:    0.149s 0/0
+   no_lane_waves                random_pairs pairs=1       sources=      repeat 2:    0.147s 0/0
+   no_lane_waves                random_pairs pairs=1       sources=      repeat 3:    0.150s 0/0
+   no_lane_waves                random_pairs pairs=2048    sources=      repeat 1:    2.410s 1030/3892
+   no_lane_waves                random_pairs pairs=2048    sources=      repeat 2:    2.432s 1030/3892
+   no_lane_waves                random_pairs pairs=2048    sources=      repeat 3:    2.434s 1030/3892
+   no_lane_waves                random_pairs pairs=65536   sources=      repeat 1:   72.615s 31274/118174
+   no_lane_waves                random_pairs pairs=65536   sources=      repeat 2:   72.324s 31274/118174
+   no_lane_waves                random_pairs pairs=65536   sources=      repeat 3:   72.649s 31274/118174
+   no_lane_waves                all_pairs    pairs=4000    sources=20    repeat 1:    0.225s 1640/6220
+   no_lane_waves                all_pairs    pairs=4000    sources=20    repeat 2:    0.216s 1640/6220
+   no_lane_waves                all_pairs    pairs=4000    sources=20    repeat 3:    0.224s 1640/6220
+== duckpgq_build [paths] loaded in 0.1s
+   paths                        random_pairs pairs=1       sources=      repeat 1:    0.243s 0/0
+   paths                        random_pairs pairs=1       sources=      repeat 2:    0.236s 0/0
+   paths                        random_pairs pairs=1       sources=      repeat 3:    0.236s 0/0
+   paths                        random_pairs pairs=2048    sources=      repeat 1:    2.822s 1030/3892
+   paths                        random_pairs pairs=2048    sources=      repeat 2:    2.873s 1030/3892
+   paths                        random_pairs pairs=2048    sources=      repeat 3:    2.852s 1030/3892
+   paths                        random_pairs pairs=65536   sources=      repeat 1:   81.796s 31274/118174
+   paths                        random_pairs pairs=65536   sources=      repeat 2:   81.764s 31274/118174
+   paths                        random_pairs pairs=65536   sources=      repeat 3:   81.806s 31274/118174
+   paths                        all_pairs    pairs=4000    sources=20    repeat 1:    0.347s 1640/6220
+   paths                        all_pairs    pairs=4000    sources=20    repeat 2:    0.341s 1640/6220
+   paths                        all_pairs    pairs=4000    sources=20    repeat 3:    0.328s 1640/6220
+== duckpgq_index [baseline] loaded in 0.1s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=1       sources=      repeat 1:    0.015s 0/0
+   baseline                     random_pairs pairs=1       sources=      repeat 2:    0.014s 0/0
+   baseline                     random_pairs pairs=1       sources=      repeat 3:    0.016s 0/0
+   baseline                     random_pairs pairs=2048    sources=      repeat 1:    0.126s 1030/3892
+   baseline                     random_pairs pairs=2048    sources=      repeat 2:    0.135s 1030/3892
+   baseline                     random_pairs pairs=2048    sources=      repeat 3:    0.147s 1030/3892
+   baseline                     random_pairs pairs=65536   sources=      repeat 1:    3.370s 31274/118174
+   baseline                     random_pairs pairs=65536   sources=      repeat 2:    3.301s 31274/118174
+   baseline                     random_pairs pairs=65536   sources=      repeat 3:    3.273s 31274/118174
+   baseline                     all_pairs    pairs=4000    sources=20    repeat 1:    0.055s 1640/6220
+   baseline                     all_pairs    pairs=4000    sources=20    repeat 2:    0.053s 1640/6220
+   baseline                     all_pairs    pairs=4000    sources=20    repeat 3:    0.052s 1640/6220
+== duckpgq_index [no_source_grouping] loaded in 0.1s (index pathfinding_benchmark_csr)
+   no_source_grouping           random_pairs pairs=1       sources=      repeat 1:    0.024s 0/0
+   no_source_grouping           random_pairs pairs=1       sources=      repeat 2:    0.024s 0/0
+   no_source_grouping           random_pairs pairs=1       sources=      repeat 3:    0.023s 0/0
+   no_source_grouping           random_pairs pairs=2048    sources=      repeat 1:    0.520s 1030/3892
+   no_source_grouping           random_pairs pairs=2048    sources=      repeat 2:    0.520s 1030/3892
+   no_source_grouping           random_pairs pairs=2048    sources=      repeat 3:    0.520s 1030/3892
+   no_source_grouping           random_pairs pairs=65536   sources=      repeat 1:    3.281s 31274/118174
+   no_source_grouping           random_pairs pairs=65536   sources=      repeat 2:    3.238s 31274/118174
+   no_source_grouping           random_pairs pairs=65536   sources=      repeat 3:    3.249s 31274/118174
+   no_source_grouping           all_pairs    pairs=4000    sources=20    repeat 1:    0.309s 1640/6220
+   no_source_grouping           all_pairs    pairs=4000    sources=20    repeat 2:    0.309s 1640/6220
+   no_source_grouping           all_pairs    pairs=4000    sources=20    repeat 3:    0.306s 1640/6220
+== duckpgq_index [no_lane_waves] loaded in 0.1s (index pathfinding_benchmark_csr)
+   no_lane_waves                random_pairs pairs=1       sources=      repeat 1:    0.014s 0/0
+   no_lane_waves                random_pairs pairs=1       sources=      repeat 2:    0.015s 0/0
+   no_lane_waves                random_pairs pairs=1       sources=      repeat 3:    0.016s 0/0
+   no_lane_waves                random_pairs pairs=2048    sources=      repeat 1:    1.331s 1030/3892
+   no_lane_waves                random_pairs pairs=2048    sources=      repeat 2:    1.350s 1030/3892
+   no_lane_waves                random_pairs pairs=2048    sources=      repeat 3:    1.318s 1030/3892
+   no_lane_waves                random_pairs pairs=65536   sources=      repeat 1:   39.697s 31274/118174
+   no_lane_waves                random_pairs pairs=65536   sources=      repeat 2:   39.258s 31274/118174
+   no_lane_waves                random_pairs pairs=65536   sources=      repeat 3:   39.498s 31274/118174
+   no_lane_waves                all_pairs    pairs=4000    sources=20    repeat 1:    0.074s 1640/6220
+   no_lane_waves                all_pairs    pairs=4000    sources=20    repeat 2:    0.073s 1640/6220
+   no_lane_waves                all_pairs    pairs=4000    sources=20    repeat 3:    0.075s 1640/6220
+== duckpgq_index [paths] loaded in 0.1s (index pathfinding_benchmark_csr)
+   paths                        random_pairs pairs=1       sources=      repeat 1:    0.020s 0/0
+   paths                        random_pairs pairs=1       sources=      repeat 2:    0.020s 0/0
+   paths                        random_pairs pairs=1       sources=      repeat 3:    0.018s 0/0
+   paths                        random_pairs pairs=2048    sources=      repeat 1:    1.612s 1030/3892
+   paths                        random_pairs pairs=2048    sources=      repeat 2:    1.582s 1030/3892
+   paths                        random_pairs pairs=2048    sources=      repeat 3:    1.573s 1030/3892
+   paths                        random_pairs pairs=65536   sources=      repeat 1:   45.981s 31274/118174
+   paths                        random_pairs pairs=65536   sources=      repeat 2:   45.909s 31274/118174
+   paths                        random_pairs pairs=65536   sources=      repeat 3:   45.916s 31274/118174
+   paths                        all_pairs    pairs=4000    sources=20    repeat 1:    0.096s 1640/6220
+   paths                        all_pairs    pairs=4000    sources=20    repeat 2:    0.097s 1640/6220
+   paths                        all_pairs    pairs=4000    sources=20    repeat 3:    0.096s 1640/6220
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf100/microbench_sf100_threads32_1793929988538938557.csv
+All 4 points agree across configurations 

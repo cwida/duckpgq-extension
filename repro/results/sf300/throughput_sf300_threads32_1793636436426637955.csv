@@ -1,0 +1,3 @@
+route,clients,queries,duration_s,queries_per_s,median_ms,p99_ms,mean_ms,errors,scale_factor,threads,pairs,benchmark_notes,repo_commit,events_file,peak_rss_mib
+index,1,620,10.0,62.00,15.718,29.969,16.112,0,300,32,1024,512-lane check,8f0d522e89b38365dfc8bf7220a189fb181d80cd,index_clients1.csv,1243.1
+index,32,3421,10.0,342.10,81.871,266.526,93.730,0,300,32,1024,512-lane check,8f0d522e89b38365dfc8bf7220a189fb181d80cd,index_clients32.csv,1644.3

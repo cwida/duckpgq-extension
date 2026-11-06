@@ -1,0 +1,12 @@
+Ensuring sf10 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf10 in 0.10s
+== build: 190 batches of 2000, 1 sssp queries per batch, threads=32
+   query mean 0.0202s (min 0.0180, max 0.0330), update mean 0.0203s, index build 0.000000s, epoch changes 0, wall 12.132s
+== index_auto: 190 batches of 2000, 1 sssp queries per batch, threads=32
+   query mean 0.0160s (min 0.0060, max 0.1250), update mean 0.0207s, index build 1.516000s, epoch changes 1, wall 11.632s
+== index_nofold: 190 batches of 2000, 1 sssp queries per batch, threads=32
+   query mean 0.0200s (min 0.0050, max 0.0400), update mean 0.0211s, index build 1.507000s, epoch changes 0, wall 12.837s
+== index_per_row: 190 batches of 2000, 1 sssp queries per batch, threads=32
+   query mean 0.0350s (min 0.0060, max 0.0660), update mean 0.0208s, index build 1.509000s, epoch changes 0, wall 15.637s
+All 191 steps agree across build, index_auto, index_nofold, index_per_row
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf10/update_sssp_pairs1024_threads32_batch2000x190_1793935996701988518.csv
