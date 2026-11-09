@@ -1549,7 +1549,7 @@ def load_after_restart():
 def fixed_costs_table(filename):
     """Table: edges, index creation, bytes per edge and load after a restart against the native systems' import time
     and store size."""
-    loads = load_after_restart()
+    restart_loads = load_after_restart()
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.2pt}",
              r"\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table, its size per "
              r"edge and its load on the first query after a restart with the database file in the page cache, against the "
@@ -1571,7 +1571,7 @@ def fixed_costs_table(filename):
         loads = {r["system"]: (float(r["seconds"]), float(r["bytes_per_edge"])) for r in rows if r["measure"] == "load"}
         imp = lambda key: seconds_label(loads[key][0]) if key in loads else "--"
         kuzu_bpe = f"{loads['kuzu'][1]:.0f}" if "kuzu" in loads else "--"
-        load = loads.get(LOAD_NAMES.get(name, name))
+        load = restart_loads.get(LOAD_NAMES.get(name, name))
         load_label = "--" if load is None else (f"{load[0] * 1000:.0f}\\,ms" if load[0] < 1 else f"{load[0]:.2f}\\,s")
         lines.append(f"{name} & {edges / 1e6:.1f}\\,M & {seconds_label(statistics.median(builds) if builds else None)} & "
                      f"{bpe:.1f} & {load_label} & {imp('kuzu')} & {kuzu_bpe} & {imp('neo4j')} & {imp('memgraph')} & {imp('falkordb')} \\\\")
