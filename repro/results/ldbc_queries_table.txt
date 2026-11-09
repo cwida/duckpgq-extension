@@ -13,6 +13,7 @@
 | memgraph@32 | 382 ms | 140 ms | 97 ms |
 | falkordb@32 | 12 ms | 18.4 s | 2.9 s |
 | kuzu@32 | 8 ms | 524 ms | 1.4 s |
+| ladybug | 23 ms | 4.7 s | 19.7 s |
 
 ## LDBC queries (hop-count variants, undirected knows): seconds per query (median of the repeats per parameter set, mean over the sets), SF100, 32 threads, timeout 600.0 s
 
