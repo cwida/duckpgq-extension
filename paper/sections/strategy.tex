@@ -1,29 +1,26 @@
 \section{Extending (Almost) All That DuckDB Has to Offer}
 \label{sec:strategy}
-
-% Draft 26 Oct 2026; cost-model half written 29 Oct from the rc1 numbers.
-
-\subsection{The interfaces and their limits}
 \label{sec:hooks}
+% Shrunk 9 Nov 2026 to the interface table and one paragraph; the threshold discussion lives in 3.4, 4.4 and 4.7.
 
-The operator and the index touch almost every interface \duckdb exposes to an extension, and they need no change to
-\duckdb itself; to ask about row visibility they do call into classes that are not part of the extension API, the
-transaction and the table storage.
-Table~\ref{tab:hooks} lists the interfaces, what each one gave us, and where it stopped short. The right column is
-the part of this paper addressed to the designers of database systems. Three gaps shaped the design more than any
-other. The index interface delivers the rows that changed but not the transaction that changed
-them, and it offers no way to ask whether a row was visible at an earlier point in time, because \duckdb garbage
-collects row versions. The epochs, change groups and per-transaction snapshots of Section~\ref{sec:index} exist because of
-that. The scheduler has no notion of a group of tasks that must run together, so the traversals are chains of
-per-phase events (Section~\ref{sec:phases}). An extension operator can report a cardinality but not a cost, and
-join ordering treats it as opaque, so the choices between the two traversals and between the two orientations are
-made inside the operator from its own statistics (Section~\ref{sec:cost}). The choice between build and index is
-made earlier, at bind time, by the rewrite, which takes the index whenever one exists.
+\rev{Table~\ref{tab:hooks} lists the \duckdb interfaces the operator and the index use, what each one gave us and
+what it lacked, with the sections where a lack cost a mechanism; it is the list the introduction promised. Everything
+runs through these interfaces without a change to \duckdb, except that the visibility check calls into two classes
+outside the extension API, the transaction and the table storage. Three additions would make an index and an operator
+like ours simpler. A transaction or commit identifier passed with each index callback would let the index decide
+visibility itself instead of asking \duckdb once per change group (Section~\ref{sec:index-read}). A visibility check
+that stays valid after version garbage collection would let a fold decide at any time what an epoch accounts for,
+instead of while its transaction is live (Section~\ref{sec:index-fold}). Tasks for index work and task groups for
+operators would let a fold run in the background and a traversal schedule its levels without a chain of events
+(Sections~\ref{sec:phases} and~\ref{sec:index-fold}). Two entries of the table are not gaps but promises the interface
+does not make, that row ids stay stable while an index exists and that \texttt{CanFetch} answers the visibility
+question of snapshot isolation (Section~\ref{sec:index-correctness}); an extension that relies on them, as ours does,
+should say so.}
 
 \begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
   \caption{The \duckdb extension interfaces the operator and the index use, what each provided, and what it lacked
-  for this work. The graph never leaves the relational tables: no storage extension, custom catalog, replacement
-  scan or custom type is involved.}
+  for this work, with the sections where the lack cost a mechanism. The graph never leaves the relational tables: no
+  storage extension, custom catalog, replacement scan or custom type is involved.}
   \label{tab:hooks}
   \begin{tabular}{p{1.9cm}p{2.9cm}p{2.9cm}}\toprule
   interface & used for & what it lacked \\ \midrule
@@ -31,61 +28,18 @@ made earlier, at bind time, by the rewrite, which takes the index whenever one e
   \addlinespace[2pt]
   table function with bind replacement & \texttt{MATCH} expanding to the rewritten SQL & -- \\
   \addlinespace[2pt]
-  scalar functions & the marker that carries the path pattern to the planner; index statistics; strategy introspection & a marker must be volatile to survive folding, and must not reach execution \\
+  scalar functions & the marker that carries the path pattern to the planner; index statistics; strategy introspection & a marker must be volatile to survive folding, and must not reach execution (\S\ref{sec:planner}) \\
   \addlinespace[2pt]
-  optimizer extension & replacing the marker and its two inputs by the logical operator & runs before or after \duckdb's optimizer, not between its rules; the rewrite must find its inputs on the binder's plan shape \\
+  optimizer extension & replacing the marker and its two inputs by the logical operator & runs before or after \duckdb's optimizer, not between its rules; the rewrite must find its inputs on the binder's plan shape (\S\ref{sec:planner}) \\
   \addlinespace[2pt]
-  logical and physical operator & sink for pairs and edges, source for results, own events and tasks & a cardinality, but no cost, and join ordering treats the operator as opaque; no task groups in the scheduler \\
+  logical and physical operator & sink for pairs and edges, source for results, own events and tasks & a cardinality, but no cost, and join ordering treats the operator as opaque (\S\ref{sec:choice}); no task groups in the scheduler (\S\ref{sec:phases}) \\
   \addlinespace[2pt]
-  index type & build, append and delete callbacks; serialization into the block manager; WAL replay & rows but not transactions; no visibility at past points in time; stable row ids and \texttt{CanFetch} are implementation behaviour, not guarantees; no scan interface, so the operator finds the index in the catalog by name; no tasks for index work, so its build, fold and load start threads of their own \\
+  index type & build, append and delete callbacks; serialization into the block manager; WAL replay & rows but not transactions; no visibility at past points in time (\S\ref{sec:index-interface}, \S\ref{sec:index-fold}); stable row ids and \texttt{CanFetch} are implementation behaviour, not guarantees (\S\ref{sec:index-correctness}); no scan interface, so the operator finds the index in the catalog by name; no tasks for index work, so its build, fold and load start threads of their own (\S\ref{sec:index-fold}) \\
   \addlinespace[2pt]
   client context state & per-connection registry of property graphs and operator state & -- \\
   \addlinespace[2pt]
-  settings & operator and index options, per connection or global & index options are fixed at \texttt{CREATE INDEX}, so a policy such as the fold ratio is a setting and not a property of the index \\
+  settings & operator and index options, per connection or global & index options are fixed at \texttt{CREATE INDEX}, so a policy such as the fold ratio is a setting and not a property of the index (\S\ref{sec:index-fold}) \\
   \addlinespace[2pt]
   buffer manager & the multi-source working sets, the build's staged edges and the persisted index segments & -- \\
   \bottomrule\end{tabular}
 \end{table}
-
-\subsection{Build or index, lanes or frontier, forward or reverse}
-\label{sec:cost}
-
-The operator makes three choices for every query, and each is a threshold today. We describe what is known when each
-choice is made, what the thresholds are, and what a cost model would need to replace them.
-
-\paragraph{Build or index} The rewrite chooses at bind time, and it takes the index whenever the edge table has one.
-On the read-only queries of Section~\ref{sec:eval} that choice is never wrong, because the index route is faster at
-every point. The build costs 22, 126 and 263\,ms per query at SF10, SF100 and SF300, close to linear in the edges,
-and a snapshot of an index without pending changes costs a few milliseconds. The choice gets harder under updates. A
-snapshot then costs one version check per change group and one pass over the pending log entries, and with 16 concurrent readers at SF10 the index route answers in 42\,ms and the build route in 98 (Section~\ref{sec:eval-updates}). A cost model would compare the build, which
-depends on the edge count, with the snapshot, which depends on the pending entries. The rewrite can read both at bind
-time, the edge count from the table statistics and the log length from the index.
-
-\paragraph{Lanes or frontier} The operator chooses after its sink has seen every pair and grouped the pairs by
-source. Up to 16 distinct sources run on the single-source traversal, and more run as batches with one lane per
-source; paths and reach always use the single-source traversal. The two costs scale differently. A single-source
-search costs the part of the graph it reaches before its last destination is found, once per source, and holds three
-arrays per vertex while it runs. A batch costs a dense sweep over the partitions per level, shared by up to 256 lanes,
-plus sparse levels that touch only the live vertices, and one working set of 96 bytes per vertex. The batches therefore win when there are many sources, twelve times on 65\,536 random pairs at SF100 (Table~\ref{tab:ablation}), and lose for a handful: 16 sources with 200 destinations each at SF10 take 12\,ms as one batch and 11 as single-source searches, and at SF100 the batch wins from 16 sources, 45 against 64\,ms (Figure~\ref{fig:crossover}). The threshold of 16
-sits near that crossover on LDBC, but the crossover moves with the graph, from 4 sources on datagen-8\_4-fb to 256
-on cit-Patents. What it cannot see is how far each search
-runs. An unreachable pair searches the whole component of its source, a reachable one stops early, and about two
-thirds of the random pairs are unreachable in the directed graph. A cost model needs an estimate of that reach, for
-example from the degree of the sources and the number of levels a search takes on the graph, which the index could
-record at a fold.
-
-\paragraph{Forward or reverse} When the estimated distinct sources are at least four times the distinct
-destinations and reverse partitions exist, the search starts from the destinations. This is the shape of BI20, many
-persons of one company to one target, which the index answers in 5 to 57\,ms against 22\,ms to 1.1\,s for Neo4j. The
-cost model for the orientation is the one above with sources and destinations exchanged, so it needs nothing new.
-
-\paragraph{When to fold} A fold is triggered by the first transaction that finds the log longer than a tenth of the
-epoch's edges, and that transaction pays for it. In the SF10 update stream the one automatic fold, after the 94th
-commit, made that query take 162\,ms instead of about 20\,ms, and the stream's mean query time fell from 22\,ms
-without folds to 18\,ms with them. A policy should weigh the rebuild against the overlay cost that every later
-query saves, which depends on the query rate as much as on the log length. It would also run the fold in the
-background, which needs the task interface Table~\ref{tab:hooks} lists as missing for index work.
-
-\paragraph{What the optimizer could do with a cost} The operator reports a cardinality, and join ordering treats it
-as an opaque node. With a cost the optimizer could weigh a selective filter on the vertex side, which shrinks the pair
-input, against the traversal that the pairs feed, and it could make the build-or-index choice itself.

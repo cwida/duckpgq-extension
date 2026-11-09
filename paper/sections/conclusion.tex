@@ -22,6 +22,6 @@ host system.
 
 In the future we will replace the thresholds of Sections~\ref{sec:choice} and~\ref{sec:index-fold} with a cost
 model calibrated on these runs, the few-sources limit first, whose best value ranges from 4 to 256 sources across our
-graphs; move the fold into the background; stream the output of reach queries instead of materializing it; and extend
+graphs; \rev{give the operator a cost, so that the optimizer can weigh a selective vertex filter against the traversal it feeds and make the build-or-index choice itself;} move the fold into the background; stream the output of reach queries instead of materializing it; and extend
 the operator to weighted shortest paths, to an index over several edge tables of one property graph, and to path
 reconstruction in the multi-source traversal.
