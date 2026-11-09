@@ -1,0 +1,15 @@
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.09s
+   index  clients=1      395.85 q/s  median    2.470 ms  p99    3.747 ms  (7917 queries, 0 errors, peak 139.9 MiB)
+   index  clients=2      792.90 q/s  median    2.461 ms  p99    3.802 ms  (15858 queries, 0 errors, peak 161.8 MiB)
+   index  clients=4     1491.60 q/s  median    2.609 ms  p99    4.205 ms  (29832 queries, 0 errors, peak 187.4 MiB)
+   index  clients=8     2493.10 q/s  median    3.091 ms  p99    5.862 ms  (49862 queries, 0 errors, peak 218.1 MiB)
+   index  clients=16    3621.65 q/s  median    4.046 ms  p99   10.891 ms  (72433 queries, 0 errors, peak 248.2 MiB)
+   index  clients=32    5582.95 q/s  median    4.757 ms  p99   19.046 ms  (111659 queries, 0 errors, peak 290.6 MiB)
+   build  clients=1       55.50 q/s  median   17.909 ms  p99   20.487 ms  (1110 queries, 0 errors, peak 497.4 MiB)
+   build  clients=2      105.00 q/s  median   18.956 ms  p99   22.095 ms  (2100 queries, 0 errors, peak 609.8 MiB)
+   build  clients=4      168.00 q/s  median   23.619 ms  p99   31.709 ms  (3360 queries, 0 errors, peak 756.1 MiB)
+   build  clients=8      189.55 q/s  median   41.401 ms  p99   66.736 ms  (3791 queries, 0 errors, peak 1005.3 MiB)
+   build  clients=16     189.40 q/s  median   83.131 ms  p99  144.599 ms  (3788 queries, 0 errors, peak 1347.0 MiB)
+   build  clients=32     187.15 q/s  median  169.099 ms  p99  295.127 ms  (3743 queries, 0 errors, peak 2005.4 MiB)
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf10/throughput_sf10_threads32_1793731369540570617.csv

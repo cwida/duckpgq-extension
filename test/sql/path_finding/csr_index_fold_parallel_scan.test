@@ -1,0 +1,99 @@
+# name: test/sql/path_finding/csr_index_fold_parallel_scan.test
+# description: A fold scans the edge table in parallel, a row group per thread; the folded epoch answers like the log overlay before the fold and like an index CREATE INDEX builds from the same rows (the parallel sink), with and without threads
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# 600000 edges over 60000 vertices: five row groups, so the fold's scan has several assignments per thread
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(0, 60000);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows SELECT range % 60000, (range * 7919 + 13) % 60000 FROM range(0, 600000);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+statement ok
+CREATE TABLE srcs AS SELECT (range * 937) % 60000 AS s FROM range(64);
+
+statement ok
+CREATE TABLE pairs AS SELECT (range * 4099) % 60000 AS s, (range * 7901 + 17) % 60000 AS d FROM range(2048);
+
+# Changes in the log: deletes spread over the row groups and appends, so the folded epoch differs from the first
+statement ok
+DELETE FROM knows WHERE (src * 31 + dst) % 97 = 0;
+
+statement ok
+INSERT INTO knows SELECT range % 60000, (range * 104729 + 7) % 60000 FROM range(0, 50000);
+
+statement ok
+CREATE TABLE before_reach AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS r FROM srcs);
+
+statement ok
+CREATE TABLE before_pairs AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len FROM pairs;
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr') LIKE 'epochs=1;%';
+----
+true
+
+statement ok
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+
+query I
+SELECT duckpgq_csr_index_fold_stats('knows', 'knows_csr') LIKE 'folds=1;last_fold_ms=%;last_fold_scan_ms=%;fold_ms=%';
+----
+true
+
+statement ok
+CREATE TABLE after_reach AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS r FROM srcs);
+
+statement ok
+CREATE TABLE after_pairs AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len FROM pairs;
+
+query IIII
+SELECT (SELECT count(*) FROM before_reach) = (SELECT count(*) FROM after_reach),
+       (SELECT count(*) FROM (SELECT * FROM before_reach EXCEPT ALL SELECT * FROM after_reach)),
+       (SELECT count(*) FROM (SELECT * FROM after_reach EXCEPT ALL SELECT * FROM before_reach)),
+       (SELECT count(*) FROM (SELECT * FROM before_pairs EXCEPT ALL SELECT * FROM after_pairs));
+----
+true	0	0	0
+
+# An index built by CREATE INDEX from the same rows (the parallel sink) answers the same
+statement ok
+CREATE INDEX knows_csr2 ON knows USING CSR (src, dst);
+
+query II
+SELECT (SELECT count(*) FROM (SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr2') AS r FROM srcs) EXCEPT ALL SELECT * FROM after_reach)),
+       (SELECT count(*) FROM (SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr2') AS len FROM pairs EXCEPT ALL SELECT * FROM after_pairs));
+----
+0	0
+
+# The fold's answer does not depend on the thread count
+statement ok
+SET threads = 1;
+
+statement ok
+DELETE FROM knows WHERE (src * 17 + dst) % 101 = 0;
+
+statement ok
+CREATE TABLE before_single AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS r FROM srcs);
+
+statement ok
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+
+query II
+SELECT duckpgq_csr_index_fold_stats('knows', 'knows_csr') LIKE 'folds=2;%',
+       (SELECT count(*) FROM (SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS r FROM srcs) EXCEPT ALL SELECT * FROM before_single));
+----
+true	0

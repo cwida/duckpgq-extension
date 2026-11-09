@@ -1,0 +1,25 @@
+system,config,settings,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,timeout_s,benchmark_notes,repo_commit
+duckpgq_build,baseline,,random_pairs,1,,1,ok,0.149000,1,4,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_build,baseline,,random_pairs,2048,,1,ok,0.898000,775,2926,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_build,baseline,,all_pairs,4000,20,1,ok,0.229000,1121,4245,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_build,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,random_pairs,1,,1,ok,0.185000,1,4,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_build,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,random_pairs,2048,,1,ok,0.885000,775,2926,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_build,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,all_pairs,4000,20,1,ok,0.639000,1121,4245,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_build,no_lane_waves,experimental_path_finding_operator_lane_waves=false,random_pairs,1,,1,ok,0.157000,1,4,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_build,no_lane_waves,experimental_path_finding_operator_lane_waves=false,random_pairs,2048,,1,ok,0.875000,775,2926,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_build,no_lane_waves,experimental_path_finding_operator_lane_waves=false,all_pairs,4000,20,1,ok,0.241000,1121,4245,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_build,paths,,random_pairs,1,,1,ok,0.234000,1,4,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_build,paths,,random_pairs,2048,,1,ok,4.759000,775,2926,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_build,paths,,all_pairs,4000,20,1,ok,0.352000,1121,4245,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,baseline,,random_pairs,1,,1,ok,0.009000,1,4,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,baseline,,random_pairs,2048,,1,ok,0.738000,775,2926,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,baseline,,all_pairs,4000,20,1,ok,0.079000,1121,4245,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,random_pairs,1,,1,ok,0.045000,1,4,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,random_pairs,2048,,1,ok,0.718000,775,2926,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,no_source_grouping,experimental_path_finding_operator_source_group_ratio=0 experimental_path_finding_operator_few_sources_limit=0,all_pairs,4000,20,1,ok,0.509000,1121,4245,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,no_lane_waves,experimental_path_finding_operator_lane_waves=false,random_pairs,1,,1,ok,0.009000,1,4,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,no_lane_waves,experimental_path_finding_operator_lane_waves=false,random_pairs,2048,,1,ok,0.716000,775,2926,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,no_lane_waves,experimental_path_finding_operator_lane_waves=false,all_pairs,4000,20,1,ok,0.091000,1121,4245,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,paths,,random_pairs,1,,1,ok,0.013000,1,4,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,paths,,random_pairs,2048,,1,ok,3.311000,775,2926,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260
+duckpgq_index,paths,,all_pairs,4000,20,1,ok,0.120000,1121,4245,32,600.0,section3 with lane waves SF100,2620a9b6800500e80785d6596f461fff3ccf5260

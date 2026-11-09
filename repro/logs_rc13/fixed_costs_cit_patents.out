@@ -1,0 +1,15 @@
+   duckdb           database_file                     s      323235840 B    19.57 B/edge
+   duckpgq_index    index_build_repeat1         1.005 s      281802826 B    17.06 B/edge
+   duckpgq_index    index_build_repeat2         0.978 s      281802826 B    17.06 B/edge
+   duckpgq_index    index_build_repeat3         0.984 s      281802826 B    17.06 B/edge
+Ensuring graphalytics_cit_Patents benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_cit_Patents in 0.28s
+Ensuring graphalytics_cit_Patents benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for graphalytics_cit_Patents in 0.32s
+Loading graphalytics_cit_Patents into Kuzu at /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/kuzu/graphalytics_cit_Patents.kuzu
+Loaded Kuzu database with 16518947 edges in 2.1s
+   kuzu             load                        2.791 s      398254080 B    24.11 B/edge
+   memgraph         load                       87.842 s     1954210119 B   118.30 B/edge
+   falkordb         load                      797.073 s     1170210816 B    70.84 B/edge
+   neo4j            load                      267.227 s      881007656 B    53.33 B/edge
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_cit_Patents/fixed_costs_graphalytics_cit_Patents_threads32_1793781701773572950.csv

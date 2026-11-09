@@ -1,0 +1,142 @@
+# name: test/sql/path_finding/reach_dense_results.test
+# description: a source that reaches most of the graph keeps its reach result as one byte per vertex (distance + 1) instead of (vertex, distance) entries; the answers equal the entry form on the lane waves and the per-source searches, a lane whose search runs past 254 levels falls back to entries, and the dense form fits a memory budget the entries exceed
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# 60000 vertices, 600000 random edges: every source reaches nearly every vertex within a few levels
+statement ok
+CREATE TABLE pv AS SELECT range AS id FROM range(60000);
+
+statement ok
+CREATE TABLE pe AS SELECT range % 60000 AS src, (range * 7919 + (range // 60000) * 104729 + 13) % 60000 AS dst FROM range(600000);
+
+statement ok
+CREATE INDEX pe_csr ON pe USING CSR (src, dst);
+
+statement ok
+CREATE TABLE lane_sources AS SELECT (range * 937) % 60000 AS s FROM range(64);
+
+statement ok
+CREATE TABLE few_sources AS SELECT (range * 14011) % 60000 AS s FROM range(8);
+
+foreach srcs lane_sources few_sources
+
+statement ok
+SET experimental_path_finding_operator_reach_dense_divisor = 0;
+
+statement ok
+CREATE OR REPLACE TABLE as_entries AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM {srcs});
+
+statement ok
+SET experimental_path_finding_operator_reach_dense_divisor = 64;
+
+statement ok
+CREATE OR REPLACE TABLE as_bytes AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM {srcs});
+
+query IIII
+SELECT (SELECT count(*) FROM as_bytes) > 0.9 * (SELECT count(*) FROM {srcs}) * 60000,
+       (SELECT count(*) FROM as_entries) = (SELECT count(*) FROM as_bytes),
+       (SELECT count(*) FROM (SELECT * FROM as_entries EXCEPT ALL SELECT * FROM as_bytes)),
+       (SELECT count(*) FROM (SELECT * FROM as_bytes EXCEPT ALL SELECT * FROM as_entries));
+----
+true	true	0	0
+
+endloop
+
+# 64 sources x 60000 reached vertices: 61 MB as entries (16 bytes each in the budget), 3.8 MB as bytes
+statement ok
+SET memory_limit = '64MiB';
+
+statement ok
+SET experimental_path_finding_operator_reach_dense_divisor = 0;
+
+statement error
+SELECT count(*) FROM (SELECT reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM lane_sources);
+----
+the reach result exceeds 48.0 MiB
+
+statement ok
+SET experimental_path_finding_operator_reach_dense_divisor = 64;
+
+query I
+SELECT count(*) > 0.9 * 64 * 60000 FROM (SELECT reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM lane_sources);
+----
+true
+
+statement ok
+RESET memory_limit;
+
+# A plain ring of 2000 vertices: a lane reaches two vertices per level, turns dense at level 16 and runs to level
+# 1000, so at level 254 it falls back to entries; the per-source searches see the depth and stay entries
+statement ok
+CREATE TABLE rv AS SELECT range AS id FROM range(2000);
+
+statement ok
+CREATE TABLE re AS SELECT id AS src, (id + 1) % 2000 AS dst FROM rv UNION ALL SELECT id, (id + 1999) % 2000 FROM rv;
+
+statement ok
+CREATE INDEX re_csr ON re USING CSR (src, dst);
+
+statement ok
+CREATE TABLE ring_sources AS SELECT (range * 31) % 2000 AS s FROM range(64) UNION ALL SELECT 5;
+
+statement ok
+SET experimental_path_finding_operator_reach_dense_divisor = 0;
+
+statement ok
+CREATE OR REPLACE TABLE ring_entries AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|re|re_csr') AS r FROM ring_sources);
+
+statement ok
+SET experimental_path_finding_operator_reach_dense_divisor = 64;
+
+statement ok
+CREATE OR REPLACE TABLE ring_bytes AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|re|re_csr') AS r FROM ring_sources);
+
+query IIII
+SELECT (SELECT count(*) FROM ring_bytes) = 65 * 2000,
+       (SELECT max(len) FROM ring_bytes) = 1000,
+       (SELECT count(*) FROM (SELECT * FROM ring_entries EXCEPT ALL SELECT * FROM ring_bytes)),
+       (SELECT count(*) FROM (SELECT * FROM ring_bytes EXCEPT ALL SELECT * FROM ring_entries));
+----
+true	true	0	0
+
+# Keys with gaps in a dense range (every third number): the index dictionary is a bitmap, and the dense scatter
+# resolves keys with the forward cursor; the entry form resolves them one by one
+statement ok
+CREATE TABLE gv AS SELECT range * 3 AS id FROM range(40000);
+
+statement ok
+CREATE TABLE ge AS SELECT (range % 40000) * 3 AS src, ((range * 7919 + (range // 40000) * 104729 + 13) % 40000) * 3 AS dst FROM range(400000);
+
+statement ok
+CREATE INDEX ge_csr ON ge USING CSR (src, dst);
+
+statement ok
+CREATE TABLE gap_sources AS SELECT ((range * 937) % 40000) * 3 AS s FROM range(64);
+
+statement ok
+SET experimental_path_finding_operator_reach_dense_divisor = 0;
+
+statement ok
+CREATE OR REPLACE TABLE gap_entries AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|ge|ge_csr') AS r FROM gap_sources);
+
+statement ok
+SET experimental_path_finding_operator_reach_dense_divisor = 64;
+
+statement ok
+CREATE OR REPLACE TABLE gap_bytes AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|ge|ge_csr') AS r FROM gap_sources);
+
+query IIII
+SELECT (SELECT count(*) FROM gap_bytes) > 0.9 * 64 * 40000,
+       (SELECT count(*) FROM gap_bytes WHERE dst % 3 <> 0),
+       (SELECT count(*) FROM (SELECT * FROM gap_entries EXCEPT ALL SELECT * FROM gap_bytes)),
+       (SELECT count(*) FROM (SELECT * FROM gap_bytes EXCEPT ALL SELECT * FROM gap_entries));
+----
+true	0	0	0
+
+statement ok
+RESET experimental_path_finding_operator_reach_dense_divisor;

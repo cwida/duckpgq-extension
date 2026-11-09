@@ -1,0 +1,9 @@
+events=1350 commits=60 mismatches=0 errors=0 wall=16.1s
+Ensuring sf300 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf300 in 0.32s
+--database /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/work/ldbc_sf300_concurrent.duckdb --extension /local/home/dwolde/bootstrap/duckpgq-extension/build/release/extension/duckpgq/duckpgq.duckdb_extension --output /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf300/concurrent_sssp_pairs1024_threads32_readers4_batch2000x60_pause200_fold0.1_1793934691603324207.csv --pair-table benchmark_pairs_same_src_1024 --index-name pathfinding_benchmark_csr --threads 32 --readers 4 --batches 60 --batch-size 2000 --writer-pause-ms 200 --fold-ratio 0.1 --no-build
+peak_rss_kib=5950980
+   query_index: n=1290 median 0.0306s p99 0.0543s max 0.0635s
+   commit: n=60 median 0.0471s p99 0.0898s max 0.7901s
+   mismatches=0 errors=0 peak_rss_mib=5811.5
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf300/concurrent_sssp_pairs1024_threads32_readers4_batch2000x60_pause200_fold0.1_1793934691603324207.csv

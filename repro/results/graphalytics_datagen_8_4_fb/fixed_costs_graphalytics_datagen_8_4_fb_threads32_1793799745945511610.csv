@@ -1,0 +1,2 @@
+system,scale_factor,measure,seconds,bytes,edges,bytes_per_edge,threads,benchmark_notes,repo_commit
+duckdb,datagen-8_4-fb,database_file,,10645680128,538958354,19.75,32,fixed costs datagen-8_4-fb repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,ec25a51968dc6e326f11db1d206b11c2aa09606f

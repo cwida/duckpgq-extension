@@ -1,0 +1,124 @@
+system,scale_factor,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,client_threads,timeout_s,benchmark_notes,repo_commit
+duckpgq_build,graph500-24,random_pairs,1,,1,ok,2.670000,1,3,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,1,,2,ok,2.707000,1,3,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,1,,3,ok,2.666000,1,3,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,16,,1,ok,5.820000,16,55,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,16,,2,ok,5.811000,16,55,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,16,,3,ok,5.866000,16,55,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,128,,1,ok,3.902000,128,438,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,128,,2,ok,3.858000,128,438,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,128,,3,ok,3.792000,128,438,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,1024,,1,ok,6.072000,1020,3493,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,1024,,2,ok,5.947000,1020,3493,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,1024,,3,ok,5.995000,1020,3493,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,2048,,1,ok,8.570000,2043,6991,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,2048,,2,ok,8.525000,2043,6991,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,2048,,3,ok,8.716000,2043,6991,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,16384,,1,ok,42.434000,16359,55740,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,16384,,2,ok,41.708000,16359,55740,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,16384,,3,ok,41.990000,16359,55740,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,65536,,1,ok,148.067000,65448,222899,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,65536,,2,ok,147.369000,65448,222899,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,random_pairs,65536,,3,ok,146.319000,65448,222899,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,1,1,ok,2.904000,8865133,30391967,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,1,2,ok,2.866000,8865133,30391967,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,1,3,ok,2.950000,8865133,30391967,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,16,1,ok,7.190000,141842128,486112198,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,16,2,ok,7.044000,141842128,486112198,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,16,3,ok,6.656000,141842128,486112198,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,128,1,ok,6.227000,1134737024,3869486690,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,128,2,ok,6.347000,1134737024,3869486690,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,128,3,ok,6.352000,1134737024,3869486690,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,1024,1,"error: duckpgq_state_init
+false
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+Run Time (s): real 9.728 user 141.882029 sys 36.046754
+""('strategy=' || duckpgq_path_finding_strategy",0.000000,,,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,1024,2,"error: duckpgq_state_init
+false
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+Run Time (s): real 9.822 user 142.883449 sys 35.496720
+""('strategy=' || duckpgq_path_finding_strategy",0.000000,,,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_build,graph500-24,multi_source,,1024,3,"error: duckpgq_state_init
+false
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+Run Time (s): real 12.295 user 147.860962 sys 35.700651
+""('strategy=' || duckpgq_path_finding_strateg",0.000000,,,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,1,,1,ok,0.198000,1,3,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,1,,2,ok,0.191000,1,3,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,1,,3,ok,0.194000,1,3,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,16,,1,ok,3.583000,16,55,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,16,,2,ok,3.732000,16,55,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,16,,3,ok,3.380000,16,55,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,128,,1,ok,0.754000,128,438,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,128,,2,ok,0.759000,128,438,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,128,,3,ok,0.755000,128,438,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,1024,,1,ok,2.961000,1020,3493,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,1024,,2,ok,2.853000,1020,3493,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,1024,,3,ok,2.966000,1020,3493,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,2048,,1,ok,5.559000,2043,6991,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,2048,,2,ok,5.468000,2043,6991,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,2048,,3,ok,5.473000,2043,6991,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,16384,,1,ok,38.210000,16359,55740,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,16384,,2,ok,38.096000,16359,55740,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,16384,,3,ok,37.757000,16359,55740,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,65536,,1,ok,141.867000,65448,222899,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,65536,,2,ok,145.152000,65448,222899,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,random_pairs,65536,,3,ok,143.209000,65448,222899,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,1,1,ok,0.443000,8865133,30391967,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,1,2,ok,0.429000,8865133,30391967,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,1,3,ok,0.426000,8865133,30391967,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,16,1,ok,5.109000,141842128,486112198,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,16,2,ok,5.256000,141842128,486112198,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,16,3,ok,5.217000,141842128,486112198,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,128,1,ok,4.657000,1134737024,3869486690,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,128,2,ok,4.662000,1134737024,3869486690,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,128,3,ok,4.538000,1134737024,3869486690,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,1024,1,"error: duckpgq_state_init
+false
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+Run Time (s): real 7.033 user 89.719557 sys 28.468493
+""('strategy=' || duckpgq_path_finding_strategy(",0.000000,,,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,1024,2,"error: duckpgq_state_init
+false
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+Run Time (s): real 7.118 user 88.117740 sys 29.965795
+""('strategy=' || duckpgq_path_finding_strategy(",0.000000,,,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+duckpgq_index,graph500-24,multi_source,,1024,3,"error: duckpgq_state_init
+false
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+count(r[2]),""COALESCE(sum(r[2]), 0)""
+Run Time (s): real 7.027 user 89.647096 sys 29.199909
+""('strategy=' || duckpgq_path_finding_strategy(",0.000000,,,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,1,,1,ok,9.874564,1,3,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,1,,2,ok,0.383331,1,3,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,1,,3,ok,0.381712,1,3,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,16,,1,ok,10.801443,16,55,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,16,,2,ok,10.646148,16,55,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,16,,3,ok,10.647200,16,55,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,128,,1,ok,66.492658,128,438,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,128,,2,ok,65.875847,128,438,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,128,,3,ok,66.377517,128,438,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,1024,,1,ok,541.339496,1020,3493,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,1024,,2,ok,538.546737,1020,3493,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,1024,,3,ok,537.803310,1020,3493,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,2048,,1,timed_out,600.027167,,,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,16384,,1,timed_out_inferred,0.000000,,,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,random_pairs,65536,,1,timed_out_inferred,0.000000,,,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,1,1,ok,0.343613,8865133,30391967,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,1,2,ok,0.326519,8865133,30391967,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,1,3,ok,0.335917,8865133,30391967,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,16,1,ok,8.134605,141842128,486112198,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,16,2,ok,8.157713,141842128,486112198,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,16,3,ok,8.134394,141842128,486112198,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,128,1,ok,61.571729,1134737024,3869486690,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,128,2,ok,61.627204,1134737024,3869486690,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,128,3,ok,61.637878,1134737024,3869486690,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,1024,1,ok,494.714793,9077896192,30909151351,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,1024,2,ok,494.570911,9077896192,30909151351,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07
+kuzu,graph500-24,multi_source,,1024,3,ok,493.747765,9077896192,30909151351,32,1,600.0,W30 sweep graph500-24 repro a146ffee dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,a146ffee3294248d61bffed82df4bb5ea1cf5d07

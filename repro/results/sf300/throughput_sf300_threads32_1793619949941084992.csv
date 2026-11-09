@@ -1,0 +1,9 @@
+route,clients,queries,duration_s,queries_per_s,median_ms,p99_ms,mean_ms,errors,scale_factor,threads,pairs,benchmark_notes,repo_commit,events_file
+index,1,628,10.0,62.80,15.538,29.749,15.910,0,300,32,1024,2 Nov probe after cleanup b096d329,b096d3299ca3fab4b0bca242873413220c265055,index_clients1.csv
+index,4,2100,10.0,210.00,18.314,39.586,19.020,0,300,32,1024,2 Nov probe after cleanup b096d329,b096d3299ca3fab4b0bca242873413220c265055,index_clients4.csv
+index,16,3027,10.0,302.70,47.621,137.996,52.883,0,300,32,1024,2 Nov probe after cleanup b096d329,b096d3299ca3fab4b0bca242873413220c265055,index_clients16.csv
+index,32,3361,10.0,336.10,82.662,274.236,95.438,0,300,32,1024,2 Nov probe after cleanup b096d329,b096d3299ca3fab4b0bca242873413220c265055,index_clients32.csv
+build,1,37,10.0,3.70,273.281,293.714,275.154,0,300,32,1024,2 Nov probe after cleanup b096d329,b096d3299ca3fab4b0bca242873413220c265055,build_clients1.csv
+build,4,48,10.0,4.80,853.052,1202.530,858.894,0,300,32,1024,2 Nov probe after cleanup b096d329,b096d3299ca3fab4b0bca242873413220c265055,build_clients4.csv
+build,16,54,10.0,5.40,3402.095,4962.990,3378.667,0,300,32,1024,2 Nov probe after cleanup b096d329,b096d3299ca3fab4b0bca242873413220c265055,build_clients16.csv
+build,32,62,10.0,6.20,6077.710,10966.000,6763.117,0,300,32,1024,2 Nov probe after cleanup b096d329,b096d3299ca3fab4b0bca242873413220c265055,build_clients32.csv

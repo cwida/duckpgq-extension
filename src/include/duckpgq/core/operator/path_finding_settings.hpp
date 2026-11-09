@@ -21,10 +21,12 @@ struct PathFindingSettings {
 	      bitmap_filter_working_set(NonNegative(GetPathFindingBitmapFilterWorkingSet(context))),
 	      task_edges(NonNegative(GetPathFindingTaskEdges(context))),
 	      working_set_cap(ResolveWorkingSetCap(context)),
+	      reach_result_cap(ResolveReachResultCap(context, working_set_cap)),
 	      visit_prefetch(NonNegative(GetPathFindingVisitPrefetch(context))),
 	      sub_range_tasks(GetPathFindingSubRangeTasks(context)),
 	      sparse_level_divisor(NonNegative(GetPathFindingSparseLevelDivisor(context))),
-	      row_bucket_rows(GetPathFindingRowBucketRows(context)), reach_lanes(GetPathFindingReachLanes(context)) {
+	      row_bucket_rows(GetPathFindingRowBucketRows(context)), reach_lanes(GetPathFindingReachLanes(context)),
+	      reach_dense_divisor(NonNegative(GetPathFindingReachDenseDivisor(context))) {
 	}
 
 	//! experimental_path_finding_operator_benchmark, _benchmark_lane_activity, _benchmark_prefix
@@ -45,13 +47,18 @@ struct PathFindingSettings {
 	//! _working_set_cap resolved to bytes (0 = no bound): the memory safety bound of the schedulers, a quarter of
 	//! DuckDB's memory_limit unless set explicitly
 	idx_t working_set_cap;
+	//! REACH mode: bytes the materialized reach result may take (0 = no bound), memory_limit minus the working-set cap
+	//! (ReachResultBudget)
+	idx_t reach_result_cap;
 	idx_t visit_prefetch;
 	bool sub_range_tasks;
 	idx_t sparse_level_divisor;
 	//! CSR build: _row_bucket_rows (rows per bucket of a partition's row index; 0 = binary search)
 	int32_t row_bucket_rows;
-	//! Reach mode: _reach_lanes (more distinct sources than the few-sources limit run as lane waves)
+	//! Reach mode: _reach_lanes (more distinct sources than the few-sources limit run as lane waves),
+	//! _reach_dense_divisor (a source's result becomes a byte per vertex past 1/divisor of the vertices; 0 never)
 	bool reach_lanes;
+	idx_t reach_dense_divisor;
 
 	//! Groups or searches of `bytes_each` that fit the cap (at least one); `at_most` when the cap is off
 	idx_t CappedCount(double bytes_each, idx_t at_most) const {
@@ -76,6 +83,14 @@ private:
 			return 0; // no memory limit: no bound
 		}
 		return limit / 4;
+	}
+
+	static idx_t ResolveReachResultCap(ClientContext &context, idx_t working_set_cap) {
+		auto limit = BufferManager::GetBufferManager(context).GetMaxMemory();
+		if (limit == DConstants::INVALID_INDEX || limit == 0) {
+			return 0; // no memory limit: no bound
+		}
+		return working_set_cap < limit / 2 ? limit - working_set_cap : limit / 2;
 	}
 
 	static idx_t NonNegative(int64_t value) {

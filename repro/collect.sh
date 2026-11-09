@@ -20,11 +20,13 @@ else
     mkdir -p "${ARCHIVE_DIR}/${name}"
     cp -n "${dir}"*.csv "${ARCHIVE_DIR}/${name}/" 2>/dev/null || true
   done
-  # One text table per scale factor (the table printers take the newest file per system and shape)
+  # One text table per scale factor (the table printers take the newest file per system and shape, in the order
+  # given: files of the matrix's thread count only, sorted by their timestamp suffix; a probe at another thread count
+  # such as sweep_pairs_sf10_threads4_* sorts after threads32 by name and would otherwise pass for the newest file)
   : > "${ARCHIVE_DIR}/sweep_pairs_table.txt"; : > "${ARCHIVE_DIR}/ldbc_queries_table.txt"
   for sf in ${SCALE_FACTORS}; do
-    ${HARNESS} sweep-pairs-table  "${ARCHIVE_DIR}"/sf${sf}/sweep_pairs_*.csv  >> "${ARCHIVE_DIR}/sweep_pairs_table.txt"
-    ${HARNESS} ldbc-queries-table "${ARCHIVE_DIR}"/sf${sf}/ldbc_queries_*.csv >> "${ARCHIVE_DIR}/ldbc_queries_table.txt"
+    ${HARNESS} sweep-pairs-table  $(ls "${ARCHIVE_DIR}"/sf${sf}/sweep_pairs_sf${sf}_threads${THREADS}_*.csv | sort -t_ -k5,5n)  >> "${ARCHIVE_DIR}/sweep_pairs_table.txt"
+    ${HARNESS} ldbc-queries-table $(ls "${ARCHIVE_DIR}"/sf${sf}/ldbc_queries_sf${sf}_threads${THREADS}_*.csv | sort -t_ -k5,5n) >> "${ARCHIVE_DIR}/ldbc_queries_table.txt"
   done
   : > "${ARCHIVE_DIR}/crossover_table.txt"
   for sf in ${SCALE_FACTORS}; do

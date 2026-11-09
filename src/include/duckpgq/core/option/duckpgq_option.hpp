@@ -42,6 +42,7 @@ bool GetPathFindingSubRangeTasks(ClientContext &context);
 bool GetCSRIndexChangeGroups(ClientContext &context);
 bool GetPathFindingLaneWaves(ClientContext &context);
 bool GetPathFindingReachLanes(ClientContext &context);
+int32_t GetPathFindingReachDenseDivisor(ClientContext &context);
 bool GetPathFindingSourceSearchRounds(ClientContext &context);
 int32_t GetPathFindingVisitPrefetch(ClientContext &context);
 

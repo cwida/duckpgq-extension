@@ -64,8 +64,9 @@ void CSRIndexStatsFunction(DataChunk &args, ExpressionState &state, Vector &resu
 	result.SetValue(0, Value(stats));
 }
 
-//! duckpgq_csr_index_fold_stats(table, index): 'folds=..;last_fold_ms=..;fold_ms=..' (folds run since the index was
-//! bound; the update experiments report the fold latency a reader pays)
+//! duckpgq_csr_index_fold_stats(table, index): 'folds=..;last_fold_ms=..;last_fold_scan_ms=..;fold_ms=..' (folds run
+//! since the index was bound and the table-scan part of the last; the update experiments report the fold latency a
+//! reader pays)
 void CSRIndexFoldStatsFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &context = state.GetContext();
 	auto table_name = args.data[0].GetValue(0).GetValue<string>();

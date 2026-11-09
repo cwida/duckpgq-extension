@@ -1,42 +1,42 @@
 
-## LDBC queries (hop-count variants, undirected knows): mean seconds per query, SF10, 32 threads, timeout 600.0 s
+## LDBC queries (hop-count variants, undirected knows): seconds per query (median of the repeats per parameter set, mean over the sets), SF10, 32 threads, timeout 600.0 s
 
 | system | ic13 | bi19 | bi20 |
 |---|---|---|---|
-| duckpgq_build | 35 ms | 102 ms | 38 ms |
-| duckpgq_index | 4 ms | 61 ms | 5 ms |
-| kuzu | 12 ms | 1.6 s | 7.6 s |
-| memgraph | 433 ms | 1.6 s | 578 ms |
-| falkordb | 15 ms | 69.7 s | 11.3 s |
-| neo4j | 8 ms | 47 ms | 29 ms |
-| neo4j_gds | 67 ms | 10.3 s | 60.5 s |
-| memgraph@32 | 403 ms | 138 ms | 100 ms |
-| falkordb@32 | 15 ms | 18.8 s | 3.0 s |
-| kuzu@32 | 9 ms | 516 ms | 1.4 s |
+| duckpgq_build | 33 ms | 44 ms | 37 ms |
+| duckpgq_index | 4 ms | 12 ms | 5 ms |
+| kuzu | 8 ms | 1.6 s | 7.6 s |
+| memgraph | 375 ms | 1.4 s | 535 ms |
+| falkordb | 12 ms | 67.5 s | 10.9 s |
+| neo4j | 3 ms | 40 ms | 22 ms |
+| neo4j_gds | 69 ms | 11.0 s | 66.9 s |
+| memgraph@32 | 382 ms | 140 ms | 97 ms |
+| falkordb@32 | 12 ms | 18.4 s | 2.9 s |
+| kuzu@32 | 8 ms | 524 ms | 1.4 s |
 
-## LDBC queries (hop-count variants, undirected knows): mean seconds per query, SF100, 32 threads, timeout 600.0 s
-
-| system | ic13 | bi19 | bi20 |
-|---|---|---|---|
-| duckpgq_build | 273 ms | 4.7 s | 287 ms |
-| duckpgq_index | 14 ms | 3.6 s | 25 ms |
-| kuzu | 61 ms | 65.1 s | 165.4 s |
-| memgraph | 8.9 s | 369.3 s | 6.4 s |
-| falkordb | 63 ms | > 600.0 s | 402.8 s |
-| neo4j | 9 ms | 3.9 s | 120 ms |
-| neo4j_gds | 555 ms | > 600.0 s | > 600.0 s |
-| memgraph@32 | 8.9 s | 17.0 s | 656 ms |
-| falkordb@32 | 61 ms | > 600.0 s | 212.9 s |
-| kuzu@32 | 28 ms | 25.0 s | 32.9 s |
-
-## LDBC queries (hop-count variants, undirected knows): mean seconds per query, SF300, 32 threads, timeout 600.0 s
+## LDBC queries (hop-count variants, undirected knows): seconds per query (median of the repeats per parameter set, mean over the sets), SF100, 32 threads, timeout 600.0 s
 
 | system | ic13 | bi19 | bi20 |
 |---|---|---|---|
-| duckpgq_build | 619 ms | 39.4 s | 669 ms |
-| duckpgq_index | 28 ms | 30.6 s | 57 ms |
-| kuzu | 186 ms | 323.1 s | > 600.0 s |
-| memgraph | 32.7 s | > 600.0 s | 48.3 s |
-| falkordb | 121 ms | > 600.0 s | > 600.0 s |
-| neo4j | 6 ms | 46.1 s | 1.1 s |
-| neo4j_gds | 1.9 s | > 600.0 s | > 600.0 s |
+| duckpgq_build | 267 ms | 423 ms | 288 ms |
+| duckpgq_index | 14 ms | 137 ms | 26 ms |
+| kuzu | 24 ms | 63.1 s | 165.0 s |
+| memgraph | 8.7 s | 361.5 s | 6.2 s |
+| falkordb | 52 ms | > 600.0 s | 411.5 s |
+| neo4j | 7 ms | 3.9 s | 126 ms |
+| neo4j_gds | 530 ms | > 600.0 s | > 600.0 s |
+| memgraph@32 | 8.9 s | 17.0 s | 646 ms |
+| falkordb@32 | 53 ms | > 600.0 s | 212.2 s |
+| kuzu@32 | 25 ms | 22.3 s | 29.4 s |
+
+## LDBC queries (hop-count variants, undirected knows): seconds per query (median of the repeats per parameter set, mean over the sets), SF300, 32 threads, timeout 600.0 s
+
+| system | ic13 | bi19 | bi20 |
+|---|---|---|---|
+| duckpgq_build | 626 ms | 1.6 s | 692 ms |
+| duckpgq_index | 28 ms | 765 ms | 61 ms |
+| kuzu | 50 ms | 332.0 s | > 600.0 s |
+| memgraph | 31.8 s | > 600.0 s | 47.8 s |
+| falkordb | 116 ms | > 600.0 s | > 600.0 s |
+| neo4j | 6 ms | 47.0 s | 1.2 s |
+| neo4j_gds | 1.5 s | > 600.0 s | > 600.0 s |

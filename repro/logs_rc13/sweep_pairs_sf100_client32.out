@@ -1,0 +1,113 @@
+Ensuring sf100 benchmark_pairs_1 exists
+Prepared benchmark_pairs_1 for sf100 in 0.19s
+Ensuring sf100 benchmark_pairs_16 exists
+Prepared benchmark_pairs_16 for sf100 in 0.19s
+Ensuring sf100 benchmark_pairs_128 exists
+Prepared benchmark_pairs_128 for sf100 in 0.19s
+Ensuring sf100 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf100 in 0.20s
+Ensuring sf100 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for sf100 in 0.22s
+Ensuring sf100 benchmark_pairs_16384 exists
+Prepared benchmark_pairs_16384 for sf100 in 0.44s
+Ensuring sf100 benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for sf100 in 1.19s
+== SF100: 473001 vertices, 18655515 edges, 382948 vertices with an outgoing edge (81.0%), 435989 with an incoming edge (92.2%); sources are sampled from the former, destinations from the latter
+== memgraph: loading sf100
+   loaded in 120.2s, 18655515 edges
+   memgraph@32    random_pairs pairs=1       sources=      repeat 1:    0.593s 0/0 (0.0% of the pairs reachable)
+   memgraph@32    random_pairs pairs=1       sources=      repeat 2:    0.596s 0/0 (0.0% of the pairs reachable)
+   memgraph@32    random_pairs pairs=1       sources=      repeat 3:    0.585s 0/0 (0.0% of the pairs reachable)
+   memgraph@32    random_pairs pairs=16      sources=      repeat 1:    2.779s 9/39 (56.2% of the pairs reachable)
+   memgraph@32    random_pairs pairs=16      sources=      repeat 2:    2.983s 9/39 (56.2% of the pairs reachable)
+   memgraph@32    random_pairs pairs=16      sources=      repeat 3:    2.791s 9/39 (56.2% of the pairs reachable)
+   memgraph@32    random_pairs pairs=128     sources=      repeat 1:    8.712s 60/231 (46.9% of the pairs reachable)
+   memgraph@32    random_pairs pairs=128     sources=      repeat 2:    8.743s 60/231 (46.9% of the pairs reachable)
+   memgraph@32    random_pairs pairs=128     sources=      repeat 3:    8.741s 60/231 (46.9% of the pairs reachable)
+   memgraph@32    random_pairs pairs=1024    sources=      repeat 1:   52.068s 507/1917 (49.5% of the pairs reachable)
+   memgraph@32    random_pairs pairs=1024    sources=      repeat 2:   54.240s 507/1917 (49.5% of the pairs reachable)
+   memgraph@32    random_pairs pairs=1024    sources=      repeat 3:   53.040s 507/1917 (49.5% of the pairs reachable)
+   memgraph@32    random_pairs pairs=2048    sources=      repeat 1:   95.197s 1030/3892 (50.3% of the pairs reachable)
+   memgraph@32    random_pairs pairs=2048    sources=      repeat 2:   93.167s 1030/3892 (50.3% of the pairs reachable)
+   memgraph@32    random_pairs pairs=2048    sources=      repeat 3:   92.824s 1030/3892 (50.3% of the pairs reachable)
+   cancel failed: Failed to read from defunct connection IPv4Address(('localhost', 7687)) (ResolvedIPv4Address(('127.0.0.1', 7687)))
+   memgraph@32    random_pairs pairs=16384   sources=      repeat 1:  600.192s timed_out
+   memgraph@32    random_pairs pairs=65536   sources=      repeat 1:    0.000s timed_out_inferred
+   memgraph@32    multi_source pairs=        sources=1     repeat 1:    1.109s 257637/923434 (54.5% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1     repeat 2:    1.142s 257637/923434 (54.5% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1     repeat 3:    1.123s 257637/923434 (54.5% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=16    repeat 1:    2.555s 3269123/12710890 (43.2% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=16    repeat 2:    2.569s 3269123/12710890 (43.2% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=16    repeat 3:    2.593s 3269123/12710890 (43.2% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=128   repeat 1:    7.335s 27135971/104725939 (44.8% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=128   repeat 2:    7.606s 27135971/104725939 (44.8% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=128   repeat 3:    7.589s 27135971/104725939 (44.8% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1024  repeat 1:   43.073s 201529578/767116632 (41.6% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1024  repeat 2:   43.098s 201529578/767116632 (41.6% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1024  repeat 3:   43.886s 201529578/767116632 (41.6% of the vertices reached per source)
+== falkordb: loading sf100
+   loaded in 877.5s, 18655515 edges
+   falkordb@32    random_pairs pairs=1       sources=      repeat 1:    0.145s 0/0 (0.0% of the pairs reachable)
+   falkordb@32    random_pairs pairs=1       sources=      repeat 2:    0.046s 0/0 (0.0% of the pairs reachable)
+   falkordb@32    random_pairs pairs=1       sources=      repeat 3:    0.046s 0/0 (0.0% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16      sources=      repeat 1:    0.247s 9/39 (56.2% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16      sources=      repeat 2:    0.235s 9/39 (56.2% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16      sources=      repeat 3:    0.237s 9/39 (56.2% of the pairs reachable)
+   falkordb@32    random_pairs pairs=128     sources=      repeat 1:    1.797s 60/231 (46.9% of the pairs reachable)
+   falkordb@32    random_pairs pairs=128     sources=      repeat 2:    1.794s 60/231 (46.9% of the pairs reachable)
+   falkordb@32    random_pairs pairs=128     sources=      repeat 3:    1.768s 60/231 (46.9% of the pairs reachable)
+   falkordb@32    random_pairs pairs=1024    sources=      repeat 1:   13.834s 507/1917 (49.5% of the pairs reachable)
+   falkordb@32    random_pairs pairs=1024    sources=      repeat 2:   14.004s 507/1917 (49.5% of the pairs reachable)
+   falkordb@32    random_pairs pairs=1024    sources=      repeat 3:   13.926s 507/1917 (49.5% of the pairs reachable)
+   falkordb@32    random_pairs pairs=2048    sources=      repeat 1:   27.942s 1030/3892 (50.3% of the pairs reachable)
+   falkordb@32    random_pairs pairs=2048    sources=      repeat 2:   27.881s 1030/3892 (50.3% of the pairs reachable)
+   falkordb@32    random_pairs pairs=2048    sources=      repeat 3:   28.061s 1030/3892 (50.3% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16384   sources=      repeat 1:  223.058s 7893/29792 (48.2% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16384   sources=      repeat 2:  222.975s 7893/29792 (48.2% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16384   sources=      repeat 3:  223.272s 7893/29792 (48.2% of the pairs reachable)
+   falkordb@32    random_pairs pairs=65536   sources=      repeat 1:  600.488s timed_out
+   falkordb@32    multi_source pairs=        sources=1     repeat 1:  600.034s timed_out
+   falkordb@32    multi_source pairs=        sources=16    repeat 1:    0.000s timed_out_inferred
+   falkordb@32    multi_source pairs=        sources=128   repeat 1:    0.000s timed_out_inferred
+   falkordb@32    multi_source pairs=        sources=1024  repeat 1:    0.000s timed_out_inferred
+== kuzu: loading sf100
+Ensuring sf100 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf100 in 0.21s
+Ensuring sf100 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf100 in 0.20s
+   loaded in 0.5s, 18655515 edges
+   kuzu@32        random_pairs pairs=1       sources=      repeat 1:    0.044s 0/0 (0.0% of the pairs reachable)
+   kuzu@32        random_pairs pairs=1       sources=      repeat 2:    0.036s 0/0 (0.0% of the pairs reachable)
+   kuzu@32        random_pairs pairs=1       sources=      repeat 3:    0.034s 0/0 (0.0% of the pairs reachable)
+   kuzu@32        random_pairs pairs=16      sources=      repeat 1:    0.193s 9/39 (56.2% of the pairs reachable)
+   kuzu@32        random_pairs pairs=16      sources=      repeat 2:    0.186s 9/39 (56.2% of the pairs reachable)
+   kuzu@32        random_pairs pairs=16      sources=      repeat 3:    0.187s 9/39 (56.2% of the pairs reachable)
+   kuzu@32        random_pairs pairs=128     sources=      repeat 1:    0.637s 60/231 (46.9% of the pairs reachable)
+   kuzu@32        random_pairs pairs=128     sources=      repeat 2:    0.617s 60/231 (46.9% of the pairs reachable)
+   kuzu@32        random_pairs pairs=128     sources=      repeat 3:    0.615s 60/231 (46.9% of the pairs reachable)
+   kuzu@32        random_pairs pairs=1024    sources=      repeat 1:    3.650s 507/1917 (49.5% of the pairs reachable)
+   kuzu@32        random_pairs pairs=1024    sources=      repeat 2:    3.677s 507/1917 (49.5% of the pairs reachable)
+   kuzu@32        random_pairs pairs=1024    sources=      repeat 3:    3.674s 507/1917 (49.5% of the pairs reachable)
+   kuzu@32        random_pairs pairs=2048    sources=      repeat 1:    6.717s 1030/3892 (50.3% of the pairs reachable)
+   kuzu@32        random_pairs pairs=2048    sources=      repeat 2:    6.707s 1030/3892 (50.3% of the pairs reachable)
+   kuzu@32        random_pairs pairs=2048    sources=      repeat 3:    6.680s 1030/3892 (50.3% of the pairs reachable)
+   kuzu@32        random_pairs pairs=16384   sources=      repeat 1:   47.828s 7893/29792 (48.2% of the pairs reachable)
+   kuzu@32        random_pairs pairs=16384   sources=      repeat 2:   47.929s 7893/29792 (48.2% of the pairs reachable)
+   kuzu@32        random_pairs pairs=16384   sources=      repeat 3:   47.983s 7893/29792 (48.2% of the pairs reachable)
+   kuzu@32        random_pairs pairs=65536   sources=      repeat 1:  188.371s 31274/118174 (47.7% of the pairs reachable)
+   kuzu@32        random_pairs pairs=65536   sources=      repeat 2:  188.347s 31274/118174 (47.7% of the pairs reachable)
+   kuzu@32        random_pairs pairs=65536   sources=      repeat 3:  188.351s 31274/118174 (47.7% of the pairs reachable)
+   kuzu@32        multi_source pairs=        sources=1     repeat 1:    0.017s 257637/923434 (54.5% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1     repeat 2:    0.013s 257637/923434 (54.5% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1     repeat 3:    0.012s 257637/923434 (54.5% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=16    repeat 1:    0.153s 3269123/12710890 (43.2% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=16    repeat 2:    0.152s 3269123/12710890 (43.2% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=16    repeat 3:    0.164s 3269123/12710890 (43.2% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=128   repeat 1:    0.804s 27135971/104725939 (44.8% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=128   repeat 2:    0.788s 27135971/104725939 (44.8% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=128   repeat 3:    0.786s 27135971/104725939 (44.8% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1024  repeat 1:    4.886s 201529578/767116632 (41.6% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1024  repeat 2:    4.854s 201529578/767116632 (41.6% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1024  repeat 3:    4.816s 201529578/767116632 (41.6% of the vertices reached per source)
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf100/sweep_pairs_sf100_threads32_1793896511402564673.csv
+All 11 points agree across the systems that completed them

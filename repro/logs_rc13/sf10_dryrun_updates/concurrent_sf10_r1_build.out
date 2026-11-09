@@ -1,0 +1,9 @@
+events=1887 commits=190 mismatches=0 errors=0 wall=42.7s
+Ensuring sf10 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf10 in 0.09s
+--database /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/work/ldbc_sf10_concurrent.duckdb --extension /local/home/dwolde/bootstrap/duckpgq-extension/build/release/extension/duckpgq/duckpgq.duckdb_extension --output /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers1_batch2000x190_pause200_fold0.1_1793731877763935019.csv --pair-table benchmark_pairs_same_src_1024 --index-name pathfinding_benchmark_csr --threads 32 --readers 1 --batches 190 --batch-size 2000 --writer-pause-ms 200 --fold-ratio 0.1 --no-index
+peak_rss_kib=1717056
+   query_build: n=1697 median 0.0209s p99 0.0234s max 0.0330s
+   commit: n=190 median 0.0220s p99 0.0740s max 0.1364s
+   mismatches=0 errors=0 peak_rss_mib=1676.8
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers1_batch2000x190_pause200_fold0.1_1793731877763935019.csv

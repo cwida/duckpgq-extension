@@ -1,0 +1,31 @@
+== Graphalytics cit-Patents: 3774768 vertices, 16518947 edges, 2089345 vertices with an outgoing edge (55.4%), 3258983 with an incoming edge (86.3%); sources are sampled from the former, destinations from the latter
+== duckpgq_build: loading graphalytics_cit_Patents
+   loaded in 0.0s, 16518947 edges
+   duckpgq_build  multi_source pairs=        sources=1     repeat 1:    0.141s 2194/10440 (0.1% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=1     repeat 2:    0.139s 2194/10440 (0.1% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=1     repeat 3:    0.141s 2194/10440 (0.1% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=16    repeat 1:    0.231s 50006/345586 (0.1% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=16    repeat 2:    0.241s 50006/345586 (0.1% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=16    repeat 3:    0.208s 50006/345586 (0.1% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=128   repeat 1:    0.280s 338030/2340655 (0.1% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=128   repeat 2:    0.269s 338030/2340655 (0.1% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=128   repeat 3:    0.270s 338030/2340655 (0.1% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=1024  repeat 1:    0.508s 2823316/19570377 (0.1% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=1024  repeat 2:    0.502s 2823316/19570377 (0.1% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=1024  repeat 3:    0.501s 2823316/19570377 (0.1% of the vertices reached per source)
+== duckpgq_index: loading graphalytics_cit_Patents
+   loaded in 0.1s, 16518947 edges
+   duckpgq_index  multi_source pairs=        sources=1     repeat 1:    0.032s 2194/10440 (0.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1     repeat 2:    0.031s 2194/10440 (0.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1     repeat 3:    0.032s 2194/10440 (0.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=16    repeat 1:    0.104s 50006/345586 (0.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=16    repeat 2:    0.096s 50006/345586 (0.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=16    repeat 3:    0.125s 50006/345586 (0.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=128   repeat 1:    0.187s 338030/2340655 (0.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=128   repeat 2:    0.171s 338030/2340655 (0.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=128   repeat 3:    0.172s 338030/2340655 (0.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 1:    0.430s 2823316/19570377 (0.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 2:    0.463s 2823316/19570377 (0.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 3:    0.437s 2823316/19570377 (0.1% of the vertices reached per source)
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_cit_Patents/sweep_pairs_graphalytics_cit_Patents_threads32_1793820785665855430.csv
+All 4 points agree across the systems that completed them

@@ -3,6 +3,7 @@ import argparse
 import collections
 import csv
 import http.client
+import importlib
 import json
 import os
 import platform
@@ -283,15 +284,22 @@ def run_duckdb_timed_script(sql, timeout_s):
     return timed_outputs[-1][0], timers
 
 
+#: DUCKPGQ_KUZU_FLAVOR=ladybug runs the Kuzu system on LadybugDB, the community fork of Kuzu (Python package
+#: real-ladybug, same API), under its own database files and the system label "ladybug"; default: Kuzu itself
+KUZU_FLAVOR = os.environ.get("DUCKPGQ_KUZU_FLAVOR", "kuzu")
+if KUZU_FLAVOR not in ("kuzu", "ladybug"):
+    raise SystemExit(f"DUCKPGQ_KUZU_FLAVOR must be kuzu or ladybug, not {KUZU_FLAVOR}")
+
+
 def require_kuzu():
+    module = "real_ladybug" if KUZU_FLAVOR == "ladybug" else "kuzu"
     try:
-        import kuzu
+        return importlib.import_module(module)
     except ImportError as exc:
         raise SystemExit(
-            "The Kuzu Python package is required for --system kuzu. "
-            "Install it with `.venv/bin/python -m pip install kuzu` or `python3 -m pip install kuzu`."
+            f"The {module} Python package is required for --system kuzu with DUCKPGQ_KUZU_FLAVOR={KUZU_FLAVOR}. "
+            f"Install it with `python3 -m pip install {'real-ladybug' if module == 'real_ladybug' else 'kuzu'}`."
         ) from exc
-    return kuzu
 
 
 def require_docker():
@@ -485,7 +493,7 @@ def graphalytics_db_path(dataset):
 
 
 def graphalytics_kuzu_db_path(dataset):
-    return DATA_ROOT / "systems" / "kuzu" / "graphalytics" / f"{graphalytics_name(dataset)}.kuzu"
+    return DATA_ROOT / "systems" / KUZU_FLAVOR / "graphalytics" / f"{graphalytics_name(dataset)}.kuzu"
 
 
 def graphalytics_kuzu_metadata_path(dataset):
@@ -3682,6 +3690,7 @@ def run_update_config(config, args, options, batch_rows, run_metadata):
             "tombstones": stats.get("tombstones", ""),
             "folds": stats.get("folds", ""),
             "last_fold_ms": stats.get("last_fold_ms", ""),
+            "last_fold_scan_ms": stats.get("last_fold_scan_ms", ""),
             "fold_ms": stats.get("fold_ms", ""),
             "wal_bytes": wal_by_step.get(step, ""),
             # A checkpoint ran during this step's commit when the WAL is smaller than after the previous step
@@ -4018,7 +4027,7 @@ def read_result_files_plain(files):
 # Kuzu: the same update workload (snapshot, pairs, committed batches, query stream) on Kuzu.
 # ---------------------------------------------------------------------------------------------------------------------
 
-KUZU_ROOT = DATA_ROOT / "kuzu"
+KUZU_ROOT = DATA_ROOT / KUZU_FLAVOR  # kuzu/ or ladybug/: the two store formats are not interchangeable
 KUZU_MAX_DEPTH = 30  # Kuzu's default cap on the upper bound of a recursive pattern; LDBC knows paths are far shorter
 KUZU_GRAPHALYTICS_MAX_DEPTH = 1000  # lifted with CALL var_length_extend_max_depth on every connection (see kuzu_connect)
 
@@ -4957,9 +4966,10 @@ def run_update_neo4j(args):
 
 
 class KuzuSystem(GraphDBSystem):
-    """Kuzu over the snapshot database built by ensure_kuzu_update_database (read-only for the sweep)."""
+    """Kuzu over the snapshot database built by ensure_kuzu_update_database (read-only for the sweep); with
+    DUCKPGQ_KUZU_FLAVOR=ladybug the same system on LadybugDB, labelled "ladybug" in the result rows."""
 
-    name = "kuzu"
+    name = KUZU_FLAVOR
     partitionable = True  # each query is parallel inside Kuzu; several connections run several queries at once
 
     def __init__(self, threads, db=None):
@@ -5218,7 +5228,9 @@ SELECT 'peak_rss_kib=' || regexp_extract(content, 'VmHWM:\\s+(\\d+)', 1) FROM re
         if result.returncode < 0:
             raise RuntimeError(f"duckdb killed by signal {-result.returncode} (out of memory?)")
         if result.returncode != 0 or "Error" in output:
-            raise RuntimeError(output[-2000:])
+            # The error line first (the sweep log prints the first line of the message), then the output tail
+            errors = [line for line in output.splitlines() if "Error" in line]
+            raise RuntimeError("\n".join(errors[:3] + ["--- output tail ---", output[-2000:]]))
         timers = re.findall(r"Run Time \(s\): real ([0-9.]+)", output)
         rows = [line for line in output.splitlines() if re.match(r"^\d+,", line)]
         reachable, total = rows[-1].split(",")[:2]
@@ -5430,7 +5442,8 @@ def sweep_pairs(args):
     results_dir.mkdir(parents=True, exist_ok=True)
     path = results_dir / f"sweep_pairs_{sf_name(scale_factor)}_threads{args.threads}_{time.time_ns()}.csv"
     fieldnames = ["system", "scale_factor", "shape", "pairs", "sources", "repeat", "status", "query_s",
-                  "reachable_count", "total_len", "threads", "client_threads", "timeout_s", "benchmark_notes", "repo_commit"]
+                  "reachable_count", "total_len", "threads", "client_threads", "timeout_s", "benchmark_notes", "repo_commit",
+                  "peak_rss_mib"]
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, capture_output=True).stdout.strip()
     rows = []
 
@@ -5439,7 +5452,9 @@ def sweep_pairs(args):
                "sources": sources, "repeat": repeat, "status": status, "query_s": f"{elapsed:.6f}",
                "reachable_count": value[0] if value else "", "total_len": value[1] if value else "",
                "threads": args.threads, "client_threads": args.client_threads, "timeout_s": args.timeout_s,
-               "benchmark_notes": args.notes, "repo_commit": commit}
+               "benchmark_notes": args.notes, "repo_commit": commit,
+               # DuckPGQ: the process peak RSS of the timed run (the reach result storage shows here)
+               "peak_rss_mib": getattr(system, "last_peak_rss_mib", "") if status == "ok" else ""}
         rows.append(row)
         with path.open("w", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -5500,9 +5515,13 @@ def sweep_pairs(args):
             for repeat in range(1, args.repeats + 1):
                 if exceeded:
                     break
-                if not isinstance(system, DuckPGQSystem) and len(source_keys) * system_vertex_count > args.max_pairs:
-                    # The per-source systems answer this shape in time proportional to the result; DuckPGQ's reach
-                    # mode has no pair list and runs every point
+                if (isinstance(system, DuckPGQSystem) and system.multi_source_pair_mode
+                        and len(source_keys) * system_vertex_count > args.max_pairs):
+                    # Only the pair-list formulation materialises sources x vertices rows (SF300, 1024 sources: 1.2G
+                    # pairs, 58 GB, the process was killed on 23 Oct). The baselines answer per source and DuckPGQ's
+                    # reach mode has no pair list: both run every point under the timeout (4 Nov; the guard applied
+                    # to the baselines until then and skipped points they could run, e.g. Kuzu 1024 sources on
+                    # cit-Patents, where a source reaches 0.1% of the vertices)
                     value, elapsed, status = None, 0.0, f"exceeds_pair_limit_{args.max_pairs}"
                 elif isinstance(system, DuckPGQSystem):
                     try:
@@ -6119,6 +6138,8 @@ def system_label(system, args):
 def make_systems(args, scale_factor, symmetric=False):
     systems = []
     for name in args.systems:
+        if name == "none":
+            continue  # --systems none: no baseline (a DuckPGQ-only rerun of a step reuses the baselines' earlier rows)
         if name == "duckpgq_build":
             systems.append(DuckPGQSystem("build", scale_factor, args.threads, args.timeout_s, symmetric))
         elif name == "duckpgq_index":
@@ -6654,7 +6675,7 @@ def main():
     sweep_pairs_parser.add_argument("--client-threads", type=int, default=1,
                                     help="split pair and source lists over this many connections for Memgraph, FalkorDB, Kuzu")
     sweep_pairs_parser.add_argument("--max-pairs", type=int, default=500_000_000,
-                                    help="sources x all points above this many pairs are recorded as not run")
+                                    help="sources x all points above this many pairs are recorded as not run for the DuckPGQ pair-list formulation (pair_mode); per-source systems and the reach mode run every point")
     sweep_pairs_parser.add_argument("--memgraph-uri", default="bolt://localhost:7687")
     sweep_pairs_parser.add_argument("--neo4j-uri", default="bolt://localhost:7688")
     sweep_pairs_parser.add_argument("--neo4j-database", default="pathfinding")

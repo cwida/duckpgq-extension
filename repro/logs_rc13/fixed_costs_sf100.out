@@ -1,0 +1,17 @@
+Exporting sf100 tables for the graph databases
+   duckdb           database_file                     s     2457350144 B   131.72 B/edge
+   duckpgq_index    index_build_repeat1         1.326 s      203749762 B    10.92 B/edge
+   duckpgq_index    index_build_repeat2         1.281 s      203749762 B    10.92 B/edge
+   duckpgq_index    index_build_repeat3         1.208 s      203749762 B    10.92 B/edge
+Ensuring sf100 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf100 in 0.19s
+Ensuring sf100 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf100 in 0.19s
+Exporting sf100 tables for Kuzu
+Loading sf100 into Kuzu at /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/kuzu/sf100.kuzu
+Loaded Kuzu database with 18655515 edges in 3.1s
+   kuzu             load                        3.623 s      456388608 B    24.46 B/edge
+   memgraph         load                       88.541 s     1567663063 B    84.03 B/edge
+   falkordb         load                      875.282 s      696254464 B    37.32 B/edge
+   neo4j            load                      260.125 s      736598933 B    39.48 B/edge
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/results/sf100/fixed_costs_sf100_threads32_1793823661761885855.csv

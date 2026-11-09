@@ -1,0 +1,149 @@
+=== full sweep start 2026-11-04T20:21:01Z on cf4d88ce (eval-freeze-rc13)
+[skip] fixed_costs_sf10 (done)
+[run ] fixed_costs_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --scale-factor 100 --threads 32 --repeats 3 --notes fixed costs SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] fixed_costs_sf100 in 1237 s
+[run ] fixed_costs_sf300: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --scale-factor 300 --threads 32 --repeats 3 --notes fixed costs SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] fixed_costs_sf300 in 3730 s
+[skip] sweep_pairs_sf10 (done)
+[run ] sweep_pairs_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --notes W27 sweep SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] sweep_pairs_sf100 in 13026 s
+[run ] sweep_pairs_sf300: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 300 --threads 32 --repeats 3 --timeout-s 600 --notes W27 sweep SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] sweep_pairs_sf300 in 17045 s
+[skip] fixed_costs_cit_patents (done)
+[skip] sweep_pairs_cit_patents (done)
+[skip] sweep_pairs_cit_patents_client32 (done)
+[skip] fixed_costs_graph500_24 (done)
+[skip] sweep_pairs_graph500_24 (done)
+[skip] fixed_costs_datagen_8_4_fb (done)
+[skip] sweep_pairs_datagen_8_4_fb (done)
+[skip] microbench_scheduling_graph500_24 (done)
+[skip] ldbc_queries_sf10 (done)
+[run ] ldbc_queries_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --notes W17 SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] ldbc_queries_sf100 in 19686 s
+[run ] ldbc_queries_sf300: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 300 --threads 32 --repeats 3 --timeout-s 600 --notes W17 SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] ldbc_queries_sf300 in 18123 s
+[skip] sweep_pairs_sf10_client32 (done)
+[skip] ldbc_queries_sf10_client32 (done)
+[run ] sweep_pairs_sf100_client32: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --client-threads 32 --systems memgraph falkordb kuzu --notes W27 SF100 client threads 32 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] sweep_pairs_sf100_client32 in 5005 s
+[run ] ldbc_queries_sf100_client32: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --client-threads 32 --systems memgraph falkordb kuzu --notes W17 SF100 client threads 32 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] ldbc_queries_sf100_client32 in 6886 s
+[skip] native_baselines_sf10 (done)
+[run ] native_baselines_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --systems duckpgq_index duckpgq_recursive duckpgq_scalar --notes native baselines SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] native_baselines_sf100 in 2998 s
+[skip] microbench_sf10 (done)
+[skip] microbench_memory_sf10 (done)
+[skip] microbench_partitions_sf10 (done)
+[skip] microbench_scheduling_sf10 (done)
+[run ] microbench_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs all --notes W19 microbenchmark SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_sf100 in 15569 s
+[run ] microbench_memory_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs memory --shapes random --pair-counts 2048 16384 65536 --notes W31 explore memory traffic SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_memory_sf100 in 646 s
+[run ] microbench_partitions_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs partitions --shapes random multi_source --pair-counts 128 2048 16384 65536 --source-counts 1 1024 --notes W32 partition geometry SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_partitions_sf100 in 893 s
+[run ] microbench_scheduling_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs scheduling --shapes random --pair-counts 2048 16384 65536 --notes W31 scheduling SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_scheduling_sf100 in 1481 s
+[skip] microbench_section3_sf10 (done)
+[skip] microbench_crossover_sf10 (done)
+[run ] microbench_section3_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs section3 --shapes random all_pairs --pair-counts 1 2048 65536 --source-count 20 --target-count 200 --notes Section 3 switches SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_section3_sf100 in 1640 s
+[run ] microbench_crossover_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs crossover --shapes random all_pairs --pair-counts 1 2 4 8 16 32 64 128 256 512 1024 4096 --source-count 1 2 4 8 16 32 64 128 256 512 1024 4096 --target-count 200 --routes index --notes Section 3 crossover SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_crossover_sf100 in 389 s
+[run ] microbench_scheduling_sf300: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 300 --threads 32 --repeats 3 --timeout-s 600 --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes W31 scheduling SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] microbench_scheduling_sf300 in 1370 s
+[skip] throughput_sf10 (done)
+[run ] throughput_sf100: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py throughput --scale-factor 100 --threads 32 --clients 1 2 4 8 16 32 --duration-s 20 --notes W35 throughput SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] throughput_sf100 in 265 s
+[run ] throughput_sf300: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py throughput --scale-factor 300 --threads 32 --clients 1 2 4 8 16 32 --duration-s 20 --notes W35 throughput SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] throughput_sf300 in 286 s
+[skip] update_sf10_sssp (done)
+[skip] update_sf10_p2p (done)
+[skip] update_sf10_sssp_t1 (done)
+[run ] update_sf100_sssp: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 100 --threads 32 --batch-size 10000 --batches 150 --query-pattern sssp --notes W16 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_sf100_sssp in 424 s
+[skip] concurrent_sf10_r1_index (done)
+[skip] concurrent_sf10_r1_build (done)
+[skip] concurrent_sf10_r4_index (done)
+[skip] concurrent_sf10_r4_build (done)
+[skip] concurrent_sf10_r8_index (done)
+[skip] concurrent_sf10_r8_build (done)
+[skip] concurrent_sf10_r16_index (done)
+[skip] concurrent_sf10_r16_build (done)
+[skip] concurrent_sf10_r4_unpaced_index (done)
+[skip] concurrent_sf10_r4_unpaced_build (done)
+[run ] concurrent_sf100_r1_index: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 1 --writer-pause-ms 200 --routes index --notes W16 concurrent SF100 index repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf100_r1_index in 64 s
+[run ] concurrent_sf300_r1_index: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 1 --writer-pause-ms 200 --routes index --notes W16 concurrent SF300 index repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf300_r1_index in 66 s
+[run ] concurrent_sf100_r1_build: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 1 --writer-pause-ms 200 --routes build --notes W16 concurrent SF100 build repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf100_r1_build in 64 s
+[run ] concurrent_sf300_r1_build: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 1 --writer-pause-ms 200 --routes build --notes W16 concurrent SF300 build repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf300_r1_build in 72 s
+[run ] concurrent_sf100_r4_index: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 4 --writer-pause-ms 200 --routes index --notes W16 concurrent SF100 index repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf100_r4_index in 63 s
+[run ] concurrent_sf300_r4_index: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 4 --writer-pause-ms 200 --routes index --notes W16 concurrent SF300 index repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf300_r4_index in 67 s
+[run ] concurrent_sf100_r4_build: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 4 --writer-pause-ms 200 --routes build --notes W16 concurrent SF100 build repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf100_r4_build in 64 s
+[run ] concurrent_sf300_r4_build: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 4 --writer-pause-ms 200 --routes build --notes W16 concurrent SF300 build repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf300_r4_build in 72 s
+[run ] concurrent_sf100_r16_index: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 16 --writer-pause-ms 200 --routes index --notes W16 concurrent SF100 index repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf100_r16_index in 67 s
+[run ] concurrent_sf300_r16_index: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 16 --writer-pause-ms 200 --routes index --notes W16 concurrent SF300 index repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf300_r16_index in 74 s
+[run ] concurrent_sf100_r16_build: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 16 --writer-pause-ms 200 --routes build --notes W16 concurrent SF100 build repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf100_r16_build in 92 s
+[run ] concurrent_sf300_r16_build: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 16 --writer-pause-ms 200 --routes build --notes W16 concurrent SF300 build repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf300_r16_build in 94 s
+[skip] concurrent_sf10_r4_check (done)
+[run ] concurrent_sf300_r16_fold: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 16 --writer-pause-ms 200 --routes index --fold-ratio 0.0005 --notes W36 fold latency SF300 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf300_r16_fold in 71 s
+[skip] update_kuzu_sf10_sssp (done)
+[skip] update_memgraph_sf10_sssp (done)
+[skip] update_falkordb_sf10_sssp (done)
+[skip] update_neo4j_sf10_sssp (done)
+[skip] update_neo4j_sf10_p2p (done)
+[skip] update_kuzu_sf10_p2p (done)
+[skip] update_memgraph_sf10_p2p (done)
+[skip] update_falkordb_sf10_p2p (done)
+matrix finished; next: ./collect.sh
+=== full sweep exit 0 2026-11-06T03:21:30Z
+=== SF10 update/concurrent reruns on rc13 2026-11-06T03:32:21Z
+[run ] update_sf10_sssp: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_sf10_sssp in 55 s
+[run ] update_sf10_p2p: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern point_to_point --notes W16 repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_sf10_p2p in 77 s
+[run ] update_sf10_sssp_t1: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 10 --threads 1 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] update_sf10_sssp_t1 in 90 s
+[run ] concurrent_sf10_r1_index: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 1 --writer-pause-ms 200 --routes index --notes W16 concurrent index repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r1_index in 47 s
+[run ] concurrent_sf10_r1_build: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 1 --writer-pause-ms 200 --routes build --notes W16 concurrent build repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r1_build in 46 s
+[run ] concurrent_sf10_r4_index: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 4 --writer-pause-ms 200 --routes index --notes W16 concurrent index repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r4_index in 53 s
+[run ] concurrent_sf10_r4_build: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 4 --writer-pause-ms 200 --routes build --notes W16 concurrent build repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r4_build in 47 s
+[run ] concurrent_sf10_r8_index: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 8 --writer-pause-ms 200 --routes index --notes W16 concurrent index repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r8_index in 59 s
+[run ] concurrent_sf10_r8_build: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 8 --writer-pause-ms 200 --routes build --notes W16 concurrent build repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r8_build in 51 s
+[run ] concurrent_sf10_r16_index: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 16 --writer-pause-ms 200 --routes index --notes W16 concurrent index repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r16_index in 74 s
+[run ] concurrent_sf10_r16_build: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 16 --writer-pause-ms 200 --routes build --notes W16 concurrent build repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r16_build in 59 s
+[run ] concurrent_sf10_r4_unpaced_index: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 4 --writer-pause-ms 0 --routes index --notes W16 concurrent unpaced index repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r4_unpaced_index in 17 s
+[run ] concurrent_sf10_r4_unpaced_build: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 4 --writer-pause-ms 0 --routes build --notes W16 concurrent unpaced build repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r4_unpaced_build in 11 s
+[run ] concurrent_sf10_r4_check: python3 /local/home/dwolde/bootstrap/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 4 --writer-pause-ms 200 --fold-ratio 0.01 --notes W16 correctness check, both routes repro cc1caf95 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com
+[done] concurrent_sf10_r4_check in 47 s
+[skip] update_kuzu_sf10_sssp (done)
+[skip] update_memgraph_sf10_sssp (done)
+[skip] update_falkordb_sf10_sssp (done)
+[skip] update_neo4j_sf10_sssp (done)
+[skip] update_neo4j_sf10_p2p (done)
+[skip] update_kuzu_sf10_p2p (done)
+[skip] update_memgraph_sf10_p2p (done)
+[skip] update_falkordb_sf10_p2p (done)
+matrix finished; next: ./collect.sh
+=== SF10 reruns exit 0 2026-11-06T03:44:34Z

@@ -1,0 +1,190 @@
+
+## crossover, Section 3 crossover SF10 2 Nov: k random pairs (one destination per source), index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 64
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 3 ms / 0 MB / 103 MiB | 3 ms / 0 MB / 103 MiB | 4 ms / 5 MB / 103 MiB |
+| 2 | 3 ms / 0 MB / 103 MiB | 4 ms / 5 MB / 103 MiB | 4 ms / 5 MB / 103 MiB |
+| 4 | 4 ms / 0 MB / 104 MiB | 7 ms / 5 MB / 103 MiB | 7 ms / 5 MB / 103 MiB |
+| 8 | 5 ms / 0 MB / 103 MiB | 9 ms / 5 MB / 104 MiB | 8 ms / 5 MB / 104 MiB |
+| 16 | 8 ms / 0 MB / 105 MiB | 10 ms / 5 MB / 104 MiB | 9 ms / 5 MB / 103 MiB |
+| 32 | 12 ms / 0 MB / 119 MiB | 13 ms / 5 MB / 103 MiB | 11 ms / 5 MB / 104 MiB |
+| 64 | 16 ms / 0 MB / 142 MiB | 16 ms / 5 MB / 103 MiB | 13 ms / 5 MB / 103 MiB |
+| 128 | 17 ms / 0 MB / 161 MiB | 15 ms / 5 MB / 105 MiB | 13 ms / 5 MB / 103 MiB |
+| 256 | 28 ms / 0 MB / 179 MiB | 17 ms / 5 MB / 102 MiB | 15 ms / 5 MB / 103 MiB |
+| 512 | 45 ms / 0 MB / 172 MiB | 19 ms / 11 MB / 111 MiB | 28 ms / 5 MB / 104 MiB |
+| 1024 | 75 ms / 0 MB / 176 MiB | 22 ms / 23 MB / 136 MiB | 53 ms / 5 MB / 103 MiB |
+| 4096 | 260 ms / 0 MB / 181 MiB | 57 ms / 95 MB / 287 MiB | 110 ms / 11 MB / 109 MiB |
+
+## crossover, Section 3 crossover SF10 2 Nov: k sources x 200 destinations each, index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 32
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 4 ms / 0 MB / 103 MiB | 4 ms / 0 MB / 103 MiB | 7 ms / 5 MB / 103 MiB |
+| 2 | 4 ms / 0 MB / 108 MiB | 8 ms / 5 MB / 106 MiB | 12 ms / 5 MB / 107 MiB |
+| 4 | 5 ms / 0 MB / 108 MiB | 8 ms / 5 MB / 108 MiB | 20 ms / 5 MB / 107 MiB |
+| 8 | 7 ms / 0 MB / 108 MiB | 10 ms / 5 MB / 108 MiB | 36 ms / 5 MB / 107 MiB |
+| 16 | 10 ms / 0 MB / 108 MiB | 13 ms / 5 MB / 108 MiB | 56 ms / 11 MB / 108 MiB |
+| 32 | 17 ms / 0 MB / 129 MiB | 15 ms / 5 MB / 108 MiB | 78 ms / 23 MB / 141 MiB |
+| 64 | 21 ms / 0 MB / 149 MiB | 17 ms / 5 MB / 108 MiB | 124 ms / 41 MB / 180 MiB |
+| 128 | 32 ms / 0 MB / 176 MiB | 22 ms / 5 MB / 110 MiB | 213 ms / 77 MB / 256 MiB |
+| 256 | 53 ms / 0 MB / 186 MiB | 31 ms / 5 MB / 112 MiB | 558 ms / 149 MB / 407 MiB |
+| 512 | 89 ms / 0 MB / 206 MiB | 39 ms / 11 MB / 151 MiB | 435 ms / 191 MB / 503 MiB |
+| 1024 | 148 ms / 0 MB / 227 MiB | 51 ms / 23 MB / 174 MiB | 625 ms / 191 MB / 526 MiB |
+| 4096 | 551 ms / 0 MB / 408 MiB | 198 ms / 95 MB / 559 MiB | 1.86 s / 191 MB / 682 MiB |
+
+## crossover, Section 3 crossover SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com: k random pairs (one destination per source), index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 64
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 3 ms / 0 MB / 101 MiB | 3 ms / 0 MB / 101 MiB | 4 ms / 5 MB / 101 MiB |
+| 2 | 3 ms / 0 MB / 102 MiB | 4 ms / 5 MB / 102 MiB | 4 ms / 5 MB / 102 MiB |
+| 4 | 4 ms / 0 MB / 101 MiB | 7 ms / 5 MB / 102 MiB | 7 ms / 5 MB / 102 MiB |
+| 8 | 5 ms / 0 MB / 102 MiB | 9 ms / 5 MB / 102 MiB | 8 ms / 5 MB / 103 MiB |
+| 16 | 8 ms / 0 MB / 105 MiB | 10 ms / 5 MB / 102 MiB | 9 ms / 5 MB / 102 MiB |
+| 32 | 12 ms / 0 MB / 118 MiB | 13 ms / 5 MB / 102 MiB | 11 ms / 5 MB / 103 MiB |
+| 64 | 14 ms / 0 MB / 131 MiB | 14 ms / 5 MB / 102 MiB | 11 ms / 5 MB / 102 MiB |
+| 128 | 19 ms / 0 MB / 162 MiB | 15 ms / 5 MB / 102 MiB | 13 ms / 5 MB / 102 MiB |
+| 256 | 28 ms / 0 MB / 170 MiB | 17 ms / 5 MB / 102 MiB | 14 ms / 5 MB / 103 MiB |
+| 512 | 45 ms / 0 MB / 178 MiB | 20 ms / 11 MB / 109 MiB | 29 ms / 5 MB / 102 MiB |
+| 1024 | 75 ms / 0 MB / 179 MiB | 22 ms / 23 MB / 134 MiB | 53 ms / 5 MB / 103 MiB |
+| 4096 | 267 ms / 0 MB / 171 MiB | 55 ms / 95 MB / 189 MiB | 113 ms / 11 MB / 104 MiB |
+
+## crossover, Section 3 crossover SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com: k sources x 200 destinations each, index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 32
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 4 ms / 0 MB / 102 MiB | 4 ms / 0 MB / 102 MiB | 6 ms / 5 MB / 101 MiB |
+| 2 | 5 ms / 0 MB / 106 MiB | 7 ms / 5 MB / 106 MiB | 12 ms / 5 MB / 106 MiB |
+| 4 | 5 ms / 0 MB / 105 MiB | 7 ms / 5 MB / 105 MiB | 20 ms / 5 MB / 106 MiB |
+| 8 | 7 ms / 0 MB / 107 MiB | 9 ms / 5 MB / 106 MiB | 36 ms / 5 MB / 106 MiB |
+| 16 | 11 ms / 0 MB / 110 MiB | 12 ms / 5 MB / 106 MiB | 55 ms / 11 MB / 115 MiB |
+| 32 | 18 ms / 0 MB / 127 MiB | 15 ms / 5 MB / 107 MiB | 78 ms / 23 MB / 139 MiB |
+| 64 | 24 ms / 0 MB / 149 MiB | 17 ms / 5 MB / 106 MiB | 124 ms / 41 MB / 180 MiB |
+| 128 | 29 ms / 0 MB / 163 MiB | 22 ms / 5 MB / 110 MiB | 208 ms / 77 MB / 254 MiB |
+| 256 | 55 ms / 0 MB / 178 MiB | 30 ms / 5 MB / 119 MiB | 550 ms / 149 MB / 406 MiB |
+| 512 | 91 ms / 0 MB / 201 MiB | 40 ms / 11 MB / 147 MiB | 446 ms / 191 MB / 503 MiB |
+| 1024 | 150 ms / 0 MB / 230 MiB | 52 ms / 23 MB / 203 MiB | 611 ms / 191 MB / 525 MiB |
+| 4096 | 544 ms / 0 MB / 401 MiB | 198 ms / 95 MB / 555 MiB | 1.85 s / 191 MB / 671 MiB |
+
+## crossover, W19 microbenchmark SF10 repro 66169da3 dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com: k random pairs (one destination per source), index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 128
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 13 ms / 0 MB / 168 MiB | 14 ms / 0 MB / 170 MiB | 15 ms / 6 MB / 178 MiB |
+| 128 | 32 ms / 0 MB / 224 MiB | 26 ms / 6 MB / 180 MiB | 24 ms / 6 MB / 178 MiB |
+| 1024 | 101 ms / 0 MB / 224 MiB | 34 ms / 25 MB / 216 MiB | 62 ms / 6 MB / 177 MiB |
+| 65536 | 4.48 s / 0 MB / 331 MiB | 440 ms / 201 MB / 685 MiB | 397 ms / 201 MB / 582 MiB |
+
+## crossover, crossover smoke: k random pairs (one destination per source), index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 256
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 3 ms / 0 MB / 103 MiB | 3 ms / 0 MB / 102 MiB | 4 ms / 5 MB / 104 MiB |
+| 16 | 8 ms / 0 MB / 106 MiB | 11 ms / 5 MB / 102 MiB | 9 ms / 5 MB / 103 MiB |
+| 256 | 26 ms / 0 MB / 159 MiB | 16 ms / 5 MB / 102 MiB | 15 ms / 5 MB / 102 MiB |
+
+## crossover, crossover smoke: k sources x 200 destinations each, index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 256
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 4 ms / 0 MB / 103 MiB | 4 ms / 0 MB / 102 MiB | 6 ms / 5 MB / 104 MiB |
+| 16 | 11 ms / 0 MB / 106 MiB | 11 ms / 5 MB / 107 MiB | 54 ms / 11 MB / 106 MiB |
+| 256 | 55 ms / 0 MB / 174 MiB | 35 ms / 5 MB / 120 MiB | 556 ms / 149 MB / 405 MiB |
+
+## crossover, Section 3 crossover SF100 2 Nov: k random pairs (one destination per source), index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 16
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 15 ms / 5 MB / 454 MiB | 15 ms / 5 MB / 454 MiB | 23 ms / 41 MB / 454 MiB |
+| 2 | 17 ms / 5 MB / 455 MiB | 30 ms / 41 MB / 455 MiB | 28 ms / 41 MB / 455 MiB |
+| 4 | 22 ms / 5 MB / 455 MiB | 29 ms / 41 MB / 455 MiB | 29 ms / 41 MB / 455 MiB |
+| 8 | 29 ms / 5 MB / 456 MiB | 37 ms / 41 MB / 456 MiB | 34 ms / 41 MB / 456 MiB |
+| 16 | 58 ms / 5 MB / 456 MiB | 43 ms / 41 MB / 457 MiB | 42 ms / 41 MB / 457 MiB |
+| 32 | 89 ms / 5 MB / 459 MiB | 51 ms / 41 MB / 457 MiB | 50 ms / 41 MB / 457 MiB |
+| 64 | 119 ms / 5 MB / 606 MiB | 59 ms / 41 MB / 458 MiB | 57 ms / 41 MB / 458 MiB |
+| 128 | 149 ms / 5 MB / 682 MiB | 64 ms / 41 MB / 458 MiB | 62 ms / 41 MB / 458 MiB |
+| 256 | 238 ms / 5 MB / 680 MiB | 72 ms / 41 MB / 458 MiB | 70 ms / 41 MB / 459 MiB |
+| 512 | 355 ms / 5 MB / 615 MiB | 89 ms / 83 MB / 459 MiB | 133 ms / 41 MB / 459 MiB |
+| 1024 | 656 ms / 5 MB / 644 MiB | 113 ms / 166 MB / 606 MiB | 270 ms / 41 MB / 459 MiB |
+| 4096 | 2.51 s / 5 MB / 657 MiB | 229 ms / 665 MB / 1616 MiB | 649 ms / 83 MB / 460 MiB |
+
+## crossover, Section 3 crossover SF100 2 Nov: k sources x 200 destinations each, index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 16
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 15 ms / 5 MB / 454 MiB | 15 ms / 5 MB / 454 MiB | 24 ms / 41 MB / 455 MiB |
+| 2 | 20 ms / 5 MB / 477 MiB | 29 ms / 41 MB / 476 MiB | 49 ms / 41 MB / 475 MiB |
+| 4 | 27 ms / 5 MB / 477 MiB | 31 ms / 41 MB / 477 MiB | 96 ms / 41 MB / 477 MiB |
+| 8 | 45 ms / 5 MB / 477 MiB | 41 ms / 41 MB / 476 MiB | 185 ms / 41 MB / 477 MiB |
+| 16 | 77 ms / 5 MB / 477 MiB | 51 ms / 41 MB / 477 MiB | 316 ms / 83 MB / 477 MiB |
+| 32 | 119 ms / 5 MB / 495 MiB | 56 ms / 41 MB / 477 MiB | 510 ms / 166 MB / 627 MiB |
+| 64 | 150 ms / 5 MB / 658 MiB | 65 ms / 41 MB / 477 MiB | 456 ms / 291 MB / 879 MiB |
+| 128 | 212 ms / 5 MB / 669 MiB | 74 ms / 41 MB / 485 MiB | 613 ms / 540 MB / 1390 MiB |
+| 256 | 395 ms / 5 MB / 663 MiB | 92 ms / 41 MB / 487 MiB | 2.38 s / 1040 MB / 1649 MiB |
+| 512 | 644 ms / 5 MB / 719 MiB | 117 ms / 83 MB / 500 MiB | 4.49 s / 1331 MB / 1914 MiB |
+| 1024 | 1.25 s / 5 MB / 770 MiB | 150 ms / 166 MB / 690 MiB | 8.89 s / 1331 MB / 2398 MiB |
+| 4096 | 4.47 s / 5 MB / 955 MiB | 360 ms / 665 MB / 1855 MiB | 16.79 s / 1331 MB / 3185 MiB |
+
+## crossover, Section 3 crossover SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com: k random pairs (one destination per source), index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 16
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 15 ms / 5 MB / 455 MiB | 15 ms / 5 MB / 455 MiB | 23 ms / 41 MB / 455 MiB |
+| 2 | 18 ms / 5 MB / 457 MiB | 29 ms / 41 MB / 456 MiB | 27 ms / 41 MB / 456 MiB |
+| 4 | 22 ms / 5 MB / 456 MiB | 28 ms / 41 MB / 456 MiB | 29 ms / 41 MB / 456 MiB |
+| 8 | 30 ms / 5 MB / 456 MiB | 36 ms / 41 MB / 457 MiB | 34 ms / 41 MB / 456 MiB |
+| 16 | 64 ms / 5 MB / 458 MiB | 45 ms / 41 MB / 458 MiB | 43 ms / 41 MB / 457 MiB |
+| 32 | 98 ms / 5 MB / 457 MiB | 51 ms / 41 MB / 458 MiB | 50 ms / 41 MB / 458 MiB |
+| 64 | 125 ms / 5 MB / 545 MiB | 60 ms / 41 MB / 459 MiB | 58 ms / 41 MB / 459 MiB |
+| 128 | 150 ms / 5 MB / 672 MiB | 64 ms / 41 MB / 459 MiB | 63 ms / 41 MB / 460 MiB |
+| 256 | 252 ms / 5 MB / 677 MiB | 73 ms / 41 MB / 460 MiB | 71 ms / 41 MB / 459 MiB |
+| 512 | 377 ms / 5 MB / 623 MiB | 88 ms / 83 MB / 461 MiB | 135 ms / 41 MB / 460 MiB |
+| 1024 | 680 ms / 5 MB / 637 MiB | 112 ms / 166 MB / 607 MiB | 269 ms / 41 MB / 461 MiB |
+| 4096 | 2.58 s / 5 MB / 644 MiB | 227 ms / 665 MB / 1616 MiB | 660 ms / 83 MB / 461 MiB |
+
+## crossover, Section 3 crossover SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com: k sources x 200 destinations each, index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 16
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 15 ms / 5 MB / 455 MiB | 16 ms / 5 MB / 456 MiB | 22 ms / 41 MB / 455 MiB |
+| 2 | 21 ms / 5 MB / 478 MiB | 30 ms / 41 MB / 477 MiB | 50 ms / 41 MB / 477 MiB |
+| 4 | 28 ms / 5 MB / 478 MiB | 31 ms / 41 MB / 477 MiB | 95 ms / 41 MB / 478 MiB |
+| 8 | 45 ms / 5 MB / 478 MiB | 44 ms / 41 MB / 477 MiB | 186 ms / 41 MB / 478 MiB |
+| 16 | 73 ms / 5 MB / 478 MiB | 52 ms / 41 MB / 477 MiB | 313 ms / 83 MB / 478 MiB |
+| 32 | 126 ms / 5 MB / 486 MiB | 61 ms / 41 MB / 477 MiB | 511 ms / 166 MB / 627 MiB |
+| 64 | 161 ms / 5 MB / 637 MiB | 66 ms / 41 MB / 477 MiB | 456 ms / 291 MB / 880 MiB |
+| 128 | 238 ms / 5 MB / 663 MiB | 77 ms / 41 MB / 486 MiB | 631 ms / 540 MB / 1390 MiB |
+| 256 | 411 ms / 5 MB / 686 MiB | 94 ms / 41 MB / 488 MiB | 2.40 s / 1040 MB / 2397 MiB |
+| 512 | 656 ms / 5 MB / 710 MiB | 119 ms / 83 MB / 497 MiB | 4.66 s / 1331 MB / 1701 MiB |
+| 1024 | 1.26 s / 5 MB / 761 MiB | 149 ms / 166 MB / 563 MiB | 9.65 s / 1331 MB / 1728 MiB |
+| 4096 | 4.51 s / 5 MB / 923 MiB | 387 ms / 665 MB / 1852 MiB | 16.89 s / 1331 MB / 2951 MiB |
+
+## crossover, W19 microbenchmark SF100 repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com: k random pairs (one destination per source), index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 128
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 80 ms / 5 MB / 853 MiB | 83 ms / 5 MB / 843 MiB | 93 ms / 43 MB / 943 MiB |
+| 128 | 266 ms / 5 MB / 1141 MiB | 138 ms / 43 MB / 931 MiB | 130 ms / 43 MB / 933 MiB |
+| 1024 | 981 ms / 5 MB / 1188 MiB | 182 ms / 173 MB / 1200 MiB | 340 ms / 43 MB / 926 MiB |
+| 65536 | 55.74 s / 5 MB / 1374 MiB | 3.80 s / 1387 MB / 3502 MiB | 3.74 s / 1387 MB / 3362 MiB |
+
+## crossover, Section 3 crossover SF300 2 Nov: k random pairs (one destination per source), index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 16
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 22 ms / 14 MB / 1242 MiB | 22 ms / 14 MB / 1242 MiB | 25 ms / 105 MB / 1242 MiB |
+| 2 | 43 ms / 14 MB / 1242 MiB | 34 ms / 105 MB / 1242 MiB | 33 ms / 105 MB / 1242 MiB |
+| 4 | 61 ms / 14 MB / 1242 MiB | 68 ms / 105 MB / 1244 MiB | 66 ms / 105 MB / 1243 MiB |
+| 8 | 85 ms / 14 MB / 1244 MiB | 108 ms / 105 MB / 1244 MiB | 107 ms / 105 MB / 1244 MiB |
+| 16 | 139 ms / 14 MB / 1247 MiB | 115 ms / 105 MB / 1248 MiB | 113 ms / 105 MB / 1247 MiB |
+| 32 | 313 ms / 14 MB / 1249 MiB | 121 ms / 105 MB / 1249 MiB | 120 ms / 105 MB / 1249 MiB |
+| 64 | 340 ms / 14 MB / 1365 MiB | 129 ms / 105 MB / 1249 MiB | 129 ms / 105 MB / 1250 MiB |
+| 128 | 437 ms / 14 MB / 1505 MiB | 140 ms / 105 MB / 1249 MiB | 138 ms / 105 MB / 1249 MiB |
+| 256 | 721 ms / 14 MB / 1539 MiB | 154 ms / 105 MB / 1250 MiB | 151 ms / 105 MB / 1251 MiB |
+| 512 | 1.30 s / 14 MB / 1537 MiB | 182 ms / 210 MB / 1250 MiB | 285 ms / 105 MB / 1250 MiB |
+| 1024 | 2.43 s / 14 MB / 1556 MiB | 197 ms / 420 MB / 1520 MiB | 545 ms / 105 MB / 1250 MiB |
+| 4096 | 9.21 s / 14 MB / 1625 MiB | 711 ms / 1683 MB / 3424 MiB | 1.18 s / 210 MB / 1250 MiB |
+
+## crossover, Section 3 crossover SF300 2 Nov: k sources x 200 destinations each, index route, 32 threads; median s / working set MB / peak RSS MiB; single-source traversal stops winning at k = 16
+| k | single-source traversal | lanes per distinct source | one lane per pair |
+|---|---|---|---|
+| 1 | 27 ms / 14 MB / 1241 MiB | 25 ms / 14 MB / 1242 MiB | 43 ms / 105 MB / 1242 MiB |
+| 2 | 41 ms / 14 MB / 1311 MiB | 61 ms / 105 MB / 1311 MiB | 102 ms / 105 MB / 1312 MiB |
+| 4 | 69 ms / 14 MB / 1311 MiB | 80 ms / 105 MB / 1311 MiB | 229 ms / 105 MB / 1311 MiB |
+| 8 | 113 ms / 14 MB / 1311 MiB | 109 ms / 105 MB / 1312 MiB | 443 ms / 105 MB / 1311 MiB |
+| 16 | 204 ms / 14 MB / 1312 MiB | 121 ms / 105 MB / 1312 MiB | 657 ms / 210 MB / 1310 MiB |
+| 32 | 381 ms / 14 MB / 1312 MiB | 134 ms / 105 MB / 1312 MiB | 646 ms / 420 MB / 1584 MiB |
+| 64 | 505 ms / 14 MB / 1622 MiB | 149 ms / 105 MB / 1312 MiB | 884 ms / 736 MB / 2214 MiB |
+| 128 | 758 ms / 14 MB / 1752 MiB | 163 ms / 105 MB / 1312 MiB | 1.62 s / 1367 MB / 3164 MiB |
+| 256 | 1.29 s / 14 MB / 1788 MiB | 178 ms / 105 MB / 1315 MiB | 7.83 s / 2630 MB / 3460 MiB |
+| 512 | 2.24 s / 14 MB / 1796 MiB | 218 ms / 210 MB / 1318 MiB | 14.92 s / 3366 MB / 3198 MiB |
+| 1024 | 4.23 s / 14 MB / 1811 MiB | 237 ms / 420 MB / 1323 MiB | 29.85 s / 3366 MB / 5342 MiB |
+| 4096 | 15.89 s / 14 MB / 2112 MiB | 900 ms / 1683 MB / 3739 MiB | 112.25 s / 3366 MB / 6535 MiB |

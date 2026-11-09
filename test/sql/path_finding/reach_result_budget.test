@@ -1,0 +1,91 @@
+# name: test/sql/path_finding/reach_result_budget.test
+# description: reach mode materializes every (vertex, distance) a source reached; the entries are charged against memory_limit minus the working-set cap and a result that does not fit fails with an out-of-memory error instead of growing the process past the limit, on the lane waves and the per-source searches
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# A ring of 210000 vertices: every source reaches every vertex, so k sources yield k x 210000 entries
+statement ok
+CREATE TABLE pv AS SELECT range AS id FROM range(210000);
+
+statement ok
+CREATE TABLE pe AS SELECT id AS src, (id + 1) % 210000 AS dst FROM pv UNION ALL SELECT id, (id + 977) % 210000 FROM pv;
+
+statement ok
+CREATE INDEX pe_csr ON pe USING CSR (src, dst);
+
+statement ok
+CREATE TABLE lane_sources AS SELECT range * 3281 AS s FROM range(64);
+
+statement ok
+CREATE TABLE few_sources AS SELECT range * 14000 AS s FROM range(15);
+
+# 64 sources x 210000 vertices = 13.4M entries, 16 bytes each in the budget while they sit in the recorder's growing
+# vectors: 215 MB against a cap of 48 MiB (three quarters of memory_limit). The ring is 105000 levels deep, so no
+# lane ever takes the dense byte form (reach_dense_results.test covers that form)
+statement ok
+SET memory_limit = '64MiB';
+
+statement error
+SELECT count(*) FROM (SELECT reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM lane_sources);
+----
+the reach result exceeds 48.0 MiB
+
+query I
+SELECT s LIKE '%source_group_kernel=lane_waves%' AND s LIKE '%reach_result_cap_mb=48%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# 15 sources run as per-source searches and extract exactly 3.15M entries of 8 bytes, 25 MB, against an 18 MiB cap
+statement ok
+SET memory_limit = '24MiB';
+
+statement error
+SELECT count(*) FROM (SELECT reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM few_sources);
+----
+the reach result exceeds 18.0 MiB
+
+query I
+SELECT s LIKE '%source_group_kernel=per_source%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# With room for the result both run and reach the whole ring
+statement ok
+SET memory_limit = '2GiB';
+
+query I
+SELECT count(*) FROM (SELECT reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM lane_sources);
+----
+13440000
+
+query I
+SELECT count(*) FROM (SELECT reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM few_sources);
+----
+3150000
+
+query I
+SELECT s LIKE '%reach_result_cap_mb=1536%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# An explicit working-set cap at or above half of memory_limit leaves the result half of the limit
+statement ok
+SET experimental_path_finding_operator_working_set_cap = 1073741824;
+
+statement ok
+SELECT count(*) FROM (SELECT reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM few_sources);
+
+query I
+SELECT s LIKE '%reach_result_cap_mb=1024%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+RESET experimental_path_finding_operator_working_set_cap;
+
+statement ok
+RESET memory_limit;

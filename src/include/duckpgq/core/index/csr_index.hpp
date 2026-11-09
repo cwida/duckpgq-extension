@@ -60,6 +60,24 @@ struct CSRIndexDictionary {
 	idx_t Size() const {
 		return count;
 	}
+
+	//! Keys of ascending ids: walks the dense dictionary's bitmap forward from the last id and re-seeks only when the
+	//! ids jump by a word or more, where KeyOf does a binary search over the word ranks and a bit scan per id (the
+	//! reach scatter emits a dense result in vertex order: 9.1 B rows on graph500-24 for 1024 sources)
+	struct KeyCursor {
+		explicit KeyCursor(const CSRIndexDictionary &dictionary_p) : dictionary(dictionary_p) {
+		}
+		int64_t KeyOf(idx_t id);
+
+	private:
+		void Seek(idx_t id);
+		const CSRIndexDictionary &dictionary;
+		//! The lowest set bit of `word` (bits of bitmap[word_idx] not yet passed) is the bit of id `next_id`
+		idx_t next_id = 0;
+		idx_t word_idx = 0;
+		uint64_t word = 0;
+		bool positioned = false;
+	};
 };
 
 //! Edges collected by one build thread, keys already cast to BIGINT
@@ -191,6 +209,8 @@ struct CSRIndexSnapshot {
 
 	idx_t Lookup(int64_t key) const;
 	int64_t KeyOf(idx_t id) const;
+	//! KeyOf for ascending ids (CSRIndexDictionary::KeyCursor over the epoch's dictionary)
+	int64_t KeyOf(idx_t id, CSRIndexDictionary::KeyCursor &cursor) const;
 };
 
 //! The CSR index: one immutable epoch (the edges visible at the bound of the transaction that built it), an
@@ -296,15 +316,16 @@ private:
 	shared_ptr<CSRIndexEpoch> RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
 	                                           DataTable &table) const;
 	//! The epoch of every row the transaction sees, without touching the index object (RunFold calls it with no
-	//! handle on the index entry)
+	//! handle on the index entry). The table is scanned in parallel, a row group at a time per thread, as the
+	//! index-build pipeline of CREATE INDEX scans it; scan_us receives the scan's duration when given
 	static shared_ptr<CSRIndexEpoch> BuildEpochFromTable(ClientContext &context, DuckTransaction &transaction,
 	                                                     DataTable &table, const vector<column_t> &column_ids,
-	                                                     bool undirected, bool reverse);
+	                                                     bool undirected, bool reverse, uint64_t *scan_us = nullptr);
 	//! Whether RunFold should build an epoch for this transaction (ordering and, for ratio > 0, the pending log)
 	bool FoldDue(DuckTransaction &transaction, double ratio) const;
 	//! Installs an epoch RunFold built, unless a newer one arrived meanwhile; records the fold time
 	void InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
-	                        uint64_t fold_us) const;
+	                        uint64_t fold_us, uint64_t scan_us) const;
 	//! Stamps the change-log entries that the epoch built by `transaction` accounts for: delta rows it contains and
 	//! tombstoned rows it excludes. Uses the live transaction, so it does not depend on how long DuckDB keeps row
 	//! versions. Then installs the epoch and drops the entries no retained epoch needs any more.
@@ -414,6 +435,8 @@ private:
 	mutable std::atomic<uint64_t> fold_count {0};
 	mutable std::atomic<uint64_t> fold_total_us {0};
 	mutable std::atomic<uint64_t> fold_last_us {0};
+	//! Table scan (edge collection) part of the last fold
+	mutable std::atomic<uint64_t> fold_last_scan_us {0};
 };
 
 //! Registration entry point called from the core module

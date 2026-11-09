@@ -1,0 +1,6 @@
+system,scale_factor,measure,seconds,bytes,edges,bytes_per_edge,threads,benchmark_notes,repo_commit
+duckdb,datagen-8_4-fb,database_file,,10645417984,538958354,19.75,32,fixed costs datagen-8_4-fb repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cf4d88cebf332a256622d16cd933cb15467db732
+duckpgq_index,datagen-8_4-fb,index_build_repeat1,59.128,6235825244,538958354,11.57,32,fixed costs datagen-8_4-fb repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cf4d88cebf332a256622d16cd933cb15467db732
+duckpgq_index,datagen-8_4-fb,index_build_repeat2,59.876,6235825244,538958354,11.57,32,fixed costs datagen-8_4-fb repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cf4d88cebf332a256622d16cd933cb15467db732
+duckpgq_index,datagen-8_4-fb,index_build_repeat3,60.735,6235825244,538958354,11.57,32,fixed costs datagen-8_4-fb repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cf4d88cebf332a256622d16cd933cb15467db732
+kuzu,datagen-8_4-fb,load,68.760,8802897920,538958354,16.33,32,fixed costs datagen-8_4-fb repro cf4d88ce dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com,cf4d88cebf332a256622d16cd933cb15467db732

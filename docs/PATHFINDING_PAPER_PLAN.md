@@ -1383,3 +1383,152 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   (d) sparse level divisor 8 is 13% faster than 16 at 16384 pairs at SF10. Verdict: ready; the SF10 markers are
   valid rc10 results and the full sweep (`SCALE_FACTORS="10 100 300" ./repro/run_all.sh all`) skips them. The
   collector ran with the figure and table directories redirected (nothing under paper/ written).
+- 4 Nov: Graphalytics block of the rc10 dry run (`SCALE_FACTORS=10 ./repro/run_all.sh graphalytics`). Decisions on
+  the way: (a) FalkorDB stays in the matrix (its loads are the long pole: 13 min for cit-Patents, 43 min at SF300,
+  about 11 h of loads and timeouts over the full matrix) because dropping a system after seeing its numbers is not
+  defensible; (b) cit-Patents runs sources x all only (`7ea3ab4a`): a random pair on the citation DAG is unreachable
+  by construction (every pair of the 65536 sample had no path), so the random shape would measure the cost of finding
+  no path at hours of baseline timeouts; (c) the harness's 500M pair limit skipped Kuzu at 1024 sources on cit-Patents
+  while DuckPGQ ran the point in reach mode; the limit now applies only to DuckPGQ's pair-list formulation of
+  sources x all (the microbenchmark), every baseline runs every point under the timeout (`28da74d9`). cit-Patents
+  (3.77M vertices, 16.5M edges, 32 threads, median of 3, sources x all with 1 / 16 / 128 / 1024 sources, a source
+  reaches about 2200 vertices): index 35 / 124 / 180 / 407 ms, build 148 / 240 / 285 / 534 ms, Kuzu 8 / 71 / 392 ms /
+  3.33 s (32 clients: 7 / 118 / 299 ms / 1.55 s), Memgraph 4 / 59 / 376 ms / 3.35 s (32 clients 498 ms at 1024),
+  Neo4j GDS 68 ms / 1.04 / 8.3 / 66.7 s, Neo4j 27 s / 309 s / timeout, FalkorDB timeout at one source. The single
+  source is the one point where the per-pair engines win (Kuzu 8 ms, Memgraph 4 ms against the index's 35 ms): a
+  2200-vertex reach is below the operator's fixed cost (the 3.8M-vertex working set and the output path), to state
+  as such. Fixed costs: DuckDB file 323 MB, CSR index 282 MB (17.1 B/edge, 1.0 s to build), Kuzu 398 MB (2.8 s
+  load), Neo4j 881 MB (267 s), Memgraph 1.95 GB (88 s), FalkorDB 1.17 GB (797 s). graph500-24 (8.9M vertices, 260M
+  edges loaded in both directions, 521M CSR entries): DuckDB file 8.0 GB, index 6.7 GB (12.9 B/edge, 50 s), Kuzu
+  9.2 GB (68 s). The graph500-24 sweep then killed the DuckDB process twice (signal 9) at 1024 sources x all on the
+  build route: the reach of 1024 sources on this graph is 99.9% of the vertices each, 9.1 B (vertex, distance)
+  entries, 73 GB of entries alone before the recorder vectors' growth slack, held until the output scatter (128
+  sources were 1.1 B entries, 6.4 s, 28.9 GB RSS). No DuckDB memory accounting covers these vectors, so the kernel
+  killed the process instead of the query failing. Fix (`a146ffee`, tag `eval-freeze-rc11`): reach mode charges its
+  materialized result against a budget of memory_limit minus the working-set cap (three quarters of memory_limit by
+  default, 73.7 GB on the sweep machine), 16 bytes per entry (twice the entry: the vectors double), charged by the
+  recording workers in blocks of 1 Mi entries and at the end of every level, shared by the waves and per-source
+  searches of a query; a result that does not fit fails with an out-of-memory error naming the cap and the entry
+  count, the strategy string carries `reach_result_cap_mb`. Test `reach_result_budget.test` (102 test files pass).
+  The point will therefore read "out of memory" for both DuckPGQ routes at 1024 sources on graph500-24 (Kuzu runs the
+  same point and will time out); the rc10 Graphalytics results stand (the budget changes no number). Streaming the
+  reach output instead (asked 4 Nov) would mean running the waves from the operator's source phase so finished waves
+  are emitted and freed while later waves run: DuckDB starts an operator's source only after its Finalize events are
+  done, so the lane kernel's phases would have to be driven by the parallel source's tasks (claim a worker slot of
+  the current phase, run it, the last one advances the phase), and one 256-lane wave on this graph still holds 2.3 B
+  entries (18 GB) before it can be emitted, so waves would also run one at a time once the budget is reached. A
+  one-to-two-day change to the execution model of every reach query, with the whole reach path to re-validate; not
+  before this sweep. Recorded as future work for the paper: the reach output is materialized per query, bounded by
+  the budget, where per-wave or per-level emission would bound it by one wave (18 GB here) or one level.
+  Decided 4 Nov (author): hold off on the streaming reach output; the 1024-source graph500-24 point stays an
+  out-of-memory row for DuckPGQ, explained by the materialized reach set, with per-wave emission as future work.
+- 4 Nov (2): the fold's table scan ran on one thread (one `TableScanState` into one edge list, since the first index
+  commit of 19 Oct; CREATE INDEX got DuckDB's parallel index-build sink for free, the fold runs inside a reader's query
+  outside any pipeline). No reason forced it: row groups are claimed per thread as the table scan operator does
+  (`DataTable::NextParallelScan`), the version checks are against the transaction's start time with no shared scan
+  state, and the fold holds only its own mutex during the rebuild. Now the fold scans with min(threads, row groups)
+  threads into per-thread edge lists and `BuildEpoch` slices them as it slices the sink's lists; `FoldStats` reports
+  `last_fold_scan_ms`, the update-run rows carry it. SF300 (55.7M edges, 32 threads, a fresh copy of the database,
+  three forced folds): serial scan 3.16 / 2.83 / 2.92 s per fold; parallel scan 1.26 / 1.05 / 1.16 s, of which the
+  scan is 220 / 80 / 77 ms. The serial scan and edge collection was about 1.8 s of the 2.9 s fold (62%); the fold is
+  now 2.5x faster, 1.1 s at SF300, and the reader that triggers a fold pays that instead of 3 s. Test
+  `csr_index_fold_parallel_scan.test` (five row groups; the folded epoch equals the log overlay, a CREATE INDEX epoch
+  of the same rows, and the fold with one thread). Section 4.4 should drop "on one thread". Also: `REUSE_BASELINES=1`
+  switch in `repro/run_all.sh` (DuckPGQ-only fixed-costs and LDBC steps under `_duckpgq` step names; the table
+  printers take the newest file per system and shape) for DuckPGQ-only reruns after the sweep; off for the sweep
+  itself (one run on one commit; the pair sweeps' samples changed on 29 Oct so their baselines can never be reused
+  from before that). The sweep log now prints DuckDB's error line for a failed point instead of the first output line.
+  graph500-24 sweep (rc11): sources x all 1 / 16 / 128 / 1024: index 0.44 / 5.1 / 4.7 s / out of memory, build 2.9 /
+  7.2 / 6.2 s / out of memory, Kuzu 0.34 / 8.1 / 61.6 / 495 s (9.08 B result rows, streamed per source, inside the
+  600 s timeout). A baseline completing where DuckPGQ fails is the worst outcome for the row, so the reach result
+  storage changes before the full sweep (decided 4 Nov): per lane, lists while sparse and one byte per vertex
+  (distance + 1, zero-filled pages, lane-major) once a lane's reach passes a sixteenth of the vertices, switched
+  between rounds; the budget charges real bytes. 9 GB for the 1024-source point instead of 73 GB; the alternatives
+  weighed (4-byte lists 36 GB, per-level bitmaps 7 GB with per-level bookkeeping, vertex-major bytes with a strided
+  scatter, streaming) are in the conversation record of 4 Nov. Limit to state: all results are alive at emission, so
+  sources x vertices above about 80 B on a 123 GB machine still needs streaming.
+- 4 Nov (3): reach result storage (decided above, `ReachResult`). Per lane the result starts as (vertex, distance)
+  entries; between BFS rounds a lane whose entries pass 1/64 of the vertices switches to one byte per vertex holding
+  distance + 1 (0 = not reached), allocated zero-filled with calloc so untouched pages cost nothing, and the entries
+  are replayed into it; a lane whose next level would not fit a byte (254) switches back. The per-source searches
+  extract the same dense form. The scatter slices a dense lane by vertex range and a sparse lane by position; the
+  index route resolves keys of a dense result with a forward cursor over the dictionary bitmap
+  (`CSRIndexDictionary::KeyCursor`: a binary search plus bit scan per key made the index route 2x slower than the
+  build route at 9.1 B rows). The budget charges real bytes (entries at 16 while they sit in growing vectors, arrays
+  at their size). Setting `experimental_path_finding_operator_reach_dense_divisor` (64; 0 = entries only, the
+  microbenchmark switch). graph500-24, 32 threads, one repeat, sources x all: index 128 sources 4.66 -> 2.62 s, 1024
+  sources out of memory -> 8.8 s (peak RSS 36 GB; 46 GB with the divisor at 16, the lists before the switch); build
+  128 sources 6.2 -> 5.6 s, 1024 sources 10.8 s (33 GB). Kuzu's 495 s for the same 9.08 B rows (equal count and
+  total length) is now 56x slower than the index route. Tests `reach_dense_results.test` (entries against bytes on
+  lanes and per-source searches, the 254-level fallback on a ring, a 64 MiB limit the entries exceed and the bytes
+  fit, gap keys for the cursor) and `reach_result_budget.test` adjusted; 104 test files pass. Peak RSS still holds
+  about 13 GB beyond results + index + working sets at 1024 sources (freed list memory the allocator keeps, the
+  buffer pool's copy of the index blocks after the load): a follow-up for the memory column, not for the sweep. The
+  pair sweep rows now carry `peak_rss_mib` for DuckPGQ. Tag `eval-freeze-rc13`. DuckPGQ-only reruns of the pair
+  sweeps at SF10, cit-Patents and graph500-24 follow the remaining Graphalytics steps (reach rows changed; the table
+  printers take the newest file per system and shape, the baselines' rows of 3-4 Nov stand on the same samples).
+- 4 Nov (4): Graphalytics block complete on rc13 (datagen-8_4-fb fixed costs 4 min, sweep 65 min: index 1024 sources
+  x all 4.2 s for 3.9 B rows against Kuzu 191 s, 1024 random pairs 0.98 s against 156 s, Kuzu times out from 16384
+  pairs; the scheduling microbenchmark on graph500-24 took 4 h: 12 configurations x 3 repeats of 5 / 38 / 144 s at
+  2048 / 16384 / 65536 pairs; the window shapes are within 2% at 65536 pairs (g4..g32 with 32 workers 144-149 s),
+  one batch at a time 175 s (1.2x slower, not the 9x of SF10: a 1.7 GB working set per wave is memory-bound work
+  that 32 threads saturate), 32 groups of 1 worker 185 s, `no_grouped_batches` at 65536 pairs failed (see the step
+  log)). DuckPGQ-only sweep reruns on rc13: SF10 18 s, cit-Patents 17 s, graph500-24 47 min (index 1 / 16 / 128 /
+  1024 sources 0.35 / 4.5 / 2.7 / 8.6 s). Full sweep started 2026-11-04 20:21 UTC on `cf4d88ce` (eval-freeze-rc13),
+  `SCALE_FACTORS="10 100 300" ./repro/run_all.sh all`, log `repro/logs/run_all.out`, SF10 and Graphalytics steps
+  skipped; expected about 33 h.
+- 6 Nov: FULL SWEEP COMPLETE on `cf4d88ce` (eval-freeze-rc13): started 4 Nov 20:21 UTC, `matrix finished` 6 Nov
+  03:21 UTC, 31 h, every step exit 0 (SF100/SF300: fixed costs 21/62 min, pair sweeps 3.6/4.7 h, LDBC queries
+  5.5/5.0 h, SF100 client steps 1.4/1.9 h, native baselines 50 min, microbenchmarks 4.3 h + 11-27 min each,
+  throughput 4.5 min each, update SF100 7 min, concurrent runs 1-1.5 min each). Post-sweep questions of 5 Nov:
+  Q1 (build-index gap at 65536 pairs SF300, 2.6-2.9 s): phase columns put the whole gap in `bfs` (394.8 CPU-s on
+  the build route against 308.3 on the index route; the build route's own CSR phases are 0.35 s: local_csr_forward
+  0.349, radix partition 0.174, partition build 0.175, overlapping), not in pair analysis, grouping or scatter. Both
+  routes build their partitions with the same radix sort and emit function, so the layout is identical; what differs
+  is the id space: the build route numbers vertices by the person table's row ids, the index by sorted keys. Test on
+  a copy of the SF300 database: a CSR index on an edge table keyed by person row ids (dense ids = row ids) answers the
+  same 65536 pairs in 12.2 / 12.3 / 12.2 s against 9.80 / 9.79 / 9.77 s for the id-keyed index, i.e. 2.4 s of the
+  gap is the vertex numbering (traversal locality of the row-id order), 0.35 s the per-query CSR build. Paper: the
+  build route pays its CSR build plus the table's row order; the index owes 25% of its lead on large batches to the
+  sorted-key numbering, not to avoiding the build. No fix (a renumbering in the build route would cost what it saves).
+  Q2 (single pair SF300 10 -> 22 ms since rc1): not a regression. The rc1 binary (7e9778c0 rebuilt at 256 lanes,
+  the width the rc1 run had) answers today's single pair in 22 / 23 / 23 ms, rc13 in 18 / 24 / 23 ms, both on the
+  per-source kernel (strategy source_groups=1; a single group never runs lanes, so few_sources_limit=0 changes
+  nothing). The pair sample changed on 29 Oct (edge-aware sampling); the single pair is search-bound (3-17 ms by
+  pair, 23 Oct) and the new pair is a longer one. The MS-BFS working set has been allocated per batch through the
+  buffer manager since 19 Oct in both builds (no cross-query reuse ever existed; dff0c0eb did not touch it); the
+  per-source kernel's arrays are 14 MB at SF300 (source_search_mb=14). Q3 (fold step, rc13, repo_commit cc1caf95 =
+  plan commit on cf4d88ce): 16 readers, folds every 0.05% of edges, 3208 queries, median 65.3 ms, p99 277 ms, max
+  1842 ms (the fold payer); 4 folds of 1600 / 1673 / 1766 / 1602 ms with scans of 187 / 140 / 181 / 121 ms (the
+  fold under 16 readers and a writer takes 1.6-1.8 s against 1.1 s idle); commits median 137 ms, p99 343 ms. Q4:
+  peak_rss_mib present for both routes in throughput and concurrent rows (SF300 throughput 32 clients: index 1.7
+  GiB, build 23.3 GiB; 16 readers: index 6.0 GiB, build 17.8 GiB). THE INDEX'S CASE on rc13 (Section 6 lead):
+  SF300 16 readers under a writer: index 81.6 / 188 ms median / p99 against build 3856 / 5916 ms (47x), commits
+  153 against 647 ms (4.2x); SF100: 63.7 / 195 against 1196 / 1679 ms (19x), commits 214 against 348 ms.
+  Throughput 32 clients: SF300 329 against 5 q/s (66x, p99 279 ms against 10.2 s), SF100 928 against 14 q/s. One
+  client: SF300 61 against 4 q/s, SF100 112 against 7. The SF300 probe of 2 Nov reproduces; the title holds.
+  Housekeeping: `~/.claude/CLAUDE.md` forbids trailers; 13 commits of 29 Oct (7c65bed0..d9701272) carry one, rewrite
+  coordinated with the Mac side. SF10 update/concurrent steps (14) rerun on rc13 right after the sweep (author's OK,
+  5 Nov); dry-run markers moved to `repro/logs_sf10_dryrun_updates/`.
+- 9 Nov: SYSTEM SELECTION (for the paper's setup section; the author asked for the rationale to be ready). Versions
+  measured: DuckDB v2.0.0-dev (45f4fdf3) with DuckPGQ at eval-freeze-rc13; Kuzu 0.11.3 (Python package, the last
+  release before development stopped); Neo4j 5.26.32 Enterprise (container pf-neo4j) with Graph Data Science 2.13.14
+  (unlicensed edition, capped at 4 threads, refuses the parallel runtime); Memgraph 3.14.0 (container of 16 Oct
+  2026); FalkorDB module 4.22.2 (container of 19 Oct 2026). Why these: Kuzu for the embedded, columnar, recursive-join
+  graph database closest in architecture (per-source frontier expansion inside a pipeline); Neo4j Cypher as the
+  reference property-graph engine, GDS for its single-source algorithms; Memgraph for an in-memory engine with a
+  built-in BFS expansion; FalkorDB for a sparse-matrix (GraphBLAS) engine; DuckDB's recursive CTE and the CIDR 2023
+  scalar-UDF route as the in-engine references. Considered and not in the matrix: LadybugDB 0.15.3, the community
+  fork of Kuzu after the project was archived (Python package real-ladybug, same API; the harness runs it through the
+  Kuzu system with DUCKPGQ_KUZU_FLAVOR=ladybug, Python 3.11 virtualenv ~/sweep/ladybug-venv311, result rows labelled
+  "ladybug" in data/ldbc-pathfinding/results/sf10). SF10, 32 threads, medians of 3, Ladybug against Kuzu: random pairs
+  1 / 16 / 128 / 1024 / 2048 / 16384 / 65536: 8 / 108 / 1.0 s / 8.6 s / 17.0 s / 138 s / 548 s against 9 ms / 85 ms /
+  631 ms / 5.1 s / 10.3 s / 82 s / 327 s; sources x all 1 / 16 / 128 / 1024: 6 ms / 144 ms / 1.2 s / 9.6 s against
+  5 ms / 67 ms / 534 ms / 4.0 s; LDBC IC13 / BI19 / BI20: 23 ms / 4.7 s / 19.7 s against 8 ms / 1.6 s / 7.6 s. The fork
+  is 1.5-2.6x slower than Kuzu 0.11.3 on every point with more than one search and equal on a single pair, so Kuzu
+  stays as the baseline; one sentence in the setup. Configuration caveats to state: Kuzu runs one query per pair and
+  per source because a WITH-bound source or a pair table bound at both ends makes its recursive join run over far more
+  than the pairs (20 s / 15 s at SF1), with var_length_extend_max_depth raised on the Graphalytics graphs; Neo4j binds
+  the sources with UNWIND (an IN list plans one index-seek row and serialises shortestPath), hop bound 30 on LDBC and
+  none on Graphalytics; Memgraph needs the WITH barrier before *BFS; FalkorDB has no undirected shortestPath (its LDBC
+  graph holds both directions); the 32-client passes give the per-query engines client-side parallelism.
