@@ -408,10 +408,10 @@ frontier emplace_back 7%); the 5 Nov array-fill hypothesis is wrong and 6.1 now 
 High-diameter graph: DIMACS USA-road offline, SuiteSparse 403 from the desk, SNAP roadNet-CA/TX/PA (1-2 M V, 3-5.5 M
 E, diameter 500-850) feasible in an afternoon; caveats: the dense reach form holds distances up to 254 (fallback to
 8-byte entries; 1024 sources x all on an 11.5 M-vertex road graph would need 94 GB, a 16-bit dense form is not in
-rc13), and thousands of levels cost 0.1-0.3 ms of scheduling each. Decision pending; 6.1 names the gap. LadybugDB
+rc13), and thousands of levels cost 0.1-0.3 ms of scheduling each. Decided 9 Nov (author): no road graph for this submission; 6.1 names the gap. LadybugDB
 0.15.3 (Kuzu's fork) probed at SF10 only: 8 ms / 548 s at 1 / 65,536 pairs, 6 ms / 9.6 s at 1 / 1024 sources, LDBC
 23 ms / 4.7 s / 19.7 s, slower than Kuzu 0.11.3 everywhere; kept out of the tables (EXCLUDED in the plot script),
-footnote in the setup pending the author's decision. Trailer commits on the desk: 13, 7c65bed0 through d9701272.
+footnote in the setup (added 9 Nov): not faster than Kuzu 0.11.3, 1.1 to 2.9 times slower, so we report Kuzu. Trailer commits on the desk: 13, 7c65bed0 through d9701272.
 
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
