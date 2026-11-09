@@ -57,8 +57,7 @@ and the experimental comparison of these structures~\cite{deleo2019pma} cover th
 An index in a multi-version system either stores version information per entry or, as PostgreSQL and \duckdb's
 ART~\cite{leis2013art} do, stores only row identifiers and checks the row's versions on every
 probe~\cite{wu2017mvcc,neumann2015mvcc}. A traversal that touches millions of edges cannot pay a version check per
-edge. On LDBC SF10 that check alone grew a single-source query from 8 to 124\,ms as updates accumulated
-(Section~\ref{sec:eval}) \todo{pre-freeze number; the frozen matrix has no per-row visibility switch}, so the index of
+edge. On LDBC SF10 that check alone grew a single-source query from \rev{15 to 35}\,ms as updates accumulated \rev{(Table~\ref{tab:updates})}, so the index of
 Section~\ref{sec:index} checks visibility once per change group and serves a
 whole traversal from one immutable snapshot. It uses the index interface that \duckdb exposes to
 extensions~\cite{duckdb2019}, the same hook the \texttt{vss} and \texttt{spatial} extensions

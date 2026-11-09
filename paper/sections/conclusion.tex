@@ -9,10 +9,7 @@ removed both limits without leaving the extension. The path-finding operator tak
 partitioned by destination range and runs every traversal as a chain of events in \duckdb's scheduler. The CSR index
 keeps the graph across queries and stays consistent with \duckdb's MVCC through epochs and a change log whose
 visibility \duckdb itself decides, once per change group. Because the operator answers many pairs with one
-traversal, the gap to the native graph systems grows with the number of pairs. At SF100 one query for 65\,536 pairs
-takes 3.5\,s, against 155\,s for Neo4j and 169\,s for Kuzu, and at SF300 it takes 10\,s while every other system
-exceeds ten minutes. Under the LDBC update stream a commit costs 15\,ms, against 342\,ms for Kuzu, and every
-transaction sees exactly the edges it may see. \todo{Confirm the numbers against rc2.}
+traversal, the gap to the native graph systems grows with the number of pairs. At SF100 one query for 65\,536 pairs takes \rev{3.3}\,s, against \rev{199}\,s for Neo4j and \rev{188}\,s for Kuzu, and at SF300 it takes 10\,s while every other system exceeds ten minutes. Under the LDBC update stream a commit costs \rev{19}\,ms, against \rev{335}\,ms for Kuzu, and every transaction sees exactly the edges it may see.
 
 \duckdb's extension interfaces were enough, and where they fell short the gaps are specific. An index callback does
 not say which transaction or commit made a change, and nothing can ask about visibility in the past. The scheduler has
