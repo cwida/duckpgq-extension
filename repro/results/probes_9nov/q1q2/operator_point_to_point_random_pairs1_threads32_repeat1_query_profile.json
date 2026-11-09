@@ -1,0 +1,270 @@
+{
+    "io": {
+        "total_bytes_read": 374079488,
+        "total_bytes_written": 0
+    },
+    "operator": [
+        {
+            "extra_info": {},
+            "intermediate_rows": 0,
+            "intermediate_size_bytes": 0,
+            "timing": 0.00001011,
+            "type": "RESULT_COLLECTOR",
+            "children": [
+                {
+                    "extra_info": {
+                        "Projections": [
+                            "mode",
+                            "pair_count",
+                            "reachable_count",
+                            "total_len",
+                            "min_len",
+                            "max_len"
+                        ],
+                        "Estimated Cardinality": "1"
+                    },
+                    "intermediate_rows": 1,
+                    "intermediate_size_bytes": 64,
+                    "timing": 0.0000035,
+                    "type": "PROJECTION",
+                    "children": [
+                        {
+                            "extra_info": {
+                                "Aggregates": [
+                                    "count_star()",
+                                    "count(#0)",
+                                    "sum(#1)",
+                                    "min(#2)",
+                                    "max(#3)"
+                                ],
+                                "Estimated Cardinality": "1"
+                            },
+                            "intermediate_rows": 1,
+                            "intermediate_size_bytes": 48,
+                            "timing": 0.00002141,
+                            "type": "UNGROUPED_AGGREGATE",
+                            "children": [
+                                {
+                                    "extra_info": {
+                                        "Projections": [
+                                            "len",
+                                            "len",
+                                            "len",
+                                            "len"
+                                        ],
+                                        "Estimated Cardinality": "55656915"
+                                    },
+                                    "intermediate_rows": 1,
+                                    "intermediate_size_bytes": 32,
+                                    "timing": 2.9e-7,
+                                    "type": "PROJECTION",
+                                    "children": [
+                                        {
+                                            "extra_info": {
+                                                "Projections": "len",
+                                                "Estimated Cardinality": "55656915"
+                                            },
+                                            "intermediate_rows": 1,
+                                            "intermediate_size_bytes": 8,
+                                            "timing": 0.00000148,
+                                            "type": "PROJECTION",
+                                            "children": [
+                                                {
+                                                    "extra_info": {
+                                                        "Mode": "iterativelength",
+                                                        "CSR Input": "radix-partitioned endpoints",
+                                                        "CSR Cache Key": "graph:/local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/db/ldbc_sf300.duckdb",
+                                                        "Estimated Cardinality": "1"
+                                                    },
+                                                    "intermediate_rows": 1,
+                                                    "intermediate_size_bytes": 24,
+                                                    "timing": 3.865183031000001,
+                                                    "type": "EXTENSION",
+                                                    "children": [
+                                                        {
+                                                            "extra_info": {
+                                                                "Table": "ldbc.main.benchmark_pairs_1",
+                                                                "Type": "Sequential Scan",
+                                                                "Projections": [
+                                                                    "src",
+                                                                    "dst"
+                                                                ],
+                                                                "Estimated Cardinality": "0"
+                                                            },
+                                                            "intermediate_rows": 1,
+                                                            "intermediate_size_bytes": 16,
+                                                            "row_groups_scanned": 1,
+                                                            "rows_scanned": 1,
+                                                            "timing": 0.00002542,
+                                                            "total_row_groups_to_scan": 1,
+                                                            "type": "TABLE_SCAN"
+                                                        },
+                                                        {
+                                                            "extra_info": {
+                                                                "Join Type": "INNER",
+                                                                "Conditions": "person2id = id",
+                                                                "Estimated Cardinality": "55656915"
+                                                            },
+                                                            "intermediate_rows": 55656915,
+                                                            "intermediate_size_bytes": 890510640,
+                                                            "timing": 2.5193475480000003,
+                                                            "type": "HASH_JOIN",
+                                                            "children": [
+                                                                {
+                                                                    "extra_info": {
+                                                                        "Join Type": "INNER",
+                                                                        "Conditions": "person1id = id",
+                                                                        "Estimated Cardinality": "55656915"
+                                                                    },
+                                                                    "intermediate_rows": 55656915,
+                                                                    "intermediate_size_bytes": 890510640,
+                                                                    "timing": 0.840001587000001,
+                                                                    "type": "HASH_JOIN",
+                                                                    "children": [
+                                                                        {
+                                                                            "extra_info": {
+                                                                                "Table": "ldbc.main.person_knows_person",
+                                                                                "Type": "Sequential Scan",
+                                                                                "Projections": [
+                                                                                    "person1id",
+                                                                                    "person2id"
+                                                                                ],
+                                                                                "Dynamic Filters": [
+                                                                                    "((optional: (person1id >= 14) AND optional: (person1id <= 37383396573073)) AND optional: person1id IN BF(id))",
+                                                                                    "((optional: (person2id >= 135) AND optional: (person2id <= 37383396574868)) AND optional: person2id IN BF(id))"
+                                                                                ],
+                                                                                "Estimated Cardinality": "55656915"
+                                                                            },
+                                                                            "intermediate_rows": 55656915,
+                                                                            "intermediate_size_bytes": 890510640,
+                                                                            "row_groups_scanned": 453,
+                                                                            "rows_scanned": 55656915,
+                                                                            "timing": 1.0922962440000001,
+                                                                            "total_row_groups_to_scan": 453,
+                                                                            "type": "TABLE_SCAN"
+                                                                        },
+                                                                        {
+                                                                            "extra_info": {
+                                                                                "Table": "ldbc.main.person",
+                                                                                "Type": "Sequential Scan",
+                                                                                "Projections": "id",
+                                                                                "Filters": "(id <= 37383396573073)",
+                                                                                "Estimated Cardinality": "1193579"
+                                                                            },
+                                                                            "intermediate_rows": 1193544,
+                                                                            "intermediate_size_bytes": 19096704,
+                                                                            "row_groups_scanned": 10,
+                                                                            "rows_scanned": 1193579,
+                                                                            "timing": 0.013819033,
+                                                                            "total_row_groups_to_scan": 10,
+                                                                            "type": "TABLE_SCAN"
+                                                                        }
+                                                                    ]
+                                                                },
+                                                                {
+                                                                    "extra_info": {
+                                                                        "Table": "ldbc.main.person",
+                                                                        "Type": "Sequential Scan",
+                                                                        "Projections": "id",
+                                                                        "Filters": "(id >= 135)",
+                                                                        "Estimated Cardinality": "1193579"
+                                                                    },
+                                                                    "intermediate_rows": 1193570,
+                                                                    "intermediate_size_bytes": 19097120,
+                                                                    "row_groups_scanned": 10,
+                                                                    "rows_scanned": 1193579,
+                                                                    "timing": 0.013013567999999998,
+                                                                    "total_row_groups_to_scan": 10,
+                                                                    "type": "TABLE_SCAN"
+                                                                }
+                                                            ]
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "optimizer": {
+        "aggregate_function_rewriter": 0.00000498,
+        "aggregate_reuse": 0.0000051,
+        "build_side_probe_side": 0.00001831,
+        "column_lifetime": 0.000010651,
+        "common_aggregate": 0.00000309,
+        "common_subexpressions": 0.00000194,
+        "common_subplan": 0.00002673,
+        "cte_filter_pusher": 3.2e-7,
+        "cte_inlining": 4.8e-7,
+        "deliminator": 6.2e-7,
+        "duplicate_groups": 0.00000507,
+        "empty_result_pullup": 9.1e-7,
+        "expression_rewriter": 0.00002844,
+        "extension": 0.000026141,
+        "filter_pullup": 0.00000554,
+        "filter_pushdown": 0.00002367,
+        "grouping_sets": 0.00000125,
+        "in_clause": 5.2e-7,
+        "join_elimination": 0.00000504,
+        "join_filter_pushdown": 0.00003424,
+        "join_order": 0.001854713,
+        "late_materialization": 5.3e-7,
+        "limit_pushdown": 3.1e-7,
+        "outer_join_simplification": 0.00000381,
+        "partial_aggregate_pushdown": 0.0000019,
+        "partitioned_execution": 0.00000144,
+        "projection_placement": 0.00000208,
+        "projection_pullup": 0.00000423,
+        "redundant_order_keys": 0.00000253,
+        "regex_range": 2.6e-7,
+        "reorder_filter": 0.00000171,
+        "row_group_pruner": 2.8e-7,
+        "row_number_rewriter": 3.8e-7,
+        "sampling_pushdown": 2.3e-7,
+        "scalar_fn_pushdown": 2.9e-7,
+        "statistics_propagation": 0.00005382,
+        "top_n": 4.9e-7,
+        "top_n_window_elimination": 0.00000154,
+        "total_time": 0.002195446,
+        "type_pushdown": 4.8e-7,
+        "unnest_rewriter": 7.7e-7,
+        "unused_columns": 0.000016291,
+        "window_self_join": 3.5e-7
+    },
+    "parser": {
+        "total_time": 0.000834186
+    },
+    "physical_planner": {
+        "column_binding": 0.00001068,
+        "create_plan": 0.00003625,
+        "resolve_types": 4.7e-7,
+        "total_time": 0.00005227
+    },
+    "planner": {
+        "binding_time": 0.000290402,
+        "total_time": 0.000348762
+    },
+    "query": {
+        "cpu_time": 8.343723221000003,
+        "sql": "SELECT 'operator' AS mode, count(*) AS pair_count, count(len) AS reachable_count,\n       sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len\nFROM (\n    SELECT src, dst, iterativelengthoperator(\n        src, dst,\n        struct_pack(src := pathfinding_edge_src, dst := pathfinding_edge_dst),\n        1193579::BIGINT, 55656915::BIGINT,\n        'graph:/local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/db/ldbc_sf300.duckdb') AS len\n    FROM ldbc.benchmark_pairs_1,\n        (SELECT a.rowid::BIGINT AS pathfinding_edge_src,\n                c.rowid::BIGINT AS pathfinding_edge_dst\n         FROM ldbc.person_knows_person k\n         JOIN ldbc.person a ON a.id = k.person1id\n         JOIN ldbc.person c ON c.id = k.person2id) pathfinding_edges\n);",
+        "total_intermediate_rows": 169357865,
+        "total_intermediate_size_bytes": 2709725936,
+        "total_row_groups_scanned": 474,
+        "total_row_groups_to_scan": 474,
+        "total_rows_scanned": 58044074,
+        "total_time": 0.395755958
+    },
+    "system": {
+        "blocked_thread_time": 0.0,
+        "peak_buffer_memory": 1026048128,
+        "peak_streaming_buffer_size": 64,
+        "peak_temp_dir_size": 0,
+        "total_memory_allocated": 576716800
+    }
+}

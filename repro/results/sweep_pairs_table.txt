@@ -15,6 +15,7 @@
 | duckpgq_scalar | 69 ms | 84 ms | 94 ms | 190 ms | 303 ms | 1.9 s | 7.2 s |
 | duckpgq_build | 25 ms | 30 ms | 38 ms | 45 ms | 59 ms | 162 ms | 500 ms |
 | duckpgq_index | 3 ms | 8 ms | 15 ms | 22 ms | 34 ms | 136 ms | 395 ms |
+| ladybug | 8 ms | 108 ms | 1.0 s | 8.6 s | 17.0 s | 138.0 s | 547.9 s |
 | reachable pairs | 100.0% | 43.8% | 48.4% | 46.1% | 46.6% | 45.8% | 44.5% |
 
 ## multi_source: median seconds per query, SF10, 32 threads, timeout 600.0 s
@@ -33,6 +34,7 @@
 | duckpgq_scalar | 2.4 s | 40.8 s | 327.9 s | > 600.0 s |
 | duckpgq_build | 25 ms | 33 ms | 50 ms | 86 ms |
 | duckpgq_index | 3 ms | 11 ms | 26 ms | 66 ms |
+| ladybug | 6 ms | 144 ms | 1.2 s | 9.6 s |
 | vertices reached per source | 9158 | 24071 | 26003 | 25888 |
 
 ## random_pairs: median seconds per query, SF100, 32 threads, timeout 600.0 s

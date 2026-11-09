@@ -1532,3 +1532,43 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   the sources with UNWIND (an IN list plans one index-seek row and serialises shortestPath), hop bound 30 on LDBC and
   none on Graphalytics; Memgraph needs the WITH barrier before *BFS; FalkorDB has no undirected shortestPath (its LDBC
   graph holds both directions); the 32-client passes give the per-query engines client-side parallelism.
+- 9 Nov (2): post-sweep checks on rc13 (task of 9 Nov; measurements only, archive of 551b224c untouched, new files
+  under repro/results/sf*/oracle and repro/results/probes_9nov). (1) Correctness oracle at scale (update-concurrent,
+  both routes in one transaction and compared, 16 readers under the writer, 20 commits of 2000 changes, 200 ms
+  pause): SF100 fold 0.1: 354 queries compared, 20 commits, 0 mismatches, 0 errors (14 s); SF300 fold 0.1: 218
+  queries, 20 commits, 0 / 0 (27 s); SF300 fold 0.0005: 220 queries, 20 commits, one fold under the comparison, 0 / 0
+  (28 s). With the SF10 run (4584 queries, 190 commits, 0 / 0) the claim holds at every scale; the SF300 runs compare
+  few queries because the build route takes 3.9 s per query under 16 readers (a longer run is a matter of --batches).
+  (2) Row-id-keyed index (knows_rowid: both routes number vertices by row order) against the id-keyed index on copies
+  of the sweep databases, medians of 3: SF100 65536 pairs 3.97 s against 3.28 s (sweep build route 4.13 s, index
+  3.25 s), 2048 pairs 147 against 129 ms (283 / 135); SF300 65536 pairs 12.07 against 9.80 s (12.81 / 10.01), 2048
+  pairs 407 against 343 ms (714 / 345). The gap at 65536 closes to the build cost: build route minus row-id index =
+  0.16 s at SF100 and 0.74 s at SF300, the per-query CSR build (0.13 / 0.35-0.5 s) plus noise; the rest of the gap,
+  0.7 s at SF100 and 2.3 s at SF300, is the vertex numbering (traversal locality of row-id order against sorted keys).
+  (3) Index load on first use after a restart, fresh process, first query minus warm query (dd iflag=nocache evicts
+  the file; drop_caches is not permitted, sudo forbids shells): warm (page cache) SF10 17 ms, SF100 60 ms, SF300
+  117 ms, cit-Patents 55 ms, datagen-8_4-fb 0.86 s, graph500-24 0.94 s; cold (from EBS, about 270 MB/s) SF10 24 ms,
+  SF100 0.17-0.63 s, SF300 1.9-2.1 s, cit-Patents 0.76-0.85 s, datagen 23.1-23.3 s, graph500-24 24.4 s. Table 4
+  should carry the warm numbers with the cold ones as the disk bound (index bytes / 270 MB/s). (4) Single pair at
+  SF300 on the index (22 ms): the sampled pair is 5 hops long; a 1-hop pair from the same source takes 2-9 ms and a
+  self pair 1-2 ms, so the fixed cost (snapshot, 14 MB of per-source arrays, output) is 2-4 ms and the five BFS levels
+  are 18-20 ms. perf over 60 warm queries: Relax 25%, ExplorePartition 25%, frontier emplace_back 7%, ExpandVertex and
+  AdvanceLevel 2%; the array fills (_M_fill_assign of the uint32 and int64 vectors, page clearing) 4-5% = about 1 ms.
+  6.1's "13 bytes per vertex filled before the first level" is not the 12 ms: the time is the traversal of five levels
+  that touch most of the graph. (5) High-diameter graph, feasibility: the DIMACS challenge-9 USA-road-d files are
+  offline (404 on every host), SuiteSparse's DIMACS10 copies (road_usa, road_central, germany_osm, asia_osm) answer
+  403 from the desk (may work from the Mac), SNAP's roadNet-CA / TX / PA download (1.97M / 1.38M / 1.09M vertices,
+  5.5M / 3.8M / 3.1M directed edges, diameters 500-850; below the 10-30M target). Loading: a Matrix Market or edge
+  list to parquet is a 30-line DuckDB script, then the Graphalytics loader path (vertices with edges, edge-aware
+  pairs) applies unchanged; the Kuzu load needs var_length_extend_max_depth at the diameter. Harness: the pair
+  sampling works (one giant component, nearly every pair reachable; sources need an outgoing edge). Operator caveats
+  before running: (a) the dense reach form holds distances up to 254, so a lane past 254 levels falls back to 8-byte
+  entries; 1024 sources x all on a graph of V vertices then needs 8 x 1024 x V bytes against the 73.7 GB budget:
+  roadNet-CA 16 GB fine, germany_osm (11.5M V) 94 GB would fail with the out-of-memory error, as would road_usa (24M
+  V); a 16-bit dense form (2 B/vertex) is the fix, not in rc13; (b) thousands of BFS levels cost a phase pair each
+  (0.1-0.3 ms of scheduling), so a 1000-level search carries 0.2-0.6 s of overhead per wave and the per-source
+  kernel's early termination matters for random pairs. Expected machine time for roadNet-CA: index build about 1 s,
+  Kuzu load a minute, DuckPGQ sweep 10-20 min per repeat set, Kuzu random pairs and sources x all mostly timeouts (one
+  BFS per source over 850 levels), about 2-3 h in all; implementation 2-3 h. Verdict to decide: feasible with a SNAP
+  road graph within an afternoon; a 10-30M-edge road graph needs a download route that works and the 16-bit dense
+  form for the 1024-source point.
