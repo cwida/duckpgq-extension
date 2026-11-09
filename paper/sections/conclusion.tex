@@ -1,15 +1,18 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-% Written 29 Oct 2026 from the rc1 numbers.
-
-The CIDR version of \duckpgq answered shortest-path queries with UDFs, and the UDFs inherited \duckdb's
-tuple-driven parallelism, so a query with few pairs ran on one core and every query rebuilt the CSR. This paper
-removed both limits without leaving the extension. The path-finding operator takes its parallelism from a CSR
-partitioned by destination range and runs every traversal as a chain of events in \duckdb's scheduler. The CSR index
-keeps the graph across queries and stays consistent with \duckdb's MVCC through epochs and a change log whose
-visibility \duckdb itself decides, once per change group. Because the operator answers many pairs with one
-traversal, the gap to the native graph systems grows with the number of pairs. At SF100 one query for 65\,536 pairs takes 3.3\,s, against 199\,s for Neo4j and 188\,s for Kuzu, and at SF300 it takes 10\,s while every other system exceeds ten minutes. Under the LDBC update stream a commit costs 19\,ms, against 335\,ms for Kuzu, and every transaction sees exactly the edges it may see.
+The CIDR version of \duckpgq answered shortest-path queries with UDFs, which inherited \duckdb's tuple-driven
+parallelism, so a query with few pairs ran on one core and every query rebuilt the CSR. This paper removed both limits
+without leaving the extension. The path-finding operator takes its parallelism from a CSR partitioned by destination
+range and runs every traversal as a chain of events in \duckdb's scheduler; the CSR index keeps the graph across
+queries and stays consistent with \duckdb's MVCC through epochs and a change log whose visibility \duckdb itself
+decides, once per change group. Because the operator answers many pairs with one traversal, its gap to Kuzu, Neo4j,
+Memgraph and FalkorDB grows with the pairs. At SF300 it answers 1024 sources to every person in 773\,ms against
+21.9\,s for Kuzu and 65\,536 pairs in 10\,s while the others exceed ten minutes, and at one pair or one source it is
+tens of milliseconds behind. The index saves the per-query build on every query and, on large pair lists, more,
+because its dense ids follow sorted keys; under sixteen readers and a writer it answers in 82\,ms where a CSR built
+per query takes 3.9\,s, and a commit of 2000 edge changes costs 19\,ms against 335 for Kuzu. In 5376 queries compared
+across three scales, every transaction saw exactly the edges it was allowed to see.
 
 \duckdb's extension interfaces were enough, and where they fell short the gaps are specific. An index callback does
 not say which transaction or commit made a change, and nothing can ask about visibility in the past. The scheduler has
@@ -17,6 +20,8 @@ no tasks for index work, so a fold runs in the transaction that triggers it. An 
 cardinality but not a cost. Each gap cost us a mechanism in this paper, and each would be small to close in the
 host system.
 
-In the future, we will replace the thresholds of Section~\ref{sec:cost} with a cost model calibrated on these runs,
-move the fold into the background, and extend the operator to weighted shortest paths, to an index over several edge
-tables of one property graph, and to path reconstruction in the multi-source traversal.
+In the future we will replace the thresholds of Sections~\ref{sec:choice} and~\ref{sec:index-fold} with a cost
+model calibrated on these runs, the few-sources limit first, whose best value ranges from 4 to 256 sources across our
+graphs; move the fold into the background; stream the output of reach queries instead of materializing it; and extend
+the operator to weighted shortest paths, to an index over several edge tables of one property graph, and to path
+reconstruction in the multi-source traversal.
