@@ -413,6 +413,13 @@ rc13), and thousands of levels cost 0.1-0.3 ms of scheduling each. Decided 9 Nov
 23 ms / 4.7 s / 19.7 s, slower than Kuzu 0.11.3 everywhere; kept out of the tables (EXCLUDED in the plot script),
 footnote in the setup (added 9 Nov): not faster than Kuzu 0.11.3, 1.1 to 2.9 times slower, so we report Kuzu. Trailer commits on the desk: 13, 7c65bed0 through d9701272.
 
+9 Nov: Neo4j memory check (desk, interim): SF300 with a 31 GB heap and a 64 GB page cache against the sweep's 16 / 16 GB.
+BI19 parameter sets 1422/1301: 51.6 / 52.1 s against 52.0 / 52.9 / 52.5; 1423/1302: 50.2 / 50.0 / 50.0 against 50.7 / 50.8
+/ 51.1; 1427/1304: 26.4 / 26.3 / 26.3 against 27.0 / 26.8 / 27.0; 16,384 random pairs 250.5 / 250.8 s against 248.
+Within 1-2% everywhere; the store (2.3 GB at SF300) already fit the 16 GB page cache. The 65,536-pair and one-source
+points (timeouts in the sweep) were still running; the setup's clause assumes they stay timeouts. Baseline containers
+return to the sweep configuration after the run. Neo4j's own guidance caps the heap at 31 GB (compressed pointers).
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under

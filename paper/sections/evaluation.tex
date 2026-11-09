@@ -16,7 +16,7 @@ reproduction package names its commit. The baselines are
 Kuzu 0.11.3 (embedded, 32 threads)\footnote{Kuzu's development has stopped. Its maintained fork, LadybugDB 0.15.3,
 was not faster than Kuzu 0.11.3 in our tests at SF10, between 1.1 and 2.9 times slower on the random-pair,
 sources $\times$ all and LDBC points, so we report Kuzu.}, Neo4j 5.26.32 Enterprise (16\,GB heap, 16\,GB page cache, parallel runtime; the
-GDS library 2.13.14 with its unlicensed limit of four threads where marked), and Memgraph 3.14.0 and FalkorDB 4.2.2
+GDS library 2.13.14 with its unlicensed limit of four threads where marked\rev{; Neo4j's store is 2.3\,GB at SF300, Table~\ref{tab:fixed-costs}, so the page cache holds it at every scale, and a check with a 31\,GB heap and a 64\,GB page cache changed Neo4j's SF300 times by less than two percent}), and Memgraph 3.14.0 and FalkorDB 4.2.2
 in Docker with their default configuration, both of which run a query on one thread. Two other ways of answering the same question inside \duckdb are included, the recursive CTE of plain SQL and the
 2023 \duckpgq design, whose UDFs build the CSR and run \msbfs on one core per morsel of
 input~\cite{tenwolde2023duckpgq}. ``\duckpgq build''
