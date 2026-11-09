@@ -43,7 +43,7 @@ know, no extension combines a path-finding operator inside the host's planner wi
 consistent with the host's transactions, built only on the interfaces the host offers to every extension. This paper shows that
 a loadable extension can add them.
 
-\duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb\rev{~\cite{duckdb2019}} that parses \sqlpgq and
+\duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb~\cite{duckdb2019} that parses \sqlpgq and
 rewrites it into relational SQL. We argued there that a graph system should build on everything a state-of-the-art
 analytical system already has, columnar storage, vectorized execution, morsel-driven parallelism and a cost-based
 optimizer, and add two things, a compact graph representation and a bulk path-finding algorithm. We implemented both
@@ -86,9 +86,9 @@ triggered by a transaction that finds the log too long, turns the log into the n
 argument.
 
 We evaluate on LDBC SNB scale factors 10, 100 and 300 against Kuzu, Neo4j, Memgraph and FalkorDB, read-only and
-under the LDBC update stream with concurrent transactions. Over the index a single pair takes \rev{22}\,ms at SF300, where Neo4j's bidirectional search needs \rev{4}\,ms. With many pairs the gap opens. LDBC BI19 at SF300 asks for up to 2.4\,M
-pairs and takes \rev{0.77}\,s, against \rev{47}\,s for Neo4j and \rev{332}\,s for Kuzu (Figure~\ref{fig:teaser}). On 65\,536 random
-pairs at SF300 \duckpgq takes 10\,s, and every other system exceeds ten minutes. Under the update stream \duckdb applies a commit of 2000 edge changes in \rev{19}\,ms and Kuzu in \rev{335}\,ms, and all systems return the same answers at every step.
+under the LDBC update stream with concurrent transactions. Over the index a single pair takes 22\,ms at SF300, where Neo4j's bidirectional search needs 4\,ms. With many pairs the gap opens. LDBC BI19 at SF300 asks for up to 2.4\,M
+pairs and takes 0.77\,s, against 47\,s for Neo4j and 332\,s for Kuzu (Figure~\ref{fig:teaser}). On 65\,536 random
+pairs at SF300 \duckpgq takes 10\,s, and every other system exceeds ten minutes. Under the update stream \duckdb applies a commit of 2000 edge changes in 19\,ms and Kuzu in 335\,ms, and all systems return the same answers at every step.
 
 Our contributions are:
 \begin{enumerate}

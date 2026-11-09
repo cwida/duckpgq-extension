@@ -55,9 +55,9 @@ choice is made, what the thresholds are, and what a cost model would need to rep
 
 \paragraph{Build or index} The rewrite chooses at bind time, and it takes the index whenever the edge table has one.
 On the read-only queries of Section~\ref{sec:eval} that choice is never wrong, because the index route is faster at
-every point. The build costs \rev{22, 126 and 263}\,ms per query at SF10, SF100 and SF300, close to linear in the edges,
+every point. The build costs 22, 126 and 263\,ms per query at SF10, SF100 and SF300, close to linear in the edges,
 and a snapshot of an index without pending changes costs a few milliseconds. The choice gets harder under updates. A
-snapshot then costs one version check per change group and one pass over the pending log entries, \rev{and with 16 concurrent readers at SF10 the index route answers in 42\,ms and the build route in 98 (Section~\ref{sec:eval-updates}).} A cost model would compare the build, which
+snapshot then costs one version check per change group and one pass over the pending log entries, and with 16 concurrent readers at SF10 the index route answers in 42\,ms and the build route in 98 (Section~\ref{sec:eval-updates}). A cost model would compare the build, which
 depends on the edge count, with the snapshot, which depends on the pending entries. The rewrite can read both at bind
 time, the edge count from the table statistics and the log length from the index.
 
@@ -66,7 +66,7 @@ source. Up to 16 distinct sources run on the single-source traversal, and more r
 source; paths and reach always use the single-source traversal. The two costs scale differently. A single-source
 search costs the part of the graph it reaches before its last destination is found, once per source, and holds three
 arrays per vertex while it runs. A batch costs a dense sweep over the partitions per level, shared by up to 256 lanes,
-plus sparse levels that touch only the live vertices, and one working set of 96 bytes per vertex. \rev{The batches therefore win when there are many sources, twelve times on 65\,536 random pairs at SF100 (Table~\ref{tab:ablation}), and lose for a handful: 16 sources with 200 destinations each at SF10 take 12\,ms as one batch and 11 as single-source searches, and at SF100 the batch wins from 16 sources, 45 against 64\,ms (Figure~\ref{fig:crossover}).} The threshold of 16
+plus sparse levels that touch only the live vertices, and one working set of 96 bytes per vertex. The batches therefore win when there are many sources, twelve times on 65\,536 random pairs at SF100 (Table~\ref{tab:ablation}), and lose for a handful: 16 sources with 200 destinations each at SF10 take 12\,ms as one batch and 11 as single-source searches, and at SF100 the batch wins from 16 sources, 45 against 64\,ms (Figure~\ref{fig:crossover}). The threshold of 16
 sits near that crossover on LDBC, but the crossover moves with the graph, from 4 sources on datagen-8\_4-fb to 256
 on cit-Patents. What it cannot see is how far each search
 runs. An unreachable pair searches the whole component of its source, a reachable one stops early, and about two
