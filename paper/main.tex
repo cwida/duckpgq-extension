@@ -63,18 +63,19 @@
 
 \begin{abstract}
 SQL:2023 brought graph pattern matching into SQL. The shortest path is the part of it that relational systems
-execute badly. In \duckpgq we answered it with multi-source BFS inside scalar UDFs, which inherit \duckdb's
-parallelism for free. They also inherit its limit. A UDF receives work per tuple, so a single path pattern runs on one
-core, and the compressed sparse row (CSR) representation of the graph is rebuilt for every query. This paper removes
-both limits and remains a loadable extension. A path-finding operator with its own inputs and event schedule draws its
-parallelism from a partitioned CSR, uses a multi-source traversal for many sources and a single-source traversal for
-few, and is reached from \sqlpgq's \texttt{MATCH} through an optimizer rule. A CSR index keeps the representation
-across queries, restarts and checkpoints behind \duckdb's general index interface. That interface reports which rows
-changed and nothing about which transactions may see them, so the index stores immutable epochs and a change log that
-\duckdb's own row-version check classifies once per change group, and every transaction traverses exactly the edges
-it may see. On LDBC SNB at scale factor 300 \duckpgq answers 1024 sources to every reachable person in 773\,ms where
-Kuzu needs 21.9\,s, BI19 with up to 2.4\,M pairs in 0.77\,s where Neo4j needs 47\,s, and 65\,536 random pairs in
-10\,s where Kuzu, Neo4j, Memgraph and FalkorDB exceed ten minutes. Under sixteen concurrent readers and a writer, a query over the index takes 82\,ms against 3.9\,s with a CSR built per query, and a commit of 2000 edge changes costs 19\,ms, against 335\,ms for Kuzu.
+execute badly. In \duckpgq we answered it with multi-source BFS inside scalar UDFs. A UDF inherits \duckdb's
+parallelism and also its limit. It receives work per tuple, so a single path pattern runs on one core, and the
+compressed sparse row (CSR) representation of the graph is rebuilt for every query. This paper removes both limits
+without leaving the extension. A path-finding operator draws its parallelism from a partitioned CSR, uses a
+multi-source traversal for many sources and a single-source traversal for few, and is reached from \sqlpgq's
+\texttt{MATCH} through an optimizer rule. A CSR index keeps the representation across queries, restarts and
+checkpoints behind \duckdb's index interface. That interface reports which rows changed and nothing about which
+transactions may see them, so the index stores immutable epochs and a change log that \duckdb's own row-version check
+classifies once per change group, and every transaction traverses exactly the edges it may see. On LDBC SNB at scale
+factor 300, \duckpgq answers 1024 sources to every reachable person in 773\,ms against 21.9\,s for Kuzu, BI19 with up
+to 2.4\,M pairs in 0.77\,s against 47\,s for Neo4j, and 65\,536 random pairs in 10\,s, where Kuzu, Neo4j, Memgraph
+and FalkorDB all exceed ten minutes. Under sixteen concurrent readers and a writer, a query over the index takes
+82\,ms against 3.9\,s with a CSR built per query, and a commit of 2000 edge changes costs 19\,ms against 335 for Kuzu.
 \end{abstract}
 
 \maketitle
