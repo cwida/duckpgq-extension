@@ -1,0 +1,16 @@
+system,scale_factor,query,param_index,params,repeat,status,query_s,reachable_count,total_len,threads,client_threads,timeout_s,benchmark_notes,repo_commit
+neo4j,300,bi19,1,1425 1303,1,ok,52.940485,2376182,8254011,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,1,1425 1303,2,ok,52.589021,2376182,8254011,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,1,1425 1303,3,ok,52.868082,2376182,8254011,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,2,1424 1432,1,ok,51.164760,2305742,7979733,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,2,1424 1432,2,ok,50.761592,2305742,7979733,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,2,1424 1432,3,ok,50.918237,2305742,7979733,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,3,1422 1301,1,ok,51.725682,2276528,7901406,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,3,1422 1301,2,ok,51.578996,2276528,7901406,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,3,1422 1301,3,ok,52.119415,2276528,7901406,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,4,1423 1302,1,ok,50.179751,2231003,7757195,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,4,1423 1302,2,ok,49.961293,2231003,7757195,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,4,1423 1302,3,ok,50.043947,2231003,7757195,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,5,1427 1304,1,ok,26.350375,1161300,4071683,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,5,1427 1304,2,ok,26.273256,1161300,4071683,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
+neo4j,300,bi19,5,1427 1304,3,ok,26.301859,1161300,4071683,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2
