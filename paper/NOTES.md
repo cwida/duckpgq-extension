@@ -420,6 +420,13 @@ Within 1-2% everywhere; the store (2.3 GB at SF300) already fit the 16 GB page c
 points (timeouts in the sweep) were still running; the setup's clause assumes they stay timeouts. Baseline containers
 return to the sweep configuration after the run. Neo4j's own guidance caps the heap at 31 GB (compressed pointers).
 
+9 Nov: Section 5 dissolved. Its paragraph became the first paragraph of "Lessons and Conclusion" (three additions a
+host could make, the smaller gaps, the two unpromised behaviours); the interface table (tab:hooks) is dropped from the
+paper and its inventory (parser extension, bind replacement, scalar functions, optimizer extension, operator, index
+type, client context state, settings, buffer manager; used for / lacked) goes to the artifact README. Labels
+sec:strategy and sec:hooks now sit on the final section. Contribution 3 says "the gaps a host would have to close".
+sections/strategy.tex removed (in git history up to 4f3a4c20).
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under

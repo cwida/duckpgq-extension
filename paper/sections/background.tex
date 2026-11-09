@@ -25,7 +25,7 @@ sort, ends one pipeline and starts the next. Pipelines are broken into tasks tha
 executes, and a pipeline's completion is an \emph{event} whose callback can schedule further events, which is how operators run multi-phase work without blocking a thread. Operator memory comes from \duckdb's
 buffer manager, which keeps the process within a configurable \texttt{memory\_limit}. \duckdb has an extension mechanism through which external code
 adds to the system behind defined interfaces, among them parser extensions, scalar and table functions, optimizer
-extensions, custom operators and index types (Section~\ref{sec:hooks} lists them). \duckpgq is such an extension. It adds \sqlpgq parsing, the path-finding operator and the CSR index through these interfaces. The storage
+extensions, custom operators and index types. \duckpgq is such an extension. It adds \sqlpgq parsing, the path-finding operator and the CSR index through these interfaces. The storage
 format, the transaction manager and the executor are \duckdb's and are unchanged.
 
 \paragraph{MVCC and row visibility} \duckdb implements the serializable multi-version concurrency control of HyPer~\cite{neumann2015mvcc,duckdb2019}.

@@ -132,7 +132,7 @@ twice, once to recount the log, so that two transactions that crossed the thresh
 fold, and once to make the new epoch the newest. Commits and other queries continue during a fold.
 Folds are serialized; an automatic fold that finds another fold running does not wait, and its transaction reads the
 current epoch and log instead. A fold whose transaction is older than the newest epoch does nothing, which keeps the epochs in the order of
-their bounds. \rev{The trigger lies with the transactions because \duckdb's scheduler offers an index no tasks of its own (Table~\ref{tab:hooks}), and a fold in the background would need them. A better policy would weigh the rebuild against the overlay cost that every later query saves, which depends on the query rate as much as on the log length.}
+their bounds. \rev{The trigger lies with the transactions because \duckdb's scheduler offers an index no tasks of its own (Section~\ref{sec:conclusion}), and a fold in the background would need them. A better policy would weigh the rebuild against the overlay cost that every later query saves, which depends on the query rate as much as on the log length.}
 
 The new epoch does not replace the old one at once, because a transaction that started before the fold
 (\mbox{$T_c$} in Figure~\ref{fig:index-timeline}) must not see the commits between its own start and $b_f$, which are visible in the
@@ -182,8 +182,7 @@ The argument of Sections~\ref{sec:index-structure} to~\ref{sec:index-storage}, t
 the index the same edges a scan of the edge table would show it, rests on three properties of \duckdb. Only the first, that
 the index calls happen at every commit and in commit order, is part of the interface an extension is promised. The other
 two are behaviour of the current implementation. A row id is reused only after its append was reverted by a failed
-commit, and \texttt{CanFetch} answers the visibility question snapshot isolation defines. Section~\ref{sec:hooks}
-counts both among the interface's gaps.
+commit, and \texttt{CanFetch} answers the visibility question snapshot isolation defines. Section~\ref{sec:conclusion} counts both among the interface's gaps.
 
 We test the claim under concurrent writes by having every reader transaction answer its query twice, over the
 index and with a CSR built from the same transaction's view of the table, and comparing the two; the results of these
