@@ -3,6 +3,7 @@ import argparse
 import collections
 import csv
 import http.client
+import importlib
 import json
 import os
 import platform
@@ -283,15 +284,22 @@ def run_duckdb_timed_script(sql, timeout_s):
     return timed_outputs[-1][0], timers
 
 
+#: DUCKPGQ_KUZU_FLAVOR=ladybug runs the Kuzu system on LadybugDB, the community fork of Kuzu (Python package
+#: real-ladybug, same API), under its own database files and the system label "ladybug"; default: Kuzu itself
+KUZU_FLAVOR = os.environ.get("DUCKPGQ_KUZU_FLAVOR", "kuzu")
+if KUZU_FLAVOR not in ("kuzu", "ladybug"):
+    raise SystemExit(f"DUCKPGQ_KUZU_FLAVOR must be kuzu or ladybug, not {KUZU_FLAVOR}")
+
+
 def require_kuzu():
+    module = "real_ladybug" if KUZU_FLAVOR == "ladybug" else "kuzu"
     try:
-        import kuzu
+        return importlib.import_module(module)
     except ImportError as exc:
         raise SystemExit(
-            "The Kuzu Python package is required for --system kuzu. "
-            "Install it with `.venv/bin/python -m pip install kuzu` or `python3 -m pip install kuzu`."
+            f"The {module} Python package is required for --system kuzu with DUCKPGQ_KUZU_FLAVOR={KUZU_FLAVOR}. "
+            f"Install it with `python3 -m pip install {'real-ladybug' if module == 'real_ladybug' else 'kuzu'}`."
         ) from exc
-    return kuzu
 
 
 def require_docker():
@@ -485,7 +493,7 @@ def graphalytics_db_path(dataset):
 
 
 def graphalytics_kuzu_db_path(dataset):
-    return DATA_ROOT / "systems" / "kuzu" / "graphalytics" / f"{graphalytics_name(dataset)}.kuzu"
+    return DATA_ROOT / "systems" / KUZU_FLAVOR / "graphalytics" / f"{graphalytics_name(dataset)}.kuzu"
 
 
 def graphalytics_kuzu_metadata_path(dataset):
@@ -4019,7 +4027,7 @@ def read_result_files_plain(files):
 # Kuzu: the same update workload (snapshot, pairs, committed batches, query stream) on Kuzu.
 # ---------------------------------------------------------------------------------------------------------------------
 
-KUZU_ROOT = DATA_ROOT / "kuzu"
+KUZU_ROOT = DATA_ROOT / KUZU_FLAVOR  # kuzu/ or ladybug/: the two store formats are not interchangeable
 KUZU_MAX_DEPTH = 30  # Kuzu's default cap on the upper bound of a recursive pattern; LDBC knows paths are far shorter
 KUZU_GRAPHALYTICS_MAX_DEPTH = 1000  # lifted with CALL var_length_extend_max_depth on every connection (see kuzu_connect)
 
@@ -4958,9 +4966,10 @@ def run_update_neo4j(args):
 
 
 class KuzuSystem(GraphDBSystem):
-    """Kuzu over the snapshot database built by ensure_kuzu_update_database (read-only for the sweep)."""
+    """Kuzu over the snapshot database built by ensure_kuzu_update_database (read-only for the sweep); with
+    DUCKPGQ_KUZU_FLAVOR=ladybug the same system on LadybugDB, labelled "ladybug" in the result rows."""
 
-    name = "kuzu"
+    name = KUZU_FLAVOR
     partitionable = True  # each query is parallel inside Kuzu; several connections run several queries at once
 
     def __init__(self, threads, db=None):

@@ -1510,3 +1510,25 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   Housekeeping: `~/.claude/CLAUDE.md` forbids trailers; 13 commits of 29 Oct (7c65bed0..d9701272) carry one, rewrite
   coordinated with the Mac side. SF10 update/concurrent steps (14) rerun on rc13 right after the sweep (author's OK,
   5 Nov); dry-run markers moved to `repro/logs_sf10_dryrun_updates/`.
+- 9 Nov: SYSTEM SELECTION (for the paper's setup section; the author asked for the rationale to be ready). Versions
+  measured: DuckDB v2.0.0-dev (45f4fdf3) with DuckPGQ at eval-freeze-rc13; Kuzu 0.11.3 (Python package, the last
+  release before development stopped); Neo4j 5.26.32 Enterprise (container pf-neo4j) with Graph Data Science 2.13.14
+  (unlicensed edition, capped at 4 threads, refuses the parallel runtime); Memgraph 3.14.0 (container of 16 Oct
+  2026); FalkorDB module 4.22.2 (container of 19 Oct 2026). Why these: Kuzu for the embedded, columnar, recursive-join
+  graph database closest in architecture (per-source frontier expansion inside a pipeline); Neo4j Cypher as the
+  reference property-graph engine, GDS for its single-source algorithms; Memgraph for an in-memory engine with a
+  built-in BFS expansion; FalkorDB for a sparse-matrix (GraphBLAS) engine; DuckDB's recursive CTE and the CIDR 2023
+  scalar-UDF route as the in-engine references. Considered and not in the matrix: LadybugDB 0.15.3, the community
+  fork of Kuzu after the project was archived (Python package real-ladybug, same API; the harness runs it through the
+  Kuzu system with DUCKPGQ_KUZU_FLAVOR=ladybug, Python 3.11 virtualenv ~/sweep/ladybug-venv311, result rows labelled
+  "ladybug" in data/ldbc-pathfinding/results/sf10). SF10, 32 threads, medians of 3, Ladybug against Kuzu: random pairs
+  1 / 16 / 128 / 1024 / 2048 / 16384 / 65536: 8 / 108 / 1.0 s / 8.6 s / 17.0 s / 138 s / 548 s against 9 ms / 85 ms /
+  631 ms / 5.1 s / 10.3 s / 82 s / 327 s; sources x all 1 / 16 / 128 / 1024: 6 ms / 144 ms / 1.2 s / 9.6 s against
+  5 ms / 67 ms / 534 ms / 4.0 s; LDBC IC13 / BI19 / BI20: 23 ms / 4.7 s / 19.7 s against 8 ms / 1.6 s / 7.6 s. The fork
+  is 1.5-2.6x slower than Kuzu 0.11.3 on every point with more than one search and equal on a single pair, so Kuzu
+  stays as the baseline; one sentence in the setup. Configuration caveats to state: Kuzu runs one query per pair and
+  per source because a WITH-bound source or a pair table bound at both ends makes its recursive join run over far more
+  than the pairs (20 s / 15 s at SF1), with var_length_extend_max_depth raised on the Graphalytics graphs; Neo4j binds
+  the sources with UNWIND (an IN list plans one index-seek row and serialises shortestPath), hop bound 30 on LDBC and
+  none on Graphalytics; Memgraph needs the WITH barrier before *BFS; FalkorDB has no undirected shortestPath (its LDBC
+  graph holds both directions); the 32-client passes give the per-query engines client-side parallelism.
