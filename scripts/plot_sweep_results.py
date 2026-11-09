@@ -1089,6 +1089,9 @@ def strategy_working_set_mb(strategy):
 TABLES = Path(os.environ.get("DUCKPGQ_TABLES_DIR", str(REPO / "paper" / "tables")))
 NAME_OF = {key: name for key, name, _ in SYSTEMS}
 NAME_OF["neo4j_gds"] = "Neo4j GDS (4 thr.)"
+NAME_OF["ladybug"] = "LadybugDB"
+# Systems measured as probes only (LadybugDB 0.15.3 at SF10, 9 Nov) stay out of the paper's tables
+EXCLUDED = {"ladybug"}
 NAME_OF["duckpgq_recursive"] = "DuckDB recursive CTE"
 NAME_OF["duckpgq_scalar"] = "DuckPGQ 2023 UDFs"
 ORDER = [key for key, _, _ in SYSTEMS] + ["duckpgq_scalar", "duckpgq_recursive", "neo4j_gds"]
@@ -1134,6 +1137,7 @@ def row_label(label):
 
 
 def sorted_labels(labels):
+    labels = [l for l in labels if l.split("@")[0] not in EXCLUDED]
     return sorted(labels, key=lambda l: (ORDER.index(l.split("@")[0]) if l.split("@")[0] in ORDER else 99, "@" in l))
 
 
@@ -1520,16 +1524,41 @@ def seconds_label(s):
     return f"{s / 60:.0f}\\,min"
 
 
+LOAD_NAMES = {"SNB SF10": "SF10", "SNB SF100": "SF100", "SNB SF300": "SF300", "cit-Patents": "cit-Patents",
+              r"datagen-8\_4-fb": "datagen-8_4-fb", "graph500-24": "graph500-24"}
+
+
+def load_after_restart():
+    """{graph: (warm load s, cold load s)} from the 9 Nov probe file: first query minus the warm second query, median
+    of three, with the database file in the page cache (warm) or evicted from it (cold)"""
+    path = RESULTS / "probes_9nov" / "load_after_restart.txt"
+    if not path.is_file():
+        return {}
+    out = {}
+    for line in path.read_text().splitlines():
+        m = re.match(r"^(\S+)\s+cold\s+(.*?)\s+warm\s+(.*)$", line.strip())
+        if not m:
+            continue
+        def median_load(pairs):
+            diffs = [float(a) - float(b) for a, b in (pair.split("/") for pair in pairs.split())]
+            return statistics.median(diffs)
+        out[m.group(1)] = (median_load(m.group(3)), median_load(m.group(2)))
+    return out
+
+
 def fixed_costs_table(filename):
-    """Table: edges, index creation and bytes per edge against the native systems' import time and store size."""
-    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.5pt}",
-             r"\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table and its size "
-             r"per edge, against the native systems' import from the same CSV files (Kuzu from Parquet) and Kuzu's store "
-             r"size per edge. Memgraph, FalkorDB and Neo4j were not loaded with the two large Graphalytics graphs.}"
+    """Table: edges, index creation, bytes per edge and load after a restart against the native systems' import time
+    and store size."""
+    loads = load_after_restart()
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.2pt}",
+             r"\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table, its size per "
+             r"edge and its load on the first query after a restart with the database file in the page cache, against the "
+             r"native systems' import from the same CSV files (Kuzu from Parquet) and Kuzu's store size per edge. Memgraph, "
+             r"FalkorDB and Neo4j were not loaded with the two large Graphalytics graphs.}"
              r"\label{tab:fixed-costs}",
-             r"\begin{tabular}{lrrrrrrrr}\toprule",
-             r"graph & edges & \multicolumn{2}{c}{CSR index} & \multicolumn{2}{c}{Kuzu} & Neo4j & Memgraph & FalkorDB \\",
-             r" & & create & B/edge & import & B/edge & import & import & import \\ \midrule"]
+             r"\begin{tabular}{lrrrrrrrrr}\toprule",
+             r"graph & edges & \multicolumn{3}{c}{CSR index} & \multicolumn{2}{c}{Kuzu} & Neo4j & Memgraph & FalkorDB \\",
+             r" & & create & B/edge & load & import & B/edge & import & import & import \\ \midrule"]
     for sf, name in FIXED_COST_GRAPHS:
         directory = RESULTS / (f"sf{sf}" if sf.isdigit() else sf)
         files = newest_files(directory, "fixed_costs_*.csv")
@@ -1542,8 +1571,10 @@ def fixed_costs_table(filename):
         loads = {r["system"]: (float(r["seconds"]), float(r["bytes_per_edge"])) for r in rows if r["measure"] == "load"}
         imp = lambda key: seconds_label(loads[key][0]) if key in loads else "--"
         kuzu_bpe = f"{loads['kuzu'][1]:.0f}" if "kuzu" in loads else "--"
+        load = loads.get(LOAD_NAMES.get(name, name))
+        load_label = "--" if load is None else (f"{load[0] * 1000:.0f}\\,ms" if load[0] < 1 else f"{load[0]:.2f}\\,s")
         lines.append(f"{name} & {edges / 1e6:.1f}\\,M & {seconds_label(statistics.median(builds) if builds else None)} & "
-                     f"{bpe:.1f} & {imp('kuzu')} & {kuzu_bpe} & {imp('neo4j')} & {imp('memgraph')} & {imp('falkordb')} \\\\")
+                     f"{bpe:.1f} & {load_label} & {imp('kuzu')} & {kuzu_bpe} & {imp('neo4j')} & {imp('memgraph')} & {imp('falkordb')} \\\\")
     lines.append(r"\bottomrule\end{tabular}\end{table}")
     write_table(filename, lines)
 

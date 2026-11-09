@@ -391,6 +391,28 @@ rule). Still open: the index load time after a restart was not measured on rc13 
 list (VERIFY in the bib); introduction, abstract and conclusion still to be realigned as text, Section 5 to shrink;
 the unused figures and tables in paper/figures and paper/tables to be removed with the appendix move.
 
+9 Nov (desk's post-sweep checks, commits 409890e3 and aace9efc on the desk, not yet pushed; full numbers in the
+plan's "9 Nov (2)" entry). Oracle at scale, 16 readers under the writer, 20 commits: SF100 354 queries compared, SF300
+218, SF300 with a fold during the comparison 220, all 0 mismatches / 0 errors; files under sf100/oracle and
+sf300/oracle (kept out of the concurrent-table printer's glob). Row-id-keyed index (both routes number vertices by
+row order): 65,536 pairs 3.97 s at SF100 and 12.07 s at SF300 against the id-keyed index's 3.28 / 9.80 s and the
+sweep's build route 4.13 / 12.81 s, so build minus row-id index is the per-query build (0.16 / 0.74 s) and the rest
+of the gap, 0.7 / 2.3 s, is the vertex numbering: sorted keys give locality, row order does not. 6.3 and 4.7 state it
+as measured. Index load on first use after a restart (first query minus warm second, medians): warm (page cache)
+SF10 16 ms, SF100 60, SF300 117, cit-Patents 54, datagen 0.86 s, graph500-24 0.94 s; cold (file evicted with dd
+iflag=nocache, EBS ~270 MB/s) 23 ms, 0.29 s (0.17-0.63), 2.1 s, 0.84 s, 23.1 s, 24.4 s. Table 4 has a load column
+(warm) read from repro/results/probes_9nov/load_after_restart.txt (copied here ahead of the pull, identical bytes);
+4.5 updated, TODO gone. Single pair at SF300 (22 ms): the sampled pair is five hops; the five levels take 18-20 ms,
+snapshot + per-source arrays + output 2-4 ms, array fills about 1 ms (perf: Relax 25%, ExplorePartition 25%,
+frontier emplace_back 7%); the 5 Nov array-fill hypothesis is wrong and 6.1 now says the traversal of five levels.
+High-diameter graph: DIMACS USA-road offline, SuiteSparse 403 from the desk, SNAP roadNet-CA/TX/PA (1-2 M V, 3-5.5 M
+E, diameter 500-850) feasible in an afternoon; caveats: the dense reach form holds distances up to 254 (fallback to
+8-byte entries; 1024 sources x all on an 11.5 M-vertex road graph would need 94 GB, a 16-bit dense form is not in
+rc13), and thousands of levels cost 0.1-0.3 ms of scheduling each. Decision pending; 6.1 names the gap. LadybugDB
+0.15.3 (Kuzu's fork) probed at SF10 only: 8 ms / 548 s at 1 / 65,536 pairs, 6 ms / 9.6 s at 1 / 1024 sources, LDBC
+23 ms / 4.7 s / 19.7 s, slower than Kuzu 0.11.3 everywhere; kept out of the tables (EXCLUDED in the plot script),
+footnote in the setup pending the author's decision. Trailer commits on the desk: 13, 7c65bed0 through d9701272.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under

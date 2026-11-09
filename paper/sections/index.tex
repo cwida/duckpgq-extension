@@ -168,8 +168,7 @@ through \texttt{Append} and \texttt{Delete} like those of any index.
 
 An index is loaded on its first use after a restart, not when the database opens, because a database may hold
 indexes its queries never touch. The loader reads the stored blocks through \duckdb's block manager in rounds of
-bounded size and deserializes the partitions in parallel; the load takes 0.03\,s at SF10 and 0.41\,s at SF300 (Table~\ref{tab:fixed-costs}). \todo{Pre-freeze; from the
-rerun's fixed-cost step.}
+bounded size and deserializes the partitions in parallel; \rev{the load takes 17\,ms at SF10 and 117\,ms at SF300 with the file in the page cache, and 2.1\,s at SF300 from disk (Table~\ref{tab:fixed-costs})}.
 
 Loaded log entries lose two things until the next fold. The change groups are gone, and cannot be restored, because
 after a restart every stored row is committed and the groups' commits are indistinguishable; the loaded entries are
@@ -201,7 +200,7 @@ both routes, so the difference is confined to intermediate vertices, and we acce
 \label{sec:index-when}
 
 The build that the index saves is a fixed cost that depends on the graph alone, \rev{22, 126 and 263}\,ms at SF10, SF100 and SF300, the gap between the two \duckpgq lines for one pair in \rev{Figure~\ref{fig:scaling}}. Because the cost
-is fixed, its share of a query shrinks as the query grows. For a single pair at SF300 the build is \rev{92}\% of the query, \rev{285}\,ms on the build route against \rev{22}\,ms over the index. For 65\,536 random pairs, whose traversal does most of the work, the saving is 22\%, 2.8\,s of a \rev{12.8}\,s query\rev{, more than the build alone (Section~\ref{sec:eval-index})}. The index is
+is fixed, its share of a query shrinks as the query grows. For a single pair at SF300 the build is \rev{92}\% of the query, \rev{285}\,ms on the build route against \rev{22}\,ms over the index. For 65\,536 random pairs, whose traversal does most of the work, the saving is 22\%, 2.8\,s of a \rev{12.8}\,s query\rev{; the build is 0.3\,s of it, and the rest is a second benefit of the index, its dense ids in sorted key order, which give the traversal a locality that the build route's row-order ids do not (Section~\ref{sec:eval-index})}. The index is
 faster on every read-only point of Section~\ref{sec:eval}. The first argument for the index is the workload of short queries, and the argument grows with the query rate,
 because every query pays the build again. With 32 clients the index answers \rev{329} single-pair queries per second at SF300 and the build route \rev{5}.
 

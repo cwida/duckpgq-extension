@@ -63,8 +63,7 @@ Shared traversal pays from a handful of sources on; at one pair and one source t
 fixed cost of a few to a few tens of milliseconds (Figure~\ref{fig:scaling}). For one pair at SF300 Neo4j answers in
 4\,ms, the index route in 22\,ms, Kuzu in 52 and FalkorDB in 79. For one source Kuzu, whose recursive join from a
 literal source is a true single-source search, takes 33\,ms at SF300 against the index route's 41, and 14 against 19
-at SF100. The operator's fixed cost is the frontier traversal's, which fills 13 bytes per vertex before the first level (Section~\ref{sec:traversals}), 3, 15 and 22\,ms for one pair at SF10, SF100 and SF300, and a per-source engine starts
-from the source's adjacency list at once. At sixteen the order has turned: 16 pairs at SF300 take 139\,ms over the
+at SF100. The operator's 22\,ms at SF300 are the traversal itself. The sampled pair is five hops apart, and the five levels, which touch most of the graph, take 18 to 20 of the 22\,ms; the snapshot, the per-source arrays and the output take 2 to 4, and a one-hop pair from the same source 2 to 9. Neo4j's bidirectional search meets in the middle after two or three levels from each side. At sixteen the order has turned: 16 pairs at SF300 take 139\,ms over the
 index, 945\,ms in Kuzu, 1.1\,s in FalkorDB and 3.5\,s in Neo4j, and 16 sources 182\,ms against Kuzu's 333.
 
 From there the two kinds of system part, for a reason of design. Every native system answers a
@@ -106,8 +105,7 @@ At 1024 sources the index route leads on every graph: 437\,ms against Memgraph's
 graphs from 2048 pairs; the index route takes 51\,s on datagen and 144\,s on graph500-24. One irregularity is ours.
 On datagen and graph500-24 the 16-source point is slower than the 128-source point (1.9 against 1.1\,s, 4.5 against
 2.7\,s), because the few-sources rule sends 16 sources to the frontier traversal, which sweeps 4 to 9\,M vertices once
-per source, while 128 sources run on the lanes. The default of 16 fits \texttt{knows}; Section~\ref{sec:choice}
-shows that the crossover is a property of the graph.
+per source, while 128 sources run on the lanes. The default of 16 fits \texttt{knows}; Section~\ref{sec:choice} shows that the crossover is a property of the graph. None of the six graphs has a high diameter. On a road network a search runs hundreds of levels with small frontiers, where the lanes' per-level sweep is at its worst and the sparse levels carry the work; we have not measured that case.
 
 \subsection{LDBC queries}
 \label{sec:eval-ldbc}
@@ -132,11 +130,7 @@ measures at 6 against 116\,ms for 1024 sources at SF100.
 
 Both routes complete every point, and the index route is faster on every one of them. For one pair the gap is the
 build of the CSR, 22, 126 and 263\,ms at SF10, SF100 and SF300 (25 against 3, 141 against 15, 285 against 22\,ms),
-the whole query on the build route. The gap stays near the build up to 2048 pairs and then grows with the pairs; at 65\,536 pairs it is 2.8\,s of 12.8\,s at SF300 and 0.9\,s of 4.1\,s at SF100, more than the build alone. The two
-routes build their partitions with the same code and read the same pairs; they differ in the id space, the build route
-numbers vertices by the table's row order and the index by sorted keys, and we attribute the rest of the gap to the
-locality of the traversal. \todo{Desk: the CSR index on row-id keys settles the attribution; if it closes the gap, say
-so here and in Section~\ref{sec:index-when}.}
+the whole query on the build route. The gap stays near the build up to 2048 pairs and then grows with the pairs; at 65\,536 pairs it is 2.8\,s of 12.8\,s at SF300 and 0.9\,s of 4.1\,s at SF100, more than the build alone. The two routes build their partitions with the same code and read the same pairs; they differ in the id space, the build route numbers vertices by the table's row order and the index by sorted keys. An index keyed by the persons' row ids, which numbers vertices as the build route does, takes 12.1\,s for 65\,536 pairs at SF300 and 4.0\,s at SF100, within the per-query build of the build route's 12.8 and 4.1\,s. The index's lead beyond the build, 2.3\,s at SF300 and 0.7 at SF100, is therefore the vertex numbering: ids in sorted key order give the traversal a locality that the table's row order does not.
 
 Table~\ref{tab:fixed-costs} gives what the index costs before the first query. Creating it is one partitioned CSR
 build over the whole table plus the dictionary and a row id per edge: 0.13, 1.3 and 4.5\,s on the three
@@ -144,7 +138,7 @@ build over the whole table plus the dictionary and a row id per edge: 0.13, 1.3 
 edges per second. The index takes 11 to 13 bytes per edge, 17 on cit-Patents, whose 4.4 edges per vertex make the
 sparse rows a larger share; Kuzu's store takes 16 to 31. The native systems import the same CSV files between 7 times
 (Kuzu, from Parquet) and 570 times (FalkorDB, 43 minutes at SF300) slower than the index is created, and Neo4j takes
-14 minutes at SF300.
+14 minutes at SF300. After a restart the index is loaded on the first query, in 17, 60 and 117\,ms on the three \texttt{knows} graphs and 0.9\,s on the two large Graphalytics graphs with the database file in the page cache; from disk the load is the index's bytes at the volume's 270\,MB/s, 2.1\,s at SF300 and 23 to 24\,s on the large graphs.
 
 \subsection{Updates and concurrent readers}
 \label{sec:eval-updates}
@@ -185,9 +179,7 @@ queries per second at SF300 while the build route stays at 4 to 5, from 112 to 9
 
 A fold at SF300 takes 1.6 to 1.8\,s, of which the parallel table scan is 120 to 190\,ms, and one reader pays it. In a
 run that forces a fold every 0.05\,\% of the edges, four in twenty commits, the sixteen readers' median stays at 65\,ms
-and the p99 at 277\,ms, and the four queries that triggered a fold take 1.7 to 1.8\,s each. The correctness oracle of
-Section~\ref{sec:index-correctness} ran under this load at SF10 with four readers: 4584 queries answered over the index
-and over a CSR built from the same transaction's view of the table, under 190 commits, with no mismatch.
+and the p99 at 277\,ms, and the four queries that triggered a fold take 1.7 to 1.8\,s each. The correctness oracle of Section~\ref{sec:index-correctness} ran under this load, every reader answering its query over the index and over a CSR built from the same transaction's view of the table and comparing the two: 4584 queries at SF10 with four readers under 190 commits, 354 at SF100 and 218 at SF300 with sixteen readers under 20 commits, and 220 at SF300 with a fold during the comparison, without a mismatch.
 
 \subsection{What each mechanism contributes}
 \label{sec:eval-ablation}
