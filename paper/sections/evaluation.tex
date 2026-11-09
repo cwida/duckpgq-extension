@@ -38,7 +38,7 @@ graph about half of them are reachable, on datagen and graph500-24 all of them, 
 is why cit-Patents runs only the second shape. \emph{Sources $\times$ all} returns the distance from each of $k$
 sampled sources to every reachable vertex, the shape of a reach query. Three LDBC queries have a shortest path at
 their core, IC13 (one pair), BI19 (every pair between the persons of two cities) and BI20 (one target, every person
-of one company); we run their hop-count variants with five parameter sets each. Each system runs each query in its own language in the formulation that was fastest for it (Appendix~\ref{sec:appendix-queries}), including the split of the pairs over 32 client connections where that was faster. The Cypher patterns
+of one company); we run their hop-count variants with five parameter sets each. Each system runs each query in its own language in the formulation that was fastest for it, listed in the reproduction package, including the split of the pairs over 32 client connections where that was faster. The Cypher patterns
 carry a hop bound of 30, Kuzu's default maximum, and \duckpgq's carry none; the counts agree on every point a bounded
 system finishes, so the bound cut no path. A query over 600\,s is reported as timed out, and the larger points of the
 same shape are then recorded as timed out without running them. Every point is the median of three runs; the LDBC
