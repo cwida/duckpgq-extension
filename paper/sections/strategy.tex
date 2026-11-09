@@ -4,18 +4,11 @@
 % Shrunk 9 Nov 2026 to the interface table and one paragraph; the threshold discussion lives in 3.4, 4.4 and 4.7.
 
 \rev{Table~\ref{tab:hooks} lists the \duckdb interfaces the operator and the index use, what each one gave us and
-what it lacked, with the sections where a lack cost a mechanism; it is the list the introduction promised. Everything
-runs through these interfaces without a change to \duckdb, except that the visibility check calls into two classes
-outside the extension API, the transaction and the table storage. Three additions would make an index and an operator
+what it lacked, with the sections where a lack cost a mechanism; it is the list the introduction promised. The operator and the index run through these interfaces without a change to \duckdb, except that the visibility check calls into two classes outside the extension API, the transaction and the table storage. Three additions would make an index and an operator
 like ours simpler. A transaction or commit identifier passed with each index callback would let the index decide
 visibility itself instead of asking \duckdb once per change group (Section~\ref{sec:index-read}). A visibility check
 that stays valid after version garbage collection would let a fold decide at any time what an epoch accounts for,
-instead of while its transaction is live (Section~\ref{sec:index-fold}). Tasks for index work and task groups for
-operators would let a fold run in the background and a traversal schedule its levels without a chain of events
-(Sections~\ref{sec:phases} and~\ref{sec:index-fold}). Two entries of the table are not gaps but promises the interface
-does not make, that row ids stay stable while an index exists and that \texttt{CanFetch} answers the visibility
-question of snapshot isolation (Section~\ref{sec:index-correctness}); an extension that relies on them, as ours does,
-should say so.}
+instead of while its transaction is live (Section~\ref{sec:index-fold}). With tasks for index work and task groups for operators, a fold could run in the background and a traversal could schedule its levels without a chain of events (Sections~\ref{sec:phases} and~\ref{sec:index-fold}). Two entries of the table are behaviour we rely on that the interface does not promise, that row ids stay stable while an index exists and that \texttt{CanFetch} answers the visibility question of snapshot isolation (Section~\ref{sec:index-correctness}); an extension that relies on them, as ours does, should say so.}
 
 \begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
   \caption{The \duckdb extension interfaces the operator and the index use, what each provided, and what it lacked
