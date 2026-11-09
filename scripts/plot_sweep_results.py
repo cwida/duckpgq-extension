@@ -1425,7 +1425,7 @@ def scaling_grid_figure(filename):
     fastest formulation, the two DuckDB-native routes dashed in ink."""
     shapes = [("random_pairs", "pairs per query", "random pairs"),
               ("multi_source", "sources per query, each to every reachable person", "sources × all")]
-    fig, axes = plt.subplots(2, 3, figsize=(7.2, 4.3), sharey="row", squeeze=False)
+    fig, axes = plt.subplots(2, 3, figsize=(7.2, 3.6), sharey="row", squeeze=False)
     used = []
     for row, (shape, xlabel, rowtitle) in enumerate(shapes):
         for col, sf in enumerate(SCALE_FACTORS):
@@ -1459,23 +1459,23 @@ def scaling_grid_figure(filename):
                 if xs:
                     label_positions.append((ys[-1], xs[-1], name, color))
             ax.set_ylim(0.001, 3000)
-            if col == len(SCALE_FACTORS) - 1:
-                direct_labels(ax, label_positions, max(counts) * 1.3, factor=2.0)
             if row == 0:
-                ax.set_title(f"LDBC SF{sf}", loc="left")
+                ax.set_title(f"LDBC SF{sf}", loc="right")
             ax.set_xticks(counts)
             ax.set_xticklabels([count_label(c) if c != 2048 else "" for c in counts], fontsize=6)
             if col == 1:
                 ax.set_xlabel(xlabel, fontsize=7.5)
             style_axes(ax)
-        axes[row][0].set_ylabel(f"{rowtitle}: seconds per query")
+        axes[row][0].set_ylabel("seconds per query")
+        axes[row][0].annotate(rowtitle, (0.0, 1.0), xycoords="axes fraction", xytext=(0, 3), textcoords="offset points",
+                              fontsize=7.5, color=INK2, va="bottom", ha="left")
     handles = [Line2D([], [], color=c, linewidth=1.6, linestyle=LINESTYLE.get(k, "-"), marker="o", markersize=3.6,
                       markeredgecolor=SURFACE) for k, _, c in used]
     labels = [n for _, n, _ in used]
     handles.append(Line2D([], [], linestyle="none", marker="^", markersize=5, markerfacecolor=SURFACE, markeredgecolor=INK2))
     labels.append("timed out")
     fig.legend(handles, labels, loc="lower center", ncol=5, bbox_to_anchor=(0.5, -0.01), handlelength=2.4, columnspacing=1.1)
-    fig.tight_layout(rect=(0, 0.08, 0.9, 1.0))
+    fig.tight_layout(rect=(0, 0.1, 1.0, 1.0))
     save(fig, filename)
 
 
@@ -1673,7 +1673,7 @@ def concurrency_figure(filename):
     if not columns:
         print("no throughput or concurrent results yet, skipping", filename)
         return
-    fig, axes = plt.subplots(2, len(columns), figsize=(7.2, 3.9), squeeze=False, sharey="row")
+    fig, axes = plt.subplots(2, len(columns), figsize=(7.2, 3.3), squeeze=False, sharey="row")
     for col, (sf, points, series) in enumerate(columns):
         top, bottom = axes[0][col], axes[1][col]
         for ax in (top, bottom):
