@@ -20,8 +20,7 @@
   \caption{Path finding in \duckpgq. A \texttt{MATCH} path pattern is rewritten to SQL with a marker function that an
   optimizer extension replaces by the path-finding operator (Section~\ref{sec:planner}). The operator traverses a
   partitioned CSR that is either built inside the query from the edge table (Section~\ref{sec:csr}) or read as a
-  transaction-consistent snapshot of a CSR index (Section~\ref{sec:index}); both have the same layout. Two
-  traversals, multi-source lanes for many distinct sources and a frontier search for few, run as chains of per-phase events
+  transaction-consistent snapshot of a CSR index (Section~\ref{sec:index}); both have the same layout. \rev{The two traversals, multi-source for many distinct sources and single-source for few, run as chains of per-phase events}
   (Sections~\ref{sec:traversals} and~\ref{sec:phases}). Everything in colour is the extension; the grey band is
   \duckdb, with the four of its extension interfaces that carry the query (Section~\ref{sec:strategy} lists all
   of them).}
@@ -30,8 +29,7 @@
 
 % Draft 22 Oct 2026 in the style of paper/STYLE.md. Numbers from eval-freeze-rc1 (29 Oct).
 
-SQL:2023 added graph pattern matching to SQL, and with it a query type relational systems have never executed
-well, the shortest path. Its \sqlpgq part lets a query declare a property graph over existing tables and match
+SQL:2023 added graph pattern matching to SQL, and with it a query type relational systems \rev{execute badly}, the shortest path. Its \sqlpgq part lets a query declare a property graph over existing tables and match
 patterns against it, including variable-length and shortest-path patterns~\cite{deutsch2022gql}. A user whose data
 lives in a relational system can copy it into a graph database and keep the two in sync, write the path pattern as a
 recursive join and accept its performance, or wait for the system's developers to add graph storage and operators.
@@ -52,7 +50,7 @@ single shortest-path query hands it one, so one core runs a BFS over the whole g
 was the second problem, global state built by ``the first thread to touch it'', rebuilt for every query, invisible to
 the optimizer, and unrelated to the transaction that reads it, so that a concurrent insert into the edge table is in the CSR or not depending on timing.
 
-This paper takes up that challenge under the constraint that made \duckpgq viable, that everything stays in a
+This paper \rev{removes both limits} under the constraint that made \duckpgq viable, that everything stays in a
 loadable extension. Our thesis is that the interfaces \duckdb already offers to extensions are enough to give it
 graph-native path finding, including a graph index that is consistent with its multi-version concurrency control
 (MVCC), and that the places where they fall short are few and can be named.
@@ -67,9 +65,7 @@ run together, 256 at a time, as the lanes of a multi-source traversal. The plann
 optimizer rule and sees an ordinary operator with a cardinality.
 
 The second half is a \emph{CSR index}. \texttt{CREATE INDEX ... USING CSR (src, dst)} keeps the graph representation
-across queries, restarts and checkpoints, maintained through \duckdb's index interface like any other index. The
-difficulty is consistency. A transaction must traverse exactly the edges it is allowed to see, and the interface
-tells an extension which rows changed but nothing about who may see them. The index stores immutable epochs and a
+across queries, restarts and checkpoints, maintained through \duckdb's index interface like any other index. \rev{The difficulty is that a transaction must traverse exactly the edges it is allowed to see while the interface tells an extension which rows changed but nothing about who may see them.} The index stores immutable epochs and a
 change log whose entries \duckdb's own row-version check classifies, once per change group instead of once per edge.
 Every transaction gets a snapshot of its own view, a writer spends a constant amount of work per edge, and a fold,
 triggered by a transaction that finds the log too long, turns the log into the next epoch. Section~\ref{sec:index}
