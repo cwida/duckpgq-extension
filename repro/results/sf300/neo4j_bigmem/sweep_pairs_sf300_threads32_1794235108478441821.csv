@@ -1,0 +1,6 @@
+system,scale_factor,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,client_threads,timeout_s,benchmark_notes,repo_commit,peak_rss_mib
+neo4j,300,random_pairs,16384,,1,ok,250.523924,7977,30935,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2,
+neo4j,300,random_pairs,16384,,2,ok,250.784931,7977,30935,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2,
+neo4j,300,random_pairs,16384,,3,ok,248.035914,7977,30935,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2,
+neo4j,300,random_pairs,65536,,1,timed_out,601.284352,,,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2,
+neo4j,300,multi_source,,1,1,timed_out,600.071821,,,32,1,600.0,"Neo4j check: 31G heap, 64G page cache, SF300, rc13 cf4d88ce",aace9efc3441ba31d7ae041e63e70adfeb5223e2,

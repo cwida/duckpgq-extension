@@ -1572,3 +1572,23 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   BFS per source over 850 levels), about 2-3 h in all; implementation 2-3 h. Verdict to decide: feasible with a SNAP
   road graph within an afternoon; a 10-30M-edge road graph needs a download route that works and the 16-bit dense
   form for the 1024-source point.
+- 9 Nov (3): for the setup section (requested 9 Nov; this desk does not write paper/, text for the paper agent).
+  Memory configuration as measured in the sweep: the machine has 123 GB of RAM; the Neo4j container (pf-neo4j,
+  5.26.32 Enterprise with GDS 2.13.14) ran with a 16 GB heap (initial and max) and a 16 GB page cache, and its
+  largest store is 2.3 GB (SF300; cit-Patents 0.88 GB), so the whole store sat in Neo4j's page cache at every scale
+  and GDS's in-memory projections sat in the heap; Memgraph and FalkorDB are in-memory engines; Kuzu's 9.2 GB store
+  and DuckDB's 10.7 GB file at the largest graph are held by the OS page cache after their load, and DuckDB's
+  memory_limit was the default 80% of RAM. Hence no system read from disk during a timed query after its load; a
+  first repeat can include a cold read (Kuzu's first single pair on graph500-24 took 9.9 s against 0.38 s warm), and
+  the medians of three exclude it. The index-load numbers of 9 Nov (2) are the one place where disk shows: a cold
+  first query after a restart pays the index bytes at the volume's 270 MB/s. Neo4j check with a 31 GB heap and a
+  64 GB page cache at SF300 (BI19, 16384 and 65536 random pairs, one source; sweep numbers 47.0 s, 248 s, timeout,
+  timeout): running 9 Nov 14:12 UTC, result appended below.
+  Result (9 Nov 15:25 UTC, container pf-neo4j-big on the sweep's data volume, 31 GB heap, 64 GB page cache, load
+  835 s): BI19 per parameter set 51.6-52.1 / 50.0-50.2 / 26.3-26.4 s against the sweep's 52.0-52.9 / 50.7-51.1 /
+  26.8-27.0 s; 16384 random pairs 250.5 / 250.8 / 248.0 s against 248 s; 65536 pairs timed out (601 s) as in the
+  sweep; one source timed out (600 s) as in the sweep. Within 2% everywhere: Neo4j's time on these queries is the
+  per-pair shortestPath work, not memory; the configuration stays as measured (16 GB heap, 16 GB page cache) and the
+  setup says so in one clause. Files under repro/results/sf300/neo4j_bigmem (kept out of the table printers' globs).
+  Containers restored to the sweep configuration afterwards (pf-neo4j, pf-memgraph, pf-falkordb started;
+  pf-neo4j-big stopped, kept).
