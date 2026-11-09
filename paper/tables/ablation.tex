@@ -4,12 +4,12 @@
  & \multicolumn{3}{c}{random pairs} & \multicolumn{2}{c}{sources $\times$ all} & $\to$ 1 \\
 configuration & 1 & 2048 & 65\,536 & 1 & 1024 & 1024 \\ \midrule
 default, 32 threads & 15\,ms & 135\,ms & 3.3\,s & 19\,ms & 421\,ms & 116\,ms \\
-frontier traversal for every query & 15\,ms & -- & 39.1\,s & 19\,ms & 1.1\,s & 1.1\,s \\
-lanes for every query & 15\,ms & -- & 3.3\,s & 19\,ms & 397\,ms & 118\,ms \\
+single-source traversal for every query & 15\,ms & -- & 39.1\,s & 19\,ms & 1.1\,s & 1.1\,s \\
+multi-source traversal for every query & 15\,ms & -- & 3.3\,s & 19\,ms & 397\,ms & 118\,ms \\
 pairs not grouped by source & 24\,ms & 520\,ms & 3.3\,s & 19\,ms & 410\,ms & 284\,ms \\
 batches not grouped by the scheduler & 15\,ms & 258\,ms & 7.9\,s & 19\,ms & 377\,ms & 151\,ms \\
 one batch at a time & -- & 814\,ms & 26.7\,s & -- & -- & -- \\
-no frontier summary bitmap & -- & 167\,ms & 4.2\,s & -- & -- & -- \\
+no summary bitmap & -- & 167\,ms & 4.2\,s & -- & -- & -- \\
 destination ranges of 4096 & -- & 193\,ms & 6.0\,s & 18\,ms & 335\,ms & -- \\
 with reverse partitions & 15\,ms & -- & 3.3\,s & 18\,ms & 419\,ms & 6\,ms \\
 sources $\times$ all as a pair list & 15\,ms & -- & 3.3\,s & 83\,ms & 31.7\,s & 117\,ms \\

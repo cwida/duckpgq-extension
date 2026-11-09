@@ -1783,7 +1783,7 @@ def crossover_sf100_figure(filename, sf="100"):
     axes[0][0].set_ylabel("seconds per query")
     handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE)
                for _, _, c in CROSSOVER_KERNELS]
-    fig.legend(handles, ["frontier traversal", "lanes, one per distinct source", "lanes, one per pair"],
+    fig.legend(handles, ["single-source traversal", "multi-source, one lane per source", "multi-source, one lane per pair"],
                loc="lower center", ncol=1, bbox_to_anchor=(0.5, -0.02), handlelength=2.0, fontsize=6.5)
     fig.tight_layout(rect=(0, 0.2, 1, 1))
     save(fig, filename)
@@ -1792,12 +1792,12 @@ def crossover_sf100_figure(filename, sf="100"):
 
 ABLATION_ROWS = [
     ("baseline", "default, 32 threads"),
-    ("single_source_kernel", "frontier traversal for every query"),
-    ("multi_source_dedup", "lanes for every query"),
+    ("single_source_kernel", "single-source traversal for every query"),
+    ("multi_source_dedup", "multi-source traversal for every query"),
     ("no_source_grouping", "pairs not grouped by source"),
     ("no_grouped_batches", "batches not grouped by the scheduler"),
     ("sched_g1_w32", "one batch at a time"),
-    ("no_frontier_bitmap", "no frontier summary bitmap"),
+    ("no_frontier_bitmap", "no summary bitmap"),
     ("partitions_4096", "destination ranges of 4096"),
     ("reverse_index", "with reverse partitions"),
     ("pair_mode", "sources $\\times$ all as a pair list"),
