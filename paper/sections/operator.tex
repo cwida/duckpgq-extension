@@ -159,9 +159,7 @@ inactive, independently of the other batches, and several can run at the same ti
 of its own. A level has two phases. The explore phase relaxes
 \texttt{frontier} into \texttt{next} with one 256-bit \texttt{or} per edge for all lanes at once, a single AVX2
 instruction in our measurements. The sweep is bound by memory traffic, so the bytes per vertex matter more than the
-lanes per sweep: 256 lanes were faster than 128 and 512 on random pairs and need half the memory of 512
-(Section~\ref{sec:eval-ablation}). \todo{Lane-width microbenchmark of 2 Nov (128, 256, 512 at SF100 and SF300);
-from the rerun.} The explore tasks are split by destination range; no two of them
+lanes per sweep: and 256 lanes, one AVX2 register, keep the working set at 96 bytes per vertex. The explore tasks are split by destination range; no two of them
 write the same vertex, and the \texttt{or} needs no atomic. The check phase \texttt{or}s \texttt{next} into \texttt{seen};
 each lane then records the level of the destinations it has newly reached and drops them from its list, and a lane
 whose list is empty is masked out of \texttt{next} and becomes inactive. A summary bitmap marks the vertices with an
@@ -178,6 +176,16 @@ deduplication.
 
 \subsection{Choosing a traversal and an orientation}
 \label{sec:choice}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/crossover_sf100.pdf}
+  \caption{Seconds per query over the index at SF100, 32 threads, median of three runs, for $k$ distinct sources run
+  three ways: the frontier traversal once per source, lanes with one lane per distinct source, and lanes with one lane
+  per pair. Left: $k$ random pairs, one destination each; right: $k$ sources with 200 destinations each. The dotted
+  line is the smallest $k$ at which the frontier traversal is no longer within a tenth of the fastest way.}
+  \label{fig:crossover}
+\end{figure}
 
 The operator's finalize step, which \duckdb calls once the sink has received all pairs and before any search
 starts (Section~\ref{sec:planner}), groups the pairs by source and counts the groups. Up to 16 distinct sources run
@@ -209,8 +217,10 @@ with the scale factor.} Few sources are cheapest as single-source searches, beca
 set and its dense levels whatever its number of lanes. Many sources favour the batches, whose lanes share
 the work of every level and keep no per-vertex arrays; on BI19 at SF300 the deduplicated batches are 30 times faster
 than single-source searches. The crossover depends on the graph. On the Graphalytics graphs of Section~\ref{sec:eval} it lies at 4 sources on
-datagen-8\_4-fb, at 16 on graph500-24 and at 256 on cit-Patents, and no fixed threshold fits all three; Section~\ref{sec:cost} discusses what a cost model needs in order to replace it. \todo{Crossovers from the
-2 Nov Graphalytics probe; from the rerun.}
+datagen-8\_4-fb, at 16 on graph500-24 and at 256 on cit-Patents, and no fixed threshold fits all three; Section~\ref{sec:cost} discusses what a cost model needs in order to replace it. Figure~
+ef{fig:crossover} shows the three ways of running $k$ distinct sources at SF100: the frontier traversal
+stays within a tenth of the best up to $k = 8$ on both shapes and loses from $k = 16$; at SF10 it holds to $k = 32$
+with 200 destinations per source and to $k = 64$ with one.
 
 \subsection{Parallel execution as a chain of events}
 \label{sec:phases}
@@ -240,7 +250,6 @@ the number running at once. The bound follows the machine and the user's configu
 is 24.6\,GiB, which lets graph500-24 run 14 batches of 1.7\,GB at once instead of 32. Running fewer batches than threads
 costs time, because the threads are idle whenever a level waits for its last task. One batch at a time makes 65\,536
 random pairs 9 times slower at SF10 and 3.9 times slower at SF300 (Section~\ref{sec:eval-ablation}).
-\todo{Microbenchmark of 3 Nov on the rc9 build (3.53 against 0.39\,s at SF10, 38.9 against 9.9\,s at SF300); from rc10.}
 
 Each running batch splits each of its phases into tasks. It gets an equal share of the threads, and for each of
 those threads one task per four million edges of the graph, with no more tasks in all than there are threads. With 32

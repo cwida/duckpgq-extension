@@ -1,0 +1,23 @@
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
+\caption{Three Graphalytics graphs: distances from $k$ sources to every reachable vertex, and 65\,536 random pairs where the pairs are reachable (on the citation DAG no random pair is). Median of three runs, 32 threads, 600\,s timeout, each baseline in its fastest formulation.}\label{tab:graphalytics}
+\begin{tabular}{lrrrrr}\toprule
+system & 1 source & 16 & 128 & 1024 & 65\,536 pairs \\ \midrule
+\multicolumn{6}{l}{\textit{cit-Patents: 3.8M V, 16.5M E, directed, deep levels}} \\
+\quad DuckPGQ index & 32\,ms & 104\,ms & 172\,ms & \textbf{437\,ms} & -- \\
+\quad DuckPGQ build & 141\,ms & 231\,ms & 270\,ms & 502\,ms & -- \\
+\quad Neo4j & 27.2\,s & 309\,s & timeout & timeout & -- \\
+\quad Kuzu & 7\,ms & 71\,ms & 299\,ms & 1.5\,s & -- \\
+\quad FalkorDB & timeout & timeout & timeout & timeout & -- \\
+\quad Memgraph & \textbf{4\,ms} & \textbf{48\,ms} & \textbf{127\,ms} & 498\,ms & -- \\
+\quad Neo4j GDS (4 thr.) & 68\,ms & 1.0\,s & 8.3\,s & 66.7\,s & -- \\
+\addlinespace
+\multicolumn{6}{l}{\textit{graph500-24: 8.9M V, 521M E, hubs}} \\
+\quad DuckPGQ index & 351\,ms & \textbf{4.5\,s} & \textbf{2.7\,s} & \textbf{8.8\,s} & \textbf{144\,s} \\
+\quad DuckPGQ build & 2.8\,s & 7.0\,s & 5.6\,s & 10.8\,s & 148\,s \\
+\quad Kuzu & \textbf{336\,ms} & 8.1\,s & 61.6\,s & 495\,s & timeout \\
+\addlinespace
+\multicolumn{6}{l}{\textit{datagen-8\_4-fb: 3.8M V, 539M E, dense}} \\
+\quad DuckPGQ index & \textbf{175\,ms} & \textbf{1.9\,s} & \textbf{1.1\,s} & \textbf{4.1\,s} & \textbf{51.0\,s} \\
+\quad DuckPGQ build & 2.7\,s & 4.5\,s & 3.9\,s & 6.8\,s & 53.3\,s \\
+\quad Kuzu & 189\,ms & 3.0\,s & 24.0\,s & 191\,s & timeout \\
+\bottomrule\end{tabular}\end{table}

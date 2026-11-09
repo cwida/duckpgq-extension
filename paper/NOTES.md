@@ -367,6 +367,30 @@ routes on one id space; if the gap closes, the paper says the build route pays f
 index gets its locality from sorted keys (a second index benefit beyond the build, for 4.7 and 6.2). Q3 (fold
 numbers) and Q5 (SF10 reruns) wait for the last block.
 
+9 Nov: Section 6 written in one pass from the rc13 archive (repro/results, commit 551b224c). Floats: Figure 6
+scaling grid (2x3, every system in its fastest formulation, DuckDB-native routes dashed), Table 2 Graphalytics
+(sources x all, 65,536 pairs on the two large graphs), Table 3 LDBC (generated as before), Table 4 fixed costs,
+Table 5 update stream vs baselines, Figure 7 concurrency (throughput over clients; readers under a writer), Table 6
+ablation (SF100, index route, rc13 microbench files only), plus Figure 4 crossover at SF100 in Section 3.4. Dropped
+from the paper: the random-pairs and sources-all tables, the throughput-by-pairs, client-threads, speedup,
+thread-scaling, first-query and updates figures, and the Evolution plan (the ablation table carries what Sections 3
+and 5 refer to). The plot script gained fastest_path (min of single and 32-connection rows), scaling_grid_figure,
+graphalytics_table, fixed_costs_table, update_stream_table, concurrency_figure, crossover_sf100_figure,
+ablation_table; BI19_OVERRIDE_S is empty. Numbers replaced outside Section 6: abstract (BI19 0.77 s vs 47 / 332 s;
+stream 15 / 19 ms vs Kuzu 17 / 335), introduction (22 vs 4 ms single pair; BI19; commits), 3.3 (lane-width
+microbench claim removed, no rc13 data), 3.5 (one-batch TODO removed, 9x / 3.9x confirmed: 3.54 vs 0.38 s SF10,
+38.8 vs 10.0 s SF300), 4 opening and 4.7 (22 / 126 / 263 ms; 92% at one pair; 329 vs 5 q/s; 82 ms vs 3.9 s; 153 vs
+647 ms; 11-13 B/edge, 17 cit-Patents; per-row 15 -> 35 ms; fold 1.6-1.8 s), 4.5 (4.5 s), 5 (build cost; 16 readers
+at SF10 42 vs 98 ms). Facts worth remembering: the sweep's index has no reverse partitions (harness CREATE INDEX
+without WITH (reverse)); the ablation's 'with reverse partitions' row is the only measurement of them (116 -> 6 ms
+for 1024 sources to one destination at SF100); the SF100 single random pair is unreachable; the correctness oracle ran
+at SF10 with 4 readers, 4584 queries on both routes under 190 commits, 0 mismatches (repro/logs_rc13); fold at SF300
+1.6-1.8 s with a 120-190 ms scan; the 16-source points on datagen and graph500-24 are slower than 128 (few-sources
+rule). Still open: the index load time after a restart was not measured on rc13 (4.5 keeps the pre-freeze TODO); the
+65,536-pair gap attribution (desk's row-id-key index experiment; TODO in 6.3); the Graphalytics citation's author
+list (VERIFY in the bib); introduction, abstract and conclusion still to be realigned as text, Section 5 to shrink;
+the unused figures and tables in paper/figures and paper/tables to be removed with the appendix move.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under

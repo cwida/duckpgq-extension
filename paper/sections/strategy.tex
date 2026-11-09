@@ -56,10 +56,9 @@ eval-freeze-rc1 run. \todo{Recheck every crossover against rc2.}
 
 \paragraph{Build or index} The rewrite chooses at bind time, and it takes the index whenever the edge table has one.
 On the read-only queries of Section~\ref{sec:eval} that choice is never wrong, because the index route is faster at
-every point. The build costs 22, 128 and 268\,ms per query at SF10, SF100 and SF300, close to linear in the edges,
+every point. The build costs \rev{22, 126 and 263}\,ms per query at SF10, SF100 and SF300, close to linear in the edges,
 and a snapshot of an index without pending changes costs a few milliseconds. The choice gets harder under updates. A
-snapshot then costs one version check per change group and one pass over the pending log entries, and with 16
-concurrent readers the index and the build route both answer in 71\,ms. A cost model would compare the build, which
+snapshot then costs one version check per change group and one pass over the pending log entries, \rev{and with 16 concurrent readers at SF10 the index route answers in 42\,ms and the build route in 98 (Section~\ref{sec:eval-updates}).} A cost model would compare the build, which
 depends on the edge count, with the snapshot, which depends on the pending entries. The rewrite can read both at bind
 time, the edge count from the table statistics and the log length from the index.
 

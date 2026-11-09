@@ -1268,7 +1268,7 @@ def teaser_figure(filename, sf="100"):
 
 
 # BI19 over the index with lanes per distinct source, measured after rc1 (29 Oct); remove once the rerun has it
-BI19_OVERRIDE_S = {"10": 0.015, "100": 0.252, "300": 1.6}
+BI19_OVERRIDE_S = {}  # rc13 measured BI19 on the frozen build; no override (the pre-rc13 values were 0.015, 0.252, 1.6 s)
 
 
 def ldbc_query_seconds(points, system, query):
@@ -1391,6 +1391,436 @@ def teaser_bi19_scales_figure(filename):
     fig.subplots_adjust(left=0.20, right=0.99, bottom=0.03, top=0.90, wspace=0.12)
     save(fig, filename)
 
+
+# ---------------------------------------------------------------------------------------------------------------
+# Paper figures and tables from the rc13 archive (9 Nov): one scaling grid, the Graphalytics table, fixed costs,
+# the update stream against the baselines, the concurrency figure and the Section 3 crossover at SF100.
+
+EXTRA_SYSTEMS = [
+    ("neo4j_gds", "Neo4j GDS", "#1baf7a", (0, (3, 1.5))),
+    ("duckpgq_scalar", "DuckPGQ 2023 UDFs", INK2, (0, (3, 1.5))),
+    ("duckpgq_recursive", "DuckDB recursive CTE", MUTED, (0, (1, 1.5))),
+]
+LINESTYLE = {key: style for key, _, _, style in EXTRA_SYSTEMS}
+ALL_SYSTEMS = SYSTEMS + [(key, name, color) for key, name, color, _ in EXTRA_SYSTEMS]
+
+
+def fastest_path(points, system, shape, count):
+    """The faster of the system's single-connection and 32-connection rows at this point; a completed row beats a
+    timed-out one (the paper's "fastest formulation")"""
+    candidates = [points[(label, shape, count)] for label in (system, f"{system}@32") if (label, shape, count) in points]
+    if not candidates:
+        return None
+    ok = [c for c in candidates if c["status"] == "ok"]
+    return min(ok, key=lambda c: c["mean"]) if ok else candidates[0]
+
+
+def scaling_grid_figure(filename):
+    """Figure 6.1: random pairs (top) and sources x all (bottom) at the three scale factors, every system in its
+    fastest formulation, the two DuckDB-native routes dashed in ink."""
+    shapes = [("random_pairs", "pairs per query", "random pairs"),
+              ("multi_source", "sources per query, each to every reachable person", "sources × all")]
+    fig, axes = plt.subplots(2, 3, figsize=(7.2, 4.9), sharey="row", squeeze=False)
+    used = []
+    for row, (shape, xlabel, rowtitle) in enumerate(shapes):
+        for col, sf in enumerate(SCALE_FACTORS):
+            ax = axes[row][col]
+            points = load("sweep_pairs", sf)
+            counts = sorted({k[2] for k in points if k[1] == shape})
+            ax.set_xscale("log", base=2)
+            ax.set_yscale("log")
+            ax.axhline(TIMEOUT_S, color=AXIS, linewidth=0.6)
+            if col == 0:
+                ax.text(counts[0], TIMEOUT_S * 1.25, "600 s timeout", color=MUTED, fontsize=6.5, va="bottom")
+            label_positions = []
+            for system, name, color in ALL_SYSTEMS:
+                xs, ys, exceeded_x = [], [], []
+                for count in counts:
+                    point = fastest_path(points, system, shape, count)
+                    if point is None:
+                        continue
+                    if point["status"] == "ok":
+                        xs.append(count)
+                        ys.append(point["mean"])
+                    elif point["status"] == "exceeded":
+                        exceeded_x.append(count)
+                if not xs and not exceeded_x:
+                    continue
+                if (system, name, color) not in used:
+                    used.append((system, name, color))
+                linewidth, alpha, zorder = emphasis(system)
+                plot_series(ax, xs, ys, exceeded_x, color, linestyle=LINESTYLE.get(system, "-"),
+                            linewidth=linewidth, alpha=alpha, zorder=zorder)
+                if xs:
+                    label_positions.append((ys[-1], xs[-1], name, color))
+            ax.set_ylim(0.001, 3000)
+            if col == len(SCALE_FACTORS) - 1:
+                direct_labels(ax, label_positions, max(counts) * 1.3, factor=2.0)
+            if row == 0:
+                ax.set_title(f"LDBC SF{sf}", loc="left")
+            ax.set_xticks(counts)
+            ax.set_xticklabels([count_label(c) if c != 2048 else "" for c in counts], fontsize=6)
+            if col == 1:
+                ax.set_xlabel(xlabel, fontsize=7.5)
+            style_axes(ax)
+        axes[row][0].set_ylabel(f"{rowtitle}: seconds per query")
+    handles = [Line2D([], [], color=c, linewidth=1.6, linestyle=LINESTYLE.get(k, "-"), marker="o", markersize=3.6,
+                      markeredgecolor=SURFACE) for k, _, c in used]
+    labels = [n for _, n, _ in used]
+    handles.append(Line2D([], [], linestyle="none", marker="^", markersize=5, markerfacecolor=SURFACE, markeredgecolor=INK2))
+    labels.append("timed out")
+    fig.legend(handles, labels, loc="lower center", ncol=5, bbox_to_anchor=(0.5, -0.01), handlelength=2.4, columnspacing=1.1)
+    fig.tight_layout(rect=(0, 0.08, 0.9, 1.0))
+    save(fig, filename)
+
+
+def graphalytics_table(filename):
+    """Table: sources x all on the three Graphalytics graphs (k = 1, 16, 128, 1024) and the 65,536-pair point where
+    pairs are meaningful (not on the citation DAG, where every random pair is unreachable)."""
+    sources = [1, 16, 128, 1024]
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
+             r"\caption{Three Graphalytics graphs: distances from $k$ sources to every reachable vertex, and 65\,536 random "
+             r"pairs where the pairs are reachable (on the citation DAG no random pair is). Median of three runs, 32 threads, "
+             r"600\,s timeout, each baseline in its fastest formulation.}\label{tab:graphalytics}",
+             r"\begin{tabular}{lrrrrr}\toprule",
+             r"system & 1 source & 16 & 128 & 1024 & 65\,536 pairs \\ \midrule"]
+    blocks = 0
+    for directory, name, note in GRAPHALYTICS:
+        points = load("sweep_pairs", directory)
+        if not points:
+            continue
+        if blocks:
+            lines.append(r"\addlinespace")
+        blocks += 1
+        lines.append(f"\\multicolumn{{6}}{{l}}{{\\textit{{{name.replace(chr(95), chr(92) + chr(95))}: {note}}}}} \\\\")
+        rows = []
+        for sysname in sorted_labels({k[0].split("@")[0] for k in points}):
+            pts = [fastest_path(points, sysname, "multi_source", k) for k in sources]
+            pair_pt = None if "cit_Patents" in directory else fastest_path(points, sysname, "random_pairs", 65536)
+            if all(p is None for p in pts) and pair_pt is None:
+                continue
+            rows.append((sysname, pts + [pair_pt]))
+        lines += format_rows(rows)
+    lines.append(r"\bottomrule\end{tabular}\end{table}")
+    write_table(filename, lines)
+
+
+FIXED_COST_GRAPHS = [("10", "SNB SF10"), ("100", "SNB SF100"), ("300", "SNB SF300"),
+                     ("graphalytics_cit_Patents", "cit-Patents"), ("graphalytics_datagen_8_4_fb", r"datagen-8\_4-fb"),
+                     ("graphalytics_graph500_24", "graph500-24")]
+
+
+def seconds_label(s):
+    if s is None:
+        return "--"
+    if s < 10:
+        return f"{s:.2f}\\,s" if s < 1 else f"{s:.1f}\\,s"
+    if s < 120:
+        return f"{s:.0f}\\,s"
+    return f"{s / 60:.0f}\\,min"
+
+
+def fixed_costs_table(filename):
+    """Table: edges, index creation and bytes per edge against the native systems' import time and store size."""
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.5pt}",
+             r"\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table and its size "
+             r"per edge, against the native systems' import from the same CSV files (Kuzu from Parquet) and Kuzu's store "
+             r"size per edge. Memgraph, FalkorDB and Neo4j were not loaded with the two large Graphalytics graphs.}"
+             r"\label{tab:fixed-costs}",
+             r"\begin{tabular}{lrrrrrrrr}\toprule",
+             r"graph & edges & \multicolumn{2}{c}{CSR index} & \multicolumn{2}{c}{Kuzu} & Neo4j & Memgraph & FalkorDB \\",
+             r" & & create & B/edge & import & B/edge & import & import & import \\ \midrule"]
+    for sf, name in FIXED_COST_GRAPHS:
+        directory = RESULTS / (f"sf{sf}" if sf.isdigit() else sf)
+        files = newest_files(directory, "fixed_costs_*.csv")
+        if not files:
+            continue
+        rows = list(csv.DictReader(open(files[-1])))
+        edges = int(rows[0]["edges"])
+        builds = [float(r["seconds"]) for r in rows if r["system"] == "duckpgq_index" and r["measure"].startswith("index_build")]
+        bpe = next((float(r["bytes_per_edge"]) for r in rows if r["system"] == "duckpgq_index"), None)
+        loads = {r["system"]: (float(r["seconds"]), float(r["bytes_per_edge"])) for r in rows if r["measure"] == "load"}
+        imp = lambda key: seconds_label(loads[key][0]) if key in loads else "--"
+        kuzu_bpe = f"{loads['kuzu'][1]:.0f}" if "kuzu" in loads else "--"
+        lines.append(f"{name} & {edges / 1e6:.1f}\\,M & {seconds_label(statistics.median(builds) if builds else None)} & "
+                     f"{bpe:.1f} & {imp('kuzu')} & {kuzu_bpe} & {imp('neo4j')} & {imp('memgraph')} & {imp('falkordb')} \\\\")
+    lines.append(r"\bottomrule\end{tabular}\end{table}")
+    write_table(filename, lines)
+
+
+UPDATE_ROWS = [("index_auto", "DuckPGQ index, automatic folds"), ("index_nofold", "DuckPGQ index, no fold"),
+               ("index_per_row", "DuckPGQ index, visibility per row"), ("build", "DuckPGQ build")]
+BASELINE_UPDATE = [("kuzu", "Kuzu"), ("memgraph", "Memgraph"), ("neo4j", "Neo4j"), ("falkordb", "FalkorDB")]
+
+
+def update_metrics(path, config=None):
+    """(query median ms, query p99 ms, commit median ms) over an update-stream file, optionally one DuckPGQ config"""
+    if path is None:
+        return None
+    rows = [r for r in csv.DictReader(open(path)) if config is None or r["config"] == config]
+    queries = [1000 * float(r["query_s"]) for r in rows if r.get("query_s")]
+    commits = [1000 * float(r["update_s"]) for r in rows if r.get("update_s")]
+    if not queries or not commits:
+        return None
+    return statistics.median(queries), p99(queries), statistics.median(commits)
+
+
+def update_stream_table(filename):
+    """Table: the SF10 update stream (190 commits of 2000 edge changes, one query after each) for the DuckPGQ routes
+    and the baselines: query latency for one source to 1024 destinations and for 1024 random pairs, commit latency."""
+    directory = RESULTS / "sf10"
+
+    def newest(pattern):
+        files = newest_files(directory, pattern)
+        return files[-1] if files else None
+
+    def fmt(metrics):
+        return f"{metrics[0]:.0f} & {metrics[1]:.0f}" if metrics else "-- & --"
+
+    def commit_of(a, b):
+        value = a[2] if a else (b[2] if b else None)
+        return f"{value:.0f}" if value is not None else "--"
+
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
+             r"\caption{The update stream at SF10: a writer commits 2000 edge changes (about 1770 inserts and 230 deletes) "
+             r"190 times, and one query runs after each commit; 32 threads. Query latency in ms (median and p99 over the "
+             r"190 queries) for one source to 1024 destinations and for 1024 random pairs, and the median commit.}"
+             r"\label{tab:updates}",
+             r"\begin{tabular}{lrrrrr}\toprule",
+             r"system & \multicolumn{2}{c}{1 source, 1024 dst.} & \multicolumn{2}{c}{1024 pairs} & commit \\",
+             r" & median & p99 & median & p99 & median \\ \midrule"]
+    ours_sssp = newest("update_sssp_pairs1024_threads32_batch2000x190_*.csv")
+    ours_p2p = newest("update_point_to_point_pairs1024_threads32_batch2000x190_*.csv")
+    for config, label in UPDATE_ROWS:
+        a, b = update_metrics(ours_sssp, config), update_metrics(ours_p2p, config)
+        lines.append(f"{label} & {fmt(a)} & {fmt(b)} & {commit_of(a, b)} \\\\")
+    lines.append(r"\addlinespace")
+    for sysname, label in BASELINE_UPDATE:
+        a = update_metrics(newest(f"update_{sysname}_sssp_pairs1024_threads32_batch2000x*.csv"))
+        b = update_metrics(newest(f"update_{sysname}_point_to_point_pairs1024_threads32_batch2000x*.csv"))
+        lines.append(f"{label} & {fmt(a)} & {fmt(b)} & {commit_of(a, b)} \\\\")
+    lines.append(r"\bottomrule\end{tabular}\end{table}")
+    write_table(filename, lines)
+
+
+def concurrent_series(sf):
+    """route -> readers -> (query median ms, query p99 ms, commit median ms, peak RSS MiB) for the readers-under-a-writer
+    runs with the default fold ratio and the 200 ms writer pause; the newest file per (route, readers) wins"""
+    series = {"query_index": {}, "query_build": {}}
+    for path in newest_files(RESULTS / f"sf{sf}", "concurrent_sssp_pairs1024_threads32_readers*_pause200_fold0.1_*.csv"):
+        rows = list(csv.DictReader(open(path)))
+        if not rows or not rows[0].get("readers"):
+            continue
+        readers = int(rows[0]["readers"])
+        commits = [1000 * float(r["elapsed_s"]) for r in rows if r["kind"] == "commit"]
+        peaks = [float(r["peak_rss_mib"]) for r in rows if r.get("peak_rss_mib")]
+        for kind in series:
+            values = [1000 * float(r["elapsed_s"]) for r in rows if r["kind"] == kind]
+            if values:
+                series[kind][readers] = (statistics.median(values), p99(values),
+                                         statistics.median(commits) if commits else None, max(peaks) if peaks else None)
+    return series
+
+
+def concurrency_figure(filename):
+    """Figure 6.5: top, single-pair throughput against clients (index route against build route), with the peak
+    memory at 32 clients; bottom, query latency of readers under a writer committing 2000 changes every 200 ms,
+    median as the line and the p99 as a hollow marker above it, with the writer's commit latency at the largest reader
+    count. One column per scale factor."""
+    columns = []
+    for sf in SCALE_FACTORS:
+        points = {}
+        for path in newest_files(RESULTS / f"sf{sf}", "throughput_sf*_threads32_*.csv"):
+            for r in csv.DictReader(open(path)):
+                if r["queries_per_s"]:
+                    points[(r["route"], int(r["clients"]))] = (float(r["queries_per_s"]), float(r["median_ms"]),
+                                                               float(r["p99_ms"]), float(r.get("peak_rss_mib") or 0))
+        series = concurrent_series(sf)
+        if points or series["query_index"]:
+            columns.append((sf, points, series))
+    if not columns:
+        print("no throughput or concurrent results yet, skipping", filename)
+        return
+    fig, axes = plt.subplots(2, len(columns), figsize=(7.2, 4.6), squeeze=False, sharey="row")
+    for col, (sf, points, series) in enumerate(columns):
+        top, bottom = axes[0][col], axes[1][col]
+        for ax in (top, bottom):
+            ax.set_xscale("log", base=2)
+            ax.set_yscale("log")
+            style_axes(ax)
+        clients = sorted({c for _, c in points})
+        peaks = {}
+        for (system, name, color), route in zip(ROUTES, ("index", "build")):
+            xs = [c for c in clients if (route, c) in points]
+            if not xs:
+                continue
+            rates = [points[(route, c)][0] for c in xs]
+            linewidth, alpha, zorder = emphasis(system)
+            plot_series(top, xs, rates, [], color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+            top.annotate(f"{rates[-1]:.0f}/s", (xs[-1], rates[-1]), xytext=(4, 0), textcoords="offset points",
+                         fontsize=6.5, color=color, va="center", annotation_clip=False)
+            peaks[route] = points[(route, xs[-1])][3] / 1024
+        if peaks:
+            top.text(0.03, 0.96, "peak memory at 32 clients\n" + ", ".join(f"{r} {peaks[r]:.1f} GiB" for r in ("index", "build") if r in peaks),
+                     transform=top.transAxes, fontsize=6, color=INK2, va="top", ha="left", linespacing=1.3)
+        top.set_title(f"LDBC SF{sf}", loc="left")
+        top.set_xticks(clients)
+        top.set_xticklabels([str(c) for c in clients], fontsize=6.5)
+        top.set_xlabel("clients, one random pair per query" if col == 1 else "clients", fontsize=7.5)
+        readers = sorted(set(series["query_index"]) | set(series["query_build"]))
+        for (system, name, color), kind in zip(ROUTES, ("query_index", "query_build")):
+            xs = [r for r in readers if r in series[kind]]
+            if not xs:
+                continue
+            medians = [series[kind][r][0] for r in xs]
+            tails = [series[kind][r][1] for r in xs]
+            linewidth, alpha, zorder = emphasis(system)
+            plot_series(bottom, xs, medians, [], color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+            bottom.vlines(xs, medians, tails, color=color, alpha=0.5 * alpha, linewidth=0.7, zorder=zorder - 1)
+            bottom.plot(xs, tails, linestyle="none", marker="o", markersize=3.6, markerfacecolor=SURFACE,
+                        markeredgecolor=color, markeredgewidth=1.0, alpha=alpha, zorder=zorder)
+            bottom.annotate(f"{ms_label(medians[-1])} ms", (xs[-1], medians[-1]), xytext=(4, 0), textcoords="offset points",
+                            fontsize=6.5, color=color, va="center", annotation_clip=False)
+        both = [r for r in readers if r in series["query_index"] and r in series["query_build"]
+                and series["query_index"][r][2] is not None and series["query_build"][r][2] is not None]
+        if both:
+            r = both[-1]
+            bottom.text(0.03, 0.96, f"writer's commit at {r} readers\nindex {ms_label(series['query_index'][r][2])} ms, "
+                                    f"build {ms_label(series['query_build'][r][2])} ms",
+                        transform=bottom.transAxes, fontsize=6, color=INK2, va="top", ha="left", linespacing=1.3)
+        bottom.set_xticks(readers)
+        bottom.set_xticklabels([str(r) for r in readers], fontsize=6.5)
+        bottom.set_xlabel("readers under a writer, one source to 1024 destinations" if col == 1 else "readers", fontsize=7.5)
+    axes[0][0].set_ylabel("queries per second")
+    axes[1][0].set_ylabel("query latency (ms)")
+    handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE) for _, _, c in ROUTES]
+    handles.append(Line2D([], [], linestyle="none", marker="o", markersize=3.6, markerfacecolor=SURFACE,
+                          markeredgecolor=INK2, markeredgewidth=1.0))
+    fig.legend(handles, [n for _, n, _ in ROUTES] + ["p99 of the same queries"], loc="lower center", ncol=3,
+               bbox_to_anchor=(0.5, -0.01), handlelength=2.4, columnspacing=1.2)
+    fig.tight_layout(rect=(0, 0.06, 0.93, 1.0))
+    save(fig, filename)
+
+
+def crossover_sf100_figure(filename, sf="100"):
+    """Section 3.4: the three ways of running k distinct sources on the index route at one scale factor, k random
+    pairs (left) and k sources x 200 destinations (right); the dotted line is the smallest k at which the frontier
+    traversal is no longer within 10% of the best."""
+    kernels = {c for c, _, _ in CROSSOVER_KERNELS}
+    latest = {}
+    for path in newest_files(RESULTS / f"sf{sf}", "microbench_sf*_threads32_*.csv"):
+        for r in csv.DictReader(open(path)):
+            if r["config"] not in kernels or r["status"] != "ok":
+                continue
+            k = int(r["pairs"]) if r["shape"] == "random_pairs" else int(r["sources"] or 0)
+            latest.setdefault((r["config"], r["shape"], k, path.name), []).append(r)
+    series = {}
+    for (config, shape, k, _), rows in sorted(latest.items(), key=lambda item: item[0][3]):
+        series[(config, shape, k)] = statistics.median(float(r["query_s"]) for r in rows)
+    if not series:
+        print("no crossover results yet, skipping", filename)
+        return
+    shapes = [("random_pairs", "k random pairs"), ("all_pairs", "k sources × 200 destinations")]
+    fig, axes = plt.subplots(1, 2, figsize=(3.6, 2.3), sharey=True, squeeze=False)
+    for ax, (shape, title) in zip(axes[0], shapes):
+        ks = sorted({k for (c, s_, k) in series if s_ == shape})
+        last_winning = None
+        for k in ks:
+            times = {c: series[(c, shape, k)] for c, _, _ in CROSSOVER_KERNELS if (c, shape, k) in series}
+            if "single_source_kernel" in times and len(times) >= 2 and times["single_source_kernel"] <= 1.1 * min(
+                    t for c, t in times.items() if c != "single_source_kernel"):
+                last_winning = k
+        later = [k for k in ks if last_winning is None or k > last_winning]
+        crossover = later[0] if later else None
+        ax.set_xscale("log", base=2)
+        ax.set_yscale("log")
+        style_axes(ax)
+        for config, name, color in CROSSOVER_KERNELS:
+            xs = [k for k in ks if (config, shape, k) in series]
+            plot_series(ax, xs, [series[(config, shape, k)] for k in xs], [], color,
+                        linewidth=1.6 if config == "single_source_kernel" else 1.3,
+                        zorder=5 if config == "single_source_kernel" else 3)
+        if crossover is not None:
+            ax.axvline(crossover, color=INK2, linestyle=(0, (1.5, 2)), linewidth=0.8, zorder=2)
+            ax.annotate(f"k = {crossover}", (crossover, ax.get_ylim()[1]), xytext=(3, -2), textcoords="offset points",
+                        fontsize=6.5, color=INK2, va="top", ha="left")
+        ax.set_xticks(ks)
+        ax.set_xticklabels([str(k) if k in (1, 16, 256, 4096) else "" for k in ks], fontsize=6.5)
+        ax.set_title(title, loc="left", fontsize=7.5)
+        ax.set_xlabel("distinct sources k", fontsize=7.5)
+    axes[0][0].set_ylabel("seconds per query")
+    handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE)
+               for _, _, c in CROSSOVER_KERNELS]
+    fig.legend(handles, ["frontier traversal", "lanes, one per distinct source", "lanes, one per pair"],
+               loc="lower center", ncol=1, bbox_to_anchor=(0.5, -0.02), handlelength=2.0, fontsize=6.5)
+    fig.tight_layout(rect=(0, 0.2, 1, 1))
+    save(fig, filename)
+
+
+
+ABLATION_ROWS = [
+    ("baseline", "default, 32 threads"),
+    ("single_source_kernel", "frontier traversal for every query"),
+    ("multi_source_dedup", "lanes for every query"),
+    ("lane_per_pair", "one lane per pair"),
+    ("no_source_grouping", "pairs not grouped by source"),
+    ("no_grouped_batches", "batches not grouped by the scheduler"),
+    ("sched_g1_w32", "one batch at a time"),
+    ("no_frontier_bitmap", "no frontier summary bitmap"),
+    ("no_sparse_levels", "no sparse levels"),
+    ("partitions_16384", "destination ranges of 16\\,384"),
+    ("partitions_4096", "destination ranges of 4096"),
+    ("reverse_index", "with reverse partitions"),
+    ("pair_mode", "sources $\\times$ all as a pair list"),
+    ("reach_per_source", "reach as one search per source"),
+    ("paths", "paths instead of lengths"),
+    ("threads_16", "16 threads"),
+    ("threads_4", "4 threads"),
+    ("threads_1", "1 thread"),
+]
+ABLATION_COLUMNS = [("random_pairs", "1"), ("random_pairs", "2048"), ("random_pairs", "65536"),
+                    ("multi_source", "1"), ("multi_source", "1024"), ("same_dst", "1024")]
+
+
+def ablation_table(filename, sf="100", since_ns=1793830000000000000, system="duckpgq_index"):
+    """Table: the operator's mechanisms switched off or changed one at a time, index route at SF100, six query
+    shapes; medians of the microbenchmark repeats on the frozen build (files from the rc13 run only)."""
+    by = defaultdict(list)
+    for path in newest_files(RESULTS / f"sf{sf}", "microbench_sf*_threads32_*.csv"):
+        if int(path.stem.rsplit("_", 1)[1]) < since_ns:
+            continue
+        for r in csv.DictReader(open(path)):
+            if r["system"] != system or r["status"] != "ok":
+                continue
+            count = r["pairs"] if r["shape"] != "multi_source" else r["sources"]
+            by[(r["config"], r["shape"], count)].append(float(r["query_s"]))
+    if not by:
+        print("no rc13 microbenchmark rows, skipping", filename)
+        return
+
+    def fmt(config, shape, count):
+        values = by.get((config, shape, count))
+        if not values:
+            return "--"
+        v = statistics.median(values)
+        return f"{v * 1000:.0f}\\,ms" if v < 1 else f"{v:.1f}\\,s"
+
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.6pt}",
+             r"\caption{One mechanism switched off or changed at a time, over the index at SF100, 32 threads unless stated: "
+             r"median seconds per query of three runs for one random pair, 2048 and 65\,536 random pairs, one source and 1024 "
+             r"sources to every reachable person, and 1024 sources to one destination. The index of the sweep has no reverse "
+             r"partitions; the row that adds them is the exception.}\label{tab:ablation}",
+             r"\begin{tabular}{lrrrrrr}\toprule",
+             r" & \multicolumn{3}{c}{random pairs} & \multicolumn{2}{c}{sources $\times$ all} & $\to$ 1 \\",
+             r"configuration & 1 & 2048 & 65\,536 & 1 & 1024 & 1024 \\ \midrule"]
+    for config, label in ABLATION_ROWS:
+        if not any((config, shape, count) in by for shape, count in ABLATION_COLUMNS):
+            continue
+        lines.append(f"{label} & " + " & ".join(fmt(config, shape, count) for shape, count in ABLATION_COLUMNS) + r" \\")
+    lines.append(r"\bottomrule\end{tabular}\end{table}")
+    write_table(filename, lines)
+
+
 def save(fig, filename):
     FIGURES.mkdir(parents=True, exist_ok=True)
     fig.savefig(FIGURES / f"{filename}.pdf")
@@ -1429,3 +1859,10 @@ if __name__ == "__main__":
                 r"Distances from $k$ sources to every reachable person, median of three runs; n/r: not run above 500M pairs.",
                 "tab:sources-all", "system / sources")
     ldbc_table("ldbc_queries")
+    scaling_grid_figure("scaling_grid")
+    graphalytics_table("graphalytics")
+    fixed_costs_table("fixed_costs")
+    update_stream_table("update_stream")
+    concurrency_figure("concurrency")
+    crossover_sf100_figure("crossover_sf100")
+    ablation_table("ablation")
