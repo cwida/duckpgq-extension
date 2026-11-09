@@ -10,8 +10,8 @@ concurrent readers? And what does each mechanism of Section~\ref{sec:operator} c
 
 \paragraph{Setup} All experiments run on one AWS m7a.8xlarge (32 AMD EPYC 9R14 cores, one thread per core, 128\,GiB
 of memory, Amazon Linux 2023). \duckpgq runs on \duckdb v2.0.0-dev (commit 45f4fdf3), compiled with \duckdb's default
-flags for x86-64-v3, so with AVX2 and without AVX-512, with every setting at its default and 32 threads; the build is
-the one tagged \texttt{eval-freeze-rc13}, and every number in this paper comes from one run of it. The baselines are
+flags for x86-64-v3, so with AVX2 and without AVX-512, with every setting at its default and 32 threads; every number in
+this paper comes from one run of one frozen build, which the reproduction package names. The baselines are
 Kuzu 0.11.3 (embedded, 32 threads)\footnote{Kuzu's development has stopped. Its maintained fork, LadybugDB 0.15.3,
 was not faster than Kuzu 0.11.3 in our tests at SF10, between 1.1 and 2.9 times slower on the random-pair,
 sources $\times$ all and LDBC points, so we report Kuzu.}, Neo4j 5.26.32 Enterprise (16\,GB heap, 16\,GB page cache, parallel runtime; the

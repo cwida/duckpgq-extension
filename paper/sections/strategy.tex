@@ -51,8 +51,7 @@ made earlier, at bind time, by the rewrite, which takes the index whenever one e
 \label{sec:cost}
 
 The operator makes three choices for every query, and each is a threshold today. We describe what is known when each
-choice is made, what the thresholds are, and what a cost model would need to replace them. The numbers are from the
-eval-freeze-rc1 run. \todo{Recheck every crossover against rc2.}
+choice is made, what the thresholds are, and what a cost model would need to replace them.
 
 \paragraph{Build or index} The rewrite chooses at bind time, and it takes the index whenever the edge table has one.
 On the read-only queries of Section~\ref{sec:eval} that choice is never wrong, because the index route is faster at
