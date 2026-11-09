@@ -1,29 +1,23 @@
 \begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
-\caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, seconds per query, the median of three runs per parameter set averaged over five parameter sets; rows marked conn.\ split the sources over 32 client connections.}\label{tab:ldbc}
+\caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, seconds per query, the median of three runs per parameter set averaged over five parameter sets; each system in its fastest formulation, on one connection or with the sources split over 32.}\label{tab:ldbc}
 \begin{tabular}{lrrr}\toprule
 system & IC13 & BI19 & BI20 \\ \midrule
 \multicolumn{4}{l}{\textit{LDBC SF10}} \\
 \quad DuckPGQ index & 4\,ms & \textbf{12\,ms} & \textbf{5\,ms} \\
 \quad DuckPGQ build & 33\,ms & 44\,ms & 37\,ms \\
 \quad Neo4j & \textbf{3\,ms} & 40\,ms & 22\,ms \\
-\quad Kuzu & 8\,ms & 1.6\,s & 7.6\,s \\
-\quad Kuzu (32 conn.) & 8\,ms & 524\,ms & 1.4\,s \\
-\quad FalkorDB & 12\,ms & 67.5\,s & 10.9\,s \\
-\quad FalkorDB (32 conn.) & 12\,ms & 18.4\,s & 2.9\,s \\
-\quad Memgraph & 375\,ms & 1.4\,s & 535\,ms \\
-\quad Memgraph (32 conn.) & 382\,ms & 140\,ms & 97\,ms \\
+\quad Kuzu & 7\,ms & 524\,ms & 1.4\,s \\
+\quad FalkorDB & 12\,ms & 18.4\,s & 2.9\,s \\
+\quad Memgraph & 375\,ms & 140\,ms & 97\,ms \\
 \quad Neo4j GDS (4 thr.) & 69\,ms & 11.0\,s & 66.9\,s \\
 \addlinespace
 \multicolumn{4}{l}{\textit{LDBC SF100}} \\
 \quad DuckPGQ index & 14\,ms & \textbf{137\,ms} & \textbf{26\,ms} \\
 \quad DuckPGQ build & 267\,ms & 423\,ms & 288\,ms \\
 \quad Neo4j & \textbf{7\,ms} & 3.9\,s & 126\,ms \\
-\quad Kuzu & 24\,ms & 63.1\,s & 165\,s \\
-\quad Kuzu (32 conn.) & 25\,ms & 22.3\,s & 29.4\,s \\
-\quad FalkorDB & 52\,ms & timeout & 412\,s \\
-\quad FalkorDB (32 conn.) & 53\,ms & timeout & 212\,s \\
-\quad Memgraph & 8.7\,s & 361\,s & 6.2\,s \\
-\quad Memgraph (32 conn.) & 8.9\,s & 17.0\,s & 646\,ms \\
+\quad Kuzu & 24\,ms & 22.3\,s & 29.4\,s \\
+\quad FalkorDB & 52\,ms & timeout & 212\,s \\
+\quad Memgraph & 8.6\,s & 17.0\,s & 646\,ms \\
 \quad Neo4j GDS (4 thr.) & 530\,ms & timeout & timeout \\
 \addlinespace
 \multicolumn{4}{l}{\textit{LDBC SF300}} \\

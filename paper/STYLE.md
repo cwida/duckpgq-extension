@@ -116,7 +116,7 @@ One name per thing, used the same way in the text, the figures and the captions.
 | single-source traversal | searches run one per source, each with its own frontier | frontier traversal, per-source kernel |
 | multi-source traversal | searches run as lanes of batches | MS-BFS kernel |
 | lane | one search inside a batch: one source with its destination list | |
-| batch | up to 512 lanes traversed together over one working set (renamed from wave, 2 Nov) | wave |
+| batch | up to 256 lanes traversed together over one working set (renamed from wave, 2 Nov; 256 since rc9) | wave |
 | working set | a batch's three bit sets per vertex plus the summary bitmap | |
 | batches in progress | the batches the scheduler runs at once, each with its working set (replaces "worker group", 2 Nov) | worker group, group |
 | level | one breadth-first step; in the multi-source traversal an explore phase and a check phase | iteration |

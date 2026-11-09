@@ -1089,6 +1089,9 @@ def strategy_working_set_mb(strategy):
 TABLES = Path(os.environ.get("DUCKPGQ_TABLES_DIR", str(REPO / "paper" / "tables")))
 NAME_OF = {key: name for key, name, _ in SYSTEMS}
 NAME_OF["neo4j_gds"] = "Neo4j GDS (4 thr.)"
+NAME_OF["ladybug"] = "LadybugDB"
+# Systems measured as probes only (LadybugDB 0.15.3 at SF10, 9 Nov) stay out of the paper's tables
+EXCLUDED = {"ladybug"}
 NAME_OF["duckpgq_recursive"] = "DuckDB recursive CTE"
 NAME_OF["duckpgq_scalar"] = "DuckPGQ 2023 UDFs"
 ORDER = [key for key, _, _ in SYSTEMS] + ["duckpgq_scalar", "duckpgq_recursive", "neo4j_gds"]
@@ -1134,6 +1137,7 @@ def row_label(label):
 
 
 def sorted_labels(labels):
+    labels = [l for l in labels if l.split("@")[0] not in EXCLUDED]
     return sorted(labels, key=lambda l: (ORDER.index(l.split("@")[0]) if l.split("@")[0] in ORDER else 99, "@" in l))
 
 
@@ -1166,16 +1170,17 @@ def sweep_table(shape, filename, caption, label, head):
 def ldbc_table(filename):
     queries = ["ic13", "bi19", "bi20"]
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
-             r"\caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, seconds per query, the median of three runs per parameter set averaged over five parameter sets; rows marked conn.\ split the sources over 32 client connections.}\label{tab:ldbc}",
+             r"\caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, seconds per query, the median of three runs per parameter set averaged over five parameter sets; each system in its fastest formulation, on one connection or with the sources split over 32.}\label{tab:ldbc}",
              r"\begin{tabular}{lrrr}\toprule", r"system & IC13 & BI19 & BI20 \\ \midrule"]
     for sf in SCALE_FACTORS:
         points = load("ldbc_queries", sf)
         lines.append(f"\\multicolumn{{4}}{{l}}{{\\textit{{LDBC SF{sf}}}}} \\\\")
         rows = []
-        for lab in sorted_labels({k[0] for k in points}):
+        for lab in sorted_labels({k[0].split("@")[0] for k in points}):
             aggregated = []
             for query in queries:
-                values = [points[(lab, query, pr)] for pr in sorted({k[2] for k in points if k[0] == lab and k[1] == query})]
+                params = sorted({k[2] for k in points if k[0].split("@")[0] == lab and k[1] == query})
+                values = [v for v in (fastest_path(points, lab, query, pr) for pr in params) if v is not None]
                 if not values:
                     aggregated.append(None)
                 elif all(v["status"] == "ok" for v in values):
@@ -1420,7 +1425,7 @@ def scaling_grid_figure(filename):
     fastest formulation, the two DuckDB-native routes dashed in ink."""
     shapes = [("random_pairs", "pairs per query", "random pairs"),
               ("multi_source", "sources per query, each to every reachable person", "sources × all")]
-    fig, axes = plt.subplots(2, 3, figsize=(7.2, 4.9), sharey="row", squeeze=False)
+    fig, axes = plt.subplots(2, 3, figsize=(7.2, 3.6), sharey="row", squeeze=False)
     used = []
     for row, (shape, xlabel, rowtitle) in enumerate(shapes):
         for col, sf in enumerate(SCALE_FACTORS):
@@ -1454,23 +1459,23 @@ def scaling_grid_figure(filename):
                 if xs:
                     label_positions.append((ys[-1], xs[-1], name, color))
             ax.set_ylim(0.001, 3000)
-            if col == len(SCALE_FACTORS) - 1:
-                direct_labels(ax, label_positions, max(counts) * 1.3, factor=2.0)
             if row == 0:
-                ax.set_title(f"LDBC SF{sf}", loc="left")
+                ax.set_title(f"LDBC SF{sf}", loc="right")
             ax.set_xticks(counts)
             ax.set_xticklabels([count_label(c) if c != 2048 else "" for c in counts], fontsize=6)
             if col == 1:
                 ax.set_xlabel(xlabel, fontsize=7.5)
             style_axes(ax)
-        axes[row][0].set_ylabel(f"{rowtitle}: seconds per query")
+        axes[row][0].set_ylabel("seconds per query")
+        axes[row][0].annotate(rowtitle, (0.0, 1.0), xycoords="axes fraction", xytext=(0, 3), textcoords="offset points",
+                              fontsize=7.5, color=INK2, va="bottom", ha="left")
     handles = [Line2D([], [], color=c, linewidth=1.6, linestyle=LINESTYLE.get(k, "-"), marker="o", markersize=3.6,
                       markeredgecolor=SURFACE) for k, _, c in used]
     labels = [n for _, n, _ in used]
     handles.append(Line2D([], [], linestyle="none", marker="^", markersize=5, markerfacecolor=SURFACE, markeredgecolor=INK2))
     labels.append("timed out")
     fig.legend(handles, labels, loc="lower center", ncol=5, bbox_to_anchor=(0.5, -0.01), handlelength=2.4, columnspacing=1.1)
-    fig.tight_layout(rect=(0, 0.08, 0.9, 1.0))
+    fig.tight_layout(rect=(0, 0.1, 1.0, 1.0))
     save(fig, filename)
 
 
@@ -1520,16 +1525,41 @@ def seconds_label(s):
     return f"{s / 60:.0f}\\,min"
 
 
+LOAD_NAMES = {"SNB SF10": "SF10", "SNB SF100": "SF100", "SNB SF300": "SF300", "cit-Patents": "cit-Patents",
+              r"datagen-8\_4-fb": "datagen-8_4-fb", "graph500-24": "graph500-24"}
+
+
+def load_after_restart():
+    """{graph: (warm load s, cold load s)} from the 9 Nov probe file: first query minus the warm second query, median
+    of three, with the database file in the page cache (warm) or evicted from it (cold)"""
+    path = RESULTS / "probes_9nov" / "load_after_restart.txt"
+    if not path.is_file():
+        return {}
+    out = {}
+    for line in path.read_text().splitlines():
+        m = re.match(r"^(\S+)\s+cold\s+(.*?)\s+warm\s+(.*)$", line.strip())
+        if not m:
+            continue
+        def median_load(pairs):
+            diffs = [float(a) - float(b) for a, b in (pair.split("/") for pair in pairs.split())]
+            return statistics.median(diffs)
+        out[m.group(1)] = (median_load(m.group(3)), median_load(m.group(2)))
+    return out
+
+
 def fixed_costs_table(filename):
-    """Table: edges, index creation and bytes per edge against the native systems' import time and store size."""
-    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.5pt}",
-             r"\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table and its size "
-             r"per edge, against the native systems' import from the same CSV files (Kuzu from Parquet) and Kuzu's store "
-             r"size per edge. Memgraph, FalkorDB and Neo4j were not loaded with the two large Graphalytics graphs.}"
+    """Table: edges, index creation, bytes per edge and load after a restart against the native systems' import time
+    and store size."""
+    restart_loads = load_after_restart()
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.2pt}",
+             r"\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table, its size per "
+             r"edge and its load on the first query after a restart with the database file in the page cache, against the "
+             r"native systems' import from the same CSV files (Kuzu from Parquet) and Kuzu's store size per edge. Memgraph, "
+             r"FalkorDB and Neo4j were not loaded with the two large Graphalytics graphs.}"
              r"\label{tab:fixed-costs}",
-             r"\begin{tabular}{lrrrrrrrr}\toprule",
-             r"graph & edges & \multicolumn{2}{c}{CSR index} & \multicolumn{2}{c}{Kuzu} & Neo4j & Memgraph & FalkorDB \\",
-             r" & & create & B/edge & import & B/edge & import & import & import \\ \midrule"]
+             r"\begin{tabular}{lrrrrrrrrr}\toprule",
+             r"graph & edges & \multicolumn{3}{c}{CSR index} & \multicolumn{2}{c}{Kuzu} & Neo4j & Memgraph & FalkorDB \\",
+             r" & & create & B/edge & load & import & B/edge & import & import & import \\ \midrule"]
     for sf, name in FIXED_COST_GRAPHS:
         directory = RESULTS / (f"sf{sf}" if sf.isdigit() else sf)
         files = newest_files(directory, "fixed_costs_*.csv")
@@ -1542,8 +1572,10 @@ def fixed_costs_table(filename):
         loads = {r["system"]: (float(r["seconds"]), float(r["bytes_per_edge"])) for r in rows if r["measure"] == "load"}
         imp = lambda key: seconds_label(loads[key][0]) if key in loads else "--"
         kuzu_bpe = f"{loads['kuzu'][1]:.0f}" if "kuzu" in loads else "--"
+        load = restart_loads.get(LOAD_NAMES.get(name, name))
+        load_label = "--" if load is None else (f"{load[0] * 1000:.0f}\\,ms" if load[0] < 1 else f"{load[0]:.2f}\\,s")
         lines.append(f"{name} & {edges / 1e6:.1f}\\,M & {seconds_label(statistics.median(builds) if builds else None)} & "
-                     f"{bpe:.1f} & {imp('kuzu')} & {kuzu_bpe} & {imp('neo4j')} & {imp('memgraph')} & {imp('falkordb')} \\\\")
+                     f"{bpe:.1f} & {load_label} & {imp('kuzu')} & {kuzu_bpe} & {imp('neo4j')} & {imp('memgraph')} & {imp('falkordb')} \\\\")
     lines.append(r"\bottomrule\end{tabular}\end{table}")
     write_table(filename, lines)
 
@@ -1641,7 +1673,7 @@ def concurrency_figure(filename):
     if not columns:
         print("no throughput or concurrent results yet, skipping", filename)
         return
-    fig, axes = plt.subplots(2, len(columns), figsize=(7.2, 4.6), squeeze=False, sharey="row")
+    fig, axes = plt.subplots(2, len(columns), figsize=(7.2, 3.3), squeeze=False, sharey="row")
     for col, (sf, points, series) in enumerate(columns):
         top, bottom = axes[0][col], axes[1][col]
         for ax in (top, bottom):
@@ -1751,7 +1783,7 @@ def crossover_sf100_figure(filename, sf="100"):
     axes[0][0].set_ylabel("seconds per query")
     handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE)
                for _, _, c in CROSSOVER_KERNELS]
-    fig.legend(handles, ["frontier traversal", "lanes, one per distinct source", "lanes, one per pair"],
+    fig.legend(handles, ["single-source traversal", "multi-source, one lane per source", "multi-source, one lane per pair"],
                loc="lower center", ncol=1, bbox_to_anchor=(0.5, -0.02), handlelength=2.0, fontsize=6.5)
     fig.tight_layout(rect=(0, 0.2, 1, 1))
     save(fig, filename)
@@ -1760,22 +1792,17 @@ def crossover_sf100_figure(filename, sf="100"):
 
 ABLATION_ROWS = [
     ("baseline", "default, 32 threads"),
-    ("single_source_kernel", "frontier traversal for every query"),
-    ("multi_source_dedup", "lanes for every query"),
-    ("lane_per_pair", "one lane per pair"),
+    ("single_source_kernel", "single-source traversal for every query"),
+    ("multi_source_dedup", "multi-source traversal for every query"),
     ("no_source_grouping", "pairs not grouped by source"),
     ("no_grouped_batches", "batches not grouped by the scheduler"),
     ("sched_g1_w32", "one batch at a time"),
-    ("no_frontier_bitmap", "no frontier summary bitmap"),
-    ("no_sparse_levels", "no sparse levels"),
-    ("partitions_16384", "destination ranges of 16\\,384"),
+    ("no_frontier_bitmap", "no summary bitmap"),
     ("partitions_4096", "destination ranges of 4096"),
     ("reverse_index", "with reverse partitions"),
     ("pair_mode", "sources $\\times$ all as a pair list"),
     ("reach_per_source", "reach as one search per source"),
     ("paths", "paths instead of lengths"),
-    ("threads_16", "16 threads"),
-    ("threads_4", "4 threads"),
     ("threads_1", "1 thread"),
 ]
 ABLATION_COLUMNS = [("random_pairs", "1"), ("random_pairs", "2048"), ("random_pairs", "65536"),
