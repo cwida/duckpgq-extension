@@ -1,0 +1,6 @@
+CSR index keyed by person row ids (knows_rowid, dense ids = row ids: the build route's vertex numbering) against the
+id-keyed index (sorted keys), on copies of the sweep databases, the sweep's pair tables, warm, 3 repeats, seconds.
+SF100 2048 pairs:  rowid-keyed 0.147 0.157 0.143 | id-keyed 0.130 0.129 0.123 | sweep build route 0.283, index 0.135
+SF100 65536 pairs: rowid-keyed 3.984 3.918 3.968 | id-keyed 3.318 3.259 3.280 | sweep build route 4.134, index 3.251
+SF300 2048 pairs:  rowid-keyed 0.407 0.398 0.413 | id-keyed 0.343 0.338 0.349 | sweep build route 0.714, index 0.345
+SF300 65536 pairs: rowid-keyed 12.072 12.017 12.154 | id-keyed 9.825 9.804 9.720 | sweep build route 12.809, index 10.011

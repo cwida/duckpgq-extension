@@ -1,0 +1,118 @@
+{
+    "io": {
+        "total_bytes_read": 0,
+        "total_bytes_written": 0
+    },
+    "operator": [
+        {
+            "extra_info": {},
+            "intermediate_rows": 0,
+            "intermediate_size_bytes": 0,
+            "timing": 0.00001919,
+            "type": "RESULT_COLLECTOR",
+            "children": [
+                {
+                    "extra_info": {
+                        "Projections": [
+                            "mode",
+                            "pair_count",
+                            "reachable_count",
+                            "total_len",
+                            "min_len",
+                            "max_len"
+                        ],
+                        "Estimated Cardinality": "1"
+                    },
+                    "intermediate_rows": 1,
+                    "intermediate_size_bytes": 1080,
+                    "timing": 0.00002789,
+                    "type": "PROJECTION",
+                    "children": [
+                        {
+                            "extra_info": {},
+                            "intermediate_rows": 1,
+                            "intermediate_size_bytes": 4,
+                            "timing": 8.9e-7,
+                            "type": "DUMMY_SCAN"
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "optimizer": {
+        "aggregate_function_rewriter": 0.00000642,
+        "aggregate_reuse": 0.00000192,
+        "build_side_probe_side": 8.8e-7,
+        "column_lifetime": 0.00000151,
+        "common_aggregate": 5.5e-7,
+        "common_subexpressions": 0.00000126,
+        "common_subplan": 0.0000157,
+        "cte_filter_pusher": 8.8e-7,
+        "cte_inlining": 0.00000102,
+        "deliminator": 0.00000142,
+        "duplicate_groups": 8.7e-7,
+        "empty_result_pullup": 5.1e-7,
+        "expression_rewriter": 0.000034331,
+        "extension": 0.00001676,
+        "filter_pullup": 0.00000101,
+        "filter_pushdown": 0.00000493,
+        "grouping_sets": 2.2e-7,
+        "in_clause": 4.5e-7,
+        "join_elimination": 0.00000212,
+        "join_filter_pushdown": 7.4e-7,
+        "join_order": 0.00001821,
+        "late_materialization": 5.1e-7,
+        "limit_pushdown": 5.2e-7,
+        "outer_join_simplification": 0.00000232,
+        "partial_aggregate_pushdown": 0.00000158,
+        "partitioned_execution": 0.000001,
+        "projection_placement": 0.0000029,
+        "projection_pullup": 0.00000285,
+        "redundant_order_keys": 7.1e-7,
+        "regex_range": 4e-7,
+        "reorder_filter": 6e-7,
+        "row_group_pruner": 5.3e-7,
+        "row_number_rewriter": 7.2e-7,
+        "sampling_pushdown": 3.7e-7,
+        "scalar_fn_pushdown": 1.5e-7,
+        "statistics_propagation": 0.00001008,
+        "top_n": 4.1e-7,
+        "top_n_window_elimination": 0.0000037,
+        "total_time": 0.000183131,
+        "type_pushdown": 9e-7,
+        "unnest_rewriter": 9.8e-7,
+        "unused_columns": 0.00000292,
+        "window_self_join": 7.2e-7
+    },
+    "parser": {
+        "total_time": 0.000231172
+    },
+    "physical_planner": {
+        "column_binding": 9.3e-7,
+        "create_plan": 0.00000332,
+        "resolve_types": 1e-7,
+        "total_time": 0.00000699
+    },
+    "planner": {
+        "binding_time": 0.000116301,
+        "total_time": 0.000173391
+    },
+    "query": {
+        "cpu_time": 0.00004797,
+        "sql": "SELECT 'index_build' AS mode, 0::BIGINT AS pair_count, NULL::BIGINT AS reachable_count,\n       NULL::BIGINT AS total_len, NULL::BIGINT AS min_len, NULL::BIGINT AS max_len;",
+        "total_intermediate_rows": 2,
+        "total_intermediate_size_bytes": 1084,
+        "total_row_groups_scanned": 0,
+        "total_row_groups_to_scan": 0,
+        "total_rows_scanned": 0,
+        "total_time": 0.000667564
+    },
+    "system": {
+        "blocked_thread_time": 0.0,
+        "peak_buffer_memory": 368762880,
+        "peak_streaming_buffer_size": 88,
+        "peak_temp_dir_size": 0,
+        "total_memory_allocated": 0
+    }
+}

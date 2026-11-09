@@ -1,0 +1,9 @@
+Index load on first use after a restart: fresh duckdb process, database attached read-only, first single-pair query on
+the index route (includes the deferred index load) and a second warm one; cold = the database file evicted from the
+page cache with dd iflag=nocache (drop_caches is not permitted on the desk). Seconds, 3 repeats, first / second query.
+SF10          cold 0.026/0.003 0.028/0.003 0.026/0.003   warm 0.019/0.002 0.019/0.003 0.019/0.003
+SF100         cold 0.186/0.015 0.304/0.016 0.650/0.015   warm 0.076/0.015 0.075/0.015 0.074/0.015
+SF300         cold 1.905/0.023 2.122/0.023 2.107/0.023   warm 0.139/0.022 0.140/0.022 0.137/0.023
+cit-Patents   cold 0.786/0.027 0.862/0.026 0.870/0.024   warm 0.082/0.023 0.075/0.022 0.075/0.021
+datagen-8_4-fb cold 23.356/0.059 23.126/0.063 23.171/0.056 warm 0.921/0.060 0.915/0.061 0.919/0.063
+graph500-24   cold 24.601/0.190 24.600/0.195 24.603/0.213 warm 1.125/0.186 1.130/0.195 1.169/0.198

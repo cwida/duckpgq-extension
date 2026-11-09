@@ -1,0 +1,190 @@
+{
+    "io": {
+        "total_bytes_read": 0,
+        "total_bytes_written": 0
+    },
+    "operator": [
+        {
+            "extra_info": {},
+            "intermediate_rows": 0,
+            "intermediate_size_bytes": 0,
+            "timing": 0.00002162,
+            "type": "RESULT_COLLECTOR",
+            "children": [
+                {
+                    "extra_info": {
+                        "Projections": [
+                            "mode",
+                            "pair_count",
+                            "reachable_count",
+                            "total_len",
+                            "min_len",
+                            "max_len"
+                        ],
+                        "Estimated Cardinality": "1"
+                    },
+                    "intermediate_rows": 1,
+                    "intermediate_size_bytes": 4160,
+                    "timing": 0.00001957,
+                    "type": "PROJECTION",
+                    "children": [
+                        {
+                            "extra_info": {
+                                "Aggregates": [
+                                    "count_star()",
+                                    "count(#0)",
+                                    "sum(#1)",
+                                    "min(#2)",
+                                    "max(#3)"
+                                ],
+                                "Estimated Cardinality": "1"
+                            },
+                            "intermediate_rows": 1,
+                            "intermediate_size_bytes": 48,
+                            "timing": 0.000891282,
+                            "type": "UNGROUPED_AGGREGATE",
+                            "children": [
+                                {
+                                    "extra_info": {
+                                        "Projections": [
+                                            "len",
+                                            "len",
+                                            "len",
+                                            "len"
+                                        ],
+                                        "Estimated Cardinality": "65536"
+                                    },
+                                    "intermediate_rows": 65536,
+                                    "intermediate_size_bytes": 2129920,
+                                    "timing": 0.000014570000000000003,
+                                    "type": "PROJECTION",
+                                    "children": [
+                                        {
+                                            "extra_info": {
+                                                "Projections": "len",
+                                                "Estimated Cardinality": "65536"
+                                            },
+                                            "intermediate_rows": 65536,
+                                            "intermediate_size_bytes": 532480,
+                                            "timing": 0.000029112000000000005,
+                                            "type": "PROJECTION",
+                                            "children": [
+                                                {
+                                                    "extra_info": {
+                                                        "Mode": "iterativelength",
+                                                        "CSR Input": "cached PartitionCSR",
+                                                        "CSR Cache Key": "csr-index|ldbc|main|person_knows_person|pathfinding_benchmark_csr",
+                                                        "Estimated Cardinality": "65536"
+                                                    },
+                                                    "intermediate_rows": 65536,
+                                                    "intermediate_size_bytes": 1581056,
+                                                    "timing": 303.3480948409986,
+                                                    "type": "EXTENSION",
+                                                    "children": [
+                                                        {
+                                                            "extra_info": {
+                                                                "Table": "\"temp\".main.pathfinding_index_pairs",
+                                                                "Type": "Sequential Scan",
+                                                                "Projections": [
+                                                                    "src",
+                                                                    "dst"
+                                                                ],
+                                                                "Estimated Cardinality": "65536"
+                                                            },
+                                                            "intermediate_rows": 65536,
+                                                            "intermediate_size_bytes": 1048576,
+                                                            "row_groups_scanned": 1,
+                                                            "rows_scanned": 65536,
+                                                            "timing": 0.000095941,
+                                                            "total_row_groups_to_scan": 1,
+                                                            "type": "TABLE_SCAN"
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "optimizer": {
+        "aggregate_function_rewriter": 0.00000938,
+        "aggregate_reuse": 0.00000395,
+        "build_side_probe_side": 0.00000157,
+        "column_lifetime": 0.00000351,
+        "common_aggregate": 0.00000234,
+        "common_subexpressions": 0.00000234,
+        "common_subplan": 0.00001371,
+        "cte_filter_pusher": 7.8e-7,
+        "cte_inlining": 9.3e-7,
+        "deliminator": 0.00000221,
+        "duplicate_groups": 0.00000421,
+        "empty_result_pullup": 4.8e-7,
+        "expression_rewriter": 0.00002867,
+        "extension": 0.00003153,
+        "filter_pullup": 0.00000135,
+        "filter_pushdown": 0.00001054,
+        "grouping_sets": 7.8e-7,
+        "in_clause": 5e-7,
+        "join_elimination": 0.00000338,
+        "join_filter_pushdown": 0.000001,
+        "join_order": 0.000036121,
+        "late_materialization": 5.6e-7,
+        "limit_pushdown": 5.7e-7,
+        "outer_join_simplification": 0.0000036,
+        "partial_aggregate_pushdown": 0.00000233,
+        "partitioned_execution": 0.00000112,
+        "projection_placement": 0.00000283,
+        "projection_pullup": 0.00000382,
+        "redundant_order_keys": 0.00000268,
+        "regex_range": 4.3e-7,
+        "reorder_filter": 0.000001,
+        "row_group_pruner": 5.5e-7,
+        "row_number_rewriter": 7.7e-7,
+        "sampling_pushdown": 3.8e-7,
+        "scalar_fn_pushdown": 1.9e-7,
+        "statistics_propagation": 0.00001469,
+        "top_n": 4.5e-7,
+        "top_n_window_elimination": 0.00000355,
+        "total_time": 0.000265392,
+        "type_pushdown": 9.8e-7,
+        "unnest_rewriter": 0.00000102,
+        "unused_columns": 0.00001443,
+        "window_self_join": 0.00000102
+    },
+    "parser": {
+        "total_time": 0.000516854
+    },
+    "physical_planner": {
+        "column_binding": 0.00000385,
+        "create_plan": 0.00002076,
+        "resolve_types": 1.6e-7,
+        "total_time": 0.00002927
+    },
+    "planner": {
+        "binding_time": 0.000289742,
+        "total_time": 0.000356663
+    },
+    "query": {
+        "cpu_time": 303.3491669359986,
+        "sql": "SELECT 'index_operator_warm' AS mode, count(*) AS pair_count, count(len) AS reachable_count,\n       sum(len) AS total_len, min(len) AS min_len, max(len) AS max_len\nFROM (\n    SELECT iterativelengthoperator(\n        src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|ldbc|main|person_knows_person|pathfinding_benchmark_csr') AS len\n    FROM pathfinding_index_pairs\n);",
+        "total_intermediate_rows": 262146,
+        "total_intermediate_size_bytes": 5296240,
+        "total_row_groups_scanned": 1,
+        "total_row_groups_to_scan": 1,
+        "total_rows_scanned": 65536,
+        "total_time": 9.996451738
+    },
+    "system": {
+        "blocked_thread_time": 0.0,
+        "peak_buffer_memory": 3551117248,
+        "peak_streaming_buffer_size": 4160,
+        "peak_temp_dir_size": 0,
+        "total_memory_allocated": 3533832192
+    }
+}

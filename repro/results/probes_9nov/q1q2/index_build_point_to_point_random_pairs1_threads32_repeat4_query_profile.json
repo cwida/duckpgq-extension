@@ -1,0 +1,118 @@
+{
+    "io": {
+        "total_bytes_read": 0,
+        "total_bytes_written": 0
+    },
+    "operator": [
+        {
+            "extra_info": {},
+            "intermediate_rows": 0,
+            "intermediate_size_bytes": 0,
+            "timing": 0.000006,
+            "type": "RESULT_COLLECTOR",
+            "children": [
+                {
+                    "extra_info": {
+                        "Projections": [
+                            "mode",
+                            "pair_count",
+                            "reachable_count",
+                            "total_len",
+                            "min_len",
+                            "max_len"
+                        ],
+                        "Estimated Cardinality": "1"
+                    },
+                    "intermediate_rows": 1,
+                    "intermediate_size_bytes": 1080,
+                    "timing": 0.00000586,
+                    "type": "PROJECTION",
+                    "children": [
+                        {
+                            "extra_info": {},
+                            "intermediate_rows": 1,
+                            "intermediate_size_bytes": 4,
+                            "timing": 4.3e-7,
+                            "type": "DUMMY_SCAN"
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "optimizer": {
+        "aggregate_function_rewriter": 0.0000066,
+        "aggregate_reuse": 0.00000186,
+        "build_side_probe_side": 0.00000104,
+        "column_lifetime": 0.00000159,
+        "common_aggregate": 5.4e-7,
+        "common_subexpressions": 0.00000141,
+        "common_subplan": 0.000013721,
+        "cte_filter_pusher": 9e-7,
+        "cte_inlining": 8.8e-7,
+        "deliminator": 0.00000137,
+        "duplicate_groups": 8.6e-7,
+        "empty_result_pullup": 4.2e-7,
+        "expression_rewriter": 0.00003492,
+        "extension": 0.0000165,
+        "filter_pullup": 0.00000111,
+        "filter_pushdown": 0.0000052,
+        "grouping_sets": 2.4e-7,
+        "in_clause": 4.2e-7,
+        "join_elimination": 0.00000222,
+        "join_filter_pushdown": 5.9e-7,
+        "join_order": 0.00001724,
+        "late_materialization": 5.7e-7,
+        "limit_pushdown": 5e-7,
+        "outer_join_simplification": 0.00000239,
+        "partial_aggregate_pushdown": 0.00000141,
+        "partitioned_execution": 8.4e-7,
+        "projection_placement": 0.00000294,
+        "projection_pullup": 0.00000276,
+        "redundant_order_keys": 7.3e-7,
+        "regex_range": 3.8e-7,
+        "reorder_filter": 7e-7,
+        "row_group_pruner": 5.6e-7,
+        "row_number_rewriter": 6.1e-7,
+        "sampling_pushdown": 3.8e-7,
+        "scalar_fn_pushdown": 1.5e-7,
+        "statistics_propagation": 0.00000958,
+        "top_n": 4.6e-7,
+        "top_n_window_elimination": 0.00000315,
+        "total_time": 0.000178491,
+        "type_pushdown": 9.1e-7,
+        "unnest_rewriter": 9.5e-7,
+        "unused_columns": 0.00000308,
+        "window_self_join": 8.7e-7
+    },
+    "parser": {
+        "total_time": 0.000242632
+    },
+    "physical_planner": {
+        "column_binding": 9.5e-7,
+        "create_plan": 0.00000332,
+        "resolve_types": 1.2e-7,
+        "total_time": 0.00000715
+    },
+    "planner": {
+        "binding_time": 0.000113471,
+        "total_time": 0.000175372
+    },
+    "query": {
+        "cpu_time": 0.00001229,
+        "sql": "SELECT 'index_build' AS mode, 0::BIGINT AS pair_count, NULL::BIGINT AS reachable_count,\n       NULL::BIGINT AS total_len, NULL::BIGINT AS min_len, NULL::BIGINT AS max_len;",
+        "total_intermediate_rows": 2,
+        "total_intermediate_size_bytes": 1084,
+        "total_row_groups_scanned": 0,
+        "total_row_groups_to_scan": 0,
+        "total_rows_scanned": 0,
+        "total_time": 0.000527864
+    },
+    "system": {
+        "blocked_thread_time": 0.0,
+        "peak_buffer_memory": 368599040,
+        "peak_streaming_buffer_size": 88,
+        "peak_temp_dir_size": 0,
+        "total_memory_allocated": 0
+    }
+}
