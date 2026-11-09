@@ -61,7 +61,7 @@ of path lengths.}
 \subsection{One path or thousands}
 \label{sec:eval-pairs}
 
-Shared traversal pays from a handful of sources on; at one pair and one source the per-source engines lead, by a fixed cost of a few to tens of milliseconds (Figure~\ref{fig:scaling}). For one pair at SF300 Neo4j answers in
+Shared traversal pays from a handful of sources on; at one pair and one source \rev{Neo4j and Kuzu} lead, by a fixed cost of a few to tens of milliseconds (Figure~\ref{fig:scaling}). For one pair at SF300 Neo4j answers in
 4\,ms, the index route in 22\,ms, Kuzu in 52 and FalkorDB in 79. For one source Kuzu, whose recursive join from a
 literal source is a true single-source search, takes 33\,ms at SF300 against the index route's 41, and 14 against 19
 at SF100. The operator's 22\,ms at SF300 are the traversal itself. The sampled pair is five hops apart, and the five levels, which touch most of the graph, take 18 to 20 of the 22\,ms; the snapshot, the per-source arrays and the output take 2 to 4, and a one-hop pair from the same source 2 to 9. Neo4j's bidirectional search meets in the middle after two or three levels from each side. At sixteen the order has turned: 16 pairs at SF300 take 139\,ms over the
@@ -90,8 +90,7 @@ one query; on sources $\times$ all it leaves the UDF route at 2.4\,s for one sou
 \input{tables/graphalytics}
 
 \paragraph{Graph structure} Table~\ref{tab:graphalytics} repeats the sources $\times$ all sweep on the three
-Graphalytics graphs, with Kuzu, the strongest baseline above, on all three and every system on cit-Patents, and shows the same trade-off. At one source the per-source engines lead where a search is small, Memgraph in 4\,ms
-and Kuzu in 7 against the index route's 32 on cit-Patents, where a source reaches about 2000 of 3.8M vertices; where a
+Graphalytics graphs, with Kuzu, the strongest baseline above, on all three and every system on cit-Patents, and shows the same trade-off. At one source \rev{Memgraph and Kuzu lead where a search is small, in 4 and 7\,ms against the index route's 32 on cit-Patents}, where a source reaches about 2000 of 3.8M vertices; where a
 search covers the graph, one source is a tie (175 against Kuzu's 189\,ms on datagen, 351 against 336 on graph500-24).
 At 1024 sources the index route leads on every graph: 437\,ms against Memgraph's 498 and Kuzu's 1.5\,s on cit-Patents,
 4.1\,s against 191\,s on datagen, and 8.8\,s against 495\,s on graph500-24, where each of the 1024 sources reaches all
