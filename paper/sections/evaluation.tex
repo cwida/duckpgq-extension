@@ -139,7 +139,7 @@ after every commit. For one source to 1024 destinations the index route answers 
 in 19 without it, the build route in 20, Kuzu in 17, Memgraph in 43, Neo4j in 1.5\,s and FalkorDB in 9.4\,s; for 1024
 random pairs the index route takes 44\,ms, Neo4j 743, Kuzu 6.8\,s, FalkorDB 8.7\,s and Memgraph 47\,s. Deciding
 visibility per log entry instead of per change group would have cost 35 instead of 15\,ms, the third row of the table.
-The stream crosses the fold threshold once; that fold takes 56\,ms at SF10, 6 of them the parallel scan, and is paid
+The stream crosses the fold threshold\rev{, a tenth of the epoch's edges by default (Section~\ref{sec:index-fold}),} once; that fold takes 56\,ms at SF10, 6 of them the parallel scan, and is paid
 by the one query that triggered it, the 125\,ms maximum of the first row.
 
 \begin{figure*}[t]
@@ -164,8 +164,7 @@ queries per second at SF300 while the build route stays at 4 to 5, from 112 to 9
 396 to 5583 against 56 to 187 at SF10; at 32 clients the index route holds 1.7\,GiB against the build route's
 23.3\,GiB at SF300, one CSR per client.
 
-A fold at SF300 takes 1.6 to 1.8\,s, of which the parallel table scan is 120 to 190\,ms, and one reader pays it. In a
-run that forces a fold every 0.05\,\% of the edges, four in twenty commits, the sixteen readers' median stays at 65\,ms
+A fold at SF300 takes 1.6 to 1.8\,s, of which the parallel table scan is 120 to 190\,ms, and one reader pays it. In a run \rev{with the threshold lowered to 0.05\,\% of the edges, so that four folds fall in twenty commits}, the sixteen readers' median stays at 65\,ms
 and the p99 at 277\,ms, and the four queries that triggered a fold take 1.7 to 1.8\,s each. The correctness oracle of Section~\ref{sec:index-correctness} ran under this load, every reader answering its query over the index and over a CSR built from the same transaction's view of the table and comparing the two: 4584 queries at SF10 with four readers under 190 commits, 354 at SF100 and 218 at SF300 with sixteen readers under 20 commits, and 220 at SF300 with a fold during the comparison, without a mismatch.
 
 \subsection{What each mechanism contributes}
