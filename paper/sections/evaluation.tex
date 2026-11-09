@@ -118,8 +118,8 @@ Table~\ref{tab:ldbc} shows the three shapes once more on queries a benchmark def
 Neo4j is the fastest system at every scale, 3, 7 and 6\,ms against the index route's 4, 14 and 28; Kuzu takes 8, 24
 and 50\,ms. BI19 asks for the path length between every person of one city and every person of another, up to 2.4\,M
 pairs at SF300, and is the query of Figure~\ref{fig:teaser}: 12, 137 and 765\,ms over the index against 40\,ms,
-3.9\,s and 47\,s for Neo4j, 524\,ms, 22.3\,s and 332\,s for Kuzu over 32 connections, and 140\,ms, 17\,s and over
-600\,s for Memgraph. BI20 asks for the distance from every person of one company to one target, many sources and one
+3.9\,s and 47\,s for Neo4j, 524\,ms, 22.3\,s and 332\,s for Kuzu, and 140\,ms, 17\,s and over 600\,s for
+Memgraph. BI20 asks for the distance from every person of one company to one target, many sources and one
 destination: 5, 26 and 61\,ms over the index against Neo4j's 22\,ms, 126\,ms and 1.2\,s and Kuzu's 1.4\,s, 29.4\,s and
 over 600\,s. The index of the sweep answers BI20 with one search per source; with reverse partitions the operator
 turns the shape around and runs one search from the target (Section~\ref{sec:choice}), which Table~\ref{tab:ablation}
@@ -191,13 +191,11 @@ and the p99 at 277\,ms, and the four queries that triggered a fold take 1.7 to 1
 Table~\ref{tab:ablation} switches the operator's mechanisms off one at a time on the index route at SF100. The choice of traversal is the largest term. The frontier traversal for every query takes 39.1\,s for 65\,536 pairs, twelve times
 the default's 3.3\,s, and 1.1\,s for 1024 sources, 2.7 times the default; the lanes for every query change nothing,
 including for one pair, which at SF100 costs 15\,ms either way. Grouping the pairs by source matters when pairs share a
-source: 2048 random pairs take 520\,ms ungrouped against 135, and 1024 sources to one destination 284 against 116.
-One lane per pair costs the same on random pairs and 2.4 times on the many-to-one shape. The scheduler's grouping of
+source: 2048 random pairs take 520\,ms ungrouped against 135, and 1024 sources to one destination 284 against 116. The scheduler's grouping of
 batches is worth 2.4 times at 65\,536 pairs (7.9 against 3.3\,s), and running one batch at a time eight times (26.7\,s;
 3.5 against 0.38\,s at SF10, 38.8 against 10.0\,s at SF300); on graph500-24 the ungrouped batches exceed the machine's
 memory at 65\,536 pairs, 98\,GiB against 32 with grouping, and every grouping that gives a batch all 32 threads lands
-within 3\,\% of the default while splitting the threads among batches costs 15 to 25\,\%. The frontier summary bitmap
-saves 27\,\% at 65\,536 pairs and the sparse levels 4\,\%. Destination ranges of 4096 instead of 65\,535 ids cost 1.8
+within 3\,\% of the default while splitting the threads among batches costs 15 to 25\,\%. The frontier summary bitmap saves 27\,\% at 65\,536 pairs. Destination ranges of 4096 instead of 65\,535 ids cost 1.8
 times at 65\,536 pairs, because a sixteenth of the edges per partition means sixteen times the partitions per level.
 Reverse partitions turn 1024 sources to one destination into one search from the destination, 6\,ms against 116.
 Running sources $\times$ all as an explicit pair list costs 31.7\,s against 421\,ms for 1024 sources, the case reach

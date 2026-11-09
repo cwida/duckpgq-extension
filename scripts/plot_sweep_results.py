@@ -1170,16 +1170,17 @@ def sweep_table(shape, filename, caption, label, head):
 def ldbc_table(filename):
     queries = ["ic13", "bi19", "bi20"]
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
-             r"\caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, seconds per query, the median of three runs per parameter set averaged over five parameter sets; rows marked conn.\ split the sources over 32 client connections.}\label{tab:ldbc}",
+             r"\caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, seconds per query, the median of three runs per parameter set averaged over five parameter sets; each system in its fastest formulation, on one connection or with the sources split over 32.}\label{tab:ldbc}",
              r"\begin{tabular}{lrrr}\toprule", r"system & IC13 & BI19 & BI20 \\ \midrule"]
     for sf in SCALE_FACTORS:
         points = load("ldbc_queries", sf)
         lines.append(f"\\multicolumn{{4}}{{l}}{{\\textit{{LDBC SF{sf}}}}} \\\\")
         rows = []
-        for lab in sorted_labels({k[0] for k in points}):
+        for lab in sorted_labels({k[0].split("@")[0] for k in points}):
             aggregated = []
             for query in queries:
-                values = [points[(lab, query, pr)] for pr in sorted({k[2] for k in points if k[0] == lab and k[1] == query})]
+                params = sorted({k[2] for k in points if k[0].split("@")[0] == lab and k[1] == query})
+                values = [v for v in (fastest_path(points, lab, query, pr) for pr in params) if v is not None]
                 if not values:
                     aggregated.append(None)
                 elif all(v["status"] == "ok" for v in values):
@@ -1424,7 +1425,7 @@ def scaling_grid_figure(filename):
     fastest formulation, the two DuckDB-native routes dashed in ink."""
     shapes = [("random_pairs", "pairs per query", "random pairs"),
               ("multi_source", "sources per query, each to every reachable person", "sources × all")]
-    fig, axes = plt.subplots(2, 3, figsize=(7.2, 4.9), sharey="row", squeeze=False)
+    fig, axes = plt.subplots(2, 3, figsize=(7.2, 4.3), sharey="row", squeeze=False)
     used = []
     for row, (shape, xlabel, rowtitle) in enumerate(shapes):
         for col, sf in enumerate(SCALE_FACTORS):
@@ -1672,7 +1673,7 @@ def concurrency_figure(filename):
     if not columns:
         print("no throughput or concurrent results yet, skipping", filename)
         return
-    fig, axes = plt.subplots(2, len(columns), figsize=(7.2, 4.6), squeeze=False, sharey="row")
+    fig, axes = plt.subplots(2, len(columns), figsize=(7.2, 3.9), squeeze=False, sharey="row")
     for col, (sf, points, series) in enumerate(columns):
         top, bottom = axes[0][col], axes[1][col]
         for ax in (top, bottom):
@@ -1793,20 +1794,15 @@ ABLATION_ROWS = [
     ("baseline", "default, 32 threads"),
     ("single_source_kernel", "frontier traversal for every query"),
     ("multi_source_dedup", "lanes for every query"),
-    ("lane_per_pair", "one lane per pair"),
     ("no_source_grouping", "pairs not grouped by source"),
     ("no_grouped_batches", "batches not grouped by the scheduler"),
     ("sched_g1_w32", "one batch at a time"),
     ("no_frontier_bitmap", "no frontier summary bitmap"),
-    ("no_sparse_levels", "no sparse levels"),
-    ("partitions_16384", "destination ranges of 16\\,384"),
     ("partitions_4096", "destination ranges of 4096"),
     ("reverse_index", "with reverse partitions"),
     ("pair_mode", "sources $\\times$ all as a pair list"),
     ("reach_per_source", "reach as one search per source"),
     ("paths", "paths instead of lengths"),
-    ("threads_16", "16 threads"),
-    ("threads_4", "4 threads"),
     ("threads_1", "1 thread"),
 ]
 ABLATION_COLUMNS = [("random_pairs", "1"), ("random_pairs", "2048"), ("random_pairs", "65536"),
