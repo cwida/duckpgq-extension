@@ -1946,7 +1946,7 @@ def concurrency_column_figure(filename):
         left.set_xticklabels([str(c) for c in clients], fontsize=5.5)
         left.set_ylim(2, 20000)
         if peaks:
-            left.annotate(f"SF{sf}\npeak {peaks.get('index', 0):.1f} / {peaks.get('build', 0):.1f} GiB", (0.03, 0.96),
+            left.annotate(f"SF{sf}, peak at 32 clients\nindex {peaks.get('index', 0):.1f}, build {peaks.get('build', 0):.1f} GiB", (0.03, 0.96),
                           xycoords="axes fraction", fontsize=5.5, color=INK2, va="top", ha="left", linespacing=1.2)
         readers = sorted(set(series["query_index"]) | set(series["query_build"]))
         for (system, name, color), kind in zip(ROUTES, ("query_index", "query_build")):
@@ -1966,7 +1966,7 @@ def concurrency_column_figure(filename):
                 and series["query_index"][r][2] is not None and series["query_build"][r][2] is not None]
         if both:
             r = both[-1]
-            right.annotate(f"commit at {r} readers\n{ms_label(series['query_index'][r][2])} / {ms_label(series['query_build'][r][2])} ms",
+            right.annotate(f"writer's commit, {r} readers\nindex {ms_label(series['query_index'][r][2])}, build {ms_label(series['query_build'][r][2])} ms",
                            (0.03, 0.96), xycoords="axes fraction", fontsize=5.5, color=INK2, va="top", ha="left", linespacing=1.2)
         right.set_xticks(readers)
         right.set_xticklabels([str(r) for r in readers], fontsize=5.5)
