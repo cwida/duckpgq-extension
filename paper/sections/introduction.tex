@@ -35,8 +35,8 @@ recursive join and accept its performance, or wait for the system's developers t
 Extensions have brought graph queries to relational systems before. Apache AGE adds Cypher to
 PostgreSQL~\cite{apacheage}, pgRouting runs shortest-path algorithms over a graph it builds from a SQL query on every
 call~\cite{pgrouting}, and some engines implement \sqlpgq inside their own code~\cite{oraclesqlpgq}. As far as we
-know, no extension combines a path-finding operator inside the host's planner with a graph index that stays
-consistent with the host's transactions, built only on the interfaces the host offers to every extension. This paper
+know, no extension combines a path-finding operator inside \rev{the database system's} planner with a graph index that stays
+consistent with \rev{its} transactions, built only on the interfaces \rev{the system} offers to every extension. This paper
 shows that a loadable extension can add them.
 
 \duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb~\cite{duckdb2019} that
