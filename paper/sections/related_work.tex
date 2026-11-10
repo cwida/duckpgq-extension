@@ -5,10 +5,10 @@
 Relational systems answer graph queries by rewriting pattern matching into joins over edge
 tables~\cite{sun2015sqlgraph,jindal2014vertexica,fan2015grail}, by layering a graph query language on an
 RDBMS~\cite{vanrest2016pgql}, and since SQL:2023 through \sqlpgq~\cite{deutsch2022gql}.
-\duckpgq~\cite{tenwolde2023duckpgq} \rev{is a \duckdb extension that implements \sqlpgq by rewriting \texttt{MATCH} into SQL}; this paper adds the two pieces we asked for there, a many-source path-finding algorithm and a compact graph
-representation, and keeps them inside the extension. Other extensions bring graph queries to a relational system
-without a path-finding operator of their own: Apache AGE adds Cypher to PostgreSQL~\cite{apacheage}, and pgRouting
-builds a graph from a SQL query on every call and runs its algorithms over it~\cite{pgrouting}. Systems that change the engine add adjacency structures or predefined joins (GRainDB~\cite{jin2022graindb,jin2022predefinedjoins}, GQ-Fast~\cite{lin2016gqfast}) or worst-case optimal joins for cyclic patterns (EmptyHeaded~\cite{aberger2017emptyheaded}, Umbra~\cite{freitag2020wcoj}); their structures share the system's storage and transaction code, where ours is maintained through the public index interface (Section~\ref{sec:index}).
+\rev{Extensions bring graph queries to a relational system without a path-finding operator of their own: Apache AGE adds
+Cypher to PostgreSQL~\cite{apacheage}, pgRouting builds a graph from a SQL query on every call and runs its algorithms
+over it~\cite{pgrouting}, and the 2023 \duckpgq~\cite{tenwolde2023duckpgq} rewrites \sqlpgq's \texttt{MATCH} into SQL
+with UDFs for the paths.} Systems that change the engine add adjacency structures or predefined joins (GRainDB~\cite{jin2022graindb,jin2022predefinedjoins}, GQ-Fast~\cite{lin2016gqfast}) or worst-case optimal joins for cyclic patterns (EmptyHeaded~\cite{aberger2017emptyheaded}, Umbra~\cite{freitag2020wcoj}); their structures share the system's storage and transaction code, where ours is maintained through the public index interface (Section~\ref{sec:index}).
 
 \paragraph{Path finding}
 Variable-length and shortest-path patterns are the part of \sqlpgq that relational operators serve worst. A recursive
