@@ -9,12 +9,7 @@ RDBMS~\cite{vanrest2016pgql}, and since SQL:2023 through \sqlpgq~\cite{deutsch20
 SQL; this paper adds the two pieces we asked for there, a many-source path-finding algorithm and a compact graph
 representation, and keeps them inside the extension. \rev{Other extensions bring graph queries to a relational system
 without a path-finding operator of their own: Apache AGE adds Cypher to PostgreSQL~\cite{apacheage}, and pgRouting
-builds a graph from a SQL query on every call and runs its algorithms over it~\cite{pgrouting}.} Systems that change
-the engine add predefined joins and adjacency structures (GRainDB~\cite{jin2022graindb,jin2022predefinedjoins}),
-worst-case optimal joins for cyclic patterns (EmptyHeaded~\cite{aberger2017emptyheaded}, Umbra~\cite{freitag2020wcoj})
-or compressed adjacency indexes (GQ-Fast~\cite{lin2016gqfast}); their adjacency structures share the system's storage
-and transaction code, where ours is a derived structure maintained through the public index interface, which tells it
-neither which transaction committed a row nor what a transaction may see (Section~\ref{sec:index}).
+builds a graph from a SQL query on every call and runs its algorithms over it~\cite{pgrouting}.} Systems that change the engine add adjacency structures or predefined joins (GRainDB~\cite{jin2022graindb,jin2022predefinedjoins}, GQ-Fast~\cite{lin2016gqfast}) or worst-case optimal joins for cyclic patterns (EmptyHeaded~\cite{aberger2017emptyheaded}, Umbra~\cite{freitag2020wcoj}); their structures share the system's storage and transaction code, where ours is maintained through the public index interface, which tells it neither which transaction committed a row nor what a transaction may see (Section~\ref{sec:index}).
 
 \paragraph{Path finding}
 Variable-length and shortest-path patterns are the part of \sqlpgq that relational operators serve worst. A recursive
@@ -58,7 +53,4 @@ ART~\cite{leis2013art} do, stores only row identifiers and checks the row's vers
 probe~\cite{wu2017mvcc,neumann2015mvcc}. A traversal that touches millions of edges cannot pay a version check per
 edge; on LDBC SF10 that check alone grew a single-source query from 15 to 35\,ms as updates accumulated
 (Table~\ref{tab:updates}), so the index of Section~\ref{sec:index} checks visibility once per change group and serves
-a whole traversal from one immutable snapshot. It is built behind the index interface that the \texttt{vss} and
-\texttt{spatial} extensions also use~\cite{duckdb_vss,duckdb_spatial}; as far as we know it is the first
-snapshot-consistent graph structure behind such an interface, and Section~\ref{sec:conclusion} names what the
-interface would need to make it simpler.
+a whole traversal from one immutable snapshot. As far as we know it is the first snapshot-consistent graph structure built behind a general index interface, the one the \texttt{vss} and \texttt{spatial} extensions also use~\cite{duckdb_vss,duckdb_spatial}, and Section~\ref{sec:conclusion} names what the interface would need to make it simpler.
