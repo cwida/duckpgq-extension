@@ -36,7 +36,7 @@
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
 % Text revised in the latest review round, in green; \reviewmarksfalse prints it plain (for submission)
 \definecolor{revgreen}{HTML}{0F8A3C}
-\newif\ifreviewmarks\reviewmarkstrue
+\newif\ifreviewmarks\reviewmarksfalse  % off for Overleaf and submission; local builds pass -usepretex='\AtBeginDocument{\reviewmarkstrue}'
 \DeclareRobustCommand{\rev}[1]{\ifreviewmarks{\color{revgreen}#1}\else#1\fi}
 \newcommand{\cn}{\textcolor{red}{[cite]}\xspace}
 
