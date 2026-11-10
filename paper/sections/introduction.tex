@@ -39,12 +39,12 @@ know, no extension combines a path-finding operator inside the database system's
 consistent with its transactions, built only on the interfaces the system offers to every extension. This paper
 shows that a loadable extension can add them.
 
-\duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb~\cite{duckdb2019} that
+\duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb~\cite{duckdb2019,raasveldt2020duckdb} that
 parses \sqlpgq and rewrites it into relational SQL, and it implemented the two graph-specific pieces, a compressed
 sparse row (CSR) representation of the graph and multi-source breadth-first search (\msbfs)~\cite{then2014msbfs} over
 it, as scalar user-defined functions (UDFs), which inherit \duckdb's parallelism for free. They also have a ceiling, which the CIDR
 paper named: ``morsel-driven parallelism is tuple-driven and without tuples there is not enough
-parallelism''~\cite{tenwolde2023duckpgq}. A UDF receives work when the pipeline hands it a vector of tuples, and a
+parallelism''~\cite{tenwolde2023duckpgq}. A UDF receives work when the pipeline hands it a vector of tuples, as morsel-driven parallelism~\cite{leis2014morsel} does, and a
 single shortest-path query hands it one, so one core runs a BFS over the whole graph while the others idle. The CSR
 was the second problem, global state built by ``the first thread to touch it'', rebuilt for every query, invisible to
 the optimizer, and unrelated to the transaction that reads it, so that a concurrent insert into the edge table is in the CSR or not depending on timing.
