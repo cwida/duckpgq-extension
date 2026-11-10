@@ -1,5 +1,5 @@
 \begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.2pt}
-\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table, its size per edge and its load on the first query after a restart with the database file in the page cache, against the native systems' import from the same CSV files (Kuzu from Parquet) and Kuzu's store size per edge. Memgraph, FalkorDB and Neo4j were not loaded with the two large Graphalytics graphs.}\label{tab:fixed-costs}
+\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table, its bytes per edge, its load on the first query after a restart (database file in the page cache), the native systems' import of the same data (Kuzu from Parquet) and Kuzu's bytes per edge.}\label{tab:fixed-costs}
 \begin{tabular}{lrrrrrrrrr}\toprule
 graph & edges & \multicolumn{3}{c}{CSR index} & \multicolumn{2}{c}{Kuzu} & Neo4j & Memgraph & FalkorDB \\
  & & create & B/edge & load & import & B/edge & import & import & import \\ \midrule

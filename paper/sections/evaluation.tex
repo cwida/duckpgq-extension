@@ -47,16 +47,15 @@ process that executes the query once untimed, which also loads the index, before
 run three timed repetitions back to back, and a cold first run does not move the median. Wherever two systems complete the same point, the harness finds the same number of reached pairs and the same sum
 of path lengths.
 
-\begin{figure*}[t]
+\begin{figure}[t]
   \centering
-  \includegraphics[width=\linewidth]{figures/scaling_grid.pdf}
-  \caption{Top: hop-count shortest-path length for $n$ random pairs in one query, $n$ from 1 to 65\,536. Bottom:
-  distance from each of $k$ sources to every reachable person, $k$ from 1 to 1024. LDBC SNB SF10, SF100 and SF300
-  from left to right; y: seconds per query, log scale, median of three runs, 32 threads. One line per system in its
-  fastest formulation; the two \duckdb-native routes dashed in grey. A triangle at the top marks a run over the
-  600\,s limit, after which the larger points of the same shape were not run.}
+  \includegraphics[width=\linewidth]{figures/scaling_column.pdf}
+  \caption{Left: hop-count shortest-path length for $n$ random pairs in one query. Right: distance from each of $k$
+  sources to every reachable person. LDBC SNB SF10, SF100 and SF300 from top to bottom; y: seconds per query, log
+  scale, median of three runs, 32 threads. One line per system in its fastest formulation, the two \duckdb-native ways
+  dashed in grey; a triangle marks a run over the 600\,s limit, after which the larger points were not run.}
   \label{fig:scaling}
-\end{figure*}
+\end{figure}
 
 \subsection{One path or thousands}
 \label{sec:eval-pairs}
@@ -140,17 +139,16 @@ random pairs the index route takes 44\,ms, Neo4j 743, Kuzu 6.8\,s, FalkorDB 8.7\
 visibility per log entry instead of per change group would have cost 35 instead of 15\,ms, the third row of the table.
 The stream crosses the fold threshold, a tenth of the epoch's edges by default (Section~\ref{sec:index-fold}), once; that fold takes 56\,ms at SF10, 6 of them the parallel scan, and is paid by the one query that triggered it, \rev{which took 125\,ms, the longest of the 190 and beyond the p99 the table reports}.
 
-\begin{figure*}[t]
+\begin{figure}[t]
   \centering
-  \includegraphics[width=\linewidth]{figures/concurrency.pdf}
-  \caption{Top: queries per second for one random pair per query from 1 to 32 clients on one \duckdb instance with
-  32 threads, over the index and building the CSR per query, with the peak memory of the process at 32 clients.
-  Bottom: latency of one source to 1024 destinations for 1, 4 and 16 reader connections while one writer commits 2000
-  edge changes every 200\,ms; the line is the median, the hollow marker the p99 of the same queries, and the text gives
-  the writer's median commit under each route's readers. LDBC SNB SF10, SF100 and SF300 from left to right; log
-  scales; 20\,s per throughput point (10 at SF300), 20 commits per reader run.}
+  \includegraphics[width=\linewidth]{figures/concurrency_column.pdf}
+  \caption{Left: queries per second for one random pair per query from 1 to 32 clients on one \duckdb instance with
+  32 threads, over the index and building the CSR per query, with the process's peak memory at 32 clients (index /
+  build). Right: latency of one source to 1024 destinations for 1, 4 and 16 readers while a writer commits 2000 edge
+  changes every 200\,ms; the line is the median, the hollow marker the p99, the text the writer's median commit under
+  each route's readers (index / build). SF10, SF100 and SF300 from top to bottom; log scales.}
   \label{fig:concurrency}
-\end{figure*}
+\end{figure}
 
 The index's margin under concurrency grows with the graph and with the clients (Figure~\ref{fig:concurrency}). With
 16 readers under a writer at SF300 a query takes 82\,ms over the index, median, and 188\,ms at the p99; on the build

@@ -1168,32 +1168,42 @@ def sweep_table(shape, filename, caption, label, head):
 
 
 def ldbc_table(filename):
+    """One row per system in its fastest formulation; columns IC13, BI19, BI20 per scale factor; full width."""
     queries = ["ic13", "bi19", "bi20"]
-    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
-             r"\caption{LDBC IC13, BI19 and BI20 as hop-count shortest paths on the undirected knows graph, seconds per query, the median of three runs per parameter set averaged over five parameter sets; each system in its fastest formulation, on one connection or with the sources split over 32.}\label{tab:ldbc}",
-             r"\begin{tabular}{lrrr}\toprule", r"system & IC13 & BI19 & BI20 \\ \midrule"]
+    rows = {}
     for sf in SCALE_FACTORS:
         points = load("ldbc_queries", sf)
-        lines.append(f"\\multicolumn{{4}}{{l}}{{\\textit{{LDBC SF{sf}}}}} \\\\")
-        rows = []
         for lab in sorted_labels({k[0].split("@")[0] for k in points}):
-            aggregated = []
+            cells = rows.setdefault(lab, {})
             for query in queries:
                 params = sorted({k[2] for k in points if k[0].split("@")[0] == lab and k[1] == query})
                 values = [v for v in (fastest_path(points, lab, query, pr) for pr in params) if v is not None]
                 if not values:
-                    aggregated.append(None)
+                    cells[(sf, query)] = None
                 elif all(v["status"] == "ok" for v in values):
-                    aggregated.append({"status": "ok", "mean": statistics.mean(v["median"] for v in values)})
+                    cells[(sf, query)] = {"status": "ok", "mean": statistics.mean(v["median"] for v in values)}
                 elif any(v["status"] == "exceeded" for v in values):
-                    aggregated.append({"status": "exceeded"})
+                    cells[(sf, query)] = {"status": "exceeded"}
                 else:
-                    aggregated.append({"status": "err"})
-            rows.append((lab, aggregated))
-        lines += format_rows(rows)
-        if sf != SCALE_FACTORS[-1]:
-            lines.append(r"\addlinespace")
-    lines.append(r"\bottomrule\end{tabular}\end{table}")
+                    cells[(sf, query)] = {"status": "err"}
+    columns = [(sf, q) for sf in SCALE_FACTORS for q in queries]
+    table_rows = [(lab, [rows[lab].get(c) for c in columns]) for lab in sorted_labels(rows)]
+    lines = [r"\begin{table*}[t]\centering\scriptsize\setlength{\tabcolsep}{4pt}",
+             r"\caption{LDBC IC13 (one pair), BI19 (city $\times$ city) and BI20 (company $\to$ one person) as hop-count "
+             r"shortest paths on the undirected knows graph: seconds per query, the median of three runs per parameter set "
+             r"averaged over five sets, 32 threads, each system in its fastest formulation.}\label{tab:ldbc}",
+             r"\begin{tabular}{l" + "rrr" * len(SCALE_FACTORS) + r"}\toprule",
+             " & " + " & ".join(f"\\multicolumn{{3}}{{c}}{{LDBC SF{sf}}}" for sf in SCALE_FACTORS) + r" \\",
+             "system & " + " & ".join("IC13 & BI19 & BI20" for _ in SCALE_FACTORS) + r" \\ \midrule"]
+    # bold per column: the fastest completed cell
+    minima = []
+    for i in range(len(columns)):
+        oks = [r[1][i]["mean"] for r in table_rows if r[1][i] is not None and r[1][i]["status"] == "ok"]
+        minima.append(min(oks) if oks else None)
+    for lab, cells_ in table_rows:
+        out = [cell(pt, bold=pt is not None and pt["status"] == "ok" and pt["mean"] == minima[i]) for i, pt in enumerate(cells_)]
+        lines.append(f"{row_label(lab)} & " + " & ".join(out) + r" \\")
+    lines.append(r"\bottomrule\end{tabular}\end{table*}")
     write_table(filename, lines)
 
 
@@ -1484,9 +1494,9 @@ def graphalytics_table(filename):
     pairs are meaningful (not on the citation DAG, where every random pair is unreachable)."""
     sources = [1, 16, 128, 1024]
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
-             r"\caption{Three Graphalytics graphs: distances from $k$ sources to every reachable vertex, and 65\,536 random "
-             r"pairs where the pairs are reachable (on the citation DAG no random pair is). Median of three runs, 32 threads, "
-             r"600\,s timeout, each baseline in its fastest formulation.}\label{tab:graphalytics}",
+             r"\caption{Three Graphalytics graphs: seconds per query for $k$ sources to every reachable vertex and for 65\,536 "
+             r"random pairs (none on the citation DAG is reachable); median of three runs, 32 threads, fastest formulation.}"
+             r"\label{tab:graphalytics}",
              r"\begin{tabular}{lrrrrr}\toprule",
              r"system & 1 source & 16 & 128 & 1024 & 65\,536 pairs \\ \midrule"]
     blocks = 0
@@ -1552,11 +1562,9 @@ def fixed_costs_table(filename):
     and store size."""
     restart_loads = load_after_restart()
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.2pt}",
-             r"\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table, its size per "
-             r"edge and its load on the first query after a restart with the database file in the page cache, against the "
-             r"native systems' import from the same CSV files (Kuzu from Parquet) and Kuzu's store size per edge. Memgraph, "
-             r"FalkorDB and Neo4j were not loaded with the two large Graphalytics graphs.}"
-             r"\label{tab:fixed-costs}",
+             r"\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table, its bytes per edge, "
+             r"its load on the first query after a restart (database file in the page cache), the native systems' import of "
+             r"the same data (Kuzu from Parquet) and Kuzu's bytes per edge.}\label{tab:fixed-costs}",
              r"\begin{tabular}{lrrrrrrrrr}\toprule",
              r"graph & edges & \multicolumn{3}{c}{CSR index} & \multicolumn{2}{c}{Kuzu} & Neo4j & Memgraph & FalkorDB \\",
              r" & & create & B/edge & load & import & B/edge & import & import & import \\ \midrule"]
@@ -1614,10 +1622,9 @@ def update_stream_table(filename):
         return f"{value:.0f}" if value is not None else "--"
 
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
-             r"\caption{The update stream at SF10: a writer commits 2000 edge changes (about 1770 inserts and 230 deletes) "
-             r"190 times, and one query runs after each commit; 32 threads. Query latency in ms (median and p99 over the "
-             r"190 queries) for one source to 1024 destinations and for 1024 random pairs, and the median commit.}"
-             r"\label{tab:updates}",
+             r"\caption{The update stream at SF10, 190 commits of 2000 edge changes with one query after each, 32 threads: "
+             r"query latency in ms (median, p99) for one source to 1024 destinations and for 1024 random pairs, and the "
+             r"median commit.}\label{tab:updates}",
              r"\begin{tabular}{lrrrrr}\toprule",
              r"system & \multicolumn{2}{c}{1 source, 1024 dst.} & \multicolumn{2}{c}{1024 pairs} & commit \\",
              r" & median & p99 & median & p99 & median \\ \midrule"]
@@ -1833,10 +1840,9 @@ def ablation_table(filename, sf="100", since_ns=1793830000000000000, system="duc
         return f"{v * 1000:.0f}\\,ms" if v < 1 else f"{v:.1f}\\,s"
 
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.6pt}",
-             r"\caption{One mechanism switched off or changed at a time, over the index at SF100, 32 threads unless stated: "
-             r"median seconds per query of three runs for one random pair, 2048 and 65\,536 random pairs, one source and 1024 "
-             r"sources to every reachable person, and 1024 sources to one destination. The index of the sweep has no reverse "
-             r"partitions; the row that adds them is the exception.}\label{tab:ablation}",
+             r"\caption{One mechanism switched off or changed at a time, over the index at SF100, 32 threads unless stated; "
+             r"median of three runs for 1, 2048 and 65\,536 random pairs, 1 and 1024 sources to every reachable person, and "
+             r"1024 sources to one destination.}\label{tab:ablation}",
              r"\begin{tabular}{lrrrrrr}\toprule",
              r" & \multicolumn{3}{c}{random pairs} & \multicolumn{2}{c}{sources $\times$ all} & $\to$ 1 \\",
              r"configuration & 1 & 2048 & 65\,536 & 1 & 1024 & 1024 \\ \midrule"]
@@ -1846,6 +1852,138 @@ def ablation_table(filename, sf="100", since_ns=1793830000000000000, system="duc
         lines.append(f"{label} & " + " & ".join(fmt(config, shape, count) for shape, count in ABLATION_COLUMNS) + r" \\")
     lines.append(r"\bottomrule\end{tabular}\end{table}")
     write_table(filename, lines)
+
+
+
+def scaling_column_figure(filename):
+    """Figure 6 in one column: scale factors as rows, random pairs and sources x all as columns."""
+    shapes = [("random_pairs", "random pairs", "pairs per query"),
+              ("multi_source", "sources × all", "sources per query")]
+    fig, axes = plt.subplots(3, 2, figsize=(3.3, 5.6), sharey=True, squeeze=False)
+    used = []
+    for row, sf in enumerate(SCALE_FACTORS):
+        points = load("sweep_pairs", sf)
+        for col, (shape, title, xlabel) in enumerate(shapes):
+            ax = axes[row][col]
+            counts = sorted({k[2] for k in points if k[1] == shape})
+            ax.set_xscale("log", base=2)
+            ax.set_yscale("log")
+            ax.axhline(TIMEOUT_S, color=AXIS, linewidth=0.6)
+            for system, name, color in ALL_SYSTEMS:
+                xs, ys, exceeded_x = [], [], []
+                for count in counts:
+                    point = fastest_path(points, system, shape, count)
+                    if point is None:
+                        continue
+                    if point["status"] == "ok":
+                        xs.append(count)
+                        ys.append(point["mean"])
+                    elif point["status"] == "exceeded":
+                        exceeded_x.append(count)
+                if not xs and not exceeded_x:
+                    continue
+                if (system, name, color) not in used:
+                    used.append((system, name, color))
+                linewidth, alpha, zorder = emphasis(system)
+                plot_series(ax, xs, ys, exceeded_x, color, linestyle=LINESTYLE.get(system, "-"),
+                            linewidth=linewidth * 0.8, alpha=alpha, zorder=zorder)
+            ax.set_ylim(0.001, 3000)
+            ax.set_yticks([0.001, 0.1, 10, 1000])
+            ax.set_yticklabels(["1 ms", "0.1 s", "10 s", "1000 s"], fontsize=6)
+            ax.set_xticks(counts)
+            ax.set_xticklabels([count_label(c) if c not in (2048, 16384) else "" for c in counts], fontsize=5.5)
+            style_axes(ax)
+            ax.tick_params(pad=1.5)
+            if row == 0:
+                ax.set_title(title, loc="left", fontsize=7.5)
+            if row == 2:
+                ax.set_xlabel(xlabel, fontsize=7)
+            ax.annotate(f"SF{sf}", (0.97, 0.04), xycoords="axes fraction", fontsize=6.5, color=INK2, ha="right", va="bottom")
+    handles = [Line2D([], [], color=c, linewidth=1.3, linestyle=LINESTYLE.get(k, "-"), marker="o", markersize=3,
+                      markeredgecolor=SURFACE) for k, _, c in used]
+    labels = [n for _, n, _ in used]
+    handles.append(Line2D([], [], linestyle="none", marker="^", markersize=4.5, markerfacecolor=SURFACE, markeredgecolor=INK2))
+    labels.append("timed out (600 s)")
+    fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, -0.005), handlelength=1.8,
+               columnspacing=0.8, fontsize=6.3, labelspacing=0.3)
+    fig.tight_layout(rect=(0, 0.11, 1.0, 1.0), h_pad=0.6, w_pad=0.6)
+    save(fig, filename)
+
+
+def concurrency_column_figure(filename):
+    """Figure 7 in one column: scale factors as rows; left, single-pair throughput against clients; right, reader
+    latency under a writer, median as the line and the p99 as a hollow marker."""
+    columns = []
+    for sf in SCALE_FACTORS:
+        points = {}
+        for path in newest_files(RESULTS / f"sf{sf}", "throughput_sf*_threads32_*.csv"):
+            for r in csv.DictReader(open(path)):
+                if r["queries_per_s"]:
+                    points[(r["route"], int(r["clients"]))] = (float(r["queries_per_s"]), float(r["median_ms"]),
+                                                               float(r["p99_ms"]), float(r.get("peak_rss_mib") or 0))
+        columns.append((sf, points, concurrent_series(sf)))
+    fig, axes = plt.subplots(3, 2, figsize=(3.3, 5.0), squeeze=False)
+    for row, (sf, points, series) in enumerate(columns):
+        left, right = axes[row][0], axes[row][1]
+        for ax in (left, right):
+            ax.set_xscale("log", base=2)
+            ax.set_yscale("log")
+            style_axes(ax)
+            ax.tick_params(pad=1.5, labelsize=6)
+        clients = sorted({c for _, c in points})
+        peaks = {}
+        for (system, name, color), route in zip(ROUTES, ("index", "build")):
+            xs = [c for c in clients if (route, c) in points]
+            if not xs:
+                continue
+            rates = [points[(route, c)][0] for c in xs]
+            linewidth, alpha, zorder = emphasis(system)
+            plot_series(left, xs, rates, [], color, linewidth=linewidth * 0.8, alpha=alpha, zorder=zorder)
+            left.annotate(f"{rates[-1]:.0f}/s", (xs[-1], rates[-1]), xytext=(2, 3 if route == "index" else -3), textcoords="offset points",
+                          fontsize=5.5, color=color, va="bottom" if route == "index" else "top", ha="right")
+            peaks[route] = points[(route, xs[-1])][3] / 1024
+        left.set_xticks(clients)
+        left.set_xticklabels([str(c) for c in clients], fontsize=5.5)
+        left.set_ylim(2, 20000)
+        if peaks:
+            left.annotate(f"SF{sf}\npeak {peaks.get('index', 0):.1f} / {peaks.get('build', 0):.1f} GiB", (0.03, 0.96),
+                          xycoords="axes fraction", fontsize=5.5, color=INK2, va="top", ha="left", linespacing=1.2)
+        readers = sorted(set(series["query_index"]) | set(series["query_build"]))
+        for (system, name, color), kind in zip(ROUTES, ("query_index", "query_build")):
+            xs = [r for r in readers if r in series[kind]]
+            if not xs:
+                continue
+            medians = [series[kind][r][0] for r in xs]
+            tails = [series[kind][r][1] for r in xs]
+            linewidth, alpha, zorder = emphasis(system)
+            plot_series(right, xs, medians, [], color, linewidth=linewidth * 0.8, alpha=alpha, zorder=zorder)
+            right.vlines(xs, medians, tails, color=color, alpha=0.5 * alpha, linewidth=0.6, zorder=zorder - 1)
+            right.plot(xs, tails, linestyle="none", marker="o", markersize=3, markerfacecolor=SURFACE,
+                       markeredgecolor=color, markeredgewidth=0.9, alpha=alpha, zorder=zorder)
+            right.annotate(f"{ms_label(medians[-1])}", (xs[-1], medians[-1]), xytext=(2, -3), textcoords="offset points",
+                           fontsize=5.5, color=color, va="top", ha="right")
+        both = [r for r in readers if r in series["query_index"] and r in series["query_build"]
+                and series["query_index"][r][2] is not None and series["query_build"][r][2] is not None]
+        if both:
+            r = both[-1]
+            right.annotate(f"commit at {r} readers\n{ms_label(series['query_index'][r][2])} / {ms_label(series['query_build'][r][2])} ms",
+                           (0.03, 0.96), xycoords="axes fraction", fontsize=5.5, color=INK2, va="top", ha="left", linespacing=1.2)
+        right.set_xticks(readers)
+        right.set_xticklabels([str(r) for r in readers], fontsize=5.5)
+        right.set_ylim(5, 20000)
+        if row == 0:
+            left.set_title("queries per second", loc="left", fontsize=7.5)
+            right.set_title("latency under a writer (ms)", loc="left", fontsize=7.5)
+        if row == 2:
+            left.set_xlabel("clients, one pair each", fontsize=7)
+            right.set_xlabel("readers, 1 source → 1024", fontsize=7)
+    handles = [Line2D([], [], color=c, linewidth=1.3, marker="o", markersize=3, markeredgecolor=SURFACE) for _, _, c in ROUTES]
+    handles.append(Line2D([], [], linestyle="none", marker="o", markersize=3, markerfacecolor=SURFACE,
+                          markeredgecolor=INK2, markeredgewidth=0.9))
+    fig.legend(handles, [n for _, n, _ in ROUTES] + ["p99"], loc="lower center", ncol=3,
+               bbox_to_anchor=(0.5, -0.005), handlelength=1.8, columnspacing=1.0, fontsize=6.3)
+    fig.tight_layout(rect=(0, 0.05, 1.0, 1.0), h_pad=0.6, w_pad=0.8)
+    save(fig, filename)
 
 
 def save(fig, filename):
@@ -1893,3 +2031,5 @@ if __name__ == "__main__":
     concurrency_figure("concurrency")
     crossover_sf100_figure("crossover_sf100")
     ablation_table("ablation")
+    scaling_column_figure("scaling_column")
+    concurrency_column_figure("concurrency_column")
