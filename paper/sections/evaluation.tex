@@ -13,7 +13,7 @@ of Section~\ref{sec:operator} contribute?
 of memory, Amazon Linux 2023). \duckpgq runs on \duckdb v2.0.0-dev (commit 45f4fdf3), compiled with \duckdb's default
 flags for x86-64-v3, so with AVX2, with every setting at its default and 32 threads. All measurements use this build; the
 reproduction package names its commit. The baselines are
-Kuzu 0.11.3 (embedded, 32 threads)\footnote{Kuzu's development has stopped. Its maintained fork, LadybugDB 0.15.3,
+Kuzu 0.11.3 (embedded, 32 threads)\footnote{\rev{Kuzu's repository was archived in 2025.} Its maintained fork, LadybugDB 0.15.3,
 was not faster than Kuzu 0.11.3 in our tests at SF10, between 1.1 and 2.9 times slower on the random-pair,
 sources $\times$ all and LDBC points, so we report Kuzu.}, Neo4j 5.26.32 Enterprise (16\,GB heap, 16\,GB page cache, parallel runtime; the
 GDS library 2.13.14 with its unlicensed limit of four threads where marked; Neo4j's store is 2.3\,GB at SF300, Table~\ref{tab:fixed-costs}, so the page cache holds it at every scale, and a check with a 31\,GB heap and a 64\,GB page cache changed Neo4j's SF300 times by less than two percent), and Memgraph 3.14.0 and FalkorDB 4.2.2
@@ -34,8 +34,7 @@ undirected closure of \texttt{knows}.
 
 \emph{Random pairs} returns the hop-count shortest-path length of each of $n$ pairs taken from a fixed pseudo-random
 sequence, so that the pairs for a smaller $n$ are a prefix of those for a larger one; on the directed \texttt{knows}
-graph about half of them are reachable, on datagen and graph500-24 all of them, and on the citation DAG none, which
-is why cit-Patents runs only the second shape. \emph{Sources $\times$ all} returns the distance from each of $k$
+graph about half of them are reachable, on datagen and graph500-24 all of them, and on the citation DAG none, which is why cit-Patents runs only the second shape. \rev{The single pair sampled at SF100 is unreachable, so that point measures a full search of the source's component in every system.} \emph{Sources $\times$ all} returns the distance from each of $k$
 sampled sources to every reachable vertex, the shape of a reach query. Three LDBC queries have a shortest path at
 their core, IC13 (one pair), BI19 (every pair between the persons of two cities) and BI20 (one target, every person
 of one company); we run their hop-count variants with five parameter sets each. Each system runs each query in its own language in the formulation that was fastest for it, listed in the reproduction package, including the split of the pairs over 32 client connections where that was faster. The Cypher patterns
@@ -150,7 +149,7 @@ The stream crosses the fold threshold, a tenth of the epoch's edges by default (
 
 The index's margin under concurrency grows with the graph and with the clients (Figure~\ref{fig:concurrency}). With
 16 readers under a writer at SF300 a query takes 82\,ms over the index, median, and 188\,ms at the p99; on the build
-route it takes 3.9\,s and 5.9\,s, because sixteen builds of 55.7\,M edges compete for the same 32 cores. The writer's commit takes 153\,ms under the index's readers and 647 under the build route's, and the process peaks at 6.0 against 17.8\,GiB\rev{; at SF100 the commits take 214 against 348\,ms, and at SF10 the order is reversed, 166 against 83}. At SF100 the medians are 64 against 1196\,ms, at SF10 42 against 98, and with one reader at SF10 8 against
+route it takes 3.9\,s and 5.9\,s, because sixteen builds of 55.7\,M edges compete for the same 32 cores. The writer's commit takes 153\,ms under the index's readers and 647 under the build route's, and the process peaks at 6.0 against 17.8\,GiB; at SF100 the commits take 214 against 348\,ms, and at SF10 the order is reversed, 166 against 83. At SF100 the medians are 64 against 1196\,ms, at SF10 42 against 98, and with one reader at SF10 8 against
 20; the index route leads at every scale, and the build route's latency is about the build cost times the readers, sixteen builds of 263\,ms at SF300. Single-pair throughput shows the same margin from the other side. From 1 to 32 clients the index route climbs from 61 to 329
 queries per second at SF300 while the build route stays at 4 to 5, from 112 to 928 against 7 to 14 at SF100, and from
 396 to 5583 against 56 to 187 at SF10; at 32 clients the index route holds 1.7\,GiB against the build route's
@@ -172,6 +171,5 @@ within 3\,\% of the default while splitting the threads among batches costs 15 t
 times at 65\,536 pairs, because a sixteenth of the edges per partition means sixteen times the partitions per level.
 Reverse partitions turn 1024 sources to one destination into one search from the destination, 6\,ms against 116.
 Running sources $\times$ all as an explicit pair list costs 31.7\,s against 421\,ms for 1024 sources, the case reach
-mode was built for, and reach as one search per source 1.1\,s. Paths instead of lengths cost 14 times at 65\,536
-pairs, because the operator runs paths as one search per source (Section~\ref{sec:traversals}). On 32 threads the
+mode was built for, and reach as one search per source 1.1\,s. Paths instead of lengths cost 14 times at 65\,536 pairs, because the operator runs paths as one search per source (Section~\ref{sec:traversals})\rev{; with paths the operator still answers 65\,536 pairs on SF100 in 45.9\,s, where Neo4j needs 199\,s for the lengths alone, and 2048 pairs in 1.6\,s against 13.5}. On 32 threads the
 operator is 23 times faster than on one for 65\,536 pairs (3.3 against 76.5\,s) and 11 times for 1024 sources; one pair gains little from threads, 25\,ms on one against 15 on 32, because a single-source traversal parallelizes only its dense levels.
