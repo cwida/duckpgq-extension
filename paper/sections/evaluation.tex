@@ -98,7 +98,7 @@ At 1024 sources the index route leads on every graph: 437\,ms against Memgraph's
 
 \input{tables/ldbc_queries}
 
-Table~\ref{tab:ldbc} shows the three shapes once more on queries defined by the LDBC Social Network Benchmark~\cite{erling2015ldbc,szarnyas2022ldbcbi}. IC13 asks for one pair, and
+Table~\ref{tab:ldbc} shows the three shapes once more on queries defined by the LDBC Social Network Benchmark~\cite{puroja2023ldbcv2,szarnyas2022ldbcbi}. IC13 asks for one pair, and
 Neo4j is the fastest system at every scale, 3, 7 and 6\,ms against the index route's 4, 14 and 28; Kuzu takes 8, 24
 and 50\,ms. BI19 asks for the path length between every person of one city and every person of another, up to 2.4\,M
 pairs at SF300, and is the query of Figure~\ref{fig:teaser}: 12, 137 and 765\,ms over the index against 40\,ms,

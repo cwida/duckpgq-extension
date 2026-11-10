@@ -13,7 +13,7 @@ with UDFs for the paths. Systems that change the engine add adjacency structures
 \paragraph{Path finding}
 Variable-length and shortest-path patterns are the part of \sqlpgq that relational operators serve worst. A recursive
 common table expression evaluates them as a chain of joins with one frontier table per step; RaSQL~\cite{gu2019rasql}
-and the T\"ubingen work on recursion in SQL~\cite{hirn2019recursion} make that chain faster and keep its shape. We
+and the T\"ubingen work on recursion in SQL~\cite{hirn2019recursion,hirn2021recursion} make that chain faster and keep its shape. We
 take the other route, in the tradition of Grail~\cite{fan2015grail} and of in-database BFS
 operators~\cite{jindal2014vertexica}, and build a CSR to traverse. The traversal is multi-source
 BFS~\cite{then2014msbfs}, which runs as many searches as a register has bits through one sweep over the adjacency,
