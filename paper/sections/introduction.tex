@@ -35,8 +35,8 @@ recursive join and accept its performance, or wait for the system's developers t
 Extensions have brought graph queries to relational systems before. Apache AGE adds Cypher to
 PostgreSQL~\cite{apacheage}, pgRouting runs shortest-path algorithms over a graph it builds from a SQL query on every
 call~\cite{pgrouting}, and some engines implement \sqlpgq inside their own code~\cite{oraclesqlpgq}. As far as we
-know, no extension combines a path-finding operator inside \rev{the database system's} planner with a graph index that stays
-consistent with \rev{its} transactions, built only on the interfaces \rev{the system} offers to every extension. This paper
+know, no extension combines a path-finding operator inside the database system's planner with a graph index that stays
+consistent with its transactions, built only on the interfaces the system offers to every extension. This paper
 shows that a loadable extension can add them.
 
 \duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb~\cite{duckdb2019} that
@@ -89,7 +89,7 @@ Our contributions are:
   \item An MVCC-consistent CSR index built behind a general-purpose extension index interface: epochs, a change-group
         log, per-transaction snapshots, folds, checkpoints and recovery, with a correctness argument
         (Section~\ref{sec:index}).
-  \item The planner integration from \sqlpgq \texttt{MATCH} to operator and index without changes to \duckdb, and \rev{what its interfaces would need to make such an extension simpler} (Section~\ref{sec:conclusion}).
+  \item The planner integration from \sqlpgq \texttt{MATCH} to operator and index without changes to \duckdb, and what its interfaces would need to make such an extension simpler (Section~\ref{sec:conclusion}).
   \item An evaluation on six graphs against four native graph systems, Neo4j's GDS library and \duckdb's recursive
         CTE and 2023 UDFs, read-only and under updates, which places \duckdb with the index tens of milliseconds
         behind at one pair or one source, one to two orders of magnitude ahead from a handful of sources on and 47

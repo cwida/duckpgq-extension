@@ -18,7 +18,7 @@ plan shape, and the marker function must be volatile and must not reach executio
 is no index scan interface, so the operator finds the index in the catalog by name; and index options are fixed at
 \texttt{CREATE INDEX}, so the fold ratio is a setting and not a property of the index (Section~\ref{sec:index-fold}).
 Two behaviours we rely on are not promised by the interface, that row ids stay stable while an index exists and that
-\texttt{CanFetch} answers the visibility question of snapshot isolation (Section~\ref{sec:index-correctness})\rev{; the oracle of Section~\ref{sec:eval-updates}, which compares the index with a CSR built from the same transaction's view, would catch a change in either}.
+\texttt{CanFetch} answers the visibility question of snapshot isolation (Section~\ref{sec:index-correctness}); the oracle of Section~\ref{sec:eval-updates}, which compares the index with a CSR built from the same transaction's view, would catch a change in either.
 
 The CIDR version of \duckpgq answered shortest-path queries with UDFs, which inherited \duckdb's tuple-driven
 parallelism, so a query with few pairs ran on one core and every query rebuilt the CSR. This paper removed both limits

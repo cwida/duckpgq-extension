@@ -17,7 +17,7 @@ and the T\"ubingen work on recursion in SQL~\cite{hirn2019recursion,hirn2021recu
 take the other route, in the tradition of Grail~\cite{fan2015grail} and of in-database BFS
 operators~\cite{jindal2014vertexica}, and build a CSR to traverse. The traversal is multi-source
 BFS~\cite{then2014msbfs}, which runs as many searches as a register has bits through one sweep over the adjacency,
-each search in a bit lane. Its cost per level is a sweep over all vertices whatever the number of live lanes, which is the wrong cost for a single pair. For few sources we therefore run a single-source traversal of the kind Ligra~\cite{shun2013ligra} made standard. Direction-optimizing BFS~\cite{beamer2012direction} switches between pushing
+each search in a bit lane. Its cost per level is a sweep over all vertices whatever the number of live lanes, which is the wrong cost for a single pair. For few sources we therefore run a single-source traversal of the kind Ligra~\cite{shun2013ligra} made standard. Direction-optimizing BFS~\cite{beamer2013direction} switches between pushing
 the frontier and pulling from the unvisited vertices on the frontier's size; our sparse and dense levels switch on the
 same criterion between visiting the frontier through the source index and sweeping every partition
 (Section~\ref{sec:traversals}). The GraphBLAS~\cite{davis2019graphblas} expresses the same traversals as sparse
