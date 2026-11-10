@@ -1,6 +1,7 @@
 \begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{1.4pt}
 \caption{LDBC IC13 (one pair), BI19 (city $\times$ city) and BI20 (company $\to$ one person) as hop-count shortest paths on the undirected knows graph: seconds per query, the median of three runs per parameter set averaged over five sets, 32 threads, each system in its fastest formulation; GDS at its four-thread limit.}\label{tab:ldbc}
 \begin{tabular}{lrrrrrrrrr}\toprule
+ & \multicolumn{9}{c}{seconds per query} \\
  & \multicolumn{3}{c}{SF10} & \multicolumn{3}{c}{SF100} & \multicolumn{3}{c}{SF300} \\
 system & IC13 & BI19 & BI20 & IC13 & BI19 & BI20 & IC13 & BI19 & BI20 \\ \midrule
 DuckPGQ index & 0.004 & \textbf{0.012} & \textbf{0.005} & 0.014 & \textbf{0.137} & \textbf{0.026} & 0.028 & \textbf{0.765} & \textbf{0.061} \\

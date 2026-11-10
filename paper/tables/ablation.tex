@@ -1,19 +1,20 @@
 \begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.6pt}
-\caption{One mechanism switched off or changed at a time, over the index at SF100, 32 threads unless stated; median of three runs for 1, 2048 and 65\,536 random pairs, 1 and 1024 sources to every reachable person, and 1024 sources to one destination.}\label{tab:ablation}
+\caption{One mechanism switched off or changed at a time, over the index at SF100, 32 threads unless stated; seconds per query, median of three runs, for 1, 2048 and 65\,536 random pairs, 1 and 1024 sources to every reachable person, and 1024 sources to one destination.}\label{tab:ablation}
 \begin{tabular}{lrrrrrr}\toprule
+ & \multicolumn{6}{c}{seconds per query} \\
  & \multicolumn{3}{c}{random pairs} & \multicolumn{2}{c}{sources $\times$ all} & $\to$ 1 \\
 configuration & 1 & 2048 & 65\,536 & 1 & 1024 & 1024 \\ \midrule
-default, 32 threads & 15\,ms & 135\,ms & 3.3\,s & 19\,ms & 421\,ms & 116\,ms \\
-single-source traversal for every query & 15\,ms & -- & 39.1\,s & 19\,ms & 1.1\,s & 1.1\,s \\
-multi-source traversal for every query & 15\,ms & -- & 3.3\,s & 19\,ms & 397\,ms & 118\,ms \\
-pairs not grouped by source & 24\,ms & 520\,ms & 3.3\,s & 19\,ms & 410\,ms & 284\,ms \\
-batches not grouped by the scheduler & 15\,ms & 258\,ms & 7.9\,s & 19\,ms & 377\,ms & 151\,ms \\
-one batch at a time & -- & 814\,ms & 26.7\,s & -- & -- & -- \\
-no summary bitmap & -- & 167\,ms & 4.2\,s & -- & -- & -- \\
-destination ranges of 4096 & -- & 193\,ms & 6.0\,s & 18\,ms & 335\,ms & -- \\
-with reverse partitions & 15\,ms & -- & 3.3\,s & 18\,ms & 419\,ms & 6\,ms \\
-sources $\times$ all as a pair list & 15\,ms & -- & 3.3\,s & 83\,ms & 31.7\,s & 117\,ms \\
-reach as one search per source & 15\,ms & -- & 3.3\,s & 19\,ms & 1.1\,s & 117\,ms \\
-paths instead of lengths & 18\,ms & 1.6\,s & 45.9\,s & 19\,ms & 433\,ms & 1.3\,s \\
-1 thread & 25\,ms & -- & 76.5\,s & 43\,ms & 4.6\,s & 1.3\,s \\
+default, 32 threads & 0.015 & 0.135 & 3.3 & 0.019 & 0.421 & 0.116 \\
+single-source traversal for every query & 0.015 & -- & 39.1 & 0.019 & 1.1 & 1.1 \\
+multi-source traversal for every query & 0.015 & -- & 3.3 & 0.019 & 0.397 & 0.118 \\
+pairs not grouped by source & 0.024 & 0.520 & 3.3 & 0.019 & 0.410 & 0.284 \\
+batches not grouped by the scheduler & 0.015 & 0.258 & 7.9 & 0.019 & 0.377 & 0.151 \\
+one batch at a time & -- & 0.814 & 26.7 & -- & -- & -- \\
+no summary bitmap & -- & 0.167 & 4.2 & -- & -- & -- \\
+destination ranges of 4096 & -- & 0.193 & 6.0 & 0.018 & 0.335 & -- \\
+with reverse partitions & 0.015 & -- & 3.3 & 0.018 & 0.419 & 0.006 \\
+sources $\times$ all as a pair list & 0.015 & -- & 3.3 & 0.083 & 31.7 & 0.117 \\
+reach as one search per source & 0.015 & -- & 3.3 & 0.019 & 1.1 & 0.117 \\
+paths instead of lengths & 0.018 & 1.6 & 45.9 & 0.019 & 0.433 & 1.3 \\
+1 thread & 0.025 & -- & 76.5 & 0.043 & 4.6 & 1.3 \\
 \bottomrule\end{tabular}\end{table}

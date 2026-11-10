@@ -1111,6 +1111,17 @@ def cell(point, bold=False):
     return "err"
 
 
+def seconds_cell(point, bold=False):
+    """Seconds with three significant digits at most, no unit, for the one-column LDBC table"""
+    if point is None:
+        return "--"
+    if point["status"] != "ok":
+        return "$>$600" if point["status"] == "exceeded" else "err"
+    v = point["mean"]
+    text = f"{v:.3f}" if v < 1 else (f"{v:.1f}" if v < 100 else f"{v:.0f}")
+    return f"\\textbf{{{text}}}" if bold else text
+
+
 def column_minima(rows):
     """Per column, the smallest completed mean among the rows of one scale-factor block; None when no row completed."""
     minima = []
@@ -1120,12 +1131,13 @@ def column_minima(rows):
     return minima
 
 
-def format_rows(rows):
+def format_rows(rows, formatter=None):
     """Rows of (label, points); the fastest completed cell of every column is bold."""
+    formatter = formatter or cell
     minima = column_minima(rows)
     lines = []
     for lab, points_of_row in rows:
-        cells = [cell(pt, bold=pt is not None and pt["status"] == "ok" and pt["mean"] == minima[i])
+        cells = [formatter(pt, bold=pt is not None and pt["status"] == "ok" and pt["mean"] == minima[i])
                  for i, pt in enumerate(points_of_row)]
         lines.append(f"\\quad {row_label(lab)} & " + " & ".join(cells) + r" \\")
     return lines
@@ -1167,17 +1179,6 @@ def sweep_table(shape, filename, caption, label, head):
     write_table(filename, lines)
 
 
-def seconds_cell(point, bold=False):
-    """Seconds with three significant digits at most, no unit, for the one-column LDBC table"""
-    if point is None:
-        return "--"
-    if point["status"] != "ok":
-        return "$>$600" if point["status"] == "exceeded" else "err"
-    v = point["mean"]
-    text = f"{v:.3f}" if v < 1 else (f"{v:.1f}" if v < 100 else f"{v:.0f}")
-    return f"\\textbf{{{text}}}" if bold else text
-
-
 SHORT_NAME = dict(NAME_OF)
 SHORT_NAME["neo4j_gds"] = "Neo4j GDS"
 
@@ -1210,6 +1211,7 @@ def ldbc_table(filename):
              r"averaged over five sets, 32 threads, each system in its fastest formulation; GDS at its four-thread limit.}"
              r"\label{tab:ldbc}",
              r"\begin{tabular}{l" + "rrr" * len(SCALE_FACTORS) + r"}\toprule",
+             r" & \multicolumn{9}{c}{seconds per query} \\",
              " & " + " & ".join(f"\\multicolumn{{3}}{{c}}{{SF{sf}}}" for sf in SCALE_FACTORS) + r" \\",
              "system & " + " & ".join("IC13 & BI19 & BI20" for _ in SCALE_FACTORS) + r" \\ \midrule"]
     minima = []
@@ -1511,9 +1513,10 @@ def graphalytics_table(filename):
     sources = [1, 16, 128, 1024]
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
              r"\caption{Three Graphalytics graphs: seconds per query for $k$ sources to every reachable vertex and for 65\,536 "
-             r"random pairs (none on the citation DAG is reachable); median of three runs, 32 threads, fastest formulation.}"
-             r"\label{tab:graphalytics}",
+             r"random pairs (none on the citation DAG is reachable); median of three runs, 32 threads, fastest formulation; "
+             r"the fastest cell per column in bold.}\label{tab:graphalytics}",
              r"\begin{tabular}{lrrrrr}\toprule",
+             r" & \multicolumn{5}{c}{seconds per query} \\",
              r"system & 1 source & 16 & 128 & 1024 & 65\,536 pairs \\ \midrule"]
     blocks = 0
     for directory, name, note in GRAPHALYTICS:
@@ -1531,7 +1534,7 @@ def graphalytics_table(filename):
             if all(p is None for p in pts) and pair_pt is None:
                 continue
             rows.append((sysname, pts + [pair_pt]))
-        lines += format_rows(rows)
+        lines += format_rows(rows, formatter=seconds_cell)
     lines.append(r"\bottomrule\end{tabular}\end{table}")
     write_table(filename, lines)
 
@@ -1623,37 +1626,51 @@ def update_metrics(path, config=None):
 
 def update_stream_table(filename):
     """Table: the SF10 update stream (190 commits of 2000 edge changes, one query after each) for the DuckPGQ routes
-    and the baselines: query latency for one source to 1024 destinations and for 1024 random pairs, commit latency."""
+    and the baselines: query latency for one source to 1024 destinations and for 1024 random pairs, commit latency;
+    the fastest cell per column in bold, DuckPGQ's configurations grouped under one label."""
     directory = RESULTS / "sf10"
 
     def newest(pattern):
         files = newest_files(directory, pattern)
         return files[-1] if files else None
 
-    def fmt(metrics):
-        return f"{metrics[0]:.0f} & {metrics[1]:.0f}" if metrics else "-- & --"
+    def ms(value):
+        return f"{value:,.0f}".replace(",", "\\,")
 
-    def commit_of(a, b):
-        value = a[2] if a else (b[2] if b else None)
-        return f"{value:.0f}" if value is not None else "--"
-
-    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
-             r"\caption{The update stream at SF10, 190 commits of 2000 edge changes with one query after each, 32 threads: "
-             r"query latency in ms (median, p99) for one source to 1024 destinations and for 1024 random pairs, and the "
-             r"median commit.}\label{tab:updates}",
-             r"\begin{tabular}{lrrrrr}\toprule",
-             r"system & \multicolumn{2}{c}{1 source, 1024 dst.} & \multicolumn{2}{c}{1024 pairs} & commit \\",
-             r" & median & p99 & median & p99 & median \\ \midrule"]
     ours_sssp = newest("update_sssp_pairs1024_threads32_batch2000x190_*.csv")
     ours_p2p = newest("update_point_to_point_pairs1024_threads32_batch2000x190_*.csv")
+    rows = []  # (label, indent, [sssp median, sssp p99, p2p median, p2p p99, commit])
     for config, label in UPDATE_ROWS:
         a, b = update_metrics(ours_sssp, config), update_metrics(ours_p2p, config)
-        lines.append(f"{label} & {fmt(a)} & {fmt(b)} & {commit_of(a, b)} \\\\")
-    lines.append(r"\addlinespace")
+        commit = a[2] if a else (b[2] if b else None)
+        rows.append((label.replace("DuckPGQ ", ""), True, [a[0] if a else None, a[1] if a else None,
+                                                             b[0] if b else None, b[1] if b else None, commit]))
     for sysname, label in BASELINE_UPDATE:
         a = update_metrics(newest(f"update_{sysname}_sssp_pairs1024_threads32_batch2000x*.csv"))
         b = update_metrics(newest(f"update_{sysname}_point_to_point_pairs1024_threads32_batch2000x*.csv"))
-        lines.append(f"{label} & {fmt(a)} & {fmt(b)} & {commit_of(a, b)} \\\\")
+        commit = a[2] if a else (b[2] if b else None)
+        rows.append((label, False, [a[0] if a else None, a[1] if a else None, b[0] if b else None, b[1] if b else None, commit]))
+    minima = [min((r[2][i] for r in rows if r[2][i] is not None), default=None) for i in range(5)]
+
+    def fmt(value, i):
+        if value is None:
+            return "--"
+        text = ms(value)
+        return f"\\textbf{{{text}}}" if minima[i] is not None and round(value) == round(minima[i]) else text
+
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
+             r"\caption{The update stream at SF10, 190 commits of 2000 edge changes with one query after each, 32 threads: "
+             r"query latency for one source to 1024 destinations and for 1024 random pairs (median and p99 over the 190 "
+             r"queries) and the writer's median commit; the fastest cell per column in bold.}\label{tab:updates}",
+             r"\begin{tabular}{lrrrrr}\toprule",
+             r" & \multicolumn{4}{c}{query latency (ms)} & commit (ms) \\",
+             r" & \multicolumn{2}{c}{1 source $\to$ 1024 dest.} & \multicolumn{2}{c}{1024 random pairs} & \\",
+             r"system & median & p99 & median & p99 & median \\ \midrule",
+             r"\multicolumn{6}{l}{\textit{DuckPGQ}} \\"]
+    for label, indent, values in rows:
+        if not indent and lines[-1].startswith("\\quad"):
+            lines.append(r"\addlinespace")
+        lines.append(("\\quad " if indent else "") + f"{label} & " + " & ".join(fmt(v, i) for i, v in enumerate(values)) + r" \\")
     lines.append(r"\bottomrule\end{tabular}\end{table}")
     write_table(filename, lines)
 
@@ -1853,13 +1870,14 @@ def ablation_table(filename, sf="100", since_ns=1793830000000000000, system="duc
         if not values:
             return "--"
         v = statistics.median(values)
-        return f"{v * 1000:.0f}\\,ms" if v < 1 else f"{v:.1f}\\,s"
+        return f"{v:.3f}" if v < 1 else (f"{v:.1f}" if v < 100 else f"{v:.0f}")
 
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.6pt}",
              r"\caption{One mechanism switched off or changed at a time, over the index at SF100, 32 threads unless stated; "
-             r"median of three runs for 1, 2048 and 65\,536 random pairs, 1 and 1024 sources to every reachable person, and "
-             r"1024 sources to one destination.}\label{tab:ablation}",
+             r"seconds per query, median of three runs, for 1, 2048 and 65\,536 random pairs, 1 and 1024 sources to every "
+             r"reachable person, and 1024 sources to one destination.}\label{tab:ablation}",
              r"\begin{tabular}{lrrrrrr}\toprule",
+             r" & \multicolumn{6}{c}{seconds per query} \\",
              r" & \multicolumn{3}{c}{random pairs} & \multicolumn{2}{c}{sources $\times$ all} & $\to$ 1 \\",
              r"configuration & 1 & 2048 & 65\,536 & 1 & 1024 & 1024 \\ \midrule"]
     for config, label in ABLATION_ROWS:
