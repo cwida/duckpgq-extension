@@ -3,7 +3,7 @@
 \label{sec:strategy}
 \label{sec:hooks}
 
-\rev{\duckdb's extension interfaces were enough for the operator and the index, and nothing in \duckdb changed, except
+\duckdb's extension interfaces were enough for the operator and the index, and nothing in \duckdb changed, except
 that the visibility check calls into two classes outside the extension API, the transaction and the table storage. The
 graph never leaves the relational tables; no storage extension, custom catalog, replacement scan or custom type is
 involved. Where the interfaces fell short, the gaps are specific, and three additions would make an index and an
@@ -18,8 +18,7 @@ plan shape, and the marker function must be volatile and must not reach executio
 is no index scan interface, so the operator finds the index in the catalog by name; and index options are fixed at
 \texttt{CREATE INDEX}, so the fold ratio is a setting and not a property of the index (Section~\ref{sec:index-fold}).
 Two behaviours we rely on are not promised by the interface, that row ids stay stable while an index exists and that
-\texttt{CanFetch} answers the visibility question of snapshot isolation (Section~\ref{sec:index-correctness}); an
-extension that relies on them, as ours does, should say so.}
+\texttt{CanFetch} answers the visibility question of snapshot isolation (Section~\ref{sec:index-correctness})\rev{; the oracle of Section~\ref{sec:eval-updates}, which compares the index with a CSR built from the same transaction's view, would catch a change in either}.
 
 The CIDR version of \duckpgq answered shortest-path queries with UDFs, which inherited \duckdb's tuple-driven
 parallelism, so a query with few pairs ran on one core and every query rebuilt the CSR. This paper removed both limits
@@ -36,6 +35,6 @@ across three scales, every transaction saw exactly the edges it was allowed to s
 
 In the future we will replace the thresholds of Sections~\ref{sec:choice} and~\ref{sec:index-fold} with a cost
 model calibrated on these runs, the few-sources limit first, whose best value ranges from 4 to 256 sources across our
-graphs; \rev{give the operator a cost, so that the optimizer can weigh a selective vertex filter against the traversal it feeds and make the build-or-index choice itself;} move the fold into the background; stream the output of reach queries instead of materializing it; and extend
+graphs; give the operator a cost, so that the optimizer can weigh a selective vertex filter against the traversal it feeds and make the build-or-index choice itself; move the fold into the background; stream the output of reach queries instead of materializing it; and extend
 the operator to weighted shortest paths, to an index over several edge tables of one property graph, and to path
 reconstruction in the multi-source traversal.
