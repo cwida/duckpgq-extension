@@ -1167,8 +1167,24 @@ def sweep_table(shape, filename, caption, label, head):
     write_table(filename, lines)
 
 
+def seconds_cell(point, bold=False):
+    """Seconds with three significant digits at most, no unit, for the one-column LDBC table"""
+    if point is None:
+        return "--"
+    if point["status"] != "ok":
+        return "$>$600" if point["status"] == "exceeded" else "err"
+    v = point["mean"]
+    text = f"{v:.3f}" if v < 1 else (f"{v:.1f}" if v < 100 else f"{v:.0f}")
+    return f"\\textbf{{{text}}}" if bold else text
+
+
+SHORT_NAME = dict(NAME_OF)
+SHORT_NAME["neo4j_gds"] = "Neo4j GDS"
+
+
 def ldbc_table(filename):
-    """One row per system in its fastest formulation; columns IC13, BI19, BI20 per scale factor; full width."""
+    """One row per system in its fastest formulation; columns IC13, BI19, BI20 per scale factor; one text column,
+    cells in seconds without units."""
     queries = ["ic13", "bi19", "bi20"]
     rows = {}
     for sf in SCALE_FACTORS:
@@ -1188,22 +1204,22 @@ def ldbc_table(filename):
                     cells[(sf, query)] = {"status": "err"}
     columns = [(sf, q) for sf in SCALE_FACTORS for q in queries]
     table_rows = [(lab, [rows[lab].get(c) for c in columns]) for lab in sorted_labels(rows)]
-    lines = [r"\begin{table*}[t]\centering\scriptsize\setlength{\tabcolsep}{4pt}",
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{1.4pt}",
              r"\caption{LDBC IC13 (one pair), BI19 (city $\times$ city) and BI20 (company $\to$ one person) as hop-count "
              r"shortest paths on the undirected knows graph: seconds per query, the median of three runs per parameter set "
-             r"averaged over five sets, 32 threads, each system in its fastest formulation.}\label{tab:ldbc}",
+             r"averaged over five sets, 32 threads, each system in its fastest formulation; GDS at its four-thread limit.}"
+             r"\label{tab:ldbc}",
              r"\begin{tabular}{l" + "rrr" * len(SCALE_FACTORS) + r"}\toprule",
-             " & " + " & ".join(f"\\multicolumn{{3}}{{c}}{{LDBC SF{sf}}}" for sf in SCALE_FACTORS) + r" \\",
+             " & " + " & ".join(f"\\multicolumn{{3}}{{c}}{{SF{sf}}}" for sf in SCALE_FACTORS) + r" \\",
              "system & " + " & ".join("IC13 & BI19 & BI20" for _ in SCALE_FACTORS) + r" \\ \midrule"]
-    # bold per column: the fastest completed cell
     minima = []
     for i in range(len(columns)):
         oks = [r[1][i]["mean"] for r in table_rows if r[1][i] is not None and r[1][i]["status"] == "ok"]
         minima.append(min(oks) if oks else None)
     for lab, cells_ in table_rows:
-        out = [cell(pt, bold=pt is not None and pt["status"] == "ok" and pt["mean"] == minima[i]) for i, pt in enumerate(cells_)]
-        lines.append(f"{row_label(lab)} & " + " & ".join(out) + r" \\")
-    lines.append(r"\bottomrule\end{tabular}\end{table*}")
+        out = [seconds_cell(pt, bold=pt is not None and pt["status"] == "ok" and pt["mean"] == minima[i]) for i, pt in enumerate(cells_)]
+        lines.append(f"{SHORT_NAME.get(lab, lab)} & " + " & ".join(out) + r" \\")
+    lines.append(r"\bottomrule\end{tabular}\end{table}")
     write_table(filename, lines)
 
 
@@ -1561,7 +1577,7 @@ def fixed_costs_table(filename):
     """Table: edges, index creation, bytes per edge and load after a restart against the native systems' import time
     and store size."""
     restart_loads = load_after_restart()
-    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.2pt}",
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{1.6pt}",
              r"\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table, its bytes per edge, "
              r"its load on the first query after a restart (database file in the page cache), the native systems' import of "
              r"the same data (Kuzu from Parquet) and Kuzu's bytes per edge.}\label{tab:fixed-costs}",
