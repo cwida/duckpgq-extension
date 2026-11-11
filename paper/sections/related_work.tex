@@ -39,7 +39,7 @@ adjacency lists~\cite{fuchs2022sortledton}, log-structured snapshots~\cite{macko
 that hand every transaction its own version~\cite{dhulipala2019aspen}; \citet{besta2023dynamic} survey the field and
 \citet{deleo2019pma} compare the structures. LiveGraph~\cite{zhu2020livegraph} and Teseo~\cite{deleo2021teseo} add
 multi-version transactions to such structures, and Sortledton~\cite{fuchs2022sortledton} measures what versioning
-inside the structure costs; all of them own both the graph and its transaction manager. \rev{An index inside a multi-version database system owns neither, and it either stores version information per entry
+inside the structure costs; all of them own both the graph and its transaction manager. An index inside a multi-version database system owns neither, and it either stores version information per entry
 or, as PostgreSQL and \duckdb's ART~\cite{leis2013art} do, stores only row identifiers and leaves the version check to
 the scan that fetches the rows~\cite{wu2017mvcc,neumann2015mvcc}; the \texttt{vss} and \texttt{spatial} extensions
 build HNSW and R-tree indexes behind \duckdb's index interface in the second way~\cite{duckdb_vss,duckdb_spatial}. A
@@ -47,4 +47,4 @@ traversal cannot afford a version check per edge (Section~\ref{sec:index-interfa
 an immutable CSR per epoch with a change log that \duckdb's row-version check classifies once per change group, closer
 to a materialized view than to a dynamic graph structure. As far as we know it is the first snapshot-consistent graph
 structure behind a general index interface; Section~\ref{sec:conclusion} names what the interface would need to make it
-simpler.}
+simpler.
