@@ -98,6 +98,15 @@ The same faults recurred, in this order of frequency. Check a section for them b
 7. **Set-up before the point.** A paragraph that lists alternatives and knocks them down before stating its point
    reads as generated. Lead with the point, then give the evidence.
 
+8. **Evaluation prose that lists numbers.** (11 Nov, from a look at five evaluations Peter Boncz co-authored: FSST,
+   "Everything you always wanted to know about compiled and vectorized queries", FastLanes, MS-BFS, the CIDR DuckPGQ
+   paper.) Their evaluation prose carries 5 to 8 numbers per 100 words; ours carried 19. Each experiment gets a
+   paragraph that says what is measured, states the observation with one or two numbers and a pointer to the float
+   ("As Figure 4 shows, ... up to 40%"), gives the reason, with a measurement behind it where one exists ("The reason
+   is ...", "This counter explains ..."), says why the comparison is fair, and ends on a takeaway or rule of thumb
+   ("as a rule of thumb, FSST halves the size of database text"; "To summarize, ... (1) ... (2) ... (3)"). The tables
+   and figures carry the rest of the numbers.
+
 Process lesson: sections patched while the design changed (3 before rc7, 4 before the restructure) drew structural
 notes; sections written in one pass from settled code drew wording notes only. Write Sections 5 and 6 once, from the
 final code and numbers, rather than patching the current text.

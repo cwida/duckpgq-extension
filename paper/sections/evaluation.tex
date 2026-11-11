@@ -13,7 +13,7 @@ of Section~\ref{sec:operator} contribute?
 of memory, Amazon Linux 2023). \duckpgq runs on \duckdb v2.0.0-dev (commit 45f4fdf3), compiled with \duckdb's default
 flags for x86-64-v3, so with AVX2, with every setting at its default and 32 threads. All measurements use this build; the
 reproduction package names its commit. The baselines are
-Kuzu 0.11.3 (embedded, 32 threads)\footnote{\rev{Kuzu's repository was archived in 2025.} Its maintained fork, LadybugDB 0.15.3,
+Kuzu 0.11.3 (embedded, 32 threads)\footnote{Kuzu's repository was archived in 2025. Its maintained fork, LadybugDB 0.15.3,
 was not faster than Kuzu 0.11.3 in our tests at SF10, between 1.1 and 2.9 times slower on the random-pair,
 sources $\times$ all and LDBC points, so we report Kuzu.}, Neo4j 5.26.32 Enterprise (16\,GB heap, 16\,GB page cache, parallel runtime; the
 GDS library 2.13.14 with its unlicensed limit of four threads where marked; Neo4j's store is 2.3\,GB at SF300, Table~\ref{tab:fixed-costs}, so the page cache holds it at every scale, and a check with a 31\,GB heap and a 64\,GB page cache changed Neo4j's SF300 times by less than two percent), and Memgraph 3.14.0 and FalkorDB 4.2.2
@@ -34,7 +34,7 @@ undirected closure of \texttt{knows}.
 
 \emph{Random pairs} returns the hop-count shortest-path length of each of $n$ pairs taken from a fixed pseudo-random
 sequence, so that the pairs for a smaller $n$ are a prefix of those for a larger one; on the directed \texttt{knows}
-graph about half of them are reachable, on datagen and graph500-24 all of them, and on the citation DAG none, which is why cit-Patents runs only the second shape. \rev{The single pair sampled at SF100 is unreachable, so that point measures a full search of the source's component in every system.} \emph{Sources $\times$ all} returns the distance from each of $k$
+graph about half of them are reachable, on datagen and graph500-24 all of them, and on the citation DAG none, which is why cit-Patents runs only the second shape. The single pair sampled at SF100 is unreachable, so that point measures a full search of the source's component in every system. \emph{Sources $\times$ all} returns the distance from each of $k$
 sampled sources to every reachable vertex, the shape of a reach query. Three LDBC queries have a shortest path at
 their core, IC13 (one pair), BI19 (every pair between the persons of two cities) and BI20 (one target, every person
 of one company); we run their hop-count variants with five parameter sets each. Each system runs each query in its own language in the formulation that was fastest for it, listed in the reproduction package, including the split of the pairs over 32 client connections where that was faster. The Cypher patterns
@@ -98,16 +98,20 @@ At 1024 sources the index route leads on every graph: 437\,ms against Memgraph's
 
 \input{tables/ldbc_queries}
 
-Table~\ref{tab:ldbc} shows the three shapes once more on queries defined by the LDBC Social Network Benchmark~\cite{erling2015ldbc,puroja2023ldbcv2,szarnyas2022ldbcbi}. IC13 asks for one pair, and
-Neo4j is the fastest system at every scale, 3, 7 and 6\,ms against the index route's 4, 14 and 28; Kuzu takes 8, 24
-and 50\,ms. BI19 asks for the path length between every person of one city and every person of another, up to 2.4\,M
-pairs at SF300, and is the query of Figure~\ref{fig:teaser}: 12, 137 and 765\,ms over the index against 40\,ms,
-3.9\,s and 47\,s for Neo4j, 524\,ms, 22.3\,s and 332\,s for Kuzu, and 140\,ms, 17\,s and over 600\,s for
-Memgraph. BI20 asks for the distance from every person of one company to one target, many sources and one
-destination: 5, 26 and 61\,ms over the index against Neo4j's 22\,ms, 126\,ms and 1.2\,s and Kuzu's 1.4\,s, 29.4\,s and
-over 600\,s. The index of the sweep answers BI20 with one search per source; with reverse partitions the operator
-turns the shape around and runs one search from the target (Section~\ref{sec:choice}), which Table~\ref{tab:ablation}
-measures at 6 against 116\,ms for 1024 sources at SF100.
+\rev{Table~\ref{tab:ldbc} repeats the comparison on three queries of the LDBC Social Network
+Benchmark~\cite{erling2015ldbc,puroja2023ldbcv2,szarnyas2022ldbcbi} that have a shortest path at their core, and each
+behaves as its shape predicts. IC13 asks for one pair, and Neo4j is the fastest system at every scale. Its
+bidirectional search explores a small neighbourhood of both endpoints, so its time stays between 3 and 7\,ms from SF10
+to SF300, while the operator's single-source traversal expands whole levels from one side and grows from 4 to 28\,ms
+with the graph. BI19 (Figure~\ref{fig:teaser}) asks for the distance between every person of one city and every
+person of another. Its pairs grow with the product of the two cities, to 2.4\,M per query at SF300, but its distinct
+sources grow only with one city, to about 1400, which the operator runs as six batches. A system that searches once
+per pair does work in proportion to the pairs, which is why Neo4j takes 3 times as long as the index route at SF10,
+28 times at SF100 and 61 times at SF300, where Kuzu needs 332\,s and Memgraph, FalkorDB and GDS exceed the limit.
+BI20 asks for the distance from every person of one company to one target, so its pairs share their destination
+instead of their source. The index of the sweep has no reverse partitions and runs one search per source, which still
+leaves Neo4j 4 to 20 times behind; with reverse partitions the operator runs a single search from the target
+(Section~\ref{sec:choice}), 6 against 116\,ms for 1024 sources at SF100 (Table~\ref{tab:ablation}).}
 
 \subsection{Index or build}
 \label{sec:eval-index}
@@ -171,5 +175,5 @@ within 3\,\% of the default while splitting the threads among batches costs 15 t
 times at 65\,536 pairs, because a sixteenth of the edges per partition means sixteen times the partitions per level.
 Reverse partitions turn 1024 sources to one destination into one search from the destination, 6\,ms against 116.
 Running sources $\times$ all as an explicit pair list costs 31.7\,s against 421\,ms for 1024 sources, the case reach
-mode was built for, and reach as one search per source 1.1\,s. Paths instead of lengths cost 14 times at 65\,536 pairs, because the operator runs paths as one search per source (Section~\ref{sec:traversals})\rev{; with paths the operator still answers 65\,536 pairs on SF100 in 45.9\,s, where Neo4j needs 199\,s for the lengths alone, and 2048 pairs in 1.6\,s against 13.5}. On 32 threads the
+mode was built for, and reach as one search per source 1.1\,s. Paths instead of lengths cost 14 times at 65\,536 pairs, because the operator runs paths as one search per source (Section~\ref{sec:traversals}); with paths the operator still answers 65\,536 pairs on SF100 in 45.9\,s, where Neo4j needs 199\,s for the lengths alone, and 2048 pairs in 1.6\,s against 13.5. On 32 threads the
 operator is 23 times faster than on one for 65\,536 pairs (3.3 against 76.5\,s) and 11 times for 1024 sources; one pair gains little from threads, 25\,ms on one against 15 on 32, because a single-source traversal parallelizes only its dense levels.
