@@ -135,6 +135,28 @@ private:
 	case_insensitive_map_t<optional_ptr<TableCatalogEntry>> table_cache;
 };
 
+//! A CSR built for the quantified edges of one MATCH.
+struct PathFindingCSR {
+	shared_ptr<PropertyGraphTable> edge_table;
+	bool directed;
+	//! Id passed to create_csr_* and iterativelength/shortestpath
+	int32_t csr_id;
+	//! CTE that builds the CSR (cte1, cte2, ...)
+	string cte_name;
+	//! Alias of the count subquery over cte_name that forces the CSR to be built first (__x, __x1, ...)
+	string count_alias;
+	//! Whether the count subquery has been cross-joined into the main query yet
+	bool joined_in_main_query = false;
+};
+
+//! The CSRs of one MATCH. Quantified edges over the same edge table and direction share a CSR; every other quantified
+//! edge gets its own CSR id, CTE and count helper alias.
+struct PathFindingCSRs {
+	vector<PathFindingCSR> csrs;
+	//! Edge variable of a quantified edge in a named path -> CTE that computes its shortest path
+	case_insensitive_map_t<string> shortest_path_ctes;
+};
+
 struct PGQMatchFunction : public TableFunction {
 public:
 	PGQMatchFunction() : TableFunction("duckpgq_match", vector<LogicalType>(), nullptr, nullptr) {
@@ -174,7 +196,14 @@ public:
 	static unique_ptr<JoinRef> GetJoinRef(const shared_ptr<PropertyGraphTable> &edge_table, const string &edge_binding,
 	                                      const string &prev_binding, const string &next_binding);
 
-	static unique_ptr<SubqueryRef> CreateCountCTESubquery();
+	static unique_ptr<SubqueryRef> CreateCountCTESubquery(const PathFindingCSR &csr);
+
+	//! The CSR for a quantified edge over edge_table, created (as a CTE of select_node) unless a quantified edge with
+	//! the same edge table and direction already has one. A directed CSR runs from src_binding to dst_binding.
+	static PathFindingCSR &GetPathFindingCSR(PathFindingCSRs &csrs, unique_ptr<SelectNode> &select_node,
+	                                         const shared_ptr<PropertyGraphTable> &edge_table, bool directed,
+	                                         const string &src_binding, const string &edge_binding,
+	                                         const string &dst_binding);
 
 	static unique_ptr<ParsedExpression> CreateWhereClause(vector<unique_ptr<ParsedExpression>> &conditions);
 
@@ -209,7 +238,7 @@ public:
 	static unique_ptr<ParsedExpression> AddPathQuantifierCondition(const string &prev_binding,
 	                                                               const string &next_binding,
 	                                                               const shared_ptr<PropertyGraphTable> &edge_table,
-	                                                               const SubPath *subpath);
+	                                                               const SubPath *subpath, const PathFindingCSR &csr);
 
 	static unique_ptr<TableRef> MatchBindReplace(ClientContext &context, TableFunctionBindInput &input);
 
@@ -221,18 +250,18 @@ public:
 	static unique_ptr<CommonTableExpressionInfo>
 	GenerateShortestPathCTE(CreatePropertyGraphInfo &pg_table, SubPath *edge_subpath, PathElement *path_element,
 	                        PathElement *next_vertex_element,
-	                        vector<unique_ptr<ParsedExpression>> &path_finding_conditions);
+	                        vector<unique_ptr<ParsedExpression>> &path_finding_conditions, const PathFindingCSR &csr);
 
-	static unique_ptr<ParsedExpression> CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list,
-	                                                              CreatePropertyGraphInfo &pg_table,
-	                                                              const string &path_variable,
-	                                                              unique_ptr<SelectNode> &final_select_node,
-	                                                              vector<unique_ptr<ParsedExpression>> &conditions);
+	static unique_ptr<ParsedExpression>
+	CreatePathFindingFunction(vector<unique_ptr<PathReference>> &path_list, CreatePropertyGraphInfo &pg_table,
+	                          const string &path_variable, unique_ptr<SelectNode> &final_select_node,
+	                          vector<unique_ptr<ParsedExpression>> &conditions, PathFindingCSRs &csrs);
 
 	static void AddPathFinding(unique_ptr<SelectNode> &select_node, vector<unique_ptr<ParsedExpression>> &conditions,
 	                           const string &prev_binding, const string &edge_binding, const string &next_binding,
 	                           const shared_ptr<PropertyGraphTable> &edge_table, CreatePropertyGraphInfo &pg_table,
-	                           SubPath *subpath, PGQMatchType edge_type, VertexJoinMap &vertex_joins);
+	                           SubPath *subpath, PGQMatchType edge_type, VertexJoinMap &vertex_joins,
+	                           PathFindingCSRs &csrs);
 
 	static void AddEdgeJoins(const shared_ptr<PropertyGraphTable> &edge_table,
 	                         const shared_ptr<PropertyGraphTable> &previous_vertex_table,
@@ -246,11 +275,11 @@ public:
 	                            vector<unique_ptr<ParsedExpression>> &conditions, unique_ptr<SelectNode> &select_node,
 	                            case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
 	                            CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
-	                            MatchExpression &original_ref, VertexJoinMap &vertex_joins);
+	                            MatchExpression &original_ref, VertexJoinMap &vertex_joins, PathFindingCSRs &csrs);
 
 	static void CheckNamedSubpath(SubPath &subpath, MatchExpression &original_ref, CreatePropertyGraphInfo &pg_table,
 	                              unique_ptr<SelectNode> &final_select_node,
-	                              vector<unique_ptr<ParsedExpression>> &conditions);
+	                              vector<unique_ptr<ParsedExpression>> &conditions, PathFindingCSRs &csrs);
 
 	// Check whether columns to query are valid against the property graph, throws
 	// BinderException if error.

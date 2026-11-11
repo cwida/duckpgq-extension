@@ -59,12 +59,14 @@ struct CSRFunctionData : FunctionData {
 	const LogicalType weight_type;
 };
 
-// CSR BindReplace functions
+// CSR BindReplace functions. csr_id is the id passed to create_csr_vertex/create_csr_edge; a query that builds several
+// CSRs gives each its own id. The undirected CSR also adds an edges CTE to select_node, named per id.
 unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
-                                                             const unique_ptr<SelectNode> &select_node);
+                                                             const unique_ptr<SelectNode> &select_node,
+                                                             int32_t csr_id = 0);
 unique_ptr<CommonTableExpressionInfo> CreateDirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
                                                            const string &prev_binding, const string &edge_binding,
-                                                           const string &next_binding);
+                                                           const string &next_binding, int32_t csr_id = 0);
 
 // Helper functions
 unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGraphTable> &edge_table);

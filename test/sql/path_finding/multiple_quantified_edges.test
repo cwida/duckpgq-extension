@@ -1,0 +1,136 @@
+# name: test/sql/path_finding/multiple_quantified_edges.test
+# description: Several quantified edges in one path pattern each get their own CSR and helper alias (issue #331)
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE v(id INT); INSERT INTO v VALUES (1),(2),(3);
+
+statement ok
+CREATE TABLE e(src INT, dst INT); INSERT INTO e VALUES (1,2),(2,3);
+
+statement ok
+CREATE TABLE e2(src INT, dst INT); INSERT INTO e2 VALUES (3,1);
+
+statement ok
+CREATE PROPERTY GRAPH g VERTEX TABLES (v LABEL V)
+  EDGE TABLES (e SOURCE KEY (src) REFERENCES v (id) DESTINATION KEY (dst) REFERENCES v (id) LABEL E,
+               e2 SOURCE KEY (src) REFERENCES v (id) DESTINATION KEY (dst) REFERENCES v (id) LABEL E2);
+
+# The query from the issue: a right and a left quantified edge over the same edge table share one CSR.
+query III rowsort
+FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]->{1,2}(b:V)<-[f:E]-{1,2}(c:V) COLUMNS (a.id, b.id, c.id));
+----
+1	2	1
+1	3	1
+1	3	2
+2	3	1
+2	3	2
+
+# Same edge table, same direction twice.
+query III rowsort
+FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]->{1,2}(b:V)-[f:E]->{1,2}(c:V) COLUMNS (a.id, b.id, c.id));
+----
+1	2	3
+
+# Same edge table, directed then undirected: the second edge needs its own undirected CSR.
+query III rowsort
+FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]->{1,2}(b:V)-[f:E]-{1,2}(c:V) COLUMNS (a.id, b.id, c.id));
+----
+1	2	1
+1	2	3
+1	3	1
+1	3	2
+2	3	1
+2	3	2
+
+# Undirected then directed.
+query III rowsort
+FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]-{1,2}(b:V)-[f:E]->{1,2}(c:V) COLUMNS (a.id, b.id, c.id));
+----
+1	2	3
+2	1	2
+2	1	3
+3	1	2
+3	1	3
+3	2	3
+
+# Different edge tables: the second edge must not reuse the CSR of the first.
+query III rowsort
+FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]->{1,2}(b:V)-[f:E2]->{1,2}(c:V) COLUMNS (a.id, b.id, c.id));
+----
+1	3	1
+2	3	1
+
+query III rowsort
+FROM GRAPH_TABLE (g MATCH (a:V)-[e:E2]->{1,2}(b:V)-[f:E]->{1,2}(c:V) COLUMNS (a.id, b.id, c.id));
+----
+3	1	2
+3	1	3
+
+# A left quantified edge on its own.
+query II rowsort
+FROM GRAPH_TABLE (g MATCH (a:V)<-[e:E]-{1,2}(b:V) COLUMNS (a.id, b.id));
+----
+2	1
+3	1
+3	2
+
+# Three quantified edges over two CSRs.
+query IIII rowsort
+FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]->{1,2}(b:V)-[f:E2]->{1,2}(c:V)-[h:E]->{1,2}(d:V) COLUMNS (a.id, b.id, c.id, d.id));
+----
+1	3	1	2
+1	3	1	3
+2	3	1	2
+2	3	1	3
+
+# Two undirected quantified edges over different edge tables: two undirected CSRs, each with its own edges CTE.
+query III rowsort
+FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]-{1,2}(b:V)-[f:E2]-{1,2}(c:V) COLUMNS (a.id, b.id, c.id));
+----
+1	3	1
+2	1	3
+2	3	1
+3	1	3
+
+# Quantified edges in two path patterns of one MATCH.
+query IIII rowsort
+FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]-{1,2}(b:V)<-[f:E]-{1,2}(c:V), (c:V)<-[h:E2]-{1,2}(d:V) COLUMNS (a.id, b.id, c.id, d.id));
+----
+1	2	1	3
+1	3	1	3
+2	3	1	3
+3	2	1	3
+
+# A named path with two quantified edges: each edge gets its own shortest-path CTE.
+query IIIII rowsort
+FROM GRAPH_TABLE (g MATCH p = (a:V)-[e:E]->{1,2}(b:V)-[f:E2]->{1,2}(c:V) COLUMNS (a.id, b.id, c.id, element_id(p), path_length(p)));
+----
+1	3	1	[0, 0, 1, 1, 2, 0, 0]	3
+2	3	1	[1, 1, 2, 0, 0]	2
+
+query IIIII rowsort
+FROM GRAPH_TABLE (g MATCH p = (a:V)-[e:E]-{1,2}(b:V)-[f:E2]-{1,2}(c:V) COLUMNS (a.id, b.id, c.id, vertices(p), path_length(p)));
+----
+1	3	1	[0, 1, 2, 0]	3
+2	1	3	[1, 0, 2]	2
+2	3	1	[1, 2, 0]	2
+3	1	3	[2, 1, 0, 2]	3
+
+query IIIII rowsort
+FROM GRAPH_TABLE (g MATCH p = (a:V)-[e:E]->{1,2}(b:V)-[f:E2]->(c:V)-[h:E]->{1,2}(d:V) COLUMNS (a.id, b.id, c.id, d.id, element_id(p)));
+----
+1	3	1	2	[0, 0, 1, 1, 2, 0, 0, 0, 1]
+1	3	1	3	[0, 0, 1, 1, 2, 0, 0, 0, 1, 1, 2]
+2	3	1	2	[1, 1, 2, 0, 0, 0, 1]
+2	3	1	3	[1, 1, 2, 0, 0, 0, 1, 1, 2]
+
+query IIII rowsort
+FROM GRAPH_TABLE (g MATCH p = (a:V WHERE a.id = 1)-[e:E]->{1,2}(b:V)-[f:E2]->{1,2}(c:V WHERE c.id = 1) COLUMNS (a.id, b.id, c.id, element_id(p)));
+----
+1	3	1	[0, 0, 1, 1, 2, 0, 0]
