@@ -2020,6 +2020,44 @@ def concurrency_column_figure(filename):
     save(fig, filename)
 
 
+
+def numbering_table(filename):
+    """Table: 2048 and 65,536 random pairs at SF100 and SF300 over three CSRs that differ in how they come about and
+    how they number vertices: built per query (row order), an index keyed by row ids (row order, no build), and the
+    index keyed by person ids (sorted keys, no build). From the 9 Nov probe file and the sweep's build route."""
+    path = RESULTS / "probes_9nov" / "rowid_index.txt"
+    if not path.is_file():
+        print("no row-id index probe, skipping", filename)
+        return
+    cells = {}
+    for line in path.read_text().splitlines():
+        m = re.match(r"^SF(\d+) (\d+) pairs:\s+rowid-keyed ([\d. ]+)\| id-keyed ([\d. ]+)\| sweep build route ([\d.]+)", line)
+        if not m:
+            continue
+        sf, pairs = m.group(1), int(m.group(2))
+        cells[(sf, pairs)] = (float(m.group(5)), statistics.median(float(x) for x in m.group(3).split()),
+                              statistics.median(float(x) for x in m.group(4).split()))
+    columns = [(sf, pairs) for sf in ("100", "300") for pairs in (2048, 65536) if (sf, pairs) in cells]
+
+    def fmt(v):
+        return f"{v:.3f}" if v < 1 else f"{v:.1f}"
+
+    rows = [("built per query (build route)", 0, "row order"), ("index keyed by row ids", 1, "row order"),
+            ("index keyed by person ids", 2, "sorted keys")]
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
+             r"\caption{Random pairs over three CSRs of the same layout that differ in whether they are built inside the "
+             r"query and in how they number vertices; seconds per query, median of three runs, 32 threads. The two indexes "
+             r"were measured on copies of the sweep's databases.}\label{tab:numbering}",
+             r"\begin{tabular}{llrrrr}\toprule",
+             r" & & \multicolumn{4}{c}{seconds per query} \\",
+             r" & & \multicolumn{2}{c}{SF100} & \multicolumn{2}{c}{SF300} \\",
+             r"CSR & vertex ids & 2048 & 65\,536 & 2048 & 65\,536 \\ \midrule"]
+    for label, idx, numbering in rows:
+        lines.append(f"{label} & {numbering} & " + " & ".join(fmt(cells[c][idx]) for c in columns) + r" \\")
+    lines.append(r"\bottomrule\end{tabular}\end{table}")
+    write_table(filename, lines)
+
+
 def save(fig, filename):
     FIGURES.mkdir(parents=True, exist_ok=True)
     fig.savefig(FIGURES / f"{filename}.pdf")
@@ -2067,3 +2105,4 @@ if __name__ == "__main__":
     ablation_table("ablation")
     scaling_column_figure("scaling_column")
     concurrency_column_figure("concurrency_column")
+    numbering_table("numbering")
