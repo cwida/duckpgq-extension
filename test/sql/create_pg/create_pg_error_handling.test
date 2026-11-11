@@ -1,0 +1,136 @@
+# name: test/sql/create_pg/create_pg_error_handling.test
+# description: CREATE PROPERTY GRAPH rejects references to tables, columns and keys that do not exist (issue #26)
+# group: [create_pg]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE city (id bigint PRIMARY KEY, name varchar);
+
+statement ok
+CREATE TABLE person (id bigint PRIMARY KEY, name varchar);
+
+statement ok
+CREATE TABLE livesIn (personid bigint, cityid bigint);
+
+statement ok
+CREATE TABLE follows (p1id bigint, p2id bigint);
+
+# Tables that do not exist
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (nope);
+----
+Invalid Error: Table with name nope does not exist
+
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person)
+EDGE TABLES (nope SOURCE KEY (p1id) REFERENCES person (id) DESTINATION KEY (p2id) REFERENCES person (id));
+----
+Invalid Error: Table with name nope does not exist
+
+# Referenced source or destination table that is not a vertex table
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person)
+EDGE TABLES (follows SOURCE KEY (p1id) REFERENCES nope (id) DESTINATION KEY (p2id) REFERENCES person (id));
+----
+Invalid Error: Table 'nope' not found in the property graph g.
+
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person)
+EDGE TABLES (follows SOURCE KEY (p1id) REFERENCES person (id) DESTINATION KEY (p2id) REFERENCES nope (id));
+----
+Invalid Error: Table 'nope' not found in the property graph g.
+
+# Property columns that do not exist
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person PROPERTIES (id, nope));
+----
+Invalid Error: Column nope not found in table person
+
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person PROPERTIES (nope AS x));
+----
+Invalid Error: Column nope not found in table person
+
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person PROPERTIES ARE ALL COLUMNS EXCEPT (nope));
+----
+Invalid Error: EXCEPT column nope not found in table person
+
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person)
+EDGE TABLES (follows SOURCE KEY (p1id) REFERENCES person (id) DESTINATION KEY (p2id) REFERENCES person (id)
+             PROPERTIES (nope));
+----
+Invalid Error: Column nope not found in table follows
+
+# Key columns that do not exist
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person)
+EDGE TABLES (follows SOURCE KEY (nope) REFERENCES person (id) DESTINATION KEY (p2id) REFERENCES person (id));
+----
+Invalid Error: Foreign key nope does not exist in table follows
+
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person)
+EDGE TABLES (follows SOURCE KEY (p1id) REFERENCES person (id) DESTINATION KEY (nope) REFERENCES person (id));
+----
+Invalid Error: Foreign key nope does not exist in table follows
+
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person)
+EDGE TABLES (follows SOURCE KEY (p1id) REFERENCES person (nope) DESTINATION KEY (p2id) REFERENCES person (id));
+----
+Invalid Error: Primary key nope does not exist in table person
+
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person)
+EDGE TABLES (follows SOURCE KEY (p1id) REFERENCES person (id) DESTINATION KEY (p2id) REFERENCES person (nope));
+----
+Invalid Error: Primary key nope does not exist in table person
+
+# Discriminator column that does not exist
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person LABEL person IN nope (a, b));
+----
+Invalid Error: Column nope not found in table person
+
+# The edge key and the referenced vertex key must have the same number of columns
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person)
+EDGE TABLES (follows SOURCE KEY (p1id, p2id) REFERENCES person (id) DESTINATION KEY (p2id) REFERENCES person (id));
+----
+Invalid Error: The SOURCE KEY of edge table follows has 2 column(s) (p1id, p2id), but REFERENCES person lists 1 column(s) (id)
+
+statement error
+CREATE PROPERTY GRAPH g VERTEX TABLES (person)
+EDGE TABLES (follows SOURCE KEY (p1id) REFERENCES person (id) DESTINATION KEY (p2id) REFERENCES person (id, name));
+----
+Invalid Error: The DESTINATION KEY of edge table follows has 1 column(s) (p2id), but REFERENCES person lists 2 column(s) (id, name)
+
+# None of the failed statements registered a graph
+statement error
+FROM GRAPH_TABLE (g MATCH (p:person) COLUMNS (p.id));
+----
+Binder Error: Property graph g does not exist
+
+# Names are case insensitive
+statement ok
+CREATE PROPERTY GRAPH g VERTEX TABLES (PERSON PROPERTIES (ID, NAME), City)
+EDGE TABLES (
+    FOLLOWS SOURCE KEY (P1ID) REFERENCES Person (ID) DESTINATION KEY (p2Id) REFERENCES PERSON (Id) PROPERTIES (P1ID),
+    LIVESIN SOURCE KEY (PersonId) REFERENCES person (id) DESTINATION KEY (CITYID) REFERENCES CITY (ID));
+
+statement ok
+INSERT INTO person VALUES (1, 'Alice'), (2, 'Bob');
+
+statement ok
+INSERT INTO follows VALUES (1, 2);
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:PERSON)-[f:Follows]->(b:person) COLUMNS (a.NAME AS src, b.name AS dst));
+----
+Alice	Bob

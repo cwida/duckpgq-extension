@@ -162,6 +162,20 @@ void CreatePropertyGraphFunction::ValidateKeys(shared_ptr<PropertyGraphTable> &e
 	}
 }
 
+//! Each edge key column pairs with one referenced vertex key column, so both lists must be equally long.
+static void ValidateKeyColumnCount(const PropertyGraphTable &edge_table, const Identifier &reference,
+                                   const string &key_type, const vector<Identifier> &pk_columns,
+                                   const vector<Identifier> &fk_columns) {
+	if (pk_columns.size() == fk_columns.size()) {
+		return;
+	}
+	throw Exception(ExceptionType::INVALID,
+	                "The " + StringUtil::Upper(key_type) + " KEY of edge table " + edge_table.table_name + " has " +
+	                    to_string(fk_columns.size()) + " column(s) (" + StringUtil::Join(fk_columns, ", ") +
+	                    "), but REFERENCES " + reference + " lists " + to_string(pk_columns.size()) + " column(s) (" +
+	                    StringUtil::Join(pk_columns, ", ") + ")");
+}
+
 void CreatePropertyGraphFunction::ValidateForeignKeyColumns(shared_ptr<PropertyGraphTable> &edge_table,
                                                             const vector<Identifier> &fk_columns,
                                                             optional_ptr<TableCatalogEntry> &table) {
@@ -272,6 +286,8 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 
 			ValidateKeys(edge_table, edge_table->source_reference, "source", edge_table->source_pk,
 			             edge_table->source_fk, table_constraints);
+			ValidateKeyColumnCount(*edge_table, edge_table->source_reference, "source", edge_table->source_pk,
+			                       edge_table->source_fk);
 
 			// Check source foreign key columns exist in the table
 			ValidateForeignKeyColumns(edge_table, edge_table->source_fk, table);
@@ -279,6 +295,8 @@ unique_ptr<FunctionData> CreatePropertyGraphFunction::CreatePropertyGraphBind(Cl
 			// Validate destination keys
 			ValidateKeys(edge_table, edge_table->destination_reference, "destination", edge_table->destination_pk,
 			             edge_table->destination_fk, table_constraints);
+			ValidateKeyColumnCount(*edge_table, edge_table->destination_reference, "destination",
+			                       edge_table->destination_pk, edge_table->destination_fk);
 
 			// Check destination foreign key columns exist in the table
 			ValidateForeignKeyColumns(edge_table, edge_table->destination_fk, table);
