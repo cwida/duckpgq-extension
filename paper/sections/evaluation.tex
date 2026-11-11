@@ -59,46 +59,46 @@ of path lengths.
 \subsection{One path or thousands}
 \label{sec:eval-pairs}
 
-\rev{At one pair and at one source Neo4j and Kuzu are faster than the operator, by a few to tens of milliseconds
-(Figure~\ref{fig:scaling}). For one pair at SF300 Neo4j answers in 4\,ms and the index route in 22. The sampled pair
-is five hops apart, and the operator's five levels, which touch most of the graph, take 18 to 20 of its 22\,ms, while
-Neo4j's bidirectional search meets in the middle after two or three levels from each side. For one source the
-comparison is with Kuzu, whose recursive join from a literal source is a single-source search like ours; Kuzu is ahead
-by 5\,ms at SF100 and by 8 at SF300.}
+\rev{For one pair the operator runs a single-source traversal (Section~\ref{sec:traversals}), and on a large graph
+that is slower than a bidirectional search. At SF300 the index route takes 22\,ms for one pair and Neo4j 4
+(Figure~\ref{fig:scaling}). The sampled pair is five hops apart; the operator's five levels touch most of the graph
+and take 18 to 20 of the 22\,ms, where Neo4j's bidirectional search meets in the middle after two or three levels
+from each side. From one source to every person the operator is within 8\,ms of Kuzu, whose recursive join from a
+literal source is a single-source search as well.}
 
-\rev{From sixteen pairs or sources on the operator leads, and its lead grows with the query, because the systems do
-different amounts of work. Kuzu, Neo4j, FalkorDB and Memgraph answer a list of pairs one search at a time, and their
-time grows linearly with the pairs; Neo4j's parallel runtime runs the searches side by side and is the strongest of
-them, the others run one after the other. The operator deduplicates the sources and shares each traversal among up to
-256 of them, and from one pair to 65\,536 at SF10 its time grows by a factor of 130. At 65\,536 pairs on SF10 the
-baselines that finish take 33 times (Neo4j) to 320 times (Memgraph) as long as the index route. At SF300 the index
-route answers 65\,536 pairs in 10.0\,s and no baseline finishes; Neo4j is the last to exceed the limit, after 248\,s
-for 16\,384 pairs.}
+\rev{With more pairs the operator's time grows slowly, because it runs one search per distinct source and shares each
+traversal among up to 256 of them. From one pair to 65\,536 at SF10 its time grows by a factor of 130. Kuzu, Neo4j,
+FalkorDB and Memgraph answer a list of pairs one search at a time, and their time grows linearly with the pairs;
+Neo4j, whose parallel runtime runs the searches side by side, is the fastest of the four. The operator is ahead of all
+four from sixteen pairs on. At 65\,536 pairs on SF10 it is 33 times faster than Neo4j and 320 times faster than
+Memgraph. At SF300 it answers 65\,536 pairs in 10.0\,s over the index, and none of the four finishes within the
+limit; Neo4j is the last to exceed it, after 248\,s for 16\,384 pairs.}
 
-\rev{Sources $\times$ all separates the baselines that share work from those that do not. Kuzu and Neo4j GDS run one
-search per source and complete most points. Neo4j's Cypher and FalkorDB have no single-source form, run one
-\texttt{shortestPath} per destination, and exceed the limit already at one source from SF100 on. Against Kuzu the operator's lead again grows with the sources, from 8\,ms behind at one source to 28 times ahead at 1024 sources on SF300, where
-the index route produces 530\,M distances in 773\,ms.}
+\rev{In reach mode, the distance from each source to every reachable person, the operator shares its traversals in the
+same way. At 1024 sources on SF300 it produces 530\,M distances in 773\,ms over the index, 28 times faster than Kuzu,
+which runs one search per source, as Neo4j GDS does. Neo4j's Cypher and FalkorDB have no single-source form; they run
+one \texttt{shortestPath} per destination and exceed the limit already at one source from SF100 on.}
 
-\rev{\duckdb's two other ways of answering the question show the two limits the operator removes. The recursive CTE
-evaluates a join per step and exceeds the limit from 16\,384 pairs at SF10. The 2023 UDFs stay an order of magnitude
-behind the operator on random pairs, because a UDF receives its work per tuple and runs one query on one core. On
-sources $\times$ all they must enumerate every destination as a pair and need 2.4\,s for one source at SF10, where the
-operator's reach mode needs 3\,ms.}
+\rev{The operator replaces two ways of answering the same question inside \duckdb, and the comparison shows what each
+lacked. The 2023 UDFs receive their work per tuple and run one query on one core. They stay an order of magnitude
+behind the operator on random pairs, and on sources $\times$ all, where they must enumerate every destination as a
+pair, they need 2.4\,s for one source at SF10 where reach mode needs 3\,ms. The recursive CTE evaluates a join per
+step and exceeds the limit from 16\,384 pairs at SF10.}
 
 \input{tables/graphalytics}
 
 \paragraph{Graph structure} \rev{Table~\ref{tab:graphalytics} repeats sources $\times$ all on three Graphalytics graphs, with Kuzu on all
-three and every system on cit-Patents. The gain from sharing grows with the part of the graph a search covers. On
-cit-Patents a source reaches about 2000 of 3.8M vertices, so a search per source is cheap; Memgraph and Kuzu win the
-one-source point, in 4 and 7\,ms against 32, and at 1024 sources the index route leads Memgraph by 14\,\% and Kuzu by 3
-times. On datagen and graph500-24 a source reaches the whole graph; one source is a tie, and at 1024 sources the index
-route is 47 and 56 times faster than Kuzu, which exceeds the limit on random pairs from 16\,384 and from 2048 pairs.
-On both of these graphs 16 sources are slower than 128 (4.5 against 2.7\,s on graph500-24), because the few-sources
-rule sends 16 sources to the single-source traversal, each search sweeping 4 to 9\,M vertices, while 128 run as lanes.
-The default of 16 fits \texttt{knows}, and Section~\ref{sec:choice} shows that the crossover is a property of the
-graph. None of the six graphs has a high diameter. On a road network a search runs hundreds of levels with small
-frontiers, the worst case for the multi-source traversal's per-level sweep, and we have not measured it.}
+three and every system on cit-Patents. How much the operator gains from sharing depends on the part of the graph a
+search covers. On cit-Patents a source reaches about 2000 of 3.8M vertices, and a search per source is cheap. The
+operator loses the one-source point to Memgraph and Kuzu, 32\,ms against 4 and 7, and at 1024 sources it leads
+Memgraph by 14\,\% and Kuzu by 3 times. On datagen and graph500-24 a source reaches the whole graph. The operator ties
+with Kuzu at one source and is 47 and 56 times faster at 1024, and on random pairs Kuzu exceeds the limit from 16\,384
+and from 2048 pairs. On both graphs the operator is slower for 16 sources than for 128 (4.5 against 2.7\,s on
+graph500-24), because its few-sources rule sends 16 sources to the single-source traversal, each search sweeping 4 to
+9\,M vertices, while 128 run as lanes. The default of 16 fits \texttt{knows}, and Section~\ref{sec:choice} shows that
+the crossover is a property of the graph. None of the six graphs has a high diameter. On a road network a search
+runs hundreds of levels with small frontiers, the worst case for the multi-source traversal's per-level sweep, and we
+have not measured it.}
 
 \subsection{LDBC queries}
 \label{sec:eval-ldbc}
@@ -122,28 +122,28 @@ Both routes complete every point, and the index route is faster on every one of 
 build of the CSR, 22, 126 and 263\,ms at SF10, SF100 and SF300 (25 against 3, 141 against 15, 285 against 22\,ms),
 the whole query on the build route. The gap stays near the build up to 2048 pairs and then grows with the pairs; at 65\,536 pairs it is 2.8\,s of 12.8\,s at SF300 and 0.9\,s of 4.1\,s at SF100, more than the build alone. The two routes build their partitions with the same code and read the same pairs; they differ in the id space, the build route numbers vertices by the table's row order and the index by sorted keys. An index keyed by the persons' row ids, which numbers vertices as the build route does, takes 12.1\,s for 65\,536 pairs at SF300 and 4.0\,s at SF100, within the per-query build of the build route's 12.8 and 4.1\,s. The index's lead beyond the build, 2.3\,s at SF300 and 0.7 at SF100, is therefore the vertex numbering; ids in sorted key order give the traversal a locality that the table's row order does not.
 
-\rev{Table~\ref{tab:fixed-costs} gives what the index costs before the first query. Creating it is one partitioned
+Table~\ref{tab:fixed-costs} gives what the index costs before the first query. Creating it is one partitioned
 CSR build over the whole table plus the dictionary and a row id per edge, at 9 to 15 million edges per second: 4.5\,s
 at SF300 and about a minute on the two Graphalytics graphs of 520 to 540\,M edges. The index takes 11 to 13 bytes per
 edge, 8 of them the row id, and 17 on cit-Patents, whose 4.4 edges per vertex make the sparse rows a larger share;
 Kuzu's store takes 16 to 31. Importing the same data takes Kuzu 2 to 9 times as long as creating the index, and takes
 Neo4j and FalkorDB 14 and 43 minutes at SF300. After a restart the index is loaded on the first query, in 117\,ms at
 SF300 and under a second on the large graphs when the database file is in the page cache, and otherwise at the
-volume's 270\,MB/s, 2.1\,s at SF300.}
+volume's 270\,MB/s, 2.1\,s at SF300.
 
 \subsection{Updates and concurrent readers}
 \label{sec:eval-updates}
 
 \input{tables/update_stream}
 
-\rev{Table~\ref{tab:updates} compares the systems under the LDBC update stream for \texttt{knows} at SF10, applied
+Table~\ref{tab:updates} compares the systems under the LDBC update stream for \texttt{knows} at SF10, applied
 as 190 commits of 2000 edge changes with one query after each. A commit costs \duckdb 19\,ms with the index and
 without it, because the index only appends the changed rows to its log; the baselines need 27\,ms (Memgraph) to
 335\,ms (Kuzu). The query over the index takes 15\,ms for one source to 1024 destinations, as fast as Kuzu and the
 build route, and 44\,ms for 1024 random pairs, where the baselines need 0.7 to 47\,s. Two rows of the table isolate the index's design; without folds the median rises from 15 to 19\,ms, the cost of a growing overlay, and with visibility
 decided per log entry instead of per change group it rises to 35\,ms. The stream crosses the fold threshold, a tenth of
 the epoch's edges by default (Section~\ref{sec:index-fold}), once, and the query that triggers the fold pays for it,
-125\,ms where the others take 15.}
+125\,ms where the others take 15.
 
 \begin{figure}[t]
   \centering
@@ -154,7 +154,7 @@ the epoch's edges by default (Section~\ref{sec:index-fold}), once, and the query
   \label{fig:concurrency}
 \end{figure}
 
-\rev{Under concurrent readers the index's lead grows with the graph and with the readers
+Under concurrent readers the index's lead grows with the graph and with the readers
 (Figure~\ref{fig:concurrency}). With one writer and 16 readers at SF300 a query takes 82\,ms over the index and
 3.9\,s on the build route, 47 times as long, because every reader on the build route builds its own CSR of 55.7\,M
 edges and sixteen builds compete for 32 cores; the build route's latency is about the build cost times the readers.
@@ -163,22 +163,22 @@ take memory, 17.8\,GiB against 6.0 at SF300, and time from the writer, whose com
 route's readers and 153 under the index's; at SF10 the order of the two commits is reversed, 166 against 83\,ms.
 Throughput shows the same from the other side; from 1 to 32 clients the index route's single-pair throughput rises
 from 61 to 329 queries per second at SF300, while the build route stays at 5, bound by its builds, and holds
-23.3\,GiB against 1.7, one CSR per client.}
+23.3\,GiB against 1.7, one CSR per client.
 
-\rev{A fold is paid by one reader; at SF300 it takes 1.6 to 1.8\,s, a tenth of it the parallel scan of the table and
+A fold is paid by one reader; at SF300 it takes 1.6 to 1.8\,s, a tenth of it the parallel scan of the table and
 the rest the CSR build. In a run with the threshold lowered to 0.05\,\% of the edges, in which twenty commits caused
 four folds, the four queries that triggered them took 1.7 to 1.8\,s, while the median of all sixteen readers stayed at
 65\,ms and the p99 at 277. The correctness oracle of Section~\ref{sec:index-correctness} ran under these loads, every
 reader answering its query over the index and over a CSR built from the same transaction's view of the table and
 comparing the two. It compared 5376 queries without a mismatch, 4584 at SF10 under 190 commits, and 354 at SF100 and
-438 at SF300 under sixteen readers, 220 of them with a fold during the comparison.}
+438 at SF300 under sixteen readers, 220 of them with a fold during the comparison.
 
 \subsection{What each mechanism contributes}
 \label{sec:eval-ablation}
 
 \input{tables/ablation}
 
-\rev{Table~\ref{tab:ablation} changes one mechanism of the operator at a time, over the index at SF100. The largest effect is the choice of traversal; with the single-source traversal forced, 65\,536 pairs take twelve times as long
+Table~\ref{tab:ablation} changes one mechanism of the operator at a time, over the index at SF100. The largest effect is the choice of traversal; with the single-source traversal forced, 65\,536 pairs take twelve times as long
 and 1024 sources 2.7 times, because every source then sweeps the graph on its own; with the multi-source traversal
 forced nothing changes on these points, and Figure~\ref{fig:crossover} shows where it would. One lane per pair, as before the sources were deduplicated, takes 3.9 times as long for 2048 random pairs and 2.4 times for 1024 sources to one destination.
 The scheduling of the batches comes second; without the grouping every batch is scheduled as an event of its own, 65\,536 pairs take 2.4 times as long, and on graph500-24 the working sets exceed the machine's memory, 98\,GiB against 32. One batch at a time is eight times slower (nine times at SF10, 3.9 times at SF300), because threads idle whenever a level waits for its last task (Section~\ref{sec:phases}). The layout matters less; the summary bitmap saves 27\,\% at 65\,536 pairs, and destination ranges of 4096 instead of 65\,535 ids cost 1.8 times, because a sixteenth of the edges per partition means sixteen
@@ -188,4 +188,4 @@ one destination into one search from the destination, 6\,ms against 116. Paths c
 pairs, because the operator runs paths as one search per source (Section~\ref{sec:traversals}); with paths it still
 answers 65\,536 pairs in 45.9\,s, where Neo4j needs 199\,s for the lengths alone. On 32 threads the operator is 23
 times faster than on one for 65\,536 pairs and 11 times for 1024 sources. One pair gains little from threads, because a
-single-source traversal parallelizes only its dense levels.}
+single-source traversal parallelizes only its dense levels.
