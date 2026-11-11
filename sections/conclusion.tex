@@ -1,0 +1,40 @@
+\section{Lessons and Conclusion}
+\label{sec:conclusion}
+\label{sec:strategy}
+\label{sec:hooks}
+
+\duckdb's extension interfaces were enough for the operator and the index, and nothing in \duckdb changed, except
+that the visibility check calls into two classes outside the extension API, the transaction and the table storage. The
+graph never leaves the relational tables; no storage extension, custom catalog, replacement scan or custom type is
+involved. Where the interfaces fell short, the gaps are specific, and three additions would make an index and an
+operator like ours simpler. A transaction or commit identifier passed with each index callback would let the index
+decide visibility itself instead of asking \duckdb once per change group (Section~\ref{sec:index-read}). A visibility
+check that stays valid after version garbage collection would let a fold decide at any time what an epoch accounts for,
+instead of while its transaction is live (Section~\ref{sec:index-fold}). With tasks for index work and task groups for
+operators, a fold could run in the background and a traversal could schedule its levels without a chain of events
+(Sections~\ref{sec:phases} and~\ref{sec:index-fold}). The smaller gaps are of the same kind: an optimizer extension
+runs before or after \duckdb's optimizer and not between its rules, so the rewrite finds its inputs on the binder's
+plan shape, and the marker function must be volatile and must not reach execution (Section~\ref{sec:planner}); there
+is no index scan interface, so the operator finds the index in the catalog by name; and index options are fixed at
+\texttt{CREATE INDEX}, so the fold ratio is a setting and not a property of the index (Section~\ref{sec:index-fold}).
+Two behaviours we rely on are not promised by the interface, that row ids stay stable while an index exists and that
+\texttt{CanFetch} answers the visibility question of snapshot isolation (Section~\ref{sec:index-correctness}); the oracle of Section~\ref{sec:eval-updates}, which compares the index with a CSR built from the same transaction's view, would catch a change in either.
+
+The CIDR version of \duckpgq answered shortest-path queries with UDFs, which inherited \duckdb's tuple-driven
+parallelism, so a query with few pairs ran on one core and every query rebuilt the CSR. This paper removed both limits
+without leaving the extension. The path-finding operator takes its parallelism from a CSR partitioned by destination
+range and runs every traversal as a chain of events in \duckdb's scheduler; the CSR index keeps the graph across
+queries and stays consistent with \duckdb's MVCC through epochs and a change log whose visibility \duckdb itself
+decides, once per change group. Because the operator answers many pairs with one traversal, its gap to Kuzu, Neo4j,
+Memgraph and FalkorDB grows with the pairs. At SF300 it answers 1024 sources to every person in 773\,ms against
+21.9\,s for Kuzu and 65\,536 pairs in 10\,s while the others exceed ten minutes, and at one pair or one source it is
+tens of milliseconds behind. The index saves the per-query build on every query and, on large pair lists, more,
+because its dense ids follow sorted keys; under sixteen readers and a writer it answers in 82\,ms where a CSR built
+per query takes 3.9\,s, and a commit of 2000 edge changes costs 19\,ms against 335 for Kuzu. In 5376 queries compared
+across three scales, every transaction saw exactly the edges it was allowed to see.
+
+In the future we will replace the thresholds of Sections~\ref{sec:choice} and~\ref{sec:index-fold} with a cost
+model calibrated on these runs, the few-sources limit first, whose best value ranges from 4 to 256 sources across our
+graphs; give the operator a cost, so that the optimizer can weigh a selective vertex filter against the traversal it feeds and make the build-or-index choice itself; move the fold into the background; stream the output of reach queries instead of materializing it; and extend
+the operator to weighted shortest paths, to an index over several edge tables of one property graph, and to path
+reconstruction in the multi-source traversal.

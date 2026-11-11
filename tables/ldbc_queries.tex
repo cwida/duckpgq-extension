@@ -1,0 +1,14 @@
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{1.4pt}
+\caption{LDBC IC13 (one pair), BI19 (city $\times$ city) and BI20 (company $\to$ one person) as hop-count shortest paths on the undirected knows graph: seconds per query, the median of three runs per parameter set averaged over five sets, 32 threads, each system in its fastest formulation; GDS at its four-thread limit.}\label{tab:ldbc}
+\begin{tabular}{lrrrrrrrrr}\toprule
+ & \multicolumn{9}{c}{seconds per query} \\
+ & \multicolumn{3}{c}{SF10} & \multicolumn{3}{c}{SF100} & \multicolumn{3}{c}{SF300} \\
+system & IC13 & BI19 & BI20 & IC13 & BI19 & BI20 & IC13 & BI19 & BI20 \\ \midrule
+DuckPGQ index & 0.004 & \textbf{0.012} & \textbf{0.005} & 0.014 & \textbf{0.137} & \textbf{0.026} & 0.028 & \textbf{0.765} & \textbf{0.061} \\
+DuckPGQ build & 0.033 & 0.044 & 0.037 & 0.267 & 0.423 & 0.288 & 0.626 & 1.6 & 0.692 \\
+Neo4j & \textbf{0.003} & 0.040 & 0.022 & \textbf{0.007} & 3.9 & 0.126 & \textbf{0.006} & 47.0 & 1.2 \\
+Kuzu & 0.007 & 0.524 & 1.4 & 0.024 & 22.3 & 29.4 & 0.050 & 332 & $>$600 \\
+FalkorDB & 0.012 & 18.4 & 2.9 & 0.052 & $>$600 & 212 & 0.116 & $>$600 & $>$600 \\
+Memgraph & 0.375 & 0.140 & 0.097 & 8.6 & 17.0 & 0.646 & 31.8 & $>$600 & 47.8 \\
+Neo4j GDS & 0.069 & 11.0 & 66.9 & 0.530 & $>$600 & $>$600 & 1.5 & $>$600 & $>$600 \\
+\bottomrule\end{tabular}\end{table}

@@ -1,0 +1,17 @@
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
+\caption{The update stream at SF10, 190 commits of 2000 edge changes with one query after each, 32 threads: query latency for one source to 1024 destinations and for 1024 random pairs (median and p99 over the 190 queries) and the writer's median commit; the fastest cell per column in bold.}\label{tab:updates}
+\begin{tabular}{lrrrrr}\toprule
+ & \multicolumn{4}{c}{query latency (ms)} & commit (ms) \\
+ & \multicolumn{2}{c}{1 source $\to$ 1024 dest.} & \multicolumn{2}{c}{1024 random pairs} & \\
+system & median & p99 & median & p99 & median \\ \midrule
+\multicolumn{6}{l}{\textit{DuckPGQ}} \\
+\quad index, automatic folds & \textbf{15} & 31 & \textbf{44} & \textbf{56} & \textbf{19} \\
+\quad index, no fold & 19 & 38 & 50 & 70 & \textbf{19} \\
+\quad index, visibility per row & 35 & 65 & 65 & 93 & \textbf{19} \\
+\quad build & 20 & 25 & 54 & 59 & \textbf{19} \\
+\addlinespace
+Kuzu & 17 & \textbf{24} & 6\,762 & 8\,056 & 335 \\
+Memgraph & 43 & 48 & 47\,102 & 47\,822 & 27 \\
+Neo4j & 1\,481 & 1\,631 & 743 & 819 & 66 \\
+FalkorDB & 9\,423 & 9\,851 & 8\,683 & 8\,790 & 108 \\
+\bottomrule\end{tabular}\end{table}

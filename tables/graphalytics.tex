@@ -1,0 +1,24 @@
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
+\caption{Three Graphalytics graphs: seconds per query for $k$ sources to every reachable vertex and for 65\,536 random pairs (none on the citation DAG is reachable); median of three runs, 32 threads, fastest formulation; the fastest cell per column in bold.}\label{tab:graphalytics}
+\begin{tabular}{lrrrrr}\toprule
+ & \multicolumn{5}{c}{seconds per query} \\
+system & 1 source & 16 & 128 & 1024 & 65\,536 pairs \\ \midrule
+\multicolumn{6}{l}{\textit{cit-Patents: 3.8M V, 16.5M E, directed, deep levels}} \\
+\quad DuckPGQ index & 0.032 & 0.104 & 0.172 & \textbf{0.437} & -- \\
+\quad DuckPGQ build & 0.141 & 0.231 & 0.270 & 0.502 & -- \\
+\quad Neo4j & 27.2 & 309 & $>$600 & $>$600 & -- \\
+\quad Kuzu & 0.007 & 0.071 & 0.299 & 1.5 & -- \\
+\quad FalkorDB & $>$600 & $>$600 & $>$600 & $>$600 & -- \\
+\quad Memgraph & \textbf{0.004} & \textbf{0.048} & \textbf{0.127} & 0.498 & -- \\
+\quad Neo4j GDS (4 thr.) & 0.068 & 1.0 & 8.3 & 66.7 & -- \\
+\addlinespace
+\multicolumn{6}{l}{\textit{graph500-24: 8.9M V, 521M E, hubs}} \\
+\quad DuckPGQ index & 0.351 & \textbf{4.5} & \textbf{2.7} & \textbf{8.8} & \textbf{144} \\
+\quad DuckPGQ build & 2.8 & 7.0 & 5.6 & 10.8 & 148 \\
+\quad Kuzu & \textbf{0.336} & 8.1 & 61.6 & 495 & $>$600 \\
+\addlinespace
+\multicolumn{6}{l}{\textit{datagen-8\_4-fb: 3.8M V, 539M E, dense}} \\
+\quad DuckPGQ index & \textbf{0.175} & \textbf{1.9} & \textbf{1.1} & \textbf{4.1} & \textbf{51.0} \\
+\quad DuckPGQ build & 2.7 & 4.5 & 3.9 & 6.8 & 53.3 \\
+\quad Kuzu & 0.189 & 3.0 & 24.0 & 191 & $>$600 \\
+\bottomrule\end{tabular}\end{table}

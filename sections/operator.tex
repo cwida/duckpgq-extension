@@ -1,0 +1,266 @@
+\section{The Path-Finding Operator}
+\label{sec:operator}
+
+% Restructured 29 Oct 2026 against the rc7 code (eval-freeze-rc7) and the vocabulary in paper/STYLE.md. Build costs
+% from eval-freeze-rc1; the traversal crossovers are single runs before the rerun and marked.
+
+A path pattern in \sqlpgq asks, for a set of candidate (source, destination) pairs, whether a path of the allowed
+length exists and how long it is, or which vertices and edges it uses. The path-finding operator evaluates this part of
+the pattern. Filters on labels and on the source and destination vertices, the join back to the vertex tables and the
+filter that the quantifier puts on the path length stay relational and are left to \duckdb's planner. The operator reads the candidate pairs and
+the graph, either as the edge table, from which it builds a CSR on the fly, or as a persistent CSR index.
+
+The operator answers in one of three modes. In the \texttt{lengths} mode it returns one hop count per candidate pair,
+and in the \texttt{paths} mode one list of vertices and edges per pair. The \texttt{reach} mode is for a pattern whose
+destination has no condition, such as every person reachable from a given one. Listing every vertex as a candidate
+destination would produce one pair per vertex. In the \texttt{reach} mode the operator therefore receives only the sources and
+returns each vertex a source reaches, with its distance, and the destinations are produced by the operator. It is opt-in through the setting \texttt{experimental\_path\_finding\_operator}; without it the
+rewrite emits the UDF calls of the CIDR design. Unless stated otherwise, the numbers in this section are from the
+evaluation of Section~\ref{sec:eval} (LDBC SNB \texttt{Person\_knows\_Person}, one m7a.8xlarge, 32 threads).
+
+\subsection{From \texttt{MATCH} to an operator}
+\label{sec:planner}
+
+\duckpgq rewrites \texttt{MATCH} into SQL, and the path pattern becomes a scalar function call in that SQL, which we refer to as
+the \emph{marker}. It takes the source and destination columns of the candidate pairs, the edges as a struct column of
+(source, destination) row ids, the vertex and edge counts, a constant key naming the graph, and the upper bound of the
+quantifier. Which function the marker calls depends on the mode. The rewrite asks for \texttt{lengths} when the query projects
+\texttt{path\_length(p)}, for \texttt{paths} when it projects \texttt{vertices(p)}, \texttt{edges(p)} or
+\texttt{element\_id(p)}, and for \texttt{reach} when the destination carries no condition. The marker is registered as a volatile scalar function so that no
+part of \duckdb folds or reorders it, and it is never executed. An optimizer extension runs before \duckdb's own
+optimizer, finds the projection that contains the marker, replaces the marker by a reference to the operator's output
+column, and places a logical path-finding operator beneath the projection, with the pairs as its first child and, when
+the CSR is built on the fly, the edges as its second. The rule runs on the binder's plan shape, before join
+reordering, because the two inputs are easy to identify there and hard to find after the optimizer has pushed filters
+into them.
+
+Three details of the rewrite matter for performance. First, the filters on the source and destination vertices are
+applied to each vertex set before the two are combined. A query with one source and a selective filter on the
+destination therefore yields few candidate pairs, and the unfiltered cross product of the vertex tables is never
+formed.
+Second, the upper bound of the quantifier travels with the marker, so a search stops at that depth instead of
+exploring paths that a filter would discard afterwards. Third, when a CSR index exists for the edge table at bind
+time, the rewrite drops the edge input and passes the index name in the key. The operator then resolves the key to a
+snapshot (Section~\ref{sec:index}), and the pairs carry vertex keys instead of row ids, because the index identifies
+vertices by key.
+
+In \duckdb's execution model the physical operator is a sink for the pipelines of its children and the source of
+the pipeline above it. Its first child produces the candidate pairs. When the CSR is built on the fly, a second
+child produces the edges, the join of the edge table with its two vertex tables, as (source row id, destination row
+id) pairs. Each of \duckdb's threads pushes vectors from these pipelines into a local state of its own; the pairs
+are appended to a column collection, and the edges are partitioned as they arrive (Section~\ref{sec:csr}). When the
+last vector has arrived, the operator's finalize step runs once. It translates the pairs to vertex ids, groups them by
+source, picks the traversal and the orientation (Section~\ref{sec:choice}), and schedules the events that build the
+CSR and traverse it (Sections~\ref{sec:traversals} and~\ref{sec:phases}). Once those events are done,
+\duckdb starts the pipeline that reads the operator as its source, and that pipeline emits the results in parallel
+(Section~\ref{sec:results}). The planner sees an operator with one or two children and a cardinality and plans the
+rest of the query around it. The rest of this section follows a query through these steps.
+
+\subsection{The partitioned CSR}
+\label{sec:csr}
+
+Both routes, building the CSR on the fly and reading it from an index, traverse the same layout, the
+\emph{partitioned CSR} of Figure~\ref{fig:partitioned-csr}. It differs from the classic CSR of Section~\ref{sec:background}
+by splitting the edges by destination.
+
+Vertices are numbered $0$ to $V-1$. When the CSR is built on the fly, a vertex's number is its row id in the vertex
+table; an index numbers the vertices through a dictionary that maps each vertex key to a dense id. The operator
+divides these ids into equal destination ranges, as many as are needed for a range to span at most 65,535 ids, and a
+\emph{partition} holds every edge whose destination lies in one range. Figure~\ref{fig:partitioned-csr}b shows the
+edges of a small graph that fall into one range, ids 20 to 29, and Figure~\ref{fig:partitioned-csr}c the partition they form. Inside it the edges are sorted by source, and every source with at least one edge into the range has a
+\emph{sparse row}, which holds the source's id and the position of its first edge. In the figure the edges of
+source~3 are at positions 0 and~1, up to the position the next row starts at, those of source~7 at position~2 and
+those of source~12 at positions 3 to~5. Each edge stores its destination as a 16-bit offset from the start of the
+range; source~3's edge to vertex~25 stores 5, its offset from the range's start at~20. A source without an edge into the
+range has no row.
+
+The operator finds a source's row through a \emph{source index}. It divides the source ids into
+blocks of $2^k$ consecutive ids and stores, for each block, the first row whose source falls into it; $k$ is chosen
+so that a block holds about two rows. In the figure $k = 3$, and a lookup of source~7 reads entry $7 \gg 3 = 0$, which
+points at the row of source~3, and moves on to the next row, that of source~7. When the query asks for paths, and
+always in an index, a second array next to the edges holds each edge's row id in the edge table, 8 bytes per edge
+(orange in the figure).
+
+A partition can also be built in the reverse direction, holding the edges by the range of their source, grouped by
+destination. An index stores these reverse partitions when it is created with \texttt{WITH (reverse = true)}. In an
+undirected graph every edge appears in both directions, and the forward partitions are also the reverse ones.
+
+This layout gives the traversals two properties. First, a traversal step that processes partition $p$ writes only to
+vertices of range $p$. Tasks that each own a partition never write the same vertex, and the multi-source
+traversal splits its work this way (Section~\ref{sec:traversals}). Second, the memory is proportional to the edges. A destination takes 16 bits, and where the classic CSR keeps an offset for every vertex, a partition keeps
+a sparse row only for the sources with an edge into its range, at most one per edge; with the row id the index keeps per edge, the whole takes 11 to 13 bytes per edge (Table~\ref{tab:fixed-costs}).
+
+\begin{figure}[t]
+  \centering
+  \input{figures/partitioned_csr}
+  \caption{The partitioned CSR. (a) The build on the fly: the sink packs each edge into 64 bits, and the high
+  bits, the destination range, select its partition; tasks process the partitions, starting with the largest, sort
+  each by source, emit its sparse rows and build its source index. (b) The edges of a graph with $V = 30$ whose destinations fall into range $p$, ids 20 to
+  29; source~4 has edges only into other ranges. (c) The partition these edges form. Each source with an edge into the
+  range has a sparse row, its edges are the slice between its offset and the next, and each edge stores its
+  destination as an offset into the range (25 becomes 5). The source index has one entry per block of $2^3 = 8$
+  source ids; the bracket under an entry marks the sparse rows of its block, and the entry stores the first of them.
+  Source~7 is found from the entry of block 0--7, one row after source~3. The row ids (orange) are what the CSR index adds, and what the build adds when a query asks for
+  paths.}
+  \label{fig:partitioned-csr}
+\end{figure}
+
+\paragraph{Building it on the fly} Without an index the operator builds the partitioned CSR on the fly, in every
+query, as the CIDR design did. The edges arrive as (source, destination) row-id pairs from the join of the edge table
+with its two vertex tables. The sink packs each edge into 64 bits, with the destination range in the high bits, and
+scatters it into the partition of that range with \duckdb's radix partitioning, the mechanism its hash join uses. A
+small graph would fit into one range of 65,535 ids, and the operator uses at least eight ranges to give the next
+step at least eight tasks; the range width is a setting, which Section~\ref{sec:eval-ablation} benchmarks. When the
+sink has received all edges, tasks process the partitions, starting with the largest. Each task sorts a partition's
+edges by source, emits its sparse rows and builds its source index.
+
+Splitting a graph's edges by destination range, so that a traversal step writes only a cache-sized slice of the
+vertices, is an established idea, known as CSR segmenting~\cite{zhang2017cagra} and propagation
+blocking~\cite{beamer2017blocking}; GraphChi's shards split edges by destination interval for the same
+reason~\cite{kyrola2012graphchi}. Two things differ in our use of it. The operator produces the layout in one pass
+over the output of a join, with \duckdb's radix partitioning and without a per-vertex array. And the index stores the
+same layout, with the row ids, as its on-disk format (Section~\ref{sec:index}).
+
+\subsection{Two traversals}
+\label{sec:traversals}
+
+A \emph{search} is one breadth-first search from one source. Before any search runs, the operator deduplicates the
+sources. All pairs with the same source become one search, which carries the list of their destinations. A query
+therefore has as many searches as it has distinct sources, and a search ends when it has reached every destination
+on its list, at the depth bound, or when no new vertex is left to visit.
+
+The operator runs the searches in one of two ways. In the single-source traversal every search runs on its own, with a
+frontier and per-vertex arrays of its own. In the multi-source traversal up to 256 searches run together, each in one
+bit lane of a multi-source BFS. Both traversals proceed level by level and decide at every level between a
+\emph{sparse level}, which visits only the vertices on the frontier, and a \emph{dense level}, which sweeps every
+sparse row of every partition; a search can return to sparse levels when its frontier shrinks again.
+
+\paragraph{Single-source traversal} Each search has its own frontier, a list of vertex ids, as in
+Ligra~\cite{shun2013ligra}, and three arrays with one entry per vertex: the level at which the vertex was first
+reached, which is its distance (8 bytes), a seen flag (1 byte) and a mark for the vertices on the current frontier
+(4 bytes), 13 bytes per vertex. In the \texttt{paths} mode it also keeps, per vertex, the vertex (4 bytes) and the edge
+(8 bytes) through which it was first reached, 25 bytes in all. A level is sparse while the frontier holds fewer than a
+sixty-fourth of the vertices. A sparse level splits the frontier among the workers, and each worker looks its
+vertices up in every partition through the source index; the level costs the frontier plus its edges. A dense level
+gives each worker whole partitions to sweep, and when there are more workers than partitions it cuts each partition's
+rows into ranges to give every worker work; a worker expands the rows whose source is on the frontier. In both
+kinds of level two workers can reach the same vertex, and a vertex is claimed with a compare-and-swap on its seen
+flag. The worker that wins records the vertex's distance, adds it to the next frontier and, in the \texttt{paths}
+mode, records the vertex and the edge through which it arrived (Section~\ref{sec:results}).
+
+\paragraph{Multi-source traversal} Many searches run as the lanes of one sweep, the multi-source BFS of Then et
+al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up to 256 lanes that share one
+\emph{working set} of three bit sets per vertex: \texttt{seen} for the vertices each lane has reached,
+\texttt{frontier} for the current frontier and \texttt{next} for the next one. Each bit set holds 256 bits, 32 bytes,
+per vertex, so a working set takes 96 bytes per vertex. A query with $k$ distinct sources therefore has
+$\lceil k/256 \rceil$ batches, 256 for 65\,536 random pairs. Each batch runs its own levels until all its lanes are
+inactive, independently of the other batches, and several can run at the same time, each with a working set
+of its own. A level has two phases. The explore phase relaxes
+\texttt{frontier} into \texttt{next} with one 256-bit \texttt{or} per edge for all lanes at once, a single AVX2
+instruction in our measurements. The sweep is bound by memory traffic, so the bytes per vertex matter more than the
+lanes per sweep: and 256 lanes, one AVX2 register, keep the working set at 96 bytes per vertex. The explore tasks are split by destination range; no two of them
+write the same vertex, and the \texttt{or} needs no atomic. The check phase \texttt{or}s \texttt{next} into \texttt{seen};
+each lane then records the level of the destinations it has newly reached and drops them from its list, and a lane
+whose list is empty is masked out of \texttt{next} and becomes inactive. A summary bitmap marks the vertices with an
+active lane. A level is sparse when fewer than a sixteenth of all vertices are marked, and visits only those, through
+the source index. A dense level costs the same whether one lane or two hundred are active. Both divisors, the
+sixty-fourth and the sixteenth, are settings of the operator.
+
+The number of batches a query needs depends on the deduplication. LDBC BI19 at SF300 pairs every person of one city,
+1.4\,K of them, with every person of another, and asks for 2.4\,M lengths. After deduplication that is 1.4\,K searches
+in six batches of 256 lanes; without it, one search per pair, as in the CIDR design, would need 9.4\,K batches.
+Deduplication helps only when sources repeat. In the random pairs of Section~\ref{sec:eval} almost every source
+appears in a single pair. Its search has one destination, and the number of batches is the same as without
+deduplication.
+
+\subsection{Choosing a traversal and an orientation}
+\label{sec:choice}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/crossover_sf100.pdf}
+  \caption{Seconds per query over the index at SF100, 32 threads, median of three runs, for $k$ distinct sources run
+  three ways: the single-source traversal once per source, and the multi-source traversal with one lane per distinct source and with one lane per pair. Left: $k$ random pairs, one destination each; right: $k$ sources with 200 destinations each. The dotted
+  line is the smallest $k$ at which the single-source traversal is no longer within a tenth of the fastest way.}
+  \label{fig:crossover}
+\end{figure}
+
+The operator's finalize step, which \duckdb calls once the sink has received all pairs and before any search
+starts (Section~\ref{sec:planner}), groups the pairs by source and counts the groups. Up to 16 distinct sources run
+on the single-source traversal, side by side, with the threads divided among them; more sources run as batches of the
+multi-source traversal. The \texttt{paths} mode always uses the single-source traversal, because a path needs a
+parent per vertex and a lane keeps none. The \texttt{reach} mode runs on the lanes as well: inside the parallel check-phase tasks, every lane records the
+vertices it newly reached, with the current level as their distance. For 1024 sources to every person at SF100 this is 2.7 times faster than one search per source, 421\,ms against 1.1\,s over the index (Table~\ref{tab:ablation}). The per-source searches run in rounds, as many at once as their per-vertex arrays fit into the working-set cap
+of Section~\ref{sec:phases}, and a search hands its results over and frees its arrays when it ends.
+
+The orientation is decided before the grouping, from HyperLogLog estimates of the distinct sources and
+destinations. When there are at least four times as many distinct sources as destinations and reverse partitions
+are available, the searches start from the destinations and run over the reverse partitions; the build route has
+reverse partitions only for an undirected graph, and the \texttt{paths} and \texttt{reach} modes always search
+forward. The reverse orientation pays off when many sources share one destination. LDBC BI20 asks for the
+distance from every employee of one company to one person; in the reverse orientation it runs as a single search from
+that person, where the forward orientation would run one lane per employee; at SF100, 1024 sources to one destination take 6\,ms in the reverse orientation and 116 in the forward one (Table~\ref{tab:ablation}).
+
+Which way of running searches is fastest depends on the number of distinct sources. Few sources are cheapest as single-source searches, because a batch pays for its working
+set and its dense levels whatever its number of lanes. Many sources favour the batches, whose lanes share
+the work of every level and keep no per-vertex arrays; for 65\,536 random pairs at SF100 the batches are twelve times faster than single-source searches (Table~\ref{tab:ablation}). The crossover depends on the graph. On the Graphalytics graphs of Section~\ref{sec:eval} it lies at 4 sources on
+datagen-8\_4-fb, at 16 on graph500-24 and at 256 on cit-Patents, and no fixed threshold fits all three. What a threshold cannot see is how far each search runs; an unreachable pair searches the whole component of its source and a reachable one stops early, and about half of the random pairs on the directed \texttt{knows} graph are unreachable. A cost model would need an estimate of that reach, for example from the degree of the sources and the number of levels a search takes on the graph, which the index could record at a fold. Figure~
+ef{fig:crossover} shows the three ways of running $k$ distinct sources at SF100: the single-source traversal
+stays within a tenth of the best up to $k = 8$ on both shapes and loses from $k = 16$; at SF10 it holds to $k = 32$
+with 200 destinations per source and to $k = 64$ with one. The lanes pay for the time in memory; at SF100 a batch holds a working set of 41\,MB for up to 256 distinct sources and 665\,MB at 4096, against 5\,MB for the single-source traversal.
+
+\subsection{Parallel execution as a chain of events}
+\label{sec:phases}
+
+The operator runs its work on \duckdb's scheduler, with \duckdb's own primitives. A \duckdb \emph{task} is a unit
+of work that one thread of the fixed pool runs to completion, and an \emph{event} is a set of tasks with dependencies
+on other events. When the last task of an event finishes, the event's completion callback runs once, on one thread,
+and can insert further events; \duckdb's own operators run multi-phase work this way. The operator runs the build
+and both traversals as a chain of such events, one per phase. At the end of a level the callback of its last phase
+records which searches reached their destinations, decides whether another level is needed, and inserts the event of
+the next phase.
+
+The build is the sink, which partitions the edges as they stream in, followed by one event whose tasks sort and
+emit the partitions and whose callback publishes them. A level of the multi-source traversal is two events, the
+explore and the check phase, and a level of the single-source traversal is one; a search that runs on a single thread
+runs all its levels in one task, because the overhead of scheduling an event per level would exceed the work
+of the level. Each phase still waits
+for the one before it, but no task blocks its thread waiting for another task, and the operator shares \duckdb's
+fixed thread pool with other queries. The scheduler may interleave the tasks of concurrent queries freely,
+and an error or an interrupt stops the operator at the next task boundary.
+
+\paragraph{Scheduling the batches} A query's batches go into a queue. As many batches run at once as there are
+batches or threads, whichever is fewer, and a batch that finishes hands its working set to the next batch in the
+queue, which zeroes it in parallel. Running them all at once would need a working set per batch, 11\,GB for the 256
+batches of 65\,536 random pairs at SF100, and a working-set cap, a quarter of \duckdb's memory limit, also bounds
+the number running at once. The bound follows the machine and the user's configuration; on our machine the cap
+is 24.6\,GiB, which lets graph500-24 run 14 batches of 1.7\,GB at once instead of 32. Running fewer batches than threads
+costs time, because the threads are idle whenever a level waits for its last task. One batch at a time makes 65\,536
+random pairs 9 times slower at SF10 and 3.9 times slower at SF300 (Section~\ref{sec:eval-ablation}).
+
+Each running batch splits each of its phases into tasks. It gets an equal share of the threads, and for each of
+those threads one task per four million edges of the graph, with no more tasks in all than there are threads. With 32
+batches running at SF10, whose graph has 1.84\,M edges, a batch has one task per phase, and its short levels end
+without waiting on other tasks; at SF100 it has 5 and at SF300 14, and a batch running alone gets 32. Tasks of 64\,K to one million edges make 65\,536 random pairs at SF10 1.7 to 1.9 times slower, because a batch's short levels then wait on several tasks, while at SF100 every task size from 64\,K to 16\,M edges lands within 3\%; four million edges is a setting.
+
+\paragraph{What stays serial} Two steps run on one thread. One is the completion callback at the end of every phase, which is
+serial by design; the other is the grouping of the pairs by source in the finalize step, which takes 6\,ms for 65\,536 random pairs at SF10 and about
+30\,ms for BI19's 2.4\,M pairs at SF300.
+
+\subsection{Results}
+\label{sec:results}
+
+When the traversal is done, \duckdb runs the pipeline that reads the operator as its source, and the operator emits
+one row per input row, in parallel over its output vectors. In the \texttt{lengths} mode each row looks up the distance its
+source's search recorded for its destination, and the result of a pair without a path is set to \texttt{NULL}. In the \texttt{reach} mode each source emits every vertex it reached with its distance, and the destination table is
+joined back afterwards only when the query projects its columns; the sources $\times$ all queries of
+Section~\ref{sec:eval} run this way.
+
+In the \texttt{paths} mode the operator returns, per pair, the list $[v_0, e_0, v_1, \dots, v_k]$ of vertices and edge row
+ids. The scatter walks the parents a search recorded from the destination back to the source, maps vertex ids to row
+ids on the build route and to keys on the index route, maps edge positions to row ids, and reverses the list.
+\texttt{path\_length(p)} is then $\lfloor\text{len}/2\rfloor$, and \texttt{vertices} and \texttt{edges} are the even
+and odd positions, which is also how the SQL fallback of \duckpgq defines them. The build route and the fallback return the same
+lists. Because every edge position carries its row id when paths are asked for, a path can be joined
+back to the edge table for its properties. Paths cost more than lengths when the pairs have many sources, because
+paths need the single-source traversal; for 2048 random pairs over the index they take 4.2 times as long as lengths at SF10 and 12 times at SF100 (Table~\ref{tab:ablation}).

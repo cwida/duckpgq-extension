@@ -1,0 +1,99 @@
+\section{Introduction}
+\label{sec:intro}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/teaser.pdf}
+  \caption{LDBC BI19, the hop-count shortest-path length between every person of one city and every person of
+  another, on the undirected \texttt{knows} graph of SF10, SF100 and SF300 (1.84, 18.7 and 55.7\,M edges; up to 10\,k,
+  0.39\,M and 2.4\,M pairs per query). Seconds per query, the median of three runs per parameter set averaged over
+  five parameter sets, one m7a.8xlarge, 32 threads. Each panel has its own linear axis, ending at 2.1 times Neo4j's
+  time; a bar with a break continues beyond the panel, and a hatched bar exceeded the 600\,s limit. The factor after
+  a time is that system's time divided by \duckpgq's. \duckpgq over its CSR index, the other systems in their fastest
+  formulation.}
+  \label{fig:teaser}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \input{figures/overview}
+  \caption{Path finding in \duckpgq. A \texttt{MATCH} path pattern is rewritten to SQL with a marker function that an
+  optimizer extension replaces by the path-finding operator (Section~\ref{sec:planner}). The operator traverses a
+  partitioned CSR that is either built inside the query from the edge table (Section~\ref{sec:csr}) or read as a
+  transaction-consistent snapshot of a CSR index (Section~\ref{sec:index}); both have the same layout. The two traversals, multi-source for many distinct sources and single-source for few, run as chains of per-phase events
+  (Sections~\ref{sec:traversals} and~\ref{sec:phases}). Everything in colour is the extension; the grey band is
+  \duckdb, with the four of its extension interfaces that carry the query.}
+  \label{fig:overview}
+\end{figure}
+
+% Draft 22 Oct 2026 in the style of paper/STYLE.md. Numbers from eval-freeze-rc1 (29 Oct).
+
+SQL:2023 added graph pattern matching to SQL, and with it a query type relational systems execute badly, the shortest path. Its \sqlpgq part lets a query declare a property graph over existing tables and match
+patterns against it, including variable-length and shortest-path patterns~\cite{deutsch2022gql}. A user whose data
+lives in a relational system can copy it into a graph database and keep the two in sync, write the path pattern as a
+recursive join and accept its performance, or wait for the system's developers to add graph storage and operators.
+Extensions have brought graph queries to relational systems before. Apache AGE adds Cypher to
+PostgreSQL~\cite{apacheage}, pgRouting runs shortest-path algorithms over a graph it builds from a SQL query on every
+call~\cite{pgrouting}, and some engines implement \sqlpgq inside their own code~\cite{oraclesqlpgq}. As far as we
+know, no extension combines a path-finding operator inside the database system's planner with a graph index that stays
+consistent with its transactions, built only on the interfaces the system offers to every extension. This paper
+shows that a loadable extension can add them.
+
+\duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb~\cite{duckdb2019,raasveldt2020duckdb} that
+parses \sqlpgq and rewrites it into relational SQL, and it implemented the two graph-specific pieces, a compressed
+sparse row (CSR) representation of the graph and multi-source breadth-first search (\msbfs)~\cite{then2014msbfs} over
+it, as scalar user-defined functions (UDFs), which inherit \duckdb's parallelism for free. They also have a ceiling, which the CIDR
+paper named: ``morsel-driven parallelism is tuple-driven and without tuples there is not enough
+parallelism''~\cite{tenwolde2023duckpgq}. A UDF receives work when the pipeline hands it a vector of tuples, as morsel-driven parallelism~\cite{leis2014morsel} does, and a
+single shortest-path query hands it one, so one core runs a BFS over the whole graph while the others idle. The CSR
+was the second problem, global state built by ``the first thread to touch it'', rebuilt for every query, invisible to
+the optimizer, and unrelated to the transaction that reads it, so that a concurrent insert into the edge table is in the CSR or not depending on timing.
+
+This paper removes both limits under the constraint that made \duckpgq viable, that everything stays in a
+loadable extension. Our thesis is that the interfaces \duckdb already offers to extensions are enough to give it
+graph-native path finding, including a graph index that is consistent with its multi-version concurrency control
+(MVCC), and that the places where they fall short are few and can be named.
+
+The first half of the answer is a \emph{path-finding operator}. It is a physical operator with its own inputs and its
+own schedule, so its parallelism comes from the graph and not from the tuples. The edges are partitioned by
+destination range, the partitions are built and traversed in parallel, and the traversal proceeds level by level as a
+chain of \duckdb events in which no task blocks its thread waiting for another. The operator first deduplicates the
+sources of the candidate pairs, so that a query runs one search per distinct source instead of one per pair, as the
+CIDR design did. A few sources run as single-source traversals, one search at a time with a frontier of its own; many
+run together, 256 at a time, as the lanes of a multi-source traversal. The planner reaches the operator through an
+optimizer rule and sees an ordinary operator with a cardinality.
+
+The second half is a \emph{CSR index}. \texttt{CREATE INDEX ... USING CSR (src, dst)} keeps the graph representation
+across queries, restarts and checkpoints, maintained through \duckdb's index interface like any other index. The difficulty is that a transaction must traverse exactly the edges it is allowed to see while the interface tells an extension which rows changed but nothing about who may see them. The index stores immutable epochs and a
+change log whose entries \duckdb's own row-version check classifies, once per change group instead of once per edge.
+Every transaction gets a snapshot of its own view, a writer spends a constant amount of work per edge, and a fold,
+triggered by a transaction that finds the log too long, turns the log into the next epoch. Section~\ref{sec:index}
+gives the design and its correctness argument.
+
+We evaluate on LDBC SNB at scale factors 10, 100 and 300 and on three Graphalytics graphs against Kuzu, Neo4j,
+Memgraph and FalkorDB, read-only and under the LDBC update stream with concurrent transactions. At one pair and one
+source Neo4j and Kuzu lead; a single pair at SF300 takes 22\,ms over the index and 4\,ms in Neo4j's bidirectional
+search. From a handful of sources on the operator leads by one to two orders of magnitude, because it answers them
+with one traversal where the others search once per pair. LDBC BI19 at SF300, up to 2.4\,M pairs, takes 0.77\,s
+against 47\,s for Neo4j and 332\,s for Kuzu (Figure~\ref{fig:teaser}); 1024 sources to every person take 773\,ms
+against 21.9\,s for Kuzu; 65\,536 random pairs take 10\,s while every other system exceeds ten minutes. Under sixteen
+concurrent readers and a writer at SF300 a query over the index takes 82\,ms where a CSR built per query takes
+3.9\,s, 32 clients get 329 single-pair queries per second against 5, and a commit of 2000 edge changes costs 19\,ms
+against 335 for Kuzu; at every point the systems agree on the answers.
+
+Our contributions are:
+\begin{enumerate}
+  \item A path-finding operator for a vectorized, morsel-driven system whose parallelism comes from a partitioned
+        CSR and per-level events instead of from input tuples, with multi-source and single-source traversals over
+        deduplicated sources and a rule that selects between them (Section~\ref{sec:operator}).
+  \item An MVCC-consistent CSR index built behind a general-purpose extension index interface: epochs, a change-group
+        log, per-transaction snapshots, folds, checkpoints and recovery, with a correctness argument
+        (Section~\ref{sec:index}).
+  \item The planner integration from \sqlpgq \texttt{MATCH} to operator and index without changes to \duckdb, and what its interfaces would need to make such an extension simpler (Section~\ref{sec:conclusion}).
+  \item An evaluation on six graphs against four native graph systems, Neo4j's GDS library and \duckdb's recursive
+        CTE and 2023 UDFs, read-only and under updates, which places \duckdb with the index tens of milliseconds
+        behind at one pair or one source, one to two orders of magnitude ahead from a handful of sources on and 47
+        times faster under sixteen concurrent readers, and measures each mechanism's share (Section~\ref{sec:eval}).
+\end{enumerate}
+\duckpgq is open source under the MIT licence\footnote{\url{https://github.com/cwida/duckpgq-extension}}; the
+operator and the index are part of it, and the benchmark harness and result archive are released with this paper.

@@ -1,0 +1,125 @@
+% PVLDB Vol. 20 (VLDB 2027) submission. Template: https://github.com/cwida/pvldbstyle (acmart sigconf, nonacm).
+\documentclass[sigconf, nonacm]{acmart}
+
+%% The following content must be adapted for the final version
+% paper-specific
+\newcommand\vldbdoi{XX.XX/XXX.XX}
+\newcommand\vldbpages{XXX-XXX}
+% issue-specific
+\newcommand\vldbvolume{20}
+\newcommand\vldbissue{1}
+\newcommand\vldbyear{2027}
+% should be fine as it is
+\newcommand\vldbauthors{\authors}
+\newcommand\vldbtitle{\shorttitle}
+% leave empty if no availability url should be set
+\newcommand\vldbavailabilityurl{}
+% whether page numbers should be shown or not, use 'plain' for review versions, 'empty' for camera ready
+\newcommand\vldbpagestyle{plain}
+
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,fit}
+\definecolor{opblue}{HTML}{2A78D6}
+\definecolor{ixorange}{HTML}{EB6834}
+\definecolor{engine}{HTML}{898781}
+\definecolor{sqlkw}{HTML}{7A3E9D}
+\definecolor{sqlfn}{HTML}{1B6E7A}
+\usepackage{xspace}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\newcommand{\duckpgq}{DuckPGQ\xspace}
+\newcommand{\duckdb}{DuckDB\xspace}
+\newcommand{\sqlpgq}{SQL/PGQ\xspace}
+\newcommand{\msbfs}{MS-BFS\xspace}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+% Text revised in the latest review round, in green; \reviewmarksfalse prints it plain (for submission)
+\definecolor{revgreen}{HTML}{0F8A3C}
+\newif\ifreviewmarks\reviewmarksfalse  % off for Overleaf and submission; local builds pass -usepretex='\AtBeginDocument{\reviewmarkstrue}'
+\DeclareRobustCommand{\rev}[1]{\ifreviewmarks{\color{revgreen}#1}\else#1\fi}
+\newcommand{\cn}{\textcolor{red}{[cite]}\xspace}
+
+\lstset{basicstyle=\ttfamily\small, breaklines=true, columns=fullflexible, keepspaces=true}
+
+\begin{document}
+\title{DuckPGQ: Extending DuckDB with a Path-Finding Operator and a Transactional CSR Index}
+
+\author{Dani\"el ten Wolde}
+\affiliation{%
+  \institution{CWI}
+  \city{Amsterdam}
+  \country{The Netherlands}
+}
+\email{dljtw@cwi.nl}
+
+\author{Peter Boncz}
+\affiliation{%
+  \institution{CWI}
+  \city{Amsterdam}
+  \country{The Netherlands}
+}
+\email{boncz@cwi.nl}
+
+\begin{abstract}
+SQL:2023 brought graph pattern matching into SQL. The shortest path is the part of it that relational systems
+execute badly. In \duckpgq we answered it with multi-source BFS inside scalar UDFs. A UDF inherits \duckdb's
+parallelism and also its limit. It receives work per tuple, so a single path pattern runs on one core, and the
+compressed sparse row (CSR) representation of the graph is rebuilt for every query. This paper removes both limits
+without leaving the extension. A path-finding operator draws its parallelism from a partitioned CSR, uses a
+multi-source traversal for many sources and a single-source traversal for few, and is reached from \sqlpgq's
+\texttt{MATCH} through an optimizer rule. A CSR index keeps the representation across queries, restarts and
+checkpoints behind \duckdb's index interface. That interface reports which rows changed and nothing about which
+transactions may see them, so the index stores immutable epochs and a change log whose groups \duckdb's own row-version check
+classifies, so that every transaction traverses exactly the edges it may see. On LDBC SNB at scale
+factor 300, \duckpgq answers 1024 sources to every reachable person in 773\,ms against 21.9\,s for Kuzu, BI19 with up
+to 2.4\,M pairs in 0.77\,s against 47\,s for Neo4j, and 65\,536 random pairs in 10\,s, where Kuzu, Neo4j, Memgraph
+and FalkorDB all exceed ten minutes. Under sixteen concurrent readers and a writer, a query over the index takes
+82\,ms against 3.9\,s with a CSR built per query, and a commit of 2000 edge changes costs 19\,ms against 335 for Kuzu.
+\end{abstract}
+
+\maketitle
+
+%%% do not modify the following VLDB block %%
+%%% VLDB block start %%%
+\pagestyle{\vldbpagestyle}
+\begingroup\small\noindent\raggedright\textbf{PVLDB Reference Format:}\\
+\vldbauthors. \vldbtitle. PVLDB, \vldbvolume(\vldbissue): \vldbpages, \vldbyear.\\
+\href{https://doi.org/\vldbdoi}{doi:\vldbdoi}
+\endgroup
+\begingroup
+\renewcommand\thefootnote{}\footnote{\noindent
+This work is licensed under the Creative Commons BY-NC-ND 4.0 International License. Visit \url{https://creativecommons.org/licenses/by-nc-nd/4.0/} to view a copy of this license. For any use beyond those covered by this license, obtain permission by emailing \href{mailto:info@vldb.org}{info@vldb.org}. Copyright is held by the owner/author(s). Publication rights licensed to the VLDB Endowment. \\
+\raggedright Proceedings of the VLDB Endowment, Vol. \vldbvolume, No. \vldbissue\ %
+ISSN 2150-8097. \\
+\href{https://doi.org/\vldbdoi}{doi:\vldbdoi} \\
+}\addtocounter{footnote}{-1}\endgroup
+%%% VLDB block end %%%
+
+%%% do not modify the following VLDB block %%
+%%% VLDB block start %%%
+\ifdefempty{\vldbavailabilityurl}{}{
+\vspace{.3cm}
+\begingroup\small\noindent\raggedright\textbf{PVLDB Artifact Availability:}\\
+The source code, data, and/or other artifacts have been made available at \url{\vldbavailabilityurl}.
+\endgroup
+}
+%%% VLDB block end %%%
+
+\input{sections/introduction}
+\input{sections/background}
+\input{sections/operator}
+\input{sections/index}
+\input{sections/evaluation}
+\input{sections/related_work}
+\input{sections/conclusion}
+
+%\begin{acks}
+%\end{acks}
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
+
+% The query formulations (sections/appendix_queries.tex) ship with the reproduction package, not in the PDF.
+
+\end{document}

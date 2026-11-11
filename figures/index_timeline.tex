@@ -1,0 +1,39 @@
+% Figure: epochs, the change log in commit groups, and transactions' snapshots on a time axis. Column width (8.2 cm).
+\begin{tikzpicture}[
+  font=\tiny,
+  >={Stealth[length=3.5pt,width=3pt]},
+  epoch/.style={draw=ixorange, fill=ixorange!12, rounded corners=1.2pt, align=center, inner sep=2pt, minimum height=7mm},
+  grp/.style={draw=black!60, fill=black!5, minimum width=5.2mm, minimum height=4mm, inner sep=1pt, align=center},
+  ins/.style={grp, fill=opblue!12, draw=opblue},
+  del/.style={grp, fill=red!10, draw=red!60!black},
+  lbl/.style={font=\tiny, text=black!60, inner sep=0.8pt},
+  tick/.style={black!60},
+]
+% time axis
+\draw[->, black!50] (0,0) -- (8.2,0);
+\node[lbl, anchor=north east] at (8.2,-0.02) {commits, in commit order};
+% epoch 0
+\node[epoch, anchor=south west, text width=1.75cm] (e0) at (0,0.3) {\textbf{epoch 0}\\ CSR, dictionary,\\ row ids; bound $b_0$};
+\draw[tick] (e0.south east) -- ++(0,-0.3) node[lbl, below] {$b_0$};
+% change groups g1..g6
+\foreach \i/\t/\s in {1/$g_1$/ins,2/$g_2$/ins,3/$g_3$/del,4/$g_4$/ins,5/$g_5$/ins,6/$g_6$/del} {
+  \node[\s, anchor=south west] (g\i) at (2.2+\i*0.62-0.62,0.3) {\t};
+}
+\node[lbl, anchor=south west] at ($(g1.north west)+(0,0.02)$) {change log: $g_i$ is the group of commit $i$};
+% one tick per commit on the axis
+\foreach \i in {1,...,6} {\draw[tick] ($(g\i.south)+(0,-0.3)$) -- ++(0,0.08);}
+% fold
+\draw[tick] ($(g4.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_f$: $b_f$};
+\node[epoch, anchor=south west, text width=1.65cm] (e1) at (6.3,0.3) {\textbf{epoch 1}\\ the table as $T_f$\\ sees it: $g_1$--$g_4$};
+\draw[->, ixorange, semithick] (e0.north) .. controls (2.5,1.7) and (5.8,1.7) .. node[lbl, above, pos=0.5] {fold} (e1.north);
+% transaction bounds on the axis
+\draw[tick] ($(g2.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_c$};
+\draw[tick] ($(g6.south east)+(0.05,0)$) -- ++(0,-0.3) node[lbl, below] {$T_b$};
+% transactions
+\node[lbl, font=\scriptsize, anchor=north west, text width=8.1cm, align=left] at (0,-0.55) {%
+  A transaction's bound is its start in the commit order; it sees only the commits before it.\\
+  $T_f$ (after $g_4$) folds: epoch 1 is the table as $T_f$ sees it, exactly $g_1$--$g_4$.\\
+  $T_b$ (after $g_6$): epoch 1 + overlay with $g_5$ visible and $g_6$ applied; $g_1$--$g_4$ are inside epoch 1.\\
+  $T_c$ (after $g_2$, still running after the fold): epoch 0 + overlay with $g_1$ and $g_2$ visible; epoch 0 is
+  retained until the next fold.};
+\end{tikzpicture}

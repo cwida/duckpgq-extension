@@ -1,0 +1,41 @@
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.6pt}
+\caption{Distances from $k$ sources to every reachable person, median of three runs; n/r: not run above 500M pairs.}\label{tab:sources-all}
+\begin{tabular}{lrrrr}\toprule
+system / sources & 1 & 16 & 128 & 1k \\ \midrule
+\multicolumn{5}{l}{\textit{LDBC SF10}} \\
+\quad DuckPGQ index & \textbf{3\,ms} & \textbf{11\,ms} & \textbf{26\,ms} & \textbf{66\,ms} \\
+\quad DuckPGQ build & 25\,ms & 33\,ms & 50\,ms & 86\,ms \\
+\quad Neo4j & 17.6\,s & 177\,s & timeout & timeout \\
+\quad Kuzu & 5\,ms & 68\,ms & 557\,ms & 4.4\,s \\
+\quad Kuzu (32 conn.) & 4\,ms & 23\,ms & 104\,ms & 692\,ms \\
+\quad FalkorDB & 293\,s & timeout & timeout & timeout \\
+\quad FalkorDB (32 conn.) & 293\,s & timeout & timeout & timeout \\
+\quad Memgraph & 14\,ms & 591\,ms & 5.3\,s & 42.8\,s \\
+\quad Memgraph (32 conn.) & 12\,ms & 144\,ms & 348\,ms & 2.3\,s \\
+\quad DuckPGQ 2023 UDFs & 2.4\,s & 40.8\,s & 328\,s & timeout \\
+\quad DuckDB recursive CTE & 623\,ms & 913\,ms & 6.1\,s & 55.3\,s \\
+\quad Neo4j GDS (4 thr.) & 36\,ms & 402\,ms & 3.3\,s & 26.1\,s \\
+\addlinespace
+\multicolumn{5}{l}{\textit{LDBC SF100}} \\
+\quad DuckPGQ index & 19\,ms & \textbf{72\,ms} & \textbf{131\,ms} & \textbf{401\,ms} \\
+\quad DuckPGQ build & 146\,ms & 198\,ms & 294\,ms & 508\,ms \\
+\quad Neo4j & timeout & timeout & timeout & timeout \\
+\quad Kuzu & 14\,ms & 186\,ms & 1.5\,s & 11.2\,s \\
+\quad Kuzu (32 conn.) & \textbf{13\,ms} & 153\,ms & 788\,ms & 4.9\,s \\
+\quad FalkorDB & timeout & timeout & timeout & timeout \\
+\quad FalkorDB (32 conn.) & timeout & timeout & timeout & timeout \\
+\quad Memgraph & 1.2\,s & 13.5\,s & 118\,s & timeout \\
+\quad Memgraph (32 conn.) & 1.1\,s & 2.6\,s & 7.6\,s & 43.1\,s \\
+\quad DuckPGQ 2023 UDFs & 58.3\,s & timeout & timeout & timeout \\
+\quad DuckDB recursive CTE & 5.4\,s & 14.6\,s & 105\,s & err \\
+\quad Neo4j GDS (4 thr.) & 304\,ms & 3.8\,s & 31.6\,s & 234\,s \\
+\addlinespace
+\multicolumn{5}{l}{\textit{LDBC SF300}} \\
+\quad DuckPGQ index & 41\,ms & \textbf{182\,ms} & \textbf{275\,ms} & \textbf{773\,ms} \\
+\quad DuckPGQ build & 306\,ms & 497\,ms & 574\,ms & 1.1\,s \\
+\quad Neo4j & timeout & timeout & timeout & timeout \\
+\quad Kuzu & \textbf{33\,ms} & 333\,ms & 2.7\,s & 21.9\,s \\
+\quad FalkorDB & timeout & timeout & timeout & timeout \\
+\quad Memgraph & 7.4\,s & 47.3\,s & 391\,s & timeout \\
+\quad Neo4j GDS (4 thr.) & 1.2\,s & 9.7\,s & 76.5\,s & timeout \\
+\bottomrule\end{tabular}\end{table}
