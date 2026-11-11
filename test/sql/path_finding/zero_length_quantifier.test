@@ -1,0 +1,108 @@
+# name: test/sql/path_finding/zero_length_quantifier.test
+# description: A {0,0} quantifier traverses no edge, so it binds both endpoints to the same vertex (issue #9)
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE student(id INT); INSERT INTO student(id) VALUES (10), (20), (30), (40);
+
+statement ok
+CREATE TABLE know(src INT, dst INT); INSERT INTO know(src, dst) VALUES (40, 20), (10,30), (10,10), (20,10), (30,10);
+
+statement ok
+CREATE TABLE school(id INT); INSERT INTO school(id) VALUES (10), (20);
+
+statement ok
+CREATE TABLE studies(student_id INT, school_id INT); INSERT INTO studies VALUES (10, 10), (20, 20);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (student, school)
+EDGE TABLES (
+    know SOURCE KEY (src) REFERENCES student (id) DESTINATION KEY (dst) REFERENCES student (id),
+    studies SOURCE KEY (student_id) REFERENCES student (id) DESTINATION KEY (school_id) REFERENCES school (id)
+    );
+
+# The query from the issue
+query II
+FROM GRAPH_TABLE (g
+    MATCH ANY SHORTEST (a:student)-[k:know]->{0,0}(b:student)
+    WHERE a.id = 10
+    COLUMNS (a.id AS a_id, b.id AS b_id)
+    );
+----
+10	10
+
+# {1,1} still traverses exactly one edge
+query II rowsort
+FROM GRAPH_TABLE (g
+    MATCH ANY SHORTEST (a:student)-[k:know]->{1,1}(b:student)
+    WHERE a.id = 10
+    COLUMNS (a.id AS a_id, b.id AS b_id)
+    );
+----
+10	10
+10	30
+
+query II rowsort
+FROM GRAPH_TABLE (g
+    MATCH (a:student)-[k:know]->{0,0}(b:student)
+    COLUMNS (a.id AS a_id, b.id AS b_id)
+    );
+----
+10	10
+20	20
+30	30
+40	40
+
+query II rowsort
+FROM GRAPH_TABLE (g
+    MATCH (a:student)<-[k:know]-{0,0}(b:student)
+    COLUMNS (a.id AS a_id, b.id AS b_id)
+    );
+----
+10	10
+20	20
+30	30
+40	40
+
+query II rowsort
+FROM GRAPH_TABLE (g
+    MATCH (a:student)-[k:know]-{0,0}(b:student WHERE b.id >= 30)
+    COLUMNS (a.id AS a_id, b.id AS b_id)
+    );
+----
+30	30
+40	40
+
+# A student is never a school, so a zero-length path between them does not exist
+query II
+FROM GRAPH_TABLE (g
+    MATCH (a:student)-[s:studies]->{0,0}(b:school)
+    COLUMNS (a.id AS a_id, b.id AS b_id)
+    );
+----
+
+# The zero-length step followed by a plain edge
+query III rowsort
+FROM GRAPH_TABLE (g
+    MATCH (a:student WHERE a.id = 10)-[k:know]->{0,0}(b:student)-[k2:know]->(c:student)
+    COLUMNS (a.id AS a_id, b.id AS b_id, c.id AS c_id)
+    );
+----
+10	10	10
+10	10	30
+
+# A named zero-length path consists of the start vertex only
+query IIIIII
+FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:student)-[k:know]->{0,0}(b:student)
+    WHERE a.id = 20
+    COLUMNS (a.id AS a_id, b.id AS b_id, path_length(p) AS len, element_id(p) AS elements, vertices(p) AS v, edges(p) AS e)
+    );
+----
+20	20	0	[1]	[1]	[]
