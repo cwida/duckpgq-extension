@@ -1,0 +1,109 @@
+# name: test/sql/path_finding/directed_paths.test
+# description: Quantified directed edges must respect edge direction (issue #284)
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq']
+
+# Vertex ids are neither contiguous nor inserted in order, so rowids differ from ids.
+statement ok
+CREATE TABLE node(id INT, name VARCHAR);
+
+statement ok
+INSERT INTO node VALUES (40, 'd'), (10, 'a'), (30, 'c'), (20, 'b'), (50, 'e');
+
+# a -> b <- c <- d <- e
+statement ok
+CREATE TABLE connection(src INT, dst INT);
+
+statement ok
+INSERT INTO connection VALUES (10, 20), (30, 20), (40, 30), (50, 40);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (node)
+EDGE TABLES (connection SOURCE KEY (src) REFERENCES node (id)
+                        DESTINATION KEY (dst) REFERENCES node (id));
+
+query II
+FROM GRAPH_TABLE (g MATCH (a:node)-[e:connection]->(b:node) COLUMNS (a.name AS a, b.name AS b)) ORDER BY a, b;
+----
+a	b
+c	b
+d	c
+e	d
+
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:node)-[e:connection]->+(b:node) COLUMNS (a.name AS a, b.name AS b, path_length(p) AS l)) ORDER BY a, b;
+----
+a	b	1
+c	b	1
+d	b	2
+d	c	1
+e	b	3
+e	c	2
+e	d	1
+
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:node)-[e:connection]->*(b:node) COLUMNS (a.name AS a, b.name AS b, path_length(p) AS l)) ORDER BY a, b;
+----
+a	a	0
+a	b	1
+b	b	0
+c	b	1
+c	c	0
+d	b	2
+d	c	1
+d	d	0
+e	b	3
+e	c	2
+e	d	1
+e	e	0
+
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:node)-[e:connection]->{1,2}(b:node) COLUMNS (a.name AS a, b.name AS b, path_length(p) AS l)) ORDER BY a, b;
+----
+a	b	1
+c	b	1
+d	b	2
+d	c	1
+e	c	2
+e	d	1
+
+# b has no outgoing edges, so nothing is reachable from it.
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:node WHERE a.name = 'b')-[e:connection]->+(b:node) COLUMNS (a.name AS a, b.name AS b, path_length(p) AS l)) ORDER BY a, b;
+----
+
+# e has no incoming edges, so it is reachable from nobody.
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:node)-[e:connection]->+(b:node WHERE b.name = 'e') COLUMNS (a.name AS a, b.name AS b, path_length(p) AS l)) ORDER BY a, b;
+----
+
+# d and a are connected only when direction is ignored.
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:node WHERE a.name = 'd')-[e:connection]->+(b:node WHERE b.name = 'a') COLUMNS (a.name AS a, b.name AS b, path_length(p) AS l)) ORDER BY a, b;
+----
+
+# The undirected pattern does ignore direction ...
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:node WHERE a.name = 'b')-[e:connection]-+(b:node) COLUMNS (a.name AS a, b.name AS b, path_length(p) AS l)) ORDER BY a, b;
+----
+b	a	1
+b	c	1
+b	d	2
+b	e	3
+
+# ... and running it first must not change the result of the directed pattern afterwards.
+query III
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:node)-[e:connection]->+(b:node) COLUMNS (a.name AS a, b.name AS b, path_length(p) AS l)) ORDER BY a, b;
+----
+a	b	1
+c	b	1
+d	b	2
+d	c	1
+e	b	3
+e	c	2
+e	d	1
