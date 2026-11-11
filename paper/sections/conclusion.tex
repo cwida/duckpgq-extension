@@ -18,7 +18,7 @@ plan shape, and the marker function must be volatile and must not reach executio
 is no index scan interface, so the operator finds the index in the catalog by name; and index options are fixed at
 \texttt{CREATE INDEX}, so the fold ratio is a setting and not a property of the index (Section~\ref{sec:index-fold}).
 Two behaviours we rely on are not promised by the interface, that row ids stay stable while an index exists and that
-\texttt{CanFetch} answers the visibility question of snapshot isolation (Section~\ref{sec:index-correctness}); \rev{the check of Section~\ref{sec:eval-updates}, which compares every answer over the index with one over a CSR built from the same transaction's view, would catch a change in either}.
+\texttt{CanFetch} answers the visibility question of snapshot isolation (Section~\ref{sec:index-correctness}); the check of Section~\ref{sec:eval-updates}, which compares every answer over the index with one over a CSR built from the same transaction's view, would catch a change in either.
 
 The CIDR version of \duckpgq answered shortest-path queries with UDFs, which inherited \duckdb's tuple-driven
 parallelism, so a query with few pairs ran on one core and every query rebuilt the CSR. This paper removed both limits
@@ -30,7 +30,7 @@ Memgraph and FalkorDB grows with the pairs. At SF300 it answers 1024 sources to 
 21.9\,s for Kuzu and 65\,536 pairs in 10\,s while the others exceed ten minutes, and at one pair or one source it is
 tens of milliseconds behind. The index saves the per-query build on every query and, on large pair lists, more,
 because its dense ids follow sorted keys; under sixteen readers and a writer it answers in 82\,ms where a CSR built
-per query takes 3.9\,s, and a commit of 2000 edge changes costs 19\,ms against 335 for Kuzu. In 5376 queries compared
+per query takes 3.9\,s. \rev{A commit of 2000 edge changes costs 19\,ms on its own, against 335\,ms for Kuzu, and 153\,ms under those readers, because it waits for the snapshots they are building.} In 5376 queries compared
 across three scales, every transaction saw exactly the edges it was allowed to see.
 
 In the future we will replace the thresholds of Sections~\ref{sec:choice} and~\ref{sec:index-fold} with a cost

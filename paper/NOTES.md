@@ -427,6 +427,23 @@ type, client context state, settings, buffer manager; used for / lacked) goes to
 sec:strategy and sec:hooks now sit on the final section. Contribution 3 says "the gaps a host would have to close".
 sections/strategy.tex removed (in git history up to 4f3a4c20).
 
+11 Nov: the SF10 commit "reversal" explained by the desk (measured on the frozen build with a scratch copy of the
+driver; not in the archive yet). With 16 readers the writer's transaction at SF10 reproduces at 162 ms under the index
+route's readers and 78 ms under the build route's (sweep 166 / 83). Per statement, medians, index readers / build
+readers: INSERT 1.5 / 1.6 ms, DELETE 5.8 / 48.1 ms, COMMIT 153.5 / 27.4 ms. Under index readers 85 of 95 stack
+samples inside the commit were blocked in StorageLock::GetExclusiveLock (51 under IndexEntry::RemoveFromIndex, 34
+under IndexEntry::Append); the readers meanwhile were in CSRIndex::Resolve -> BuildSnapshot, mostly in
+DataTable::CanFetch; Resolve holds the entry's read handle across the build (src/core/index/csr_index.cpp:1640). The
+wait grows with the pending log, not with the graph: median COMMIT 40 ms in the first 19 commits, 208 ms before the
+fold, 91 ms after it, 294 ms at the end; the readers' median follows (11 -> 115 -> 35 -> 163 ms). The driver's
+"commit" is the whole write transaction. Index route 166 / 214 / 153 ms at SF10 / SF100 / SF300, build route 83 / 348
+/ 647 ms: SF10 is the scale where builds are cheap enough to undercut a roughly constant lock wait (SF100 and SF300
+not profiled; inference from the numbers). Consequences in the text: 5.4 states the cause; 4.3 says a transaction
+holds the index's lock shared while it builds its snapshot; 4.7's "Commits are not slowed" was wrong under concurrent
+readers and is now a sixth cost (a commit does no more work but waits, 150-210 ms under 16 readers against 19 ms on
+its own); abstract, introduction and conclusion no longer put the 19 ms of the sequential stream into the
+sixteen-reader sentence. Only archive numbers are in the text (19; 153; 150-210; 83 / 348 / 647).
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under

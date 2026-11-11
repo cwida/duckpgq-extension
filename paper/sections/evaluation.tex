@@ -12,7 +12,7 @@ of Section~\ref{sec:operator} contribute?
 \paragraph{Setup} All experiments run on one AWS m7a.8xlarge (32 AMD EPYC 9R14 cores, one thread per core, 128\,GiB
 of memory, Amazon Linux 2023). \duckpgq runs on \duckdb v2.0.0-dev (commit 45f4fdf3), compiled with \duckdb's default
 flags for x86-64-v3, so with AVX2, with every setting at its default and 32 threads. All measurements use this build; the
-reproduction package names its commit. \rev{We compare with} Kuzu 0.11.3 (embedded, 32 threads)\footnote{Kuzu's repository was archived in 2025. Its maintained fork, LadybugDB 0.15.3,
+reproduction package names its commit. We compare with Kuzu 0.11.3 (embedded, 32 threads)\footnote{Kuzu's repository was archived in 2025. Its maintained fork, LadybugDB 0.15.3,
 was not faster than Kuzu 0.11.3 in our tests at SF10, between 1.1 and 2.9 times slower on the random-pair,
 sources $\times$ all and LDBC points, so we report Kuzu.}, Neo4j 5.26.32 Enterprise (16\,GB heap, 16\,GB page cache, parallel runtime; the
 GDS library 2.13.14 with its unlicensed limit of four threads where marked; Neo4j's store is 2.3\,GB at SF300, Table~\ref{tab:fixed-costs}, so the page cache holds it at every scale, and a check with a 31\,GB heap and a 64\,GB page cache changed Neo4j's SF300 times by less than two percent), and Memgraph 3.14.0 and FalkorDB 4.2.2
@@ -143,8 +143,8 @@ volume's 270\,MB/s, 2.1\,s at SF300.
 
 Table~\ref{tab:updates} compares the systems under the LDBC update stream for \texttt{knows} at SF10, applied
 as 190 commits of 2000 edge changes with one query after each. A commit costs \duckdb 19\,ms with the index and
-without it, because the index only appends the changed rows to its log; \rev{the other systems} need 27\,ms (Memgraph) to 335\,ms (Kuzu). The query over the index takes 15\,ms for one source to 1024 destinations, as fast as Kuzu and the
-build route, and 44\,ms for 1024 random pairs, where \rev{the other systems} need 0.7 to 47\,s. Two rows of the table isolate the index's design; without folds the median rises from 15 to 19\,ms, the cost of a growing overlay, and with visibility
+without it, because the index only appends the changed rows to its log; the other systems need 27\,ms (Memgraph) to 335\,ms (Kuzu). The query over the index takes 15\,ms for one source to 1024 destinations, as fast as Kuzu and the
+build route, and 44\,ms for 1024 random pairs, where the other systems need 0.7 to 47\,s. Two rows of the table isolate the index's design; without folds the median rises from 15 to 19\,ms, the cost of a growing overlay, and with visibility
 decided per log entry instead of per change group it rises to 35\,ms. The stream crosses the fold threshold, a tenth of
 the epoch's edges by default (Section~\ref{sec:index-fold}), once, and the query that triggers the fold pays for it,
 125\,ms where the others take 15\,ms.
@@ -162,9 +162,7 @@ Under concurrent readers the index's lead grows with the graph and with the read
 (Figure~\ref{fig:concurrency}). With one writer and 16 readers at SF300 a query takes 82\,ms over the index and
 3.9\,s on the build route, 47 times as long, because every reader on the build route builds its own CSR of 55.7\,M
 edges and sixteen builds compete for 32 cores; the build route's latency is about the build cost times the readers.
-The same holds at SF100, 64\,ms against 1.2\,s, and with a smaller build at SF10, 42 against 98\,ms. The builds also
-take memory, 17.8\,GiB against 6.0\,GiB at SF300, and time from the writer, whose commit takes 647\,ms under the build
-route's readers and 153\,ms under the index's; at SF10 the order of the two commits is reversed, 166 against 83\,ms.
+The same holds at SF100, 64\,ms against 1.2\,s, and with a smaller build at SF10, 42 against 98\,ms. The builds also take memory, 17.8\,GiB against 6.0\,GiB at SF300. \rev{The writer is slowed on both routes. Under the build route's readers its commit grows with the builds it shares the cores with, 83, 348 and 647\,ms at SF10, SF100 and SF300. Under the index route's readers the commit waits for the index's exclusive lock, which the readers hold shared while they build their snapshots (Section~\ref{sec:index-read}). That wait grows with the pending log and not with the graph, and the commit takes 150 to 210\,ms at every scale, more than on the build route at SF10 and a quarter of it at SF300.}
 Throughput shows the same from the other side; from 1 to 32 clients the index route's single-pair throughput rises
 from 61 to 329 queries per second at SF300, while the build route stays at 5, bound by its builds, and holds
 23.3\,GiB against 1.7\,GiB, one CSR per client.
@@ -172,7 +170,7 @@ from 61 to 329 queries per second at SF300, while the build route stays at 5, bo
 A fold is paid by one reader; at SF300 it takes 1.6 to 1.8\,s, a tenth of it the parallel scan of the table and
 the rest the CSR build. In a run with the threshold lowered to 0.05\,\% of the edges, in which twenty commits caused
 four folds, the four queries that triggered them took 1.7 to 1.8\,s, while the median of all sixteen readers stayed at
-65\,ms and the p99 at 277\,ms. \rev{Under these loads every reader also answered its query a second time, over a CSR built from its own transaction's view of the table (Section~\ref{sec:index-correctness}). The two answers agreed in all 5376 queries, at the three scale factors and across folds.}
+65\,ms and the p99 at 277\,ms. Under these loads every reader also answered its query a second time, over a CSR built from its own transaction's view of the table (Section~\ref{sec:index-correctness}). The two answers agreed in all 5376 queries, at the three scale factors and across folds.
 
 \subsection{What each mechanism contributes}
 \label{sec:eval-ablation}
