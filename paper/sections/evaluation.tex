@@ -99,18 +99,11 @@ At 1024 sources the index route leads on every graph: 437\,ms against Memgraph's
 \input{tables/ldbc_queries}
 
 \rev{Table~\ref{tab:ldbc} repeats the comparison on three queries of the LDBC Social Network
-Benchmark~\cite{erling2015ldbc,puroja2023ldbcv2,szarnyas2022ldbcbi} that have a shortest path at their core, and each
-behaves as its shape predicts. IC13 asks for one pair, and Neo4j is the fastest system at every scale. Its
-bidirectional search explores a small neighbourhood of both endpoints, so its time stays between 3 and 7\,ms from SF10
-to SF300, while the operator's single-source traversal expands whole levels from one side and grows from 4 to 28\,ms
-with the graph. BI19 (Figure~\ref{fig:teaser}) asks for the distance between every person of one city and every
+Benchmark~\cite{erling2015ldbc,puroja2023ldbcv2,szarnyas2022ldbcbi} that have a shortest path at their core. The result of each follows from the shape of its pairs. IC13 asks for one pair, and Neo4j is the fastest system at every scale. Its
+bidirectional search explores a small neighbourhood of both endpoints, and takes 3 to 7\,ms at every scale. The operator's single-source traversal expands whole levels from one side, and its time grows with the graph, from 4\,ms at SF10 to 28 at SF300. BI19 (Figure~\ref{fig:teaser}) asks for the distance between every person of one city and every
 person of another. Its pairs grow with the product of the two cities, to 2.4\,M per query at SF300, but its distinct
-sources grow only with one city, to about 1400, which the operator runs as six batches. A system that searches once
-per pair does work in proportion to the pairs, which is why Neo4j takes 3 times as long as the index route at SF10,
-28 times at SF100 and 61 times at SF300, where Kuzu needs 332\,s and Memgraph, FalkorDB and GDS exceed the limit.
-BI20 asks for the distance from every person of one company to one target, so its pairs share their destination
-instead of their source. The index of the sweep has no reverse partitions and runs one search per source, which still
-leaves Neo4j 4 to 20 times behind; with reverse partitions the operator runs a single search from the target
+sources grow only with one city, to about 1400, which the operator runs as six batches. A system that searches once per pair does work in proportion to the pairs. Neo4j therefore takes 3 times as long as the index route at SF10, 28 times at SF100 and 61 times at SF300; at SF300 Kuzu needs 332\,s, and Memgraph, FalkorDB and Neo4j GDS exceed the limit.
+BI20 is the opposite shape, the distance from every person of one company to one target, and its pairs share a destination where BI19's share sources. The index of the sweep has no reverse partitions and runs one search per source, and is still 4 to 20 times faster than Neo4j; with reverse partitions the operator runs a single search from the target
 (Section~\ref{sec:choice}), 6 against 116\,ms for 1024 sources at SF100 (Table~\ref{tab:ablation}).}
 
 \subsection{Index or build}
