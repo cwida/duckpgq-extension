@@ -270,15 +270,20 @@ GetColRefExprFromPg(const case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
 }
 
 // Get all fully-qualified column names from the given property graph [pg] for
-// all vertex relations.
+// all element variables. Anonymous elements are not element variables (10.6 NOTE 88), so the aliases in
+// [anonymous_aliases] contribute no columns.
 //
 // Return column reference expressions which represent columns to select.
 vector<unique_ptr<ColumnRefExpression>>
-GetColRefExprFromPg(const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
+GetColRefExprFromPg(const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
+                    const case_insensitive_set_t &anonymous_aliases) {
 	vector<unique_ptr<ColumnRefExpression>> registered_col_names;
 	for (const auto &alias_and_table : alias_map) {
 		const auto &alias = alias_and_table.first;
 		const auto &tbl = alias_and_table.second;
+		if (anonymous_aliases.count(alias)) {
+			continue;
+		}
 		// Skip edge table.
 		registered_col_names.reserve(registered_col_names.size() + tbl->column_names.size());
 		for (const auto &cur_col : tbl->column_names) {
@@ -394,7 +399,7 @@ static void PGQResolveElementLabels(PathPattern &path_pattern, CreatePropertyGra
 			                PGQSameVertexTable(edge_table->destination_pg_table, prev_table);
 			bool connects = element->match_type == PGQMatchType::MATCH_EDGE_RIGHT  ? forward
 			                : element->match_type == PGQMatchType::MATCH_EDGE_LEFT ? backward
-			                                                                        : forward || backward;
+			                                                                       : forward || backward;
 			if (connects) {
 				candidates.push_back(edge_table);
 			}
@@ -406,10 +411,11 @@ static void PGQResolveElementLabels(PathPattern &path_pattern, CreatePropertyGra
 			                      elements[i + 1]->label);
 		}
 		if (candidates.size() > 1) {
-			throw BinderException("Edge pattern %s has no label and is ambiguous: edge tables %s all connect %s and %s; "
-			                      "specify a label",
-			                      element->ToString(), StringUtil::Join(PGQMainLabels(candidates), ", "),
-			                      elements[i - 1]->label, elements[i + 1]->label);
+			throw BinderException(
+			    "Edge pattern %s has no label and is ambiguous: edge tables %s all connect %s and %s; "
+			    "specify a label",
+			    element->ToString(), StringUtil::Join(PGQMainLabels(candidates), ", "), elements[i - 1]->label,
+			    elements[i + 1]->label);
 		}
 		element->label = candidates[0]->main_label.GetIdentifierName();
 	}
@@ -1196,6 +1202,18 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 
 	std::vector<unique_ptr<ParsedExpression>> final_column_list;
 
+	// Generated aliases of anonymous elements, which the unqualified COLUMNS (*) does not expand.
+	case_insensitive_set_t anonymous_aliases;
+	for (auto &path_pattern : ref->path_patterns) {
+		vector<PathElement *> elements;
+		PGQFlattenPathElements(path_pattern->path_elements, elements);
+		for (auto *element : elements) {
+			if (element->anonymous) {
+				anonymous_aliases.insert(element->variable_binding);
+			}
+		}
+	}
+
 	for (auto &expression : ref->column_list) {
 		unordered_set<string> named_subpaths;
 
@@ -1248,10 +1266,17 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 				}
 			}
 
-			auto selected_col_exprs = relation_name.empty() ? GetColRefExprFromPg(alias_to_vertex_and_edge_tables)
-			                                                : GetColRefExprFromPg(alias_to_vertex_and_edge_tables,
-			                                                                      relation_name.GetIdentifierName());
+			auto selected_col_exprs =
+			    relation_name.empty()
+			        ? GetColRefExprFromPg(alias_to_vertex_and_edge_tables, anonymous_aliases)
+			        : GetColRefExprFromPg(alias_to_vertex_and_edge_tables, relation_name.GetIdentifierName());
 
+			// Without element variables there is nothing to expand; falling back to the plain star would expose the
+			// columns of the anonymous elements.
+			if (selected_col_exprs.empty() && relation_name.empty() && !anonymous_aliases.empty()) {
+				throw BinderException("COLUMNS (*) has no element variable to expand: every element of the pattern is "
+				                      "anonymous");
+			}
 			// Fallback to star expression if cannot figure out the columns to query.
 			if (selected_col_exprs.empty()) {
 				final_column_list.emplace_back(std::move(expression));

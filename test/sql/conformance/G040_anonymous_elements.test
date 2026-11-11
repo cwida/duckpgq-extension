@@ -68,6 +68,40 @@ FROM GRAPH_TABLE (single MATCH (a:Person)-[]->()) ORDER BY 1;
 1	A
 2	B
 
+# Nor by the unqualified COLUMNS (*) (issue #330): it expands element variables only.
+query II
+FROM GRAPH_TABLE (single MATCH (a:Person)-[]->() COLUMNS (*)) ORDER BY 1;
+----
+1	A
+2	B
+
+query II
+FROM GRAPH_TABLE (single MATCH ()-[]->(b:Person) COLUMNS (*)) ORDER BY 1;
+----
+2	B
+3	C
+
+query I
+SELECT count(*) FROM (DESCRIBE FROM GRAPH_TABLE (single MATCH (a:Person)-[]->() COLUMNS (*)));
+----
+2
+
+# Named edges and vertices are still expanded.
+query I
+SELECT count(*) FROM (DESCRIBE FROM GRAPH_TABLE (single MATCH (a:Person)-[k:Knows]->(b:Person) COLUMNS (*)));
+----
+6
+
+query I
+SELECT count(*) FROM (DESCRIBE FROM GRAPH_TABLE (single MATCH (a:Person)-[k:Knows]->() COLUMNS (*)));
+----
+4
+
+statement error
+FROM GRAPH_TABLE (single MATCH ()-[]->() COLUMNS (*));
+----
+Binder Error: COLUMNS (*) has no element variable to expand: every element of the pattern is anonymous
+
 # Anonymous elements under a quantifier.
 query II
 FROM GRAPH_TABLE (single MATCH (a:Person)-[]->{1,2}(b:Person) COLUMNS (a.name, b.name)) ORDER BY 1, 2;
