@@ -123,16 +123,24 @@ static string CSRCountEdgeTableSQL(const PropertyGraphTable &edge_table) {
 	return query.str();
 }
 
-static string CSRCountUndirectedEdgeTableSQL() {
+//! Name of the edges CTE that feeds the undirected CSR with this id; CSR 0 keeps the historical name.
+static string EdgesCTEName(int32_t csr_id) {
+	return csr_id == 0 ? string("edges_cte") : "edges_cte" + std::to_string(csr_id);
+}
+
+static string CSRCountUndirectedEdgeTableSQL(int32_t csr_id = 0) {
+	const auto edges_cte = EdgesCTEName(csr_id);
 	std::ostringstream query;
 	query << "SELECT multiply(2, count()) FROM ("
-	      << "SELECT src, dst FROM edges_cte UNION BY NAME SELECT dst AS src, src AS dst FROM edges_cte)";
+	      << "SELECT src, dst FROM " << edges_cte << " UNION BY NAME SELECT dst AS src, src AS dst FROM " << edges_cte
+	      << ")";
 	return query.str();
 }
 
-static string CSRDirectedCSRVertexSQL(const PropertyGraphTable &edge_table, const string &prev_binding) {
+static string CSRDirectedCSRVertexSQL(const PropertyGraphTable &edge_table, const string &prev_binding,
+                                      int32_t csr_id = 0) {
 	std::ostringstream query;
-	query << "SELECT sum(create_csr_vertex(0, ("
+	query << "SELECT sum(create_csr_vertex(" << csr_id << ", ("
 	      << CSRCountTableSQL(*edge_table.source_pg_table, prev_binding, edge_table.source_pk[0])
 	      << "), sub.dense_id, sub.cnt)) FROM (SELECT " << DuckPGQSQL::Column(string("rowid"), prev_binding)
 	      << " AS dense_id, count(" << DuckPGQSQL::Column(edge_table.source_fk[0], edge_table.table_name)
@@ -162,9 +170,10 @@ static string CSRUniqueEdgesSQL(const PropertyGraphTable &edge_table, bool rever
 	return query.str();
 }
 
-static string CSRUndirectedCSRVertexSQL(const PropertyGraphTable &edge_table, const string &binding) {
+static string CSRUndirectedCSRVertexSQL(const PropertyGraphTable &edge_table, const string &binding,
+                                        int32_t csr_id = 0) {
 	std::ostringstream query;
-	query << "SELECT multiply(2, sum(create_csr_vertex(0, ("
+	query << "SELECT multiply(2, sum(create_csr_vertex(" << csr_id << ", ("
 	      << CSRCountTableSQL(*edge_table.source_pg_table, binding, edge_table.source_pk[0])
 	      << "), sub.dense_id, sub.cnt))) FROM (SELECT dense_id, count(outgoing_edges) AS cnt FROM ("
 	      << CSRUniqueEdgesSQL(edge_table, false) << " UNION BY NAME " << CSRUniqueEdgesSQL(edge_table, true)
@@ -207,19 +216,22 @@ unique_ptr<CommonTableExpressionInfo> MakeEdgesCTE(const shared_ptr<PropertyGrap
 
 // Function to create the CTE for the Undirected CSR
 unique_ptr<CommonTableExpressionInfo> CreateUndirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
-                                                             const unique_ptr<SelectNode> &select_node) {
-	if (select_node->cte_map.map.find(Identifier("edges_cte")) == select_node->cte_map.map.end()) {
-		select_node->cte_map.map[Identifier("edges_cte")] = MakeEdgesCTE(edge_table);
+                                                             const unique_ptr<SelectNode> &select_node,
+                                                             int32_t csr_id) {
+	const auto edges_cte = EdgesCTEName(csr_id);
+	if (select_node->cte_map.map.find(Identifier(edges_cte)) == select_node->cte_map.map.end()) {
+		select_node->cte_map.map[Identifier(edges_cte)] = MakeEdgesCTE(edge_table);
 	}
 
 	std::ostringstream query;
-	query << "SELECT create_csr_edge(0, ("
+	query << "SELECT create_csr_edge(" << csr_id << ", ("
 	      << CSRCountTableSQL(*edge_table->source_pg_table, edge_table->source_reference.GetIdentifierName(),
 	                          edge_table->source_pk[0])
-	      << "), CAST((" << CSRUndirectedCSRVertexSQL(*edge_table, edge_table->source_reference.GetIdentifierName())
-	      << ") AS BIGINT), (" << CSRCountUndirectedEdgeTableSQL() << "), src, dst, edge) AS temp FROM ("
+	      << "), CAST(("
+	      << CSRUndirectedCSRVertexSQL(*edge_table, edge_table->source_reference.GetIdentifierName(), csr_id)
+	      << ") AS BIGINT), (" << CSRCountUndirectedEdgeTableSQL(csr_id) << "), src, dst, edge) AS temp FROM ("
 	      << "SELECT src, dst, any_value(edges) AS edge FROM ("
-	      << "SELECT src, dst, edges FROM edges_cte UNION ALL SELECT dst, src, edges FROM edges_cte"
+	      << "SELECT src, dst, edges FROM " << edges_cte << " UNION ALL SELECT dst, src, edges FROM " << edges_cte
 	      << ") GROUP BY src, dst)";
 	return DuckPGQSQL::ParseCTE(query.str());
 }
@@ -235,11 +247,11 @@ unique_ptr<SubqueryExpression> GetCountEdgeTable(const shared_ptr<PropertyGraphT
 // Function to create the CTE for the Directed CSR
 unique_ptr<CommonTableExpressionInfo> CreateDirectedCSRCTE(const shared_ptr<PropertyGraphTable> &edge_table,
                                                            const string &prev_binding, const string &edge_binding,
-                                                           const string &next_binding) {
+                                                           const string &next_binding, int32_t csr_id) {
 	std::ostringstream query;
-	query << "SELECT create_csr_edge(0, ("
+	query << "SELECT create_csr_edge(" << csr_id << ", ("
 	      << CSRCountTableSQL(*edge_table->source_pg_table, prev_binding, edge_table->source_pk[0]) << "), CAST(("
-	      << CSRDirectedCSRVertexSQL(*edge_table, prev_binding) << ") AS BIGINT), ("
+	      << CSRDirectedCSRVertexSQL(*edge_table, prev_binding, csr_id) << ") AS BIGINT), ("
 	      << CSRCountEdgeTableSQL(*edge_table) << "), " << DuckPGQSQL::Column(string("rowid"), prev_binding) << ", "
 	      << DuckPGQSQL::Column(string("rowid"), next_binding) << ", "
 	      << DuckPGQSQL::Column(string("rowid"), edge_binding) << ") AS temp FROM "
