@@ -1834,7 +1834,7 @@ ABLATION_ROWS = [
     ("baseline", "default, 32 threads"),
     ("single_source_kernel", "single-source traversal for every query"),
     ("multi_source_dedup", "multi-source traversal for every query"),
-    ("no_source_grouping", "pairs not grouped by source"),
+    ("no_source_grouping", "one lane per pair"),
     ("no_grouped_batches", "batches not grouped by the scheduler"),
     ("sched_g1_w32", "one batch at a time"),
     ("no_frontier_bitmap", "no summary bitmap"),
