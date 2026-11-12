@@ -78,7 +78,7 @@ with one traversal where the others search once per pair. LDBC BI19 at SF300, up
 against 47\,s for Neo4j and 332\,s for Kuzu (Figure~\ref{fig:teaser}); 1024 sources to every person take 773\,ms
 against 21.9\,s for Kuzu; 65\,536 random pairs take 10\,s while every other system exceeds ten minutes. Under sixteen
 concurrent readers and a writer at SF300 a query over the index takes 82\,ms where a CSR built per query takes
-3.9\,s, and 32 clients get 329 single-pair queries per second against 5. \rev{A commit of 2000 edge changes costs 19\,ms on its own, against 335\,ms for Kuzu, and 153\,ms under the sixteen readers, whose snapshots it waits for.} At every point the systems agree on the answers.
+3.9\,s, and 32 clients get 329 single-pair queries per second against 5. A commit of 2000 edge changes costs 19\,ms on its own, against 335\,ms for Kuzu, and 153\,ms under the sixteen readers, whose snapshots it waits for. At every point the systems agree on the answers.
 
 Our contributions are:
 \begin{enumerate}

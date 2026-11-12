@@ -30,11 +30,10 @@ Memgraph and FalkorDB grows with the pairs. At SF300 it answers 1024 sources to 
 21.9\,s for Kuzu and 65\,536 pairs in 10\,s while the others exceed ten minutes, and at one pair or one source it is
 tens of milliseconds behind. The index saves the per-query build on every query and, on large pair lists, more,
 because its dense ids follow sorted keys; under sixteen readers and a writer it answers in 82\,ms where a CSR built
-per query takes 3.9\,s. \rev{A commit of 2000 edge changes costs 19\,ms on its own, against 335\,ms for Kuzu, and 153\,ms under those readers, because it waits for the snapshots they are building.} In 5376 queries compared
+per query takes 3.9\,s. A commit of 2000 edge changes costs 19\,ms on its own, against 335\,ms for Kuzu, and 153\,ms under those readers, because it waits for the snapshots they are building. In 5376 queries compared
 across three scales, every transaction saw exactly the edges it was allowed to see.
 
 In the future we will replace the thresholds of Sections~\ref{sec:choice} and~\ref{sec:index-fold} with a cost
-model calibrated on these runs, the few-sources limit first, whose best value ranges from 4 to 256 sources across our
-graphs; give the operator a cost, so that the optimizer can weigh a selective vertex filter against the traversal it feeds and make the build-or-index choice itself; move the fold into the background; stream the output of reach queries instead of materializing it; and extend
+model calibrated on these runs, the few-sources limit first, \rev{whose best value differs between our graphs}; give the operator a cost, so that the optimizer can weigh a selective vertex filter against the traversal it feeds and make the build-or-index choice itself; move the fold into the background; stream the output of reach queries instead of materializing it; and extend
 the operator to a bidirectional search for single pairs, to weighted shortest paths, to an index over several edge tables of one property graph, and to path
 reconstruction in the multi-source traversal.

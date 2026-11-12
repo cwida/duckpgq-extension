@@ -1840,9 +1840,9 @@ ABLATION_ROWS = [
     ("no_frontier_bitmap", "no summary bitmap"),
     ("partitions_4096", "destination ranges of 4096"),
     ("reverse_index", "with reverse partitions"),
-    ("pair_mode", "sources $\\times$ all as a pair list"),
-    ("reach_per_source", "reach as one search per source"),
-    ("paths", "paths instead of lengths"),
+    ("pair_mode", "sources $\\times$ all in \\texttt{lengths} mode"),
+    ("reach_per_source", "\\texttt{reach} as one search per source"),
+    ("paths", "\\texttt{paths} instead of \\texttt{lengths}"),
     ("threads_1", "1 thread"),
 ]
 ABLATION_COLUMNS = [("random_pairs", "1"), ("random_pairs", "2048"), ("random_pairs", "65536"),
