@@ -1,0 +1,123 @@
+rc13 (cf4d88ce build, 256 lanes), 12 Nov: median of three repeats, ms, index route, 32 threads.
+single-source = few_sources_limit 1000000 (one traversal per source); lane waves = few_sources_limit 0 (one lane per source).
+
+== microbench_graphalytics_cit_Patents_threads32_1794490508594961141.csv | Section 3 crossover cit-Patents rc13 12 Nov (256 lanes) repro 8ab7922f dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com | 8ab7922f
+ random_pairs (k pairs)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       2           41.0         51.0           lanes 1.24x slower      3/3  per_source / lane_waves
+       4           46.0         51.0           lanes 1.11x slower      3/3  per_source / lane_waves
+       8           52.0         54.0           lanes 1.04x slower      3/3  per_source / lane_waves
+      16           60.0         51.0           lanes 1.18x faster      3/3  per_source / lane_waves
+      32           73.0         53.0           lanes 1.38x faster      3/3  per_source / lane_waves
+      64           78.0         51.0           lanes 1.53x faster      3/3  per_source / lane_waves
+     128           86.0         52.0           lanes 1.65x faster      3/3  per_source / lane_waves
+     256          147.0         54.0           lanes 2.72x faster      3/3  per_source / lane_waves
+ all_pairs (k sources x 200 destinations)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       2           32.0         49.0           lanes 1.53x slower      3/3  per_source / lane_waves
+       4           24.0         49.0           lanes 2.04x slower      3/3  per_source / lane_waves
+       8           52.0         52.0           lanes 1.00x slower      3/3  per_source / lane_waves
+      16           58.0         51.0           lanes 1.14x faster      3/3  per_source / lane_waves
+      32           70.0         53.0           lanes 1.32x faster      3/3  per_source / lane_waves
+      64           73.0         57.0           lanes 1.28x faster      3/3  per_source / lane_waves
+     128           89.0         56.0           lanes 1.59x faster      3/3  per_source / lane_waves
+     256          155.0         61.0           lanes 2.54x faster      3/3  per_source / lane_waves
+== microbench_graphalytics_datagen_8_4_fb_threads32_1794490586427481338.csv | Section 3 crossover datagen-8_4-fb rc13 12 Nov (256 lanes) repro 8ab7922f dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com | 8ab7922f
+ random_pairs (k pairs)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       2          223.0        148.0           lanes 1.51x faster      3/3  per_source / lane_waves
+       4          359.0        157.0           lanes 2.29x faster      3/3  per_source / lane_waves
+       8          576.0        166.0           lanes 3.47x faster      3/3  per_source / lane_waves
+      16         1366.0        181.0           lanes 7.55x faster      3/3  per_source / lane_waves
+      32         2665.0        279.0           lanes 9.55x faster      3/3  per_source / lane_waves
+      64         3930.0        295.0          lanes 13.32x faster      3/3  per_source / lane_waves
+     128         5783.0        303.0          lanes 19.09x faster      3/3  per_source / lane_waves
+     256        10360.0        315.0          lanes 32.89x faster      3/3  per_source / lane_waves
+ all_pairs (k sources x 200 destinations)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       2          265.0        207.0           lanes 1.28x faster      3/3  per_source / lane_waves
+       4          502.0        226.0           lanes 2.22x faster      3/3  per_source / lane_waves
+       8          940.0        243.0           lanes 3.87x faster      3/3  per_source / lane_waves
+      16         1774.0        260.0           lanes 6.82x faster      3/3  per_source / lane_waves
+      32         3459.0        282.0          lanes 12.27x faster      3/3  per_source / lane_waves
+      64         6053.0        295.0          lanes 20.52x faster      3/3  per_source / lane_waves
+     128        10658.0        311.0          lanes 34.27x faster      3/3  per_source / lane_waves
+     256        21014.0        333.0          lanes 63.11x faster      3/3  per_source / lane_waves
+== microbench_graphalytics_graph500_24_threads32_1794491217950264579.csv | Section 3 crossover graph500-24 rc13 12 Nov (256 lanes) repro 8ab7922f dev-dsk-dwolde-1b-648f0152.eu-west-1.amazon.com | 8ab7922f
+ random_pairs (k pairs)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       2          458.0        407.0           lanes 1.13x faster      3/3  per_source / lane_waves
+       4          684.0        440.0           lanes 1.55x faster      3/3  per_source / lane_waves
+       8         1806.0        445.0           lanes 4.06x faster      3/3  per_source / lane_waves
+      16         3658.0        534.0           lanes 6.85x faster      3/3  per_source / lane_waves
+      32         6835.0        724.0           lanes 9.44x faster      3/3  per_source / lane_waves
+      64         7982.0        734.0          lanes 10.87x faster      3/3  per_source / lane_waves
+     128        13393.0        727.0          lanes 18.42x faster      3/3  per_source / lane_waves
+     256        23226.0        814.0          lanes 28.53x faster      3/3  per_source / lane_waves
+ all_pairs (k sources x 200 destinations)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       2          478.0        500.0           lanes 1.05x slower      3/3  per_source / lane_waves
+       4          800.0        556.0           lanes 1.44x faster      3/3  per_source / lane_waves
+       8         1978.0        559.0           lanes 3.54x faster      3/3  per_source / lane_waves
+      16         3829.0        700.0           lanes 5.47x faster      3/3  per_source / lane_waves
+      32         7095.0        731.0           lanes 9.71x faster      3/3  per_source / lane_waves
+      64        11409.0        732.0          lanes 15.59x faster      3/3  per_source / lane_waves
+     128        19698.0        746.0          lanes 26.40x faster      3/3  per_source / lane_waves
+     256        39925.0        761.0          lanes 52.46x faster      3/3  per_source / lane_waves
+
+For comparison, the runs of 2 Nov on dff0c0eb with 512 lanes (median of two repeats; files in repro/results/graphalytics_*/):
+
+== microbench_graphalytics_cit_Patents_threads32_1793636627192608570.csv | Section 3 crossover cit-Patents 2 Nov (512 lanes) | dff0c0eb
+ random_pairs (k pairs)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       1           24.5         22.5           lanes 1.09x faster      2/2  per_source / per_source
+       4           40.5         90.0           lanes 2.22x slower      2/2  per_source / lane_waves
+      16           63.0         95.0           lanes 1.51x slower      2/2  per_source / lane_waves
+      64           73.0         94.5           lanes 1.29x slower      2/2  per_source / lane_waves
+     256          143.0         93.0           lanes 1.54x faster      2/2  per_source / lane_waves
+    1024          469.0        171.0           lanes 2.74x faster      2/2  per_source / lane_waves
+    4096         1804.5        631.5           lanes 2.86x faster      2/2  per_source / lane_waves
+ all_pairs (k sources x 200 destinations)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       1           21.5         22.0           lanes 1.02x slower      2/2  per_source / per_source
+       4           26.0         90.0           lanes 3.46x slower      2/2  per_source / lane_waves
+      16           62.0         88.0           lanes 1.42x slower      2/2  per_source / lane_waves
+      64           85.5         94.5           lanes 1.11x slower      2/2  per_source / lane_waves
+     256          152.5         96.5           lanes 1.58x faster      2/2  per_source / lane_waves
+    1024          503.5        202.0           lanes 2.49x faster      2/2  per_source / lane_waves
+== microbench_graphalytics_datagen_8_4_fb_threads32_1793636773844728101.csv | Section 3 crossover datagen-8_4-fb 2 Nov (512 lanes) | dff0c0eb
+ random_pairs (k pairs)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       1           59.5         58.5           lanes 1.02x faster      2/2  per_source / per_source
+       4          347.0        312.0           lanes 1.11x faster      2/2  per_source / lane_waves
+      16         1344.5        344.0           lanes 3.91x faster      2/2  per_source / lane_waves
+      64         3928.5        596.0           lanes 6.59x faster      2/2  per_source / lane_waves
+     256        10319.0        654.0          lanes 15.78x faster      2/2  per_source / lane_waves
+    1024        35731.0       1130.0          lanes 31.62x faster      2/2  per_source / lane_waves
+    4096       136119.0       4179.0          lanes 32.57x faster      2/2  per_source / lane_waves
+ all_pairs (k sources x 200 destinations)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       1          125.5        125.0           lanes 1.00x faster      2/2  per_source / per_source
+       4          500.0        439.5           lanes 1.14x faster      2/2  per_source / lane_waves
+      16         1790.5        516.5           lanes 3.47x faster      2/2  per_source / lane_waves
+      64         5712.0        608.5           lanes 9.39x faster      2/2  per_source / lane_waves
+     256        21228.5        681.0          lanes 31.17x faster      2/2  per_source / lane_waves
+    1024        80787.0       1313.0          lanes 61.53x faster      2/2  per_source / lane_waves
+== microbench_graphalytics_graph500_24_threads32_1793639124556615096.csv | Section 3 crossover graph500-24 2 Nov (512 lanes) | dff0c0eb
+ random_pairs (k pairs)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       1          200.0        188.0           lanes 1.06x faster      2/2  per_source / per_source
+       4          735.0        692.5           lanes 1.06x faster      2/2  per_source / lane_waves
+      16         3522.5        822.0           lanes 4.29x faster      2/2  per_source / lane_waves
+      64         8123.0       1093.5           lanes 7.43x faster      2/2  per_source / lane_waves
+     256        24293.0       1215.0          lanes 19.99x faster      2/2  per_source / lane_waves
+    1024        88089.0       2355.0          lanes 37.41x faster      2/2  per_source / lane_waves
+    4096            inf       8848.0            lanes infx faster      1/2  ? / lane_waves
+ all_pairs (k sources x 200 destinations)
+       k  single-source   lane waves       lanes vs single-source  repeats  kernels chosen
+       1          274.5        272.5           lanes 1.01x faster      2/2  per_source / per_source
+       4          837.5        830.0           lanes 1.01x faster      2/2  per_source / lane_waves
+      16         3741.0       1058.0           lanes 3.54x faster      2/2  per_source / lane_waves
+      64        11783.0       1105.5          lanes 10.66x faster      2/2  per_source / lane_waves
+     256        38429.5       1127.5          lanes 34.08x faster      2/2  per_source / lane_waves
+    1024       151905.0       2318.0          lanes 65.53x faster      2/2  per_source / lane_waves
