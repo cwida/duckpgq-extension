@@ -110,3 +110,71 @@ ORDER BY id;
 ----
 0	Daniel
 1	Tavneet
+
+# Issue #306: UNION of two projected GRAPH_TABLE queries over an edge pattern,
+# filtered outside GRAPH_TABLE, returned no rows.
+statement ok
+CREATE TABLE Person(id VARCHAR PRIMARY KEY, name VARCHAR);
+
+statement ok
+INSERT INTO Person VALUES ('p1', 'Alice'), ('p2', 'Bob'), ('p3', 'Carol');
+
+statement ok
+CREATE TABLE Location(id VARCHAR PRIMARY KEY, city VARCHAR);
+
+statement ok
+INSERT INTO Location VALUES ('l1', 'Paris'), ('l2', 'Berlin');
+
+statement ok
+CREATE TABLE LivesIn(person_id VARCHAR, location_id VARCHAR);
+
+statement ok
+INSERT INTO LivesIn VALUES ('p1', 'l1'), ('p2', 'l1'), ('p3', 'l2');
+
+statement ok
+CREATE PROPERTY GRAPH rdf_pg
+VERTEX TABLES (Person, Location)
+EDGE TABLES (
+    LivesIn SOURCE KEY (person_id) REFERENCES Person (id)
+            DESTINATION KEY (location_id) REFERENCES Location (id)
+    );
+
+query IIII rowsort
+SELECT 'ex:' || addr AS addr, 'ex:Person' AS org, 'ex:' || p AS p, 'rdf:type' AS rel
+FROM GRAPH_TABLE(rdf_pg
+  MATCH (n0:Person)-[e0:LivesIn]->(n1:Location)
+  COLUMNS (n1.id AS addr, n0.id AS p, n1.city AS city)
+)
+WHERE city = 'Paris'
+UNION
+SELECT 'ex:' || addr AS addr, org AS org, 'ex:' || p AS p, 'ex:name' AS rel
+FROM GRAPH_TABLE(rdf_pg
+  MATCH (n0:Person)-[e0:LivesIn]->(n1:Location)
+  COLUMNS (n1.id AS addr, n0.name AS org, n0.id AS p, n1.city AS city)
+)
+WHERE city = 'Paris';
+----
+ex:l1	Alice	ex:p1	ex:name
+ex:l1	Bob	ex:p2	ex:name
+ex:l1	ex:Person	ex:p1	rdf:type
+ex:l1	ex:Person	ex:p2	rdf:type
+
+query IIII rowsort
+SELECT 'ex:' || addr AS addr, 'ex:Person' AS org, 'ex:' || p AS p, 'rdf:type' AS rel
+FROM GRAPH_TABLE(rdf_pg
+  MATCH (n0:Person)-[e0:LivesIn]->(n1:Location)
+  COLUMNS (n1.id AS addr, n0.id AS p, n1.city AS city)
+)
+WHERE city = 'Paris'
+UNION ALL
+SELECT 'ex:' || addr AS addr, org AS org, 'ex:' || p AS p, 'ex:name' AS rel
+FROM GRAPH_TABLE(rdf_pg
+  MATCH (n0:Person)-[e0:LivesIn]->(n1:Location)
+  COLUMNS (n1.id AS addr, n0.name AS org, n0.id AS p, n1.city AS city)
+)
+WHERE city = 'Paris';
+----
+ex:l1	Alice	ex:p1	ex:name
+ex:l1	Bob	ex:p2	ex:name
+ex:l1	ex:Person	ex:p1	rdf:type
+ex:l1	ex:Person	ex:p2	rdf:type
