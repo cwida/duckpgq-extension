@@ -709,6 +709,18 @@ PGQMatchFunction::CreatePathFindingFunction(vector<unique_ptr<PathReference>> &p
 				conditions.push_back(std::move(next_vertex_subpath->where_clause));
 			}
 			edge_element = GetPathElement(edge_subpath->path_list[0]);
+			if (edge_subpath->upper == 0) {
+				// {0,0} traverses no edge: the path stays at the previous vertex, which is also the next one.
+				if (!final_list) {
+					auto single_vertex_children = vector<unique_ptr<ParsedExpression>>();
+					single_vertex_children.push_back(
+					    PGQColumnRef(string("rowid"), previous_vertex_element->variable_binding));
+					final_list = make_uniq<FunctionExpression>("list_value", std::move(single_vertex_children));
+				}
+				previous_vertex_element = next_vertex_element;
+				previous_vertex_subpath = next_vertex_subpath;
+				continue;
+			}
 		}
 		auto previous_rowid = PGQColumnRef(string("rowid"), previous_vertex_element->variable_binding);
 		auto edge_rowid = PGQColumnRef(string("rowid"), edge_element->variable_binding);
@@ -971,7 +983,20 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 			edge_element = GetPathElement(edge_subpath->path_list[0]);
 			auto edge_table = FindGraphTable(edge_element->label, pg_table);
 
-			if (edge_subpath->upper > 1) {
+			if (edge_subpath->upper == 0) {
+				// {0,0} traverses no edge, so the next vertex is the previous vertex itself.
+				vertex_joins.MarkRequired(previous_vertex_element->variable_binding);
+				vertex_joins.MarkRequired(next_vertex_element->variable_binding);
+				if (previous_vertex_table == next_vertex_table) {
+					conditions.push_back(make_uniq<ComparisonExpression>(
+					    ExpressionType::COMPARE_EQUAL,
+					    PGQColumnRef(string("rowid"), previous_vertex_element->variable_binding),
+					    PGQColumnRef(string("rowid"), next_vertex_element->variable_binding)));
+				} else {
+					// Vertices of different tables are never the same vertex.
+					conditions.push_back(ConstantExpression::Boolean(false));
+				}
+			} else if (edge_subpath->upper > 1) {
 				// Add the path-finding
 				AddPathFinding(final_select_node, conditions, previous_vertex_element->variable_binding,
 				               edge_element->variable_binding, next_vertex_element->variable_binding, edge_table,
