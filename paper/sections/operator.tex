@@ -195,8 +195,8 @@ that person, where the forward orientation would run one lane per employee; at S
 Which way of running searches is fastest depends on the number of distinct sources. Few sources are cheapest as
 single-source searches, because a batch pays for its working set and its dense levels whatever its number of lanes.
 Many sources favour the batches, whose lanes share the work of every level and keep no per-vertex arrays.
-\rev{The limit of 16 sources is a default. Section~\ref{sec:eval-ablation} measures the crossover on \texttt{knows},
-and on graphs where a search covers every vertex it lies lower (Section~\ref{sec:eval-pairs}).} What a threshold cannot
+The limit of 16 sources is a default. Section~\ref{sec:eval-ablation} measures the crossover on \texttt{knows},
+and on graphs where a search covers every vertex it lies lower (Section~\ref{sec:eval-pairs}). What a threshold cannot
 see is how far each search runs; an unreachable pair searches the whole component of its source and a reachable one
 stops early, and about half of the random pairs on the directed \texttt{knows} graph are unreachable. A cost model
 would need an estimate of that reach, for example from the degree of the sources and the number of levels a search
@@ -228,7 +228,7 @@ queue, which zeroes it in parallel. Running them all at once would need a workin
 batches of 65\,536 random pairs at SF100, and a working-set cap, a quarter of \duckdb's memory limit, also bounds
 the number running at once. The bound follows the machine and the user's configuration; on our machine the cap
 is 24.6\,GiB, which lets graph500-24 run 14 batches of 1.7\,GB at once instead of 32. Running fewer batches than threads
-costs time, because the threads are idle whenever a level waits for its last task. One batch at a time makes 65\,536 random pairs \rev{eight times slower at SF100} (Section~\ref{sec:eval-ablation}).
+costs time, because the threads are idle whenever a level waits for its last task. One batch at a time makes 65\,536 random pairs eight times slower at SF100\rev{, and less on larger graphs} (Section~\ref{sec:eval-ablation}).
 
 Each running batch splits each of its phases into tasks. It gets an equal share of the threads, and for each of
 those threads one task per four million edges of the graph, with no more tasks in all than there are threads. With 32

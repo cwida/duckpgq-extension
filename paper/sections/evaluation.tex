@@ -72,14 +72,14 @@ four from sixteen pairs on. At 65\,536 pairs on SF10 it is 33 times faster than 
 Memgraph. At SF300 it answers 65\,536 pairs in 10.0\,s over the index, and none of the four finishes within the
 limit; Neo4j is the last to exceed it, after 248\,s for 16\,384 pairs.
 
-In \rev{\texttt{reach}} mode, the distance from each source to every reachable person, the operator shares its traversals in the
+In \texttt{reach} mode, the distance from each source to every reachable person, the operator shares its traversals in the
 same way. At 1024 sources on SF300 it produces 530\,M distances in 773\,ms over the index, 28 times faster than Kuzu,
 which runs one search per source, as Neo4j GDS does. Neo4j's Cypher and FalkorDB have no single-source form; they run
 one \texttt{shortestPath} per destination and exceed the limit already at one source from SF100 on.
 
 Inside \duckdb the operator replaces the 2023 UDFs and the recursive CTE. The UDFs receive their work per tuple and run one query on one core. They stay an order of magnitude
 behind the operator on random pairs, and on sources $\times$ all, where they must enumerate every destination as a
-pair, they need 2.4\,s for one source at SF10 where \rev{\texttt{reach}} mode needs 3\,ms. The recursive CTE evaluates a join per
+pair, they need 2.4\,s for one source at SF10 where \texttt{reach} mode needs 3\,ms. The recursive CTE evaluates a join per
 step and exceeds the limit from 16\,384 pairs at SF10.
 
 \input{tables/graphalytics}
@@ -92,7 +92,7 @@ Memgraph by 14\,\% and Kuzu by 3 times. On datagen and graph500-24 a source reac
 with Kuzu at one source and is 47 and 56 times faster at 1024, and on random pairs Kuzu exceeds the limit from 16\,384
 and from 2048 pairs. On both graphs the operator is slower for 16 sources than for 128 (4.5 against 2.7\,s on
 graph500-24), because its few-sources rule sends 16 sources to the single-source traversal, each search sweeping 4 to
-9\,M vertices, while 128 run as lanes. \rev{The default of 16 fits \texttt{knows} (Section~\ref{sec:eval-ablation}); on these two graphs the crossover lies below it.} None of the six graphs has a high diameter, such as a road network.
+9\,M vertices, while 128 run as lanes. The default of 16 fits \texttt{knows} (Section~\ref{sec:eval-ablation}); on these two graphs the crossover lies below it. None of the six graphs has a high diameter, such as a road network.
 
 \subsection{LDBC queries}
 \label{sec:eval-ldbc}
@@ -185,27 +185,26 @@ four folds, the four queries that triggered them took 1.7 to 1.8\,s, while the m
   \label{fig:crossover}
 \end{figure}
 
-\rev{Table~\ref{tab:ablation} changes one mechanism of the operator at a time, over the index at SF100. The choice of
+Table~\ref{tab:ablation} changes one mechanism of the operator at a time, over the index at SF100. The choice of
 traversal (Section~\ref{sec:choice}) has the largest effect. With the single-source traversal forced, 65\,536 pairs
 take twelve times as long and 1024 sources 2.7 times, because every source then sweeps the graph on its own. With the
 multi-source traversal forced nothing changes on the table's points, which lie far from the crossover, and
 Figure~\ref{fig:crossover} locates it. Up to 8 distinct sources the single-source traversal is within a tenth of the
 fastest way, and from 16, the default limit, the lanes are faster. They pay for their speed in memory, a working set of
 41\,MB per batch against 5\,MB for a single-source search. One lane per pair, as before the sources were deduplicated,
-takes 3.9 times as long for 2048 random pairs and 2.4 times for 1024 sources to one destination.}
+takes 3.9 times as long for 2048 random pairs and 2.4 times for 1024 sources to one destination.
 
-\rev{The scheduling of the batches (Section~\ref{sec:phases}) comes second; without the grouping every batch is
+The scheduling of the batches (Section~\ref{sec:phases}) comes second; without the grouping every batch is
 scheduled as an event of its own, and 65\,536 pairs take 2.4 times as long. On the larger graph500-24 the working sets
-of those batches exceed the machine's memory, 98\,GiB against 32\,GiB with the grouping. One batch at a time is eight
-times slower, because threads idle whenever a level waits for its last task. The layout of the partitioned CSR
+of those batches exceed the machine's memory, 98\,GiB against 32\,GiB with the grouping. One batch at a time is eight times slower, because threads idle whenever a level waits for its last task. \rev{The effect shrinks as the graph grows, to 3.9 times at SF300 and 1.2 times on graph500-24.} The layout of the partitioned CSR
 (Section~\ref{sec:csr}) matters less. Without the summary bitmap 65\,536 pairs take 1.3 times as long, and with
 destination ranges of 4096 ids, the narrowest we tested and a sixteenth of the default, they take 1.8 times as long,
-because a level then sweeps sixteen times as many partitions.}
+because a level then sweeps sixteen times as many partitions.
 
-\rev{Sources $\times$ all written as an explicit list of pairs in \texttt{lengths} mode takes 75 times as long as
+Sources $\times$ all written as an explicit list of pairs in \texttt{lengths} mode takes 75 times as long as
 \texttt{reach} mode for 1024 sources. Reverse partitions turn 1024 sources to one destination into one search from the
 destination, 6\,ms against 116\,ms. The \texttt{paths} mode costs 14 times the \texttt{lengths} mode at 65\,536 pairs,
 because the operator runs paths as one search per source (Section~\ref{sec:traversals}); it still answers them in
 45.9\,s, where Neo4j needs 199\,s for the lengths alone. On one thread instead of 32, 65\,536 pairs take 23 times as
 long and 1024 sources 11 times. One pair gains little from threads, because a single-source traversal parallelizes only
-its dense levels.}
+its dense levels.

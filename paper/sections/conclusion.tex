@@ -34,6 +34,6 @@ per query takes 3.9\,s. A commit of 2000 edge changes costs 19\,ms on its own, a
 across three scales, every transaction saw exactly the edges it was allowed to see.
 
 In the future we will replace the thresholds of Sections~\ref{sec:choice} and~\ref{sec:index-fold} with a cost
-model calibrated on these runs, the few-sources limit first, \rev{whose best value differs between our graphs}; give the operator a cost, so that the optimizer can weigh a selective vertex filter against the traversal it feeds and make the build-or-index choice itself; move the fold into the background; stream the output of reach queries instead of materializing it; and extend
+model calibrated on these runs, the few-sources limit first, whose best value differs between our graphs; give the operator a cost, so that the optimizer can weigh a selective vertex filter against the traversal it feeds and make the build-or-index choice itself; move the fold into the background; stream the output of reach queries instead of materializing it; and extend
 the operator to a bidirectional search for single pairs, to weighted shortest paths, to an index over several edge tables of one property graph, and to path
 reconstruction in the multi-source traversal.
