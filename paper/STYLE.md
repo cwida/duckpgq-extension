@@ -107,6 +107,14 @@ The same faults recurred, in this order of frequency. Check a section for them b
    ("as a rule of thumb, FSST halves the size of database text"; "To summarize, ... (1) ... (2) ... (3)"). The tables
    and figures carry the rest of the numbers.
 
+9. **Section 5, from the author's notes of 11 and 12 Nov.** Write from the operator's side: each paragraph starts
+   from one of its mechanisms, and the other systems are the reference, not the subject. Say "the other systems" or
+   name them; not "baselines". Every number carries its unit ("17.8 GiB against 6.0 GiB"); only a closing pair shares
+   one ("42 against 98 ms"). Factors, not percentages, when the neighbouring results are factors. A subsection that
+   says it measures at SF100 does not drop in other scales as parentheses; a trend across scales gets its own
+   sentence. Modes (`lengths`, `paths`, `reach`) in monospace. Point back to the section that explains a mechanism
+   when its measurement comes up. No bookkeeping in the prose (per-scale counts of a check, the name "oracle").
+
 Process lesson: sections patched while the design changed (3 before rc7, 4 before the restructure) drew structural
 notes; sections written in one pass from settled code drew wording notes only. Write Sections 5 and 6 once, from the
 final code and numbers, rather than patching the current text.
