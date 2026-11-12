@@ -444,6 +444,21 @@ readers and is now a sixth cost (a commit does no more work but waits, 150-210 m
 its own); abstract, introduction and conclusion no longer put the 19 ms of the sequential stream into the
 sixteen-reader sentence. Only archive numbers are in the text (19; 153; 150-210; 83 / 348 / 647).
 
+12 Nov: why the lock is held across the snapshot build (desk, from the code and the stack samples; not built or
+tested). It does not have to be. CSRIndex::Resolve takes the entry's read handle and runs Snapshot -> BuildSnapshot
+under it (src/core/index/csr_index.cpp:1640); BuildSnapshot copies the log prefix under the index's own mutex (:995)
+and then works on private copies, on the epoch (shared_ptr) and on row versions through DataTable::CanFetch (table
+locks, not the entry lock), touching the index again only for the snapshot-cache lookup and store. Over the long part
+the handle only keeps the index object from being rebound or dropped. RunFold already releases the handle for the
+rebuild and re-takes it for the install (:1415, 2 Nov), for the same reason. Unproven: that a commit's append and
+removal reach the log before the commit is visible to any reader; a test would have to confirm it. Two details: the
+hold is long because of contention, about nine in ten sampled reader stacks in the build are locking row-group mutexes
+in RowGroupCollection::CanFetch, so sixteen readers serialise on the table's mutex while each holds the index lock
+shared; and the commit takes the exclusive lock once for the appended chunk and once per flushed batch of deletes
+(IndexDataRemover::PushDelete), waiting for the readers each time. Decision (author, 12 Nov): an implementation
+detail; the paper states the cost (4.3, 4.7, 5.4) and says no more, no fix promised, no confirmation build; this
+entry is the answer if a reviewer asks.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under
