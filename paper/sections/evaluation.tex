@@ -41,7 +41,7 @@ system finishes, so the bound cut no path. A query over 600\,s is reported as ti
 same shape are then recorded as timed out without running them. Every point is the median of three runs; the LDBC
 table reports the median of the three runs per parameter set, averaged over the five sets. A \duckpgq run is a fresh
 process that executes the query once untimed, which also loads the index, before the timed runs; the native systems
-run three timed repetitions back to back, and a cold first run does not move the median. Wherever two systems complete the same point, the harness finds the same number of reached pairs and the same sum
+run three timed repetitions back to back, and a cold first run does not move the median. \rev{For points of one second and more the three runs differ by less than 2\,\% in the median, and by at most 15\,\% for \duckpgq and 20\,\% for the other systems.} Wherever two systems complete the same point, the harness finds the same number of reached pairs and the same sum
 of path lengths.
 
 \begin{figure}[t]
@@ -171,7 +171,7 @@ four folds, the four queries that triggered them took 1.7 to 1.8\,s, while the m
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/crossover_sf100.pdf}
-  \caption{Seconds per query over the index at SF100, 32 threads, median of three runs, for $k$ distinct sources run \rev{two ways, the single-source traversal once per source and the multi-source traversal with one lane per source}. Left: $k$ random pairs, one destination each; right: $k$ sources with 200 destinations each. The dotted
+  \caption{Seconds per query over the index at SF100, 32 threads, median of three runs, for $k$ distinct sources run two ways, the single-source traversal once per source and the multi-source traversal with one lane per source. Left: $k$ random pairs, one destination each; right: $k$ sources with 200 destinations each. The dotted
   line is the smallest $k$ at which the single-source traversal is no longer within a tenth of the fastest way.}
   \label{fig:crossover}
 \end{figure}

@@ -475,6 +475,13 @@ and sources_all; sections/appendix_queries.tex moved to repro/package/queries.te
 writes the paper's four data figures and six tables by default; DUCKPGQ_EXTRA_DIR=<dir> also writes the diagnostic
 figures and the old table layouts there, DUCKPGQ_PREVIEW_DIR=<dir> writes PNG previews.
 
+12 Nov: spread of the three repeats over the pair sweeps of all six graphs (newest file per system, shape and
+count; spread = (max - min) / median). DuckPGQ index and build, 132 points: median 3.5%, 90th percentile 9.3%, max 33%
+(a 3 ms query at timer resolution); points of 1 s and more, 49: median 1.7%, max 14.8%. Other systems, 262 points:
+median 1.9%, 90th percentile 39%, max 2476% (Kuzu, one pair on graph500-24: 9.875 s cold, then 0.383 and 0.382 s);
+points of 1 s and more, 159: median 1.1%, max 20.4%. The large spreads are cold first runs, which the median does not
+follow. The setup states the 1 s figures.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under
