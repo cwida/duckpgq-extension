@@ -15,6 +15,9 @@ enum class PGQMatchType : uint8_t {
 
 class PathElement : public PathReference {
 public:
+	static constexpr const PGQPathReferenceType TYPE = PGQPathReferenceType::PATH_ELEMENT;
+
+public:
 	PGQMatchType match_type;
 
 	std::string label;

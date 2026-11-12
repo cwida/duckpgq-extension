@@ -1,0 +1,214 @@
+# name: test/sql/pattern_matching/optional_match.test
+# description: An edge quantified with ? is matched optionally (LEFT JOIN), unlike {0,1} (issue #112)
+# group: [pattern_matching]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Student(id BIGINT PRIMARY KEY, name VARCHAR);
+
+statement ok
+INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David'), (5, 'Eve');
+
+statement ok
+CREATE TABLE know(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO know VALUES (0, 1), (0, 2), (0, 3), (3, 0), (1, 2), (1, 3), (2, 3), (4, 3);
+
+statement ok
+CREATE TABLE University(id BIGINT PRIMARY KEY, name VARCHAR);
+
+statement ok
+INSERT INTO University VALUES (0, 'VU'), (1, 'UVA'), (2, 'TU');
+
+statement ok
+CREATE TABLE studyAt(studentId BIGINT, universityId BIGINT, classYear BIGINT);
+
+statement ok
+INSERT INTO studyAt VALUES (0, 0, 2010), (1, 0, 2012), (2, 1, 2015);
+
+statement ok
+CREATE PROPERTY GRAPH snb
+VERTEX TABLES (Student, University)
+EDGE TABLES (
+    know SOURCE KEY (src) REFERENCES Student (id)
+         DESTINATION KEY (dst) REFERENCES Student (id),
+    studyAt SOURCE KEY (studentId) REFERENCES Student (id)
+            DESTINATION KEY (universityId) REFERENCES University (id)
+);
+
+# Students without a university are kept, with NULL for the optional variables.
+query IIII
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student)-[sa:studyAt]->?(u:University)
+    COLUMNS (a.id, a.name, sa.classYear, u.name AS university))
+ORDER BY id;
+----
+0	Daniel	2010	VU
+1	Tavneet	2012	VU
+2	Gabor	2015	UVA
+3	Peter	NULL	NULL
+4	David	NULL	NULL
+5	Eve	NULL	NULL
+
+# {0,1} keeps its old meaning: the edge must exist.
+query II
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student)-[sa:studyAt]->{0,1}(u:University)
+    COLUMNS (a.id, u.name AS university))
+ORDER BY id;
+----
+0	VU
+1	VU
+2	UVA
+
+# The example of the issue: the optional edge after a mandatory one.
+query III
+FROM GRAPH_TABLE (snb
+    MATCH (b:Student)<-[k:know]-(a:Student)-[sa:studyAt]->?(u:University)
+    WHERE b.id = 3
+    COLUMNS (a.id AS a_id, b.id AS b_id, u.name AS university))
+ORDER BY a_id;
+----
+0	3	VU
+1	3	VU
+2	3	UVA
+4	3	NULL
+
+# The vertex before the optional edge is only used for its key; it must not be eliminated.
+query III
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student)-[k:know]->(b:Student)-[sa:studyAt]->?(u:University)
+    WHERE a.id = 0
+    COLUMNS (a.id AS a_id, b.id AS b_id, u.id AS u_id))
+ORDER BY b_id;
+----
+0	1	0
+0	2	1
+0	3	NULL
+
+# An element-local WHERE in the optional part restricts the optional match, not the result.
+query II
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student)-[sa:studyAt]->?(u:University WHERE u.name = 'UVA')
+    COLUMNS (a.id, u.name AS university))
+ORDER BY id;
+----
+0	NULL
+1	NULL
+2	UVA
+3	NULL
+4	NULL
+5	NULL
+
+query II
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student)-[sa:studyAt WHERE sa.classYear > 2011]->?(u:University)
+    COLUMNS (a.id, u.name AS university))
+ORDER BY id;
+----
+0	NULL
+1	VU
+2	UVA
+3	NULL
+4	NULL
+5	NULL
+
+# The pattern-level WHERE applies to the result of the optional match.
+query II
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student)-[sa:studyAt]->?(u:University)
+    WHERE u.name = 'VU'
+    COLUMNS (a.id, u.name AS university))
+ORDER BY id;
+----
+0	VU
+1	VU
+
+query I
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student)-[sa:studyAt]->?(u:University)
+    WHERE u.id IS NULL
+    COLUMNS (a.id))
+ORDER BY id;
+----
+3
+4
+5
+
+# Several optional patterns starting at the same vertex.
+query III
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student)-[sa:studyAt]->?(u:University), (a:Student)-[k:know]->?(b:Student)
+    WHERE a.id >= 2
+    COLUMNS (a.id AS a_id, u.name AS university, b.id AS b_id))
+ORDER BY a_id;
+----
+2	UVA	3
+3	NULL	0
+4	NULL	3
+5	NULL	NULL
+
+# Edge directions.
+query II
+FROM GRAPH_TABLE (snb
+    MATCH (u:University)<-[sa:studyAt]-?(a:Student)
+    COLUMNS (u.name AS university, a.id AS a_id))
+ORDER BY university, a_id;
+----
+TU	NULL
+UVA	2
+VU	0
+VU	1
+
+query II
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student WHERE a.id IN (4, 5))-[k:know]-?(b:Student)
+    COLUMNS (a.id AS a_id, b.id AS b_id))
+ORDER BY a_id, b_id;
+----
+4	3
+5	NULL
+
+query II
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student WHERE a.id IN (0, 1))<-[k:know]->?(b:Student)
+    COLUMNS (a.id AS a_id, b.id AS b_id))
+ORDER BY a_id, b_id;
+----
+0	3
+1	NULL
+
+# Without COLUMNS the optional vertex's columns are part of the result.
+query IIII
+FROM GRAPH_TABLE (snb MATCH (a:Student WHERE a.id IN (2, 3))-[sa:studyAt]->?(u:University))
+ORDER BY 1;
+----
+2	Gabor	1	UVA
+3	Peter	NULL	NULL
+
+# Unsupported forms.
+statement error
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student)-[k:know]->?(b:Student)-[k2:know]->(c:Student)
+    COLUMNS (a.id));
+----
+must be the last edge of its path pattern
+
+statement error
+FROM GRAPH_TABLE (snb
+    MATCH (a:Student)-[sa:studyAt]->?(u:University), (b:Student)-[sa2:studyAt]->(u:University)
+    COLUMNS (a.id));
+----
+cannot be used elsewhere in the pattern
+
+statement error
+FROM GRAPH_TABLE (snb
+    MATCH p = (a:Student)-[sa:studyAt]->?(u:University)
+    COLUMNS (a.id));
+----
+A path variable over an edge quantified with ? is not supported yet

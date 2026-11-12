@@ -10,6 +10,9 @@ enum class PGQPathMode : uint8_t { NONE, WALK, SIMPLE, TRAIL, ACYCLIC };
 
 class SubPath : public PathReference {
 public:
+	static constexpr const PGQPathReferenceType TYPE = PGQPathReferenceType::SUBPATH;
+
+public:
 	vector<unique_ptr<PathReference>> path_list;
 
 	unique_ptr<ParsedExpression> where_clause;
@@ -18,6 +21,8 @@ public:
 
 	bool single_bind;
 	int64_t lower, upper;
+	//! Quantified with `?` (a questioned path primary): translated to a LEFT JOIN. {0,1} does not set it.
+	bool optional;
 
 	string path_variable;
 
@@ -28,6 +33,7 @@ public:
 		single_bind = true;
 		lower = 1;
 		upper = 1;
+		optional = false;
 	}
 
 	string ToString() const override;
