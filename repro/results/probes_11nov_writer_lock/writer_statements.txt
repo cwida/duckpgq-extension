@@ -1,0 +1,19 @@
+Writer statement timing, SF10, 16 readers, 190 commits of 2000 changes, 200 ms pause, fold ratio 0.1, 32 threads.
+Milliseconds, median and p90 over the run. commit = the driver's whole write transaction (BEGIN..COMMIT), as in the
+sweep's concurrent table; w_begin/w_insert/w_delete/w_commit = its four statements.
+
+11 Nov, index route's readers (raw/idx16.csv) and build route's readers (raw/bld16.csv):
+idx16.csv commit n=190 med=161.6 p90=288.9 query_index n=15744 med=42.5 p90=126.3 w_begin n=190 med=0.3 p90=0.5 
+w_commit n=190 med=153.5 p90=281.1 w_delete n=190 med=5.8 p90=8.0 w_insert n=190 med=1.5 p90=2.0
+bld16.csv commit n=190 med=77.5 p90=104.5 query_build n=8033 med=96.5 p90=128.3 w_begin n=190 med=0.4 p90=0.4 
+w_commit n=190 med=27.4 p90=41.6 w_delete n=190 med=48.1 p90=65.7 w_insert n=190 med=1.6 p90=3.0
+
+11 Nov, index route's readers, the run the stacks were sampled from (raw/idxstk.csv):
+idxstk.csv commit n=190 med=167.3 p90=316.0 query_index n=14110 med=48.6 p90=157.0 w_begin n=190 med=0.3 p90=0.5 
+w_commit n=190 med=160.0 p90=308.0 w_delete n=190 med=5.9 p90=8.5 w_insert n=190 med=1.5 p90=2.1
+
+12 Nov, the same two runs under the lock-timing shim (raw/*_shim.csv):
+idx16_shim.csv commit n=190 med=181.4 p90=311.5 query_index n=14297 med=48.7 p90=152.3 w_begin n=190 med=0.3 p90=0.6 
+w_commit n=190 med=173.1 p90=304.6 w_delete n=190 med=6.0 p90=8.1 w_insert n=190 med=1.6 p90=1.9
+bld16_shim.csv commit n=190 med=87.1 p90=108.4 query_build n=8204 med=96.5 p90=128.3 w_begin n=190 med=0.4 p90=0.4 
+w_commit n=190 med=33.4 p90=50.3 w_delete n=190 med=48.8 p90=66.4 w_insert n=190 med=1.7 p90=2.7

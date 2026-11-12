@@ -1,0 +1,32 @@
+Commit and reader medians over the run, in windows of 19 commits (ms). SF10, 16 readers, 190 commits of 2000
+changes, 200 ms pause, fold ratio 0.1, 32 threads; runs of 11 Nov. COMMIT = the writer's COMMIT statement,
+transaction = BEGIN..COMMIT. delta/tombstones/folds = the index's counters as the readers of the window saw them
+(maxima); the build route's readers do not read the index, so the columns are empty there.
+
+== index route's readers (raw/idx16.csv)
+commits     COMMIT  transaction reader query  queries    delta  tombstones  folds
+1-19          39.6         47.8         11.1     4364    34862        2857      0
+20-38         83.3         89.8         36.3     1935    69538        5863      0
+39-57        126.6        134.3         62.5     1348   103863        8912      0
+58-76        168.2        176.4         88.5     1065   137860       12005      0
+77-95        207.9        217.2        117.0     1008   171618       14980      1
+96-114        91.4        101.2         33.3     2021   204971       19367      1
+115-133      146.5        154.3         66.9     1286   238054       23530      1
+134-152      192.6        202.2        103.8      987   270430       27722      1
+153-171      275.7        283.0        134.9      914   302114       31738      1
+172-190      293.7        301.7        161.6      816   332213       35868      1
+all          153.5        161.6         42.5    15744
+
+== build route's readers (raw/bld16.csv)
+commits     COMMIT  transaction reader query  queries    delta  tombstones  folds
+1-19          26.1         77.8         86.7     1095                            
+20-38         24.9         64.7         92.0      821                            
+39-57         27.4         80.6         94.0      819                            
+58-76         27.4         73.6         96.2      780                            
+77-95         21.2         68.3         98.4      758                            
+96-114        31.0         87.5         97.9      776                            
+115-133       26.8         78.2        100.2      765                            
+134-152       29.4         81.9        103.5      758                            
+153-171       25.9         79.1        104.6      713                            
+172-190       28.7         79.6        105.4      748                            
+all           27.4         77.5         96.5     8033
