@@ -1850,7 +1850,7 @@ ABLATION_ROWS = [
     ("paths", "\\texttt{paths} instead of \\texttt{lengths}"),
     ("threads_1", "1 thread"),
 ]
-ABLATION_COLUMNS = [("random_pairs", "1"), ("random_pairs", "2048"), ("random_pairs", "65536"),
+ABLATION_COLUMNS = [("random_pairs", "1"), ("random_pairs", "65536"),
                     ("multi_source", "1"), ("multi_source", "1024"), ("same_dst", "1024")]
 
 
@@ -1879,12 +1879,13 @@ def ablation_table(filename, sf="100", since_ns=1793830000000000000, system="duc
 
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.6pt}",
              r"\caption{One mechanism switched off or changed at a time, over the index at SF100, 32 threads unless stated; "
-             r"seconds per query, median of three runs, for 1, 2048 and 65\,536 random pairs, 1 and 1024 sources to every "
-             r"reachable person, and 1024 sources to one destination.}\label{tab:ablation}",
-             r"\begin{tabular}{lrrrrrr}\toprule",
-             r" & \multicolumn{6}{c}{seconds per query} \\",
-             r" & \multicolumn{3}{c}{random pairs} & \multicolumn{2}{c}{sources $\times$ all} & $\to$ 1 \\",
-             r"configuration & 1 & 2048 & 65\,536 & 1 & 1024 & 1024 \\ \midrule"]
+             r"seconds per query, median of three runs, for 1 and 65\,536 random pairs, 1 and 1024 sources to every "
+             r"reachable person, and 1024 sources to one destination. A dash marks a combination that was not measured; "
+             r"the scheduling and bitmap switches were run on 2048 random pairs and more.}\label{tab:ablation}",
+             r"\begin{tabular}{lrrrrr}\toprule",
+             r" & \multicolumn{5}{c}{seconds per query} \\",
+             r" & \multicolumn{2}{c}{random pairs} & \multicolumn{2}{c}{sources $\times$ all} & $\to$ 1 \\",
+             r"configuration & 1 & 65\,536 & 1 & 1024 & 1024 \\ \midrule"]
     for config, label in ABLATION_ROWS:
         if not any((config, shape, count) in by for shape, count in ABLATION_COLUMNS):
             continue
