@@ -41,6 +41,8 @@
 \newcommand{\cn}{\textcolor{red}{[cite]}\xspace}
 
 \lstset{basicstyle=\ttfamily\small, breaklines=true, columns=fullflexible, keepspaces=true}
+% Let TeX stretch a line a little before it lets text stick out of the column
+\emergencystretch=1em
 
 \begin{document}
 \title{DuckPGQ: Extending DuckDB with a Path-Finding Operator and a Transactional CSR Index}
@@ -75,7 +77,7 @@ classifies, so that every transaction traverses exactly the edges it may see. On
 factor 300, \duckpgq answers 1024 sources to every reachable person in 773\,ms against 21.9\,s for Kuzu, BI19 with up
 to 2.4\,M pairs in 0.77\,s against 47\,s for Neo4j, and 65\,536 random pairs in 10\,s, where Kuzu, Neo4j, Memgraph
 and FalkorDB all exceed ten minutes. Under sixteen concurrent readers and a writer, a query over the index takes
-82\,ms against 3.9\,s with a CSR built per query. \rev{Without concurrent readers a commit of 2000 edge changes costs 19\,ms, against 335\,ms for Kuzu.}
+82\,ms against 3.9\,s with a CSR built per query. Without concurrent readers a commit of 2000 edge changes costs 19\,ms, against 335\,ms for Kuzu.
 \end{abstract}
 
 \maketitle
