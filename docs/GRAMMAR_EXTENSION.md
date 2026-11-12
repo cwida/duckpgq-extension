@@ -58,6 +58,12 @@ new connections can reconstruct graphs created with aliased references.
 - Edge directions `-[e]->`, `<-[e]-`, `-[e]-`, and the spaced spellings the old parser accepted.
 - Quantifiers `*`, `+`, `?`, `{n}`, `{m,n}`, `{m,}`, `{,n}`, including the forms the tokenizer fuses with the arrow
   (`->*`, `->?`, `-*`, `-?`).
+- `?` is an optional match, not the quantifier `{0,1}`: the edge and the vertex after it are `LEFT JOIN`ed onto the
+  rest of the match, so rows without such an edge are kept with NULL for both variables. Element-local `WHERE`s in
+  the optional part go into the join condition; the pattern-level `WHERE` filters the result. The optional edge must
+  be the last edge of its path pattern, its edge and vertex variables cannot occur elsewhere in the MATCH, and it
+  cannot be under a path variable. Several optional edges from one vertex are written as separate path patterns:
+  `(a:Student)-[s:studyAt]->?(u:University), (a:Student)-[w:workAt]->?(c:Company)`.
 - Path variables, `ANY SHORTEST`, `ALL SHORTEST`, `SHORTEST k`, and the `WALK`/`TRAIL`/`SIMPLE`/`ACYCLIC` modes.
   Which of these the match rewrite can execute is decided in the rewrite, not the grammar.
 

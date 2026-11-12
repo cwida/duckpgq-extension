@@ -17,6 +17,7 @@ unique_ptr<PathReference> SubPath::Copy() {
 	}
 	result->lower = lower;
 	result->upper = upper;
+	result->optional = optional;
 	result->single_bind = single_bind;
 
 	result->path_variable = path_variable;
@@ -59,6 +60,9 @@ bool SubPath::Equals(const PathReference *other_p) const {
 	if (upper != other->upper) {
 		return false;
 	}
+	if (optional != other->optional) {
+		return false;
+	}
 	if (single_bind != other->single_bind) {
 		return false;
 	}
@@ -75,6 +79,7 @@ void SubPath::Serialize(Serializer &serializer) const {
 	serializer.WriteProperty(104, "upper", upper);
 	serializer.WriteProperty(105, "where_clause", where_clause);
 	serializer.WriteProperty(106, "path_variable", path_variable);
+	serializer.WritePropertyWithDefault<bool>(107, "optional", optional, false);
 }
 
 unique_ptr<PathReference> SubPath::Deserialize(Deserializer &deserializer) {
@@ -88,6 +93,7 @@ unique_ptr<PathReference> SubPath::Deserialize(Deserializer &deserializer) {
 	deserializer.ReadProperty(104, "upper", result->upper);
 	deserializer.ReadProperty(105, "where_clause", result->where_clause);
 	deserializer.ReadProperty(106, "path_variable", result->path_variable);
+	deserializer.ReadPropertyWithExplicitDefault<bool>(107, "optional", result->optional, false);
 	return std::move(result);
 }
 string SubPath::ToString() const {
@@ -129,7 +135,9 @@ string SubPath::ToString() const {
 			throw InternalException("Unknown PathReferenceType found.");
 		}
 	}
-	if (lower != upper) {
+	if (optional) {
+		result += "?";
+	} else if (lower != upper) {
 		result += "{" + std::to_string(lower) + "," + std::to_string(upper) + "}";
 	}
 	return result;

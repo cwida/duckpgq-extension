@@ -18,6 +18,8 @@ public:
 
 	bool single_bind;
 	int64_t lower, upper;
+	//! Quantified with `?` (a questioned path primary): translated to a LEFT JOIN. {0,1} does not set it.
+	bool optional;
 
 	string path_variable;
 
@@ -28,6 +30,7 @@ public:
 		single_bind = true;
 		lower = 1;
 		upper = 1;
+		optional = false;
 	}
 
 	string ToString() const override;

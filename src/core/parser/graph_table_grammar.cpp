@@ -153,6 +153,7 @@ void ApplyQuantifier(PEGTransformer &transformer, optional_ptr<ParseResult> quan
 	}
 	subpath.lower = text == "+" ? 1 : 0;
 	subpath.upper = text == "?" ? 1 : unbounded;
+	subpath.optional = text == "?";
 }
 
 // DuckPGQEdgeLeft DuckPGQEdgeBody DuckPGQEdgeTail

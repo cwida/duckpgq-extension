@@ -157,6 +157,26 @@ struct PathFindingCSRs {
 	case_insensitive_map_t<string> shortest_path_ctes;
 };
 
+//! An edge quantified with `?` and the vertex after it. The pair is LEFT JOINed onto the rest of the match, so a row
+//! without such an edge is kept with NULL for the edge and vertex variables.
+struct OptionalMatchSegment {
+	//! The vertex before the optional edge, which belongs to the mandatory part of the match
+	string prev_binding;
+	//! The segment's edge table (twice for <-[e]->) and vertex table
+	case_insensitive_map_t<shared_ptr<PropertyGraphTable>> alias_map;
+	//! The UNION ALL subquery of an undirected edge
+	unique_ptr<TableRef> from_clause;
+	VertexJoinMap vertex_joins;
+	//! Element-local WHERE and sublabel conditions of the segment; they go into the LEFT JOIN condition
+	vector<unique_ptr<ParsedExpression>> conditions;
+};
+
+struct OptionalMatches {
+	vector<OptionalMatchSegment> segments;
+	//! Element variable -> how often it occurs in the MATCH
+	case_insensitive_map_t<idx_t> binding_counts;
+};
+
 struct PGQMatchFunction : public TableFunction {
 public:
 	PGQMatchFunction() : TableFunction("duckpgq_match", vector<LogicalType>(), nullptr, nullptr) {
@@ -275,7 +295,15 @@ public:
 	                            vector<unique_ptr<ParsedExpression>> &conditions, unique_ptr<SelectNode> &select_node,
 	                            case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
 	                            CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
-	                            MatchExpression &original_ref, VertexJoinMap &vertex_joins, PathFindingCSRs &csrs);
+	                            MatchExpression &original_ref, VertexJoinMap &vertex_joins, PathFindingCSRs &csrs,
+	                            OptionalMatches &optional_matches);
+
+	//! Translate path_list[edge_idx], an edge quantified with `?`, and the vertex after it into an optional segment
+	static void AddOptionalSegment(vector<unique_ptr<PathReference>> &path_list, idx_t edge_idx,
+	                               const PathElement &prev_vertex_element,
+	                               const shared_ptr<PropertyGraphTable> &prev_vertex_table,
+	                               CreatePropertyGraphInfo &pg_table, int32_t &extra_alias_counter,
+	                               VertexJoinMap &vertex_joins, OptionalMatches &optional_matches);
 
 	static void CheckNamedSubpath(SubPath &subpath, MatchExpression &original_ref, CreatePropertyGraphInfo &pg_table,
 	                              unique_ptr<SelectNode> &final_select_node,
