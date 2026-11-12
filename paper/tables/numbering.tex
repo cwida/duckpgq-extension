@@ -1,0 +1,10 @@
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}
+\caption{Random pairs over three CSRs of the same layout that differ in whether they are built inside the query and in how they number vertices; seconds per query, median of three runs, 32 threads. The two indexes were measured on copies of the sweep's databases.}\label{tab:numbering}
+\begin{tabular}{llrrrr}\toprule
+ & & \multicolumn{4}{c}{seconds per query} \\
+ & & \multicolumn{2}{c}{SF100} & \multicolumn{2}{c}{SF300} \\
+CSR & vertex ids & 2048 & 65\,536 & 2048 & 65\,536 \\ \midrule
+built per query (build route) & row order & 0.283 & 4.1 & 0.714 & 12.8 \\
+index keyed by row ids & row order & 0.147 & 4.0 & 0.407 & 12.1 \\
+index keyed by person ids & sorted keys & 0.129 & 3.3 & 0.343 & 9.8 \\
+\bottomrule\end{tabular}\end{table}

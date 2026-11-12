@@ -19,7 +19,7 @@ joins over the vertex and edge tables and the pattern's predicates become filter
 unchanged by this work. Only the variable-length and shortest-path patterns change. They become the marker function
 that the optimizer rule replaces by the path-finding operator (Section~\ref{sec:planner}).
 
-\paragraph{\duckdb, pipelines and extensions} \duckdb executes a query plan as pipelines that push one \duckdb
+\paragraph{\duckdb, pipelines and extensions} \duckdb~\cite{raasveldt2020duckdb} executes a query plan as pipelines that push one \duckdb
 vector, 2048 rows, at a time from a source through operators into a sink; a sink that must see all its input, a hash join build or a
 sort, ends one pipeline and starts the next. Pipelines are broken into tasks that a fixed pool of worker threads
 executes, and a pipeline's completion is an \emph{event} whose callback can schedule further events, which is how operators run multi-phase work without blocking a thread. Operator memory comes from \duckdb's

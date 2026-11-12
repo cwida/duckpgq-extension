@@ -1,13 +1,14 @@
-\begin{table*}[t]\centering\scriptsize\setlength{\tabcolsep}{4pt}
-\caption{LDBC IC13 (one pair), BI19 (city $\times$ city) and BI20 (company $\to$ one person) as hop-count shortest paths on the undirected knows graph: seconds per query, the median of three runs per parameter set averaged over five sets, 32 threads, each system in its fastest formulation.}\label{tab:ldbc}
+\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{1.4pt}
+\caption{LDBC IC13 (one pair), BI19 (city $\times$ city) and BI20 (company $\to$ one person) as hop-count shortest paths on the undirected knows graph: seconds per query, the median of three runs per parameter set averaged over five sets, 32 threads, each system in its fastest formulation; GDS at its four-thread limit.}\label{tab:ldbc}
 \begin{tabular}{lrrrrrrrrr}\toprule
- & \multicolumn{3}{c}{LDBC SF10} & \multicolumn{3}{c}{LDBC SF100} & \multicolumn{3}{c}{LDBC SF300} \\
+ & \multicolumn{9}{c}{seconds per query} \\
+ & \multicolumn{3}{c}{SF10} & \multicolumn{3}{c}{SF100} & \multicolumn{3}{c}{SF300} \\
 system & IC13 & BI19 & BI20 & IC13 & BI19 & BI20 & IC13 & BI19 & BI20 \\ \midrule
-DuckPGQ index & 4\,ms & \textbf{12\,ms} & \textbf{5\,ms} & 14\,ms & \textbf{137\,ms} & \textbf{26\,ms} & 28\,ms & \textbf{765\,ms} & \textbf{61\,ms} \\
-DuckPGQ build & 33\,ms & 44\,ms & 37\,ms & 267\,ms & 423\,ms & 288\,ms & 626\,ms & 1.6\,s & 692\,ms \\
-Neo4j & \textbf{3\,ms} & 40\,ms & 22\,ms & \textbf{7\,ms} & 3.9\,s & 126\,ms & \textbf{6\,ms} & 47.0\,s & 1.2\,s \\
-Kuzu & 7\,ms & 524\,ms & 1.4\,s & 24\,ms & 22.3\,s & 29.4\,s & 50\,ms & 332\,s & timeout \\
-FalkorDB & 12\,ms & 18.4\,s & 2.9\,s & 52\,ms & timeout & 212\,s & 116\,ms & timeout & timeout \\
-Memgraph & 375\,ms & 140\,ms & 97\,ms & 8.6\,s & 17.0\,s & 646\,ms & 31.8\,s & timeout & 47.8\,s \\
-Neo4j GDS (4 thr.) & 69\,ms & 11.0\,s & 66.9\,s & 530\,ms & timeout & timeout & 1.5\,s & timeout & timeout \\
-\bottomrule\end{tabular}\end{table*}
+DuckPGQ index & 0.004 & \textbf{0.012} & \textbf{0.005} & 0.014 & \textbf{0.137} & \textbf{0.026} & 0.028 & \textbf{0.765} & \textbf{0.061} \\
+DuckPGQ build & 0.033 & 0.044 & 0.037 & 0.267 & 0.423 & 0.288 & 0.626 & 1.6 & 0.692 \\
+Neo4j & \textbf{0.003} & 0.040 & 0.022 & \textbf{0.007} & 3.9 & 0.126 & \textbf{0.006} & 47.0 & 1.2 \\
+Kuzu & 0.007 & 0.524 & 1.4 & 0.024 & 22.3 & 29.4 & 0.050 & 332 & $>$600 \\
+FalkorDB & 0.012 & 18.4 & 2.9 & 0.052 & $>$600 & 212 & 0.116 & $>$600 & $>$600 \\
+Memgraph & 0.375 & 0.140 & 0.097 & 8.6 & 17.0 & 0.646 & 31.8 & $>$600 & 47.8 \\
+Neo4j GDS & 0.069 & 11.0 & 66.9 & 0.530 & $>$600 & $>$600 & 1.5 & $>$600 & $>$600 \\
+\bottomrule\end{tabular}\end{table}

@@ -35,16 +35,16 @@ recursive join and accept its performance, or wait for the system's developers t
 Extensions have brought graph queries to relational systems before. Apache AGE adds Cypher to
 PostgreSQL~\cite{apacheage}, pgRouting runs shortest-path algorithms over a graph it builds from a SQL query on every
 call~\cite{pgrouting}, and some engines implement \sqlpgq inside their own code~\cite{oraclesqlpgq}. As far as we
-know, no extension combines a path-finding operator inside \rev{the database system's} planner with a graph index that stays
-consistent with \rev{its} transactions, built only on the interfaces \rev{the system} offers to every extension. This paper
+know, no extension combines a path-finding operator inside the database system's planner with a graph index that stays
+consistent with its transactions, built only on the interfaces the system offers to every extension. This paper
 shows that a loadable extension can add them.
 
-\duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb~\cite{duckdb2019} that
+\duckpgq~\cite{tenwolde2023duckpgq} was our first attempt. It is an extension of \duckdb~\cite{duckdb2019,raasveldt2020duckdb} that
 parses \sqlpgq and rewrites it into relational SQL, and it implemented the two graph-specific pieces, a compressed
 sparse row (CSR) representation of the graph and multi-source breadth-first search (\msbfs)~\cite{then2014msbfs} over
 it, as scalar user-defined functions (UDFs), which inherit \duckdb's parallelism for free. They also have a ceiling, which the CIDR
 paper named: ``morsel-driven parallelism is tuple-driven and without tuples there is not enough
-parallelism''~\cite{tenwolde2023duckpgq}. A UDF receives work when the pipeline hands it a vector of tuples, and a
+parallelism''~\cite{tenwolde2023duckpgq}. A UDF receives work when the pipeline hands it a vector of tuples, as morsel-driven parallelism~\cite{leis2014morsel} does, and a
 single shortest-path query hands it one, so one core runs a BFS over the whole graph while the others idle. The CSR
 was the second problem, global state built by ``the first thread to touch it'', rebuilt for every query, invisible to
 the optimizer, and unrelated to the transaction that reads it, so that a concurrent insert into the edge table is in the CSR or not depending on timing.
@@ -78,8 +78,7 @@ with one traversal where the others search once per pair. LDBC BI19 at SF300, up
 against 47\,s for Neo4j and 332\,s for Kuzu (Figure~\ref{fig:teaser}); 1024 sources to every person take 773\,ms
 against 21.9\,s for Kuzu; 65\,536 random pairs take 10\,s while every other system exceeds ten minutes. Under sixteen
 concurrent readers and a writer at SF300 a query over the index takes 82\,ms where a CSR built per query takes
-3.9\,s, 32 clients get 329 single-pair queries per second against 5, and a commit of 2000 edge changes costs 19\,ms
-against 335 for Kuzu; at every point the systems agree on the answers.
+3.9\,s, and 32 clients get 329 single-pair queries per second against 5. A commit of 2000 edge changes costs 19\,ms on its own, against 335\,ms for Kuzu, and 153\,ms under the sixteen readers, whose snapshots it waits for. At every point the systems agree on the answers.
 
 Our contributions are:
 \begin{enumerate}
@@ -89,7 +88,7 @@ Our contributions are:
   \item An MVCC-consistent CSR index built behind a general-purpose extension index interface: epochs, a change-group
         log, per-transaction snapshots, folds, checkpoints and recovery, with a correctness argument
         (Section~\ref{sec:index}).
-  \item The planner integration from \sqlpgq \texttt{MATCH} to operator and index without changes to \duckdb, and \rev{what its interfaces would need to make such an extension simpler} (Section~\ref{sec:conclusion}).
+  \item The planner integration from \sqlpgq \texttt{MATCH} to operator and index without changes to \duckdb, and what its interfaces would need to make such an extension simpler (Section~\ref{sec:conclusion}).
   \item An evaluation on six graphs against four native graph systems, Neo4j's GDS library and \duckdb's recursive
         CTE and 2023 UDFs, read-only and under updates, which places \duckdb with the index tens of milliseconds
         behind at one pair or one source, one to two orders of magnitude ahead from a handful of sources on and 47

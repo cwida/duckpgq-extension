@@ -3,8 +3,9 @@
 
 Reads every sweep_pairs_*.csv and ldbc_queries_*.csv under data/ldbc-pathfinding/results/sf{10,100,300}; when a
 (system, shape, count) point appears in several files the newest file wins, so reruns replace earlier numbers.
-Writes PDF and PNG to paper/figures/ (DUCKPGQ_FIGURES_DIR overrides it, as DUCKPGQ_TABLES_DIR does for the LaTeX
-tables, so a test render never touches the paper). Colours follow the entity (one colour per system across every figure), six
+Writes the paper's PDFs to paper/figures/ and its LaTeX tables to paper/tables/ (DUCKPGQ_FIGURES_DIR and
+DUCKPGQ_TABLES_DIR override them); PNG previews go to DUCKPGQ_PREVIEW_DIR and the diagnostic figures to
+DUCKPGQ_EXTRA_DIR, when set. Colours follow the entity (one colour per system across every figure), six
 categorical slots in the validated order of the data-viz palette; the three slots with low contrast on the light
 surface get direct labels at the line ends (relief rule) and every number is also in the plan's tables.
 """
@@ -1111,6 +1112,17 @@ def cell(point, bold=False):
     return "err"
 
 
+def seconds_cell(point, bold=False):
+    """Seconds with three significant digits at most, no unit, for the one-column LDBC table"""
+    if point is None:
+        return "--"
+    if point["status"] != "ok":
+        return "$>$600" if point["status"] == "exceeded" else "err"
+    v = point["mean"]
+    text = f"{v:.3f}" if v < 1 else (f"{v:.1f}" if v < 100 else f"{v:.0f}")
+    return f"\\textbf{{{text}}}" if bold else text
+
+
 def column_minima(rows):
     """Per column, the smallest completed mean among the rows of one scale-factor block; None when no row completed."""
     minima = []
@@ -1120,12 +1132,13 @@ def column_minima(rows):
     return minima
 
 
-def format_rows(rows):
+def format_rows(rows, formatter=None):
     """Rows of (label, points); the fastest completed cell of every column is bold."""
+    formatter = formatter or cell
     minima = column_minima(rows)
     lines = []
     for lab, points_of_row in rows:
-        cells = [cell(pt, bold=pt is not None and pt["status"] == "ok" and pt["mean"] == minima[i])
+        cells = [formatter(pt, bold=pt is not None and pt["status"] == "ok" and pt["mean"] == minima[i])
                  for i, pt in enumerate(points_of_row)]
         lines.append(f"\\quad {row_label(lab)} & " + " & ".join(cells) + r" \\")
     return lines
@@ -1167,8 +1180,13 @@ def sweep_table(shape, filename, caption, label, head):
     write_table(filename, lines)
 
 
+SHORT_NAME = dict(NAME_OF)
+SHORT_NAME["neo4j_gds"] = "Neo4j GDS"
+
+
 def ldbc_table(filename):
-    """One row per system in its fastest formulation; columns IC13, BI19, BI20 per scale factor; full width."""
+    """One row per system in its fastest formulation; columns IC13, BI19, BI20 per scale factor; one text column,
+    cells in seconds without units."""
     queries = ["ic13", "bi19", "bi20"]
     rows = {}
     for sf in SCALE_FACTORS:
@@ -1188,22 +1206,23 @@ def ldbc_table(filename):
                     cells[(sf, query)] = {"status": "err"}
     columns = [(sf, q) for sf in SCALE_FACTORS for q in queries]
     table_rows = [(lab, [rows[lab].get(c) for c in columns]) for lab in sorted_labels(rows)]
-    lines = [r"\begin{table*}[t]\centering\scriptsize\setlength{\tabcolsep}{4pt}",
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{1.4pt}",
              r"\caption{LDBC IC13 (one pair), BI19 (city $\times$ city) and BI20 (company $\to$ one person) as hop-count "
              r"shortest paths on the undirected knows graph: seconds per query, the median of three runs per parameter set "
-             r"averaged over five sets, 32 threads, each system in its fastest formulation.}\label{tab:ldbc}",
+             r"averaged over five sets, 32 threads, each system in its fastest formulation; GDS at its four-thread limit.}"
+             r"\label{tab:ldbc}",
              r"\begin{tabular}{l" + "rrr" * len(SCALE_FACTORS) + r"}\toprule",
-             " & " + " & ".join(f"\\multicolumn{{3}}{{c}}{{LDBC SF{sf}}}" for sf in SCALE_FACTORS) + r" \\",
+             r" & \multicolumn{9}{c}{seconds per query} \\",
+             " & " + " & ".join(f"\\multicolumn{{3}}{{c}}{{SF{sf}}}" for sf in SCALE_FACTORS) + r" \\",
              "system & " + " & ".join("IC13 & BI19 & BI20" for _ in SCALE_FACTORS) + r" \\ \midrule"]
-    # bold per column: the fastest completed cell
     minima = []
     for i in range(len(columns)):
         oks = [r[1][i]["mean"] for r in table_rows if r[1][i] is not None and r[1][i]["status"] == "ok"]
         minima.append(min(oks) if oks else None)
     for lab, cells_ in table_rows:
-        out = [cell(pt, bold=pt is not None and pt["status"] == "ok" and pt["mean"] == minima[i]) for i, pt in enumerate(cells_)]
-        lines.append(f"{row_label(lab)} & " + " & ".join(out) + r" \\")
-    lines.append(r"\bottomrule\end{tabular}\end{table*}")
+        out = [seconds_cell(pt, bold=pt is not None and pt["status"] == "ok" and pt["mean"] == minima[i]) for i, pt in enumerate(cells_)]
+        lines.append(f"{SHORT_NAME.get(lab, lab)} & " + " & ".join(out) + r" \\")
+    lines.append(r"\bottomrule\end{tabular}\end{table}")
     write_table(filename, lines)
 
 
@@ -1495,9 +1514,10 @@ def graphalytics_table(filename):
     sources = [1, 16, 128, 1024]
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
              r"\caption{Three Graphalytics graphs: seconds per query for $k$ sources to every reachable vertex and for 65\,536 "
-             r"random pairs (none on the citation DAG is reachable); median of three runs, 32 threads, fastest formulation.}"
-             r"\label{tab:graphalytics}",
+             r"random pairs (none on the citation DAG is reachable); median of three runs, 32 threads, fastest formulation; "
+             r"the fastest cell per column in bold.}\label{tab:graphalytics}",
              r"\begin{tabular}{lrrrrr}\toprule",
+             r" & \multicolumn{5}{c}{seconds per query} \\",
              r"system & 1 source & 16 & 128 & 1024 & 65\,536 pairs \\ \midrule"]
     blocks = 0
     for directory, name, note in GRAPHALYTICS:
@@ -1515,7 +1535,7 @@ def graphalytics_table(filename):
             if all(p is None for p in pts) and pair_pt is None:
                 continue
             rows.append((sysname, pts + [pair_pt]))
-        lines += format_rows(rows)
+        lines += format_rows(rows, formatter=seconds_cell)
     lines.append(r"\bottomrule\end{tabular}\end{table}")
     write_table(filename, lines)
 
@@ -1561,7 +1581,7 @@ def fixed_costs_table(filename):
     """Table: edges, index creation, bytes per edge and load after a restart against the native systems' import time
     and store size."""
     restart_loads = load_after_restart()
-    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.2pt}",
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{1.6pt}",
              r"\caption{Fixed costs per graph, 32 threads: creating the CSR index over the loaded edge table, its bytes per edge, "
              r"its load on the first query after a restart (database file in the page cache), the native systems' import of "
              r"the same data (Kuzu from Parquet) and Kuzu's bytes per edge.}\label{tab:fixed-costs}",
@@ -1607,37 +1627,51 @@ def update_metrics(path, config=None):
 
 def update_stream_table(filename):
     """Table: the SF10 update stream (190 commits of 2000 edge changes, one query after each) for the DuckPGQ routes
-    and the baselines: query latency for one source to 1024 destinations and for 1024 random pairs, commit latency."""
+    and the baselines: query latency for one source to 1024 destinations and for 1024 random pairs, commit latency;
+    the fastest cell per column in bold, DuckPGQ's configurations grouped under one label."""
     directory = RESULTS / "sf10"
 
     def newest(pattern):
         files = newest_files(directory, pattern)
         return files[-1] if files else None
 
-    def fmt(metrics):
-        return f"{metrics[0]:.0f} & {metrics[1]:.0f}" if metrics else "-- & --"
+    def ms(value):
+        return f"{value:,.0f}".replace(",", "\\,")
 
-    def commit_of(a, b):
-        value = a[2] if a else (b[2] if b else None)
-        return f"{value:.0f}" if value is not None else "--"
-
-    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
-             r"\caption{The update stream at SF10, 190 commits of 2000 edge changes with one query after each, 32 threads: "
-             r"query latency in ms (median, p99) for one source to 1024 destinations and for 1024 random pairs, and the "
-             r"median commit.}\label{tab:updates}",
-             r"\begin{tabular}{lrrrrr}\toprule",
-             r"system & \multicolumn{2}{c}{1 source, 1024 dst.} & \multicolumn{2}{c}{1024 pairs} & commit \\",
-             r" & median & p99 & median & p99 & median \\ \midrule"]
     ours_sssp = newest("update_sssp_pairs1024_threads32_batch2000x190_*.csv")
     ours_p2p = newest("update_point_to_point_pairs1024_threads32_batch2000x190_*.csv")
+    rows = []  # (label, indent, [sssp median, sssp p99, p2p median, p2p p99, commit])
     for config, label in UPDATE_ROWS:
         a, b = update_metrics(ours_sssp, config), update_metrics(ours_p2p, config)
-        lines.append(f"{label} & {fmt(a)} & {fmt(b)} & {commit_of(a, b)} \\\\")
-    lines.append(r"\addlinespace")
+        commit = a[2] if a else (b[2] if b else None)
+        rows.append((label.replace("DuckPGQ ", ""), True, [a[0] if a else None, a[1] if a else None,
+                                                             b[0] if b else None, b[1] if b else None, commit]))
     for sysname, label in BASELINE_UPDATE:
         a = update_metrics(newest(f"update_{sysname}_sssp_pairs1024_threads32_batch2000x*.csv"))
         b = update_metrics(newest(f"update_{sysname}_point_to_point_pairs1024_threads32_batch2000x*.csv"))
-        lines.append(f"{label} & {fmt(a)} & {fmt(b)} & {commit_of(a, b)} \\\\")
+        commit = a[2] if a else (b[2] if b else None)
+        rows.append((label, False, [a[0] if a else None, a[1] if a else None, b[0] if b else None, b[1] if b else None, commit]))
+    minima = [min((r[2][i] for r in rows if r[2][i] is not None), default=None) for i in range(5)]
+
+    def fmt(value, i):
+        if value is None:
+            return "--"
+        text = ms(value)
+        return f"\\textbf{{{text}}}" if minima[i] is not None and round(value) == round(minima[i]) else text
+
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
+             r"\caption{The update stream at SF10, 190 commits of 2000 edge changes with one query after each, 32 threads: "
+             r"query latency for one source to 1024 destinations and for 1024 random pairs (median and p99 over the 190 "
+             r"queries) and the writer's median commit; the fastest cell per column in bold.}\label{tab:updates}",
+             r"\begin{tabular}{lrrrrr}\toprule",
+             r" & \multicolumn{4}{c}{query latency (ms)} & commit (ms) \\",
+             r" & \multicolumn{2}{c}{1 source $\to$ 1024 dest.} & \multicolumn{2}{c}{1024 random pairs} & \\",
+             r"system & median & p99 & median & p99 & median \\ \midrule",
+             r"\multicolumn{6}{l}{\textit{DuckPGQ}} \\"]
+    for label, indent, values in rows:
+        if not indent and lines[-1].startswith("\\quad"):
+            lines.append(r"\addlinespace")
+        lines.append(("\\quad " if indent else "") + f"{label} & " + " & ".join(fmt(v, i) for i, v in enumerate(values)) + r" \\")
     lines.append(r"\bottomrule\end{tabular}\end{table}")
     write_table(filename, lines)
 
@@ -1741,11 +1775,16 @@ def concurrency_figure(filename):
     save(fig, filename)
 
 
+# The paper's crossover figure shows two ways; the one-lane-per-pair path (kept in crossover_figure) runs the waves of
+# a batch one after another, so its times mix a scheduling difference into the comparison (desk, 12 Nov)
+CROSSOVER_PAPER = CROSSOVER_KERNELS[:2]
+
+
 def crossover_sf100_figure(filename, sf="100"):
     """Section 3.4: the three ways of running k distinct sources on the index route at one scale factor, k random
     pairs (left) and k sources x 200 destinations (right); the dotted line is the smallest k at which the frontier
     traversal is no longer within 10% of the best."""
-    kernels = {c for c, _, _ in CROSSOVER_KERNELS}
+    kernels = {c for c, _, _ in CROSSOVER_PAPER}
     latest = {}
     for path in newest_files(RESULTS / f"sf{sf}", "microbench_sf*_threads32_*.csv"):
         for r in csv.DictReader(open(path)):
@@ -1765,7 +1804,7 @@ def crossover_sf100_figure(filename, sf="100"):
         ks = sorted({k for (c, s_, k) in series if s_ == shape})
         last_winning = None
         for k in ks:
-            times = {c: series[(c, shape, k)] for c, _, _ in CROSSOVER_KERNELS if (c, shape, k) in series}
+            times = {c: series[(c, shape, k)] for c, _, _ in CROSSOVER_PAPER if (c, shape, k) in series}
             if "single_source_kernel" in times and len(times) >= 2 and times["single_source_kernel"] <= 1.1 * min(
                     t for c, t in times.items() if c != "single_source_kernel"):
                 last_winning = k
@@ -1774,7 +1813,7 @@ def crossover_sf100_figure(filename, sf="100"):
         ax.set_xscale("log", base=2)
         ax.set_yscale("log")
         style_axes(ax)
-        for config, name, color in CROSSOVER_KERNELS:
+        for config, name, color in CROSSOVER_PAPER:
             xs = [k for k in ks if (config, shape, k) in series]
             plot_series(ax, xs, [series[(config, shape, k)] for k in xs], [], color,
                         linewidth=1.6 if config == "single_source_kernel" else 1.3,
@@ -1789,10 +1828,10 @@ def crossover_sf100_figure(filename, sf="100"):
         ax.set_xlabel("distinct sources k", fontsize=7.5)
     axes[0][0].set_ylabel("seconds per query")
     handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE)
-               for _, _, c in CROSSOVER_KERNELS]
-    fig.legend(handles, ["single-source traversal", "multi-source, one lane per source", "multi-source, one lane per pair"],
-               loc="lower center", ncol=1, bbox_to_anchor=(0.5, -0.02), handlelength=2.0, fontsize=6.5)
-    fig.tight_layout(rect=(0, 0.2, 1, 1))
+               for _, _, c in CROSSOVER_PAPER]
+    fig.legend(handles, ["single-source traversal", "multi-source traversal"],
+               loc="lower center", ncol=2, bbox_to_anchor=(0.5, -0.02), handlelength=2.0, fontsize=6.5)
+    fig.tight_layout(rect=(0, 0.09, 1, 1))
     save(fig, filename)
 
 
@@ -1801,18 +1840,17 @@ ABLATION_ROWS = [
     ("baseline", "default, 32 threads"),
     ("single_source_kernel", "single-source traversal for every query"),
     ("multi_source_dedup", "multi-source traversal for every query"),
-    ("no_source_grouping", "pairs not grouped by source"),
     ("no_grouped_batches", "batches not grouped by the scheduler"),
     ("sched_g1_w32", "one batch at a time"),
     ("no_frontier_bitmap", "no summary bitmap"),
     ("partitions_4096", "destination ranges of 4096"),
     ("reverse_index", "with reverse partitions"),
-    ("pair_mode", "sources $\\times$ all as a pair list"),
-    ("reach_per_source", "reach as one search per source"),
-    ("paths", "paths instead of lengths"),
+    ("pair_mode", "sources $\\times$ all in \\texttt{lengths} mode"),
+    ("reach_per_source", "\\texttt{reach} as one search per source"),
+    ("paths", "\\texttt{paths} instead of \\texttt{lengths}"),
     ("threads_1", "1 thread"),
 ]
-ABLATION_COLUMNS = [("random_pairs", "1"), ("random_pairs", "2048"), ("random_pairs", "65536"),
+ABLATION_COLUMNS = [("random_pairs", "1"), ("random_pairs", "65536"),
                     ("multi_source", "1"), ("multi_source", "1024"), ("same_dst", "1024")]
 
 
@@ -1837,15 +1875,17 @@ def ablation_table(filename, sf="100", since_ns=1793830000000000000, system="duc
         if not values:
             return "--"
         v = statistics.median(values)
-        return f"{v * 1000:.0f}\\,ms" if v < 1 else f"{v:.1f}\\,s"
+        return f"{v:.3f}" if v < 1 else (f"{v:.1f}" if v < 100 else f"{v:.0f}")
 
     lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{2.6pt}",
              r"\caption{One mechanism switched off or changed at a time, over the index at SF100, 32 threads unless stated; "
-             r"median of three runs for 1, 2048 and 65\,536 random pairs, 1 and 1024 sources to every reachable person, and "
-             r"1024 sources to one destination.}\label{tab:ablation}",
-             r"\begin{tabular}{lrrrrrr}\toprule",
-             r" & \multicolumn{3}{c}{random pairs} & \multicolumn{2}{c}{sources $\times$ all} & $\to$ 1 \\",
-             r"configuration & 1 & 2048 & 65\,536 & 1 & 1024 & 1024 \\ \midrule"]
+             r"seconds per query, median of three runs, for 1 and 65\,536 random pairs, 1 and 1024 sources to every "
+             r"reachable person, and 1024 sources to one destination. A dash marks a combination that was not measured; "
+             r"the scheduling and bitmap switches were run on 2048 random pairs and more.}\label{tab:ablation}",
+             r"\begin{tabular}{lrrrrr}\toprule",
+             r" & \multicolumn{5}{c}{seconds per query} \\",
+             r" & \multicolumn{2}{c}{random pairs} & \multicolumn{2}{c}{sources $\times$ all} & $\to$ 1 \\",
+             r"configuration & 1 & 65\,536 & 1 & 1024 & 1024 \\ \midrule"]
     for config, label in ABLATION_ROWS:
         if not any((config, shape, count) in by for shape, count in ABLATION_COLUMNS):
             continue
@@ -1986,50 +2026,98 @@ def concurrency_column_figure(filename):
     save(fig, filename)
 
 
+
+def numbering_table(filename):
+    """Table: 2048 and 65,536 random pairs at SF100 and SF300 over three CSRs that differ in how they come about and
+    how they number vertices: built per query (row order), an index keyed by row ids (row order, no build), and the
+    index keyed by person ids (sorted keys, no build). From the 9 Nov probe file and the sweep's build route."""
+    path = RESULTS / "probes_9nov" / "rowid_index.txt"
+    if not path.is_file():
+        print("no row-id index probe, skipping", filename)
+        return
+    cells = {}
+    for line in path.read_text().splitlines():
+        m = re.match(r"^SF(\d+) (\d+) pairs:\s+rowid-keyed ([\d. ]+)\| id-keyed ([\d. ]+)\| sweep build route ([\d.]+)", line)
+        if not m:
+            continue
+        sf, pairs = m.group(1), int(m.group(2))
+        cells[(sf, pairs)] = (float(m.group(5)), statistics.median(float(x) for x in m.group(3).split()),
+                              statistics.median(float(x) for x in m.group(4).split()))
+    columns = [(sf, pairs) for sf in ("100", "300") for pairs in (2048, 65536) if (sf, pairs) in cells]
+
+    def fmt(v):
+        return f"{v:.3f}" if v < 1 else f"{v:.1f}"
+
+    rows = [("built per query (build route)", 0, "row order"), ("index keyed by row ids", 1, "row order"),
+            ("index keyed by person ids", 2, "sorted keys")]
+    lines = [r"\begin{table}[t]\centering\scriptsize\setlength{\tabcolsep}{3pt}",
+             r"\caption{Random pairs over three CSRs of the same layout that differ in whether they are built inside the "
+             r"query and in how they number vertices; seconds per query, median of three runs, 32 threads. The two indexes "
+             r"were measured on copies of the sweep's databases.}\label{tab:numbering}",
+             r"\begin{tabular}{llrrrr}\toprule",
+             r" & & \multicolumn{4}{c}{seconds per query} \\",
+             r" & & \multicolumn{2}{c}{SF100} & \multicolumn{2}{c}{SF300} \\",
+             r"CSR & vertex ids & 2048 & 65\,536 & 2048 & 65\,536 \\ \midrule"]
+    for label, idx, numbering in rows:
+        lines.append(f"{label} & {numbering} & " + " & ".join(fmt(cells[c][idx]) for c in columns) + r" \\")
+    lines.append(r"\bottomrule\end{tabular}\end{table}")
+    write_table(filename, lines)
+
+
 def save(fig, filename):
+    """The PDF goes to the figures directory; a PNG preview is written only where DUCKPGQ_PREVIEW_DIR points, so
+    paper/figures holds nothing the build does not read"""
     FIGURES.mkdir(parents=True, exist_ok=True)
     fig.savefig(FIGURES / f"{filename}.pdf")
-    fig.savefig(FIGURES / f"{filename}.png", dpi=220)
+    preview = os.environ.get("DUCKPGQ_PREVIEW_DIR")
+    if preview:
+        Path(preview).mkdir(parents=True, exist_ok=True)
+        fig.savefig(Path(preview) / f"{filename}.png", dpi=220)
     plt.close(fig)
-    print(f"wrote {FIGURES / filename}.pdf/.png")
+    print(f"wrote {FIGURES / filename}.pdf")
 
 
 if __name__ == "__main__":
-    sweep_figure("random_pairs", "pairs per query", "random_pairs",
-                 "Bound pairs: n random pairs per query; baselines on their best path")
-    sweep_figure("multi_source", "sources per query (each to every person)", "sources_all",
-                 "Sources × all persons: distances to every reachable vertex from k sources")
-    ldbc_figure("ldbc_queries")
-    client_threads_figure("client_threads")
-    speedup_figure("speedup")
-    teaser_figure("teaser_pairs")
-    teaser_bi19_figure("teaser_bi19_sf300")
+    # The figures and tables the paper includes (paper/figures, paper/tables)
     teaser_bi19_scales_figure("teaser")
-    scaling_figure("scaling")
-    throughput_figure("throughput")
-    first_query_figure("first_query")
-    updates_figure("updates")
-    updates_timeline_figure("updates_timeline")
-    graphalytics_figure("graphalytics")
-    concurrent_figure("concurrent")
-    fold_timeline_figure("fold_timeline")
-    # W35 clients figure; a second def named throughput_figure used to overwrite throughput.pdf (the sweep's
-    # pairs-per-second view that the paper includes) until 2 Nov
-    client_throughput_figure("throughput_clients")
-    crossover_figure("crossover")
-    sweep_table("random_pairs", "random_pairs",
-                r"Shortest-path lengths for $n$ random pairs per query, median of three runs, 32 threads, 600\,s timeout; "
-                r"rows marked conn.\ split the pairs over 32 client connections.", "tab:random-pairs", "system / pairs")
-    sweep_table("multi_source", "sources_all",
-                r"Distances from $k$ sources to every reachable person, median of three runs; n/r: not run above 500M pairs.",
-                "tab:sources-all", "system / sources")
-    ldbc_table("ldbc_queries")
-    scaling_grid_figure("scaling_grid")
-    graphalytics_table("graphalytics")
-    fixed_costs_table("fixed_costs")
-    update_stream_table("update_stream")
-    concurrency_figure("concurrency")
-    crossover_sf100_figure("crossover_sf100")
-    ablation_table("ablation")
     scaling_column_figure("scaling_column")
     concurrency_column_figure("concurrency_column")
+    crossover_sf100_figure("crossover_sf100")
+    graphalytics_table("graphalytics")
+    ldbc_table("ldbc_queries")
+    fixed_costs_table("fixed_costs")
+    numbering_table("numbering")
+    update_stream_table("update_stream")
+    ablation_table("ablation")
+    # Diagnostic figures and the earlier table layouts are not part of the paper. They are written only when
+    # DUCKPGQ_EXTRA_DIR names a directory for them, never into paper/.
+    extra = os.environ.get("DUCKPGQ_EXTRA_DIR")
+    if extra:
+        FIGURES = TABLES = Path(extra)
+        sweep_figure("random_pairs", "pairs per query", "random_pairs",
+                     "Bound pairs: n random pairs per query; the other systems on their best path")
+        sweep_figure("multi_source", "sources per query (each to every person)", "sources_all",
+                     "Sources × all persons: distances to every reachable vertex from k sources")
+        ldbc_figure("ldbc_queries")
+        client_threads_figure("client_threads")
+        speedup_figure("speedup")
+        teaser_figure("teaser_pairs")
+        teaser_bi19_figure("teaser_bi19_sf300")
+        scaling_figure("scaling")
+        throughput_figure("throughput")
+        first_query_figure("first_query")
+        updates_figure("updates")
+        updates_timeline_figure("updates_timeline")
+        graphalytics_figure("graphalytics")
+        concurrent_figure("concurrent")
+        fold_timeline_figure("fold_timeline")
+        client_throughput_figure("throughput_clients")
+        crossover_figure("crossover")
+        scaling_grid_figure("scaling_grid")
+        concurrency_figure("concurrency")
+        sweep_table("random_pairs", "random_pairs",
+                    r"Shortest-path lengths for $n$ random pairs per query, median of three runs, 32 threads, 600\,s timeout; "
+                    r"rows marked conn.\ split the pairs over 32 client connections.", "tab:random-pairs", "system / pairs")
+        sweep_table("multi_source", "sources_all",
+                    r"Distances from $k$ sources to every reachable person, median of three runs; n/r: not run above 500M pairs.",
+                    "tab:sources-all", "system / sources")

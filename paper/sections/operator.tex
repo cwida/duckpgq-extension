@@ -93,15 +93,12 @@ a sparse row only for the sources with an edge into its range, at most one per e
 \begin{figure}[t]
   \centering
   \input{figures/partitioned_csr}
-  \caption{The partitioned CSR. (a) The build on the fly: the sink packs each edge into 64 bits, and the high
-  bits, the destination range, select its partition; tasks process the partitions, starting with the largest, sort
-  each by source, emit its sparse rows and build its source index. (b) The edges of a graph with $V = 30$ whose destinations fall into range $p$, ids 20 to
-  29; source~4 has edges only into other ranges. (c) The partition these edges form. Each source with an edge into the
-  range has a sparse row, its edges are the slice between its offset and the next, and each edge stores its
-  destination as an offset into the range (25 becomes 5). The source index has one entry per block of $2^3 = 8$
-  source ids; the bracket under an entry marks the sparse rows of its block, and the entry stores the first of them.
-  Source~7 is found from the entry of block 0--7, one row after source~3. The row ids (orange) are what the CSR index adds, and what the build adds when a query asks for
-  paths.}
+  \caption{The partitioned CSR. (a) The build on the fly: the sink packs each edge into 64 bits whose high bits
+  select its partition, and tasks then sort each partition by source and build its sparse rows and source index.
+  (b) The edges of a graph with $V = 30$ whose destinations fall into range $p$, ids 20 to 29. (c) The partition these
+  edges form: one sparse row per source with an edge into the range, each destination as an offset into the range, a
+  source index with one entry per block of 8 source ids, and the edges' row ids (orange), which the index always
+  keeps and the build keeps when a query asks for paths.}
   \label{fig:partitioned-csr}
 \end{figure}
 
@@ -176,15 +173,6 @@ deduplication.
 \subsection{Choosing a traversal and an orientation}
 \label{sec:choice}
 
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\linewidth]{figures/crossover_sf100.pdf}
-  \caption{Seconds per query over the index at SF100, 32 threads, median of three runs, for $k$ distinct sources run
-  three ways: the single-source traversal once per source, and the multi-source traversal with one lane per distinct source and with one lane per pair. Left: $k$ random pairs, one destination each; right: $k$ sources with 200 destinations each. The dotted
-  line is the smallest $k$ at which the single-source traversal is no longer within a tenth of the fastest way.}
-  \label{fig:crossover}
-\end{figure}
-
 The operator's finalize step, which \duckdb calls once the sink has received all pairs and before any search
 starts (Section~\ref{sec:planner}), groups the pairs by source and counts the groups. Up to 16 distinct sources run
 on the single-source traversal, side by side, with the threads divided among them; more sources run as batches of the
@@ -201,13 +189,15 @@ forward. The reverse orientation pays off when many sources share one destinatio
 distance from every employee of one company to one person; in the reverse orientation it runs as a single search from
 that person, where the forward orientation would run one lane per employee; at SF100, 1024 sources to one destination take 6\,ms in the reverse orientation and 116 in the forward one (Table~\ref{tab:ablation}).
 
-Which way of running searches is fastest depends on the number of distinct sources. Few sources are cheapest as single-source searches, because a batch pays for its working
-set and its dense levels whatever its number of lanes. Many sources favour the batches, whose lanes share
-the work of every level and keep no per-vertex arrays; \rev{for 65\,536 random pairs at SF100 the batches are twelve times faster than single-source searches (Table~\ref{tab:ablation})}. The crossover depends on the graph. On the Graphalytics graphs of Section~\ref{sec:eval} it lies at 4 sources on
-datagen-8\_4-fb, at 16 on graph500-24 and at 256 on cit-Patents, and no fixed threshold fits all three. \rev{What a threshold cannot see is how far each search runs; an unreachable pair searches the whole component of its source and a reachable one stops early, and about half of the random pairs on the directed \texttt{knows} graph are unreachable. A cost model would need an estimate of that reach, for example from the degree of the sources and the number of levels a search takes on the graph, which the index could record at a fold.} Figure~
-ef{fig:crossover} shows the three ways of running $k$ distinct sources at SF100: the single-source traversal
-stays within a tenth of the best up to $k = 8$ on both shapes and loses from $k = 16$; at SF10 it holds to $k = 32$
-with 200 destinations per source and to $k = 64$ with one. The lanes pay for the time in memory; at SF100 a batch holds a working set of 41\,MB for up to 256 distinct sources and 665\,MB at 4096, against 5\,MB for the single-source traversal.
+Which way of running searches is fastest depends on the number of distinct sources. Few sources are cheapest as
+single-source searches, because a batch pays for its working set and its dense levels whatever its number of lanes.
+Many sources favour the batches, whose lanes share the work of every level and keep no per-vertex arrays.
+The limit of 16 sources is a default. Section~\ref{sec:eval-ablation} measures the crossover on \texttt{knows},
+and on graphs where a search covers every vertex it lies lower (Section~\ref{sec:eval-pairs}). What a threshold cannot
+see is how far each search runs; an unreachable pair searches the whole component of its source and a reachable one
+stops early, and about half of the random pairs on the directed \texttt{knows} graph are unreachable. A cost model
+would need an estimate of that reach, for example from the degree of the sources and the number of levels a search
+takes on the graph, which the index could record at a fold.
 
 \subsection{Parallel execution as a chain of events}
 \label{sec:phases}
@@ -235,8 +225,7 @@ queue, which zeroes it in parallel. Running them all at once would need a workin
 batches of 65\,536 random pairs at SF100, and a working-set cap, a quarter of \duckdb's memory limit, also bounds
 the number running at once. The bound follows the machine and the user's configuration; on our machine the cap
 is 24.6\,GiB, which lets graph500-24 run 14 batches of 1.7\,GB at once instead of 32. Running fewer batches than threads
-costs time, because the threads are idle whenever a level waits for its last task. One batch at a time makes 65\,536
-random pairs 9 times slower at SF10 and 3.9 times slower at SF300 (Section~\ref{sec:eval-ablation}).
+costs time, because the threads are idle whenever a level waits for its last task. One batch at a time makes 65\,536 random pairs eight times slower at SF100, and less on larger graphs (Section~\ref{sec:eval-ablation}).
 
 Each running batch splits each of its phases into tasks. It gets an equal share of the threads, and for each of
 those threads one task per four million edges of the graph, with no more tasks in all than there are threads. With 32
@@ -256,7 +245,7 @@ source's search recorded for its destination, and the result of a pair without a
 joined back afterwards only when the query projects its columns; the sources $\times$ all queries of
 Section~\ref{sec:eval} run this way.
 
-In the \texttt{paths} mode the operator returns, per pair, the list $[v_0, e_0, v_1, \dots, v_k]$ of vertices and edge row
+In the \texttt{paths} mode the operator returns, per pair, the list $[v_0,\allowbreak e_0,\allowbreak v_1,\allowbreak \dots,\allowbreak v_k]$ of vertices and edge row
 ids. The scatter walks the parents a search recorded from the destination back to the source, maps vertex ids to row
 ids on the build route and to keys on the index route, maps edge positions to row ids, and reverses the list.
 \texttt{path\_length(p)} is then $\lfloor\text{len}/2\rfloor$, and \texttt{vertices} and \texttt{edges} are the even

@@ -109,7 +109,7 @@ Building the overlay costs one version check per group and one pass over the vis
 of them in its destination range. The entries carry their dictionary ids, and the pass needs no dictionary lookup per
 edge; a key that is not in the epoch's dictionary, a new vertex, gets an id above the epoch's vertex count. A tombstone is placed by a lookup from its keys through the dictionary and the partition; in an undirected index the
 lookup also finds the mirrored edge, and both directions are suppressed. The cost of a snapshot thus grows with the
-number of groups, inserted edges and tombstones since the last fold.
+number of groups, inserted edges and tombstones since the last fold. A transaction holds the index's lock shared while it builds its snapshot, and a commit, which takes the lock exclusively (Section~\ref{sec:index-interface}), waits for the snapshots that are being built.
 
 A transaction that has changed the edge table itself sees rows that no other transaction may see, and the log holds
 only committed changes. Such a transaction builds a \emph{private epoch} from its own view of the table, a full build
@@ -132,7 +132,7 @@ twice, once to recount the log, so that two transactions that crossed the thresh
 fold, and once to make the new epoch the newest. Commits and other queries continue during a fold.
 Folds are serialized; an automatic fold that finds another fold running does not wait, and its transaction reads the
 current epoch and log instead. A fold whose transaction is older than the newest epoch does nothing, which keeps the epochs in the order of
-their bounds. \rev{The trigger lies with the transactions because \duckdb's scheduler offers an index no tasks of its own (Section~\ref{sec:conclusion}), and a fold in the background would need them. A better policy would weigh the rebuild against the overlay cost that every later query saves, which depends on the query rate as much as on the log length.}
+their bounds. The trigger lies with the transactions because \duckdb's scheduler offers an index no tasks of its own (Section~\ref{sec:conclusion}), and a fold in the background would need them. A better policy would weigh the rebuild against the overlay cost that every later query saves, which depends on the query rate as much as on the log length.
 
 The new epoch does not replace the old one at once, because a transaction that started before the fold
 (\mbox{$T_c$} in Figure~\ref{fig:index-timeline}) must not see the commits between its own start and $b_f$, which are visible in the
@@ -208,9 +208,9 @@ difference. With one writer committing 2000 edge changes every 200\,ms and 16 tr
 distances at SF300, a query takes 82\,ms over the index and 3.9\,s on the build route, and the builds also hold the writer's commits back, 153 against 647\,ms. The index therefore pays off most for workloads with many short or concurrent queries over the same graph, and
 least for a single heavy query, where it saves only the build.
 
-The index has five costs. The epoch takes 11 to 13 bytes per edge of memory, 17 on the sparse cit-Patents (Table~\ref{tab:fixed-costs}), of which 8 are the edge's row id; while a retained epoch exists, two epochs are in memory. The
+The index has six costs. The epoch takes 11 to 13 bytes per edge of memory, 17 on the sparse cit-Patents (Table~\ref{tab:fixed-costs}), of which 8 are the edge's row id; while a retained epoch exists, two epochs are in memory. The
 overlay grows with the changes since the last fold, and with it the time to build a snapshot; deciding visibility per
 log entry instead of per group would have grown a single-source query at SF10 from 15 to 35\,ms over the update stream of Section~\ref{sec:eval-updates}. The fold is paid for by the
 transaction that triggers it, 1.6 to 1.8\,s at SF300, of which the parallel scan of the table is a tenth. A transaction that has changed the edge table itself builds a private epoch inside its query
 (Section~\ref{sec:index-read}) and so pays the build the index saves other transactions. A
-table with the index also keeps its deleted row ids instead of compacting them. Commits are not slowed. The index records the change in its log and does no other work at commit (Section~\ref{sec:eval-updates}). \rev{The rewrite takes the index whenever one exists; a cost-based choice would compare the build, which depends on the edge count, with the snapshot, which depends on the pending log entries, and both are known at bind time.}
+table with the index also keeps its deleted row ids instead of compacting them. A commit does no more work with the index than without it, since the index only records the change in its log, but it can wait. It needs the index's lock exclusively while transactions that are building a snapshot hold it shared, and under sixteen querying transactions a commit of 2000 edge changes takes 150 to 210\,ms where it takes 19\,ms on its own (Section~\ref{sec:eval-updates}). The rewrite takes the index whenever one exists; a cost-based choice would compare the build, which depends on the edge count, with the snapshot, which depends on the pending log entries, and both are known at bind time.

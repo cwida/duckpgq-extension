@@ -98,6 +98,23 @@ The same faults recurred, in this order of frequency. Check a section for them b
 7. **Set-up before the point.** A paragraph that lists alternatives and knocks them down before stating its point
    reads as generated. Lead with the point, then give the evidence.
 
+8. **Evaluation prose that lists numbers.** (11 Nov, from a look at five evaluations Peter Boncz co-authored: FSST,
+   "Everything you always wanted to know about compiled and vectorized queries", FastLanes, MS-BFS, the CIDR DuckPGQ
+   paper.) Their evaluation prose carries 5 to 8 numbers per 100 words; ours carried 19. Each experiment gets a
+   paragraph that says what is measured, states the observation with one or two numbers and a pointer to the float
+   ("As Figure 4 shows, ... up to 40%"), gives the reason, with a measurement behind it where one exists ("The reason
+   is ...", "This counter explains ..."), says why the comparison is fair, and ends on a takeaway or rule of thumb
+   ("as a rule of thumb, FSST halves the size of database text"; "To summarize, ... (1) ... (2) ... (3)"). The tables
+   and figures carry the rest of the numbers.
+
+9. **Section 5, from the author's notes of 11 and 12 Nov.** Write from the operator's side: each paragraph starts
+   from one of its mechanisms, and the other systems are the reference, not the subject. Say "the other systems" or
+   name them; not "baselines". Every number carries its unit ("17.8 GiB against 6.0 GiB"); only a closing pair shares
+   one ("42 against 98 ms"). Factors, not percentages, when the neighbouring results are factors. A subsection that
+   says it measures at SF100 does not drop in other scales as parentheses; a trend across scales gets its own
+   sentence. Modes (`lengths`, `paths`, `reach`) in monospace. Point back to the section that explains a mechanism
+   when its measurement comes up. No bookkeeping in the prose (per-scale counts of a check, the name "oracle").
+
 Process lesson: sections patched while the design changed (3 before rc7, 4 before the restructure) drew structural
 notes; sections written in one pass from settled code drew wording notes only. Write Sections 5 and 6 once, from the
 final code and numbers, rather than patching the current text.

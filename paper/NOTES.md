@@ -427,6 +427,59 @@ type, client context state, settings, buffer manager; used for / lacked) goes to
 sec:strategy and sec:hooks now sit on the final section. Contribution 3 says "the gaps a host would have to close".
 sections/strategy.tex removed (in git history up to 4f3a4c20).
 
+11 Nov: the SF10 commit "reversal" explained by the desk (measured on the frozen build with a scratch copy of the
+driver; archived in repro/results/probes_11nov_writer_lock, desk commit 8ab7922f). With 16 readers the writer's transaction at SF10 reproduces at 162 ms under the index
+route's readers and 78 ms under the build route's (sweep 166 / 83). Per statement, medians, index readers / build
+readers: INSERT 1.5 / 1.6 ms, DELETE 5.8 / 48.1 ms, COMMIT 153.5 / 27.4 ms. Under index readers the wait for the exclusive lock of the index entry is 90% of all COMMIT time, median 155.6 ms per commit, measured on 12 Nov with a shim around StorageLock::GetExclusiveLock (callers IndexEntry::RemoveFromIndex and IndexEntry::Append; about 3100 exclusive acquisitions per commit); under build readers it is 0.1 ms. (An earlier version of this entry quoted "85 of 95 stack samples"; the desk withdrew that figure, the samples are a lower bound and not a time share.) the readers meanwhile were in CSRIndex::Resolve -> BuildSnapshot, mostly in
+DataTable::CanFetch; Resolve holds the entry's read handle across the build (src/core/index/csr_index.cpp:1640). The
+wait grows with the pending log, not with the graph: median COMMIT 40 ms in the first 19 commits, 208 ms before the
+fold, 91 ms after it, 294 ms at the end; the readers' median follows (11 -> 115 -> 35 -> 163 ms). The driver's
+"commit" is the whole write transaction. Index route 166 / 214 / 153 ms at SF10 / SF100 / SF300, build route 83 / 348
+/ 647 ms: SF10 is the scale where builds are cheap enough to undercut a roughly constant lock wait (SF100 and SF300
+not profiled; inference from the numbers). Consequences in the text: 5.4 states the cause; 4.3 says a transaction
+holds the index's lock shared while it builds its snapshot; 4.7's "Commits are not slowed" was wrong under concurrent
+readers and is now a sixth cost (a commit does no more work but waits, 150-210 ms under 16 readers against 19 ms on
+its own); abstract, introduction and conclusion no longer put the 19 ms of the sequential stream into the
+sixteen-reader sentence. Only archive numbers are in the text (19; 153; 150-210; 83 / 348 / 647).
+
+12 Nov: why the lock is held across the snapshot build (desk, from the code and the stack samples; not built or
+tested). It does not have to be. CSRIndex::Resolve takes the entry's read handle and runs Snapshot -> BuildSnapshot
+under it (src/core/index/csr_index.cpp:1640); BuildSnapshot copies the log prefix under the index's own mutex (:995)
+and then works on private copies, on the epoch (shared_ptr) and on row versions through DataTable::CanFetch (table
+locks, not the entry lock), touching the index again only for the snapshot-cache lookup and store. Over the long part
+the handle only keeps the index object from being rebound or dropped. RunFold already releases the handle for the
+rebuild and re-takes it for the install (:1415, 2 Nov), for the same reason. Unproven: that a commit's append and
+removal reach the log before the commit is visible to any reader; a test would have to confirm it. Two details: the
+hold is long because of contention, about nine in ten sampled reader stacks in the build are locking row-group mutexes
+in RowGroupCollection::CanFetch, so sixteen readers serialise on the table's mutex while each holds the index lock
+shared; and the commit takes the exclusive lock once for the appended chunk and once per flushed batch of deletes
+(IndexDataRemover::PushDelete), waiting for the readers each time. Decision (author, 12 Nov): an implementation
+detail; the paper states the cost (4.3, 4.7, 5.4) and says no more, no fix promised, no confirmation build; this
+entry is the answer if a reviewer asks.
+
+12 Nov: the "one lane per pair" row of the ablation table and line of the crossover figure are gone. Desk, from the
+code and the strategy strings of the SF100 runs: with distinct sources both paths run the same 256-lane kernel with one
+lane per pair; the lane-per-pair path (source_group_ratio=0) runs the 256-lane waves of a batch of up to 2048 pairs
+one after another on a single working set (BFSState::AssignLanes, IterativeLengthState::BeginWave), the default packs
+the source groups into waves that each have their own working set and run side by side
+(physical_path_finding_operator.cpp:1722). 128 pairs: 1 wave either way, 64 / 63 ms; 1024 sources to one destination:
+4 waves concurrently vs in sequence, 116 / 284 ms; 2048 pairs: 8 waves, 135 / 520 ms; 65,536 pairs: 32 groups either
+way, 3301 / 3249 ms. So the row measured the scheduling of an older code path, not deduplication, and was removed
+rather than explained; what deduplication saves is stated in 3.3 by count (1.4 K searches in six batches against 9.4 K
+batches for BI19) and its effect on sources x all by the lengths-mode row.
+
+12 Nov: paper/ holds only what the build reads. Removed: 19 unused figure PDFs, all PNG previews, tables random_pairs
+and sources_all; sections/appendix_queries.tex moved to repro/package/queries.tex. scripts/plot_sweep_results.py
+writes the paper's four data figures and six tables by default; DUCKPGQ_EXTRA_DIR=<dir> also writes the diagnostic
+figures and the old table layouts there, DUCKPGQ_PREVIEW_DIR=<dir> writes PNG previews.
+
+12 Nov: spread of the three repeats over the pair sweeps of all six graphs (newest file per system, shape and
+count; spread = (max - min) / median). DuckPGQ index and build, 132 points: median 3.5%, 90th percentile 9.3%, max 33%
+(a 3 ms query at timer resolution); points of 1 s and more, 49: median 1.7%, max 14.8%. Other systems, 262 points:
+median 1.9%, 90th percentile 39%, max 2476% (Kuzu, one pair on graph500-24: 9.875 s cold, then 0.383 and 0.382 s);
+points of 1 s and more, 159: median 1.1%, max 20.4%. The large spreads are cold first runs, which the median does not
+follow. The setup states the 1 s figures.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under
