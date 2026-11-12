@@ -1082,16 +1082,19 @@ void PGQMatchFunction::AddOptionalSegment(vector<unique_ptr<PathReference>> &pat
 		throw NotImplementedException("Subpath on an edge is not yet supported.");
 	}
 	auto &edge_element = *GetPathElement(edge_subpath.path_list[0]);
+	// path_list alternates vertex, edge, vertex, ...: the vertex after the edge must be the last element.
 	// Joins that continue from the optional vertex would have to be optional too; only a trailing edge is supported.
-	if (edge_idx + 2 != path_list.size()) {
+	const idx_t next_vertex_idx = edge_idx + 1;
+	const bool edge_is_last_in_path = next_vertex_idx == path_list.size() - 1;
+	if (!edge_is_last_in_path) {
 		throw NotImplementedException("An edge quantified with ? must be the last edge of its path pattern. Start a "
 		                              "separate path pattern from the vertex before it instead.");
 	}
 	OptionalMatchSegment segment;
 	segment.prev_binding = prev_vertex_element.variable_binding;
-	PathElement *next_vertex_element = GetPathElement(path_list[edge_idx + 1]);
+	PathElement *next_vertex_element = GetPathElement(path_list[next_vertex_idx]);
 	if (!next_vertex_element) {
-		auto next_vertex_subpath = GetSubPath(path_list[edge_idx + 1]);
+		auto next_vertex_subpath = GetSubPath(path_list[next_vertex_idx]);
 		if (next_vertex_subpath->path_list.size() > 1) {
 			throw NotImplementedException("Recursive patterns are not yet supported.");
 		}
