@@ -228,7 +228,7 @@ queue, which zeroes it in parallel. Running them all at once would need a workin
 batches of 65\,536 random pairs at SF100, and a working-set cap, a quarter of \duckdb's memory limit, also bounds
 the number running at once. The bound follows the machine and the user's configuration; on our machine the cap
 is 24.6\,GiB, which lets graph500-24 run 14 batches of 1.7\,GB at once instead of 32. Running fewer batches than threads
-costs time, because the threads are idle whenever a level waits for its last task. One batch at a time makes 65\,536 random pairs eight times slower at SF100\rev{, and less on larger graphs} (Section~\ref{sec:eval-ablation}).
+costs time, because the threads are idle whenever a level waits for its last task. One batch at a time makes 65\,536 random pairs eight times slower at SF100, and less on larger graphs (Section~\ref{sec:eval-ablation}).
 
 Each running batch splits each of its phases into tasks. It gets an equal share of the threads, and for each of
 those threads one task per four million edges of the graph, with no more tasks in all than there are threads. With 32
