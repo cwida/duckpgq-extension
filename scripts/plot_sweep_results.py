@@ -3,8 +3,9 @@
 
 Reads every sweep_pairs_*.csv and ldbc_queries_*.csv under data/ldbc-pathfinding/results/sf{10,100,300}; when a
 (system, shape, count) point appears in several files the newest file wins, so reruns replace earlier numbers.
-Writes PDF and PNG to paper/figures/ (DUCKPGQ_FIGURES_DIR overrides it, as DUCKPGQ_TABLES_DIR does for the LaTeX
-tables, so a test render never touches the paper). Colours follow the entity (one colour per system across every figure), six
+Writes the paper's PDFs to paper/figures/ and its LaTeX tables to paper/tables/ (DUCKPGQ_FIGURES_DIR and
+DUCKPGQ_TABLES_DIR override them); PNG previews go to DUCKPGQ_PREVIEW_DIR and the diagnostic figures to
+DUCKPGQ_EXTRA_DIR, when set. Colours follow the entity (one colour per system across every figure), six
 categorical slots in the validated order of the data-viz palette; the three slots with low contrast on the light
 surface get direct labels at the line ends (relief rule) and every number is also in the plan's tables.
 """
@@ -1774,11 +1775,16 @@ def concurrency_figure(filename):
     save(fig, filename)
 
 
+# The paper's crossover figure shows two ways; the one-lane-per-pair path (kept in crossover_figure) runs the waves of
+# a batch one after another, so its times mix a scheduling difference into the comparison (desk, 12 Nov)
+CROSSOVER_PAPER = CROSSOVER_KERNELS[:2]
+
+
 def crossover_sf100_figure(filename, sf="100"):
     """Section 3.4: the three ways of running k distinct sources on the index route at one scale factor, k random
     pairs (left) and k sources x 200 destinations (right); the dotted line is the smallest k at which the frontier
     traversal is no longer within 10% of the best."""
-    kernels = {c for c, _, _ in CROSSOVER_KERNELS}
+    kernels = {c for c, _, _ in CROSSOVER_PAPER}
     latest = {}
     for path in newest_files(RESULTS / f"sf{sf}", "microbench_sf*_threads32_*.csv"):
         for r in csv.DictReader(open(path)):
@@ -1798,7 +1804,7 @@ def crossover_sf100_figure(filename, sf="100"):
         ks = sorted({k for (c, s_, k) in series if s_ == shape})
         last_winning = None
         for k in ks:
-            times = {c: series[(c, shape, k)] for c, _, _ in CROSSOVER_KERNELS if (c, shape, k) in series}
+            times = {c: series[(c, shape, k)] for c, _, _ in CROSSOVER_PAPER if (c, shape, k) in series}
             if "single_source_kernel" in times and len(times) >= 2 and times["single_source_kernel"] <= 1.1 * min(
                     t for c, t in times.items() if c != "single_source_kernel"):
                 last_winning = k
@@ -1807,7 +1813,7 @@ def crossover_sf100_figure(filename, sf="100"):
         ax.set_xscale("log", base=2)
         ax.set_yscale("log")
         style_axes(ax)
-        for config, name, color in CROSSOVER_KERNELS:
+        for config, name, color in CROSSOVER_PAPER:
             xs = [k for k in ks if (config, shape, k) in series]
             plot_series(ax, xs, [series[(config, shape, k)] for k in xs], [], color,
                         linewidth=1.6 if config == "single_source_kernel" else 1.3,
@@ -1822,10 +1828,10 @@ def crossover_sf100_figure(filename, sf="100"):
         ax.set_xlabel("distinct sources k", fontsize=7.5)
     axes[0][0].set_ylabel("seconds per query")
     handles = [Line2D([], [], color=c, linewidth=1.6, marker="o", markersize=3.6, markeredgecolor=SURFACE)
-               for _, _, c in CROSSOVER_KERNELS]
-    fig.legend(handles, ["single-source traversal", "multi-source, one lane per source", "multi-source, one lane per pair"],
-               loc="lower center", ncol=1, bbox_to_anchor=(0.5, -0.02), handlelength=2.0, fontsize=6.5)
-    fig.tight_layout(rect=(0, 0.2, 1, 1))
+               for _, _, c in CROSSOVER_PAPER]
+    fig.legend(handles, ["single-source traversal", "multi-source traversal"],
+               loc="lower center", ncol=2, bbox_to_anchor=(0.5, -0.02), handlelength=2.0, fontsize=6.5)
+    fig.tight_layout(rect=(0, 0.09, 1, 1))
     save(fig, filename)
 
 
@@ -1834,7 +1840,6 @@ ABLATION_ROWS = [
     ("baseline", "default, 32 threads"),
     ("single_source_kernel", "single-source traversal for every query"),
     ("multi_source_dedup", "multi-source traversal for every query"),
-    ("no_source_grouping", "one lane per pair"),
     ("no_grouped_batches", "batches not grouped by the scheduler"),
     ("sched_g1_w32", "one batch at a time"),
     ("no_frontier_bitmap", "no summary bitmap"),
@@ -2059,50 +2064,59 @@ def numbering_table(filename):
 
 
 def save(fig, filename):
+    """The PDF goes to the figures directory; a PNG preview is written only where DUCKPGQ_PREVIEW_DIR points, so
+    paper/figures holds nothing the build does not read"""
     FIGURES.mkdir(parents=True, exist_ok=True)
     fig.savefig(FIGURES / f"{filename}.pdf")
-    fig.savefig(FIGURES / f"{filename}.png", dpi=220)
+    preview = os.environ.get("DUCKPGQ_PREVIEW_DIR")
+    if preview:
+        Path(preview).mkdir(parents=True, exist_ok=True)
+        fig.savefig(Path(preview) / f"{filename}.png", dpi=220)
     plt.close(fig)
-    print(f"wrote {FIGURES / filename}.pdf/.png")
+    print(f"wrote {FIGURES / filename}.pdf")
 
 
 if __name__ == "__main__":
-    sweep_figure("random_pairs", "pairs per query", "random_pairs",
-                 "Bound pairs: n random pairs per query; baselines on their best path")
-    sweep_figure("multi_source", "sources per query (each to every person)", "sources_all",
-                 "Sources × all persons: distances to every reachable vertex from k sources")
-    ldbc_figure("ldbc_queries")
-    client_threads_figure("client_threads")
-    speedup_figure("speedup")
-    teaser_figure("teaser_pairs")
-    teaser_bi19_figure("teaser_bi19_sf300")
+    # The figures and tables the paper includes (paper/figures, paper/tables)
     teaser_bi19_scales_figure("teaser")
-    scaling_figure("scaling")
-    throughput_figure("throughput")
-    first_query_figure("first_query")
-    updates_figure("updates")
-    updates_timeline_figure("updates_timeline")
-    graphalytics_figure("graphalytics")
-    concurrent_figure("concurrent")
-    fold_timeline_figure("fold_timeline")
-    # W35 clients figure; a second def named throughput_figure used to overwrite throughput.pdf (the sweep's
-    # pairs-per-second view that the paper includes) until 2 Nov
-    client_throughput_figure("throughput_clients")
-    crossover_figure("crossover")
-    sweep_table("random_pairs", "random_pairs",
-                r"Shortest-path lengths for $n$ random pairs per query, median of three runs, 32 threads, 600\,s timeout; "
-                r"rows marked conn.\ split the pairs over 32 client connections.", "tab:random-pairs", "system / pairs")
-    sweep_table("multi_source", "sources_all",
-                r"Distances from $k$ sources to every reachable person, median of three runs; n/r: not run above 500M pairs.",
-                "tab:sources-all", "system / sources")
-    ldbc_table("ldbc_queries")
-    scaling_grid_figure("scaling_grid")
-    graphalytics_table("graphalytics")
-    fixed_costs_table("fixed_costs")
-    update_stream_table("update_stream")
-    concurrency_figure("concurrency")
-    crossover_sf100_figure("crossover_sf100")
-    ablation_table("ablation")
     scaling_column_figure("scaling_column")
     concurrency_column_figure("concurrency_column")
+    crossover_sf100_figure("crossover_sf100")
+    graphalytics_table("graphalytics")
+    ldbc_table("ldbc_queries")
+    fixed_costs_table("fixed_costs")
     numbering_table("numbering")
+    update_stream_table("update_stream")
+    ablation_table("ablation")
+    # Diagnostic figures and the earlier table layouts are not part of the paper. They are written only when
+    # DUCKPGQ_EXTRA_DIR names a directory for them, never into paper/.
+    extra = os.environ.get("DUCKPGQ_EXTRA_DIR")
+    if extra:
+        FIGURES = TABLES = Path(extra)
+        sweep_figure("random_pairs", "pairs per query", "random_pairs",
+                     "Bound pairs: n random pairs per query; the other systems on their best path")
+        sweep_figure("multi_source", "sources per query (each to every person)", "sources_all",
+                     "Sources × all persons: distances to every reachable vertex from k sources")
+        ldbc_figure("ldbc_queries")
+        client_threads_figure("client_threads")
+        speedup_figure("speedup")
+        teaser_figure("teaser_pairs")
+        teaser_bi19_figure("teaser_bi19_sf300")
+        scaling_figure("scaling")
+        throughput_figure("throughput")
+        first_query_figure("first_query")
+        updates_figure("updates")
+        updates_timeline_figure("updates_timeline")
+        graphalytics_figure("graphalytics")
+        concurrent_figure("concurrent")
+        fold_timeline_figure("fold_timeline")
+        client_throughput_figure("throughput_clients")
+        crossover_figure("crossover")
+        scaling_grid_figure("scaling_grid")
+        concurrency_figure("concurrency")
+        sweep_table("random_pairs", "random_pairs",
+                    r"Shortest-path lengths for $n$ random pairs per query, median of three runs, 32 threads, 600\,s timeout; "
+                    r"rows marked conn.\ split the pairs over 32 client connections.", "tab:random-pairs", "system / pairs")
+        sweep_table("multi_source", "sources_all",
+                    r"Distances from $k$ sources to every reachable person, median of three runs; n/r: not run above 500M pairs.",
+                    "tab:sources-all", "system / sources")

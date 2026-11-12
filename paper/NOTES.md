@@ -459,6 +459,22 @@ shared; and the commit takes the exclusive lock once for the appended chunk and 
 detail; the paper states the cost (4.3, 4.7, 5.4) and says no more, no fix promised, no confirmation build; this
 entry is the answer if a reviewer asks.
 
+12 Nov: the "one lane per pair" row of the ablation table and line of the crossover figure are gone. Desk, from the
+code and the strategy strings of the SF100 runs: with distinct sources both paths run the same 256-lane kernel with one
+lane per pair; the lane-per-pair path (source_group_ratio=0) runs the 256-lane waves of a batch of up to 2048 pairs
+one after another on a single working set (BFSState::AssignLanes, IterativeLengthState::BeginWave), the default packs
+the source groups into waves that each have their own working set and run side by side
+(physical_path_finding_operator.cpp:1722). 128 pairs: 1 wave either way, 64 / 63 ms; 1024 sources to one destination:
+4 waves concurrently vs in sequence, 116 / 284 ms; 2048 pairs: 8 waves, 135 / 520 ms; 65,536 pairs: 32 groups either
+way, 3301 / 3249 ms. So the row measured the scheduling of an older code path, not deduplication, and was removed
+rather than explained; what deduplication saves is stated in 3.3 by count (1.4 K searches in six batches against 9.4 K
+batches for BI19) and its effect on sources x all by the lengths-mode row.
+
+12 Nov: paper/ holds only what the build reads. Removed: 19 unused figure PDFs, all PNG previews, tables random_pairs
+and sources_all; sections/appendix_queries.tex moved to repro/package/queries.tex. scripts/plot_sweep_results.py
+writes the paper's four data figures and six tables by default; DUCKPGQ_EXTRA_DIR=<dir> also writes the diagnostic
+figures and the old table layouts there, DUCKPGQ_PREVIEW_DIR=<dir> writes PNG previews.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under

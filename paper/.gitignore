@@ -10,3 +10,5 @@
 main.pdf
 template_main.tex
 data/
+*-draft-*.pdf
+figures/*.png

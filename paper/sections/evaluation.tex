@@ -171,8 +171,7 @@ four folds, the four queries that triggered them took 1.7 to 1.8\,s, while the m
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{figures/crossover_sf100.pdf}
-  \caption{Seconds per query over the index at SF100, 32 threads, median of three runs, for $k$ distinct sources run
-  three ways: the single-source traversal once per source, and the multi-source traversal with one lane per distinct source and with one lane per pair. Left: $k$ random pairs, one destination each; right: $k$ sources with 200 destinations each. The dotted
+  \caption{Seconds per query over the index at SF100, 32 threads, median of three runs, for $k$ distinct sources run \rev{two ways, the single-source traversal once per source and the multi-source traversal with one lane per source}. Left: $k$ random pairs, one destination each; right: $k$ sources with 200 destinations each. The dotted
   line is the smallest $k$ at which the single-source traversal is no longer within a tenth of the fastest way.}
   \label{fig:crossover}
 \end{figure}
@@ -181,8 +180,7 @@ Table~\ref{tab:ablation} changes one mechanism of the operator at a time, over t
 traversal (Section~\ref{sec:choice}) has the largest effect. With the single-source traversal forced, 65\,536 pairs
 take twelve times as long and 1024 sources 2.7 times, because every source then sweeps the graph on its own. With the
 multi-source traversal forced nothing changes on the table's points, which lie far from the crossover, and Figure~\ref{fig:crossover} shows where it lies. Up to 8 distinct sources the single-source traversal is within a tenth of the
-fastest way, and from 16, the default limit, the lanes are faster. They need more memory, a working set of 41\,MB per batch against 5\,MB for a single-source search. One lane per pair, as before the sources were deduplicated,
-takes 3.9 times as long for 2048 random pairs and 2.4 times for 1024 sources to one destination.
+fastest way, and from 16, the default limit, the lanes are faster. They need more memory, a working set of 41\,MB per batch against 5\,MB for a single-source search.
 
 The scheduling of the batches (Section~\ref{sec:phases}) comes second; without the grouping every batch is
 scheduled as an event of its own, and 65\,536 pairs take 2.4 times as long. On the larger graph500-24 the working sets
