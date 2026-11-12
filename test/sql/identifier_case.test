@@ -1,0 +1,50 @@
+# name: test/sql/identifier_case.test
+# description: Element variables, labels and table names compare case-insensitively
+# group: [sql]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Person (id BIGINT PRIMARY KEY, name VARCHAR);
+
+statement ok
+CREATE TABLE Knows (src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO Person VALUES (1, 'a'), (2, 'b'), (3, 'c');
+
+statement ok
+INSERT INTO Knows VALUES (1, 2);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (Person)
+EDGE TABLES (Knows SOURCE KEY (src) REFERENCES Person (id) DESTINATION KEY (dst) REFERENCES Person (id) LABEL friend);
+
+# A bare element variable in COLUMNS does not need the case of its binding
+query I
+FROM GRAPH_TABLE (g MATCH (p:Person)-[k:friend]->(q:Person) COLUMNS (P))
+----
+{'id': 1, 'name': a}
+
+query II
+FROM GRAPH_TABLE (g MATCH (p:Person)-[k:friend]->(q:Person) COLUMNS (P.name, Q.ROWID AS r))
+----
+a	1
+
+# The vertex before an optional edge is joined outside the segment whatever the case of its references
+query II rowsort
+FROM GRAPH_TABLE (g MATCH (p:Person)-[k:friend]->?(q:Person) COLUMNS (P.name AS pn, Q.name AS qn))
+----
+a	b
+b	NULL
+c	NULL
+
+# A table name given where a label is expected is recognised in any case
+statement error
+FROM pagerank(g, Person, Knows);
+----
+Invalid Error: Table 'knows' found in the property graph, but does not have the correct label. Did you mean the label 'friend' instead?

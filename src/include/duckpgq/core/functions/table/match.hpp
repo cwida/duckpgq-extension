@@ -161,7 +161,7 @@ struct PathFindingCSRs {
 //! without such an edge is kept with NULL for the edge and vertex variables.
 struct OptionalMatchSegment {
 	//! The vertex before the optional edge, which belongs to the mandatory part of the match
-	string prev_binding;
+	Identifier prev_binding;
 	//! The segment's edge table (twice for <-[e]->) and vertex table
 	case_insensitive_map_t<shared_ptr<PropertyGraphTable>> alias_map;
 	//! The UNION ALL subquery of an undirected edge
