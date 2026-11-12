@@ -1,0 +1,25 @@
+--- scripts/tools/update_concurrent_driver.cpp	2026-11-04 08:44:22.497922229 +0000
++++ probe driver (scratch copy)	2026-11-12 08:28:10.465863650 +0000
+@@ -197,12 +197,18 @@
+ 		auto range = " WHERE seq > " + std::to_string(lo) + " AND seq <= " + std::to_string(hi);
+ 		auto start = Now();
+ 		auto t_start = std::chrono::steady_clock::now();
+-		Must(con, "BEGIN TRANSACTION;");
+-		Must(con, "INSERT INTO person_knows_person SELECT person1id, person2id FROM " + options.log_table + range +
++		auto lap = [&](const char *kind, const std::string &sql) {
++			auto s0 = Now();
++			auto t0 = std::chrono::steady_clock::now();
++			Must(con, sql);
++			Record({kind, 0, batch + 1, s0, std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), "", "", "", "abs_start_ns=" + std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(t0.time_since_epoch()).count())});
++		};
++		lap("w_begin", "BEGIN TRANSACTION;");
++		lap("w_insert", "INSERT INTO person_knows_person SELECT person1id, person2id FROM " + options.log_table + range +
+ 		              " AND op = 'insert';");
+-		Must(con, "DELETE FROM person_knows_person k USING (SELECT person1id, person2id FROM " + options.log_table +
++		lap("w_delete", "DELETE FROM person_knows_person k USING (SELECT person1id, person2id FROM " + options.log_table +
+ 		              range + " AND op = 'delete') u WHERE k.person1id = u.person1id AND k.person2id = u.person2id;");
+-		Must(con, "COMMIT;");
++		lap("w_commit", "COMMIT;");
+ 		auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count();
+ 		commits_done++;
+ 		// The WAL size after the commit: a drop against the previous commit marks a DuckDB checkpoint inside it

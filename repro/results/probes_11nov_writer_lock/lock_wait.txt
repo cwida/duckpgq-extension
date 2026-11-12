@@ -1,0 +1,44 @@
+Exclusive StorageLock waits inside the writer's COMMIT statement, 12 Nov (tools/lockshim.cpp preloaded into the
+probe driver; the frozen libduckdb.so and extension unchanged). SF10, 16 readers, same parameters as the sweep.
+The shim costs time (1.17 M logged acquisitions): COMMIT is 173 ms here against 154 and 160 ms in the unshimmed
+index runs, and 33 against 27 ms on the build route.
+Not captured: the readers' shared acquisitions of the entry lock (GetReadHandle is inlined into the extension
+and does not go through the library's PLT); the shared rows below are the library's own callers.
+
+== idx16: index route's readers
+exclusive acquisitions in the run: 1173218; writer commits: 190
+COMMIT statement: median 173.1 ms
+exclusive-lock wait inside it: median 155.6 ms per commit, 90% of all COMMIT time
+acquisitions per commit: median 3112 (min 2208, max 4112)
+by caller (acquisitions inside commits, total wait):
+   585155      21882 ms  duckdb::IndexEntry::RemoveFromIndex
+     3040       9173 ms  duckdb::IndexEntry::Append
+acquisitions outside the COMMIT statements: 585023
+single acquisition wait: median 0.000 ms, p90 0.000, p99 0.000, max 216.0; acquisitions that waited over 1 ms: 1613
+per-commit count of acquisitions that waited over 1 ms: median 8
+shared acquisitions by caller (count, total wait, longest):
+  1173120         48 ms      0.0 ms  duckdb::IndexEntry::GetStorageInfo
+    18192          3 ms      0.0 ms  duckdb::IndexEntry::IsUnique
+     3040          1 ms      0.0 ms  duckdb::IndexEntry::InitializeLocalIndexes
+      539          0 ms      0.0 ms  duckdb::DuckTransaction::SharedLockTable
+      274          0 ms      0.0 ms  duckdb::DuckTransactionManager::SharedCheckpointLock
+      190          0 ms      0.0 ms  duckdb::DuckTransactionManager::SharedVacuumLock
+
+== bld16: build route's readers
+exclusive acquisitions in the run: 1173218; writer commits: 190
+COMMIT statement: median 33.4 ms
+exclusive-lock wait inside it: median 0.1 ms per commit, 0% of all COMMIT time
+acquisitions per commit: median 3112 (min 2208, max 4112)
+by caller (acquisitions inside commits, total wait):
+   585040         37 ms  duckdb::IndexEntry::RemoveFromIndex
+     3040          0 ms  duckdb::IndexEntry::Append
+acquisitions outside the COMMIT statements: 585138
+single acquisition wait: median 0.000 ms, p90 0.000, p99 0.000, max 8.3; acquisitions that waited over 1 ms: 2
+per-commit count of acquisitions that waited over 1 ms: median 0
+shared acquisitions by caller (count, total wait, longest):
+  1173120        101 ms     10.8 ms  duckdb::IndexEntry::GetStorageInfo
+    18192          2 ms      0.0 ms  duckdb::IndexEntry::IsUnique
+     3040          2 ms      0.0 ms  duckdb::IndexEntry::InitializeLocalIndexes
+     1219          0 ms      0.0 ms  duckdb::DuckTransaction::SharedLockTable
+      274          0 ms      0.0 ms  duckdb::DuckTransactionManager::SharedCheckpointLock
+      190          0 ms      0.0 ms  duckdb::DuckTransactionManager::SharedVacuumLock

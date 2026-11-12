@@ -1,0 +1,34 @@
+Stack samples of 11 Nov (eu-stack; tools/sample_stacks.sh) from one index-route run: SF10, 16 readers, 190 commits
+(raw/idxstk.csv; samples in raw/stack_samples_idxstk.tgz: w_*.txt the writer thread, stk_*.txt all threads).
+Sampling is not a timer: the shares below are sample counts, not times. The time shares are in lock_wait.txt.
+
+== writer thread, 488 samples
+  233  in the driver's 200 ms pause
+  142  in ClientContext::ExecuteTaskInternal (waiting for or running tasks of its statement; the statement is not identifiable from the stack)
+   51  waiting for the exclusive entry lock, under IndexEntry::RemoveFromIndex
+   34  waiting for the exclusive entry lock, under IndexEntry::Append
+   16  no stack returned
+   10  in the commit path on its own thread, not waiting for the entry lock
+    2  other
+
+Reading: the writer's COMMIT statement runs partly on the writer's own thread and partly as a task on a worker
+thread; in the second case the writer's thread is in ExecuteTaskInternal while the worker waits for the lock
+(see the all-threads samples below), so the 85 lock-wait samples are a lower bound on the wait.
+
+== all threads, 77 samples of the process
+threads waiting in StorageLock::GetExclusiveLock (at most one per sample):
+    9  IndexEntry::RemoveFromIndex, on the writer thread
+    5  IndexEntry::RemoveFromIndex, on a worker thread
+    3  IndexEntry::Append, on a worker thread
+    1  IndexEntry::Append, on the writer thread
+
+threads inside CSRIndex::Snapshot (called by CSRIndex::Resolve under the entry's read handle): 454 thread samples;
+innermost frames first, glibc's futex frames dropped:
+  158  __pthread_mutex_lock@GLIBC_2.2.5 <- duckdb::RowGroupCollection::CanFetch <- duckdb::DataTable::CanFetch <- duckdb::CSRIndex::BuildSnapshot <- duckdb::CSRIndex::BuildSnapshot
+  102  std::unique_lock<std::mutex>::unlock <- duckdb::RowGroupCollection::CanFetch <- duckdb::DataTable::CanFetch <- duckdb::CSRIndex::BuildSnapshot <- duckdb::CSRIndex::BuildSnapshot
+   91  __pthread_mutex_lock@GLIBC_2.2.5 <- duckdb::RowGroupCollection::GetRowGroups <- duckdb::RowGroupCollection::CanFetch <- duckdb::DataTable::CanFetch <- duckdb::CSRIndex::BuildSnapshot <- duckdb::CSRIndex::BuildSnapshot
+   49  duckdb::RowGroupCollection::GetRowGroups <- duckdb::RowGroupCollection::CanFetch <- duckdb::DataTable::CanFetch <- duckdb::CSRIndex::BuildSnapshot <- duckdb::CSRIndex::BuildSnapshot
+   13  __pthread_mutex_lock@GLIBC_2.2.5 <- duckdb::RowVersionManager::GetVisibleRows <- duckdb::RowGroupCollection::CanFetch <- duckdb::DataTable::CanFetch <- duckdb::CSRIndex::BuildSnapshot <- duckdb::CSRIndex::BuildSnapshot
+    7  duckdb::CSRIndex::BuildSnapshot
+    6  duckdb::RowVersionManager::GetVisibleRows <- duckdb::RowGroupCollection::CanFetch <- duckdb::DataTable::CanFetch <- duckdb::CSRIndex::BuildSnapshot <- duckdb::CSRIndex::BuildSnapshot
+    5  duckdb::CSRIndex::BuildSnapshot <- duckdb::CSRIndex::BuildSnapshot
