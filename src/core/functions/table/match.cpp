@@ -327,15 +327,20 @@ GetColRefExprFromPg(const case_insensitive_map_t<shared_ptr<PropertyGraphTable>>
 }
 
 // Get all fully-qualified column names from the given property graph [pg] for
-// all vertex relations.
+// all element variables. Anonymous elements are not element variables (10.6 NOTE 88), so the aliases in
+// [anonymous_aliases] contribute no columns.
 //
 // Return column reference expressions which represent columns to select.
 vector<unique_ptr<ColumnRefExpression>>
-GetColRefExprFromPg(const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map) {
+GetColRefExprFromPg(const case_insensitive_map_t<shared_ptr<PropertyGraphTable>> &alias_map,
+                    const case_insensitive_set_t &anonymous_aliases) {
 	vector<unique_ptr<ColumnRefExpression>> registered_col_names;
 	for (const auto &alias_and_table : alias_map) {
 		const auto &alias = alias_and_table.first;
 		const auto &tbl = alias_and_table.second;
+		if (anonymous_aliases.count(alias)) {
+			continue;
+		}
 		// Skip edge table.
 		registered_col_names.reserve(registered_col_names.size() + tbl->column_names.size());
 		for (const auto &cur_col : tbl->column_names) {
@@ -380,6 +385,122 @@ string CreateReverseSelfLoopFilter(const PropertyGraphTable &edge_table, const s
 }
 
 } // namespace
+
+static void PGQFlattenPathElements(vector<unique_ptr<PathReference>> &path_list, vector<PathElement *> &elements) {
+	for (auto &path_reference : path_list) {
+		if (path_reference->path_reference_type == PGQPathReferenceType::PATH_ELEMENT) {
+			elements.push_back(reinterpret_cast<PathElement *>(path_reference.get()));
+		} else {
+			PGQFlattenPathElements(reinterpret_cast<SubPath *>(path_reference.get())->path_list, elements);
+		}
+	}
+}
+
+static vector<Identifier> PGQMainLabels(const vector<shared_ptr<PropertyGraphTable>> &tables) {
+	vector<Identifier> labels;
+	for (auto &table : tables) {
+		labels.push_back(table->main_label);
+	}
+	return labels;
+}
+
+static bool PGQSameVertexTable(const shared_ptr<PropertyGraphTable> &reference,
+                               const shared_ptr<PropertyGraphTable> &table) {
+	return reference && reference->SameTableIdentity(*table);
+}
+
+// A named element whose variable is a registered label keeps the historical DuckPGQ reading (a) == (a:a).
+static bool PGQVariableIsLabel(const PathElement &element, const CreatePropertyGraphInfo &pg_table) {
+	return !element.anonymous && pg_table.label_map.find(element.variable_binding) != pg_table.label_map.end();
+}
+
+// An unlabeled vertex pattern binds to the only vertex table of the graph.
+static string PGQResolveVertexLabel(const PathElement &vertex, const CreatePropertyGraphInfo &pg_table) {
+	if (pg_table.vertex_tables.size() != 1) {
+		throw BinderException("Vertex pattern %s has no label and property graph %s has %s vertex tables (%s); "
+		                      "specify a label",
+		                      vertex.ToString(), pg_table.property_graph_name,
+		                      std::to_string(pg_table.vertex_tables.size()),
+		                      StringUtil::Join(PGQMainLabels(pg_table.vertex_tables), ", "));
+	}
+	return pg_table.vertex_tables[0]->main_label.GetIdentifierName();
+}
+
+// Whether edge_table connects prev_table and next_table in the direction of the edge pattern.
+static bool PGQEdgeTableConnects(const PropertyGraphTable &edge_table, PGQMatchType direction,
+                                 const shared_ptr<PropertyGraphTable> &prev_table,
+                                 const shared_ptr<PropertyGraphTable> &next_table) {
+	bool forward = PGQSameVertexTable(edge_table.source_pg_table, prev_table) &&
+	               PGQSameVertexTable(edge_table.destination_pg_table, next_table);
+	bool backward = PGQSameVertexTable(edge_table.source_pg_table, next_table) &&
+	                PGQSameVertexTable(edge_table.destination_pg_table, prev_table);
+	switch (direction) {
+	case PGQMatchType::MATCH_EDGE_RIGHT:
+		return forward;
+	case PGQMatchType::MATCH_EDGE_LEFT:
+		return backward;
+	default:
+		return forward || backward;
+	}
+}
+
+// An unlabeled edge pattern binds to the only edge table that connects the tables of its (already resolved) endpoint
+// vertex patterns.
+static string PGQResolveEdgeLabel(const PathElement &edge, const PathElement &prev_vertex,
+                                  const PathElement &next_vertex, CreatePropertyGraphInfo &pg_table) {
+	auto prev_table = PGQMatchFunction::FindGraphTable(prev_vertex.label, pg_table);
+	auto next_table = PGQMatchFunction::FindGraphTable(next_vertex.label, pg_table);
+	vector<shared_ptr<PropertyGraphTable>> candidates;
+	for (auto &edge_table : pg_table.edge_tables) {
+		if (PGQEdgeTableConnects(*edge_table, edge.match_type, prev_table, next_table)) {
+			candidates.push_back(edge_table);
+		}
+	}
+	if (candidates.empty()) {
+		throw BinderException("Edge pattern %s has no label and no edge table of property graph %s connects %s "
+		                      "and %s in that direction",
+		                      edge.ToString(), pg_table.property_graph_name, prev_vertex.label, next_vertex.label);
+	}
+	if (candidates.size() > 1) {
+		throw BinderException("Edge pattern %s has no label and is ambiguous: edge tables %s all connect %s and %s; "
+		                      "specify a label",
+		                      edge.ToString(), StringUtil::Join(PGQMainLabels(candidates), ", "), prev_vertex.label,
+		                      next_vertex.label);
+	}
+	return candidates[0]->main_label.GetIdentifierName();
+}
+
+// Resolve element patterns without a label (10.6: the label is optional in the <element pattern filler>).
+// Every element binds to exactly one table, so a pattern that could bind to more than one is ambiguous.
+// Vertices are resolved first, because an unlabeled edge is resolved from the tables of its endpoints.
+static void PGQResolveElementLabels(PathPattern &path_pattern, CreatePropertyGraphInfo &pg_table) {
+	vector<PathElement *> elements;
+	PGQFlattenPathElements(path_pattern.path_elements, elements);
+	for (auto element : elements) {
+		if (element->match_type != PGQMatchType::MATCH_VERTEX || !element->label.empty()) {
+			continue;
+		}
+		element->label = PGQVariableIsLabel(*element, pg_table) ? element->variable_binding
+		                                                        : PGQResolveVertexLabel(*element, pg_table);
+	}
+	for (idx_t i = 0; i < elements.size(); i++) {
+		auto element = elements[i];
+		if (element->match_type == PGQMatchType::MATCH_VERTEX || !element->label.empty()) {
+			continue;
+		}
+		if (PGQVariableIsLabel(*element, pg_table)) {
+			element->label = element->variable_binding;
+			continue;
+		}
+		bool between_vertices = i > 0 && i + 1 < elements.size() &&
+		                        elements[i - 1]->match_type == PGQMatchType::MATCH_VERTEX &&
+		                        elements[i + 1]->match_type == PGQMatchType::MATCH_VERTEX;
+		if (!between_vertices) {
+			throw BinderException("Vertex and edge patterns must be alternated.");
+		}
+		element->label = PGQResolveEdgeLabel(*element, *elements[i - 1], *elements[i + 1], pg_table);
+	}
+}
 
 shared_ptr<PropertyGraphTable> PGQMatchFunction::FindGraphTable(const string &label,
                                                                 CreatePropertyGraphInfo &pg_table) {
@@ -1242,6 +1363,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	}
 	for (idx_t idx_i = 0; idx_i < ref->path_patterns.size(); idx_i++) {
 		auto &path_pattern = ref->path_patterns[idx_i];
+		PGQResolveElementLabels(*path_pattern, *pg_table);
 		PGQCheckPathModeSupport(*path_pattern);
 		// Check if the element is PathElement or a Subpath with potentially many
 		// items
@@ -1299,6 +1421,18 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 
 	std::vector<unique_ptr<ParsedExpression>> final_column_list;
 
+	// Generated aliases of anonymous elements, which the unqualified COLUMNS (*) does not expand.
+	case_insensitive_set_t anonymous_aliases;
+	for (auto &path_pattern : ref->path_patterns) {
+		vector<PathElement *> elements;
+		PGQFlattenPathElements(path_pattern->path_elements, elements);
+		for (auto *element : elements) {
+			if (element->anonymous) {
+				anonymous_aliases.insert(element->variable_binding);
+			}
+		}
+	}
+
 	for (auto &expression : ref->column_list) {
 		unordered_set<string> named_subpaths;
 
@@ -1351,10 +1485,17 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 				}
 			}
 
-			auto selected_col_exprs = relation_name.empty() ? GetColRefExprFromPg(alias_to_vertex_and_edge_tables)
-			                                                : GetColRefExprFromPg(alias_to_vertex_and_edge_tables,
-			                                                                      relation_name.GetIdentifierName());
+			auto selected_col_exprs =
+			    relation_name.empty()
+			        ? GetColRefExprFromPg(alias_to_vertex_and_edge_tables, anonymous_aliases)
+			        : GetColRefExprFromPg(alias_to_vertex_and_edge_tables, relation_name.GetIdentifierName());
 
+			// Without element variables there is nothing to expand; falling back to the plain star would expose the
+			// columns of the anonymous elements.
+			if (selected_col_exprs.empty() && relation_name.empty() && !anonymous_aliases.empty()) {
+				throw BinderException("COLUMNS (*) has no element variable to expand: every element of the pattern is "
+				                      "anonymous");
+			}
 			// Fallback to star expression if cannot figure out the columns to query.
 			if (selected_col_exprs.empty()) {
 				final_column_list.emplace_back(std::move(expression));

@@ -103,26 +103,22 @@ string SubPath::ToString() const {
 		switch (path_list[0]->path_reference_type) {
 		case PGQPathReferenceType::PATH_ELEMENT: {
 			auto path_element = reinterpret_cast<PathElement *>(path_list[0].get());
+			auto filler = path_element->FillerToString() + (where_clause ? " WHERE " + where_clause->ToString() : "");
 			switch (path_element->match_type) {
 			case PGQMatchType::MATCH_VERTEX:
-				result += "(" + path_element->variable_binding + ":" + path_element->label +
-				          (where_clause ? " WHERE " + where_clause->ToString() : "") + ")";
+				result += "(" + filler + ")";
 				break;
 			case PGQMatchType::MATCH_EDGE_ANY:
-				result += "-[" + path_element->variable_binding + ":" + path_element->label +
-				          (where_clause ? " WHERE " + where_clause->ToString() : "") + "]-";
+				result += "-[" + filler + "]-";
 				break;
 			case PGQMatchType::MATCH_EDGE_LEFT:
-				result += "<-[" + path_element->variable_binding + ":" + path_element->label +
-				          (where_clause ? " WHERE " + where_clause->ToString() : "") + "]-";
+				result += "<-[" + filler + "]-";
 				break;
 			case PGQMatchType::MATCH_EDGE_RIGHT:
-				result += "-[" + path_element->variable_binding + ":" + path_element->label +
-				          (where_clause ? " WHERE " + where_clause->ToString() : "") + "]->";
+				result += "-[" + filler + "]->";
 				break;
 			case PGQMatchType::MATCH_EDGE_LEFT_RIGHT:
-				result += "<-[" + path_element->variable_binding + ":" + path_element->label +
-				          (where_clause ? " WHERE " + where_clause->ToString() : "") + "]->";
+				result += "<-[" + filler + "]->";
 				break;
 			}
 			break;

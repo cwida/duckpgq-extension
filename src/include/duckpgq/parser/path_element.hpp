@@ -24,11 +24,17 @@ public:
 
 	std::string variable_binding;
 
+	//! True for () and -[]->: the variable name is generated and the element is not exposed by COLUMNS.
+	bool anonymous = false;
+
 public:
 	explicit PathElement(PGQPathReferenceType path_reference_type) : PathReference(path_reference_type) {
 	}
 
 	string ToString() const override;
+
+	//! The <element pattern filler>: variable (unless anonymous) and label, without the brackets.
+	string FillerToString() const;
 
 	unique_ptr<PathReference> Copy() override;
 
