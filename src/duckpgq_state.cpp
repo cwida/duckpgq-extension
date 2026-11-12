@@ -255,6 +255,7 @@ void DuckPGQState::QueryEnd() {
 		csr_list.erase(csr_id);
 	}
 	csr_to_delete.clear();
+	next_csr_id = 0;
 }
 
 QualifiedName DuckPGQState::ResolvePropertyGraphName(ClientContext &context, const QualifiedName &pg_name) {
