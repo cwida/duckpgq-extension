@@ -615,9 +615,11 @@ PathFindingCSR &PGQMatchFunction::GetPathFindingCSR(PathFindingCSRs &csrs, uniqu
 	PathFindingCSR csr;
 	csr.edge_table = edge_table;
 	csr.directed = directed;
-	csr.csr_id = NumericCast<int32_t>(csrs.csrs.size());
-	csr.cte_name = "cte" + std::to_string(csr.csr_id + 1);
-	csr.count_alias = csr.csr_id == 0 ? string("__x") : "__x" + std::to_string(csr.csr_id);
+	csr.csr_id = csrs.state.NextCSRId();
+	// The CTE and alias names are scoped to this MATCH, so they are numbered per MATCH.
+	const auto local_index = csrs.csrs.size();
+	csr.cte_name = "cte" + std::to_string(local_index + 1);
+	csr.count_alias = local_index == 0 ? string("__x") : "__x" + std::to_string(local_index);
 	unique_ptr<CommonTableExpressionInfo> cte;
 	if (directed) {
 		cte = CreateDirectedCSRCTE(edge_table, src_binding, edge_binding, dst_binding, csr.csr_id);
@@ -1354,7 +1356,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 	VertexJoinMap vertex_joins;
 
 	int32_t extra_alias_counter = 0;
-	PathFindingCSRs csrs;
+	PathFindingCSRs csrs(*duckpgq_state);
 	OptionalMatches optional_matches;
 	for (auto &path_pattern : ref->path_patterns) {
 		for (auto &path_reference : path_pattern->path_elements) {

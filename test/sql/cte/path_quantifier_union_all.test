@@ -1,0 +1,199 @@
+# name: test/sql/cte/path_quantifier_union_all.test
+# description: Path-quantified GRAPH_TABLE combined with UNION ALL (issue #304)
+# group: [cte]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq']
+
+statement ok
+CREATE TABLE vertices (id VARCHAR PRIMARY KEY, name VARCHAR);
+
+statement ok
+INSERT INTO vertices VALUES ('a', 'A'), ('b', 'B'), ('c', 'C');
+
+statement ok
+CREATE TABLE edges (src VARCHAR, dst VARCHAR);
+
+statement ok
+INSERT INTO edges VALUES ('b', 'a'), ('c', 'b');
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES ( vertices LABEL V )
+EDGE TABLES (
+    edges SOURCE KEY (src) REFERENCES vertices (id)
+          DESTINATION KEY (dst) REFERENCES vertices (id)
+          LABEL E
+);
+
+# The query from the issue
+query II rowsort
+WITH ancestors AS (
+    SELECT * FROM (
+        FROM GRAPH_TABLE(g
+            MATCH (a:V)-[k:E]->{1,2}(b:V)
+            COLUMNS(a.id AS child, b.id AS ancestor)
+        )
+    ) sub
+)
+SELECT child, ancestor FROM ancestors
+UNION ALL
+SELECT 'x' AS child, 'y' AS ancestor
+----
+b	a
+c	a
+c	b
+x	y
+
+# Without the CTE
+query II rowsort
+SELECT child, ancestor FROM GRAPH_TABLE(g
+    MATCH (a:V)-[k:E]->{1,2}(b:V)
+    COLUMNS(a.id AS child, b.id AS ancestor)
+)
+UNION ALL
+SELECT 'x' AS child, 'y' AS ancestor
+----
+b	a
+c	a
+c	b
+x	y
+
+# The constant row first
+query II rowsort
+SELECT 'x' AS child, 'y' AS ancestor
+UNION ALL
+FROM GRAPH_TABLE(g
+    MATCH (a:V)-[k:E]->{1,2}(b:V)
+    COLUMNS(a.id AS child, b.id AS ancestor)
+)
+----
+b	a
+c	a
+c	b
+x	y
+
+# A materialized CTE
+query II rowsort
+WITH ancestors AS MATERIALIZED (
+    FROM GRAPH_TABLE(g
+        MATCH (a:V)-[k:E]->{1,2}(b:V)
+        COLUMNS(a.id AS child, b.id AS ancestor)
+    )
+)
+SELECT child, ancestor FROM ancestors
+UNION ALL
+SELECT 'x' AS child, 'y' AS ancestor
+----
+b	a
+c	a
+c	b
+x	y
+
+# UNION (deduplicating) of the same quantified pattern twice
+query II rowsort
+FROM GRAPH_TABLE(g
+    MATCH (a:V)-[k:E]->{1,2}(b:V)
+    COLUMNS(a.id AS child, b.id AS ancestor)
+)
+UNION
+FROM GRAPH_TABLE(g
+    MATCH (a:V)-[k:E]->{1,2}(b:V)
+    COLUMNS(a.id AS child, b.id AS ancestor)
+)
+----
+b	a
+c	a
+c	b
+
+# UNION ALL of two different quantified patterns
+query II rowsort
+FROM GRAPH_TABLE(g
+    MATCH (a:V)-[k:E]->{1,1}(b:V)
+    COLUMNS(a.id AS child, b.id AS ancestor)
+)
+UNION ALL
+FROM GRAPH_TABLE(g
+    MATCH (a:V)-[k:E]->{2,2}(b:V)
+    COLUMNS(a.id AS child, b.id AS ancestor)
+)
+----
+b	a
+c	a
+c	b
+
+# Kleene star and plus, and a shortest path with path columns
+query II rowsort
+FROM GRAPH_TABLE(g
+    MATCH ANY SHORTEST (a:V)-[k:E]->+(b:V)
+    COLUMNS(a.id AS child, b.id AS ancestor)
+)
+UNION ALL
+FROM GRAPH_TABLE(g
+    MATCH ANY SHORTEST (a:V WHERE a.id = 'c')-[k:E]->*(b:V)
+    COLUMNS(a.id AS child, b.id AS ancestor)
+)
+----
+b	a
+c	a
+c	a
+c	b
+c	b
+c	c
+
+query III rowsort
+FROM GRAPH_TABLE(g
+    MATCH p = ANY SHORTEST (a:V)-[k:E]->{1,2}(b:V)
+    COLUMNS(a.id AS child, b.id AS ancestor, path_length(p) AS len)
+)
+UNION ALL
+SELECT 'x', 'y', 0
+----
+b	a	1
+c	a	2
+c	b	1
+x	y	0
+
+# A CTE with a quantified pattern referenced on both sides of a UNION ALL
+query II rowsort
+WITH ancestors AS (
+    FROM GRAPH_TABLE(g
+        MATCH (a:V)-[k:E]->{1,2}(b:V)
+        COLUMNS(a.id AS child, b.id AS ancestor)
+    )
+)
+SELECT child, ancestor FROM ancestors
+UNION ALL
+SELECT ancestor, child FROM ancestors
+----
+a	b
+a	c
+b	a
+b	c
+c	a
+c	b
+
+# Two quantified GRAPH_TABLEs joined in one query
+query II rowsort
+SELECT x.child, y.ancestor
+FROM GRAPH_TABLE(g MATCH (a:V)-[k:E]->{1,2}(b:V) COLUMNS(a.id AS child, b.id AS ancestor)) x
+JOIN GRAPH_TABLE(g MATCH (a:V)-[k:E]->{1,2}(b:V) COLUMNS(a.id AS child, b.id AS ancestor)) y
+  ON x.ancestor = y.child
+----
+c	a
+
+# The UNION ALL inside the CTE, aggregated outside
+query I
+WITH everything AS (
+    FROM GRAPH_TABLE(g
+        MATCH (a:V)-[k:E]->{1,2}(b:V)
+        COLUMNS(a.id AS child, b.id AS ancestor)
+    )
+    UNION ALL
+    SELECT 'x' AS child, 'y' AS ancestor
+)
+SELECT count(*) FROM everything
+----
+4
