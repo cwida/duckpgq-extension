@@ -41,7 +41,7 @@ system finishes, so the bound cut no path. A query over 600\,s is reported as ti
 same shape are then recorded as timed out without running them. Every point is the median of three runs; the LDBC
 table reports the median of the three runs per parameter set, averaged over the five sets. A \duckpgq run is a fresh
 process that executes the query once untimed, which also loads the index, before the timed runs; the native systems
-run three timed repetitions back to back, and a cold first run does not move the median. \rev{For points of one second and more the three runs differ by less than 2\,\% in the median, and by at most 15\,\% for \duckpgq and 20\,\% for the other systems.} Wherever two systems complete the same point, the harness finds the same number of reached pairs and the same sum
+run three timed repetitions back to back, and a cold first run does not move the median. For points of one second and more the three runs differ by less than 2\,\% in the median, and by at most 15\,\% for \duckpgq and 20\,\% for the other systems. Wherever two systems complete the same point, the harness finds the same number of reached pairs and the same sum
 of path lengths.
 
 \begin{figure}[t]
@@ -87,7 +87,7 @@ search covers. On cit-Patents a source reaches about 2000 of 3.8M vertices, and 
 operator loses the one-source point to Memgraph and Kuzu, 32\,ms against 4 and 7\,ms, and at 1024 sources it is ahead of Memgraph, 437 against 498\,ms, and 3 times faster than Kuzu. On datagen and graph500-24 a source reaches the whole graph. The operator ties
 with Kuzu at one source and is 47 and 56 times faster at 1024, and on random pairs Kuzu exceeds the limit from 16\,384 pairs on datagen and from 2048 on graph500-24. On both graphs the operator is slower for 16 sources than for 128 (4.5 against 2.7\,s on
 graph500-24), because its few-sources rule sends 16 sources to the single-source traversal, each search sweeping 4 to
-9\,M vertices, while 128 run as lanes. The default of 16 fits \texttt{knows} (Section~\ref{sec:eval-ablation}); on these two graphs the crossover lies below it. None of the six graphs has a high diameter, as a road network has.
+9\,M vertices, while 128 run as lanes. The default of 16 fits \texttt{knows} (Section~\ref{sec:eval-ablation}); \rev{on these two graphs the lanes are already faster from 2 to 4 sources on}. None of the six graphs has a high diameter, as a road network has.
 
 \subsection{LDBC queries}
 \label{sec:eval-ldbc}
