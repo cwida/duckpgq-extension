@@ -157,6 +157,27 @@ FROM GRAPH_TABLE (pg MATCH (a:School)-[]->(b:Person) COLUMNS (a.name, b.name));
 ----
 Binder Error: Edge pattern -[]-> has no label and no edge table of property graph pg connects School and Person in that direction
 
+statement ok
+CREATE TABLE likes(src INT, dst INT); INSERT INTO likes VALUES (3, 1);
+
+statement ok
+CREATE PROPERTY GRAPH two_edges
+VERTEX TABLES (Person LABEL Person)
+EDGE TABLES (
+    knows SOURCE KEY (src) REFERENCES Person (id) DESTINATION KEY (dst) REFERENCES Person (id) LABEL Knows,
+    likes SOURCE KEY (src) REFERENCES Person (id) DESTINATION KEY (dst) REFERENCES Person (id) LABEL Likes
+);
+
+statement error
+FROM GRAPH_TABLE (two_edges MATCH (a:Person)-[]->(b:Person) COLUMNS (a.name, b.name));
+----
+Binder Error: Edge pattern -[]-> has no label and is ambiguous: edge tables Knows, Likes all connect Person and Person; specify a label
+
+query II
+FROM GRAPH_TABLE (two_edges MATCH (a:Person)-[:Likes]->(b:Person) COLUMNS (a.name, b.name));
+----
+C	A
+
 # Historical DuckPGQ reading: a named element without a label uses its variable as the label when one exists.
 query II
 FROM GRAPH_TABLE (pg MATCH (person)-[knows]->(b:Person) COLUMNS (person.name, b.name)) ORDER BY 1;
