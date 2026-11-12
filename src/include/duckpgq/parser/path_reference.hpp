@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb/common/common.hpp"
+#include "duckdb/common/exception.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
 
@@ -28,6 +29,23 @@ public:
 	DUCKDB_API virtual void Serialize(Serializer &serializer) const;
 
 	DUCKDB_API static unique_ptr<PathReference> Deserialize(Deserializer &deserializer);
+
+public:
+	template <class TARGET>
+	TARGET &Cast() {
+		if (path_reference_type != TARGET::TYPE) {
+			throw InternalException("Failed to cast path reference to type - path reference type mismatch");
+		}
+		return reinterpret_cast<TARGET &>(*this);
+	}
+
+	template <class TARGET>
+	const TARGET &Cast() const {
+		if (path_reference_type != TARGET::TYPE) {
+			throw InternalException("Failed to cast path reference to type - path reference type mismatch");
+		}
+		return reinterpret_cast<const TARGET &>(*this);
+	}
 };
 
 } // namespace duckdb

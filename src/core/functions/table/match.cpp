@@ -103,21 +103,22 @@ static bool PGQNormalizeStructExtract(unique_ptr<ParsedExpression> &expression,
 
 static void PGQCountBindings(const PathReference &path_reference, case_insensitive_map_t<idx_t> &binding_counts) {
 	if (path_reference.path_reference_type == PGQPathReferenceType::PATH_ELEMENT) {
-		binding_counts[reinterpret_cast<const PathElement &>(path_reference).variable_binding]++;
+		binding_counts[path_reference.Cast<PathElement>().variable_binding]++;
 		return;
 	}
-	for (auto &child : reinterpret_cast<const SubPath &>(path_reference).path_list) {
+	for (auto &child : path_reference.Cast<SubPath>().path_list) {
 		PGQCountBindings(*child, binding_counts);
 	}
 }
 
 static bool PGQHasOptionalEdge(const vector<unique_ptr<PathReference>> &path_list) {
 	for (auto &path_reference : path_list) {
-		if (path_reference->path_reference_type == PGQPathReferenceType::SUBPATH) {
-			auto &subpath = reinterpret_cast<const SubPath &>(*path_reference);
-			if (subpath.optional || PGQHasOptionalEdge(subpath.path_list)) {
-				return true;
-			}
+		if (path_reference->path_reference_type != PGQPathReferenceType::SUBPATH) {
+			continue;
+		}
+		auto &subpath = path_reference->Cast<SubPath>();
+		if (subpath.optional || PGQHasOptionalEdge(subpath.path_list)) {
+			return true;
 		}
 	}
 	return false;
@@ -128,14 +129,12 @@ static void PGQAppendOptionalSegment(OptionalMatchSegment &segment, unique_ptr<T
 	vector<unique_ptr<ParsedExpression>> inner_conditions;
 	vector<unique_ptr<ParsedExpression>> outer_conditions;
 	for (auto &vertex_alias : segment.vertex_joins.order) {
+		// Conditions on the vertex before the optional edge join the segment to from_clause; the rest stay inside.
+		auto &conditions =
+		    StringUtil::CIEquals(vertex_alias, segment.prev_binding) ? outer_conditions : inner_conditions;
 		for (auto &reference : segment.vertex_joins.entries[vertex_alias].edge_references) {
-			auto condition = PGQMatchFunction::CreateMatchJoinExpression(reference.vertex_keys, reference.edge_keys,
-			                                                             vertex_alias, reference.edge_alias);
-			if (StringUtil::CIEquals(vertex_alias, segment.prev_binding)) {
-				outer_conditions.push_back(std::move(condition));
-			} else {
-				inner_conditions.push_back(std::move(condition));
-			}
+			conditions.push_back(PGQMatchFunction::CreateMatchJoinExpression(reference.vertex_keys, reference.edge_keys,
+			                                                                 vertex_alias, reference.edge_alias));
 		}
 	}
 	for (auto &condition : segment.conditions) {
