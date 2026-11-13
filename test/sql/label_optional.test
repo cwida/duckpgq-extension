@@ -54,7 +54,7 @@ select * from pagerank(varied_pg_label_a, a, variedknow);
 statement error
 select id, local_clustering_coefficient from local_clustering_coefficient(varied_pg_label_a, variedStudent, variedknow);
 ----
-Invalid Error: Label 'variedstudent' not found. Did you mean the vertex label 'a'?
+Invalid Error: Table 'variedstudent' found in the property graph, but does not have the correct label. Did you mean the label 'a' instead?
 
 
 statement ok

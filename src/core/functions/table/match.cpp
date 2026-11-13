@@ -130,8 +130,7 @@ static void PGQAppendOptionalSegment(OptionalMatchSegment &segment, unique_ptr<T
 	vector<unique_ptr<ParsedExpression>> outer_conditions;
 	for (auto &vertex_alias : segment.vertex_joins.order) {
 		// Conditions on the vertex before the optional edge join the segment to from_clause; the rest stay inside.
-		auto &conditions =
-		    StringUtil::CIEquals(vertex_alias, segment.prev_binding) ? outer_conditions : inner_conditions;
+		auto &conditions = segment.prev_binding == vertex_alias ? outer_conditions : inner_conditions;
 		for (auto &reference : segment.vertex_joins.entries[vertex_alias].edge_references) {
 			conditions.push_back(PGQMatchFunction::CreateMatchJoinExpression(reference.vertex_keys, reference.edge_keys,
 			                                                                 vertex_alias, reference.edge_alias));
@@ -1212,7 +1211,7 @@ void PGQMatchFunction::AddOptionalSegment(vector<unique_ptr<PathReference>> &pat
 		                              "separate path pattern from the vertex before it instead.");
 	}
 	OptionalMatchSegment segment;
-	segment.prev_binding = prev_vertex_element.variable_binding;
+	segment.prev_binding = Identifier(prev_vertex_element.variable_binding);
 	PathElement *next_vertex_element = GetPathElement(path_list[next_vertex_idx]);
 	if (!next_vertex_element) {
 		auto next_vertex_subpath = GetSubPath(path_list[next_vertex_idx]);
@@ -1306,28 +1305,20 @@ void PGQMatchFunction::CheckColumnBinding(
 		if (column_ref == nullptr) {
 			continue;
 		}
-		auto column_names = IdentifiersToStrings(column_ref->ColumnNames());
+		const auto &column_names = column_ref->ColumnNames();
 		// 'shortest_path_cte' is a special table populated by pgq.
-		if (StringUtil::CIEquals(column_names[0], "shortest_path_cte")) {
+		if (column_names[0] == "shortest_path_cte") {
 			continue;
 		}
-		// 'rowid' is a column duckdb binds automatically; identifiers are case-insensitive, so a.ROWID is the same.
-		if (StringUtil::CIEquals(column_names.back(), "rowid")) {
+		// 'rowid' is a column duckdb binds automatically.
+		if (column_names.back() == "rowid") {
 			continue;
 		}
-		if (column_names.size() == 1) {
-			bool single_alias = false;
-			for (const auto &alias : alias_to_vertex_and_edge_tables) {
-				if (alias.first == column_names[0]) {
-					single_alias = true;
-					break;
-				}
-			}
-			if (single_alias) {
-				continue;
-			}
+		// A bare element variable selects the whole element.
+		if (column_names.size() == 1 && alias_to_vertex_and_edge_tables.count(column_names[0].GetIdentifierName())) {
+			continue;
 		}
-		const auto cur_fq_col_name = StringUtil::Join(column_names, /*separator=*/".");
+		const auto cur_fq_col_name = StringUtil::Join(IdentifiersToStrings(column_names), /*separator=*/".");
 		if (all_fq_col_names.find(cur_fq_col_name) == all_fq_col_names.end()) {
 			throw BinderException("Property %s is never registered!", cur_fq_col_name);
 		}
