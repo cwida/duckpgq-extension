@@ -27,6 +27,7 @@
 namespace duckdb {
 
 class ClientContext;
+class DuckPGQState;
 class TableCatalogEntry;
 
 //! One join between a vertex variable and an edge variable:
@@ -152,6 +153,11 @@ struct PathFindingCSR {
 //! The CSRs of one MATCH. Quantified edges over the same edge table and direction share a CSR; every other quantified
 //! edge gets its own CSR id, CTE and count helper alias.
 struct PathFindingCSRs {
+	explicit PathFindingCSRs(DuckPGQState &state_p) : state(state_p) {
+	}
+	//! Hands out the CSR ids. They live in the connection state, so two GRAPH_TABLEs of one query (UNION, a CTE
+	//! referenced twice) must not use the same id.
+	DuckPGQState &state;
 	vector<PathFindingCSR> csrs;
 	//! Edge variable of a quantified edge in a named path -> CTE that computes its shortest path
 	case_insensitive_map_t<string> shortest_path_ctes;

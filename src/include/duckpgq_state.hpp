@@ -48,7 +48,14 @@ public:
 	std::mutex csr_lock;
 	std::unordered_set<int32_t> csr_to_delete;
 
+	//! Returns a CSR id that no other GRAPH_TABLE of the current query uses. Reset at the end of every query.
+	int32_t NextCSRId() {
+		return next_csr_id++;
+	}
+
 private:
+	std::atomic<int32_t> next_csr_id {0};
+
 	static void CreateInternalTable(Connection &connection);
 
 	std::mutex initialization_lock;
