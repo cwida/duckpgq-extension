@@ -56,6 +56,7 @@ FROM GRAPH_TABLE (pg
     ) study
     ORDER BY name, b_name;
 ----
+[0, 2, 3, 3, 0]	Daniel	Daniel
 [0, 1, 2]	Daniel	Gabor
 [0, 2, 3]	Daniel	Peter
 [0, 0, 1]	Daniel	Tavneet
@@ -68,6 +69,7 @@ FROM GRAPH_TABLE (pg
     ) study
     order by study.name, study.b_name;
 ----
+2	[0, 2, 3, 3, 0]	Daniel	Daniel
 1	[0, 1, 2]	Daniel	Gabor
 1	[0, 2, 3]	Daniel	Peter
 1	[0, 0, 1]	Daniel	Tavneet
@@ -76,14 +78,17 @@ FROM GRAPH_TABLE (pg
 1	[4, 7, 3]	David	Peter
 3	[4, 7, 3, 3, 0, 0, 1]	David	Tavneet
 2	[2, 6, 3, 3, 0]	Gabor	Daniel
+3	[2, 6, 3, 3, 0, 1, 2]	Gabor	Gabor
 1	[2, 6, 3]	Gabor	Peter
 3	[2, 6, 3, 3, 0, 0, 1]	Gabor	Tavneet
 1	[3, 3, 0]	Peter	Daniel
 2	[3, 3, 0, 1, 2]	Peter	Gabor
+2	[3, 3, 0, 2, 3]	Peter	Peter
 2	[3, 3, 0, 0, 1]	Peter	Tavneet
 2	[1, 5, 3, 3, 0]	Tavneet	Daniel
 1	[1, 4, 2]	Tavneet	Gabor
 1	[1, 5, 3]	Tavneet	Peter
+3	[1, 5, 3, 3, 0, 0, 1]	Tavneet	Tavneet
 
 
 statement error

@@ -103,7 +103,7 @@ FROM GRAPH_TABLE (pg
 Constraint Error: ALL unbounded with path mode WALK is not possible as this could lead to infinite results. Consider specifying an upper bound or path mode other than WALK
 
 
-query II
+query II rowsort
 SELECT study.a_name, study.b_name
 FROM GRAPH_TABLE (pg
     MATCH
@@ -113,8 +113,9 @@ FROM GRAPH_TABLE (pg
     ) study
 ----
 Peter	Daniel
-Peter	Tavneet
 Peter	Gabor
+Peter	Peter
+Peter	Tavneet
 
 statement error
 SELECT study.a_name, study.b_name

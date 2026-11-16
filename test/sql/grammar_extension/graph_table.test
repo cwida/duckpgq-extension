@@ -110,6 +110,7 @@ ORDER BY ALL;
 1	Gabor
 1	Peter
 1	Tavneet
+2	Daniel
 
 # Quantifier spellings, including the ones the tokenizer fuses with the arrow.
 statement ok
