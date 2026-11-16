@@ -1,0 +1,90 @@
+# name: test/sql/query_table_function.test
+# description: GRAPH_TABLE inside DuckDB's query() table function (issue #210)
+# group: [sql]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Person(id BIGINT, name VARCHAR); INSERT INTO Person VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter');
+
+statement ok
+CREATE TABLE Person_knows_person(Person1Id BIGINT, Person2Id BIGINT); INSERT INTO Person_knows_person VALUES (0, 1), (1, 2), (2, 3);
+
+statement ok
+CREATE PROPERTY GRAPH snb
+  VERTEX TABLES (
+    Person
+  )
+  EDGE TABLES (
+    Person_knows_person SOURCE KEY (Person1Id) REFERENCES Person (id)
+                        DESTINATION KEY (Person2Id) REFERENCES Person (id)
+    LABEL knows
+  );
+
+# The query from the issue.
+query II
+FROM query('
+  FROM GRAPH_TABLE (snb
+    MATCH (a:Person)-[k:knows]->(b:Person)
+    COLUMNS (a.id, b.id)
+  )
+  ORDER BY ALL
+  LIMIT 1
+');
+----
+0	1
+
+query II
+SELECT a_name, b_name FROM query('FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (a.name AS a_name, b.name AS b_name))') ORDER BY ALL;
+----
+Daniel	Tavneet
+Gabor	Peter
+Tavneet	Gabor
+
+# Path finding, which builds a CSR at execution time.
+query III
+FROM query('
+  FROM GRAPH_TABLE (snb
+    MATCH p = ANY SHORTEST (a:Person WHERE a.name = ''Daniel'')-[k:knows]->{1,3}(b:Person)
+    COLUMNS (a.name AS a_name, b.name AS b_name, path_length(p) AS len)
+  )
+') ORDER BY len;
+----
+Daniel	Tavneet	1
+Daniel	Gabor	2
+Daniel	Peter	3
+
+# Two GRAPH_TABLEs in one query() string, and query() itself inside a CTE and a join.
+query I
+FROM query('
+  FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (a.id AS x)) g1
+  JOIN GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (b.id AS x)) g2 USING (x)
+') ORDER BY ALL;
+----
+1
+2
+
+query II
+WITH edges AS (FROM query('FROM GRAPH_TABLE (snb MATCH (a:Person)-[k:knows]->(b:Person) COLUMNS (a.id AS src, b.id AS dst))'))
+SELECT p.name, e.dst FROM edges e JOIN Person p ON p.id = e.src ORDER BY ALL;
+----
+Daniel	1
+Gabor	3
+Tavneet	2
+
+statement error
+FROM query('FROM GRAPH_TABLE (does_not_exist MATCH (a:Person) COLUMNS (a.id))');
+----
+Property graph does_not_exist does not exist
+
+# query() parses with the connection's grammar, so the grammar must be active.
+statement ok
+RESET active_grammar_extensions;
+
+statement error
+FROM query('FROM GRAPH_TABLE (snb MATCH (a:Person) COLUMNS (a.id))');
+----
+syntax error
