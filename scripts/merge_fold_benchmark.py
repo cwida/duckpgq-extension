@@ -12,7 +12,8 @@ Scenarios, each a fraction of the edge count in changes:
   skewed    the same, with every changed edge's destination among the lowest 1/64 of the keys
   newv      inserts only, from existing vertices to new keys above every key (one new vertex per ten edges)
 
-Usage: merge_fold_benchmark.py --duckdb build/release/duckdb --db ldbc_sf10.duckdb --label sf10 --out results.csv
+Usage: merge_fold_benchmark.py --duckdb build/release/duckdb
+         --extension build/release/extension/duckpgq/duckpgq.duckdb_extension --db ldbc_sf10.duckdb --label sf10 --out results.csv
 """
 import argparse
 import csv
@@ -29,38 +30,43 @@ SCENARIOS = [
 ]
 
 
-def batch_sql(kind, fraction, seed):
-    """One batch of changes; __E__, __V__ and __MAXKEY__ are replaced once the table is loaded"""
-    changes = f"greatest(2, (__E__ * {fraction})::BIGINT)"
+def batch_sql(kind, fraction, seed, edges, vertices, max_key):
+    """One batch of changes, sized by the edge count of the loaded table"""
+    changes = max(2, int(edges * fraction))
     if kind == "uniform":
         return f"""
-DELETE FROM knows WHERE hash(rowid, {seed}) % greatest(1, (2 / {fraction})::BIGINT) = 0;
+DELETE FROM knows WHERE hash(rowid, {seed}) % {max(1, int(2 / fraction))} = 0;
 INSERT INTO knows
-SELECT a.k, b.k FROM range({changes} / 2) r
-JOIN keys a ON a.rn = hash(r.range, {seed}, 1) % __V__
-JOIN keys b ON b.rn = hash(r.range, {seed}, 2) % __V__;
+SELECT a.k, b.k FROM range({changes // 2}) r
+JOIN keys a ON a.rn = (hash(r.range, {seed}, 1) % {vertices})::BIGINT
+JOIN keys b ON b.rn = (hash(r.range, {seed}, 2) % {vertices})::BIGINT;
 """
     if kind == "skewed":
         # About E / 64 edges end in the range, so the delete takes fraction * 32 of them
         return f"""
-DELETE FROM knows WHERE dst <= (SELECT max(k) FROM keys WHERE rn < __V__ / 64)
-  AND hash(rowid, {seed}) % greatest(1, (1 / ({fraction} * 32))::BIGINT) = 0;
+DELETE FROM knows WHERE dst <= (SELECT max(k) FROM keys WHERE rn < {vertices // 64})
+  AND hash(rowid, {seed}) % {max(1, int(1 / (fraction * 32)))} = 0;
 INSERT INTO knows
-SELECT a.k, b.k FROM range({changes} / 2) r
-JOIN keys a ON a.rn = hash(r.range, {seed}, 1) % __V__
-JOIN keys b ON b.rn = hash(r.range, {seed}, 2) % (__V__ / 64);
+SELECT a.k, b.k FROM range({changes // 2}) r
+JOIN keys a ON a.rn = (hash(r.range, {seed}, 1) % {vertices})::BIGINT
+JOIN keys b ON b.rn = (hash(r.range, {seed}, 2) % {max(1, vertices // 64)})::BIGINT;
 """
     if kind == "newv":
+        base = max_key + 1 + seed * 1000000000
         return f"""
 INSERT INTO knows
-SELECT a.k, __MAXKEY__ + 1 + {seed} * 1000000007 + r.range % greatest(1, {changes} / 10) FROM range({changes}) r
-JOIN keys a ON a.rn = hash(r.range, {seed}, 1) % __V__;
+SELECT a.k, {base} + r.range % {max(1, changes // 10)} FROM range({changes}) r
+JOIN keys a ON a.rn = (hash(r.range, {seed}, 1) % {vertices})::BIGINT;
 """
     raise ValueError(kind)
 
 
+EXTENSION = None
+
+
 def run(duckdb, sql):
-    result = subprocess.run([duckdb, "-unsigned", ":memory:"], input=sql, capture_output=True, text=True)
+    sql = f"LOAD '{EXTENSION}';\n" + sql
+    result = subprocess.run([duckdb, "-no-agent", "-unsigned", ":memory:"], input=sql, capture_output=True, text=True)
     if result.returncode != 0 or "Error" in result.stderr:
         sys.stderr.write(result.stdout[-4000:])
         sys.stderr.write(result.stderr[-4000:])
@@ -71,6 +77,7 @@ def run(duckdb, sql):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--duckdb", required=True)
+    parser.add_argument("--extension", required=True, help="the built duckpgq.duckdb_extension")
     parser.add_argument("--db", required=True)
     parser.add_argument("--label", required=True)
     parser.add_argument("--out", required=True)
@@ -78,6 +85,8 @@ def main():
     parser.add_argument("--threads", type=int, default=0)
     parser.add_argument("--pairs", type=int, default=1024)
     args = parser.parse_args()
+    global EXTENSION
+    EXTENSION = args.extension
 
     # Sizes first: the batches are sized by them
     sizes = run(args.duckdb, f"""
@@ -101,7 +110,7 @@ DETACH ldbc;
 CREATE TABLE keys AS SELECT k, (row_number() OVER (ORDER BY k) - 1)::BIGINT AS rn
   FROM (SELECT src AS k FROM knows UNION SELECT dst FROM knows);
 CREATE TABLE pairs AS SELECT a.k AS s, b.k AS d FROM range({args.pairs}) r
-  JOIN keys a ON a.rn = hash(r.range, 7) % {vertices} JOIN keys b ON b.rn = hash(r.range, 8) % {vertices};
+  JOIN keys a ON a.rn = (hash(r.range, 7) % {vertices})::BIGINT JOIN keys b ON b.rn = (hash(r.range, 8) % {vertices})::BIGINT;
 SELECT 'MARK|create_full';
 CREATE INDEX full_idx ON knows USING CSR (src, dst);
 SELECT 'MARK|create_merge';
@@ -115,7 +124,7 @@ SELECT 'ROWS|' || count(len) FROM (SELECT iterativelengthoperator(s, d, 0::BIGIN
         for repeat in range(args.repeats):
             seed += 1
             tag = f"{kind}|{fraction}|{repeat}"
-            sql.append(batch_sql(kind, fraction, seed))
+            sql.append(batch_sql(kind, fraction, seed, edges, vertices, max_key))
             sql.append(f"""
 SELECT 'LOG|{tag}|' || duckpgq_csr_index_stats('knows', 'full_idx');
 SET duckpgq_csr_index_merge_fold = false;
@@ -138,22 +147,24 @@ SELECT 'MARK|pairs_{index}';
 SELECT 'ROWS|' || count(len) FROM (SELECT iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|{index}') AS len FROM pairs);
 """)
     text = "\n".join(sql)
-    text = text.replace("__E__", str(edges)).replace("__V__", str(vertices)).replace("__MAXKEY__", str(max_key))
     output = run(args.duckdb, text)
 
     rows = []
     mark = None
-    timings = []
+    since_mark = 0
+    traversal = []
     check = None
     for line in output.splitlines():
         line = line.strip().strip('"')
         if line.startswith("MARK|"):
             mark = line.split("|", 1)[1]
+            since_mark = 0
         elif line.startswith("Run Time") and mark:
-            # The MARK statement itself reports a run time first; the statement after it is the timed one
-            timings.append((mark, float(re.search(r"real ([0-9.]+)", line).group(1))))
-        elif line.startswith("ROWS|") or line.startswith("LOG|"):
-            pass
+            # The first run time after a mark is the mark's own SELECT, the second the statement being timed
+            since_mark += 1
+            if since_mark == 2:
+                traversal.append((mark, float(re.search(r"real ([0-9.]+)", line).group(1))))
+                mark = None
         elif line.startswith("CHECK|"):
             check = int(line.split("|")[1])
         elif line.startswith("FOLD|"):
@@ -168,18 +179,6 @@ SELECT 'ROWS|' || count(len) FROM (SELECT iterativelengthoperator(s, d, 0::BIGIN
             })
     if check != 0:
         raise SystemExit(f"the two indexes disagree on {check} pairs")
-    # Per mark: the first Run Time belongs to the MARK select, the next two to the statement(s) after it
-    seen = {}
-    traversal = []
-    for name, seconds in timings:
-        seen[name] = seen.get(name, 0) + 1
-    position = {}
-    for name, seconds in timings:
-        position[name] = position.get(name, 0) + 1
-        if name.startswith("pairs_") and position[name] % 2 == 0:
-            traversal.append((name, seconds))
-        if name.startswith("create_") and position[name] == 2:
-            traversal.append((name, seconds))
     with open(args.out, "a", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
         if handle.tell() == 0:
