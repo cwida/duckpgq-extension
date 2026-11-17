@@ -149,6 +149,11 @@ const vector<DuckPGQSetting> &Settings() {
 	     "transaction) with one row-version check and applies it to every row of the group; false "
 	     "checks every logged row individually (the microbenchmark of the per-row cost)",
 	     LogicalType::BOOLEAN, Value(true)},
+	    {"duckpgq_csr_index_group_memo",
+	     "A CSR index remembers, per change group, the visibility bounds of the readers that did and did not see "
+	     "its commit, and a later reader decides the group from those bounds where they suffice instead of "
+	     "with a row-version check; false makes every reader check every group (the cost before the memo)",
+	     LogicalType::BOOLEAN, Value(true)},
 	    {"experimental_path_finding_operator_lane_waves",
 	     "Source groups beyond the few-sources limit run as MS-BFS waves of one lane per source "
 	     "with a destination set per lane (Then et al.) instead of one single-source search per "
@@ -320,6 +325,10 @@ bool GetPathFindingSubRangeTasks(ClientContext &context) {
 
 bool GetCSRIndexChangeGroups(ClientContext &context) {
 	return GetSetting<bool>(context, "duckpgq_csr_index_change_groups");
+}
+
+bool GetCSRIndexGroupMemo(ClientContext &context) {
+	return GetSetting<bool>(context, "duckpgq_csr_index_group_memo");
 }
 
 bool GetPathFindingLaneWaves(ClientContext &context) {

@@ -1,0 +1,314 @@
+# name: test/sql/path_finding/csr_index_group_memo.test
+# description: Readers with different snapshots decide change groups from the bounds earlier readers recorded
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_index_group_memo.db
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok old
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok old
+SET experimental_path_finding_operator = true;
+
+statement ok old
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok mid
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok mid
+SET experimental_path_finding_operator = true;
+
+statement ok mid
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok late
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok late
+SET experimental_path_finding_operator = true;
+
+statement ok late
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(1, 21);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows VALUES (1, 2), (2, 3);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# ---- Three readers start at different points of a sequence of commits
+
+statement ok old
+BEGIN TRANSACTION;
+
+query I old
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+3
+
+statement ok
+INSERT INTO knows VALUES (3, 4);
+
+statement ok
+INSERT INTO knows VALUES (4, 5);
+
+statement ok mid
+BEGIN TRANSACTION;
+
+# The first reader to decide the two insert groups: it records that its bound sees them
+query I mid
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+5
+
+statement ok
+INSERT INTO knows VALUES (5, 6);
+
+statement ok
+DELETE FROM knows WHERE src = 4 AND dst = 5;
+
+# A newer reader: the first two groups from the recorded bounds, the insert and the delete after them from the table
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+4
+
+# An older reader is below every recorded bound and must not inherit the newer readers' answers
+query I old
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+3
+
+# The middle reader sees its two groups, and neither the later insert nor the later delete
+query I mid
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+5
+
+statement ok late
+BEGIN TRANSACTION;
+
+query I late
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+4
+
+# ---- Asked again, every reader is decided by the recorded bounds alone
+
+query I old
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+3
+
+query I mid
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+5
+
+query I late
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+4
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+4
+
+# ---- A delete of an epoch row (a tombstone group) after all three started
+
+statement ok
+DELETE FROM knows WHERE src = 2 AND dst = 3;
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+2
+
+query I late
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+4
+
+query I mid
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+5
+
+query I old
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+3
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+2
+
+# ---- The same answers without the memo
+
+statement ok
+SET duckpgq_csr_index_group_memo = false;
+
+statement ok old
+SET duckpgq_csr_index_group_memo = false;
+
+statement ok mid
+SET duckpgq_csr_index_group_memo = false;
+
+statement ok late
+SET duckpgq_csr_index_group_memo = false;
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+2
+
+query I late
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+4
+
+query I mid
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+5
+
+query I old
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+3
+
+statement ok
+SET duckpgq_csr_index_group_memo = true;
+
+statement ok old
+SET duckpgq_csr_index_group_memo = true;
+
+statement ok mid
+SET duckpgq_csr_index_group_memo = true;
+
+statement ok late
+SET duckpgq_csr_index_group_memo = true;
+
+query I old
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+3
+
+query I mid
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+5
+
+query I late
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+4
+
+# ---- After their commits the readers see everything
+
+statement ok old
+COMMIT;
+
+query I old
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+2
+
+statement ok mid
+COMMIT;
+
+query I mid
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+2
+
+statement ok late
+COMMIT;
+
+query I late
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+2
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=3;tombstones=1

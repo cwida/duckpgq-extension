@@ -671,6 +671,7 @@ void CSRIndex::ClearStateLocked() const {
 	newest_excluded_tombstones = 0;
 	delta_row_index.clear();
 	cached_snapshot.reset();
+	PruneGroupBoundsLocked();
 	AccountChangeLogLocked();
 }
 
@@ -844,6 +845,7 @@ void CSRIndex::CompactChangeLogLocked() const {
 	delta = std::move(new_delta);
 	tombstones = std::move(new_tombstones);
 	RebuildDeltaRowIndexLocked();
+	PruneGroupBoundsLocked();
 	for (auto &epoch : epochs) {
 		epoch->tombstone_positions.clear();
 		epoch->reverse_tombstone_positions.clear();
@@ -854,7 +856,7 @@ void CSRIndex::CompactChangeLogLocked() const {
 
 idx_t CSRIndex::ChangeLogBytesLocked() const {
 	return delta.capacity() * sizeof(CSRIndexDeltaEdge) + tombstones.capacity() * sizeof(CSRIndexTombstone) +
-	       HashMapBytes(delta_row_index);
+	       HashMapBytes(delta_row_index) + group_bounds.capacity() * sizeof(GroupBounds);
 }
 
 void CSRIndex::AccountChangeLogLocked() const {
@@ -865,6 +867,29 @@ void CSRIndex::AccountPositionsLocked(CSRIndexEpoch &epoch) const {
 	auto entries = epoch.tombstone_positions.capacity() + epoch.reverse_tombstone_positions.capacity() +
 	               epoch.mirror_tombstone_positions.capacity();
 	epoch.position_memory.Set(BufferManager::GetBufferManager(db), entries * sizeof(idx_t));
+}
+
+void CSRIndex::PruneGroupBoundsLocked() const {
+	// The oldest group a log entry still refers to; group ids are never reused, so everything below it is gone
+	uint32_t oldest = next_change_group;
+	auto consider = [&](uint32_t group) {
+		if (group != 0 && group != CSRIndexDeltaEdge::DEAD_GROUP) {
+			oldest = std::min(oldest, group);
+		}
+	};
+	for (auto &edge : delta) {
+		consider(edge.group);
+		consider(edge.deleted_group);
+	}
+	for (auto &tombstone : tombstones) {
+		consider(tombstone.group);
+	}
+	if (oldest <= group_bounds_base) {
+		return;
+	}
+	auto drop = std::min<idx_t>(oldest - group_bounds_base, group_bounds.size());
+	group_bounds.erase(group_bounds.begin(), group_bounds.begin() + NumericCast<int64_t>(drop));
+	group_bounds_base = oldest;
 }
 
 shared_ptr<CSRIndexEpoch> CSRIndex::EpochForLocked(VisibilityBound bound) const {
@@ -1045,8 +1070,19 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	if (tombstone_count > 0) {
 		ResolveTombstonePositions(epoch, tombstone_count);
 	}
+	// What earlier readers learned about the groups' commits (see GroupBounds). Only for a reader whose bound is a
+	// commit timestamp: the bounds order such readers, and the reader has no changes of its own in the log (a
+	// transaction with changes gets a private epoch and an empty log).
+	auto reader_bound = transaction.view.visibility_bound;
+	bool use_memo = GetCSRIndexGroupMemo(context) && !(MAX_COMMIT_ID < reader_bound);
+	vector<GroupBounds> known_bounds;
+	uint32_t known_bounds_base = 0;
 	{
 		IndexLock l(*this);
+		if (use_memo) {
+			known_bounds = group_bounds;
+			known_bounds_base = group_bounds_base;
+		}
 		delta_count = std::min<idx_t>(delta_count, delta.size());
 		delta_edges.assign(delta.begin(), delta.begin() + NumericCast<int64_t>(delta_count));
 		tombstone_count = std::min<idx_t>(tombstone_count, epoch.tombstone_positions.size());
@@ -1074,13 +1110,32 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	// visible group identifies the visible set.
 	unordered_map<uint32_t, bool> commit_visible;
 	uint32_t newest_visible_group = 0;
+	//! Groups this reader had to ask the table about, with the answer
+	vector<std::pair<uint32_t, bool>> learned_groups;
 	// Microbenchmark switch: decide every logged row by its own row version instead of once per change group
 	bool per_row = !GetCSRIndexChangeGroups(context);
 	auto group_commit_visible = [&](uint32_t group, bool visible_if_fetchable, row_t representative) {
 		auto known = commit_visible.find(group);
 		if (known == commit_visible.end()) {
-			auto fetchable = table.CanFetch(transaction, representative);
-			known = commit_visible.emplace(group, fetchable == visible_if_fetchable).first;
+			bool visible = false;
+			bool decided = false;
+			if (use_memo && group >= known_bounds_base && group - known_bounds_base < known_bounds.size()) {
+				auto &bounds = known_bounds[group - known_bounds_base];
+				if (bounds.seen && BoundAtMost(bounds.seen_from, reader_bound)) {
+					visible = true;
+					decided = true;
+				} else if (bounds.unseen && BoundAtMost(reader_bound, bounds.unseen_until)) {
+					visible = false;
+					decided = true;
+				}
+			}
+			if (!decided) {
+				visible = table.CanFetch(transaction, representative) == visible_if_fetchable;
+				if (use_memo) {
+					learned_groups.emplace_back(group, visible);
+				}
+			}
+			known = commit_visible.emplace(group, visible).first;
 			if (known->second) {
 				newest_visible_group = std::max(newest_visible_group, group);
 			}
@@ -1146,6 +1201,34 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		tombstone_applied[i] = (per_row || tombstone_groups[i] == 0)
 		                           ? !table.CanFetch(transaction, tombstone_rows[i])
 		                           : group_commit_visible(tombstone_groups[i], false, tombstone_rows[i]);
+	}
+
+	if (!learned_groups.empty()) {
+		// Record what this reader learned for the readers after it. A commit that was still running, or that failed,
+		// when this reader asked is recorded as unseen at this reader's bound, which stays true: its commit
+		// timestamp, if it gets one, is later than every bound handed out before.
+		IndexLock l(*this);
+		for (auto &learned : learned_groups) {
+			auto group = learned.first;
+			if (group < group_bounds_base) {
+				continue; // left the log meanwhile
+			}
+			auto position = group - group_bounds_base;
+			if (position >= group_bounds.size()) {
+				group_bounds.resize(position + 1);
+			}
+			auto &bounds = group_bounds[position];
+			if (learned.second) {
+				if (!bounds.seen || BoundAtMost(reader_bound, bounds.seen_from)) {
+					bounds.seen_from = reader_bound;
+					bounds.seen = true;
+				}
+			} else if (!bounds.unseen || BoundAtMost(bounds.unseen_until, reader_bound)) {
+				bounds.unseen_until = reader_bound;
+				bounds.unseen = true;
+			}
+		}
+		AccountChangeLogLocked();
 	}
 
 	// The cache is a microbenchmark switch: off, every query packs its own overlay. Two readers share a snapshot only
@@ -2501,6 +2584,7 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 		tombstones.push_back({row, NumericLimits<uint32_t>::Maximum(), 0});
 	}
 	cached_snapshot.reset();
+	PruneGroupBoundsLocked();
 	AccountChangeLogLocked();
 }
 

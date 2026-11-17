@@ -438,6 +438,27 @@ private:
 	mutable idx_t fold_retry_pending = 0;
 	//! Next change group id handed to an Append or TryDelete call (commits are serialized, so ids follow commit order)
 	mutable uint32_t next_change_group = 1;
+	//! What earlier readers learned about a change group's commit, as visibility bounds (commits are ordered and a
+	//! reader sees the commits before its bound): every reader whose bound is at least `seen_from` sees the group,
+	//! no reader whose bound is at most `unseen_until` does. A reader between the two asks the table and records
+	//! its answer. A group no reader has decided has the initial values; the group of a failed commit never gets a
+	//! `seen_from`.
+	struct GroupBounds {
+		VisibilityBound seen_from;
+		VisibilityBound unseen_until;
+		bool seen = false;
+		bool unseen = false;
+	};
+	//! a is not later than b
+	static bool BoundAtMost(VisibilityBound a, VisibilityBound b) {
+		return VisibilityBound::Min(a, b) == a;
+	}
+	//! Bounds of the groups from `group_bounds_base` on, indexed by group id minus the base; shorter than the
+	//! group sequence while the newest groups are undecided. Compaction drops the groups that left the log.
+	mutable vector<GroupBounds> group_bounds;
+	mutable uint32_t group_bounds_base = 1;
+	//! Drop the remembered bounds of groups that no log entry refers to any more
+	void PruneGroupBoundsLocked() const;
 	//! Position in `delta` of every delta row, so TryDelete can stamp the row's deleted_group without a scan
 	mutable unordered_map<row_t, idx_t> delta_row_index;
 	//! The change log's bytes in the buffer pool (`delta`, `tombstones`, `delta_row_index`): heap memory that grows

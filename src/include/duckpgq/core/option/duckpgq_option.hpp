@@ -40,6 +40,7 @@ int32_t GetPathFindingPartitionVertices(ClientContext &context);
 int32_t GetPathFindingRowBucketRows(ClientContext &context);
 bool GetPathFindingSubRangeTasks(ClientContext &context);
 bool GetCSRIndexChangeGroups(ClientContext &context);
+bool GetCSRIndexGroupMemo(ClientContext &context);
 bool GetPathFindingLaneWaves(ClientContext &context);
 bool GetPathFindingReachLanes(ClientContext &context);
 int32_t GetPathFindingReachDenseDivisor(ClientContext &context);

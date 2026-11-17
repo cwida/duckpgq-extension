@@ -46,6 +46,7 @@ struct Options {
 	double fold_ratio = 0.1;
 	bool run_build = true;
 	bool run_index = true;
+	bool group_memo = true;
 	idx_t vertex_count = 0;
 	std::string catalog = "memory";
 	//! "updates" (writer + readers) or "throughput" (clients running single-pair queries for duration_s)
@@ -113,6 +114,9 @@ static void Setup(Connection &con, const Options &options) {
 	}
 	Must(con, "SET experimental_path_finding_operator=true;");
 	Must(con, "SET duckpgq_csr_index_fold_ratio = " + std::to_string(options.fold_ratio) + ";");
+	if (!options.group_memo) {
+		Must(con, "SET duckpgq_csr_index_group_memo = false;");
+	}
 	if (options.threads_per_batch > 0) {
 		Must(con, "SET experimental_path_finding_operator_threads_per_batch=" +
 		              std::to_string(options.threads_per_batch) + ";");
@@ -334,6 +338,8 @@ int main(int argc, char **argv) {
 			options.run_build = false;
 		else if (arg == "--no-index")
 			options.run_index = false;
+		else if (arg == "--no-group-memo")
+			options.group_memo = false;
 		else if (arg == "--mode")
 			options.mode = next();
 		else if (arg == "--duration-s")
