@@ -209,6 +209,14 @@ public:
 	bool sub_range_tasks = true;
 	//! Sub-ranges the scheduler asks for (from the query's batch count); 0 derives from this batch's workers alone
 	idx_t sub_range_hint = 0;
+	//! experimental_path_finding_operator_explore_variant: PARTITIONED is the operator; the FLAT_* variants run the
+	//! explore phase on `flat_csr` (the ablation of the partitioned CSR, see flat_csr.hpp). CHECK is the same for all.
+	ExploreVariant explore_variant = ExploreVariant::PARTITIONED;
+	shared_ptr<FlatCSR> flat_csr;
+	//! FLAT_LOCKED: the lock of destination d is stripe_locks[(d >> STRIPE_SHIFT) & (STRIPE_COUNT - 1)]
+	static constexpr idx_t STRIPE_SHIFT = 4;
+	static constexpr idx_t STRIPE_COUNT = 4096;
+	unique_ptr<LaneStripeLock[]> stripe_locks;
 	//! Reach lanes: set by the reach wave state before Start; the check phase records every newly reached vertex of
 	//! every lane into it (null for the destination checks of lengths)
 	unique_ptr<LaneReachRecorder> reach_recorder;
@@ -220,6 +228,10 @@ private:
 	void BeginIteration();
 	void PrepareLevel(idx_t active_total);
 	void SubRange(const LocalCSR &local_csr, idx_t sub_idx, idx_t &begin, idx_t &end) const;
+	//! The explore phase of the FLAT_* variants on one worker
+	void RunFlatExplore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next);
+	//! Start(): fetches the flat CSR (built on first use) and checks that no index overlay is pending
+	void PrepareFlatExplore();
 
 	Phase phase = Phase::PREPARE;
 	idx_t worker_count = 1;

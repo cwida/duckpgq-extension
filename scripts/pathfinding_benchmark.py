@@ -5722,6 +5722,19 @@ MICROBENCH_GROUPS = {
 }
 MICROBENCH_GROUPS["all"] = list(dict.fromkeys(sum((v for k, v in MICROBENCH_GROUPS.items() if k not in ("scheduling", "memory", "partitions")), [])))
 MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only"}
+# Ablation of the partitioned CSR (17 Nov 2026): the explore phase of the lane kernel on one unpartitioned CSR with
+# 32-bit destinations. flat_serial = one partition with one owner; flat_ranges = each worker owns a destination
+# range without physical partitioning; flat_atomic / flat_locked = source morsels writing shared lane words with
+# fetch_or / striped spinlocks. Index route only: the flat CSR is derived from the index partitions in the warm-up
+# query and cached for the process, while the build route would convert in every timed query. The group adds the
+# partition widths, so one file holds the one-partition, partition-count and locked rows.
+for _variant in ("flat_serial", "flat_ranges", "flat_atomic", "flat_locked"):
+    MICROBENCH_CONFIGS[f"explore_{_variant}"] = ({OPT + "explore_variant": f"'{_variant}'"}, None, False)
+    MICROBENCH_INDEX_ONLY.add(f"explore_{_variant}")
+MICROBENCH_GROUPS["explore_variants"] = (["baseline"] + [f"explore_{_variant}" for _variant in
+                                                         ("flat_serial", "flat_ranges", "flat_atomic", "flat_locked")]
+                                         + [f"partitions_{pv}" for pv in (4096, 8192, 16384, 32768)]
+                                         + ["partitions_65535_nosub"])
 
 
 def microbench_configs(names):

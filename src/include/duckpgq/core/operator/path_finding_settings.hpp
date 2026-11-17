@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckpgq/common.hpp"
+#include "duckpgq/core/operator/iterative_length/flat_csr.hpp"
 #include "duckpgq/core/option/duckpgq_option.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
 
@@ -24,6 +25,7 @@ struct PathFindingSettings {
 	      reach_result_cap(ResolveReachResultCap(context, working_set_cap)),
 	      visit_prefetch(NonNegative(GetPathFindingVisitPrefetch(context))),
 	      sub_range_tasks(GetPathFindingSubRangeTasks(context)),
+	      explore_variant(ParseExploreVariant(GetPathFindingExploreVariant(context))),
 	      sparse_level_divisor(NonNegative(GetPathFindingSparseLevelDivisor(context))),
 	      row_bucket_rows(GetPathFindingRowBucketRows(context)), reach_lanes(GetPathFindingReachLanes(context)),
 	      reach_dense_divisor(NonNegative(GetPathFindingReachDenseDivisor(context))) {
@@ -52,6 +54,8 @@ struct PathFindingSettings {
 	idx_t reach_result_cap;
 	idx_t visit_prefetch;
 	bool sub_range_tasks;
+	//! _explore_variant: the partitioned explore phase (default) or one of the flat-CSR ablation variants
+	ExploreVariant explore_variant;
 	idx_t sparse_level_divisor;
 	//! CSR build: _row_bucket_rows (rows per bucket of a partition's row index; 0 = binary search)
 	int32_t row_bucket_rows;

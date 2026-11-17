@@ -4,6 +4,7 @@
 #include <duckpgq/core/option/duckpgq_option.hpp>
 
 #include <algorithm>
+#include <cstring>
 #include <fstream>
 #include <mutex>
 
@@ -225,6 +226,83 @@ void RunExplore(IterativeLengthState &state, const std::bitset<LANE_LIMIT> *visi
 	                    local_csr.GetEdgeSize(), state.local_csrs.size(), state.iter);
 }
 
+//===--------------------------------------------------------------------===//
+// Flat-CSR explore variants: the ablation of the partitioned CSR (ExploreVariant)
+//===--------------------------------------------------------------------===//
+static constexpr idx_t LANE_WORDS = LANE_LIMIT / 64;
+
+//! The owner of the destination writes it: no synchronisation (FLAT_SERIAL, FLAT_RANGES)
+struct OwnedWrite {
+	inline void operator()(std::bitset<LANE_LIMIT> *next, uint32_t target, const std::bitset<LANE_LIMIT> &lanes) const {
+		next[target] |= lanes;
+	}
+};
+
+//! Any worker may write any destination: each 64-lane word is updated with fetch_or. The word is read first, since
+//! most relaxations of a dense level add no lane and an unconditional fetch_or would take the line exclusive each time
+struct AtomicWrite {
+	inline void operator()(std::bitset<LANE_LIMIT> *next, uint32_t target, const std::bitset<LANE_LIMIT> &lanes) const {
+		static_assert(sizeof(std::bitset<LANE_LIMIT>) == LANE_LIMIT / 8, "lane bitsets are updated as 64-bit words");
+		uint64_t add[LANE_WORDS];
+		memcpy(add, &lanes, sizeof(add));
+		auto words = reinterpret_cast<std::atomic<uint64_t> *>(next + target);
+		for (idx_t word_idx = 0; word_idx < LANE_WORDS; word_idx++) {
+			if (add[word_idx] & ~words[word_idx].load(std::memory_order_relaxed)) {
+				words[word_idx].fetch_or(add[word_idx], std::memory_order_relaxed);
+			}
+		}
+	}
+};
+
+//! Any worker may write any destination under the spinlock of the destination's stripe
+struct LockedWrite {
+	LaneStripeLock *locks;
+	inline void operator()(std::bitset<LANE_LIMIT> *next, uint32_t target, const std::bitset<LANE_LIMIT> &lanes) const {
+		auto &lock = locks[(target >> IterativeLengthState::STRIPE_SHIFT) & (IterativeLengthState::STRIPE_COUNT - 1)];
+		lock.Lock();
+		next[target] |= lanes;
+		lock.Unlock();
+	}
+};
+
+//! Relaxes the edges of `source`, or those whose destination lies in [dst_begin, dst_end) (rows are sorted by
+//! destination)
+template <class WRITE>
+inline void RelaxFlatRow(const FlatCSR &csr, idx_t source, const std::bitset<LANE_LIMIT> *visit,
+                         std::bitset<LANE_LIMIT> *next, bool whole_row, uint32_t dst_begin, uint32_t dst_end,
+                         const WRITE &write) {
+	auto first = csr.destinations.data() + csr.offsets[source];
+	auto last = csr.destinations.data() + csr.offsets[source + 1];
+	if (!whole_row) {
+		first = std::lower_bound(first, last, dst_begin);
+		last = std::lower_bound(first, last, dst_end);
+	}
+	const auto &lanes = visit[source];
+	for (auto edge = first; edge != last; edge++) {
+		write(next, *edge, lanes);
+	}
+}
+
+//! Sources [begin, end) of the level: positions of the frontier list on a sparse level, vertices on a dense one
+//! (skipping those without edges or without an active lane, the bitmap test first when `active` is given)
+template <class WRITE>
+void ExploreFlat(const FlatCSR &csr, const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next,
+                 const vector<uint32_t> *frontier, const uint64_t *active, idx_t begin, idx_t end, bool whole_row,
+                 uint32_t dst_begin, uint32_t dst_end, const WRITE &write) {
+	if (frontier) {
+		for (idx_t i = begin; i < end; i++) {
+			RelaxFlatRow(csr, (*frontier)[i], visit, next, whole_row, dst_begin, dst_end, write);
+		}
+		return;
+	}
+	for (idx_t source = begin; source < end; source++) {
+		if (csr.offsets[source] == csr.offsets[source + 1] || !IsActive(active, source) || !visit[source].any()) {
+			continue;
+		}
+		RelaxFlatRow(csr, source, visit, next, whole_row, dst_begin, dst_end, write);
+	}
+}
+
 uint64_t GetWord(const std::bitset<LANE_LIMIT> &bitset, idx_t word_idx) {
 	uint64_t word = 0;
 	for (idx_t i = 0; i < 64; ++i) {
@@ -345,6 +423,7 @@ bool IterativeLengthState::Start() {
 	if (reach_recorder) {
 		reach_recorder->Resize(worker_count, NumericCast<idx_t>(v_size), reach_dense_divisor);
 	}
+	PrepareFlatExplore();
 	// The lane bitsets are only allocated once the batch actually runs, and handed back when it is done
 	EnsureWorkingSet();
 	if (started_searches >= pairs->size()) {
@@ -370,6 +449,10 @@ void IterativeLengthState::RunPhase(idx_t worker_id) {
 	}
 	auto &visit = iter & 1 ? visit1 : visit2;
 	auto &next = iter & 1 ? visit2 : visit1;
+	if (phase == Phase::EXPLORE && explore_variant != ExploreVariant::PARTITIONED) {
+		RunFlatExplore(visit, next);
+		return;
+	}
 	if (phase == Phase::EXPLORE) {
 		auto task_count = static_cast<int64_t>(local_csrs.size() * sub_ranges);
 		while (true) {
@@ -425,6 +508,78 @@ void IterativeLengthState::RunPhase(idx_t worker_id) {
 	}
 	worker_changed[worker_id] = local_change ? 1 : 0;
 	worker_active_counts[worker_id] = active_count;
+}
+
+void IterativeLengthState::PrepareFlatExplore() {
+	if (explore_variant == ExploreVariant::PARTITIONED) {
+		return;
+	}
+	// The flat CSR holds the epoch's edges only: a reader with delta edges or tombstones needs the partitioned explore
+	for (auto &delta : delta_csrs) {
+		if (delta && delta->GetEdgeSize() > 0) {
+			throw NotImplementedException("experimental_path_finding_operator_explore_variant: the flat variants do "
+			                              "not read edges committed after the index epoch");
+		}
+	}
+	for (auto &bits : suppressed) {
+		if (bits) {
+			throw NotImplementedException("experimental_path_finding_operator_explore_variant: the flat variants do "
+			                              "not read the tombstones of an index snapshot");
+		}
+	}
+	flat_csr = FlatCSR::Get(local_csrs, static_cast<idx_t>(v_size));
+	if (explore_variant == ExploreVariant::FLAT_LOCKED && !stripe_locks) {
+		stripe_locks = unique_ptr<LaneStripeLock[]>(new LaneStripeLock[STRIPE_COUNT]);
+	}
+}
+
+void IterativeLengthState::RunFlatExplore(const std::bitset<LANE_LIMIT> *visit, std::bitset<LANE_LIMIT> *next) {
+	// Sources per morsel of FLAT_ATOMIC and FLAT_LOCKED: vertices of a dense level, frontier entries of a sparse one
+	static constexpr idx_t DENSE_MORSEL = 2048;
+	static constexpr idx_t SPARSE_MORSEL = 256;
+	auto &csr = *flat_csr;
+	auto vertices = static_cast<idx_t>(v_size);
+	const vector<uint32_t> *frontier = sparse_level ? &frontier_list : nullptr;
+	const uint64_t *active = use_frontier_bitmap && bitmap_filter ? active_bitmap : nullptr;
+	auto sources = frontier ? frontier->size() : vertices;
+	switch (explore_variant) {
+	case ExploreVariant::FLAT_SERIAL:
+		// One partition has one owner: the first worker to arrive expands the level
+		if (local_csr_counter.fetch_add(1) == 0) {
+			ExploreFlat(csr, visit, next, frontier, active, 0, sources, true, 0, 0, OwnedWrite());
+		}
+		return;
+	case ExploreVariant::FLAT_RANGES:
+		// A destination range per worker; every task reads every active row for its slice of it
+		while (true) {
+			auto task_idx = static_cast<idx_t>(local_csr_counter.fetch_add(1));
+			if (task_idx >= worker_count) {
+				return;
+			}
+			auto dst_begin = NumericCast<uint32_t>(vertices * task_idx / worker_count);
+			auto dst_end = NumericCast<uint32_t>(vertices * (task_idx + 1) / worker_count);
+			ExploreFlat(csr, visit, next, frontier, active, 0, sources, false, dst_begin, dst_end, OwnedWrite());
+		}
+	case ExploreVariant::FLAT_ATOMIC:
+	case ExploreVariant::FLAT_LOCKED: {
+		auto morsel = frontier ? SPARSE_MORSEL : DENSE_MORSEL;
+		while (true) {
+			auto begin = static_cast<idx_t>(local_csr_counter.fetch_add(1)) * morsel;
+			if (begin >= sources) {
+				return;
+			}
+			auto end = std::min(sources, begin + morsel);
+			if (explore_variant == ExploreVariant::FLAT_ATOMIC) {
+				ExploreFlat(csr, visit, next, frontier, active, begin, end, true, 0, 0, AtomicWrite());
+			} else {
+				ExploreFlat(csr, visit, next, frontier, active, begin, end, true, 0, 0,
+				            LockedWrite {stripe_locks.get()});
+			}
+		}
+	}
+	default:
+		throw InternalException("RunFlatExplore called for the partitioned explore");
+	}
 }
 
 bool IterativeLengthState::AdvancePhase() {
