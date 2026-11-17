@@ -1,0 +1,164 @@
+# name: test/sql/path_finding/csr_index_merge_fold_persist.test
+# description: Prototype: an epoch built by a merge fold, whose dictionary carries keys above the key-ordered ones, survives a checkpoint and a restart
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_index_merge_fold_persist.db
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+SET duckpgq_csr_index_merge_fold = true;
+
+statement ok
+SET duckpgq_csr_index_merge_fold_verify = true;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(1, 41);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+# A chain 1 -> 2 -> ... -> 10
+statement ok
+INSERT INTO knows SELECT range, range + 1 FROM range(1, 10);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# The chain grows through three vertices the epoch does not know, and loses its first edge
+statement ok
+INSERT INTO knows VALUES (10, 30), (30, 20), (20, 25);
+
+statement ok
+DELETE FROM knows WHERE src = 1;
+
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I
+SELECT duckpgq_csr_index_fold_stats('knows', 'knows_csr') LIKE 'folds=1;%;merge_folds=1;%';
+----
+true
+
+# One more edge stays in the log across the restart
+statement ok
+INSERT INTO knows VALUES (25, 40);
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 8)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY l;
+----
+8	0
+9	1
+10	2
+30	3
+20	4
+25	5
+40	6
+
+statement ok
+CHECKPOINT;
+
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+SET duckpgq_csr_index_merge_fold = true;
+
+statement ok
+SET duckpgq_csr_index_merge_fold_verify = true;
+
+# The merged epoch and the pending entry come back from the checkpoint
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr') LIKE 'epochs=1;%';
+----
+true
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 8)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY l;
+----
+8	0
+9	1
+10	2
+30	3
+20	4
+25	5
+40	6
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+1
+
+# A merge fold of the loaded epoch, then a delete of an edge of a carried key
+statement ok
+INSERT INTO knows VALUES (40, 35);
+
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+statement ok
+DELETE FROM knows WHERE src = 30;
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 8)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY l;
+----
+8	0
+9	1
+10	2
+30	3
+
+query II
+SELECT d, l
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 20)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l))
+ORDER BY l;
+----
+20	0
+25	1
+40	2
+35	3

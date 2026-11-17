@@ -1,0 +1,297 @@
+# name: test/sql/path_finding/csr_index_merge_fold.test
+# description: Prototype: a fold that merges the newest epoch with the folding transaction's overlay instead of scanning the table. Unchanged partitions are shared, new vertices keep their ids above the epoch, the merged epoch holds the edges a scan of the table gives (duckpgq_csr_index_merge_fold_verify) and answers like the log overlay before it
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok con1
+SET experimental_path_finding_operator = true;
+
+statement ok con2
+SET experimental_path_finding_operator = true;
+
+# Folds only when asked, by merging, and every merge is checked against an epoch built from the table
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+SET duckpgq_csr_index_merge_fold = true;
+
+statement ok
+SET duckpgq_csr_index_merge_fold_verify = true;
+
+statement ok con2
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok con2
+SET duckpgq_csr_index_merge_fold = true;
+
+statement ok con2
+SET duckpgq_csr_index_merge_fold_verify = true;
+
+statement ok con1
+SET duckpgq_csr_index_fold_ratio = 0;
+
+# 600000 edges over the keys 0..59999, every key present
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows SELECT range % 60000, (range * 7919 + 13) % 60000 FROM range(0, 600000);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+statement ok
+CREATE TABLE srcs AS SELECT (range * 937) % 60000 AS s FROM range(64);
+
+statement ok
+CREATE TABLE pairs AS SELECT (range * 4099) % 60000 AS s, (range * 7901 + 17) % 60000 AS d FROM range(2048);
+
+# The extension's internal table is created on first use; two operator instances in one statement would race for it
+statement ok
+SELECT delete_csr(2147483647);
+
+# ---- Changes confined to the destinations 0..99: one destination range changes, the others are shared
+statement ok
+DELETE FROM knows WHERE dst < 40 AND src % 3 = 0;
+
+statement ok
+INSERT INTO knows SELECT (range * 7) % 60000, range % 100 FROM range(0, 5000);
+
+statement ok
+CREATE TABLE before_reach AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS r FROM srcs);
+
+statement ok
+CREATE TABLE before_pairs AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len FROM pairs;
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr') LIKE 'epochs=1;%';
+----
+true
+
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query III
+SELECT stats LIKE 'folds=1;%;merge_folds=1;%',
+       regexp_extract(stats, 'last_fold_rebuilt=(\d+)', 1)::BIGINT >= 1,
+       regexp_extract(stats, 'last_fold_rebuilt=(\d+)', 1)::BIGINT < regexp_extract(stats, 'last_fold_partitions=(\d+)', 1)::BIGINT
+FROM (SELECT duckpgq_csr_index_fold_stats('knows', 'knows_csr') AS stats);
+----
+true	true	true
+
+statement ok
+CREATE TABLE after_reach AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS r FROM srcs);
+
+statement ok
+CREATE TABLE after_pairs AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len FROM pairs;
+
+query IIII
+SELECT (SELECT count(*) FROM before_reach) = (SELECT count(*) FROM after_reach),
+       (SELECT count(*) FROM (SELECT * FROM before_reach EXCEPT ALL SELECT * FROM after_reach)),
+       (SELECT count(*) FROM (SELECT * FROM after_reach EXCEPT ALL SELECT * FROM before_reach)),
+       (SELECT count(*) FROM (SELECT * FROM before_pairs EXCEPT ALL SELECT * FROM after_pairs));
+----
+true	0	0	0
+
+# An index built by CREATE INDEX from the same rows answers the same
+statement ok
+CREATE INDEX knows_csr2 ON knows USING CSR (src, dst);
+
+query II
+SELECT (SELECT count(*) FROM (SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr2') AS r FROM srcs) EXCEPT ALL SELECT * FROM after_reach)),
+       (SELECT count(*) FROM (SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr2') AS len FROM pairs EXCEPT ALL SELECT * FROM after_pairs));
+----
+0	0
+
+statement ok
+DROP INDEX knows_csr2;
+
+# ---- New vertices: keys above every key, and one below, which is out of key order above the epoch
+statement ok
+INSERT INTO knows VALUES (5, 70000), (70000, 70001), (70001, 6), (-5, 7), (8, -5), (70001, 70002);
+
+statement ok
+CREATE TABLE new_pairs AS SELECT * FROM (VALUES (5, 70001), (5, 70002), (70000, 6), (-5, 7), (8, 7), (8, -5), (70002, 5), (70000, 59999)) t(s, d);
+
+statement ok
+CREATE TABLE new_srcs AS SELECT * FROM (VALUES (5), (8), (-5), (70000), (70002)) t(s);
+
+statement ok
+CREATE TABLE before_new_pairs AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len FROM new_pairs;
+
+statement ok
+CREATE TABLE before_new_reach AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS r FROM new_srcs);
+
+# The new vertices are reachable over the log overlay
+query III
+SELECT (SELECT len FROM before_new_pairs WHERE s = 5 AND d = 70001),
+       (SELECT len FROM before_new_pairs WHERE s = 8 AND d = 7),
+       (SELECT count(*) FROM before_new_reach WHERE s = 70002);
+----
+2	2	1
+
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I
+SELECT duckpgq_csr_index_fold_stats('knows', 'knows_csr') LIKE 'folds=2;%;merge_folds=2;%';
+----
+true
+
+query III
+SELECT (SELECT count(*) FROM (SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len FROM new_pairs EXCEPT ALL SELECT * FROM before_new_pairs)),
+       (SELECT count(*) FROM (SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS r FROM new_srcs) EXCEPT ALL SELECT * FROM before_new_reach)),
+       (SELECT count(*) FROM (SELECT * FROM before_new_reach EXCEPT ALL SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS r FROM new_srcs)));
+----
+0	0	0
+
+# ---- A merge on top of a merged epoch: its dictionary already carries keys above the key-ordered ones. One of them
+# loses its edges, another new key arrives, and an old transaction keeps the epoch it started on
+statement ok con1
+BEGIN TRANSACTION;
+
+statement ok con1
+CREATE TEMP TABLE old_new_pairs AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len FROM new_pairs;
+
+statement ok con2
+DELETE FROM knows WHERE src = 70000;
+
+statement ok con2
+INSERT INTO knows VALUES (70001, 80000), (80000, 9), (-5, 70000);
+
+statement ok con2
+CREATE TABLE before_third AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len FROM (SELECT * FROM new_pairs UNION ALL VALUES (70001, 9), (-5, 70001), (5, 80000));
+
+query I con2
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I con2
+SELECT duckpgq_csr_index_fold_stats('knows', 'knows_csr') LIKE 'folds=3;%;merge_folds=3;%';
+----
+true
+
+query I con2
+SELECT count(*) FROM (SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len FROM (SELECT * FROM new_pairs UNION ALL VALUES (70001, 9), (-5, 70001), (5, 80000)) EXCEPT ALL SELECT * FROM before_third);
+----
+0
+
+# 70000 lost its outgoing edges, so 5 no longer reaches 70001 through it; -5 now reaches 70000
+query II con2
+SELECT (SELECT len FROM before_third WHERE s = 70001 AND d = 9), (SELECT len FROM before_third WHERE s = -5 AND d = 70001) IS NULL;
+----
+2	true
+
+# The transaction that started before the fold still answers from the retained epoch
+query I con1
+SELECT count(*) FROM (SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len FROM new_pairs EXCEPT ALL SELECT * FROM old_new_pairs);
+----
+0
+
+statement ok con1
+COMMIT;
+
+# ---- A fold that scans the table renumbers the vertices in key order and answers the same
+statement ok
+SET duckpgq_csr_index_merge_fold = false;
+
+statement ok
+INSERT INTO knows VALUES (9, 90000);
+
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I
+SELECT duckpgq_csr_index_fold_stats('knows', 'knows_csr') LIKE 'folds=4;%;merge_folds=3;%';
+----
+true
+
+query II
+SELECT (SELECT count(*) FROM (SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') AS len FROM (SELECT * FROM new_pairs UNION ALL VALUES (70001, 9), (-5, 70001), (5, 80000)) EXCEPT ALL SELECT * FROM before_third)),
+       (SELECT iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|knows_csr') FROM (SELECT 80000::BIGINT AS s, 90000::BIGINT AS d));
+----
+0	2
+
+# ---- An undirected index holds every edge in two destination ranges; the merge keeps both directions in step
+statement ok
+SET duckpgq_csr_index_merge_fold = true;
+
+statement ok
+CREATE TABLE v AS SELECT range AS id FROM range(1000);
+
+statement ok
+CREATE TABLE e AS SELECT id AS src, (id + 1) % 1000 AS dst FROM v UNION ALL SELECT id, (id + 37) % 1000 FROM v;
+
+statement ok
+CREATE INDEX und ON e USING CSR (src, dst) WITH (undirected = true);
+
+statement ok
+DELETE FROM e WHERE src = 5 AND dst = 6;
+
+statement ok
+INSERT INTO e VALUES (10, 500), (2000, 3);
+
+statement ok
+CREATE TABLE und_pairs AS SELECT * FROM (VALUES (6, 5), (5, 6), (500, 10), (3, 2000), (2000, 500), (0, 999)) t(s, d);
+
+statement ok
+CREATE TABLE before_und AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') AS len FROM und_pairs;
+
+query III
+SELECT (SELECT len FROM before_und WHERE s = 6 AND d = 5), (SELECT len FROM before_und WHERE s = 500 AND d = 10), (SELECT len FROM before_und WHERE s = 3 AND d = 2000);
+----
+3	1	1
+
+query I
+SELECT duckpgq_csr_index_fold('e', 'und');
+----
+true
+
+query I
+SELECT duckpgq_csr_index_fold_stats('e', 'und') LIKE 'folds=1;%;merge_folds=1;%';
+----
+true
+
+query I
+SELECT count(*) FROM (SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') AS len FROM und_pairs EXCEPT ALL SELECT * FROM before_und);
+----
+0
+
+# A delete after the merge fold finds its row in the merged epoch, in both directions
+statement ok
+DELETE FROM e WHERE src = 2000;
+
+query II
+SELECT (SELECT iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') FROM (SELECT 3::BIGINT AS s, 2000::BIGINT AS d)) IS NULL,
+       (SELECT iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|und') FROM (SELECT 2000::BIGINT AS s, 3::BIGINT AS d)) IS NULL;
+----
+true	true
+
+# ---- An index with a stored reverse side is folded by a scan, whatever the setting
+statement ok
+CREATE INDEX rev ON e USING CSR (src, dst) WITH (reverse = true);
+
+statement ok
+INSERT INTO e VALUES (11, 600);
+
+query I
+SELECT duckpgq_csr_index_fold('e', 'rev');
+----
+true
+
+query I
+SELECT duckpgq_csr_index_fold_stats('e', 'rev') LIKE 'folds=1;%;merge_folds=0;%';
+----
+true

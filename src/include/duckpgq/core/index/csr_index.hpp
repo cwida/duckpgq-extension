@@ -51,14 +51,21 @@ struct CSRIndexDictionary {
 	vector<uint32_t> word_rank;
 	//! Sparse: all keys in ascending order, id = position
 	vector<int64_t> sorted_keys;
+	//! Keys numbered in key order: ids [0, count)
 	idx_t count = 0;
+	//! Keys a merge fold carried over from the snapshot it materialised: the vertices that were numbered above the
+	//! previous epoch keep those ids, id = count + position, out of key order, until a full fold renumbers
+	vector<int64_t> extra_keys;
+	std::unordered_map<int64_t, uint32_t> extra_ids;
 
 	//! Returns the dense id of a key, or DConstants::INVALID_INDEX when the key is not a vertex of the epoch.
 	idx_t Lookup(int64_t key) const;
+	//! Lookup among the keys in key order only
+	idx_t LookupOrdered(int64_t key) const;
 	//! The key of a dense id
 	int64_t KeyOf(idx_t id) const;
 	idx_t Size() const {
-		return count;
+		return count + extra_keys.size();
 	}
 
 	//! Keys of ascending ids: walks the dense dictionary's bitmap forward from the last id and re-seeks only when the
@@ -107,8 +114,9 @@ struct CSRIndexEpoch {
 	shared_ptr<CSRIndexDictionary> dictionary;
 	//! Forward partitions (both directions when the index is undirected)
 	shared_ptr<PartitionedCSRIndex> csr;
-	//! Edge-table row id per edge position, per partition, aligned with the partition's edge array
-	vector<vector<row_t>> partition_row_ids;
+	//! Edge-table row id per edge position, per partition, aligned with the partition's edge array. Shared, like the
+	//! partitions: an epoch built by a merge fold holds the unchanged partitions of its predecessor
+	vector<shared_ptr<vector<row_t>>> partition_row_ids;
 	//! Epoch position (partition << 32 | offset) of each tombstoned row, DConstants::INVALID_INDEX when the row is
 	//! not an edge of this epoch; filled lazily by readers, protected by the index lock
 	vector<idx_t> tombstone_positions;
@@ -321,11 +329,26 @@ private:
 	static shared_ptr<CSRIndexEpoch> BuildEpochFromTable(ClientContext &context, DuckTransaction &transaction,
 	                                                     DataTable &table, const vector<column_t> &column_ids,
 	                                                     bool undirected, bool reverse, uint64_t *scan_us = nullptr);
+	//! Merge fold (duckpgq_csr_index_merge_fold): the epoch that holds what `snapshot` shows, built without the table.
+	//! A partition of the snapshot's epoch that the overlay neither suppresses in nor adds to is shared; every other
+	//! destination range is rebuilt by merging the old partition's unsuppressed edges with the overlay's edges of the
+	//! range, both sorted by source. The ids of the snapshot stay: the dictionary is the old one plus the snapshot's
+	//! extra keys, and the partition width is the old one. Touches no index state. `rebuilt` receives the number of
+	//! partitions that were not shared. Requires an index without a stored reverse side.
+	static shared_ptr<CSRIndexEpoch> MergeEpoch(ClientContext &context, const CSRIndexSnapshot &snapshot,
+	                                            VisibilityBound bound, idx_t &rebuilt);
 	//! Whether RunFold should build an epoch for this transaction (ordering and, for ratio > 0, the pending log)
 	bool FoldDue(DuckTransaction &transaction, double ratio) const;
 	//! Installs an epoch RunFold built, unless a newer one arrived meanwhile; records the fold time
 	void InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
-	                        uint64_t fold_us, uint64_t scan_us) const;
+	                        uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt) const;
+	//! The folding transaction's snapshot over the newest epoch, which a merge fold materialises; null when the
+	//! newest epoch does not serve the transaction (the fold then scans the table)
+	shared_ptr<CSRIndexSnapshot> FoldSnapshot(ClientContext &context, DuckTransaction &transaction,
+	                                          DataTable &table) const;
+	//! Throws unless both epochs hold the same edges (source key, destination key, row id) per direction; the check
+	//! of duckpgq_csr_index_merge_fold_verify
+	static void VerifyMergedEpoch(const CSRIndexEpoch &merged, const CSRIndexEpoch &scanned);
 	//! Stamps the change-log entries that the epoch built by `transaction` accounts for: delta rows it contains and
 	//! tombstoned rows it excludes. Uses the live transaction, so it does not depend on how long DuckDB keeps row
 	//! versions. Then installs the epoch and drops the entries no retained epoch needs any more.
@@ -380,6 +403,8 @@ private:
 	//! Version 2 adds the reverse side after the forward partitions. Only this version loads: DeferLoad ignores a
 	//! stored state of any other version, so the index starts empty and rebuilds its epoch from the table on first use
 	static constexpr idx_t STORAGE_FORMAT_VERSION = 2;
+	//! Bit of the stream's dictionary flag byte: the dictionary's extra keys follow its sorted keys (merge fold)
+	static constexpr uint8_t DICTIONARY_HAS_EXTRA_KEYS = 2;
 	vector<uint8_t> SerializeState() const;
 	IndexStorageInfo WriteSegments(const vector<uint8_t> &bytes, optional_ptr<QueryContext> checkpoint_context);
 	//! Remembers where the checkpointed state lives. The index is deserialized on first use (EnsureLoadedLocked):
@@ -437,6 +462,10 @@ private:
 	mutable std::atomic<uint64_t> fold_last_us {0};
 	//! Table scan (edge collection) part of the last fold
 	mutable std::atomic<uint64_t> fold_last_scan_us {0};
+	//! Merge folds among fold_count, and the partitions the last fold rebuilt out of how many (a full fold: all)
+	mutable std::atomic<uint64_t> fold_merge_count {0};
+	mutable std::atomic<uint64_t> fold_last_rebuilt {0};
+	mutable std::atomic<uint64_t> fold_last_partitions {0};
 };
 
 //! Registration entry point called from the core module

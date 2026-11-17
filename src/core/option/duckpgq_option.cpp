@@ -74,6 +74,15 @@ const vector<DuckPGQSetting> &Settings() {
 	     "A CSR index folds its change log into a new epoch when the log exceeds this fraction of "
 	     "the epoch's edges; 0 disables automatic folding",
 	     LogicalType::DOUBLE, Value(0.1)},
+	    {"duckpgq_csr_index_merge_fold",
+	     "Prototype: a CSR index folds by merging its newest epoch with the folding transaction's overlay, sharing "
+	     "the partitions that did not change, instead of scanning the table; vertex ids are not renumbered. Indexes "
+	     "with a stored reverse side always scan",
+	     LogicalType::BOOLEAN, Value(false)},
+	    {"duckpgq_csr_index_merge_fold_verify",
+	     "Test switch: after a merge fold, also build the epoch from the table and fail unless both hold the same "
+	     "edges",
+	     LogicalType::BOOLEAN, Value(false)},
 	    {"experimental_path_finding_operator_snapshot_cache",
 	     "Reuse a CSR index snapshot across queries while the epoch, its change log and the "
 	     "visible change groups are unchanged; false rebuilds the overlay for every query",
@@ -264,6 +273,14 @@ int32_t GetPathFindingSourceGroupRatio(ClientContext &context) {
 
 double_t GetCSRIndexFoldRatio(ClientContext &context) {
 	return GetSetting<double_t>(context, "duckpgq_csr_index_fold_ratio");
+}
+
+bool GetCSRIndexMergeFold(ClientContext &context) {
+	return GetSetting<bool>(context, "duckpgq_csr_index_merge_fold");
+}
+
+bool GetCSRIndexMergeFoldVerify(ClientContext &context) {
+	return GetSetting<bool>(context, "duckpgq_csr_index_merge_fold_verify");
 }
 
 bool GetPathFindingSnapshotCache(ClientContext &context) {

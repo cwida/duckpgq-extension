@@ -26,6 +26,10 @@ int32_t GetPathFindingMaxConcurrentBatches(ClientContext &context);
 int32_t GetPathFindingReverseOrientationRatio(ClientContext &context);
 int32_t GetPathFindingSourceGroupRatio(ClientContext &context);
 double_t GetCSRIndexFoldRatio(ClientContext &context);
+
+bool GetCSRIndexMergeFold(ClientContext &context);
+
+bool GetCSRIndexMergeFoldVerify(ClientContext &context);
 bool GetPathFindingSnapshotCache(ClientContext &context);
 bool GetPathFindingTargetEarlyTermination(ClientContext &context);
 int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context);

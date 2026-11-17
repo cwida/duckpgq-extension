@@ -370,6 +370,15 @@ unique_ptr<BoundIndex> CSRBuildFinalize(IndexBuildFinalizeInput &input) {
 // CSRIndexDictionary
 //----------------------------------------------------------------------------------------------------------------------
 idx_t CSRIndexDictionary::Lookup(int64_t key) const {
+	auto id = LookupOrdered(key);
+	if (id != DConstants::INVALID_INDEX || extra_ids.empty()) {
+		return id;
+	}
+	auto entry = extra_ids.find(key);
+	return entry == extra_ids.end() ? DConstants::INVALID_INDEX : entry->second;
+}
+
+idx_t CSRIndexDictionary::LookupOrdered(int64_t key) const {
 	if (dense) {
 		if (key < min_key) {
 			return DConstants::INVALID_INDEX;
@@ -397,7 +406,9 @@ idx_t CSRIndexDictionary::Lookup(int64_t key) const {
 }
 
 int64_t CSRIndexDictionary::KeyOf(idx_t id) const {
-	D_ASSERT(id < count);
+	if (id >= count) {
+		return extra_keys[id - count];
+	}
 	if (!dense) {
 		return sorted_keys[id];
 	}
@@ -433,8 +444,7 @@ void CSRIndexDictionary::KeyCursor::Seek(idx_t id) {
 }
 
 int64_t CSRIndexDictionary::KeyCursor::KeyOf(idx_t id) {
-	D_ASSERT(id < dictionary.count);
-	if (!dictionary.dense || dictionary.identity) {
+	if (id >= dictionary.count || !dictionary.dense || dictionary.identity) {
 		return dictionary.KeyOf(id);
 	}
 	if (!positioned || id < next_id || id >= next_id + 64) {
@@ -579,7 +589,8 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 			CSRRadixSortBySource(edges, scratch, histogram, src_bits);
 			auto start_vertex = partition_idx * width;
 			auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
-			auto &row_ids = epoch->partition_row_ids[partition_idx];
+			epoch->partition_row_ids[partition_idx] = make_shared_ptr<vector<row_t>>();
+			auto &row_ids = *epoch->partition_row_ids[partition_idx];
 			row_ids.resize(edges.size());
 			csr->forward_partitions[partition_idx] = CSREmitSparsePartition(
 			    start_vertex, end_vertex, vertex_count, edges,
@@ -868,7 +879,7 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 		if (row_idx == std::numeric_limits<idx_t>::max() || row_idx + 1 >= forward.row_offsets.size()) {
 			return DConstants::INVALID_INDEX;
 		}
-		auto &rows = partition_row_ids[partition_idx];
+		auto &rows = *partition_row_ids[partition_idx];
 		for (idx_t o = forward.row_offsets[row_idx]; o < forward.row_offsets[row_idx + 1]; o++) {
 			if (rows[o] == row) {
 				return PackPosition(partition_idx, o);
@@ -905,7 +916,7 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 		ParallelFor(partition_row_ids.size(), thread_count, [&](idx_t begin, idx_t end, idx_t) {
 			vector<std::pair<row_t, idx_t>> found;
 			for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
-				auto &rows = partition_row_ids[partition_idx];
+				auto &rows = *partition_row_ids[partition_idx];
 				for (idx_t offset = 0; offset < rows.size(); offset++) {
 					if (scan_rows.find(rows[offset]) != scan_rows.end()) {
 						found.emplace_back(rows[offset], PackPosition(partition_idx, offset));
@@ -1385,7 +1396,7 @@ bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio) const {
 }
 
 void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
-                                  uint64_t fold_us, uint64_t scan_us) const {
+                                  uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt) const {
 	{
 		// The ordering check again: the rebuild ran outside the index lock
 		IndexLock l(*this);
@@ -1395,11 +1406,216 @@ void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table
 			return;
 		}
 	}
+	fold_last_partitions = epoch->csr->forward_partitions.size();
+	fold_last_rebuilt = rebuilt;
 	InstallEpochAndCompact(transaction, table, std::move(epoch));
 	fold_count++;
+	if (merged) {
+		fold_merge_count++;
+	}
 	fold_total_us += fold_us;
 	fold_last_us = fold_us;
 	fold_last_scan_us = scan_us;
+}
+
+shared_ptr<CSRIndexSnapshot> CSRIndex::FoldSnapshot(ClientContext &context, DuckTransaction &transaction,
+                                                    DataTable &table) const {
+	auto state = LogStateFor(transaction.view.visibility_bound);
+	if (!state.epoch) {
+		return nullptr;
+	}
+	{
+		IndexLock l(*this);
+		if (epochs.empty() || epochs.back() != state.epoch) {
+			return nullptr;
+		}
+	}
+	return BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count, true);
+}
+
+shared_ptr<CSRIndexEpoch> CSRIndex::MergeEpoch(ClientContext &context, const CSRIndexSnapshot &snapshot,
+                                               VisibilityBound bound, idx_t &rebuilt) {
+	auto &old_epoch = *snapshot.epoch;
+	D_ASSERT(old_epoch.csr->reverse_partitions.empty());
+	auto width = old_epoch.partition_width;
+	auto vertex_count = snapshot.vertex_count;
+	auto rows_per_bucket = GetPathFindingRowBucketRows(context);
+	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
+
+	auto epoch = make_shared_ptr<CSRIndexEpoch>();
+	epoch->bound = bound;
+	epoch->vertex_count = vertex_count;
+	epoch->partition_width = width;
+	// The snapshot numbered its new vertices above the epoch, id = epoch vertex count + position; the dictionary
+	// keeps exactly those ids, so every id in the old partitions and in the overlay stays valid
+	if (snapshot.extra_keys.empty()) {
+		epoch->dictionary = old_epoch.dictionary;
+	} else {
+		auto dictionary = make_shared_ptr<CSRIndexDictionary>(*old_epoch.dictionary);
+		for (auto key : snapshot.extra_keys) {
+			dictionary->extra_ids.emplace(key, NumericCast<uint32_t>(dictionary->Size()));
+			dictionary->extra_keys.push_back(key);
+		}
+		epoch->dictionary = std::move(dictionary);
+	}
+	if (epoch->dictionary->Size() != vertex_count) {
+		throw InternalException("CSR index merge fold: %llu keys for %llu vertices", epoch->dictionary->Size(),
+		                        vertex_count);
+	}
+
+	// The snapshot lists the epoch's partitions first, one per destination range, and behind them the covers of the
+	// ranges above the epoch; a cover that starts on a range boundary is that range's entry (the cover of the tail
+	// of the epoch's last range starts inside the range)
+	auto old_ranges = old_epoch.csr->forward_partitions.size();
+	auto partition_count = std::max<idx_t>(1, (vertex_count + 2 + width - 1) / width);
+	vector<idx_t> range_to_list(partition_count, DConstants::INVALID_INDEX);
+	for (idx_t range = 0; range < old_ranges && range < partition_count; range++) {
+		range_to_list[range] = range;
+	}
+	for (idx_t list_idx = old_ranges; list_idx < snapshot.partitions.size(); list_idx++) {
+		auto start_vertex = snapshot.partitions[list_idx]->start_vertex;
+		if (start_vertex % width == 0 && start_vertex / width < partition_count) {
+			range_to_list[start_vertex / width] = list_idx;
+		}
+	}
+
+	struct MergeEdge {
+		uint32_t src;
+		uint16_t local_dst;
+		row_t row;
+	};
+	auto csr = make_shared_ptr<PartitionedCSRIndex>();
+	csr->vertex_count = vertex_count + 2;
+	csr->capabilities = PartitionedCSRCapabilities::FORWARD;
+	csr->forward_partitions.resize(partition_count);
+	epoch->partition_row_ids.resize(partition_count);
+	std::atomic<idx_t> total_edge_count {0};
+	std::atomic<idx_t> rebuilt_count {0};
+	ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+		vector<MergeEdge> edges;
+		for (idx_t range = begin; range < end; range++) {
+			auto list_idx = range_to_list[range];
+			auto start_vertex = range * width;
+			auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
+			const LocalCSR *old_partition = range < old_ranges ? snapshot.partitions[range].get() : nullptr;
+			const LocalCSR *companion = nullptr;
+			const vector<uint64_t> *suppressed = nullptr;
+			if (list_idx != DConstants::INVALID_INDEX) {
+				if (list_idx < snapshot.delta_partitions.size()) {
+					companion = snapshot.delta_partitions[list_idx].get();
+				}
+				if (list_idx < snapshot.suppressed.size()) {
+					suppressed = snapshot.suppressed[list_idx].get();
+				}
+			}
+			if (old_partition && !companion && !suppressed && old_partition->end_vertex == end_vertex) {
+				// Nothing the folding transaction sees changed this range: the new epoch shares the partition
+				csr->forward_partitions[range] = snapshot.partitions[range];
+				epoch->partition_row_ids[range] = old_epoch.partition_row_ids[range];
+				total_edge_count.fetch_add(old_partition->e.size(), std::memory_order_relaxed);
+				continue;
+			}
+			// Merge by source: the old partition's rows without the suppressed positions, and the overlay's rows.
+			// Where both have a row for a source, the two runs are merged by destination offset.
+			edges.clear();
+			edges.reserve((old_partition ? old_partition->e.size() : 0) + (companion ? companion->e.size() : 0));
+			idx_t old_rows = old_partition ? old_partition->source_vertices.size() : 0;
+			idx_t new_rows = companion ? companion->source_vertices.size() : 0;
+			idx_t old_row = 0;
+			idx_t new_row = 0;
+			auto append_old = [&](idx_t row) {
+				for (idx_t o = old_partition->row_offsets[row]; o < old_partition->row_offsets[row + 1]; o++) {
+					if (suppressed && (((*suppressed)[o >> 6] >> (o & 63)) & 1)) {
+						continue;
+					}
+					edges.push_back({old_partition->source_vertices[row], old_partition->e[o], old_partition->row_ids[o]});
+				}
+			};
+			auto append_new = [&](idx_t row) {
+				for (idx_t o = companion->row_offsets[row]; o < companion->row_offsets[row + 1]; o++) {
+					edges.push_back({companion->source_vertices[row], companion->e[o], companion->row_ids[o]});
+				}
+			};
+			while (old_row < old_rows || new_row < new_rows) {
+				if (new_row == new_rows || (old_row < old_rows && old_partition->source_vertices[old_row] <
+				                                                      companion->source_vertices[new_row])) {
+					append_old(old_row++);
+				} else if (old_row == old_rows ||
+				           companion->source_vertices[new_row] < old_partition->source_vertices[old_row]) {
+					append_new(new_row++);
+				} else {
+					auto first = edges.size();
+					append_old(old_row++);
+					auto middle = edges.size();
+					append_new(new_row++);
+					std::inplace_merge(edges.begin() + NumericCast<int64_t>(first),
+					                   edges.begin() + NumericCast<int64_t>(middle), edges.end(),
+					                   [](const MergeEdge &a, const MergeEdge &b) { return a.local_dst < b.local_dst; });
+				}
+			}
+			auto row_ids = make_shared_ptr<vector<row_t>>(edges.size());
+			csr->forward_partitions[range] = CSREmitSparsePartition(
+			    start_vertex, end_vertex, vertex_count, edges,
+			    [&](idx_t position, const MergeEdge &edge) { (*row_ids)[position] = edge.row; }, rows_per_bucket);
+			csr->forward_partitions[range]->row_ids = row_ids->data();
+			epoch->partition_row_ids[range] = std::move(row_ids);
+			total_edge_count.fetch_add(edges.size(), std::memory_order_relaxed);
+			rebuilt_count.fetch_add(1, std::memory_order_relaxed);
+		}
+	});
+	csr->edge_count = total_edge_count.load();
+	epoch->edge_count = csr->edge_count;
+	epoch->csr = std::move(csr);
+	rebuilt = rebuilt_count.load();
+	return epoch;
+}
+
+void CSRIndex::VerifyMergedEpoch(const CSRIndexEpoch &merged, const CSRIndexEpoch &scanned) {
+	struct KeyedEdge {
+		int64_t src;
+		int64_t dst;
+		row_t row;
+		bool operator<(const KeyedEdge &other) const {
+			return std::tie(src, dst, row) < std::tie(other.src, other.dst, other.row);
+		}
+		bool operator==(const KeyedEdge &other) const {
+			return src == other.src && dst == other.dst && row == other.row;
+		}
+	};
+	auto edges_of = [](const CSRIndexEpoch &epoch) {
+		vector<KeyedEdge> edges;
+		edges.reserve(epoch.edge_count);
+		for (idx_t partition_idx = 0; partition_idx < epoch.csr->forward_partitions.size(); partition_idx++) {
+			auto &partition = *epoch.csr->forward_partitions[partition_idx];
+			auto &row_ids = *epoch.partition_row_ids[partition_idx];
+			if (partition.start_vertex != partition_idx * epoch.partition_width) {
+				throw InternalException("CSR index merge fold: partition %llu starts at vertex %llu", partition_idx,
+				                        partition.start_vertex);
+			}
+			for (idx_t row = 0; row < partition.source_vertices.size(); row++) {
+				auto src = epoch.dictionary->KeyOf(partition.source_vertices[row]);
+				for (idx_t o = partition.row_offsets[row]; o < partition.row_offsets[row + 1]; o++) {
+					edges.push_back({src, epoch.dictionary->KeyOf(partition.start_vertex + partition.e[o]), row_ids[o]});
+				}
+			}
+		}
+		std::sort(edges.begin(), edges.end());
+		return edges;
+	};
+	auto merged_edges = edges_of(merged);
+	auto scanned_edges = edges_of(scanned);
+	if (merged_edges.size() != scanned_edges.size() || merged.edge_count != scanned.edge_count) {
+		throw InternalException("CSR index merge fold: %llu edges merged, %llu scanned from the table",
+		                        merged_edges.size(), scanned_edges.size());
+	}
+	for (idx_t i = 0; i < merged_edges.size(); i++) {
+		if (!(merged_edges[i] == scanned_edges[i])) {
+			throw InternalException("CSR index merge fold: edge %llu is (%lld, %lld, row %lld) merged and (%lld, %lld, "
+			                        "row %lld) scanned from the table",
+			                        i, merged_edges[i].src, merged_edges[i].dst, merged_edges[i].row,
+			                        scanned_edges[i].src, scanned_edges[i].dst, scanned_edges[i].row);
+		}
+	}
 }
 
 bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &entry, DuckTableEntry &table,
@@ -1450,23 +1666,52 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 	}
 	auto fold_start = std::chrono::steady_clock::now();
 	uint64_t scan_us = 0;
-	auto epoch = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse, &scan_us);
+	shared_ptr<CSRIndexEpoch> epoch;
+	bool merged = false;
+	idx_t rebuilt = 0;
+	if (GetCSRIndexMergeFold(context) && !reverse) {
+		// Merge fold: the snapshot is taken under the read handle, as a query takes its own; the merge runs without
+		// it, on the snapshot's shared partitions
+		shared_ptr<CSRIndexSnapshot> snapshot;
+		{
+			auto handle = entry->GetReadHandle<CSRIndex>();
+			auto &index = *handle.operator->();
+			if (&index != identity) {
+				return false;
+			}
+			snapshot = index.FoldSnapshot(context, transaction, storage);
+		}
+		if (snapshot) {
+			epoch = MergeEpoch(context, *snapshot, transaction.view.visibility_bound, rebuilt);
+			merged = true;
+		}
+	}
+	if (!epoch) {
+		epoch = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse, &scan_us);
+		rebuilt = epoch->csr->forward_partitions.size();
+	}
 	auto fold_us = static_cast<uint64_t>(
 	    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fold_start).count());
+	if (merged && GetCSRIndexMergeFoldVerify(context)) {
+		auto scanned = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse);
+		VerifyMergedEpoch(*epoch, *scanned);
+	}
 	auto handle = entry->GetReadHandle<CSRIndex>();
 	auto &index = *handle.operator->();
 	if (&index != identity) {
 		return false; // rebound while the table was scanned: the epoch belongs to an index that no longer exists
 	}
-	index.InstallFoldedEpoch(transaction, storage, std::move(epoch), fold_us, scan_us);
+	index.InstallFoldedEpoch(transaction, storage, std::move(epoch), fold_us, scan_us, merged, rebuilt);
 	return true;
 }
 
 string CSRIndex::FoldStats() const {
-	return StringUtil::Format("folds=%llu;last_fold_ms=%.1f;last_fold_scan_ms=%.1f;fold_ms=%.1f", fold_count.load(),
-	                          static_cast<double>(fold_last_us.load()) / 1000.0,
+	return StringUtil::Format("folds=%llu;last_fold_ms=%.1f;last_fold_scan_ms=%.1f;fold_ms=%.1f;merge_folds=%llu;"
+	                          "last_fold_rebuilt=%llu;last_fold_partitions=%llu",
+	                          fold_count.load(), static_cast<double>(fold_last_us.load()) / 1000.0,
 	                          static_cast<double>(fold_last_scan_us.load()) / 1000.0,
-	                          static_cast<double>(fold_total_us.load()) / 1000.0);
+	                          static_cast<double>(fold_total_us.load()) / 1000.0, fold_merge_count.load(),
+	                          fold_last_rebuilt.load(), fold_last_partitions.load());
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTransaction &transaction,
@@ -1872,7 +2117,8 @@ idx_t CSRIndex::GetInMemorySize(IndexLock &l) const {
 		         sizeof(idx_t);
 		bytes += epoch->dictionary->bitmap.size() * sizeof(uint64_t) +
 		         epoch->dictionary->word_rank.size() * sizeof(uint32_t) +
-		         epoch->dictionary->sorted_keys.size() * sizeof(int64_t);
+		         epoch->dictionary->sorted_keys.size() * sizeof(int64_t) +
+		         epoch->dictionary->extra_keys.size() * (2 * sizeof(int64_t) + sizeof(uint32_t));
 		for (auto &partition : epoch->csr->forward_partitions) {
 			bytes += PartitionBytes(*partition);
 		}
@@ -1880,7 +2126,7 @@ idx_t CSRIndex::GetInMemorySize(IndexLock &l) const {
 			bytes += PartitionBytes(*partition);
 		}
 		for (auto &row_ids : epoch->partition_row_ids) {
-			bytes += row_ids.size() * sizeof(row_t);
+			bytes += row_ids->size() * sizeof(row_t);
 		}
 	}
 	return bytes;
@@ -2065,18 +2311,25 @@ vector<uint8_t> CSRIndex::SerializeState() const {
 	writer.Write<uint64_t>(epoch.partition_width);
 
 	auto &dictionary = *epoch.dictionary;
-	writer.Write<uint8_t>(dictionary.dense ? 1 : 0);
+	// Prototype of the merge fold: bit 1 of this byte says that the keys carried above the key-ordered ones follow
+	// the sorted keys. Streams written before have 0 or 1 here and load unchanged; a release would raise
+	// STORAGE_FORMAT_VERSION instead.
+	bool has_extra_keys = !dictionary.extra_keys.empty();
+	writer.Write<uint8_t>((dictionary.dense ? 1 : 0) | (has_extra_keys ? DICTIONARY_HAS_EXTRA_KEYS : 0));
 	writer.Write<uint8_t>(dictionary.identity ? 1 : 0);
 	writer.Write<int64_t>(dictionary.min_key);
 	writer.Write<uint64_t>(dictionary.count);
 	writer.WriteVector<uint64_t>(dictionary.bitmap);
 	writer.WriteVector<uint32_t>(dictionary.word_rank);
 	writer.WriteVector<int64_t>(dictionary.sorted_keys);
+	if (has_extra_keys) {
+		writer.WriteVector<int64_t>(dictionary.extra_keys);
+	}
 
 	auto &partitions = epoch.csr->forward_partitions;
 	writer.Write<uint64_t>(partitions.size());
 	for (idx_t partition_idx = 0; partition_idx < partitions.size(); partition_idx++) {
-		WritePartition(writer, *partitions[partition_idx], &epoch.partition_row_ids[partition_idx]);
+		WritePartition(writer, *partitions[partition_idx], epoch.partition_row_ids[partition_idx].get());
 	}
 	// Version 2: the reverse side (edges by source range, no row ids), present when the index stores one
 	auto &reverse_partitions = epoch.csr->reverse_partitions;
@@ -2301,13 +2554,20 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 	epoch->partition_width = reader.Read<uint64_t>();
 
 	auto dictionary = make_shared_ptr<CSRIndexDictionary>();
-	dictionary->dense = reader.Read<uint8_t>() != 0;
+	auto dictionary_flags = reader.Read<uint8_t>();
+	dictionary->dense = (dictionary_flags & 1) != 0;
 	dictionary->identity = reader.Read<uint8_t>() != 0;
 	dictionary->min_key = reader.Read<int64_t>();
 	dictionary->count = reader.Read<uint64_t>();
 	reader.ReadVector<uint64_t>(dictionary->bitmap);
 	reader.ReadVector<uint32_t>(dictionary->word_rank);
 	reader.ReadVector<int64_t>(dictionary->sorted_keys);
+	if (dictionary_flags & DICTIONARY_HAS_EXTRA_KEYS) {
+		reader.ReadVector<int64_t>(dictionary->extra_keys);
+		for (idx_t i = 0; i < dictionary->extra_keys.size(); i++) {
+			dictionary->extra_ids.emplace(dictionary->extra_keys[i], NumericCast<uint32_t>(dictionary->count + i));
+		}
+	}
 	epoch->dictionary = std::move(dictionary);
 
 	auto csr = make_shared_ptr<PartitionedCSRIndex>();
@@ -2322,8 +2582,13 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 	        .TryGetCurrentSetting(Identifier("experimental_path_finding_operator_row_bucket_rows"), row_bucket_setting)) {
 		rows_per_bucket = row_bucket_setting.GetValue<int32_t>();
 	}
+	vector<vector<row_t>> loaded_row_ids;
 	ReadPartitions(reader, partition_count, epoch->vertex_count, thread_count, csr->forward_partitions,
-	               &epoch->partition_row_ids, rows_per_bucket);
+	               &loaded_row_ids, rows_per_bucket);
+	// Moving a vector keeps its buffer, which the partitions point at
+	for (auto &row_ids : loaded_row_ids) {
+		epoch->partition_row_ids.push_back(make_shared_ptr<vector<row_t>>(std::move(row_ids)));
+	}
 	// The reverse side (edges by source range, no row ids), present when the index stored one
 	bool stored_reverse = reader.Read<uint8_t>() != 0;
 	if (stored_reverse) {
