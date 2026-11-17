@@ -94,6 +94,10 @@ inline IndexPointer UnpackSegment(uint64_t packed) {
 //! that word. 64 is more than it needs, but every existing file was written with this segment size, so it stays.
 constexpr idx_t SEGMENT_HEADER_RESERVE = 64;
 
+//! Segments (one block each) a checkpoint fills before it writes them to disk and unpins them: 4 MiB of pinned
+//! buffers at the default block size
+constexpr idx_t CHECKPOINT_FLUSH_SEGMENTS = 16;
+
 //! Mixing constants of the snapshot cache's visibility hash (FNV-1a style: xor the value, multiply by the 64-bit FNV
 //! prime; the seed is arbitrary). The hash only compares decisions within one process, it is never persisted.
 constexpr uint64_t VISIBILITY_HASH_SEED = 1469598103934665603ULL;
@@ -184,10 +188,32 @@ vector<EdgeSlice> MakeEdgeSlices(const vector<CSRIndexEdgeList> &lists, idx_t di
 	return slices;
 }
 
+//! The buffer manager that owns index memory. An epoch outlives the query that builds it, so this is the database's
+//! manager: the one a ClientContext hands out is a wrapper owned by the connection.
+BufferManager &IndexBufferManager(ClientContext &context) {
+	return BufferManager::GetBufferManager(DatabaseInstance::GetDatabase(context));
+}
+
+//! Heap bytes of a std::unordered_map: one bucket pointer per bucket and one node (next pointer plus the pair) per
+//! entry
+template <class MAP>
+idx_t HashMapBytes(const MAP &map) {
+	return map.bucket_count() * sizeof(void *) + map.size() * (sizeof(void *) + sizeof(typename MAP::value_type));
+}
+
+//! Bytes of one partition's arrays: edges, sparse rows with their offsets and bucket index, owned row ids (epoch
+//! partitions point at the epoch's row ids instead, counted separately)
+idx_t PartitionBytes(const LocalCSR &partition) {
+	return partition.e.size() * sizeof(uint16_t) + partition.row_offsets.size() * sizeof(uint32_t) +
+	       partition.source_vertices.size() * sizeof(uint32_t) + partition.row_buckets.size() * sizeof(uint32_t) +
+	       partition.owned_row_ids.size() * sizeof(row_t);
+}
+
 //! Builds the dictionary: a presence bitmap when the key space is compact, a sorted key array otherwise
 shared_ptr<CSRIndexDictionary> BuildDictionary(const vector<CSRIndexEdgeList> &lists, idx_t total_edges,
-                                               int64_t min_key, int64_t max_key, idx_t thread_count) {
-	auto dictionary = make_shared_ptr<CSRIndexDictionary>();
+                                               int64_t min_key, int64_t max_key, idx_t thread_count,
+                                               BufferManager &buffer_manager) {
+	auto dictionary = make_shared_ptr<CSRIndexDictionary>(&buffer_manager);
 	if (total_edges == 0) {
 		return dictionary;
 	}
@@ -226,8 +252,8 @@ shared_ptr<CSRIndexDictionary> BuildDictionary(const vector<CSRIndexEdgeList> &l
 		if (rank == range) {
 			// Every key in the range is a vertex: ids are offsets, the bitmap is not needed
 			dictionary->identity = true;
-			dictionary->bitmap.clear();
-			dictionary->word_rank.clear();
+			dictionary->bitmap.Release();
+			dictionary->word_rank.Release();
 		}
 		return dictionary;
 	}
@@ -275,14 +301,14 @@ shared_ptr<CSRIndexDictionary> BuildDictionary(const vector<CSRIndexEdgeList> &l
 	for (idx_t bucket_idx = 0; bucket_idx < KEY_BUCKETS; bucket_idx++) {
 		bucket_offsets[bucket_idx + 1] = bucket_offsets[bucket_idx] + bucket_keys[bucket_idx].size();
 	}
-	vector<int64_t> keys(bucket_offsets[KEY_BUCKETS]);
+	dictionary->sorted_keys.resize(bucket_offsets[KEY_BUCKETS]);
+	auto keys = dictionary->sorted_keys.data();
 	ParallelFor(KEY_BUCKETS, thread_count, [&](idx_t begin, idx_t end, idx_t) {
 		for (idx_t bucket_idx = begin; bucket_idx < end; bucket_idx++) {
 			std::copy(bucket_keys[bucket_idx].begin(), bucket_keys[bucket_idx].end(),
-			          keys.begin() + NumericCast<int64_t>(bucket_offsets[bucket_idx]));
+			          keys + bucket_offsets[bucket_idx]);
 		}
 	});
-	dictionary->sorted_keys = std::move(keys);
 	dictionary->count = dictionary->sorted_keys.size();
 	return dictionary;
 }
@@ -493,6 +519,9 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 	auto epoch = make_shared_ptr<CSRIndexEpoch>();
 	epoch->bound = bound;
 	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
+	// The dictionary, the partitions and the row ids are buffers of this manager. An allocation that does not fit
+	// memory_limit throws; the epoch built so far is destroyed with the exception and returns its buffers.
+	auto &buffer_manager = IndexBufferManager(context);
 
 	idx_t total_edges = 0;
 	int64_t min_key = NumericLimits<int64_t>::Maximum();
@@ -503,7 +532,7 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 		max_key = std::max(max_key, list.max_key);
 	}
 
-	auto dictionary = BuildDictionary(lists, total_edges, min_key, max_key, thread_count);
+	auto dictionary = BuildDictionary(lists, total_edges, min_key, max_key, thread_count, buffer_manager);
 	auto vertex_count = dictionary->Size();
 	if (vertex_count > NumericLimits<uint32_t>::Maximum()) {
 		throw OutOfRangeException("A CSR index supports at most %llu distinct vertices",
@@ -557,7 +586,10 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 	csr->vertex_count = vertex_count + 2;
 	csr->capabilities = PartitionedCSRCapabilities::FORWARD;
 	csr->forward_partitions.resize(partition_count);
-	epoch->partition_row_ids.resize(partition_count);
+	epoch->partition_row_ids.reserve(partition_count);
+	for (idx_t partition_idx = 0; partition_idx < partition_count; partition_idx++) {
+		epoch->partition_row_ids.emplace_back(&buffer_manager);
+	}
 	std::atomic<idx_t> total_edge_count {0};
 	ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
 		vector<BuildEdge> edges;
@@ -581,9 +613,11 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 			auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
 			auto &row_ids = epoch->partition_row_ids[partition_idx];
 			row_ids.resize(edges.size());
+			auto rows = row_ids.data();
 			csr->forward_partitions[partition_idx] = CSREmitSparsePartition(
 			    start_vertex, end_vertex, vertex_count, edges,
-			    [&](idx_t position, const BuildEdge &edge) { row_ids[position] = edge.row; }, rows_per_bucket);
+			    [&](idx_t position, const BuildEdge &edge) { rows[position] = edge.row; }, rows_per_bucket,
+			    &buffer_manager);
 			csr->forward_partitions[partition_idx]->row_ids = row_ids.data();
 			total_edge_count.fetch_add(edges.size(), std::memory_order_relaxed);
 		}
@@ -608,7 +642,8 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 				auto start_vertex = partition_idx * width;
 				auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
 				csr->reverse_partitions[partition_idx] = CSREmitSparsePartition(
-				    start_vertex, end_vertex, vertex_count, edges, [](idx_t, const BuildEdge &) {}, rows_per_bucket);
+				    start_vertex, end_vertex, vertex_count, edges, [](idx_t, const BuildEdge &) {}, rows_per_bucket,
+				    &buffer_manager);
 			}
 		});
 	}
@@ -636,6 +671,7 @@ void CSRIndex::ClearStateLocked() const {
 	newest_excluded_tombstones = 0;
 	delta_row_index.clear();
 	cached_snapshot.reset();
+	AccountChangeLogLocked();
 }
 
 shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
@@ -813,6 +849,22 @@ void CSRIndex::CompactChangeLogLocked() const {
 		epoch->reverse_tombstone_positions.clear();
 		epoch->mirror_tombstone_positions.clear();
 	}
+	AccountChangeLogLocked();
+}
+
+idx_t CSRIndex::ChangeLogBytesLocked() const {
+	return delta.capacity() * sizeof(CSRIndexDeltaEdge) + tombstones.capacity() * sizeof(CSRIndexTombstone) +
+	       HashMapBytes(delta_row_index);
+}
+
+void CSRIndex::AccountChangeLogLocked() const {
+	change_log_memory.Set(BufferManager::GetBufferManager(db), ChangeLogBytesLocked());
+}
+
+void CSRIndex::AccountPositionsLocked(CSRIndexEpoch &epoch) const {
+	auto entries = epoch.tombstone_positions.capacity() + epoch.reverse_tombstone_positions.capacity() +
+	               epoch.mirror_tombstone_positions.capacity();
+	epoch.position_memory.Set(BufferManager::GetBufferManager(db), entries * sizeof(idx_t));
 }
 
 shared_ptr<CSRIndexEpoch> CSRIndex::EpochForLocked(VisibilityBound bound) const {
@@ -973,6 +1025,7 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 			epoch.reverse_tombstone_positions.push_back(reverse_positions[i]);
 		}
 	}
+	AccountPositionsLocked(epoch);
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, DuckTransaction &transaction,
@@ -1353,6 +1406,23 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		snapshot->reverse_delta_partitions = snapshot->delta_partitions;
 		snapshot->reverse_suppressed = snapshot->suppressed;
 	}
+	// The overlay is heap memory this read query built: the buffer pool accounts for it until the snapshot goes,
+	// without failing the query when it does not fit (see MemoryReservation)
+	idx_t overlay_bytes = snapshot->extra_keys.capacity() * sizeof(int64_t) + HashMapBytes(snapshot->extra_key_to_id);
+	auto add_overlay = [&](const std::vector<shared_ptr<LocalCSR>> &companions,
+	                       const std::vector<shared_ptr<vector<uint64_t>>> &suppressed) {
+		for (auto &companion : companions) {
+			overlay_bytes += companion ? PartitionBytes(*companion) : 0;
+		}
+		for (auto &bitmap : suppressed) {
+			overlay_bytes += bitmap ? bitmap->capacity() * sizeof(uint64_t) : 0;
+		}
+	};
+	add_overlay(snapshot->delta_partitions, snapshot->suppressed);
+	if (stored_reverse) {
+		add_overlay(snapshot->reverse_delta_partitions, snapshot->reverse_suppressed);
+	}
+	snapshot->overlay_memory.Set(IndexBufferManager(context), overlay_bytes);
 	if (shareable) {
 		IndexLock l(*this);
 		cached_snapshot = snapshot;
@@ -1377,11 +1447,23 @@ bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio) const {
 	if (VisibilityBound::Min(newest, mine) == mine) {
 		return false;
 	}
+	if (ratio <= 0) {
+		return true;
+	}
 	// An automatic fold is due when the log the newest epoch does not account for has grown past the ratio. The
 	// raw log also keeps the entries the retained older epoch still needs, so a trigger on its size stayed over the
 	// ratio until a second fold dropped that epoch (two folds per crossing, 2 Nov).
-	return ratio <= 0 || static_cast<double>(PendingLogLocked()) >
-	                         ratio * static_cast<double>(std::max<idx_t>(1, epochs.back()->edge_count));
+	auto pending = PendingLogLocked();
+	if (static_cast<double>(pending) <= ratio * static_cast<double>(std::max<idx_t>(1, epochs.back()->edge_count))) {
+		return false;
+	}
+	// After an automatic fold that did not fit memory_limit, the next one waits for the log to double
+	return pending >= fold_retry_pending;
+}
+
+void CSRIndex::PostponeAutomaticFold() const {
+	IndexLock l(*this);
+	fold_retry_pending = 2 * std::max<idx_t>(1, PendingLogLocked());
 }
 
 void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
@@ -1396,6 +1478,10 @@ void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table
 		}
 	}
 	InstallEpochAndCompact(transaction, table, std::move(epoch));
+	{
+		IndexLock l(*this);
+		fold_retry_pending = 0;
+	}
 	fold_count++;
 	fold_total_us += fold_us;
 	fold_last_us = fold_us;
@@ -1450,7 +1536,24 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 	}
 	auto fold_start = std::chrono::steady_clock::now();
 	uint64_t scan_us = 0;
-	auto epoch = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse, &scan_us);
+	shared_ptr<CSRIndexEpoch> epoch;
+	try {
+		epoch = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse, &scan_us);
+	} catch (const OutOfMemoryException &) {
+		// The new epoch does not fit memory_limit next to the retained one (the buffer manager evicted what it
+		// could). The explicit fold reports that. An automatic fold is skipped: this reader traverses the current
+		// epoch with its overlay, and the index waits for the log to double before the next automatic attempt, so
+		// that not every query pays for a table scan whose epoch cannot be allocated.
+		if (ratio <= 0) {
+			throw;
+		}
+		auto handle = entry->GetReadHandle<CSRIndex>();
+		auto &index = *handle.operator->();
+		if (&index == identity) {
+			index.PostponeAutomaticFold();
+		}
+		return false;
+	}
 	auto fold_us = static_cast<uint64_t>(
 	    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fold_start).count());
 	auto handle = entry->GetReadHandle<CSRIndex>();
@@ -1754,6 +1857,7 @@ ErrorData CSRIndex::Append(IndexLock &l, DataChunk &chunk, Vector &row_ids) {
 		delta.push_back(CSRIndexDeltaEdge::Appended(src_keys[row], dst_keys[row], row_id, group, resolve(src_keys[row]),
 		                                            resolve(dst_keys[row]), id_generation));
 	}
+	AccountChangeLogLocked();
 	return ErrorData();
 }
 
@@ -1822,6 +1926,7 @@ idx_t CSRIndex::TryDelete(IndexLock &l, DataChunk &entries, Vector &row_identifi
 			deleted_sel->set_index(row, row);
 		}
 	}
+	AccountChangeLogLocked();
 	return count;
 }
 
@@ -1845,16 +1950,6 @@ bool CSRIndex::MergeIndexes(IndexLock &, BoundIndex &) {
 void CSRIndex::Vacuum(IndexLock &) {
 }
 
-namespace {
-//! Bytes of one partition's arrays: edges, sparse rows with their offsets and bucket index, owned row ids (epoch
-//! partitions point at the epoch's row ids instead, counted separately)
-idx_t PartitionBytes(const LocalCSR &partition) {
-	return partition.e.size() * sizeof(uint16_t) + partition.row_offsets.size() * sizeof(uint32_t) +
-	       partition.source_vertices.size() * sizeof(uint32_t) + partition.row_buckets.size() * sizeof(uint32_t) +
-	       partition.owned_row_ids.size() * sizeof(row_t);
-}
-} // namespace
-
 idx_t CSRIndex::GetInMemorySize(IndexLock &l) const {
 	l.AssertHeld(*this);
 	if (storage_pending) {
@@ -1862,10 +1957,10 @@ idx_t CSRIndex::GetInMemorySize(IndexLock &l) const {
 		auto byte_count = pending_storage.options.find(STORAGE_OPTION_BYTES);
 		return byte_count == pending_storage.options.end() ? 0 : byte_count->second.GetValue<uint64_t>();
 	}
+	// What is in use, by element counts. The buffer pool accounts for what is allocated: the same arrays for an epoch
+	// (each rounded up to 4 KiB by the buffer manager), the capacity of the change log's vectors
 	idx_t bytes = delta.size() * sizeof(CSRIndexDeltaEdge) + tombstones.size() * sizeof(CSRIndexTombstone);
-	// The delta row index: one bucket pointer per bucket, one node (next pointer plus the pair) per entry
-	bytes += delta_row_index.bucket_count() * sizeof(void *) +
-	         delta_row_index.size() * (sizeof(void *) + sizeof(std::pair<const row_t, idx_t>));
+	bytes += HashMapBytes(delta_row_index);
 	for (auto &epoch : epochs) {
 		bytes += (epoch->tombstone_positions.size() + epoch->reverse_tombstone_positions.size() +
 		          epoch->mirror_tombstone_positions.size()) *
@@ -1924,9 +2019,10 @@ struct ByteWriter {
 		bytes.resize(offset + sizeof(T));
 		memcpy(bytes.data() + offset, &value, sizeof(T));
 	}
-	//! A length-prefixed array; duckdb::vector<T> derives from std::vector<T>, so this takes both
-	template <class T>
-	void WriteVector(const std::vector<T> &values) {
+	//! A length-prefixed array of T from a std::vector, a duckdb::vector or a ManagedArray
+	template <class T, class ARRAY>
+	void WriteVector(const ARRAY &values) {
+		static_assert(std::is_same<typename ARRAY::value_type, T>::value, "the array holds another element type");
 		Write<uint64_t>(values.size());
 		auto offset = bytes.size();
 		bytes.resize(offset + values.size() * sizeof(T));
@@ -1963,10 +2059,11 @@ struct ByteReader {
 		}
 		position += count * sizeof(T);
 	}
-	//! A length-prefixed array into a std::vector or a duckdb::vector (which derives from it). assign() copies once;
+	//! A length-prefixed array of T into a std::vector, a duckdb::vector or a ManagedArray. assign() copies once;
 	//! resize() followed by memcpy would write the memory twice
-	template <class T>
-	void ReadVector(std::vector<T> &values) {
+	template <class T, class ARRAY>
+	void ReadVector(ARRAY &values) {
+		static_assert(std::is_same<typename ARRAY::value_type, T>::value, "the array holds another element type");
 		auto count = Read<uint64_t>();
 		if (position + count * sizeof(T) > size) {
 			throw SerializationException("Truncated CSR index storage");
@@ -1979,7 +2076,7 @@ struct ByteReader {
 
 //! One partition of the stream: start and end vertex, sparse rows, their edge offsets, the edges, and (forward side
 //! only) the row ids aligned with the edges. The three functions below must agree on this layout.
-void WritePartition(ByteWriter &writer, const LocalCSR &partition, const vector<row_t> *row_ids) {
+void WritePartition(ByteWriter &writer, const LocalCSR &partition, const ManagedArray<row_t> *row_ids) {
 	writer.Write<uint64_t>(partition.start_vertex);
 	writer.Write<uint64_t>(partition.end_vertex);
 	writer.WriteVector<uint32_t>(partition.source_vertices);
@@ -2003,12 +2100,13 @@ void SkipPartition(ByteReader &reader, bool with_row_ids) {
 }
 
 //! Reads a partition written by WritePartition as a finalized LocalCSR (sparse rows and bucket index, no vertex
-//! array); the row ids go to `*row_ids`, which the partition then points at
-shared_ptr<LocalCSR> ReadPartition(ByteReader &reader, idx_t vertex_count, vector<row_t> *row_ids,
-                                   int32_t rows_per_bucket) {
+//! array) whose arrays are buffers of `buffer_manager`; the row ids go to `*row_ids`, which the partition then
+//! points at
+shared_ptr<LocalCSR> ReadPartition(ByteReader &reader, idx_t vertex_count, ManagedArray<row_t> *row_ids,
+                                   int32_t rows_per_bucket, BufferManager &buffer_manager) {
 	auto start_vertex = reader.Read<uint64_t>();
 	auto end_vertex = reader.Read<uint64_t>();
-	auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, vertex_count, false);
+	auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, vertex_count, false, &buffer_manager);
 	reader.ReadVector<uint32_t>(partition->source_vertices);
 	reader.ReadVector<uint32_t>(partition->row_offsets);
 	reader.ReadVector<uint16_t>(partition->e);
@@ -2026,9 +2124,11 @@ shared_ptr<LocalCSR> ReadPartition(ByteReader &reader, idx_t vertex_count, vecto
 
 //! Reads `count` partitions: a skip pass over `reader` locates every partition's bytes, then the partitions are
 //! deserialized in parallel, each by its own reader over the same bytes. Forward partitions pass `row_ids`, which
-//! receives one row-id vector per partition; the reverse side passes nullptr.
+//! receives one row-id array per partition; the reverse side passes nullptr. Every array is a buffer of
+//! `buffer_manager`; an allocation that does not fit memory_limit throws out of the parallel loop.
 void ReadPartitions(ByteReader &reader, idx_t count, idx_t vertex_count, idx_t thread_count,
-                    std::vector<shared_ptr<LocalCSR>> &partitions, vector<vector<row_t>> *row_ids, int32_t rows_per_bucket) {
+                    std::vector<shared_ptr<LocalCSR>> &partitions, vector<ManagedArray<row_t>> *row_ids,
+                    int32_t rows_per_bucket, BufferManager &buffer_manager) {
 	vector<idx_t> offsets(count);
 	for (idx_t partition_idx = 0; partition_idx < count; partition_idx++) {
 		offsets[partition_idx] = reader.position;
@@ -2036,14 +2136,19 @@ void ReadPartitions(ByteReader &reader, idx_t count, idx_t vertex_count, idx_t t
 	}
 	partitions.resize(count);
 	if (row_ids) {
-		row_ids->resize(count);
+		row_ids->clear();
+		row_ids->reserve(count);
+		for (idx_t partition_idx = 0; partition_idx < count; partition_idx++) {
+			row_ids->emplace_back(&buffer_manager);
+		}
 	}
 	ParallelFor(count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
 		for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
 			ByteReader partition_reader(reader.bytes, reader.size);
 			partition_reader.position = offsets[partition_idx];
 			partitions[partition_idx] =
-			    ReadPartition(partition_reader, vertex_count, row_ids ? &(*row_ids)[partition_idx] : nullptr, rows_per_bucket);
+			    ReadPartition(partition_reader, vertex_count, row_ids ? &(*row_ids)[partition_idx] : nullptr,
+			                  rows_per_bucket, buffer_manager);
 		}
 	});
 }
@@ -2124,18 +2229,30 @@ IndexStorageInfo CSRIndex::WriteSegments(const vector<uint8_t> &bytes, optional_
 	auto &allocator = checkpoint_context ? storage_allocator : wal_allocator;
 	allocator = make_uniq<FixedSizeAllocator>(segment_size, block_manager, MemoryTag::EXTENSION);
 	auto &storage_allocator = allocator;
+	// A checkpoint writes its buffers to disk as it fills them. A buffer is pinned until it is written, and the epoch
+	// is pinned in the same pool: holding every buffer until the end needed the index twice within memory_limit, and
+	// DuckDB treats a checkpoint that runs out of memory as fatal. The WAL takes pointers to all buffers at once, so
+	// a commit that logs the index (CREATE INDEX) does need the serialized copy next to the epoch.
+	unique_ptr<PartialBlockManager> partial_block_manager;
+	if (checkpoint_context) {
+		partial_block_manager =
+		    make_uniq<PartialBlockManager>(*checkpoint_context, block_manager, PartialBlockType::FULL_CHECKPOINT);
+	}
 	vector<Value> segments;
+	idx_t unwritten_segments = 0;
 	for (idx_t offset = 0; offset < bytes.size(); offset += segment_size) {
 		auto length = std::min<idx_t>(segment_size, bytes.size() - offset);
 		auto pointer = storage_allocator->New();
 		memcpy(storage_allocator->Get(pointer, true), bytes.data() + offset, length);
 		segments.push_back(Value::UBIGINT(PackSegment(pointer)));
+		if (partial_block_manager && ++unwritten_segments == CHECKPOINT_FLUSH_SEGMENTS) {
+			storage_allocator->SerializeBuffers(*partial_block_manager);
+			unwritten_segments = 0;
+		}
 	}
-	if (checkpoint_context) {
-		PartialBlockManager partial_block_manager(*checkpoint_context, block_manager,
-		                                          PartialBlockType::FULL_CHECKPOINT);
-		storage_allocator->SerializeBuffers(partial_block_manager);
-		partial_block_manager.FlushPartialBlocks();
+	if (partial_block_manager) {
+		storage_allocator->SerializeBuffers(*partial_block_manager);
+		partial_block_manager->FlushPartialBlocks();
 	} else {
 		info.buffers.push_back(storage_allocator->InitSerializationToWAL());
 	}
@@ -2210,7 +2327,19 @@ void CSRIndex::EnsureLoadedLocked(IndexLock &l) const {
 	storage_pending = false;
 	auto info = std::move(pending_storage);
 	pending_storage = IndexStorageInfo();
-	LoadFromStorageLocked(l, info);
+	try {
+		LoadFromStorageLocked(l, info);
+	} catch (const OutOfMemoryException &) {
+		// The epoch does not fit memory_limit. On-disk state stays pending, so the next use loads it again (after
+		// the limit was raised). The transient buffers of a WAL replay were consumed by the failed load: that index
+		// stays empty and its first reader builds the epoch from the table.
+		bool on_disk = !info.allocator_infos.empty() && !info.allocator_infos[0].transient_block_handles;
+		if (on_disk) {
+			pending_storage = std::move(info);
+			storage_pending = true;
+		}
+		throw;
+	}
 }
 
 void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info) const {
@@ -2295,12 +2424,16 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 	if (stored_undirected != undirected) {
 		throw SerializationException("CSR index direction does not match its stored state");
 	}
+	// The epoch's arrays are buffers of the database's buffer manager, as BuildEpoch allocates them. When one does not
+	// fit memory_limit the load throws: the epoch read so far returns its buffers and the index state is untouched
+	// (it is assigned at the end)
+	auto &epoch_buffers = BufferManager::GetBufferManager(db);
 	auto epoch = make_shared_ptr<CSRIndexEpoch>();
 	epoch->vertex_count = reader.Read<uint64_t>();
 	epoch->edge_count = reader.Read<uint64_t>();
 	epoch->partition_width = reader.Read<uint64_t>();
 
-	auto dictionary = make_shared_ptr<CSRIndexDictionary>();
+	auto dictionary = make_shared_ptr<CSRIndexDictionary>(&epoch_buffers);
 	dictionary->dense = reader.Read<uint8_t>() != 0;
 	dictionary->identity = reader.Read<uint8_t>() != 0;
 	dictionary->min_key = reader.Read<int64_t>();
@@ -2323,12 +2456,13 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 		rows_per_bucket = row_bucket_setting.GetValue<int32_t>();
 	}
 	ReadPartitions(reader, partition_count, epoch->vertex_count, thread_count, csr->forward_partitions,
-	               &epoch->partition_row_ids, rows_per_bucket);
+	               &epoch->partition_row_ids, rows_per_bucket, epoch_buffers);
 	// The reverse side (edges by source range, no row ids), present when the index stored one
 	bool stored_reverse = reader.Read<uint8_t>() != 0;
 	if (stored_reverse) {
 		auto reverse_count = reader.Read<uint64_t>();
-		ReadPartitions(reader, reverse_count, epoch->vertex_count, thread_count, csr->reverse_partitions, nullptr, rows_per_bucket);
+		ReadPartitions(reader, reverse_count, epoch->vertex_count, thread_count, csr->reverse_partitions, nullptr,
+		               rows_per_bucket, epoch_buffers);
 		csr->capabilities |= PartitionedCSRCapabilities::REVERSE;
 	}
 	epoch->csr = std::move(csr);
@@ -2367,6 +2501,7 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 		tombstones.push_back({row, NumericLimits<uint32_t>::Maximum(), 0});
 	}
 	cached_snapshot.reset();
+	AccountChangeLogLocked();
 }
 
 IndexStorageInfo CSRIndex::SerializeToDisk(QueryContext context, const case_insensitive_map_t<Value> &) {

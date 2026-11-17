@@ -4,4 +4,5 @@ set(EXTENSION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/duckpgq_sql.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/duckpgq_bitmap.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/duckpgq_utils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/managed_array.cpp
     PARENT_SCOPE)

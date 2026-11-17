@@ -19,6 +19,7 @@
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include "duckpgq/common.hpp"
+#include "duckpgq/core/utils/managed_array.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -33,9 +34,13 @@ struct LocalCSRSegment {
 
 class LocalCSR {
 public:
+	//! With a buffer manager (the partitions of a CSR index epoch) the edge, row and bucket arrays are buffers of that
+	//! manager; without one they live on the heap (see ManagedArray)
 	explicit LocalCSR(idx_t start_vertex_p, idx_t end_vertex_p, size_t number_of_vertices,
-	                  bool initialize_vertex_array = true)
-	    : start_vertex(start_vertex_p), end_vertex(end_vertex_p), v_array_size(number_of_vertices + 2) {
+	                  bool initialize_vertex_array = true, optional_ptr<BufferManager> buffer_manager = nullptr)
+	    : v_array_size(number_of_vertices + 2), e(buffer_manager), source_vertices(buffer_manager),
+	      row_offsets(buffer_manager), row_buckets(buffer_manager), start_vertex(start_vertex_p),
+	      end_vertex(end_vertex_p) {
 		if (initialize_vertex_array) {
 			v = new std::atomic<uint32_t>[v_array_size]();
 			initialized_v = true;
@@ -49,7 +54,7 @@ public:
 	std::atomic<uint32_t> *GetVertexArray() {
 		return v;
 	}
-	std::vector<uint16_t> *GetEdgeVector() {
+	ManagedArray<uint16_t> *GetEdgeVector() {
 		return &e;
 	}
 
@@ -189,11 +194,11 @@ public:
 
 	std::atomic<uint32_t> *v {};
 	size_t v_array_size;
-	std::vector<uint16_t> e;
-	std::vector<uint32_t> source_vertices;
-	std::vector<uint32_t> row_offsets;
+	ManagedArray<uint16_t> e;
+	ManagedArray<uint32_t> source_vertices;
+	ManagedArray<uint32_t> row_offsets;
 	//! Bucket index over source_vertices (see BuildRowBuckets); empty means binary search
-	std::vector<uint32_t> row_buckets;
+	ManagedArray<uint32_t> row_buckets;
 	uint8_t bucket_shift = 0;
 	//! Edge-table row id per edge position when the build tracked them. `row_ids` points at owned_row_ids or at
 	//! storage of a CSR index epoch, which outlives every partition built from it.
