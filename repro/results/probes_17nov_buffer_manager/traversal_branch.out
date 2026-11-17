@@ -1,0 +1,32 @@
+Ensuring sf300 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for sf300 in 0.32s
+Ensuring sf300 benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for sf300 in 2.00s
+== duckpgq_index [baseline] loaded in 0.1s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=2048    sources=      repeat 1:    0.341s 1008/3861
+   baseline                     random_pairs pairs=2048    sources=      repeat 2:    0.348s 1008/3861
+   baseline                     random_pairs pairs=2048    sources=      repeat 3:    0.329s 1008/3861
+   baseline                     random_pairs pairs=65536   sources=      repeat 1:    9.914s 31747/122902
+   baseline                     random_pairs pairs=65536   sources=      repeat 2:    9.962s 31747/122902
+   baseline                     random_pairs pairs=65536   sources=      repeat 3:    9.922s 31747/122902
+   baseline                     multi_source pairs=        sources=1024  repeat 1:    0.746s 529907913/2061233532
+   baseline                     multi_source pairs=        sources=1024  repeat 2:    0.724s 529907913/2061233532
+   baseline                     multi_source pairs=        sources=1024  repeat 3:    0.745s 529907913/2061233532
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/buffer-manager/data/ldbc-pathfinding/results/sf300/microbench_sf300_threads32_1794935685524682265.csv
+All 3 points agree across configurations 
+Ensuring sf300 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for sf300 in 0.32s
+Ensuring sf300 benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for sf300 in 2.01s
+== duckpgq_index [baseline] loaded in 0.1s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=2048    sources=      repeat 1:    0.345s 1008/3861
+   baseline                     random_pairs pairs=2048    sources=      repeat 2:    0.336s 1008/3861
+   baseline                     random_pairs pairs=2048    sources=      repeat 3:    0.366s 1008/3861
+   baseline                     random_pairs pairs=65536   sources=      repeat 1:    9.928s 31747/122902
+   baseline                     random_pairs pairs=65536   sources=      repeat 2:    9.972s 31747/122902
+   baseline                     random_pairs pairs=65536   sources=      repeat 3:    9.908s 31747/122902
+   baseline                     multi_source pairs=        sources=1024  repeat 1:    0.779s 529907913/2061233532
+   baseline                     multi_source pairs=        sources=1024  repeat 2:    0.786s 529907913/2061233532
+   baseline                     multi_source pairs=        sources=1024  repeat 3:    0.777s 529907913/2061233532
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/buffer-manager/data/ldbc-pathfinding/results/sf300/microbench_sf300_threads32_1794935832680320698.csv
+All 3 points agree across configurations 
