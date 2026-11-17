@@ -400,11 +400,11 @@ private:
 
 	//! Persistence: the newest epoch and the part of the change log it does not account for are written as one byte
 	//! stream into fixed-size segments; the segment list and sizes travel in the storage info's options.
-	//! Version 2 adds the reverse side after the forward partitions. Only this version loads: DeferLoad ignores a
-	//! stored state of any other version, so the index starts empty and rebuilds its epoch from the table on first use
-	static constexpr idx_t STORAGE_FORMAT_VERSION = 2;
-	//! Bit of the stream's dictionary flag byte: the dictionary's extra keys follow its sorted keys (merge fold)
-	static constexpr uint8_t DICTIONARY_HAS_EXTRA_KEYS = 2;
+	//! Version 2 adds the reverse side after the forward partitions. Version 3 adds the dictionary's extra keys (the
+	//! keys a merge fold carried above the key-ordered ones) after its sorted keys. Only this version loads: DeferLoad
+	//! ignores a stored state of any other version, so the index starts empty and rebuilds its epoch from the table
+	//! on first use
+	static constexpr idx_t STORAGE_FORMAT_VERSION = 3;
 	vector<uint8_t> SerializeState() const;
 	IndexStorageInfo WriteSegments(const vector<uint8_t> &bytes, optional_ptr<QueryContext> checkpoint_context);
 	//! Remembers where the checkpointed state lives. The index is deserialized on first use (EnsureLoadedLocked):

@@ -33,6 +33,7 @@
 #include <chrono>
 #include <mutex>
 #include <cstring>
+#include <tuple>
 
 namespace duckdb {
 
@@ -2311,20 +2312,15 @@ vector<uint8_t> CSRIndex::SerializeState() const {
 	writer.Write<uint64_t>(epoch.partition_width);
 
 	auto &dictionary = *epoch.dictionary;
-	// Prototype of the merge fold: bit 1 of this byte says that the keys carried above the key-ordered ones follow
-	// the sorted keys. Streams written before have 0 or 1 here and load unchanged; a release would raise
-	// STORAGE_FORMAT_VERSION instead.
-	bool has_extra_keys = !dictionary.extra_keys.empty();
-	writer.Write<uint8_t>((dictionary.dense ? 1 : 0) | (has_extra_keys ? DICTIONARY_HAS_EXTRA_KEYS : 0));
+	writer.Write<uint8_t>(dictionary.dense ? 1 : 0);
 	writer.Write<uint8_t>(dictionary.identity ? 1 : 0);
 	writer.Write<int64_t>(dictionary.min_key);
 	writer.Write<uint64_t>(dictionary.count);
 	writer.WriteVector<uint64_t>(dictionary.bitmap);
 	writer.WriteVector<uint32_t>(dictionary.word_rank);
 	writer.WriteVector<int64_t>(dictionary.sorted_keys);
-	if (has_extra_keys) {
-		writer.WriteVector<int64_t>(dictionary.extra_keys);
-	}
+	// Version 3: the keys a merge fold carried above the key-ordered ones, id = count + position
+	writer.WriteVector<int64_t>(dictionary.extra_keys);
 
 	auto &partitions = epoch.csr->forward_partitions;
 	writer.Write<uint64_t>(partitions.size());
@@ -2554,19 +2550,16 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 	epoch->partition_width = reader.Read<uint64_t>();
 
 	auto dictionary = make_shared_ptr<CSRIndexDictionary>();
-	auto dictionary_flags = reader.Read<uint8_t>();
-	dictionary->dense = (dictionary_flags & 1) != 0;
+	dictionary->dense = reader.Read<uint8_t>() != 0;
 	dictionary->identity = reader.Read<uint8_t>() != 0;
 	dictionary->min_key = reader.Read<int64_t>();
 	dictionary->count = reader.Read<uint64_t>();
 	reader.ReadVector<uint64_t>(dictionary->bitmap);
 	reader.ReadVector<uint32_t>(dictionary->word_rank);
 	reader.ReadVector<int64_t>(dictionary->sorted_keys);
-	if (dictionary_flags & DICTIONARY_HAS_EXTRA_KEYS) {
-		reader.ReadVector<int64_t>(dictionary->extra_keys);
-		for (idx_t i = 0; i < dictionary->extra_keys.size(); i++) {
-			dictionary->extra_ids.emplace(dictionary->extra_keys[i], NumericCast<uint32_t>(dictionary->count + i));
-		}
+	reader.ReadVector<int64_t>(dictionary->extra_keys);
+	for (idx_t i = 0; i < dictionary->extra_keys.size(); i++) {
+		dictionary->extra_ids.emplace(dictionary->extra_keys[i], NumericCast<uint32_t>(dictionary->count + i));
 	}
 	epoch->dictionary = std::move(dictionary);
 
