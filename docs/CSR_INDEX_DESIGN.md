@@ -150,6 +150,10 @@ manager.
 - A checkpoint writes the serialized state to disk in runs of 16 blocks (4 MiB pinned at a time). Its buffers are
   pinned until written and share the pool with the pinned epoch: holding all of them to the end needed the index
   twice within `memory_limit`, and DuckDB treats a checkpoint that runs out of memory as fatal.
+- An index whose serialized form is under the WAL's checkpoint threshold (16 MiB by default) is logged by the commit
+  of CREATE INDEX instead of being checkpointed. The WAL is written from pinned buffers, a copy of the serialized
+  index next to the epoch; the next checkpoint releases it (before 17 Nov it stayed pinned until the drop: 13.4 MB
+  for an index of 14.0 MB). A larger index is checkpointed by that commit and has no such copy.
 - Not in the pool: the transient memory of an epoch build (edge lists, buckets, sort scratch), the staging buffer of
   a load, the byte stream a checkpoint serializes from, and the CSR the operator builds per query when there is no
   index.

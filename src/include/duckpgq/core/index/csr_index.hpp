@@ -452,7 +452,8 @@ private:
 	//! One fold at a time; shared so that RunFold can hold it while no handle on the entry keeps the index alive
 	mutable shared_ptr<mutex> fold_lock = make_shared_ptr<mutex>();
 	//! Segments written by this process's last checkpoint, kept until a rewrite or the drop releases their blocks
-	//! (a FixedSizeBuffer marks its block as modified when destroyed); the WAL's transient buffers live apart
+	//! (a FixedSizeBuffer marks its block as modified when destroyed); the WAL's transient buffers live apart and
+	//! are released by the next checkpoint (they are pinned: a second copy of a logged index in memory)
 	mutable unique_ptr<FixedSizeAllocator> storage_allocator;
 	mutable unique_ptr<FixedSizeAllocator> wal_allocator;
 	//! The on-disk state (written by this process or loaded at bind) and whether the in-memory state still matches

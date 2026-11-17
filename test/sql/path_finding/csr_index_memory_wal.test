@@ -1,0 +1,67 @@
+# name: test/sql/path_finding/csr_index_memory_wal.test
+# description: A CSR index that is logged to the WAL (CREATE INDEX whose commit does not checkpoint) is written from pinned buffers, a copy of the serialized index next to the epoch; the next checkpoint releases that copy
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_index_memory_wal.db
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+# 1 000 000 edges over 50 000 vertices: an epoch of about 14 MB
+statement ok
+INSERT INTO knows SELECT range % 50000, (range * 7919 + 13) % 49999 FROM range(1000000);
+
+statement ok
+CHECKPOINT;
+
+statement ok
+CREATE TABLE memory_before AS SELECT memory_usage_bytes AS bytes FROM duckdb_memory() WHERE tag = 'EXTENSION';
+
+statement ok
+CREATE MACRO pool_bytes() AS (
+    (SELECT memory_usage_bytes FROM duckdb_memory() WHERE tag = 'EXTENSION') - (SELECT bytes FROM memory_before));
+
+# The commit of CREATE INDEX logs the index instead of checkpointing while the WAL stays under this threshold
+statement ok
+SET checkpoint_threshold = '1GB';
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+statement ok
+CREATE MACRO index_bytes() AS
+    regexp_extract(duckpgq_csr_index_size('knows', 'knows_csr'), 'bytes=(\d+)', 1)::BIGINT;
+
+query I
+SELECT index_bytes() BETWEEN 10000000 AND 16000000;
+----
+true
+
+# The epoch and the WAL's copy of its serialized form are both pinned
+query I
+SELECT pool_bytes() > 1.8 * index_bytes();
+----
+true
+
+statement ok
+CHECKPOINT;
+
+# The checkpoint supersedes the WAL: the copy is gone, the epoch stays
+query I
+SELECT pool_bytes() BETWEEN index_bytes() AND index_bytes() + 262144;
+----
+true
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=0;tombstones=0

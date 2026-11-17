@@ -2511,6 +2511,11 @@ IndexStorageInfo CSRIndex::SerializeToDisk(QueryContext context, const case_inse
 	uint64_t serialized_changes;
 	{
 		IndexLock l(*this);
+		// The WAL's copy of the serialized state goes here. A commit that logs the index (CREATE INDEX whose commit
+		// does not checkpoint, so an index under the WAL's checkpoint threshold) writes it to the WAL from transient
+		// buffers that stay pinned while their allocator lives: a second copy of the index in the buffer pool, held
+		// until the next such commit or the drop. The checkpoint supersedes the WAL.
+		wal_allocator.reset();
 		if (stored_info_on_disk && persisted_change_count == change_count) {
 			return CopyStorageInfo(stored_info);
 		}
