@@ -1397,7 +1397,8 @@ bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio) const {
 }
 
 void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
-                                  uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt) const {
+                                  uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt,
+                                  uint64_t snapshot_us) const {
 	{
 		// The ordering check again: the rebuild ran outside the index lock
 		IndexLock l(*this);
@@ -1409,6 +1410,7 @@ void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table
 	}
 	fold_last_partitions = epoch->csr->forward_partitions.size();
 	fold_last_rebuilt = rebuilt;
+	fold_last_snapshot_us = snapshot_us;
 	InstallEpochAndCompact(transaction, table, std::move(epoch));
 	fold_count++;
 	if (merged) {
@@ -1670,6 +1672,7 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 	shared_ptr<CSRIndexEpoch> epoch;
 	bool merged = false;
 	idx_t rebuilt = 0;
+	uint64_t snapshot_us = 0;
 	if (GetCSRIndexMergeFold(context) && !reverse) {
 		// Merge fold: the snapshot is taken under the read handle, as a query takes its own; the merge runs without
 		// it, on the snapshot's shared partitions
@@ -1682,6 +1685,9 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 			}
 			snapshot = index.FoldSnapshot(context, transaction, storage);
 		}
+		snapshot_us = static_cast<uint64_t>(
+		    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fold_start)
+		        .count());
 		if (snapshot) {
 			epoch = MergeEpoch(context, *snapshot, transaction.view.visibility_bound, rebuilt);
 			merged = true;
@@ -1702,17 +1708,19 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 	if (&index != identity) {
 		return false; // rebound while the table was scanned: the epoch belongs to an index that no longer exists
 	}
-	index.InstallFoldedEpoch(transaction, storage, std::move(epoch), fold_us, scan_us, merged, rebuilt);
+	index.InstallFoldedEpoch(transaction, storage, std::move(epoch), fold_us, scan_us, merged, rebuilt,
+	                         merged ? snapshot_us : 0);
 	return true;
 }
 
 string CSRIndex::FoldStats() const {
 	return StringUtil::Format("folds=%llu;last_fold_ms=%.1f;last_fold_scan_ms=%.1f;fold_ms=%.1f;merge_folds=%llu;"
-	                          "last_fold_rebuilt=%llu;last_fold_partitions=%llu",
+	                          "last_fold_rebuilt=%llu;last_fold_partitions=%llu;last_fold_snapshot_ms=%.1f",
 	                          fold_count.load(), static_cast<double>(fold_last_us.load()) / 1000.0,
 	                          static_cast<double>(fold_last_scan_us.load()) / 1000.0,
 	                          static_cast<double>(fold_total_us.load()) / 1000.0, fold_merge_count.load(),
-	                          fold_last_rebuilt.load(), fold_last_partitions.load());
+	                          fold_last_rebuilt.load(), fold_last_partitions.load(),
+	                          static_cast<double>(fold_last_snapshot_us.load()) / 1000.0);
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTransaction &transaction,

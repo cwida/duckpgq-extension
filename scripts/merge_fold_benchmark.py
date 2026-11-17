@@ -84,6 +84,9 @@ def main():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--threads", type=int, default=0)
     parser.add_argument("--pairs", type=int, default=1024)
+    parser.add_argument("--warm", action="store_true",
+                        help="one single-pair query per index before each fold, so the snapshot of the log exists "
+                             "when the fold starts, as it does when queries run between the commits")
     args = parser.parse_args()
     global EXTENSION
     EXTENSION = args.extension
@@ -125,6 +128,12 @@ SELECT 'ROWS|' || count(len) FROM (SELECT iterativelengthoperator(s, d, 0::BIGIN
             seed += 1
             tag = f"{kind}|{fraction}|{repeat}"
             sql.append(batch_sql(kind, fraction, seed, edges, vertices, max_key))
+            if args.warm:
+                for index in ("full_idx", "merge_idx"):
+                    sql.append(f"""
+SELECT 'MARK|first_query|{tag}|{index}';
+SELECT 'ROWS|' || count(len) FROM (SELECT iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|{index}') AS len FROM pairs LIMIT 1);
+""")
             sql.append(f"""
 SELECT 'LOG|{tag}|' || duckpgq_csr_index_stats('knows', 'full_idx');
 SET duckpgq_csr_index_merge_fold = false;
@@ -175,7 +184,8 @@ SELECT 'ROWS|' || count(len) FROM (SELECT iterativelengthoperator(s, d, 0::BIGIN
                 "fraction": fraction, "repeat": repeat, "fold": mode,
                 "fold_ms": fields["last_fold_ms"], "scan_ms": fields["last_fold_scan_ms"],
                 "rebuilt": fields["last_fold_rebuilt"], "partitions": fields["last_fold_partitions"],
-                "merge_folds": fields["merge_folds"],
+                "merge_folds": fields["merge_folds"], "snapshot_ms": fields["last_fold_snapshot_ms"],
+                "warm": int(args.warm),
             })
     if check != 0:
         raise SystemExit(f"the two indexes disagree on {check} pairs")

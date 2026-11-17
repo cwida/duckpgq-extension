@@ -341,7 +341,7 @@ private:
 	bool FoldDue(DuckTransaction &transaction, double ratio) const;
 	//! Installs an epoch RunFold built, unless a newer one arrived meanwhile; records the fold time
 	void InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
-	                        uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt) const;
+	                        uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt, uint64_t snapshot_us) const;
 	//! The folding transaction's snapshot over the newest epoch, which a merge fold materialises; null when the
 	//! newest epoch does not serve the transaction (the fold then scans the table)
 	shared_ptr<CSRIndexSnapshot> FoldSnapshot(ClientContext &context, DuckTransaction &transaction,
@@ -466,6 +466,8 @@ private:
 	mutable std::atomic<uint64_t> fold_merge_count {0};
 	mutable std::atomic<uint64_t> fold_last_rebuilt {0};
 	mutable std::atomic<uint64_t> fold_last_partitions {0};
+	//! The part of the last merge fold spent on the folding transaction's snapshot (0 for a fold that scanned)
+	mutable std::atomic<uint64_t> fold_last_snapshot_us {0};
 };
 
 //! Registration entry point called from the core module
