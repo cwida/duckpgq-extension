@@ -5726,28 +5726,48 @@ MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_fo
 # 32-bit destinations. flat_serial = one partition with one owner; flat_ranges = each worker owns a destination
 # range without physical partitioning; flat_atomic / flat_locked = source morsels writing shared lane words with
 # fetch_or / striped spinlocks. Index route only: the flat CSR is derived from the index partitions in the warm-up
-# query and cached for the process, while the build route would convert in every timed query. The group adds the
-# partition widths, so one file holds the one-partition, partition-count and locked rows.
+# query and cached for the process, while the build route would convert in every timed query. Next to them the
+# partition widths (one index each) and the widest partitions without sub-range tasks, so one file holds the
+# one-partition, partition-count and locked rows.
+# EXPLORE_VARIANTS: (label, config at the run's thread count, SET overrides, index suffix)
+EXPLORE_VARIANTS = [("partitioned, width 65535", "baseline", {}, None)]
 for _variant in ("flat_serial", "flat_ranges", "flat_atomic", "flat_locked"):
-    MICROBENCH_CONFIGS[f"explore_{_variant}"] = ({OPT + "explore_variant": f"'{_variant}'"}, None, False)
-    MICROBENCH_INDEX_ONLY.add(f"explore_{_variant}")
-MICROBENCH_GROUPS["explore_variants"] = (["baseline"] + [f"explore_{_variant}" for _variant in
-                                                         ("flat_serial", "flat_ranges", "flat_atomic", "flat_locked")]
-                                         + [f"partitions_{pv}" for pv in (4096, 8192, 16384, 32768)]
-                                         + ["partitions_65535_nosub"])
-# The same variants over the thread count: at one thread the gap to the partitioned explore is the cost of the
-# synchronised update and of the unpartitioned layout alone; how it moves with threads is what contention adds
+    EXPLORE_VARIANTS.append((_variant, f"explore_{_variant}", {OPT + "explore_variant": f"'{_variant}'"}, None))
+for _pv in (4096, 8192, 16384, 32768):
+    EXPLORE_VARIANTS.append((f"partitioned, width {_pv}", f"partitions_{_pv}", {OPT + "partition_vertices": _pv},
+                             f"pv{_pv}"))
+EXPLORE_VARIANTS.append(("partitioned, width 65535, no sub-range tasks", "partitions_65535_nosub",
+                         {OPT + "partition_vertices": 65535, OPT + "sub_range_tasks": "false"}, "pv65535"))
+# Thread counts below the run's own (--threads, 32 in the paper): each variant at 1, 2, 4, 8, 16 threads and at the
+# run's count shows how it scales. At one thread the gap to the partitioned explore is the cost of the synchronised
+# update and of the layout alone; how the gap moves with threads is what sharing the lane words adds.
+EXPLORE_SCALING_THREADS = (1, 2, 4, 8, 16)
+# config -> (variant label, thread count or None for the run's own)
+EXPLORE_SCALING = {}
+MICROBENCH_GROUPS["explore_variants"] = []
+MICROBENCH_GROUPS["explore_scaling"] = []
 MICROBENCH_GROUPS["explore_threads"] = []
-for _n in (1, 2, 4, 8, 16):
-    MICROBENCH_CONFIGS[f"explore_partitioned_t{_n}"] = ({"threads": _n}, None, False)
-    MICROBENCH_GROUPS["explore_threads"].append(f"explore_partitioned_t{_n}")
-    for _variant in ("flat_serial", "flat_ranges", "flat_atomic", "flat_locked"):
-        MICROBENCH_CONFIGS[f"explore_{_variant}_t{_n}"] = ({"threads": _n, OPT + "explore_variant": f"'{_variant}'"},
-                                                           None, False)
-        MICROBENCH_INDEX_ONLY.add(f"explore_{_variant}_t{_n}")
-        MICROBENCH_GROUPS["explore_threads"].append(f"explore_{_variant}_t{_n}")
-MICROBENCH_GROUPS["explore_threads"] += ["baseline"] + [f"explore_{_variant}" for _variant in
-                                                        ("flat_serial", "flat_ranges", "flat_atomic", "flat_locked")]
+for _label, _config, _settings, _suffix in EXPLORE_VARIANTS:
+    _flat = OPT + "explore_variant" in _settings
+    if _config not in MICROBENCH_CONFIGS:
+        MICROBENCH_CONFIGS[_config] = (_settings, None, False, _suffix)
+    if _flat:
+        MICROBENCH_INDEX_ONLY.add(_config)
+    EXPLORE_SCALING[_config] = (_label, None)
+    MICROBENCH_GROUPS["explore_variants"].append(_config)
+    for _n in EXPLORE_SCALING_THREADS:
+        _name = "explore_partitioned_t%d" % _n if _config == "baseline" else f"{_config}_t{_n}"
+        MICROBENCH_CONFIGS[_name] = (dict(_settings, threads=_n), None, False, _suffix)
+        if _flat:
+            MICROBENCH_INDEX_ONLY.add(_name)
+        EXPLORE_SCALING[_name] = (_label, _n)
+        MICROBENCH_GROUPS["explore_scaling"].append(_name)
+        if _flat or _config == "baseline":
+            MICROBENCH_GROUPS["explore_threads"].append(_name)
+    MICROBENCH_GROUPS["explore_scaling"].append(_config)
+    if _flat or _config == "baseline":
+        # explore_threads: the partitioned explore and the four flat variants only (no index per width)
+        MICROBENCH_GROUPS["explore_threads"].append(_config)
 
 
 def microbench_configs(names):
@@ -5952,6 +5972,71 @@ def crossover_k(points, shape):
             last_winning = k
     later = [k for k in ks if last_winning is None or k > last_winning]
     return later[0] if later and (last_winning is None or last_winning != ks[-1]) else None
+
+
+def explore_scaling_table(args):
+    """Ablation of the partitioned CSR: per run (benchmark notes) and point, variant x thread count as median seconds,
+    then every variant's time relative to the partitioned explore of the same thread count, then every variant's
+    speed-up over its own single-thread time"""
+    # The steps of the matrix note "CSR ablation ..."; the probes of 17 Nov noted "explore variants ..."
+    prefixes = (args.notes_prefix,) if args.notes_prefix else ("CSR ablation", "explore ")
+    rows = [r for r in read_result_files_plain(args.files)
+            if r["config"] in EXPLORE_SCALING and r["benchmark_notes"].startswith(prefixes)]
+    for notes in sorted({r["benchmark_notes"] for r in rows}):
+        run = [r for r in rows if r["benchmark_notes"] == notes]
+        own = int(run[0]["threads"])
+        samples, timed_out, points = {}, set(), []
+        for r in run:
+            label, threads = EXPLORE_SCALING[r["config"]]
+            point = f"{r['pairs']} random pairs" if r["shape"] == "random_pairs" else f"{r['sources']} sources x all"
+            if point not in points:
+                points.append(point)
+            key = (point, label, threads or own)
+            if r["status"] == "ok":
+                samples.setdefault(key, []).append(float(r["query_s"]))
+            else:
+                timed_out.add(key)
+        threads = sorted({key[2] for key in list(samples) + list(timed_out)})
+        labels = [label for label, _, _, _ in EXPLORE_VARIANTS if any(key[1] == label for key in list(samples) + list(timed_out))]
+        reference = EXPLORE_VARIANTS[0][0]
+
+        def median(point, label, count):
+            values = samples.get((point, label, count))
+            return statistics.median(values) if values else None
+
+        def print_rows(title, cell, skip_reference=False):
+            print(f"\n{title}")
+            print("| variant | " + " | ".join(str(count) for count in threads) + " |")
+            print("|---|" + "---|" * len(threads))
+            for label in labels:
+                if skip_reference and label == reference:
+                    continue
+                print(f"| {label} | " + " | ".join(cell(label, count) for count in threads) + " |")
+
+        for point in points:
+            print(f"\n## {notes}: {point}, index route, by thread count")
+
+            def seconds(label, count):
+                value = median(point, label, count)
+                if value is None:
+                    return "timeout" if (point, label, count) in timed_out else ""
+                return f"{value:.3f}"
+
+            def slower(label, count):
+                value, base = median(point, label, count), median(point, reference, count)
+                if value is None or base is None:
+                    return ""
+                return f"{value / base:.2f}x slower" if value >= base else f"{base / value:.2f}x faster"
+
+            def speedup(label, count):
+                value, single = median(point, label, count), median(point, label, 1)
+                return f"{single / value:.2f}" if value is not None and single is not None else ""
+
+            print_rows("median seconds", seconds)
+            if len(labels) > 1:
+                print_rows(f"relative to {reference} at the same thread count", slower, skip_reference=True)
+            if 1 in threads and len(threads) > 1:
+                print_rows("speed-up over the variant's own single-thread time", speedup)
 
 
 def crossover_table(args):
@@ -6753,6 +6838,10 @@ def main():
     crossover_table_parser = subcommands.add_parser("crossover-table", help="Print the Section 3 crossover microbenchmark as tables")
     crossover_table_parser.add_argument("files", nargs="+")
     crossover_table_parser.set_defaults(func=crossover_table)
+    explore_table_parser = subcommands.add_parser("explore-scaling-table", help="Print the explore-variant ablation (variants x thread counts) as tables")
+    explore_table_parser.add_argument("files", nargs="+")
+    explore_table_parser.add_argument("--notes-prefix", default=None, help="only runs whose notes start with this (the matrix steps: 'CSR ablation')")
+    explore_table_parser.set_defaults(func=explore_scaling_table)
 
     table_parser = subcommands.add_parser("sweep-pairs-table", help="Print sweep-pairs CSVs as tables")
     table_parser.add_argument("files", nargs="+")

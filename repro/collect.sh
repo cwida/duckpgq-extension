@@ -40,6 +40,11 @@ else
   for sf in ${SCALE_FACTORS}; do
     ls "${ARCHIVE_DIR}"/sf${sf}/concurrent_*.csv >/dev/null 2>&1 && ${HARNESS} concurrent-table "${ARCHIVE_DIR}"/sf${sf}/concurrent_*.csv >> "${ARCHIVE_DIR}/concurrent_table.txt"
   done
+  # Ablation of the partitioned CSR: variants x thread counts (the matrix steps note "CSR ablation")
+  : > "${ARCHIVE_DIR}/explore_scaling_table.txt"
+  for dir in "${ARCHIVE_DIR}"/sf*/ "${ARCHIVE_DIR}"/graphalytics_*/; do
+    ls "${dir}"microbench_*.csv >/dev/null 2>&1 && ${HARNESS} explore-scaling-table --notes-prefix "CSR ablation" "${dir}"microbench_*.csv >> "${ARCHIVE_DIR}/explore_scaling_table.txt"
+  done
   for dir in "${ARCHIVE_DIR}"/graphalytics_*/; do
     [ -d "$dir" ] || continue
     ls "${dir}"sweep_pairs_*.csv >/dev/null 2>&1 && ${HARNESS} sweep-pairs-table "${dir}"sweep_pairs_*.csv >> "${ARCHIVE_DIR}/sweep_pairs_table.txt"
