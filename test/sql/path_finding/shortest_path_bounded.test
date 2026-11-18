@@ -1,0 +1,310 @@
+# name: test/sql/path_finding/shortest_path_bounded.test
+# description: ANY SHORTEST with a lower bound returns the shortest walk whose length lies within the bounds (#291)
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Student(id BIGINT, name VARCHAR); INSERT INTO Student VALUES (0, 'Daniel'), (1, 'Tavneet'), (2, 'Gabor'), (3, 'Peter'), (4, 'David');
+
+statement ok
+CREATE TABLE know(src BIGINT, dst BIGINT, createDate BIGINT); INSERT INTO know VALUES (0,1, 10), (0,2, 11), (0,3, 12), (3,0, 13), (1,2, 14), (1,3, 15), (2,3, 16), (4,3, 17);
+
+statement ok
+CREATE PROPERTY GRAPH pg
+VERTEX TABLES (
+    Student PROPERTIES ( id, name ) LABEL Person
+    )
+EDGE TABLES (
+    know    SOURCE KEY ( src ) REFERENCES Student ( id )
+            DESTINATION KEY ( dst ) REFERENCES Student ( id )
+            LABEL Knows
+    );
+
+# Daniel reaches himself through Peter in two hops; the zero-length path is outside {1,3}.
+query IIII
+FROM GRAPH_TABLE (pg
+    MATCH
+    p = ANY SHORTEST (a:Person WHERE a.name = 'Daniel')-[k:knows]->{1,3}(b:Person)
+    COLUMNS (path_length(p), element_id(p), a.name AS name, b.name AS b_name)
+    ) study
+    ORDER BY name, b_name;
+----
+2	[0, 2, 3, 3, 0]	Daniel	Daniel
+1	[0, 1, 2]	Daniel	Gabor
+1	[0, 2, 3]	Daniel	Peter
+1	[0, 0, 1]	Daniel	Tavneet
+
+# A lower bound above the shortest distance takes the shortest walk that is long enough.
+query IIII
+FROM GRAPH_TABLE (pg
+    MATCH
+    p = ANY SHORTEST (a:Person WHERE a.name = 'Daniel')-[k:knows]->{2,3}(b:Person)
+    COLUMNS (path_length(p), element_id(p), a.name AS name, b.name AS b_name)
+    ) study
+    ORDER BY name, b_name;
+----
+2	[0, 2, 3, 3, 0]	Daniel	Daniel
+2	[0, 0, 1, 4, 2]	Daniel	Gabor
+2	[0, 0, 1, 5, 3]	Daniel	Peter
+3	[0, 2, 3, 3, 0, 0, 1]	Daniel	Tavneet
+
+# Without a path variable the pattern keeps the same pairs: every shortest distance from Daniel is below 2.
+query I
+FROM GRAPH_TABLE (pg
+    MATCH
+    (a:Person WHERE a.name = 'Daniel')-[k:knows]->{2,3}(b:Person)
+    COLUMNS (b.name AS b_name)
+    ) study
+    ORDER BY b_name;
+----
+Daniel
+Gabor
+Peter
+Tavneet
+
+# Exactly three hops.
+query IIII
+FROM GRAPH_TABLE (pg
+    MATCH
+    p = ANY SHORTEST (a:Person WHERE a.name = 'Daniel')-[k:knows]->{3,3}(b:Person)
+    COLUMNS (path_length(p), element_id(p), a.name AS name, b.name AS b_name)
+    ) study
+    ORDER BY name, b_name;
+----
+3	[0, 0, 1, 5, 3, 3, 0]	Daniel	Daniel
+3	[0, 2, 3, 3, 0, 1, 2]	Daniel	Gabor
+3	[0, 2, 3, 3, 0, 2, 3]	Daniel	Peter
+3	[0, 2, 3, 3, 0, 0, 1]	Daniel	Tavneet
+
+# David has no incoming edge, so no walk of length at least one ends at him.
+query IIII
+FROM GRAPH_TABLE (pg
+    MATCH
+    p = ANY SHORTEST (a:Person WHERE a.name = 'David')-[k:knows]->+(b:Person)
+    COLUMNS (path_length(p), element_id(p), a.name AS name, b.name AS b_name)
+    ) study
+    ORDER BY name, b_name;
+----
+2	[4, 7, 3, 3, 0]	David	Daniel
+3	[4, 7, 3, 3, 0, 1, 2]	David	Gabor
+1	[4, 7, 3]	David	Peter
+3	[4, 7, 3, 3, 0, 0, 1]	David	Tavneet
+
+# Peter is David's only neighbour, so David's walks of exactly two hops all end at Peter's neighbour Daniel.
+query IIII
+FROM GRAPH_TABLE (pg
+    MATCH
+    p = ANY SHORTEST (a:Person WHERE a.name = 'David')-[k:knows]->{2,2}(b:Person)
+    COLUMNS (path_length(p), element_id(p), a.name AS name, b.name AS b_name)
+    ) study
+    ORDER BY name, b_name;
+----
+2	[4, 7, 3, 3, 0]	David	Daniel
+
+# The scalar function directly: NULL when no walk lies within the bounds.
+query I
+WITH cte1 AS (
+    SELECT CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Student a),
+            CAST (
+                (SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Student a),
+                            sub.dense_id,
+                            sub.cnt)
+                            )
+                FROM (
+                    SELECT a.rowid as dense_id, count(k.src) as cnt
+                    FROM Student a
+                    LEFT JOIN know k ON k.src = a.id
+                    GROUP BY a.rowid) sub
+                )
+            AS BIGINT),
+            (select count() FROM know k JOIN student a on a.id = k.src JOIN student c on c.id = k.dst),
+            a.rowid,
+            c.rowid,
+            k.rowid) as temp
+    FROM know k
+    JOIN student a on a.id = k.src
+    JOIN student c on c.id = k.dst
+)
+SELECT shortestpathbounded(0, (select count(*) from student), a.rowid, b.rowid, 1 + __x.temp, 2) AS path
+FROM student a, student b, (select count(cte1.temp) * 0 as temp from cte1) __x
+WHERE a.id = 4 AND b.id IN (0, 4)
+ORDER BY b.id;
+----
+[4, 7, 3, 3, 0]
+NULL
+
+# Rows the functions reject return NULL: a NULL source, destination or bound, a vertex id outside [0, v_size) and
+# upper < lower. The last row is valid.
+query IIII
+WITH cte1 AS (
+    SELECT CREATE_CSR_EDGE(
+            0,
+            (SELECT count(a.id) FROM Student a),
+            CAST (
+                (SELECT sum(CREATE_CSR_VERTEX(
+                            0,
+                            (SELECT count(a.id) FROM Student a),
+                            sub.dense_id,
+                            sub.cnt)
+                            )
+                FROM (
+                    SELECT a.rowid as dense_id, count(k.src) as cnt
+                    FROM Student a
+                    LEFT JOIN know k ON k.src = a.id
+                    GROUP BY a.rowid) sub
+                )
+            AS BIGINT),
+            (select count() FROM know k JOIN student a on a.id = k.src JOIN student c on c.id = k.dst),
+            a.rowid,
+            c.rowid,
+            k.rowid) as temp
+    FROM know k
+    JOIN student a on a.id = k.src
+    JOIN student c on c.id = k.dst
+)
+SELECT x.i,
+    shortestpathbounded(0, (select count(*) from student), x.s, x.d, x.lo + __x.temp, x.up),
+    iterativelengthbounded(0, (select count(*) from student), x.s, x.d, x.lo + __x.temp, x.up),
+    iterativelengthbounded(0, (select count(*) from student), x.s, x.d, x.lo + __x.temp, x.up) IS NULL
+FROM (VALUES (1, NULL, 0, 1, 2), (2, 4, NULL, 1, 2), (3, 4, 0, NULL, 2), (4, 4, 0, 1, NULL), (5, -1, 0, 1, 2),
+             (6, 4, 5, 1, 2), (7, 4, 0, 3, 2), (8, 4, 0, 1, 2)) x(i, s, d, lo, up),
+     (select count(cte1.temp) * 0 as temp from cte1) __x
+ORDER BY x.i;
+----
+1	NULL	NULL	true
+2	NULL	NULL	true
+3	NULL	NULL	true
+4	NULL	NULL	true
+5	NULL	NULL	true
+6	NULL	NULL	true
+7	NULL	NULL	true
+8	[4, 7, 3, 3, 0]	2	false
+
+# Eve has no outgoing edge: no walk of length one or more starts at her.
+statement ok
+INSERT INTO Student VALUES (5, 'Eve');
+
+query II
+FROM GRAPH_TABLE (pg
+    MATCH
+    p = ANY SHORTEST (a:Person WHERE a.name = 'Eve')-[k:knows]->{1,3}(b:Person)
+    COLUMNS (a.name AS name, b.name AS b_name)
+    ) study;
+----
+
+query I
+FROM GRAPH_TABLE (pg
+    MATCH
+    (a:Person WHERE a.name = 'Eve')-[k:knows]->{2,3}(b:Person)
+    COLUMNS (b.name AS b_name)
+    ) study;
+----
+
+# More than 2,048 endpoint pairs, so the search runs over several chunks with many sources in each. On a ring of 100
+# vertices with steps of one and two, the shortest walk of length 2 to 5 from a to b exists for
+# d = (b - a) mod 100 between 2 and 10, of length max(2, ceil(d / 2)): 9 pairs per source, lengths summing to 30.
+statement ok
+CREATE TABLE ring_v AS SELECT range AS id FROM range(100);
+
+statement ok
+CREATE TABLE ring_e AS SELECT range AS src, (range + 1) % 100 AS dst FROM range(100) UNION ALL SELECT range, (range + 2) % 100 FROM range(100);
+
+statement ok
+CREATE PROPERTY GRAPH ring VERTEX TABLES (ring_v LABEL RV)
+    EDGE TABLES (ring_e SOURCE KEY (src) REFERENCES ring_v (id) DESTINATION KEY (dst) REFERENCES ring_v (id) LABEL RE);
+
+query III
+SELECT count(*), sum(l), count(*) FILTER (WHERE l != greatest(2, ceil(((b - a + 100) % 100) / 2)))
+FROM GRAPH_TABLE (ring
+    MATCH p = ANY SHORTEST (x:RV)-[k:RE]->{2,5}(y:RV)
+    COLUMNS (x.id AS a, y.id AS b, path_length(p) AS l));
+----
+900	3000	0
+
+query II
+SELECT count(*), count(*) FILTER (WHERE (b - a + 100) % 100 NOT BETWEEN 2 AND 10)
+FROM GRAPH_TABLE (ring
+    MATCH (x:RV)-[k:RE]->{2,5}(y:RV)
+    COLUMNS (x.id AS a, y.id AS b));
+----
+900	0
+
+# A self-loop and two parallel edges: 0 =(two edges)=> 1, 1 -> 1, 1 -> 2, 2 -> 3.
+statement ok
+CREATE TABLE n(id BIGINT);
+
+statement ok
+INSERT INTO n VALUES (0), (1), (2), (3);
+
+statement ok
+CREATE TABLE m(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO m VALUES (0, 1), (0, 1), (1, 1), (1, 2), (2, 3);
+
+statement ok
+CREATE PROPERTY GRAPH g2 VERTEX TABLES (n LABEL N)
+    EDGE TABLES (m SOURCE KEY (src) REFERENCES n (id) DESTINATION KEY (dst) REFERENCES n (id) LABEL M);
+
+# Unbounded {3,}: every walk of three steps from 0 starts 0 -> 1 (either parallel edge; the CSR order picks edge 1), then uses the self-loop or goes on along 1 -> 2 -> 3.
+query III
+FROM GRAPH_TABLE (g2
+    MATCH p = ANY SHORTEST (a:N WHERE a.id = 0)-[k:M]->{3,}(b:N)
+    COLUMNS (b.id AS b, path_length(p) AS l, element_id(p) AS path))
+ORDER BY b;
+----
+1	3	[0, 1, 1, 2, 1, 2, 1]
+2	3	[0, 1, 1, 2, 1, 3, 2]
+3	3	[0, 1, 1, 3, 2, 4, 3]
+
+# Unbounded {2,} from every source. 2 and 3 have no walk of two steps; nothing reaches 0.
+query II rowsort
+FROM GRAPH_TABLE (g2
+    MATCH ANY SHORTEST (a:N)-[k:M]->{2,}(b:N)
+    COLUMNS (a.id AS a, b.id AS b));
+----
+0	1
+0	2
+0	3
+1	1
+1	2
+1	3
+
+# Undirected with a lower bound of 2: from 3, two steps reach 3 (there and back) and 1, three steps also 2 and 0.
+query III
+FROM GRAPH_TABLE (g2
+    MATCH p = ANY SHORTEST (a:N WHERE a.id = 3)-[k:M]-{2,3}(b:N)
+    COLUMNS (b.id AS b, path_length(p) AS l, a.id AS a))
+ORDER BY b;
+----
+0	3	3
+1	2	3
+2	3	3
+3	2	3
+
+# Undirected, exactly two steps, from every source: two steps from v reach the neighbours of v's neighbours.
+query II rowsort
+FROM GRAPH_TABLE (g2
+    MATCH (a:N)-[k:M]-{2,2}(b:N)
+    COLUMNS (a.id AS a, b.id AS b));
+----
+0	0
+0	1
+0	2
+1	0
+1	1
+1	2
+1	3
+2	0
+2	1
+2	2
+3	1
+3	3

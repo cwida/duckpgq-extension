@@ -87,11 +87,12 @@ query III
 FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:node WHERE a.name = 'd')-[e:connection]->+(b:node WHERE b.name = 'a') COLUMNS (a.name AS a, b.name AS b, path_length(p) AS l)) ORDER BY a, b;
 ----
 
-# The undirected pattern does ignore direction ...
+# The undirected pattern does ignore direction ... (b reaches itself by walking an edge there and back, #291)
 query III
 FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:node WHERE a.name = 'b')-[e:connection]-+(b:node) COLUMNS (a.name AS a, b.name AS b, path_length(p) AS l)) ORDER BY a, b;
 ----
 b	a	1
+b	b	2
 b	c	1
 b	d	2
 b	e	3

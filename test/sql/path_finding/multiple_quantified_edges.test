@@ -42,19 +42,25 @@ query III rowsort
 FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]->{1,2}(b:V)-[f:E]-{1,2}(c:V) COLUMNS (a.id, b.id, c.id));
 ----
 1	2	1
+1	2	2
 1	2	3
 1	3	1
 1	3	2
+1	3	3
 2	3	1
 2	3	2
+2	3	3
 
 # Undirected then directed.
 query III rowsort
 FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]-{1,2}(b:V)-[f:E]->{1,2}(c:V) COLUMNS (a.id, b.id, c.id));
 ----
+1	1	2
+1	1	3
 1	2	3
 2	1	2
 2	1	3
+2	2	3
 3	1	2
 3	1	3
 3	2	3
@@ -93,10 +99,18 @@ FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]->{1,2}(b:V)-[f:E2]->{1,2}(c:V)-[h:E]->{1,2
 query III rowsort
 FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]-{1,2}(b:V)-[f:E2]-{1,2}(c:V) COLUMNS (a.id, b.id, c.id));
 ----
+1	1	1
+1	1	3
 1	3	1
+1	3	3
+2	1	1
 2	1	3
 2	3	1
+2	3	3
+3	1	1
 3	1	3
+3	3	1
+3	3	3
 
 # Quantified edges in two path patterns of one MATCH.
 query IIII rowsort
@@ -104,8 +118,10 @@ FROM GRAPH_TABLE (g MATCH (a:V)-[e:E]-{1,2}(b:V)<-[f:E]-{1,2}(c:V), (c:V)<-[h:E2
 ----
 1	2	1	3
 1	3	1	3
+2	2	1	3
 2	3	1	3
 3	2	1	3
+3	3	1	3
 
 # A named path with two quantified edges: each edge gets its own shortest-path CTE.
 query IIIII rowsort
@@ -117,10 +133,18 @@ FROM GRAPH_TABLE (g MATCH p = (a:V)-[e:E]->{1,2}(b:V)-[f:E2]->{1,2}(c:V) COLUMNS
 query IIIII rowsort
 FROM GRAPH_TABLE (g MATCH p = (a:V)-[e:E]-{1,2}(b:V)-[f:E2]-{1,2}(c:V) COLUMNS (a.id, b.id, c.id, vertices(p), path_length(p)));
 ----
+1	1	1	[0, 1, 0, 2, 0]	4
+1	1	3	[0, 1, 0, 2]	3
 1	3	1	[0, 1, 2, 0]	3
+1	3	3	[0, 1, 2, 0, 2]	4
+2	1	1	[1, 0, 2, 0]	3
 2	1	3	[1, 0, 2]	2
 2	3	1	[1, 2, 0]	2
+2	3	3	[1, 2, 0, 2]	3
+3	1	1	[2, 1, 0, 2, 0]	4
 3	1	3	[2, 1, 0, 2]	3
+3	3	1	[2, 1, 2, 0]	3
+3	3	3	[2, 1, 2, 0, 2]	4
 
 query IIIII rowsort
 FROM GRAPH_TABLE (g MATCH p = (a:V)-[e:E]->{1,2}(b:V)-[f:E2]->(c:V)-[h:E]->{1,2}(d:V) COLUMNS (a.id, b.id, c.id, d.id, element_id(p)));
