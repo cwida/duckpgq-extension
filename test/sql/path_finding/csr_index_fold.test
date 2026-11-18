@@ -49,7 +49,8 @@ SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
 ----
 epochs=1;delta=0;tombstones=0
 
-# ---- Automatic fold: the default ratio is 10% of the epoch's 49 edges, so 5 inserts fold on the next read
+# ---- Automatic fold: the default ratio is a thousandth of the epoch's 49 edges (a tenth until 18 Nov), so 5
+# inserts fold on the next read
 statement ok
 INSERT INTO knows SELECT range, range + 1 FROM range(50, 55);
 

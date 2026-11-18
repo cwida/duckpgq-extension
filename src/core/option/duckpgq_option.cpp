@@ -72,18 +72,20 @@ const vector<DuckPGQSetting> &Settings() {
 	     LogicalType::INTEGER, Value(4)},
 	    {"duckpgq_csr_index_fold_ratio",
 	     "A CSR index folds its change log into a new epoch when the log exceeds this fraction of "
-	     "the epoch's edges; 0 disables automatic folding",
-	     LogicalType::DOUBLE, Value(0.1)},
+	     "the epoch's edges; 0 disables automatic folding. A thousandth since 18 Nov (a tenth before): with the "
+	     "merge fold a fold costs a copy of the epoch, and under 16 readers the readers' throughput at a thousandth "
+	     "was 1.4x to 5x that at a tenth (repro/results/probes_18nov_fold_policies)",
+	     LogicalType::DOUBLE, Value(0.001)},
 	    {"duckpgq_csr_index_snapshot_fast_path",
 	     "A reader takes the cached snapshot of a CSR index without copying the change log and checking row "
 	     "versions when the log has not changed since a reader that started no later saw every change in it as "
 	     "committed",
-	     LogicalType::BOOLEAN, Value(false)},
+	     LogicalType::BOOLEAN, Value(true)},
 	    {"duckpgq_csr_index_merge_fold",
-	     "Prototype: a CSR index folds by merging its newest epoch with the folding transaction's overlay, sharing "
+	     "A CSR index folds by merging its newest epoch with the folding transaction's overlay, sharing "
 	     "the partitions that did not change, instead of scanning the table; vertex ids are not renumbered. Indexes "
 	     "with a stored reverse side always scan",
-	     LogicalType::BOOLEAN, Value(false)},
+	     LogicalType::BOOLEAN, Value(true)},
 	    {"duckpgq_csr_index_renumber_ratio",
 	     "With duckpgq_csr_index_merge_fold, a fold scans the table instead of merging once the vertices that are "
 	     "numbered out of key order exceed this fraction of the vertices in key order; 0 never scans for that",
