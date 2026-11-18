@@ -1630,3 +1630,11 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   reverse orientation), index bytes and bytes per edge, CREATE INDEX and fold times, peak RSS, the update workload
   (the change log maintains both sides), IC13 and BI20 on the undirected index (their single pairs are searched
   from both ends too); `repro/package/queries.tex` names the old CREATE INDEX and must be revised with it.
+- 18 Nov (late afternoon): the microbench configuration `sparse_frontier` is fixed on the author's word: divisor 1
+  (never sweeps) instead of 2 000 000 000 (which swept every level, as `dense_frontier` does); the switches document
+  and the switches test say the same. Ablation A4 (row lookup against partition sweep) up to rc13 compared sweep
+  with sweep: its rows must be rerun at the next freeze and any sentence that rests on it waits for that. First
+  indication from the probe of 18 Nov (search from the source, 200 single pairs, 32 threads, one run): never
+  sweeping against the default 64 at SF300 9.6 against 14.9 ms on unreachable pairs and 15.1 against 14.8 ms on
+  4-hop pairs, at SF100 5.3 against 9.3 ms and 7.1 against 10.0 ms; many concurrent searches not measured for the
+  search from the source (from both ends, 16 pairs at SF300: 191 ms without sweeps against 58 ms with the default).

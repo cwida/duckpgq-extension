@@ -98,7 +98,7 @@ SELECT count(len), sum(len) FROM (
 4	8
 
 statement ok
-SET experimental_path_finding_operator_sparse_frontier_divisor = 2000000000;
+SET experimental_path_finding_operator_sparse_frontier_divisor = 1;
 
 query II
 SELECT count(len), sum(len) FROM (

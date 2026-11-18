@@ -5675,8 +5675,11 @@ MICROBENCH_CONFIGS = {
     "no_few_sources_rule": ({OPT + "few_sources_limit": 0}, None, False),
     # Per-source frontier kernel internals
     "no_early_termination": ({OPT + "target_early_termination": "false"}, None, False),
+    # A level is expanded by row lookups when frontier x divisor < vertices and by a sweep otherwise: 0 sweeps every
+    # level, 1 never sweeps. Until 18 Nov 2026 sparse_frontier set 2000000000, which also sweeps every level (the
+    # condition is never true), so the rows of both configurations up to rc13 are sweeps
     "dense_frontier": ({OPT + "sparse_frontier_divisor": 0}, None, False),
-    "sparse_frontier": ({OPT + "sparse_frontier_divisor": 2000000000}, None, False),
+    "sparse_frontier": ({OPT + "sparse_frontier_divisor": 1}, None, False),
     # Orientation
     "no_reverse_orientation": ({OPT + "reverse_orientation_ratio": 0}, None, False),
     # Index side
