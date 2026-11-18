@@ -5735,6 +5735,19 @@ MICROBENCH_GROUPS["explore_variants"] = (["baseline"] + [f"explore_{_variant}" f
                                                          ("flat_serial", "flat_ranges", "flat_atomic", "flat_locked")]
                                          + [f"partitions_{pv}" for pv in (4096, 8192, 16384, 32768)]
                                          + ["partitions_65535_nosub"])
+# The same variants over the thread count: at one thread the gap to the partitioned explore is the cost of the
+# synchronised update and of the unpartitioned layout alone; how it moves with threads is what contention adds
+MICROBENCH_GROUPS["explore_threads"] = []
+for _n in (1, 2, 4, 8, 16):
+    MICROBENCH_CONFIGS[f"explore_partitioned_t{_n}"] = ({"threads": _n}, None, False)
+    MICROBENCH_GROUPS["explore_threads"].append(f"explore_partitioned_t{_n}")
+    for _variant in ("flat_serial", "flat_ranges", "flat_atomic", "flat_locked"):
+        MICROBENCH_CONFIGS[f"explore_{_variant}_t{_n}"] = ({"threads": _n, OPT + "explore_variant": f"'{_variant}'"},
+                                                           None, False)
+        MICROBENCH_INDEX_ONLY.add(f"explore_{_variant}_t{_n}")
+        MICROBENCH_GROUPS["explore_threads"].append(f"explore_{_variant}_t{_n}")
+MICROBENCH_GROUPS["explore_threads"] += ["baseline"] + [f"explore_{_variant}" for _variant in
+                                                        ("flat_serial", "flat_ranges", "flat_atomic", "flat_locked")]
 
 
 def microbench_configs(names):
