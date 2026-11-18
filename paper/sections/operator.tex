@@ -59,6 +59,39 @@ rest of the query around it. The rest of this section follows a query through th
 \subsection{The partitioned CSR}
 \label{sec:csr}
 
+% Declared here so that it lands on the page where Section 3.2 first refers to it; it is discussed in Section 3.3
+\begin{algorithm}[t]
+\caption{\rev{One level of the multi-source traversal for one batch. $A$ holds the bits of the batch's active lanes
+and $L_\ell$ the destinations that lane $\ell$ has not reached yet.}}
+\label{alg:msbfs-level}
+\footnotesize
+\begin{algorithmic}[1]
+\ForAll{destination ranges $R$ \textbf{in parallel}} \Comment{explore}
+  \ForAll{sparse rows $(s, E_s)$ of the partition of $R$}
+    \If{$\texttt{frontier}[s] \neq 0$}
+      \ForAll{$d \in E_s$ with $d \in R$}
+        \State $\texttt{next}[d] \mathrel{|}= \texttt{frontier}[s]$
+      \EndFor
+    \EndIf
+  \EndFor
+\EndFor
+\ForAll{destination ranges $R$ \textbf{in parallel}} \Comment{check}
+  \ForAll{vertices $v \in R$}
+    \State $\texttt{next}[v] \mathrel{\&}= A \mathbin{\&} {\sim}\texttt{seen}[v]$
+    \State $\texttt{seen}[v] \mathrel{|}= \texttt{next}[v]$
+    \State $\texttt{frontier}[v] \gets 0$
+  \EndFor
+\EndFor
+\ForAll{lanes $\ell$ in $A$} \Comment{serial}
+  \State move every $d \in L_\ell$ with bit $\ell$ in $\texttt{seen}[d]$ to the results
+  \If{$L_\ell$ is empty}
+    \State remove $\ell$ from $A$
+  \EndIf
+\EndFor
+\State swap \texttt{frontier} and \texttt{next}
+\end{algorithmic}
+\end{algorithm}
+
 Both routes, building the CSR on the fly and reading it from an index, traverse the same layout, the
 \emph{partitioned CSR} of Figure~\ref{fig:partitioned-csr}. It differs from the classic CSR of Section~\ref{sec:background}
 by splitting the edges by destination.
@@ -144,38 +177,6 @@ rows into ranges to give every worker work; a worker expands the rows whose sour
 kinds of level two workers can reach the same vertex, and a vertex is claimed with a compare-and-swap on its seen
 flag. The worker that wins records the vertex's distance, adds it to the next frontier and, in the \texttt{paths}
 mode, records the vertex and the edge through which it arrived (Section~\ref{sec:results}).
-
-\begin{algorithm}[t]
-\caption{\rev{One level of the multi-source traversal for one batch. $A$ holds the bits of the batch's active lanes
-and $L_\ell$ the destinations that lane $\ell$ has not reached yet.}}
-\label{alg:msbfs-level}
-\footnotesize
-\begin{algorithmic}[1]
-\ForAll{destination ranges $R$ \textbf{in parallel}} \Comment{explore}
-  \ForAll{sparse rows $(s, E_s)$ of the partition of $R$}
-    \If{$\texttt{frontier}[s] \neq 0$}
-      \ForAll{$d \in E_s$ with $d \in R$}
-        \State $\texttt{next}[d] \mathrel{|}= \texttt{frontier}[s]$
-      \EndFor
-    \EndIf
-  \EndFor
-\EndFor
-\ForAll{destination ranges $R$ \textbf{in parallel}} \Comment{check}
-  \ForAll{vertices $v \in R$}
-    \State $\texttt{next}[v] \mathrel{\&}= A \mathbin{\&} {\sim}\texttt{seen}[v]$
-    \State $\texttt{seen}[v] \mathrel{|}= \texttt{next}[v]$
-    \State $\texttt{frontier}[v] \gets 0$
-  \EndFor
-\EndFor
-\ForAll{lanes $\ell$ in $A$} \Comment{serial}
-  \State move every $d \in L_\ell$ with bit $\ell$ in $\texttt{seen}[d]$ to the results
-  \If{$L_\ell$ is empty}
-    \State remove $\ell$ from $A$
-  \EndIf
-\EndFor
-\State swap \texttt{frontier} and \texttt{next}
-\end{algorithmic}
-\end{algorithm}
 
 \paragraph{Multi-source traversal} Many searches run as the lanes of one sweep, the multi-source BFS of Then et
 al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up to 256 lanes that share one
