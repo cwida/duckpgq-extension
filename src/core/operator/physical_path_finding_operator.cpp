@@ -1565,6 +1565,9 @@ void AppendGroupedKernelEvents(PathFindingGlobalSinkState &gstate, vector<shared
 		auto &first = *grouped_batches->states.front();
 		RecordStrategy(context, prefix + "bitmap_filter", first.bitmap_filter ? "on" : "off");
 		RecordStrategy(context, prefix + "sparse_level_divisor", std::to_string(first.sparse_level_divisor));
+		if (first.explore_variant != ExploreVariant::PARTITIONED) {
+			RecordStrategy(context, prefix + "explore_variant", GetPathFindingExploreVariant(context));
+		}
 	}
 	for (idx_t group = 0; group < groups; group++) {
 		auto kernel = make_shared_ptr<GroupedIterativeLengthKernel>(grouped_batches);

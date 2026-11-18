@@ -57,6 +57,12 @@ if [ "$what" = all ] || [ "$what" = graphalytics ]; then
   done
   # The batch scheduler on a graph whose multi-source working set (192 B per vertex, 1.7 GB per wave) exceeds the
   # 512 MiB budget: the memory-bound regime of the adaptive scheduler, index route
+  # Ablation of the partitioned CSR on the dense graph (see the microbench block): the ten variants at the run's
+  # thread count, and the partitioned explore and the four flat variants from 1 thread up. No 65,536-pair point (152 s
+  # per query on the partitioned explore) and no thread counts for the widths (one index of 260M edges each is built
+  # for the first step; their single-thread points alone would take hours)
+  step "microbench_explore_variants_graph500_24" ${HARNESS} microbench --dataset graph500-24 "${COMMON[@]}" --configs explore_variants --routes index --shapes random multi_source --pair-counts 2048 --source-counts 256 1024 --notes "CSR ablation variants graph500-24 ${NOTE}"
+  step "microbench_explore_scaling_graph500_24" ${HARNESS} microbench --dataset graph500-24 "${COMMON[@]}" --configs explore_threads --routes index --shapes random multi_source --pair-counts 2048 --source-counts 256 --notes "CSR ablation scaling graph500-24 ${NOTE}"
   step "microbench_scheduling_graph500_24" ${HARNESS} microbench --dataset graph500-24 "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes "W31 scheduling graph500-24 ${NOTE}"
 fi
 
@@ -106,6 +112,18 @@ if [ "$what" = all ] || [ "$what" = microbench ]; then
     # random pairs and for k sources x 200 destinations, the three kernels forced (index route; median and the
     # kernel's working set per point from the strategy string, process peak RSS per point)
     step "microbench_crossover_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs crossover --shapes random all_pairs --pair-counts 1 2 4 8 16 32 64 128 256 512 1024 4096 --source-count 1 2 4 8 16 32 64 128 256 512 1024 4096 --target-count 200 --routes index --notes "Section 3 crossover SF${sf} ${NOTE}"
+  done
+  # Ablation of the partitioned CSR (17 Nov, supervisor's feedback): what the destination-range partitions buy. Ten
+  # variants on the index route: the partitioned explore (width 65535), the explore phase on one unpartitioned CSR
+  # with one owner, with owned destination ranges, with atomics and with striped locks
+  # (experimental_path_finding_operator_explore_variant), the partition widths 4096 to 32768 (one index each), and the
+  # widest partitions without sub-range tasks. "scaling": every variant at 1, 2, 4, 8, 16 threads and at the run's
+  # thread count, on 2048 random pairs (8 waves), 1024 sources x all (4 waves) and 256 sources x all (one wave).
+  # "variants": the many-wave point, 65,536 random pairs, at the run's thread count only (flat_atomic takes 75 s there
+  # at SF300 on 32 threads; lower thread counts would run into the timeout).
+  for sf in ${SCALE_FACTORS}; do
+    step "microbench_explore_scaling_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs explore_scaling --routes index --shapes random multi_source --pair-counts 2048 --source-counts 256 1024 --notes "CSR ablation scaling SF${sf} ${NOTE}"
+    step "microbench_explore_variants_sf${sf}" ${HARNESS} microbench --scale-factor "$sf" "${COMMON[@]}" --configs explore_variants --routes index --shapes random --pair-counts 65536 --notes "CSR ablation variants SF${sf} ${NOTE}"
   done
   # The scheduling crossover figure needs SF300 as well; index route only
   has_sf 300 && step "microbench_scheduling_sf300" ${HARNESS} microbench --scale-factor 300 "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes "W31 scheduling SF300 ${NOTE}"

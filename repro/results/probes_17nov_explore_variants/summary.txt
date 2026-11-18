@@ -1,0 +1,36 @@
+
+microbench_sf100_threads32_1794928514777477005.csv  (median of the repeats, seconds; ratio to baseline)
+config                                              2048 pairs                   65536 pairs             256 sources x all            1024 sources x all
+baseline                             0.145                         3.408                         0.186                         0.395                    
+explore_flat_serial                  0.389        2.68x slower     6.459        1.90x slower     0.361        1.94x slower     0.602        1.52x slower
+explore_flat_ranges                  0.262        1.81x slower     6.053        1.78x slower     0.247        1.33x slower     0.463        1.17x slower
+explore_flat_atomic                  0.917        6.32x slower    25.008        7.34x slower     0.263        1.41x slower     0.823        2.08x slower
+explore_flat_locked                  0.721        4.97x slower    17.148        5.03x slower     0.249        1.34x slower     0.616        1.56x slower
+partitions_4096                      0.202        1.39x slower     6.097        1.79x slower     0.150        1.24x faster     0.335        1.18x faster
+partitions_8192                      0.172        1.19x slower     4.996        1.47x slower     0.157        1.18x faster     0.353        1.12x faster
+partitions_16384                     0.152        1.05x slower     4.153        1.22x slower     0.175        1.06x faster     0.344        1.15x faster
+partitions_32768                     0.135        1.07x faster     3.650        1.07x slower     0.190        1.02x slower     0.344        1.15x faster
+partitions_65535_nosub               0.131        1.11x faster     3.335        1.02x faster     0.313        1.68x slower     0.401        1.02x slower
+
+microbench_sf300_threads32_1794929105398998594.csv  (median of the repeats, seconds; ratio to baseline)
+config                                              2048 pairs                   65536 pairs             256 sources x all            1024 sources x all
+baseline                             0.349                        10.051                         0.409                         0.763                    
+explore_flat_serial                  1.587        4.55x slower    24.439        2.43x slower     1.344        3.29x slower     1.858        2.44x slower
+explore_flat_ranges                  1.189        3.41x slower    30.932        3.08x slower     0.516        1.26x slower     1.216        1.59x slower
+explore_flat_atomic                  2.486        7.12x slower    75.428        7.50x slower     0.641        1.57x slower     1.981        2.60x slower
+explore_flat_locked                  2.286        6.55x slower    59.874        5.96x slower     0.592        1.45x slower     1.613        2.11x slower
+no_sub_range_tasks                   0.364        1.04x slower    10.139        1.01x slower     0.469        1.15x slower     0.758        1.01x faster
+
+microbench_graphalytics_graph500_24_threads32_1794930573249525466.csv  (median of the repeats, seconds; ratio to baseline)
+config                                              2048 pairs                   65536 pairs             256 sources x all            1024 sources x all
+baseline                             5.618                       152.109                         4.748                         9.097                    
+explore_flat_serial                 27.990        4.98x slower   294.216 (2 of 3) 1.93x slower                             -                             -
+
+microbench_graphalytics_graph500_24_threads32_1794993771641213082.csv  (median of the repeats, seconds; ratio to baseline)
+config                                              2048 pairs             256 sources x all            1024 sources x all
+baseline                             6.118                         4.725                         9.203                    
+explore_flat_serial                 27.600        4.51x slower    25.559        5.41x slower    30.458        3.31x slower
+explore_flat_ranges                 13.453        2.20x slower     5.765        1.22x slower    12.687        1.38x slower
+explore_flat_atomic                 11.849        1.94x slower     5.545        1.17x slower    11.816        1.28x slower
+explore_flat_locked                 20.248        3.31x slower     6.432        1.36x slower    15.816        1.72x slower
+no_sub_range_tasks                   6.260        1.02x slower     4.824        1.02x slower     9.820        1.07x slower

@@ -1,0 +1,57 @@
+
+2048 pairs: median seconds
+  threads                       1        2        4        8       16       32
+  partitioned               7.783    4.841    2.586    1.209    0.608    0.366
+  flat_serial              10.207    5.677    3.185    1.792    1.608    1.608
+  flat_ranges              10.843    5.834    3.825    2.671    1.964    1.157
+  flat_atomic              22.839   31.095   18.646    9.560    4.969    2.494
+  flat_locked              13.914   11.211    7.335    4.041    2.436    2.164
+  times slower than partitioned at the same thread count
+  flat_serial                1.31     1.17     1.23     1.48     2.64     4.39
+  flat_ranges                1.39     1.21     1.48     2.21     3.23     3.16
+  flat_atomic                2.93     6.42     7.21     7.91     8.17     6.81
+  flat_locked                1.79     2.32     2.84     3.34     4.01     5.91
+  speed-up over the variant's own single-thread time
+  partitioned                1.00     1.61     3.01     6.44    12.80    21.27
+  flat_serial                1.00     1.80     3.20     5.70     6.35     6.35
+  flat_ranges                1.00     1.86     2.83     4.06     5.52     9.37
+  flat_atomic                1.00     0.73     1.22     2.39     4.60     9.16
+  flat_locked                1.00     1.24     1.90     3.44     5.71     6.43
+
+256 sources x all: median seconds
+  threads                       1        2        4        8       16       32
+  partitioned               3.076    2.055    1.461    0.833    0.546    0.414
+  flat_serial               3.378    2.743    2.209    1.763    1.569    1.384
+  flat_ranges               3.448    2.335    1.684    1.055    0.721    0.539
+  flat_atomic               5.202    5.730    3.581    2.016    1.120    0.645
+  flat_locked               3.891    2.906    1.925    1.170    0.760    0.628
+  times slower than partitioned at the same thread count
+  flat_serial                1.10     1.33     1.51     2.12     2.87     3.34
+  flat_ranges                1.12     1.14     1.15     1.27     1.32     1.30
+  flat_atomic                1.69     2.79     2.45     2.42     2.05     1.56
+  flat_locked                1.26     1.41     1.32     1.40     1.39     1.52
+  speed-up over the variant's own single-thread time
+  partitioned                1.00     1.50     2.11     3.69     5.63     7.43
+  flat_serial                1.00     1.23     1.53     1.92     2.15     2.44
+  flat_ranges                1.00     1.48     2.05     3.27     4.78     6.40
+  flat_atomic                1.00     0.91     1.45     2.58     4.64     8.07
+  flat_locked                1.00     1.34     2.02     3.33     5.12     6.20
+
+1024 sources x all: median seconds
+  threads                       1        2        4        8       16       32
+  partitioned              11.956    7.254    4.600    2.352    1.238    0.756
+  flat_serial              13.260    7.743    4.792    2.909    2.225    1.892
+  flat_ranges              13.431    7.728    4.850    3.060    1.965    1.206
+  flat_atomic              20.082   21.774   13.485    6.948    3.590    1.915
+  flat_locked              15.327   10.585    6.964    3.826    2.211    1.664
+  times slower than partitioned at the same thread count
+  flat_serial                1.11     1.07     1.04     1.24     1.80     2.50
+  flat_ranges                1.12     1.07     1.05     1.30     1.59     1.60
+  flat_atomic                1.68     3.00     2.93     2.95     2.90     2.53
+  flat_locked                1.28     1.46     1.51     1.63     1.79     2.20
+  speed-up over the variant's own single-thread time
+  partitioned                1.00     1.65     2.60     5.08     9.66    15.81
+  flat_serial                1.00     1.71     2.77     4.56     5.96     7.01
+  flat_ranges                1.00     1.74     2.77     4.39     6.84    11.14
+  flat_atomic                1.00     0.92     1.49     2.89     5.59    10.49
+  flat_locked                1.00     1.45     2.20     4.01     6.93     9.21

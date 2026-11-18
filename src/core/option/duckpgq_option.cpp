@@ -149,6 +149,16 @@ const vector<DuckPGQSetting> &Settings() {
 	     "destination range into sub-range tasks so the batch keeps its parallelism on coarse "
 	     "partitions (W32); false gives one task per partition",
 	     LogicalType::BOOLEAN, Value(true)},
+	    {"experimental_path_finding_operator_explore_variant",
+	     "How the MS-BFS explore phase writes the lane words of the destinations. partitioned (default): "
+	     "every destination-range partition has one owner, no synchronisation. The others are the "
+	     "ablation of the partitioned CSR and traverse one unpartitioned CSR with 32-bit destinations, "
+	     "derived from the partitions on first use and cached for the process: flat_serial (one "
+	     "partition: one worker expands a level), flat_ranges (each worker owns a destination range "
+	     "and reads every active row for its slice), flat_atomic (workers take source morsels and "
+	     "update shared lane words with fetch_or), flat_locked (source morsels, striped spinlocks). "
+	     "The flat variants need a CSR without pending index changes",
+	     LogicalType::VARCHAR, Value("partitioned")},
 	    {"duckpgq_csr_index_change_groups",
 	     "A CSR index snapshot decides the visibility of a change group (one commit chunk of one "
 	     "transaction) with one row-version check and applies it to every row of the group; false "
@@ -330,6 +340,10 @@ int32_t GetPathFindingRowBucketRows(ClientContext &context) {
 
 bool GetPathFindingSubRangeTasks(ClientContext &context) {
 	return GetSetting<bool>(context, "experimental_path_finding_operator_sub_range_tasks");
+}
+
+string GetPathFindingExploreVariant(ClientContext &context) {
+	return GetSetting<string>(context, "experimental_path_finding_operator_explore_variant");
 }
 
 bool GetCSRIndexChangeGroups(ClientContext &context) {
