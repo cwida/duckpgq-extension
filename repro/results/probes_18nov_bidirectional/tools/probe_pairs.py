@@ -8,8 +8,10 @@ statements before and after it (microseconds; it includes the CLI's handling of 
 `empty` rows: two timestamp statements with nothing between them).
 
 Usage: probe_pairs.py <duckdb cli> <extension> <database> <scale factor> <threads> <out.csv> [lengths|paths]
+PROBE_SETTINGS="name=value ..." adds SET experimental_path_finding_operator_<name>=<value> to the session.
 """
 import csv
+import os
 import statistics
 import subprocess
 import sys
@@ -30,6 +32,8 @@ def main():
         f"LOAD '{extension}';",
         f"SET threads={threads};",
         "SET experimental_path_finding_operator=true;",
+        *[f"SET experimental_path_finding_operator_{setting};"
+          for setting in os.environ.get("PROBE_SETTINGS", "").split()],
         f"ATTACH '{database}' AS ldbc (READ_ONLY);",
         f"""CREATE TEMP TABLE probe_pairs AS
 SELECT s.pos AS pair, s.id AS src, d.id AS dst

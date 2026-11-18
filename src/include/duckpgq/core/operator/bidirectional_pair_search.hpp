@@ -26,8 +26,8 @@ struct SearchGraphSide {
 //! therefore closes a path of exactly depth(forward) + depth(backward) + 1 edges, the shortest, and the search stops
 //! there without finishing the level. A side whose frontier empties has explored everything it can reach: no path.
 //!
-//! Per vertex and side the search keeps one bit (seen) and, from its first sweep on, the level the vertex was last in
-//! the frontier (4 bytes). For paths every discovery is logged with the vertex and the edge it came through (16
+//! Per vertex and side the search keeps one bit (seen) and, from its first sweep on, one bit for the membership of
+//! the frontier being swept. For paths every discovery is logged with the vertex and the edge it came through (16
 //! bytes per discovered vertex, in discovery order per worker); the few vertices of the path are looked up by a scan
 //! of the log, so the search touches no per-vertex parent arrays (two arrays of 12 bytes per vertex cost a page
 //! fault per discovery on a graph of a million vertices). Discovery is an atomic test-and-set of the seen bit, so the
@@ -98,8 +98,8 @@ private:
 		}
 		//! The discovery of `vertex`; throws when it was never logged
 		const Discovery &DiscoveryOf(uint32_t vertex) const;
-		//! depth + 1 of the level a vertex was last in the frontier of a sweep; allocated by the first sweep
-		vector<uint32_t> frontier_stamp;
+		//! One bit per vertex: the frontier of the level being swept; allocated by the first sweep
+		vector<uint64_t> in_frontier;
 		idx_t depth = 0;
 	};
 
@@ -137,7 +137,12 @@ private:
 	idx_t max_depth;
 	idx_t sparse_frontier_divisor;
 	idx_t worker_count = 1;
-	//! The current level sweeps the partitions; its tasks are (partition, row range), claimed through the cursor
+	//! The current level sweeps the partitions; its tasks are (partition, row range), claimed through the cursor.
+	//! A partition is cut into enough row ranges for SWEEP_TASKS_PER_WORKER tasks per worker: the frontier's rows
+	//! are spread unevenly over the partitions, and whole partitions as tasks left most workers of a search that
+	//! has every thread idle (SF300, 32 workers: an unreachable pair took 10.6 ms against 7.0 ms by lookups)
+	static constexpr idx_t SWEEP_TASKS_PER_WORKER = 8;
+	static constexpr idx_t SWEEP_MAX_SUB_RANGES = 256;
 	bool sweep = false;
 	idx_t sweep_sub_ranges = 1;
 	atomic<idx_t> sweep_cursor {0};

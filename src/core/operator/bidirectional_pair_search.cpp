@@ -68,17 +68,15 @@ bool BidirectionalPairSearch::PrepareLevel(bool run_small_levels) {
 		frontier_cursor = 0;
 		sweep = sparse_frontier_divisor == 0 || side.frontier.size() * sparse_frontier_divisor >= v_size;
 		if (sweep) {
-			// The frontier vertices are stamped with the level, as in the per-source kernel
-			if (side.frontier_stamp.empty()) {
-				side.frontier_stamp.assign(v_size, 0);
-			}
-			auto stamp = NumericCast<uint32_t>(side.depth + 1);
+			// The frontier as a bitmap (v_size / 8 bytes: it stays in the cache while the rows are scanned)
+			side.in_frontier.assign((v_size + 63) / 64, 0);
 			for (auto vertex : side.frontier) {
-				side.frontier_stamp[vertex] = stamp;
+				side.in_frontier[vertex >> 6] |= uint64_t(1) << (vertex & 63);
 			}
-			auto partitions = side.graph.csrs.size();
-			sweep_sub_ranges =
-			    worker_count > partitions ? std::min<idx_t>(16, (worker_count + partitions - 1) / partitions) : 1;
+			auto partitions = std::max<idx_t>(1, side.graph.csrs.size());
+			sweep_sub_ranges = std::min<idx_t>(
+			    SWEEP_MAX_SUB_RANGES,
+			    std::max<idx_t>(1, (worker_count * SWEEP_TASKS_PER_WORKER + partitions - 1) / partitions));
 			sweep_cursor = 0;
 			sweeps++;
 			return true;
@@ -193,13 +191,12 @@ bool BidirectionalPairSearch::ExplorePartition(Side &side, const Side &other, co
                                                const uint64_t *suppressed_bits, idx_t partition_idx, bool is_delta,
                                                idx_t sub, idx_t subs, vector<uint32_t> &next,
                                                vector<Discovery> *log) {
-	auto stamp = NumericCast<uint32_t>(side.depth + 1);
-	auto &frontier_stamp = side.frontier_stamp;
+	auto in_frontier = side.in_frontier.data();
 	if (csr.HasSparseRows()) {
 		auto rows = csr.source_vertices.size();
 		for (idx_t row_idx = rows * sub / subs; row_idx < rows * (sub + 1) / subs; row_idx++) {
 			auto from = csr.source_vertices[row_idx];
-			if (frontier_stamp[from] != stamp) {
+			if (!((in_frontier[from >> 6] >> (from & 63)) & 1)) {
 				continue;
 			}
 			if (!RelaxRow(side, other, csr, csr.row_offsets[row_idx], csr.row_offsets[row_idx + 1], suppressed_bits,
@@ -211,7 +208,7 @@ bool BidirectionalPairSearch::ExplorePartition(Side &side, const Side &other, co
 	}
 	auto vertices = csr.GetVertexSize();
 	for (idx_t vertex = vertices * sub / subs; vertex < vertices * (sub + 1) / subs; vertex++) {
-		if (frontier_stamp[vertex] != stamp) {
+		if (!((in_frontier[vertex >> 6] >> (vertex & 63)) & 1)) {
 			continue;
 		}
 		if (!RelaxRow(side, other, csr, csr.v[vertex].load(std::memory_order_relaxed),

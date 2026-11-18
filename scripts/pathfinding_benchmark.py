@@ -5649,6 +5649,11 @@ MICROBENCH_CONFIGS = {
     # The search from both ends of a group with one destination (bidirectional_pair, 18 Nov) needs the reverse side:
     # reverse_index runs it, reverse_index_one_end is the same index searched from the source only
     "reverse_index_one_end": ({OPT + "bidirectional_pair": "false"}, "reverse = true", False),
+    # The search from both ends with other sweep thresholds: a level is swept when its frontier holds at least
+    # 1 / sparse_frontier_divisor of the vertices (default 64; 1 never sweeps, 0 sweeps every level)
+    "reverse_index_no_sweep": ({OPT + "sparse_frontier_divisor": 1}, "reverse = true", False),
+    "reverse_index_sweep_8": ({OPT + "sparse_frontier_divisor": 8}, "reverse = true", False),
+    "reverse_index_always_sweep": ({OPT + "sparse_frontier_divisor": 0}, "reverse = true", False),
     # Reach mode on per-source searches instead of lane waves (reach_lanes, 2 Nov)
     "reach_per_source": ({OPT + "reach_lanes": "false"}, None, False),
     # Reach mode vs the pair list for sources x all persons
@@ -5725,7 +5730,10 @@ MICROBENCH_GROUPS = {
 }
 MICROBENCH_GROUPS["all"] = list(dict.fromkeys(sum((v for k, v in MICROBENCH_GROUPS.items() if k not in ("scheduling", "memory", "partitions")), [])))
 MICROBENCH_GROUPS["bidirectional"] = ["baseline", "reverse_index", "reverse_index_one_end"]
-MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "reverse_index_one_end"}
+MICROBENCH_GROUPS["bidirectional_sweep"] = ["reverse_index", "reverse_index_no_sweep", "reverse_index_sweep_8",
+                                           "reverse_index_always_sweep", "reverse_index_one_end"]
+MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "reverse_index_one_end",
+                         "reverse_index_no_sweep", "reverse_index_sweep_8", "reverse_index_always_sweep"}
 
 
 def microbench_configs(names):
