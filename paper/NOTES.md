@@ -520,6 +520,18 @@ buffer pool, a per-group memo of reader bounds, the bidirectional search of one 
 (partitioned against unpartitioned with atomics or locks, thread sweep, perf counters). The next freeze is
 my-beans-6ew0; it should include the fold and tombstone fixes found during the Teseo work (my-beans-p65v).
 
+18 Nov: Algorithm 1 added in 3.3, one level of the multi-source traversal for one batch (explore, check, serial
+step), after Peter Boncz's remark that the paper had no listing; the author chose this one of the three candidates
+(the others, a snapshot build in 4.3 and the CSR build in 3.2, are not written). Checked line by line against the
+code at 8faa9659: `Explore` and `ExploreSparse` (plain `next[d] |= visit[s]`, edges narrowed to the task's range),
+`CheckChange` (`next &= active lanes`, `next &= ~seen`, `seen |= next`, `visit = 0`), `LaneWaveState::DetectReached`
+(destinations with the lane's bit in `seen` get the level and leave the list; an empty list retires the lane), and
+`IterativeLengthState::Start` (a task is a partition's range or one of up to 16 slices of it when the batch has more
+workers than partitions). The passage in 3.3 now refers to the lines and says that the or needs no lock and no
+atomic operation; 3.2 and 4.3 point at the listing; Section 2 writes `frontier` where it wrote `visit`. Packages
+`algorithm` and `algpseudocode`. Cost, measured by building both versions: the body goes from 14.44 to 14.59 pages
+(0.3 of a column). Not cut to pay for it yet: Section 2's MS-BFS paragraph, which the listing and 3.3 now repeat.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under
