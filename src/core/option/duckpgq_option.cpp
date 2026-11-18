@@ -82,6 +82,11 @@ const vector<DuckPGQSetting> &Settings() {
 	     "Stop a source-grouped search once every destination of the group is reached; false "
 	     "searches to the depth bound or exhaustion",
 	     LogicalType::BOOLEAN, Value(true)},
+	    {"experimental_path_finding_operator_bidirectional_pair",
+	     "A source group with one destination is searched from both ends (meet in the middle) when "
+	     "the graph has a reverse side: an undirected CSR index or one WITH (reverse = true); false "
+	     "searches from the source only",
+	     LogicalType::BOOLEAN, Value(true)},
 	    {"experimental_path_finding_operator_sparse_frontier_divisor",
 	     "A source-grouped frontier is expanded vertex by vertex when frontier_size * divisor < "
 	     "vertex_count, and by a sweep over the partitions otherwise; 0 always sweeps",
@@ -272,6 +277,10 @@ bool GetPathFindingSnapshotCache(ClientContext &context) {
 
 bool GetPathFindingTargetEarlyTermination(ClientContext &context) {
 	return GetSetting<bool>(context, "experimental_path_finding_operator_target_early_termination");
+}
+
+bool GetPathFindingBidirectionalPair(ClientContext &context) {
+	return GetSetting<bool>(context, "experimental_path_finding_operator_bidirectional_pair");
 }
 
 int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context) {

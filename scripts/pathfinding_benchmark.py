@@ -5646,6 +5646,9 @@ MICROBENCH_CONFIGS = {
     "no_snapshot_cache": ({OPT + "snapshot_cache": "false"}, None, False),
     "reverse_index": ({}, "reverse = true", False),
     "reverse_index_forward_only": ({OPT + "reverse_orientation_ratio": 0}, "reverse = true", False),
+    # The search from both ends of a group with one destination (bidirectional_pair, 18 Nov) needs the reverse side:
+    # reverse_index runs it, reverse_index_one_end is the same index searched from the source only
+    "reverse_index_one_end": ({OPT + "bidirectional_pair": "false"}, "reverse = true", False),
     # Reach mode on per-source searches instead of lane waves (reach_lanes, 2 Nov)
     "reach_per_source": ({OPT + "reach_lanes": "false"}, None, False),
     # Reach mode vs the pair list for sources x all persons
@@ -5721,7 +5724,8 @@ MICROBENCH_GROUPS = {
     "task_edges": ["baseline"] + [f"task_edges_{n}" for n in (65536, 262144, 1048576, 4194304, 16777216, 0)],
 }
 MICROBENCH_GROUPS["all"] = list(dict.fromkeys(sum((v for k, v in MICROBENCH_GROUPS.items() if k not in ("scheduling", "memory", "partitions")), [])))
-MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only"}
+MICROBENCH_GROUPS["bidirectional"] = ["baseline", "reverse_index", "reverse_index_one_end"]
+MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "reverse_index_one_end"}
 
 
 def microbench_configs(names):
