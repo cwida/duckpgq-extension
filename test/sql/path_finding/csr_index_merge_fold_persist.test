@@ -21,6 +21,10 @@ SET duckpgq_csr_index_merge_fold = true;
 statement ok
 SET duckpgq_csr_index_merge_fold_verify = true;
 
+# Three new vertices on a graph of ten: keep the fold a merge (the renumbering rule would scan the table)
+statement ok
+SET duckpgq_csr_index_renumber_ratio = 0;
+
 statement ok
 CREATE TABLE person(id BIGINT);
 
@@ -96,6 +100,10 @@ SET duckpgq_csr_index_merge_fold = true;
 
 statement ok
 SET duckpgq_csr_index_merge_fold_verify = true;
+
+# Three new vertices on a graph of ten: keep the fold a merge (the renumbering rule would scan the table)
+statement ok
+SET duckpgq_csr_index_renumber_ratio = 0;
 
 # The merged epoch and the pending entry come back from the checkpoint
 query I

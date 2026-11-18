@@ -346,7 +346,10 @@ private:
 	static shared_ptr<CSRIndexEpoch> MergeEpoch(ClientContext &context, const CSRIndexSnapshot &snapshot,
 	                                            VisibilityBound bound, idx_t &rebuilt);
 	//! Whether RunFold should build an epoch for this transaction (ordering and, for ratio > 0, the pending log)
-	bool FoldDue(DuckTransaction &transaction, double ratio) const;
+	//! `cost_guess_ns_per_edge` > 0 adds the cost rule (duckpgq_csr_index_fold_by_cost): a fold is also due when the
+	//! readers have spent as long building snapshots since the last fold as a fold takes; the fold's time is the
+	//! last fold's, and before the first fold the epoch's edge count times the guess
+	bool FoldDue(DuckTransaction &transaction, double ratio, uint64_t cost_guess_ns_per_edge = 0) const;
 	//! Installs an epoch RunFold built, unless a newer one arrived meanwhile; records the fold time
 	void InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
 	                        uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt, uint64_t snapshot_us) const;
@@ -476,6 +479,12 @@ private:
 	mutable bool storage_pending = false;
 	//! From this many pending tombstones on, their epoch positions are resolved on all threads
 	static constexpr idx_t PARALLEL_TOMBSTONE_THRESHOLD = 4096;
+	//! The cost rule of the automatic fold: the time readers spent building snapshots since the last fold, and how
+	//! long that fold took
+	mutable std::atomic<uint64_t> snapshot_us_since_fold {0};
+	mutable std::atomic<uint64_t> fold_cost_us {0};
+	//! Folds that scanned the table because too many vertices were numbered out of key order
+	mutable std::atomic<uint64_t> fold_renumber_count {0};
 	//! Snapshot timing (see SnapshotStats)
 	mutable std::atomic<uint64_t> snapshot_count {0};
 	mutable std::atomic<uint64_t> snapshot_cache_hits {0};

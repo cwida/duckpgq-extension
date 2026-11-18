@@ -1452,6 +1452,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	snapshot_last_pack_us = phase_us();
 	snapshot_last_us = static_cast<uint64_t>(
 	    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - snapshot_start).count());
+	snapshot_us_since_fold += snapshot_last_us.load();
 	snapshot_last_delta = delta_edges.size();
 	snapshot_last_tombstones = tombstone_rows.size();
 	if (shareable) {
@@ -1467,7 +1468,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	return snapshot;
 }
 
-bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio) const {
+bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio, uint64_t cost_guess_ns_per_edge) const {
 	IndexLock l(*this);
 	EnsureLoadedLocked(l);
 	if (epochs.empty()) {
@@ -1484,8 +1485,21 @@ bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio) const {
 	// An automatic fold is due when the log the newest epoch does not account for has grown past the ratio. The
 	// raw log also keeps the entries the retained older epoch still needs, so a trigger on its size stayed over the
 	// ratio until a second fold dropped that epoch (two folds per crossing, 2 Nov).
-	return ratio <= 0 || static_cast<double>(PendingLogLocked()) >
-	                         ratio * static_cast<double>(std::max<idx_t>(1, epochs.back()->edge_count));
+	if (ratio <= 0 || static_cast<double>(PendingLogLocked()) >
+	                      ratio * static_cast<double>(std::max<idx_t>(1, epochs.back()->edge_count))) {
+		return true;
+	}
+	if (cost_guess_ns_per_edge == 0 || PendingLogLocked() == 0) {
+		return false;
+	}
+	// The cost rule: every snapshot a reader builds costs it time that a fold would have saved the readers after
+	// it. Folding when that time adds up to a fold's own never spends more than twice the best possible schedule
+	// (rent or buy), and needs no fraction that fits one graph size and one commit size.
+	uint64_t fold_us = fold_cost_us.load();
+	if (fold_us == 0) {
+		fold_us = epochs.back()->edge_count * cost_guess_ns_per_edge / 1000;
+	}
+	return snapshot_us_since_fold.load() >= fold_us;
 }
 
 void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
@@ -1511,6 +1525,8 @@ void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table
 	fold_total_us += fold_us;
 	fold_last_us = fold_us;
 	fold_last_scan_us = scan_us;
+	fold_cost_us = fold_us;
+	snapshot_us_since_fold = 0;
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::FoldSnapshot(ClientContext &context, DuckTransaction &transaction,
@@ -1728,6 +1744,10 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 	// released, so a fold under the handle stalled the writer and every other reader for its whole duration (2 Nov).
 	// The fold mutex is shared so that it outlives a dropped index; the index object itself is only touched under
 	// a handle, and the install is skipped when the entry was rebound meanwhile.
+	// The cost rule's guess of a fold's time before the first fold has been timed: a merge copies the epoch (a few
+	// ns per edge), a scan reads the table, looks every key up and sorts (a few tens)
+	bool merge_setting = GetCSRIndexMergeFold(context);
+	uint64_t cost_guess = (ratio > 0 && GetCSRIndexFoldByCost(context)) ? (merge_setting ? 3 : 25) : 0;
 	shared_ptr<mutex> fold_mutex;
 	unique_lock<mutex> fold_guard;
 	vector<column_t> columns;
@@ -1737,7 +1757,7 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 	{
 		auto handle = entry->GetReadHandle<CSRIndex>();
 		auto &index = *handle.operator->();
-		if (!index.FoldDue(transaction, ratio)) {
+		if (!index.FoldDue(transaction, ratio, cost_guess)) {
 			return false;
 		}
 		fold_mutex = index.fold_lock;
@@ -1751,7 +1771,7 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 		} else {
 			fold_guard.lock();
 		}
-		if (!index.FoldDue(transaction, ratio)) {
+		if (!index.FoldDue(transaction, ratio, cost_guess)) {
 			return false; // the fold that just finished did the work
 		}
 		columns = index.column_ids;
@@ -1780,9 +1800,22 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 		snapshot_us = static_cast<uint64_t>(
 		    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fold_start)
 		        .count());
+		// A merge keeps the vertex ids. Vertices that arrived since the last scan are numbered above the key-ordered
+		// ones, out of key order; once they are more than the configured fraction, the fold scans the table, which
+		// numbers every vertex in key order again.
+		bool renumber = false;
 		if (snapshot) {
+			auto &dictionary = *snapshot->epoch->dictionary;
+			auto out_of_order = dictionary.extra_keys.size() + snapshot->extra_keys.size();
+			auto renumber_ratio = GetCSRIndexRenumberRatio(context);
+			renumber = renumber_ratio > 0 && static_cast<double>(out_of_order) >
+			                                     renumber_ratio * static_cast<double>(std::max<idx_t>(1, dictionary.count));
+		}
+		if (snapshot && !renumber) {
 			epoch = MergeEpoch(context, *snapshot, transaction.view.visibility_bound, rebuilt);
 			merged = true;
+		} else if (renumber) {
+			identity->fold_renumber_count++;
 		}
 	}
 	if (!epoch) {
@@ -1807,12 +1840,13 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 
 string CSRIndex::FoldStats() const {
 	return StringUtil::Format("folds=%llu;last_fold_ms=%.1f;last_fold_scan_ms=%.1f;fold_ms=%.1f;merge_folds=%llu;"
-	                          "last_fold_rebuilt=%llu;last_fold_partitions=%llu;last_fold_snapshot_ms=%.1f",
+	                          "last_fold_rebuilt=%llu;last_fold_partitions=%llu;last_fold_snapshot_ms=%.1f;"
+	                          "renumber_folds=%llu",
 	                          fold_count.load(), static_cast<double>(fold_last_us.load()) / 1000.0,
 	                          static_cast<double>(fold_last_scan_us.load()) / 1000.0,
 	                          static_cast<double>(fold_total_us.load()) / 1000.0, fold_merge_count.load(),
 	                          fold_last_rebuilt.load(), fold_last_partitions.load(),
-	                          static_cast<double>(fold_last_snapshot_us.load()) / 1000.0);
+	                          static_cast<double>(fold_last_snapshot_us.load()) / 1000.0, fold_renumber_count.load());
 }
 
 string CSRIndex::SnapshotStats() const {

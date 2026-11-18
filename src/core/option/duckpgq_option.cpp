@@ -84,6 +84,14 @@ const vector<DuckPGQSetting> &Settings() {
 	     "the partitions that did not change, instead of scanning the table; vertex ids are not renumbered. Indexes "
 	     "with a stored reverse side always scan",
 	     LogicalType::BOOLEAN, Value(false)},
+	    {"duckpgq_csr_index_renumber_ratio",
+	     "With duckpgq_csr_index_merge_fold, a fold scans the table instead of merging once the vertices that are "
+	     "numbered out of key order exceed this fraction of the vertices in key order; 0 never scans for that",
+	     LogicalType::DOUBLE, Value(0.1)},
+	    {"duckpgq_csr_index_fold_by_cost",
+	     "A CSR index also folds when its readers have spent as long building snapshots of the change log since "
+	     "the last fold as a fold takes; duckpgq_csr_index_fold_ratio stays the upper bound on the log",
+	     LogicalType::BOOLEAN, Value(false)},
 	    {"duckpgq_csr_index_merge_fold_verify",
 	     "Test switch: after a merge fold, also build the epoch from the table and fail unless both hold the same "
 	     "edges",
@@ -286,6 +294,14 @@ bool GetCSRIndexSnapshotFastPath(ClientContext &context) {
 
 bool GetCSRIndexMergeFold(ClientContext &context) {
 	return GetSetting<bool>(context, "duckpgq_csr_index_merge_fold");
+}
+
+double_t GetCSRIndexRenumberRatio(ClientContext &context) {
+	return GetSetting<double_t>(context, "duckpgq_csr_index_renumber_ratio");
+}
+
+bool GetCSRIndexFoldByCost(ClientContext &context) {
+	return GetSetting<bool>(context, "duckpgq_csr_index_fold_by_cost");
 }
 
 bool GetCSRIndexMergeFoldVerify(ClientContext &context) {

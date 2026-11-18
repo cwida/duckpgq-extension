@@ -32,6 +32,10 @@ bool GetCSRIndexSnapshotFastPath(ClientContext &context);
 bool GetCSRIndexMergeFold(ClientContext &context);
 
 bool GetCSRIndexMergeFoldVerify(ClientContext &context);
+
+double_t GetCSRIndexRenumberRatio(ClientContext &context);
+
+bool GetCSRIndexFoldByCost(ClientContext &context);
 bool GetPathFindingSnapshotCache(ClientContext &context);
 bool GetPathFindingTargetEarlyTermination(ClientContext &context);
 int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context);
