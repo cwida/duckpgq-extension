@@ -1,0 +1,39 @@
+Ensuring sf100 benchmark_pairs_1 exists
+Prepared benchmark_pairs_1 for sf100 in 0.19s
+Ensuring sf100 benchmark_pairs_16 exists
+Prepared benchmark_pairs_16 for sf100 in 0.19s
+== duckpgq_index [baseline] loaded in 0.1s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=1       sources=      repeat 1:    0.015s 0/0
+   baseline                     random_pairs pairs=1       sources=      repeat 2:    0.015s 0/0
+   baseline                     random_pairs pairs=1       sources=      repeat 3:    0.016s 0/0
+   baseline                     random_pairs pairs=1       sources=      repeat 4:    0.015s 0/0
+   baseline                     random_pairs pairs=1       sources=      repeat 5:    0.015s 0/0
+   baseline                     random_pairs pairs=16      sources=      repeat 1:    0.065s 9/39
+   baseline                     random_pairs pairs=16      sources=      repeat 2:    0.063s 9/39
+   baseline                     random_pairs pairs=16      sources=      repeat 3:    0.065s 9/39
+   baseline                     random_pairs pairs=16      sources=      repeat 4:    0.056s 9/39
+   baseline                     random_pairs pairs=16      sources=      repeat 5:    0.057s 9/39
+== duckpgq_index [reverse_index] loaded in 0.1s (index pathfinding_benchmark_csr_reverse_true)
+   reverse_index                random_pairs pairs=1       sources=      repeat 1:    0.003s 0/0
+   reverse_index                random_pairs pairs=1       sources=      repeat 2:    0.003s 0/0
+   reverse_index                random_pairs pairs=1       sources=      repeat 3:    0.003s 0/0
+   reverse_index                random_pairs pairs=1       sources=      repeat 4:    0.003s 0/0
+   reverse_index                random_pairs pairs=1       sources=      repeat 5:    0.003s 0/0
+   reverse_index                random_pairs pairs=16      sources=      repeat 1:    0.018s 9/39
+   reverse_index                random_pairs pairs=16      sources=      repeat 2:    0.019s 9/39
+   reverse_index                random_pairs pairs=16      sources=      repeat 3:    0.017s 9/39
+   reverse_index                random_pairs pairs=16      sources=      repeat 4:    0.018s 9/39
+   reverse_index                random_pairs pairs=16      sources=      repeat 5:    0.017s 9/39
+== duckpgq_index [reverse_index_one_end] loaded in 0.1s (index pathfinding_benchmark_csr_reverse_true)
+   reverse_index_one_end        random_pairs pairs=1       sources=      repeat 1:    0.015s 0/0
+   reverse_index_one_end        random_pairs pairs=1       sources=      repeat 2:    0.016s 0/0
+   reverse_index_one_end        random_pairs pairs=1       sources=      repeat 3:    0.015s 0/0
+   reverse_index_one_end        random_pairs pairs=1       sources=      repeat 4:    0.016s 0/0
+   reverse_index_one_end        random_pairs pairs=1       sources=      repeat 5:    0.015s 0/0
+   reverse_index_one_end        random_pairs pairs=16      sources=      repeat 1:    0.066s 9/39
+   reverse_index_one_end        random_pairs pairs=16      sources=      repeat 2:    0.059s 9/39
+   reverse_index_one_end        random_pairs pairs=16      sources=      repeat 3:    0.059s 9/39
+   reverse_index_one_end        random_pairs pairs=16      sources=      repeat 4:    0.066s 9/39
+   reverse_index_one_end        random_pairs pairs=16      sources=      repeat 5:    0.058s 9/39
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/bidirectional/data/ldbc-pathfinding/results/sf100/microbench_sf100_threads32_1795002775990133289.csv
+All 2 points agree across configurations 

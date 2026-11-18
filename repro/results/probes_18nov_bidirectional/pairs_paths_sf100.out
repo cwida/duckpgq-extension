@@ -1,0 +1,12 @@
+last strategy: mode=shortestpath;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=index;source_groups=1;source_group_kernel=per_source;source_search_mb=10;source_search_rounds=off
+SF100 paths: 200 pairs, 82 reachable, length mismatches 0
+empty statement: n=20 median=0.28 ms mean=0.29 p90=0.31 p99=0.33 max=0.33
+both ends (median of each pair's runs): n=200 median=2.86 ms mean=4.33 p90=8.13 p99=10.98 max=11.03
+one end   (median of each pair's runs): n=200 median=14.22 ms mean=14.55 p90=20.17 p99=21.37 max=21.47
+pairs where both ends is slower than one end: 0
+  length 2: 4 pairs, both ends 1.44 ms, one end 8.13 ms
+  length 3: 28 pairs, both ends 1.57 ms, one end 11.11 ms
+  length 4: 39 pairs, both ends 1.69 ms, one end 16.09 ms
+  length 5: 10 pairs, both ends 2.01 ms, one end 16.98 ms
+  length 9: 1 pairs, both ends 1.89 ms, one end 8.89 ms
+  length none: 118 pairs, both ends 6.59 ms, one end 15.23 ms

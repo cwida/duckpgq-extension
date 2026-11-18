@@ -1592,3 +1592,30 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   setup says so in one clause. Files under repro/results/sf300/neo4j_bigmem (kept out of the table printers' globs).
   Containers restored to the sweep configuration afterwards (pf-neo4j, pf-memgraph, pf-falkordb started;
   pf-neo4j-big stopped, kept).
+- 18 Nov: one pair searched from both ends (my-beans-zlnm, Peter Boncz's request relayed 17 Nov; branch
+  `bidirectional-single-pair`, not merged, not in a frozen build). On the per-source kernel a source group with
+  exactly one destination runs `BidirectionalPairSearch`: a forward side from the source and a backward side from
+  the destination over the index's reverse side (`WITH (reverse = true)`, or an undirected index, whose forward
+  partitions serve both sides), the smaller frontier expanded first, by row lookups while it is small and by a
+  sweep over the partitions from 1/64 of the vertices; it stops at the first vertex both sides have seen, which
+  closes a path of exactly depth(forward) + depth(backward) + 1 edges because both sides are complete to their
+  depth and disjoint until then. Paths log each discovery and look up the few path vertices in the log; the
+  backward half's edge row ids come from the forward partitions (a stored reverse side has none). Where it sits in
+  the choice of traversal: one pair, or at most `few_sources_limit` (16) distinct sources with one destination
+  each; more sources stay on the lane waves, a source with several destinations on the search from the source.
+  Switch `bidirectional_pair` (default true), strategy key `bidirectional_searches`. The frozen sweep's index has no
+  reverse side, so its numbers do not change unless the sweep's index is created `WITH (reverse = true)`.
+  Measured (32 threads, index route, private copies of the databases, quiet machine; README and files under
+  repro/results/probes_18nov_bidirectional): the sweep's one pair 3 -> 1 ms at SF10, 15 -> 3 ms at SF100 (an
+  unreachable pair), 23 -> 3 ms at SF300 (7.7 times faster; 8866 vertices discovered in 5 levels), against the
+  frozen run's Neo4j 12 / 15 / 4 ms and Kuzu 7 / 36 / 52 ms (not rerun). 200 single pairs each as its own query,
+  median: SF10 2.45 -> 1.53 ms, SF100 8.30 -> 2.39 ms, SF300 14.07 -> 2.48 ms (5.7 times faster); paths at SF300
+  29.4 -> 3.2 ms; the lengths of both searches agree on all 200 pairs at each scale. 16 pairs with distinct
+  sources: 8 -> 4, 56 -> 17, 146 -> 61 ms. Weak case: an unreachable pair whose forward and backward sides are
+  both large is explored from both ends to the end (SF300 unreachable median 9.0 against 14.8 ms from the source,
+  worst pair 19.0 against 28.0 ms; 4 of 200 pairs slower than from the source). Cost of the reverse side: peak RSS
+  of the one-pair query 1241 -> 1569 MiB at SF300. Open: whether the sweep's index gets the reverse side (new
+  freeze: index size, CREATE INDEX and fold times change with it), Neo4j and Kuzu on the probe's 200 pairs, the
+  text (Sections 3.3 or 3.4, 5.1, 7). Side finding, not changed: the microbench configuration `sparse_frontier`
+  (divisor 2 000 000 000) sweeps every level by the code (`frontier x divisor < vertices` is never true), the
+  opposite of its name and of the note in MICROBENCHMARK_SWITCHES.md; divisor 1 is the setting that never sweeps.

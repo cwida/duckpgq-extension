@@ -1,0 +1,17 @@
+Ensuring sf10 benchmark_pairs_1 exists
+Prepared benchmark_pairs_1 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_16 exists
+Prepared benchmark_pairs_16 for sf10 in 0.09s
+== duckpgq_index [baseline] loaded in 0.1s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=1       sources=      repeat 1:    0.003s 1/4
+   baseline                     random_pairs pairs=1       sources=      repeat 2:    0.002s 1/4
+   baseline                     random_pairs pairs=1       sources=      repeat 3:    0.003s 1/4
+   baseline                     random_pairs pairs=1       sources=      repeat 4:    0.003s 1/4
+   baseline                     random_pairs pairs=1       sources=      repeat 5:    0.003s 1/4
+   baseline                     random_pairs pairs=16      sources=      repeat 1:    0.009s 7/23
+   baseline                     random_pairs pairs=16      sources=      repeat 2:    0.008s 7/23
+   baseline                     random_pairs pairs=16      sources=      repeat 3:    0.007s 7/23
+   baseline                     random_pairs pairs=16      sources=      repeat 4:    0.009s 7/23
+   baseline                     random_pairs pairs=16      sources=      repeat 5:    0.007s 7/23
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/bidirectional/data/ldbc-pathfinding/results/sf10/microbench_sf10_threads32_1795002215006851157.csv
+All 2 points agree across configurations 

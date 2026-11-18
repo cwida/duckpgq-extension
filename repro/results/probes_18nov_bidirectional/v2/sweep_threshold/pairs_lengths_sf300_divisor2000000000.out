@@ -1,0 +1,12 @@
+last strategy: mode=iterativelength;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=index;source_groups=1;source_group_kernel=per_source;source_search_mb=14;source_search_rounds=off
+SF300 lengths: 200 pairs, 96 reachable, length mismatches 0
+empty statement: n=20 median=0.29 ms mean=0.29 p90=0.34 p99=0.35 max=0.35
+both ends (median of each pair's runs): n=200 median=6.08 ms mean=9.97 p90=20.99 p99=27.80 max=28.78
+one end   (median of each pair's runs): n=200 median=16.55 ms mean=17.15 p90=25.25 p99=31.30 max=31.71
+pairs where both ends is slower than one end: 27
+  length 2: 2 pairs, both ends 2.73 ms, one end 5.91 ms
+  length 3: 21 pairs, both ends 3.32 ms, one end 9.19 ms
+  length 4: 59 pairs, both ends 3.68 ms, one end 16.10 ms
+  length 5: 12 pairs, both ends 4.33 ms, one end 18.31 ms
+  length 6: 2 pairs, both ends 5.02 ms, one end 22.32 ms
+  length none: 104 pairs, both ends 15.12 ms, one end 18.33 ms
