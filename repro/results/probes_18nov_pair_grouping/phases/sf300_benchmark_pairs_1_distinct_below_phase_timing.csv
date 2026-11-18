@@ -1,0 +1,13 @@
+Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes
+pair_analysis,operator,32,1,0,1,1,0.01664,0
+source_group_zero_copy,operator,32,1,0,1,1,0.00062,0
+source_group_bfs,operator,32,1,0,1147729,18,14.8425,0
+source_group_scatter,operator,32,1,0,1,1,0.00528,0
+pair_analysis,operator,32,1,0,1,1,0.026641,0
+source_group_zero_copy,operator,32,1,0,1,1,0.00101,0
+source_group_bfs,operator,32,1,0,1147729,18,16.8018,0
+source_group_scatter,operator,32,1,0,1,1,0.00669,0
+pair_analysis,operator,32,1,0,1,1,0.01788,0
+source_group_zero_copy,operator,32,1,0,1,1,0.00064,0
+source_group_bfs,operator,32,1,0,1147729,18,17.3247,0
+source_group_scatter,operator,32,1,0,1,1,0.00591,0
