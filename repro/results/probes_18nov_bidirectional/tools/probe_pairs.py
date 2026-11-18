@@ -84,7 +84,7 @@ WHERE s.pos < {PAIRS};""",
                 times.setdefault(tag, []).append((stamps[1] - stamps[0]) / 1000.0)
                 tag = None
         elif row[0] == "len" and tag:
-            lengths.setdefault(tag, set()).add(row[2])
+            lengths.setdefault(tag, set()).add("" if row[2] in ("NULL", "") else row[2])
         elif row[0] == "strategy":
             print("last strategy:", row[1])
 

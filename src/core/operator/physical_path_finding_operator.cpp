@@ -262,7 +262,7 @@ public:
 			targets.ForEach([&](uint32_t value) { target = value; });
 			pair_search = make_uniq<BidirectionalPairSearch>(SearchGraphSide {local_csrs, delta_csrs, suppressed},
 			                                                 std::move(opposite_side), NumericCast<idx_t>(v_size),
-			                                                 track_parents, max_depth);
+			                                                 track_parents, max_depth, sparse_frontier_divisor);
 			return pair_search->Start(source, target, worker_count);
 		}
 		next_lists.assign(worker_count, {});
@@ -429,6 +429,12 @@ public:
 		if (pair_search) {
 			// The search from both ends has one destination: its length and path are the group's results
 			auto length = pair_search->Length();
+			if (concurrent_groups <= 1) {
+				// A query of one search reports what it did: levels of both sides, vertices discovered, sweeps
+				RecordStrategy(context, "bidirectional_levels", std::to_string(pair_search->Levels()));
+				RecordStrategy(context, "bidirectional_discovered", std::to_string(pair_search->Discovered()));
+				RecordStrategy(context, "bidirectional_sweeps", std::to_string(pair_search->Sweeps()));
+			}
 			targets.ForEach([&](uint32_t target) {
 				if (length < 0) {
 					return;

@@ -243,3 +243,41 @@ query I
 SELECT s LIKE '%bidirectional_searches=3;%' FROM (SELECT duckpgq_path_finding_strategy() || ';' AS s);
 ----
 true
+
+# Large frontiers are expanded by a sweep over the partitions; divisor 0 sweeps every level (the overlay included)
+statement ok
+SET experimental_path_finding_operator_few_sources_limit = 1000000;
+
+statement ok
+SET experimental_path_finding_operator_sparse_frontier_divisor = 0;
+
+statement ok
+CREATE TABLE sweep_paths AS
+SELECT src, dst, shortestpathoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|e|e_rev') AS path
+FROM (SELECT * FROM many UNION ALL VALUES (5004, 5001), (5000, 5003), (5002, 5001));
+
+query I
+SELECT s LIKE '%bidirectional_searches=603;%' FROM (SELECT duckpgq_path_finding_strategy() || ';' AS s);
+----
+true
+
+query II
+SELECT count(*), count(*) FILTER ((len(p.path) - 1) // 2 IS DISTINCT FROM o.len OR p.path[1] <> p.src OR p.path[-1] <> p.dst)
+FROM sweep_paths p JOIN many_lanes o USING (src, dst);
+----
+600	0
+
+query II
+SELECT count(*), count(*) FILTER (e.src IS DISTINCT FROM s.v_from OR e.dst IS DISTINCT FROM s.v_to)
+FROM (SELECT path[2 * k - 1] AS v_from, path[2 * k] AS edge_row, path[2 * k + 1] AS v_to
+      FROM (SELECT path, unnest(range(1, (len(path) - 1) // 2 + 1)) AS k FROM sweep_paths WHERE src < 5000)) s
+LEFT JOIN e ON e.rowid = s.edge_row;
+----
+3917	0
+
+query III
+SELECT src, dst, path FROM sweep_paths WHERE src >= 5000 ORDER BY src;
+----
+5000	5003	NULL
+5002	5001	[5002, 5999, 5003, 6000, 5004, 6001, 5000, 5997, 5001]
+5004	5001	[5004, 6001, 5000, 5997, 5001]
