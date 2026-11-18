@@ -751,6 +751,15 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 		}
 		delta_covered[i] = table.CanFetch(transaction, entry.row);
 	}
+	// Up to here an entry is covered exactly when the folding transaction can fetch its row, that is when the row is
+	// an edge of the new epoch (a dead entry aside). The loop below adds the rows the epoch accounts for by leaving
+	// them out.
+	auto row_in_epoch = delta_covered;
+	for (idx_t i = 0; i < delta_prefix.size(); i++) {
+		if (delta_prefix[i].group == CSRIndexDeltaEdge::DEAD_GROUP) {
+			row_in_epoch[i] = false;
+		}
+	}
 	for (idx_t i = 0; i < delta_prefix.size(); i++) {
 		auto &entry = delta_prefix[i];
 		if (!delta_covered[i] && entry.deleted_group != 0 && entry.group != 0) {
@@ -765,8 +774,19 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	auto generation = next_generation++;
 	epoch_p->generation = generation;
 	for (idx_t i = 0; i < delta_covered.size() && i < delta.size(); i++) {
-		if (delta_covered[i]) {
-			delta[i].covered_epoch = std::min(delta[i].covered_epoch, generation);
+		if (!delta_covered[i]) {
+			continue;
+		}
+		bool newly_covered = delta[i].covered_epoch == NumericLimits<uint32_t>::Maximum();
+		delta[i].covered_epoch = std::min(delta[i].covered_epoch, generation);
+		if (newly_covered && row_in_epoch[i] && delta[i].deleted_group != 0) {
+			// The row is an edge of the new epoch and is deleted by a commit the folding transaction did not see: the
+			// delete came before this install, when the row was only in the log, and stamped the entry. Readers of
+			// the new epoch skip the entry (the epoch accounts for it), so the delete needs a tombstone to reach
+			// them, as a delete after the install gets one in TryDelete. (18 Nov: without it the row stayed in the
+			// epoch for readers that see the delete, until the next fold scanned the table.)
+			tombstones.push_back({delta[i].row, NumericLimits<uint32_t>::Maximum(), delta[i].deleted_group, true,
+			                      delta[i].src_key, delta[i].dst_key});
 		}
 	}
 	for (idx_t i = 0; i < tombstone_excluded.size() && i < tombstones.size(); i++) {

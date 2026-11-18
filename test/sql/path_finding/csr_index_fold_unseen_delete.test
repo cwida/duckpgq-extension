@@ -1,0 +1,127 @@
+# name: test/sql/path_finding/csr_index_fold_unseen_delete.test
+# description: A logged row is deleted by a commit that the folding transaction does not see: the fold pulls the row into the new epoch, and readers that see the delete must still not traverse it (18 Nov: the delete had only stamped the log entry, which the new epoch accounts for, so the row stayed in the epoch for everyone until the next fold)
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con1
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con2
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET GLOBAL experimental_path_finding_operator = true;
+
+statement ok
+SET GLOBAL duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(1, 101);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+# A chain 1 -> 2 -> ... -> 50
+statement ok
+INSERT INTO knows SELECT range, range + 1 FROM range(1, 50);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# A logged row: the chain continues to 60 through it
+statement ok
+INSERT INTO knows SELECT range, range + 1 FROM range(50, 60);
+
+# con1 starts and sees the ten rows
+statement ok con1
+BEGIN TRANSACTION;
+
+query I con1
+SELECT count(*) FROM knows;
+----
+59
+
+# con2 deletes one of them; con1 does not see that
+statement ok con2
+DELETE FROM knows WHERE src = 55;
+
+# con1 folds: the new epoch holds what con1 sees, the deleted row included
+query I con1
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I con1
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+60
+
+statement ok con1
+COMMIT;
+
+# A reader that sees the delete stops at 55, on the new epoch
+query I con2
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+55
+
+query I con2
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+# The same with the delete of an epoch row: that one has a tombstone and was always right
+statement ok con1
+BEGIN TRANSACTION;
+
+query I con1
+SELECT count(*) FROM knows;
+----
+58
+
+statement ok con2
+DELETE FROM knows WHERE src = 20;
+
+query I con1
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+statement ok con1
+COMMIT;
+
+query I con2
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+20
+
+# And a fold after it, by a transaction that sees both deletes, leaves nothing behind
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 21)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+35
