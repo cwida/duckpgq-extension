@@ -279,7 +279,7 @@ SELECT (SELECT iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|me
 ----
 true	true
 
-# ---- An index with a stored reverse side is folded by a scan, whatever the setting
+# ---- An index with a stored reverse side: both sides are merged (the verification compares both with a scan)
 statement ok
 CREATE INDEX rev ON e USING CSR (src, dst) WITH (reverse = true);
 
@@ -292,6 +292,23 @@ SELECT duckpgq_csr_index_fold('e', 'rev');
 true
 
 query I
-SELECT duckpgq_csr_index_fold_stats('e', 'rev') LIKE 'folds=1;%;merge_folds=0;%';
+SELECT duckpgq_csr_index_fold_stats('e', 'rev') LIKE 'folds=1;%;merge_folds=1;%';
+----
+true
+
+# A delete and an insert after the merge fold, and a second merge on top of the merged reverse side
+statement ok
+DELETE FROM e WHERE src = 20 AND dst = 21;
+
+statement ok
+INSERT INTO e VALUES (21, 700), (3000, 22);
+
+query I
+SELECT duckpgq_csr_index_fold('e', 'rev');
+----
+true
+
+query I
+SELECT duckpgq_csr_index_fold_stats('e', 'rev') LIKE 'folds=2;%;merge_folds=2;%';
 ----
 true

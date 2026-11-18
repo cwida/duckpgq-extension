@@ -1,0 +1,12 @@
+last strategy: mode=iterativelength;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=index;source_groups=1;source_group_kernel=per_source;source_search_mb=0;source_search_rounds=off
+SF10 lengths: 200 pairs, 85 reachable, length mismatches 0
+empty statement: n=20 median=0.27 ms mean=0.28 p90=0.31 p99=0.34 max=0.34
+both ends (median of each pair's runs): n=200 median=1.53 ms mean=1.69 p90=2.42 p99=2.84 max=2.89
+one end   (median of each pair's runs): n=200 median=2.45 ms mean=2.50 p90=3.39 p99=3.89 max=3.89
+pairs where both ends is slower than one end: 4
+  length 2: 5 pairs, both ends 1.16 ms, one end 1.45 ms
+  length 3: 39 pairs, both ends 1.20 ms, one end 2.02 ms
+  length 4: 32 pairs, both ends 1.25 ms, one end 2.51 ms
+  length 5: 7 pairs, both ends 1.36 ms, one end 2.43 ms
+  length 7: 2 pairs, both ends 1.83 ms, one end 3.16 ms
+  length none: 115 pairs, both ends 2.05 ms, one end 2.62 ms

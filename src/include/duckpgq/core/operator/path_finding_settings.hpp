@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckpgq/common.hpp"
+#include "duckpgq/core/operator/iterative_length/flat_csr.hpp"
 #include "duckpgq/core/option/duckpgq_option.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
 
@@ -14,6 +15,7 @@ struct PathFindingSettings {
 	      benchmark_lane_activity_enabled(benchmark_enabled && GetPathFindingBenchmarkLaneActivityOption(context)),
 	      benchmark_output_prefix(GetPathFindingBenchmarkPrefix(context)),
 	      target_early_termination(GetPathFindingTargetEarlyTermination(context)),
+	      bidirectional_pair(GetPathFindingBidirectionalPair(context)),
 	      threads_per_batch(GetPathFindingThreadsPerBatch(context)),
 	      sparse_frontier_divisor(NonNegative(GetPathFindingSparseFrontierDivisor(context))),
 	      frontier_bitmap(GetPathFindingFrontierBitmap(context)),
@@ -24,6 +26,7 @@ struct PathFindingSettings {
 	      reach_result_cap(ResolveReachResultCap(context, working_set_cap)),
 	      visit_prefetch(NonNegative(GetPathFindingVisitPrefetch(context))),
 	      sub_range_tasks(GetPathFindingSubRangeTasks(context)),
+	      explore_variant(ParseExploreVariant(GetPathFindingExploreVariant(context))),
 	      sparse_level_divisor(NonNegative(GetPathFindingSparseLevelDivisor(context))),
 	      row_bucket_rows(GetPathFindingRowBucketRows(context)), reach_lanes(GetPathFindingReachLanes(context)),
 	      reach_dense_divisor(NonNegative(GetPathFindingReachDenseDivisor(context))) {
@@ -33,8 +36,10 @@ struct PathFindingSettings {
 	bool benchmark_enabled;
 	bool benchmark_lane_activity_enabled;
 	string benchmark_output_prefix;
-	//! Source-grouped kernel: _target_early_termination, _threads_per_batch, _sparse_frontier_divisor (0 sweeps)
+	//! Source-grouped kernel: _target_early_termination, _bidirectional_pair (a group with one destination is
+	//! searched from both ends), _threads_per_batch, _sparse_frontier_divisor (0 sweeps)
 	bool target_early_termination;
+	bool bidirectional_pair;
 	int64_t threads_per_batch;
 	idx_t sparse_frontier_divisor;
 	//! MS-BFS lane kernel: _frontier_bitmap, _frontier_bitmap_filter (-1 decides from the working set size against
@@ -52,6 +57,8 @@ struct PathFindingSettings {
 	idx_t reach_result_cap;
 	idx_t visit_prefetch;
 	bool sub_range_tasks;
+	//! _explore_variant: the partitioned explore phase (default) or one of the flat-CSR ablation variants
+	ExploreVariant explore_variant;
 	idx_t sparse_level_divisor;
 	//! CSR build: _row_bucket_rows (rows per bucket of a partition's row index; 0 = binary search)
 	int32_t row_bucket_rows;

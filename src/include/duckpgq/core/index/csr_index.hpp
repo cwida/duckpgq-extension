@@ -43,21 +43,32 @@ struct PropertyGraphTable;
 //! [min_key, max_key] with per-word rank counts, so a lookup is a popcount and construction needs no sort. Sparse
 //! key spaces fall back to a sorted key array with binary search.
 struct CSRIndexDictionary {
+	//! With a buffer manager (the dictionary of an index epoch) the arrays are buffers of that manager
+	explicit CSRIndexDictionary(optional_ptr<BufferManager> buffer_manager = nullptr)
+	    : bitmap(buffer_manager), word_rank(buffer_manager), sorted_keys(buffer_manager) {
+	}
+
 	bool dense = false;
 	//! Dense and every key in [min_key, min_key + count) is present: id = key - min_key, no bitmap needed
 	bool identity = false;
 	int64_t min_key = 0;
 	//! Dense: bit (key - min_key) is set when the key is a vertex; word_rank[w] = number of set bits before word w
-	vector<uint64_t> bitmap;
-	vector<uint32_t> word_rank;
+	ManagedArray<uint64_t> bitmap;
+	ManagedArray<uint32_t> word_rank;
 	//! Sparse: all keys in ascending order, id = position
-	vector<int64_t> sorted_keys;
+	ManagedArray<int64_t> sorted_keys;
 	//! Keys numbered in key order: ids [0, count)
 	idx_t count = 0;
 	//! Keys a merge fold carried over from the snapshot it materialised: the vertices that were numbered above the
 	//! previous epoch keep those ids, id = count + position, out of key order, until a full fold renumbers
 	vector<int64_t> extra_keys;
 	std::unordered_map<int64_t, uint32_t> extra_ids;
+	//! Set in a dictionary that a merge fold extended: the key-ordered part (the arrays above) is the one of the
+	//! epoch it was merged from, shared and not copied; this dictionary then holds the scalars and the extra keys
+	shared_ptr<CSRIndexDictionary> ordered_part;
+	const CSRIndexDictionary &Ordered() const {
+		return ordered_part ? *ordered_part : *this;
+	}
 
 	//! Returns the dense id of a key, or DConstants::INVALID_INDEX when the key is not a vertex of the epoch.
 	idx_t Lookup(int64_t key) const;
@@ -73,12 +84,15 @@ struct CSRIndexDictionary {
 	//! ids jump by a word or more, where KeyOf does a binary search over the word ranks and a bit scan per id (the
 	//! reach scatter emits a dense result in vertex order: 9.1 B rows on graph500-24 for 1024 sources)
 	struct KeyCursor {
-		explicit KeyCursor(const CSRIndexDictionary &dictionary_p) : dictionary(dictionary_p) {
+		explicit KeyCursor(const CSRIndexDictionary &dictionary_p)
+		    : outer(dictionary_p), dictionary(dictionary_p.Ordered()) {
 		}
 		int64_t KeyOf(idx_t id);
 
 	private:
 		void Seek(idx_t id);
+		//! The dictionary asked, and its key-ordered part, whose bitmap the cursor walks
+		const CSRIndexDictionary &outer;
 		const CSRIndexDictionary &dictionary;
 		//! The lowest set bit of `word` (bits of bitmap[word_idx] not yet passed) is the bit of id `next_id`
 		idx_t next_id = 0;
@@ -103,6 +117,11 @@ struct CSRIndexEdgeList {
 
 //! One immutable adjacency snapshot: the edges visible at `bound`, packed into the partitioned CSR layout the
 //! path-finding operator traverses. Readers share epochs through shared_ptr; an epoch is never modified.
+//!
+//! Memory: the dictionary, the partitions and the row ids are buffers of DuckDB's buffer manager, pinned for the
+//! epoch's lifetime (ManagedArray); the tombstone position lists are heap vectors accounted by `position_memory`.
+//! Both are returned when the last reference to the epoch goes, which for a retained epoch is the later of the fold
+//! that drops it and the end of the last query that reads it.
 struct CSRIndexEpoch {
 	//! Rows committed before this bound are in the epoch
 	VisibilityBound bound;
@@ -115,9 +134,9 @@ struct CSRIndexEpoch {
 	shared_ptr<CSRIndexDictionary> dictionary;
 	//! Forward partitions (both directions when the index is undirected)
 	shared_ptr<PartitionedCSRIndex> csr;
-	//! Edge-table row id per edge position, per partition, aligned with the partition's edge array. Shared, like the
-	//! partitions: an epoch built by a merge fold holds the unchanged partitions of its predecessor
-	vector<shared_ptr<vector<row_t>>> partition_row_ids;
+	//! Edge-table row id per edge position, per partition, aligned with the partition's edge array. Shared, like
+	//! the partitions: an epoch built by a merge fold holds the unchanged partitions of its predecessor
+	vector<shared_ptr<ManagedArray<row_t>>> partition_row_ids;
 	//! Epoch position (partition << 32 | offset) of each tombstoned row, DConstants::INVALID_INDEX when the row is
 	//! not an edge of this epoch; filled lazily by readers, protected by the index lock
 	vector<idx_t> tombstone_positions;
@@ -126,6 +145,8 @@ struct CSRIndexEpoch {
 	//! Undirected indexes: the position of the mirrored edge (dst -> src, same row id) in the forward partitions,
 	//! aligned; INVALID_INDEX when absent (29 Oct: a deleted undirected edge stayed traversable in one direction)
 	vector<idx_t> mirror_tombstone_positions;
+	//! The three position lists' bytes in the buffer pool; updated under the index lock when they change
+	MemoryReservation position_memory;
 };
 
 //! An edge committed after the epoch was built (keys, since the vertex may be new) and its row id
@@ -215,6 +236,9 @@ struct CSRIndexSnapshot {
 	//! Keys of vertices that only appear in delta edges, id = vertex_count_of_epoch + position
 	vector<int64_t> extra_keys;
 	std::unordered_map<int64_t, uint32_t> extra_key_to_id;
+	//! The overlay's bytes in the buffer pool (delta partitions, suppression bitmaps, extra keys): heap memory built
+	//! by a read query, accounted without failing it
+	MemoryReservation overlay_memory;
 
 	idx_t Lookup(int64_t key) const;
 	int64_t KeyOf(idx_t id) const;
@@ -222,10 +246,6 @@ struct CSRIndexSnapshot {
 	int64_t KeyOf(idx_t id, CSRIndexDictionary::KeyCursor &cursor) const;
 };
 
-//! The CSR index: one immutable epoch (the edges visible at the bound of the transaction that built it), an
-//! append-only delta of edges committed after that bound, and append-only tombstones for epoch edges deleted after
-//! it. No commit ids are stored: a reader decides visibility of the delta and the tombstones through the table's
-//! row version information, once per query (see docs/CSR_INDEX_DESIGN.md).
 class CSRIndex;
 
 //! A reader's hold on the index: the entry's lock, shared, which keeps the index object in place and commits out.
@@ -248,6 +268,15 @@ struct CSRIndexReadScope {
 	const CSRIndex *identity = nullptr;
 };
 
+//! The CSR index: one immutable epoch (the edges visible at the bound of the transaction that built it), an
+//! append-only delta of edges committed after that bound, and append-only tombstones for epoch edges deleted after
+//! it. No commit ids are stored: a reader decides visibility of the delta and the tombstones through the table's
+//! row version information, once per query (see docs/CSR_INDEX_DESIGN.md).
+//!
+//! Memory: everything the index holds in use is in DuckDB's buffer pool under MemoryTag::EXTENSION, so it counts
+//! against memory_limit and shows in duckdb_memory(); none of it is evictable. An epoch's arrays are pinned buffers
+//! (an epoch that does not fit fails its build with an out-of-memory error); the change log and a snapshot's overlay
+//! are heap memory the pool accounts for without failing the commit or the read query (design document, section 4).
 class CSRIndex : public BoundIndex {
 public:
 	static constexpr const char *TYPE_NAME = "CSR";
@@ -302,7 +331,8 @@ public:
 	idx_t DeltaSize() const;
 	idx_t TombstoneCount() const;
 	idx_t EpochCount() const;
-	//! Bytes held by the retained epochs and the change log (the fixed-costs table: bytes per edge)
+	//! Bytes in use by the retained epochs and the change log, by element counts (the fixed-costs table: bytes per
+	//! edge). The buffer pool holds what is allocated, which is slightly more (see GetInMemorySize).
 	idx_t InMemoryBytes() const;
 	//! Edges of the newest retained epoch
 	idx_t EpochEdgeCount() const;
@@ -367,7 +397,7 @@ private:
 	//! destination range is rebuilt by merging the old partition's unsuppressed edges with the overlay's edges of the
 	//! range, both sorted by source. The ids of the snapshot stay: the dictionary is the old one plus the snapshot's
 	//! extra keys, and the partition width is the old one. Touches no index state. `rebuilt` receives the number of
-	//! partitions that were not shared. Requires an index without a stored reverse side.
+	//! forward partitions that were not shared. A stored reverse side is merged the same way, without row ids.
 	static shared_ptr<CSRIndexEpoch> MergeEpoch(ClientContext &context, const CSRIndexSnapshot &snapshot,
 	                                            VisibilityBound bound, idx_t &rebuilt);
 	//! Whether RunFold should build an epoch for this transaction (ordering and, for ratio > 0, the pending log)
@@ -375,6 +405,9 @@ private:
 	//! readers have spent as long building snapshots since the last fold as a fold takes; the fold's time is the
 	//! last fold's, and before the first fold the epoch's edge count times the guess
 	bool FoldDue(DuckTransaction &transaction, double ratio, uint64_t cost_guess_ns_per_edge = 0) const;
+	//! Called when an automatic fold's epoch did not fit memory_limit: the next automatic fold waits until the
+	//! pending log is twice what it is now
+	void PostponeAutomaticFold() const;
 	//! Installs an epoch RunFold built, unless a newer one arrived meanwhile; records the fold time
 	void InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
 	                        uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt, uint64_t snapshot_us,
@@ -433,6 +466,13 @@ private:
 	                                           idx_t tombstone_count, bool shareable, CSRIndexReadScope &scope) const;
 	//! Rebuilds delta_row_index from delta; the index lock must be held
 	void RebuildDeltaRowIndexLocked() const;
+	//! Bytes of the change log on the heap: the capacity of `delta` and `tombstones` and the nodes and buckets of
+	//! `delta_row_index`; the index lock must be held
+	idx_t ChangeLogBytesLocked() const;
+	//! Brings `change_log_memory` in line with ChangeLogBytesLocked after the log grew or was compacted
+	void AccountChangeLogLocked() const;
+	//! Brings an epoch's `position_memory` in line with its tombstone position lists; the index lock must be held
+	void AccountPositionsLocked(CSRIndexEpoch &epoch) const;
 	//! Resolves the dense ids of every delta entry against the newest epoch's dictionary; the index lock must be held
 	void ResolveDeltaIdsLocked() const;
 
@@ -466,10 +506,36 @@ private:
 	//! unaccounted entries, so the pending log is the sizes minus these)
 	mutable idx_t newest_covered_delta = 0;
 	mutable idx_t newest_excluded_tombstones = 0;
+	//! Pending log size below which no automatic fold runs: 0, or set by PostponeAutomaticFold until a fold installs
+	mutable idx_t fold_retry_pending = 0;
 	//! Next change group id handed to an Append or TryDelete call (commits are serialized, so ids follow commit order)
 	mutable uint32_t next_change_group = 1;
+	//! What earlier readers learned about a change group's commit, as visibility bounds (commits are ordered and a
+	//! reader sees the commits before its bound): every reader whose bound is at least `seen_from` sees the group,
+	//! no reader whose bound is at most `unseen_until` does. A reader between the two asks the table and records
+	//! its answer. A group no reader has decided has the initial values; the group of a failed commit never gets a
+	//! `seen_from`.
+	struct GroupBounds {
+		VisibilityBound seen_from;
+		VisibilityBound unseen_until;
+		bool seen = false;
+		bool unseen = false;
+	};
+	//! a is not later than b
+	static bool BoundAtMost(VisibilityBound a, VisibilityBound b) {
+		return VisibilityBound::Min(a, b) == a;
+	}
+	//! Bounds of the groups from `group_bounds_base` on, indexed by group id minus the base; shorter than the
+	//! group sequence while the newest groups are undecided. Compaction drops the groups that left the log.
+	mutable vector<GroupBounds> group_bounds;
+	mutable uint32_t group_bounds_base = 1;
+	//! Drop the remembered bounds of groups that no log entry refers to any more
+	void PruneGroupBoundsLocked() const;
 	//! Position in `delta` of every delta row, so TryDelete can stamp the row's deleted_group without a scan
 	mutable unordered_map<row_t, idx_t> delta_row_index;
+	//! The change log's bytes in the buffer pool (`delta`, `tombstones`, `delta_row_index`): heap memory that grows
+	//! with every commit, accounted without failing the commit
+	mutable MemoryReservation change_log_memory;
 	//! The last shared snapshot built, served to readers that see the same change groups of the same epoch
 	mutable shared_ptr<CSRIndexSnapshot> cached_snapshot;
 	mutable uint32_t cached_snapshot_generation = 0;
@@ -489,7 +555,8 @@ private:
 	//! One fold at a time; shared so that RunFold can hold it while no handle on the entry keeps the index alive
 	mutable shared_ptr<mutex> fold_lock = make_shared_ptr<mutex>();
 	//! Segments written by this process's last checkpoint, kept until a rewrite or the drop releases their blocks
-	//! (a FixedSizeBuffer marks its block as modified when destroyed); the WAL's transient buffers live apart
+	//! (a FixedSizeBuffer marks its block as modified when destroyed); the WAL's transient buffers live apart and
+	//! are released by the next checkpoint (they are pinned: a second copy of a logged index in memory)
 	mutable unique_ptr<FixedSizeAllocator> storage_allocator;
 	mutable unique_ptr<FixedSizeAllocator> wal_allocator;
 	//! The on-disk state (written by this process or loaded at bind) and whether the in-memory state still matches

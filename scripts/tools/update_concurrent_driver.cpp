@@ -9,6 +9,9 @@
 // (one row of the pair table per query, round robin) for --duration-s seconds on one route, so the queries per
 // second of the index route against the build-per-query route can be compared from 1 to 32 clients.
 //
+// In updates mode the driver drops every other CSR index on person_knows_person and replaces a benchmark index
+// created without the reverse side, so --database must be a private copy (the harness makes one).
+//
 // Build: see scripts/pathfinding_benchmark.py (build_concurrent_driver) or
 //   g++ -O2 -std=c++17 -Iduckdb/src/include scripts/tools/update_concurrent_driver.cpp \
 //       -Lbuild/release/src -lduckdb -Wl,-rpath,$PWD/build/release/src -o build/release/update_concurrent_driver
@@ -51,6 +54,7 @@ struct Options {
 	bool recreate_index = false;
 	bool run_build = true;
 	bool run_index = true;
+	bool group_memo = true;
 	idx_t vertex_count = 0;
 	std::string catalog = "memory";
 	//! "updates" (writer + readers) or "throughput" (clients running single-pair queries for duration_s)
@@ -121,6 +125,9 @@ static void Setup(Connection &con, const Options &options) {
 	for (auto &setting : options.settings) {
 		auto split = setting.find('=');
 		Must(con, "SET " + setting.substr(0, split) + " = " + setting.substr(split + 1) + ";");
+	}
+	if (!options.group_memo) {
+		Must(con, "SET duckpgq_csr_index_group_memo = false;");
 	}
 	if (options.threads_per_batch > 0) {
 		Must(con, "SET experimental_path_finding_operator_threads_per_batch=" +
@@ -347,6 +354,8 @@ int main(int argc, char **argv) {
 			options.run_build = false;
 		else if (arg == "--no-index")
 			options.run_index = false;
+		else if (arg == "--no-group-memo")
+			options.group_memo = false;
 		else if (arg == "--mode")
 			options.mode = next();
 		else if (arg == "--duration-s")
@@ -378,8 +387,39 @@ int main(int argc, char **argv) {
 			if (options.recreate_index) {
 				Must(con, "DROP INDEX IF EXISTS " + options.index_name + ";");
 			}
+			// The benchmark index stores the reverse side (the harness's CSR_INDEX_OPTIONS); an index of that name
+			// created without it (a database prepared before 18 Nov 2026) is replaced
+			auto definition = Scalar(*Must(con, "SELECT sql FROM duckdb_indexes() WHERE database_name = "
+			                                    "current_database() AND index_name = " +
+			                                        Quote(options.index_name) + ";"),
+			                         0);
+			if (!definition.empty() && definition.find("reverse = true") == std::string::npos) {
+				Must(con, "DROP INDEX " + options.index_name + ";");
+			}
+			if (options.mode == "updates") {
+				// The measured index is the only CSR index on the edge table. The shared database carries others
+				// (the microbenchmark's row-bucket variants, the sweep's undirected index), and the copy the harness
+				// hands to this driver inherits them. A write loads every index of its table that is not resident
+				// yet (CSRIndex::Append and TryDelete), inside the commit: five such indexes made the first
+				// transaction 15 s at SF300 and 13 s at SF100, and each one is maintained by every later commit
+				// (my-beans-kzlq, 18 Nov 2026). The database passed here must be a private copy.
+				vector<std::string> others;
+				auto listed = Must(con, "SELECT index_name FROM duckdb_indexes() WHERE database_name = "
+				                        "current_database() AND table_name = 'person_knows_person' AND sql ILIKE "
+				                        "'%USING CSR%' AND index_name <> " +
+				                            Quote(options.index_name) + " ORDER BY index_name;");
+				while (auto chunk = listed->Fetch()) {
+					for (idx_t row = 0; row < chunk->size(); row++) {
+						others.push_back(chunk->GetValue(0, row).ToString());
+					}
+				}
+				for (auto &other : others) {
+					Must(con, "DROP INDEX " + other + ";");
+				}
+				fprintf(stderr, "dropped_other_indexes=%zu\n", others.size());
+			}
 			Must(con, "CREATE INDEX IF NOT EXISTS " + options.index_name +
-			              " ON person_knows_person USING CSR (person1id, person2id);");
+			              " ON person_knows_person USING CSR (person1id, person2id) WITH (reverse = true);");
 			// The extension creates its internal catalog table on first use; two connections doing that at once hit
 			// a catalog write-write conflict (seen in this driver), so initialize it once here
 			Must(con, "SELECT delete_csr(2147483647);");

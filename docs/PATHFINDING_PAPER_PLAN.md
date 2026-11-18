@@ -1592,3 +1592,66 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   setup says so in one clause. Files under repro/results/sf300/neo4j_bigmem (kept out of the table printers' globs).
   Containers restored to the sweep configuration afterwards (pf-neo4j, pf-memgraph, pf-falkordb started;
   pf-neo4j-big stopped, kept).
+- 18 Nov: one pair searched from both ends (my-beans-zlnm, Peter Boncz's request relayed 17 Nov; branch
+  `bidirectional-single-pair`, not merged, not in a frozen build). On the per-source kernel a source group with
+  exactly one destination runs `BidirectionalPairSearch`: a forward side from the source and a backward side from
+  the destination over the index's reverse side (`WITH (reverse = true)`, or an undirected index, whose forward
+  partitions serve both sides), the smaller frontier expanded first, by row lookups while it is small and by a
+  sweep over the partitions from 1/64 of the vertices; it stops at the first vertex both sides have seen, which
+  closes a path of exactly depth(forward) + depth(backward) + 1 edges because both sides are complete to their
+  depth and disjoint until then. Paths log each discovery and look up the few path vertices in the log; the
+  backward half's edge row ids come from the forward partitions (a stored reverse side has none). Where it sits in
+  the choice of traversal: one pair, or at most `few_sources_limit` (16) distinct sources with one destination
+  each; more sources stay on the lane waves, a source with several destinations on the search from the source.
+  Switch `bidirectional_pair` (default true), strategy key `bidirectional_searches`. The frozen sweep's index has no
+  reverse side, so its numbers do not change unless the sweep's index is created `WITH (reverse = true)`.
+  Measured (32 threads, index route, private copies of the databases, quiet machine; README and files under
+  repro/results/probes_18nov_bidirectional): the sweep's one pair 3 -> 1 ms at SF10, 15 -> 3 ms at SF100 (an
+  unreachable pair), 23 -> 3 ms at SF300 (7.7 times faster; 8866 vertices discovered in 5 levels), against the
+  frozen run's Neo4j 12 / 15 / 4 ms and Kuzu 7 / 36 / 52 ms (not rerun). 200 single pairs each as its own query,
+  median: SF10 2.45 -> 1.53 ms, SF100 8.30 -> 2.39 ms, SF300 14.07 -> 2.48 ms (5.7 times faster); paths at SF300
+  29.4 -> 3.2 ms; the lengths of both searches agree on all 200 pairs at each scale. 16 pairs with distinct
+  sources: 8 -> 4, 56 -> 17, 146 -> 61 ms. Weak case: an unreachable pair whose forward and backward sides are
+  both large is explored from both ends to the end (SF300 unreachable median 9.0 against 14.8 ms from the source,
+  worst pair 19.0 against 28.0 ms; 4 of 200 pairs slower than from the source). Cost of the reverse side: peak RSS
+  of the one-pair query 1241 -> 1569 MiB at SF300. Open: whether the sweep's index gets the reverse side (new
+  freeze: index size, CREATE INDEX and fold times change with it), Neo4j and Kuzu on the probe's 200 pairs, the
+  text (Sections 3.3 or 3.4, 5.1, 7). Side finding, not changed: the microbench configuration `sparse_frontier`
+  (divisor 2 000 000 000) sweeps every level by the code (`frontier x divisor < vertices` is never true), the
+  opposite of its name and of the note in MICROBENCHMARK_SWITCHES.md; divisor 1 is the setting that never sweeps.
+- 18 Nov (afternoon): the author decided that the sweep's index gets the reverse side for the next freeze. The
+  harness creates the benchmark's directed index `WITH (reverse = true)` everywhere (`CSR_INDEX_OPTIONS`: the sweep's
+  and the microbenchmark's system class, the update workload's rebuild, the fixed-costs step, the concurrent
+  driver) and replaces an index of that name that was created without it (`drop_index_without_options`; the
+  prepared databases hold the old one). Microbench: `baseline` now has the reverse side, `no_reverse_index` is the
+  index of rc13 (`reverse = false`), `one_end` switches the search from both ends off; group `bidirectional` =
+  baseline, one_end, no_reverse_index. What the next freeze must rerun and restate because of it: every index-route
+  number (one pair and few-source shapes go to the search from both ends, many sources to one destination to the
+  reverse orientation), index bytes and bytes per edge, CREATE INDEX and fold times, peak RSS, the update workload
+  (the change log maintains both sides), IC13 and BI20 on the undirected index (their single pairs are searched
+  from both ends too); `repro/package/queries.tex` names the old CREATE INDEX and must be revised with it.
+- 18 Nov (late afternoon): the microbench configuration `sparse_frontier` is fixed on the author's word: divisor 1
+  (never sweeps) instead of 2 000 000 000 (which swept every level, as `dense_frontier` does); the switches document
+  and the switches test say the same. Ablation A4 (row lookup against partition sweep) up to rc13 compared sweep
+  with sweep: its rows must be rerun at the next freeze and any sentence that rests on it waits for that. First
+  indication from the probe of 18 Nov (search from the source, 200 single pairs, 32 threads, one run): never
+  sweeping against the default 64 at SF300 9.6 against 14.9 ms on unreachable pairs and 15.1 against 14.8 ms on
+  4-hop pairs, at SF100 5.3 against 9.3 ms and 7.1 against 10.0 ms; many concurrent searches not measured for the
+  search from the source (from both ends, 16 pairs at SF300: 191 ms without sweeps against 58 ms with the default).
+- 18 Nov: first write transaction of the concurrent update driver (my-beans-kzlq; branch `first-txn-index-load`,
+  not merged). It took 15.4 s at SF300 and 13 s at SF100 because a write to a table loads every CSR index of that
+  table that is not resident yet, inside the commit (`CSRIndex::Append` and `TryDelete` call `EnsureLoadedLocked`),
+  and the shared databases carry other CSR indexes on `person_knows_person` (the microbenchmark's row-bucket
+  variants `_rb<N>`, the sweep's `_undirected`: 5 at SF300, 15 at SF100), which the driver's copy inherits. One
+  connection at SF300 on rc13: COMMIT 14.16 s as it is, 14 ms with all six indexes touched first, 6 ms with the
+  five others dropped; the first DELETE's 1.3 s is the first scan of the table. The driver now drops every other
+  CSR index on the edge table before its clock starts (updates mode; its database must be a private copy, as the
+  harness makes). Driver runs with 16 readers (README and files under repro/results/probes_18nov_first_txn): first
+  commit at SF300 15.45 s as it is, 1.39 s with the others dropped (rc13), 0.08 s with the patched driver; at SF100
+  13.48 s as it is, 0.04 s with the patched driver. The frozen run has the effect at SF100 (first commit 9.25 s;
+  run_all.sh runs the microbenchmark before the concurrent step there) and not at SF300 (1.03 s). On rc13 at SF300
+  the other indexes change the query median little (84 against 85 ms), the commit median from 115 to 152 ms and
+  the peak RSS from 2378 to 5996 MiB, so the concurrent rows' peak RSS at SF10 and SF100 in the frozen tables
+  includes indexes the workload does not use; the next freeze reruns the concurrent points with this driver. Not
+  changed: the extension still loads an index on the first write to its table (a write could be logged without
+  loading the epoch); the sequential update workload (`update-run`) copies the same databases and was not checked.

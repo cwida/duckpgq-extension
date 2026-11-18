@@ -1,0 +1,179 @@
+# name: test/sql/path_finding/csr_index_memory.test
+# description: The memory of a CSR index is in DuckDB's buffer pool: duckdb_memory() shows it under the EXTENSION tag, a retained epoch is counted while it is kept and released when a fold drops it, and DROP INDEX returns everything
+# group: [path_finding]
+
+require duckpgq
+
+# An in-memory database: nothing is serialized, so the EXTENSION tag holds the index and nothing else between queries
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# The assertions below are about a fold that builds a whole second epoch from the table (a merge fold shares
+# the partitions that did not change)
+statement ok
+SET duckpgq_csr_index_merge_fold = false;
+
+# Folds run only when asked for
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(100000);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+# 2 000 000 edges over 100 000 vertices, 20 distinct destinations per source; vertex 99999 has no incoming edge
+statement ok
+INSERT INTO knows SELECT range % 100000, (range * 7919 + 13) % 99999 FROM range(2000000);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE TABLE memory_before AS SELECT memory_usage_bytes AS bytes FROM duckdb_memory() WHERE tag = 'EXTENSION';
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# What the index reports as in use: 2 bytes per edge for the destination and 8 for the row id (20 MB), plus the
+# sparse rows of 8 partitions (a source has edges into most of them) and their bucket index
+statement ok
+CREATE MACRO index_bytes() AS
+    regexp_extract(duckpgq_csr_index_size('knows', 'knows_csr'), 'bytes=(\d+)', 1)::BIGINT;
+
+query I
+SELECT index_bytes() BETWEEN 20000000 AND 32000000;
+----
+true
+
+# What the buffer pool holds for it: the same arrays, one pinned buffer each, rounded up to 4 KiB by the buffer
+# manager (256 KiB of slack covers the rounding of every array)
+statement ok
+CREATE MACRO pool_bytes() AS (
+    (SELECT memory_usage_bytes FROM duckdb_memory() WHERE tag = 'EXTENSION') - (SELECT bytes FROM memory_before));
+
+query I
+SELECT pool_bytes() BETWEEN index_bytes() AND index_bytes() + 262144;
+----
+true
+
+# A query reads the epoch in place: its working set is returned when it ends and the pool is back at the index
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+99999
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+query I
+SELECT pool_bytes() BETWEEN index_bytes() AND index_bytes() + 262144;
+----
+true
+
+# ---- The change log is accounted as it grows (heap memory, by reservation)
+statement ok
+INSERT INTO knows SELECT range, (range + 1) % 100000 FROM range(50000);
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=50000;tombstones=0
+
+# The log's vectors grow by doubling, so the pool holds up to twice what is in use for them (40 bytes per delta edge
+# and 24 per entry of its row index), on top of the epoch
+query I
+SELECT pool_bytes() BETWEEN index_bytes() AND index_bytes() + 4194304;
+----
+true
+
+# ---- A fold keeps the previous epoch for older transactions: two epochs are in the pool
+statement ok
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr') LIKE 'epochs=2;%';
+----
+true
+
+query I
+SELECT index_bytes() BETWEEN 40000000 AND 64000000;
+----
+true
+
+query I
+SELECT pool_bytes() BETWEEN index_bytes() AND index_bytes() + 4194304;
+----
+true
+
+# ---- The next fold drops the oldest epoch: still two epochs, not three
+statement ok
+INSERT INTO knows VALUES (1, 2);
+
+statement ok
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr') LIKE 'epochs=2;%';
+----
+true
+
+query I
+SELECT index_bytes() BETWEEN 40000000 AND 64000000;
+----
+true
+
+query I
+SELECT pool_bytes() BETWEEN index_bytes() AND index_bytes() + 4194304;
+----
+true
+
+# ---- A merge fold shares the partitions that did not change: the two retained epochs take one epoch and the
+# rebuilt partitions, and the bytes the index reports (each shared array once) are what the buffer pool holds
+statement ok
+SET duckpgq_csr_index_merge_fold = true;
+
+statement ok
+INSERT INTO knows VALUES (2, 3);
+
+statement ok
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+
+query II
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr') LIKE 'epochs=2;%', duckpgq_csr_index_fold_stats('knows', 'knows_csr') LIKE '%;merge_folds=1;%';
+----
+true	true
+
+query I
+SELECT index_bytes() BETWEEN 20000000 AND 40000000;
+----
+true
+
+query I
+SELECT pool_bytes() BETWEEN index_bytes() AND index_bytes() + 4194304;
+----
+true
+
+# ---- Dropping the index returns its memory
+statement ok
+DROP INDEX knows_csr;
+
+query I
+SELECT pool_bytes() < 262144;
+----
+true

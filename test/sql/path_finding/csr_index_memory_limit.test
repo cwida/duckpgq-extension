@@ -1,0 +1,196 @@
+# name: test/sql/path_finding/csr_index_memory_limit.test
+# description: A CSR index counts against memory_limit: an epoch that does not fit fails CREATE INDEX, the explicit fold and the load after a restart with an out-of-memory error and leaves the index usable; an automatic fold is skipped and the read query runs on the current epoch
+# group: [path_finding]
+
+require duckpgq
+
+load {TEST_DIR}/csr_index_memory_limit.db
+
+# The SQL/PGQ grammar is connection-local and must be activated explicitly.
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# The assertions below are about a fold that builds a whole second epoch from the table (a merge fold shares
+# the partitions that did not change)
+statement ok
+SET duckpgq_csr_index_merge_fold = false;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(50000);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+# 4 000 000 edges over 50 000 vertices (80 distinct destinations per source, vertex 49999 has no incoming edge): an
+# epoch of about 41 MB (2 + 8 bytes per edge, plus the sparse rows)
+statement ok
+INSERT INTO knows SELECT range % 50000, (range * 7919 + 13) % 49999 FROM range(4000000);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+# The table is on disk, so its blocks can be evicted
+statement ok
+CHECKPOINT;
+
+# ---- CREATE INDEX: the epoch does not fit 32 MiB
+statement ok
+SET memory_limit = '32MiB';
+
+statement error
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+----
+Out of Memory Error
+
+# The failed build returned its buffers: the same statement succeeds once there is room
+statement ok
+SET memory_limit = '1GiB';
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=0;tombstones=0
+
+statement ok
+CHECKPOINT;
+
+# ---- The epoch is pinned: the limit cannot be set below it
+statement error
+SET memory_limit = '16MiB';
+----
+could not free up enough memory for the new limit
+
+# ---- The explicit fold: one epoch fits 64 MiB, the retained one plus a new one do not. The index comes from the
+# checkpoint here (the insert's commit loads it)
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# The assertions below are about a fold that builds a whole second epoch from the table (a merge fold shares
+# the partitions that did not change)
+statement ok
+SET duckpgq_csr_index_merge_fold = false;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+SET memory_limit = '64MiB';
+
+statement ok
+INSERT INTO knows VALUES (1, 2);
+
+statement error
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+Out of Memory Error
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=1;tombstones=0
+
+# ---- The automatic fold is due on the next read (one pending entry is over the ratio), does not fit, and is
+# skipped: the query runs on the epoch and its overlay
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0.00000001;
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+49999
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=1;delta=1;tombstones=0
+
+# With room for two epochs the fold runs
+statement ok
+SET memory_limit = '1GiB';
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+epochs=2;delta=1;tombstones=0
+
+statement ok
+CHECKPOINT;
+
+# ---- The load after a restart: the stored epoch does not fit 32 MiB
+restart
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# The assertions below are about a fold that builds a whole second epoch from the table (a merge fold shares
+# the partitions that did not change)
+statement ok
+SET duckpgq_csr_index_merge_fold = false;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+SET memory_limit = '32MiB';
+
+statement error
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr');
+----
+Out of Memory Error
+
+# The stored state stays pending: with room it loads (an index that lost its stored state would report no epoch
+# until its first reader rebuilds one from the table)
+statement ok
+SET memory_limit = '1GiB';
+
+query I
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr') LIKE 'epochs=1;%';
+----
+true
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+49999
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true

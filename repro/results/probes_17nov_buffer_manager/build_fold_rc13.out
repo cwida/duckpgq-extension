@@ -1,0 +1,78 @@
+== rc13 sf300 2026-11-17T17:18:22Z extension=/local/home/dwolde/bootstrap/duckpgq-extension/build/release/extension/duckpgq/duckpgq.duckdb_extension
+"'edges'",count_star()
+edges,55656915
+"'extension_bytes_before'",memory_usage_bytes
+extension_bytes_before,0
+Run Time (s): real 1.495 user 15.275813 sys 5.107210
+"'index'","duckpgq_csr_index_size('knows', 'knows_csr')"
+index,edges=55656915;bytes=616640714
+"'extension_bytes_one_epoch'",memory_usage_bytes
+extension_bytes_one_epoch,0
+"duckpgq_csr_index_fold('knows', 'knows_csr')"
+true
+Run Time (s): real 1.184 user 13.774892 sys 3.789002
+"'fold'","duckpgq_csr_index_fold_stats('knows', 'knows_csr')"
+fold,folds=1;last_fold_ms=1183.6;last_fold_scan_ms=83.5;fold_ms=1183.6
+"'index'","duckpgq_csr_index_size('knows', 'knows_csr')"
+index,edges=55656916;bytes=1233281518
+"'extension_bytes_two_epochs'",memory_usage_bytes
+extension_bytes_two_epochs,0
+"duckpgq_csr_index_fold('knows', 'knows_csr')"
+true
+Run Time (s): real 1.184 user 14.288163 sys 3.422341
+"'fold'","duckpgq_csr_index_fold_stats('knows', 'knows_csr')"
+fold,folds=2;last_fold_ms=1183.6;last_fold_scan_ms=82.1;fold_ms=2367.2
+"'extension_bytes_after_second_fold'",memory_usage_bytes
+extension_bytes_after_second_fold,0
+== rc13 sf300 2026-11-17T17:18:31Z extension=/local/home/dwolde/bootstrap/duckpgq-extension/build/release/extension/duckpgq/duckpgq.duckdb_extension
+"'edges'",count_star()
+edges,55656915
+"'extension_bytes_before'",memory_usage_bytes
+extension_bytes_before,0
+Run Time (s): real 1.495 user 15.082897 sys 5.396126
+"'index'","duckpgq_csr_index_size('knows', 'knows_csr')"
+index,edges=55656915;bytes=616640714
+"'extension_bytes_one_epoch'",memory_usage_bytes
+extension_bytes_one_epoch,0
+"duckpgq_csr_index_fold('knows', 'knows_csr')"
+true
+Run Time (s): real 1.271 user 15.303144 sys 3.651533
+"'fold'","duckpgq_csr_index_fold_stats('knows', 'knows_csr')"
+fold,folds=1;last_fold_ms=1270.7;last_fold_scan_ms=87.0;fold_ms=1270.7
+"'index'","duckpgq_csr_index_size('knows', 'knows_csr')"
+index,edges=55656916;bytes=1233281518
+"'extension_bytes_two_epochs'",memory_usage_bytes
+extension_bytes_two_epochs,0
+"duckpgq_csr_index_fold('knows', 'knows_csr')"
+true
+Run Time (s): real 1.266 user 15.400815 sys 3.715516
+"'fold'","duckpgq_csr_index_fold_stats('knows', 'knows_csr')"
+fold,folds=2;last_fold_ms=1265.0;last_fold_scan_ms=86.5;fold_ms=2535.7
+"'extension_bytes_after_second_fold'",memory_usage_bytes
+extension_bytes_after_second_fold,0
+== rc13 sf300 2026-11-17T17:18:40Z extension=/local/home/dwolde/bootstrap/duckpgq-extension/build/release/extension/duckpgq/duckpgq.duckdb_extension
+"'edges'",count_star()
+edges,55656915
+"'extension_bytes_before'",memory_usage_bytes
+extension_bytes_before,0
+Run Time (s): real 1.494 user 15.443604 sys 5.074077
+"'index'","duckpgq_csr_index_size('knows', 'knows_csr')"
+index,edges=55656915;bytes=616640714
+"'extension_bytes_one_epoch'",memory_usage_bytes
+extension_bytes_one_epoch,0
+"duckpgq_csr_index_fold('knows', 'knows_csr')"
+true
+Run Time (s): real 1.273 user 15.307684 sys 3.712636
+"'fold'","duckpgq_csr_index_fold_stats('knows', 'knows_csr')"
+fold,folds=1;last_fold_ms=1272.9;last_fold_scan_ms=84.8;fold_ms=1272.9
+"'index'","duckpgq_csr_index_size('knows', 'knows_csr')"
+index,edges=55656916;bytes=1233281518
+"'extension_bytes_two_epochs'",memory_usage_bytes
+extension_bytes_two_epochs,0
+"duckpgq_csr_index_fold('knows', 'knows_csr')"
+true
+Run Time (s): real 1.301 user 15.667221 sys 3.561625
+"'fold'","duckpgq_csr_index_fold_stats('knows', 'knows_csr')"
+fold,folds=2;last_fold_ms=1300.2;last_fold_scan_ms=86.5;fold_ms=2573.1
+"'extension_bytes_after_second_fold'",memory_usage_bytes
+extension_bytes_after_second_fold,0

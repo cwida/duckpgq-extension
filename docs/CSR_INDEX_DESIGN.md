@@ -22,7 +22,8 @@ Requirements:
    TABLE` and `DROP INDEX` remove it.
 3. **Readable by the operator at CSR speed.** A reader obtains a snapshot in time proportional to the changes since
    the last fold, not to the graph, and traverses the packed CSR with at most one extra bitmap check per edge.
-4. **Bounded memory.** Buffer-manager owned, so it counts towards `memory_limit` (same as the BFS working sets).
+4. **Bounded memory.** In DuckDB's buffer pool, so it counts towards `memory_limit` (same as the BFS working sets).
+   Tracked, not evictable (section 4, "Memory").
 
 Out of scope for the paper: weighted edges, composite keys (section 9), per-edge version stamps.
 
@@ -122,7 +123,44 @@ Sizes for E edges, V vertices, D delta edges, T tombstones: epoch ≈ 2 B (dst) 
 delta 16 B per edge; tombstones 12 B each; dictionary 12 B per vertex. **D**: start with 8-byte row ids in the
 epoch; compress later (9.2).
 
-All arrays are buffer-manager allocations (`MemoryTag::EXTENSION`), persisted through the checkpoint (section 5.6).
+**Memory (17 Nov, my-beans-sqnu).** Everything the index holds in use is in DuckDB's buffer pool under
+`MemoryTag::EXTENSION`: it counts against `memory_limit` and shows in `duckdb_memory()`. Nothing is evictable or
+spillable. Until 17 Nov all of it was heap memory outside the pool; only the serialized form went through the buffer
+manager.
+
+| Structure | How | When it does not fit `memory_limit` |
+|---|---|---|
+| epoch: dictionary, partitions (both sides), row ids | one pinned buffer per array (`ManagedArray`, `BufferManager::Allocate`), exact size | the build fails with DuckDB's out-of-memory error |
+| epoch: tombstone position lists | heap, accounted (`MemoryReservation`) | accounted regardless |
+| change log: `delta`, `tombstones`, `delta_row_index` | heap, accounted | accounted regardless |
+| snapshot overlay: delta partitions, suppression bitmaps, extra keys | heap, accounted | accounted regardless |
+
+- The buffers belong to the database's buffer manager, not to the one a `ClientContext` hands out (a wrapper owned by
+  the connection): an epoch outlives the query that builds it.
+- An epoch build is strict. CREATE INDEX, the explicit fold, the load after a restart, the first-use rebuild and a
+  reader's private epoch fail when the epoch does not fit after the buffer manager evicted what it could; the partly
+  built epoch returns its buffers. A failed load keeps the on-disk state pending, so it is retried by the next use.
+  The automatic fold is skipped instead (the reader keeps the current epoch and its overlay), and the next automatic
+  attempt waits until the pending log has doubled.
+- "Accounted" means `ReserveMemory` first (which evicts other blocks) and, when that fails, an unconditional update of
+  the pool's counter: a commit or a read query is not failed for the change log or the overlay, which are bounded by
+  the fold ratio.
+- An epoch returns its memory when its last reference goes: for the retained epoch, the later of the fold that drops
+  it and the end of the last query reading it. `SET memory_limit` below the pinned epochs fails.
+- A checkpoint writes the serialized state to disk in runs of 16 blocks (4 MiB pinned at a time). Its buffers are
+  pinned until written and share the pool with the pinned epoch: holding all of them to the end needed the index
+  twice within `memory_limit`, and DuckDB treats a checkpoint that runs out of memory as fatal.
+- An index whose serialized form is under the WAL's checkpoint threshold (16 MiB by default) is logged by the commit
+  of CREATE INDEX instead of being checkpointed. The WAL is written from pinned buffers, a copy of the serialized
+  index next to the epoch; the next checkpoint releases it (before 17 Nov it stayed pinned until the drop: 13.4 MB
+  for an index of 14.0 MB). A larger index is checkpointed by that commit and has no such copy.
+- Not in the pool: the transient memory of an epoch build (edge lists, buckets, sort scratch), the staging buffer of
+  a load, the byte stream a checkpoint serializes from, and the CSR the operator builds per query when there is no
+  index.
+- `duckpgq_csr_index_size` reports what is in use (element counts); the pool holds what is allocated: the same
+  arrays for an epoch, each rounded up to 4 KiB, and the capacity of the change log's vectors.
+
+The newest epoch and the unaccounted part of the change log are persisted through the checkpoint (section 5.6).
 
 ## 5. Operations
 
@@ -330,7 +368,8 @@ called at every commit, (ii) row ids never being reused while the index exists (
   CSR build run as a `PhasedKernel`: a chain of events, one per parallel phase, with the serial step between phases
   in `FinishEvent`. No task waits for another task. The previous barrier-synchronized tasks deadlocked as soon as
   the barrier groups of concurrent queries exceeded the scheduler's threads (DuckDB has no gang scheduling).
-- **Memory.** Epoch, delta, overlay, and working sets are all buffer-manager allocations.
+- **Memory.** The epoch and the working sets are buffer-manager allocations (pinned buffers); the change log and the
+  overlay are heap memory that the buffer pool accounts for (section 4, "Memory").
 
 ## 7b. Path reconstruction over the index (W7, 20 Oct)
 

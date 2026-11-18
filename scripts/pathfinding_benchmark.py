@@ -1493,9 +1493,37 @@ CSR_INDEX_NAME = "pathfinding_benchmark_csr"
 CSR_INDEX_KEY = f"csr-index|ldbc|main|person_knows_person|{CSR_INDEX_NAME}"
 
 
+# The benchmark's directed index stores the reverse side (decided 18 Nov 2026 for the freeze after rc13): one pair,
+# or a few sources with one destination each, is then searched from both ends, and many sources to one destination
+# from the destination. The undirected index needs no option: its forward partitions serve both sides.
+CSR_INDEX_OPTIONS = "reverse = true"
+
+
 def create_csr_index_sql(if_not_exists=True):
     clause = "IF NOT EXISTS " if if_not_exists else ""
-    return f"CREATE INDEX {clause}{CSR_INDEX_NAME} ON ldbc.person_knows_person USING CSR (person1id, person2id);\n"
+    return (f"CREATE INDEX {clause}{CSR_INDEX_NAME} ON ldbc.person_knows_person USING CSR (person1id, person2id) "
+            f"WITH ({CSR_INDEX_OPTIONS});\n")
+
+
+def drop_index_without_options(database, index_name, options, threads):
+    """Drops `index_name` of the database when it exists without `options` in its definition (a database prepared
+    before 18 Nov 2026 holds the benchmark index without the reverse side; CREATE INDEX IF NOT EXISTS would keep
+    it). Returns whether an index was dropped."""
+    if not options:
+        return False
+    out = run_duckdb(BENCH_DUCKDB, None,
+                     f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; ATTACH {sql_string(database)} AS ldbc (READ_ONLY); "
+                     f"SELECT 'definition', sql FROM duckdb_indexes() WHERE database_name = 'ldbc' "
+                     f"AND index_name = {sql_string(index_name)};", quiet=True)[0]
+    definition = next((line for line in out.splitlines() if line.startswith("definition")), None)
+    wanted = re.sub(r"\s+", "", options)
+    if definition is None or wanted in re.sub(r"\s+", "", definition):
+        return False
+    print(f"Replacing index {index_name}: it was created without WITH ({options})")
+    run_duckdb(BENCH_DUCKDB, None,
+               f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; SET threads={threads}; ATTACH {sql_string(database)} AS ldbc; "
+               f"DROP INDEX ldbc.main.{index_name}; CHECKPOINT ldbc;", quiet=True)
+    return True
 
 
 def index_build_sql(options):
@@ -5149,13 +5177,22 @@ class DuckPGQSystem(GraphDBSystem):
         if self.route == "index":
             # The configuration's settings apply at CREATE INDEX too (partition geometry is frozen there)
             settings = "".join(f"SET {name}={value}; " for name, value in self.settings.items()) if self.index_suffix else ""
+            drop_index_without_options(self.database, self.index_name, self.default_index_options(), self.threads)
             run_duckdb(BENCH_DUCKDB, None, f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; SET threads={self.threads}; {settings}"
                                           f"ATTACH {sql_string(self.database)} AS ldbc; "
                                           f"CREATE INDEX IF NOT EXISTS {self.index_name} ON ldbc.{self.index_table} "
                                           f"USING CSR (person1id, person2id){self.index_with_clause()};", quiet=True)
 
+    def default_index_options(self):
+        """The reverse side of the benchmark's directed index, unless the configuration sets `reverse` itself"""
+        if self.symmetric or (self.index_with and "reverse" in self.index_with):
+            return ""
+        return CSR_INDEX_OPTIONS
+
     def index_with_clause(self):
-        options = (["undirected = true"] if self.symmetric else []) + ([self.index_with] if self.index_with else [])
+        options = ((["undirected = true"] if self.symmetric else [])
+                   + ([self.default_index_options()] if self.default_index_options() else [])
+                   + ([self.index_with] if self.index_with else []))
         return f" WITH ({', '.join(options)})" if options else ""
 
     def edge_count(self):
@@ -5644,14 +5681,29 @@ MICROBENCH_CONFIGS = {
     "no_few_sources_rule": ({OPT + "few_sources_limit": 0}, None, False),
     # Per-source frontier kernel internals
     "no_early_termination": ({OPT + "target_early_termination": "false"}, None, False),
+    # A level is expanded by row lookups when frontier x divisor < vertices and by a sweep otherwise: 0 sweeps every
+    # level, 1 never sweeps. Until 18 Nov 2026 sparse_frontier set 2000000000, which also sweeps every level (the
+    # condition is never true), so the rows of both configurations up to rc13 are sweeps
     "dense_frontier": ({OPT + "sparse_frontier_divisor": 0}, None, False),
-    "sparse_frontier": ({OPT + "sparse_frontier_divisor": 2000000000}, None, False),
+    "sparse_frontier": ({OPT + "sparse_frontier_divisor": 1}, None, False),
     # Orientation
     "no_reverse_orientation": ({OPT + "reverse_orientation_ratio": 0}, None, False),
     # Index side
     "no_snapshot_cache": ({OPT + "snapshot_cache": "false"}, None, False),
+    # The benchmark index has the reverse side since 18 Nov (CSR_INDEX_OPTIONS), so baseline runs with it:
+    # no_reverse_index is the index of the frozen run rc13 (forward side only), one_end the search from the source
+    # only on the benchmark index (bidirectional_pair off). The reverse_index* configurations predate the default
+    # and create their own index WITH (reverse = true), the same as the baseline's
+    "no_reverse_index": ({}, "reverse = false", False),
+    "one_end": ({OPT + "bidirectional_pair": "false"}, None, False),
     "reverse_index": ({}, "reverse = true", False),
     "reverse_index_forward_only": ({OPT + "reverse_orientation_ratio": 0}, "reverse = true", False),
+    "reverse_index_one_end": ({OPT + "bidirectional_pair": "false"}, "reverse = true", False),
+    # The search from both ends with other sweep thresholds: a level is swept when its frontier holds at least
+    # 1 / sparse_frontier_divisor of the vertices (default 64; 1 never sweeps, 0 sweeps every level)
+    "reverse_index_no_sweep": ({OPT + "sparse_frontier_divisor": 1}, "reverse = true", False),
+    "reverse_index_sweep_8": ({OPT + "sparse_frontier_divisor": 8}, "reverse = true", False),
+    "reverse_index_always_sweep": ({OPT + "sparse_frontier_divisor": 0}, "reverse = true", False),
     # Reach mode on per-source searches instead of lane waves (reach_lanes, 2 Nov)
     "reach_per_source": ({OPT + "reach_lanes": "false"}, None, False),
     # Reach mode vs the pair list for sources x all persons
@@ -5727,7 +5779,14 @@ MICROBENCH_GROUPS = {
     "task_edges": ["baseline"] + [f"task_edges_{n}" for n in (65536, 262144, 1048576, 4194304, 16777216, 0)],
 }
 MICROBENCH_GROUPS["all"] = list(dict.fromkeys(sum((v for k, v in MICROBENCH_GROUPS.items() if k not in ("scheduling", "memory", "partitions")), [])))
-MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only"}
+# Until 18 Nov the group was baseline (no reverse side), reverse_index, reverse_index_one_end: the files under
+# repro/results/probes_18nov_bidirectional use those names
+MICROBENCH_GROUPS["bidirectional"] = ["baseline", "one_end", "no_reverse_index"]
+MICROBENCH_GROUPS["bidirectional_sweep"] = ["reverse_index", "reverse_index_no_sweep", "reverse_index_sweep_8",
+                                           "reverse_index_always_sweep", "reverse_index_one_end"]
+MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "reverse_index_one_end",
+                         "no_reverse_index", "one_end",
+                         "reverse_index_no_sweep", "reverse_index_sweep_8", "reverse_index_always_sweep"}
 
 
 def microbench_configs(names):
@@ -5739,6 +5798,54 @@ def microbench_configs(names):
             if config not in out:
                 out.append(config)
     return out
+
+
+# Ablation of the partitioned CSR (17 Nov 2026): the explore phase of the lane kernel on one unpartitioned CSR with
+# 32-bit destinations. flat_serial = one partition with one owner; flat_ranges = each worker owns a destination
+# range without physical partitioning; flat_atomic / flat_locked = source morsels writing shared lane words with
+# fetch_or / striped spinlocks. Index route only: the flat CSR is derived from the index partitions in the warm-up
+# query and cached for the process, while the build route would convert in every timed query. Next to them the
+# partition widths (one index each) and the widest partitions without sub-range tasks, so one file holds the
+# one-partition, partition-count and locked rows.
+# EXPLORE_VARIANTS: (label, config at the run's thread count, SET overrides, index suffix)
+EXPLORE_VARIANTS = [("partitioned, width 65535", "baseline", {}, None)]
+for _variant in ("flat_serial", "flat_ranges", "flat_atomic", "flat_locked"):
+    EXPLORE_VARIANTS.append((_variant, f"explore_{_variant}", {OPT + "explore_variant": f"'{_variant}'"}, None))
+for _pv in (4096, 8192, 16384, 32768):
+    EXPLORE_VARIANTS.append((f"partitioned, width {_pv}", f"partitions_{_pv}", {OPT + "partition_vertices": _pv},
+                             f"pv{_pv}"))
+EXPLORE_VARIANTS.append(("partitioned, width 65535, no sub-range tasks", "partitions_65535_nosub",
+                         {OPT + "partition_vertices": 65535, OPT + "sub_range_tasks": "false"}, "pv65535"))
+# Thread counts below the run's own (--threads, 32 in the paper): each variant at 1, 2, 4, 8, 16 threads and at the
+# run's count shows how it scales. At one thread the gap to the partitioned explore is the cost of the synchronised
+# update and of the layout alone; how the gap moves with threads is what sharing the lane words adds.
+EXPLORE_SCALING_THREADS = (1, 2, 4, 8, 16)
+# config -> (variant label, thread count or None for the run's own)
+EXPLORE_SCALING = {}
+MICROBENCH_GROUPS["explore_variants"] = []
+MICROBENCH_GROUPS["explore_scaling"] = []
+MICROBENCH_GROUPS["explore_threads"] = []
+for _label, _config, _settings, _suffix in EXPLORE_VARIANTS:
+    _flat = OPT + "explore_variant" in _settings
+    if _config not in MICROBENCH_CONFIGS:
+        MICROBENCH_CONFIGS[_config] = (_settings, None, False, _suffix)
+    if _flat:
+        MICROBENCH_INDEX_ONLY.add(_config)
+    EXPLORE_SCALING[_config] = (_label, None)
+    MICROBENCH_GROUPS["explore_variants"].append(_config)
+    for _n in EXPLORE_SCALING_THREADS:
+        _name = "explore_partitioned_t%d" % _n if _config == "baseline" else f"{_config}_t{_n}"
+        MICROBENCH_CONFIGS[_name] = (dict(_settings, threads=_n), None, False, _suffix)
+        if _flat:
+            MICROBENCH_INDEX_ONLY.add(_name)
+        EXPLORE_SCALING[_name] = (_label, _n)
+        MICROBENCH_GROUPS["explore_scaling"].append(_name)
+        if _flat or _config == "baseline":
+            MICROBENCH_GROUPS["explore_threads"].append(_name)
+    MICROBENCH_GROUPS["explore_scaling"].append(_config)
+    if _flat or _config == "baseline":
+        # explore_threads: the partitioned explore and the four flat variants only (no index per width)
+        MICROBENCH_GROUPS["explore_threads"].append(_config)
 
 
 def microbenchmarks(args):
@@ -5934,6 +6041,71 @@ def crossover_k(points, shape):
     return later[0] if later and (last_winning is None or last_winning != ks[-1]) else None
 
 
+def explore_scaling_table(args):
+    """Ablation of the partitioned CSR: per run (benchmark notes) and point, variant x thread count as median seconds,
+    then every variant's time relative to the partitioned explore of the same thread count, then every variant's
+    speed-up over its own single-thread time"""
+    # The steps of the matrix note "CSR ablation ..."; the probes of 17 Nov noted "explore variants ..."
+    prefixes = (args.notes_prefix,) if args.notes_prefix else ("CSR ablation", "explore ")
+    rows = [r for r in read_result_files_plain(args.files)
+            if r["config"] in EXPLORE_SCALING and r["benchmark_notes"].startswith(prefixes)]
+    for notes in sorted({r["benchmark_notes"] for r in rows}):
+        run = [r for r in rows if r["benchmark_notes"] == notes]
+        own = int(run[0]["threads"])
+        samples, timed_out, points = {}, set(), []
+        for r in run:
+            label, threads = EXPLORE_SCALING[r["config"]]
+            point = f"{r['pairs']} random pairs" if r["shape"] == "random_pairs" else f"{r['sources']} sources x all"
+            if point not in points:
+                points.append(point)
+            key = (point, label, threads or own)
+            if r["status"] == "ok":
+                samples.setdefault(key, []).append(float(r["query_s"]))
+            else:
+                timed_out.add(key)
+        threads = sorted({key[2] for key in list(samples) + list(timed_out)})
+        labels = [label for label, _, _, _ in EXPLORE_VARIANTS if any(key[1] == label for key in list(samples) + list(timed_out))]
+        reference = EXPLORE_VARIANTS[0][0]
+
+        def median(point, label, count):
+            values = samples.get((point, label, count))
+            return statistics.median(values) if values else None
+
+        def print_rows(title, cell, skip_reference=False):
+            print(f"\n{title}")
+            print("| variant | " + " | ".join(str(count) for count in threads) + " |")
+            print("|---|" + "---|" * len(threads))
+            for label in labels:
+                if skip_reference and label == reference:
+                    continue
+                print(f"| {label} | " + " | ".join(cell(label, count) for count in threads) + " |")
+
+        for point in points:
+            print(f"\n## {notes}: {point}, index route, by thread count")
+
+            def seconds(label, count):
+                value = median(point, label, count)
+                if value is None:
+                    return "timeout" if (point, label, count) in timed_out else ""
+                return f"{value:.3f}"
+
+            def slower(label, count):
+                value, base = median(point, label, count), median(point, reference, count)
+                if value is None or base is None:
+                    return ""
+                return f"{value / base:.2f}x slower" if value >= base else f"{base / value:.2f}x faster"
+
+            def speedup(label, count):
+                value, single = median(point, label, count), median(point, label, 1)
+                return f"{single / value:.2f}" if value is not None and single is not None else ""
+
+            print_rows("median seconds", seconds)
+            if len(labels) > 1:
+                print_rows(f"relative to {reference} at the same thread count", slower, skip_reference=True)
+            if 1 in threads and len(threads) > 1:
+                print_rows("speed-up over the variant's own single-thread time", speedup)
+
+
 def crossover_table(args):
     """Section 3 crossover: per scale factor and shape, k distinct sources x the three kernels (median, the kernel's
     working set, the process peak RSS), and the k where the single-source traversal stops being the fastest"""
@@ -6015,7 +6187,7 @@ SET threads={args.threads};
 ATTACH {sql_string(database)} AS ldbc;
 USE ldbc;
 .timer on
-CREATE INDEX {CSR_INDEX_NAME} ON person_knows_person USING CSR (person1id, person2id);
+CREATE INDEX {CSR_INDEX_NAME} ON person_knows_person USING CSR (person1id, person2id) WITH ({CSR_INDEX_OPTIONS});
 .timer off
 SELECT duckpgq_csr_index_size('person_knows_person', '{CSR_INDEX_NAME}');
 """
@@ -6741,6 +6913,10 @@ def main():
     crossover_table_parser = subcommands.add_parser("crossover-table", help="Print the Section 3 crossover microbenchmark as tables")
     crossover_table_parser.add_argument("files", nargs="+")
     crossover_table_parser.set_defaults(func=crossover_table)
+    explore_table_parser = subcommands.add_parser("explore-scaling-table", help="Print the explore-variant ablation (variants x thread counts) as tables")
+    explore_table_parser.add_argument("files", nargs="+")
+    explore_table_parser.add_argument("--notes-prefix", default=None, help="only runs whose notes start with this (the matrix steps: 'CSR ablation')")
+    explore_table_parser.set_defaults(func=explore_scaling_table)
 
     table_parser = subcommands.add_parser("sweep-pairs-table", help="Print sweep-pairs CSVs as tables")
     table_parser.add_argument("files", nargs="+")

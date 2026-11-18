@@ -1,0 +1,61 @@
+Ensuring sf300 benchmark_pairs_1 exists
+Prepared benchmark_pairs_1 for sf300 in 0.28s
+Ensuring sf300 benchmark_pairs_16 exists
+Prepared benchmark_pairs_16 for sf300 in 0.28s
+== duckpgq_index [reverse_index] loaded in 0.1s (index pathfinding_benchmark_csr_reverse_true)
+   reverse_index                random_pairs pairs=1       sources=      repeat 1:    0.002s 1/5
+   reverse_index                random_pairs pairs=1       sources=      repeat 2:    0.003s 1/5
+   reverse_index                random_pairs pairs=1       sources=      repeat 3:    0.002s 1/5
+   reverse_index                random_pairs pairs=1       sources=      repeat 4:    0.002s 1/5
+   reverse_index                random_pairs pairs=1       sources=      repeat 5:    0.002s 1/5
+   reverse_index                random_pairs pairs=16      sources=      repeat 1:    0.063s 10/41
+   reverse_index                random_pairs pairs=16      sources=      repeat 2:    0.067s 10/41
+   reverse_index                random_pairs pairs=16      sources=      repeat 3:    0.065s 10/41
+   reverse_index                random_pairs pairs=16      sources=      repeat 4:    0.065s 10/41
+   reverse_index                random_pairs pairs=16      sources=      repeat 5:    0.059s 10/41
+== duckpgq_index [reverse_index_no_sweep] loaded in 0.1s (index pathfinding_benchmark_csr_reverse_true)
+   reverse_index_no_sweep       random_pairs pairs=1       sources=      repeat 1:    0.008s 1/5
+   reverse_index_no_sweep       random_pairs pairs=1       sources=      repeat 2:    0.010s 1/5
+   reverse_index_no_sweep       random_pairs pairs=1       sources=      repeat 3:    0.008s 1/5
+   reverse_index_no_sweep       random_pairs pairs=1       sources=      repeat 4:    0.008s 1/5
+   reverse_index_no_sweep       random_pairs pairs=1       sources=      repeat 5:    0.008s 1/5
+   reverse_index_no_sweep       random_pairs pairs=16      sources=      repeat 1:    0.083s 10/41
+   reverse_index_no_sweep       random_pairs pairs=16      sources=      repeat 2:    0.103s 10/41
+   reverse_index_no_sweep       random_pairs pairs=16      sources=      repeat 3:    0.091s 10/41
+   reverse_index_no_sweep       random_pairs pairs=16      sources=      repeat 4:    0.089s 10/41
+   reverse_index_no_sweep       random_pairs pairs=16      sources=      repeat 5:    0.092s 10/41
+== duckpgq_index [reverse_index_sweep_8] loaded in 0.1s (index pathfinding_benchmark_csr_reverse_true)
+   reverse_index_sweep_8        random_pairs pairs=1       sources=      repeat 1:    0.002s 1/5
+   reverse_index_sweep_8        random_pairs pairs=1       sources=      repeat 2:    0.003s 1/5
+   reverse_index_sweep_8        random_pairs pairs=1       sources=      repeat 3:    0.002s 1/5
+   reverse_index_sweep_8        random_pairs pairs=1       sources=      repeat 4:    0.002s 1/5
+   reverse_index_sweep_8        random_pairs pairs=1       sources=      repeat 5:    0.003s 1/5
+   reverse_index_sweep_8        random_pairs pairs=16      sources=      repeat 1:    0.141s 10/41
+   reverse_index_sweep_8        random_pairs pairs=16      sources=      repeat 2:    0.156s 10/41
+   reverse_index_sweep_8        random_pairs pairs=16      sources=      repeat 3:    0.154s 10/41
+   reverse_index_sweep_8        random_pairs pairs=16      sources=      repeat 4:    0.152s 10/41
+   reverse_index_sweep_8        random_pairs pairs=16      sources=      repeat 5:    0.139s 10/41
+== duckpgq_index [reverse_index_sweep_2] loaded in 0.1s (index pathfinding_benchmark_csr_reverse_true)
+   reverse_index_sweep_2        random_pairs pairs=1       sources=      repeat 1:    0.003s 1/5
+   reverse_index_sweep_2        random_pairs pairs=1       sources=      repeat 2:    0.002s 1/5
+   reverse_index_sweep_2        random_pairs pairs=1       sources=      repeat 3:    0.003s 1/5
+   reverse_index_sweep_2        random_pairs pairs=1       sources=      repeat 4:    0.002s 1/5
+   reverse_index_sweep_2        random_pairs pairs=1       sources=      repeat 5:    0.002s 1/5
+   reverse_index_sweep_2        random_pairs pairs=16      sources=      repeat 1:    0.197s 10/41
+   reverse_index_sweep_2        random_pairs pairs=16      sources=      repeat 2:    0.179s 10/41
+   reverse_index_sweep_2        random_pairs pairs=16      sources=      repeat 3:    0.191s 10/41
+   reverse_index_sweep_2        random_pairs pairs=16      sources=      repeat 4:    0.152s 10/41
+   reverse_index_sweep_2        random_pairs pairs=16      sources=      repeat 5:    0.183s 10/41
+== duckpgq_index [reverse_index_one_end] loaded in 0.1s (index pathfinding_benchmark_csr_reverse_true)
+   reverse_index_one_end        random_pairs pairs=1       sources=      repeat 1:    0.023s 1/5
+   reverse_index_one_end        random_pairs pairs=1       sources=      repeat 2:    0.024s 1/5
+   reverse_index_one_end        random_pairs pairs=1       sources=      repeat 3:    0.023s 1/5
+   reverse_index_one_end        random_pairs pairs=1       sources=      repeat 4:    0.023s 1/5
+   reverse_index_one_end        random_pairs pairs=1       sources=      repeat 5:    0.026s 1/5
+   reverse_index_one_end        random_pairs pairs=16      sources=      repeat 1:    0.131s 10/41
+   reverse_index_one_end        random_pairs pairs=16      sources=      repeat 2:    0.139s 10/41
+   reverse_index_one_end        random_pairs pairs=16      sources=      repeat 3:    0.156s 10/41
+   reverse_index_one_end        random_pairs pairs=16      sources=      repeat 4:    0.137s 10/41
+   reverse_index_one_end        random_pairs pairs=16      sources=      repeat 5:    0.168s 10/41
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/bidirectional/data/ldbc-pathfinding/results/sf300/microbench_sf300_threads32_1795004001848931003.csv
+All 2 points agree across configurations 

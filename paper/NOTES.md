@@ -480,6 +480,25 @@ median 1.9%, 90th percentile 39%, max 2476% (Kuzu, one pair on graph500-24: 9.87
 points of 1 s and more, 159: median 1.1%, max 20.4%. The large spreads are cold first runs, which the median does not
 follow. The setup states the 1 s figures.
 
+12 Nov: crossover on the Graphalytics graphs rerun on rc13 by the desk (256 lanes, three repeats, index route,
+two ways; repro/results/probes_12nov_crossover, desk commit 12081a6d). Lanes overtake the single-source traversal at
+2 sources or fewer on datagen-8_4-fb (1.5x faster at 2 random pairs, 1.3x at 2 sources x 200), at 2 to 4 on
+graph500-24 (1.1x at 2 random pairs; within 5% at 2 and 1.4x at 4 for k x 200), and between 8 and 16 on cit-Patents,
+where no pair of either shape is reachable (searches that find nothing, 24 to 155 ms), so that value is not quoted.
+The 2 Nov values (4 / 16 / 256, 512 lanes) no longer hold. Consistent with the sweep: 16 random pairs forced
+single-source 1366 / 3658 ms (sweep 1352 / 3414), 128 pairs as lanes 303 / 727 ms (sweep 304 / 753). k = 1 not rerun.
+In the text: 5.1 says the lanes are faster from 2 to 4 sources on on the two dense graphs; Section 7's future work
+says the best few-sources limit ranges from 2 to 64 sources across our graphs (64 is SF10, random pairs, from the
+crossover step of the sweep).
+
+12 Nov: Section 7 rewritten after the author's read ("some of it too much the implementation"). New order: summary
+with its two costs, lessons, future work; title "Conclusion and Lessons". Out: the sentence on the smaller gaps
+(optimizer rule position, volatile marker, catalog lookup, options fixed at CREATE INDEX), the list of what is not
+involved (storage extension, custom catalog, replacement scan, custom type), the commit numbers (19 / 335 / 153 ms;
+the wait is named as a cost instead), and four future-work items (streaming reach output, an index over several edge
+tables, paths on the lanes; kept on my-beans-wnqk). The caveat that the visibility check is called in DuckDB's
+transaction and table storage classes, outside the extension API, exists only here and stays as a clause.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under
