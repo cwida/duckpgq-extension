@@ -1,0 +1,3 @@
+dataset,kind,fraction,edges,vertices,settings,query_before_s,log,query_first_s,snapshots,cache_hits,last_snapshot_ms,resolve_ms,copy_ms,visibility_ms,hash_ms,overlay_ms,pack_ms,delta,tombstones,hit_ms,hit_copy_ms,hit_visibility_ms,hit_hash_ms,fast_hits,query_cached_median_s,query_cached_min_s,query_cached_max_s
+sf300,uniform,0.1,55656915,1147729,,0.015,epochs=1;delta=2782845;tombstones=2782460,0.561,2,15,528.0,220.6,116.8,51.9,11.3,89.8,37.6,2782845,2782460,188.3,125.5,51.5,11.3,0,0.219,0.213,0.226
+sf300,uniform,0.1,55656915,1147729,duckpgq_csr_index_snapshot_fast_path=true,0.017,epochs=1;delta=2782845;tombstones=2782460,0.557,2,0,526.9,220.8,117.0,51.8,11.3,89.0,37.1,2782845,2782460,0.0,0.0,0.0,0.0,15,0.015,0.01,0.018
