@@ -1,0 +1,5 @@
+Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes
+pair_analysis,operator,32,100,0,106,91,0.01754,0
+source_group_build,operator,32,100,0,100,1,0.01057,0
+bfs_batch_grouped,2026-11-18_16-22-19_260967,32,100,495357,805743,8,81993.9,0
+source_group_scatter,operator,32,100,0,1,0,0.062341,0

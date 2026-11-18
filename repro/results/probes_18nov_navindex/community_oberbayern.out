@@ -1,0 +1,1 @@
+system=duckpgq-community-1.4.1 graph=oberbayern route=match setting=as-in-artifact workload=w1 pairs=1000 result=lengths run=-1 seconds= answer= note=timeout after 900 s

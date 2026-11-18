@@ -1,0 +1,17 @@
+LOAD '/local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/builds/rc13/duckpgq.duckdb_extension';
+SET threads=32;
+SET experimental_path_finding_operator=true;
+ATTACH '/home/dwolde/navindex/work/oberbayern.duckdb' AS g (READ_ONLY);
+CREATE TEMP TABLE p1 AS SELECT pos, src, dst FROM g.queries WHERE pos < 1;
+CREATE TEMP TABLE p100 AS SELECT pos, src, dst FROM g.queries WHERE pos < 100;
+SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|g|main|edges|nav_csr') AS r FROM p1;
+SET experimental_path_finding_operator_benchmark=true;
+SET experimental_path_finding_operator_benchmark_prefix='/home/dwolde/navindex/work/smoke/diag_p1';
+SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|g|main|edges|nav_csr') AS r FROM p1;
+SET experimental_path_finding_operator_benchmark_prefix='/home/dwolde/navindex/work/smoke/diag_p100';
+SET experimental_path_finding_operator_benchmark_lane_activity=true;
+SELECT count(r), sum(r) FROM (SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|g|main|edges|nav_csr') AS r FROM p100);
+SELECT duckpgq_path_finding_strategy();
+PRAGMA enable_profiling='query_tree';
+SET experimental_path_finding_operator_benchmark=false;
+SELECT iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|g|main|edges|nav_csr') AS r FROM p1;

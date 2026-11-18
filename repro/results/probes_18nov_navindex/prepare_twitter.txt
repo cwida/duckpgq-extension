@@ -1,0 +1,14 @@
+nodes 81306
+edges 2420766
+distinct_edges 1768149
+self_loops 22
+edges_with_reverse 851692
+max_out_degree 3373
+queries 10000
+distinct_queries 9999
+query_sources 7371
+query_destinations 6825
+queries_src_eq_dst 3
+create_index_seconds 0.550
+checkpoint_seconds 0.001
+database_bytes 57946112

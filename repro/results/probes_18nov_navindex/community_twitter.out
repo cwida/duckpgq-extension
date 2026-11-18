@@ -1,0 +1,3 @@
+system=duckpgq-community-1.4.1 graph=twitter route=match setting=as-in-artifact workload=w1 pairs=1000 result=lengths run=0 seconds=22.941467 answer=692|1480 note=
+system=duckpgq-community-1.4.1 graph=twitter route=match setting=as-in-artifact workload=w1 pairs=1000 result=lengths run=1 seconds=23.648910 answer=692|1480 note=
+system=duckpgq-community-1.4.1 graph=twitter route=match setting=as-in-artifact workload=w1 pairs=1000 result=lengths run=2 seconds=20.894287 answer=692|1480 note=

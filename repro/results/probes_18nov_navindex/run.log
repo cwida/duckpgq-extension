@@ -1,0 +1,20 @@
+2026-11-18T16:03:46Z graph=oberbayern threads=32 extension_sha256=06240e537f3d686c umbra=Umbra version v0.2-1423-g7c87fba6e (2026-06-01, format 40) load=1.39 9.45 17.47
+2026-11-18T16:03:46Z start duckpgq_oberbayern
+2026-11-18T16:07:22Z end   duckpgq_oberbayern exit=0
+2026-11-18T16:07:22Z start umbra_oberbayern
+2026-11-18T16:10:01Z end   umbra_oberbayern exit=0
+2026-11-18T16:10:01Z done graph=oberbayern load=20.04 20.15 19.98
+2026-11-18T16:17:31Z graph=twitter threads=32 extension_sha256=06240e537f3d686c cli_sha256=c016d5fe76940978 umbra=Umbra version v0.2-1423-g7c87fba6e (2026-06-01, format 40) load=1.48 7.35 13.88
+2026-11-18T16:17:31Z start duckpgq_twitter
+2026-11-18T16:17:41Z end   duckpgq_twitter exit=0
+2026-11-18T16:17:41Z start umbra_twitter
+2026-11-18T16:21:34Z end   umbra_twitter exit=0
+2026-11-18T16:21:34Z done graph=twitter load=24.70 15.46 15.64
+2026-11-18T16:21:47Z graph=twitter threads=32 extension_sha256=06240e537f3d686c cli_sha256=c016d5fe76940978 umbra=Umbra version v0.2-1423-g7c87fba6e (2026-06-01, format 40) load=19.23 14.70 15.39
+2026-11-18T16:21:47Z start community_twitter
+2026-11-18T16:23:39Z end   community_twitter exit=0
+2026-11-18T16:23:39Z done graph=twitter load=35.57 22.42 18.09
+2026-11-18T16:23:39Z graph=oberbayern threads=32 extension_sha256=06240e537f3d686c cli_sha256=c016d5fe76940978 umbra=Umbra version v0.2-1423-g7c87fba6e (2026-06-01, format 40) load=35.57 22.42 18.09
+2026-11-18T16:23:39Z start community_oberbayern
+2026-11-18T16:38:40Z end   community_oberbayern exit=0
+2026-11-18T16:38:40Z done graph=oberbayern load=22.16 13.49 13.75
