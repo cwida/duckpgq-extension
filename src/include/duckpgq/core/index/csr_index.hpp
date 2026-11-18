@@ -283,6 +283,11 @@ public:
 	idx_t EpochEdgeCount() const;
 	//! 'folds=..;last_fold_ms=..;fold_ms=..': the folds this index ran since it was bound, for the update experiments
 	string FoldStats() const;
+	//! 'snapshots=..;cache_hits=..;last_snapshot_ms=..;resolve_ms=..;visibility_ms=..;overlay_ms=..;pack_ms=..;
+	//! delta=..;tombstones=..': the snapshots built and served from the cache since the index was bound, and where
+	//! the last built one spent its time: positions of the deleted epoch rows, the row-version checks, the
+	//! suppression bitmaps and the visible inserted edges, and packing those edges per destination range
+	string SnapshotStats() const;
 
 	//! Folds the index behind `entry`: a new epoch at the transaction's bound, and the change-log entries no retained
 	//! epoch needs are dropped. `ratio` > 0 is the automatic fold from Resolve: it runs only when the pending log is
@@ -456,6 +461,18 @@ private:
 	//! Checkpointed state not deserialized yet (see DeferLoad)
 	mutable IndexStorageInfo pending_storage;
 	mutable bool storage_pending = false;
+	//! From this many pending tombstones on, their epoch positions are resolved on all threads
+	static constexpr idx_t PARALLEL_TOMBSTONE_THRESHOLD = 4096;
+	//! Snapshot timing (see SnapshotStats)
+	mutable std::atomic<uint64_t> snapshot_count {0};
+	mutable std::atomic<uint64_t> snapshot_cache_hits {0};
+	mutable std::atomic<uint64_t> snapshot_last_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_resolve_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_visibility_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_overlay_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_pack_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_delta {0};
+	mutable std::atomic<uint64_t> snapshot_last_tombstones {0};
 	//! Fold timing (see FoldStats)
 	mutable std::atomic<uint64_t> fold_count {0};
 	mutable std::atomic<uint64_t> fold_total_us {0};

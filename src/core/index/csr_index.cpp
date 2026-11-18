@@ -849,16 +849,16 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 			pending_entries.push_back(tombstones[i]);
 		}
 	}
-	vector<row_t> pending;
-	pending.reserve(pending_entries.size());
-	// Forward position of each pending row, and for undirected indexes the position of the mirrored edge
-	std::unordered_map<row_t, idx_t> positions;
-	std::unordered_map<row_t, idx_t> mirror_positions;
-	positions.reserve(pending_entries.size());
+	// Positions per pending tombstone, by its index in `pending_entries`: the forward position, and for undirected
+	// indexes the position of the mirrored edge. (Until 18 Nov these were two hash maps keyed by row id, filled and
+	// read one tombstone at a time on one thread; a bulk delete of 2.8M rows at SF300 spent seconds here.)
+	auto pending_count = pending_entries.size();
+	vector<idx_t> positions(pending_count, DConstants::INVALID_INDEX);
+	vector<idx_t> mirror_positions(pending_count, DConstants::INVALID_INDEX);
 	// A tombstone with keys names its edge: the destination's partition, the source's sparse row, and the row id
 	// among that row's edges (a few dozen comparisons). Rows without keys (loaded from storage) are found by one
 	// scan over the epoch's row ids below.
-	std::unordered_set<row_t> scan_rows;
+	std::unordered_map<row_t, idx_t> scan_rows;
 	auto &dictionary = *epoch.dictionary;
 	auto width = epoch.partition_width;
 	auto &partition_row_ids = epoch.partition_row_ids;
@@ -888,32 +888,37 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 		}
 		return DConstants::INVALID_INDEX;
 	};
-	for (auto &tombstone : pending_entries) {
-		pending.push_back(tombstone.row);
-		idx_t position = DConstants::INVALID_INDEX;
-		idx_t mirror = DConstants::INVALID_INDEX;
-		if (!tombstone.has_keys) {
-			scan_rows.insert(tombstone.row);
-		} else {
+	// The epoch is immutable and every tombstone writes its own slots, so the lookups run in parallel; a handful of
+	// tombstones (the usual commit) stays on the calling thread, where starting threads would cost more than the work
+	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(db.GetDatabase()).NumberOfThreads());
+	auto resolve_threads = pending_count >= PARALLEL_TOMBSTONE_THRESHOLD ? thread_count : 1;
+	for (idx_t i = 0; i < pending_count; i++) {
+		if (!pending_entries[i].has_keys) {
+			scan_rows.emplace(pending_entries[i].row, i);
+		}
+	}
+	ParallelFor(pending_count, resolve_threads, [&](idx_t begin, idx_t end, idx_t) {
+		for (idx_t i = begin; i < end; i++) {
+			auto &tombstone = pending_entries[i];
+			if (!tombstone.has_keys) {
+				continue;
+			}
 			auto src = dictionary.Lookup(tombstone.src_key);
 			auto dst = dictionary.Lookup(tombstone.dst_key);
 			// A vertex the epoch does not know means the row is not an epoch edge: the positions stay INVALID_INDEX
 			if (src != DConstants::INVALID_INDEX && dst != DConstants::INVALID_INDEX) {
-				position = locate(src, dst, tombstone.row);
+				positions[i] = locate(src, dst, tombstone.row);
 				if (undirected && src != dst) {
-					mirror = locate(dst, src, tombstone.row);
+					mirror_positions[i] = locate(dst, src, tombstone.row);
 				}
 			}
 		}
-		positions.emplace(tombstone.row, position);
-		mirror_positions.emplace(tombstone.row, mirror);
-	}
+	});
 	if (!scan_rows.empty()) {
 		// Every position of a scanned row: one for a directed edge, two for an undirected one (both directions carry
 		// the row id)
 		mutex positions_lock;
 		std::unordered_map<row_t, vector<idx_t>> found_positions;
-		auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(db.GetDatabase()).NumberOfThreads());
 		ParallelFor(partition_row_ids.size(), thread_count, [&](idx_t begin, idx_t end, idx_t) {
 			vector<std::pair<row_t, idx_t>> found;
 			for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
@@ -933,9 +938,10 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 		});
 		for (auto &entry : found_positions) {
 			std::sort(entry.second.begin(), entry.second.end());
-			positions[entry.first] = entry.second[0];
+			auto i = scan_rows[entry.first];
+			positions[i] = entry.second[0];
 			if (entry.second.size() > 1) {
-				mirror_positions[entry.first] = entry.second[1];
+				mirror_positions[i] = entry.second[1];
 			}
 		}
 	}
@@ -943,47 +949,47 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 	// offset); the reverse partition of the source's range holds it in the destination's row
 	vector<idx_t> reverse_positions;
 	if (!epoch.csr->reverse_partitions.empty()) {
-		reverse_positions.reserve(pending.size());
-		for (auto row : pending) {
-			auto position = positions[row];
-			if (position == DConstants::INVALID_INDEX) {
-				reverse_positions.push_back(DConstants::INVALID_INDEX);
-				continue;
-			}
-			auto partition_idx = PositionPartition(position);
-			auto offset = PositionOffset(position);
-			auto &forward = *epoch.csr->forward_partitions[partition_idx];
-			// The sparse row that holds `offset`: row_offsets is sorted, row r covers [row_offsets[r], row_offsets[r+1])
-			auto row_it = std::upper_bound(forward.row_offsets.begin(), forward.row_offsets.end(), offset);
-			auto row_idx = NumericCast<idx_t>(row_it - forward.row_offsets.begin()) - 1;
-			auto src = forward.source_vertices[row_idx];
-			auto dst = NumericCast<uint32_t>(forward.start_vertex + forward.e[offset]);
-			auto &reverse_partition = *epoch.csr->reverse_partitions[src / width];
-			auto reverse_row = reverse_partition.FindSparseRow(dst);
-			idx_t reverse_position = DConstants::INVALID_INDEX;
-			if (reverse_row != std::numeric_limits<idx_t>::max()) {
-				auto local_src = NumericCast<uint16_t>(src - (src / width) * width);
-				for (auto o = reverse_partition.row_offsets[reverse_row]; o < reverse_partition.row_offsets[reverse_row + 1]; o++) {
-					if (reverse_partition.e[o] == local_src) {
-						reverse_position = PackPosition(src / width, o);
-						break;
+		reverse_positions.assign(pending_count, DConstants::INVALID_INDEX);
+		ParallelFor(pending_count, resolve_threads, [&](idx_t begin, idx_t end, idx_t) {
+			for (idx_t i = begin; i < end; i++) {
+				auto position = positions[i];
+				if (position == DConstants::INVALID_INDEX) {
+					continue;
+				}
+				auto partition_idx = PositionPartition(position);
+				auto offset = PositionOffset(position);
+				auto &forward = *epoch.csr->forward_partitions[partition_idx];
+				// The sparse row that holds `offset`: row_offsets is sorted, row r covers [row_offsets[r], row_offsets[r+1])
+				auto row_it = std::upper_bound(forward.row_offsets.begin(), forward.row_offsets.end(), offset);
+				auto row_idx = NumericCast<idx_t>(row_it - forward.row_offsets.begin()) - 1;
+				auto src = forward.source_vertices[row_idx];
+				auto dst = NumericCast<uint32_t>(forward.start_vertex + forward.e[offset]);
+				auto &reverse_partition = *epoch.csr->reverse_partitions[src / width];
+				auto reverse_row = reverse_partition.FindSparseRow(dst);
+				if (reverse_row != std::numeric_limits<idx_t>::max()) {
+					auto local_src = NumericCast<uint16_t>(src - (src / width) * width);
+					for (auto o = reverse_partition.row_offsets[reverse_row];
+					     o < reverse_partition.row_offsets[reverse_row + 1]; o++) {
+						if (reverse_partition.e[o] == local_src) {
+							reverse_positions[i] = PackPosition(src / width, o);
+							break;
+						}
 					}
 				}
 			}
-			reverse_positions.push_back(reverse_position);
-		}
+		});
 	}
 	IndexLock l(*this);
 	if (epoch.tombstone_positions.size() != known) {
 		// Another reader resolved them meanwhile, or the log was compacted
 		return;
 	}
-	for (idx_t i = 0; i < pending.size(); i++) {
-		epoch.tombstone_positions.push_back(positions[pending[i]]);
-		epoch.mirror_tombstone_positions.push_back(mirror_positions[pending[i]]);
-		if (!reverse_positions.empty()) {
-			epoch.reverse_tombstone_positions.push_back(reverse_positions[i]);
-		}
+	epoch.tombstone_positions.insert(epoch.tombstone_positions.end(), positions.begin(), positions.end());
+	epoch.mirror_tombstone_positions.insert(epoch.mirror_tombstone_positions.end(), mirror_positions.begin(),
+	                                        mirror_positions.end());
+	if (!reverse_positions.empty()) {
+		epoch.reverse_tombstone_positions.insert(epoch.reverse_tombstone_positions.end(), reverse_positions.begin(),
+		                                         reverse_positions.end());
 	}
 }
 
@@ -1001,9 +1007,18 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	vector<idx_t> tombstone_positions;
 	vector<idx_t> reverse_tombstone_positions;
 	vector<idx_t> mirror_tombstone_positions;
+	auto phase_start = std::chrono::steady_clock::now();
+	auto snapshot_start = phase_start;
+	auto phase_us = [&]() {
+		auto now = std::chrono::steady_clock::now();
+		auto us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now - phase_start).count());
+		phase_start = now;
+		return us;
+	};
 	if (tombstone_count > 0) {
 		ResolveTombstonePositions(epoch, tombstone_count);
 	}
+	auto resolve_us = phase_us();
 	{
 		IndexLock l(*this);
 		delta_count = std::min<idx_t>(delta_count, delta.size());
@@ -1111,6 +1126,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	// when they see the same visible groups and made the same per-row decisions (a fully deleted change group is
 	// decided per row, so the newest visible group alone does not identify the view; 28 Oct audit).
 	shareable = shareable && GetPathFindingSnapshotCache(context);
+	auto visibility_us = phase_us();
 	uint64_t visibility_hash = VISIBILITY_HASH_SEED;
 	auto mix = [&](uint64_t value) {
 		visibility_hash = (visibility_hash ^ value) * VISIBILITY_HASH_PRIME;
@@ -1128,6 +1144,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		IndexLock l(*this);
 		if (cached_snapshot && cached_snapshot->epoch == epoch_p && cached_snapshot_generation == epoch.generation &&
 		    cached_snapshot_group == newest_visible_group && cached_snapshot_visibility == visibility_hash) {
+			snapshot_cache_hits++;
 			return cached_snapshot;
 		}
 	}
@@ -1223,6 +1240,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	}
 	snapshot->vertex_count = epoch_vertex_count + snapshot->extra_keys.size();
 	snapshot->edge_count += visible_edges.size();
+	auto overlay_us = phase_us();
 
 	// Every destination range up to the snapshot's vertex count must have a partition, because the kernel clears and
 	// checks the frontier per partition range. Ranges beyond the epoch get empty cover partitions; the part of the
@@ -1365,6 +1383,15 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		snapshot->reverse_delta_partitions = snapshot->delta_partitions;
 		snapshot->reverse_suppressed = snapshot->suppressed;
 	}
+	snapshot_count++;
+	snapshot_last_resolve_us = resolve_us;
+	snapshot_last_visibility_us = visibility_us;
+	snapshot_last_overlay_us = overlay_us;
+	snapshot_last_pack_us = phase_us();
+	snapshot_last_us = static_cast<uint64_t>(
+	    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - snapshot_start).count());
+	snapshot_last_delta = delta_edges.size();
+	snapshot_last_tombstones = tombstone_rows.size();
 	if (shareable) {
 		IndexLock l(*this);
 		cached_snapshot = snapshot;
@@ -1721,6 +1748,15 @@ string CSRIndex::FoldStats() const {
 	                          static_cast<double>(fold_total_us.load()) / 1000.0, fold_merge_count.load(),
 	                          fold_last_rebuilt.load(), fold_last_partitions.load(),
 	                          static_cast<double>(fold_last_snapshot_us.load()) / 1000.0);
+}
+
+string CSRIndex::SnapshotStats() const {
+	auto ms = [](const std::atomic<uint64_t> &us) { return static_cast<double>(us.load()) / 1000.0; };
+	return StringUtil::Format("snapshots=%llu;cache_hits=%llu;last_snapshot_ms=%.1f;resolve_ms=%.1f;visibility_ms=%.1f;"
+	                          "overlay_ms=%.1f;pack_ms=%.1f;delta=%llu;tombstones=%llu",
+	                          snapshot_count.load(), snapshot_cache_hits.load(), ms(snapshot_last_us),
+	                          ms(snapshot_last_resolve_us), ms(snapshot_last_visibility_us), ms(snapshot_last_overlay_us),
+	                          ms(snapshot_last_pack_us), snapshot_last_delta.load(), snapshot_last_tombstones.load());
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTransaction &transaction,
