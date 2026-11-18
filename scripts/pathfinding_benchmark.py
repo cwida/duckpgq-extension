@@ -1493,9 +1493,37 @@ CSR_INDEX_NAME = "pathfinding_benchmark_csr"
 CSR_INDEX_KEY = f"csr-index|ldbc|main|person_knows_person|{CSR_INDEX_NAME}"
 
 
+# The benchmark's directed index stores the reverse side (decided 18 Nov 2026 for the freeze after rc13): one pair,
+# or a few sources with one destination each, is then searched from both ends, and many sources to one destination
+# from the destination. The undirected index needs no option: its forward partitions serve both sides.
+CSR_INDEX_OPTIONS = "reverse = true"
+
+
 def create_csr_index_sql(if_not_exists=True):
     clause = "IF NOT EXISTS " if if_not_exists else ""
-    return f"CREATE INDEX {clause}{CSR_INDEX_NAME} ON ldbc.person_knows_person USING CSR (person1id, person2id);\n"
+    return (f"CREATE INDEX {clause}{CSR_INDEX_NAME} ON ldbc.person_knows_person USING CSR (person1id, person2id) "
+            f"WITH ({CSR_INDEX_OPTIONS});\n")
+
+
+def drop_index_without_options(database, index_name, options, threads):
+    """Drops `index_name` of the database when it exists without `options` in its definition (a database prepared
+    before 18 Nov 2026 holds the benchmark index without the reverse side; CREATE INDEX IF NOT EXISTS would keep
+    it). Returns whether an index was dropped."""
+    if not options:
+        return False
+    out = run_duckdb(BENCH_DUCKDB, None,
+                     f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; ATTACH {sql_string(database)} AS ldbc (READ_ONLY); "
+                     f"SELECT 'definition', sql FROM duckdb_indexes() WHERE database_name = 'ldbc' "
+                     f"AND index_name = {sql_string(index_name)};", quiet=True)[0]
+    definition = next((line for line in out.splitlines() if line.startswith("definition")), None)
+    wanted = re.sub(r"\s+", "", options)
+    if definition is None or wanted in re.sub(r"\s+", "", definition):
+        return False
+    print(f"Replacing index {index_name}: it was created without WITH ({options})")
+    run_duckdb(BENCH_DUCKDB, None,
+               f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; SET threads={threads}; ATTACH {sql_string(database)} AS ldbc; "
+               f"DROP INDEX ldbc.main.{index_name}; CHECKPOINT ldbc;", quiet=True)
+    return True
 
 
 def index_build_sql(options):
@@ -5143,13 +5171,22 @@ class DuckPGQSystem(GraphDBSystem):
         if self.route == "index":
             # The configuration's settings apply at CREATE INDEX too (partition geometry is frozen there)
             settings = "".join(f"SET {name}={value}; " for name, value in self.settings.items()) if self.index_suffix else ""
+            drop_index_without_options(self.database, self.index_name, self.default_index_options(), self.threads)
             run_duckdb(BENCH_DUCKDB, None, f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; SET threads={self.threads}; {settings}"
                                           f"ATTACH {sql_string(self.database)} AS ldbc; "
                                           f"CREATE INDEX IF NOT EXISTS {self.index_name} ON ldbc.{self.index_table} "
                                           f"USING CSR (person1id, person2id){self.index_with_clause()};", quiet=True)
 
+    def default_index_options(self):
+        """The reverse side of the benchmark's directed index, unless the configuration sets `reverse` itself"""
+        if self.symmetric or (self.index_with and "reverse" in self.index_with):
+            return ""
+        return CSR_INDEX_OPTIONS
+
     def index_with_clause(self):
-        options = (["undirected = true"] if self.symmetric else []) + ([self.index_with] if self.index_with else [])
+        options = ((["undirected = true"] if self.symmetric else [])
+                   + ([self.default_index_options()] if self.default_index_options() else [])
+                   + ([self.index_with] if self.index_with else []))
         return f" WITH ({', '.join(options)})" if options else ""
 
     def edge_count(self):
@@ -5644,8 +5681,20 @@ MICROBENCH_CONFIGS = {
     "no_reverse_orientation": ({OPT + "reverse_orientation_ratio": 0}, None, False),
     # Index side
     "no_snapshot_cache": ({OPT + "snapshot_cache": "false"}, None, False),
+    # The benchmark index has the reverse side since 18 Nov (CSR_INDEX_OPTIONS), so baseline runs with it:
+    # no_reverse_index is the index of the frozen run rc13 (forward side only), one_end the search from the source
+    # only on the benchmark index (bidirectional_pair off). The reverse_index* configurations predate the default
+    # and create their own index WITH (reverse = true), the same as the baseline's
+    "no_reverse_index": ({}, "reverse = false", False),
+    "one_end": ({OPT + "bidirectional_pair": "false"}, None, False),
     "reverse_index": ({}, "reverse = true", False),
     "reverse_index_forward_only": ({OPT + "reverse_orientation_ratio": 0}, "reverse = true", False),
+    "reverse_index_one_end": ({OPT + "bidirectional_pair": "false"}, "reverse = true", False),
+    # The search from both ends with other sweep thresholds: a level is swept when its frontier holds at least
+    # 1 / sparse_frontier_divisor of the vertices (default 64; 1 never sweeps, 0 sweeps every level)
+    "reverse_index_no_sweep": ({OPT + "sparse_frontier_divisor": 1}, "reverse = true", False),
+    "reverse_index_sweep_8": ({OPT + "sparse_frontier_divisor": 8}, "reverse = true", False),
+    "reverse_index_always_sweep": ({OPT + "sparse_frontier_divisor": 0}, "reverse = true", False),
     # Reach mode on per-source searches instead of lane waves (reach_lanes, 2 Nov)
     "reach_per_source": ({OPT + "reach_lanes": "false"}, None, False),
     # Reach mode vs the pair list for sources x all persons
@@ -5721,7 +5770,14 @@ MICROBENCH_GROUPS = {
     "task_edges": ["baseline"] + [f"task_edges_{n}" for n in (65536, 262144, 1048576, 4194304, 16777216, 0)],
 }
 MICROBENCH_GROUPS["all"] = list(dict.fromkeys(sum((v for k, v in MICROBENCH_GROUPS.items() if k not in ("scheduling", "memory", "partitions")), [])))
-MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only"}
+# Until 18 Nov the group was baseline (no reverse side), reverse_index, reverse_index_one_end: the files under
+# repro/results/probes_18nov_bidirectional use those names
+MICROBENCH_GROUPS["bidirectional"] = ["baseline", "one_end", "no_reverse_index"]
+MICROBENCH_GROUPS["bidirectional_sweep"] = ["reverse_index", "reverse_index_no_sweep", "reverse_index_sweep_8",
+                                           "reverse_index_always_sweep", "reverse_index_one_end"]
+MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only", "reverse_index_one_end",
+                         "no_reverse_index", "one_end",
+                         "reverse_index_no_sweep", "reverse_index_sweep_8", "reverse_index_always_sweep"}
 
 
 def microbench_configs(names):
@@ -6009,7 +6065,7 @@ SET threads={args.threads};
 ATTACH {sql_string(database)} AS ldbc;
 USE ldbc;
 .timer on
-CREATE INDEX {CSR_INDEX_NAME} ON person_knows_person USING CSR (person1id, person2id);
+CREATE INDEX {CSR_INDEX_NAME} ON person_knows_person USING CSR (person1id, person2id) WITH ({CSR_INDEX_OPTIONS});
 .timer off
 SELECT duckpgq_csr_index_size('person_knows_person', '{CSR_INDEX_NAME}');
 """

@@ -368,8 +368,17 @@ int main(int argc, char **argv) {
 			options.vertex_count = std::stoull(Scalar(*Must(con, "SELECT count(*) FROM person;"), 0));
 			// A file database's catalog is named after the file; the cache key must name it
 			options.catalog = Scalar(*Must(con, "SELECT current_database();"), 0);
+			// The benchmark index stores the reverse side (the harness's CSR_INDEX_OPTIONS); an index of that name
+			// created without it (a database prepared before 18 Nov 2026) is replaced
+			auto definition = Scalar(*Must(con, "SELECT sql FROM duckdb_indexes() WHERE database_name = "
+			                                    "current_database() AND index_name = " +
+			                                        Quote(options.index_name) + ";"),
+			                         0);
+			if (!definition.empty() && definition.find("reverse = true") == std::string::npos) {
+				Must(con, "DROP INDEX " + options.index_name + ";");
+			}
 			Must(con, "CREATE INDEX IF NOT EXISTS " + options.index_name +
-			              " ON person_knows_person USING CSR (person1id, person2id);");
+			              " ON person_knows_person USING CSR (person1id, person2id) WITH (reverse = true);");
 			// The extension creates its internal catalog table on first use; two connections doing that at once hit
 			// a catalog write-write conflict (seen in this driver), so initialize it once here
 			Must(con, "SELECT delete_csr(2147483647);");

@@ -26,6 +26,7 @@
 #include "duckdb/parallel/thread_context.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
+#include <duckpgq/core/operator/bidirectional_pair_search.hpp>
 #include <duckpgq/core/operator/iterative_length/bidirectional_iterative_length_state.hpp>
 #include <duckpgq/core/operator/iterative_length/grouped_iterative_length_event.hpp>
 #include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
@@ -256,6 +257,14 @@ public:
 	bool Start() override {
 		phase_start_time = std::chrono::steady_clock::now();
 		worker_count = ChooseWorkerCount();
+		if (bidirectional) {
+			int64_t target = -1;
+			targets.ForEach([&](uint32_t value) { target = value; });
+			pair_search = make_uniq<BidirectionalPairSearch>(SearchGraphSide {local_csrs, delta_csrs, suppressed},
+			                                                 std::move(opposite_side), NumericCast<idx_t>(v_size),
+			                                                 track_parents, max_depth, sparse_frontier_divisor);
+			return pair_search->Start(source, target, worker_count);
+		}
 		next_lists.assign(worker_count, {});
 		AllocateArrays();
 		Initialize();
@@ -291,8 +300,28 @@ public:
 		return AdvanceLevel();
 	}
 
+	//! ---- Search from both ends
+	//! Called by the scheduler once the group's destinations are registered: a group with exactly one destination
+	//! is searched from both ends over `opposite`, the partitions of the other direction (BidirectionalPairSearch).
+	//! False when the group keeps the search from its source: several destinations, a search that must not stop at
+	//! the destination, or partitions without row lookup.
+	bool TryEnableBidirectional(const SearchGraphSide &opposite) {
+		if (lane_mode || reach_mode || !target_early_termination ||
+		    remaining_targets.load(std::memory_order_relaxed) != 1 || !opposite.HasRowLookup() ||
+		    !SearchGraphSide {local_csrs, delta_csrs, suppressed}.HasRowLookup()) {
+			return false;
+		}
+		opposite_side = opposite;
+		bidirectional = true;
+		return true;
+	}
+
 	//! The parallel part of one level on one worker
 	void RunLevel(idx_t worker_id) {
+		if (pair_search) {
+			pair_search->RunLevel(worker_id);
+			return;
+		}
 		if (sparse_expansion) {
 			ForEachFrontierSlice([&](uint32_t vertex) { ExpandVertex(vertex, worker_id); });
 			return;
@@ -318,6 +347,9 @@ public:
 
 	//! The serial step between levels: the next frontier is the union of what every worker discovered
 	bool AdvanceLevel() {
+		if (pair_search) {
+			return pair_search->AdvanceLevel();
+		}
 		if (next_lists.size() == 1) {
 			frontier_list.swap(next_lists[0]);
 			next_lists[0].clear();
@@ -394,6 +426,31 @@ public:
 	//! destination; paths, the path of every reached destination (dense vertex ids, mapped to keys at the scatter);
 	//! reach, every reached (vertex, distance). After this the arrays can go.
 	void ExtractResults() {
+		if (pair_search) {
+			// The search from both ends has one destination: its length and path are the group's results
+			auto length = pair_search->Length();
+			if (concurrent_groups <= 1) {
+				// A query of one search reports what it did: levels of both sides, vertices discovered, sweeps
+				RecordStrategy(context, "bidirectional_levels", std::to_string(pair_search->Levels()));
+				RecordStrategy(context, "bidirectional_discovered", std::to_string(pair_search->Discovered()));
+				RecordStrategy(context, "bidirectional_sweeps", std::to_string(pair_search->Sweeps()));
+			}
+			targets.ForEach([&](uint32_t target) {
+				if (length < 0) {
+					return;
+				}
+				target_distance[target] = length;
+				if (track_parents) {
+					auto offset = path_values.size();
+					pair_search->AppendPath(path_values, path_valid);
+					path_index[target] = {offset, path_values.size() - offset};
+				}
+			});
+			pair_search.reset();
+			targets.Release();
+			results_extracted = true;
+			return;
+		}
 		if (results_extracted || !arrays_allocated) {
 			results_extracted = true;
 			return;
@@ -607,6 +664,11 @@ public:
 	vector<uint32_t> parent_vertex;
 	vector<uint64_t> parent_edge;
 	vector<shared_ptr<DataChunk>> output_chunks;
+	//! The group's one destination is searched from both ends (TryEnableBidirectional); the search exists from
+	//! Start() to ExtractResults() and replaces the per-vertex arrays below
+	bool bidirectional = false;
+	SearchGraphSide opposite_side;
+	unique_ptr<BidirectionalPairSearch> pair_search;
 	//! REACH: the group emits every reached vertex (set by the scheduler)
 	bool reach_mode = false;
 	idx_t reach_dense_divisor = 0;
@@ -1716,6 +1778,7 @@ public:
 			}
 		}
 		if (!lane_waves) {
+			EnableBidirectionalSearches();
 			ScheduleSourceSearches(batch_events);
 		}
 		if (lane_waves) {
@@ -1759,6 +1822,30 @@ public:
 	}
 
 private:
+	//! Groups with one destination are searched from both ends when the other direction of the graph is at hand:
+	//! the reverse side of the index (stored, or the forward partitions of an undirected one), or the forward
+	//! partitions when the search runs in reverse orientation
+	void EnableBidirectionalSearches() const {
+		if (!gstate.settings.bidirectional_pair || gstate.mode == PathFindingOperatorMode::REACH) {
+			return;
+		}
+		auto &csr_state = *gstate.local_csr_state;
+		SearchGraphSide opposite;
+		if (gstate.search_orientation == PathFindingSearchOrientation::REVERSE) {
+			opposite = {csr_state.partition_csrs, csr_state.partition_delta_csrs, csr_state.partition_suppressed};
+		} else {
+			opposite = {csr_state.reverse_partition_csrs, csr_state.reverse_partition_delta_csrs,
+			            csr_state.reverse_partition_suppressed};
+		}
+		idx_t enabled = 0;
+		if (!opposite.csrs.empty()) {
+			for (auto &state : gstate.source_group_states) {
+				enabled += state->TryEnableBidirectional(opposite);
+			}
+		}
+		RecordStrategy(context, "bidirectional_searches", std::to_string(enabled));
+	}
+
 	//! Events for the per-source searches: in rounds bounded by the working-set cap (default), or every
 	//! search at once (the former behaviour, experimental_path_finding_operator_source_search_rounds = false)
 	void ScheduleSourceSearches(vector<shared_ptr<Event>> &batch_events) const {

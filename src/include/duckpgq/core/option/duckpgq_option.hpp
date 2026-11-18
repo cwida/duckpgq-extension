@@ -28,6 +28,7 @@ int32_t GetPathFindingSourceGroupRatio(ClientContext &context);
 double_t GetCSRIndexFoldRatio(ClientContext &context);
 bool GetPathFindingSnapshotCache(ClientContext &context);
 bool GetPathFindingTargetEarlyTermination(ClientContext &context);
+bool GetPathFindingBidirectionalPair(ClientContext &context);
 int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context);
 int32_t GetPathFindingFewSourcesLimit(ClientContext &context);
 int64_t GetPathFindingWorkingSetCapSetting(ClientContext &context);

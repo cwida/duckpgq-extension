@@ -14,6 +14,7 @@ struct PathFindingSettings {
 	      benchmark_lane_activity_enabled(benchmark_enabled && GetPathFindingBenchmarkLaneActivityOption(context)),
 	      benchmark_output_prefix(GetPathFindingBenchmarkPrefix(context)),
 	      target_early_termination(GetPathFindingTargetEarlyTermination(context)),
+	      bidirectional_pair(GetPathFindingBidirectionalPair(context)),
 	      threads_per_batch(GetPathFindingThreadsPerBatch(context)),
 	      sparse_frontier_divisor(NonNegative(GetPathFindingSparseFrontierDivisor(context))),
 	      frontier_bitmap(GetPathFindingFrontierBitmap(context)),
@@ -33,8 +34,10 @@ struct PathFindingSettings {
 	bool benchmark_enabled;
 	bool benchmark_lane_activity_enabled;
 	string benchmark_output_prefix;
-	//! Source-grouped kernel: _target_early_termination, _threads_per_batch, _sparse_frontier_divisor (0 sweeps)
+	//! Source-grouped kernel: _target_early_termination, _bidirectional_pair (a group with one destination is
+	//! searched from both ends), _threads_per_batch, _sparse_frontier_divisor (0 sweeps)
 	bool target_early_termination;
+	bool bidirectional_pair;
 	int64_t threads_per_batch;
 	idx_t sparse_frontier_divisor;
 	//! MS-BFS lane kernel: _frontier_bitmap, _frontier_bitmap_filter (-1 decides from the working set size against
