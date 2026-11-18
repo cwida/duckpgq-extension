@@ -5722,6 +5722,19 @@ MICROBENCH_GROUPS = {
 }
 MICROBENCH_GROUPS["all"] = list(dict.fromkeys(sum((v for k, v in MICROBENCH_GROUPS.items() if k not in ("scheduling", "memory", "partitions")), [])))
 MICROBENCH_INDEX_ONLY = {"no_snapshot_cache", "reverse_index", "reverse_index_forward_only"}
+
+
+def microbench_configs(names):
+    out = []
+    for name in names:
+        for config in MICROBENCH_GROUPS.get(name, [name]):
+            if config not in MICROBENCH_CONFIGS:
+                raise SystemExit(f"unknown microbenchmark config {config}; known: {', '.join(MICROBENCH_CONFIGS)}")
+            if config not in out:
+                out.append(config)
+    return out
+
+
 # Ablation of the partitioned CSR (17 Nov 2026): the explore phase of the lane kernel on one unpartitioned CSR with
 # 32-bit destinations. flat_serial = one partition with one owner; flat_ranges = each worker owns a destination
 # range without physical partitioning; flat_atomic / flat_locked = source morsels writing shared lane words with
@@ -5768,17 +5781,6 @@ for _label, _config, _settings, _suffix in EXPLORE_VARIANTS:
     if _flat or _config == "baseline":
         # explore_threads: the partitioned explore and the four flat variants only (no index per width)
         MICROBENCH_GROUPS["explore_threads"].append(_config)
-
-
-def microbench_configs(names):
-    out = []
-    for name in names:
-        for config in MICROBENCH_GROUPS.get(name, [name]):
-            if config not in MICROBENCH_CONFIGS:
-                raise SystemExit(f"unknown microbenchmark config {config}; known: {', '.join(MICROBENCH_CONFIGS)}")
-            if config not in out:
-                out.append(config)
-    return out
 
 
 def microbenchmarks(args):
