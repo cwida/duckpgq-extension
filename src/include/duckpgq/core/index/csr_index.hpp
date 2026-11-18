@@ -42,15 +42,20 @@ struct PropertyGraphTable;
 //! [min_key, max_key] with per-word rank counts, so a lookup is a popcount and construction needs no sort. Sparse
 //! key spaces fall back to a sorted key array with binary search.
 struct CSRIndexDictionary {
+	//! With a buffer manager (the dictionary of an index epoch) the arrays are buffers of that manager
+	explicit CSRIndexDictionary(optional_ptr<BufferManager> buffer_manager = nullptr)
+	    : bitmap(buffer_manager), word_rank(buffer_manager), sorted_keys(buffer_manager) {
+	}
+
 	bool dense = false;
 	//! Dense and every key in [min_key, min_key + count) is present: id = key - min_key, no bitmap needed
 	bool identity = false;
 	int64_t min_key = 0;
 	//! Dense: bit (key - min_key) is set when the key is a vertex; word_rank[w] = number of set bits before word w
-	vector<uint64_t> bitmap;
-	vector<uint32_t> word_rank;
+	ManagedArray<uint64_t> bitmap;
+	ManagedArray<uint32_t> word_rank;
 	//! Sparse: all keys in ascending order, id = position
-	vector<int64_t> sorted_keys;
+	ManagedArray<int64_t> sorted_keys;
 	idx_t count = 0;
 
 	//! Returns the dense id of a key, or DConstants::INVALID_INDEX when the key is not a vertex of the epoch.
@@ -95,6 +100,11 @@ struct CSRIndexEdgeList {
 
 //! One immutable adjacency snapshot: the edges visible at `bound`, packed into the partitioned CSR layout the
 //! path-finding operator traverses. Readers share epochs through shared_ptr; an epoch is never modified.
+//!
+//! Memory: the dictionary, the partitions and the row ids are buffers of DuckDB's buffer manager, pinned for the
+//! epoch's lifetime (ManagedArray); the tombstone position lists are heap vectors accounted by `position_memory`.
+//! Both are returned when the last reference to the epoch goes, which for a retained epoch is the later of the fold
+//! that drops it and the end of the last query that reads it.
 struct CSRIndexEpoch {
 	//! Rows committed before this bound are in the epoch
 	VisibilityBound bound;
@@ -108,7 +118,7 @@ struct CSRIndexEpoch {
 	//! Forward partitions (both directions when the index is undirected)
 	shared_ptr<PartitionedCSRIndex> csr;
 	//! Edge-table row id per edge position, per partition, aligned with the partition's edge array
-	vector<vector<row_t>> partition_row_ids;
+	vector<ManagedArray<row_t>> partition_row_ids;
 	//! Epoch position (partition << 32 | offset) of each tombstoned row, DConstants::INVALID_INDEX when the row is
 	//! not an edge of this epoch; filled lazily by readers, protected by the index lock
 	vector<idx_t> tombstone_positions;
@@ -117,6 +127,8 @@ struct CSRIndexEpoch {
 	//! Undirected indexes: the position of the mirrored edge (dst -> src, same row id) in the forward partitions,
 	//! aligned; INVALID_INDEX when absent (29 Oct: a deleted undirected edge stayed traversable in one direction)
 	vector<idx_t> mirror_tombstone_positions;
+	//! The three position lists' bytes in the buffer pool; updated under the index lock when they change
+	MemoryReservation position_memory;
 };
 
 //! An edge committed after the epoch was built (keys, since the vertex may be new) and its row id
@@ -206,6 +218,9 @@ struct CSRIndexSnapshot {
 	//! Keys of vertices that only appear in delta edges, id = vertex_count_of_epoch + position
 	vector<int64_t> extra_keys;
 	std::unordered_map<int64_t, uint32_t> extra_key_to_id;
+	//! The overlay's bytes in the buffer pool (delta partitions, suppression bitmaps, extra keys): heap memory built
+	//! by a read query, accounted without failing it
+	MemoryReservation overlay_memory;
 
 	idx_t Lookup(int64_t key) const;
 	int64_t KeyOf(idx_t id) const;
@@ -217,6 +232,11 @@ struct CSRIndexSnapshot {
 //! append-only delta of edges committed after that bound, and append-only tombstones for epoch edges deleted after
 //! it. No commit ids are stored: a reader decides visibility of the delta and the tombstones through the table's
 //! row version information, once per query (see docs/CSR_INDEX_DESIGN.md).
+//!
+//! Memory: everything the index holds in use is in DuckDB's buffer pool under MemoryTag::EXTENSION, so it counts
+//! against memory_limit and shows in duckdb_memory(); none of it is evictable. An epoch's arrays are pinned buffers
+//! (an epoch that does not fit fails its build with an out-of-memory error); the change log and a snapshot's overlay
+//! are heap memory the pool accounts for without failing the commit or the read query (design document, section 4).
 class CSRIndex : public BoundIndex {
 public:
 	static constexpr const char *TYPE_NAME = "CSR";
@@ -269,7 +289,8 @@ public:
 	idx_t DeltaSize() const;
 	idx_t TombstoneCount() const;
 	idx_t EpochCount() const;
-	//! Bytes held by the retained epochs and the change log (the fixed-costs table: bytes per edge)
+	//! Bytes in use by the retained epochs and the change log, by element counts (the fixed-costs table: bytes per
+	//! edge). The buffer pool holds what is allocated, which is slightly more (see GetInMemorySize).
 	idx_t InMemoryBytes() const;
 	//! Edges of the newest retained epoch
 	idx_t EpochEdgeCount() const;
@@ -323,6 +344,9 @@ private:
 	                                                     bool undirected, bool reverse, uint64_t *scan_us = nullptr);
 	//! Whether RunFold should build an epoch for this transaction (ordering and, for ratio > 0, the pending log)
 	bool FoldDue(DuckTransaction &transaction, double ratio) const;
+	//! Called when an automatic fold's epoch did not fit memory_limit: the next automatic fold waits until the
+	//! pending log is twice what it is now
+	void PostponeAutomaticFold() const;
 	//! Installs an epoch RunFold built, unless a newer one arrived meanwhile; records the fold time
 	void InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
 	                        uint64_t fold_us, uint64_t scan_us) const;
@@ -372,6 +396,13 @@ private:
 	                                           idx_t tombstone_count, bool shareable) const;
 	//! Rebuilds delta_row_index from delta; the index lock must be held
 	void RebuildDeltaRowIndexLocked() const;
+	//! Bytes of the change log on the heap: the capacity of `delta` and `tombstones` and the nodes and buckets of
+	//! `delta_row_index`; the index lock must be held
+	idx_t ChangeLogBytesLocked() const;
+	//! Brings `change_log_memory` in line with ChangeLogBytesLocked after the log grew or was compacted
+	void AccountChangeLogLocked() const;
+	//! Brings an epoch's `position_memory` in line with its tombstone position lists; the index lock must be held
+	void AccountPositionsLocked(CSRIndexEpoch &epoch) const;
 	//! Resolves the dense ids of every delta entry against the newest epoch's dictionary; the index lock must be held
 	void ResolveDeltaIdsLocked() const;
 
@@ -403,10 +434,15 @@ private:
 	//! unaccounted entries, so the pending log is the sizes minus these)
 	mutable idx_t newest_covered_delta = 0;
 	mutable idx_t newest_excluded_tombstones = 0;
+	//! Pending log size below which no automatic fold runs: 0, or set by PostponeAutomaticFold until a fold installs
+	mutable idx_t fold_retry_pending = 0;
 	//! Next change group id handed to an Append or TryDelete call (commits are serialized, so ids follow commit order)
 	mutable uint32_t next_change_group = 1;
 	//! Position in `delta` of every delta row, so TryDelete can stamp the row's deleted_group without a scan
 	mutable unordered_map<row_t, idx_t> delta_row_index;
+	//! The change log's bytes in the buffer pool (`delta`, `tombstones`, `delta_row_index`): heap memory that grows
+	//! with every commit, accounted without failing the commit
+	mutable MemoryReservation change_log_memory;
 	//! The last shared snapshot built, served to readers that see the same change groups of the same epoch
 	mutable shared_ptr<CSRIndexSnapshot> cached_snapshot;
 	mutable uint32_t cached_snapshot_generation = 0;
@@ -416,7 +452,8 @@ private:
 	//! One fold at a time; shared so that RunFold can hold it while no handle on the entry keeps the index alive
 	mutable shared_ptr<mutex> fold_lock = make_shared_ptr<mutex>();
 	//! Segments written by this process's last checkpoint, kept until a rewrite or the drop releases their blocks
-	//! (a FixedSizeBuffer marks its block as modified when destroyed); the WAL's transient buffers live apart
+	//! (a FixedSizeBuffer marks its block as modified when destroyed); the WAL's transient buffers live apart and
+	//! are released by the next checkpoint (they are pinned: a second copy of a logged index in memory)
 	mutable unique_ptr<FixedSizeAllocator> storage_allocator;
 	mutable unique_ptr<FixedSizeAllocator> wal_allocator;
 	//! The on-disk state (written by this process or loaded at bind) and whether the in-memory state still matches

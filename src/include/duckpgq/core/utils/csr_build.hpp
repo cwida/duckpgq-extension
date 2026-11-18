@@ -67,29 +67,38 @@ void CSRRadixSortBySource(vector<ENTRY> &entries, vector<ENTRY> &scratch, vector
 
 //! Emits a partition with sparse rows from entries sorted by source. Each entry has `src` (global source id) and
 //! `local_dst` (destination offset within the partition); on_edge(position, entry) stores any per-edge payload.
+//! With a buffer manager the partition's arrays are buffers of that manager (a CSR index epoch).
 template <class ENTRY, class ON_EDGE>
 shared_ptr<LocalCSR> CSREmitSparsePartition(idx_t start_vertex, idx_t end_vertex, idx_t vertex_count,
                                             const vector<ENTRY> &sorted, ON_EDGE &&on_edge,
-                                            int32_t rows_per_bucket = LocalCSR::DEFAULT_ROWS_PER_BUCKET) {
-	auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, vertex_count, false);
+                                            int32_t rows_per_bucket = LocalCSR::DEFAULT_ROWS_PER_BUCKET,
+                                            optional_ptr<BufferManager> buffer_manager = nullptr) {
+	auto partition = make_shared_ptr<LocalCSR>(start_vertex, end_vertex, vertex_count, false, buffer_manager);
 	partition->e.resize(sorted.size());
+	// The number of rows is known only after the sweep: they are collected here and copied into the partition's
+	// arrays at their final size, so those are allocated once and carry no growth slack
+	vector<uint32_t> source_vertices;
+	vector<uint32_t> row_offsets;
 	if (!sorted.empty()) {
-		partition->row_offsets.push_back(0);
+		row_offsets.push_back(0);
 	}
 	uint32_t previous_src = 0;
 	bool have_row = false;
+	auto edges = partition->e.data();
 	for (idx_t position = 0; position < sorted.size(); position++) {
 		auto &entry = sorted[position];
 		if (!have_row || entry.src != previous_src) {
-			partition->source_vertices.push_back(entry.src);
-			partition->row_offsets.back() = NumericCast<uint32_t>(position);
-			partition->row_offsets.push_back(NumericCast<uint32_t>(sorted.size()));
+			source_vertices.push_back(entry.src);
+			row_offsets.back() = NumericCast<uint32_t>(position);
+			row_offsets.push_back(NumericCast<uint32_t>(sorted.size()));
 			previous_src = entry.src;
 			have_row = true;
 		}
-		partition->e[position] = entry.local_dst;
+		edges[position] = entry.local_dst;
 		on_edge(position, entry);
 	}
+	partition->source_vertices.assign(source_vertices.begin(), source_vertices.end());
+	partition->row_offsets.assign(row_offsets.begin(), row_offsets.end());
 	partition->expected_sparse_row_count = partition->source_vertices.size();
 	partition->v_array_size = 0;
 	partition->initialized_e = true;
