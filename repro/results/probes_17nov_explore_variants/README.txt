@@ -34,9 +34,15 @@ the shared database files; SF100 has them from rc13); 65,536 pairs on graph500-2
 flat_locked; 65,536 pairs in the thread sweep (flat_atomic takes 75 s there at 32 threads).
 
 Reading notes
-- 65,536 random pairs run as 32 concurrent waves of one worker each, so on that point nothing contends for the lane
-  words: the gap of flat_atomic and flat_locked there is the cost of the synchronised update and of the layout.
-- flat_ranges with one worker per wave still narrows every row by binary search, hence slower than flat_serial on
-  65,536 pairs.
+- How the points are scheduled (strategy column): 65,536 random pairs run as 256 waves in 32 concurrent groups, each
+  level split into 1 task at SF10, 5 at SF100, 14 at SF300 and 32 on graph500-24 (the task_edges rule), so at
+  SF100 and above several threads write one wave's lane words. In the thread sweep at t threads: 2048 pairs are 8
+  waves in min(t, 8) groups, 1024 sources x all 4 waves in min(t, 4) groups, 256 sources x all one wave; every
+  group's level has up to t tasks.
+- What separates the cost of the synchronised update from contention is therefore the single-thread column of the
+  thread sweep (flat_atomic 1.7 to 2.9 times slower, flat_locked 1.3 to 1.8 times), not the 65,536-pair point.
+- flat_ranges gives each task of a wave a destination range and narrows every row by binary search; on 65,536 pairs
+  it is slower than flat_serial at SF300.
+- figures/: threads_time.png, threads_speedup.png, threads_slowdown.png (tools/plot_threads.py).
 - On graph500-24 flat_atomic is the best alternative. A possible reason, not measured: it tests a word before
   updating it and on a dense graph most relaxations add no lane.
