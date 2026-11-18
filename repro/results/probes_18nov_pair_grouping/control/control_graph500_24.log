@@ -1,0 +1,2 @@
+2026-11-18T15:53:05Z graph500_24 db /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/graphalytics/db/graph500-24.duckdb index pathfinding_benchmark_csr table benchmark_pairs_2048 threads 32 repeats 3 cli c016d5fe76940978 extension 06240e537f3d686c
+2026-11-18T15:54:30Z done exit=0

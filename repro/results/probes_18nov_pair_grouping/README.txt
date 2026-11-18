@@ -52,6 +52,44 @@ Findings
    The sorted input changes which sources share a wave (256 consecutive vertex ids instead of 256 in arrival
    order); the probe does not separate that from any other effect of the order, and it is one graph.
 
-Not measured: sorting by source only, by destination, or by a hash (the control that would show whether wave
-composition is the cause); SF100 and the Graphalytics graphs; an in-operator sort of the groups before the waves
-are cut.
+Control for finding 3 (tools/control.sh, tools/summarize_control.py, files under control/, summary in
+control/summary.md). Same binaries, quiet machine, 3 runs per ordering interleaved, every ordering returns the same
+result. The orderings sort the pairs below the operator; arrival is the table as the harness builds it.
+
+  SF300, directed index, 65,536 pairs (256 waves)        median ms   arrival / ordering
+  arrival (0.503 of adjacent rows have ascending sources)   10,182        1.00
+  by hash(source), a random order                           10,254        0.99 (slower)
+  by destination                                             9,933        1.03 (faster)
+  by source                                                  6,774        1.50 (faster)
+  the waves of "by source" in random order                   6,729        1.51 (faster)
+  random within windows of 1024 consecutive sources          6,752        1.51 (faster)
+  random within windows of 4096                              7,059        1.44 (faster)
+  random within windows of 16,384                            7,750        1.31 (faster)
+
+  other graphs, arrival / by source / by hash, median ms
+  SF100, directed index, 65,536 pairs             3,409 / 2,293 / 3,431   by source 1.49 times faster
+  SF300, undirected index, 16,384 pairs           2,700 / 2,672 / 2,679   no difference (1.01)
+  graph500-24, 2048 pairs (8 waves)               5,956 / 5,897 / 5,878   no difference (1.01)
+
+Lane activity at SF300 (one untimed run per ordering with experimental_path_finding_operator_benchmark_lane_activity,
+control/activity_sf300.csv: one row per ordering, wave and level):
+                                                              arrival      by hash     by source
+  levels per wave, median                                          19           19            17
+  lane frontiers summed over a wave's levels, median      115,961,260  115,808,964   125,262,094
+  vertices with any active lane, summed over the levels     4,074,689    4,071,998     2,634,224
+  the same at level 4 / level 5, mean (of 1,193,579)   1,086K / 1,109K  1,086K / 1,109K  619K / 621K
+
+Cause. The arrival order is a random order. What matters is which sources share a wave, not the order of the waves
+or of the destinations. Every knows edge has person1id < person2id (checked at SF10: 1,839,354 of 1,839,354), so
+the directed graph is acyclic along the person id and a search reaches only persons with a larger id than its
+source (reachable pairs fall from 85% in the lowest decile of the source's rank to 7% in the highest). 256 sources
+with neighbouring ids search the same part of the graph: their lanes do the same work (lane frontiers 125M against
+116M) on 1.55 times fewer vertices with any active lane (2.63M against 4.07M per wave), and the wave's time follows
+that count (1.50 times faster). A wave of random sources has an active lane on 93% of the vertices at its widest
+level, a wave of neighbouring sources on 52%. Where the ids carry no such structure (the undirected index, graph500)
+the order changes nothing.
+
+Not measured: an in-operator ordering of the groups before the waves are cut (the same wave composition without a
+sort of the pairs); cit-Patents and datagen-8_4-fb; 65,536 pairs on the undirected index and on graph500 (the
+control used 16,384 and 2048); why 1024 sources x 200 destinations were 1.15 times slower sorted in the first run
+(the sort of 204,800 pairs takes 21 of the 39 ms).
