@@ -499,6 +499,27 @@ the wait is named as a cost instead), and four future-work items (streaming reac
 tables, paths on the lanes; kept on my-beans-wnqk). The caveat that the visibility check is called in DuckDB's
 transaction and table storage classes, outside the extension API, exists only here and stays as a clause.
 
+17-18 Nov: Peter Boncz read the draft. His points (relayed by the author) are beans under my-beans-ikh5: more
+weight on the partitioned CSR as what lets MS-BFS run without locks, experiments for it, a bidirectional search for
+one pair, an abstract that argues instead of introducing, at least one algorithm listing, and every paragraph
+rewritten by the author. The paper text is unchanged except one sentence in 4.2 (18 Nov, agreed): the index's keys
+are two plain integer columns that fit a signed 64-bit integer, CREATE INDEX rejects other types (CSRBuildBind);
+no string dictionary is planned. Decided by the author: thread pinning dropped, the ART or foreign-key
+prerequisite on the vertex table deferred, no shape-aware choice of traversal for now. Read from the code on
+17-18 Nov, for the rewrite: an explore task owns a destination range (a partition or one of up to 16 slices of
+one), the update of an edge is a plain 256-bit OR, the summary bitmap's boundary words and the task counter are
+atomic, the single-source traversal claims vertices with a compare-and-swap; a sparse level looks every frontier
+vertex up in every partition, so 3.3's "the frontier plus its edges" understates it on sparse graphs; the index
+never reads the vertex table, so an edge on a key without a vertex row is stored and traversed. Related work found:
+Reif and Neumann, Nav-Index (PVLDB 19(11), 2026), an index for weighted single-pair shortest paths in Umbra with
+contraction hierarchies, static; it benchmarks the UDF-based DuckPGQ (1000 sources to one destination) and is the
+paper Peter meant by the Umbra experiments (my-beans-8f81, benchmark my-beans-24hi). Not cited yet; Kaufmann et
+al. (EDBT 2017, parallel MS-BFS) is also missing and to be checked for how it synchronises the lane updates.
+On the desk since rc13, merged into the branch and not in any number of the paper: the index's memory in the
+buffer pool, a per-group memo of reader bounds, the bidirectional search of one pair, the explore variants
+(partitioned against unpartitioned with atomics or locks, thread sweep, perf counters). The next freeze is
+my-beans-6ew0; it should include the fold and tombstone fixes found during the Teseo work (my-beans-p65v).
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under

@@ -61,6 +61,8 @@ changes.
 \texttt{CREATE INDEX} runs the bulk build and produces the first \emph{epoch} (Figure~\ref{fig:index-timeline}): the
 partitioned CSR of Section~\ref{sec:csr} over every edge that the creating transaction can see, the \emph{dictionary}
 that maps vertex keys to the dense ids the CSR uses, and the row id of every edge, stored next to the edge's position.
+\rev{The index accepts two plain key columns of an integer type that fits a signed 64-bit integer, and
+\texttt{CREATE INDEX} rejects keys of any other type, such as strings.}
 A path found over the index names its edges by row id and its vertices by key, as a path found on the build
 route does (Section~\ref{sec:results}), and can be joined back to both tables.
 Created \texttt{WITH (reverse = true)}, the epoch also holds the reverse partitions, and an index on an undirected edge
