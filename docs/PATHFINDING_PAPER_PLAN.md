@@ -1619,3 +1619,14 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   text (Sections 3.3 or 3.4, 5.1, 7). Side finding, not changed: the microbench configuration `sparse_frontier`
   (divisor 2 000 000 000) sweeps every level by the code (`frontier x divisor < vertices` is never true), the
   opposite of its name and of the note in MICROBENCHMARK_SWITCHES.md; divisor 1 is the setting that never sweeps.
+- 18 Nov (afternoon): the author decided that the sweep's index gets the reverse side for the next freeze. The
+  harness creates the benchmark's directed index `WITH (reverse = true)` everywhere (`CSR_INDEX_OPTIONS`: the sweep's
+  and the microbenchmark's system class, the update workload's rebuild, the fixed-costs step, the concurrent
+  driver) and replaces an index of that name that was created without it (`drop_index_without_options`; the
+  prepared databases hold the old one). Microbench: `baseline` now has the reverse side, `no_reverse_index` is the
+  index of rc13 (`reverse = false`), `one_end` switches the search from both ends off; group `bidirectional` =
+  baseline, one_end, no_reverse_index. What the next freeze must rerun and restate because of it: every index-route
+  number (one pair and few-source shapes go to the search from both ends, many sources to one destination to the
+  reverse orientation), index bytes and bytes per edge, CREATE INDEX and fold times, peak RSS, the update workload
+  (the change log maintains both sides), IC13 and BI20 on the undirected index (their single pairs are searched
+  from both ends too); `repro/package/queries.tex` names the old CREATE INDEX and must be revised with it.
