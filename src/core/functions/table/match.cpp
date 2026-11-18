@@ -395,6 +395,27 @@ static void PGQFlattenPathElements(vector<unique_ptr<PathReference>> &path_list,
 	}
 }
 
+// Edge variables that are not bound to an edge row: a {0,0} edge joins no edge table, and path-finding ({n,m} with
+// m > 1) binds only the endpoints. The unqualified COLUMNS (*) has no columns to expand for them.
+static void PGQCollectUnboundEdgeAliases(vector<unique_ptr<PathReference>> &path_list,
+                                         case_insensitive_set_t &aliases) {
+	for (auto &path_reference : path_list) {
+		if (path_reference->path_reference_type != PGQPathReferenceType::SUBPATH) {
+			continue;
+		}
+		auto &subpath = *reinterpret_cast<SubPath *>(path_reference.get());
+		if (subpath.path_list.size() == 1 &&
+		    subpath.path_list[0]->path_reference_type == PGQPathReferenceType::PATH_ELEMENT) {
+			auto &element = *reinterpret_cast<PathElement *>(subpath.path_list[0].get());
+			if (element.match_type != PGQMatchType::MATCH_VERTEX && (subpath.upper == 0 || subpath.upper > 1)) {
+				aliases.insert(element.variable_binding);
+			}
+			continue;
+		}
+		PGQCollectUnboundEdgeAliases(subpath.path_list, aliases);
+	}
+}
+
 static vector<Identifier> PGQMainLabels(const vector<shared_ptr<PropertyGraphTable>> &tables) {
 	vector<Identifier> labels;
 	for (auto &table : tables) {
@@ -881,13 +902,26 @@ PGQMatchFunction::CreatePathFindingFunction(vector<unique_ptr<PathReference>> &p
 				previous_vertex_subpath = next_vertex_subpath;
 				continue;
 			}
-			if (previous_vertex_subpath) {
+			// A previous call for the same path (element_id and path_length, say) may have moved the clauses already.
+			if (previous_vertex_subpath && previous_vertex_subpath->where_clause) {
 				conditions.push_back(std::move(previous_vertex_subpath->where_clause));
 			}
-			if (next_vertex_subpath) {
+			if (next_vertex_subpath && next_vertex_subpath->where_clause) {
 				conditions.push_back(std::move(next_vertex_subpath->where_clause));
 			}
 			edge_element = GetPathElement(edge_subpath->path_list[0]);
+			if (edge_subpath->upper == 0) {
+				// {0,0} traverses no edge: the path stays at the previous vertex, which is also the next one.
+				if (!final_list) {
+					auto single_vertex_children = vector<unique_ptr<ParsedExpression>>();
+					single_vertex_children.push_back(
+					    PGQColumnRef(string("rowid"), previous_vertex_element->variable_binding));
+					final_list = make_uniq<FunctionExpression>("list_value", std::move(single_vertex_children));
+				}
+				previous_vertex_element = next_vertex_element;
+				previous_vertex_subpath = next_vertex_subpath;
+				continue;
+			}
 		}
 		auto previous_rowid = PGQColumnRef(string("rowid"), previous_vertex_element->variable_binding);
 		auto edge_rowid = PGQColumnRef(string("rowid"), edge_element->variable_binding);
@@ -1151,7 +1185,8 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 		if (!edge_element) {
 			// We are dealing with a subpath
 			auto edge_subpath = reinterpret_cast<SubPath *>(path_list[idx_j].get());
-			if (edge_subpath->where_clause) {
+			// With zero iterations the edge pattern is never evaluated, so its WHERE does not apply.
+			if (edge_subpath->where_clause && edge_subpath->upper != 0) {
 				conditions.push_back(std::move(edge_subpath->where_clause));
 			}
 			if (edge_subpath->path_list.size() > 1) {
@@ -1160,7 +1195,20 @@ void PGQMatchFunction::ProcessPathList(vector<unique_ptr<PathReference>> &path_l
 			edge_element = GetPathElement(edge_subpath->path_list[0]);
 			auto edge_table = FindGraphTable(edge_element->label, pg_table);
 
-			if (edge_subpath->upper > 1) {
+			if (edge_subpath->upper == 0) {
+				// {0,0} traverses no edge, so the next vertex is the previous vertex itself.
+				vertex_joins.MarkRequired(previous_vertex_element->variable_binding);
+				vertex_joins.MarkRequired(next_vertex_element->variable_binding);
+				if (previous_vertex_table == next_vertex_table) {
+					conditions.push_back(make_uniq<ComparisonExpression>(
+					    ExpressionType::COMPARE_EQUAL,
+					    PGQColumnRef(string("rowid"), previous_vertex_element->variable_binding),
+					    PGQColumnRef(string("rowid"), next_vertex_element->variable_binding)));
+				} else {
+					// Vertices of different tables are never the same vertex.
+					conditions.push_back(ConstantExpression::Boolean(false));
+				}
+			} else if (edge_subpath->upper > 1) {
 				// Add the path-finding
 				AddPathFinding(final_select_node, conditions, previous_vertex_element->variable_binding,
 				               edge_element->variable_binding, next_vertex_element->variable_binding, edge_table,
@@ -1425,6 +1473,11 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 			}
 		}
 	}
+	// COLUMNS (*) also skips edge variables that are not bound to an edge row.
+	auto unexpanded_aliases = anonymous_aliases;
+	for (auto &path_pattern : ref->path_patterns) {
+		PGQCollectUnboundEdgeAliases(path_pattern->path_elements, unexpanded_aliases);
+	}
 
 	for (auto &expression : ref->column_list) {
 		unordered_set<string> named_subpaths;
@@ -1480,7 +1533,7 @@ unique_ptr<TableRef> PGQMatchFunction::MatchBindReplace(ClientContext &context, 
 
 			auto selected_col_exprs =
 			    relation_name.empty()
-			        ? GetColRefExprFromPg(alias_to_vertex_and_edge_tables, anonymous_aliases)
+			        ? GetColRefExprFromPg(alias_to_vertex_and_edge_tables, unexpanded_aliases)
 			        : GetColRefExprFromPg(alias_to_vertex_and_edge_tables, relation_name.GetIdentifierName());
 
 			// Without element variables there is nothing to expand; falling back to the plain star would expose the
