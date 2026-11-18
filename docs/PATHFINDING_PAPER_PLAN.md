@@ -1638,3 +1638,20 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   sweeping against the default 64 at SF300 9.6 against 14.9 ms on unreachable pairs and 15.1 against 14.8 ms on
   4-hop pairs, at SF100 5.3 against 9.3 ms and 7.1 against 10.0 ms; many concurrent searches not measured for the
   search from the source (from both ends, 16 pairs at SF300: 191 ms without sweeps against 58 ms with the default).
+- 18 Nov: first write transaction of the concurrent update driver (my-beans-kzlq; branch `first-txn-index-load`,
+  not merged). It took 15.4 s at SF300 and 13 s at SF100 because a write to a table loads every CSR index of that
+  table that is not resident yet, inside the commit (`CSRIndex::Append` and `TryDelete` call `EnsureLoadedLocked`),
+  and the shared databases carry other CSR indexes on `person_knows_person` (the microbenchmark's row-bucket
+  variants `_rb<N>`, the sweep's `_undirected`: 5 at SF300, 15 at SF100), which the driver's copy inherits. One
+  connection at SF300 on rc13: COMMIT 14.16 s as it is, 14 ms with all six indexes touched first, 6 ms with the
+  five others dropped; the first DELETE's 1.3 s is the first scan of the table. The driver now drops every other
+  CSR index on the edge table before its clock starts (updates mode; its database must be a private copy, as the
+  harness makes). Driver runs with 16 readers (README and files under repro/results/probes_18nov_first_txn): first
+  commit at SF300 15.45 s as it is, 1.39 s with the others dropped (rc13), 0.08 s with the patched driver; at SF100
+  13.48 s as it is, 0.04 s with the patched driver. The frozen run has the effect at SF100 (first commit 9.25 s;
+  run_all.sh runs the microbenchmark before the concurrent step there) and not at SF300 (1.03 s). On rc13 at SF300
+  the other indexes change the query median little (84 against 85 ms), the commit median from 115 to 152 ms and
+  the peak RSS from 2378 to 5996 MiB, so the concurrent rows' peak RSS at SF10 and SF100 in the frozen tables
+  includes indexes the workload does not use; the next freeze reruns the concurrent points with this driver. Not
+  changed: the extension still loads an index on the first write to its table (a write could be logged without
+  loading the epoch); the sequential update workload (`update-run`) copies the same databases and was not checked.

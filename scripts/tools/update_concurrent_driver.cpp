@@ -9,6 +9,9 @@
 // (one row of the pair table per query, round robin) for --duration-s seconds on one route, so the queries per
 // second of the index route against the build-per-query route can be compared from 1 to 32 clients.
 //
+// In updates mode the driver drops every other CSR index on person_knows_person and replaces a benchmark index
+// created without the reverse side, so --database must be a private copy (the harness makes one).
+//
 // Build: see scripts/pathfinding_benchmark.py (build_concurrent_driver) or
 //   g++ -O2 -std=c++17 -Iduckdb/src/include scripts/tools/update_concurrent_driver.cpp \
 //       -Lbuild/release/src -lduckdb -Wl,-rpath,$PWD/build/release/src -o build/release/update_concurrent_driver
@@ -376,6 +379,28 @@ int main(int argc, char **argv) {
 			                         0);
 			if (!definition.empty() && definition.find("reverse = true") == std::string::npos) {
 				Must(con, "DROP INDEX " + options.index_name + ";");
+			}
+			if (options.mode == "updates") {
+				// The measured index is the only CSR index on the edge table. The shared database carries others
+				// (the microbenchmark's row-bucket variants, the sweep's undirected index), and the copy the harness
+				// hands to this driver inherits them. A write loads every index of its table that is not resident
+				// yet (CSRIndex::Append and TryDelete), inside the commit: five such indexes made the first
+				// transaction 15 s at SF300 and 13 s at SF100, and each one is maintained by every later commit
+				// (my-beans-kzlq, 18 Nov 2026). The database passed here must be a private copy.
+				vector<std::string> others;
+				auto listed = Must(con, "SELECT index_name FROM duckdb_indexes() WHERE database_name = "
+				                        "current_database() AND table_name = 'person_knows_person' AND sql ILIKE "
+				                        "'%USING CSR%' AND index_name <> " +
+				                            Quote(options.index_name) + " ORDER BY index_name;");
+				while (auto chunk = listed->Fetch()) {
+					for (idx_t row = 0; row < chunk->size(); row++) {
+						others.push_back(chunk->GetValue(0, row).ToString());
+					}
+				}
+				for (auto &other : others) {
+					Must(con, "DROP INDEX " + other + ";");
+				}
+				fprintf(stderr, "dropped_other_indexes=%zu\n", others.size());
 			}
 			Must(con, "CREATE INDEX IF NOT EXISTS " + options.index_name +
 			              " ON person_knows_person USING CSR (person1id, person2id) WITH (reverse = true);");
