@@ -638,6 +638,7 @@ void CSRIndex::InstallEpoch(shared_ptr<CSRIndexEpoch> epoch_p) {
 }
 
 void CSRIndex::ClearStateLocked() const {
+	log_compactions++;
 	storage_pending = false;
 	pending_storage = IndexStorageInfo();
 	change_count++;
@@ -648,6 +649,22 @@ void CSRIndex::ClearStateLocked() const {
 	newest_excluded_tombstones = 0;
 	delta_row_index.clear();
 	cached_snapshot.reset();
+}
+
+CSRIndexReadScope::CSRIndexReadScope(shared_ptr<IndexEntry> entry_p) : entry(std::move(entry_p)) {
+	handle = make_uniq<IndexReadHandle<CSRIndex>>(entry->GetReadHandle<CSRIndex>());
+	identity = handle->operator->();
+}
+
+void CSRIndexReadScope::Release() {
+	handle.reset();
+}
+
+void CSRIndexReadScope::Reacquire() {
+	handle = make_uniq<IndexReadHandle<CSRIndex>>(entry->GetReadHandle<CSRIndex>());
+	if (handle->operator->() != identity) {
+		throw InvalidInputException("The CSR index was dropped or replaced while a query was reading it");
+	}
 }
 
 shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
@@ -707,7 +724,7 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpochFromTable(ClientContext &context, 
 }
 
 void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table,
-                                      shared_ptr<CSRIndexEpoch> epoch_p) const {
+                                      shared_ptr<CSRIndexEpoch> epoch_p, CSRIndexReadScope &scope) const {
 	// Decide, with the live transaction that built the epoch, which existing entries it accounts for. Entries appended
 	// after this point are stamped by a later epoch. Only the fields the decision reads are copied under the lock.
 	struct PendingDelta {
@@ -731,6 +748,8 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	}
 	vector<uint8_t> delta_covered(delta_prefix.size());
 	vector<uint8_t> tombstone_excluded(tombstone_prefix.size());
+	// The row-version checks below wait for the table; the entry's lock is not held across them (CSRIndexReadScope)
+	scope.Release();
 	// A row the folding transaction can fetch is in the new epoch. A deleted delta row whose insert the folding
 	// transaction sees was deleted before the fold, so the new epoch accounts for it (by excluding it) as well;
 	// the insert's visibility is that of any undeleted row of the same change group.
@@ -770,6 +789,7 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	for (idx_t i = 0; i < tombstone_prefix.size(); i++) {
 		tombstone_excluded[i] = !table.CanFetch(transaction, tombstone_prefix[i]);
 	}
+	scope.Reacquire();
 	IndexLock l(*this);
 	auto generation = next_generation++;
 	epoch_p->generation = generation;
@@ -823,6 +843,7 @@ void CSRIndex::CompactChangeLogLocked() const {
 	if (epochs.empty()) {
 		return;
 	}
+	log_compactions++;
 	// An entry the oldest retained epoch accounts for is accounted for by every retained epoch
 	auto oldest_generation = epochs.front()->generation;
 	vector<CSRIndexDeltaEdge> new_delta;
@@ -859,8 +880,10 @@ shared_ptr<CSRIndexEpoch> CSRIndex::EpochForLocked(VisibilityBound bound) const 
 void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_count) const {
 	vector<CSRIndexTombstone> pending_entries;
 	idx_t known;
+	uint64_t compactions;
 	{
 		IndexLock l(*this);
+		compactions = log_compactions;
 		known = epoch.tombstone_positions.size();
 		if (known >= tombstone_count) {
 			return;
@@ -1000,8 +1023,11 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 		});
 	}
 	IndexLock l(*this);
-	if (epoch.tombstone_positions.size() != known) {
-		// Another reader resolved them meanwhile, or the log was compacted
+	if (epoch.tombstone_positions.size() != known || log_compactions != compactions) {
+		// Another reader resolved them meanwhile, or the log was compacted. The compaction count is compared as well
+		// as the length: a compaction empties the positions and rewrites the tombstone list, and a reader that
+		// started on an empty list found the length unchanged and stored the old list's positions against the new
+		// one (18 Nov). The caller looks again.
 		return;
 	}
 	epoch.tombstone_positions.insert(epoch.tombstone_positions.end(), positions.begin(), positions.end());
@@ -1015,7 +1041,8 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, DuckTransaction &transaction,
                                                      DataTable &table, shared_ptr<CSRIndexEpoch> epoch_p,
-                                                     idx_t delta_count, idx_t tombstone_count, bool shareable) const {
+                                                     idx_t delta_count, idx_t tombstone_count, bool shareable,
+                                                     CSRIndexReadScope &scope) const {
 	auto &epoch = *epoch_p;
 	auto width = epoch.partition_width;
 	auto epoch_vertex_count = epoch.vertex_count;
@@ -1027,6 +1054,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	vector<idx_t> tombstone_positions;
 	vector<idx_t> reverse_tombstone_positions;
 	vector<idx_t> mirror_tombstone_positions;
+	// A shared epoch is one of the index's retained epochs; a private one was built for this transaction alone
+	bool shared_epoch = shareable;
 	// The cache switch is a microbenchmark switch: off, every query packs its own overlay
 	shareable = shareable && GetPathFindingSnapshotCache(context);
 	if (shareable && GetCSRIndexSnapshotFastPath(context)) {
@@ -1046,18 +1075,33 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		phase_start = now;
 		return us;
 	};
-	if (tombstone_count > 0) {
-		ResolveTombstonePositions(epoch, tombstone_count);
-	}
-	auto resolve_us = phase_us();
 	// For the fast path: the log version this snapshot is taken at, and whether it has the whole log of that version
 	uint64_t log_version = 0;
 	bool whole_log = false;
-	{
+	// The positions of the deleted epoch rows are resolved outside the index's mutex and the log is copied under it.
+	// A fold can compact the log in between, or retire the epoch altogether; the copy is only taken when the
+	// positions cover the tombstones it copies and the epoch is still one of the retained ones.
+	uint64_t resolve_us = 0;
+	auto wanted_tombstones = tombstone_count;
+	while (true) {
+		phase_us();
+		if (wanted_tombstones > 0) {
+			ResolveTombstonePositions(epoch, wanted_tombstones);
+		}
+		resolve_us += phase_us();
 		IndexLock l(*this);
+		if (shared_epoch && std::find(epochs.begin(), epochs.end(), epoch_p) == epochs.end()) {
+			// Two folds since the epoch was chosen: the log no longer has what this epoch lacks. The caller chooses
+			// an epoch again.
+			return nullptr;
+		}
+		auto needed_tombstones = std::min<idx_t>(wanted_tombstones, tombstones.size());
+		if (epoch.tombstone_positions.size() < needed_tombstones) {
+			continue;
+		}
 		delta_count = std::min<idx_t>(delta_count, delta.size());
 		delta_edges.assign(delta.begin(), delta.begin() + NumericCast<int64_t>(delta_count));
-		tombstone_count = std::min<idx_t>(tombstone_count, epoch.tombstone_positions.size());
+		tombstone_count = needed_tombstones;
 		log_version = change_count;
 		whole_log = delta_count == delta.size() && tombstone_count == tombstones.size();
 		for (idx_t i = 0; i < tombstone_count; i++) {
@@ -1076,9 +1120,13 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			                                   epoch.reverse_tombstone_positions.begin() +
 			                                       NumericCast<int64_t>(tombstone_count));
 		}
+		break;
 	}
 
 	auto copy_us = phase_us();
+	// From here to the cache look-up the reader works on its copies and asks the table about row versions; the
+	// entry's lock is not held while it does (CSRIndexReadScope)
+	scope.Release();
 
 	// Pass 1: which change groups' commits does this reader see? One row-version check per group; rows without a
 	// group (loaded from storage) and deleted delta rows are checked individually. Commits are serialized, so the
@@ -1188,6 +1236,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	}
 	mix(delta_visible.size());
 	mix(tombstone_applied.size());
+	scope.Reacquire();
 	auto hash_us = phase_us();
 	if (shareable) {
 		IndexLock l(*this);
@@ -1504,7 +1553,7 @@ bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio, uint64_t cost
 
 void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
                                   uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt,
-                                  uint64_t snapshot_us) const {
+                                  uint64_t snapshot_us, CSRIndexReadScope &scope) const {
 	{
 		// The ordering check again: the rebuild ran outside the index lock
 		IndexLock l(*this);
@@ -1517,7 +1566,7 @@ void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table
 	fold_last_partitions = epoch->csr->forward_partitions.size();
 	fold_last_rebuilt = rebuilt;
 	fold_last_snapshot_us = snapshot_us;
-	InstallEpochAndCompact(transaction, table, std::move(epoch));
+	InstallEpochAndCompact(transaction, table, std::move(epoch), scope);
 	fold_count++;
 	if (merged) {
 		fold_merge_count++;
@@ -1530,7 +1579,7 @@ void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::FoldSnapshot(ClientContext &context, DuckTransaction &transaction,
-                                                    DataTable &table) const {
+                                                    DataTable &table, CSRIndexReadScope &scope) const {
 	auto state = LogStateFor(transaction.view.visibility_bound);
 	if (!state.epoch) {
 		return nullptr;
@@ -1541,7 +1590,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::FoldSnapshot(ClientContext &context, Duck
 			return nullptr;
 		}
 	}
-	return BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count, true);
+	return BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count, true,
+	                     scope);
 }
 
 shared_ptr<CSRIndexEpoch> CSRIndex::MergeEpoch(ClientContext &context, const CSRIndexSnapshot &snapshot,
@@ -1762,14 +1812,25 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 		}
 		fold_mutex = index.fold_lock;
 		fold_guard = unique_lock<mutex>(*fold_mutex, std::defer_lock);
+		identity = &index;
 		if (ratio > 0) {
 			// An automatic fold that finds another fold running does not wait: this reader's epoch and log are
 			// valid as they are, and the running fold installs the newer epoch
 			if (!fold_guard.try_lock()) {
 				return false;
 			}
-		} else {
-			fold_guard.lock();
+		}
+	}
+	if (ratio <= 0) {
+		// An explicit fold waits for a running fold. It waits without the entry's lock: a fold takes that lock
+		// again while it holds the fold mutex, behind any commit that is waiting for it
+		fold_guard.lock();
+	}
+	{
+		auto handle = entry->GetReadHandle<CSRIndex>();
+		auto &index = *handle.operator->();
+		if (&index != identity) {
+			return false;
 		}
 		if (!index.FoldDue(transaction, ratio, cost_guess)) {
 			return false; // the fold that just finished did the work
@@ -1777,7 +1838,6 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 		columns = index.column_ids;
 		undirected = index.undirected;
 		reverse = index.reverse;
-		identity = &index;
 	}
 	auto fold_start = std::chrono::steady_clock::now();
 	uint64_t scan_us = 0;
@@ -1790,12 +1850,11 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 		// it, on the snapshot's shared partitions
 		shared_ptr<CSRIndexSnapshot> snapshot;
 		{
-			auto handle = entry->GetReadHandle<CSRIndex>();
-			auto &index = *handle.operator->();
-			if (&index != identity) {
+			CSRIndexReadScope scope(entry);
+			if (&scope.Index() != identity) {
 				return false;
 			}
-			snapshot = index.FoldSnapshot(context, transaction, storage);
+			snapshot = scope.Index().FoldSnapshot(context, transaction, storage, scope);
 		}
 		snapshot_us = static_cast<uint64_t>(
 		    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fold_start)
@@ -1828,13 +1887,12 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 		auto scanned = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse);
 		VerifyMergedEpoch(*epoch, *scanned);
 	}
-	auto handle = entry->GetReadHandle<CSRIndex>();
-	auto &index = *handle.operator->();
-	if (&index != identity) {
+	CSRIndexReadScope scope(entry);
+	if (&scope.Index() != identity) {
 		return false; // rebound while the table was scanned: the epoch belongs to an index that no longer exists
 	}
-	index.InstallFoldedEpoch(transaction, storage, std::move(epoch), fold_us, scan_us, merged, rebuilt,
-	                         merged ? snapshot_us : 0);
+	scope.Index().InstallFoldedEpoch(transaction, storage, std::move(epoch), fold_us, scan_us, merged, rebuilt,
+	                                 merged ? snapshot_us : 0, scope);
 	return true;
 }
 
@@ -1863,24 +1921,38 @@ string CSRIndex::SnapshotStats() const {
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTransaction &transaction,
-                                                DataTable &table) const {
+                                                DataTable &table, CSRIndexReadScope &scope) const {
+	// A scan of the table for an epoch: without the entry's lock (CSRIndexReadScope)
+	auto scan_epoch = [&]() {
+		auto columns = column_ids;
+		auto scan_undirected = undirected;
+		auto scan_reverse = reverse;
+		scope.Release();
+		auto epoch = BuildEpochFromTable(context, transaction, table, columns, scan_undirected, scan_reverse);
+		scope.Reacquire();
+		return epoch;
+	};
 	if (transaction.ChangesMade()) {
 		// The reader's own uncommitted writes are visible to it alone: build a private epoch from its view of the
 		// table (which includes them) and leave the shared epochs, which must only contain committed rows, untouched
-		return BuildSnapshot(context, transaction, table, RebuildFromTable(context, transaction, table), 0, 0, false);
+		return BuildSnapshot(context, transaction, table, scan_epoch(), 0, 0, false, scope);
 	}
 	auto bound = transaction.view.visibility_bound;
 	auto state = LogStateFor(bound);
 	if (!state.have_epochs) {
 		// No epoch yet (index created before a restart, or never read): build one at this reader's snapshot
-		lock_guard<mutex> fold_guard(*fold_lock);
+		// Wait for the fold mutex without the entry's lock (see RunFold)
+		auto fold_mutex = fold_lock;
+		scope.Release();
+		lock_guard<mutex> fold_guard(*fold_mutex);
+		scope.Reacquire();
 		bool still_empty;
 		{
 			IndexLock l(*this);
 			still_empty = epochs.empty();
 		}
 		if (still_empty) {
-			InstallEpochAndCompact(transaction, table, RebuildFromTable(context, transaction, table));
+			InstallEpochAndCompact(transaction, table, scan_epoch(), scope);
 		}
 		state = LogStateFor(bound);
 	}
@@ -1888,9 +1960,20 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 	if (!state.epoch) {
 		// Every retained epoch is newer than this reader's snapshot (two folds since it started): the reader builds a
 		// private epoch from its own view of the table, as a transaction with uncommitted changes does
-		return BuildSnapshot(context, transaction, table, RebuildFromTable(context, transaction, table), 0, 0, false);
+		return BuildSnapshot(context, transaction, table, scan_epoch(), 0, 0, false, scope);
 	}
-	return BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count, true);
+	auto snapshot =
+	    BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count, true, scope);
+	while (!snapshot) {
+		// The epoch was retired between its choice and the copy of the log: choose again
+		state = LogStateFor(bound);
+		if (!state.epoch) {
+			return BuildSnapshot(context, transaction, table, scan_epoch(), 0, 0, false, scope);
+		}
+		snapshot = BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count,
+		                         true, scope);
+	}
+	return snapshot;
 }
 
 CSRIndex::LogState CSRIndex::LogStateFor(VisibilityBound bound) const {
@@ -2030,9 +2113,9 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Resolve(ClientContext &context, const str
 	if (ratio > 0) {
 		RunFold(context, index_entry, *table, ratio);
 	}
-	auto handle = index_entry->GetReadHandle<CSRIndex>();
+	CSRIndexReadScope scope(index_entry);
 	auto &transaction = DuckTransaction::Get(context, table->catalog);
-	return handle->Snapshot(context, transaction, table->GetStorage());
+	return scope.Index().Snapshot(context, transaction, table->GetStorage(), scope);
 }
 
 static constexpr const char *CSR_INDEX_KEY_PREFIX = "csr-index|";

@@ -23,6 +23,7 @@
 #include "duckdb/execution/index/fixed_size_allocator.hpp"
 #include "duckdb/execution/index/index_lock.hpp"
 #include "duckdb/execution/index/index_type.hpp"
+#include "duckdb/storage/table/index_entry.hpp"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -225,6 +226,28 @@ struct CSRIndexSnapshot {
 //! append-only delta of edges committed after that bound, and append-only tombstones for epoch edges deleted after
 //! it. No commit ids are stored: a reader decides visibility of the delta and the tombstones through the table's
 //! row version information, once per query (see docs/CSR_INDEX_DESIGN.md).
+class CSRIndex;
+
+//! A reader's hold on the index: the entry's lock, shared, which keeps the index object in place and commits out.
+//! The reader gives the lock up (Release) before it asks the table about row versions or scans it, and takes it
+//! again (Reacquire) before it touches the index object. DuckDB's transaction cleanup takes the entry's lock
+//! exclusively while it holds a lock of its own that a writer's commit waits for, and that commit holds the table
+//! lock a row-version check needs: a reader that waited for the table under the entry's lock closed that cycle (18
+//! Nov: the concurrent driver with 16 readers stopped in it, also on the build of the frozen evaluation).
+struct CSRIndexReadScope {
+	explicit CSRIndexReadScope(shared_ptr<IndexEntry> entry_p);
+	const CSRIndex &Index() const {
+		return *identity;
+	}
+	void Release();
+	//! Throws when the entry no longer holds the index this scope started on
+	void Reacquire();
+
+	shared_ptr<IndexEntry> entry;
+	unique_ptr<IndexReadHandle<CSRIndex>> handle;
+	const CSRIndex *identity = nullptr;
+};
+
 class CSRIndex : public BoundIndex {
 public:
 	static constexpr const char *TYPE_NAME = "CSR";
@@ -251,7 +274,9 @@ public:
 
 	//! Returns what a reader with this transaction may traverse, building the epoch from `table` when the index has
 	//! none yet. A reader outlived by two folds gets a private epoch built from its own view of the table.
-	shared_ptr<CSRIndexSnapshot> Snapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table) const;
+	//! `scope` holds the entry's lock; it is released around the reads of the table
+	shared_ptr<CSRIndexSnapshot> Snapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table,
+	                                      CSRIndexReadScope &scope) const;
 
 	//! Installs an epoch built by the CREATE INDEX pipeline
 	void InstallEpoch(shared_ptr<CSRIndexEpoch> epoch);
@@ -352,18 +377,20 @@ private:
 	bool FoldDue(DuckTransaction &transaction, double ratio, uint64_t cost_guess_ns_per_edge = 0) const;
 	//! Installs an epoch RunFold built, unless a newer one arrived meanwhile; records the fold time
 	void InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
-	                        uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt, uint64_t snapshot_us) const;
+	                        uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt, uint64_t snapshot_us,
+	                        CSRIndexReadScope &scope) const;
 	//! The folding transaction's snapshot over the newest epoch, which a merge fold materialises; null when the
 	//! newest epoch does not serve the transaction (the fold then scans the table)
-	shared_ptr<CSRIndexSnapshot> FoldSnapshot(ClientContext &context, DuckTransaction &transaction,
-	                                          DataTable &table) const;
+	shared_ptr<CSRIndexSnapshot> FoldSnapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table,
+	                                          CSRIndexReadScope &scope) const;
 	//! Throws unless both epochs hold the same edges (source key, destination key, row id) per direction; the check
 	//! of duckpgq_csr_index_merge_fold_verify
 	static void VerifyMergedEpoch(const CSRIndexEpoch &merged, const CSRIndexEpoch &scanned);
 	//! Stamps the change-log entries that the epoch built by `transaction` accounts for: delta rows it contains and
 	//! tombstoned rows it excludes. Uses the live transaction, so it does not depend on how long DuckDB keeps row
 	//! versions. Then installs the epoch and drops the entries no retained epoch needs any more.
-	void InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch) const;
+	void InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
+	                            CSRIndexReadScope &scope) const;
 	//! Drops change-log entries that every retained epoch already accounts for; the index lock must be held
 	void CompactChangeLogLocked() const;
 	//! Drops every epoch, the change log with its row index and cached snapshot, and a checkpointed state not loaded
@@ -403,7 +430,7 @@ private:
 	//! newest visible change group), which identifies the visible set for every reader without own changes.
 	shared_ptr<CSRIndexSnapshot> BuildSnapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table,
 	                                           shared_ptr<CSRIndexEpoch> epoch, idx_t delta_count,
-	                                           idx_t tombstone_count, bool shareable) const;
+	                                           idx_t tombstone_count, bool shareable, CSRIndexReadScope &scope) const;
 	//! Rebuilds delta_row_index from delta; the index lock must be held
 	void RebuildDeltaRowIndexLocked() const;
 	//! Resolves the dense ids of every delta entry against the newest epoch's dictionary; the index lock must be held
@@ -471,6 +498,9 @@ private:
 	mutable IndexStorageInfo stored_info;
 	mutable bool stored_info_on_disk = false;
 	mutable uint64_t change_count = 1;
+	//! Counts the compactions of the change log (and resets of the state): a reader that resolves tombstone positions
+	//! in two steps compares it to see that the tombstone list is still the one it started on
+	mutable uint64_t log_compactions = 0;
 	mutable uint64_t persisted_change_count = 0;
 	static IndexStorageInfo CopyStorageInfo(const IndexStorageInfo &info);
 	void ReleaseStoredBlocksLocked() const;
