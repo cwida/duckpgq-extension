@@ -1007,6 +1007,17 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	vector<idx_t> tombstone_positions;
 	vector<idx_t> reverse_tombstone_positions;
 	vector<idx_t> mirror_tombstone_positions;
+	// The cache switch is a microbenchmark switch: off, every query packs its own overlay
+	shareable = shareable && GetPathFindingSnapshotCache(context);
+	if (shareable && GetCSRIndexSnapshotFastPath(context)) {
+		IndexLock l(*this);
+		if (cached_snapshot && cached_snapshot_complete && cached_snapshot->epoch == epoch_p &&
+		    cached_snapshot_change_count == change_count &&
+		    VisibilityBound::Min(cached_snapshot_bound, transaction.view.visibility_bound) == cached_snapshot_bound) {
+			snapshot_fast_hits++;
+			return cached_snapshot;
+		}
+	}
 	auto phase_start = std::chrono::steady_clock::now();
 	auto snapshot_start = phase_start;
 	auto phase_us = [&]() {
@@ -1019,11 +1030,16 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		ResolveTombstonePositions(epoch, tombstone_count);
 	}
 	auto resolve_us = phase_us();
+	// For the fast path: the log version this snapshot is taken at, and whether it has the whole log of that version
+	uint64_t log_version = 0;
+	bool whole_log = false;
 	{
 		IndexLock l(*this);
 		delta_count = std::min<idx_t>(delta_count, delta.size());
 		delta_edges.assign(delta.begin(), delta.begin() + NumericCast<int64_t>(delta_count));
 		tombstone_count = std::min<idx_t>(tombstone_count, epoch.tombstone_positions.size());
+		log_version = change_count;
+		whole_log = delta_count == delta.size() && tombstone_count == tombstones.size();
 		for (idx_t i = 0; i < tombstone_count; i++) {
 			tombstone_rows.push_back(tombstones[i].row);
 			tombstone_groups.push_back(tombstones[i].group);
@@ -1042,6 +1058,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		}
 	}
 
+	auto copy_us = phase_us();
+
 	// Pass 1: which change groups' commits does this reader see? One row-version check per group; rows without a
 	// group (loaded from storage) and deleted delta rows are checked individually. Commits are serialized, so the
 	// visible groups are a prefix of the group sequence (aborted groups are visible to nobody) and the newest
@@ -1050,6 +1068,10 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	uint32_t newest_visible_group = 0;
 	// Microbenchmark switch: decide every logged row by its own row version instead of once per change group
 	bool per_row = !GetCSRIndexChangeGroups(context);
+	// For the fast path: stays true while every change in the log is one this reader sees as committed. A commit it
+	// does not see, or a row whose state it cannot tell apart (below), makes the snapshot one that a later reader
+	// may not share without looking.
+	bool every_change_seen = whole_log && !per_row;
 	auto group_commit_visible = [&](uint32_t group, bool visible_if_fetchable, row_t representative) {
 		auto known = commit_visible.find(group);
 		if (known == commit_visible.end()) {
@@ -1057,6 +1079,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			known = commit_visible.emplace(group, fetchable == visible_if_fetchable).first;
 			if (known->second) {
 				newest_visible_group = std::max(newest_visible_group, group);
+			} else {
+				every_change_seen = false;
 			}
 		}
 		return known->second;
@@ -1089,14 +1113,18 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			// Loaded from storage: committed before the restart, so visible unless deleted
 			if (entry.deleted_group == 0) {
 				delta_visible[i] = table.CanFetch(transaction, entry.row);
+				every_change_seen = every_change_seen && delta_visible[i];
 				continue;
 			}
 			insert_visible = true;
 		} else {
 			auto known = commit_visible.find(entry.group);
 			if (known == commit_visible.end()) {
-				// Every row of the group is deleted: this row's fetchability decides for it
+				// Every row of the group is deleted: this row's fetchability decides for it. Fetchable, the reader
+				// does not see the delete; not fetchable, it sees the delete or does not see the insert. Neither
+				// says that it has seen both commits.
 				delta_visible[i] = table.CanFetch(transaction, entry.row);
+				every_change_seen = false;
 				continue;
 			}
 			insert_visible = known->second;
@@ -1120,12 +1148,12 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		tombstone_applied[i] = (per_row || tombstone_groups[i] == 0)
 		                           ? !table.CanFetch(transaction, tombstone_rows[i])
 		                           : group_commit_visible(tombstone_groups[i], false, tombstone_rows[i]);
+		every_change_seen = every_change_seen && tombstone_applied[i];
 	}
 
-	// The cache is a microbenchmark switch: off, every query packs its own overlay. Two readers share a snapshot only
-	// when they see the same visible groups and made the same per-row decisions (a fully deleted change group is
-	// decided per row, so the newest visible group alone does not identify the view; 28 Oct audit).
-	shareable = shareable && GetPathFindingSnapshotCache(context);
+	// Two readers share a snapshot only when they see the same visible groups and made the same per-row decisions (a
+	// fully deleted change group is decided per row, so the newest visible group alone does not identify the view;
+	// 28 Oct audit).
 	auto visibility_us = phase_us();
 	uint64_t visibility_hash = VISIBILITY_HASH_SEED;
 	auto mix = [&](uint64_t value) {
@@ -1140,11 +1168,23 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	}
 	mix(delta_visible.size());
 	mix(tombstone_applied.size());
+	auto hash_us = phase_us();
 	if (shareable) {
 		IndexLock l(*this);
 		if (cached_snapshot && cached_snapshot->epoch == epoch_p && cached_snapshot_generation == epoch.generation &&
 		    cached_snapshot_group == newest_visible_group && cached_snapshot_visibility == visibility_hash) {
 			snapshot_cache_hits++;
+			if (every_change_seen && !cached_snapshot_complete && log_version == change_count) {
+				// The same snapshot, now found by a reader that has seen every change: later readers may take it
+				// without looking
+				cached_snapshot_complete = true;
+				cached_snapshot_change_count = log_version;
+				cached_snapshot_bound = transaction.view.visibility_bound;
+			}
+			snapshot_hit_copy_us = copy_us;
+			snapshot_hit_visibility_us = visibility_us;
+			snapshot_hit_hash_us = hash_us;
+			snapshot_hit_us = resolve_us + copy_us + visibility_us + hash_us;
 			return cached_snapshot;
 		}
 	}
@@ -1386,6 +1426,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	snapshot_count++;
 	snapshot_last_resolve_us = resolve_us;
 	snapshot_last_visibility_us = visibility_us;
+	snapshot_last_copy_us = copy_us;
+	snapshot_last_hash_us = hash_us;
 	snapshot_last_overlay_us = overlay_us;
 	snapshot_last_pack_us = phase_us();
 	snapshot_last_us = static_cast<uint64_t>(
@@ -1398,6 +1440,9 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		cached_snapshot_generation = epoch.generation;
 		cached_snapshot_group = newest_visible_group;
 		cached_snapshot_visibility = visibility_hash;
+		cached_snapshot_complete = every_change_seen;
+		cached_snapshot_change_count = log_version;
+		cached_snapshot_bound = transaction.view.visibility_bound;
 	}
 	return snapshot;
 }
@@ -1752,11 +1797,15 @@ string CSRIndex::FoldStats() const {
 
 string CSRIndex::SnapshotStats() const {
 	auto ms = [](const std::atomic<uint64_t> &us) { return static_cast<double>(us.load()) / 1000.0; };
-	return StringUtil::Format("snapshots=%llu;cache_hits=%llu;last_snapshot_ms=%.1f;resolve_ms=%.1f;visibility_ms=%.1f;"
-	                          "overlay_ms=%.1f;pack_ms=%.1f;delta=%llu;tombstones=%llu",
+	return StringUtil::Format("snapshots=%llu;cache_hits=%llu;last_snapshot_ms=%.1f;resolve_ms=%.1f;copy_ms=%.1f;"
+	                          "visibility_ms=%.1f;hash_ms=%.1f;overlay_ms=%.1f;pack_ms=%.1f;delta=%llu;tombstones=%llu;"
+	                          "hit_ms=%.1f;hit_copy_ms=%.1f;hit_visibility_ms=%.1f;hit_hash_ms=%.1f;fast_hits=%llu",
 	                          snapshot_count.load(), snapshot_cache_hits.load(), ms(snapshot_last_us),
-	                          ms(snapshot_last_resolve_us), ms(snapshot_last_visibility_us), ms(snapshot_last_overlay_us),
-	                          ms(snapshot_last_pack_us), snapshot_last_delta.load(), snapshot_last_tombstones.load());
+	                          ms(snapshot_last_resolve_us), ms(snapshot_last_copy_us), ms(snapshot_last_visibility_us),
+	                          ms(snapshot_last_hash_us), ms(snapshot_last_overlay_us), ms(snapshot_last_pack_us),
+	                          snapshot_last_delta.load(), snapshot_last_tombstones.load(), ms(snapshot_hit_us),
+	                          ms(snapshot_hit_copy_us), ms(snapshot_hit_visibility_us), ms(snapshot_hit_hash_us),
+	                          snapshot_fast_hits.load());
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTransaction &transaction,

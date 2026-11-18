@@ -43,6 +43,11 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--perf", help="write a flat perf report of the first query to this file")
     parser.add_argument("--threads", type=int, default=0)
+    parser.add_argument("--perf-cached", help="write a flat perf report of the queries after the first one, which "
+                                              "find their snapshot in the cache, to this file")
+    parser.add_argument("--cached-queries", type=int, default=15)
+    parser.add_argument("--stat-cached", help="write perf stat (page faults, task clock) of the cached queries here")
+    parser.add_argument("--set", action="append", default=[], help="a setting, name=value, applied before the load")
     args = parser.parse_args()
 
     # Sizes first, as constants: a scalar subquery inside a join condition makes the insert a nested-loop join
@@ -71,6 +76,7 @@ LOAD '{args.extension}';
 {f'SET threads = {args.threads};' if args.threads > 0 else ''}
 SET experimental_path_finding_operator = true;
 SET duckpgq_csr_index_fold_ratio = 0;
+{" ".join(f"SET {item.split('=')[0]} = {item.split('=')[1]};" for item in args.set)}
 ATTACH '{args.db}' AS ldbc (READ_ONLY);
 CREATE TABLE knows AS SELECT person1id AS src, person2id AS dst FROM ldbc.person_knows_person;
 DETACH ldbc;
@@ -118,13 +124,31 @@ COPY (SELECT 1) TO '{done}';""")
     if perf:
         perf.send_signal(signal.SIGINT)
         perf.wait()
-    send(f"""
+    done2 = os.path.join(work, "done2.csv")
+    perf_cached_data = os.path.join(work, "perf_cached.data")
+    perf = None
+    if args.perf_cached:
+        perf = subprocess.Popen(["perf", "record", "-F", "1999", "-p", str(process.pid), "-o", perf_cached_data],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.5)
+    elif args.stat_cached:
+        perf = subprocess.Popen(["perf", "stat", "-e", "page-faults,task-clock", "-p", str(process.pid), "-o",
+                                 args.stat_cached], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.5)
+    for _ in range(args.cached_queries):
+        send(f"""
 .timer on
-SELECT 'MARK|query_second';
+SELECT 'MARK|query_cached';
 {query}
-.timer off
+.timer off""")
+    send(f"""
 SELECT 'SNAPSHOT2|' || duckpgq_csr_index_snapshot_stats('knows', 'idx');
-.quit""")
+COPY (SELECT 1) TO '{done2}';""")
+    wait_for(done2, process)
+    if perf:
+        perf.send_signal(signal.SIGINT)
+        perf.wait()
+    send(".quit")
     process.stdin.close()
     process.wait()
     log.seek(0)
@@ -133,8 +157,10 @@ SELECT 'SNAPSHOT2|' || duckpgq_csr_index_snapshot_stats('knows', 'idx');
         sys.stderr.write(output[-3000:])
         raise SystemExit("duckdb failed")
 
-    row = {"dataset": args.label, "kind": args.kind, "fraction": args.fraction, "edges": edges, "vertices": vertices}
+    row = {"dataset": args.label, "kind": args.kind, "fraction": args.fraction, "edges": edges, "vertices": vertices,
+           "settings": " ".join(args.set)}
     mark, since = None, 0
+    cached = []
     for line in output.splitlines():
         line = line.strip().strip('"')
         if line.startswith("MARK|"):
@@ -142,20 +168,39 @@ SELECT 'SNAPSHOT2|' || duckpgq_csr_index_snapshot_stats('knows', 'idx');
         elif line.startswith("Run Time") and mark:
             since += 1
             if since == 2:
-                row[mark + "_s"] = float(re.search(r"real ([0-9.]+)", line).group(1))
+                seconds = float(re.search(r"real ([0-9.]+)", line).group(1))
+                if mark == "query_cached":
+                    cached.append(seconds)
+                else:
+                    row[mark + "_s"] = seconds
                 mark = None
         elif line.startswith("LOG|"):
             row["log"] = line.split("|", 1)[1]
         elif line.startswith("SNAPSHOT|"):
             for item in line.split("|", 1)[1].split(";"):
                 key, value = item.split("=")
-                row[key] = value
+                if not key.startswith("hit_") and key != "fast_hits":
+                    row[key] = value
+        elif line.startswith("SNAPSHOT2|"):
+            for item in line.split("|", 1)[1].split(";"):
+                key, value = item.split("=")
+                if key.startswith("hit_") or key in ("cache_hits", "fast_hits"):
+                    row[key] = value
+    cached.sort()
+    row["query_cached_median_s"] = cached[len(cached) // 2]
+    row["query_cached_min_s"] = cached[0]
+    row["query_cached_max_s"] = cached[-1]
     with open(args.out, "a", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(row.keys()))
         if handle.tell() == 0:
             writer.writeheader()
         writer.writerow(row)
     print(row)
+    if args.perf_cached:
+        report = subprocess.run(["perf", "report", "-i", perf_cached_data, "--stdio", "--sort", "dso,symbol",
+                                 "--percent-limit", "0.7"], capture_output=True, text=True)
+        with open(args.perf_cached, "w") as handle:
+            handle.write(report.stdout)
     if args.perf:
         report = subprocess.run(["perf", "report", "-i", perf_data, "--stdio", "--sort", "dso,symbol", "--percent-limit",
                                  "0.7"], capture_output=True, text=True)

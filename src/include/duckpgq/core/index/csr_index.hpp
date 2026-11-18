@@ -283,10 +283,13 @@ public:
 	idx_t EpochEdgeCount() const;
 	//! 'folds=..;last_fold_ms=..;fold_ms=..': the folds this index ran since it was bound, for the update experiments
 	string FoldStats() const;
-	//! 'snapshots=..;cache_hits=..;last_snapshot_ms=..;resolve_ms=..;visibility_ms=..;overlay_ms=..;pack_ms=..;
-	//! delta=..;tombstones=..': the snapshots built and served from the cache since the index was bound, and where
-	//! the last built one spent its time: positions of the deleted epoch rows, the row-version checks, the
-	//! suppression bitmaps and the visible inserted edges, and packing those edges per destination range
+	//! 'snapshots=..;cache_hits=..;last_snapshot_ms=..;resolve_ms=..;copy_ms=..;visibility_ms=..;hash_ms=..;
+	//! overlay_ms=..;pack_ms=..;delta=..;tombstones=..;hit_ms=..;hit_copy_ms=..;hit_visibility_ms=..;hit_hash_ms=..':
+	//! the snapshots built and served from the cache since the index was bound, and where the last built one spent
+	//! its time: positions of the deleted epoch rows, the copy of the log under the index lock, the row-version
+	//! checks, the hash of the decisions (the cache key), the suppression bitmaps and the visible inserted edges, and
+	//! packing those edges per destination range. The hit_ fields are the copy, checks and hash of the last snapshot
+	//! that was then served from the cache
 	string SnapshotStats() const;
 
 	//! Folds the index behind `entry`: a new epoch at the transaction's bound, and the change-log entries no retained
@@ -443,6 +446,16 @@ private:
 	mutable uint32_t cached_snapshot_group = 0;
 	//! Hash of the per-entry visibility decisions of the cached snapshot's reader
 	mutable uint64_t cached_snapshot_visibility = 0;
+	//! The fast path of the cache (duckpgq_csr_index_snapshot_fast_path). `cached_snapshot_complete`: the reader that
+	//! built the cached snapshot had the whole log in front of it, as it was at `cached_snapshot_change_count`, and
+	//! saw every change in it as committed (every insert visible or dead, every delete applied). A reader whose bound
+	//! is not before `cached_snapshot_bound` sees those commits too, and while the log has not changed there is
+	//! nothing else to see, so it is served the cached snapshot without the copy of the log and the row-version
+	//! checks.
+	mutable bool cached_snapshot_complete = false;
+	mutable uint64_t cached_snapshot_change_count = 0;
+	mutable VisibilityBound cached_snapshot_bound;
+	mutable std::atomic<uint64_t> snapshot_fast_hits {0};
 	//! One fold at a time; shared so that RunFold can hold it while no handle on the entry keeps the index alive
 	mutable shared_ptr<mutex> fold_lock = make_shared_ptr<mutex>();
 	//! Segments written by this process's last checkpoint, kept until a rewrite or the drop releases their blocks
@@ -469,6 +482,14 @@ private:
 	mutable std::atomic<uint64_t> snapshot_last_us {0};
 	mutable std::atomic<uint64_t> snapshot_last_resolve_us {0};
 	mutable std::atomic<uint64_t> snapshot_last_visibility_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_copy_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_hash_us {0};
+	//! The same phases of the last snapshot that was served from the cache: what a query pays to find out that
+	//! the cached snapshot is its own
+	mutable std::atomic<uint64_t> snapshot_hit_us {0};
+	mutable std::atomic<uint64_t> snapshot_hit_copy_us {0};
+	mutable std::atomic<uint64_t> snapshot_hit_visibility_us {0};
+	mutable std::atomic<uint64_t> snapshot_hit_hash_us {0};
 	mutable std::atomic<uint64_t> snapshot_last_overlay_us {0};
 	mutable std::atomic<uint64_t> snapshot_last_pack_us {0};
 	mutable std::atomic<uint64_t> snapshot_last_delta {0};

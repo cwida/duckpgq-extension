@@ -1,0 +1,239 @@
+# name: test/sql/path_finding/csr_index_snapshot_fast_path.test
+# description: With duckpgq_csr_index_snapshot_fast_path a reader takes the cached snapshot without reading the log when the log is unchanged since a reader that started no later saw all of it as committed; a transaction that started earlier, and every reader after a change, still decide for themselves
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con1
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok con2
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET GLOBAL experimental_path_finding_operator = true;
+
+statement ok
+SET GLOBAL duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+SET GLOBAL duckpgq_csr_index_snapshot_fast_path = true;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(1, 101);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+# A chain 1 -> 2 -> ... -> 50
+statement ok
+INSERT INTO knows SELECT range, range + 1 FROM range(1, 50);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# ---- An unchanged log: the second query takes the cached snapshot without looking
+statement ok
+INSERT INTO knows SELECT range, range + 1 FROM range(50, 55);
+
+statement ok
+DELETE FROM knows WHERE src = 30;
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+30
+
+statement ok
+CREATE TABLE hits AS SELECT regexp_extract(duckpgq_csr_index_snapshot_stats('knows', 'knows_csr'), 'fast_hits=(\d+)', 1)::BIGINT AS n;
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 31)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+25
+
+query I
+SELECT regexp_extract(duckpgq_csr_index_snapshot_stats('knows', 'knows_csr'), 'fast_hits=(\d+)', 1)::BIGINT > (SELECT n FROM hits);
+----
+true
+
+# ---- Every change is seen by the next reader: an insert, a delete of an epoch row, a delete of a logged row
+statement ok
+INSERT INTO knows VALUES (30, 31);
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+55
+
+statement ok
+DELETE FROM knows WHERE src = 10;
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+10
+
+statement ok
+DELETE FROM knows WHERE src = 52;
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+42
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+42
+
+# ---- A transaction that started before a commit does not take the snapshot of a reader that started after it
+statement ok con1
+BEGIN TRANSACTION;
+
+query I con1
+SELECT count(*) FROM knows;
+----
+52
+
+statement ok con2
+INSERT INTO knows VALUES (52, 53), (55, 56);
+
+# con2 sees its commit, and its snapshot is now the cached one, built by a reader that saw the whole log
+query I con2
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+46
+
+query I con2
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+46
+
+# con1 started before that commit: it reads the log itself and does not see the two edges
+query I con1
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+42
+
+# and the reader after it gets the newer snapshot again, not con1's
+query I con2
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+46
+
+query I con1
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+42
+
+# The same for a delete committed while con1 is open
+statement ok con2
+DELETE FROM knows WHERE src = 20;
+
+query I con2
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+10
+
+query I con1
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+42
+
+statement ok con1
+COMMIT;
+
+query I con1
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+10
+
+# ---- A change group whose rows are all deleted again cannot be told apart from one the reader does not see: the
+# snapshot stays correct and is not handed on without looking
+statement ok
+INSERT INTO knows VALUES (20, 21), (70, 71);
+
+statement ok
+DELETE FROM knows WHERE src IN (20, 70);
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+10
+
+statement ok
+CREATE OR REPLACE TABLE hits AS SELECT regexp_extract(duckpgq_csr_index_snapshot_stats('knows', 'knows_csr'), 'fast_hits=(\d+)', 1)::BIGINT AS n;
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 11)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+10
+
+query I
+SELECT regexp_extract(duckpgq_csr_index_snapshot_stats('knows', 'knows_csr'), 'fast_hits=(\d+)', 1)::BIGINT = (SELECT n FROM hits);
+----
+true
+
+# ---- After a fold the log is empty and the fast path applies again
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 21)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+36
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 21)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+36
