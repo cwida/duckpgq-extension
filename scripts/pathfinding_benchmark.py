@@ -151,6 +151,10 @@ LOCAL_EDGE_LIST_DIR = Path(os.environ.get("DUCKPGQ_EDGE_LIST_DIR", str(Path.home
 # (https://gitlab.db.in.tum.de/max.reif/nav-index-reproducibility, directory umbra; default: the artifact cloned to
 # ~/navindex/artifact). Umbra is a system of the road network only (systems umbra and umbra_navindex)
 UMBRA_ROOT = Path(os.environ.get("DUCKPGQ_UMBRA_ROOT", str(Path.home() / "navindex" / "artifact" / "umbra")))
+# The Umbra process is stopped when its resident memory passes this many GiB (DUCKPGQ_UMBRA_MEMORY_LIMIT_GIB): its
+# shortest_path returns the path, and a statement over many rows holds every path until it ends (16 sources x all
+# vertices of OSM Oberbayern in one statement: 20 GiB)
+UMBRA_MEMORY_LIMIT_GIB = float(os.environ.get("DUCKPGQ_UMBRA_MEMORY_LIMIT_GIB", "32"))
 GRAPHALYTICS_DATASET_GROUPS = {
     "core": GRAPHALYTICS_CORE_DATASETS,
     "all": GRAPHALYTICS_CORE_DATASETS,
@@ -5219,7 +5223,10 @@ class UmbraSystem(GraphDBSystem):
     between Dijkstra and a contraction hierarchy built inside the query. with_index=True ("umbra_navindex"):
     CREATE INDEX ... USING navigational once after the load, as the artifact's system comparison does. A query is one
     statement over a pair table (shortest_path per row), so Umbra parallelises over the pairs itself; the time is
-    the client's wall time from sending the statement to its timing line, as for the other baselines."""
+    the client's wall time from sending the statement to its timing line, as for the other baselines. Sources x all
+    is one statement per source (shortest_path to every vertex), as the other baselines answer it: there is no
+    single-source form, and the paths of one source are all the process holds at a time (about 1 GiB on OSM
+    Oberbayern). A watchdog stops the process above UMBRA_MEMORY_LIMIT_GIB; the point is then an error."""
 
     def __init__(self, with_index, threads):
         self.with_index = with_index
@@ -5231,6 +5238,7 @@ class UmbraSystem(GraphDBSystem):
         self.extra_relations = 0
         self.table_load_s = None
         self.index_build_s = None
+        self.memory_exceeded = False
 
     def start(self):
         binary = UMBRA_ROOT / "bin" / "sql"
@@ -5242,12 +5250,31 @@ class UmbraSystem(GraphDBSystem):
         self.proc = subprocess.Popen([str(binary), ""], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, text=True, bufsize=1,
                                      env=dict(os.environ, PARALLEL=str(self.threads)))
+        import threading
+        threading.Thread(target=self.watch_memory, args=(self.proc,), daemon=True).start()
+
+    def watch_memory(self, proc):
+        """Stops the process when its resident memory passes the limit (the box has no swap)"""
+        while proc.poll() is None:
+            try:
+                with open(f"/proc/{proc.pid}/status") as handle:
+                    resident_kib = next((int(line.split()[1]) for line in handle if line.startswith("VmRSS:")), 0)
+            except OSError:
+                return
+            if resident_kib > UMBRA_MEMORY_LIMIT_GIB * 1024 * 1024:
+                self.memory_exceeded = True
+                proc.kill()
+                return
+            time.sleep(0.2)
 
     def statement(self, sql):
         """Result lines of one statement (header first). An error or the end of the process (a cancelled query)
         raises; after an error the process is stopped, because its output is no longer in step with the statements"""
         proc = self.proc
         stopped = "timeout: the Umbra process was stopped"
+        over_limit = f"Umbra was stopped above the memory limit of {UMBRA_MEMORY_LIMIT_GIB:g} GiB"
+        if self.memory_exceeded:
+            raise RuntimeError(over_limit)
         if proc is None:
             raise RuntimeError(stopped if self.stop_requested else "Umbra is not loaded")
         try:
@@ -5266,6 +5293,8 @@ class UmbraSystem(GraphDBSystem):
                 return lines
             if line and not line.startswith(("NOTICE", "WARNING", "INFO")):
                 lines.append(line)
+        if self.memory_exceeded:
+            raise RuntimeError(over_limit)
         raise RuntimeError(stopped if self.stop_requested else f"Umbra exited with {proc.wait()} during: {sql[:120]}")
 
     def counts(self, sql):
@@ -5283,6 +5312,7 @@ class UmbraSystem(GraphDBSystem):
 
     def load_tables(self):
         """A new process with the edges, the vertices and every exported pair table, then the index"""
+        self.memory_exceeded = False
         self.start()
         export_dir = self.export_dir
         started = time.perf_counter()
@@ -5330,10 +5360,18 @@ class UmbraSystem(GraphDBSystem):
                            f"(select * from e), src, dst), 1) as l from {table} where src <> dst) x;")
 
     def multi_source(self, sources):
+        # One statement per source; the source comes from the source table (shortest_path takes columns)
         table = self.relation(("sources",) + tuple(sorted(set(sources))), [(source, source) for source in sources])
-        return self.counts("select count(l), coalesce(sum(l - 1), 0) from (select array_length(shortest_path(table "
-                           f"(select * from e), s.src, v.id), 1) as l from (select distinct src from {table}) s, v "
-                           "where v.id <> s.src) x;")
+        reachable, total = 0, 0
+        for source in sources:
+            if self.stop_requested:
+                raise RuntimeError("timeout: stop requested")
+            c, t = self.counts("select count(l), coalesce(sum(l - 1), 0) from (select array_length(shortest_path(table "
+                               f"(select * from e), s.src, v.id), 1) as l from (select distinct src from {table} "
+                               f"where src = {source}) s, v where v.id <> s.src) x;")
+            reachable += c
+            total += t
+        return reachable, total
 
     def sssp(self, source, destinations):
         return self.point_to_point([(source, destination) for destination in destinations])

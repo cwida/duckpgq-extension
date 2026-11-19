@@ -1703,8 +1703,10 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   Oberbayern. Harness systems `umbra` (no stored index, Umbra's default mode) and `umbra_navindex` (CREATE INDEX ...
   USING navigational after the load); `fixed_costs_osm_oberbayern` records Umbra's table load and the index creation
   (three repeats, each in a new process); `sweep_pairs_osm_oberbayern` runs both on random pairs 1..65536 and
-  sources x all, one statement per count over a pair table, timed at the client like the other baselines, one
-  bin/sql process of the artifact's binary for the whole step (`DUCKPGQ_UMBRA_ROOT`, default
-  `~/navindex/artifact/umbra`). Sources x all is `shortest_path` per (source, vertex) row for Umbra: it has no
-  single-source form, so that shape measures 495,357 point-to-point searches per source. The probes of 18 and
+  sources x all, timed at the client like the other baselines, one bin/sql process of the artifact's binary for
+  the whole step (`DUCKPGQ_UMBRA_ROOT`, default `~/navindex/artifact/umbra`). A pair count is one statement over a
+  pair table. Sources x all is one statement per source, `shortest_path` per (source, vertex) row: Umbra has no
+  single-source form, so that shape measures 495,357 point-to-point searches per source, and `shortest_path` returns
+  the path, so one statement over 16 sources held 20 GiB of paths (the first dry run of the step was stopped there;
+  the harness now stops the Umbra process above 32 GiB, `DUCKPGQ_UMBRA_MEMORY_LIMIT_GIB`). The probes of 18 and
   19 Nov (the artifact's own 1000 queries, Umbra's reported execution time) stay as they are.

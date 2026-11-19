@@ -65,7 +65,10 @@ Umbra runs on the road network only, from the binary of the same paper's artifac
 commit 1f341922, Umbra v0.2-1423-g7c87fba6e). The harness expects the artifact at `~/navindex/artifact` or its
 `umbra` directory under `DUCKPGQ_UMBRA_ROOT`; `setup.sh` does not fetch it. One `bin/sql` process holds the graph in
 memory for the sweep: edges with cost 1, directed, loaded from the same CSV export as the other baselines. Every
-count is one statement over a pair table (`shortest_path` per row), timed at the client like the other baselines.
+pair count is one statement over a pair table (`shortest_path` per row), timed at the client like the other
+baselines; sources x all is one statement per source, since `shortest_path` returns the path and Umbra has no
+single-source form (one statement over 16 sources x all vertices held 20 GiB of paths). The harness stops the Umbra
+process above 32 GiB of resident memory (`DUCKPGQ_UMBRA_MEMORY_LIMIT_GIB`) and records the point as an error.
 `umbra` has no stored index (its cost model chooses between Dijkstra and a contraction hierarchy built inside the
 query); `umbra_navindex` creates the navigational index once after the load. A timeout stops the process, and the
 graph is loaded again before the next shape.
