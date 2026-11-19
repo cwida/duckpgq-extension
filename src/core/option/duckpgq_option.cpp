@@ -204,6 +204,11 @@ const vector<DuckPGQSetting> &Settings() {
 	     "with a destination set per lane (Then et al.) instead of one single-source search per "
 	     "group; false keeps the per-source searches",
 	     LogicalType::BOOLEAN, Value(true)},
+	    {"experimental_path_finding_operator_sort_source_groups",
+	     "Source groups are ordered by the vertex id of their source before they are cut into MS-BFS waves, so "
+	     "sources with neighbouring ids share a wave (their frontiers overlap where the ids follow the graph's "
+	     "structure); false keeps the order in which the sources first appear in the pairs",
+	     LogicalType::BOOLEAN, Value(true)},
 	    {"experimental_path_finding_operator_reach_lanes",
 	     "Reach queries (sources x all vertices) with more distinct sources than the few-sources "
 	     "limit run as MS-BFS waves of one lane per source, each lane recording every vertex it "
@@ -410,6 +415,10 @@ bool GetCSRIndexGroupMemo(ClientContext &context) {
 
 bool GetPathFindingLaneWaves(ClientContext &context) {
 	return GetSetting<bool>(context, "experimental_path_finding_operator_lane_waves");
+}
+
+bool GetPathFindingSortSourceGroups(ClientContext &context) {
+	return GetSetting<bool>(context, "experimental_path_finding_operator_sort_source_groups");
 }
 
 bool GetPathFindingReachLanes(ClientContext &context) {

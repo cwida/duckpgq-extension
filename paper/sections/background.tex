@@ -51,7 +51,7 @@ offset) pairs, which matters when only a small part of the vertices has outgoing
 once; the cost of a level is the frontier plus its edges, but the memory access is one random read per edge.
 Multi-source BFS~\cite{then2014msbfs} runs $w$ searches together, with $w$ the width of a machine word or a SIMD
 register, and keeps for each vertex a bit set of the searches that have seen it and a bit set of the searches whose
-frontier it is on. Relaxing an edge $u \to v$ becomes $\mathit{next}[v] \mathrel{|}= \mathit{visit}[u]$, one read and one write
+frontier it is on. Relaxing an edge $u \to v$ becomes $\mathit{next}[v] \mathrel{|}= \rev{\mathit{frontier}}[u]$, one read and one write
 of $w$ bits for all $w$ searches at once, and a search ends when its frontier is empty, or earlier once all its destinations have been seen. Its cost per
 level is a sweep over all vertices whose visit bits are non-zero, which is cheap per search when many searches are
 live and expensive when one is. \duckpgq runs 256 lanes per batch, the width of one AVX2 register.

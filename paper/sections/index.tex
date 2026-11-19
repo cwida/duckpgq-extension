@@ -61,6 +61,8 @@ changes.
 \texttt{CREATE INDEX} runs the bulk build and produces the first \emph{epoch} (Figure~\ref{fig:index-timeline}): the
 partitioned CSR of Section~\ref{sec:csr} over every edge that the creating transaction can see, the \emph{dictionary}
 that maps vertex keys to the dense ids the CSR uses, and the row id of every edge, stored next to the edge's position.
+\rev{The index accepts two plain key columns of an integer type that fits a signed 64-bit integer, and
+\texttt{CREATE INDEX} rejects keys of any other type, such as strings.}
 A path found over the index names its edges by row id and its vertices by key, as a path found on the build
 route does (Section~\ref{sec:results}), and can be joined back to both tables.
 Created \texttt{WITH (reverse = true)}, the epoch also holds the reverse partitions, and an index on an undirected edge
@@ -87,7 +89,8 @@ the changes the transaction is allowed to see. The epoch stores its edges at fix
 (Section~\ref{sec:csr}), and the overlay has two parts. The first is a bitmap with one bit per edge position, set
 for the epoch edges that are deleted from the transaction's point of view. The second holds the inserted edges the
 transaction is allowed to see, in a small CSR of their own with the same destination ranges as the epoch. A traversal step over the epoch's partition of a range skips the suppressed positions and includes the inserted
-edges of the same range.
+edges of the same range \rev{(in Algorithm~\ref{alg:msbfs-level}, line 2 also visits the overlay's rows of the range and
+line 4 skips the suppressed positions).}
 
 Which changes a transaction is allowed to see is a question of \duckdb's snapshot isolation. A transaction sees the
 rows that were committed before it started, and nothing that was committed later or never ($T_c$ in

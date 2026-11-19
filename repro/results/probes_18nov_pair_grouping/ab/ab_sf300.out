@@ -1,0 +1,560 @@
+@@ warmup
+┌────────────┐
+│ count(len) │
+│   int64    │
+├────────────┤
+│          1 │
+└────────────┘
+Run Time (s): real 0.000 user 0.000266 sys 0.000141
+@@ benchmark_pairs_1 by_id 1
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│     1 │         1 │         5 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.023 user 0.103659 sys 0.000000
+Run Time (s): real 0.000 user 0.000412 sys 0.000000
+@@ benchmark_pairs_1 arrival 1
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│     1 │         1 │         5 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.022 user 0.090323 sys 0.008357
+Run Time (s): real 0.000 user 0.000184 sys 0.000091
+@@ benchmark_pairs_1 by_id 2
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│     1 │         1 │         5 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.023 user 0.107002 sys 0.000000
+Run Time (s): real 0.000 user 0.000285 sys 0.000000
+@@ benchmark_pairs_1 arrival 2
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│     1 │         1 │         5 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.016 user 0.072525 sys 0.019187
+Run Time (s): real 0.000 user 0.000243 sys 0.000114
+@@ benchmark_pairs_1 by_id 3
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│     1 │         1 │         5 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.023 user 0.110102 sys 0.000000
+Run Time (s): real 0.000 user 0.000337 sys 0.000000
+@@ benchmark_pairs_1 arrival 3
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│     1 │         1 │         5 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.023 user 0.092155 sys 0.007391
+Run Time (s): real 0.000 user 0.000235 sys 0.000104
+@@ benchmark_pairs_1 by_id 4
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│     1 │         1 │         5 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.021 user 0.090665 sys 0.007938
+Run Time (s): real 0.000 user 0.000221 sys 0.000096
+@@ benchmark_pairs_1 arrival 4
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│     1 │         1 │         5 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.022 user 0.063602 sys 0.038248
+Run Time (s): real 0.000 user 0.000235 sys 0.000102
+@@ benchmark_pairs_1 by_id 5
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│     1 │         1 │         5 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.017 user 0.091488 sys 0.002404
+Run Time (s): real 0.000 user 0.000242 sys 0.000103
+@@ benchmark_pairs_1 arrival 5
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│     1 │         1 │         5 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.022 user 0.095694 sys 0.000000
+Run Time (s): real 0.000 user 0.000325 sys 0.000000
+@@ benchmark_pairs_1024 by_id 1
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│  1024 │       496 │      1896 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.160 user 4.004324 sys 0.319608
+Run Time (s): real 0.000 user 0.000342 sys 0.000079
+@@ benchmark_pairs_1024 arrival 1
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│  1024 │       496 │      1896 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.217 user 5.634061 sys 0.291828
+Run Time (s): real 0.000 user 0.000380 sys 0.000058
+@@ benchmark_pairs_1024 by_id 2
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│  1024 │       496 │      1896 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.155 user 3.891391 sys 0.325788
+Run Time (s): real 0.000 user 0.000388 sys 0.000054
+@@ benchmark_pairs_1024 arrival 2
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│  1024 │       496 │      1896 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.226 user 5.567951 sys 0.501146
+Run Time (s): real 0.000 user 0.000320 sys 0.000041
+@@ benchmark_pairs_1024 by_id 3
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│  1024 │       496 │      1896 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.168 user 3.922128 sys 0.436162
+Run Time (s): real 0.000 user 0.000385 sys 0.000047
+@@ benchmark_pairs_1024 arrival 3
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│  1024 │       496 │      1896 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.225 user 5.617937 sys 0.363876
+Run Time (s): real 0.000 user 0.000414 sys 0.000047
+@@ benchmark_pairs_1024 by_id 4
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│  1024 │       496 │      1896 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.173 user 3.969770 sys 0.495774
+Run Time (s): real 0.000 user 0.000348 sys 0.000040
+@@ benchmark_pairs_1024 arrival 4
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│  1024 │       496 │      1896 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.213 user 5.772821 sys 0.000000
+Run Time (s): real 0.000 user 0.000456 sys 0.000000
+@@ benchmark_pairs_1024 by_id 5
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│  1024 │       496 │      1896 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.145 user 4.024956 sys 0.000000
+Run Time (s): real 0.000 user 0.000450 sys 0.000000
+@@ benchmark_pairs_1024 arrival 5
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│  1024 │       496 │      1896 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 0.211 user 5.606495 sys 0.000000
+Run Time (s): real 0.000 user 0.000436 sys 0.000000
+@@ benchmark_pairs_16384 by_id 1
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 16384 │      7977 │     30935 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 1.968 user 49.692525 sys 3.225891
+Run Time (s): real 0.000 user 0.000424 sys 0.000031
+@@ benchmark_pairs_16384 arrival 1
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 16384 │      7977 │     30935 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 2.770 user 75.046542 sys 3.313316
+Run Time (s): real 0.000 user 0.000464 sys 0.000028
+@@ benchmark_pairs_16384 by_id 2
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 16384 │      7977 │     30935 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 1.948 user 49.899458 sys 2.029823
+Run Time (s): real 0.000 user 0.000647 sys 0.000036
+@@ benchmark_pairs_16384 arrival 2
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 16384 │      7977 │     30935 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 2.856 user 75.492669 sys 2.636411
+Run Time (s): real 0.000 user 0.000527 sys 0.000027
+@@ benchmark_pairs_16384 by_id 3
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 16384 │      7977 │     30935 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 1.918 user 49.681906 sys 3.194555
+Run Time (s): real 0.000 user 0.000509 sys 0.000027
+@@ benchmark_pairs_16384 arrival 3
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 16384 │      7977 │     30935 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 2.887 user 75.071834 sys 2.688161
+Run Time (s): real 0.001 user 0.000678 sys 0.000033
+@@ benchmark_pairs_16384 by_id 4
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 16384 │      7977 │     30935 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 1.932 user 49.560698 sys 2.976542
+Run Time (s): real 0.000 user 0.000660 sys 0.000034
+@@ benchmark_pairs_16384 arrival 4
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 16384 │      7977 │     30935 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 2.681 user 75.652051 sys 2.920306
+Run Time (s): real 0.000 user 0.000542 sys 0.000027
+@@ benchmark_pairs_16384 by_id 5
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 16384 │      7977 │     30935 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 1.887 user 50.321766 sys 1.938484
+Run Time (s): real 0.000 user 0.000635 sys 0.000031
+@@ benchmark_pairs_16384 arrival 5
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 16384 │      7977 │     30935 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 2.830 user 75.611147 sys 1.856220
+Run Time (s): real 0.000 user 0.000376 sys 0.000017
+@@ benchmark_pairs_65536 by_id 1
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 65536 │     31747 │    122902 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 6.837 user 193.356249 sys 3.509224
+Run Time (s): real 0.000 user 0.000592 sys 0.000023
+@@ benchmark_pairs_65536 arrival 1
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 65536 │     31747 │    122902 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 10.175 user 300.117577 sys 3.651087
+Run Time (s): real 0.001 user 0.000695 sys 0.000022
+@@ benchmark_pairs_65536 by_id 2
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 65536 │     31747 │    122902 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 6.889 user 194.707267 sys 4.409211
+Run Time (s): real 0.000 user 0.000438 sys 0.000014
+@@ benchmark_pairs_65536 arrival 2
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 65536 │     31747 │    122902 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 10.181 user 301.374465 sys 3.131010
+Run Time (s): real 0.001 user 0.000607 sys 0.000017
+@@ benchmark_pairs_65536 by_id 3
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 65536 │     31747 │    122902 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 6.634 user 195.367582 sys 3.275129
+Run Time (s): real 0.000 user 0.000492 sys 0.000013
+@@ benchmark_pairs_65536 arrival 3
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 65536 │     31747 │    122902 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 10.032 user 301.683067 sys 3.781901
+Run Time (s): real 0.000 user 0.000492 sys 0.000012
+@@ benchmark_pairs_65536 by_id 4
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 65536 │     31747 │    122902 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 6.700 user 194.452945 sys 3.665623
+Run Time (s): real 0.000 user 0.000552 sys 0.000013
+@@ benchmark_pairs_65536 arrival 4
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 65536 │     31747 │    122902 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 10.036 user 302.330953 sys 2.891146
+Run Time (s): real 0.001 user 0.000645 sys 0.000014
+@@ benchmark_pairs_65536 by_id 5
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 65536 │     31747 │    122902 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 6.621 user 195.013766 sys 3.621195
+Run Time (s): real 0.000 user 0.000474 sys 0.000010
+@@ benchmark_pairs_65536 arrival 5
+┌───────┬───────────┬───────────┐
+│ pairs │ reachable │ total_len │
+│ int64 │   int64   │  int128   │
+├───────┼───────────┼───────────┤
+│ 65536 │     31747 │    122902 │
+└───────┴───────────┴───────────┘
+Run Time (s): real 10.104 user 301.433326 sys 3.962734
+Run Time (s): real 0.001 user 0.000599 sys 0.000013
+@@ benchmark_pairs_all_pairs_s1024_t200 by_id 1
+┌────────┬───────────┬───────────┐
+│ pairs  │ reachable │ total_len │
+│ int64  │   int64   │  int128   │
+├────────┼───────────┼───────────┤
+│ 204800 │     99566 │    386284 │
+└────────┴───────────┴───────────┘
+Run Time (s): real 0.357 user 4.412622 sys 0.198741
+Run Time (s): real 0.000 user 0.000462 sys 0.000010
+@@ benchmark_pairs_all_pairs_s1024_t200 arrival 1
+┌────────┬───────────┬───────────┐
+│ pairs  │ reachable │ total_len │
+│ int64  │   int64   │  int128   │
+├────────┼───────────┼───────────┤
+│ 204800 │     99566 │    386284 │
+└────────┴───────────┴───────────┘
+Run Time (s): real 0.302 user 5.967052 sys 0.267471
+Run Time (s): real 0.000 user 0.000520 sys 0.000011
+@@ benchmark_pairs_all_pairs_s1024_t200 by_id 2
+┌────────┬───────────┬───────────┐
+│ pairs  │ reachable │ total_len │
+│ int64  │   int64   │  int128   │
+├────────┼───────────┼───────────┤
+│ 204800 │     99566 │    386284 │
+└────────┴───────────┴───────────┘
+Run Time (s): real 0.294 user 4.472779 sys 0.104496
+Run Time (s): real 0.000 user 0.000527 sys 0.000000
+@@ benchmark_pairs_all_pairs_s1024_t200 arrival 2
+┌────────┬───────────┬───────────┐
+│ pairs  │ reachable │ total_len │
+│ int64  │   int64   │  int128   │
+├────────┼───────────┼───────────┤
+│ 204800 │     99566 │    386284 │
+└────────┴───────────┴───────────┘
+Run Time (s): real 0.234 user 6.054260 sys 0.003792
+Run Time (s): real 0.000 user 0.000422 sys 0.000009
+@@ benchmark_pairs_all_pairs_s1024_t200 by_id 3
+┌────────┬───────────┬───────────┐
+│ pairs  │ reachable │ total_len │
+│ int64  │   int64   │  int128   │
+├────────┼───────────┼───────────┤
+│ 204800 │     99566 │    386284 │
+└────────┴───────────┴───────────┘
+Run Time (s): real 0.197 user 4.273457 sys 0.032161
+Run Time (s): real 0.000 user 0.000338 sys 0.000007
+@@ benchmark_pairs_all_pairs_s1024_t200 arrival 3
+┌────────┬───────────┬───────────┐
+│ pairs  │ reachable │ total_len │
+│ int64  │   int64   │  int128   │
+├────────┼───────────┼───────────┤
+│ 204800 │     99566 │    386284 │
+└────────┴───────────┴───────────┘
+Run Time (s): real 0.268 user 5.975518 sys 0.084665
+Run Time (s): real 0.000 user 0.000434 sys 0.000000
+@@ benchmark_pairs_all_pairs_s1024_t200 by_id 4
+┌────────┬───────────┬───────────┐
+│ pairs  │ reachable │ total_len │
+│ int64  │   int64   │  int128   │
+├────────┼───────────┼───────────┤
+│ 204800 │     99566 │    386284 │
+└────────┴───────────┴───────────┘
+Run Time (s): real 0.201 user 4.389740 sys 0.035488
+Run Time (s): real 0.000 user 0.000379 sys 0.000008
+@@ benchmark_pairs_all_pairs_s1024_t200 arrival 4
+┌────────┬───────────┬───────────┐
+│ pairs  │ reachable │ total_len │
+│ int64  │   int64   │  int128   │
+├────────┼───────────┼───────────┤
+│ 204800 │     99566 │    386284 │
+└────────┴───────────┴───────────┘
+Run Time (s): real 0.250 user 5.962625 sys 0.206260
+Run Time (s): real 0.000 user 0.000410 sys 0.000008
+@@ benchmark_pairs_all_pairs_s1024_t200 by_id 5
+┌────────┬───────────┬───────────┐
+│ pairs  │ reachable │ total_len │
+│ int64  │   int64   │  int128   │
+├────────┼───────────┼───────────┤
+│ 204800 │     99566 │    386284 │
+└────────┴───────────┴───────────┘
+Run Time (s): real 0.200 user 4.402062 sys 0.007930
+Run Time (s): real 0.000 user 0.000386 sys 0.000008
+@@ benchmark_pairs_all_pairs_s1024_t200 arrival 5
+┌────────┬───────────┬───────────┐
+│ pairs  │ reachable │ total_len │
+│ int64  │   int64   │  int128   │
+├────────┼───────────┼───────────┤
+│ 204800 │     99566 │    386284 │
+└────────┴───────────┴───────────┘
+Run Time (s): real 0.242 user 5.881509 sys 0.203270
+Run Time (s): real 0.000 user 0.000372 sys 0.000008
+@@ reach_benchmark_pairs_multi_1024 by_id 1
+┌───────┬───────────┬────────────┐
+│ pairs │ reachable │ total_len  │
+│ int64 │   int64   │   int128   │
+├───────┼───────────┼────────────┤
+│  1024 │ 529907913 │ 2061233532 │
+└───────┴───────────┴────────────┘
+Run Time (s): real 0.838 user 16.579825 sys 1.489405
+Run Time (s): real 0.000 user 0.000460 sys 0.000010
+@@ reach_benchmark_pairs_multi_1024 arrival 1
+┌───────┬───────────┬────────────┐
+│ pairs │ reachable │ total_len  │
+│ int64 │   int64   │   int128   │
+├───────┼───────────┼────────────┤
+│  1024 │ 529907913 │ 2061233532 │
+└───────┴───────────┴────────────┘
+Run Time (s): real 0.798 user 20.437382 sys 0.896977
+Run Time (s): real 0.000 user 0.000348 sys 0.000007
+@@ reach_benchmark_pairs_multi_1024 by_id 2
+┌───────┬───────────┬────────────┐
+│ pairs │ reachable │ total_len  │
+│ int64 │   int64   │   int128   │
+├───────┼───────────┼────────────┤
+│  1024 │ 529907913 │ 2061233532 │
+└───────┴───────────┴────────────┘
+Run Time (s): real 0.772 user 16.595076 sys 1.002068
+Run Time (s): real 0.000 user 0.000520 sys 0.000011
+@@ reach_benchmark_pairs_multi_1024 arrival 2
+┌───────┬───────────┬────────────┐
+│ pairs │ reachable │ total_len  │
+│ int64 │   int64   │   int128   │
+├───────┼───────────┼────────────┤
+│  1024 │ 529907913 │ 2061233532 │
+└───────┴───────────┴────────────┘
+Run Time (s): real 0.774 user 20.508560 sys 0.808312
+Run Time (s): real 0.000 user 0.000348 sys 0.000007
+@@ reach_benchmark_pairs_multi_1024 by_id 3
+┌───────┬───────────┬────────────┐
+│ pairs │ reachable │ total_len  │
+│ int64 │   int64   │   int128   │
+├───────┼───────────┼────────────┤
+│  1024 │ 529907913 │ 2061233532 │
+└───────┴───────────┴────────────┘
+Run Time (s): real 0.694 user 15.997790 sys 0.987956
+Run Time (s): real 0.000 user 0.000394 sys 0.000008
+@@ reach_benchmark_pairs_multi_1024 arrival 3
+┌───────┬───────────┬────────────┐
+│ pairs │ reachable │ total_len  │
+│ int64 │   int64   │   int128   │
+├───────┼───────────┼────────────┤
+│  1024 │ 529907913 │ 2061233532 │
+└───────┴───────────┴────────────┘
+Run Time (s): real 0.776 user 19.310898 sys 1.206965
+Run Time (s): real 0.000 user 0.000405 sys 0.000009
+@@ reach_benchmark_pairs_multi_1024 by_id 4
+┌───────┬───────────┬────────────┐
+│ pairs │ reachable │ total_len  │
+│ int64 │   int64   │   int128   │
+├───────┼───────────┼────────────┤
+│  1024 │ 529907913 │ 2061233532 │
+└───────┴───────────┴────────────┘
+Run Time (s): real 0.721 user 15.697857 sys 1.152771
+Run Time (s): real 0.000 user 0.000467 sys 0.000010
+@@ reach_benchmark_pairs_multi_1024 arrival 4
+┌───────┬───────────┬────────────┐
+│ pairs │ reachable │ total_len  │
+│ int64 │   int64   │   int128   │
+├───────┼───────────┼────────────┤
+│  1024 │ 529907913 │ 2061233532 │
+└───────┴───────────┴────────────┘
+Run Time (s): real 0.775 user 19.484284 sys 1.098664
+Run Time (s): real 0.000 user 0.000374 sys 0.000009
+@@ reach_benchmark_pairs_multi_1024 by_id 5
+┌───────┬───────────┬────────────┐
+│ pairs │ reachable │ total_len  │
+│ int64 │   int64   │   int128   │
+├───────┼───────────┼────────────┤
+│  1024 │ 529907913 │ 2061233532 │
+└───────┴───────────┴────────────┘
+Run Time (s): real 0.720 user 15.355181 sys 1.114811
+Run Time (s): real 0.000 user 0.000363 sys 0.000009
+@@ reach_benchmark_pairs_multi_1024 arrival 5
+┌───────┬───────────┬────────────┐
+│ pairs │ reachable │ total_len  │
+│ int64 │   int64   │   int128   │
+├───────┼───────────┼────────────┤
+│  1024 │ 529907913 │ 2061233532 │
+└───────┴───────────┴────────────┘
+Run Time (s): real 0.775 user 19.982061 sys 1.027760
+@@ strategy
+┌────────────┐
+│ count(len) │
+│   int64    │
+├────────────┤
+│      99566 │
+└────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                                                                                                                          duckpgq_path_finding_strategy()                                                                                                                                                                                                          │
+│                                                                                                                                                                                                                      varchar                                                                                                                                                                                                                      │
+├───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ mode=iterativelength;pairs=204800;distinct_src=1107;distinct_dst=185;orientation=forward;scheduling=source_grouped;source_group_order=source_id;csr=index;source_groups=1024;source_group_kernel=lane_waves;lane_waves=4;lane_limit=256;wave_scheduling=grouped;wave_groups=4;wave_workers_per_batch=32;wave_task_edges=4194304;wave_grouped_working_sets_mb=420;wave_working_set_cap_mb=25216;wave_bitmap_filter=on;wave_sparse_level_divisor=16 │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

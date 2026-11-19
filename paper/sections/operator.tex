@@ -59,6 +59,39 @@ rest of the query around it. The rest of this section follows a query through th
 \subsection{The partitioned CSR}
 \label{sec:csr}
 
+% Declared here so that it lands on the page where Section 3.2 first refers to it; it is discussed in Section 3.3
+\begin{algorithm}[t]
+\caption{\rev{One level of the multi-source traversal for one batch. $A$ holds the bits of the batch's active lanes
+and $L_\ell$ the destinations that lane $\ell$ has not reached yet.}}
+\label{alg:msbfs-level}
+\footnotesize
+\begin{algorithmic}[1]
+\ForAll{destination ranges $R$ \textbf{in parallel}} \Comment{explore}
+  \ForAll{sparse rows $(s, E_s)$ of the partition of $R$}
+    \If{$\texttt{frontier}[s] \neq 0$}
+      \ForAll{$d \in E_s$ with $d \in R$}
+        \State $\texttt{next}[d] \mathrel{|}= \texttt{frontier}[s]$
+      \EndFor
+    \EndIf
+  \EndFor
+\EndFor
+\ForAll{destination ranges $R$ \textbf{in parallel}} \Comment{check}
+  \ForAll{vertices $v \in R$}
+    \State $\texttt{next}[v] \mathrel{\&}= A \mathbin{\&} {\sim}\texttt{seen}[v]$
+    \State $\texttt{seen}[v] \mathrel{|}= \texttt{next}[v]$
+    \State $\texttt{frontier}[v] \gets 0$
+  \EndFor
+\EndFor
+\ForAll{lanes $\ell$ in $A$} \Comment{serial}
+  \State move every $d \in L_\ell$ with bit $\ell$ in $\texttt{seen}[d]$ to the results
+  \If{$L_\ell$ is empty}
+    \State remove $\ell$ from $A$
+  \EndIf
+\EndFor
+\State swap \texttt{frontier} and \texttt{next}
+\end{algorithmic}
+\end{algorithm}
+
 Both routes, building the CSR on the fly and reading it from an index, traverse the same layout, the
 \emph{partitioned CSR} of Figure~\ref{fig:partitioned-csr}. It differs from the classic CSR of Section~\ref{sec:background}
 by splitting the edges by destination.
@@ -87,7 +120,7 @@ undirected graph every edge appears in both directions, and the forward partitio
 
 This layout gives the traversals two properties. First, a traversal step that processes partition $p$ writes only to
 vertices of range $p$. Tasks that each own a partition never write the same vertex, and the multi-source
-traversal splits its work this way (Section~\ref{sec:traversals}). Second, the memory is proportional to the edges. A destination takes 16 bits, and where the classic CSR keeps an offset for every vertex, a partition keeps
+traversal splits its work this way (\rev{Algorithm~\ref{alg:msbfs-level}}). Second, the memory is proportional to the edges. A destination takes 16 bits, and where the classic CSR keeps an offset for every vertex, a partition keeps
 a sparse row only for the sources with an edge into its range, at most one per edge; with the row id the index keeps per edge, the whole takes 11 to 13 bytes per edge (Table~\ref{tab:fixed-costs}).
 
 \begin{figure}[t]
@@ -152,16 +185,22 @@ al.~\cite{then2014msbfs}. A \emph{lane} is one search, and a \emph{batch} is up 
 per vertex, so a working set takes 96 bytes per vertex. A query with $k$ distinct sources therefore has
 $\lceil k/256 \rceil$ batches, 256 for 65\,536 random pairs. Each batch runs its own levels until all its lanes are
 inactive, independently of the other batches, and several can run at the same time, each with a working set
-of its own. A level has two phases. The explore phase relaxes
-\texttt{frontier} into \texttt{next} with one 256-bit \texttt{or} per edge for all lanes at once, a single AVX2
-instruction in our measurements. The sweep is bound by memory traffic, so the bytes per vertex matter more than the
-lanes per sweep: and 256 lanes, one AVX2 register, keep the working set at 96 bytes per vertex. The explore tasks are split by destination range; no two of them
-write the same vertex, and the \texttt{or} needs no atomic. The check phase \texttt{or}s \texttt{next} into \texttt{seen};
-each lane then records the level of the destinations it has newly reached and drops them from its list, and a lane
-whose list is empty is masked out of \texttt{next} and becomes inactive. A summary bitmap marks the vertices with an
-active lane. A level is sparse when fewer than a sixteenth of all vertices are marked, and visits only those, through
-the source index. A dense level costs the same whether one lane or two hundred are active. Both divisors, the
-sixty-fourth and the sixteenth, are settings of the operator.
+of its own.
+
+\rev{Algorithm~\ref{alg:msbfs-level} shows one level of a batch, two parallel phases and a serial step. The explore
+phase (lines 1 to 5) relaxes \texttt{frontier} into \texttt{next} with one 256-bit \texttt{or} per edge for all lanes
+at once, a single AVX2 instruction in our measurements. Each of its tasks owns a destination range, which is the range
+of a partition or, when a batch has more threads than partitions, one of up to 16 slices of it, and the task applies
+only the edges into its range. No two tasks therefore write the same vertex, and the \texttt{or} in line 5 needs no
+lock and no atomic operation.} The sweep is bound by memory traffic, so the bytes per vertex matter more than the
+lanes per sweep\rev{, and a batch keeps to the 256 lanes of one AVX2 register. The check phase (lines 6 to 10) runs
+over the same ranges and leaves in \texttt{next} the lanes that reached a vertex for the first time. The serial step
+(lines 11 to 15) records the level as the distance of the destinations a lane has newly reached, and a lane with
+none left becomes inactive.} A summary bitmap
+marks the vertices with an active lane. A level is sparse when fewer than a sixteenth of all vertices are marked,
+\rev{and line 2 then visits only the rows of the marked vertices}, through the source index. A dense level costs the
+same whether one lane or two hundred are active. Both divisors, the sixty-fourth and the sixteenth, are settings of
+the operator.
 
 The number of batches a query needs depends on the deduplication. LDBC BI19 at SF300 pairs every person of one city,
 1.4\,K of them, with every person of another, and asks for 2.4\,M lengths. After deduplication that is 1.4\,K searches

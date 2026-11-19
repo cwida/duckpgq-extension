@@ -27,6 +27,8 @@
 \definecolor{sqlfn}{HTML}{1B6E7A}
 \usepackage{xspace}
 \usepackage{listings}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
 \usepackage{xcolor}
 
 \newcommand{\duckpgq}{DuckPGQ\xspace}
@@ -41,6 +43,8 @@
 \newcommand{\cn}{\textcolor{red}{[cite]}\xspace}
 
 \lstset{basicstyle=\ttfamily\small, breaklines=true, columns=fullflexible, keepspaces=true}
+\algrenewcommand\algorithmicindent{1em}
+\algrenewcommand{\algorithmiccomment}[1]{\hfill{\color{engine}\textit{#1}}}
 % Let TeX stretch a line a little before it lets text stick out of the column
 \emergencystretch=1em
 
