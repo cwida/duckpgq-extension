@@ -1,0 +1,169 @@
+# name: test/sql/prepared_statement.test
+# description: PREPARE / EXECUTE with GRAPH_TABLE queries (cwida/duckpgq-extension#75)
+# group: [sql]
+
+require duckpgq
+
+require parquet
+
+statement ok
+SET active_grammar_extensions = ['duckpgq']
+
+statement ok
+CREATE TABLE node(id INT, name VARCHAR);
+
+statement ok
+CREATE TABLE knows(src INT, dst INT);
+
+statement ok
+INSERT INTO node VALUES (1, 'a'), (2, 'b'), (3, 'c');
+
+statement ok
+INSERT INTO knows VALUES (1, 2), (2, 3), (1, 3);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (node LABEL person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES node (id)
+                   DESTINATION KEY (dst) REFERENCES node (id));
+
+statement ok
+PREPARE q AS
+FROM GRAPH_TABLE (g
+    MATCH (a:person WHERE a.id = $1)-[k:knows]->(b:person)
+    COLUMNS (a.id, b.id AS bid));
+
+query II rowsort
+EXECUTE q(1);
+----
+1	2
+1	3
+
+query II rowsort
+EXECUTE q(2);
+----
+2	3
+
+query II
+EXECUTE q(3);
+----
+
+# Positional parameters, inside MATCH and in the outer query
+statement ok
+PREPARE q2 AS
+FROM GRAPH_TABLE (g
+    MATCH (a:person WHERE a.id = ?)-[k:knows]->(b:person)
+    COLUMNS (a.id, b.id AS bid))
+WHERE bid > ?;
+
+query II
+EXECUTE q2(1, 2);
+----
+1	3
+
+# Named parameters
+statement ok
+PREPARE q3 AS
+FROM GRAPH_TABLE (g
+    MATCH (a:person WHERE a.name = $src)-[k:knows]->(b:person WHERE b.name = $dst)
+    COLUMNS (a.name, b.name AS bname));
+
+query II
+EXECUTE q3(src := 'a', dst := 'c');
+----
+a	c
+
+# Parameter in COLUMNS
+statement ok
+PREPARE q4 AS
+FROM GRAPH_TABLE (g
+    MATCH (a:person)-[k:knows]->(b:person)
+    COLUMNS (a.id + $1 AS x));
+
+query I rowsort
+EXECUTE q4(10);
+----
+11
+11
+12
+
+# Shortest path with parameters
+statement ok
+PREPARE q5 AS
+FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:person WHERE a.id = $1)-[k:knows]->*(b:person WHERE b.id = $2)
+    COLUMNS (a.id, b.id AS bid, path_length(p) AS len));
+
+query III
+EXECUTE q5(1, 3);
+----
+1	3	1
+
+query III
+EXECUTE q5(2, 3);
+----
+2	3	1
+
+query III
+EXECUTE q5(3, 1);
+----
+
+# Bounded path with a parameter
+statement ok
+PREPARE q6 AS
+FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:person WHERE a.id = $1)-[k:knows]->{2,3}(b:person)
+    COLUMNS (a.id, b.id AS bid, path_length(p) AS len));
+
+query III
+EXECUTE q6(1);
+----
+1	3	2
+
+# Re-executing after the data changes sees the new data
+statement ok
+INSERT INTO knows VALUES (3, 1);
+
+query III
+EXECUTE q5(3, 1);
+----
+3	1	1
+
+# Preparing against a non-existing property graph fails cleanly
+statement error
+PREPARE q7 AS FROM GRAPH_TABLE (nope MATCH (a:person) COLUMNS (a.id));
+----
+nope
+
+# The query from the issue, on the SNB data
+statement ok
+import database 'data/SNB0.003';
+
+statement ok
+CREATE PROPERTY GRAPH snb
+VERTEX TABLES (Person LABEL Person, Message LABEL Message)
+EDGE TABLES (
+    Message_hasAuthor_Person SOURCE KEY (messageId) REFERENCES Message (id)
+                             DESTINATION KEY (PersonId) REFERENCES Person (id)
+                             LABEL hasAuthor);
+
+statement ok
+PREPARE is5 AS
+FROM GRAPH_TABLE (snb
+    MATCH (m:message WHERE m.id = $1)-[au:hasAuthor]->(p:person)
+    COLUMNS (p.id, p.firstName, p.lastName)
+    ) tmp;
+
+query III
+EXECUTE is5(371);
+----
+16	Jan	Zakrzewski
+
+query III
+EXECUTE is5(68719476848);
+----
+14	Hossein	Forouhar
+
+query III
+EXECUTE is5(-1);
+----
