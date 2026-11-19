@@ -73,6 +73,47 @@ true
 statement ok
 RESET experimental_path_finding_operator_deep_graph_levels;
 
+# The rule stops at deep_graph_partitions partitions (a single-source search looks every frontier vertex up in every
+# partition): the ring cut into 6 partitions keeps the lanes when the limit is 4 and is searched per source without one
+statement ok
+SET experimental_path_finding_operator_partition_vertices = 100;
+
+statement ok
+SET experimental_path_finding_operator_deep_graph_partitions = 4;
+
+query I
+SELECT count(*) FROM (
+    SELECT s, d, iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 600::BIGINT, 600::BIGINT, 'graph:ringparts') AS len
+    FROM ring_pairs, re) q JOIN ring_reference r USING (s, d) WHERE q.len IS DISTINCT FROM r.len;
+----
+0
+
+query I
+SELECT s LIKE '%shape_probe=too_many_partitions%' AND s LIKE '%source_group_kernel=lane_waves%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+SET experimental_path_finding_operator_deep_graph_partitions = 0;
+
+query I
+SELECT count(*) FROM (
+    SELECT s, d, iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 600::BIGINT, 600::BIGINT, 'graph:ringparts') AS len
+    FROM ring_pairs, re) q JOIN ring_reference r USING (s, d) WHERE q.len IS DISTINCT FROM r.len;
+----
+0
+
+query I
+SELECT s LIKE '%shape_probe=deep%' AND s LIKE '%source_group_kernel=per_source%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+RESET experimental_path_finding_operator_deep_graph_partitions;
+
+statement ok
+RESET experimental_path_finding_operator_partition_vertices;
+
 # At most few_sources_limit sources: per source as before, no probe
 query I
 SELECT count(len) FROM (

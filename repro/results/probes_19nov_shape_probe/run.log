@@ -37,3 +37,9 @@
 2026-11-19T11:13:25Z end large germany_operator exit=0 load=21.83 21.20 18.85
 2026-11-19T11:14:12Z large germany_umbra commit=64deb4f9 extension_sha256=2a9a7e3079c79d77 load=9.74 18.00 17.89
 2026-11-19T11:16:08Z end large germany_umbra exit=0 load=18.04 17.89 17.82
+2026-11-19T11:31:50Z large europe_operator commit=c02bd263 extension_sha256=2a9a7e3079c79d77 load=3.33 10.09 13.60
+2026-11-19T11:53:00Z end large europe_operator exit=0 load=2.21 5.67 11.06
+2026-11-19T11:53:27Z large partitions_oberbayern commit=c02bd263 extension_sha256=2a9a7e3079c79d77 load=1.76 5.25 10.75
+2026-11-19T11:55:20Z end large partitions_oberbayern exit=0 load=22.97 12.05 12.61
+2026-11-19T12:06:11Z large germany_operator commit=c02bd263 extension_sha256=345083c8364167f5 load=2.23 9.14 11.97
+2026-11-19T12:06:58Z end large germany_operator exit=0 load=16.72 12.03 12.82

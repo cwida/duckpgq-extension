@@ -125,6 +125,13 @@ const vector<DuckPGQSetting> &Settings() {
 	     "levels without having discovered 4096 vertices (a road network; a small-world graph reaches "
 	     "the budget within a few levels). 0 switches the probe off: the source count alone decides",
 	     LogicalType::INTEGER, Value(16)},
+	    {"experimental_path_finding_operator_deep_graph_partitions",
+	     "The deep-graph rule applies to graphs of at most this many CSR partitions. A single-source "
+	     "search looks every frontier vertex up in every partition, so its cost grows with the "
+	     "partition count while a lane wave's does not: on a deep graph of 121 partitions the lanes "
+	     "are 3.7 times faster again (OSM Oberbayern cut into partitions of 4096 vertices; Germany "
+	     "with 150 partitions: 1.4 times). 0 removes the limit",
+	     LogicalType::INTEGER, Value(32)},
 	    {"experimental_path_finding_operator_working_set_cap",
 	     "Bytes of path-finding working state that may be live at once: bounds the MS-BFS worker "
 	     "groups that run concurrently and the per-source searches in flight per round. -1 "
@@ -363,6 +370,10 @@ int32_t GetPathFindingFewSourcesLimit(ClientContext &context) {
 
 int32_t GetPathFindingDeepGraphLevels(ClientContext &context) {
 	return GetSetting<int32_t>(context, "experimental_path_finding_operator_deep_graph_levels");
+}
+
+int32_t GetPathFindingDeepGraphPartitions(ClientContext &context) {
+	return GetSetting<int32_t>(context, "experimental_path_finding_operator_deep_graph_partitions");
 }
 
 int64_t GetPathFindingWorkingSetCapSetting(ClientContext &context) {

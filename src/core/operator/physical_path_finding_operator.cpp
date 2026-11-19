@@ -1836,6 +1836,13 @@ private:
 		if (level_limit <= 0) {
 			return false;
 		}
+		// A single-source search pays one row lookup per partition for every frontier vertex: beyond a few dozen
+		// partitions the lanes are the cheaper kernel again, also on a deep graph
+		auto partition_limit = GetPathFindingDeepGraphPartitions(context);
+		if (partition_limit > 0 && partition_csrs.size() > NumericCast<idx_t>(partition_limit)) {
+			RecordStrategy(context, "shape_probe", "too_many_partitions");
+			return false;
+		}
 		SearchGraphSide side {partition_csrs, SearchDeltaCSRs(gstate), SearchSuppressed(gstate)};
 		if (!side.HasRowLookup()) {
 			RecordStrategy(context, "shape_probe", "unavailable");

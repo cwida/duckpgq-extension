@@ -1672,3 +1672,21 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   thresholds come from one road graph (its largest deep search had discovered 750 vertices, a factor of 5 below
   the budget); Germany and Europe are not measured. `csr_index_fold_parallel_scan.test` fails in about one run
   of five with or without this change (its epochs=1 assertion races with an automatic fold since dd49fac8).
+- 19 Nov (later): the shape-aware choice on Germany and Europe, the Nav-Index comparison with defaults, and a
+  partition limit for the rule (my-beans-83ld; files under repro/results/probes_19nov_navindex_rerun and
+  probes_19nov_shape_probe, README section 3). (1) Nav-Index again with this branch and default settings, Umbra in
+  the same run: Oberbayern, 1000 pairs, lengths, operator 0.596 s (1.609 s without the search from both ends,
+  4.025 s without the shape probe), Umbra table index 0.0130 s (46 times faster; 121 times on rc13 with the forced
+  setting), Umbra adaptive 2.128 s, Dijkstra 5.081 s; the operator is faster than Umbra without a stored index at
+  every pair count (2000 pairs 1.145 s against 2.242 s). Twitter, 1000 pairs: operator 0.0225 s, with paths
+  0.0589 s, Umbra table index 0.0157 s after a build of 200 s. The difference to rc13 on Oberbayern is the search
+  from both ends (my-beans-zlnm), which needs the index's reverse side: the build route is unchanged. (2) Germany
+  (9.8 M nodes, 150 partitions), 100 pairs: per source from both ends 67.6 s, lanes 47.0 s, per source from one end
+  99.6 s; Umbra Dijkstra 35.7 s, Umbra table index 0.0197 s after a build of 59 s. Europe (87 M nodes, 1,328
+  partitions): one pair of 3,045 hops 68.6 s, 17 pairs not finished in 20 minutes. (3) Cause: a single-source
+  search looks every frontier vertex up in every partition. Oberbayern on the build route with 121 partitions
+  instead of 8: per source 13.40 s instead of 1.44 s for 1000 pairs, lanes 3.65 s and 4.10 s. (4) The deep-graph
+  rule therefore stops at `deep_graph_partitions` partitions (32): Germany's default is on lanes again (46.2 s). For
+  the paper: Oberbayern can be reported with defaults; the limit to state is that searches per source grow with the
+  partition count, so large road graphs (Germany upwards) are out of reach of the operator as it is (follow-up
+  my-beans-tvir, not planned).
