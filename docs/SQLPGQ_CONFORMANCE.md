@@ -53,14 +53,14 @@ grammar, rejected by the binder with a clear error), **no**.
 | G010 | `WALK` | yes | |
 | G011 to G013 | `TRAIL`, `SIMPLE`, `ACYCLIC` | parse | Need path enumeration |
 | G014 | `PATH` / `PATHS` keywords | no | |
-| G015 | `ALL` path search | partial | Single-edge patterns are correct. With a quantifier the result is one row per endpoint pair, filtered on the shortest length |
+| G015 | `ALL` path search | partial | Single-edge patterns are correct. With a quantifier the result is one row per endpoint pair that some walk within the bounds connects |
 | G016 | `ANY [k]` | no | |
 | G017 | `ALL SHORTEST` | parse | |
-| G018 | `ANY SHORTEST` | partial | Correct without bounds; with bounds the shortest path is selected before the bounds are applied (9.8 requires the opposite order) |
+| G018 | `ANY SHORTEST` | partial | With bounds, the shortest walk whose length lies within them (9.8), found by `shortestpathbounded()`; a vertex can reach itself through a cycle. Two cases still return more than one row per endpoint pair: a pattern with two quantified edges (one row per intermediate vertex), and a single edge without a quantifier over parallel edges (one row per edge) |
 | G019 | `SHORTEST k` | parse | |
 | G020 | `SHORTEST k GROUP` | no | |
 | G030 to G033 | Path alternation `\|`, `\|+\|` | no | |
-| G035, G036 | Quantified paths and edges | partial | Edges only; bounds are a post-filter on the shortest length |
+| G035, G036 | Quantified paths and edges | partial | Edges only; a lower bound is met by the shortest walk at least that long, not by the shortest path |
 | G037 | Questioned path primary `?` | partial | Treated as `{0,1}`; variables are not exposed as conditional singletons |
 | G038, G048 to G051 | Parenthesised path patterns, subpath variables and modes | parse | |
 | G060, G061 | Bounded / unbounded quantifiers | partial | `{0,0}` is accepted but must be rejected (10.7 SR 3) |

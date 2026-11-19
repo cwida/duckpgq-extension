@@ -752,18 +752,29 @@ PGQMatchFunction::GenerateShortestPathCTE(CreatePropertyGraphInfo &pg_table, Sub
 	auto edge_element = GetPathElement(edge_subpath->path_list[0]);
 	auto edge_table = FindGraphTable(edge_element->label, pg_table);
 
+	// With a lower bound the shortest path may be shorter than allowed (a source reaches itself in zero steps), so
+	// shortestpathbounded() builds the shortest walk within the bounds instead. The filter from
+	// AddPathQuantifierCondition (iterativelengthbounded, which builds no path) drops the pairs without such a walk
+	// first, so the path is built once, for the pairs that remain.
+	const bool bounded = edge_subpath->lower > 0;
 	path_finding_conditions.push_back(AddPathQuantifierCondition(previous_vertex_element->variable_binding,
 	                                                             next_vertex_element->variable_binding, edge_table,
 	                                                             edge_subpath, csr));
 
 	std::ostringstream query;
-	query << "SELECT shortestpath(" << csr.csr_id << ", ("
+	query << "SELECT " << (bounded ? "shortestpathbounded(" : "shortestpath(") << csr.csr_id << ", ("
 	      << DuckPGQSQLCountTable(*edge_table->source_pg_table, previous_vertex_element->variable_binding,
 	                              edge_table->source_pk[0])
 	      << "), " << DuckPGQSQL::Column(string("rowid"), previous_vertex_element->variable_binding) << ", "
-	      << DuckPGQSQL::Column(string("rowid"), next_vertex_element->variable_binding) << ") AS path, "
-	      << DuckPGQSQL::Column(string("rowid"), previous_vertex_element->variable_binding) << " AS src_rowid, "
-	      << DuckPGQSQL::Column(string("rowid"), next_vertex_element->variable_binding) << " AS dst_rowid FROM "
+	      << DuckPGQSQL::Column(string("rowid"), next_vertex_element->variable_binding);
+	if (bounded) {
+		// Adding the CSR count column (always 0) makes the call depend on the CSR CTE, which must run first.
+		query << ", add(" << DuckPGQSQL::Column(string("temp"), csr.count_alias) << ", " << edge_subpath->lower << "), "
+		      << edge_subpath->upper;
+	}
+	query << ") AS path, " << DuckPGQSQL::Column(string("rowid"), previous_vertex_element->variable_binding)
+	      << " AS src_rowid, " << DuckPGQSQL::Column(string("rowid"), next_vertex_element->variable_binding)
+	      << " AS dst_rowid FROM "
 	      << DuckPGQSQL::TableRef(*edge_table->source_pg_table, previous_vertex_element->variable_binding)
 	      << " CROSS JOIN "
 	      << DuckPGQSQL::TableRef(*edge_table->destination_pg_table, next_vertex_element->variable_binding)
@@ -771,8 +782,7 @@ PGQMatchFunction::GenerateShortestPathCTE(CreatePropertyGraphInfo &pg_table, Sub
 	      << ") AS " << csr.count_alias;
 
 	auto select_statement = DuckPGQSQL::ParseSelect(query.str());
-	auto &select_node = select_statement->node->Cast<SelectNode>();
-	select_node.where_clause = CreateWhereClause(path_finding_conditions);
+	select_statement->node->Cast<SelectNode>().where_clause = CreateWhereClause(path_finding_conditions);
 	auto cte_info = make_uniq<CommonTableExpressionInfo>();
 	cte_info->query_node = std::move(select_statement->node);
 	return cte_info;
@@ -953,6 +963,17 @@ PGQMatchFunction::AddPathQuantifierCondition(const string &prev_binding, const s
                                              const shared_ptr<PropertyGraphTable> &edge_table, const SubPath *subpath,
                                              const PathFindingCSR &csr) {
 	std::ostringstream expression;
+	if (subpath->lower > 0) {
+		// The shortest path may be shorter than the lower bound while a longer walk fits: ask for a walk within the
+		// bounds instead of filtering on the shortest length. Only its length is computed, no path is built.
+		expression << "iterativelengthbounded(" << csr.csr_id << ", ("
+		           << DuckPGQSQLCountTable(*edge_table->source_pg_table, prev_binding, edge_table->source_pk[0])
+		           << "), " << DuckPGQSQL::Column(string("rowid"), prev_binding) << ", "
+		           << DuckPGQSQL::Column(string("rowid"), next_binding) << ", add("
+		           << DuckPGQSQL::Column(string("temp"), csr.count_alias) << ", " << subpath->lower << "), "
+		           << subpath->upper << ") IS NOT NULL";
+		return DuckPGQSQL::ParseExpression(expression.str());
+	}
 	expression << "add(" << DuckPGQSQL::Column(string("temp"), csr.count_alias) << ", iterativelength(" << csr.csr_id
 	           << ", (" << DuckPGQSQLCountTable(*edge_table->source_pg_table, prev_binding, edge_table->source_pk[0])
 	           << "), " << DuckPGQSQL::Column(string("rowid"), prev_binding) << ", "
