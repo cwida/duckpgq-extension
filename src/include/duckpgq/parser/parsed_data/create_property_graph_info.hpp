@@ -37,6 +37,11 @@ struct CreatePropertyGraphInfo : public CreateInfo {
 	//! Dictionary to point label to vector or edge table
 	case_insensitive_map_t<shared_ptr<PropertyGraphTable>> label_map;
 
+	//! Whether CREATE PROPERTY GRAPH verified that every edge key references a vertex row. Graphs persisted before
+	//! the check existed, or created over tables the check could not read, are not verified. Main reads it for
+	//! vertex-join elimination (VertexEliminationPlanner); nothing on this branch reads it yet.
+	bool verified = false;
+
 public:
 	unique_ptr<CreateInfo> Copy() const override;
 
