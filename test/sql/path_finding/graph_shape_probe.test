@@ -48,7 +48,7 @@ SELECT count(*) FROM (
 0
 
 query I
-SELECT s LIKE '%shape_probe=deep%' AND s LIKE '%shape_probe_outcomes=deep:3,wide:0,exhausted:0%' AND s LIKE '%shape_probe_max_levels=16%'
+SELECT s LIKE '%shape_probe=deep%' AND s LIKE '%shape_probe_outcomes=deep:2/wide:0/exhausted:0%' AND s LIKE '%shape_probe_max_levels=16%'
        AND s LIKE '%source_group_kernel=per_source%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
 ----
 true
@@ -65,7 +65,7 @@ SELECT count(*) FROM (
 0
 
 query I
-SELECT s LIKE '%shape_probe=not_deep%' AND s LIKE '%shape_probe_outcomes=deep:0,wide:3,exhausted:0%' AND s LIKE '%source_group_kernel=lane_waves%'
+SELECT s LIKE '%shape_probe=not_deep%' AND s LIKE '%shape_probe_outcomes=deep:0/wide:2/exhausted:0%' AND s LIKE '%source_group_kernel=lane_waves%'
 FROM (SELECT duckpgq_path_finding_strategy() AS s);
 ----
 true
@@ -164,7 +164,7 @@ SELECT count(len) FROM (
 1200
 
 query I
-SELECT s LIKE '%shape_probe=not_deep%' AND s LIKE '%shape_probe_outcomes=deep:0,wide:3,exhausted:0%' AND s LIKE '%source_group_kernel=lane_waves%'
+SELECT s LIKE '%shape_probe=not_deep%' AND s LIKE '%shape_probe_outcomes=deep:0/wide:2/exhausted:0%' AND s LIKE '%source_group_kernel=lane_waves%'
 FROM (SELECT duckpgq_path_finding_strategy() AS s);
 ----
 true
@@ -187,7 +187,7 @@ SELECT count(len) FROM (
 500
 
 query I
-SELECT s LIKE '%shape_probe=not_deep%' AND s LIKE '%shape_probe_outcomes=deep:0,wide:3,exhausted:0%' AND s LIKE '%source_group_kernel=lane_waves%'
+SELECT s LIKE '%shape_probe=not_deep%' AND s LIKE '%shape_probe_outcomes=deep:0/wide:2/exhausted:0%' AND s LIKE '%source_group_kernel=lane_waves%'
 FROM (SELECT duckpgq_path_finding_strategy() AS s);
 ----
 true

@@ -2,3 +2,12 @@
 2026-11-19T09:57:29Z end prepare graph=oberbayern exit=0 load=7.64 16.70 20.67
 2026-11-19T09:57:29Z prepare graph=twitter threads=32 commit=f447ac06 extension_sha256=9279080e12e0bf45 load=7.64 16.70 20.67
 2026-11-19T09:57:31Z end prepare graph=twitter exit=0 load=7.64 16.70 20.67
+2026-11-19T10:04:30Z time graph=oberbayern threads=32 commit=d5910d63 extension_sha256=939ab57f4b8f60cc load=7.47 19.31 21.76
+2026-11-19T10:08:16Z end time graph=oberbayern exit=0 load=27.76 23.61 22.95
+2026-11-19T10:08:16Z time graph=twitter threads=32 commit=d5910d63 extension_sha256=939ab57f4b8f60cc load=27.76 23.61 22.95
+2026-11-19T10:08:28Z end time graph=twitter exit=0 load=25.93 23.38 22.88
+2026-11-19T10:13:22Z misfire prepare graph=sf10 commit=d5910d63 extension_sha256=2a9a7e3079c79d77 load=26.78 21.35 21.48
+2026-11-19T10:13:23Z end misfire prepare graph=sf10 exit=0 load=26.78 21.35 21.48
+2026-11-19T10:13:23Z misfire prepare graph=sf100 commit=d5910d63 extension_sha256=2a9a7e3079c79d77 load=26.78 21.35 21.48
+2026-11-19T10:13:27Z end misfire prepare graph=sf100 exit=0 load=30.00 22.11 21.72
+2026-11-19T10:13:27Z misfire prepare graph=sf300 commit=d5910d63 extension_sha256=2a9a7e3079c79d77 load=30.00 22.11 21.72

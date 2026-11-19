@@ -20,9 +20,12 @@ struct GraphShapeProbeResult {
 	//! Most vertices a deep search had discovered at the level limit (how far it stayed below the budget)
 	idx_t max_deep_discovered = 0;
 
-	//! The majority of the searches were deep
+	//! Searches planned: MAX_PROBES or the number of sources; the run stops once more than half of them agree
+	idx_t planned = 0;
+
+	//! More than half of the planned searches were deep
 	bool Deep() const {
-		return deep * 2 > probes;
+		return deep * 2 > planned;
 	}
 };
 
@@ -42,7 +45,8 @@ struct GraphShapeProbeResult {
 //! level on a small-world graph (the budget is reached within a few levels) and about quadratic on a road network (a
 //! few hundred vertices after 16 levels). A search that runs out of vertices early says nothing about depth and
 //! counts as not deep. The probe starts from MAX_PROBES of the query's own sources, spread evenly over them, and
-//! the majority decides; its cost is bounded by the budgets, independent of the size of the graph.
+//! the majority decides (two that agree end the probe); its cost is bounded by the budgets, independent of the size
+//! of the graph.
 class GraphShapeProbe {
 public:
 	static constexpr idx_t MAX_PROBES = 3;

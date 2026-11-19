@@ -5759,6 +5759,8 @@ for _rb in (0, 1, 2, 4, 8, 16, 64):
 MICROBENCH_CONFIGS["single_source_kernel"] = ({OPT + "few_sources_limit": 1000000}, None, False)
 MICROBENCH_CONFIGS["multi_source_dedup"] = ({OPT + "few_sources_limit": 0}, None, False)
 MICROBENCH_CONFIGS["lane_per_pair"] = ({OPT + "source_group_ratio": 0}, None, False)
+# Deep-graph rule (19 Nov, my-beans-83ld): off, the source count alone chooses between the two kernels as up to rc13
+MICROBENCH_CONFIGS["no_shape_probe"] = ({OPT + "deep_graph_levels": 0}, None, False)
 MICROBENCH_GROUPS = {
     "crossover": ["single_source_kernel", "multi_source_dedup", "lane_per_pair"],
     "kernel": ["baseline", "no_grouped_batches", "dedupe_pairs", "threads_per_batch_4", "no_source_grouping",

@@ -1846,9 +1846,10 @@ private:
 		                                  gstate.source_group_sources, NumericCast<idx_t>(level_limit));
 		auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
 		RecordStrategy(context, "shape_probe", shape.Deep() ? "deep" : "not_deep");
+		// No commas in a strategy value: the CLI's CSV mode would quote the line and the harness reads it by prefix
 		RecordStrategy(context, "shape_probe_outcomes",
-		               "deep:" + std::to_string(shape.deep) + ",wide:" + std::to_string(shape.wide) +
-		                   ",exhausted:" + std::to_string(shape.exhausted));
+		               "deep:" + std::to_string(shape.deep) + "/wide:" + std::to_string(shape.wide) +
+		                   "/exhausted:" + std::to_string(shape.exhausted));
 		RecordStrategy(context, "shape_probe_max_levels", std::to_string(shape.max_levels));
 		if (shape.deep > 0) {
 			RecordStrategy(context, "shape_probe_deep_discovered", std::to_string(shape.max_deep_discovered));

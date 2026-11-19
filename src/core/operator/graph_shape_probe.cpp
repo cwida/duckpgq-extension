@@ -109,7 +109,12 @@ GraphShapeProbeResult GraphShapeProbe::Run(const SearchGraphSide &graph, idx_t v
 	// A small graph cannot fill the budget: a quarter of its vertices within the level limit is not deep either
 	auto vertex_budget = std::min<idx_t>(VERTEX_BUDGET, std::max<idx_t>(MIN_VERTEX_BUDGET, v_size / 4));
 	auto probe_count = std::min<idx_t>(MAX_PROBES, sources.size());
+	result.planned = probe_count;
 	for (idx_t probe_idx = 0; probe_idx < probe_count; probe_idx++) {
+		// Decided once more than half of the planned probes agree
+		if (result.deep * 2 > probe_count || (result.probes - result.deep) * 2 > probe_count) {
+			break;
+		}
 		auto source = sources[probe_idx * sources.size() / probe_count];
 		if (source < 0 || static_cast<idx_t>(source) >= v_size) {
 			continue;
