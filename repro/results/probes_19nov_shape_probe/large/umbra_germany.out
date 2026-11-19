@@ -1,0 +1,7 @@
+system=umbra graph=germany route=dijkstra setting= workload=w2 pairs=1 result=lengths run=0 seconds=3.353397 answer=1|19 note=
+system=umbra graph=germany route=dijkstra setting= workload=w2 pairs=10 result=lengths run=0 seconds=13.551945 answer=10|9837 note=
+system=umbra graph=germany route=dijkstra setting= workload=w2 pairs=100 result=lengths run=0 seconds=35.689251 answer=89|97307 note=
+system=umbra graph=germany route=table_index setting= workload=create_index pairs= result=lengths run=0 seconds=59.246613 answer= note=
+system=umbra graph=germany route=table_index setting= workload=w2 pairs=1 result=lengths run=0 seconds=0.001735 answer=1|19 note=
+system=umbra graph=germany route=table_index setting= workload=w2 pairs=10 result=lengths run=0 seconds=0.007873 answer=10|9837 note=
+system=umbra graph=germany route=table_index setting= workload=w2 pairs=100 result=lengths run=0 seconds=0.019705 answer=89|97307 note=

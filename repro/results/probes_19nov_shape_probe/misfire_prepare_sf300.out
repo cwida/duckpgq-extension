@@ -1,0 +1,9 @@
+Ensuring sf300 benchmark_pairs_64 exists
+Prepared benchmark_pairs_64 for sf300 in 0.70s
+Replacing index pathfinding_benchmark_csr: it was created without WITH (reverse = true)
+== duckpgq_index [baseline] loaded in 7.5s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=64      sources=      repeat 1:    0.240s 34/129
+== duckpgq_index [no_shape_probe] loaded in 0.2s (index pathfinding_benchmark_csr)
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 1:    0.252s 34/129
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/navindex-benchmark/data/ldbc-pathfinding/results/sf300/microbench_sf300_threads32_1795083208026248597.csv
+All 1 points agree across configurations 

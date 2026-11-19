@@ -1,0 +1,5 @@
+Phase,RunID,ThreadCount,PairCount,VertexCount,EdgeCount,PartitionCount,Time_ms,MemoryBytes
+pair_analysis,operator,32,1,0,1,1,0.01076,0
+source_group_zero_copy,operator,32,1,0,1,1,0.00159,0
+source_group_bfs,operator,13,1,0,495357,8,103.012,0
+source_group_scatter,operator,32,1,0,1,1,0.019841,0

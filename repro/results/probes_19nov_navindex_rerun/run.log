@@ -1,0 +1,14 @@
+2026-11-19T10:56:25Z commit=d71e79c2
+2026-11-19T10:56:25Z graph=oberbayern threads=32 extension_sha256=2a9a7e3079c79d77 cli_sha256=f68a7c3f2e565f11 umbra=Umbra version v0.2-1423-g7c87fba6e (2026-06-01, format 40) load=1.14 7.95 12.04
+2026-11-19T10:56:26Z start duckpgq_oberbayern
+2026-11-19T11:01:32Z end   duckpgq_oberbayern exit=0
+2026-11-19T11:01:32Z start umbra_oberbayern
+2026-11-19T11:04:11Z end   umbra_oberbayern exit=0
+2026-11-19T11:04:11Z done graph=oberbayern load=21.74 22.03 17.85
+2026-11-19T11:04:11Z commit=d71e79c2
+2026-11-19T11:04:11Z graph=twitter threads=32 extension_sha256=2a9a7e3079c79d77 cli_sha256=f68a7c3f2e565f11 umbra=Umbra version v0.2-1423-g7c87fba6e (2026-06-01, format 40) load=21.74 22.03 17.85
+2026-11-19T11:04:11Z start duckpgq_twitter
+2026-11-19T11:04:29Z end   duckpgq_twitter exit=0
+2026-11-19T11:04:29Z start umbra_twitter
+2026-11-19T11:08:31Z end   umbra_twitter exit=0
+2026-11-19T11:08:31Z done graph=twitter load=21.84 20.50 18.12

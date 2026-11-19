@@ -1,0 +1,9 @@
+Ensuring graphalytics_cit_Patents benchmark_pairs_64 exists
+Prepared benchmark_pairs_64 for graphalytics_cit_Patents in 0.43s
+Replacing index pathfinding_benchmark_csr: it was created without WITH (reverse = true)
+== duckpgq_index [baseline] loaded in 2.4s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=64      sources=      repeat 1:    0.079s 0/0
+== duckpgq_index [no_shape_probe] loaded in 0.2s (index pathfinding_benchmark_csr)
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 1:    0.069s 0/0
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/navindex-benchmark/data/ldbc-pathfinding/results/graphalytics_cit_Patents/microbench_graphalytics_cit_Patents_threads32_1795083218318154889.csv
+All 1 points agree across configurations 

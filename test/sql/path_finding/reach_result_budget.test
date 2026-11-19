@@ -26,6 +26,10 @@ CREATE TABLE few_sources AS SELECT range * 14000 AS s FROM range(15);
 # 64 sources x 210000 vertices = 13.4M entries, 16 bytes each in the budget while they sit in the recorder's growing
 # vectors: 215 MB against a cap of 48 MiB (three quarters of memory_limit). The ring is 105000 levels deep, so no
 # lane ever takes the dense byte form (reach_dense_results.test covers that form)
+# The graph shape probe would search these sources one by one (the ring is deep): off, this part is about the lanes
+statement ok
+SET experimental_path_finding_operator_deep_graph_levels = 0;
+
 statement ok
 SET memory_limit = '64MiB';
 

@@ -1,0 +1,8 @@
+Ensuring sf10 benchmark_pairs_64 exists
+Prepared benchmark_pairs_64 for sf10 in 0.11s
+== duckpgq_index [baseline] loaded in 0.2s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=64      sources=      repeat 1:    0.030s 28/97
+== duckpgq_index [no_shape_probe] loaded in 0.2s (index pathfinding_benchmark_csr)
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 1:    0.028s 28/97
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/navindex-benchmark/data/ldbc-pathfinding/results/sf10/microbench_sf10_threads32_1795083202539817268.csv
+All 1 points agree across configurations 

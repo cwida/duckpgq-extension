@@ -1,0 +1,20 @@
+Ensuring graphalytics_datagen_8_4_fb benchmark_pairs_64 exists
+Prepared benchmark_pairs_64 for graphalytics_datagen_8_4_fb in 1.53s
+Ensuring graphalytics_datagen_8_4_fb benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_datagen_8_4_fb in 1.67s
+== duckpgq_index [baseline] loaded in 0.2s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=64      sources=      repeat 1:    0.301s 64/215
+   baseline                     random_pairs pairs=64      sources=      repeat 2:    0.301s 64/215
+   baseline                     random_pairs pairs=64      sources=      repeat 3:    0.308s 64/215
+   baseline                     random_pairs pairs=1024    sources=      repeat 1:    0.945s 1024/3444
+   baseline                     random_pairs pairs=1024    sources=      repeat 2:    0.940s 1024/3444
+   baseline                     random_pairs pairs=1024    sources=      repeat 3:    0.971s 1024/3444
+== duckpgq_index [no_shape_probe] loaded in 0.2s (index pathfinding_benchmark_csr)
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 1:    0.308s 64/215
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 2:    0.302s 64/215
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 3:    0.308s 64/215
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 1:    0.943s 1024/3444
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 2:    0.931s 1024/3444
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 3:    0.946s 1024/3444
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/navindex-benchmark/data/ldbc-pathfinding/results/graphalytics_datagen_8_4_fb/microbench_graphalytics_datagen_8_4_fb_threads32_1795083651922578491.csv
+All 2 points agree across configurations 

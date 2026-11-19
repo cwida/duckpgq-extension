@@ -1,0 +1,6 @@
+operator W2 2000 pairs: 1893 reachable, mean 290.98 hops, max 740, self pairs 0
+umbra dijkstra: 2000 pairs compared, 0 differ
+umbra adhoc_ch: 2000 pairs compared, 0 differ
+umbra adaptive: 2000 pairs compared, 0 differ
+umbra table_index: 2000 pairs compared, 0 differ
+community W1: no lengths

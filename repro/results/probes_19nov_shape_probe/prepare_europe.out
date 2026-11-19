@@ -1,0 +1,13 @@
+nodes 87007242
+edges 146598088
+self_loops 0
+max_out_degree 23
+queries 2000
+distinct_queries 2000
+query_sources 2000
+query_destinations 2000
+queries_src_eq_dst 0
+create_index_seconds 25.148
+checkpoint_seconds 0.001
+database_bytes 4247269376
+
