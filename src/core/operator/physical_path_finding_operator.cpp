@@ -2296,6 +2296,47 @@ SinkFinalizeType FinalizeSourceGroupedPathFindingPhase(PathFindingGlobalSinkStat
 		gstate.source_group_output_states.push_back(std::move(output_states));
 	}
 
+	// The waves take the groups 256 at a time. Ordered by the id of their source, the sources of a wave are
+	// neighbours in the id space: where the ids follow the graph's structure their searches cover the same vertices
+	// and a level has fewer vertices with an active lane (LDBC knows, whose edges all point to the larger id: 65,536
+	// pairs at SF300 in 6.8 s instead of 10.2 s); where they do not, the order of the groups is free. The pairs'
+	// order of first appearance remains behind the switch (microbench configuration arrival_group_order).
+	bool sort_groups = GetPathFindingSortSourceGroups(context) && groups.size() > 1;
+	RecordStrategy(context, "source_group_order", sort_groups ? "source_id" : "arrival");
+	if (sort_groups && !std::is_sorted(groups.begin(), groups.end(),
+	                                   [](const SourceGroupBuildState &left, const SourceGroupBuildState &right) {
+		                                   return left.source < right.source;
+	                                   })) {
+		vector<idx_t> order(groups.size());
+		std::iota(order.begin(), order.end(), idx_t(0));
+		std::sort(order.begin(), order.end(),
+		          [&](idx_t left, idx_t right) { return groups[left].source < groups[right].source; });
+		// new_index[group in order of arrival] = its position by source id
+		vector<idx_t> new_index(groups.size());
+		vector<SourceGroupBuildState> sorted_groups;
+		sorted_groups.reserve(groups.size());
+		for (idx_t position = 0; position < order.size(); position++) {
+			new_index[order[position]] = position;
+			sorted_groups.push_back(groups[order[position]]);
+		}
+		groups = std::move(sorted_groups);
+		for (auto &output_states : gstate.source_group_output_states) {
+			for (auto &group_idx : output_states) {
+				if (group_idx != DConstants::INVALID_INDEX) {
+					group_idx = new_index[group_idx];
+				}
+			}
+		}
+		if (reach) {
+			auto rows_by_arrival = std::move(gstate.source_group_rows);
+			gstate.source_group_rows.clear();
+			gstate.source_group_rows.resize(rows_by_arrival.size());
+			for (idx_t group_idx = 0; group_idx < rows_by_arrival.size(); group_idx++) {
+				gstate.source_group_rows[new_index[group_idx]] = std::move(rows_by_arrival[group_idx]);
+			}
+		}
+	}
+
 	idx_t output_chunk_count = gstate.global_output_batches.size();
 	for (auto &group : groups) {
 		gstate.source_group_sources.push_back(group.source);

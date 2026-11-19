@@ -5721,6 +5721,8 @@ for _n in (65536, 262144, 1048576, 4194304, 16777216, 0):
 MICROBENCH_CONFIGS["paths"] = ({}, None, False, None, True)
 # Lane-per-source waves off: many-source pair lists fall back to one single-source search per group
 MICROBENCH_CONFIGS["no_lane_waves"] = ({OPT + "lane_waves": "false"}, None, False)
+# The source groups in the order their sources first appear in the pairs instead of by source id (19 Nov 2026)
+MICROBENCH_CONFIGS["arrival_group_order"] = ({OPT + "sort_source_groups": "false"}, None, False)
 # Partition geometry (W32): vertices per partition instead of 2 x threads partitions; the index route builds one
 # index per geometry (4th tuple element: index name suffix)
 for _pv in (4096, 8192, 16384, 32768, 65535):
