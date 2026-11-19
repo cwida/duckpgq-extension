@@ -54,6 +54,7 @@ string GetPathFindingExploreVariant(ClientContext &context);
 bool GetCSRIndexChangeGroups(ClientContext &context);
 bool GetCSRIndexGroupMemo(ClientContext &context);
 bool GetPathFindingLaneWaves(ClientContext &context);
+bool GetPathFindingSortSourceGroups(ClientContext &context);
 bool GetPathFindingReachLanes(ClientContext &context);
 int32_t GetPathFindingReachDenseDivisor(ClientContext &context);
 bool GetPathFindingSourceSearchRounds(ClientContext &context);

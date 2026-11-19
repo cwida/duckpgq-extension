@@ -1,0 +1,89 @@
+# name: test/sql/path_finding/path_finding_source_group_order.test
+# description: source groups are ordered by the id of their source before the waves are cut; lengths and reach equal the groups in order of first appearance, with sources arriving in descending and mixed order, a NULL endpoint and duplicate pairs
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# A ring with chords, edges in one direction
+statement ok
+CREATE TABLE pv AS SELECT range AS id FROM range(1200);
+
+statement ok
+CREATE TABLE pe AS SELECT id AS src, (id + 1) % 1200 AS dst FROM pv UNION ALL SELECT id, (id + 17) % 1200 FROM pv UNION ALL SELECT id, (id + 301) % 1200 FROM pv;
+
+statement ok
+CREATE INDEX pe_csr ON pe USING CSR (src, dst);
+
+# 700 sources in a scrambled order (7 is coprime with 1200) with 3 destinations each, every pair of the first 50
+# sources twice, and two pairs with a NULL endpoint: more than two waves of 256 lanes
+statement ok
+CREATE TABLE pairs AS SELECT (k * 7) % 1200 AS s, (k * 7 + j * 131) % 1200 AS d, k * 3 + j AS tag FROM range(700) a(k), range(3) b(j) UNION ALL SELECT (k * 7) % 1200, (k * 7 + j * 131) % 1200, 10000 + k * 3 + j FROM range(50) a(k), range(3) b(j) UNION ALL SELECT NULL, 5, 20000 UNION ALL SELECT 5, NULL, 20001;
+
+# ---- lengths, index route
+statement ok
+CREATE TABLE by_id AS SELECT tag, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS len FROM pairs;
+
+query I
+SELECT s LIKE '%scheduling=source_grouped%' AND s LIKE '%source_group_kernel=lane_waves%' AND s LIKE '%source_group_order=source_id%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+SET experimental_path_finding_operator_sort_source_groups = false;
+
+statement ok
+CREATE TABLE by_arrival AS SELECT tag, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS len FROM pairs;
+
+query I
+SELECT s LIKE '%source_group_kernel=lane_waves%' AND s LIKE '%source_group_order=arrival%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Every pair has the same length either way; the pairs with a NULL endpoint have none
+query III
+SELECT count(*), count(*) FILTER (a.len IS NOT DISTINCT FROM b.len), count(a.len) FROM by_id a JOIN by_arrival b USING (tag);
+----
+2252	2252	2250
+
+# ---- lengths, build route
+statement ok
+RESET experimental_path_finding_operator_sort_source_groups;
+
+statement ok
+CREATE TABLE build_by_id AS SELECT tag, iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 1200::BIGINT, 3600::BIGINT, 'graph:group_order') AS len FROM pairs, pe;
+
+query I
+SELECT s LIKE '%source_group_order=source_id%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+query II
+SELECT count(*), count(*) FILTER (a.len IS NOT DISTINCT FROM b.len) FROM build_by_id a JOIN by_arrival b USING (tag);
+----
+2252	2252
+
+# ---- reach, index route: every (source row, reached vertex, level) is the same either way
+statement ok
+CREATE TABLE srcs AS SELECT (k * 7) % 1200 AS s, k AS tag FROM range(300) a(k) UNION ALL SELECT 0, -1;
+
+statement ok
+CREATE TABLE reach_by_id AS SELECT tag, r[1] AS dst, r[2] AS len FROM (SELECT tag, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM srcs);
+
+query I
+SELECT s LIKE '%mode=reach%' AND s LIKE '%source_group_order=source_id%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+SET experimental_path_finding_operator_sort_source_groups = false;
+
+statement ok
+CREATE TABLE reach_by_arrival AS SELECT tag, r[1] AS dst, r[2] AS len FROM (SELECT tag, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS r FROM srcs);
+
+query III
+SELECT (SELECT count(*) FROM reach_by_id) = (SELECT count(*) FROM reach_by_arrival), (SELECT count(*) FROM reach_by_id) > 300, (SELECT count(*) FROM (SELECT * FROM reach_by_id EXCEPT SELECT * FROM reach_by_arrival)) + (SELECT count(*) FROM (SELECT * FROM reach_by_arrival EXCEPT SELECT * FROM reach_by_id));
+----
+true	true	0
