@@ -1867,15 +1867,13 @@ void VertexEliminationPlanner::RewriteExpression(unique_ptr<ParsedExpression> &e
 	if (cast_type != plan->second.cast_type.end()) {
 		replacement = make_uniq<CastExpression>(cast_type->second, std::move(replacement));
 	}
-	// Reproduce the result column name the vertex column would have had. DuckDB names a column reference after the
-	// catalog column when it has no alias or an alias that only differs in case, so COLUMNS (v.ID) and
-	// COLUMNS (v.id AS ID) both yield the catalog spelling. (An alias that differs only in case from the *edge*
-	// column's name is still renamed by that rule; the join-based translation did not have that collision.)
-	auto &catalog_name = plan->second.output_name[key_name];
+	// Reproduce the result column name the vertex column would have had: the alias as written, or the catalog
+	// spelling of the vertex column when the reference has no alias, so COLUMNS (v.ID) yields id and
+	// COLUMNS (v.id AS ID) yields ID.
 	if (expression->HasAlias()) {
-		replacement->SetAlias(expression->GetAlias() == catalog_name ? catalog_name : expression->GetAlias());
+		replacement->SetAlias(expression->GetAlias());
 	} else if (preserve_name) {
-		replacement->SetAlias(catalog_name);
+		replacement->SetAlias(plan->second.output_name[key_name]);
 	}
 	expression = std::move(replacement);
 }

@@ -172,9 +172,7 @@ id	BIGINT
 tagId	BIGINT
 personId	BIGINT
 
-# The result column is named as the catalog spells it, like the binder names a column reference without an alias
-# or with an alias that only differs in case. (DuckDB applies the same rule to the edge column: an alias that
-# differs only in case from the edge column's name, here tagId, is still spelled like that column.)
+# Without an alias the result column is named as the catalog spells the vertex column
 query II
 SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM GRAPH_TABLE (g
     MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
@@ -183,12 +181,22 @@ SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM GRAPH_TABLE (g
 id	BIGINT
 TheTag	BIGINT
 
-query II
-SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM GRAPH_TABLE (g
+# An alias is kept as written, also when it only differs in case from the vertex key (id) or from the edge column
+# that replaces it (personId). The names are read from a table created from the result, because DESCRIBE on the
+# query reports the base column's spelling for such an alias before DuckDB f9d1702a974.
+statement ok
+CREATE TABLE case_alias AS SELECT * FROM GRAPH_TABLE (g
     MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
-    COLUMNS (t.Id AS ID)));
+    COLUMNS (t.Id AS ID, p.id AS PERSONID));
+
+query II
+SELECT column_name, column_type FROM (DESCRIBE case_alias);
 ----
-id	BIGINT
+ID	BIGINT
+PERSONID	BIGINT
+
+statement ok
+DROP TABLE case_alias;
 
 statement ok
 SET duckpgq_vertex_join_elimination = false;
@@ -201,12 +209,19 @@ SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM GRAPH_TABLE (g
 id	BIGINT
 TheTag	BIGINT
 
-query II
-SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM GRAPH_TABLE (g
+statement ok
+CREATE TABLE case_alias AS SELECT * FROM GRAPH_TABLE (g
     MATCH (p:Person)-[hi:hasInterest]->(t:Tag)
-    COLUMNS (t.Id AS ID)));
+    COLUMNS (t.Id AS ID, p.id AS PERSONID));
+
+query II
+SELECT column_name, column_type FROM (DESCRIBE case_alias);
 ----
-id	BIGINT
+ID	BIGINT
+PERSONID	BIGINT
+
+statement ok
+DROP TABLE case_alias;
 
 statement ok
 SET duckpgq_vertex_join_elimination = true;
