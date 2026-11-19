@@ -13,6 +13,9 @@ export DUCKPGQ_GENERATOR_ROOT
 # Scale factors and thread count used in the paper
 : "${SCALE_FACTORS:=10 100 300}"
 : "${GRAPHALYTICS_DATASETS:=cit-Patents graph500-24 datagen-8_4-fb}"
+# Road networks: graphs the harness builds from a local edge list (LOCAL_EDGE_LIST_DATASETS in the harness; the edge
+# list is expected under DUCKPGQ_EDGE_LIST_DIR, default ~/navindex/data/data)
+: "${ROAD_DATASETS:=osm-oberbayern}"
 : "${THREADS:=$(nproc)}"
 : "${REPEATS:=3}"
 : "${TIMEOUT_S:=600}"

@@ -46,7 +46,8 @@ struct Options {
 	//! Workers per path-finding query. The BFS kernels synchronize their tasks with barriers, so concurrent queries
 	//! whose tasks together exceed the scheduler's threads deadlock; the wrapper sets threads / readers.
 	idx_t threads_per_batch = 0;
-	double fold_ratio = 0.1;
+	//! The extension's default of duckpgq_csr_index_fold_ratio (a thousandth since 18 Nov 2026)
+	double fold_ratio = 0.001;
 	//! Extra settings, "name=value", applied on every connection after the extension is loaded
 	std::vector<std::string> settings;
 	//! Drop and create the index before the clock starts (a stored index of an older storage format would

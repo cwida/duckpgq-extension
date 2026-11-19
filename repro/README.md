@@ -6,8 +6,8 @@ machine. The scripts wrap `scripts/pathfinding_benchmark.py` (the harness) and `
 
 ```
 ./setup.sh      # toolchain check, Python clients, DuckPGQ build, LDBC generator build, baseline containers
-./prepare.sh    # LDBC SNB data at SF10, SF100, SF300, the DuckDB databases, and the three Graphalytics graphs
-./run_all.sh    # the full matrix (resumable; ~3.5 days on the paper machine), or: fixed | sweep | graphalytics | ldbc | client | native | microbench | updates
+./prepare.sh    # LDBC SNB data at SF10, SF100, SF300, the DuckDB databases, the three Graphalytics graphs and the road network (see below for its edge list)
+./run_all.sh    # the full matrix (resumable; ~3.5 days on the paper machine), or: fixed | sweep | graphalytics | road | ldbc | client | native | microbench | updates
 ./collect.sh    # paper/figures/*.pdf, paper/tables/*.tex, and the results archive in repro/results
 ```
 
@@ -51,8 +51,14 @@ export the first time it is needed; that load time is recorded as `load_s` in th
 | `microbench_sf*` | `microbench` | random pairs, same destination, sources x all with one mechanism switched off at a time | DuckPGQ build and index routes (SF10, SF100) |
 | `fixed_costs_*` | `fixed-costs` | database file size, CSR index build time and bytes per edge, every baseline's fresh load time and store size | all |
 | `sweep_pairs_cit_patents*`, `sweep_pairs_graph500_24`, `sweep_pairs_datagen_8_4_fb`, `microbench_scheduling_graph500_24` | `sweep-pairs --dataset`, `microbench --dataset` | the sweep shapes on three Graphalytics graphs (W30); pairs sampled from vertices with edges, no hop bound | all on cit-Patents; DuckPGQ and Kuzu on the two large graphs |
+| `fixed_costs_osm_oberbayern`, `sweep_pairs_osm_oberbayern*`, `microbench_shape_probe_osm_oberbayern` | `fixed-costs --dataset`, `sweep-pairs --dataset`, `microbench --dataset` | the sweep shapes on a road network, OSM Oberbayern (495,357 vertices, 805,743 directed edges, shortest paths of hundreds of hops); no hop bound; the deep-graph rule on and off | all; the rule on the DuckPGQ index route |
 | `native_baselines_sf*` | `sweep-pairs --systems duckpgq_index duckpgq_recursive duckpgq_scalar` | random pairs and sources x all | DuckDB recursive CTE and the 2023 UDF route (SF10, SF100) |
-| `update_*`, `concurrent_*` | `update-run`, `update-concurrent`, `update-<system>` | 190 commits of 2000 knows operations with a query after each | DuckPGQ build and index routes, Kuzu, Memgraph, FalkorDB, Neo4j |
+| `update_*`, `concurrent_*` | `update-run`, `update-concurrent`, `update-<system>` | 190 commits of 2000 knows operations with a query after each; the index folds at the extension's default ratio, a thousandth (a tenth in the archives up to rc13) | DuckPGQ build and index routes, Kuzu, Memgraph, FalkorDB, Neo4j |
+
+The road network is not downloaded. Its edge list is `data/oberbayern.tsv` of the Nav-Index reproducibility data
+(Reif and Neumann, PVLDB 19(11), 2026; https://db.in.tum.de/~reif/uploads/data.tar.gz, 13 GB), expected as
+`~/navindex/data/data/oberbayern.tsv` or under `DUCKPGQ_EDGE_LIST_DIR`:
+`curl -L https://db.in.tum.de/~reif/uploads/data.tar.gz | tar -xzO data/oberbayern.tsv > oberbayern.tsv`.
 
 Every query has a 600 s timeout; a timed-out point is recorded as `timed_out` and larger points of the same
 shape as `timed_out_inferred`. Baselines skip pair lists above 500 M pairs (`exceeds_pair_limit`). Repeats: 3,

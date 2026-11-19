@@ -4,7 +4,7 @@
 # machine was roughly 3.5 days, dominated by the baselines at SF300 (10 minute timeouts) and the
 # FalkorDB/Neo4j update workloads (about 30 minutes each).
 #
-# Subsets:  ./run_all.sh fixed | sweep | graphalytics | ldbc | client | native | microbench | throughput | updates | all   (default all)
+# Subsets:  ./run_all.sh fixed | sweep | graphalytics | road | ldbc | client | native | microbench | throughput | updates | all   (default all)
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 cd "${REPO_ROOT}"
@@ -33,6 +33,11 @@ for sf in ${SCALE_FACTORS}; do
 done
 if [ "$what" = all ] || [ "$what" = graphalytics ]; then
   for ds in ${GRAPHALYTICS_DATASETS}; do
+    step "refresh_indexes_${ds//-/_}" ${HARNESS} refresh-indexes --dataset "$ds" --threads "${THREADS}"
+  done
+fi
+if [ "$what" = all ] || [ "$what" = road ]; then
+  for ds in ${ROAD_DATASETS}; do
     step "refresh_indexes_${ds//-/_}" ${HARNESS} refresh-indexes --dataset "$ds" --threads "${THREADS}"
   done
 fi
@@ -77,6 +82,25 @@ if [ "$what" = all ] || [ "$what" = graphalytics ]; then
   step "microbench_explore_variants_graph500_24" ${HARNESS} microbench --dataset graph500-24 "${COMMON[@]}" --configs explore_variants --routes index --shapes random multi_source --pair-counts 2048 --source-counts 256 1024 --notes "CSR ablation variants graph500-24 ${NOTE}"
   step "microbench_explore_scaling_graph500_24" ${HARNESS} microbench --dataset graph500-24 "${COMMON[@]}" --configs explore_threads --routes index --shapes random multi_source --pair-counts 2048 --source-counts 256 --notes "CSR ablation scaling graph500-24 ${NOTE}"
   step "microbench_scheduling_graph500_24" ${HARNESS} microbench --dataset graph500-24 "${COMMON[@]}" --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes "W31 scheduling graph500-24 ${NOTE}"
+fi
+
+if [ "$what" = all ] || [ "$what" = road ]; then
+  # A road network next to the social and synthetic graphs (19 Nov): OSM Oberbayern as the Nav-Index system comparison
+  # loads it (495,357 vertices, 805,743 directed edges), a sparse graph whose shortest paths have hundreds of hops
+  # (longest 740 among its queries), which level-synchronous BFS is not favoured on. Small enough for every system:
+  # the same points as on LDBC, random pairs 1..65536 and sources x all (1, 16, 128, 1024); a system that times out on
+  # a count is not run on the larger ones. The Cypher systems run without the ..30 hop bound and Kuzu with
+  # var_length_extend_max_depth at 1000, as on the Graphalytics graphs.
+  for ds in ${ROAD_DATASETS}; do
+    name="${ds//-/_}"
+    step "fixed_costs_${name}" ${HARNESS} fixed-costs --dataset "$ds" --threads "${THREADS}" --repeats "${REPEATS}" --notes "fixed costs ${ds} ${NOTE}"
+    step "sweep_pairs_${name}" ${HARNESS} sweep-pairs --dataset "$ds" "${COMMON[@]}" --notes "road sweep ${ds} ${NOTE}"
+    step "sweep_pairs_${name}_client${CLIENT_THREADS}" ${HARNESS} sweep-pairs --dataset "$ds" "${COMMON[@]}" \
+      --client-threads "${CLIENT_THREADS}" --systems memgraph falkordb kuzu --notes "road ${ds} client threads ${CLIENT_THREADS} ${NOTE}"
+    # The deep-graph rule (graph shape probe, 19 Nov): many sources on a deep, sparse graph run one single-source
+    # search each instead of MS-BFS lanes; no_shape_probe switches the rule off. Index route.
+    step "microbench_shape_probe_${name}" ${HARNESS} microbench --dataset "$ds" "${COMMON[@]}" --configs baseline no_shape_probe --routes index --shapes random --pair-counts 128 1024 2048 --notes "deep-graph rule ${ds} ${NOTE}"
+  done
 fi
 
 if [ "$what" = all ] || [ "$what" = ldbc ]; then
@@ -157,6 +181,10 @@ if [ "$what" = all ] || [ "$what" = updates ]; then
   step "update_sf10_p2p"            ${HARNESS} update-run "${UPD[@]}" --query-pattern point_to_point --notes "W16 ${NOTE}"
   step "update_sf10_sssp_t1"        ${HARNESS} update-run --scale-factor 10 --threads 1 --batch-size 2000 --batches 190 --query-pattern sssp --notes "W16 ${NOTE}"
   has_sf 100 && step "update_sf100_sssp"          ${HARNESS} update-run --scale-factor 100 --threads "${THREADS}" --batch-size 10000 --batches 150 --query-pattern sssp --notes "W16 ${NOTE}"
+  # The runs below are at the extension's default fold ratio, a thousandth since 18 Nov (the harness's --fold-ratio
+  # default follows it; a tenth before, so rc13 and earlier archives have _fold0.1_ in their file names). With the merge
+  # fold a commit of 2000 operations crosses the threshold at every commit at SF10 (1.84M edges) and about every 28
+  # commits at SF300 (55.6M edges), so folds are part of the timed runs.
   # One route per run (2 Nov): with both routes in one driver run every reader alternates an index and a build
   # query, so the index latency is measured while the other readers saturate the cores with per-query builds and the
   # writer's commit latency mixes both routes (SF300, 16 readers: index 142 ms per query in a shared run against
@@ -179,12 +207,13 @@ if [ "$what" = all ] || [ "$what" = updates ]; then
     done
   done
   # Correctness oracle (2 Nov): one run with both routes in the same process, so the driver compares every index
-  # answer with the build route's answer ("mismatches" must be 0; the harness fails the step otherwise). The low fold
-  # ratio makes folds happen under the readers and the writer (SF10: a fold about every 9 commits). Not a timing step.
+  # answer with the build route's answer ("mismatches" must be 0; the harness fails the step otherwise). The fold
+  # ratio of 0.01 makes a fold happen about every 9 commits at SF10, so the readers also query between folds, over a
+  # log of several commits (at the default ratio every commit folds). Not a timing step.
   step "concurrent_sf10_r4_check" ${HARNESS} update-concurrent "${UPD[@]}" --readers 4 --writer-pause-ms 200 --fold-ratio 0.01 --notes "W16 correctness check, both routes ${NOTE}"
-  # Fold latency at SF300 (W36 item e, 2 Nov): at the default fold ratio 0.1 the 60 commits above add 120k log entries
-  # against 55.6M edges, so no fold happens at SF100 or SF300 in the matrix. This step lowers the ratio so a fold runs
-  # under 16 index readers (about every 14 commits); duckpgq_csr_index_fold_stats in the stats column gives its latency
+  # Fold latency at SF300 (W36 item e, 2 Nov): the 60 commits above add 120k log entries against 55.6M edges, two
+  # folds at the default ratio. This step halves the ratio so a fold runs under 16 index readers about every 14 commits;
+  # duckpgq_csr_index_fold_stats in the stats column gives its latency (the fold timeline figure reads this step)
   has_sf 300 && step "concurrent_sf300_r16_fold" ${HARNESS} update-concurrent --scale-factor 300 --threads "${THREADS}" --batch-size 2000 --batches 60 --readers 16 --writer-pause-ms 200 --routes index --fold-ratio 0.0005 --notes "W36 fold latency SF300 ${NOTE}"
   step "update_kuzu_sf10_sssp"      ${HARNESS} update-kuzu     "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"
   step "update_memgraph_sf10_sssp"  ${HARNESS} update-memgraph "${UPD[@]}" --query-pattern sssp --notes "W16 ${NOTE}"

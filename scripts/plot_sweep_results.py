@@ -27,6 +27,9 @@ REPO = Path(__file__).resolve().parents[1]
 RESULTS = Path(os.environ.get("DUCKPGQ_RESULTS_DIR", str(REPO / "data" / "ldbc-pathfinding" / "results")))
 FIGURES = Path(os.environ.get("DUCKPGQ_FIGURES_DIR", str(REPO / "paper" / "figures")))
 SCALE_FACTORS = ["10", "100", "300"]
+# The fold ratio of the main concurrent runs as it appears in their file names (_fold0.001_): the extension's default
+# since 18 Nov 2026. Archives of earlier freezes (rc13 and before) ran at a tenth: DUCKPGQ_FOLD_RATIO=0.1 plots those
+DEFAULT_FOLD_RATIO = os.environ.get("DUCKPGQ_FOLD_RATIO", "0.001")
 TIMEOUT_S = 600.0
 
 # Entity colours (validated categorical slots 1..6, light mode) and display names
@@ -781,7 +784,7 @@ def concurrent_figure(filename):
         # route -> readers -> (query median, query p99, commit median), all ms
         series = {"query_index": {}, "query_build": {}}
         for path in newest_files(RESULTS / f"sf{sf}",
-                                 "concurrent_sssp_pairs1024_threads32_readers*_pause200_fold0.1_*.csv"):
+                                 f"concurrent_sssp_pairs1024_threads32_readers*_pause200_fold{DEFAULT_FOLD_RATIO}_*.csv"):
             rows = list(csv.DictReader(open(path)))
             if not rows or not rows[0].get("readers"):
                 continue
@@ -1680,7 +1683,8 @@ def concurrent_series(sf):
     """route -> readers -> (query median ms, query p99 ms, commit median ms, peak RSS MiB) for the readers-under-a-writer
     runs with the default fold ratio and the 200 ms writer pause; the newest file per (route, readers) wins"""
     series = {"query_index": {}, "query_build": {}}
-    for path in newest_files(RESULTS / f"sf{sf}", "concurrent_sssp_pairs1024_threads32_readers*_pause200_fold0.1_*.csv"):
+    for path in newest_files(RESULTS / f"sf{sf}",
+                             f"concurrent_sssp_pairs1024_threads32_readers*_pause200_fold{DEFAULT_FOLD_RATIO}_*.csv"):
         rows = list(csv.DictReader(open(path)))
         if not rows or not rows[0].get("readers"):
             continue

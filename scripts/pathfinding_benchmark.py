@@ -29,6 +29,10 @@ BENCH_DUCKDB = REPO_ROOT / "build" / "release" / "duckdb"
 DUCKPGQ_EXTENSION = Path(os.environ.get("DUCKPGQ_EXTENSION", str(REPO_ROOT / "build" / "release" / "extension" / "duckpgq" / "duckpgq.duckdb_extension")))
 PAIR_SHAPES = ("random", "same_dst", "same_src")
 QUERY_PATTERNS = ("point_to_point", "sssp", "all_pairs", "graphalytics_bfs")
+# The extension's default of duckpgq_csr_index_fold_ratio (src/core/option/duckpgq_option.cpp: a thousandth since
+# 18 Nov 2026, a tenth before). The update and concurrent workloads run at this ratio unless a step passes another,
+# so the timed steps measure the default configuration; it is part of the result file names (_fold0.001_)
+CSR_INDEX_DEFAULT_FOLD_RATIO = 0.001
 GRAPHALYTICS_BFS_UNREACHABLE = 9223372036854775807
 GRAPHALYTICS_CORE_DATASETS = ("datagen-8_4-fb", "dota-league", "kgs", "graph500-22", "wiki-Talk", "cit-Patents")
 GRAPHALYTICS_SMALL_DATASETS = (
@@ -123,6 +127,25 @@ GRAPHALYTICS_DATASETS = {
     "twitter_mpi": {"nodes": "52M", "edges": "1B", "scale": "XL", "size": "5.7 GB"},
     "wiki-Talk": {"nodes": "2M", "edges": "5M", "scale": "2XS", "size": "34.9 MB"},
 }
+# Graphs that are not Graphalytics datasets but run through the same target machinery (the database carries the LDBC
+# table names, pairs and sources are sampled from vertices with edges, the Cypher systems run without a hop bound and
+# Kuzu with its depth cap raised): the vertex and edge parquet files a Graphalytics download provides are written
+# from a local edge list instead. The edge list is tab-separated without a header: source, destination, cost.
+LOCAL_EDGE_LIST_DATASETS = {
+    # OSM Oberbayern as the system comparison of the Nav-Index paper loads it (Reif and Neumann, PVLDB 19(11), 2026):
+    # 495,357 vertices, 805,743 directed edges, all costs 1; shortest paths have hundreds of hops (longest 740 among
+    # its queries). The road network of the sweep (19 Nov 2026); maps/oberbayern.tsv of the same archive is another graph
+    "osm-oberbayern": {
+        "file": "oberbayern.tsv",
+        "directed": True,
+        "archive": "https://db.in.tum.de/~reif/uploads/data.tar.gz",
+        "member": "data/oberbayern.tsv",
+    },
+}
+GRAPHALYTICS_DATASETS["osm-oberbayern"] = {"nodes": "495k", "edges": "806k", "scale": "-", "size": "12.5 MB"}
+# DUCKPGQ_EDGE_LIST_DIR: the directory that holds the local edge lists (default: the Nav-Index archive extracted
+# under ~/navindex/data, which gives ~/navindex/data/data/oberbayern.tsv)
+LOCAL_EDGE_LIST_DIR = Path(os.environ.get("DUCKPGQ_EDGE_LIST_DIR", str(Path.home() / "navindex" / "data" / "data")))
 GRAPHALYTICS_DATASET_GROUPS = {
     "core": GRAPHALYTICS_CORE_DATASETS,
     "all": GRAPHALYTICS_CORE_DATASETS,
@@ -135,7 +158,7 @@ GRAPHALYTICS_DATASET_GROUPS = {
     "small-medium": GRAPHALYTICS_SMALL_DATASETS + GRAPHALYTICS_MEDIUM_DATASETS,
     "medium-large": GRAPHALYTICS_MEDIUM_DATASETS + GRAPHALYTICS_LARGE_DATASETS,
     "small-medium-large": GRAPHALYTICS_SMALL_DATASETS + GRAPHALYTICS_MEDIUM_DATASETS + GRAPHALYTICS_LARGE_DATASETS,
-    "all-known": tuple(GRAPHALYTICS_DATASETS.keys()),
+    "all-known": tuple(name for name in GRAPHALYTICS_DATASETS if name not in LOCAL_EDGE_LIST_DATASETS),
 }
 GRAPHALYTICS_PARQUET_BASE_URL = "https://datasets.ldbcouncil.org/graphalytics-parquet"
 DEFAULT_SYSTEM_NAME = "duckpgq"
@@ -425,7 +448,10 @@ def sf_name(scale_factor):
 
 
 def target_description(target):
-    return f"Graphalytics {graphalytics_name(str(target))}" if is_graphalytics_target(target) else f"SF{target}"
+    if not is_graphalytics_target(target):
+        return f"SF{target}"
+    name = graphalytics_name(str(target))
+    return name if name in LOCAL_EDGE_LIST_DATASETS else f"Graphalytics {name}"
 
 
 def resolve_target(args):
@@ -642,11 +668,52 @@ ANALYZE;
     print(f"Materialized {sf_name(scale_factor)} database in {elapsed:.2f}s")
 
 
+def materialize_local_edge_list(dataset, force):
+    """Writes <dataset>-v.parquet (id) and <dataset>-e.parquet (source, target), the two files a Graphalytics download
+    provides, from the dataset's local edge list; every vertex is an endpoint of an edge"""
+    canonical = graphalytics_name(dataset)
+    spec = LOCAL_EDGE_LIST_DATASETS[canonical]
+    out_dir = graphalytics_source_dir(canonical)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    vertex_path = out_dir / f"{canonical}-v.parquet"
+    edge_path = out_dir / f"{canonical}-e.parquet"
+    if vertex_path.exists() and edge_path.exists() and not force:
+        print(f"{canonical} v.parquet and e.parquet already exist: {out_dir}")
+        return vertex_path, edge_path
+
+    edge_list = LOCAL_EDGE_LIST_DIR / spec["file"]
+    if not edge_list.exists():
+        raise SystemExit(
+            f"Missing edge list for {canonical}: {edge_list}. It is {spec['member']} of {spec['archive']}; extract it "
+            f"with: curl -L {spec['archive']} | tar -xzO {spec['member']} > {edge_list}, or set DUCKPGQ_EDGE_LIST_DIR "
+            f"to the directory that holds {spec['file']}."
+        )
+    read_edges = (f"read_csv({sql_string(edge_list)}, delim = '\\t', header = false, "
+                  "columns = {'src': 'BIGINT', 'dst': 'BIGINT', 'cost': 'DOUBLE'})")
+    tmp_vertex_path = vertex_path.with_suffix(vertex_path.suffix + ".tmp")
+    tmp_edge_path = edge_path.with_suffix(edge_path.suffix + ".tmp")
+    sql = f"""
+COPY (SELECT src AS source, dst AS target FROM {read_edges})
+TO {sql_string(tmp_edge_path)} (FORMAT parquet);
+COPY (SELECT id FROM (SELECT src AS id FROM {read_edges} UNION SELECT dst AS id FROM {read_edges}) ORDER BY id)
+TO {sql_string(tmp_vertex_path)} (FORMAT parquet);
+"""
+    print(f"Converting {edge_list} to {out_dir}")
+    _, elapsed = run_duckdb(BENCH_DUCKDB, None, sql, quiet=True)
+    tmp_edge_path.replace(edge_path)
+    tmp_vertex_path.replace(vertex_path)
+    print(f"Converted {canonical} in {elapsed:.2f}s")
+    return vertex_path, edge_path
+
+
 def download_graphalytics_file(dataset, kind, force):
     canonical = graphalytics_name(dataset)
     if canonical not in GRAPHALYTICS_DATASETS:
         known = ", ".join(GRAPHALYTICS_DEFAULT_DATASETS)
         raise SystemExit(f"Unsupported Graphalytics dataset: {dataset}. Initial supported set: {known}")
+    if canonical in LOCAL_EDGE_LIST_DATASETS:
+        vertex_path, edge_path = materialize_local_edge_list(canonical, force)
+        return vertex_path if kind == "v" else edge_path
 
     out_dir = graphalytics_source_dir(canonical)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -720,6 +787,12 @@ def download_graphalytics_reference_files(dataset, force):
     ref_dir.mkdir(parents=True, exist_ok=True)
     properties_path = graphalytics_properties_path(canonical)
     bfs_path = graphalytics_bfs_reference_path(canonical)
+    if canonical in LOCAL_EDGE_LIST_DATASETS:
+        # No Graphalytics package: the one property the harness reads is written here, and there is no BFS reference
+        # (the graphalytics_bfs pattern is not available on these graphs)
+        directed = str(LOCAL_EDGE_LIST_DATASETS[canonical]["directed"]).lower()
+        properties_path.write_text(f"graph.{canonical}.directed = {directed}\n")
+        return properties_path, None
     if properties_path.exists() and bfs_path.exists() and not force:
         print(f"Graphalytics {canonical} properties/BFS reference already exist: {ref_dir}")
         return properties_path, bfs_path
@@ -4010,8 +4083,9 @@ def concurrent_run_key(path, rows):
 def concurrent_table(args):
     """Prints concurrent CSVs (one writer, R readers) as one table per scale factor: per route and reader count the
     query median, p99 and max, the writer's commit median and p99, the number of queries, the folds the file saw
-    (max folds= in its stats strings) and the process's peak RSS. The fold ratio 0.1 rows are the main workload;
-    fold-step files (other ratios) are extra rows labelled with their ratio. The newest file (run time, last field of
+    (max folds= in its stats strings) and the process's peak RSS. The rows at the extension's default fold ratio
+    (CSR_INDEX_DEFAULT_FOLD_RATIO) are the main workload; files of other ratios (the fold-latency step, the
+    correctness check, runs archived before 18 Nov at a tenth) are extra rows labelled with their ratio. The newest file (run time, last field of
     the stem) per (route, readers, fold_ratio) wins; a file running both routes contributes one row per route."""
     chosen = {}
     for path in args.files:
@@ -4033,7 +4107,7 @@ def concurrent_table(args):
         print("| route | readers | queries | median ms | p99 ms | max ms | commit median ms | commit p99 ms | folds | peak GiB |")
         print("|---|---|---|---|---|---|---|---|---|---|")
         order = sorted((k for k in chosen if k[0] == scale_factor and k[1] == pause),
-                       key=lambda k: (k[4] != 0.1, k[4], k[2], k[3]))
+                       key=lambda k: (k[4] != CSR_INDEX_DEFAULT_FOLD_RATIO, k[4], k[2], k[3]))
         for key in order:
             _, _, route, readers, fold_ratio = key
             rows = chosen[key][1]
@@ -4041,7 +4115,7 @@ def concurrent_table(args):
             commits = [1000 * float(r["elapsed_s"]) for r in rows if r["kind"] == "commit"]
             folds = [int(m.group(1)) for r in rows for m in [re.search(r"folds=(\d+)", r["stats"])] if m]
             peak = rows[0].get("peak_rss_mib")
-            label = route if fold_ratio == 0.1 else f"{route} (fold ratio {fold_ratio:g})"
+            label = route if fold_ratio == CSR_INDEX_DEFAULT_FOLD_RATIO else f"{route} (fold ratio {fold_ratio:g})"
             cells = [label, str(readers), str(len(queries)),
                      format_ms(statistics.median(queries)) if queries else "", format_ms(p99(queries)) if queries else "",
                      format_ms(max(queries)) if queries else "",
@@ -6803,7 +6877,8 @@ def main():
     update_parser.add_argument("--batch-size", type=int, default=1000, help="log operations per commit")
     update_parser.add_argument("--batches", type=int, default=50)
     update_parser.add_argument("--queries-per-batch", type=int, default=1)
-    update_parser.add_argument("--fold-ratio", type=float, default=0.1, help="duckpgq_csr_index_fold_ratio for index_auto")
+    update_parser.add_argument("--fold-ratio", type=float, default=CSR_INDEX_DEFAULT_FOLD_RATIO,
+                               help="duckpgq_csr_index_fold_ratio for index_auto (default: the extension's default)")
     update_parser.add_argument("--configs", nargs="+", choices=UPDATE_CONFIGS, default=list(UPDATE_CONFIGS))
     update_parser.add_argument("--notes", default="")
     update_parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
@@ -6819,7 +6894,8 @@ def main():
     concurrent_parser.add_argument("--batch-size", type=int, default=1000)
     concurrent_parser.add_argument("--batches", type=int, default=50)
     concurrent_parser.add_argument("--writer-pause-ms", type=int, default=0)
-    concurrent_parser.add_argument("--fold-ratio", type=float, default=0.1)
+    concurrent_parser.add_argument("--fold-ratio", type=float, default=CSR_INDEX_DEFAULT_FOLD_RATIO,
+                                   help="duckpgq_csr_index_fold_ratio of the run (default: the extension's default)")
     concurrent_parser.add_argument("--threads-per-batch", type=int, default=0, help="optional cap on workers per query")
     concurrent_parser.add_argument("--routes", choices=["both", "index", "build"], default="both",
                                    help="both runs the index query and the build-per-query in the same read transaction")
