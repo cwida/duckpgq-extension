@@ -37,17 +37,39 @@ EXTDIR141 = os.environ.get("NAV_EXTDIR141", f"{NAV}/duckdb-1.4.1/ext")
 UMBRA = os.environ.get("NAV_UMBRA", f"{NAV}/artifact/umbra")
 THREADS = int(os.environ.get("NAV_THREADS", os.cpu_count()))
 REPEATS = int(os.environ.get("NAV_REPEATS", "3"))
+# NAV_WARMUP=0: no warm-up execution (queries of minutes on the large road graphs; the first timed run then
+# includes the load of the index)
+WARMUP = os.environ.get("NAV_WARMUP", "1") != "0"
+# NAV_DUMP=0: no extra execution for the per-pair hop counts (the count and sum of the timed query remain)
+DUMP = os.environ.get("NAV_DUMP", "1") != "0"
 TIMEOUT = int(os.environ.get("NAV_TIMEOUT", "900"))
 OUT = os.environ.get("NAV_OUT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PAIR_COUNTS = [int(n) for n in os.environ.get("NAV_PAIR_COUNTS", "1 10 100 1000 2000").split()]
-FILES = {"oberbayern": ("oberbayern.tsv", "queriesoberbayern.tsv"), "twitter": ("twitter.tsv", "queriestwitter.tsv")}
+FILES = {"oberbayern": ("oberbayern.tsv", "queriesoberbayern.tsv"), "twitter": ("twitter.tsv", "queriestwitter.tsv"),
+         # The larger road graphs of the archive (real-valued costs, ignored here). The archive has no query files
+         # for them: prepare writes GENERATED_PAIRS pairs to $NAV_WORK/queries_<graph>.tsv (a vertex with an outgoing
+         # edge and one with an incoming edge, each list ordered by a hash of the id, paired by position)
+         "germany": ("maps/germany.tsv", None), "europe": ("maps/europe.tsv", None)}
+GENERATED_PAIRS = 2000
+# Label of the operator's rows: the build that $NAV_EXT is
+SYSTEM = os.environ.get("NAV_SYSTEM", "duckpgq-rc13")
+WORKLOADS = os.environ.get("NAV_WORKLOADS", "w1 w2 paths match").split()
 INDEX = "nav_csr"
 STAMP = "SELECT 'ts', epoch_us(get_current_timestamp());"
 PREFIX = "experimental_path_finding_operator"
 SETTINGS = {"default": [], "single_source": [f"SET {PREFIX}_few_sources_limit=1000000;"],
+            # Builds with the search from both ends (my-beans-zlnm): off, one search from the source as in rc13
+            "one_end": [f"SET {PREFIX}_bidirectional_pair=false;"],
+            "single_source_one_end": [f"SET {PREFIX}_few_sources_limit=1000000;",
+                                      f"SET {PREFIX}_bidirectional_pair=false;"],
             # Builds with the graph shape probe (my-beans-83ld): the probe off, which is the default of rc13
             "no_shape_probe": [f"SET {PREFIX}_deep_graph_levels=0;"]}
 FIELDS = ["system", "graph", "route", "setting", "workload", "pairs", "result", "run", "seconds", "answer", "note"]
+
+
+def query_file(graph):
+    name = FILES[graph][1]
+    return f"{DATA}/{name}" if name else f"{WORK}/queries_{graph}.tsv"
 
 
 def append_rows(rows):
@@ -78,7 +100,7 @@ def duckdb_cli(cli, lines, timeout=TIMEOUT, args=()):
 
 def timed(tag, statement, repeats=REPEATS):
     """One warm-up, then the timed executions, each between two timestamp statements and tagged."""
-    lines = [statement]
+    lines = [statement] if WARMUP else []
     for run in range(repeats):
         lines += [f"SELECT 'tag', '{tag}', {run};", STAMP, statement, STAMP]
     return lines
@@ -102,7 +124,8 @@ def parse_timed(rows):
 
 # ---------------------------------------------------------------------------------------------------------------
 def prepare(graph):
-    edges, queries = FILES[graph]
+    edges = FILES[graph][0]
+    generated = FILES[graph][1] is None
     os.makedirs(WORK, exist_ok=True)
     database = f"{WORK}/{graph}.duckdb"
     for suffix in ("", ".wal"):
@@ -114,15 +137,21 @@ def prepare(graph):
         "CREATE TABLE edges AS SELECT src, dest AS dst FROM read_csv('%s', %s);"
         % (f"{DATA}/{edges}", read.format(extra=", 'cost': 'DOUBLE'")),
         "CREATE TABLE nodes AS SELECT id FROM (SELECT src AS id FROM edges UNION SELECT dst FROM edges) ORDER BY id;",
+        *([f"COPY (SELECT s.id AS src, d.id AS dest FROM (SELECT id, row_number() OVER (ORDER BY hash(id), id) AS pos "
+           f"FROM (SELECT DISTINCT src AS id FROM edges)) s JOIN (SELECT id, row_number() OVER (ORDER BY hash(id + 1), id) "
+           f"AS pos FROM (SELECT DISTINCT dst AS id FROM edges)) d USING (pos) WHERE s.pos <= {GENERATED_PAIRS} "
+           f"AND s.id <> d.id) TO '{query_file(graph)}' (DELIMITER '\t', HEADER false);"] if generated else []),
         "CREATE TABLE queries AS SELECT row_number() OVER (ORDER BY src, dest) - 1 AS pos, src, dest AS dst "
-        "FROM read_csv('%s', %s);" % (f"{DATA}/{queries}", read.format(extra="")),
+        "FROM read_csv('%s', %s);" % (query_file(graph), read.format(extra="")),
         "ANALYZE;",
         "SELECT 'count', 'nodes', count(*) FROM nodes;",
         "SELECT 'count', 'edges', count(*) FROM edges;",
-        "SELECT 'count', 'distinct_edges', count(*) FROM (SELECT DISTINCT src, dst FROM edges);",
+        # The duplicate and reverse-edge counts sort every edge: left out for the generated (large) graphs
+        *([] if generated else [
+            "SELECT 'count', 'distinct_edges', count(*) FROM (SELECT DISTINCT src, dst FROM edges);",
+            "SELECT 'count', 'edges_with_reverse', count(*) FROM (SELECT DISTINCT src, dst FROM edges) e "
+            "SEMI JOIN (SELECT DISTINCT src, dst FROM edges) r ON r.src = e.dst AND r.dst = e.src;"]),
         "SELECT 'count', 'self_loops', count(*) FROM edges WHERE src = dst;",
-        "SELECT 'count', 'edges_with_reverse', count(*) FROM (SELECT DISTINCT src, dst FROM edges) e "
-        "SEMI JOIN (SELECT DISTINCT src, dst FROM edges) r ON r.src = e.dst AND r.dst = e.src;",
         "SELECT 'count', 'max_out_degree', max(c) FROM (SELECT count(*) AS c FROM edges GROUP BY src);",
         "SELECT 'count', 'queries', count(*) FROM queries;",
         "SELECT 'count', 'distinct_queries', count(*) FROM (SELECT DISTINCT src, dst FROM queries);",
@@ -186,9 +215,13 @@ def session(setting, extra=()):
 
 def duckpgq(graph):
     counts = dict(line.split() for line in open(f"{OUT}/prepare_{graph}.txt"))
-    workloads = [("w1", 1000, "lengths", "w1_1000")]
-    workloads += [("w2", n, "lengths", f"w2_{n}") for n in PAIR_COUNTS]
-    workloads += [("w2", 1000, "paths", "w2_1000")]
+    workloads = []
+    if "w1" in WORKLOADS:
+        workloads += [("w1", 1000, "lengths", "w1_1000")]
+    if "w2" in WORKLOADS:
+        workloads += [("w2", n, "lengths", f"w2_{n}") for n in PAIR_COUNTS]
+    if "paths" in WORKLOADS:
+        workloads += [("w2", 1000, "paths", "w2_1000")]
     extra = [f"SET {PREFIX}_{setting};" for setting in os.environ.get("NAV_SETTINGS", "").split()]
     routes = os.environ.get("NAV_ROUTES", "index build").split()
     settings = os.environ.get("NAV_CONFIGS", "default single_source").split()
@@ -202,20 +235,20 @@ def duckpgq(graph):
                 lines = [line.replace("GRAPH", graph) for line in session(setting, extra)] + pair_tables()
                 lines += timed(tag, f"SELECT count(v), coalesce(sum(v), 0) FROM (SELECT {value} AS v FROM ({call}));")
                 lines.append("SELECT 'strategy', duckpgq_path_finding_strategy();")
-                dump = route == "index" and setting == "default" and pairs in (1000, max(PAIR_COUNTS))
+                dump = DUMP and route == "index" and setting == "default" and pairs in (1000, max(PAIR_COUNTS))
                 if dump:
                     lines.append(f"SELECT 'len', pos, {value} FROM ({call}) ORDER BY pos;")
-                record(graph, "duckpgq-rc13", route, setting, workload, pairs, result, tag, lines,
+                record(graph, SYSTEM, route, setting, workload, pairs, result, tag, lines,
                        f"lengths_duckpgq_{graph}_{workload}_{pairs}_{result}.csv" if dump else None)
     # The artifact's own query text, on the operator
-    for setting in settings:
+    for setting in settings if "match" in WORKLOADS else []:
         tag = f"match.{setting}.w1.1000.lengths"
         lines = [line.replace("GRAPH", graph) for line in session(setting, extra)]
         lines += ["SET active_grammar_extensions = ['duckpgq'];", "CREATE PROPERTY GRAPH road_graph VERTEX TABLES (g.nodes) EDGE TABLES (g.edges SOURCE KEY (src) "
                   "REFERENCES g.nodes (id) DESTINATION KEY (dst) REFERENCES g.nodes (id));"]
         lines += timed(tag, f"SELECT count(l), coalesce(sum(l), 0) FROM ({match_query('path_length(p) AS l')});")
         lines.append("SELECT 'strategy', duckpgq_path_finding_strategy();")
-        record(graph, "duckpgq-rc13", "match", setting, "w1", 1000, "lengths", tag, lines, None)
+        record(graph, SYSTEM, "match", setting, "w1", 1000, "lengths", tag, lines, None)
 
 
 def record(graph, system, route, setting, workload, pairs, result, tag, lines, dump, cli=None, args=()):
@@ -275,14 +308,18 @@ UMBRA_TIME = re.compile(r"execution:\s+\(([^)]*)\)\s+compilation:\s+\(([^)]*)\)"
 
 
 def umbra(graph):
-    edges, queries = FILES[graph]
+    edges = FILES[graph][0]
+    unit_costs = FILES[graph][1] is None
     modes = os.environ.get("NAV_UMBRA_MODES", "dijkstra adhoc_ch adaptive table_index").split()
     flag = {"dijkstra": "n", "adhoc_ch": "y", "adaptive": "a", "table_index": "a"}
     for mode in modes:
         load = [
             f"\\set nav.buildindex {flag[mode]}",
-            "create table e (src int, dest int, cost float);", f"copy e from '{DATA}/{edges}';",
-            "create table q0 (src int, dest int);", f"copy q0 from '{DATA}/{queries}';",
+            *(["create table e0 (src int, dest int, cost float);", f"copy e0 from '{DATA}/{edges}';",
+               # The file's costs are real-valued: cost 1 on every edge, so that a shortest path is a fewest-hops path
+               "create table e as select src, dest, cast(1 as float) as cost from e0;"] if unit_costs else
+              ["create table e (src int, dest int, cost float);", f"copy e from '{DATA}/{edges}';"]),
+            "create table q0 (src int, dest int);", f"copy q0 from '{query_file(graph)}';",
             "create table q as select row_number() over (order by src, dest) - 1 as pos, src, dest from q0;",
         ]
         if mode == "table_index":
@@ -291,13 +328,14 @@ def umbra(graph):
         for pairs in PAIR_COUNTS:
             statement = ("select count(l), coalesce(sum(l), 0) from (select array_length(shortest_path(table "
                          f"(select * from e), src, dest), 1) as l from q where pos < {pairs}) x;")
-            script += [statement]
+            script += [statement] if WARMUP else []
             for run in range(REPEATS):
                 script += [f"select 'MARK w2 {pairs} {run}' as mark;", statement]
         dump = f"{OUT}/lengths_umbra_{graph}_{mode}.csv"
-        script += ["select 'MARK dump' as mark;",
-                   "select 'len' as k, pos, array_length(shortest_path(table (select * from e), src, dest), 1) as l "
-                   f"from q where pos < {max(PAIR_COUNTS)} order by pos;"]
+        if DUMP:
+            script += ["select 'MARK dump' as mark;",
+                       "select 'len' as k, pos, array_length(shortest_path(table (select * from e), src, dest), 1) as l "
+                       f"from q where pos < {max(PAIR_COUNTS)} order by pos;"]
         path = f"{OUT}/umbra_{graph}_{mode}.sql"
         with open(path, "w") as handle:
             handle.write("\n".join(script) + "\n")
@@ -366,7 +404,7 @@ def read_lengths(path, offset=0):
 
 def check(graph):
     """Hop counts per pair: the operator against every Umbra mode (W2) and against the community extension (W1)."""
-    queries = sorted(tuple(int(x) for x in line.split()) for line in open(f"{DATA}/{FILES[graph][1]}"))
+    queries = sorted(tuple(int(x) for x in line.split()) for line in open(query_file(graph)))
     top = max(PAIR_COUNTS)
     ours = read_lengths(f"{OUT}/lengths_duckpgq_{graph}_w2_{top}_lengths.csv")
     lines = []

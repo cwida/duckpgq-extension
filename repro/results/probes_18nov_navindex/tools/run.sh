@@ -6,14 +6,17 @@ set -u
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 GRAPH="$1"; shift
 SYSTEMS="${*:-duckpgq umbra community}"
-LOG="${HERE}/run.log"
+# NAV_OUT (results, default: this probe's directory), NAV_EXT and NAV_CLI (default: rc13 and the main checkout's CLI),
+# NAV_WORK and NAV_CONFIGS select another build, its databases and its settings (see probes_19nov_navindex_rerun)
+OUT="${NAV_OUT:-${HERE}}"
+LOG="${OUT}/run.log"
 EXT="${NAV_EXT:-/local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/builds/rc13/duckpgq.duckdb_extension}"
-export NAV_OUT="${HERE}" NAV_EXT="${EXT}"
+export NAV_OUT="${OUT}" NAV_EXT="${EXT}"
 
 step() {
     local name="$1"; shift
     echo "$(date -u +%FT%TZ) start ${name}" >> "${LOG}"
-    "$@" > "${HERE}/${name}.out" 2>&1
+    "$@" > "${OUT}/${name}.out" 2>&1
     echo "$(date -u +%FT%TZ) end   ${name} exit=$?" >> "${LOG}"
 }
 
