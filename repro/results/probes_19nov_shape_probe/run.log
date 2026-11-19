@@ -29,3 +29,11 @@
 2026-11-19T10:21:26Z end misfire time graph=datagen-8_4-fb exit=0 load=22.71 23.73 22.95
 2026-11-19T10:21:26Z misfire time graph=graph500-24 commit=39cfb2da extension_sha256=2a9a7e3079c79d77 load=22.71 23.73 22.95
 2026-11-19T10:22:40Z end misfire time graph=graph500-24 exit=0 load=25.87 24.15 23.13
+2026-11-19T10:42:09Z prepare graph=germany threads=32 commit=d71e79c2 extension_sha256=2a9a7e3079c79d77 load=9.69 9.54 14.35
+2026-11-19T10:42:12Z end prepare graph=germany exit=0 load=9.69 9.54 14.35
+2026-11-19T10:42:12Z prepare graph=europe threads=32 commit=d71e79c2 extension_sha256=2a9a7e3079c79d77 load=9.69 9.54 14.35
+2026-11-19T10:42:45Z end prepare graph=europe exit=0 load=11.57 10.11 14.36
+2026-11-19T11:09:17Z large germany_operator commit=d71e79c2 extension_sha256=2a9a7e3079c79d77 load=9.88 17.45 17.21
+2026-11-19T11:13:25Z end large germany_operator exit=0 load=21.83 21.20 18.85
+2026-11-19T11:14:12Z large germany_umbra commit=64deb4f9 extension_sha256=2a9a7e3079c79d77 load=9.74 18.00 17.89
+2026-11-19T11:16:08Z end large germany_umbra exit=0 load=18.04 17.89 17.82

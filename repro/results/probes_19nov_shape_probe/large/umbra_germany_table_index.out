@@ -1,0 +1,32 @@
+NOTICE:  io_uring_register_buffers: Cannot allocate memory
+WARNING: Unable to map the log writeback buffer into the kernel, performance may degrade. Try increasing the memlock limit to at least 525312 KiB.
+NOTICE:  io_uring_register_buffers: Cannot allocate memory
+WARNING: Unable to map the buffer manager writeback buffer into the kernel, performance may degrade. Try increasing the memlock limit to at least 525312 KiB.
+INFO:    [s] execution: (0.002503 min, 0.002503 max, 0.002503 median, 0.0% relMAD, 0.002503 avg, 0.000000 sdev, 7711272.00 cycles, 1418842.00 instr, 0.00 L1D-misses, 4100.00 DTLB-misses, 8379.00 branch-misses, 9718343.00 task, 1 scale, 0.18 IPC, 3.88 CPUs, 0.79 GHz) compilation: (0.000125 min, 0.000125 max, 0.000125 median, 0.0% relMAD, 0.000125 avg, 0.000000 sdev)
+INFO:    [s] execution: (0.386716 min, 0.386716 max, 0.386716 median, 0.0% relMAD, 0.386716 avg, 0.000000 sdev, 20045307904.00 cycles, 45056307200.00 instr, 0.00 L1D-misses, 682112.00 DTLB-misses, 154529328.00 branch-misses, 6077384192.00 task, 1 scale, 2.25 IPC, 15.72 CPUs, 3.30 GHz) compilation: (0.002652 min, 0.002652 max, 0.002652 median, 0.0% relMAD, 0.002652 avg, 0.000000 sdev)
+INFO:    [s] execution: (0.212913 min, 0.212913 max, 0.212913 median, 0.0% relMAD, 0.212913 avg, 0.000000 sdev, 8004083712.00 cycles, 21758083072.00 instr, 0.00 L1D-misses, 313375.00 DTLB-misses, 21384184.00 branch-misses, 2427380480.00 task, 1 scale, 2.72 IPC, 11.40 CPUs, 3.30 GHz) compilation: (0.000284 min, 0.000284 max, 0.000284 median, 0.0% relMAD, 0.000284 avg, 0.000000 sdev)
+INFO:    [s] execution: (0.000057 min, 0.000057 max, 0.000057 median, 0.0% relMAD, 0.000057 avg, 0.000000 sdev, 127754.00 cycles, 41095.00 instr, 0.00 L1D-misses, 183.00 DTLB-misses, 658.00 branch-misses, 344650.00 task, 1 scale, 0.32 IPC, 6.07 CPUs, 0.37 GHz) compilation: (0.000041 min, 0.000041 max, 0.000041 median, 0.0% relMAD, 0.000041 avg, 0.000000 sdev)
+INFO:    [s] execution: (0.000987 min, 0.000987 max, 0.000987 median, 0.0% relMAD, 0.000987 avg, 0.000000 sdev, 7066018.00 cycles, 5452827.00 instr, 0.00 L1D-misses, 1988.00 DTLB-misses, 4907.00 branch-misses, 4575232.00 task, 1 scale, 0.77 IPC, 4.64 CPUs, 1.54 GHz) compilation: (0.001099 min, 0.001099 max, 0.001099 median, 0.0% relMAD, 0.001099 avg, 0.000000 sdev)
+INFO:    [s] execution: (0.003493 min, 0.003493 max, 0.003493 median, 0.0% relMAD, 0.003493 avg, 0.000000 sdev, 32721164.00 cycles, 20115448.00 instr, 0.00 L1D-misses, 4668.00 DTLB-misses, 42230.00 branch-misses, 13880051.00 task, 1 scale, 0.61 IPC, 3.97 CPUs, 2.36 GHz) compilation: (0.000193 min, 0.000193 max, 0.000193 median, 0.0% relMAD, 0.000193 avg, 0.000000 sdev)
+mark
+"MARK build"
+INFO:    [s] execution: (0.000028 min, 0.000028 max, 0.000028 median, 0.0% relMAD, 0.000028 avg, 0.000000 sdev, 36618.50 cycles, 7206.50 instr, 0.00 L1D-misses, 34.00 DTLB-misses, 155.00 branch-misses, 26325.00 task, 2 scale, 0.20 IPC, 1.90 CPUs, 1.39 GHz) compilation: (0.000170 min, 0.000170 max, 0.000170 median, 0.0% relMAD, 0.000170 avg, 0.000000 sdev)
+INFO:    [s] execution: (59.246582 min, 59.246582 max, 59.246582 median, 0.0% relMAD, 59.246582 avg, 0.000000 sdev, 3091368771584.00 cycles, 2969333399552.00 instr, 0.00 L1D-misses, 2244671744.00 DTLB-misses, 27562139648.00 branch-misses, 884741832704.00 task, 1 scale, 0.96 IPC, 14.93 CPUs, 3.49 GHz) compilation: (0.000031 min, 0.000031 max, 0.000031 median, 0.0% relMAD, 0.000031 avg, 0.000000 sdev)
+mark
+"MARK w2 1 0"
+INFO:    [s] execution: (0.000013 min, 0.000013 max, 0.000013 median, 0.0% relMAD, 0.000013 avg, 0.000000 sdev, 25447.00 cycles, 4817.00 instr, 0.00 L1D-misses, 11.50 DTLB-misses, 125.00 branch-misses, 18905.00 task, 2 scale, 0.19 IPC, 2.96 CPUs, 1.35 GHz) compilation: (0.000273 min, 0.000273 max, 0.000273 median, 0.0% relMAD, 0.000273 avg, 0.000000 sdev)
+count coalesce
+1 19
+INFO:    [s] execution: (0.000228 min, 0.000228 max, 0.000228 median, 0.0% relMAD, 0.000228 avg, 0.000000 sdev, 0.31 cycles, 0.02 instr, 0.00 L1D-misses, 0.00 DTLB-misses, 0.00 branch-misses, 0.20 task, 15631440 scale, 0.07 IPC, 13.73 CPUs, 1.54 GHz) compilation: (0.001507 min, 0.001507 max, 0.001507 median, 0.0% relMAD, 0.001507 avg, 0.000000 sdev)
+mark
+"MARK w2 10 0"
+INFO:    [s] execution: (0.000007 min, 0.000007 max, 0.000007 median, 0.0% relMAD, 0.000007 avg, 0.000000 sdev, 13370.00 cycles, 4821.50 instr, 0.00 L1D-misses, 5.50 DTLB-misses, 123.00 branch-misses, 15690.00 task, 2 scale, 0.36 IPC, 4.62 CPUs, 0.85 GHz) compilation: (0.000138 min, 0.000138 max, 0.000138 median, 0.0% relMAD, 0.000138 avg, 0.000000 sdev)
+count coalesce
+10 9837
+INFO:    [s] execution: (0.007232 min, 0.007232 max, 0.007232 median, 0.0% relMAD, 0.007232 avg, 0.000000 sdev, 12.06 cycles, 8.51 instr, 0.00 L1D-misses, 0.01 DTLB-misses, 0.10 branch-misses, 3.38 task, 15633439 scale, 0.71 IPC, 7.31 CPUs, 3.57 GHz) compilation: (0.000641 min, 0.000641 max, 0.000641 median, 0.0% relMAD, 0.000641 avg, 0.000000 sdev)
+mark
+"MARK w2 100 0"
+INFO:    [s] execution: (0.000007 min, 0.000007 max, 0.000007 median, 0.0% relMAD, 0.000007 avg, 0.000000 sdev, 13484.50 cycles, 4825.50 instr, 0.00 L1D-misses, 4.00 DTLB-misses, 119.00 branch-misses, 15630.00 task, 2 scale, 0.36 IPC, 4.56 CPUs, 0.86 GHz) compilation: (0.000166 min, 0.000166 max, 0.000166 median, 0.0% relMAD, 0.000166 avg, 0.000000 sdev)
+count coalesce
+89 97307
+INFO:    [s] execution: (0.019069 min, 0.019069 max, 0.019069 median, 0.0% relMAD, 0.019069 avg, 0.000000 sdev, 81.79 cycles, 56.14 instr, 0.00 L1D-misses, 0.08 DTLB-misses, 0.81 branch-misses, 22.40 task, 15633439 scale, 0.69 IPC, 18.36 CPUs, 3.65 GHz) compilation: (0.000636 min, 0.000636 max, 0.000636 median, 0.0% relMAD, 0.000636 avg, 0.000000 sdev)
