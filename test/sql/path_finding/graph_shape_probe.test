@@ -1,0 +1,212 @@
+# name: test/sql/path_finding/graph_shape_probe.test
+# description: many sources on a deep, sparse graph (a search still expanding after deep_graph_levels levels without having discovered 4096 vertices) run one single-source search each instead of MS-BFS lanes; a graph that a search exhausts or covers within the limit keeps the lanes; the answers are the same either way
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# ---- A directed ring of 600 vertices: one new vertex per level, the longest distance is 599
+statement ok
+CREATE TABLE rv AS SELECT range AS id FROM range(600);
+
+statement ok
+CREATE TABLE re AS SELECT id AS src, (id + 1) % 600 AS dst FROM rv;
+
+# 40 sources x 5 destinations each
+statement ok
+CREATE TABLE ring_pairs AS SELECT s.id AS s, (s.id * 7 + d.k * 131 + 1) % 600 AS d FROM (SELECT id FROM rv WHERE id % 15 = 0) s, range(5) d(k);
+
+# Lanes, the probe switched off: the reference
+statement ok
+SET experimental_path_finding_operator_deep_graph_levels = 0;
+
+statement ok
+CREATE TABLE ring_reference AS SELECT s, d, iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 600::BIGINT, 600::BIGINT, 'graph:ring') AS len
+    FROM ring_pairs, re;
+
+query I
+SELECT s LIKE '%source_group_kernel=lane_waves%' AND s NOT LIKE '%shape_probe%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+query II
+SELECT count(len), sum(len) = sum((d - s + 600) % 600) FROM ring_reference;
+----
+200	true
+
+# Default: the probe finds the ring deep and the sources are searched one by one
+statement ok
+RESET experimental_path_finding_operator_deep_graph_levels;
+
+query I
+SELECT count(*) FROM (
+    SELECT s, d, iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 600::BIGINT, 600::BIGINT, 'graph:ring') AS len
+    FROM ring_pairs, re) q JOIN ring_reference r USING (s, d) WHERE q.len IS DISTINCT FROM r.len;
+----
+0
+
+query I
+SELECT s LIKE '%shape_probe=deep%' AND s LIKE '%shape_probe_outcomes=deep:3,wide:0,exhausted:0%' AND s LIKE '%shape_probe_max_levels=16%'
+       AND s LIKE '%source_group_kernel=per_source%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# A level limit beyond a quarter of the ring: every probe reaches its vertex budget (150 of 600), which is not deep
+statement ok
+SET experimental_path_finding_operator_deep_graph_levels = 1000;
+
+query I
+SELECT count(*) FROM (
+    SELECT s, d, iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 600::BIGINT, 600::BIGINT, 'graph:ring') AS len
+    FROM ring_pairs, re) q JOIN ring_reference r USING (s, d) WHERE q.len IS DISTINCT FROM r.len;
+----
+0
+
+query I
+SELECT s LIKE '%shape_probe=not_deep%' AND s LIKE '%shape_probe_outcomes=deep:0,wide:3,exhausted:0%' AND s LIKE '%source_group_kernel=lane_waves%'
+FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+statement ok
+RESET experimental_path_finding_operator_deep_graph_levels;
+
+# At most few_sources_limit sources: per source as before, no probe
+query I
+SELECT count(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 600::BIGINT, 600::BIGINT, 'graph:ring') AS len
+    FROM (SELECT * FROM ring_pairs WHERE s < 150), re);
+----
+50
+
+query I
+SELECT s LIKE '%source_group_kernel=per_source%' AND s NOT LIKE '%shape_probe%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# ---- The same ring through a CSR index with a reverse side, with an overlay: one edge deleted (the ring becomes a
+# ---- path, so pairs across the cut are unreachable) and a chord inserted
+statement ok
+CREATE INDEX re_csr ON re USING CSR (src, dst) WITH (reverse = true);
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 1000;
+
+statement ok
+DELETE FROM re WHERE src = 299;
+
+statement ok
+INSERT INTO re VALUES (10, 400);
+
+statement ok
+SET experimental_path_finding_operator_deep_graph_levels = 0;
+
+statement ok
+CREATE TABLE ring_index_reference AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|re|re_csr') AS len
+    FROM ring_pairs;
+
+query I
+SELECT s LIKE '%csr=index%' AND s LIKE '%source_group_kernel=lane_waves%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Some pairs are cut off, some are shorter through the chord
+query II
+SELECT count(*) - count(len) > 0, count(*) FILTER (WHERE len < (d - s + 600) % 600) > 0 FROM ring_index_reference;
+----
+true	true
+
+statement ok
+RESET experimental_path_finding_operator_deep_graph_levels;
+
+query I
+SELECT count(*) FROM (
+    SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|re|re_csr') AS len
+    FROM ring_pairs) q JOIN ring_index_reference r USING (s, d) WHERE q.len IS DISTINCT FROM r.len;
+----
+0
+
+query I
+SELECT s LIKE '%csr=index%' AND s LIKE '%shape_probe=deep%' AND s LIKE '%source_group_kernel=per_source%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# Many sources, one destination: one search from the destination over the reverse side, no probe
+query I
+SELECT count(len) FROM (
+    SELECT iterativelengthoperator(s, 290, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|re|re_csr') AS len
+    FROM (SELECT DISTINCT s FROM ring_pairs));
+----
+40
+
+query I
+SELECT s LIKE '%orientation=reverse%' AND s NOT LIKE '%shape_probe%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# ---- A ring with chords (400 vertices): a search covers a quarter of it within a few levels, the lanes stay
+statement ok
+CREATE TABLE pv AS SELECT range AS id FROM range(400);
+
+statement ok
+CREATE TABLE pe AS SELECT id AS src, (id + 1) % 400 AS dst FROM pv UNION ALL SELECT id, (id + 11) % 400 FROM pv UNION ALL SELECT id, (id + 97) % 400 FROM pv;
+
+statement ok
+CREATE TABLE pairs AS SELECT s.id AS s, (s.id * 7 + d.k * 13) % 400 AS d FROM (SELECT id FROM pv WHERE id % 10 = 0) s, range(30) d(k);
+
+query I
+SELECT count(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 400::BIGINT, 1200::BIGINT, 'graph:chords') AS len
+    FROM pairs, pe);
+----
+1200
+
+query I
+SELECT s LIKE '%shape_probe=not_deep%' AND s LIKE '%shape_probe_outcomes=deep:0,wide:3,exhausted:0%' AND s LIKE '%source_group_kernel=lane_waves%'
+FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# ---- A dense graph (5000 vertices, 40 out-edges each): the probe reaches its vertex budget in the third level
+statement ok
+CREATE TABLE dv AS SELECT range AS id FROM range(5000);
+
+statement ok
+CREATE TABLE de AS SELECT id AS src, (id * 31 + k * 127 + 1) % 5000 AS dst FROM dv, range(40) e(k);
+
+statement ok
+CREATE TABLE dense_pairs AS SELECT s.id AS s, (s.id * 7 + d.k * 13) % 5000 AS d FROM (SELECT id FROM dv WHERE id % 100 = 0) s, range(10) d(k);
+
+query I
+SELECT count(len) FROM (
+    SELECT iterativelengthoperator(s, d, struct_pack(src := src, dst := dst), 5000::BIGINT, 200000::BIGINT, 'graph:dense') AS len
+    FROM dense_pairs, de);
+----
+500
+
+query I
+SELECT s LIKE '%shape_probe=not_deep%' AND s LIKE '%shape_probe_outcomes=deep:0,wide:3,exhausted:0%' AND s LIKE '%source_group_kernel=lane_waves%'
+FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# ---- Reach on the ring: every source reaches all 600 vertices, by lanes and per source
+statement ok
+SET experimental_path_finding_operator_deep_graph_levels = 0;
+
+query I
+SELECT sum(len(r)) FROM (SELECT reachoperator(s, s, struct_pack(src := src, dst := dst), 600::BIGINT, 600::BIGINT, 'graph:ringreach') AS r
+    FROM (SELECT DISTINCT s FROM ring_pairs), (SELECT id AS src, (id + 1) % 600 AS dst FROM rv));
+----
+48000
+
+statement ok
+RESET experimental_path_finding_operator_deep_graph_levels;
+
+query I
+SELECT sum(len(r)) FROM (SELECT reachoperator(s, s, struct_pack(src := src, dst := dst), 600::BIGINT, 600::BIGINT, 'graph:ringreach') AS r
+    FROM (SELECT DISTINCT s FROM ring_pairs), (SELECT id AS src, (id + 1) % 600 AS dst FROM rv));
+----
+48000

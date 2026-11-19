@@ -119,6 +119,12 @@ const vector<DuckPGQSetting> &Settings() {
 	     "Pair queries with at most this many distinct sources always use the per-source frontier "
 	     "kernel instead of MS-BFS lanes; 0 leaves the choice to the source group ratio",
 	     LogicalType::INTEGER, Value(16)},
+	    {"experimental_path_finding_operator_deep_graph_levels",
+	     "Many sources run one single-source search each instead of MS-BFS lanes when the graph around "
+	     "them is deep: a bounded search from a few of the sources is still expanding after this many "
+	     "levels without having discovered 4096 vertices (a road network; a small-world graph reaches "
+	     "the budget within a few levels). 0 switches the probe off: the source count alone decides",
+	     LogicalType::INTEGER, Value(16)},
 	    {"experimental_path_finding_operator_working_set_cap",
 	     "Bytes of path-finding working state that may be live at once: bounds the MS-BFS worker "
 	     "groups that run concurrently and the per-source searches in flight per round. -1 "
@@ -348,6 +354,10 @@ int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context) {
 
 int32_t GetPathFindingFewSourcesLimit(ClientContext &context) {
 	return GetSetting<int32_t>(context, "experimental_path_finding_operator_few_sources_limit");
+}
+
+int32_t GetPathFindingDeepGraphLevels(ClientContext &context) {
+	return GetSetting<int32_t>(context, "experimental_path_finding_operator_deep_graph_levels");
 }
 
 int64_t GetPathFindingWorkingSetCapSetting(ClientContext &context) {

@@ -27,6 +27,7 @@
 #include "duckdb/storage/buffer_manager.hpp"
 #include "duckpgq/core/operator/bfs_state.hpp"
 #include <duckpgq/core/operator/bidirectional_pair_search.hpp>
+#include <duckpgq/core/operator/graph_shape_probe.hpp>
 #include <duckpgq/core/operator/iterative_length/bidirectional_iterative_length_state.hpp>
 #include <duckpgq/core/operator/iterative_length/grouped_iterative_length_event.hpp>
 #include <duckpgq/core/operator/iterative_length/iterative_length_state.hpp>
@@ -1707,6 +1708,9 @@ public:
 		}
 		bool lane_waves = lane_kernel && group_count > 1 &&
 		                  (few_sources_limit <= 0 || group_count > NumericCast<idx_t>(few_sources_limit));
+		if (lane_waves) {
+			lane_waves = !ProbeDeepGraph(partition_csrs);
+		}
 		RecordStrategy(context, "source_group_kernel", lane_waves ? "lane_waves" : "per_source");
 		if (reach) {
 			// The materialized reach result is bounded by memory_limit minus the working-set cap (ReachResultBudget)
@@ -1825,6 +1829,34 @@ public:
 	}
 
 private:
+	//! True when the graph around the sources is deep and sparse (GraphShapeProbe): lanes would run hundreds of
+	//! levels with a pass over all vertices each, so the sources are searched one by one
+	bool ProbeDeepGraph(const std::vector<shared_ptr<LocalCSR>> &partition_csrs) const {
+		auto level_limit = GetPathFindingDeepGraphLevels(context);
+		if (level_limit <= 0) {
+			return false;
+		}
+		SearchGraphSide side {partition_csrs, SearchDeltaCSRs(gstate), SearchSuppressed(gstate)};
+		if (!side.HasRowLookup()) {
+			RecordStrategy(context, "shape_probe", "unavailable");
+			return false;
+		}
+		auto start = std::chrono::steady_clock::now();
+		auto shape = GraphShapeProbe::Run(side, NumericCast<idx_t>(GetPathFindingVSize(gstate)),
+		                                  gstate.source_group_sources, NumericCast<idx_t>(level_limit));
+		auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
+		RecordStrategy(context, "shape_probe", shape.Deep() ? "deep" : "not_deep");
+		RecordStrategy(context, "shape_probe_outcomes",
+		               "deep:" + std::to_string(shape.deep) + ",wide:" + std::to_string(shape.wide) +
+		                   ",exhausted:" + std::to_string(shape.exhausted));
+		RecordStrategy(context, "shape_probe_max_levels", std::to_string(shape.max_levels));
+		if (shape.deep > 0) {
+			RecordStrategy(context, "shape_probe_deep_discovered", std::to_string(shape.max_deep_discovered));
+		}
+		RecordStrategy(context, "shape_probe_us", std::to_string(micros.count()));
+		return shape.Deep();
+	}
+
 	//! Groups with one destination are searched from both ends when the other direction of the graph is at hand:
 	//! the reverse side of the index (stored, or the forward partitions of an undirected one), or the forward
 	//! partitions when the search runs in reverse orientation

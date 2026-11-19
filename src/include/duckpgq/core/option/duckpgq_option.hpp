@@ -41,6 +41,8 @@ bool GetPathFindingTargetEarlyTermination(ClientContext &context);
 bool GetPathFindingBidirectionalPair(ClientContext &context);
 int32_t GetPathFindingSparseFrontierDivisor(ClientContext &context);
 int32_t GetPathFindingFewSourcesLimit(ClientContext &context);
+//! Level limit of the graph shape probe (GraphShapeProbe); 0 = no probe
+int32_t GetPathFindingDeepGraphLevels(ClientContext &context);
 int64_t GetPathFindingWorkingSetCapSetting(ClientContext &context);
 int64_t GetPathFindingTaskEdges(ClientContext &context);
 int64_t GetPathFindingBitmapFilterWorkingSet(ClientContext &context);

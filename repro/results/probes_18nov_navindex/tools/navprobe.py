@@ -44,7 +44,9 @@ FILES = {"oberbayern": ("oberbayern.tsv", "queriesoberbayern.tsv"), "twitter": (
 INDEX = "nav_csr"
 STAMP = "SELECT 'ts', epoch_us(get_current_timestamp());"
 PREFIX = "experimental_path_finding_operator"
-SETTINGS = {"default": [], "single_source": [f"SET {PREFIX}_few_sources_limit=1000000;"]}
+SETTINGS = {"default": [], "single_source": [f"SET {PREFIX}_few_sources_limit=1000000;"],
+            # Builds with the graph shape probe (my-beans-83ld): the probe off, which is the default of rc13
+            "no_shape_probe": [f"SET {PREFIX}_deep_graph_levels=0;"]}
 FIELDS = ["system", "graph", "route", "setting", "workload", "pairs", "result", "run", "seconds", "answer", "note"]
 
 
