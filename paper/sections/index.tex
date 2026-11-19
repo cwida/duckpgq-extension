@@ -193,9 +193,13 @@ runs are part of Section~\ref{sec:eval-updates}. Regression tests cover the case
 and~\ref{sec:index-fold}, among them folds in either order, a commit that fails after its append, deletes after a fold
 and transactions that differ only in a fully deleted group.
 
-The index route still traverses an intermediate vertex that was deleted with its edges in place, where the build
-route drops those edges through its join with the vertex table; the endpoints of a pair come from the vertex tables on
-both routes, so the difference is confined to intermediate vertices, and we accept it.
+\rev{\texttt{CREATE PROPERTY GRAPH} verifies that every edge key references a vertex row and fails otherwise.
+\sqlpgq calls an edge without its vertex an incomplete edge and lets an implementation reject it or remove it.
+Rows that change after the graph was created are not checked again. An edge that becomes incomplete then, because
+its vertex is deleted or because it is inserted without one, is dropped by the build route through its join with
+the vertex table, while the index route traverses it as an intermediate hop. The endpoints of a pair come from the
+vertex tables on both routes, so the difference is confined to intermediate vertices. A foreign key from the edge
+table to the vertex table removes it, because \duckdb then rejects both changes.}
 
 \subsection{When the index pays off}
 \label{sec:index-when}

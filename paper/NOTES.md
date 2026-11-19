@@ -532,6 +532,22 @@ atomic operation; 3.2 and 4.3 point at the listing; Section 2 writes `frontier` 
 `algorithm` and `algpseudocode`. Cost, measured by building both versions: the body goes from 14.44 to 14.59 pages
 (0.3 of a column). Not cut to pay for it yet: Section 2's MS-BFS paragraph, which the listing and 3.3 now repeat.
 
+19 Nov: incomplete edges. ISO 9075-16 subclause 9.5 lets an implementation raise "incomplete edge" (22G0L) or
+remove such edges (Feature G941). The author chose the check at creation; the desk ported it from main without
+vertex-join elimination (merge f27ab84b; `CheckEdgeKeysReferenceVertices`, a foreign key skips the scan, later
+DML is not re-checked). Probes (repro/results/probes_19nov_incomplete_edges): an edge inserted without its vertex,
+or left behind by a deleted vertex, gives a path of length 2 through it on the index route and no row on the build
+route, a fold changes nothing; with a FOREIGN KEY on the edge table next to a CSR index DuckDB rejects both changes
+and query, fold, checkpoint and reload work. CREATE PROPERTY GRAPH at SF300 takes 0.151 s with the check (0.010 s
+on rc13); a commit of 2000 edge changes at SF10 takes 15.9 ms with the foreign key against 8.8 ms without (branch
+build, not the frozen run, so not quoted in the text). 4.6's last paragraph rewritten accordingly.
+Also on the branch since 18 Nov and to reach the text after the next freeze: source groups ordered by vertex id
+(65,536 pairs at SF300 6.7 s against 10.1 s on the directed knows index), the default fold ratio a thousandth with
+the merge fold (4.4 says a tenth), a deep-graph rule that sends many sources on a sparse, deep graph to
+single-source searches (Oberbayern, 1000 pairs 0.60 s against 4.0 s), and the fixes of the fold, the reader
+deadlock and the tombstone race found during the Teseo work. Large road graphs are out of scope by the author's
+decision; OSM Oberbayern joins the sweep.
+
 ## Reproduction package (decided 4 Nov, deferred until rc10 lands)
 
 Separate private repository with its own history, populated once from the frozen commit by a copy script under
