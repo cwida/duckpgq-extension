@@ -91,10 +91,17 @@ if [ "$what" = all ] || [ "$what" = road ]; then
   # the same points as on LDBC, random pairs 1..65536 and sources x all (1, 16, 128, 1024); a system that times out on
   # a count is not run on the larger ones. The Cypher systems run without the ..30 hop bound and Kuzu with
   # var_length_extend_max_depth at 1000, as on the Graphalytics graphs.
+  # Umbra with its navigational index (Nav-Index, the system that paper measures on this graph) runs here and on no
+  # other graph (19 Nov): umbra is the system without a stored index, umbra_navindex the one with CREATE INDEX ...
+  # USING navigational, whose creation time is a fixed cost next to the CSR index's. Both answer the same pairs and
+  # sources as every other system, each count as one statement, from the binary of that paper's artifact
+  # (DUCKPGQ_UMBRA_ROOT, see README.md).
   for ds in ${ROAD_DATASETS}; do
     name="${ds//-/_}"
-    step "fixed_costs_${name}" ${HARNESS} fixed-costs --dataset "$ds" --threads "${THREADS}" --repeats "${REPEATS}" --notes "fixed costs ${ds} ${NOTE}"
-    step "sweep_pairs_${name}" ${HARNESS} sweep-pairs --dataset "$ds" "${COMMON[@]}" --notes "road sweep ${ds} ${NOTE}"
+    step "fixed_costs_${name}" ${HARNESS} fixed-costs --dataset "$ds" --threads "${THREADS}" --repeats "${REPEATS}" \
+      --systems kuzu memgraph falkordb neo4j umbra_navindex --notes "fixed costs ${ds} ${NOTE}"
+    step "sweep_pairs_${name}" ${HARNESS} sweep-pairs --dataset "$ds" "${COMMON[@]}" \
+      --systems duckpgq_build duckpgq_index umbra umbra_navindex kuzu memgraph falkordb neo4j neo4j_gds --notes "road sweep ${ds} ${NOTE}"
     step "sweep_pairs_${name}_client${CLIENT_THREADS}" ${HARNESS} sweep-pairs --dataset "$ds" "${COMMON[@]}" \
       --client-threads "${CLIENT_THREADS}" --systems memgraph falkordb kuzu --notes "road ${ds} client threads ${CLIENT_THREADS} ${NOTE}"
     # The deep-graph rule (graph shape probe, 19 Nov): many sources on a deep, sparse graph run one single-source

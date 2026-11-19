@@ -1600,7 +1600,8 @@ def fixed_costs_table(filename):
         edges = int(rows[0]["edges"])
         builds = [float(r["seconds"]) for r in rows if r["system"] == "duckpgq_index" and r["measure"].startswith("index_build")]
         bpe = next((float(r["bytes_per_edge"]) for r in rows if r["system"] == "duckpgq_index"), None)
-        loads = {r["system"]: (float(r["seconds"]), float(r["bytes_per_edge"])) for r in rows if r["measure"] == "load"}
+        # A load row without a store size (Umbra's in-memory database) has no bytes per edge
+        loads = {r["system"]: (float(r["seconds"]), float(r["bytes_per_edge"] or "nan")) for r in rows if r["measure"] == "load"}
         imp = lambda key: seconds_label(loads[key][0]) if key in loads else "--"
         kuzu_bpe = f"{loads['kuzu'][1]:.0f}" if "kuzu" in loads else "--"
         load = restart_loads.get(LOAD_NAMES.get(name, name))

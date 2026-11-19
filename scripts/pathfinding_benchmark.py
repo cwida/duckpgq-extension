@@ -13,6 +13,7 @@ import socket
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -146,6 +147,10 @@ GRAPHALYTICS_DATASETS["osm-oberbayern"] = {"nodes": "495k", "edges": "806k", "sc
 # DUCKPGQ_EDGE_LIST_DIR: the directory that holds the local edge lists (default: the Nav-Index archive extracted
 # under ~/navindex/data, which gives ~/navindex/data/data/oberbayern.tsv)
 LOCAL_EDGE_LIST_DIR = Path(os.environ.get("DUCKPGQ_EDGE_LIST_DIR", str(Path.home() / "navindex" / "data" / "data")))
+# DUCKPGQ_UMBRA_ROOT: the directory with Umbra's bin/sql, the binary of the Nav-Index reproducibility artifact
+# (https://gitlab.db.in.tum.de/max.reif/nav-index-reproducibility, directory umbra; default: the artifact cloned to
+# ~/navindex/artifact). Umbra is a system of the road network only (systems umbra and umbra_navindex)
+UMBRA_ROOT = Path(os.environ.get("DUCKPGQ_UMBRA_ROOT", str(Path.home() / "navindex" / "artifact" / "umbra")))
 GRAPHALYTICS_DATASET_GROUPS = {
     "core": GRAPHALYTICS_CORE_DATASETS,
     "all": GRAPHALYTICS_CORE_DATASETS,
@@ -5205,6 +5210,156 @@ class KuzuSystem(GraphDBSystem):
             self.db.close()
 
 
+class UmbraSystem(GraphDBSystem):
+    """Umbra with its navigational index (Nav-Index: Reif and Neumann, PVLDB 19(11), 2026), the binary of that
+    paper's artifact. One bin/sql process over an in-memory database for the whole sweep, fed statement by statement
+    through its stdin; a statement has ended when the process prints its timing line. The edges are loaded as
+    (src, dest, cost 1), so a shortest path is a fewest-hops path, and are directed, as for the other systems.
+    with_index=False ("umbra"): no stored index, the system's default mode, where its cost model chooses per query
+    between Dijkstra and a contraction hierarchy built inside the query. with_index=True ("umbra_navindex"):
+    CREATE INDEX ... USING navigational once after the load, as the artifact's system comparison does. A query is one
+    statement over a pair table (shortest_path per row), so Umbra parallelises over the pairs itself; the time is
+    the client's wall time from sending the statement to its timing line, as for the other baselines."""
+
+    def __init__(self, with_index, threads):
+        self.with_index = with_index
+        self.name = "umbra_navindex" if with_index else "umbra"
+        self.threads = threads
+        self.proc = None
+        self.export_dir = None
+        self.relations = {}
+        self.extra_relations = 0
+        self.table_load_s = None
+        self.index_build_s = None
+
+    def start(self):
+        binary = UMBRA_ROOT / "bin" / "sql"
+        if not binary.exists():
+            raise SystemExit(f"Umbra's command line client is missing: {binary}. It is umbra/bin/sql of the Nav-Index "
+                             f"reproducibility artifact (https://gitlab.db.in.tum.de/max.reif/nav-index-reproducibility); "
+                             f"clone it to ~/navindex/artifact or set DUCKPGQ_UMBRA_ROOT to its umbra directory.")
+        # PARALLEL is Umbra's worker count (the artifact sets it the same way)
+        self.proc = subprocess.Popen([str(binary), ""], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT, text=True, bufsize=1,
+                                     env=dict(os.environ, PARALLEL=str(self.threads)))
+
+    def statement(self, sql):
+        """Result lines of one statement (header first). An error or the end of the process (a cancelled query)
+        raises; after an error the process is stopped, because its output is no longer in step with the statements"""
+        proc = self.proc
+        stopped = "timeout: the Umbra process was stopped"
+        if proc is None:
+            raise RuntimeError(stopped if self.stop_requested else "Umbra is not loaded")
+        try:
+            proc.stdin.write(sql.strip() + "\n")
+            proc.stdin.flush()
+        except (BrokenPipeError, ValueError):
+            raise RuntimeError(stopped if self.stop_requested else "Umbra exited")
+        lines = []
+        for line in proc.stdout:
+            line = line.strip()
+            if line.startswith("ERROR"):
+                if proc is self.proc:
+                    self.stop_process()
+                raise RuntimeError(f"Umbra: {line[:200]}")
+            if "execution: (" in line:
+                return lines
+            if line and not line.startswith(("NOTICE", "WARNING", "INFO")):
+                lines.append(line)
+        raise RuntimeError(stopped if self.stop_requested else f"Umbra exited with {proc.wait()} during: {sql[:120]}")
+
+    def counts(self, sql):
+        """(count, total) of a statement that returns one row of two integers"""
+        fields = self.statement(sql)[-1].split()
+        return int(fields[0]), int(fields[1])
+
+    def copy_csv(self, table, columns, path):
+        self.statement(f"create table {table} ({', '.join(f'{column} bigint' for column in columns)});")
+        self.statement(f"copy {table} from {sql_string(path)} with (format csv, header);")
+
+    def load(self, export_dir, scale_factor):
+        self.export_dir = export_dir
+        self.load_tables()
+
+    def load_tables(self):
+        """A new process with the edges, the vertices and every exported pair table, then the index"""
+        self.start()
+        export_dir = self.export_dir
+        started = time.perf_counter()
+        self.copy_csv("e0", ["src", "dest"], export_dir / "knows.csv")
+        self.statement("create table e as select src, dest, cast(1 as float) as cost from e0;")
+        self.statement("drop table e0;")
+        self.copy_csv("v", ["id"], export_dir / "person.csv")
+        self.table_load_s = time.perf_counter() - started
+        # The pair and source tables of the sweep are loaded before the clock of any query starts; a query finds
+        # its table by the pair list it is given
+        self.relations = {}
+        self.extra_relations = 0
+        for path in sorted(export_dir.glob("pairs_*.csv")):
+            table = f"p_{path.stem[len('pairs_'):]}"
+            self.copy_csv(table, ["id", "src", "dst"], path)
+            with path.open() as handle:
+                pairs = tuple((int(r["src"]), int(r["dst"])) for r in csv.DictReader(handle))
+            self.relations[pairs] = table
+            self.relations[("sources",) + tuple(sorted({src for src, _ in pairs}))] = table
+        if self.with_index:
+            started = time.perf_counter()
+            self.statement("create index on e using navigational(src, dest, cost);")
+            self.index_build_s = time.perf_counter() - started
+
+    def relation(self, key, pairs):
+        """The table that holds this pair list: one loaded with the graph, or a new one copied from a temporary file
+        (a pair list that is not one of the exported tables)"""
+        if key not in self.relations:
+            self.extra_relations += 1
+            table = f"p_extra_{self.extra_relations}"
+            with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as handle:
+                handle.write("id,src,dst\n")
+                handle.writelines(f"{idx},{src},{dst}\n" for idx, (src, dst) in enumerate(pairs, 1))
+            try:
+                self.copy_csv(table, ["id", "src", "dst"], handle.name)
+            finally:
+                os.unlink(handle.name)
+            self.relations[key] = table
+        return self.relations[key]
+
+    def point_to_point(self, pairs):
+        # shortest_path returns the path's vertices, NULL when there is none: hops = array length - 1
+        table = self.relation(tuple(pairs), pairs)
+        return self.counts("select count(l), coalesce(sum(l - 1), 0) from (select array_length(shortest_path(table "
+                           f"(select * from e), src, dst), 1) as l from {table} where src <> dst) x;")
+
+    def multi_source(self, sources):
+        table = self.relation(("sources",) + tuple(sorted(set(sources))), [(source, source) for source in sources])
+        return self.counts("select count(l), coalesce(sum(l - 1), 0) from (select array_length(shortest_path(table "
+                           f"(select * from e), s.src, v.id), 1) as l from (select distinct src from {table}) s, v "
+                           "where v.id <> s.src) x;")
+
+    def sssp(self, source, destinations):
+        return self.point_to_point([(source, destination) for destination in destinations])
+
+    def edge_count(self):
+        return self.counts("select count(*), 0 from e;")[0]
+
+    def stop_process(self):
+        proc, self.proc = self.proc, None
+        if proc is not None:
+            proc.kill()
+            proc.wait()
+
+    def cancel_query(self):
+        """The command line client has no cancel: the process is stopped (the statement waiting on it sees the end of
+        its output) and the graph is loaded into a new one here, outside the time of the next point"""
+        self.stop_process()
+        if self.export_dir is not None:
+            started = time.perf_counter()
+            self.load_tables()
+            print(f"   {self.name}: process stopped at the timeout, graph loaded again in {time.perf_counter() - started:.1f}s")
+
+    def close(self):
+        self.stop_process()
+
+
 class DuckPGQSystem(GraphDBSystem):
     """DuckPGQ through the CLI, one process per query so the timeout can kill it: 'build' builds the CSR per query,
     'index' reads the persisted CSR index (resident after a warm-up query). With symmetric=True the edge table is
@@ -6352,7 +6507,18 @@ SELECT duckpgq_csr_index_size('person_knows_person', '{CSR_INDEX_NAME}');
                 store = int(du[0]) if du else None
         except Exception as ex:  # noqa: BLE001
             print(f"   {system.name}: store size unavailable ({str(ex)[:80]})")
+        if isinstance(system, UmbraSystem):
+            # Umbra (in-memory database): the load of the edge and vertex tables, and for the system with the
+            # navigational index its creation, each repeat in a new process, as the CSR index is created on a database
+            # without it; no store size (the client reports none)
+            load_s = system.table_load_s
         record(system.name, "load", seconds=load_s, nbytes=store, edges=system.edge_count())
+        if isinstance(system, UmbraSystem) and system.with_index:
+            for repeat in range(1, args.repeats + 1):
+                if repeat > 1:
+                    system.close()
+                    system.load(export_dir, scale_factor)
+                record(system.name, f"index_build_repeat{repeat}", seconds=system.index_build_s, edges=system.edge_count())
         system.close()
     print(f"Wrote {path}")
 
@@ -6453,6 +6619,8 @@ def make_systems(args, scale_factor, symmetric=False):
             systems.append(Neo4jSystem(args.neo4j_uri, args.neo4j_database, args.neo4j_runtime))
         elif name == "neo4j_gds":
             systems.append(Neo4jGDSSystem(args.neo4j_uri, args.neo4j_database, args.neo4j_runtime))
+        elif name in ("umbra", "umbra_navindex"):
+            systems.append(UmbraSystem(name == "umbra_navindex", args.threads))
         else:
             raise SystemExit(f"unknown system {name}")
     return systems

@@ -51,7 +51,7 @@ export the first time it is needed; that load time is recorded as `load_s` in th
 | `microbench_sf*` | `microbench` | random pairs, same destination, sources x all with one mechanism switched off at a time | DuckPGQ build and index routes (SF10, SF100) |
 | `fixed_costs_*` | `fixed-costs` | database file size, CSR index build time and bytes per edge, every baseline's fresh load time and store size | all |
 | `sweep_pairs_cit_patents*`, `sweep_pairs_graph500_24`, `sweep_pairs_datagen_8_4_fb`, `microbench_scheduling_graph500_24` | `sweep-pairs --dataset`, `microbench --dataset` | the sweep shapes on three Graphalytics graphs (W30); pairs sampled from vertices with edges, no hop bound | all on cit-Patents; DuckPGQ and Kuzu on the two large graphs |
-| `fixed_costs_osm_oberbayern`, `sweep_pairs_osm_oberbayern*`, `microbench_shape_probe_osm_oberbayern` | `fixed-costs --dataset`, `sweep-pairs --dataset`, `microbench --dataset` | the sweep shapes on a road network, OSM Oberbayern (495,357 vertices, 805,743 directed edges, shortest paths of hundreds of hops); no hop bound; the deep-graph rule on and off | all; the rule on the DuckPGQ index route |
+| `fixed_costs_osm_oberbayern`, `sweep_pairs_osm_oberbayern*`, `microbench_shape_probe_osm_oberbayern` | `fixed-costs --dataset`, `sweep-pairs --dataset`, `microbench --dataset` | the sweep shapes on a road network, OSM Oberbayern (495,357 vertices, 805,743 directed edges, shortest paths of hundreds of hops); no hop bound; the deep-graph rule on and off | all, and Umbra without and with its navigational index (`umbra`, `umbra_navindex`; the index's creation time is in the fixed costs); the rule on the DuckPGQ index route |
 | `native_baselines_sf*` | `sweep-pairs --systems duckpgq_index duckpgq_recursive duckpgq_scalar` | random pairs and sources x all | DuckDB recursive CTE and the 2023 UDF route (SF10, SF100) |
 | `update_*`, `concurrent_*` | `update-run`, `update-concurrent`, `update-<system>` | 190 commits of 2000 knows operations with a query after each; the index folds at the extension's default ratio, a thousandth (a tenth in the archives up to rc13) | DuckPGQ build and index routes, Kuzu, Memgraph, FalkorDB, Neo4j |
 
@@ -59,6 +59,16 @@ The road network is not downloaded. Its edge list is `data/oberbayern.tsv` of th
 (Reif and Neumann, PVLDB 19(11), 2026; https://db.in.tum.de/~reif/uploads/data.tar.gz, 13 GB), expected as
 `~/navindex/data/data/oberbayern.tsv` or under `DUCKPGQ_EDGE_LIST_DIR`:
 `curl -L https://db.in.tum.de/~reif/uploads/data.tar.gz | tar -xzO data/oberbayern.tsv > oberbayern.tsv`.
+
+Umbra runs on the road network only, from the binary of the same paper's artifact
+(https://gitlab.db.in.tum.de/max.reif/nav-index-reproducibility, `umbra/bin/sql`; the paper's numbers are from
+commit 1f341922, Umbra v0.2-1423-g7c87fba6e). The harness expects the artifact at `~/navindex/artifact` or its
+`umbra` directory under `DUCKPGQ_UMBRA_ROOT`; `setup.sh` does not fetch it. One `bin/sql` process holds the graph in
+memory for the sweep: edges with cost 1, directed, loaded from the same CSV export as the other baselines. Every
+count is one statement over a pair table (`shortest_path` per row), timed at the client like the other baselines.
+`umbra` has no stored index (its cost model chooses between Dijkstra and a contraction hierarchy built inside the
+query); `umbra_navindex` creates the navigational index once after the load. A timeout stops the process, and the
+graph is loaded again before the next shape.
 
 Every query has a 600 s timeout; a timed-out point is recorded as `timed_out` and larger points of the same
 shape as `timed_out_inferred`. Baselines skip pair lists above 500 M pairs (`exceeds_pair_limit`). Repeats: 3,
