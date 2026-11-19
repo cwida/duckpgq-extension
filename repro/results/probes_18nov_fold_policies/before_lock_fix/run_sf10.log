@@ -1,0 +1,57 @@
+=== sf10_full 13:41:45
+events=8991 commits=190 mismatches=0 errors=0 wall=44.6s
+--database /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/work/ldbc_sf10_concurrent.duckdb --extension /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/build/release/extension/duckpgq/duckpgq.duckdb_extension --output /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.1_policy_full_1795009306023173959.csv --pair-table benchmark_pairs_same_src_1024 --index-name pathfinding_benchmark_csr --threads 32 --readers 16 --batches 190 --batch-size 2000 --writer-pause-ms 100 --fold-ratio 0.1 --recreate-index --no-build
+peak_rss_kib=2325760
+   query_index: n=8801 median 0.0414s p99 0.1948s max 0.2350s
+   commit: n=190 median 0.1221s p99 0.2846s max 0.2976s
+   mismatches=0 errors=0 peak_rss_mib=2271.2
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.1_policy_full_1795009306023173959.csv
+=== sf10_full exit 0 13:42:32
+=== sf10_merge_0.1 13:42:32
+events=13475 commits=190 mismatches=0 errors=0 wall=44.5s
+--database /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/work/ldbc_sf10_concurrent.duckdb --extension /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/build/release/extension/duckpgq/duckpgq.duckdb_extension --output /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.1_policy_merge_1795009352524069408.csv --pair-table benchmark_pairs_same_src_1024 --index-name pathfinding_benchmark_csr --threads 32 --readers 16 --batches 190 --batch-size 2000 --writer-pause-ms 100 --fold-ratio 0.1 --set duckpgq_csr_index_merge_fold=true --set duckpgq_csr_index_snapshot_fast_path=true --recreate-index --no-build
+peak_rss_kib=2270332
+   query_index: n=13285 median 0.0065s p99 0.2286s max 0.2665s
+   commit: n=190 median 0.1057s p99 0.3601s max 0.4140s
+   mismatches=0 errors=0 peak_rss_mib=2217.1
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.1_policy_merge_1795009352524069408.csv
+=== sf10_merge_0.1 exit 0 13:43:18
+=== sf10_merge_0.01 13:43:18
+events=32631 commits=190 mismatches=0 errors=0 wall=27.5s
+--database /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/work/ldbc_sf10_concurrent.duckdb --extension /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/build/release/extension/duckpgq/duckpgq.duckdb_extension --output /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.01_policy_merge_1795009398997309392.csv --pair-table benchmark_pairs_same_src_1024 --index-name pathfinding_benchmark_csr --threads 32 --readers 16 --batches 190 --batch-size 2000 --writer-pause-ms 100 --fold-ratio 0.01 --set duckpgq_csr_index_merge_fold=true --set duckpgq_csr_index_snapshot_fast_path=true --recreate-index --no-build
+peak_rss_kib=1183752
+   query_index: n=32441 median 0.0058s p99 0.0264s max 0.0878s
+   commit: n=190 median 0.0410s p99 0.0680s max 0.1673s
+   mismatches=0 errors=0 peak_rss_mib=1156.0
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.01_policy_merge_1795009398997309392.csv
+=== sf10_merge_0.01 exit 0 13:43:48
+=== sf10_merge_0.001 13:43:48
+events=34121 commits=190 mismatches=0 errors=0 wall=25.5s
+--database /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/work/ldbc_sf10_concurrent.duckdb --extension /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/build/release/extension/duckpgq/duckpgq.duckdb_extension --output /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.001_policy_merge_1795009428646536052.csv --pair-table benchmark_pairs_same_src_1024 --index-name pathfinding_benchmark_csr --threads 32 --readers 16 --batches 190 --batch-size 2000 --writer-pause-ms 100 --fold-ratio 0.001 --set duckpgq_csr_index_merge_fold=true --set duckpgq_csr_index_snapshot_fast_path=true --recreate-index --no-build
+peak_rss_kib=1399968
+   query_index: n=33931 median 0.0057s p99 0.0177s max 0.1286s
+   commit: n=190 median 0.0313s p99 0.0743s max 0.1503s
+   mismatches=0 errors=0 peak_rss_mib=1367.2
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.001_policy_merge_1795009428646536052.csv
+=== sf10_merge_0.001 exit 0 13:44:16
+=== sf10_cost 13:44:16
+events=33736 commits=190 mismatches=0 errors=0 wall=24.8s
+--database /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/work/ldbc_sf10_concurrent.duckdb --extension /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/build/release/extension/duckpgq/duckpgq.duckdb_extension --output /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.1_policy_cost_1795009456318761506.csv --pair-table benchmark_pairs_same_src_1024 --index-name pathfinding_benchmark_csr --threads 32 --readers 16 --batches 190 --batch-size 2000 --writer-pause-ms 100 --fold-ratio 0.1 --set duckpgq_csr_index_merge_fold=true --set duckpgq_csr_index_snapshot_fast_path=true --set duckpgq_csr_index_fold_by_cost=true --recreate-index --no-build
+peak_rss_kib=1384356
+   query_index: n=33546 median 0.0057s p99 0.0176s max 0.0631s
+   commit: n=190 median 0.0259s p99 0.0538s max 0.1520s
+   mismatches=0 errors=0 peak_rss_mib=1351.9
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.1_policy_cost_1795009456318761506.csv
+=== sf10_cost exit 0 13:44:43
+=== sf10_fullcost 13:44:43
+events=27203 commits=190 mismatches=0 errors=0 wall=24.9s
+--database /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/work/ldbc_sf10_concurrent.duckdb --extension /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/build/release/extension/duckpgq/duckpgq.duckdb_extension --output /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.1_policy_fullcost_1795009483294468679.csv --pair-table benchmark_pairs_same_src_1024 --index-name pathfinding_benchmark_csr --threads 32 --readers 16 --batches 190 --batch-size 2000 --writer-pause-ms 100 --fold-ratio 0.1 --set duckpgq_csr_index_fold_by_cost=true --recreate-index --no-build
+peak_rss_kib=1643132
+   query_index: n=27013 median 0.0077s p99 0.0210s max 0.1049s
+   commit: n=190 median 0.0265s p99 0.0578s max 0.1119s
+   mismatches=0 errors=0 peak_rss_mib=1604.6
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause100_fold0.1_policy_fullcost_1795009483294468679.csv
+=== sf10_fullcost exit 0 13:45:10
+=== sf100_full 13:45:10
+=== sf100_full exit 124 13:49:10
+=== sf100_merge_0.1 13:49:10

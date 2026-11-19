@@ -33,6 +33,7 @@
 #include <chrono>
 #include <mutex>
 #include <cstring>
+#include <tuple>
 
 namespace duckdb {
 
@@ -396,6 +397,18 @@ unique_ptr<BoundIndex> CSRBuildFinalize(IndexBuildFinalizeInput &input) {
 // CSRIndexDictionary
 //----------------------------------------------------------------------------------------------------------------------
 idx_t CSRIndexDictionary::Lookup(int64_t key) const {
+	auto id = LookupOrdered(key);
+	if (id != DConstants::INVALID_INDEX || extra_ids.empty()) {
+		return id;
+	}
+	auto entry = extra_ids.find(key);
+	return entry == extra_ids.end() ? DConstants::INVALID_INDEX : entry->second;
+}
+
+idx_t CSRIndexDictionary::LookupOrdered(int64_t key) const {
+	if (ordered_part) {
+		return ordered_part->LookupOrdered(key);
+	}
 	if (dense) {
 		if (key < min_key) {
 			return DConstants::INVALID_INDEX;
@@ -423,7 +436,12 @@ idx_t CSRIndexDictionary::Lookup(int64_t key) const {
 }
 
 int64_t CSRIndexDictionary::KeyOf(idx_t id) const {
-	D_ASSERT(id < count);
+	if (id >= count) {
+		return extra_keys[id - count];
+	}
+	if (ordered_part) {
+		return ordered_part->KeyOf(id);
+	}
 	if (!dense) {
 		return sorted_keys[id];
 	}
@@ -459,9 +477,8 @@ void CSRIndexDictionary::KeyCursor::Seek(idx_t id) {
 }
 
 int64_t CSRIndexDictionary::KeyCursor::KeyOf(idx_t id) {
-	D_ASSERT(id < dictionary.count);
-	if (!dictionary.dense || dictionary.identity) {
-		return dictionary.KeyOf(id);
+	if (id >= outer.count || !dictionary.dense || dictionary.identity) {
+		return outer.KeyOf(id);
 	}
 	if (!positioned || id < next_id || id >= next_id + 64) {
 		Seek(id);
@@ -586,10 +603,7 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 	csr->vertex_count = vertex_count + 2;
 	csr->capabilities = PartitionedCSRCapabilities::FORWARD;
 	csr->forward_partitions.resize(partition_count);
-	epoch->partition_row_ids.reserve(partition_count);
-	for (idx_t partition_idx = 0; partition_idx < partition_count; partition_idx++) {
-		epoch->partition_row_ids.emplace_back(&buffer_manager);
-	}
+	epoch->partition_row_ids.resize(partition_count);
 	std::atomic<idx_t> total_edge_count {0};
 	ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
 		vector<BuildEdge> edges;
@@ -611,7 +625,8 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpoch(ClientContext &context, vector<CS
 			CSRRadixSortBySource(edges, scratch, histogram, src_bits);
 			auto start_vertex = partition_idx * width;
 			auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
-			auto &row_ids = epoch->partition_row_ids[partition_idx];
+			epoch->partition_row_ids[partition_idx] = make_shared_ptr<ManagedArray<row_t>>(&buffer_manager);
+			auto &row_ids = *epoch->partition_row_ids[partition_idx];
 			row_ids.resize(edges.size());
 			auto rows = row_ids.data();
 			csr->forward_partitions[partition_idx] = CSREmitSparsePartition(
@@ -661,6 +676,7 @@ void CSRIndex::InstallEpoch(shared_ptr<CSRIndexEpoch> epoch_p) {
 }
 
 void CSRIndex::ClearStateLocked() const {
+	log_compactions++;
 	storage_pending = false;
 	pending_storage = IndexStorageInfo();
 	change_count++;
@@ -673,6 +689,22 @@ void CSRIndex::ClearStateLocked() const {
 	cached_snapshot.reset();
 	PruneGroupBoundsLocked();
 	AccountChangeLogLocked();
+}
+
+CSRIndexReadScope::CSRIndexReadScope(shared_ptr<IndexEntry> entry_p) : entry(std::move(entry_p)) {
+	handle = make_uniq<IndexReadHandle<CSRIndex>>(entry->GetReadHandle<CSRIndex>());
+	identity = handle->operator->();
+}
+
+void CSRIndexReadScope::Release() {
+	handle.reset();
+}
+
+void CSRIndexReadScope::Reacquire() {
+	handle = make_uniq<IndexReadHandle<CSRIndex>>(entry->GetReadHandle<CSRIndex>());
+	if (handle->operator->() != identity) {
+		throw InvalidInputException("The CSR index was dropped or replaced while a query was reading it");
+	}
 }
 
 shared_ptr<CSRIndexEpoch> CSRIndex::RebuildFromTable(ClientContext &context, DuckTransaction &transaction,
@@ -732,7 +764,7 @@ shared_ptr<CSRIndexEpoch> CSRIndex::BuildEpochFromTable(ClientContext &context, 
 }
 
 void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table,
-                                      shared_ptr<CSRIndexEpoch> epoch_p) const {
+                                      shared_ptr<CSRIndexEpoch> epoch_p, CSRIndexReadScope &scope) const {
 	// Decide, with the live transaction that built the epoch, which existing entries it accounts for. Entries appended
 	// after this point are stamped by a later epoch. Only the fields the decision reads are copied under the lock.
 	struct PendingDelta {
@@ -756,6 +788,8 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	}
 	vector<uint8_t> delta_covered(delta_prefix.size());
 	vector<uint8_t> tombstone_excluded(tombstone_prefix.size());
+	// The row-version checks below wait for the table; the entry's lock is not held across them (CSRIndexReadScope)
+	scope.Release();
 	// A row the folding transaction can fetch is in the new epoch. A deleted delta row whose insert the folding
 	// transaction sees was deleted before the fold, so the new epoch accounts for it (by excluding it) as well;
 	// the insert's visibility is that of any undeleted row of the same change group.
@@ -776,6 +810,15 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 		}
 		delta_covered[i] = table.CanFetch(transaction, entry.row);
 	}
+	// Up to here an entry is covered exactly when the folding transaction can fetch its row, that is when the row is
+	// an edge of the new epoch (a dead entry aside). The loop below adds the rows the epoch accounts for by leaving
+	// them out.
+	auto row_in_epoch = delta_covered;
+	for (idx_t i = 0; i < delta_prefix.size(); i++) {
+		if (delta_prefix[i].group == CSRIndexDeltaEdge::DEAD_GROUP) {
+			row_in_epoch[i] = false;
+		}
+	}
 	for (idx_t i = 0; i < delta_prefix.size(); i++) {
 		auto &entry = delta_prefix[i];
 		if (!delta_covered[i] && entry.deleted_group != 0 && entry.group != 0) {
@@ -786,12 +829,24 @@ void CSRIndex::InstallEpochAndCompact(DuckTransaction &transaction, DataTable &t
 	for (idx_t i = 0; i < tombstone_prefix.size(); i++) {
 		tombstone_excluded[i] = !table.CanFetch(transaction, tombstone_prefix[i]);
 	}
+	scope.Reacquire();
 	IndexLock l(*this);
 	auto generation = next_generation++;
 	epoch_p->generation = generation;
 	for (idx_t i = 0; i < delta_covered.size() && i < delta.size(); i++) {
-		if (delta_covered[i]) {
-			delta[i].covered_epoch = std::min(delta[i].covered_epoch, generation);
+		if (!delta_covered[i]) {
+			continue;
+		}
+		bool newly_covered = delta[i].covered_epoch == NumericLimits<uint32_t>::Maximum();
+		delta[i].covered_epoch = std::min(delta[i].covered_epoch, generation);
+		if (newly_covered && row_in_epoch[i] && delta[i].deleted_group != 0) {
+			// The row is an edge of the new epoch and is deleted by a commit the folding transaction did not see: the
+			// delete came before this install, when the row was only in the log, and stamped the entry. Readers of
+			// the new epoch skip the entry (the epoch accounts for it), so the delete needs a tombstone to reach
+			// them, as a delete after the install gets one in TryDelete. (18 Nov: without it the row stayed in the
+			// epoch for readers that see the delete, until the next fold scanned the table.)
+			tombstones.push_back({delta[i].row, NumericLimits<uint32_t>::Maximum(), delta[i].deleted_group, true,
+			                      delta[i].src_key, delta[i].dst_key});
 		}
 	}
 	for (idx_t i = 0; i < tombstone_excluded.size() && i < tombstones.size(); i++) {
@@ -828,6 +883,7 @@ void CSRIndex::CompactChangeLogLocked() const {
 	if (epochs.empty()) {
 		return;
 	}
+	log_compactions++;
 	// An entry the oldest retained epoch accounts for is accounted for by every retained epoch
 	auto oldest_generation = epochs.front()->generation;
 	vector<CSRIndexDeltaEdge> new_delta;
@@ -904,8 +960,10 @@ shared_ptr<CSRIndexEpoch> CSRIndex::EpochForLocked(VisibilityBound bound) const 
 void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_count) const {
 	vector<CSRIndexTombstone> pending_entries;
 	idx_t known;
+	uint64_t compactions;
 	{
 		IndexLock l(*this);
+		compactions = log_compactions;
 		known = epoch.tombstone_positions.size();
 		if (known >= tombstone_count) {
 			return;
@@ -914,16 +972,16 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 			pending_entries.push_back(tombstones[i]);
 		}
 	}
-	vector<row_t> pending;
-	pending.reserve(pending_entries.size());
-	// Forward position of each pending row, and for undirected indexes the position of the mirrored edge
-	std::unordered_map<row_t, idx_t> positions;
-	std::unordered_map<row_t, idx_t> mirror_positions;
-	positions.reserve(pending_entries.size());
+	// Positions per pending tombstone, by its index in `pending_entries`: the forward position, and for undirected
+	// indexes the position of the mirrored edge. (Until 18 Nov these were two hash maps keyed by row id, filled and
+	// read one tombstone at a time on one thread; a bulk delete of 2.8M rows at SF300 spent seconds here.)
+	auto pending_count = pending_entries.size();
+	vector<idx_t> positions(pending_count, DConstants::INVALID_INDEX);
+	vector<idx_t> mirror_positions(pending_count, DConstants::INVALID_INDEX);
 	// A tombstone with keys names its edge: the destination's partition, the source's sparse row, and the row id
 	// among that row's edges (a few dozen comparisons). Rows without keys (loaded from storage) are found by one
 	// scan over the epoch's row ids below.
-	std::unordered_set<row_t> scan_rows;
+	std::unordered_map<row_t, idx_t> scan_rows;
 	auto &dictionary = *epoch.dictionary;
 	auto width = epoch.partition_width;
 	auto &partition_row_ids = epoch.partition_row_ids;
@@ -945,7 +1003,7 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 		if (row_idx == std::numeric_limits<idx_t>::max() || row_idx + 1 >= forward.row_offsets.size()) {
 			return DConstants::INVALID_INDEX;
 		}
-		auto &rows = partition_row_ids[partition_idx];
+		auto &rows = *partition_row_ids[partition_idx];
 		for (idx_t o = forward.row_offsets[row_idx]; o < forward.row_offsets[row_idx + 1]; o++) {
 			if (rows[o] == row) {
 				return PackPosition(partition_idx, o);
@@ -953,36 +1011,41 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 		}
 		return DConstants::INVALID_INDEX;
 	};
-	for (auto &tombstone : pending_entries) {
-		pending.push_back(tombstone.row);
-		idx_t position = DConstants::INVALID_INDEX;
-		idx_t mirror = DConstants::INVALID_INDEX;
-		if (!tombstone.has_keys) {
-			scan_rows.insert(tombstone.row);
-		} else {
+	// The epoch is immutable and every tombstone writes its own slots, so the lookups run in parallel; a handful of
+	// tombstones (the usual commit) stays on the calling thread, where starting threads would cost more than the work
+	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(db.GetDatabase()).NumberOfThreads());
+	auto resolve_threads = pending_count >= PARALLEL_TOMBSTONE_THRESHOLD ? thread_count : 1;
+	for (idx_t i = 0; i < pending_count; i++) {
+		if (!pending_entries[i].has_keys) {
+			scan_rows.emplace(pending_entries[i].row, i);
+		}
+	}
+	ParallelFor(pending_count, resolve_threads, [&](idx_t begin, idx_t end, idx_t) {
+		for (idx_t i = begin; i < end; i++) {
+			auto &tombstone = pending_entries[i];
+			if (!tombstone.has_keys) {
+				continue;
+			}
 			auto src = dictionary.Lookup(tombstone.src_key);
 			auto dst = dictionary.Lookup(tombstone.dst_key);
 			// A vertex the epoch does not know means the row is not an epoch edge: the positions stay INVALID_INDEX
 			if (src != DConstants::INVALID_INDEX && dst != DConstants::INVALID_INDEX) {
-				position = locate(src, dst, tombstone.row);
+				positions[i] = locate(src, dst, tombstone.row);
 				if (undirected && src != dst) {
-					mirror = locate(dst, src, tombstone.row);
+					mirror_positions[i] = locate(dst, src, tombstone.row);
 				}
 			}
 		}
-		positions.emplace(tombstone.row, position);
-		mirror_positions.emplace(tombstone.row, mirror);
-	}
+	});
 	if (!scan_rows.empty()) {
 		// Every position of a scanned row: one for a directed edge, two for an undirected one (both directions carry
 		// the row id)
 		mutex positions_lock;
 		std::unordered_map<row_t, vector<idx_t>> found_positions;
-		auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(db.GetDatabase()).NumberOfThreads());
 		ParallelFor(partition_row_ids.size(), thread_count, [&](idx_t begin, idx_t end, idx_t) {
 			vector<std::pair<row_t, idx_t>> found;
 			for (idx_t partition_idx = begin; partition_idx < end; partition_idx++) {
-				auto &rows = partition_row_ids[partition_idx];
+				auto &rows = *partition_row_ids[partition_idx];
 				for (idx_t offset = 0; offset < rows.size(); offset++) {
 					if (scan_rows.find(rows[offset]) != scan_rows.end()) {
 						found.emplace_back(rows[offset], PackPosition(partition_idx, offset));
@@ -998,9 +1061,10 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 		});
 		for (auto &entry : found_positions) {
 			std::sort(entry.second.begin(), entry.second.end());
-			positions[entry.first] = entry.second[0];
+			auto i = scan_rows[entry.first];
+			positions[i] = entry.second[0];
 			if (entry.second.size() > 1) {
-				mirror_positions[entry.first] = entry.second[1];
+				mirror_positions[i] = entry.second[1];
 			}
 		}
 	}
@@ -1008,54 +1072,58 @@ void CSRIndex::ResolveTombstonePositions(CSRIndexEpoch &epoch, idx_t tombstone_c
 	// offset); the reverse partition of the source's range holds it in the destination's row
 	vector<idx_t> reverse_positions;
 	if (!epoch.csr->reverse_partitions.empty()) {
-		reverse_positions.reserve(pending.size());
-		for (auto row : pending) {
-			auto position = positions[row];
-			if (position == DConstants::INVALID_INDEX) {
-				reverse_positions.push_back(DConstants::INVALID_INDEX);
-				continue;
-			}
-			auto partition_idx = PositionPartition(position);
-			auto offset = PositionOffset(position);
-			auto &forward = *epoch.csr->forward_partitions[partition_idx];
-			// The sparse row that holds `offset`: row_offsets is sorted, row r covers [row_offsets[r], row_offsets[r+1])
-			auto row_it = std::upper_bound(forward.row_offsets.begin(), forward.row_offsets.end(), offset);
-			auto row_idx = NumericCast<idx_t>(row_it - forward.row_offsets.begin()) - 1;
-			auto src = forward.source_vertices[row_idx];
-			auto dst = NumericCast<uint32_t>(forward.start_vertex + forward.e[offset]);
-			auto &reverse_partition = *epoch.csr->reverse_partitions[src / width];
-			auto reverse_row = reverse_partition.FindSparseRow(dst);
-			idx_t reverse_position = DConstants::INVALID_INDEX;
-			if (reverse_row != std::numeric_limits<idx_t>::max()) {
-				auto local_src = NumericCast<uint16_t>(src - (src / width) * width);
-				for (auto o = reverse_partition.row_offsets[reverse_row]; o < reverse_partition.row_offsets[reverse_row + 1]; o++) {
-					if (reverse_partition.e[o] == local_src) {
-						reverse_position = PackPosition(src / width, o);
-						break;
+		reverse_positions.assign(pending_count, DConstants::INVALID_INDEX);
+		ParallelFor(pending_count, resolve_threads, [&](idx_t begin, idx_t end, idx_t) {
+			for (idx_t i = begin; i < end; i++) {
+				auto position = positions[i];
+				if (position == DConstants::INVALID_INDEX) {
+					continue;
+				}
+				auto partition_idx = PositionPartition(position);
+				auto offset = PositionOffset(position);
+				auto &forward = *epoch.csr->forward_partitions[partition_idx];
+				// The sparse row that holds `offset`: row_offsets is sorted, row r covers [row_offsets[r], row_offsets[r+1])
+				auto row_it = std::upper_bound(forward.row_offsets.begin(), forward.row_offsets.end(), offset);
+				auto row_idx = NumericCast<idx_t>(row_it - forward.row_offsets.begin()) - 1;
+				auto src = forward.source_vertices[row_idx];
+				auto dst = NumericCast<uint32_t>(forward.start_vertex + forward.e[offset]);
+				auto &reverse_partition = *epoch.csr->reverse_partitions[src / width];
+				auto reverse_row = reverse_partition.FindSparseRow(dst);
+				if (reverse_row != std::numeric_limits<idx_t>::max()) {
+					auto local_src = NumericCast<uint16_t>(src - (src / width) * width);
+					for (auto o = reverse_partition.row_offsets[reverse_row];
+					     o < reverse_partition.row_offsets[reverse_row + 1]; o++) {
+						if (reverse_partition.e[o] == local_src) {
+							reverse_positions[i] = PackPosition(src / width, o);
+							break;
+						}
 					}
 				}
 			}
-			reverse_positions.push_back(reverse_position);
-		}
+		});
 	}
 	IndexLock l(*this);
-	if (epoch.tombstone_positions.size() != known) {
-		// Another reader resolved them meanwhile, or the log was compacted
+	if (epoch.tombstone_positions.size() != known || log_compactions != compactions) {
+		// Another reader resolved them meanwhile, or the log was compacted. The compaction count is compared as well
+		// as the length: a compaction empties the positions and rewrites the tombstone list, and a reader that
+		// started on an empty list found the length unchanged and stored the old list's positions against the new
+		// one (18 Nov). The caller looks again.
 		return;
 	}
-	for (idx_t i = 0; i < pending.size(); i++) {
-		epoch.tombstone_positions.push_back(positions[pending[i]]);
-		epoch.mirror_tombstone_positions.push_back(mirror_positions[pending[i]]);
-		if (!reverse_positions.empty()) {
-			epoch.reverse_tombstone_positions.push_back(reverse_positions[i]);
-		}
+	epoch.tombstone_positions.insert(epoch.tombstone_positions.end(), positions.begin(), positions.end());
+	epoch.mirror_tombstone_positions.insert(epoch.mirror_tombstone_positions.end(), mirror_positions.begin(),
+	                                        mirror_positions.end());
+	if (!reverse_positions.empty()) {
+		epoch.reverse_tombstone_positions.insert(epoch.reverse_tombstone_positions.end(), reverse_positions.begin(),
+		                                         reverse_positions.end());
 	}
 	AccountPositionsLocked(epoch);
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, DuckTransaction &transaction,
                                                      DataTable &table, shared_ptr<CSRIndexEpoch> epoch_p,
-                                                     idx_t delta_count, idx_t tombstone_count, bool shareable) const {
+                                                     idx_t delta_count, idx_t tombstone_count, bool shareable,
+                                                     CSRIndexReadScope &scope) const {
 	auto &epoch = *epoch_p;
 	auto width = epoch.partition_width;
 	auto epoch_vertex_count = epoch.vertex_count;
@@ -1067,9 +1135,33 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	vector<idx_t> tombstone_positions;
 	vector<idx_t> reverse_tombstone_positions;
 	vector<idx_t> mirror_tombstone_positions;
-	if (tombstone_count > 0) {
-		ResolveTombstonePositions(epoch, tombstone_count);
+	// A shared epoch is one of the index's retained epochs; a private one was built for this transaction alone
+	bool shared_epoch = shareable;
+	// The cache switch is a microbenchmark switch: off, every query packs its own overlay
+	shareable = shareable && GetPathFindingSnapshotCache(context);
+	if (shareable && GetCSRIndexSnapshotFastPath(context)) {
+		IndexLock l(*this);
+		if (cached_snapshot && cached_snapshot_complete && cached_snapshot->epoch == epoch_p &&
+		    cached_snapshot_change_count == change_count &&
+		    VisibilityBound::Min(cached_snapshot_bound, transaction.view.visibility_bound) == cached_snapshot_bound) {
+			snapshot_fast_hits++;
+			return cached_snapshot;
+		}
 	}
+	auto phase_start = std::chrono::steady_clock::now();
+	auto snapshot_start = phase_start;
+	auto phase_us = [&]() {
+		auto now = std::chrono::steady_clock::now();
+		auto us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now - phase_start).count());
+		phase_start = now;
+		return us;
+	};
+	// For the fast path: the log version this snapshot is taken at, and whether it has the whole log of that version
+	uint64_t log_version = 0;
+	bool whole_log = false;
+	// The positions of the deleted epoch rows are resolved outside the index's mutex and the log is copied under it.
+	// A fold can compact the log in between, or retire the epoch altogether; the copy is only taken when the
+	// positions cover the tombstones it copies and the epoch is still one of the retained ones.
 	// What earlier readers learned about the groups' commits (see GroupBounds). Only for a reader whose bound is a
 	// commit timestamp: the bounds order such readers, and the reader has no changes of its own in the log (a
 	// transaction with changes gets a private epoch and an empty log).
@@ -1077,15 +1169,33 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	bool use_memo = GetCSRIndexGroupMemo(context) && !(MAX_COMMIT_ID < reader_bound);
 	vector<GroupBounds> known_bounds;
 	uint32_t known_bounds_base = 0;
-	{
+	uint64_t resolve_us = 0;
+	auto wanted_tombstones = tombstone_count;
+	while (true) {
+		phase_us();
+		if (wanted_tombstones > 0) {
+			ResolveTombstonePositions(epoch, wanted_tombstones);
+		}
+		resolve_us += phase_us();
 		IndexLock l(*this);
+		if (shared_epoch && std::find(epochs.begin(), epochs.end(), epoch_p) == epochs.end()) {
+			// Two folds since the epoch was chosen: the log no longer has what this epoch lacks. The caller chooses
+			// an epoch again.
+			return nullptr;
+		}
+		auto needed_tombstones = std::min<idx_t>(wanted_tombstones, tombstones.size());
+		if (epoch.tombstone_positions.size() < needed_tombstones) {
+			continue;
+		}
 		if (use_memo) {
 			known_bounds = group_bounds;
 			known_bounds_base = group_bounds_base;
 		}
 		delta_count = std::min<idx_t>(delta_count, delta.size());
 		delta_edges.assign(delta.begin(), delta.begin() + NumericCast<int64_t>(delta_count));
-		tombstone_count = std::min<idx_t>(tombstone_count, epoch.tombstone_positions.size());
+		tombstone_count = needed_tombstones;
+		log_version = change_count;
+		whole_log = delta_count == delta.size() && tombstone_count == tombstones.size();
 		for (idx_t i = 0; i < tombstone_count; i++) {
 			tombstone_rows.push_back(tombstones[i].row);
 			tombstone_groups.push_back(tombstones[i].group);
@@ -1102,7 +1212,13 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			                                   epoch.reverse_tombstone_positions.begin() +
 			                                       NumericCast<int64_t>(tombstone_count));
 		}
+		break;
 	}
+
+	auto copy_us = phase_us();
+	// From here to the cache look-up the reader works on its copies and asks the table about row versions; the
+	// entry's lock is not held while it does (CSRIndexReadScope)
+	scope.Release();
 
 	// Pass 1: which change groups' commits does this reader see? One row-version check per group; rows without a
 	// group (loaded from storage) and deleted delta rows are checked individually. Commits are serialized, so the
@@ -1114,6 +1230,10 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	vector<std::pair<uint32_t, bool>> learned_groups;
 	// Microbenchmark switch: decide every logged row by its own row version instead of once per change group
 	bool per_row = !GetCSRIndexChangeGroups(context);
+	// For the fast path: stays true while every change in the log is one this reader sees as committed. A commit it
+	// does not see, or a row whose state it cannot tell apart (below), makes the snapshot one that a later reader
+	// may not share without looking.
+	bool every_change_seen = whole_log && !per_row;
 	auto group_commit_visible = [&](uint32_t group, bool visible_if_fetchable, row_t representative) {
 		auto known = commit_visible.find(group);
 		if (known == commit_visible.end()) {
@@ -1138,6 +1258,8 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			known = commit_visible.emplace(group, visible).first;
 			if (known->second) {
 				newest_visible_group = std::max(newest_visible_group, group);
+			} else {
+				every_change_seen = false;
 			}
 		}
 		return known->second;
@@ -1170,14 +1292,18 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 			// Loaded from storage: committed before the restart, so visible unless deleted
 			if (entry.deleted_group == 0) {
 				delta_visible[i] = table.CanFetch(transaction, entry.row);
+				every_change_seen = every_change_seen && delta_visible[i];
 				continue;
 			}
 			insert_visible = true;
 		} else {
 			auto known = commit_visible.find(entry.group);
 			if (known == commit_visible.end()) {
-				// Every row of the group is deleted: this row's fetchability decides for it
+				// Every row of the group is deleted: this row's fetchability decides for it. Fetchable, the reader
+				// does not see the delete; not fetchable, it sees the delete or does not see the insert. Neither
+				// says that it has seen both commits.
 				delta_visible[i] = table.CanFetch(transaction, entry.row);
+				every_change_seen = false;
 				continue;
 			}
 			insert_visible = known->second;
@@ -1201,8 +1327,27 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		tombstone_applied[i] = (per_row || tombstone_groups[i] == 0)
 		                           ? !table.CanFetch(transaction, tombstone_rows[i])
 		                           : group_commit_visible(tombstone_groups[i], false, tombstone_rows[i]);
+		every_change_seen = every_change_seen && tombstone_applied[i];
 	}
 
+	// Two readers share a snapshot only when they see the same visible groups and made the same per-row decisions (a
+	// fully deleted change group is decided per row, so the newest visible group alone does not identify the view;
+	// 28 Oct audit).
+	auto visibility_us = phase_us();
+	uint64_t visibility_hash = VISIBILITY_HASH_SEED;
+	auto mix = [&](uint64_t value) {
+		visibility_hash = (visibility_hash ^ value) * VISIBILITY_HASH_PRIME;
+	};
+	mix(newest_visible_group);
+	for (idx_t i = 0; i < delta_visible.size(); i++) {
+		mix(delta_visible[i] ? i * 2 + 1 : i * 2);
+	}
+	for (idx_t i = 0; i < tombstone_applied.size(); i++) {
+		mix(tombstone_applied[i] ? i * 2 + 1 : i * 2);
+	}
+	mix(delta_visible.size());
+	mix(tombstone_applied.size());
+	scope.Reacquire();
 	if (!learned_groups.empty()) {
 		// Record what this reader learned for the readers after it. A commit that was still running, or that failed,
 		// when this reader asked is recorded as unseen at this reader's bound, which stays true: its commit
@@ -1230,28 +1375,23 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		}
 		AccountChangeLogLocked();
 	}
-
-	// The cache is a microbenchmark switch: off, every query packs its own overlay. Two readers share a snapshot only
-	// when they see the same visible groups and made the same per-row decisions (a fully deleted change group is
-	// decided per row, so the newest visible group alone does not identify the view; 28 Oct audit).
-	shareable = shareable && GetPathFindingSnapshotCache(context);
-	uint64_t visibility_hash = VISIBILITY_HASH_SEED;
-	auto mix = [&](uint64_t value) {
-		visibility_hash = (visibility_hash ^ value) * VISIBILITY_HASH_PRIME;
-	};
-	mix(newest_visible_group);
-	for (idx_t i = 0; i < delta_visible.size(); i++) {
-		mix(delta_visible[i] ? i * 2 + 1 : i * 2);
-	}
-	for (idx_t i = 0; i < tombstone_applied.size(); i++) {
-		mix(tombstone_applied[i] ? i * 2 + 1 : i * 2);
-	}
-	mix(delta_visible.size());
-	mix(tombstone_applied.size());
+	auto hash_us = phase_us();
 	if (shareable) {
 		IndexLock l(*this);
 		if (cached_snapshot && cached_snapshot->epoch == epoch_p && cached_snapshot_generation == epoch.generation &&
 		    cached_snapshot_group == newest_visible_group && cached_snapshot_visibility == visibility_hash) {
+			snapshot_cache_hits++;
+			if (every_change_seen && !cached_snapshot_complete && log_version == change_count) {
+				// The same snapshot, now found by a reader that has seen every change: later readers may take it
+				// without looking
+				cached_snapshot_complete = true;
+				cached_snapshot_change_count = log_version;
+				cached_snapshot_bound = transaction.view.visibility_bound;
+			}
+			snapshot_hit_copy_us = copy_us;
+			snapshot_hit_visibility_us = visibility_us;
+			snapshot_hit_hash_us = hash_us;
+			snapshot_hit_us = resolve_us + copy_us + visibility_us + hash_us;
 			return cached_snapshot;
 		}
 	}
@@ -1347,6 +1487,7 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 	}
 	snapshot->vertex_count = epoch_vertex_count + snapshot->extra_keys.size();
 	snapshot->edge_count += visible_edges.size();
+	auto overlay_us = phase_us();
 
 	// Every destination range up to the snapshot's vertex count must have a partition, because the kernel clears and
 	// checks the frontier per partition range. Ranges beyond the epoch get empty cover partitions; the part of the
@@ -1506,17 +1647,32 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::BuildSnapshot(ClientContext &context, Duc
 		add_overlay(snapshot->reverse_delta_partitions, snapshot->reverse_suppressed);
 	}
 	snapshot->overlay_memory.Set(IndexBufferManager(context), overlay_bytes);
+	snapshot_count++;
+	snapshot_last_resolve_us = resolve_us;
+	snapshot_last_visibility_us = visibility_us;
+	snapshot_last_copy_us = copy_us;
+	snapshot_last_hash_us = hash_us;
+	snapshot_last_overlay_us = overlay_us;
+	snapshot_last_pack_us = phase_us();
+	snapshot_last_us = static_cast<uint64_t>(
+	    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - snapshot_start).count());
+	snapshot_us_since_fold += snapshot_last_us.load();
+	snapshot_last_delta = delta_edges.size();
+	snapshot_last_tombstones = tombstone_rows.size();
 	if (shareable) {
 		IndexLock l(*this);
 		cached_snapshot = snapshot;
 		cached_snapshot_generation = epoch.generation;
 		cached_snapshot_group = newest_visible_group;
 		cached_snapshot_visibility = visibility_hash;
+		cached_snapshot_complete = every_change_seen;
+		cached_snapshot_change_count = log_version;
+		cached_snapshot_bound = transaction.view.visibility_bound;
 	}
 	return snapshot;
 }
 
-bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio) const {
+bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio, uint64_t cost_guess_ns_per_edge) const {
 	IndexLock l(*this);
 	EnsureLoadedLocked(l);
 	if (epochs.empty()) {
@@ -1537,7 +1693,20 @@ bool CSRIndex::FoldDue(DuckTransaction &transaction, double ratio) const {
 	// raw log also keeps the entries the retained older epoch still needs, so a trigger on its size stayed over the
 	// ratio until a second fold dropped that epoch (two folds per crossing, 2 Nov).
 	auto pending = PendingLogLocked();
-	if (static_cast<double>(pending) <= ratio * static_cast<double>(std::max<idx_t>(1, epochs.back()->edge_count))) {
+	bool over_ratio =
+	    static_cast<double>(pending) > ratio * static_cast<double>(std::max<idx_t>(1, epochs.back()->edge_count));
+	// The cost rule: every snapshot a reader builds costs it time that a fold would have saved the readers after
+	// it. Folding when that time adds up to a fold's own never spends more than twice the best possible schedule
+	// (rent or buy), and needs no fraction that fits one graph size and one commit size.
+	bool over_cost = false;
+	if (cost_guess_ns_per_edge > 0 && pending > 0) {
+		uint64_t fold_us = fold_cost_us.load();
+		if (fold_us == 0) {
+			fold_us = epochs.back()->edge_count * cost_guess_ns_per_edge / 1000;
+		}
+		over_cost = snapshot_us_since_fold.load() >= fold_us;
+	}
+	if (!over_ratio && !over_cost) {
 		return false;
 	}
 	// After an automatic fold that did not fit memory_limit, the next one waits for the log to double
@@ -1550,7 +1719,8 @@ void CSRIndex::PostponeAutomaticFold() const {
 }
 
 void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
-                                  uint64_t fold_us, uint64_t scan_us) const {
+                                  uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt,
+                                  uint64_t snapshot_us, CSRIndexReadScope &scope) const {
 	{
 		// The ordering check again: the rebuild ran outside the index lock
 		IndexLock l(*this);
@@ -1560,15 +1730,282 @@ void CSRIndex::InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table
 			return;
 		}
 	}
-	InstallEpochAndCompact(transaction, table, std::move(epoch));
+	fold_last_partitions = epoch->csr->forward_partitions.size();
+	fold_last_rebuilt = rebuilt;
+	fold_last_snapshot_us = snapshot_us;
+	InstallEpochAndCompact(transaction, table, std::move(epoch), scope);
 	{
 		IndexLock l(*this);
 		fold_retry_pending = 0;
 	}
 	fold_count++;
+	if (merged) {
+		fold_merge_count++;
+	}
 	fold_total_us += fold_us;
 	fold_last_us = fold_us;
 	fold_last_scan_us = scan_us;
+	fold_cost_us = fold_us;
+	snapshot_us_since_fold = 0;
+}
+
+shared_ptr<CSRIndexSnapshot> CSRIndex::FoldSnapshot(ClientContext &context, DuckTransaction &transaction,
+                                                    DataTable &table, CSRIndexReadScope &scope) const {
+	auto state = LogStateFor(transaction.view.visibility_bound);
+	if (!state.epoch) {
+		return nullptr;
+	}
+	{
+		IndexLock l(*this);
+		if (epochs.empty() || epochs.back() != state.epoch) {
+			return nullptr;
+		}
+	}
+	return BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count, true,
+	                     scope);
+}
+
+shared_ptr<CSRIndexEpoch> CSRIndex::MergeEpoch(ClientContext &context, const CSRIndexSnapshot &snapshot,
+                                               VisibilityBound bound, idx_t &rebuilt) {
+	auto &old_epoch = *snapshot.epoch;
+	auto &buffer_manager = IndexBufferManager(context);
+	auto width = old_epoch.partition_width;
+	auto vertex_count = snapshot.vertex_count;
+	auto rows_per_bucket = GetPathFindingRowBucketRows(context);
+	auto thread_count = std::max<idx_t>(1, TaskScheduler::GetScheduler(context).NumberOfThreads());
+
+	auto epoch = make_shared_ptr<CSRIndexEpoch>();
+	epoch->bound = bound;
+	epoch->vertex_count = vertex_count;
+	epoch->partition_width = width;
+	// The snapshot numbered its new vertices above the epoch, id = epoch vertex count + position; the dictionary
+	// keeps exactly those ids, so every id in the old partitions and in the overlay stays valid. The key-ordered
+	// arrays are buffers of the old dictionary and are shared, not copied.
+	if (snapshot.extra_keys.empty()) {
+		epoch->dictionary = old_epoch.dictionary;
+	} else {
+		auto &old_dictionary = *old_epoch.dictionary;
+		auto dictionary = make_shared_ptr<CSRIndexDictionary>();
+		dictionary->ordered_part = old_dictionary.ordered_part ? old_dictionary.ordered_part : old_epoch.dictionary;
+		dictionary->dense = old_dictionary.dense;
+		dictionary->identity = old_dictionary.identity;
+		dictionary->min_key = old_dictionary.min_key;
+		dictionary->count = old_dictionary.count;
+		dictionary->extra_keys = old_dictionary.extra_keys;
+		dictionary->extra_ids = old_dictionary.extra_ids;
+		for (auto key : snapshot.extra_keys) {
+			dictionary->extra_ids.emplace(key, NumericCast<uint32_t>(dictionary->Size()));
+			dictionary->extra_keys.push_back(key);
+		}
+		epoch->dictionary = std::move(dictionary);
+	}
+	if (epoch->dictionary->Size() != vertex_count) {
+		throw InternalException("CSR index merge fold: %llu keys for %llu vertices", epoch->dictionary->Size(),
+		                        vertex_count);
+	}
+
+	// The snapshot lists the epoch's partitions first, one per destination range, and behind them the covers of the
+	// ranges above the epoch; a cover that starts on a range boundary is that range's entry (the cover of the tail
+	// of the epoch's last range starts inside the range). The reverse side has the same ranges and the same list.
+	auto old_ranges = old_epoch.csr->forward_partitions.size();
+	auto partition_count = std::max<idx_t>(1, (vertex_count + 2 + width - 1) / width);
+	vector<idx_t> range_to_list(partition_count, DConstants::INVALID_INDEX);
+	for (idx_t range = 0; range < old_ranges && range < partition_count; range++) {
+		range_to_list[range] = range;
+	}
+	for (idx_t list_idx = old_ranges; list_idx < snapshot.partitions.size(); list_idx++) {
+		auto start_vertex = snapshot.partitions[list_idx]->start_vertex;
+		if (start_vertex % width == 0 && start_vertex / width < partition_count) {
+			range_to_list[start_vertex / width] = list_idx;
+		}
+	}
+
+	struct MergeEdge {
+		uint32_t src;
+		uint16_t local_dst;
+		row_t row;
+	};
+	bool stored_reverse = !old_epoch.csr->reverse_partitions.empty();
+	auto csr = make_shared_ptr<PartitionedCSRIndex>();
+	csr->vertex_count = vertex_count + 2;
+	csr->capabilities = PartitionedCSRCapabilities::FORWARD;
+	epoch->partition_row_ids.resize(partition_count);
+	// One side of the index: the forward partitions with their row ids, or the reverse partitions without. A
+	// partition of the old epoch that the overlay neither adds to nor suppresses in is shared; every other range is
+	// merged by source from the old partition's unsuppressed rows and the overlay's rows.
+	auto merge_side = [&](const std::vector<shared_ptr<LocalCSR>> &old_partitions,
+	                      const std::vector<shared_ptr<LocalCSR>> &companions,
+	                      const std::vector<shared_ptr<vector<uint64_t>>> &suppressed_bitmaps,
+	                      std::vector<shared_ptr<LocalCSR>> &result, bool with_rows, idx_t &edge_total,
+	                      idx_t &rebuilt_total) {
+		result.resize(partition_count);
+		std::atomic<idx_t> edge_count {0};
+		std::atomic<idx_t> rebuilt_count {0};
+		ParallelFor(partition_count, thread_count, [&](idx_t begin, idx_t end, idx_t) {
+			vector<MergeEdge> edges;
+			for (idx_t range = begin; range < end; range++) {
+				auto list_idx = range_to_list[range];
+				auto start_vertex = range * width;
+				auto end_vertex = std::min<idx_t>(start_vertex + width, vertex_count + 2);
+				const LocalCSR *old_partition = range < old_partitions.size() ? old_partitions[range].get() : nullptr;
+				const LocalCSR *companion = nullptr;
+				const vector<uint64_t> *suppressed = nullptr;
+				if (list_idx != DConstants::INVALID_INDEX) {
+					if (list_idx < companions.size()) {
+						companion = companions[list_idx].get();
+					}
+					if (list_idx < suppressed_bitmaps.size()) {
+						suppressed = suppressed_bitmaps[list_idx].get();
+					}
+				}
+				if (old_partition && !companion && !suppressed && old_partition->end_vertex == end_vertex) {
+					// Nothing the folding transaction sees changed this range: the new epoch shares the partition
+					result[range] = old_partitions[range];
+					if (with_rows) {
+						epoch->partition_row_ids[range] = old_epoch.partition_row_ids[range];
+					}
+					edge_count.fetch_add(old_partition->e.size(), std::memory_order_relaxed);
+					continue;
+				}
+				// Merge by source. Where both have a row for a source, the two runs are merged by destination offset.
+				edges.clear();
+				edges.reserve((old_partition ? old_partition->e.size() : 0) + (companion ? companion->e.size() : 0));
+				idx_t old_rows = old_partition ? old_partition->source_vertices.size() : 0;
+				idx_t new_rows = companion ? companion->source_vertices.size() : 0;
+				idx_t old_row = 0;
+				idx_t new_row = 0;
+				auto append_old = [&](idx_t row) {
+					for (idx_t o = old_partition->row_offsets[row]; o < old_partition->row_offsets[row + 1]; o++) {
+						if (suppressed && (((*suppressed)[o >> 6] >> (o & 63)) & 1)) {
+							continue;
+						}
+						edges.push_back({old_partition->source_vertices[row], old_partition->e[o],
+						                 with_rows ? old_partition->row_ids[o] : 0});
+					}
+				};
+				auto append_new = [&](idx_t row) {
+					for (idx_t o = companion->row_offsets[row]; o < companion->row_offsets[row + 1]; o++) {
+						edges.push_back(
+						    {companion->source_vertices[row], companion->e[o], with_rows ? companion->row_ids[o] : 0});
+					}
+				};
+				while (old_row < old_rows || new_row < new_rows) {
+					if (new_row == new_rows || (old_row < old_rows && old_partition->source_vertices[old_row] <
+					                                                      companion->source_vertices[new_row])) {
+						append_old(old_row++);
+					} else if (old_row == old_rows ||
+					           companion->source_vertices[new_row] < old_partition->source_vertices[old_row]) {
+						append_new(new_row++);
+					} else {
+						auto first = edges.size();
+						append_old(old_row++);
+						auto middle = edges.size();
+						append_new(new_row++);
+						std::inplace_merge(
+						    edges.begin() + NumericCast<int64_t>(first), edges.begin() + NumericCast<int64_t>(middle),
+						    edges.end(),
+						    [](const MergeEdge &a, const MergeEdge &b) { return a.local_dst < b.local_dst; });
+					}
+				}
+				if (with_rows) {
+					auto row_ids = make_shared_ptr<ManagedArray<row_t>>(&buffer_manager);
+					row_ids->resize(edges.size());
+					auto rows = row_ids->data();
+					result[range] = CSREmitSparsePartition(
+					    start_vertex, end_vertex, vertex_count, edges,
+					    [&](idx_t position, const MergeEdge &edge) { rows[position] = edge.row; }, rows_per_bucket,
+					    &buffer_manager);
+					result[range]->row_ids = rows;
+					epoch->partition_row_ids[range] = std::move(row_ids);
+				} else {
+					result[range] = CSREmitSparsePartition(
+					    start_vertex, end_vertex, vertex_count, edges, [](idx_t, const MergeEdge &) {}, rows_per_bucket,
+					    &buffer_manager);
+				}
+				edge_count.fetch_add(edges.size(), std::memory_order_relaxed);
+				rebuilt_count.fetch_add(1, std::memory_order_relaxed);
+			}
+		});
+		edge_total = edge_count.load();
+		rebuilt_total = rebuilt_count.load();
+	};
+	idx_t forward_edges = 0;
+	merge_side(old_epoch.csr->forward_partitions, snapshot.delta_partitions, snapshot.suppressed,
+	           csr->forward_partitions, true, forward_edges, rebuilt);
+	if (stored_reverse) {
+		idx_t reverse_edges = 0;
+		idx_t reverse_rebuilt = 0;
+		csr->capabilities |= PartitionedCSRCapabilities::REVERSE;
+		merge_side(old_epoch.csr->reverse_partitions, snapshot.reverse_delta_partitions, snapshot.reverse_suppressed,
+		           csr->reverse_partitions, false, reverse_edges, reverse_rebuilt);
+		if (reverse_edges != forward_edges) {
+			throw InternalException("CSR index merge fold: %llu forward and %llu reverse edges", forward_edges,
+			                        reverse_edges);
+		}
+	}
+	csr->edge_count = forward_edges;
+	epoch->edge_count = csr->edge_count;
+	epoch->csr = std::move(csr);
+	return epoch;
+}
+
+void CSRIndex::VerifyMergedEpoch(const CSRIndexEpoch &merged, const CSRIndexEpoch &scanned) {
+	struct KeyedEdge {
+		int64_t src;
+		int64_t dst;
+		row_t row;
+		bool operator<(const KeyedEdge &other) const {
+			return std::tie(src, dst, row) < std::tie(other.src, other.dst, other.row);
+		}
+		bool operator==(const KeyedEdge &other) const {
+			return src == other.src && dst == other.dst && row == other.row;
+		}
+	};
+	// The edges of one side by key: (row's vertex, offset's vertex, row id), the row id 0 on the reverse side
+	auto edges_of = [](const CSRIndexEpoch &epoch, bool forward) {
+		auto &partitions = forward ? epoch.csr->forward_partitions : epoch.csr->reverse_partitions;
+		vector<KeyedEdge> edges;
+		edges.reserve(epoch.edge_count);
+		for (idx_t partition_idx = 0; partition_idx < partitions.size(); partition_idx++) {
+			auto &partition = *partitions[partition_idx];
+			if (partition.start_vertex != partition_idx * epoch.partition_width) {
+				throw InternalException("CSR index merge fold: partition %llu starts at vertex %llu", partition_idx,
+				                        partition.start_vertex);
+			}
+			for (idx_t row = 0; row < partition.source_vertices.size(); row++) {
+				auto src = epoch.dictionary->KeyOf(partition.source_vertices[row]);
+				for (idx_t o = partition.row_offsets[row]; o < partition.row_offsets[row + 1]; o++) {
+					edges.push_back({src, epoch.dictionary->KeyOf(partition.start_vertex + partition.e[o]),
+					                 forward ? (*epoch.partition_row_ids[partition_idx])[o] : 0});
+				}
+			}
+		}
+		std::sort(edges.begin(), edges.end());
+		return edges;
+	};
+	if (merged.csr->reverse_partitions.empty() != scanned.csr->reverse_partitions.empty()) {
+		throw InternalException("CSR index merge fold: only one of the epochs has a reverse side");
+	}
+	for (auto forward : {true, false}) {
+		if (!forward && merged.csr->reverse_partitions.empty()) {
+			break;
+		}
+		auto side = forward ? "forward" : "reverse";
+		auto merged_edges = edges_of(merged, forward);
+		auto scanned_edges = edges_of(scanned, forward);
+		if (merged_edges.size() != scanned_edges.size() || merged.edge_count != scanned.edge_count) {
+			throw InternalException("CSR index merge fold: %llu %s edges merged, %llu scanned from the table",
+			                        merged_edges.size(), side, scanned_edges.size());
+		}
+		for (idx_t i = 0; i < merged_edges.size(); i++) {
+			if (!(merged_edges[i] == scanned_edges[i])) {
+				throw InternalException("CSR index merge fold: %s edge %llu is (%lld, %lld, row %lld) merged and "
+				                        "(%lld, %lld, row %lld) scanned from the table",
+				                        side, i, merged_edges[i].src, merged_edges[i].dst, merged_edges[i].row,
+				                        scanned_edges[i].src, scanned_edges[i].dst, scanned_edges[i].row);
+			}
+		}
+	}
 }
 
 bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &entry, DuckTableEntry &table,
@@ -1586,6 +2023,10 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 	// released, so a fold under the handle stalled the writer and every other reader for its whole duration (2 Nov).
 	// The fold mutex is shared so that it outlives a dropped index; the index object itself is only touched under
 	// a handle, and the install is skipped when the entry was rebound meanwhile.
+	// The cost rule's guess of a fold's time before the first fold has been timed: a merge copies the epoch (a few
+	// ns per edge), a scan reads the table, looks every key up and sorts (a few tens)
+	bool merge_setting = GetCSRIndexMergeFold(context);
+	uint64_t cost_guess = (ratio > 0 && GetCSRIndexFoldByCost(context)) ? (merge_setting ? 3 : 25) : 0;
 	shared_ptr<mutex> fold_mutex;
 	unique_lock<mutex> fold_guard;
 	vector<column_t> columns;
@@ -1595,33 +2036,81 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 	{
 		auto handle = entry->GetReadHandle<CSRIndex>();
 		auto &index = *handle.operator->();
-		if (!index.FoldDue(transaction, ratio)) {
+		if (!index.FoldDue(transaction, ratio, cost_guess)) {
 			return false;
 		}
 		fold_mutex = index.fold_lock;
 		fold_guard = unique_lock<mutex>(*fold_mutex, std::defer_lock);
+		identity = &index;
 		if (ratio > 0) {
 			// An automatic fold that finds another fold running does not wait: this reader's epoch and log are
 			// valid as they are, and the running fold installs the newer epoch
 			if (!fold_guard.try_lock()) {
 				return false;
 			}
-		} else {
-			fold_guard.lock();
 		}
-		if (!index.FoldDue(transaction, ratio)) {
+	}
+	if (ratio <= 0) {
+		// An explicit fold waits for a running fold. It waits without the entry's lock: a fold takes that lock
+		// again while it holds the fold mutex, behind any commit that is waiting for it
+		fold_guard.lock();
+	}
+	{
+		auto handle = entry->GetReadHandle<CSRIndex>();
+		auto &index = *handle.operator->();
+		if (&index != identity) {
+			return false;
+		}
+		if (!index.FoldDue(transaction, ratio, cost_guess)) {
 			return false; // the fold that just finished did the work
 		}
 		columns = index.column_ids;
 		undirected = index.undirected;
 		reverse = index.reverse;
-		identity = &index;
 	}
 	auto fold_start = std::chrono::steady_clock::now();
 	uint64_t scan_us = 0;
 	shared_ptr<CSRIndexEpoch> epoch;
+	bool merged = false;
+	idx_t rebuilt = 0;
+	uint64_t snapshot_us = 0;
 	try {
-		epoch = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse, &scan_us);
+		if (GetCSRIndexMergeFold(context)) {
+			// Merge fold: the snapshot is taken under the read handle, as a query takes its own; the merge runs without
+			// it, on the snapshot's shared partitions
+			shared_ptr<CSRIndexSnapshot> snapshot;
+			{
+				CSRIndexReadScope scope(entry);
+				if (&scope.Index() != identity) {
+					return false;
+				}
+				snapshot = scope.Index().FoldSnapshot(context, transaction, storage, scope);
+			}
+			snapshot_us = static_cast<uint64_t>(
+			    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fold_start)
+			        .count());
+			// A merge keeps the vertex ids. Vertices that arrived since the last scan are numbered above the key-ordered
+			// ones, out of key order; once they are more than the configured fraction, the fold scans the table, which
+			// numbers every vertex in key order again.
+			bool renumber = false;
+			if (snapshot) {
+				auto &dictionary = *snapshot->epoch->dictionary;
+				auto out_of_order = dictionary.extra_keys.size() + snapshot->extra_keys.size();
+				auto renumber_ratio = GetCSRIndexRenumberRatio(context);
+				renumber = renumber_ratio > 0 && static_cast<double>(out_of_order) >
+				                                     renumber_ratio * static_cast<double>(std::max<idx_t>(1, dictionary.count));
+			}
+			if (snapshot && !renumber) {
+				epoch = MergeEpoch(context, *snapshot, transaction.view.visibility_bound, rebuilt);
+				merged = true;
+			} else if (renumber) {
+				identity->fold_renumber_count++;
+			}
+		}
+		if (!epoch) {
+			epoch = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse, &scan_us);
+			rebuilt = epoch->csr->forward_partitions.size();
+		}
 	} catch (const OutOfMemoryException &) {
 		// The new epoch does not fit memory_limit next to the retained one (the buffer manager evicted what it
 		// could). The explicit fold reports that. An automatic fold is skipped: this reader traverses the current
@@ -1639,41 +2128,76 @@ bool CSRIndex::RunFold(ClientContext &context, const shared_ptr<IndexEntry> &ent
 	}
 	auto fold_us = static_cast<uint64_t>(
 	    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - fold_start).count());
-	auto handle = entry->GetReadHandle<CSRIndex>();
-	auto &index = *handle.operator->();
-	if (&index != identity) {
+	if (merged && GetCSRIndexMergeFoldVerify(context)) {
+		auto scanned = BuildEpochFromTable(context, transaction, storage, columns, undirected, reverse);
+		VerifyMergedEpoch(*epoch, *scanned);
+	}
+	CSRIndexReadScope scope(entry);
+	if (&scope.Index() != identity) {
 		return false; // rebound while the table was scanned: the epoch belongs to an index that no longer exists
 	}
-	index.InstallFoldedEpoch(transaction, storage, std::move(epoch), fold_us, scan_us);
+	scope.Index().InstallFoldedEpoch(transaction, storage, std::move(epoch), fold_us, scan_us, merged, rebuilt,
+	                                 merged ? snapshot_us : 0, scope);
 	return true;
 }
 
 string CSRIndex::FoldStats() const {
-	return StringUtil::Format("folds=%llu;last_fold_ms=%.1f;last_fold_scan_ms=%.1f;fold_ms=%.1f", fold_count.load(),
-	                          static_cast<double>(fold_last_us.load()) / 1000.0,
+	return StringUtil::Format("folds=%llu;last_fold_ms=%.1f;last_fold_scan_ms=%.1f;fold_ms=%.1f;merge_folds=%llu;"
+	                          "last_fold_rebuilt=%llu;last_fold_partitions=%llu;last_fold_snapshot_ms=%.1f;"
+	                          "renumber_folds=%llu",
+	                          fold_count.load(), static_cast<double>(fold_last_us.load()) / 1000.0,
 	                          static_cast<double>(fold_last_scan_us.load()) / 1000.0,
-	                          static_cast<double>(fold_total_us.load()) / 1000.0);
+	                          static_cast<double>(fold_total_us.load()) / 1000.0, fold_merge_count.load(),
+	                          fold_last_rebuilt.load(), fold_last_partitions.load(),
+	                          static_cast<double>(fold_last_snapshot_us.load()) / 1000.0, fold_renumber_count.load());
+}
+
+string CSRIndex::SnapshotStats() const {
+	auto ms = [](const std::atomic<uint64_t> &us) { return static_cast<double>(us.load()) / 1000.0; };
+	return StringUtil::Format("snapshots=%llu;cache_hits=%llu;last_snapshot_ms=%.1f;resolve_ms=%.1f;copy_ms=%.1f;"
+	                          "visibility_ms=%.1f;hash_ms=%.1f;overlay_ms=%.1f;pack_ms=%.1f;delta=%llu;tombstones=%llu;"
+	                          "hit_ms=%.1f;hit_copy_ms=%.1f;hit_visibility_ms=%.1f;hit_hash_ms=%.1f;fast_hits=%llu",
+	                          snapshot_count.load(), snapshot_cache_hits.load(), ms(snapshot_last_us),
+	                          ms(snapshot_last_resolve_us), ms(snapshot_last_copy_us), ms(snapshot_last_visibility_us),
+	                          ms(snapshot_last_hash_us), ms(snapshot_last_overlay_us), ms(snapshot_last_pack_us),
+	                          snapshot_last_delta.load(), snapshot_last_tombstones.load(), ms(snapshot_hit_us),
+	                          ms(snapshot_hit_copy_us), ms(snapshot_hit_visibility_us), ms(snapshot_hit_hash_us),
+	                          snapshot_fast_hits.load());
 }
 
 shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTransaction &transaction,
-                                                DataTable &table) const {
+                                                DataTable &table, CSRIndexReadScope &scope) const {
+	// A scan of the table for an epoch: without the entry's lock (CSRIndexReadScope)
+	auto scan_epoch = [&]() {
+		auto columns = column_ids;
+		auto scan_undirected = undirected;
+		auto scan_reverse = reverse;
+		scope.Release();
+		auto epoch = BuildEpochFromTable(context, transaction, table, columns, scan_undirected, scan_reverse);
+		scope.Reacquire();
+		return epoch;
+	};
 	if (transaction.ChangesMade()) {
 		// The reader's own uncommitted writes are visible to it alone: build a private epoch from its view of the
 		// table (which includes them) and leave the shared epochs, which must only contain committed rows, untouched
-		return BuildSnapshot(context, transaction, table, RebuildFromTable(context, transaction, table), 0, 0, false);
+		return BuildSnapshot(context, transaction, table, scan_epoch(), 0, 0, false, scope);
 	}
 	auto bound = transaction.view.visibility_bound;
 	auto state = LogStateFor(bound);
 	if (!state.have_epochs) {
 		// No epoch yet (index created before a restart, or never read): build one at this reader's snapshot
-		lock_guard<mutex> fold_guard(*fold_lock);
+		// Wait for the fold mutex without the entry's lock (see RunFold)
+		auto fold_mutex = fold_lock;
+		scope.Release();
+		lock_guard<mutex> fold_guard(*fold_mutex);
+		scope.Reacquire();
 		bool still_empty;
 		{
 			IndexLock l(*this);
 			still_empty = epochs.empty();
 		}
 		if (still_empty) {
-			InstallEpochAndCompact(transaction, table, RebuildFromTable(context, transaction, table));
+			InstallEpochAndCompact(transaction, table, scan_epoch(), scope);
 		}
 		state = LogStateFor(bound);
 	}
@@ -1681,9 +2205,20 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Snapshot(ClientContext &context, DuckTran
 	if (!state.epoch) {
 		// Every retained epoch is newer than this reader's snapshot (two folds since it started): the reader builds a
 		// private epoch from its own view of the table, as a transaction with uncommitted changes does
-		return BuildSnapshot(context, transaction, table, RebuildFromTable(context, transaction, table), 0, 0, false);
+		return BuildSnapshot(context, transaction, table, scan_epoch(), 0, 0, false, scope);
 	}
-	return BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count, true);
+	auto snapshot =
+	    BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count, true, scope);
+	while (!snapshot) {
+		// The epoch was retired between its choice and the copy of the log: choose again
+		state = LogStateFor(bound);
+		if (!state.epoch) {
+			return BuildSnapshot(context, transaction, table, scan_epoch(), 0, 0, false, scope);
+		}
+		snapshot = BuildSnapshot(context, transaction, table, state.epoch, state.delta_count, state.tombstone_count,
+		                         true, scope);
+	}
+	return snapshot;
 }
 
 CSRIndex::LogState CSRIndex::LogStateFor(VisibilityBound bound) const {
@@ -1823,9 +2358,9 @@ shared_ptr<CSRIndexSnapshot> CSRIndex::Resolve(ClientContext &context, const str
 	if (ratio > 0) {
 		RunFold(context, index_entry, *table, ratio);
 	}
-	auto handle = index_entry->GetReadHandle<CSRIndex>();
+	CSRIndexReadScope scope(index_entry);
 	auto &transaction = DuckTransaction::Get(context, table->catalog);
-	return handle->Snapshot(context, transaction, table->GetStorage());
+	return scope.Index().Snapshot(context, transaction, table->GetStorage(), scope);
 }
 
 static constexpr const char *CSR_INDEX_KEY_PREFIX = "csr-index|";
@@ -2043,22 +2578,35 @@ idx_t CSRIndex::GetInMemorySize(IndexLock &l) const {
 	// What is in use, by element counts. The buffer pool accounts for what is allocated: the same arrays for an epoch
 	// (each rounded up to 4 KiB by the buffer manager), the capacity of the change log's vectors
 	idx_t bytes = delta.size() * sizeof(CSRIndexDeltaEdge) + tombstones.size() * sizeof(CSRIndexTombstone);
+	// A merge fold shares the unchanged partitions, their row ids and the dictionary between the retained epochs
+	std::unordered_set<const void *> counted;
 	bytes += HashMapBytes(delta_row_index);
 	for (auto &epoch : epochs) {
 		bytes += (epoch->tombstone_positions.size() + epoch->reverse_tombstone_positions.size() +
 		          epoch->mirror_tombstone_positions.size()) *
 		         sizeof(idx_t);
-		bytes += epoch->dictionary->bitmap.size() * sizeof(uint64_t) +
-		         epoch->dictionary->word_rank.size() * sizeof(uint32_t) +
-		         epoch->dictionary->sorted_keys.size() * sizeof(int64_t);
+		auto &ordered = epoch->dictionary->Ordered();
+		if (counted.insert(&ordered).second) {
+			bytes += ordered.bitmap.size() * sizeof(uint64_t) + ordered.word_rank.size() * sizeof(uint32_t) +
+			         ordered.sorted_keys.size() * sizeof(int64_t);
+		}
+		if (counted.insert(epoch->dictionary.get()).second) {
+			bytes += epoch->dictionary->extra_keys.size() * (2 * sizeof(int64_t) + sizeof(uint32_t));
+		}
 		for (auto &partition : epoch->csr->forward_partitions) {
-			bytes += PartitionBytes(*partition);
+			if (counted.insert(partition.get()).second) {
+				bytes += PartitionBytes(*partition);
+			}
 		}
 		for (auto &partition : epoch->csr->reverse_partitions) {
-			bytes += PartitionBytes(*partition);
+			if (counted.insert(partition.get()).second) {
+				bytes += PartitionBytes(*partition);
+			}
 		}
 		for (auto &row_ids : epoch->partition_row_ids) {
-			bytes += row_ids.size() * sizeof(row_t);
+			if (counted.insert(row_ids.get()).second) {
+				bytes += row_ids->size() * sizeof(row_t);
+			}
 		}
 	}
 	return bytes;
@@ -2257,14 +2805,16 @@ vector<uint8_t> CSRIndex::SerializeState() const {
 	writer.Write<uint8_t>(dictionary.identity ? 1 : 0);
 	writer.Write<int64_t>(dictionary.min_key);
 	writer.Write<uint64_t>(dictionary.count);
-	writer.WriteVector<uint64_t>(dictionary.bitmap);
-	writer.WriteVector<uint32_t>(dictionary.word_rank);
-	writer.WriteVector<int64_t>(dictionary.sorted_keys);
+	writer.WriteVector<uint64_t>(dictionary.Ordered().bitmap);
+	writer.WriteVector<uint32_t>(dictionary.Ordered().word_rank);
+	writer.WriteVector<int64_t>(dictionary.Ordered().sorted_keys);
+	// Version 3: the keys a merge fold carried above the key-ordered ones, id = count + position
+	writer.WriteVector<int64_t>(dictionary.extra_keys);
 
 	auto &partitions = epoch.csr->forward_partitions;
 	writer.Write<uint64_t>(partitions.size());
 	for (idx_t partition_idx = 0; partition_idx < partitions.size(); partition_idx++) {
-		WritePartition(writer, *partitions[partition_idx], &epoch.partition_row_ids[partition_idx]);
+		WritePartition(writer, *partitions[partition_idx], epoch.partition_row_ids[partition_idx].get());
 	}
 	// Version 2: the reverse side (edges by source range, no row ids), present when the index stores one
 	auto &reverse_partitions = epoch.csr->reverse_partitions;
@@ -2524,6 +3074,10 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 	reader.ReadVector<uint64_t>(dictionary->bitmap);
 	reader.ReadVector<uint32_t>(dictionary->word_rank);
 	reader.ReadVector<int64_t>(dictionary->sorted_keys);
+	reader.ReadVector<int64_t>(dictionary->extra_keys);
+	for (idx_t i = 0; i < dictionary->extra_keys.size(); i++) {
+		dictionary->extra_ids.emplace(dictionary->extra_keys[i], NumericCast<uint32_t>(dictionary->count + i));
+	}
 	epoch->dictionary = std::move(dictionary);
 
 	auto csr = make_shared_ptr<PartitionedCSRIndex>();
@@ -2538,8 +3092,13 @@ void CSRIndex::LoadFromStorageLocked(IndexLock &l, const IndexStorageInfo &info)
 	        .TryGetCurrentSetting(Identifier("experimental_path_finding_operator_row_bucket_rows"), row_bucket_setting)) {
 		rows_per_bucket = row_bucket_setting.GetValue<int32_t>();
 	}
+	vector<ManagedArray<row_t>> loaded_row_ids;
 	ReadPartitions(reader, partition_count, epoch->vertex_count, thread_count, csr->forward_partitions,
-	               &epoch->partition_row_ids, rows_per_bucket, epoch_buffers);
+	               &loaded_row_ids, rows_per_bucket, epoch_buffers);
+	// Moving an array keeps its buffer, which the partitions point at
+	for (auto &row_ids : loaded_row_ids) {
+		epoch->partition_row_ids.push_back(make_shared_ptr<ManagedArray<row_t>>(std::move(row_ids)));
+	}
 	// The reverse side (edges by source range, no row ids), present when the index stored one
 	bool stored_reverse = reader.Read<uint8_t>() != 0;
 	if (stored_reverse) {

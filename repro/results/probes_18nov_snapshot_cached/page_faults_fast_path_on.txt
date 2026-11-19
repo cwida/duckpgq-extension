@@ -1,0 +1,10 @@
+# started on Wed Nov 18 12:41:57 2026
+
+
+ Performance counter stats for process id '2614977':
+
+             42202      page-faults:u                    #   33.680 K/sec                  
+           1253.04 msec task-clock:u                     #    1.944 CPUs utilized          
+
+       0.644495068 seconds time elapsed
+

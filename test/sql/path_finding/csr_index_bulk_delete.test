@@ -1,0 +1,135 @@
+# name: test/sql/path_finding/csr_index_bulk_delete.test
+# description: One statement deletes thousands of epoch rows, so the next snapshot resolves their positions on all threads (CSRIndex::PARALLEL_TOMBSTONE_THRESHOLD); an index with a reverse side, an undirected index and a directed one answer like a CSR built from the table after the delete
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# The deletes must stay in the log as tombstones
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(0, 60000);
+
+# 300000 edges, five per source to five different destinations
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+statement ok
+INSERT INTO knows SELECT range % 60000, (range * 7919 + 13 + (range // 60000) * 104729) % 60000 FROM range(0, 300000);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE TABLE srcs AS SELECT (range * 937) % 60000 AS s FROM range(64);
+
+statement ok
+CREATE TABLE pairs AS SELECT (range * 4099) % 60000 AS s, (range * 7901 + 17) % 60000 AS d FROM range(2048);
+
+# The extension's internal table is created on first use; two operator instances in one statement would race for it
+statement ok
+SELECT delete_csr(2147483647);
+
+# ---- An index with a reverse side: both sides suppress the deleted rows
+statement ok
+CREATE INDEX rev ON knows USING CSR (src, dst) WITH (reverse = true);
+
+# About 15000 rows, one statement: every tombstone is pending when the next query takes its snapshot
+statement ok
+DELETE FROM knows WHERE (src * 31 + dst) % 20 = 0;
+
+query I
+SELECT regexp_extract(duckpgq_csr_index_stats('knows', 'rev'), 'tombstones=(\d+)', 1)::BIGINT > 4096;
+----
+true
+
+# Many sources to one destination: searched from the destination, over the reverse side
+statement ok
+CREATE TABLE rev_index AS SELECT src, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:Person WHERE a.id % 600 = 7)-[k:Knows]->{1,6}(b:Person WHERE b.id = 4242)
+    COLUMNS (a.id AS src, path_length(p) AS len));
+
+query I
+SELECT s LIKE '%orientation=reverse%' AND s LIKE '%csr=index%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+true
+
+# From the source side over the same index
+statement ok
+CREATE TABLE fwd_index AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|rev') AS len FROM pairs;
+
+statement ok
+DROP INDEX rev;
+
+# Without an index the CSR is built from the table, which no longer has the deleted rows
+statement ok
+CREATE TABLE rev_build AS SELECT src, len FROM GRAPH_TABLE (g
+    MATCH p = ANY SHORTEST (a:Person WHERE a.id % 600 = 7)-[k:Knows]->{1,6}(b:Person WHERE b.id = 4242)
+    COLUMNS (a.id AS src, path_length(p) AS len));
+
+query I
+SELECT s LIKE '%csr=index%' FROM (SELECT duckpgq_path_finding_strategy() AS s);
+----
+false
+
+query III
+SELECT (SELECT count(*) FROM rev_index) > 0,
+       (SELECT count(*) FROM (SELECT * FROM rev_index EXCEPT ALL SELECT * FROM rev_build)),
+       (SELECT count(*) FROM (SELECT * FROM rev_build EXCEPT ALL SELECT * FROM rev_index));
+----
+true	0	0
+
+# ---- A directed and an undirected index: the log overlay answers like an index created after the delete
+statement ok
+CREATE INDEX dir ON knows USING CSR (src, dst);
+
+statement ok
+CREATE INDEX und ON knows USING CSR (src, dst) WITH (undirected = true);
+
+query I
+SELECT count(*) FROM (SELECT * FROM fwd_index EXCEPT ALL SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|dir') AS len FROM pairs);
+----
+0
+
+statement ok
+DELETE FROM knows WHERE (src * 17 + dst) % 19 = 0;
+
+statement ok
+CREATE TABLE dir_overlay AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|dir') AS len FROM pairs;
+
+statement ok
+CREATE TABLE und_overlay AS SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|und') AS len FROM pairs;
+
+statement ok
+CREATE TABLE und_reach AS SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|und') AS r FROM srcs);
+
+query II
+SELECT duckpgq_csr_index_stats('knows', 'dir') LIKE 'epochs=1;delta=0;tombstones=%', duckpgq_csr_index_stats('knows', 'und') LIKE 'epochs=1;delta=0;tombstones=%';
+----
+true	true
+
+statement ok
+CREATE INDEX dir2 ON knows USING CSR (src, dst);
+
+statement ok
+CREATE INDEX und2 ON knows USING CSR (src, dst) WITH (undirected = true);
+
+query IIII
+SELECT (SELECT count(*) FROM (SELECT * FROM dir_overlay EXCEPT ALL SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|dir2') AS len FROM pairs)),
+       (SELECT count(*) FROM (SELECT * FROM und_overlay EXCEPT ALL SELECT s, d, iterativelengthoperator(s, d, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|und2') AS len FROM pairs)),
+       (SELECT count(*) FROM (SELECT * FROM und_reach EXCEPT ALL SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|und2') AS r FROM srcs))),
+       (SELECT count(*) FROM (SELECT s, r[1] AS dst, r[2] AS len FROM (SELECT s, reachoperator(s, s, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|knows|und2') AS r FROM srcs) EXCEPT ALL SELECT * FROM und_reach));
+----
+0	0	0	0

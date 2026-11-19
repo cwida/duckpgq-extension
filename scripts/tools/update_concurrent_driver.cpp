@@ -47,6 +47,11 @@ struct Options {
 	//! whose tasks together exceed the scheduler's threads deadlock; the wrapper sets threads / readers.
 	idx_t threads_per_batch = 0;
 	double fold_ratio = 0.1;
+	//! Extra settings, "name=value", applied on every connection after the extension is loaded
+	std::vector<std::string> settings;
+	//! Drop and create the index before the clock starts (a stored index of an older storage format would
+	//! otherwise be rebuilt by the first query)
+	bool recreate_index = false;
 	bool run_build = true;
 	bool run_index = true;
 	bool group_memo = true;
@@ -117,6 +122,10 @@ static void Setup(Connection &con, const Options &options) {
 	}
 	Must(con, "SET experimental_path_finding_operator=true;");
 	Must(con, "SET duckpgq_csr_index_fold_ratio = " + std::to_string(options.fold_ratio) + ";");
+	for (auto &setting : options.settings) {
+		auto split = setting.find('=');
+		Must(con, "SET " + setting.substr(0, split) + " = " + setting.substr(split + 1) + ";");
+	}
 	if (!options.group_memo) {
 		Must(con, "SET duckpgq_csr_index_group_memo = false;");
 	}
@@ -337,6 +346,10 @@ int main(int argc, char **argv) {
 			options.threads_per_batch = std::stoull(next());
 		else if (arg == "--fold-ratio")
 			options.fold_ratio = std::stod(next());
+		else if (arg == "--set")
+			options.settings.push_back(next());
+		else if (arg == "--recreate-index")
+			options.recreate_index = true;
 		else if (arg == "--no-build")
 			options.run_build = false;
 		else if (arg == "--no-index")
@@ -371,6 +384,9 @@ int main(int argc, char **argv) {
 			options.vertex_count = std::stoull(Scalar(*Must(con, "SELECT count(*) FROM person;"), 0));
 			// A file database's catalog is named after the file; the cache key must name it
 			options.catalog = Scalar(*Must(con, "SELECT current_database();"), 0);
+			if (options.recreate_index) {
+				Must(con, "DROP INDEX IF EXISTS " + options.index_name + ";");
+			}
 			// The benchmark index stores the reverse side (the harness's CSR_INDEX_OPTIONS); an index of that name
 			// created without it (a database prepared before 18 Nov 2026) is replaced
 			auto definition = Scalar(*Must(con, "SELECT sql FROM duckdb_indexes() WHERE database_name = "
