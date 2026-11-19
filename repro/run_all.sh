@@ -24,6 +24,19 @@ else
   FIXED_SYSTEMS=(); LDBC_SYSTEMS=(); REUSE_SUFFIX=""
 fi
 
+# Stored CSR indexes in the format of this build, before anything is measured (every subset): an index stored by
+# another build of the extension is rebuilt from the table by its first reader, in every read-only process, and
+# CREATE INDEX IF NOT EXISTS keeps it. Each database loses all its CSR indexes and gets the benchmark index from this
+# build; the step fails when a new read-only process cannot load it. Once per freeze: the markers live in logs/.
+for sf in ${SCALE_FACTORS}; do
+  step "refresh_indexes_sf${sf}" ${HARNESS} refresh-indexes --scale-factor "$sf" --threads "${THREADS}"
+done
+if [ "$what" = all ] || [ "$what" = graphalytics ]; then
+  for ds in ${GRAPHALYTICS_DATASETS}; do
+    step "refresh_indexes_${ds//-/_}" ${HARNESS} refresh-indexes --dataset "$ds" --threads "${THREADS}"
+  done
+fi
+
 if [ "$what" = all ] || [ "$what" = fixed ]; then
   # Fixed costs: database size, CSR index build time and bytes per edge, every baseline's fresh load and store size
   for sf in ${SCALE_FACTORS}; do

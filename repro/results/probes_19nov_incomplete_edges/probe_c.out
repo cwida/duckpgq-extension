@@ -1,0 +1,56 @@
+==== (c) 1. CREATE INDEX ... USING CSR on a table with two foreign keys, and the graph (the check skips its scan)
+Success
+verified
+true
+==== (c) 2. the insert of (a): edges through a key without a vertex row
+Constraint Error: Violates foreign key constraint because key "id: 7" does not exist in the referenced table
+==== (c) 3. the delete of (b): the vertex row of 9 while its edges stay
+Constraint Error: Violates foreign key constraint because key "src: 9" is still referenced by a foreign key in a different table. If this is an unexpected constraint violation, please refer to our foreign key limitations in the documentation
+==== (c) 4. path query over the index
+src|dst|len|vs|es
+1|2|2|[1, 9, 2]|[1, 2]
+strategy
+mode=shortestpath;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=index;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+==== (c) 5. valid changes: a new vertex and its edges in one transaction, then an edge delete; the query
+src|dst|len|vs|es
+1|2|3|[1, 3, 7, 2]|[0, 3, 4]
+stats_before_fold
+epochs=1;delta=2;tombstones=1
+==== (c) 6. fold, then the query
+fold
+true
+stats_after_fold
+epochs=2;delta=2;tombstones=1
+src|dst|len|vs|es
+1|2|3|[1, 3, 7, 2]|[0, 3, 4]
+==== (c) 7. removing a vertex properly: its last edge first, then the row
+-- both in one transaction:
+Constraint Error: Violates foreign key constraint because key "dst: 9" is still referenced by a foreign key in a different table. If this is an unexpected constraint violation, please refer to our foreign key limitations in the documentation
+edges_of_9|vertex_rows_of_9
+1|1
+-- in two transactions:
+edges_of_9|vertex_rows_of_9
+0|0
+==== (c) 8. checkpoint, then the query
+Success
+src|dst|len|vs|es
+1|2|3|[1, 3, 7, 2]|[0, 3, 4]
+-- files after the first process: total 2060
+-- files after the first process: -rw-r--r--. 1 dwolde amazon 2109440 Nov 19 09:34 probe_c.duckdb
+==== (c) 9. reload: the graph, the index and the constraints are back
+verified
+true
+src|dst|len|vs|es
+1|2|3|[1, 3, 7, 2]|[0, 3, 4]
+strategy
+mode=shortestpath;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=index;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+stats
+epochs=1;delta=0;tombstones=1
+-- still rejected: an edge to a missing vertex, the delete of a vertex with edges
+Constraint Error: Violates foreign key constraint because key "id: 99" does not exist in the referenced table
+Constraint Error: Violates foreign key constraint because key "src: 7" is still referenced by a foreign key in a different table. If this is an unexpected constraint violation, please refer to our foreign key limitations in the documentation
+-- a valid insert after the reload, a fold and the query
+fold
+true
+src|dst|len|vs|es
+1|2|1|[1, 2]|[5]

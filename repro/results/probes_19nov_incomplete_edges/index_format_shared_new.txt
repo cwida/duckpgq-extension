@@ -1,0 +1,47 @@
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_pv16384          UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_pv32768          UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_pv4096           UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_pv65535          UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_pv8192           UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_rb0              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_rb16             UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_rb1              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_rb2              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_rb4              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_rb64             UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_rb8              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_reverse_true     UNUSABLE epochs=0;delta=0;tombstones=0  WITH (reverse = true )
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_threads          UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr_undirected       UNUSABLE epochs=0;delta=0;tombstones=0  WITH (undirected = true )
+ldbc_sf10.duckdb         new   pathfinding_benchmark_csr                  UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf10.duckdb: new: 0 of 16 stored indexes load
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_pv16384          UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_pv32768          UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_pv4096           UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_pv65535          UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_pv8192           UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_rb0              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_rb16             UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_rb1              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_rb2              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_rb4              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_rb64             UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_rb8              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_reverse_true     UNUSABLE epochs=0;delta=0;tombstones=0  WITH (reverse = true )
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_threads          UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr_undirected       UNUSABLE epochs=0;delta=0;tombstones=0  WITH (undirected = true )
+ldbc_sf100.duckdb        new   pathfinding_benchmark_csr                  UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf100.duckdb: new: 0 of 16 stored indexes load
+ldbc_sf300.duckdb        new   pathfinding_benchmark_csr_rb0              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf300.duckdb        new   pathfinding_benchmark_csr_rb2              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf300.duckdb        new   pathfinding_benchmark_csr_rb64             UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf300.duckdb        new   pathfinding_benchmark_csr_rb8              UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf300.duckdb        new   pathfinding_benchmark_csr_undirected       UNUSABLE epochs=0;delta=0;tombstones=0  WITH (undirected = true )
+ldbc_sf300.duckdb        new   pathfinding_benchmark_csr                  UNUSABLE epochs=0;delta=0;tombstones=0  
+ldbc_sf300.duckdb: new: 0 of 6 stored indexes load
+cit-Patents.duckdb       new   pathfinding_benchmark_csr                  UNUSABLE epochs=0;delta=0;tombstones=0  
+cit-Patents.duckdb: new: 0 of 1 stored indexes load
+graph500-24.duckdb       new   pathfinding_benchmark_csr                  UNUSABLE epochs=0;delta=0;tombstones=0  
+graph500-24.duckdb: new: 0 of 1 stored indexes load
+datagen-8_4-fb.duckdb    new   pathfinding_benchmark_csr                  UNUSABLE epochs=0;delta=0;tombstones=0  
+datagen-8_4-fb.duckdb: new: 0 of 1 stored indexes load

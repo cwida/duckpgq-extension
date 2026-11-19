@@ -14,6 +14,7 @@ CreatePropertyGraphInfo::CreatePropertyGraphInfo(string property_graph_name)
 unique_ptr<CreateInfo> CreatePropertyGraphInfo::Copy() const {
 	auto result = make_uniq<CreatePropertyGraphInfo>(property_graph_name);
 	CopyProperties(*result);
+	result->verified = verified;
 
 	for (auto &vertex_table : vertex_tables) {
 		auto copied_vertex_table = vertex_table->Copy();
@@ -45,6 +46,7 @@ void CreatePropertyGraphInfo::Serialize(Serializer &serializer) const {
 		list.WriteObject([&](Serializer &obj) { entry->Serialize(obj); });
 	});
 	serializer.WriteProperty(103, "label_map", label_map);
+	serializer.WritePropertyWithDefault(104, "verified", verified, false);
 }
 
 unique_ptr<CreateInfo> CreatePropertyGraphInfo::Deserialize(Deserializer &deserializer) {
@@ -56,6 +58,7 @@ unique_ptr<CreateInfo> CreatePropertyGraphInfo::Deserialize(Deserializer &deseri
 	});
 
 	deserializer.ReadProperty(103, "label_map", result->label_map);
+	deserializer.ReadPropertyWithExplicitDefault(104, "verified", result->verified, false);
 	return std::move(result);
 }
 
