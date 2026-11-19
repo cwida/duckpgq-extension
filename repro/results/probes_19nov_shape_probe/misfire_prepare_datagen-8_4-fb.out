@@ -1,0 +1,9 @@
+Ensuring graphalytics_datagen_8_4_fb benchmark_pairs_64 exists
+Prepared benchmark_pairs_64 for graphalytics_datagen_8_4_fb in 12.76s
+Replacing index pathfinding_benchmark_csr: it was created without WITH (reverse = true)
+== duckpgq_index [baseline] loaded in 90.0s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=64      sources=      repeat 1:    0.459s 64/215
+== duckpgq_index [no_shape_probe] loaded in 0.2s (index pathfinding_benchmark_csr)
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 1:    0.467s 64/215
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/navindex-benchmark/data/ldbc-pathfinding/results/graphalytics_datagen_8_4_fb/microbench_graphalytics_datagen_8_4_fb_threads32_1795083234723166033.csv
+All 1 points agree across configurations 

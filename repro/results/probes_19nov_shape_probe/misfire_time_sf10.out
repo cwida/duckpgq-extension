@@ -1,0 +1,28 @@
+Ensuring sf10 benchmark_pairs_64 exists
+Prepared benchmark_pairs_64 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.10s
+Ensuring sf10 benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for sf10 in 0.82s
+== duckpgq_index [baseline] loaded in 0.1s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=64      sources=      repeat 1:    0.015s 28/97
+   baseline                     random_pairs pairs=64      sources=      repeat 2:    0.014s 28/97
+   baseline                     random_pairs pairs=64      sources=      repeat 3:    0.017s 28/97
+   baseline                     random_pairs pairs=1024    sources=      repeat 1:    0.021s 472/1655
+   baseline                     random_pairs pairs=1024    sources=      repeat 2:    0.020s 472/1655
+   baseline                     random_pairs pairs=1024    sources=      repeat 3:    0.021s 472/1655
+   baseline                     random_pairs pairs=65536   sources=      repeat 1:    0.348s 29178/103926
+   baseline                     random_pairs pairs=65536   sources=      repeat 2:    0.337s 29178/103926
+   baseline                     random_pairs pairs=65536   sources=      repeat 3:    0.317s 29178/103926
+== duckpgq_index [no_shape_probe] loaded in 0.1s (index pathfinding_benchmark_csr)
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 1:    0.015s 28/97
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 2:    0.015s 28/97
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 3:    0.015s 28/97
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 1:    0.020s 472/1655
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 2:    0.021s 472/1655
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 3:    0.021s 472/1655
+   no_shape_probe               random_pairs pairs=65536   sources=      repeat 1:    0.329s 29178/103926
+   no_shape_probe               random_pairs pairs=65536   sources=      repeat 2:    0.340s 29178/103926
+   no_shape_probe               random_pairs pairs=65536   sources=      repeat 3:    0.324s 29178/103926
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/navindex-benchmark/data/ldbc-pathfinding/results/sf10/microbench_sf10_threads32_1795083503699482420.csv
+All 3 points agree across configurations 

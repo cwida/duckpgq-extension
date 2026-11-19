@@ -2,6 +2,7 @@
 # Does the graph shape probe misfire on the graphs of Section 5? Random pairs on the index route, the default
 # (baseline: probe on) against no_shape_probe, per graph. Usage, from the worktree root:
 #   tools/misfire.sh prepare|time <graph>...     graphs: sf10 sf100 sf300 cit-Patents datagen-8_4-fb graph500-24
+# MISFIRE_THREADS overrides the thread count (all cores by default).
 # prepare: one repeat with 64 pairs, so that the pair tables exist and the CSR index is rebuilt in this build's
 # format (not timed). time: three repeats; the harness CSV is copied here as misfire_<graph>.csv.
 set -u
@@ -23,7 +24,7 @@ for graph in "$@"; do
     echo "$(date -u +%FT%TZ) misfire ${ACTION} graph=${graph} commit=$(git rev-parse --short HEAD)" \
          "extension_sha256=$(sha256sum build/release/extension/duckpgq/duckpgq.duckdb_extension | cut -c1-16)" \
          "load=$(cut -d' ' -f1-3 /proc/loadavg)" >> "${LOG}"
-    timeout 1500 python3 scripts/pathfinding_benchmark.py microbench "${target[@]}" --threads "$(nproc)" \
+    timeout 1500 python3 scripts/pathfinding_benchmark.py microbench "${target[@]}" --threads "${MISFIRE_THREADS:-$(nproc)}" \
         --repeats "${repeats}" --timeout-s 600 --configs baseline no_shape_probe --shapes random \
         --pair-counts "${counts[@]}" --routes index --notes "shape probe misfire check (my-beans-83ld)" \
         > "${HERE}/misfire_${ACTION}_${graph}.out" 2>&1

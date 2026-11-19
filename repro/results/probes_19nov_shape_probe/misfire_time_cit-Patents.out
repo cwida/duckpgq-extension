@@ -1,0 +1,20 @@
+Ensuring graphalytics_cit_Patents benchmark_pairs_64 exists
+Prepared benchmark_pairs_64 for graphalytics_cit_Patents in 0.23s
+Ensuring graphalytics_cit_Patents benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_cit_Patents in 0.29s
+== duckpgq_index [baseline] loaded in 0.1s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=64      sources=      repeat 1:    0.065s 0/0
+   baseline                     random_pairs pairs=64      sources=      repeat 2:    0.064s 0/0
+   baseline                     random_pairs pairs=64      sources=      repeat 3:    0.065s 0/0
+   baseline                     random_pairs pairs=1024    sources=      repeat 1:    0.219s 0/0
+   baseline                     random_pairs pairs=1024    sources=      repeat 2:    0.222s 0/0
+   baseline                     random_pairs pairs=1024    sources=      repeat 3:    0.223s 0/0
+== duckpgq_index [no_shape_probe] loaded in 0.1s (index pathfinding_benchmark_csr)
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 1:    0.066s 0/0
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 2:    0.067s 0/0
+   no_shape_probe               random_pairs pairs=64      sources=      repeat 3:    0.063s 0/0
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 1:    0.220s 0/0
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 2:    0.220s 0/0
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 3:    0.217s 0/0
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/navindex-benchmark/data/ldbc-pathfinding/results/graphalytics_cit_Patents/microbench_graphalytics_cit_Patents_threads32_1795083642900434739.csv
+All 2 points agree across configurations 

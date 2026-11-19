@@ -1655,3 +1655,20 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   includes indexes the workload does not use; the next freeze reruns the concurrent points with this driver. Not
   changed: the extension still loads an index on the first write to its table (a write could be logged without
   loading the epoch); the sequential update workload (`update-run`) copies the same databases and was not checked.
+- 19 Nov: shape-aware choice between the two kernels for many sources (my-beans-83ld, asked for by the author
+  after the Nav-Index probe; branch `shape-aware-traversal`). Before the lanes are chosen, a bounded serial search
+  from 3 of the query's sources (`GraphShapeProbe`) tells whether the graph around them is deep: still expanding
+  after `deep_graph_levels` levels (16, 0 off) without having discovered 4096 vertices (a quarter of the vertices
+  on a smaller graph) or scanned 16 edges per vertex of that budget; two that agree decide, and a deep graph gets
+  one single-source search per source. Measured on one build, probe on against off (README and files under
+  repro/results/probes_19nov_shape_probe): OSM Oberbayern, index route, lengths, 1000 pairs 0.597 s against
+  4.044 s (6.8 times faster; single-source forced 0.588 s), 100 pairs 0.076 s against 1.217 s, 2000 pairs 1.132 s
+  against 7.110 s; Twitter keeps the lanes, 1000 pairs 0.0224 s against 0.0221 s. No misfire on the six graphs of
+  Section 5 (LDBC SF10/100/300, cit-Patents, datagen-8_4-fb, graph500-24; 64, 1024 and at LDBC 65536 random
+  pairs): all not deep, same answers, time with the probe 0.93 to 1.02 times the time without, probe 0.08 to
+  0.58 ms. For the paper: the forced setting on the road graph is no longer needed, so the Nav-Index comparison
+  can run with defaults; its operator numbers (rc13) must be rerun at the next freeze, also because single-source
+  searches are faster on this branch than on rc13 (Oberbayern 1000 pairs 0.59 s against 1.58 s). Limits: the
+  thresholds come from one road graph (its largest deep search had discovered 750 vertices, a factor of 5 below
+  the budget); Germany and Europe are not measured. `csr_index_fold_parallel_scan.test` fails in about one run
+  of five with or without this change (its epochs=1 assertion races with an automatic fold since dd49fac8).
