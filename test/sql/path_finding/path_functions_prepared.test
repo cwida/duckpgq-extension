@@ -1,0 +1,81 @@
+# name: test/sql/path_finding/path_functions_prepared.test
+# description: Path functions keep their list types through prepared statements, which clients such as R use (cwida/duckpgq-extension#205)
+# group: [path_finding]
+
+require duckpgq
+
+require parquet
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+CREATE TABLE Person AS FROM 'data/SNB0.003/person.parquet';
+
+statement ok
+CREATE TABLE Person_knows_person AS FROM 'data/SNB0.003/person_knows_person.parquet';
+
+statement ok
+CREATE PROPERTY GRAPH snb
+VERTEX TABLES (
+    Person
+  )
+EDGE TABLES (
+    Person_knows_person
+        SOURCE KEY ( person1id ) REFERENCES Person ( id )
+        DESTINATION KEY ( person2id ) REFERENCES Person ( id )
+        LABEL Knows
+  );
+
+# The bound column types, which a client reads from the prepared statement before executing it.
+query TT
+SELECT column_name, column_type FROM (DESCRIBE FROM GRAPH_TABLE (snb
+    MATCH p = ANY SHORTEST (a:Person WHERE a.firstName = 'Jan')-[k:knows]->+(b:Person)
+    COLUMNS (element_id(p), vertices(p), edges(p), path_length(p), b.firstName)
+  ));
+----
+element_id(p)	BIGINT[]
+vertices(p)	BIGINT[]
+edges(p)	BIGINT[]
+path_length(p)	BIGINT
+firstName	VARCHAR
+
+statement ok
+PREPARE docs_query AS
+FROM GRAPH_TABLE (snb
+    MATCH p = ANY SHORTEST (a:Person WHERE a.firstName = 'Jan')-[k:knows]->+(b:Person)
+    COLUMNS (element_id(p), vertices(p), edges(p), path_length(p), b.firstName)
+  )
+ORDER BY firstName, "element_id(p)"
+LIMIT 5;
+
+# Executing a prepared statement binds the pattern again; the result must not change between executions.
+loop i 0 2
+
+query IIIIT
+EXECUTE docs_query;
+----
+[16, 3, 42, 22, 9, 66, 2]	[16, 42, 9, 2]	[3, 22, 66]	3	Abdul Haris
+[16, 5, 4, 79, 3]	[16, 4, 3]	[5, 79]	2	Aleksandr
+[16, 3, 42, 24, 44]	[16, 42, 44]	[3, 24]	2	Alexei
+[16, 3, 42]	[16, 42]	[3]	1	Ali
+[16, 3, 42, 21, 45]	[16, 42, 45]	[3, 21]	2	Ali
+
+endloop
+
+statement ok
+PREPARE docs_query_types AS
+SELECT DISTINCT typeof("element_id(p)"), typeof("vertices(p)"), typeof("edges(p)"), typeof("path_length(p)")
+FROM GRAPH_TABLE (snb
+    MATCH p = ANY SHORTEST (a:Person WHERE a.firstName = 'Jan')-[k:knows]->+(b:Person)
+    COLUMNS (element_id(p), vertices(p), edges(p), path_length(p), b.firstName)
+  );
+
+loop i 0 2
+
+query TTTT
+EXECUTE docs_query_types;
+----
+BIGINT[]	BIGINT[]	BIGINT[]	BIGINT
+
+endloop
