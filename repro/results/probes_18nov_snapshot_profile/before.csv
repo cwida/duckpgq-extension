@@ -1,0 +1,5 @@
+dataset,kind,fraction,edges,vertices,query_before_s,log,query_first_s,snapshots,cache_hits,last_snapshot_ms,resolve_ms,visibility_ms,overlay_ms,pack_ms,delta,tombstones,query_second_s
+sf300,uniform,0.1,55656915,1147729,0.016,epochs=1;delta=2782845;tombstones=2782460,3.567,2,0,3545.3,3221.0,79.8,103.3,141.2,2782845,2782460,0.226
+sf300,deletes,0.05,55656915,1147729,0.013,epochs=1;delta=0;tombstones=2782460,3.052,2,0,3042.6,2973.2,48.7,20.8,0.0,0,2782460,0.117
+sf300,inserts,0.05,55656915,1147729,0.011,epochs=1;delta=2782845;tombstones=0,0.248,2,0,214.1,0.0,87.1,88.1,38.9,2782845,0,0.113
+sf300,uniform,0.01,55656915,1147729,0.016,epochs=1;delta=278284;tombstones=277838,0.34,2,0,323.5,288.3,22.6,9.5,3.1,278284,277838,0.05

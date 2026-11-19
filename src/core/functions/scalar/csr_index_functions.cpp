@@ -77,9 +77,27 @@ void CSRIndexFoldStatsFunction(DataChunk &args, ExpressionState &state, Vector &
 	result.SetValue(0, Value(handle->FoldStats()));
 }
 
+//! duckpgq_csr_index_snapshot_stats(table, index): where the last snapshot a reader built spent its time (see
+//! CSRIndex::SnapshotStats)
+void CSRIndexSnapshotStatsFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &context = state.GetContext();
+	auto table_name = args.data[0].GetValue(0).GetValue<string>();
+	auto index_name = args.data[1].GetValue(0).GetValue<string>();
+	auto resolved = ResolveCSRIndex(context, table_name, index_name);
+	auto handle = resolved.entry->GetReadHandle<CSRIndex>();
+	result.SetVectorType(VectorType::CONSTANT_VECTOR);
+	result.SetValue(0, Value(handle->SnapshotStats()));
+}
+
 } // namespace
 
 void CoreScalarFunctions::RegisterCSRIndexScalarFunctions(ExtensionLoader &loader) {
+	auto snapshot_stats = ScalarFunction("duckpgq_csr_index_snapshot_stats",
+	                                     {LogicalType::VARCHAR, LogicalType::VARCHAR}, LogicalType::VARCHAR,
+	                                     CSRIndexSnapshotStatsFunction);
+	snapshot_stats.SetStability(FunctionStability::VOLATILE);
+	snapshot_stats.SetFallible();
+	loader.RegisterFunction(snapshot_stats);
 	auto fold_stats = ScalarFunction("duckpgq_csr_index_fold_stats", {LogicalType::VARCHAR, LogicalType::VARCHAR},
 	                                 LogicalType::VARCHAR, CSRIndexFoldStatsFunction);
 	fold_stats.SetStability(FunctionStability::VOLATILE);

@@ -3831,10 +3831,12 @@ def format_ms(ms):
 
 
 def run_update_concurrent(args):
-    ensure_update_log(args.scale_factor)
     pair_shape = generated_pair_shape(args.query_pattern, "random")
     pair_table = pair_table_name(args.pairs, pair_shape)
-    ensure_pair_table(args.scale_factor, args.pairs, pair_shape)
+    if not args.no_prepare:
+        # Both write to the scale factor's database when the update log or the pair table is missing or stale
+        ensure_update_log(args.scale_factor)
+        ensure_pair_table(args.scale_factor, args.pairs, pair_shape)
     build_concurrent_driver()
     WORK_ROOT.mkdir(parents=True, exist_ok=True)
     work_db = WORK_ROOT / f"ldbc_{sf_name(args.scale_factor)}_concurrent.duckdb"
@@ -3846,12 +3848,16 @@ def run_update_concurrent(args):
     results_dir.mkdir(parents=True, exist_ok=True)
     output = results_dir / (f"concurrent_{args.query_pattern}_pairs{args.pairs}_threads{args.threads}_readers{args.readers}"
                             f"_batch{args.batch_size}x{args.batches}_pause{args.writer_pause_ms}_fold{args.fold_ratio}"
-                            f"_{time.time_ns()}.csv")
+                            f"_{args.tag + '_' if args.tag else ''}{time.time_ns()}.csv")
     cmd = [str(CONCURRENT_DRIVER_BINARY), "--database", str(work_db), "--extension", str(DUCKPGQ_EXTENSION),
            "--output", str(output), "--pair-table", pair_table, "--index-name", CSR_INDEX_NAME,
            "--threads", str(args.threads), "--readers", str(args.readers), "--batches", str(args.batches),
            "--batch-size", str(args.batch_size), "--writer-pause-ms", str(args.writer_pause_ms),
            "--fold-ratio", str(args.fold_ratio)]
+    for setting in args.settings:
+        cmd += ["--set", setting]
+    if args.recreate_index:
+        cmd.append("--recreate-index")
     # Optional cap on the workers per query (the kernels no longer need one: they run as event chains)
     threads_per_batch = args.threads_per_batch
     if threads_per_batch:
@@ -3873,7 +3879,7 @@ def run_update_concurrent(args):
         "scale_factor": args.scale_factor, "threads": args.threads, "readers": args.readers,
         "query_pattern": args.query_pattern, "batch_size": args.batch_size, "batches": args.batches,
         "writer_pause_ms": args.writer_pause_ms, "fold_ratio": args.fold_ratio, "threads_per_batch": threads_per_batch,
-        "benchmark_notes": args.notes,
+        "settings": " ".join(args.settings), "benchmark_notes": args.notes,
         "repo_commit": subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True,
                                       capture_output=True).stdout.strip(),
         "peak_rss_mib": parse_peak_rss_mib(result.stdout),
@@ -6776,6 +6782,14 @@ def main():
                                    help="both runs the index query and the build-per-query in the same read transaction")
     concurrent_parser.add_argument("--notes", default="")
     concurrent_parser.add_argument("--timeout", type=int, default=7200)
+    concurrent_parser.add_argument("--set", action="append", default=[], dest="settings",
+                                   help="a setting name=value for every connection of the driver (repeatable)")
+    concurrent_parser.add_argument("--recreate-index", action="store_true",
+                                   help="drop and create the CSR index before the clock starts")
+    concurrent_parser.add_argument("--tag", default="", help="a word for the output file name")
+    concurrent_parser.add_argument("--no-prepare", action="store_true",
+                                   help="do not touch the scale factor's database: the update log and the pair "
+                                        "table must exist")
     concurrent_parser.set_defaults(func=run_update_concurrent)
 
     throughput_parser = subcommands.add_parser("throughput", help="Single-pair queries per second from C clients, index vs build route")

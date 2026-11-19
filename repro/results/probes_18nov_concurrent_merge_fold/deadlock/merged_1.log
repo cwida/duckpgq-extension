@@ -1,0 +1,10 @@
+dropped_other_indexes=15
+events=4378 commits=190 mismatches=0 errors=0 wall=21.9s
+Compiling update_concurrent_driver
+--database /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/work/ldbc_sf10_concurrent.duckdb --extension /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/build/release/extension/duckpgq/duckpgq.duckdb_extension --output /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause0_fold0.01_deadlock_merged_1795016237758656916.csv --pair-table benchmark_pairs_same_src_1024 --index-name pathfinding_benchmark_csr --threads 32 --readers 16 --batches 190 --batch-size 2000 --writer-pause-ms 0 --fold-ratio 0.01 --set duckpgq_csr_index_merge_fold_verify=true --recreate-index
+peak_rss_kib=2452196
+   query_index: n=2094 median 0.0433s p99 0.1570s max 0.9617s
+   query_build: n=2094 median 0.0623s p99 0.1302s max 0.1599s
+   commit: n=190 median 0.1170s p99 0.1876s max 0.1916s
+   mismatches=0 errors=0 peak_rss_mib=2394.7
+Wrote /local/home/dwolde/bootstrap/duckpgq-extension/.claude/worktrees/fold-by-partition/data/ldbc-pathfinding/results/sf10/concurrent_sssp_pairs1024_threads32_readers16_batch2000x190_pause0_fold0.01_deadlock_merged_1795016237758656916.csv

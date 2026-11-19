@@ -23,6 +23,7 @@
 #include "duckdb/execution/index/fixed_size_allocator.hpp"
 #include "duckdb/execution/index/index_lock.hpp"
 #include "duckdb/execution/index/index_type.hpp"
+#include "duckdb/storage/table/index_entry.hpp"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -56,26 +57,42 @@ struct CSRIndexDictionary {
 	ManagedArray<uint32_t> word_rank;
 	//! Sparse: all keys in ascending order, id = position
 	ManagedArray<int64_t> sorted_keys;
+	//! Keys numbered in key order: ids [0, count)
 	idx_t count = 0;
+	//! Keys a merge fold carried over from the snapshot it materialised: the vertices that were numbered above the
+	//! previous epoch keep those ids, id = count + position, out of key order, until a full fold renumbers
+	vector<int64_t> extra_keys;
+	std::unordered_map<int64_t, uint32_t> extra_ids;
+	//! Set in a dictionary that a merge fold extended: the key-ordered part (the arrays above) is the one of the
+	//! epoch it was merged from, shared and not copied; this dictionary then holds the scalars and the extra keys
+	shared_ptr<CSRIndexDictionary> ordered_part;
+	const CSRIndexDictionary &Ordered() const {
+		return ordered_part ? *ordered_part : *this;
+	}
 
 	//! Returns the dense id of a key, or DConstants::INVALID_INDEX when the key is not a vertex of the epoch.
 	idx_t Lookup(int64_t key) const;
+	//! Lookup among the keys in key order only
+	idx_t LookupOrdered(int64_t key) const;
 	//! The key of a dense id
 	int64_t KeyOf(idx_t id) const;
 	idx_t Size() const {
-		return count;
+		return count + extra_keys.size();
 	}
 
 	//! Keys of ascending ids: walks the dense dictionary's bitmap forward from the last id and re-seeks only when the
 	//! ids jump by a word or more, where KeyOf does a binary search over the word ranks and a bit scan per id (the
 	//! reach scatter emits a dense result in vertex order: 9.1 B rows on graph500-24 for 1024 sources)
 	struct KeyCursor {
-		explicit KeyCursor(const CSRIndexDictionary &dictionary_p) : dictionary(dictionary_p) {
+		explicit KeyCursor(const CSRIndexDictionary &dictionary_p)
+		    : outer(dictionary_p), dictionary(dictionary_p.Ordered()) {
 		}
 		int64_t KeyOf(idx_t id);
 
 	private:
 		void Seek(idx_t id);
+		//! The dictionary asked, and its key-ordered part, whose bitmap the cursor walks
+		const CSRIndexDictionary &outer;
 		const CSRIndexDictionary &dictionary;
 		//! The lowest set bit of `word` (bits of bitmap[word_idx] not yet passed) is the bit of id `next_id`
 		idx_t next_id = 0;
@@ -117,8 +134,9 @@ struct CSRIndexEpoch {
 	shared_ptr<CSRIndexDictionary> dictionary;
 	//! Forward partitions (both directions when the index is undirected)
 	shared_ptr<PartitionedCSRIndex> csr;
-	//! Edge-table row id per edge position, per partition, aligned with the partition's edge array
-	vector<ManagedArray<row_t>> partition_row_ids;
+	//! Edge-table row id per edge position, per partition, aligned with the partition's edge array. Shared, like
+	//! the partitions: an epoch built by a merge fold holds the unchanged partitions of its predecessor
+	vector<shared_ptr<ManagedArray<row_t>>> partition_row_ids;
 	//! Epoch position (partition << 32 | offset) of each tombstoned row, DConstants::INVALID_INDEX when the row is
 	//! not an edge of this epoch; filled lazily by readers, protected by the index lock
 	vector<idx_t> tombstone_positions;
@@ -228,6 +246,28 @@ struct CSRIndexSnapshot {
 	int64_t KeyOf(idx_t id, CSRIndexDictionary::KeyCursor &cursor) const;
 };
 
+class CSRIndex;
+
+//! A reader's hold on the index: the entry's lock, shared, which keeps the index object in place and commits out.
+//! The reader gives the lock up (Release) before it asks the table about row versions or scans it, and takes it
+//! again (Reacquire) before it touches the index object. DuckDB's transaction cleanup takes the entry's lock
+//! exclusively while it holds a lock of its own that a writer's commit waits for, and that commit holds the table
+//! lock a row-version check needs: a reader that waited for the table under the entry's lock closed that cycle (18
+//! Nov: the concurrent driver with 16 readers stopped in it, also on the build of the frozen evaluation).
+struct CSRIndexReadScope {
+	explicit CSRIndexReadScope(shared_ptr<IndexEntry> entry_p);
+	const CSRIndex &Index() const {
+		return *identity;
+	}
+	void Release();
+	//! Throws when the entry no longer holds the index this scope started on
+	void Reacquire();
+
+	shared_ptr<IndexEntry> entry;
+	unique_ptr<IndexReadHandle<CSRIndex>> handle;
+	const CSRIndex *identity = nullptr;
+};
+
 //! The CSR index: one immutable epoch (the edges visible at the bound of the transaction that built it), an
 //! append-only delta of edges committed after that bound, and append-only tombstones for epoch edges deleted after
 //! it. No commit ids are stored: a reader decides visibility of the delta and the tombstones through the table's
@@ -263,7 +303,9 @@ public:
 
 	//! Returns what a reader with this transaction may traverse, building the epoch from `table` when the index has
 	//! none yet. A reader outlived by two folds gets a private epoch built from its own view of the table.
-	shared_ptr<CSRIndexSnapshot> Snapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table) const;
+	//! `scope` holds the entry's lock; it is released around the reads of the table
+	shared_ptr<CSRIndexSnapshot> Snapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table,
+	                                      CSRIndexReadScope &scope) const;
 
 	//! Installs an epoch built by the CREATE INDEX pipeline
 	void InstallEpoch(shared_ptr<CSRIndexEpoch> epoch);
@@ -296,6 +338,14 @@ public:
 	idx_t EpochEdgeCount() const;
 	//! 'folds=..;last_fold_ms=..;fold_ms=..': the folds this index ran since it was bound, for the update experiments
 	string FoldStats() const;
+	//! 'snapshots=..;cache_hits=..;last_snapshot_ms=..;resolve_ms=..;copy_ms=..;visibility_ms=..;hash_ms=..;
+	//! overlay_ms=..;pack_ms=..;delta=..;tombstones=..;hit_ms=..;hit_copy_ms=..;hit_visibility_ms=..;hit_hash_ms=..':
+	//! the snapshots built and served from the cache since the index was bound, and where the last built one spent
+	//! its time: positions of the deleted epoch rows, the copy of the log under the index lock, the row-version
+	//! checks, the hash of the decisions (the cache key), the suppression bitmaps and the visible inserted edges, and
+	//! packing those edges per destination range. The hit_ fields are the copy, checks and hash of the last snapshot
+	//! that was then served from the cache
+	string SnapshotStats() const;
 
 	//! Folds the index behind `entry`: a new epoch at the transaction's bound, and the change-log entries no retained
 	//! epoch needs are dropped. `ratio` > 0 is the automatic fold from Resolve: it runs only when the pending log is
@@ -342,18 +392,38 @@ private:
 	static shared_ptr<CSRIndexEpoch> BuildEpochFromTable(ClientContext &context, DuckTransaction &transaction,
 	                                                     DataTable &table, const vector<column_t> &column_ids,
 	                                                     bool undirected, bool reverse, uint64_t *scan_us = nullptr);
+	//! Merge fold (duckpgq_csr_index_merge_fold): the epoch that holds what `snapshot` shows, built without the table.
+	//! A partition of the snapshot's epoch that the overlay neither suppresses in nor adds to is shared; every other
+	//! destination range is rebuilt by merging the old partition's unsuppressed edges with the overlay's edges of the
+	//! range, both sorted by source. The ids of the snapshot stay: the dictionary is the old one plus the snapshot's
+	//! extra keys, and the partition width is the old one. Touches no index state. `rebuilt` receives the number of
+	//! forward partitions that were not shared. A stored reverse side is merged the same way, without row ids.
+	static shared_ptr<CSRIndexEpoch> MergeEpoch(ClientContext &context, const CSRIndexSnapshot &snapshot,
+	                                            VisibilityBound bound, idx_t &rebuilt);
 	//! Whether RunFold should build an epoch for this transaction (ordering and, for ratio > 0, the pending log)
-	bool FoldDue(DuckTransaction &transaction, double ratio) const;
+	//! `cost_guess_ns_per_edge` > 0 adds the cost rule (duckpgq_csr_index_fold_by_cost): a fold is also due when the
+	//! readers have spent as long building snapshots since the last fold as a fold takes; the fold's time is the
+	//! last fold's, and before the first fold the epoch's edge count times the guess
+	bool FoldDue(DuckTransaction &transaction, double ratio, uint64_t cost_guess_ns_per_edge = 0) const;
 	//! Called when an automatic fold's epoch did not fit memory_limit: the next automatic fold waits until the
 	//! pending log is twice what it is now
 	void PostponeAutomaticFold() const;
 	//! Installs an epoch RunFold built, unless a newer one arrived meanwhile; records the fold time
 	void InstallFoldedEpoch(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
-	                        uint64_t fold_us, uint64_t scan_us) const;
+	                        uint64_t fold_us, uint64_t scan_us, bool merged, idx_t rebuilt, uint64_t snapshot_us,
+	                        CSRIndexReadScope &scope) const;
+	//! The folding transaction's snapshot over the newest epoch, which a merge fold materialises; null when the
+	//! newest epoch does not serve the transaction (the fold then scans the table)
+	shared_ptr<CSRIndexSnapshot> FoldSnapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table,
+	                                          CSRIndexReadScope &scope) const;
+	//! Throws unless both epochs hold the same edges (source key, destination key, row id) per direction; the check
+	//! of duckpgq_csr_index_merge_fold_verify
+	static void VerifyMergedEpoch(const CSRIndexEpoch &merged, const CSRIndexEpoch &scanned);
 	//! Stamps the change-log entries that the epoch built by `transaction` accounts for: delta rows it contains and
 	//! tombstoned rows it excludes. Uses the live transaction, so it does not depend on how long DuckDB keeps row
 	//! versions. Then installs the epoch and drops the entries no retained epoch needs any more.
-	void InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch) const;
+	void InstallEpochAndCompact(DuckTransaction &transaction, DataTable &table, shared_ptr<CSRIndexEpoch> epoch,
+	                            CSRIndexReadScope &scope) const;
 	//! Drops change-log entries that every retained epoch already accounts for; the index lock must be held
 	void CompactChangeLogLocked() const;
 	//! Drops every epoch, the change log with its row index and cached snapshot, and a checkpointed state not loaded
@@ -393,7 +463,7 @@ private:
 	//! newest visible change group), which identifies the visible set for every reader without own changes.
 	shared_ptr<CSRIndexSnapshot> BuildSnapshot(ClientContext &context, DuckTransaction &transaction, DataTable &table,
 	                                           shared_ptr<CSRIndexEpoch> epoch, idx_t delta_count,
-	                                           idx_t tombstone_count, bool shareable) const;
+	                                           idx_t tombstone_count, bool shareable, CSRIndexReadScope &scope) const;
 	//! Rebuilds delta_row_index from delta; the index lock must be held
 	void RebuildDeltaRowIndexLocked() const;
 	//! Bytes of the change log on the heap: the capacity of `delta` and `tombstones` and the nodes and buckets of
@@ -408,9 +478,11 @@ private:
 
 	//! Persistence: the newest epoch and the part of the change log it does not account for are written as one byte
 	//! stream into fixed-size segments; the segment list and sizes travel in the storage info's options.
-	//! Version 2 adds the reverse side after the forward partitions. Only this version loads: DeferLoad ignores a
-	//! stored state of any other version, so the index starts empty and rebuilds its epoch from the table on first use
-	static constexpr idx_t STORAGE_FORMAT_VERSION = 2;
+	//! Version 2 adds the reverse side after the forward partitions. Version 3 adds the dictionary's extra keys (the
+	//! keys a merge fold carried above the key-ordered ones) after its sorted keys. Only this version loads: DeferLoad
+	//! ignores a stored state of any other version, so the index starts empty and rebuilds its epoch from the table
+	//! on first use
+	static constexpr idx_t STORAGE_FORMAT_VERSION = 3;
 	vector<uint8_t> SerializeState() const;
 	IndexStorageInfo WriteSegments(const vector<uint8_t> &bytes, optional_ptr<QueryContext> checkpoint_context);
 	//! Remembers where the checkpointed state lives. The index is deserialized on first use (EnsureLoadedLocked):
@@ -470,6 +542,16 @@ private:
 	mutable uint32_t cached_snapshot_group = 0;
 	//! Hash of the per-entry visibility decisions of the cached snapshot's reader
 	mutable uint64_t cached_snapshot_visibility = 0;
+	//! The fast path of the cache (duckpgq_csr_index_snapshot_fast_path). `cached_snapshot_complete`: the reader that
+	//! built the cached snapshot had the whole log in front of it, as it was at `cached_snapshot_change_count`, and
+	//! saw every change in it as committed (every insert visible or dead, every delete applied). A reader whose bound
+	//! is not before `cached_snapshot_bound` sees those commits too, and while the log has not changed there is
+	//! nothing else to see, so it is served the cached snapshot without the copy of the log and the row-version
+	//! checks.
+	mutable bool cached_snapshot_complete = false;
+	mutable uint64_t cached_snapshot_change_count = 0;
+	mutable VisibilityBound cached_snapshot_bound;
+	mutable std::atomic<uint64_t> snapshot_fast_hits {0};
 	//! One fold at a time; shared so that RunFold can hold it while no handle on the entry keeps the index alive
 	mutable shared_ptr<mutex> fold_lock = make_shared_ptr<mutex>();
 	//! Segments written by this process's last checkpoint, kept until a rewrite or the drop releases their blocks
@@ -483,18 +565,53 @@ private:
 	mutable IndexStorageInfo stored_info;
 	mutable bool stored_info_on_disk = false;
 	mutable uint64_t change_count = 1;
+	//! Counts the compactions of the change log (and resets of the state): a reader that resolves tombstone positions
+	//! in two steps compares it to see that the tombstone list is still the one it started on
+	mutable uint64_t log_compactions = 0;
 	mutable uint64_t persisted_change_count = 0;
 	static IndexStorageInfo CopyStorageInfo(const IndexStorageInfo &info);
 	void ReleaseStoredBlocksLocked() const;
 	//! Checkpointed state not deserialized yet (see DeferLoad)
 	mutable IndexStorageInfo pending_storage;
 	mutable bool storage_pending = false;
+	//! From this many pending tombstones on, their epoch positions are resolved on all threads
+	static constexpr idx_t PARALLEL_TOMBSTONE_THRESHOLD = 4096;
+	//! The cost rule of the automatic fold: the time readers spent building snapshots since the last fold, and how
+	//! long that fold took
+	mutable std::atomic<uint64_t> snapshot_us_since_fold {0};
+	mutable std::atomic<uint64_t> fold_cost_us {0};
+	//! Folds that scanned the table because too many vertices were numbered out of key order
+	mutable std::atomic<uint64_t> fold_renumber_count {0};
+	//! Snapshot timing (see SnapshotStats)
+	mutable std::atomic<uint64_t> snapshot_count {0};
+	mutable std::atomic<uint64_t> snapshot_cache_hits {0};
+	mutable std::atomic<uint64_t> snapshot_last_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_resolve_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_visibility_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_copy_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_hash_us {0};
+	//! The same phases of the last snapshot that was served from the cache: what a query pays to find out that
+	//! the cached snapshot is its own
+	mutable std::atomic<uint64_t> snapshot_hit_us {0};
+	mutable std::atomic<uint64_t> snapshot_hit_copy_us {0};
+	mutable std::atomic<uint64_t> snapshot_hit_visibility_us {0};
+	mutable std::atomic<uint64_t> snapshot_hit_hash_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_overlay_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_pack_us {0};
+	mutable std::atomic<uint64_t> snapshot_last_delta {0};
+	mutable std::atomic<uint64_t> snapshot_last_tombstones {0};
 	//! Fold timing (see FoldStats)
 	mutable std::atomic<uint64_t> fold_count {0};
 	mutable std::atomic<uint64_t> fold_total_us {0};
 	mutable std::atomic<uint64_t> fold_last_us {0};
 	//! Table scan (edge collection) part of the last fold
 	mutable std::atomic<uint64_t> fold_last_scan_us {0};
+	//! Merge folds among fold_count, and the partitions the last fold rebuilt out of how many (a full fold: all)
+	mutable std::atomic<uint64_t> fold_merge_count {0};
+	mutable std::atomic<uint64_t> fold_last_rebuilt {0};
+	mutable std::atomic<uint64_t> fold_last_partitions {0};
+	//! The part of the last merge fold spent on the folding transaction's snapshot (0 for a fold that scanned)
+	mutable std::atomic<uint64_t> fold_last_snapshot_us {0};
 };
 
 //! Registration entry point called from the core module

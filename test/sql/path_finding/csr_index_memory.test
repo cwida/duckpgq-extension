@@ -13,6 +13,11 @@ SET active_grammar_extensions = ['duckpgq'];
 statement ok
 SET experimental_path_finding_operator = true;
 
+# The assertions below are about a fold that builds a whole second epoch from the table (a merge fold shares
+# the partitions that did not change)
+statement ok
+SET duckpgq_csr_index_merge_fold = false;
+
 # Folds run only when asked for
 statement ok
 SET duckpgq_csr_index_fold_ratio = 0;
@@ -130,6 +135,32 @@ true
 
 query I
 SELECT index_bytes() BETWEEN 40000000 AND 64000000;
+----
+true
+
+query I
+SELECT pool_bytes() BETWEEN index_bytes() AND index_bytes() + 4194304;
+----
+true
+
+# ---- A merge fold shares the partitions that did not change: the two retained epochs take one epoch and the
+# rebuilt partitions, and the bytes the index reports (each shared array once) are what the buffer pool holds
+statement ok
+SET duckpgq_csr_index_merge_fold = true;
+
+statement ok
+INSERT INTO knows VALUES (2, 3);
+
+statement ok
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+
+query II
+SELECT duckpgq_csr_index_stats('knows', 'knows_csr') LIKE 'epochs=2;%', duckpgq_csr_index_fold_stats('knows', 'knows_csr') LIKE '%;merge_folds=1;%';
+----
+true	true
+
+query I
+SELECT index_bytes() BETWEEN 20000000 AND 40000000;
 ----
 true
 

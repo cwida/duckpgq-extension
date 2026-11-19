@@ -13,6 +13,11 @@ SET active_grammar_extensions = ['duckpgq'];
 statement ok
 SET experimental_path_finding_operator = true;
 
+# The assertions below are about a fold that builds a whole second epoch from the table (a merge fold shares
+# the partitions that did not change)
+statement ok
+SET duckpgq_csr_index_merge_fold = false;
+
 statement ok
 SET duckpgq_csr_index_fold_ratio = 0;
 
@@ -78,6 +83,11 @@ SET active_grammar_extensions = ['duckpgq'];
 
 statement ok
 SET experimental_path_finding_operator = true;
+
+# The assertions below are about a fold that builds a whole second epoch from the table (a merge fold shares
+# the partitions that did not change)
+statement ok
+SET duckpgq_csr_index_merge_fold = false;
 
 statement ok
 SET duckpgq_csr_index_fold_ratio = 0;
@@ -146,6 +156,11 @@ SET active_grammar_extensions = ['duckpgq'];
 
 statement ok
 SET experimental_path_finding_operator = true;
+
+# The assertions below are about a fold that builds a whole second epoch from the table (a merge fold shares
+# the partitions that did not change)
+statement ok
+SET duckpgq_csr_index_merge_fold = false;
 
 statement ok
 SET duckpgq_csr_index_fold_ratio = 0;

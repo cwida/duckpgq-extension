@@ -1,0 +1,149 @@
+# name: test/sql/path_finding/csr_index_fold_rule.test
+# description: The automatic fold with duckpgq_csr_index_merge_fold: a fold merges while few vertices are numbered out of key order and scans the table once they exceed duckpgq_csr_index_renumber_ratio; with duckpgq_csr_index_fold_by_cost a fold also runs when the readers have spent a fold's time on snapshots of the log
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET active_grammar_extensions = ['duckpgq'];
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
+statement ok
+SET duckpgq_csr_index_merge_fold = true;
+
+statement ok
+SET duckpgq_csr_index_merge_fold_verify = true;
+
+statement ok
+CREATE TABLE person(id BIGINT);
+
+statement ok
+INSERT INTO person SELECT range FROM range(1, 2001);
+
+statement ok
+CREATE TABLE knows(src BIGINT, dst BIGINT);
+
+# A chain 1 -> 2 -> ... -> 50: fifty vertices in key order
+statement ok
+INSERT INTO knows SELECT range, range + 1 FROM range(1, 50);
+
+statement ok
+CREATE PROPERTY GRAPH g
+VERTEX TABLES (person LABEL Person)
+EDGE TABLES (knows SOURCE KEY (src) REFERENCES person(id) DESTINATION KEY (dst) REFERENCES person(id) LABEL Knows);
+
+statement ok
+CREATE INDEX knows_csr ON knows USING CSR (src, dst);
+
+# ---- Three new vertices, 6% of fifty: the fold merges and they keep their ids above the fifty
+statement ok
+INSERT INTO knows VALUES (50, 51), (51, 52), (52, 53);
+
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I
+SELECT duckpgq_csr_index_fold_stats('knows', 'knows_csr') LIKE 'folds=1;%;merge_folds=1;%;renumber_folds=0';
+----
+true
+
+# ---- Four more, seven out of key order, 14%: over the default tenth, the fold scans the table
+statement ok
+INSERT INTO knows VALUES (53, 54), (54, 55), (55, 56), (56, 57);
+
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I
+SELECT duckpgq_csr_index_fold_stats('knows', 'knows_csr') LIKE 'folds=2;%;merge_folds=1;%;renumber_folds=1';
+----
+true
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+57
+
+# ---- Every vertex is in key order again, so the next fold merges
+statement ok
+INSERT INTO knows VALUES (57, 58);
+
+query I
+SELECT duckpgq_csr_index_fold('knows', 'knows_csr');
+----
+true
+
+query I
+SELECT duckpgq_csr_index_fold_stats('knows', 'knows_csr') LIKE 'folds=3;%;merge_folds=2;%;renumber_folds=1';
+----
+true
+
+# ---- The cost rule. The ratio alone would never fold here (the log may grow to a thousand times the epoch);
+# every commit makes the next query build a snapshot, and when those have taken as long as a fold, a query folds
+statement ok
+SET duckpgq_csr_index_renumber_ratio = 0;
+
+statement ok
+SET duckpgq_csr_index_fold_ratio = 1000;
+
+statement ok
+SET duckpgq_csr_index_fold_by_cost = true;
+
+loop i 0 400
+
+statement ok
+INSERT INTO knows VALUES (58 + ${i}, 59 + ${i});
+
+statement ok
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+
+endloop
+
+query I
+SELECT regexp_extract(duckpgq_csr_index_fold_stats('knows', 'knows_csr'), '^folds=(\d+)', 1)::BIGINT > 3;
+----
+true
+
+query I
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+----
+458
+
+# Without the cost rule the same ratio never folds
+statement ok
+SET duckpgq_csr_index_fold_by_cost = false;
+
+statement ok
+CREATE TABLE folds_before AS SELECT regexp_extract(duckpgq_csr_index_fold_stats('knows', 'knows_csr'), '^folds=(\d+)', 1)::BIGINT AS n;
+
+loop i 0 50
+
+statement ok
+INSERT INTO knows VALUES (458 + ${i}, 459 + ${i});
+
+statement ok
+SELECT count(*)
+FROM GRAPH_TABLE (g MATCH p = ANY SHORTEST (a:Person WHERE a.id = 1)-[k:Knows]->*(b:Person)
+                  COLUMNS (b.id AS d, path_length(p) AS l));
+
+endloop
+
+query I
+SELECT regexp_extract(duckpgq_csr_index_fold_stats('knows', 'knows_csr'), '^folds=(\d+)', 1)::BIGINT = (SELECT n FROM folds_before);
+----
+true
