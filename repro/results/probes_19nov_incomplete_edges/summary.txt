@@ -1,0 +1,30 @@
+CREATE PROPERTY GRAPH (seconds, median of the runs; create_timings.csv)
+  sf10                   new    median 0.031  min 0.030  max 0.031  n=3  ok
+  sf100                  new    median 0.076  min 0.074  max 0.081  n=3  ok
+  sf300                  new    median 0.151  min 0.149  max 0.152  n=3  ok
+  cit-Patents            new    median 0.105  min 0.103  max 0.105  n=3  ok
+  graph500-24            new    median 1.245  min 1.240  max 1.327  n=3  ok
+  datagen-8_4-fb         new    median 1.249  min 1.194  max 1.258  n=3  ok
+  navindex-oberbayern    new    median 0.048  min 0.047  max 0.050  n=3  ok
+  navindex-twitter       new    median 0.032  min 0.030  max 0.033  n=3  ok
+  sf10                   rc13   median 0.009  min 0.009  max 0.011  n=3  ok
+  sf100                  rc13   median 0.009  min 0.008  max 0.009  n=3  ok
+  sf300                  rc13   median 0.010  min 0.009  max 0.010  n=3  ok
+  cit-Patents            rc13   median 0.008  min 0.008  max 0.009  n=3  ok
+  graph500-24            rc13   median 0.009  min 0.009  max 0.009  n=3  ok
+  datagen-8_4-fb         rc13   median 0.010  min 0.009  max 0.010  n=3  ok
+  navindex-oberbayern    rc13   median 0.009  min 0.008  max 0.010  n=3  ok
+  navindex-twitter       rc13   median 0.009  min 0.009  max 0.009  n=3  ok
+Commit of 2000 edge changes at SF10, one writer, no readers (ms; fk_commit/commit_<variant>_<run>.csv)
+  commit_fk_1        n=190 median 17.10  p99 23.69  max 274.66  errors=0
+  commit_fk_2        n=190 median 16.31  p99 22.94  max 262.91  errors=0
+  commit_fk_3        n=190 median 15.78  p99 22.43  max 267.65  errors=0
+  commit_fk_4        n=190 median 15.87  p99 21.88  max 269.18  errors=0
+  commit_fk_5        n=190 median 15.78  p99 22.65  max 263.49  errors=0
+  commit_plain_1     n=190 median 8.93  p99 18.12  max 23.73  errors=0
+  commit_plain_2     n=190 median 8.79  p99 13.66  max 20.47  errors=0
+  commit_plain_3     n=190 median 8.76  p99 14.86  max 20.19  errors=0
+  commit_plain_4     n=190 median 8.85  p99 13.82  max 22.43  errors=0
+  commit_plain_5     n=190 median 8.77  p99 16.82  max 24.11  errors=0
+  fk: median of the run medians 15.87 ms
+  plain: median of the run medians 8.79 ms

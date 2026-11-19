@@ -1,0 +1,114 @@
+Success
+Success
+property_graph|table_name|verified
+g_b|pe_b|true
+g_b|pv|true
+g_i|pe_i|true
+g_i|pv|true
+==== (a) 0. complete graph: no path 1 -> 2
+-- index route, operator on: length and path 1 -> 2
+src|dst|len|vs|es|path
+strategy_index_paths
+mode=shortestpath;pairs=1;distinct_src=0;distinct_dst=0;orientation=forward;scheduling=source_grouped;csr=index;source_groups=0;source_group_kernel=per_source;bidirectional_searches=0
+src|dst|len
+strategy_index_lengths
+mode=iterativelength;pairs=1;distinct_src=0;distinct_dst=0;orientation=forward;csr=index;batches=1;scheduling=grouped;groups=1;workers_per_batch=32;task_edges=4194304;grouped_working_sets_mb=0;working_set_cap_mb=25216;bitmap_filter=off;sparse_level_divisor=16
+-- index route: every destination reachable from 1 (9 has no vertex row, so it cannot be a destination)
+src|dst|len
+1|1|0
+1|3|1
+-- build route, operator on: length and path 1 -> 2
+src|dst|len|vs|es|path
+strategy_build_paths
+mode=shortestpath;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=built;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+src|dst|len
+strategy_build_lengths
+mode=iterativelength;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=built;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+-- build route: every destination reachable from 1
+src|dst|len
+1|1|0
+1|3|1
+-- SQL translation (operator off), on the indexed and then on the unindexed table: length 1 -> 2
+src|dst|len
+src|dst|len
+-- one-hop pattern (plain MATCH, a join of the edge table with both vertex tables), indexed table
+s|d
+1|3
+==== (a) 1. after INSERT (1, 9), (9, 2): 9 has no vertex row. The inserts:
+stats_before_fold
+epochs=1;delta=2;tombstones=0
+-- index route, operator on: length and path 1 -> 2
+src|dst|len|vs|es|path
+1|2|2|[1, 9, 2]|[1, 2]|[1, 1, 9, 2, 2]
+strategy_index_paths
+mode=shortestpath;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=index;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+src|dst|len
+1|2|2
+strategy_index_lengths
+mode=iterativelength;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=index;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+-- index route: every destination reachable from 1 (9 has no vertex row, so it cannot be a destination)
+src|dst|len
+1|1|0
+1|2|2
+1|3|1
+-- build route, operator on: length and path 1 -> 2
+src|dst|len|vs|es|path
+strategy_build_paths
+mode=shortestpath;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=built;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+src|dst|len
+strategy_build_lengths
+mode=iterativelength;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=built;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+-- build route: every destination reachable from 1
+src|dst|len
+1|1|0
+1|3|1
+-- SQL translation (operator off), on the indexed and then on the unindexed table: length 1 -> 2
+Constraint Error: Non-existent/non-unique vertices detected. Make sure all vertices referred by edge tables exist and are unique for path-finding queries.
+src|dst|len
+Constraint Error: Non-existent/non-unique vertices detected. Make sure all vertices referred by edge tables exist and are unique for path-finding queries.
+src|dst|len
+-- one-hop pattern (plain MATCH, a join of the edge table with both vertex tables), indexed table
+s|d
+1|3
+==== (a) 2. after an explicit fold
+fold
+true
+stats_after_fold
+epochs=2;delta=2;tombstones=0
+-- index route, operator on: length and path 1 -> 2
+src|dst|len|vs|es|path
+1|2|2|[1, 9, 2]|[1, 2]|[1, 1, 9, 2, 2]
+strategy_index_paths
+mode=shortestpath;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=index;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+src|dst|len
+1|2|2
+strategy_index_lengths
+mode=iterativelength;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=index;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+-- index route: every destination reachable from 1 (9 has no vertex row, so it cannot be a destination)
+src|dst|len
+1|1|0
+1|2|2
+1|3|1
+-- build route, operator on: length and path 1 -> 2
+src|dst|len|vs|es|path
+strategy_build_paths
+mode=shortestpath;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=built;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+src|dst|len
+strategy_build_lengths
+mode=iterativelength;pairs=1;distinct_src=1;distinct_dst=1;orientation=forward;scheduling=source_grouped;csr=built;source_groups=1;source_group_kernel=per_source;bidirectional_searches=0;source_search_mb=0;source_search_rounds=off
+-- build route: every destination reachable from 1
+src|dst|len
+1|1|0
+1|3|1
+-- SQL translation (operator off), on the indexed and then on the unindexed table: length 1 -> 2
+Constraint Error: Non-existent/non-unique vertices detected. Make sure all vertices referred by edge tables exist and are unique for path-finding queries.
+src|dst|len
+Constraint Error: Non-existent/non-unique vertices detected. Make sure all vertices referred by edge tables exist and are unique for path-finding queries.
+src|dst|len
+-- one-hop pattern (plain MATCH, a join of the edge table with both vertex tables), indexed table
+s|d
+1|3
+==== (a) 3. CREATE OR REPLACE runs the check again and fails; the previous definition stays
+Constraint Error: Incomplete edge: a row of edge table pe_i has source key (src) = (9), which references no row in vertex table pv (id). Every edge key must reference an existing vertex; fix or remove the row before creating the property graph.
+src|dst|len
+1|2|2
