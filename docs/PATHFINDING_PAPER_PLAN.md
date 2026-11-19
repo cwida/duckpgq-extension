@@ -1690,3 +1690,11 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   the paper: Oberbayern can be reported with defaults; the limit to state is that searches per source grow with the
   partition count, so large road graphs (Germany upwards) are out of reach of the operator as it is (follow-up
   my-beans-tvir, not planned).
+- 19 Nov (decisions by the author, after the probes above): (1) large road graphs (Germany, Europe) are out of
+  scope: they likely need a fundamentally different index structure; my-beans-tvir is scrapped and the paper states
+  the limit. (2) OSM Oberbayern joins the sweep of the next freeze (my-beans-w2ec), so that the other systems are
+  measured on it as well. (3) Framing for Sections 5 and 6: on a road network, which the design is not favoured on,
+  the operator closes part of the gap to Umbra's Nav-Index (46 times slower than its table index at 1000 pairs,
+  faster than Umbra without a stored index), with an index that is updatable and faster to create (0.33 s against
+  2.16 s on Oberbayern, 0.55 s against 200 s on Twitter). The author's reading: Umbra's paper picked a dataset that
+  suits a contraction hierarchy.
