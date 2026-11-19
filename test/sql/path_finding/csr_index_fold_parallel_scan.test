@@ -7,6 +7,12 @@ require duckpgq
 statement ok
 SET experimental_path_finding_operator = true;
 
+# No automatic fold: the 56000 changes below are 9% of the edges, under the earlier default ratio (a tenth) and far
+# over the current one (a thousandth, since 18 Nov), so the reads before the explicit fold sometimes folded first and
+# the checks for one epoch and for one fold failed (14 of 30 runs on a loaded machine, 19 Nov)
+statement ok
+SET duckpgq_csr_index_fold_ratio = 0;
+
 # 600000 edges over 60000 vertices: five row groups, so the fold's scan has several assignments per thread
 statement ok
 CREATE TABLE person(id BIGINT);

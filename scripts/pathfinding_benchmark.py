@@ -6152,6 +6152,45 @@ def directory_bytes(path):
     return total
 
 
+def refresh_indexes(args):
+    """Brings the stored CSR indexes of one benchmark database to the format of the extension this run uses.
+
+    A stored index is only usable by a build with the same storage format and index options. Otherwise it starts empty
+    and its first reader rebuilds it from the table, in every process while the database is attached read-only (19 Nov
+    2026: none of the 41 indexes stored by rc13-era builds in the six databases loaded under storage format 3, and
+    CREATE INDEX IF NOT EXISTS keeps such an index). So before a matrix runs on a new build: every CSR index of the
+    database is dropped, the benchmark index is created with this build, the database is checkpointed, and a new
+    process with the database attached read-only must find the index loadable. The variants (undirected, partition
+    geometry, row buckets) are created again by the steps that use them."""
+    scale_factor = resolve_target(args)
+    database = db_path(scale_factor)
+    if not database.exists():
+        raise SystemExit(f"Missing database {database}: run prepare first")
+    load = f"LOAD {sql_string(DUCKPGQ_EXTENSION)}; "
+    listed = run_duckdb(BENCH_DUCKDB, None,
+                        load + f"ATTACH {sql_string(database)} AS ldbc (READ_ONLY); "
+                        "SELECT 'csr_index', schema_name, index_name FROM duckdb_indexes() WHERE database_name = 'ldbc' "
+                        "AND sql ILIKE '%USING CSR%' ORDER BY ALL;", quiet=True)[0]
+    indexes = [line.split(",")[1:] for line in listed.splitlines() if line.startswith("csr_index,")]
+    size_before = database.stat().st_size
+    drops = "".join(f"DROP INDEX ldbc.{schema}.{name}; " for schema, name in indexes)
+    _, seconds = run_duckdb(BENCH_DUCKDB, None,
+                            load + f"SET threads={args.threads}; ATTACH {sql_string(database)} AS ldbc; {drops}"
+                            f"CHECKPOINT ldbc; {create_csr_index_sql(if_not_exists=False).strip()} CHECKPOINT ldbc;",
+                            quiet=True)
+    stats = run_duckdb(BENCH_DUCKDB, None,
+                       load + f"ATTACH {sql_string(database)} AS ldbc (READ_ONLY); SELECT 'stats', "
+                       f"duckpgq_csr_index_stats('ldbc.main.person_knows_person', {sql_string(CSR_INDEX_NAME)});",
+                       quiet=True)[0]
+    stats_line = next((line for line in stats.splitlines() if line.startswith("stats,")), "stats,")
+    print(f"{target_description(scale_factor)}: dropped {len(indexes)} CSR indexes "
+          f"({', '.join(name for _, name in indexes) or 'none'}), created {CSR_INDEX_NAME} WITH ({CSR_INDEX_OPTIONS}) "
+          f"in {seconds:.1f} s; file {size_before / 2**20:.0f} MiB -> {database.stat().st_size / 2**20:.0f} MiB; "
+          f"stored state in a new read-only process: {stats_line.split(',', 1)[1]}")
+    if not stats_line.split(",", 1)[1].strip('"').startswith("epochs=1;"):
+        raise SystemExit(f"The stored index of {database} does not load with {DUCKPGQ_EXTENSION}")
+
+
 def fixed_costs(args):
     """The fixed costs of every system at one scale factor: DuckDB database size, CSR index creation time and bytes
     per edge, and each baseline's fresh load time and store size (the paper's fixed-costs table)."""
@@ -6893,6 +6932,12 @@ def main():
     microbench_parser.set_defaults(func=microbenchmarks)
 
     microbench_table_parser = subcommands.add_parser("microbench-table", aliases=["ablation-table"], help="Print microbenchmark CSVs as tables")
+
+    refresh_parser = subcommands.add_parser("refresh-indexes", help="Drop every stored CSR index of a database and create the benchmark index with this build")
+    refresh_parser.add_argument("--scale-factor", default=None, help="LDBC scale factor")
+    refresh_parser.add_argument("--dataset", default=None, help="Graphalytics dataset instead of an LDBC scale factor")
+    refresh_parser.add_argument("--threads", type=int, default=os.cpu_count())
+    refresh_parser.set_defaults(func=refresh_indexes)
 
     fixed_parser = subcommands.add_parser("fixed-costs", help="Database size, index build time and bytes per edge, baseline load times and store sizes")
     fixed_parser.add_argument("--scale-factor", default=None, help="LDBC scale factor")

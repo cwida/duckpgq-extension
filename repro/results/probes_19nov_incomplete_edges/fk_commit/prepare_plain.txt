@@ -1,0 +1,10 @@
+duckdb agent mode on: AI_AGENT is set and stdout is not a terminal; -no-agent turns it off, .help agent explains the output
+estimate: ~1839354 rows read (person_knows_person ~1839354)
+estimate: ~1839354 rows read (fkprobe_stage ~1839354)
+estimate: ~1839354 rows read (person_knows_person ~1839354)
+| Success:BOOLEAN |
+|---|
+0 rows, hash 0000000000000000
+| variant:VARCHAR | edges:BIGINT | foreign_keys:BIGINT | indexes:BIGINT |
+|---|---|---|---|
+| plain | 1839354 | 0 | 1 |

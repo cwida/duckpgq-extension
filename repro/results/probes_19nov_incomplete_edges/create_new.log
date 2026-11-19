@@ -1,0 +1,32 @@
+sf10: vertices,edges,incomplete_source,incomplete_destination,null_keys,foreign_keys = 68673,1839354,0,0,0,0
+sf10: new run 1: CREATE PROPERTY GRAPH ok, 0.031 s (process 0.09 s)
+sf10: new run 2: CREATE PROPERTY GRAPH ok, 0.030 s (process 0.09 s)
+sf10: new run 3: CREATE PROPERTY GRAPH ok, 0.031 s (process 0.09 s)
+sf100: vertices,edges,incomplete_source,incomplete_destination,null_keys,foreign_keys = 473001,18655515,0,0,0,0
+sf100: new run 1: CREATE PROPERTY GRAPH ok, 0.076 s (process 0.15 s)
+sf100: new run 2: CREATE PROPERTY GRAPH ok, 0.081 s (process 0.15 s)
+sf100: new run 3: CREATE PROPERTY GRAPH ok, 0.074 s (process 0.14 s)
+sf300: vertices,edges,incomplete_source,incomplete_destination,null_keys,foreign_keys = 1193579,55656915,0,0,0,0
+sf300: new run 1: CREATE PROPERTY GRAPH ok, 0.151 s (process 0.23 s)
+sf300: new run 2: CREATE PROPERTY GRAPH ok, 0.152 s (process 0.24 s)
+sf300: new run 3: CREATE PROPERTY GRAPH ok, 0.149 s (process 0.23 s)
+cit-Patents: vertices,edges,incomplete_source,incomplete_destination,null_keys,foreign_keys = 3774768,16518947,0,0,0,0
+cit-Patents: new run 1: CREATE PROPERTY GRAPH ok, 0.103 s (process 0.17 s)
+cit-Patents: new run 2: CREATE PROPERTY GRAPH ok, 0.105 s (process 0.17 s)
+cit-Patents: new run 3: CREATE PROPERTY GRAPH ok, 0.105 s (process 0.17 s)
+graph500-24: vertices,edges,incomplete_source,incomplete_destination,null_keys,foreign_keys = 8870942,520759040,0,0,0,0
+graph500-24: new run 1: CREATE PROPERTY GRAPH ok, 1.327 s (process 1.55 s)
+graph500-24: new run 2: CREATE PROPERTY GRAPH ok, 1.240 s (process 1.41 s)
+graph500-24: new run 3: CREATE PROPERTY GRAPH ok, 1.245 s (process 1.41 s)
+datagen-8_4-fb: vertices,edges,incomplete_source,incomplete_destination,null_keys,foreign_keys = 3809084,538958354,0,0,0,0
+datagen-8_4-fb: new run 1: CREATE PROPERTY GRAPH ok, 1.258 s (process 1.54 s)
+datagen-8_4-fb: new run 2: CREATE PROPERTY GRAPH ok, 1.194 s (process 1.55 s)
+datagen-8_4-fb: new run 3: CREATE PROPERTY GRAPH ok, 1.249 s (process 1.65 s)
+navindex-oberbayern: vertices,edges,incomplete_source,incomplete_destination,null_keys,foreign_keys = 495357,805743,0,0,0,0
+navindex-oberbayern: new run 1: CREATE PROPERTY GRAPH ok, 0.050 s (process 0.11 s)
+navindex-oberbayern: new run 2: CREATE PROPERTY GRAPH ok, 0.047 s (process 0.10 s)
+navindex-oberbayern: new run 3: CREATE PROPERTY GRAPH ok, 0.048 s (process 0.10 s)
+navindex-twitter: vertices,edges,incomplete_source,incomplete_destination,null_keys,foreign_keys = 81306,2420766,0,0,0,0
+navindex-twitter: new run 1: CREATE PROPERTY GRAPH ok, 0.030 s (process 0.08 s)
+navindex-twitter: new run 2: CREATE PROPERTY GRAPH ok, 0.033 s (process 0.09 s)
+navindex-twitter: new run 3: CREATE PROPERTY GRAPH ok, 0.032 s (process 0.09 s)
