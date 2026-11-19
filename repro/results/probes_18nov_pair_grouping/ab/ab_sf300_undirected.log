@@ -1,0 +1,2 @@
+2026-11-19T09:14:06Z sf300_undirected db /local/home/dwolde/bootstrap/duckpgq-extension/data/ldbc-pathfinding/db/ldbc_sf300.duckdb index pathfinding_benchmark_csr_undirected threads 32 repeats 3 commit 8ae1d622 cli bafa9be5a984596e extension b20eb4472fc8dd0e
+2026-11-19T09:15:18Z done exit=0

@@ -89,7 +89,34 @@ that count (1.50 times faster). A wave of random sources has an active lane on 9
 level, a wave of neighbouring sources on 52%. Where the ids carry no such structure (the undirected index, graph500)
 the order changes nothing.
 
-Not measured: an in-operator ordering of the groups before the waves are cut (the same wave composition without a
-sort of the pairs); cit-Patents and datagen-8_4-fb; 65,536 pairs on the undirected index and on graph500 (the
-control used 16,384 and 2048); why 1024 sources x 200 destinations were 1.15 times slower sorted in the first run
-(the sort of 204,800 pairs takes 21 of the 39 ms).
+The change (19 Nov, commit 8ae1d622 of this branch): the operator orders the source groups by the vertex id of
+their source before the waves are cut; switch experimental_path_finding_operator_sort_source_groups, default true.
+A/B on that build, switch on (by id) against off (order of first appearance), interleaved, 32 threads, quiet
+machine, index route, same result both ways on every row (tools/ab.sh, tools/summarize_ab.py, files under ab/,
+table in ab/summary.md). Median ms, 5 runs (3 on the undirected index, datagen and graph500):
+
+  graph                      query                          by id    arrival   by id is
+  SF300 directed             1 pair                            23         22   the same (timer resolution 1 ms)
+                             1024 random pairs                160        217   1.36 times faster
+                             16,384 random pairs            1,932      2,830   1.46 times faster
+                             65,536 random pairs            6,700     10,104   1.51 times faster
+                             1024 sources x 200 dest.         201        250   1.24 times faster (ranges overlap)
+                             reach, 1024 sources x all        721        775   1.07 times faster (ranges overlap)
+  SF100 directed             1024 random pairs                 95        111   1.17 times faster
+                             65,536 random pairs            2,417      3,367   1.39 times faster
+  SF300 undirected           1024 random pairs                173        175   the same (1.01)
+                             65,536 random pairs            9,385      9,510   1.01 times faster
+  cit-Patents                1024 random pairs                225        223   the same (0.99)
+                             65,536 random pairs            3,394      3,552   1.05 times faster
+  datagen-8_4-fb             1024 random pairs                936        955   1.02 times faster
+                             16,384 random pairs           14,026     14,052   the same (1.00)
+  graph500-24                2048 random pairs              5,898      5,828   1.01 times slower
+                             16,384 random pairs           40,155     39,845   1.01 times slower
+
+The gain of the sort below the operator is reproduced inside it on the directed LDBC graph. It is not a general
+gain from locality: on the undirected index, datagen-8_4-fb and graph500-24 the order of the groups moves the time
+by 1% or less in either direction, and on cit-Patents (no random pair is reachable there) by 5% at 65,536 pairs.
+
+Not measured: the build route; paths (they run per source, where the order of the groups does not form waves);
+why 1024 sources x 200 destinations were 1.15 times slower with the pairs sorted below the operator in the first
+run and are 1.24 times faster with the groups ordered inside it.

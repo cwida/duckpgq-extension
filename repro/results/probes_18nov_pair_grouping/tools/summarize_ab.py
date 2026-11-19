@@ -21,7 +21,7 @@ for label in sys.argv[2:]:
             continue
         if "Error" in line:
             print("ERROR LINE:", label, line.strip())
-        numbers = re.findall(r"│\s*(\d+)\s*", line)
+        numbers = re.findall(r"│\s*(\d+|NULL)\s*", line)
         if current and len(numbers) == 3:
             checks.setdefault(current, set()).add(tuple(numbers))
         match = re.match(r"Run Time \(s\): real ([0-9.]+)", line)
