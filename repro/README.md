@@ -44,6 +44,7 @@ export the first time it is needed; that load time is recorded as `load_s` in th
 
 | Step | Harness subcommand | Shapes | Systems |
 |---|---|---|---|
+| `refresh_indexes_*` (first, in every subset) | `refresh-indexes` | not a measurement: drops every stored CSR index of the database, creates the benchmark index with this build, checkpoints, and fails unless a new read-only process loads the stored index (an index stored by another build is rebuilt by its first reader in every process) | DuckPGQ |
 | `sweep_pairs_sf*` | `sweep-pairs` | random pairs 1..65536; 1/16/128/1024 sources x all persons | all seven |
 | `ldbc_queries_sf*` | `ldbc-queries` | IC13, BI19, BI20 (hop-count variants) | all seven |
 | `*_client32` | the two above with `--client-threads 32` | same | Kuzu, Memgraph, FalkorDB (SF10, SF100) |

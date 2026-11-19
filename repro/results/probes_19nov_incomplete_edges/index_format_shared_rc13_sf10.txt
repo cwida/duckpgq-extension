@@ -1,0 +1,17 @@
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_pv16384          loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_pv32768          loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_pv4096           loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_pv65535          loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_pv8192           loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_rb0              loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_rb16             loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_rb1              loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_rb2              loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_rb4              loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_rb64             loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_rb8              loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_reverse_true     loaded  epochs=1;delta=0;tombstones=0  WITH (reverse = true )
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_threads          loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr_undirected       loaded  epochs=1;delta=0;tombstones=0  WITH (undirected = true )
+ldbc_sf10.duckdb         rc13  pathfinding_benchmark_csr                  loaded  epochs=1;delta=0;tombstones=0  
+ldbc_sf10.duckdb: rc13: 16 of 16 stored indexes load

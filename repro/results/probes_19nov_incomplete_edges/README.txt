@@ -83,3 +83,18 @@ Compatibility note
   ("table __duckpgq_internal has 23 columns but 22 values were supplied"; with CREATE OR REPLACE the old rows are
   already deleted by then). The benchmark is not affected: it attaches its databases and keeps the graph in the
   in-memory catalog. A/B runs against rc13 must not share a database file that stores a property graph.
+
+Stored CSR indexes of the benchmark databases against the branch's storage format (added later on 19 Nov)
+  tools/index_format.py: for every CSR index of the edge table, a fresh process with the database attached read-only
+  asks duckpgq_csr_index_stats, which loads the stored state without building from the table. epochs=1: loaded;
+  epochs=0: this build cannot use the stored state, and the first query rebuilds the index from the table, in every
+  process while the attach is read-only.
+    index_format_shared_new.txt       build 7912a619 (storage format 3): 0 of 41 stored indexes load (SF10 16,
+                                      SF100 16, SF300 6, cit-Patents 1, graph500-24 1, datagen-8_4-fb 1)
+    index_format_shared_rc13_sf10.txt rc13 (storage format 2): 16 of 16 load at SF10
+  The benchmark index is also stored without the reverse side in all six files. The matrix now starts with
+  refresh_indexes_* steps (harness subcommand refresh-indexes): all CSR indexes dropped, the benchmark index created
+  with the build of the run, checkpoint, and the step fails unless a new read-only process loads it. Tried on a
+  private copy of SF10: 16 indexes dropped, index created in 0.5 s, epochs=1 under the new build and epochs=0 under
+  rc13 (so after the refresh rc13 rebuilds per process: A/B runs against rc13 need their own copy). The file size
+  stayed 452 MiB: the freed blocks are reused, not returned. The shared files were not changed.
