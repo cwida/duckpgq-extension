@@ -1,0 +1,7 @@
+Converting /home/ec2-user/navindex/data/data/oberbayern.tsv to /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/osm-oberbayern
+Converted osm-oberbayern in 0.22s
+osm-oberbayern v.parquet and e.parquet already exist: /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/osm-oberbayern
+osm-oberbayern v.parquet and e.parquet already exist: /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/osm-oberbayern
+osm-oberbayern v.parquet and e.parquet already exist: /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/osm-oberbayern
+Materializing Graphalytics osm-oberbayern benchmark database at /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/db/osm-oberbayern.duckdb
+Materialized Graphalytics osm-oberbayern database in 0.20s

@@ -1,0 +1,28 @@
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_128 exists
+Prepared benchmark_pairs_128 for graphalytics_osm_oberbayern in 0.12s
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_osm_oberbayern in 0.14s
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for graphalytics_osm_oberbayern in 0.15s
+== duckpgq_index [baseline] loaded in 0.1s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=128     sources=      repeat 1:    0.107s 124/31681
+   baseline                     random_pairs pairs=128     sources=      repeat 2:    0.101s 124/31681
+   baseline                     random_pairs pairs=128     sources=      repeat 3:    0.101s 124/31681
+   baseline                     random_pairs pairs=1024    sources=      repeat 1:    0.491s 989/245141
+   baseline                     random_pairs pairs=1024    sources=      repeat 2:    0.507s 989/245141
+   baseline                     random_pairs pairs=1024    sources=      repeat 3:    0.500s 989/245141
+   baseline                     random_pairs pairs=2048    sources=      repeat 1:    0.944s 1981/484495
+   baseline                     random_pairs pairs=2048    sources=      repeat 2:    0.938s 1981/484495
+   baseline                     random_pairs pairs=2048    sources=      repeat 3:    0.939s 1981/484495
+== duckpgq_index [no_shape_probe] loaded in 0.1s (index pathfinding_benchmark_csr)
+   no_shape_probe               random_pairs pairs=128     sources=      repeat 1:    1.211s 124/31681
+   no_shape_probe               random_pairs pairs=128     sources=      repeat 2:    1.221s 124/31681
+   no_shape_probe               random_pairs pairs=128     sources=      repeat 3:    1.207s 124/31681
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 1:    3.531s 989/245141
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 2:    3.510s 989/245141
+   no_shape_probe               random_pairs pairs=1024    sources=      repeat 3:    3.508s 989/245141
+   no_shape_probe               random_pairs pairs=2048    sources=      repeat 1:    6.040s 1981/484495
+   no_shape_probe               random_pairs pairs=2048    sources=      repeat 2:    6.010s 1981/484495
+   no_shape_probe               random_pairs pairs=2048    sources=      repeat 3:    5.991s 1981/484495
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_osm_oberbayern/microbench_graphalytics_osm_oberbayern_threads32_1795279706631079483.csv
+All 3 points agree across configurations 

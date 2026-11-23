@@ -1,0 +1,106 @@
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_1 exists
+Prepared benchmark_pairs_1 for graphalytics_osm_oberbayern in 0.12s
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_16 exists
+Prepared benchmark_pairs_16 for graphalytics_osm_oberbayern in 0.12s
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_128 exists
+Prepared benchmark_pairs_128 for graphalytics_osm_oberbayern in 0.13s
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_osm_oberbayern in 0.14s
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for graphalytics_osm_oberbayern in 0.15s
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_16384 exists
+Prepared benchmark_pairs_16384 for graphalytics_osm_oberbayern in 0.38s
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for graphalytics_osm_oberbayern in 1.12s
+== osm-oberbayern: 495357 vertices, 805743 edges, 461390 vertices with an outgoing edge (93.1%), 461349 with an incoming edge (93.1%); sources are sampled from the former, destinations from the latter
+== memgraph: loading graphalytics_osm_oberbayern
+   loaded in 5.2s, 805743 edges
+   memgraph@32    random_pairs pairs=1       sources=      repeat 1:    5.911s 1/301 (100.0% of the pairs reachable)
+   memgraph@32    random_pairs pairs=1       sources=      repeat 2:    5.984s 1/301 (100.0% of the pairs reachable)
+   memgraph@32    random_pairs pairs=1       sources=      repeat 3:    5.911s 1/301 (100.0% of the pairs reachable)
+   memgraph@32    random_pairs pairs=16      sources=      repeat 1:    9.999s 16/4050 (100.0% of the pairs reachable)
+   memgraph@32    random_pairs pairs=16      sources=      repeat 2:    9.942s 16/4050 (100.0% of the pairs reachable)
+   memgraph@32    random_pairs pairs=16      sources=      repeat 3:    9.863s 16/4050 (100.0% of the pairs reachable)
+   memgraph@32    random_pairs pairs=128     sources=      repeat 1:   55.850s 124/31681 (96.9% of the pairs reachable)
+   memgraph@32    random_pairs pairs=128     sources=      repeat 2:   55.611s 124/31681 (96.9% of the pairs reachable)
+   memgraph@32    random_pairs pairs=128     sources=      repeat 3:   55.856s 124/31681 (96.9% of the pairs reachable)
+   memgraph@32    random_pairs pairs=1024    sources=      repeat 1:  438.326s 989/245141 (96.6% of the pairs reachable)
+   memgraph@32    random_pairs pairs=1024    sources=      repeat 2:  439.215s 989/245141 (96.6% of the pairs reachable)
+   memgraph@32    random_pairs pairs=1024    sources=      repeat 3:  440.102s 989/245141 (96.6% of the pairs reachable)
+   memgraph@32    random_pairs pairs=2048    sources=      repeat 1:  600.245s timed_out
+   memgraph@32    random_pairs pairs=16384   sources=      repeat 1:    0.000s timed_out_inferred
+   memgraph@32    random_pairs pairs=65536   sources=      repeat 1:    0.000s timed_out_inferred
+   memgraph@32    multi_source pairs=        sources=1     repeat 1:    8.368s 445894/114806812 (90.0% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1     repeat 2:    8.364s 445894/114806812 (90.0% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1     repeat 3:    8.444s 445894/114806812 (90.0% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=16    repeat 1:   29.212s 6688436/2148746619 (84.4% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=16    repeat 2:   30.097s 6688436/2148746619 (84.4% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=16    repeat 3:   29.753s 6688436/2148746619 (84.4% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=128   repeat 1:  179.682s 56182688/18427099045 (88.6% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=128   repeat 2:  180.619s 56182688/18427099045 (88.6% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=128   repeat 3:  180.147s 56182688/18427099045 (88.6% of the vertices reached per source)
+   memgraph@32    multi_source pairs=        sources=1024  repeat 1:  600.197s timed_out
+== falkordb: loading graphalytics_osm_oberbayern
+   loaded in 37.6s, 805743 edges
+   falkordb@32    random_pairs pairs=1       sources=      repeat 1:    0.088s 1/301 (100.0% of the pairs reachable)
+   falkordb@32    random_pairs pairs=1       sources=      repeat 2:    0.054s 1/301 (100.0% of the pairs reachable)
+   falkordb@32    random_pairs pairs=1       sources=      repeat 3:    0.055s 1/301 (100.0% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16      sources=      repeat 1:    0.195s 16/4050 (100.0% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16      sources=      repeat 2:    0.169s 16/4050 (100.0% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16      sources=      repeat 3:    0.232s 16/4050 (100.0% of the pairs reachable)
+   falkordb@32    random_pairs pairs=128     sources=      repeat 1:    0.608s 124/31681 (96.9% of the pairs reachable)
+   falkordb@32    random_pairs pairs=128     sources=      repeat 2:    0.493s 124/31681 (96.9% of the pairs reachable)
+   falkordb@32    random_pairs pairs=128     sources=      repeat 3:    0.498s 124/31681 (96.9% of the pairs reachable)
+   falkordb@32    random_pairs pairs=1024    sources=      repeat 1:    3.704s 989/245141 (96.6% of the pairs reachable)
+   falkordb@32    random_pairs pairs=1024    sources=      repeat 2:    3.630s 989/245141 (96.6% of the pairs reachable)
+   falkordb@32    random_pairs pairs=1024    sources=      repeat 3:    3.624s 989/245141 (96.6% of the pairs reachable)
+   falkordb@32    random_pairs pairs=2048    sources=      repeat 1:    7.215s 1981/484495 (96.7% of the pairs reachable)
+   falkordb@32    random_pairs pairs=2048    sources=      repeat 2:    7.061s 1981/484495 (96.7% of the pairs reachable)
+   falkordb@32    random_pairs pairs=2048    sources=      repeat 3:    7.247s 1981/484495 (96.7% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16384   sources=      repeat 1:   56.040s 15602/4101580 (95.2% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16384   sources=      repeat 2:   55.987s 15602/4101580 (95.2% of the pairs reachable)
+   falkordb@32    random_pairs pairs=16384   sources=      repeat 3:   56.236s 15602/4101580 (95.2% of the pairs reachable)
+   falkordb@32    random_pairs pairs=65536   sources=      repeat 1:  223.349s 61874/17530837 (94.4% of the pairs reachable)
+   falkordb@32    random_pairs pairs=65536   sources=      repeat 2:  223.144s 61874/17530837 (94.4% of the pairs reachable)
+   falkordb@32    random_pairs pairs=65536   sources=      repeat 3:  222.606s 61874/17530837 (94.4% of the pairs reachable)
+   falkordb@32    multi_source pairs=        sources=1     repeat 1:  600.010s timed_out
+   falkordb@32    multi_source pairs=        sources=16    repeat 1:    0.000s timed_out_inferred
+   falkordb@32    multi_source pairs=        sources=128   repeat 1:    0.000s timed_out_inferred
+   falkordb@32    multi_source pairs=        sources=1024  repeat 1:    0.000s timed_out_inferred
+== kuzu: loading graphalytics_osm_oberbayern
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_osm_oberbayern in 0.14s
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for graphalytics_osm_oberbayern in 0.14s
+   loaded in 0.4s, 805743 edges
+   kuzu@32        random_pairs pairs=1       sources=      repeat 1:    0.601s 1/301 (100.0% of the pairs reachable)
+   kuzu@32        random_pairs pairs=1       sources=      repeat 2:    0.544s 1/301 (100.0% of the pairs reachable)
+   kuzu@32        random_pairs pairs=1       sources=      repeat 3:    0.600s 1/301 (100.0% of the pairs reachable)
+   kuzu@32        random_pairs pairs=16      sources=      repeat 1:    1.401s 16/4050 (100.0% of the pairs reachable)
+   kuzu@32        random_pairs pairs=16      sources=      repeat 2:    1.400s 16/4050 (100.0% of the pairs reachable)
+   kuzu@32        random_pairs pairs=16      sources=      repeat 3:    1.398s 16/4050 (100.0% of the pairs reachable)
+   kuzu@32        random_pairs pairs=128     sources=      repeat 1:    5.920s 124/31681 (96.9% of the pairs reachable)
+   kuzu@32        random_pairs pairs=128     sources=      repeat 2:    5.930s 124/31681 (96.9% of the pairs reachable)
+   kuzu@32        random_pairs pairs=128     sources=      repeat 3:    5.789s 124/31681 (96.9% of the pairs reachable)
+   kuzu@32        random_pairs pairs=1024    sources=      repeat 1:   40.057s 989/245141 (96.6% of the pairs reachable)
+   kuzu@32        random_pairs pairs=1024    sources=      repeat 2:   40.291s 989/245141 (96.6% of the pairs reachable)
+   kuzu@32        random_pairs pairs=1024    sources=      repeat 3:   40.123s 989/245141 (96.6% of the pairs reachable)
+   kuzu@32        random_pairs pairs=2048    sources=      repeat 1:   75.045s 1981/484495 (96.7% of the pairs reachable)
+   kuzu@32        random_pairs pairs=2048    sources=      repeat 2:   74.950s 1981/484495 (96.7% of the pairs reachable)
+   kuzu@32        random_pairs pairs=2048    sources=      repeat 3:   75.378s 1981/484495 (96.7% of the pairs reachable)
+   kuzu@32        random_pairs pairs=16384   sources=      repeat 1:  600.004s timed_out
+   kuzu@32        random_pairs pairs=65536   sources=      repeat 1:    0.000s timed_out_inferred
+   kuzu@32        multi_source pairs=        sources=1     repeat 1:    0.248s 445894/114806812 (90.0% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1     repeat 2:    0.187s 445894/114806812 (90.0% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1     repeat 3:    0.182s 445894/114806812 (90.0% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=16    repeat 1:    0.988s 6688436/2148746619 (84.4% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=16    repeat 2:    0.972s 6688436/2148746619 (84.4% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=16    repeat 3:    0.989s 6688436/2148746619 (84.4% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=128   repeat 1:    6.590s 56182688/18427099045 (88.6% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=128   repeat 2:    6.602s 56182688/18427099045 (88.6% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=128   repeat 3:    6.641s 56182688/18427099045 (88.6% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1024  repeat 1:   50.501s 440989563/138243375225 (86.9% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1024  repeat 2:   50.719s 440989563/138243375225 (86.9% of the vertices reached per source)
+   kuzu@32        multi_source pairs=        sources=1024  repeat 3:   50.907s 440989563/138243375225 (86.9% of the vertices reached per source)
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_osm_oberbayern/sweep_pairs_graphalytics_osm_oberbayern_threads32_1795273657305490289.csv
+All 11 points agree across the systems that completed them

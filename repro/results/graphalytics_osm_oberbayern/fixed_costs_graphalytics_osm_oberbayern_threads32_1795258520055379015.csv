@@ -1,0 +1,13 @@
+system,scale_factor,measure,seconds,bytes,edges,bytes_per_edge,threads,benchmark_notes,repo_commit
+duckdb,osm-oberbayern,database_file,,24391680,805743,30.27,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,osm-oberbayern,index_build_repeat1,0.086,21763660,805743,27.01,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,osm-oberbayern,index_build_repeat2,0.085,21763660,805743,27.01,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,osm-oberbayern,index_build_repeat3,0.088,21763660,805743,27.01,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+kuzu,osm-oberbayern,load,1.087,39559168,805743,49.10,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+memgraph,osm-oberbayern,load,24.591,2319282339,805743,2878.44,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+falkordb,osm-oberbayern,load,37.674,110100480,805743,136.64,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+neo4j,osm-oberbayern,load,13.982,89908704,805743,111.58,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+umbra_navindex,osm-oberbayern,load,1.194,,805743,,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+umbra_navindex,osm-oberbayern,index_build_repeat1,2.658,,805743,,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+umbra_navindex,osm-oberbayern,index_build_repeat2,2.346,,805743,,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+umbra_navindex,osm-oberbayern,index_build_repeat3,2.338,,805743,,32,fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b

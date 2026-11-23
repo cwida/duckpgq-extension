@@ -1,0 +1,30 @@
+Downloading https://datasets.ldbcouncil.org/graphalytics-parquet/cit-Patents-v.parquet
+Downloaded /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/cit-Patents/cit-Patents-v.parquet in 0.32s
+Downloading https://datasets.ldbcouncil.org/graphalytics-parquet/cit-Patents-e.parquet
+Downloaded /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/cit-Patents/cit-Patents-e.parquet in 0.98s
+Downloading Graphalytics reference package https://datasets.ldbcouncil.org/graphalytics/cit-Patents.tar.zst
+Downloaded reference package for cit-Patents in 1.58s
+Graphalytics cit-Patents v.parquet already exists: /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/cit-Patents/cit-Patents-v.parquet
+Graphalytics cit-Patents e.parquet already exists: /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/cit-Patents/cit-Patents-e.parquet
+Materializing Graphalytics cit-Patents benchmark database at /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/db/cit-Patents.duckdb
+Materialized Graphalytics cit-Patents database in 0.42s
+Downloading https://datasets.ldbcouncil.org/graphalytics-parquet/graph500-24-v.parquet
+Downloaded /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/graph500-24/graph500-24-v.parquet in 0.23s
+Downloading https://datasets.ldbcouncil.org/graphalytics-parquet/graph500-24-e.parquet
+Downloaded /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/graph500-24/graph500-24-e.parquet in 39.02s
+Downloading Graphalytics reference package https://datasets.ldbcouncil.org/graphalytics/graph500-24.tar.zst
+Downloaded reference package for graph500-24 in 17.56s
+Graphalytics graph500-24 v.parquet already exists: /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/graph500-24/graph500-24-v.parquet
+Graphalytics graph500-24 e.parquet already exists: /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/graph500-24/graph500-24-e.parquet
+Materializing Graphalytics graph500-24 benchmark database at /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/db/graph500-24.duckdb
+Materialized Graphalytics graph500-24 database in 3.90s
+Downloading https://datasets.ldbcouncil.org/graphalytics-parquet/datagen-8_4-fb-v.parquet
+Downloaded /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/datagen-8_4-fb/datagen-8_4-fb-v.parquet in 0.17s
+Downloading https://datasets.ldbcouncil.org/graphalytics-parquet/datagen-8_4-fb-e.parquet
+Downloaded /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/datagen-8_4-fb/datagen-8_4-fb-e.parquet in 45.27s
+Downloading Graphalytics reference package https://datasets.ldbcouncil.org/graphalytics/datagen-8_4-fb.tar.zst
+Downloaded reference package for datagen-8_4-fb in 32.93s
+Graphalytics datagen-8_4-fb v.parquet already exists: /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/datagen-8_4-fb/datagen-8_4-fb-v.parquet
+Graphalytics datagen-8_4-fb e.parquet already exists: /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/sources/datagen-8_4-fb/datagen-8_4-fb-e.parquet
+Materializing Graphalytics datagen-8_4-fb benchmark database at /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/graphalytics/db/datagen-8_4-fb.duckdb
+Materialized Graphalytics datagen-8_4-fb database in 7.11s

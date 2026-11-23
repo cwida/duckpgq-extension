@@ -1,0 +1,118 @@
+Ensuring graphalytics_graph500_24 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for graphalytics_graph500_24 in 2.31s
+== duckpgq_index [explore_partitioned_t1] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_partitioned_t1       random_pairs pairs=2048    sources=      repeat 1:  152.292s 2043/6991
+   explore_partitioned_t1       random_pairs pairs=2048    sources=      repeat 2:  151.795s 2043/6991
+   explore_partitioned_t1       random_pairs pairs=2048    sources=      repeat 3:  155.520s 2043/6991
+   explore_partitioned_t1       multi_source pairs=        sources=256   repeat 1:   53.540s 2269474048/7743186102
+   explore_partitioned_t1       multi_source pairs=        sources=256   repeat 2:   53.439s 2269474048/7743186102
+   explore_partitioned_t1       multi_source pairs=        sources=256   repeat 3:   54.030s 2269474048/7743186102
+== duckpgq_index [explore_partitioned_t2] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_partitioned_t2       random_pairs pairs=2048    sources=      repeat 1:   84.835s 2043/6991
+   explore_partitioned_t2       random_pairs pairs=2048    sources=      repeat 2:   84.750s 2043/6991
+   explore_partitioned_t2       random_pairs pairs=2048    sources=      repeat 3:   84.705s 2043/6991
+   explore_partitioned_t2       multi_source pairs=        sources=256   repeat 1:   30.411s 2269474048/7743186102
+   explore_partitioned_t2       multi_source pairs=        sources=256   repeat 2:   30.070s 2269474048/7743186102
+   explore_partitioned_t2       multi_source pairs=        sources=256   repeat 3:   30.421s 2269474048/7743186102
+== duckpgq_index [explore_partitioned_t4] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_partitioned_t4       random_pairs pairs=2048    sources=      repeat 1:   41.303s 2043/6991
+   explore_partitioned_t4       random_pairs pairs=2048    sources=      repeat 2:   41.368s 2043/6991
+   explore_partitioned_t4       random_pairs pairs=2048    sources=      repeat 3:   41.444s 2043/6991
+   explore_partitioned_t4       multi_source pairs=        sources=256   repeat 1:   17.154s 2269474048/7743186102
+   explore_partitioned_t4       multi_source pairs=        sources=256   repeat 2:   17.200s 2269474048/7743186102
+   explore_partitioned_t4       multi_source pairs=        sources=256   repeat 3:   16.936s 2269474048/7743186102
+== duckpgq_index [explore_partitioned_t8] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_partitioned_t8       random_pairs pairs=2048    sources=      repeat 1:   20.692s 2043/6991
+   explore_partitioned_t8       random_pairs pairs=2048    sources=      repeat 2:   20.814s 2043/6991
+   explore_partitioned_t8       random_pairs pairs=2048    sources=      repeat 3:   20.739s 2043/6991
+   explore_partitioned_t8       multi_source pairs=        sources=256   repeat 1:    9.746s 2269474048/7743186102
+   explore_partitioned_t8       multi_source pairs=        sources=256   repeat 2:    9.714s 2269474048/7743186102
+   explore_partitioned_t8       multi_source pairs=        sources=256   repeat 3:    9.746s 2269474048/7743186102
+== duckpgq_index [explore_partitioned_t16] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_partitioned_t16      random_pairs pairs=2048    sources=      repeat 1:   10.375s 2043/6991
+   explore_partitioned_t16      random_pairs pairs=2048    sources=      repeat 2:   10.362s 2043/6991
+   explore_partitioned_t16      random_pairs pairs=2048    sources=      repeat 3:   10.408s 2043/6991
+   explore_partitioned_t16      multi_source pairs=        sources=256   repeat 1:    6.397s 2269474048/7743186102
+   explore_partitioned_t16      multi_source pairs=        sources=256   repeat 2:    6.377s 2269474048/7743186102
+   explore_partitioned_t16      multi_source pairs=        sources=256   repeat 3:    6.333s 2269474048/7743186102
+== duckpgq_index [baseline] loaded in 0.4s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=2048    sources=      repeat 1:    6.222s 2043/6991
+   baseline                     random_pairs pairs=2048    sources=      repeat 2:    6.140s 2043/6991
+   baseline                     random_pairs pairs=2048    sources=      repeat 3:    6.115s 2043/6991
+   baseline                     multi_source pairs=        sources=256   repeat 1:    4.706s 2269474048/7743186102
+   baseline                     multi_source pairs=        sources=256   repeat 2:    4.677s 2269474048/7743186102
+   baseline                     multi_source pairs=        sources=256   repeat 3:    4.663s 2269474048/7743186102
+== duckpgq_index [explore_flat_serial_t1] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t1       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial_t1       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_serial_t2] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t2       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial_t2       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_serial_t4] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t4       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial_t4       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_serial_t8] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t8       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial_t8       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_serial_t16] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t16      random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial_t16      multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_serial] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_serial          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges_t1] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t1       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges_t1       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges_t2] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t2       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges_t2       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges_t4] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t4       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges_t4       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges_t8] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t8       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges_t8       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges_t16] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t16      random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges_t16      multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_ranges          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic_t1] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t1       random_pairs pairs=2048    sources=      repeat 1:  600.000s timed_out
+   explore_flat_atomic_t1       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic_t2] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t2       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic_t2       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic_t4] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t4       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic_t4       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic_t8] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t8       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic_t8       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic_t16] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t16      random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic_t16      multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_atomic          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked_t1] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t1       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked_t1       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked_t2] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t2       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked_t2       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked_t4] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t4       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked_t4       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked_t8] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t8       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked_t8       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked_t16] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t16      random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked_t16      multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked] loaded in 0.5s (index pathfinding_benchmark_csr)
+   explore_flat_locked          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_graph500_24/microbench_graphalytics_graph500_24_threads32_1795233722306739507.csv
+All 2 points agree across configurations 

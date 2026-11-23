@@ -1,0 +1,14 @@
+Exporting graphalytics_datagen_8_4_fb tables for the graph databases
+   duckdb           database_file                     s    12425113600 B    23.05 B/edge
+   duckpgq_index    index_build_repeat1        52.200 s     8129510976 B    15.08 B/edge
+   duckpgq_index    index_build_repeat2        52.144 s     8129510976 B    15.08 B/edge
+   duckpgq_index    index_build_repeat3        51.743 s     8129510976 B    15.08 B/edge
+Ensuring graphalytics_datagen_8_4_fb benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_datagen_8_4_fb in 1.69s
+Ensuring graphalytics_datagen_8_4_fb benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for graphalytics_datagen_8_4_fb in 1.79s
+Exporting graphalytics_datagen_8_4_fb tables for Kuzu
+Loading graphalytics_datagen_8_4_fb into Kuzu at /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/kuzu/graphalytics_datagen_8_4_fb.kuzu
+Loaded Kuzu database with 538958354 edges in 32.1s
+   kuzu             load                       39.562 s     8792694784 B    16.31 B/edge
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_datagen_8_4_fb/fixed_costs_graphalytics_datagen_8_4_fb_threads32_1795227825552712855.csv

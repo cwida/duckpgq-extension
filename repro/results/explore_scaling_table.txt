@@ -1,0 +1,617 @@
+
+## CSR ablation scaling SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 2048 random pairs, index route, by thread count
+
+median seconds
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 0.191 | 0.102 | 0.058 | 0.054 | 0.042 | 0.032 |
+| flat_serial | 0.163 | 0.093 | 0.052 | 0.045 | 0.044 | 0.037 |
+| flat_ranges | 0.172 | 0.096 | 0.053 | 0.056 | 0.045 | 0.036 |
+| flat_atomic | 0.420 | 0.218 | 0.140 | 0.114 | 0.146 | 0.108 |
+| flat_locked | 0.255 | 0.135 | 0.081 | 0.072 | 0.075 | 0.057 |
+| partitioned, width 4096 | 0.227 | 0.122 | 0.072 | 0.066 | 0.043 | 0.032 |
+| partitioned, width 8192 | 0.191 | 0.103 | 0.057 | 0.051 | 0.044 | 0.032 |
+| partitioned, width 16384 | 0.191 | 0.102 | 0.061 | 0.055 | 0.043 | 0.032 |
+| partitioned, width 32768 | 0.191 | 0.102 | 0.054 | 0.051 | 0.044 | 0.032 |
+| partitioned, width 65535, no sub-range tasks | 0.191 | 0.104 | 0.061 | 0.058 | 0.043 | 0.031 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| flat_serial | 1.17x faster | 1.10x faster | 1.12x faster | 1.20x faster | 1.05x slower | 1.16x slower |
+| flat_ranges | 1.11x faster | 1.06x faster | 1.09x faster | 1.04x slower | 1.07x slower | 1.12x slower |
+| flat_atomic | 2.20x slower | 2.14x slower | 2.41x slower | 2.11x slower | 3.48x slower | 3.38x slower |
+| flat_locked | 1.34x slower | 1.32x slower | 1.40x slower | 1.33x slower | 1.79x slower | 1.78x slower |
+| partitioned, width 4096 | 1.19x slower | 1.20x slower | 1.24x slower | 1.22x slower | 1.02x slower | 1.00x slower |
+| partitioned, width 8192 | 1.00x slower | 1.01x slower | 1.02x faster | 1.06x faster | 1.05x slower | 1.00x slower |
+| partitioned, width 16384 | 1.00x slower | 1.00x slower | 1.05x slower | 1.02x slower | 1.02x slower | 1.00x slower |
+| partitioned, width 32768 | 1.00x slower | 1.00x slower | 1.07x faster | 1.06x faster | 1.05x slower | 1.00x slower |
+| partitioned, width 65535, no sub-range tasks | 1.00x slower | 1.02x slower | 1.05x slower | 1.07x slower | 1.02x slower | 1.03x faster |
+
+speed-up over the variant's own single-thread time
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.00 | 1.87 | 3.29 | 3.54 | 4.55 | 5.97 |
+| flat_serial | 1.00 | 1.75 | 3.13 | 3.62 | 3.70 | 4.41 |
+| flat_ranges | 1.00 | 1.79 | 3.25 | 3.07 | 3.82 | 4.78 |
+| flat_atomic | 1.00 | 1.93 | 3.00 | 3.68 | 2.88 | 3.89 |
+| flat_locked | 1.00 | 1.89 | 3.15 | 3.54 | 3.40 | 4.47 |
+| partitioned, width 4096 | 1.00 | 1.86 | 3.15 | 3.44 | 5.28 | 7.09 |
+| partitioned, width 8192 | 1.00 | 1.85 | 3.35 | 3.75 | 4.34 | 5.97 |
+| partitioned, width 16384 | 1.00 | 1.87 | 3.13 | 3.47 | 4.44 | 5.97 |
+| partitioned, width 32768 | 1.00 | 1.87 | 3.54 | 3.75 | 4.34 | 5.97 |
+| partitioned, width 65535, no sub-range tasks | 1.00 | 1.84 | 3.13 | 3.29 | 4.44 | 6.16 |
+
+## CSR ablation scaling SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 256 sources x all, index route, by thread count
+
+median seconds
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 0.131 | 0.122 | 0.075 | 0.052 | 0.039 | 0.036 |
+| flat_serial | 0.127 | 0.125 | 0.091 | 0.068 | 0.049 | 0.046 |
+| flat_ranges | 0.130 | 0.129 | 0.086 | 0.063 | 0.043 | 0.036 |
+| flat_atomic | 0.177 | 0.251 | 0.172 | 0.096 | 0.059 | 0.049 |
+| flat_locked | 0.151 | 0.148 | 0.103 | 0.072 | 0.048 | 0.041 |
+| partitioned, width 4096 | 0.139 | 0.128 | 0.085 | 0.050 | 0.038 | 0.032 |
+| partitioned, width 8192 | 0.131 | 0.120 | 0.081 | 0.054 | 0.041 | 0.035 |
+| partitioned, width 16384 | 0.131 | 0.122 | 0.071 | 0.055 | 0.041 | 0.034 |
+| partitioned, width 32768 | 0.131 | 0.123 | 0.083 | 0.049 | 0.041 | 0.037 |
+| partitioned, width 65535, no sub-range tasks | 0.132 | 0.123 | 0.081 | 0.050 | 0.049 | 0.049 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| flat_serial | 1.03x faster | 1.02x slower | 1.21x slower | 1.31x slower | 1.26x slower | 1.28x slower |
+| flat_ranges | 1.01x faster | 1.06x slower | 1.15x slower | 1.21x slower | 1.10x slower | 1.00x slower |
+| flat_atomic | 1.35x slower | 2.06x slower | 2.29x slower | 1.85x slower | 1.51x slower | 1.36x slower |
+| flat_locked | 1.15x slower | 1.21x slower | 1.37x slower | 1.38x slower | 1.23x slower | 1.14x slower |
+| partitioned, width 4096 | 1.06x slower | 1.05x slower | 1.13x slower | 1.04x faster | 1.03x faster | 1.12x faster |
+| partitioned, width 8192 | 1.00x slower | 1.02x faster | 1.08x slower | 1.04x slower | 1.05x slower | 1.03x faster |
+| partitioned, width 16384 | 1.00x slower | 1.00x slower | 1.06x faster | 1.06x slower | 1.05x slower | 1.06x faster |
+| partitioned, width 32768 | 1.00x slower | 1.01x slower | 1.11x slower | 1.06x faster | 1.05x slower | 1.03x slower |
+| partitioned, width 65535, no sub-range tasks | 1.01x slower | 1.01x slower | 1.08x slower | 1.04x faster | 1.26x slower | 1.36x slower |
+
+speed-up over the variant's own single-thread time
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.00 | 1.07 | 1.75 | 2.52 | 3.36 | 3.64 |
+| flat_serial | 1.00 | 1.02 | 1.40 | 1.87 | 2.59 | 2.76 |
+| flat_ranges | 1.00 | 1.01 | 1.51 | 2.06 | 3.02 | 3.61 |
+| flat_atomic | 1.00 | 0.71 | 1.03 | 1.84 | 3.00 | 3.61 |
+| flat_locked | 1.00 | 1.02 | 1.47 | 2.10 | 3.15 | 3.68 |
+| partitioned, width 4096 | 1.00 | 1.09 | 1.64 | 2.78 | 3.66 | 4.34 |
+| partitioned, width 8192 | 1.00 | 1.09 | 1.62 | 2.43 | 3.20 | 3.74 |
+| partitioned, width 16384 | 1.00 | 1.07 | 1.85 | 2.38 | 3.20 | 3.85 |
+| partitioned, width 32768 | 1.00 | 1.07 | 1.58 | 2.67 | 3.20 | 3.54 |
+| partitioned, width 65535, no sub-range tasks | 1.00 | 1.07 | 1.63 | 2.64 | 2.69 | 2.69 |
+
+## CSR ablation scaling SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 1024 sources x all, index route, by thread count
+
+median seconds
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 0.493 | 0.263 | 0.172 | 0.128 | 0.088 | 0.066 |
+| flat_serial | 0.480 | 0.253 | 0.172 | 0.126 | 0.096 | 0.079 |
+| flat_ranges | 0.483 | 0.251 | 0.177 | 0.131 | 0.090 | 0.072 |
+| flat_atomic | 0.601 | 0.333 | 0.243 | 0.222 | 0.168 | 0.118 |
+| flat_locked | 0.527 | 0.275 | 0.198 | 0.156 | 0.115 | 0.088 |
+| partitioned, width 4096 | 0.511 | 0.270 | 0.193 | 0.134 | 0.088 | 0.066 |
+| partitioned, width 8192 | 0.493 | 0.256 | 0.179 | 0.123 | 0.091 | 0.063 |
+| partitioned, width 16384 | 0.493 | 0.263 | 0.188 | 0.134 | 0.084 | 0.065 |
+| partitioned, width 32768 | 0.491 | 0.261 | 0.173 | 0.136 | 0.085 | 0.061 |
+| partitioned, width 65535, no sub-range tasks | 0.492 | 0.263 | 0.180 | 0.132 | 0.085 | 0.067 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| flat_serial | 1.03x faster | 1.04x faster | 1.00x slower | 1.02x faster | 1.09x slower | 1.20x slower |
+| flat_ranges | 1.02x faster | 1.05x faster | 1.03x slower | 1.02x slower | 1.02x slower | 1.09x slower |
+| flat_atomic | 1.22x slower | 1.27x slower | 1.41x slower | 1.73x slower | 1.91x slower | 1.79x slower |
+| flat_locked | 1.07x slower | 1.05x slower | 1.15x slower | 1.22x slower | 1.31x slower | 1.33x slower |
+| partitioned, width 4096 | 1.04x slower | 1.03x slower | 1.12x slower | 1.05x slower | 1.00x slower | 1.00x slower |
+| partitioned, width 8192 | 1.00x slower | 1.03x faster | 1.04x slower | 1.04x faster | 1.03x slower | 1.05x faster |
+| partitioned, width 16384 | 1.00x slower | 1.00x slower | 1.09x slower | 1.05x slower | 1.05x faster | 1.02x faster |
+| partitioned, width 32768 | 1.00x faster | 1.01x faster | 1.01x slower | 1.06x slower | 1.04x faster | 1.08x faster |
+| partitioned, width 65535, no sub-range tasks | 1.00x faster | 1.00x slower | 1.05x slower | 1.03x slower | 1.04x faster | 1.02x slower |
+
+speed-up over the variant's own single-thread time
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.00 | 1.87 | 2.87 | 3.85 | 5.60 | 7.47 |
+| flat_serial | 1.00 | 1.90 | 2.79 | 3.81 | 5.00 | 6.08 |
+| flat_ranges | 1.00 | 1.92 | 2.73 | 3.69 | 5.37 | 6.71 |
+| flat_atomic | 1.00 | 1.80 | 2.47 | 2.71 | 3.58 | 5.09 |
+| flat_locked | 1.00 | 1.92 | 2.66 | 3.38 | 4.58 | 5.99 |
+| partitioned, width 4096 | 1.00 | 1.89 | 2.65 | 3.81 | 5.81 | 7.74 |
+| partitioned, width 8192 | 1.00 | 1.93 | 2.75 | 4.01 | 5.42 | 7.83 |
+| partitioned, width 16384 | 1.00 | 1.87 | 2.62 | 3.68 | 5.87 | 7.58 |
+| partitioned, width 32768 | 1.00 | 1.88 | 2.84 | 3.61 | 5.78 | 8.05 |
+| partitioned, width 65535, no sub-range tasks | 1.00 | 1.87 | 2.73 | 3.73 | 5.79 | 7.34 |
+
+## CSR ablation variants SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 65536 random pairs, index route, by thread count
+
+median seconds
+| variant | 32 |
+|---|---|
+| partitioned, width 65535 | 0.354 |
+| flat_serial | 0.315 |
+| flat_ranges | 0.329 |
+| flat_atomic | 0.524 |
+| flat_locked | 0.381 |
+| partitioned, width 4096 | 0.379 |
+| partitioned, width 8192 | 0.343 |
+| partitioned, width 16384 | 0.334 |
+| partitioned, width 32768 | 0.352 |
+| partitioned, width 65535, no sub-range tasks | 0.342 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 32 |
+|---|---|
+| flat_serial | 1.12x faster |
+| flat_ranges | 1.08x faster |
+| flat_atomic | 1.48x slower |
+| flat_locked | 1.08x slower |
+| partitioned, width 4096 | 1.07x slower |
+| partitioned, width 8192 | 1.03x faster |
+| partitioned, width 16384 | 1.06x faster |
+| partitioned, width 32768 | 1.01x faster |
+| partitioned, width 65535, no sub-range tasks | 1.04x faster |
+
+## CSR ablation scaling SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 2048 random pairs, index route, by thread count
+
+median seconds
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.638 | 1.444 | 0.809 | 0.350 | 0.183 | 0.118 |
+| flat_serial | 1.634 | 1.206 | 0.722 | 0.360 | 0.340 | 0.332 |
+| flat_ranges | 1.808 | 1.615 | 1.084 | 0.500 | 0.316 | 0.205 |
+| flat_atomic | 4.371 | 6.541 | 4.017 | 1.812 | 1.036 | 0.611 |
+| flat_locked | 2.570 | 2.508 | 1.675 | 0.745 | 0.480 | 0.401 |
+| partitioned, width 4096 | 2.709 | 2.003 | 1.059 | 0.482 | 0.268 | 0.165 |
+| partitioned, width 8192 | 2.281 | 1.782 | 0.937 | 0.412 | 0.225 | 0.140 |
+| partitioned, width 16384 | 1.977 | 1.612 | 0.878 | 0.376 | 0.202 | 0.129 |
+| partitioned, width 32768 | 1.756 | 1.509 | 0.849 | 0.330 | 0.183 | 0.111 |
+| partitioned, width 65535, no sub-range tasks | 1.643 | 1.376 | 0.808 | 0.330 | 0.180 | 0.124 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| flat_serial | 1.00x faster | 1.20x faster | 1.12x faster | 1.03x slower | 1.86x slower | 2.81x slower |
+| flat_ranges | 1.10x slower | 1.12x slower | 1.34x slower | 1.43x slower | 1.73x slower | 1.74x slower |
+| flat_atomic | 2.67x slower | 4.53x slower | 4.97x slower | 5.18x slower | 5.66x slower | 5.18x slower |
+| flat_locked | 1.57x slower | 1.74x slower | 2.07x slower | 2.13x slower | 2.62x slower | 3.40x slower |
+| partitioned, width 4096 | 1.65x slower | 1.39x slower | 1.31x slower | 1.38x slower | 1.46x slower | 1.40x slower |
+| partitioned, width 8192 | 1.39x slower | 1.23x slower | 1.16x slower | 1.18x slower | 1.23x slower | 1.19x slower |
+| partitioned, width 16384 | 1.21x slower | 1.12x slower | 1.09x slower | 1.07x slower | 1.10x slower | 1.09x slower |
+| partitioned, width 32768 | 1.07x slower | 1.05x slower | 1.05x slower | 1.06x faster | 1.00x slower | 1.06x faster |
+| partitioned, width 65535, no sub-range tasks | 1.00x slower | 1.05x faster | 1.00x faster | 1.06x faster | 1.02x faster | 1.05x slower |
+
+speed-up over the variant's own single-thread time
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.00 | 1.13 | 2.02 | 4.68 | 8.95 | 13.88 |
+| flat_serial | 1.00 | 1.35 | 2.26 | 4.54 | 4.81 | 4.92 |
+| flat_ranges | 1.00 | 1.12 | 1.67 | 3.62 | 5.72 | 8.82 |
+| flat_atomic | 1.00 | 0.67 | 1.09 | 2.41 | 4.22 | 7.15 |
+| flat_locked | 1.00 | 1.02 | 1.53 | 3.45 | 5.35 | 6.41 |
+| partitioned, width 4096 | 1.00 | 1.35 | 2.56 | 5.62 | 10.11 | 16.42 |
+| partitioned, width 8192 | 1.00 | 1.28 | 2.43 | 5.54 | 10.14 | 16.29 |
+| partitioned, width 16384 | 1.00 | 1.23 | 2.25 | 5.26 | 9.79 | 15.33 |
+| partitioned, width 32768 | 1.00 | 1.16 | 2.07 | 5.32 | 9.60 | 15.82 |
+| partitioned, width 65535, no sub-range tasks | 1.00 | 1.19 | 2.03 | 4.98 | 9.13 | 13.25 |
+
+## CSR ablation scaling SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 256 sources x all, index route, by thread count
+
+median seconds
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.110 | 0.836 | 0.513 | 0.324 | 0.248 | 0.195 |
+| flat_serial | 1.095 | 0.894 | 0.712 | 0.529 | 0.412 | 0.358 |
+| flat_ranges | 1.147 | 0.913 | 0.628 | 0.395 | 0.283 | 0.235 |
+| flat_atomic | 1.644 | 2.082 | 1.364 | 0.744 | 0.427 | 0.256 |
+| flat_locked | 1.327 | 1.114 | 0.782 | 0.469 | 0.294 | 0.238 |
+| partitioned, width 4096 | 1.315 | 0.958 | 0.617 | 0.348 | 0.211 | 0.156 |
+| partitioned, width 8192 | 1.275 | 0.891 | 0.565 | 0.331 | 0.206 | 0.161 |
+| partitioned, width 16384 | 1.179 | 0.859 | 0.561 | 0.357 | 0.222 | 0.180 |
+| partitioned, width 32768 | 1.153 | 0.839 | 0.598 | 0.348 | 0.244 | 0.191 |
+| partitioned, width 65535, no sub-range tasks | 1.132 | 0.842 | 0.561 | 0.353 | 0.315 | 0.306 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| flat_serial | 1.01x faster | 1.07x slower | 1.39x slower | 1.63x slower | 1.66x slower | 1.84x slower |
+| flat_ranges | 1.03x slower | 1.09x slower | 1.22x slower | 1.22x slower | 1.14x slower | 1.21x slower |
+| flat_atomic | 1.48x slower | 2.49x slower | 2.66x slower | 2.30x slower | 1.72x slower | 1.31x slower |
+| flat_locked | 1.20x slower | 1.33x slower | 1.52x slower | 1.45x slower | 1.19x slower | 1.22x slower |
+| partitioned, width 4096 | 1.18x slower | 1.15x slower | 1.20x slower | 1.07x slower | 1.18x faster | 1.25x faster |
+| partitioned, width 8192 | 1.15x slower | 1.07x slower | 1.10x slower | 1.02x slower | 1.20x faster | 1.21x faster |
+| partitioned, width 16384 | 1.06x slower | 1.03x slower | 1.09x slower | 1.10x slower | 1.12x faster | 1.08x faster |
+| partitioned, width 32768 | 1.04x slower | 1.00x slower | 1.17x slower | 1.07x slower | 1.02x faster | 1.02x faster |
+| partitioned, width 65535, no sub-range tasks | 1.02x slower | 1.01x slower | 1.09x slower | 1.09x slower | 1.27x slower | 1.57x slower |
+
+speed-up over the variant's own single-thread time
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.00 | 1.33 | 2.16 | 3.43 | 4.48 | 5.69 |
+| flat_serial | 1.00 | 1.22 | 1.54 | 2.07 | 2.66 | 3.06 |
+| flat_ranges | 1.00 | 1.26 | 1.83 | 2.90 | 4.05 | 4.88 |
+| flat_atomic | 1.00 | 0.79 | 1.21 | 2.21 | 3.85 | 6.42 |
+| flat_locked | 1.00 | 1.19 | 1.70 | 2.83 | 4.51 | 5.58 |
+| partitioned, width 4096 | 1.00 | 1.37 | 2.13 | 3.78 | 6.23 | 8.43 |
+| partitioned, width 8192 | 1.00 | 1.43 | 2.26 | 3.85 | 6.19 | 7.92 |
+| partitioned, width 16384 | 1.00 | 1.37 | 2.10 | 3.30 | 5.31 | 6.55 |
+| partitioned, width 32768 | 1.00 | 1.37 | 1.93 | 3.31 | 4.73 | 6.04 |
+| partitioned, width 65535, no sub-range tasks | 1.00 | 1.34 | 2.02 | 3.21 | 3.59 | 3.70 |
+
+## CSR ablation scaling SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 1024 sources x all, index route, by thread count
+
+median seconds
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 4.152 | 2.573 | 1.480 | 0.795 | 0.487 | 0.435 |
+| flat_serial | 4.029 | 2.474 | 1.444 | 0.873 | 0.663 | 0.620 |
+| flat_ranges | 4.029 | 2.629 | 1.613 | 0.913 | 0.550 | 0.479 |
+| flat_atomic | 5.580 | 5.548 | 3.424 | 1.796 | 0.973 | 0.818 |
+| flat_locked | 4.535 | 3.253 | 1.964 | 1.075 | 0.639 | 0.545 |
+| partitioned, width 4096 | 4.661 | 3.024 | 1.774 | 0.954 | 0.494 | 0.314 |
+| partitioned, width 8192 | 4.385 | 2.914 | 1.674 | 0.887 | 0.482 | 0.313 |
+| partitioned, width 16384 | 4.185 | 2.812 | 1.622 | 0.847 | 0.464 | 0.319 |
+| partitioned, width 32768 | 4.093 | 2.699 | 1.541 | 0.819 | 0.455 | 0.330 |
+| partitioned, width 65535, no sub-range tasks | 4.022 | 2.615 | 1.507 | 0.795 | 0.480 | 0.425 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| flat_serial | 1.03x faster | 1.04x faster | 1.02x faster | 1.10x slower | 1.36x slower | 1.43x slower |
+| flat_ranges | 1.03x faster | 1.02x slower | 1.09x slower | 1.15x slower | 1.13x slower | 1.10x slower |
+| flat_atomic | 1.34x slower | 2.16x slower | 2.31x slower | 2.26x slower | 2.00x slower | 1.88x slower |
+| flat_locked | 1.09x slower | 1.26x slower | 1.33x slower | 1.35x slower | 1.31x slower | 1.25x slower |
+| partitioned, width 4096 | 1.12x slower | 1.18x slower | 1.20x slower | 1.20x slower | 1.01x slower | 1.39x faster |
+| partitioned, width 8192 | 1.06x slower | 1.13x slower | 1.13x slower | 1.12x slower | 1.01x faster | 1.39x faster |
+| partitioned, width 16384 | 1.01x slower | 1.09x slower | 1.10x slower | 1.07x slower | 1.05x faster | 1.36x faster |
+| partitioned, width 32768 | 1.01x faster | 1.05x slower | 1.04x slower | 1.03x slower | 1.07x faster | 1.32x faster |
+| partitioned, width 65535, no sub-range tasks | 1.03x faster | 1.02x slower | 1.02x slower | 1.00x slower | 1.01x faster | 1.02x faster |
+
+speed-up over the variant's own single-thread time
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.00 | 1.61 | 2.81 | 5.22 | 8.53 | 9.54 |
+| flat_serial | 1.00 | 1.63 | 2.79 | 4.62 | 6.08 | 6.50 |
+| flat_ranges | 1.00 | 1.53 | 2.50 | 4.41 | 7.33 | 8.41 |
+| flat_atomic | 1.00 | 1.01 | 1.63 | 3.11 | 5.73 | 6.82 |
+| flat_locked | 1.00 | 1.39 | 2.31 | 4.22 | 7.10 | 8.32 |
+| partitioned, width 4096 | 1.00 | 1.54 | 2.63 | 4.89 | 9.44 | 14.84 |
+| partitioned, width 8192 | 1.00 | 1.50 | 2.62 | 4.94 | 9.10 | 14.01 |
+| partitioned, width 16384 | 1.00 | 1.49 | 2.58 | 4.94 | 9.02 | 13.12 |
+| partitioned, width 32768 | 1.00 | 1.52 | 2.66 | 5.00 | 9.00 | 12.40 |
+| partitioned, width 65535, no sub-range tasks | 1.00 | 1.54 | 2.67 | 5.06 | 8.38 | 9.46 |
+
+## CSR ablation variants SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 65536 random pairs, index route, by thread count
+
+median seconds
+| variant | 32 |
+|---|---|
+| partitioned, width 65535 | 2.622 |
+| flat_serial | 3.766 |
+| flat_ranges | 4.088 |
+| flat_atomic | 13.293 |
+| flat_locked | 9.405 |
+| partitioned, width 4096 | 4.599 |
+| partitioned, width 8192 | 3.809 |
+| partitioned, width 16384 | 3.234 |
+| partitioned, width 32768 | 2.785 |
+| partitioned, width 65535, no sub-range tasks | 2.624 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 32 |
+|---|---|
+| flat_serial | 1.44x slower |
+| flat_ranges | 1.56x slower |
+| flat_atomic | 5.07x slower |
+| flat_locked | 3.59x slower |
+| partitioned, width 4096 | 1.75x slower |
+| partitioned, width 8192 | 1.45x slower |
+| partitioned, width 16384 | 1.23x slower |
+| partitioned, width 32768 | 1.06x slower |
+| partitioned, width 65535, no sub-range tasks | 1.00x slower |
+
+## CSR ablation scaling SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 2048 random pairs, index route, by thread count
+
+median seconds
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 5.412 | 3.541 | 1.905 | 0.855 | 0.445 | 0.292 |
+| flat_serial | 6.335 | 3.689 | 2.060 | 1.433 | 1.457 | 1.446 |
+| flat_ranges | 6.750 | 4.160 | 2.692 | 1.743 | 1.297 | 0.817 |
+| flat_atomic | 14.228 | 19.118 | 11.364 | 5.833 | 3.043 | 1.578 |
+| flat_locked | 8.701 | 7.220 | 4.733 | 2.587 | 1.572 | 1.306 |
+| partitioned, width 4096 | 9.606 | 5.828 | 2.999 | 1.404 | 0.784 | 0.471 |
+| partitioned, width 8192 | 8.046 | 4.891 | 2.609 | 1.270 | 0.638 | 0.407 |
+| partitioned, width 16384 | 6.798 | 4.299 | 2.263 | 1.034 | 0.551 | 0.343 |
+| partitioned, width 32768 | 5.922 | 3.832 | 2.061 | 0.917 | 0.493 | 0.293 |
+| partitioned, width 65535, no sub-range tasks | 5.381 | 3.593 | 1.947 | 0.893 | 0.446 | 0.297 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| flat_serial | 1.17x slower | 1.04x slower | 1.08x slower | 1.68x slower | 3.27x slower | 4.95x slower |
+| flat_ranges | 1.25x slower | 1.17x slower | 1.41x slower | 2.04x slower | 2.91x slower | 2.80x slower |
+| flat_atomic | 2.63x slower | 5.40x slower | 5.97x slower | 6.82x slower | 6.84x slower | 5.40x slower |
+| flat_locked | 1.61x slower | 2.04x slower | 2.48x slower | 3.03x slower | 3.53x slower | 4.47x slower |
+| partitioned, width 4096 | 1.77x slower | 1.65x slower | 1.57x slower | 1.64x slower | 1.76x slower | 1.61x slower |
+| partitioned, width 8192 | 1.49x slower | 1.38x slower | 1.37x slower | 1.49x slower | 1.43x slower | 1.39x slower |
+| partitioned, width 16384 | 1.26x slower | 1.21x slower | 1.19x slower | 1.21x slower | 1.24x slower | 1.17x slower |
+| partitioned, width 32768 | 1.09x slower | 1.08x slower | 1.08x slower | 1.07x slower | 1.11x slower | 1.00x slower |
+| partitioned, width 65535, no sub-range tasks | 1.01x faster | 1.01x slower | 1.02x slower | 1.04x slower | 1.00x slower | 1.02x slower |
+
+speed-up over the variant's own single-thread time
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.00 | 1.53 | 2.84 | 6.33 | 12.16 | 18.53 |
+| flat_serial | 1.00 | 1.72 | 3.08 | 4.42 | 4.35 | 4.38 |
+| flat_ranges | 1.00 | 1.62 | 2.51 | 3.87 | 5.20 | 8.26 |
+| flat_atomic | 1.00 | 0.74 | 1.25 | 2.44 | 4.68 | 9.02 |
+| flat_locked | 1.00 | 1.21 | 1.84 | 3.36 | 5.53 | 6.66 |
+| partitioned, width 4096 | 1.00 | 1.65 | 3.20 | 6.84 | 12.25 | 20.39 |
+| partitioned, width 8192 | 1.00 | 1.65 | 3.08 | 6.34 | 12.61 | 19.77 |
+| partitioned, width 16384 | 1.00 | 1.58 | 3.00 | 6.57 | 12.34 | 19.82 |
+| partitioned, width 32768 | 1.00 | 1.55 | 2.87 | 6.46 | 12.01 | 20.21 |
+| partitioned, width 65535, no sub-range tasks | 1.00 | 1.50 | 2.76 | 6.03 | 12.07 | 18.12 |
+
+## CSR ablation scaling SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 256 sources x all, index route, by thread count
+
+median seconds
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 3.074 | 1.922 | 1.467 | 0.789 | 0.551 | 0.426 |
+| flat_serial | 3.419 | 2.738 | 2.277 | 1.781 | 1.508 | 1.388 |
+| flat_ranges | 3.504 | 2.368 | 1.660 | 1.046 | 0.676 | 0.525 |
+| flat_atomic | 4.990 | 5.474 | 3.398 | 1.909 | 1.036 | 0.618 |
+| flat_locked | 3.882 | 2.731 | 2.019 | 1.108 | 0.750 | 0.594 |
+| partitioned, width 4096 | 4.049 | 2.564 | 1.540 | 0.888 | 0.509 | 0.353 |
+| partitioned, width 8192 | 3.713 | 2.459 | 1.515 | 0.793 | 0.502 | 0.373 |
+| partitioned, width 16384 | 3.401 | 2.320 | 1.420 | 0.866 | 0.502 | 0.386 |
+| partitioned, width 32768 | 3.212 | 2.162 | 1.245 | 0.795 | 0.501 | 0.394 |
+| partitioned, width 65535, no sub-range tasks | 3.083 | 1.970 | 1.361 | 0.853 | 0.563 | 0.495 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| flat_serial | 1.11x slower | 1.42x slower | 1.55x slower | 2.26x slower | 2.74x slower | 3.26x slower |
+| flat_ranges | 1.14x slower | 1.23x slower | 1.13x slower | 1.33x slower | 1.23x slower | 1.23x slower |
+| flat_atomic | 1.62x slower | 2.85x slower | 2.32x slower | 2.42x slower | 1.88x slower | 1.45x slower |
+| flat_locked | 1.26x slower | 1.42x slower | 1.38x slower | 1.40x slower | 1.36x slower | 1.39x slower |
+| partitioned, width 4096 | 1.32x slower | 1.33x slower | 1.05x slower | 1.13x slower | 1.08x faster | 1.21x faster |
+| partitioned, width 8192 | 1.21x slower | 1.28x slower | 1.03x slower | 1.01x slower | 1.10x faster | 1.14x faster |
+| partitioned, width 16384 | 1.11x slower | 1.21x slower | 1.03x faster | 1.10x slower | 1.10x faster | 1.10x faster |
+| partitioned, width 32768 | 1.04x slower | 1.12x slower | 1.18x faster | 1.01x slower | 1.10x faster | 1.08x faster |
+| partitioned, width 65535, no sub-range tasks | 1.00x slower | 1.02x slower | 1.08x faster | 1.08x slower | 1.02x slower | 1.16x slower |
+
+speed-up over the variant's own single-thread time
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.00 | 1.60 | 2.10 | 3.90 | 5.58 | 7.22 |
+| flat_serial | 1.00 | 1.25 | 1.50 | 1.92 | 2.27 | 2.46 |
+| flat_ranges | 1.00 | 1.48 | 2.11 | 3.35 | 5.18 | 6.67 |
+| flat_atomic | 1.00 | 0.91 | 1.47 | 2.61 | 4.82 | 8.07 |
+| flat_locked | 1.00 | 1.42 | 1.92 | 3.50 | 5.18 | 6.54 |
+| partitioned, width 4096 | 1.00 | 1.58 | 2.63 | 4.56 | 7.95 | 11.47 |
+| partitioned, width 8192 | 1.00 | 1.51 | 2.45 | 4.68 | 7.40 | 9.95 |
+| partitioned, width 16384 | 1.00 | 1.47 | 2.40 | 3.93 | 6.77 | 8.81 |
+| partitioned, width 32768 | 1.00 | 1.49 | 2.58 | 4.04 | 6.41 | 8.15 |
+| partitioned, width 65535, no sub-range tasks | 1.00 | 1.56 | 2.27 | 3.61 | 5.48 | 6.23 |
+
+## CSR ablation scaling SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 1024 sources x all, index route, by thread count
+
+median seconds
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 10.940 | 6.614 | 3.925 | 2.009 | 1.053 | 0.762 |
+| flat_serial | 11.212 | 6.468 | 3.752 | 2.729 | 2.144 | 1.940 |
+| flat_ranges | 11.472 | 6.689 | 4.317 | 2.505 | 1.540 | 0.984 |
+| flat_atomic | 15.955 | 15.443 | 9.279 | 4.884 | 2.572 | 1.505 |
+| flat_locked | 12.700 | 8.733 | 5.285 | 2.915 | 1.684 | 1.258 |
+| partitioned, width 4096 | 13.244 | 7.860 | 4.407 | 2.355 | 1.259 | 0.764 |
+| partitioned, width 8192 | 12.395 | 7.428 | 4.470 | 2.234 | 1.226 | 0.730 |
+| partitioned, width 16384 | 11.747 | 6.954 | 4.291 | 2.166 | 1.149 | 0.688 |
+| partitioned, width 32768 | 11.235 | 6.621 | 4.032 | 2.036 | 1.107 | 0.686 |
+| partitioned, width 65535, no sub-range tasks | 10.944 | 6.700 | 3.840 | 1.959 | 1.026 | 0.745 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| flat_serial | 1.02x slower | 1.02x faster | 1.05x faster | 1.36x slower | 2.04x slower | 2.55x slower |
+| flat_ranges | 1.05x slower | 1.01x slower | 1.10x slower | 1.25x slower | 1.46x slower | 1.29x slower |
+| flat_atomic | 1.46x slower | 2.33x slower | 2.36x slower | 2.43x slower | 2.44x slower | 1.98x slower |
+| flat_locked | 1.16x slower | 1.32x slower | 1.35x slower | 1.45x slower | 1.60x slower | 1.65x slower |
+| partitioned, width 4096 | 1.21x slower | 1.19x slower | 1.12x slower | 1.17x slower | 1.20x slower | 1.00x slower |
+| partitioned, width 8192 | 1.13x slower | 1.12x slower | 1.14x slower | 1.11x slower | 1.16x slower | 1.04x faster |
+| partitioned, width 16384 | 1.07x slower | 1.05x slower | 1.09x slower | 1.08x slower | 1.09x slower | 1.11x faster |
+| partitioned, width 32768 | 1.03x slower | 1.00x slower | 1.03x slower | 1.01x slower | 1.05x slower | 1.11x faster |
+| partitioned, width 65535, no sub-range tasks | 1.00x slower | 1.01x slower | 1.02x faster | 1.03x faster | 1.03x faster | 1.02x faster |
+
+speed-up over the variant's own single-thread time
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.00 | 1.65 | 2.79 | 5.45 | 10.39 | 14.36 |
+| flat_serial | 1.00 | 1.73 | 2.99 | 4.11 | 5.23 | 5.78 |
+| flat_ranges | 1.00 | 1.72 | 2.66 | 4.58 | 7.45 | 11.66 |
+| flat_atomic | 1.00 | 1.03 | 1.72 | 3.27 | 6.20 | 10.60 |
+| flat_locked | 1.00 | 1.45 | 2.40 | 4.36 | 7.54 | 10.10 |
+| partitioned, width 4096 | 1.00 | 1.68 | 3.01 | 5.62 | 10.52 | 17.34 |
+| partitioned, width 8192 | 1.00 | 1.67 | 2.77 | 5.55 | 10.11 | 16.98 |
+| partitioned, width 16384 | 1.00 | 1.69 | 2.74 | 5.42 | 10.22 | 17.07 |
+| partitioned, width 32768 | 1.00 | 1.70 | 2.79 | 5.52 | 10.15 | 16.38 |
+| partitioned, width 65535, no sub-range tasks | 1.00 | 1.63 | 2.85 | 5.59 | 10.67 | 14.69 |
+
+## CSR ablation variants SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 65536 random pairs, index route, by thread count
+
+median seconds
+| variant | 32 |
+|---|---|
+| partitioned, width 65535 | 7.449 |
+| flat_serial | 14.083 |
+| flat_ranges | 19.967 |
+| flat_atomic | 42.420 |
+| flat_locked | 32.511 |
+| partitioned, width 4096 | 13.541 |
+| partitioned, width 8192 | 11.250 |
+| partitioned, width 16384 | 9.463 |
+| partitioned, width 32768 | 8.362 |
+| partitioned, width 65535, no sub-range tasks | 7.490 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 32 |
+|---|---|
+| flat_serial | 1.89x slower |
+| flat_ranges | 2.68x slower |
+| flat_atomic | 5.69x slower |
+| flat_locked | 4.36x slower |
+| partitioned, width 4096 | 1.82x slower |
+| partitioned, width 8192 | 1.51x slower |
+| partitioned, width 16384 | 1.27x slower |
+| partitioned, width 32768 | 1.12x slower |
+| partitioned, width 65535, no sub-range tasks | 1.01x slower |
+
+## CSR ablation scaling graph500-24 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 2048 random pairs, index route, by thread count
+
+median seconds
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 152.292 | 84.750 | 41.368 | 20.739 | 10.375 | 6.140 |
+| flat_serial | 193.117 | 101.496 | 53.621 | 29.053 | 28.652 | 28.709 |
+| flat_ranges | 199.808 | 96.962 | 47.927 | 27.165 | 17.013 | 13.287 |
+| flat_atomic | timeout | 168.064 | 85.039 | 42.299 | 21.598 | 12.111 |
+| flat_locked | 197.708 | 107.487 | 60.483 | 33.682 | 20.401 | 19.008 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| flat_serial | 1.27x slower | 1.20x slower | 1.30x slower | 1.40x slower | 2.76x slower | 4.68x slower |
+| flat_ranges | 1.31x slower | 1.14x slower | 1.16x slower | 1.31x slower | 1.64x slower | 2.16x slower |
+| flat_atomic |  | 1.98x slower | 2.06x slower | 2.04x slower | 2.08x slower | 1.97x slower |
+| flat_locked | 1.30x slower | 1.27x slower | 1.46x slower | 1.62x slower | 1.97x slower | 3.10x slower |
+
+speed-up over the variant's own single-thread time
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.00 | 1.80 | 3.68 | 7.34 | 14.68 | 24.80 |
+| flat_serial | 1.00 | 1.90 | 3.60 | 6.65 | 6.74 | 6.73 |
+| flat_ranges | 1.00 | 2.06 | 4.17 | 7.36 | 11.74 | 15.04 |
+| flat_atomic |  |  |  |  |  |  |
+| flat_locked | 1.00 | 1.84 | 3.27 | 5.87 | 9.69 | 10.40 |
+
+## CSR ablation scaling graph500-24 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 256 sources x all, index route, by thread count
+
+median seconds
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 53.540 | 30.411 | 17.154 | 9.746 | 6.377 | 4.677 |
+| flat_serial | 57.428 | 42.085 | 34.063 | 29.174 | 26.967 | 25.936 |
+| flat_ranges | 57.582 | 31.050 | 17.315 | 10.364 | 7.041 | 5.507 |
+| flat_atomic | 70.764 | 38.764 | 21.743 | 11.977 | 7.492 | 5.295 |
+| flat_locked | 57.835 | 32.039 | 18.627 | 11.098 | 7.532 | 6.025 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| flat_serial | 1.07x slower | 1.38x slower | 1.99x slower | 2.99x slower | 4.23x slower | 5.55x slower |
+| flat_ranges | 1.08x slower | 1.02x slower | 1.01x slower | 1.06x slower | 1.10x slower | 1.18x slower |
+| flat_atomic | 1.32x slower | 1.27x slower | 1.27x slower | 1.23x slower | 1.17x slower | 1.13x slower |
+| flat_locked | 1.08x slower | 1.05x slower | 1.09x slower | 1.14x slower | 1.18x slower | 1.29x slower |
+
+speed-up over the variant's own single-thread time
+| variant | 1 | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|---|
+| partitioned, width 65535 | 1.00 | 1.76 | 3.12 | 5.49 | 8.40 | 11.45 |
+| flat_serial | 1.00 | 1.36 | 1.69 | 1.97 | 2.13 | 2.21 |
+| flat_ranges | 1.00 | 1.85 | 3.33 | 5.56 | 8.18 | 10.46 |
+| flat_atomic | 1.00 | 1.83 | 3.25 | 5.91 | 9.45 | 13.36 |
+| flat_locked | 1.00 | 1.81 | 3.10 | 5.21 | 7.68 | 9.60 |
+
+## CSR ablation variants graph500-24 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 2048 random pairs, index route, by thread count
+
+median seconds
+| variant | 32 |
+|---|---|
+| partitioned, width 65535 | 6.196 |
+| flat_serial | 28.977 |
+| flat_ranges | 13.354 |
+| flat_atomic | 12.105 |
+| flat_locked | 19.151 |
+| partitioned, width 4096 | 10.758 |
+| partitioned, width 8192 | 10.404 |
+| partitioned, width 16384 | 9.090 |
+| partitioned, width 32768 | 7.609 |
+| partitioned, width 65535, no sub-range tasks | 6.064 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 32 |
+|---|---|
+| flat_serial | 4.68x slower |
+| flat_ranges | 2.16x slower |
+| flat_atomic | 1.95x slower |
+| flat_locked | 3.09x slower |
+| partitioned, width 4096 | 1.74x slower |
+| partitioned, width 8192 | 1.68x slower |
+| partitioned, width 16384 | 1.47x slower |
+| partitioned, width 32768 | 1.23x slower |
+| partitioned, width 65535, no sub-range tasks | 1.02x faster |
+
+## CSR ablation variants graph500-24 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 256 sources x all, index route, by thread count
+
+median seconds
+| variant | 32 |
+|---|---|
+| partitioned, width 65535 | 4.729 |
+| flat_serial | 25.852 |
+| flat_ranges | 5.503 |
+| flat_atomic | 5.418 |
+| flat_locked | 6.137 |
+| partitioned, width 4096 | 5.267 |
+| partitioned, width 8192 | 5.181 |
+| partitioned, width 16384 | 4.992 |
+| partitioned, width 32768 | 4.804 |
+| partitioned, width 65535, no sub-range tasks | 4.616 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 32 |
+|---|---|
+| flat_serial | 5.47x slower |
+| flat_ranges | 1.16x slower |
+| flat_atomic | 1.15x slower |
+| flat_locked | 1.30x slower |
+| partitioned, width 4096 | 1.11x slower |
+| partitioned, width 8192 | 1.10x slower |
+| partitioned, width 16384 | 1.06x slower |
+| partitioned, width 32768 | 1.02x slower |
+| partitioned, width 65535, no sub-range tasks | 1.02x faster |
+
+## CSR ablation variants graph500-24 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal: 1024 sources x all, index route, by thread count
+
+median seconds
+| variant | 32 |
+|---|---|
+| partitioned, width 65535 | 9.586 |
+| flat_serial | 30.702 |
+| flat_ranges | 13.196 |
+| flat_atomic | 12.067 |
+| flat_locked | 15.302 |
+| partitioned, width 4096 | 11.057 |
+| partitioned, width 8192 | 11.006 |
+| partitioned, width 16384 | 10.357 |
+| partitioned, width 32768 | 9.837 |
+| partitioned, width 65535, no sub-range tasks | 9.335 |
+
+relative to partitioned, width 65535 at the same thread count
+| variant | 32 |
+|---|---|
+| flat_serial | 3.20x slower |
+| flat_ranges | 1.38x slower |
+| flat_atomic | 1.26x slower |
+| flat_locked | 1.60x slower |
+| partitioned, width 4096 | 1.15x slower |
+| partitioned, width 8192 | 1.15x slower |
+| partitioned, width 16384 | 1.08x slower |
+| partitioned, width 32768 | 1.03x slower |
+| partitioned, width 65535, no sub-range tasks | 1.03x faster |

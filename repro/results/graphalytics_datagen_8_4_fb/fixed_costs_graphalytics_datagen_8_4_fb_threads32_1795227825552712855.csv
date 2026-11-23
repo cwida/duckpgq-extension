@@ -1,0 +1,6 @@
+system,scale_factor,measure,seconds,bytes,edges,bytes_per_edge,threads,benchmark_notes,repo_commit
+duckdb,datagen-8_4-fb,database_file,,12425113600,538958354,23.05,32,fixed costs datagen-8_4-fb repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,datagen-8_4-fb,index_build_repeat1,52.200,8129510976,538958354,15.08,32,fixed costs datagen-8_4-fb repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,datagen-8_4-fb,index_build_repeat2,52.144,8129510976,538958354,15.08,32,fixed costs datagen-8_4-fb repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,datagen-8_4-fb,index_build_repeat3,51.743,8129510976,538958354,15.08,32,fixed costs datagen-8_4-fb repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+kuzu,datagen-8_4-fb,load,39.562,8792694784,538958354,16.31,32,fixed costs datagen-8_4-fb repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b

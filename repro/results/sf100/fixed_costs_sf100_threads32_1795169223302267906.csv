@@ -1,0 +1,9 @@
+system,scale_factor,measure,seconds,bytes,edges,bytes_per_edge,threads,benchmark_notes,repo_commit
+duckdb,100,database_file,,497823744,18655515,26.69,32,fixed costs SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,100,index_build_repeat1,1.594,256430336,18655515,13.75,32,fixed costs SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,100,index_build_repeat2,1.591,256430336,18655515,13.75,32,fixed costs SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,100,index_build_repeat3,1.551,256430336,18655515,13.75,32,fixed costs SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+kuzu,100,load,3.380,457342976,18655515,24.52,32,fixed costs SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+memgraph,100,load,70.370,1481763717,18655515,79.43,32,fixed costs SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+falkordb,100,load,869.691,696254464,18655515,37.32,32,fixed costs SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+neo4j,100,load,267.891,736599005,18655515,39.48,32,fixed costs SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b

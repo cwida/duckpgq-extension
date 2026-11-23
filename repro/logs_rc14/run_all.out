@@ -1,0 +1,280 @@
+[run ] refresh_indexes_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py refresh-indexes --scale-factor 10 --threads 32
+[done] refresh_indexes_sf10 in 0 s
+[run ] refresh_indexes_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py refresh-indexes --scale-factor 100 --threads 32
+[done] refresh_indexes_sf100 in 2 s
+[run ] refresh_indexes_sf300: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py refresh-indexes --scale-factor 300 --threads 32
+[done] refresh_indexes_sf300 in 4 s
+[run ] refresh_indexes_cit_Patents: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py refresh-indexes --dataset cit-Patents --threads 32
+[done] refresh_indexes_cit_Patents in 2 s
+[run ] refresh_indexes_graph500_24: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py refresh-indexes --dataset graph500-24 --threads 32
+[done] refresh_indexes_graph500_24 in 38 s
+[run ] refresh_indexes_datagen_8_4_fb: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py refresh-indexes --dataset datagen-8_4-fb --threads 32
+[done] refresh_indexes_datagen_8_4_fb in 54 s
+[run ] refresh_indexes_osm_oberbayern: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py refresh-indexes --dataset osm-oberbayern --threads 32
+[done] refresh_indexes_osm_oberbayern in 0 s
+[run ] fixed_costs_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --scale-factor 10 --threads 32 --repeats 3 --notes fixed costs SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] fixed_costs_sf10 in 116 s
+[run ] fixed_costs_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --scale-factor 100 --threads 32 --repeats 3 --notes fixed costs SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] fixed_costs_sf100 in 1224 s
+[run ] fixed_costs_sf300: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --scale-factor 300 --threads 32 --repeats 3 --notes fixed costs SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] fixed_costs_sf300 in 3720 s
+[run ] sweep_pairs_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --notes W27 sweep SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] sweep_pairs_sf10 in 8433 s
+[run ] sweep_pairs_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --notes W27 sweep SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] sweep_pairs_sf100 in 12916 s
+[run ] sweep_pairs_sf300: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 300 --threads 32 --repeats 3 --timeout-s 600 --notes W27 sweep SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] sweep_pairs_sf300 in 17671 s
+[run ] fixed_costs_cit_patents: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --dataset cit-Patents --threads 32 --repeats 3 --notes fixed costs cit-Patents repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] fixed_costs_cit_patents in 1247 s
+[run ] sweep_pairs_cit_patents: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --dataset cit-Patents --threads 32 --repeats 3 --timeout-s 600 --pair-counts --notes W30 sweep cit-Patents repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] sweep_pairs_cit_patents in 4214 s
+[run ] sweep_pairs_cit_patents_client32: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --dataset cit-Patents --threads 32 --repeats 3 --timeout-s 600 --pair-counts --client-threads 32 --systems memgraph falkordb kuzu --notes W30 cit-Patents client threads 32 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] sweep_pairs_cit_patents_client32 in 1530 s
+[run ] fixed_costs_graph500_24: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --dataset graph500-24 --threads 32 --repeats 3 --systems kuzu --notes fixed costs graph500-24 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] fixed_costs_graph500_24 in 156 s
+[run ] sweep_pairs_graph500_24: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --dataset graph500-24 --threads 32 --repeats 3 --timeout-s 600 --systems duckpgq_build duckpgq_index kuzu --notes W30 sweep graph500-24 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] sweep_pairs_graph500_24 in 7490 s
+[run ] fixed_costs_datagen_8_4_fb: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --dataset datagen-8_4-fb --threads 32 --repeats 3 --systems kuzu --notes fixed costs datagen-8_4-fb repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] fixed_costs_datagen_8_4_fb in 202 s
+[run ] sweep_pairs_datagen_8_4_fb: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --dataset datagen-8_4-fb --threads 32 --repeats 3 --timeout-s 600 --systems duckpgq_build duckpgq_index kuzu --notes W30 sweep datagen-8_4-fb repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] sweep_pairs_datagen_8_4_fb in 4211 s
+[run ] microbench_explore_variants_graph500_24: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --dataset graph500-24 --threads 32 --repeats 3 --timeout-s 600 --configs explore_variants --routes index --shapes random multi_source --pair-counts 2048 --source-counts 256 1024 --notes CSR ablation variants graph500-24 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_explore_variants_graph500_24 in 1485 s
+[run ] microbench_explore_scaling_graph500_24: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --dataset graph500-24 --threads 32 --repeats 3 --timeout-s 600 --configs explore_threads --routes index --shapes random multi_source --pair-counts 2048 --source-counts 256 --notes CSR ablation scaling graph500-24 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_explore_scaling_graph500_24 in 9019 s
+[run ] microbench_scheduling_graph500_24: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --dataset graph500-24 --threads 32 --repeats 3 --timeout-s 600 --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes W31 scheduling graph500-24 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_scheduling_graph500_24 in 15781 s
+[run ] fixed_costs_osm_oberbayern: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py fixed-costs --dataset osm-oberbayern --threads 32 --repeats 3 --systems kuzu memgraph falkordb neo4j umbra_navindex --notes fixed costs osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] fixed_costs_osm_oberbayern in 91 s
+[run ] sweep_pairs_osm_oberbayern: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --dataset osm-oberbayern --threads 32 --repeats 3 --timeout-s 600 --systems duckpgq_build duckpgq_index umbra umbra_navindex kuzu memgraph falkordb neo4j neo4j_gds --notes road sweep osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] sweep_pairs_osm_oberbayern in 15044 s
+[run ] sweep_pairs_osm_oberbayern_client32: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --dataset osm-oberbayern --threads 32 --repeats 3 --timeout-s 600 --client-threads 32 --systems memgraph falkordb kuzu --notes road osm-oberbayern client threads 32 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] sweep_pairs_osm_oberbayern_client32 in 6052 s
+[run ] microbench_shape_probe_osm_oberbayern: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --dataset osm-oberbayern --threads 32 --repeats 3 --timeout-s 600 --configs baseline no_shape_probe --routes index --shapes random --pair-counts 128 1024 2048 --notes deep-graph rule osm-oberbayern repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_shape_probe_osm_oberbayern in 76 s
+[run ] ldbc_queries_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --notes W17 SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] ldbc_queries_sf10 in 2499 s
+[run ] ldbc_queries_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --notes W17 SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] ldbc_queries_sf100 in 19903 s
+[run ] ldbc_queries_sf300: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 300 --threads 32 --repeats 3 --timeout-s 600 --notes W17 SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] ldbc_queries_sf300 in 18989 s
+[run ] sweep_pairs_sf10_client32: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --client-threads 32 --systems memgraph falkordb kuzu --notes W27 SF10 client threads 32 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] sweep_pairs_sf10_client32 in 2637 s
+[run ] ldbc_queries_sf10_client32: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --client-threads 32 --systems memgraph falkordb kuzu --notes W17 SF10 client threads 32 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] ldbc_queries_sf10_client32 in 490 s
+[run ] sweep_pairs_sf100_client32: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --client-threads 32 --systems memgraph falkordb kuzu --notes W27 SF100 client threads 32 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] sweep_pairs_sf100_client32 in 4911 s
+[run ] ldbc_queries_sf100_client32: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py ldbc-queries --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --client-threads 32 --systems memgraph falkordb kuzu --notes W17 SF100 client threads 32 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] ldbc_queries_sf100_client32 in 5725 s
+[run ] native_baselines_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --systems duckpgq_index duckpgq_recursive duckpgq_scalar --notes native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] native_baselines_sf10 in 3934 s
+[run ] native_baselines_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py sweep-pairs --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --systems duckpgq_index duckpgq_recursive duckpgq_scalar --notes native baselines SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] native_baselines_sf100 in 3267 s
+[run ] microbench_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs all --notes W19 microbenchmark SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_sf10 in 1247 s
+[run ] microbench_memory_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs memory --shapes random --pair-counts 2048 16384 65536 --notes W31 explore memory traffic SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_memory_sf10 in 98 s
+[run ] microbench_partitions_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs partitions --shapes random multi_source --pair-counts 128 2048 16384 65536 --source-counts 1 1024 --notes W32 partition geometry SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_partitions_sf10 in 128 s
+[run ] microbench_scheduling_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs scheduling --shapes random --pair-counts 2048 16384 65536 --notes W31 scheduling SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_scheduling_sf10 in 246 s
+[run ] microbench_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs all --notes W19 microbenchmark SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_sf100 in 12356 s
+[run ] microbench_memory_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs memory --shapes random --pair-counts 2048 16384 65536 --notes W31 explore memory traffic SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_memory_sf100 in 652 s
+[run ] microbench_partitions_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs partitions --shapes random multi_source --pair-counts 128 2048 16384 65536 --source-counts 1 1024 --notes W32 partition geometry SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_partitions_sf100 in 911 s
+[run ] microbench_scheduling_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs scheduling --shapes random --pair-counts 2048 16384 65536 --notes W31 scheduling SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_scheduling_sf100 in 1449 s
+[run ] microbench_section3_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs section3 --shapes random all_pairs --pair-counts 1 2048 65536 --source-count 20 --target-count 200 --notes Section 3 switches SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_section3_sf10 in 124 s
+[run ] microbench_crossover_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs crossover --shapes random all_pairs --pair-counts 1 2 4 8 16 32 64 128 256 512 1024 4096 --source-count 1 2 4 8 16 32 64 128 256 512 1024 4096 --target-count 200 --routes index --notes Section 3 crossover SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_crossover_sf10 in 79 s
+[run ] microbench_section3_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs section3 --shapes random all_pairs --pair-counts 1 2048 65536 --source-count 20 --target-count 200 --notes Section 3 switches SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_section3_sf100 in 1396 s
+[run ] microbench_crossover_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs crossover --shapes random all_pairs --pair-counts 1 2 4 8 16 32 64 128 256 512 1024 4096 --source-count 1 2 4 8 16 32 64 128 256 512 1024 4096 --target-count 200 --routes index --notes Section 3 crossover SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_crossover_sf100 in 480 s
+[run ] microbench_explore_scaling_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs explore_scaling --routes index --shapes random multi_source --pair-counts 2048 --source-counts 256 1024 --notes CSR ablation scaling SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_explore_scaling_sf10 in 139 s
+[run ] microbench_explore_variants_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 10 --threads 32 --repeats 3 --timeout-s 600 --configs explore_variants --routes index --shapes random --pair-counts 65536 --notes CSR ablation variants SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_explore_variants_sf10 in 24 s
+[run ] microbench_explore_scaling_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs explore_scaling --routes index --shapes random multi_source --pair-counts 2048 --source-counts 256 1024 --notes CSR ablation scaling SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_explore_scaling_sf100 in 932 s
+[run ] microbench_explore_variants_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 100 --threads 32 --repeats 3 --timeout-s 600 --configs explore_variants --routes index --shapes random --pair-counts 65536 --notes CSR ablation variants SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_explore_variants_sf100 in 194 s
+[run ] microbench_explore_scaling_sf300: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 300 --threads 32 --repeats 3 --timeout-s 600 --configs explore_scaling --routes index --shapes random multi_source --pair-counts 2048 --source-counts 256 1024 --notes CSR ablation scaling SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_explore_scaling_sf300 in 2629 s
+[run ] microbench_explore_variants_sf300: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 300 --threads 32 --repeats 3 --timeout-s 600 --configs explore_variants --routes index --shapes random --pair-counts 65536 --notes CSR ablation variants SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_explore_variants_sf300 in 586 s
+[run ] microbench_scheduling_sf300: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py microbench --scale-factor 300 --threads 32 --repeats 3 --timeout-s 600 --configs scheduling --shapes random --pair-counts 2048 16384 65536 --routes index --notes W31 scheduling SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] microbench_scheduling_sf300 in 1079 s
+[run ] throughput_sf10: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py throughput --scale-factor 10 --threads 32 --clients 1 2 4 8 16 32 --duration-s 20 --notes W35 throughput SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] throughput_sf10 in 246 s
+[run ] throughput_sf100: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py throughput --scale-factor 100 --threads 32 --clients 1 2 4 8 16 32 --duration-s 20 --notes W35 throughput SF100 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] throughput_sf100 in 255 s
+[run ] throughput_sf300: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py throughput --scale-factor 300 --threads 32 --clients 1 2 4 8 16 32 --duration-s 20 --notes W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] throughput_sf300 in 275 s
+[run ] update_sf10_sssp: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_sf10_sssp in 51 s
+[run ] update_sf10_p2p: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern point_to_point --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_sf10_p2p in 72 s
+[run ] update_sf10_sssp_t1: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 10 --threads 1 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_sf10_sssp_t1 in 92 s
+[run ] update_sf100_sssp: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-run --scale-factor 100 --threads 32 --batch-size 10000 --batches 150 --query-pattern sssp --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_sf100_sssp in 309 s
+[run ] concurrent_sf10_r1_index: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 1 --writer-pause-ms 200 --routes index --notes W16 concurrent index repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf10_r1_index in 42 s
+[run ] concurrent_sf10_r1_build: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 1 --writer-pause-ms 200 --routes build --notes W16 concurrent build repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf10_r1_build in 41 s
+[run ] concurrent_sf10_r4_index: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 4 --writer-pause-ms 200 --routes index --notes W16 concurrent index repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf10_r4_index in 42 s
+[run ] concurrent_sf10_r4_build: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 4 --writer-pause-ms 200 --routes build --notes W16 concurrent build repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf10_r4_build in 43 s
+[run ] concurrent_sf10_r8_index: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 8 --writer-pause-ms 200 --routes index --notes W16 concurrent index repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf10_r8_index in 43 s
+[run ] concurrent_sf10_r8_build: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 8 --writer-pause-ms 200 --routes build --notes W16 concurrent build repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf10_r8_build in 45 s
+[run ] concurrent_sf10_r16_index: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 16 --writer-pause-ms 200 --routes index --notes W16 concurrent index repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf10_r16_index in 46 s
+[run ] concurrent_sf10_r16_build: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 16 --writer-pause-ms 200 --routes build --notes W16 concurrent build repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf10_r16_build in 53 s
+[run ] concurrent_sf10_r4_unpaced_index: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 4 --writer-pause-ms 0 --routes index --notes W16 concurrent unpaced index repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf10_r4_unpaced_index in 4 s
+[run ] concurrent_sf10_r4_unpaced_build: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 4 --writer-pause-ms 0 --routes build --notes W16 concurrent unpaced build repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf10_r4_unpaced_build in 4 s
+[run ] concurrent_sf100_r1_index: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 1 --writer-pause-ms 200 --routes index --notes W16 concurrent SF100 index repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf100_r1_index in 29 s
+[run ] concurrent_sf300_r1_index: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 1 --writer-pause-ms 200 --routes index --notes W16 concurrent SF300 index repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf300_r1_index in 27 s
+[run ] concurrent_sf100_r1_build: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 1 --writer-pause-ms 200 --routes build --notes W16 concurrent SF100 build repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf100_r1_build in 29 s
+[run ] concurrent_sf300_r1_build: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 1 --writer-pause-ms 200 --routes build --notes W16 concurrent SF300 build repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf300_r1_build in 35 s
+[run ] concurrent_sf100_r4_index: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 4 --writer-pause-ms 200 --routes index --notes W16 concurrent SF100 index repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf100_r4_index in 29 s
+[run ] concurrent_sf300_r4_index: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 4 --writer-pause-ms 200 --routes index --notes W16 concurrent SF300 index repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf300_r4_index in 27 s
+[run ] concurrent_sf100_r4_build: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 4 --writer-pause-ms 200 --routes build --notes W16 concurrent SF100 build repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf100_r4_build in 35 s
+[run ] concurrent_sf300_r4_build: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 4 --writer-pause-ms 200 --routes build --notes W16 concurrent SF300 build repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf300_r4_build in 40 s
+[run ] concurrent_sf100_r16_index: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 16 --writer-pause-ms 200 --routes index --notes W16 concurrent SF100 index repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf100_r16_index in 33 s
+[run ] concurrent_sf300_r16_index: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 16 --writer-pause-ms 200 --routes index --notes W16 concurrent SF300 index repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf300_r16_index in 31 s
+[run ] concurrent_sf100_r16_build: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 100 --threads 32 --batch-size 2000 --batches 100 --readers 16 --writer-pause-ms 200 --routes build --notes W16 concurrent SF100 build repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf100_r16_build in 60 s
+[run ] concurrent_sf300_r16_build: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 16 --writer-pause-ms 200 --routes build --notes W16 concurrent SF300 build repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf300_r16_build in 73 s
+[run ] concurrent_sf10_r4_check: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --readers 4 --writer-pause-ms 200 --fold-ratio 0.01 --notes W16 correctness check, both routes repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf10_r4_check in 43 s
+[run ] concurrent_sf300_r16_fold: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-concurrent --scale-factor 300 --threads 32 --batch-size 2000 --batches 60 --readers 16 --writer-pause-ms 200 --routes index --fold-ratio 0.0005 --notes W36 fold latency SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] concurrent_sf300_r16_fold in 32 s
+[run ] update_kuzu_sf10_sssp: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-kuzu --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_kuzu_sf10_sssp in 72 s
+[run ] update_memgraph_sf10_sssp: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-memgraph --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_memgraph_sf10_sssp in 39 s
+[run ] update_falkordb_sf10_sssp: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-falkordb --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_falkordb_sf10_sssp in 1934 s
+[run ] update_neo4j_sf10_sssp: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-neo4j --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[FAIL] update_neo4j_sf10_sssp (see /home/ec2-user/duckpgq-extension/repro/logs/update_neo4j_sf10_sssp.out)
+[skip] refresh_indexes_sf10 (done)
+[skip] refresh_indexes_sf100 (done)
+[skip] refresh_indexes_sf300 (done)
+[skip] refresh_indexes_cit_Patents (done)
+[skip] refresh_indexes_graph500_24 (done)
+[skip] refresh_indexes_datagen_8_4_fb (done)
+[skip] refresh_indexes_osm_oberbayern (done)
+[skip] fixed_costs_sf10 (done)
+[skip] fixed_costs_sf100 (done)
+[skip] fixed_costs_sf300 (done)
+[skip] sweep_pairs_sf10 (done)
+[skip] sweep_pairs_sf100 (done)
+[skip] sweep_pairs_sf300 (done)
+[skip] fixed_costs_cit_patents (done)
+[skip] sweep_pairs_cit_patents (done)
+[skip] sweep_pairs_cit_patents_client32 (done)
+[skip] fixed_costs_graph500_24 (done)
+[skip] sweep_pairs_graph500_24 (done)
+[skip] fixed_costs_datagen_8_4_fb (done)
+[skip] sweep_pairs_datagen_8_4_fb (done)
+[skip] microbench_explore_variants_graph500_24 (done)
+[skip] microbench_explore_scaling_graph500_24 (done)
+[skip] microbench_scheduling_graph500_24 (done)
+[skip] fixed_costs_osm_oberbayern (done)
+[skip] sweep_pairs_osm_oberbayern (done)
+[skip] sweep_pairs_osm_oberbayern_client32 (done)
+[skip] microbench_shape_probe_osm_oberbayern (done)
+[skip] ldbc_queries_sf10 (done)
+[skip] ldbc_queries_sf100 (done)
+[skip] ldbc_queries_sf300 (done)
+[skip] sweep_pairs_sf10_client32 (done)
+[skip] ldbc_queries_sf10_client32 (done)
+[skip] sweep_pairs_sf100_client32 (done)
+[skip] ldbc_queries_sf100_client32 (done)
+[skip] native_baselines_sf10 (done)
+[skip] native_baselines_sf100 (done)
+[skip] microbench_sf10 (done)
+[skip] microbench_memory_sf10 (done)
+[skip] microbench_partitions_sf10 (done)
+[skip] microbench_scheduling_sf10 (done)
+[skip] microbench_sf100 (done)
+[skip] microbench_memory_sf100 (done)
+[skip] microbench_partitions_sf100 (done)
+[skip] microbench_scheduling_sf100 (done)
+[skip] microbench_section3_sf10 (done)
+[skip] microbench_crossover_sf10 (done)
+[skip] microbench_section3_sf100 (done)
+[skip] microbench_crossover_sf100 (done)
+[skip] microbench_explore_scaling_sf10 (done)
+[skip] microbench_explore_variants_sf10 (done)
+[skip] microbench_explore_scaling_sf100 (done)
+[skip] microbench_explore_variants_sf100 (done)
+[skip] microbench_explore_scaling_sf300 (done)
+[skip] microbench_explore_variants_sf300 (done)
+[skip] microbench_scheduling_sf300 (done)
+[skip] throughput_sf10 (done)
+[skip] throughput_sf100 (done)
+[skip] throughput_sf300 (done)
+[skip] update_sf10_sssp (done)
+[skip] update_sf10_p2p (done)
+[skip] update_sf10_sssp_t1 (done)
+[skip] update_sf100_sssp (done)
+[skip] concurrent_sf10_r1_index (done)
+[skip] concurrent_sf10_r1_build (done)
+[skip] concurrent_sf10_r4_index (done)
+[skip] concurrent_sf10_r4_build (done)
+[skip] concurrent_sf10_r8_index (done)
+[skip] concurrent_sf10_r8_build (done)
+[skip] concurrent_sf10_r16_index (done)
+[skip] concurrent_sf10_r16_build (done)
+[skip] concurrent_sf10_r4_unpaced_index (done)
+[skip] concurrent_sf10_r4_unpaced_build (done)
+[skip] concurrent_sf100_r1_index (done)
+[skip] concurrent_sf300_r1_index (done)
+[skip] concurrent_sf100_r1_build (done)
+[skip] concurrent_sf300_r1_build (done)
+[skip] concurrent_sf100_r4_index (done)
+[skip] concurrent_sf300_r4_index (done)
+[skip] concurrent_sf100_r4_build (done)
+[skip] concurrent_sf300_r4_build (done)
+[skip] concurrent_sf100_r16_index (done)
+[skip] concurrent_sf300_r16_index (done)
+[skip] concurrent_sf100_r16_build (done)
+[skip] concurrent_sf300_r16_build (done)
+[skip] concurrent_sf10_r4_check (done)
+[skip] concurrent_sf300_r16_fold (done)
+[skip] update_kuzu_sf10_sssp (done)
+[skip] update_memgraph_sf10_sssp (done)
+[skip] update_falkordb_sf10_sssp (done)
+[run ] update_neo4j_sf10_sssp: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-neo4j --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern sssp --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_neo4j_sf10_sssp in 332 s
+[run ] update_neo4j_sf10_p2p: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-neo4j --scale-factor 10 --threads 32 --batch-size 2000 --batches 190 --query-pattern point_to_point --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_neo4j_sf10_p2p in 188 s
+[run ] update_kuzu_sf10_p2p: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-kuzu --scale-factor 10 --threads 32 --batch-size 2000 --batches 20 --query-pattern point_to_point --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_kuzu_sf10_p2p in 149 s
+[run ] update_memgraph_sf10_p2p: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-memgraph --scale-factor 10 --threads 32 --batch-size 2000 --batches 20 --query-pattern point_to_point --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_memgraph_sf10_p2p in 969 s
+[run ] update_falkordb_sf10_p2p: python3 /home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py update-falkordb --scale-factor 10 --threads 32 --batch-size 2000 --batches 20 --query-pattern point_to_point --notes W16 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal
+[done] update_falkordb_sf10_p2p in 269 s
+matrix finished; next: ./collect.sh

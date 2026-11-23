@@ -1,0 +1,1 @@
+Graphalytics datagen-8_4-fb: dropped 0 CSR indexes (none), created pathfinding_benchmark_csr WITH (reverse = true) in 52.4 s; file 4307 MiB -> 11849 MiB; stored state in a new read-only process: epochs=1;delta=0;tombstones=0

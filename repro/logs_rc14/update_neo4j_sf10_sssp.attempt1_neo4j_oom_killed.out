@@ -1,0 +1,52 @@
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf10 in 0.09s
+Loading sf10 into neo4j
+Traceback (most recent call last):
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_async_compat/network/_bolt_socket.py", line 485, in _connect_secure
+    s.connect(resolved_address)
+ConnectionRefusedError: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_sync/io/_bolt_socket.py", line 328, in connect
+    s = cls._connect_secure(
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_async_compat/network/_bolt_socket.py", line 502, in _connect_secure
+    raise ServiceUnavailable(
+neo4j.exceptions.ServiceUnavailable: Failed to establish connection to ResolvedIPv4Address(('127.0.0.1', 7688)) (reason [Errno 111] Connection refused)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py", line 7284, in <module>
+    main()
+  File "/home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py", line 7280, in main
+    args.func(args)
+  File "/home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py", line 5082, in run_update_neo4j
+    run_update_graphdb(args, Neo4jSystem(args.uri, args.database, args.runtime))
+  File "/home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py", line 4806, in run_update_graphdb
+    system.load(export_dir, args.scale_factor)
+  File "/home/ec2-user/duckpgq-extension/scripts/pathfinding_benchmark.py", line 4905, in load
+    system.run(f"CREATE OR REPLACE DATABASE {self.database} WAIT").consume()
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_sync/work/session.py", line 317, in run
+    self._connect(self._config.default_access_mode)
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_sync/work/session.py", line 133, in _connect
+    super()._connect(
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_sync/work/workspace.py", line 199, in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_sync/io/_pool.py", line 686, in acquire
+    return self._acquire(
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_sync/io/_pool.py", line 419, in _acquire
+    return connection_creator()
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_sync/io/_pool.py", line 230, in connection_creator
+    connection = self.opener(
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_sync/io/_pool.py", line 647, in opener
+    return Bolt.open(
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_sync/io/_bolt.py", line 368, in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+  File "/home/ec2-user/.local/lib/python3.9/site-packages/neo4j/_sync/io/_bolt_socket.py", line 380, in connect
+    raise ServiceUnavailable(
+neo4j.exceptions.ServiceUnavailable: Couldn't connect to localhost:7688 (resolved to ('127.0.0.1:7688',)):
+Failed to establish connection to ResolvedIPv4Address(('127.0.0.1', 7688)) (reason [Errno 111] Connection refused)

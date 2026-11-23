@@ -1,0 +1,121 @@
+Ensuring graphalytics_graph500_24 benchmark_pairs_1 exists
+Prepared benchmark_pairs_1 for graphalytics_graph500_24 in 1.77s
+Ensuring graphalytics_graph500_24 benchmark_pairs_16 exists
+Prepared benchmark_pairs_16 for graphalytics_graph500_24 in 1.76s
+Ensuring graphalytics_graph500_24 benchmark_pairs_128 exists
+Prepared benchmark_pairs_128 for graphalytics_graph500_24 in 1.79s
+Ensuring graphalytics_graph500_24 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_graph500_24 in 2.03s
+Ensuring graphalytics_graph500_24 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for graphalytics_graph500_24 in 2.24s
+Ensuring graphalytics_graph500_24 benchmark_pairs_16384 exists
+Prepared benchmark_pairs_16384 for graphalytics_graph500_24 in 6.09s
+Ensuring graphalytics_graph500_24 benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for graphalytics_graph500_24 in 19.31s
+Exporting graphalytics_graph500_24 tables for the graph databases
+== Graphalytics graph500-24: 8870942 vertices, 520759040 edges, 8870942 vertices with an outgoing edge (100.0%), 8870942 with an incoming edge (100.0%); sources are sampled from the former, destinations from the latter
+== duckpgq_build: loading graphalytics_graph500_24
+   loaded in 0.1s, 520759040 edges
+   duckpgq_build  random_pairs pairs=1       sources=      repeat 1:    3.003s 1/3 (100.0% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=1       sources=      repeat 2:    2.989s 1/3 (100.0% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=1       sources=      repeat 3:    2.946s 1/3 (100.0% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=16      sources=      repeat 1:    6.132s 16/55 (100.0% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=16      sources=      repeat 2:    5.818s 16/55 (100.0% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=16      sources=      repeat 3:    6.260s 16/55 (100.0% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=128     sources=      repeat 1:    4.255s 128/438 (100.0% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=128     sources=      repeat 2:    4.197s 128/438 (100.0% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=128     sources=      repeat 3:    4.215s 128/438 (100.0% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=1024    sources=      repeat 1:    6.619s 1020/3493 (99.6% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=1024    sources=      repeat 2:    6.473s 1020/3493 (99.6% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=1024    sources=      repeat 3:    6.599s 1020/3493 (99.6% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=2048    sources=      repeat 1:    9.628s 2043/6991 (99.8% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=2048    sources=      repeat 2:    9.564s 2043/6991 (99.8% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=2048    sources=      repeat 3:    9.560s 2043/6991 (99.8% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=16384   sources=      repeat 1:   44.226s 16359/55740 (99.8% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=16384   sources=      repeat 2:   44.167s 16359/55740 (99.8% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=16384   sources=      repeat 3:   44.499s 16359/55740 (99.8% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=65536   sources=      repeat 1:  158.013s 65448/222899 (99.9% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=65536   sources=      repeat 2:  158.894s 65448/222899 (99.9% of the pairs reachable)
+   duckpgq_build  random_pairs pairs=65536   sources=      repeat 3:  157.794s 65448/222899 (99.9% of the pairs reachable)
+   duckpgq_build  multi_source pairs=        sources=1     repeat 1:    3.049s 8865133/30391967 (99.9% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=1     repeat 2:    3.080s 8865133/30391967 (99.9% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=1     repeat 3:    3.148s 8865133/30391967 (99.9% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=16    repeat 1:    8.115s 141842128/486112198 (99.9% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=16    repeat 2:    7.945s 141842128/486112198 (99.9% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=16    repeat 3:    7.918s 141842128/486112198 (99.9% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=128   repeat 1:    5.980s 1134737024/3869486690 (99.9% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=128   repeat 2:    5.920s 1134737024/3869486690 (99.9% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=128   repeat 3:    5.924s 1134737024/3869486690 (99.9% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=1024  repeat 1:   11.957s 9077896192/30909151351 (99.9% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=1024  repeat 2:   11.756s 9077896192/30909151351 (99.9% of the vertices reached per source)
+   duckpgq_build  multi_source pairs=        sources=1024  repeat 3:   11.612s 9077896192/30909151351 (99.9% of the vertices reached per source)
+== duckpgq_index: loading graphalytics_graph500_24
+   loaded in 0.2s, 520759040 edges
+   duckpgq_index  random_pairs pairs=1       sources=      repeat 1:    0.003s 1/3 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=1       sources=      repeat 2:    0.002s 1/3 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=1       sources=      repeat 3:    0.003s 1/3 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16      sources=      repeat 1:    0.007s 16/55 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16      sources=      repeat 2:    0.006s 16/55 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16      sources=      repeat 3:    0.008s 16/55 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=128     sources=      repeat 1:    0.794s 128/438 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=128     sources=      repeat 2:    0.824s 128/438 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=128     sources=      repeat 3:    0.799s 128/438 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=1024    sources=      repeat 1:    3.110s 1020/3493 (99.6% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=1024    sources=      repeat 2:    3.183s 1020/3493 (99.6% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=1024    sources=      repeat 3:    3.168s 1020/3493 (99.6% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=2048    sources=      repeat 1:    6.138s 2043/6991 (99.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=2048    sources=      repeat 2:    6.109s 2043/6991 (99.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=2048    sources=      repeat 3:    6.164s 2043/6991 (99.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16384   sources=      repeat 1:   40.712s 16359/55740 (99.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16384   sources=      repeat 2:   40.994s 16359/55740 (99.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16384   sources=      repeat 3:   40.917s 16359/55740 (99.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=65536   sources=      repeat 1:  156.096s 65448/222899 (99.9% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=65536   sources=      repeat 2:  159.822s 65448/222899 (99.9% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=65536   sources=      repeat 3:  158.500s 65448/222899 (99.9% of the pairs reachable)
+   duckpgq_index  multi_source pairs=        sources=1     repeat 1:    0.364s 8865133/30391967 (99.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1     repeat 2:    0.377s 8865133/30391967 (99.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1     repeat 3:    0.350s 8865133/30391967 (99.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=16    repeat 1:    5.561s 141842128/486112198 (99.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=16    repeat 2:    5.476s 141842128/486112198 (99.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=16    repeat 3:    5.193s 141842128/486112198 (99.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=128   repeat 1:    2.755s 1134737024/3869486690 (99.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=128   repeat 2:    2.681s 1134737024/3869486690 (99.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=128   repeat 3:    2.789s 1134737024/3869486690 (99.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 1:    9.675s 9077896192/30909151351 (99.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 2:    9.793s 9077896192/30909151351 (99.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 3:    9.690s 9077896192/30909151351 (99.9% of the vertices reached per source)
+== kuzu: loading graphalytics_graph500_24
+Ensuring graphalytics_graph500_24 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_graph500_24 in 2.00s
+Ensuring graphalytics_graph500_24 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for graphalytics_graph500_24 in 2.03s
+   loaded in 4.2s, 520759040 edges
+   kuzu           random_pairs pairs=1       sources=      repeat 1:    0.474s 1/3 (100.0% of the pairs reachable)
+   kuzu           random_pairs pairs=1       sources=      repeat 2:    0.396s 1/3 (100.0% of the pairs reachable)
+   kuzu           random_pairs pairs=1       sources=      repeat 3:    0.401s 1/3 (100.0% of the pairs reachable)
+   kuzu           random_pairs pairs=16      sources=      repeat 1:   11.821s 16/55 (100.0% of the pairs reachable)
+   kuzu           random_pairs pairs=16      sources=      repeat 2:   11.629s 16/55 (100.0% of the pairs reachable)
+   kuzu           random_pairs pairs=16      sources=      repeat 3:   11.723s 16/55 (100.0% of the pairs reachable)
+   kuzu           random_pairs pairs=128     sources=      repeat 1:   71.038s 128/438 (100.0% of the pairs reachable)
+   kuzu           random_pairs pairs=128     sources=      repeat 2:   70.938s 128/438 (100.0% of the pairs reachable)
+   kuzu           random_pairs pairs=128     sources=      repeat 3:   71.133s 128/438 (100.0% of the pairs reachable)
+   kuzu           random_pairs pairs=1024    sources=      repeat 1:  576.411s 1020/3493 (99.6% of the pairs reachable)
+   kuzu           random_pairs pairs=1024    sources=      repeat 2:  573.407s 1020/3493 (99.6% of the pairs reachable)
+   kuzu           random_pairs pairs=1024    sources=      repeat 3:  570.545s 1020/3493 (99.6% of the pairs reachable)
+   kuzu           random_pairs pairs=2048    sources=      repeat 1:  600.121s timed_out
+   kuzu           random_pairs pairs=16384   sources=      repeat 1:    0.000s timed_out_inferred
+   kuzu           random_pairs pairs=65536   sources=      repeat 1:    0.000s timed_out_inferred
+   kuzu           multi_source pairs=        sources=1     repeat 1:    0.383s 8865133/30391967 (99.9% of the vertices reached per source)
+   kuzu           multi_source pairs=        sources=1     repeat 2:    0.370s 8865133/30391967 (99.9% of the vertices reached per source)
+   kuzu           multi_source pairs=        sources=1     repeat 3:    0.367s 8865133/30391967 (99.9% of the vertices reached per source)
+   kuzu           multi_source pairs=        sources=16    repeat 1:    9.016s 141842128/486112198 (99.9% of the vertices reached per source)
+   kuzu           multi_source pairs=        sources=16    repeat 2:    8.957s 141842128/486112198 (99.9% of the vertices reached per source)
+   kuzu           multi_source pairs=        sources=16    repeat 3:    8.944s 141842128/486112198 (99.9% of the vertices reached per source)
+   kuzu           multi_source pairs=        sources=128   repeat 1:   67.895s 1134737024/3869486690 (99.9% of the vertices reached per source)
+   kuzu           multi_source pairs=        sources=128   repeat 2:   67.539s 1134737024/3869486690 (99.9% of the vertices reached per source)
+   kuzu           multi_source pairs=        sources=128   repeat 3:   67.386s 1134737024/3869486690 (99.9% of the vertices reached per source)
+   kuzu           multi_source pairs=        sources=1024  repeat 1:  544.208s 9077896192/30909151351 (99.9% of the vertices reached per source)
+   kuzu           multi_source pairs=        sources=1024  repeat 2:  545.494s 9077896192/30909151351 (99.9% of the vertices reached per source)
+   kuzu           multi_source pairs=        sources=1024  repeat 3:  544.201s 9077896192/30909151351 (99.9% of the vertices reached per source)
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_graph500_24/sweep_pairs_graphalytics_graph500_24_threads32_1795220372933737103.csv
+All 11 points agree across the systems that completed them

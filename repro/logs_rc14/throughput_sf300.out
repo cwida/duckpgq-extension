@@ -1,0 +1,15 @@
+Ensuring sf300 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf300 in 0.31s
+   index  clients=1      170.85 q/s  median    2.366 ms  p99   18.338 ms  (3417 queries, 0 errors, peak 1573.0 MiB)
+   index  clients=2      295.40 q/s  median    2.685 ms  p99   21.691 ms  (5908 queries, 0 errors, peak 1571.6 MiB)
+   index  clients=4      408.05 q/s  median    4.373 ms  p99   34.239 ms  (8161 queries, 0 errors, peak 1570.2 MiB)
+   index  clients=8      482.55 q/s  median    7.326 ms  p99   64.091 ms  (9651 queries, 0 errors, peak 1570.3 MiB)
+   index  clients=16     627.05 q/s  median    7.073 ms  p99  112.253 ms  (12541 queries, 0 errors, peak 1570.9 MiB)
+   index  clients=32     822.15 q/s  median    9.986 ms  p99  191.874 ms  (16443 queries, 0 errors, peak 1570.1 MiB)
+   build  clients=1        3.15 q/s  median  316.933 ms  p99  361.784 ms  (63 queries, 0 errors, peak 4378.5 MiB)
+   build  clients=2        4.10 q/s  median  481.561 ms  p99  639.843 ms  (82 queries, 0 errors, peak 5311.7 MiB)
+   build  clients=4        4.35 q/s  median  924.758 ms  p99 1377.220 ms  (87 queries, 0 errors, peak 7144.5 MiB)
+   build  clients=8        4.15 q/s  median 1876.580 ms  p99 3459.300 ms  (83 queries, 0 errors, peak 10293.8 MiB)
+   build  clients=16       4.45 q/s  median 3964.280 ms  p99 6522.030 ms  (89 queries, 0 errors, peak 13480.9 MiB)
+   build  clients=32       4.95 q/s  median 7783.870 ms  p99 11013.700 ms  (99 queries, 0 errors, peak 24213.9 MiB)
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/sf300/throughput_sf300_threads32_1795367397879997219.csv

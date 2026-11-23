@@ -1,0 +1,106 @@
+system,scale_factor,shape,pairs,sources,repeat,status,query_s,reachable_count,total_len,threads,client_threads,timeout_s,benchmark_notes,repo_commit,peak_rss_mib
+duckpgq_index,10,random_pairs,1,,1,ok,0.002000,1,4,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,116.5
+duckpgq_index,10,random_pairs,1,,2,ok,0.002000,1,4,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,115.9
+duckpgq_index,10,random_pairs,1,,3,ok,0.001000,1,4,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,116.8
+duckpgq_index,10,random_pairs,16,,1,ok,0.004000,7,23,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,115.9
+duckpgq_index,10,random_pairs,16,,2,ok,0.004000,7,23,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,116.8
+duckpgq_index,10,random_pairs,16,,3,ok,0.004000,7,23,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,117.2
+duckpgq_index,10,random_pairs,128,,1,ok,0.015000,62,214,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,117.4
+duckpgq_index,10,random_pairs,128,,2,ok,0.016000,62,214,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,117.9
+duckpgq_index,10,random_pairs,128,,3,ok,0.015000,62,214,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,118.5
+duckpgq_index,10,random_pairs,1024,,1,ok,0.020000,472,1655,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,120.4
+duckpgq_index,10,random_pairs,1024,,2,ok,0.021000,472,1655,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,145.1
+duckpgq_index,10,random_pairs,1024,,3,ok,0.021000,472,1655,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,120.8
+duckpgq_index,10,random_pairs,2048,,1,ok,0.032000,954,3333,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,146.1
+duckpgq_index,10,random_pairs,2048,,2,ok,0.031000,954,3333,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,145.4
+duckpgq_index,10,random_pairs,2048,,3,ok,0.031000,954,3333,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,145.9
+duckpgq_index,10,random_pairs,16384,,1,ok,0.129000,7506,26570,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,525.7
+duckpgq_index,10,random_pairs,16384,,2,ok,0.129000,7506,26570,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,525.8
+duckpgq_index,10,random_pairs,16384,,3,ok,0.130000,7506,26570,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,525.3
+duckpgq_index,10,random_pairs,65536,,1,ok,0.341000,29178,103926,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,415.2
+duckpgq_index,10,random_pairs,65536,,2,ok,0.337000,29178,103926,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,600.3
+duckpgq_index,10,random_pairs,65536,,3,ok,0.360000,29178,103926,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,602.2
+duckpgq_index,10,multi_source,,1,1,ok,0.004000,9158,36249,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,115.6
+duckpgq_index,10,multi_source,,1,2,ok,0.003000,9158,36249,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,116.4
+duckpgq_index,10,multi_source,,1,3,ok,0.004000,9158,36249,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,115.3
+duckpgq_index,10,multi_source,,16,1,ok,0.009000,385149,1380649,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,117.6
+duckpgq_index,10,multi_source,,16,2,ok,0.010000,385149,1380649,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,125.7
+duckpgq_index,10,multi_source,,16,3,ok,0.010000,385149,1380649,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,126.2
+duckpgq_index,10,multi_source,,128,1,ok,0.026000,3328389,11948238,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,125.3
+duckpgq_index,10,multi_source,,128,2,ok,0.027000,3328389,11948238,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,131.6
+duckpgq_index,10,multi_source,,128,3,ok,0.026000,3328389,11948238,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,125.0
+duckpgq_index,10,multi_source,,1024,1,ok,0.062000,26510202,94224650,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,247.8
+duckpgq_index,10,multi_source,,1024,2,ok,0.064000,26510202,94224650,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,270.7
+duckpgq_index,10,multi_source,,1024,3,ok,0.067000,26510202,94224650,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,248.0
+duckpgq_recursive,10,random_pairs,1,,1,ok,0.110000,1,4,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,1,,2,ok,0.114000,1,4,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,1,,3,ok,0.112000,1,4,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,16,,1,ok,0.572000,7,23,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,16,,2,ok,0.571000,7,23,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,16,,3,ok,0.586000,7,23,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,128,,1,ok,6.217000,62,214,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,128,,2,ok,6.289000,62,214,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,128,,3,ok,6.162000,62,214,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,1024,,1,ok,65.565000,472,1655,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,1024,,2,ok,64.439000,472,1655,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,1024,,3,ok,64.828000,472,1655,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,2048,,1,ok,132.659000,954,3333,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,2048,,2,ok,132.401000,954,3333,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,2048,,3,ok,132.257000,954,3333,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,16384,,1,"error: Out of Memory Error: could not allocate block of size 256.0 KiB (98.5 GiB/98.5 GiB used)
+--- output tail ---
+count(len),""COALESCE(sum(len), 0)""
+Run Time (s): real 342.623 user 2444.401510 sys 129.2099",0.000000,,,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,16384,,2,"error: Out of Memory Error: could not allocate block of size 256.0 KiB (98.5 GiB/98.5 GiB used)
+--- output tail ---
+count(len),""COALESCE(sum(len), 0)""
+Run Time (s): real 196.366 user 2199.778384 sys 93.26963",0.000000,,,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,16384,,3,"error: Out of Memory Error: failed to pin block of size 256.0 KiB (98.5 GiB/98.5 GiB used)
+--- output tail ---
+count(len),""COALESCE(sum(len), 0)""
+Run Time (s): real 197.920 user 2210.138968 sys 93.632735
+Out",0.000000,,,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,random_pairs,65536,,1,timed_out,600.000000,,,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,1,1,ok,0.722000,9158,36249,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,1,2,ok,0.609000,9158,36249,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,1,3,ok,0.607000,9158,36249,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,16,1,ok,0.919000,385149,1380649,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,16,2,ok,0.933000,385149,1380649,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,16,3,ok,0.937000,385149,1380649,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,128,1,ok,6.447000,3328389,11948238,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,128,2,ok,6.419000,3328389,11948238,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,128,3,ok,6.450000,3328389,11948238,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,1024,1,ok,59.551000,26510202,94224650,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,1024,2,ok,60.285000,26510202,94224650,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_recursive,10,multi_source,,1024,3,ok,60.471000,26510202,94224650,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,1,,1,ok,0.183000,1,4,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,1,,2,ok,0.071000,1,4,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,1,,3,ok,0.072000,1,4,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,16,,1,ok,0.084000,7,23,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,16,,2,ok,0.084000,7,23,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,16,,3,ok,0.088000,7,23,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,128,,1,ok,0.097000,62,214,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,128,,2,ok,0.094000,62,214,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,128,,3,ok,0.095000,62,214,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,1024,,1,ok,0.186000,472,1655,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,1024,,2,ok,0.186000,472,1655,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,1024,,3,ok,0.191000,472,1655,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,2048,,1,ok,0.311000,954,3333,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,2048,,2,ok,0.302000,954,3333,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,2048,,3,ok,0.304000,954,3333,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,16384,,1,ok,1.898000,7506,26570,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,16384,,2,ok,1.902000,7506,26570,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,16384,,3,ok,1.892000,7506,26570,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,65536,,1,ok,7.307000,29178,103926,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,65536,,2,ok,7.423000,29178,103926,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,random_pairs,65536,,3,ok,7.252000,29178,103926,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,multi_source,,1,1,ok,2.359000,9158,36249,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,multi_source,,1,2,ok,2.372000,9158,36249,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,multi_source,,1,3,ok,2.362000,9158,36249,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,multi_source,,16,1,ok,40.859000,385149,1380649,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,multi_source,,16,2,ok,40.696000,385149,1380649,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,multi_source,,16,3,ok,40.965000,385149,1380649,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,multi_source,,128,1,ok,328.516000,3328389,11948238,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,multi_source,,128,2,ok,329.357000,3328389,11948238,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,multi_source,,128,3,ok,328.748000,3328389,11948238,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,
+duckpgq_scalar,10,multi_source,,1024,1,timed_out,600.000000,,,32,1,600.0,native baselines SF10 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,

@@ -1,0 +1,36 @@
+Ensuring sf100 benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for sf100 in 1.25s
+== duckpgq_index [baseline] loaded in 0.2s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=65536   sources=      repeat 1:    2.637s 31274/118174
+   baseline                     random_pairs pairs=65536   sources=      repeat 2:    2.622s 31274/118174
+   baseline                     random_pairs pairs=65536   sources=      repeat 3:    2.566s 31274/118174
+== duckpgq_index [explore_flat_serial] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_serial          random_pairs pairs=65536   sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_ranges          random_pairs pairs=65536   sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_atomic          random_pairs pairs=65536   sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_locked          random_pairs pairs=65536   sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [partitions_4096] loaded in 0.2s (index pathfinding_benchmark_csr_pv4096)
+   partitions_4096              random_pairs pairs=65536   sources=      repeat 1:    4.599s 31274/118174
+   partitions_4096              random_pairs pairs=65536   sources=      repeat 2:    4.608s 31274/118174
+   partitions_4096              random_pairs pairs=65536   sources=      repeat 3:    4.487s 31274/118174
+== duckpgq_index [partitions_8192] loaded in 0.2s (index pathfinding_benchmark_csr_pv8192)
+   partitions_8192              random_pairs pairs=65536   sources=      repeat 1:    3.777s 31274/118174
+   partitions_8192              random_pairs pairs=65536   sources=      repeat 2:    3.809s 31274/118174
+   partitions_8192              random_pairs pairs=65536   sources=      repeat 3:    3.811s 31274/118174
+== duckpgq_index [partitions_16384] loaded in 0.2s (index pathfinding_benchmark_csr_pv16384)
+   partitions_16384             random_pairs pairs=65536   sources=      repeat 1:    3.259s 31274/118174
+   partitions_16384             random_pairs pairs=65536   sources=      repeat 2:    3.209s 31274/118174
+   partitions_16384             random_pairs pairs=65536   sources=      repeat 3:    3.234s 31274/118174
+== duckpgq_index [partitions_32768] loaded in 0.2s (index pathfinding_benchmark_csr_pv32768)
+   partitions_32768             random_pairs pairs=65536   sources=      repeat 1:    2.785s 31274/118174
+   partitions_32768             random_pairs pairs=65536   sources=      repeat 2:    2.790s 31274/118174
+   partitions_32768             random_pairs pairs=65536   sources=      repeat 3:    2.766s 31274/118174
+== duckpgq_index [partitions_65535_nosub] loaded in 0.2s (index pathfinding_benchmark_csr_pv65535)
+   partitions_65535_nosub       random_pairs pairs=65536   sources=      repeat 1:    2.622s 31274/118174
+   partitions_65535_nosub       random_pairs pairs=65536   sources=      repeat 2:    2.641s 31274/118174
+   partitions_65535_nosub       random_pairs pairs=65536   sources=      repeat 3:    2.624s 31274/118174
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/sf100/microbench_sf100_threads32_1795362399716807571.csv
+All 1 points agree across configurations 

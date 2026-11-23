@@ -1,0 +1,4 @@
+# Baseline images pinned to the digests of the dev desktop that ran the rc13 sweep and the rc14 dry run
+export MEMGRAPH_IMAGE=memgraph/memgraph@sha256:a732421217951066e42f5749111bc3d0c7b51b12c756be04850d4dafa84cc05e
+export FALKORDB_IMAGE=falkordb/falkordb@sha256:03f53c46223ac2c0aab05ede7c6a8d9299255b7fd228909424f2c453f7a8cfcd
+export NEO4J_IMAGE=neo4j@sha256:652d07486a5b1bf7300c0be4dba5b47e6c44f957f72a127ef96043c6f0dc926a

@@ -1,0 +1,580 @@
+Filters: test/*
+
+[0/120] (0%): test/sql/211_using_other_schemas.test
+[1/120] (0%): test/sql/211_using_other_schemas.test took 0.290s
+[2/120] (1%): test/sql/altering_table.test took 0.061s
+[3/120] (2%): test/sql/copy_to_duckpgq.test took 0.194s
+[4/120] (3%): test/sql/create_pg/209_property_undefined.test took 0.069s
+[5/120] (4%): test/sql/create_pg/all_properties.test took 0.085s
+[6/120] (5%): test/sql/create_pg/attach_pg.test took 0.138s
+[7/120] (5%): test/sql/create_pg/create_if_not_exists.test took 0.066s
+[8/120] (6%): test/sql/create_pg/create_or_replace_pg.test took 0.121s
+[9/120] (7%): test/sql/create_pg/create_pg_multiple_connections.test took 0.108s
+[10/120] (8%): test/sql/create_pg/create_pg_on_view.test took 0.037s
+[11/120] (9%): test/sql/create_pg/create_pg_with_pk_fk.test took 0.118s
+[12/120] (10%): test/sql/create_pg/create_property_graph.test took 0.073s
+[13/120] (10%): test/sql/create_pg/create_property_graph_syntax_error.test took 0.031s
+[14/120] (11%): test/sql/create_pg/describe_pg.test took 0.161s
+[15/120] (12%): test/sql/create_pg/drop_property_graph.test took 0.071s
+[16/120] (13%): test/sql/create_pg/except_properties.test took 0.058s
+[17/120] (14%): test/sql/create_pg/incomplete_edges.test took 0.097s
+[18/120] (15%): test/sql/create_pg/no_properties.test took 0.054s
+[19/120] (15%): test/sql/create_pg/optional_edge_table_clause.test took 0.097s
+[20/120] (16%): test/sql/create_pg/verified_property_graph.test took 0.312s
+[21/120] (17%): test/sql/csr_segfault.test took 0.074s
+[22/120] (18%): test/sql/duckdb_columns.test took 0.056s
+[23/120] (19%): test/sql/explain_duckpgq.test took 0.147s
+[24/120] (20%): test/sql/factorized_join.test took 0.080s
+[25/120] (20%): test/sql/factorized_path_count.test took 0.154s
+[26/120] (21%): test/sql/generated_sql_quoting.test took 0.066s
+[27/120] (22%): test/sql/get_csr_ptr.test took 0.054s
+[28/120] (23%): test/sql/grammar_extension/create_property_graph.test took 0.184s
+[29/120] (24%): test/sql/grammar_extension/create_property_graph_errors.test took 0.044s
+[30/120] (25%): test/sql/grammar_extension/graph_management.test took 0.057s
+[31/120] (25%): test/sql/grammar_extension/graph_table.test took 0.143s
+[32/120] (26%): test/sql/grammar_extension/qualified_graph_names.test took 0.284s
+[33/120] (27%): test/sql/label_optional.test took 0.144s
+[34/120] (28%): test/sql/multiple_graph_table.test took 0.065s
+[35/120] (29%): test/sql/nested_subquery.test took 0.063s
+[36/120] (30%): test/sql/non_existing_table.test took 0.116s
+[37/120] (30%): test/sql/optional_columns.test took 0.114s
+[38/120] (31%): test/sql/path_finding/bidirectional_pair.test took 0.151s
+[39/120] (32%): test/sql/path_finding/complex_matching.test took 0.206s
+[40/120] (33%): test/sql/path_finding/csr_index_bidirectional.test took 0.035s
+[41/120] (34%): test/sql/path_finding/csr_index_bulk_delete.test took 1.477s
+[42/120] (35%): test/sql/path_finding/csr_index_change_groups.test took 0.353s
+[43/120] (35%): test/sql/path_finding/csr_index_checkpoint.test took 0.299s
+[44/120] (36%): test/sql/path_finding/csr_index_ddl.test took 0.038s
+[45/120] (37%): test/sql/path_finding/csr_index_failed_commit.test took 0.061s
+[46/120] (38%): test/sql/path_finding/csr_index_fold.test took 0.110s
+[47/120] (39%): test/sql/path_finding/csr_index_fold_order.test took 0.074s
+[48/120] (40%): test/sql/path_finding/csr_index_fold_parallel_scan.test took 1.217sReplacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+Replacing deprecated loop iterator ${i} in test "test/sql/path_finding/csr_index_fold_rule.test" - please use the new loop iterator {i}
+
+[49/120] (40%): test/sql/path_finding/csr_index_fold_rule.test took 2.436s
+[50/120] (41%): test/sql/path_finding/csr_index_fold_unseen_delete.test took 0.083s
+[51/120] (42%): test/sql/path_finding/csr_index_group_memo.test took 0.308s
+[52/120] (43%): test/sql/path_finding/csr_index_memory.test took 0.286s
+[53/120] (44%): test/sql/path_finding/csr_index_memory_limit.test took 1.174s
+[54/120] (45%): test/sql/path_finding/csr_index_memory_wal.test took 0.291s
+[55/120] (45%): test/sql/path_finding/csr_index_merge_fold.test took 2.074s
+[56/120] (46%): test/sql/path_finding/csr_index_merge_fold_persist.test took 0.267s
+[57/120] (47%): test/sql/path_finding/csr_index_operator.test took 0.124s
+[58/120] (48%): test/sql/path_finding/csr_index_paths.test took 0.076s
+[59/120] (49%): test/sql/path_finding/csr_index_persist.test took 0.430s
+[60/120] (50%): test/sql/path_finding/csr_index_reverse.test took 0.248s
+[61/120] (50%): test/sql/path_finding/csr_index_snapshot.test took 0.109s
+[62/120] (51%): test/sql/path_finding/csr_index_snapshot_deleted_group.test took 0.064s
+[63/120] (52%): test/sql/path_finding/csr_index_snapshot_fast_path.test took 0.131s
+[64/120] (53%): test/sql/path_finding/csr_index_undirected_delete.test took 0.036s
+[65/120] (54%): test/sql/path_finding/edgeless_graph.test took 0.048s
+[66/120] (55%): test/sql/path_finding/graph_shape_probe.test took 0.502s
+[67/120] (55%): test/sql/path_finding/kleene_star.test took 0.089s
+[68/120] (56%): test/sql/path_finding/non-unique-vertices.test took 0.108s
+[69/120] (57%): test/sql/path_finding/parser_arrow_kleene.test took 0.083s
+[70/120] (58%): test/sql/path_finding/path-finding-cte.test took 0.057s
+[71/120] (59%): test/sql/path_finding/path_finding_build_route_paths.test took 0.065s
+[72/120] (60%): test/sql/path_finding/path_finding_concurrent_queries.test_slow took 1.895s
+[73/120] (60%): test/sql/path_finding/path_finding_grouped_scheduler.test took 0.176s
+[74/120] (61%): test/sql/path_finding/path_finding_lane_waves.test took 0.061s
+[75/120] (62%): test/sql/path_finding/path_finding_low_memory.test_slow took 0.868s
+[76/120] (63%): test/sql/path_finding/path_finding_microbenchmark_switches.test took 0.219s
+[77/120] (64%): test/sql/path_finding/path_finding_operator.test took 0.137s
+[78/120] (65%): test/sql/path_finding/path_finding_operator_bounds.test took 0.067s
+[79/120] (65%): test/sql/path_finding/path_finding_operator_match.test took 0.091s
+[80/120] (66%): test/sql/path_finding/path_finding_operator_multi_batch.test took 0.252s
+[81/120] (67%): test/sql/path_finding/path_finding_operator_planner.test took 0.077s
+[82/120] (68%): test/sql/path_finding/path_finding_pair_columns.test took 0.051s
+[83/120] (69%): test/sql/path_finding/path_finding_reach.test took 0.044s
+[84/120] (70%): test/sql/path_finding/path_finding_reach_match.test took 0.107s
+[85/120] (70%): test/sql/path_finding/path_finding_reverse_orientation.test took 0.066s
+[86/120] (71%): test/sql/path_finding/path_finding_source_group_order.test took 0.156s
+[87/120] (72%): test/sql/path_finding/path_finding_source_search_rounds.test took 0.202s
+[88/120] (73%): test/sql/path_finding/reach_dense_results.test took 1.334s
+[89/120] (74%): test/sql/path_finding/reach_lanes.test took 2.073s
+[90/120] (75%): test/sql/path_finding/reach_result_budget.test took 2.048s
+[91/120] (75%): test/sql/path_finding/shortest_path.test took 0.078s
+[92/120] (76%): test/sql/path_finding/subpath_match.test took 0.057s
+[93/120] (77%): test/sql/path_finding/top_k.test took 0.047s
+[94/120] (78%): test/sql/path_finding/undirected_paths.test took 0.113sReplacing deprecated loop iterator ${variant} in test "test/sql/path_finding/explore_variants_index.test" - please use the new loop iterator {variant}
+Replacing deprecated loop iterator ${variant} in test "test/sql/path_finding/explore_variants_index.test" - please use the new loop iterator {variant}
+Replacing deprecated loop iterator ${variant} in test "test/sql/path_finding/explore_variants_index.test" - please use the new loop iterator {variant}
+Replacing deprecated loop iterator ${variant} in test "test/sql/path_finding/explore_variants_index.test" - please use the new loop iterator {variant}
+
+[95/120] (79%): test/sql/path_finding/explore_variants_index.test took 0.087s
+[96/120] (80%): test/sql/pattern_matching/basic_match.test took 0.092s
+[97/120] (80%): test/sql/pattern_matching/graph_table_keyword.test took 0.053s
+[98/120] (81%): test/sql/pattern_matching/inheritance_support.test took 0.092s
+[99/120] (82%): test/sql/pattern_matching/path_modes.test took 0.057s
+[100/120] (83%): test/sql/pattern_matching/undirected_edges.test took 0.065s
+[101/120] (84%): test/sql/pgq_keywords.test took 0.052s
+[102/120] (85%): test/sql/pragma/create_vertex_table.test took 0.054s
+[103/120] (85%): test/sql/pragma/show_property_graphs.test took 0.132s
+[104/120] (86%): test/sql/scalar/delete_csr.test took 0.056s
+[105/120] (87%): test/sql/scalar/get_csr_w_type.test took 0.067s
+[106/120] (88%): test/sql/scalar/getpgschema.test took 0.070s
+[107/120] (89%): test/sql/scalar/local_clustering_coefficient.test took 0.246s
+[108/120] (90%): test/sql/scalar/pagerank.test took 0.072s
+[109/120] (90%): test/sql/scalar/weakly_connected_component.test took 0.260s
+[110/120] (91%): test/sql/snb/bi.test took 0.131s
+[111/120] (92%): test/sql/snb/snb.test took 0.211s
+[112/120] (93%): test/sql/snb/snb_inheritance.test took 0.143s
+[113/120] (94%): test/sql/snb/snb_projected.test_slow took 0.022s
+[114/120] (95%): test/sql/source_keyword.test took 0.043s
+[115/120] (95%): test/sql/summarize_property_graph.test took 0.168s
+[116/120] (96%): test/sql/union_graph_table.test took 0.058s
+[117/120] (97%): test/sql/unnamed_subquery.test took 0.106s
+[118/120] (98%): test/sql/wcc_segfault.test took 0.021s
+[119/120] (99%): test/sql/with_clause.test took 0.153s
+[120/120] (100%): test/sql/with_statement_duckpgq.test took 0.108s
+===============================================================================
+All tests passed (8528 assertions in 120 test cases)
+

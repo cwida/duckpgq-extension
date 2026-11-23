@@ -1,0 +1,1 @@
+Graphalytics cit-Patents: dropped 0 CSR indexes (none), created pathfinding_benchmark_csr WITH (reverse = true) in 1.5 s; file 53 MiB -> 429 MiB; stored state in a new read-only process: epochs=1;delta=0;tombstones=0

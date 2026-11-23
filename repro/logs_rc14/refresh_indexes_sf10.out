@@ -1,0 +1,1 @@
+SF10: dropped 0 CSR indexes (none), created pathfinding_benchmark_csr WITH (reverse = true) in 0.2 s; file 25 MiB -> 45 MiB; stored state in a new read-only process: epochs=1;delta=0;tombstones=0

@@ -1,0 +1,76 @@
+Ensuring graphalytics_graph500_24 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for graphalytics_graph500_24 in 2.34s
+== duckpgq_index [baseline] loaded in 0.2s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=2048    sources=      repeat 1:    6.246s 2043/6991
+   baseline                     random_pairs pairs=2048    sources=      repeat 2:    6.196s 2043/6991
+   baseline                     random_pairs pairs=2048    sources=      repeat 3:    6.072s 2043/6991
+   baseline                     multi_source pairs=        sources=256   repeat 1:    4.729s 2269474048/7743186102
+   baseline                     multi_source pairs=        sources=256   repeat 2:    4.723s 2269474048/7743186102
+   baseline                     multi_source pairs=        sources=256   repeat 3:    4.751s 2269474048/7743186102
+   baseline                     multi_source pairs=        sources=1024  repeat 1:    9.586s 9077896192/30909151351
+   baseline                     multi_source pairs=        sources=1024  repeat 2:    9.641s 9077896192/30909151351
+   baseline                     multi_source pairs=        sources=1024  repeat 3:    9.534s 9077896192/30909151351
+== duckpgq_index [explore_flat_serial] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_serial          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_ranges          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_atomic          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_locked          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [partitions_4096] loaded in 43.7s (index pathfinding_benchmark_csr_pv4096)
+   partitions_4096              random_pairs pairs=2048    sources=      repeat 1:   10.754s 2043/6991
+   partitions_4096              random_pairs pairs=2048    sources=      repeat 2:   10.758s 2043/6991
+   partitions_4096              random_pairs pairs=2048    sources=      repeat 3:   10.793s 2043/6991
+   partitions_4096              multi_source pairs=        sources=256   repeat 1:    5.267s 2269474048/7743186102
+   partitions_4096              multi_source pairs=        sources=256   repeat 2:    5.221s 2269474048/7743186102
+   partitions_4096              multi_source pairs=        sources=256   repeat 3:    5.312s 2269474048/7743186102
+   partitions_4096              multi_source pairs=        sources=1024  repeat 1:   11.642s 9077896192/30909151351
+   partitions_4096              multi_source pairs=        sources=1024  repeat 2:   11.057s 9077896192/30909151351
+   partitions_4096              multi_source pairs=        sources=1024  repeat 3:   11.012s 9077896192/30909151351
+== duckpgq_index [partitions_8192] loaded in 46.7s (index pathfinding_benchmark_csr_pv8192)
+   partitions_8192              random_pairs pairs=2048    sources=      repeat 1:   10.404s 2043/6991
+   partitions_8192              random_pairs pairs=2048    sources=      repeat 2:   10.466s 2043/6991
+   partitions_8192              random_pairs pairs=2048    sources=      repeat 3:   10.393s 2043/6991
+   partitions_8192              multi_source pairs=        sources=256   repeat 1:    5.287s 2269474048/7743186102
+   partitions_8192              multi_source pairs=        sources=256   repeat 2:    5.176s 2269474048/7743186102
+   partitions_8192              multi_source pairs=        sources=256   repeat 3:    5.181s 2269474048/7743186102
+   partitions_8192              multi_source pairs=        sources=1024  repeat 1:   11.416s 9077896192/30909151351
+   partitions_8192              multi_source pairs=        sources=1024  repeat 2:   11.006s 9077896192/30909151351
+   partitions_8192              multi_source pairs=        sources=1024  repeat 3:   10.797s 9077896192/30909151351
+== duckpgq_index [partitions_16384] loaded in 40.9s (index pathfinding_benchmark_csr_pv16384)
+   partitions_16384             random_pairs pairs=2048    sources=      repeat 1:    9.049s 2043/6991
+   partitions_16384             random_pairs pairs=2048    sources=      repeat 2:    9.090s 2043/6991
+   partitions_16384             random_pairs pairs=2048    sources=      repeat 3:    9.102s 2043/6991
+   partitions_16384             multi_source pairs=        sources=256   repeat 1:    5.048s 2269474048/7743186102
+   partitions_16384             multi_source pairs=        sources=256   repeat 2:    4.929s 2269474048/7743186102
+   partitions_16384             multi_source pairs=        sources=256   repeat 3:    4.992s 2269474048/7743186102
+   partitions_16384             multi_source pairs=        sources=1024  repeat 1:   10.729s 9077896192/30909151351
+   partitions_16384             multi_source pairs=        sources=1024  repeat 2:   10.357s 9077896192/30909151351
+   partitions_16384             multi_source pairs=        sources=1024  repeat 3:   10.280s 9077896192/30909151351
+== duckpgq_index [partitions_32768] loaded in 38.5s (index pathfinding_benchmark_csr_pv32768)
+   partitions_32768             random_pairs pairs=2048    sources=      repeat 1:    7.664s 2043/6991
+   partitions_32768             random_pairs pairs=2048    sources=      repeat 2:    7.609s 2043/6991
+   partitions_32768             random_pairs pairs=2048    sources=      repeat 3:    7.530s 2043/6991
+   partitions_32768             multi_source pairs=        sources=256   repeat 1:    4.865s 2269474048/7743186102
+   partitions_32768             multi_source pairs=        sources=256   repeat 2:    4.763s 2269474048/7743186102
+   partitions_32768             multi_source pairs=        sources=256   repeat 3:    4.804s 2269474048/7743186102
+   partitions_32768             multi_source pairs=        sources=1024  repeat 1:    9.948s 9077896192/30909151351
+   partitions_32768             multi_source pairs=        sources=1024  repeat 2:    9.837s 9077896192/30909151351
+   partitions_32768             multi_source pairs=        sources=1024  repeat 3:    9.596s 9077896192/30909151351
+== duckpgq_index [partitions_65535_nosub] loaded in 37.5s (index pathfinding_benchmark_csr_pv65535)
+   partitions_65535_nosub       random_pairs pairs=2048    sources=      repeat 1:    6.005s 2043/6991
+   partitions_65535_nosub       random_pairs pairs=2048    sources=      repeat 2:    6.113s 2043/6991
+   partitions_65535_nosub       random_pairs pairs=2048    sources=      repeat 3:    6.064s 2043/6991
+   partitions_65535_nosub       multi_source pairs=        sources=256   repeat 1:    4.616s 2269474048/7743186102
+   partitions_65535_nosub       multi_source pairs=        sources=256   repeat 2:    4.582s 2269474048/7743186102
+   partitions_65535_nosub       multi_source pairs=        sources=256   repeat 3:    4.633s 2269474048/7743186102
+   partitions_65535_nosub       multi_source pairs=        sources=1024  repeat 1:    9.315s 9077896192/30909151351
+   partitions_65535_nosub       multi_source pairs=        sources=1024  repeat 2:    9.335s 9077896192/30909151351
+   partitions_65535_nosub       multi_source pairs=        sources=1024  repeat 3:    9.612s 9077896192/30909151351
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_graph500_24/microbench_graphalytics_graph500_24_threads32_1795232238283592086.csv
+All 3 points agree across configurations 

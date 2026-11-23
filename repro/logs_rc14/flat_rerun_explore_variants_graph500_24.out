@@ -1,0 +1,44 @@
+Ensuring graphalytics_graph500_24 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for graphalytics_graph500_24 in 2.68s
+== duckpgq_index [explore_flat_serial] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_serial          random_pairs pairs=2048    sources=      repeat 1:   28.636s 2043/6991
+   explore_flat_serial          random_pairs pairs=2048    sources=      repeat 2:   28.977s 2043/6991
+   explore_flat_serial          random_pairs pairs=2048    sources=      repeat 3:   29.027s 2043/6991
+   explore_flat_serial          multi_source pairs=        sources=256   repeat 1:   25.852s 2269474048/7743186102
+   explore_flat_serial          multi_source pairs=        sources=256   repeat 2:   26.075s 2269474048/7743186102
+   explore_flat_serial          multi_source pairs=        sources=256   repeat 3:   25.635s 2269474048/7743186102
+   explore_flat_serial          multi_source pairs=        sources=1024  repeat 1:   30.702s 9077896192/30909151351
+   explore_flat_serial          multi_source pairs=        sources=1024  repeat 2:   30.301s 9077896192/30909151351
+   explore_flat_serial          multi_source pairs=        sources=1024  repeat 3:   30.769s 9077896192/30909151351
+== duckpgq_index [explore_flat_ranges] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_ranges          random_pairs pairs=2048    sources=      repeat 1:   13.354s 2043/6991
+   explore_flat_ranges          random_pairs pairs=2048    sources=      repeat 2:   13.323s 2043/6991
+   explore_flat_ranges          random_pairs pairs=2048    sources=      repeat 3:   13.592s 2043/6991
+   explore_flat_ranges          multi_source pairs=        sources=256   repeat 1:    5.538s 2269474048/7743186102
+   explore_flat_ranges          multi_source pairs=        sources=256   repeat 2:    5.411s 2269474048/7743186102
+   explore_flat_ranges          multi_source pairs=        sources=256   repeat 3:    5.503s 2269474048/7743186102
+   explore_flat_ranges          multi_source pairs=        sources=1024  repeat 1:   13.455s 9077896192/30909151351
+   explore_flat_ranges          multi_source pairs=        sources=1024  repeat 2:   13.196s 9077896192/30909151351
+   explore_flat_ranges          multi_source pairs=        sources=1024  repeat 3:   12.901s 9077896192/30909151351
+== duckpgq_index [explore_flat_atomic] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_atomic          random_pairs pairs=2048    sources=      repeat 1:   12.105s 2043/6991
+   explore_flat_atomic          random_pairs pairs=2048    sources=      repeat 2:   12.147s 2043/6991
+   explore_flat_atomic          random_pairs pairs=2048    sources=      repeat 3:   12.102s 2043/6991
+   explore_flat_atomic          multi_source pairs=        sources=256   repeat 1:    5.418s 2269474048/7743186102
+   explore_flat_atomic          multi_source pairs=        sources=256   repeat 2:    5.320s 2269474048/7743186102
+   explore_flat_atomic          multi_source pairs=        sources=256   repeat 3:    5.468s 2269474048/7743186102
+   explore_flat_atomic          multi_source pairs=        sources=1024  repeat 1:   12.046s 9077896192/30909151351
+   explore_flat_atomic          multi_source pairs=        sources=1024  repeat 2:   12.067s 9077896192/30909151351
+   explore_flat_atomic          multi_source pairs=        sources=1024  repeat 3:   12.071s 9077896192/30909151351
+== duckpgq_index [explore_flat_locked] loaded in 0.4s (index pathfinding_benchmark_csr)
+   explore_flat_locked          random_pairs pairs=2048    sources=      repeat 1:   19.260s 2043/6991
+   explore_flat_locked          random_pairs pairs=2048    sources=      repeat 2:   19.070s 2043/6991
+   explore_flat_locked          random_pairs pairs=2048    sources=      repeat 3:   19.151s 2043/6991
+   explore_flat_locked          multi_source pairs=        sources=256   repeat 1:    6.137s 2269474048/7743186102
+   explore_flat_locked          multi_source pairs=        sources=256   repeat 2:    6.165s 2269474048/7743186102
+   explore_flat_locked          multi_source pairs=        sources=256   repeat 3:    5.998s 2269474048/7743186102
+   explore_flat_locked          multi_source pairs=        sources=1024  repeat 1:   15.360s 9077896192/30909151351
+   explore_flat_locked          multi_source pairs=        sources=1024  repeat 2:   15.302s 9077896192/30909151351
+   explore_flat_locked          multi_source pairs=        sources=1024  repeat 3:   15.231s 9077896192/30909151351
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_graph500_24/microbench_graphalytics_graph500_24_threads32_1795431482007977459.csv
+All 3 points agree across configurations 

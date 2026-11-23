@@ -1,0 +1,244 @@
+Ensuring sf10 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for sf10 in 0.10s
+== duckpgq_index [explore_flat_serial_t1] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t1       random_pairs pairs=2048    sources=      repeat 1:    0.163s 954/3333
+   explore_flat_serial_t1       random_pairs pairs=2048    sources=      repeat 2:    0.163s 954/3333
+   explore_flat_serial_t1       random_pairs pairs=2048    sources=      repeat 3:    0.163s 954/3333
+   explore_flat_serial_t1       multi_source pairs=        sources=256   repeat 1:    0.127s 6613305/23574853
+   explore_flat_serial_t1       multi_source pairs=        sources=256   repeat 2:    0.126s 6613305/23574853
+   explore_flat_serial_t1       multi_source pairs=        sources=256   repeat 3:    0.127s 6613305/23574853
+   explore_flat_serial_t1       multi_source pairs=        sources=1024  repeat 1:    0.480s 26510202/94224650
+   explore_flat_serial_t1       multi_source pairs=        sources=1024  repeat 2:    0.483s 26510202/94224650
+   explore_flat_serial_t1       multi_source pairs=        sources=1024  repeat 3:    0.480s 26510202/94224650
+== duckpgq_index [explore_flat_serial_t2] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t2       random_pairs pairs=2048    sources=      repeat 1:    0.089s 954/3333
+   explore_flat_serial_t2       random_pairs pairs=2048    sources=      repeat 2:    0.093s 954/3333
+   explore_flat_serial_t2       random_pairs pairs=2048    sources=      repeat 3:    0.095s 954/3333
+   explore_flat_serial_t2       multi_source pairs=        sources=256   repeat 1:    0.104s 6613305/23574853
+   explore_flat_serial_t2       multi_source pairs=        sources=256   repeat 2:    0.126s 6613305/23574853
+   explore_flat_serial_t2       multi_source pairs=        sources=256   repeat 3:    0.125s 6613305/23574853
+   explore_flat_serial_t2       multi_source pairs=        sources=1024  repeat 1:    0.253s 26510202/94224650
+   explore_flat_serial_t2       multi_source pairs=        sources=1024  repeat 2:    0.250s 26510202/94224650
+   explore_flat_serial_t2       multi_source pairs=        sources=1024  repeat 3:    0.253s 26510202/94224650
+== duckpgq_index [explore_flat_serial_t4] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t4       random_pairs pairs=2048    sources=      repeat 1:    0.056s 954/3333
+   explore_flat_serial_t4       random_pairs pairs=2048    sources=      repeat 2:    0.052s 954/3333
+   explore_flat_serial_t4       random_pairs pairs=2048    sources=      repeat 3:    0.048s 954/3333
+   explore_flat_serial_t4       multi_source pairs=        sources=256   repeat 1:    0.088s 6613305/23574853
+   explore_flat_serial_t4       multi_source pairs=        sources=256   repeat 2:    0.098s 6613305/23574853
+   explore_flat_serial_t4       multi_source pairs=        sources=256   repeat 3:    0.091s 6613305/23574853
+   explore_flat_serial_t4       multi_source pairs=        sources=1024  repeat 1:    0.174s 26510202/94224650
+   explore_flat_serial_t4       multi_source pairs=        sources=1024  repeat 2:    0.172s 26510202/94224650
+   explore_flat_serial_t4       multi_source pairs=        sources=1024  repeat 3:    0.164s 26510202/94224650
+== duckpgq_index [explore_flat_serial_t8] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t8       random_pairs pairs=2048    sources=      repeat 1:    0.045s 954/3333
+   explore_flat_serial_t8       random_pairs pairs=2048    sources=      repeat 2:    0.045s 954/3333
+   explore_flat_serial_t8       random_pairs pairs=2048    sources=      repeat 3:    0.049s 954/3333
+   explore_flat_serial_t8       multi_source pairs=        sources=256   repeat 1:    0.068s 6613305/23574853
+   explore_flat_serial_t8       multi_source pairs=        sources=256   repeat 2:    0.069s 6613305/23574853
+   explore_flat_serial_t8       multi_source pairs=        sources=256   repeat 3:    0.067s 6613305/23574853
+   explore_flat_serial_t8       multi_source pairs=        sources=1024  repeat 1:    0.123s 26510202/94224650
+   explore_flat_serial_t8       multi_source pairs=        sources=1024  repeat 2:    0.126s 26510202/94224650
+   explore_flat_serial_t8       multi_source pairs=        sources=1024  repeat 3:    0.138s 26510202/94224650
+== duckpgq_index [explore_flat_serial_t16] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t16      random_pairs pairs=2048    sources=      repeat 1:    0.044s 954/3333
+   explore_flat_serial_t16      random_pairs pairs=2048    sources=      repeat 2:    0.044s 954/3333
+   explore_flat_serial_t16      random_pairs pairs=2048    sources=      repeat 3:    0.047s 954/3333
+   explore_flat_serial_t16      multi_source pairs=        sources=256   repeat 1:    0.049s 6613305/23574853
+   explore_flat_serial_t16      multi_source pairs=        sources=256   repeat 2:    0.048s 6613305/23574853
+   explore_flat_serial_t16      multi_source pairs=        sources=256   repeat 3:    0.055s 6613305/23574853
+   explore_flat_serial_t16      multi_source pairs=        sources=1024  repeat 1:    0.102s 26510202/94224650
+   explore_flat_serial_t16      multi_source pairs=        sources=1024  repeat 2:    0.096s 26510202/94224650
+   explore_flat_serial_t16      multi_source pairs=        sources=1024  repeat 3:    0.093s 26510202/94224650
+== duckpgq_index [explore_flat_serial] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_serial          random_pairs pairs=2048    sources=      repeat 1:    0.040s 954/3333
+   explore_flat_serial          random_pairs pairs=2048    sources=      repeat 2:    0.037s 954/3333
+   explore_flat_serial          random_pairs pairs=2048    sources=      repeat 3:    0.037s 954/3333
+   explore_flat_serial          multi_source pairs=        sources=256   repeat 1:    0.049s 6613305/23574853
+   explore_flat_serial          multi_source pairs=        sources=256   repeat 2:    0.046s 6613305/23574853
+   explore_flat_serial          multi_source pairs=        sources=256   repeat 3:    0.045s 6613305/23574853
+   explore_flat_serial          multi_source pairs=        sources=1024  repeat 1:    0.082s 26510202/94224650
+   explore_flat_serial          multi_source pairs=        sources=1024  repeat 2:    0.079s 26510202/94224650
+   explore_flat_serial          multi_source pairs=        sources=1024  repeat 3:    0.079s 26510202/94224650
+== duckpgq_index [explore_flat_ranges_t1] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t1       random_pairs pairs=2048    sources=      repeat 1:    0.172s 954/3333
+   explore_flat_ranges_t1       random_pairs pairs=2048    sources=      repeat 2:    0.172s 954/3333
+   explore_flat_ranges_t1       random_pairs pairs=2048    sources=      repeat 3:    0.172s 954/3333
+   explore_flat_ranges_t1       multi_source pairs=        sources=256   repeat 1:    0.130s 6613305/23574853
+   explore_flat_ranges_t1       multi_source pairs=        sources=256   repeat 2:    0.128s 6613305/23574853
+   explore_flat_ranges_t1       multi_source pairs=        sources=256   repeat 3:    0.130s 6613305/23574853
+   explore_flat_ranges_t1       multi_source pairs=        sources=1024  repeat 1:    0.483s 26510202/94224650
+   explore_flat_ranges_t1       multi_source pairs=        sources=1024  repeat 2:    0.486s 26510202/94224650
+   explore_flat_ranges_t1       multi_source pairs=        sources=1024  repeat 3:    0.482s 26510202/94224650
+== duckpgq_index [explore_flat_ranges_t2] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t2       random_pairs pairs=2048    sources=      repeat 1:    0.091s 954/3333
+   explore_flat_ranges_t2       random_pairs pairs=2048    sources=      repeat 2:    0.098s 954/3333
+   explore_flat_ranges_t2       random_pairs pairs=2048    sources=      repeat 3:    0.096s 954/3333
+   explore_flat_ranges_t2       multi_source pairs=        sources=256   repeat 1:    0.129s 6613305/23574853
+   explore_flat_ranges_t2       multi_source pairs=        sources=256   repeat 2:    0.134s 6613305/23574853
+   explore_flat_ranges_t2       multi_source pairs=        sources=256   repeat 3:    0.128s 6613305/23574853
+   explore_flat_ranges_t2       multi_source pairs=        sources=1024  repeat 1:    0.250s 26510202/94224650
+   explore_flat_ranges_t2       multi_source pairs=        sources=1024  repeat 2:    0.256s 26510202/94224650
+   explore_flat_ranges_t2       multi_source pairs=        sources=1024  repeat 3:    0.251s 26510202/94224650
+== duckpgq_index [explore_flat_ranges_t4] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t4       random_pairs pairs=2048    sources=      repeat 1:    0.082s 954/3333
+   explore_flat_ranges_t4       random_pairs pairs=2048    sources=      repeat 2:    0.053s 954/3333
+   explore_flat_ranges_t4       random_pairs pairs=2048    sources=      repeat 3:    0.053s 954/3333
+   explore_flat_ranges_t4       multi_source pairs=        sources=256   repeat 1:    0.090s 6613305/23574853
+   explore_flat_ranges_t4       multi_source pairs=        sources=256   repeat 2:    0.076s 6613305/23574853
+   explore_flat_ranges_t4       multi_source pairs=        sources=256   repeat 3:    0.086s 6613305/23574853
+   explore_flat_ranges_t4       multi_source pairs=        sources=1024  repeat 1:    0.177s 26510202/94224650
+   explore_flat_ranges_t4       multi_source pairs=        sources=1024  repeat 2:    0.181s 26510202/94224650
+   explore_flat_ranges_t4       multi_source pairs=        sources=1024  repeat 3:    0.167s 26510202/94224650
+== duckpgq_index [explore_flat_ranges_t8] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t8       random_pairs pairs=2048    sources=      repeat 1:    0.058s 954/3333
+   explore_flat_ranges_t8       random_pairs pairs=2048    sources=      repeat 2:    0.050s 954/3333
+   explore_flat_ranges_t8       random_pairs pairs=2048    sources=      repeat 3:    0.056s 954/3333
+   explore_flat_ranges_t8       multi_source pairs=        sources=256   repeat 1:    0.064s 6613305/23574853
+   explore_flat_ranges_t8       multi_source pairs=        sources=256   repeat 2:    0.063s 6613305/23574853
+   explore_flat_ranges_t8       multi_source pairs=        sources=256   repeat 3:    0.059s 6613305/23574853
+   explore_flat_ranges_t8       multi_source pairs=        sources=1024  repeat 1:    0.127s 26510202/94224650
+   explore_flat_ranges_t8       multi_source pairs=        sources=1024  repeat 2:    0.131s 26510202/94224650
+   explore_flat_ranges_t8       multi_source pairs=        sources=1024  repeat 3:    0.136s 26510202/94224650
+== duckpgq_index [explore_flat_ranges_t16] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t16      random_pairs pairs=2048    sources=      repeat 1:    0.051s 954/3333
+   explore_flat_ranges_t16      random_pairs pairs=2048    sources=      repeat 2:    0.044s 954/3333
+   explore_flat_ranges_t16      random_pairs pairs=2048    sources=      repeat 3:    0.045s 954/3333
+   explore_flat_ranges_t16      multi_source pairs=        sources=256   repeat 1:    0.042s 6613305/23574853
+   explore_flat_ranges_t16      multi_source pairs=        sources=256   repeat 2:    0.043s 6613305/23574853
+   explore_flat_ranges_t16      multi_source pairs=        sources=256   repeat 3:    0.046s 6613305/23574853
+   explore_flat_ranges_t16      multi_source pairs=        sources=1024  repeat 1:    0.090s 26510202/94224650
+   explore_flat_ranges_t16      multi_source pairs=        sources=1024  repeat 2:    0.087s 26510202/94224650
+   explore_flat_ranges_t16      multi_source pairs=        sources=1024  repeat 3:    0.095s 26510202/94224650
+== duckpgq_index [explore_flat_ranges] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_ranges          random_pairs pairs=2048    sources=      repeat 1:    0.036s 954/3333
+   explore_flat_ranges          random_pairs pairs=2048    sources=      repeat 2:    0.036s 954/3333
+   explore_flat_ranges          random_pairs pairs=2048    sources=      repeat 3:    0.037s 954/3333
+   explore_flat_ranges          multi_source pairs=        sources=256   repeat 1:    0.038s 6613305/23574853
+   explore_flat_ranges          multi_source pairs=        sources=256   repeat 2:    0.035s 6613305/23574853
+   explore_flat_ranges          multi_source pairs=        sources=256   repeat 3:    0.036s 6613305/23574853
+   explore_flat_ranges          multi_source pairs=        sources=1024  repeat 1:    0.071s 26510202/94224650
+   explore_flat_ranges          multi_source pairs=        sources=1024  repeat 2:    0.073s 26510202/94224650
+   explore_flat_ranges          multi_source pairs=        sources=1024  repeat 3:    0.072s 26510202/94224650
+== duckpgq_index [explore_flat_atomic_t1] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t1       random_pairs pairs=2048    sources=      repeat 1:    0.420s 954/3333
+   explore_flat_atomic_t1       random_pairs pairs=2048    sources=      repeat 2:    0.420s 954/3333
+   explore_flat_atomic_t1       random_pairs pairs=2048    sources=      repeat 3:    0.420s 954/3333
+   explore_flat_atomic_t1       multi_source pairs=        sources=256   repeat 1:    0.176s 6613305/23574853
+   explore_flat_atomic_t1       multi_source pairs=        sources=256   repeat 2:    0.177s 6613305/23574853
+   explore_flat_atomic_t1       multi_source pairs=        sources=256   repeat 3:    0.177s 6613305/23574853
+   explore_flat_atomic_t1       multi_source pairs=        sources=1024  repeat 1:    0.599s 26510202/94224650
+   explore_flat_atomic_t1       multi_source pairs=        sources=1024  repeat 2:    0.601s 26510202/94224650
+   explore_flat_atomic_t1       multi_source pairs=        sources=1024  repeat 3:    0.601s 26510202/94224650
+== duckpgq_index [explore_flat_atomic_t2] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t2       random_pairs pairs=2048    sources=      repeat 1:    0.216s 954/3333
+   explore_flat_atomic_t2       random_pairs pairs=2048    sources=      repeat 2:    0.218s 954/3333
+   explore_flat_atomic_t2       random_pairs pairs=2048    sources=      repeat 3:    0.218s 954/3333
+   explore_flat_atomic_t2       multi_source pairs=        sources=256   repeat 1:    0.251s 6613305/23574853
+   explore_flat_atomic_t2       multi_source pairs=        sources=256   repeat 2:    0.237s 6613305/23574853
+   explore_flat_atomic_t2       multi_source pairs=        sources=256   repeat 3:    0.253s 6613305/23574853
+   explore_flat_atomic_t2       multi_source pairs=        sources=1024  repeat 1:    0.331s 26510202/94224650
+   explore_flat_atomic_t2       multi_source pairs=        sources=1024  repeat 2:    0.334s 26510202/94224650
+   explore_flat_atomic_t2       multi_source pairs=        sources=1024  repeat 3:    0.333s 26510202/94224650
+== duckpgq_index [explore_flat_atomic_t4] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t4       random_pairs pairs=2048    sources=      repeat 1:    0.141s 954/3333
+   explore_flat_atomic_t4       random_pairs pairs=2048    sources=      repeat 2:    0.128s 954/3333
+   explore_flat_atomic_t4       random_pairs pairs=2048    sources=      repeat 3:    0.140s 954/3333
+   explore_flat_atomic_t4       multi_source pairs=        sources=256   repeat 1:    0.181s 6613305/23574853
+   explore_flat_atomic_t4       multi_source pairs=        sources=256   repeat 2:    0.172s 6613305/23574853
+   explore_flat_atomic_t4       multi_source pairs=        sources=256   repeat 3:    0.171s 6613305/23574853
+   explore_flat_atomic_t4       multi_source pairs=        sources=1024  repeat 1:    0.236s 26510202/94224650
+   explore_flat_atomic_t4       multi_source pairs=        sources=1024  repeat 2:    0.243s 26510202/94224650
+   explore_flat_atomic_t4       multi_source pairs=        sources=1024  repeat 3:    0.249s 26510202/94224650
+== duckpgq_index [explore_flat_atomic_t8] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t8       random_pairs pairs=2048    sources=      repeat 1:    0.114s 954/3333
+   explore_flat_atomic_t8       random_pairs pairs=2048    sources=      repeat 2:    0.116s 954/3333
+   explore_flat_atomic_t8       random_pairs pairs=2048    sources=      repeat 3:    0.109s 954/3333
+   explore_flat_atomic_t8       multi_source pairs=        sources=256   repeat 1:    0.102s 6613305/23574853
+   explore_flat_atomic_t8       multi_source pairs=        sources=256   repeat 2:    0.096s 6613305/23574853
+   explore_flat_atomic_t8       multi_source pairs=        sources=256   repeat 3:    0.096s 6613305/23574853
+   explore_flat_atomic_t8       multi_source pairs=        sources=1024  repeat 1:    0.279s 26510202/94224650
+   explore_flat_atomic_t8       multi_source pairs=        sources=1024  repeat 2:    0.212s 26510202/94224650
+   explore_flat_atomic_t8       multi_source pairs=        sources=1024  repeat 3:    0.222s 26510202/94224650
+== duckpgq_index [explore_flat_atomic_t16] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t16      random_pairs pairs=2048    sources=      repeat 1:    0.154s 954/3333
+   explore_flat_atomic_t16      random_pairs pairs=2048    sources=      repeat 2:    0.146s 954/3333
+   explore_flat_atomic_t16      random_pairs pairs=2048    sources=      repeat 3:    0.146s 954/3333
+   explore_flat_atomic_t16      multi_source pairs=        sources=256   repeat 1:    0.057s 6613305/23574853
+   explore_flat_atomic_t16      multi_source pairs=        sources=256   repeat 2:    0.063s 6613305/23574853
+   explore_flat_atomic_t16      multi_source pairs=        sources=256   repeat 3:    0.059s 6613305/23574853
+   explore_flat_atomic_t16      multi_source pairs=        sources=1024  repeat 1:    0.177s 26510202/94224650
+   explore_flat_atomic_t16      multi_source pairs=        sources=1024  repeat 2:    0.168s 26510202/94224650
+   explore_flat_atomic_t16      multi_source pairs=        sources=1024  repeat 3:    0.162s 26510202/94224650
+== duckpgq_index [explore_flat_atomic] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_atomic          random_pairs pairs=2048    sources=      repeat 1:    0.108s 954/3333
+   explore_flat_atomic          random_pairs pairs=2048    sources=      repeat 2:    0.109s 954/3333
+   explore_flat_atomic          random_pairs pairs=2048    sources=      repeat 3:    0.104s 954/3333
+   explore_flat_atomic          multi_source pairs=        sources=256   repeat 1:    0.048s 6613305/23574853
+   explore_flat_atomic          multi_source pairs=        sources=256   repeat 2:    0.049s 6613305/23574853
+   explore_flat_atomic          multi_source pairs=        sources=256   repeat 3:    0.049s 6613305/23574853
+   explore_flat_atomic          multi_source pairs=        sources=1024  repeat 1:    0.118s 26510202/94224650
+   explore_flat_atomic          multi_source pairs=        sources=1024  repeat 2:    0.118s 26510202/94224650
+   explore_flat_atomic          multi_source pairs=        sources=1024  repeat 3:    0.119s 26510202/94224650
+== duckpgq_index [explore_flat_locked_t1] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t1       random_pairs pairs=2048    sources=      repeat 1:    0.256s 954/3333
+   explore_flat_locked_t1       random_pairs pairs=2048    sources=      repeat 2:    0.255s 954/3333
+   explore_flat_locked_t1       random_pairs pairs=2048    sources=      repeat 3:    0.255s 954/3333
+   explore_flat_locked_t1       multi_source pairs=        sources=256   repeat 1:    0.150s 6613305/23574853
+   explore_flat_locked_t1       multi_source pairs=        sources=256   repeat 2:    0.151s 6613305/23574853
+   explore_flat_locked_t1       multi_source pairs=        sources=256   repeat 3:    0.151s 6613305/23574853
+   explore_flat_locked_t1       multi_source pairs=        sources=1024  repeat 1:    0.527s 26510202/94224650
+   explore_flat_locked_t1       multi_source pairs=        sources=1024  repeat 2:    0.529s 26510202/94224650
+   explore_flat_locked_t1       multi_source pairs=        sources=1024  repeat 3:    0.526s 26510202/94224650
+== duckpgq_index [explore_flat_locked_t2] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t2       random_pairs pairs=2048    sources=      repeat 1:    0.135s 954/3333
+   explore_flat_locked_t2       random_pairs pairs=2048    sources=      repeat 2:    0.133s 954/3333
+   explore_flat_locked_t2       random_pairs pairs=2048    sources=      repeat 3:    0.139s 954/3333
+   explore_flat_locked_t2       multi_source pairs=        sources=256   repeat 1:    0.141s 6613305/23574853
+   explore_flat_locked_t2       multi_source pairs=        sources=256   repeat 2:    0.148s 6613305/23574853
+   explore_flat_locked_t2       multi_source pairs=        sources=256   repeat 3:    0.153s 6613305/23574853
+   explore_flat_locked_t2       multi_source pairs=        sources=1024  repeat 1:    0.292s 26510202/94224650
+   explore_flat_locked_t2       multi_source pairs=        sources=1024  repeat 2:    0.275s 26510202/94224650
+   explore_flat_locked_t2       multi_source pairs=        sources=1024  repeat 3:    0.274s 26510202/94224650
+== duckpgq_index [explore_flat_locked_t4] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t4       random_pairs pairs=2048    sources=      repeat 1:    0.079s 954/3333
+   explore_flat_locked_t4       random_pairs pairs=2048    sources=      repeat 2:    0.081s 954/3333
+   explore_flat_locked_t4       random_pairs pairs=2048    sources=      repeat 3:    0.082s 954/3333
+   explore_flat_locked_t4       multi_source pairs=        sources=256   repeat 1:    0.107s 6613305/23574853
+   explore_flat_locked_t4       multi_source pairs=        sources=256   repeat 2:    0.101s 6613305/23574853
+   explore_flat_locked_t4       multi_source pairs=        sources=256   repeat 3:    0.103s 6613305/23574853
+   explore_flat_locked_t4       multi_source pairs=        sources=1024  repeat 1:    0.198s 26510202/94224650
+   explore_flat_locked_t4       multi_source pairs=        sources=1024  repeat 2:    0.198s 26510202/94224650
+   explore_flat_locked_t4       multi_source pairs=        sources=1024  repeat 3:    0.190s 26510202/94224650
+== duckpgq_index [explore_flat_locked_t8] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t8       random_pairs pairs=2048    sources=      repeat 1:    0.072s 954/3333
+   explore_flat_locked_t8       random_pairs pairs=2048    sources=      repeat 2:    0.072s 954/3333
+   explore_flat_locked_t8       random_pairs pairs=2048    sources=      repeat 3:    0.071s 954/3333
+   explore_flat_locked_t8       multi_source pairs=        sources=256   repeat 1:    0.064s 6613305/23574853
+   explore_flat_locked_t8       multi_source pairs=        sources=256   repeat 2:    0.073s 6613305/23574853
+   explore_flat_locked_t8       multi_source pairs=        sources=256   repeat 3:    0.072s 6613305/23574853
+   explore_flat_locked_t8       multi_source pairs=        sources=1024  repeat 1:    0.156s 26510202/94224650
+   explore_flat_locked_t8       multi_source pairs=        sources=1024  repeat 2:    0.159s 26510202/94224650
+   explore_flat_locked_t8       multi_source pairs=        sources=1024  repeat 3:    0.151s 26510202/94224650
+== duckpgq_index [explore_flat_locked_t16] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t16      random_pairs pairs=2048    sources=      repeat 1:    0.077s 954/3333
+   explore_flat_locked_t16      random_pairs pairs=2048    sources=      repeat 2:    0.075s 954/3333
+   explore_flat_locked_t16      random_pairs pairs=2048    sources=      repeat 3:    0.074s 954/3333
+   explore_flat_locked_t16      multi_source pairs=        sources=256   repeat 1:    0.046s 6613305/23574853
+   explore_flat_locked_t16      multi_source pairs=        sources=256   repeat 2:    0.051s 6613305/23574853
+   explore_flat_locked_t16      multi_source pairs=        sources=256   repeat 3:    0.048s 6613305/23574853
+   explore_flat_locked_t16      multi_source pairs=        sources=1024  repeat 1:    0.115s 26510202/94224650
+   explore_flat_locked_t16      multi_source pairs=        sources=1024  repeat 2:    0.118s 26510202/94224650
+   explore_flat_locked_t16      multi_source pairs=        sources=1024  repeat 3:    0.112s 26510202/94224650
+== duckpgq_index [explore_flat_locked] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_locked          random_pairs pairs=2048    sources=      repeat 1:    0.057s 954/3333
+   explore_flat_locked          random_pairs pairs=2048    sources=      repeat 2:    0.056s 954/3333
+   explore_flat_locked          random_pairs pairs=2048    sources=      repeat 3:    0.061s 954/3333
+   explore_flat_locked          multi_source pairs=        sources=256   repeat 1:    0.041s 6613305/23574853
+   explore_flat_locked          multi_source pairs=        sources=256   repeat 2:    0.041s 6613305/23574853
+   explore_flat_locked          multi_source pairs=        sources=256   repeat 3:    0.040s 6613305/23574853
+   explore_flat_locked          multi_source pairs=        sources=1024  repeat 1:    0.088s 26510202/94224650
+   explore_flat_locked          multi_source pairs=        sources=1024  repeat 2:    0.088s 26510202/94224650
+   explore_flat_locked          multi_source pairs=        sources=1024  repeat 3:    0.087s 26510202/94224650
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/sf10/microbench_sf10_threads32_1795427753115866411.csv
+All 3 points agree across configurations 

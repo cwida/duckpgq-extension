@@ -1,0 +1,9 @@
+system,scale_factor,measure,seconds,bytes,edges,bytes_per_edge,threads,benchmark_notes,repo_commit
+duckdb,cit-Patents,database_file,,449851392,16518947,27.23,32,fixed costs cit-Patents repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,cit-Patents,index_build_repeat1,1.441,428930180,16518947,25.97,32,fixed costs cit-Patents repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,cit-Patents,index_build_repeat2,1.432,428930180,16518947,25.97,32,fixed costs cit-Patents repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+duckpgq_index,cit-Patents,index_build_repeat3,1.448,428930180,16518947,25.97,32,fixed costs cit-Patents repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+kuzu,cit-Patents,load,2.811,397742080,16518947,24.08,32,fixed costs cit-Patents repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+memgraph,cit-Patents,load,141.102,2083059138,16518947,126.10,32,fixed costs cit-Patents repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+falkordb,cit-Patents,load,804.586,1170210816,16518947,70.84,32,fixed costs cit-Patents repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b
+neo4j,cit-Patents,load,287.865,881007616,16518947,53.33,32,fixed costs cit-Patents repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b

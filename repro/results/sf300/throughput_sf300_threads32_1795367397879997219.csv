@@ -1,0 +1,13 @@
+route,clients,queries,duration_s,queries_per_s,median_ms,p99_ms,mean_ms,errors,scale_factor,threads,pairs,benchmark_notes,repo_commit,events_file,peak_rss_mib
+index,1,3417,20.0,170.85,2.366,18.338,5.837,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,index_clients1.csv,1573.0
+index,2,5908,20.0,295.40,2.685,21.691,6.750,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,index_clients2.csv,1571.6
+index,4,8161,20.0,408.05,4.373,34.239,9.785,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,index_clients4.csv,1570.2
+index,8,9651,20.0,482.55,7.326,64.091,16.551,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,index_clients8.csv,1570.3
+index,16,12541,20.0,627.05,7.073,112.253,25.495,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,index_clients16.csv,1570.9
+index,32,16443,20.0,822.15,9.986,191.874,38.919,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,index_clients32.csv,1570.1
+build,1,63,20.0,3.15,316.933,361.784,319.923,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,build_clients1.csv,4378.5
+build,2,82,20.0,4.10,481.561,639.843,489.312,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,build_clients2.csv,5311.7
+build,4,87,20.0,4.35,924.758,1377.220,934.802,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,build_clients4.csv,7144.5
+build,8,83,20.0,4.15,1876.580,3459.300,1976.426,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,build_clients8.csv,10293.8
+build,16,89,20.0,4.45,3964.280,6522.030,3870.055,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,build_clients16.csv,13480.9
+build,32,99,20.0,4.95,7783.870,11013.700,7654.642,0,300,32,1024,W35 throughput SF300 repro 3025ab1b ip-172-31-10-83.eu-west-1.compute.internal,3025ab1b8e1d90989ac4f459d54692812980e41b,build_clients32.csv,24213.9

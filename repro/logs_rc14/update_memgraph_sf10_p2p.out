@@ -1,0 +1,8 @@
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf10 in 0.09s
+Loading sf10 into memgraph
+Loaded 1839354 edges in 7.2s (expected 1839354)
+== memgraph: query mean 45.7413s (min 44.7319, max 47.3832), update mean 0.0284s, load 7.2s, wall 961.1s, final reachable 472 total 1644
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/sf10/update_memgraph_point_to_point_pairs1024_threads32_batch2000x20_1795425035715671976.csv

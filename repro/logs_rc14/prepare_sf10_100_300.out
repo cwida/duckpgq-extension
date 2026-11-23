@@ -1,0 +1,12 @@
+Generating LDBC Parquet for sf10 in /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/sources/sf10-parquet
+Generated sf10 parquet in 20.42s
+Materializing sf10 benchmark database at /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/db/ldbc_sf10.duckdb
+Materialized sf10 database in 0.19s
+Generating LDBC Parquet for sf100 in /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/sources/sf100-parquet
+Generated sf100 parquet in 161.60s
+Materializing sf100 benchmark database at /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/db/ldbc_sf100.duckdb
+Materialized sf100 database in 1.15s
+Generating LDBC Parquet for sf300 in /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/sources/sf300-parquet
+Generated sf300 parquet in 516.50s
+Materializing sf300 benchmark database at /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/db/ldbc_sf300.duckdb
+Materialized sf300 database in 3.39s

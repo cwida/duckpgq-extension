@@ -1,0 +1,128 @@
+Ensuring sf10 benchmark_pairs_1 exists
+Prepared benchmark_pairs_1 for sf10 in 0.08s
+Ensuring sf10 benchmark_pairs_16 exists
+Prepared benchmark_pairs_16 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_128 exists
+Prepared benchmark_pairs_128 for sf10 in 0.08s
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.08s
+Ensuring sf10 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_16384 exists
+Prepared benchmark_pairs_16384 for sf10 in 0.15s
+Ensuring sf10 benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for sf10 in 0.83s
+== SF10: 68673 vertices, 1839354 edges, 58490 vertices with an outgoing edge (85.2%), 61247 with an incoming edge (89.2%); sources are sampled from the former, destinations from the latter
+== duckpgq_index: loading sf10
+   loaded in 0.1s, 1839354 edges
+   duckpgq_index  random_pairs pairs=1       sources=      repeat 1:    0.002s 1/4 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=1       sources=      repeat 2:    0.002s 1/4 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=1       sources=      repeat 3:    0.001s 1/4 (100.0% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16      sources=      repeat 1:    0.004s 7/23 (43.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16      sources=      repeat 2:    0.004s 7/23 (43.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16      sources=      repeat 3:    0.004s 7/23 (43.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=128     sources=      repeat 1:    0.015s 62/214 (48.4% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=128     sources=      repeat 2:    0.016s 62/214 (48.4% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=128     sources=      repeat 3:    0.015s 62/214 (48.4% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=1024    sources=      repeat 1:    0.020s 472/1655 (46.1% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=1024    sources=      repeat 2:    0.021s 472/1655 (46.1% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=1024    sources=      repeat 3:    0.021s 472/1655 (46.1% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=2048    sources=      repeat 1:    0.032s 954/3333 (46.6% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=2048    sources=      repeat 2:    0.031s 954/3333 (46.6% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=2048    sources=      repeat 3:    0.031s 954/3333 (46.6% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16384   sources=      repeat 1:    0.129s 7506/26570 (45.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16384   sources=      repeat 2:    0.129s 7506/26570 (45.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=16384   sources=      repeat 3:    0.130s 7506/26570 (45.8% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=65536   sources=      repeat 1:    0.341s 29178/103926 (44.5% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=65536   sources=      repeat 2:    0.337s 29178/103926 (44.5% of the pairs reachable)
+   duckpgq_index  random_pairs pairs=65536   sources=      repeat 3:    0.360s 29178/103926 (44.5% of the pairs reachable)
+   duckpgq_index  multi_source pairs=        sources=1     repeat 1:    0.004s 9158/36249 (13.3% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1     repeat 2:    0.003s 9158/36249 (13.3% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1     repeat 3:    0.004s 9158/36249 (13.3% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=16    repeat 1:    0.009s 385149/1380649 (35.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=16    repeat 2:    0.010s 385149/1380649 (35.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=16    repeat 3:    0.010s 385149/1380649 (35.1% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=128   repeat 1:    0.026s 3328389/11948238 (37.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=128   repeat 2:    0.027s 3328389/11948238 (37.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=128   repeat 3:    0.026s 3328389/11948238 (37.9% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 1:    0.062s 26510202/94224650 (37.7% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 2:    0.064s 26510202/94224650 (37.7% of the vertices reached per source)
+   duckpgq_index  multi_source pairs=        sources=1024  repeat 3:    0.067s 26510202/94224650 (37.7% of the vertices reached per source)
+== duckpgq_recursive: loading sf10
+   loaded in 0.0s, 1839354 edges
+   duckpgq_recursive random_pairs pairs=1       sources=      repeat 1:    0.110s 1/4 (100.0% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=1       sources=      repeat 2:    0.114s 1/4 (100.0% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=1       sources=      repeat 3:    0.112s 1/4 (100.0% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=16      sources=      repeat 1:    0.572s 7/23 (43.8% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=16      sources=      repeat 2:    0.571s 7/23 (43.8% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=16      sources=      repeat 3:    0.586s 7/23 (43.8% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=128     sources=      repeat 1:    6.217s 62/214 (48.4% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=128     sources=      repeat 2:    6.289s 62/214 (48.4% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=128     sources=      repeat 3:    6.162s 62/214 (48.4% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=1024    sources=      repeat 1:   65.565s 472/1655 (46.1% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=1024    sources=      repeat 2:   64.439s 472/1655 (46.1% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=1024    sources=      repeat 3:   64.828s 472/1655 (46.1% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=2048    sources=      repeat 1:  132.659s 954/3333 (46.6% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=2048    sources=      repeat 2:  132.401s 954/3333 (46.6% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=2048    sources=      repeat 3:  132.257s 954/3333 (46.6% of the pairs reachable)
+   duckpgq_recursive random_pairs pairs=16384   sources=      repeat 1:    0.000s error: Out of Memory Error: could not allocate block of size 256.0 KiB (98.5 GiB/98.5 GiB used)
+--- output tail ---
+count(len),"COALESCE(sum(len), 0)"
+Run Time (s): real 342.623 user 2444.401510 sys 129.2099
+   duckpgq_recursive random_pairs pairs=16384   sources=      repeat 2:    0.000s error: Out of Memory Error: could not allocate block of size 256.0 KiB (98.5 GiB/98.5 GiB used)
+--- output tail ---
+count(len),"COALESCE(sum(len), 0)"
+Run Time (s): real 196.366 user 2199.778384 sys 93.26963
+   duckpgq_recursive random_pairs pairs=16384   sources=      repeat 3:    0.000s error: Out of Memory Error: failed to pin block of size 256.0 KiB (98.5 GiB/98.5 GiB used)
+--- output tail ---
+count(len),"COALESCE(sum(len), 0)"
+Run Time (s): real 197.920 user 2210.138968 sys 93.632735
+Out
+   duckpgq_recursive random_pairs pairs=65536   sources=      repeat 1:  600.000s timed_out
+   duckpgq_recursive multi_source pairs=        sources=1     repeat 1:    0.722s 9158/36249 (13.3% of the vertices reached per source)
+   duckpgq_recursive multi_source pairs=        sources=1     repeat 2:    0.609s 9158/36249 (13.3% of the vertices reached per source)
+   duckpgq_recursive multi_source pairs=        sources=1     repeat 3:    0.607s 9158/36249 (13.3% of the vertices reached per source)
+   duckpgq_recursive multi_source pairs=        sources=16    repeat 1:    0.919s 385149/1380649 (35.1% of the vertices reached per source)
+   duckpgq_recursive multi_source pairs=        sources=16    repeat 2:    0.933s 385149/1380649 (35.1% of the vertices reached per source)
+   duckpgq_recursive multi_source pairs=        sources=16    repeat 3:    0.937s 385149/1380649 (35.1% of the vertices reached per source)
+   duckpgq_recursive multi_source pairs=        sources=128   repeat 1:    6.447s 3328389/11948238 (37.9% of the vertices reached per source)
+   duckpgq_recursive multi_source pairs=        sources=128   repeat 2:    6.419s 3328389/11948238 (37.9% of the vertices reached per source)
+   duckpgq_recursive multi_source pairs=        sources=128   repeat 3:    6.450s 3328389/11948238 (37.9% of the vertices reached per source)
+   duckpgq_recursive multi_source pairs=        sources=1024  repeat 1:   59.551s 26510202/94224650 (37.7% of the vertices reached per source)
+   duckpgq_recursive multi_source pairs=        sources=1024  repeat 2:   60.285s 26510202/94224650 (37.7% of the vertices reached per source)
+   duckpgq_recursive multi_source pairs=        sources=1024  repeat 3:   60.471s 26510202/94224650 (37.7% of the vertices reached per source)
+== duckpgq_scalar: loading sf10
+   loaded in 0.0s, 1839354 edges
+   duckpgq_scalar random_pairs pairs=1       sources=      repeat 1:    0.183s 1/4 (100.0% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=1       sources=      repeat 2:    0.071s 1/4 (100.0% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=1       sources=      repeat 3:    0.072s 1/4 (100.0% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=16      sources=      repeat 1:    0.084s 7/23 (43.8% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=16      sources=      repeat 2:    0.084s 7/23 (43.8% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=16      sources=      repeat 3:    0.088s 7/23 (43.8% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=128     sources=      repeat 1:    0.097s 62/214 (48.4% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=128     sources=      repeat 2:    0.094s 62/214 (48.4% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=128     sources=      repeat 3:    0.095s 62/214 (48.4% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=1024    sources=      repeat 1:    0.186s 472/1655 (46.1% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=1024    sources=      repeat 2:    0.186s 472/1655 (46.1% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=1024    sources=      repeat 3:    0.191s 472/1655 (46.1% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=2048    sources=      repeat 1:    0.311s 954/3333 (46.6% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=2048    sources=      repeat 2:    0.302s 954/3333 (46.6% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=2048    sources=      repeat 3:    0.304s 954/3333 (46.6% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=16384   sources=      repeat 1:    1.898s 7506/26570 (45.8% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=16384   sources=      repeat 2:    1.902s 7506/26570 (45.8% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=16384   sources=      repeat 3:    1.892s 7506/26570 (45.8% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=65536   sources=      repeat 1:    7.307s 29178/103926 (44.5% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=65536   sources=      repeat 2:    7.423s 29178/103926 (44.5% of the pairs reachable)
+   duckpgq_scalar random_pairs pairs=65536   sources=      repeat 3:    7.252s 29178/103926 (44.5% of the pairs reachable)
+   duckpgq_scalar multi_source pairs=        sources=1     repeat 1:    2.359s 9158/36249 (13.3% of the vertices reached per source)
+   duckpgq_scalar multi_source pairs=        sources=1     repeat 2:    2.372s 9158/36249 (13.3% of the vertices reached per source)
+   duckpgq_scalar multi_source pairs=        sources=1     repeat 3:    2.362s 9158/36249 (13.3% of the vertices reached per source)
+   duckpgq_scalar multi_source pairs=        sources=16    repeat 1:   40.859s 385149/1380649 (35.1% of the vertices reached per source)
+   duckpgq_scalar multi_source pairs=        sources=16    repeat 2:   40.696s 385149/1380649 (35.1% of the vertices reached per source)
+   duckpgq_scalar multi_source pairs=        sources=16    repeat 3:   40.965s 385149/1380649 (35.1% of the vertices reached per source)
+   duckpgq_scalar multi_source pairs=        sources=128   repeat 1:  328.516s 3328389/11948238 (37.9% of the vertices reached per source)
+   duckpgq_scalar multi_source pairs=        sources=128   repeat 2:  329.357s 3328389/11948238 (37.9% of the vertices reached per source)
+   duckpgq_scalar multi_source pairs=        sources=128   repeat 3:  328.748s 3328389/11948238 (37.9% of the vertices reached per source)
+   duckpgq_scalar multi_source pairs=        sources=1024  repeat 1:  600.000s timed_out
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/sf10/sweep_pairs_sf10_threads32_1795334938498444875.csv
+All 11 points agree across the systems that completed them

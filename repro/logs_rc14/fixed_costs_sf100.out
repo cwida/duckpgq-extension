@@ -1,0 +1,19 @@
+Staging knows_update_log for sf100
+['op,count_star()', 'delete,480990', 'insert,3152926'] (2.0s)
+Exporting sf100 tables for the graph databases
+   duckdb           database_file                     s      497823744 B    26.69 B/edge
+   duckpgq_index    index_build_repeat1         1.594 s      256430336 B    13.75 B/edge
+   duckpgq_index    index_build_repeat2         1.591 s      256430336 B    13.75 B/edge
+   duckpgq_index    index_build_repeat3         1.551 s      256430336 B    13.75 B/edge
+Ensuring sf100 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf100 in 0.19s
+Ensuring sf100 benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for sf100 in 0.19s
+Exporting sf100 tables for Kuzu
+Loading sf100 into Kuzu at /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/kuzu/sf100.kuzu
+Loaded Kuzu database with 18655515 edges in 2.7s
+   kuzu             load                        3.380 s      457342976 B    24.52 B/edge
+   memgraph         load                       70.370 s     1481763717 B    79.43 B/edge
+   falkordb         load                      869.691 s      696254464 B    37.32 B/edge
+   neo4j            load                      267.891 s      736599005 B    39.48 B/edge
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/sf100/fixed_costs_sf100_threads32_1795169223302267906.csv

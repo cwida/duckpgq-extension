@@ -1,0 +1,30 @@
+Frozen run on eval-freeze-rc14 (3025ab1b), 20 to 23 Nov 2026, on a dedicated machine: EC2 m7a.8xlarge
+(i-0566c24c1d1b9531e, eu-west-1c), Amazon Linux 2023 kernel 6.18.62, 1 TB gp3 (16,000 IOPS, 1,000 MB/s); nothing else
+ran on it. Not the machine of rc13 (same instance type, kernel 6.12 there). ../ENVIRONMENT.txt is this machine's record.
+
+Setup there: repro/setup.sh at the tag (build with lane limit 256, generator 1add85f), baseline images pinned to the
+digests of the rc13 machine (machine/sweep_env.sh: Memgraph 3.14.0, FalkorDB 4.2.2, Neo4j 5.26.32), unit suite 8503
+assertions in 119 test cases (machine/fulltests.out), repro/prepare.sh regenerated all data: the seven databases
+equal the rc13 machine's in vertex and edge counts and in checksums of vertices, edges and the 1024-pair sample.
+Two things setup.sh and prepare.sh do not do on a fresh machine: the submodule URLs are SSH (an insteadOf rule to
+https was set), and the generator needs its third_party directory linked into the repository root.
+
+The run (machine/run_sweep.log, run_all.out): started 20 Nov 10:01:44 UTC, `SCALE_FACTORS="10 100 300"
+./run_all.sh all`, 95 steps, 56.7 h of step time, every marker exit 0, 0 disagreements in the pair sweeps, 0
+mismatches in the concurrent steps.
+- 22 Nov 08:24 UTC: in native_baselines_sf10 the recursive-CTE baseline at 16,384 pairs filled DuckDB's memory
+  limit (98.5 GiB) and the kernel killed Neo4j's JVM (machine/kernel_oom_segfault.txt). That point is recorded as an
+  error (rc13: timed_out), and the 65,536-pair point then ran and timed out. Nothing between that moment and the
+  Neo4j update steps uses Neo4j.
+- 22 Nov 18:11 UTC: update_neo4j_sf10_sssp failed (no server) and the run stopped
+  (update_neo4j_sf10_sssp.attempt1_neo4j_oom_killed.out, run_all.attempt1.out). 23 Nov 08:41 UTC: Neo4j started
+  again, the run resumed and finished its last six steps at 09:15 UTC.
+- The four flat explore variants of the CSR ablation (explore_flat_serial, _ranges, _atomic, _locked and their
+  thread configurations) crashed at process exit on 3025ab1b after answering, so the harness recorded their 211
+  rows as errors in the eight microbench_explore_* steps. Fix: 39181a6d (the flat CSR cache holds weak references
+  to the index partitions). Those configurations were run again on 39181a6d on 23 Nov, 09:54 to 15:40 UTC
+  (machine/flat_rerun.sh, flat_rerun.log, flat_rerun_*.out; suite on that build 8528 assertions in 120 test cases):
+  same points, same notes as the steps, 862 rows, one timeout (flat_atomic, 1 thread, 2048 pairs, graph500-24), the
+  same answers as the partitioned rows on all 17 points. In the result files the repo_commit column tells the two
+  builds apart; the error rows of the first attempt are still in the files of the sweep.
+- The one out-of-memory row of no_grouped_batches on graph500-24 (65,536 pairs) is as in rc13.

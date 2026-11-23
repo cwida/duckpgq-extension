@@ -1,0 +1,269 @@
+Ensuring sf10 benchmark_pairs_1 exists
+Prepared benchmark_pairs_1 for sf10 in 0.08s
+Ensuring sf10 benchmark_pairs_2 exists
+Prepared benchmark_pairs_2 for sf10 in 0.08s
+Ensuring sf10 benchmark_pairs_4 exists
+Prepared benchmark_pairs_4 for sf10 in 0.08s
+Ensuring sf10 benchmark_pairs_8 exists
+Prepared benchmark_pairs_8 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_16 exists
+Prepared benchmark_pairs_16 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_32 exists
+Prepared benchmark_pairs_32 for sf10 in 0.08s
+Ensuring sf10 benchmark_pairs_64 exists
+Prepared benchmark_pairs_64 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_128 exists
+Prepared benchmark_pairs_128 for sf10 in 0.08s
+Ensuring sf10 benchmark_pairs_256 exists
+Prepared benchmark_pairs_256 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_512 exists
+Prepared benchmark_pairs_512 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_4096 exists
+Prepared benchmark_pairs_4096 for sf10 in 0.10s
+Ensuring sf10 benchmark_pairs_all_pairs_s1_t200 exists
+Prepared benchmark_pairs_all_pairs_s1_t200 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_all_pairs_s2_t200 exists
+Prepared benchmark_pairs_all_pairs_s2_t200 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_all_pairs_s4_t200 exists
+Prepared benchmark_pairs_all_pairs_s4_t200 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_all_pairs_s8_t200 exists
+Prepared benchmark_pairs_all_pairs_s8_t200 for sf10 in 0.09s
+Ensuring sf10 benchmark_pairs_all_pairs_s16_t200 exists
+Prepared benchmark_pairs_all_pairs_s16_t200 for sf10 in 0.10s
+Ensuring sf10 benchmark_pairs_all_pairs_s32_t200 exists
+Prepared benchmark_pairs_all_pairs_s32_t200 for sf10 in 0.11s
+Ensuring sf10 benchmark_pairs_all_pairs_s64_t200 exists
+Prepared benchmark_pairs_all_pairs_s64_t200 for sf10 in 0.14s
+Ensuring sf10 benchmark_pairs_all_pairs_s128_t200 exists
+Prepared benchmark_pairs_all_pairs_s128_t200 for sf10 in 0.22s
+Ensuring sf10 benchmark_pairs_all_pairs_s256_t200 exists
+Prepared benchmark_pairs_all_pairs_s256_t200 for sf10 in 0.69s
+Ensuring sf10 benchmark_pairs_all_pairs_s512_t200 exists
+Prepared benchmark_pairs_all_pairs_s512_t200 for sf10 in 0.89s
+Ensuring sf10 benchmark_pairs_all_pairs_s1024_t200 exists
+Prepared benchmark_pairs_all_pairs_s1024_t200 for sf10 in 1.52s
+Ensuring sf10 benchmark_pairs_all_pairs_s4096_t200 exists
+Prepared benchmark_pairs_all_pairs_s4096_t200 for sf10 in 5.19s
+== duckpgq_index [single_source_kernel] loaded in 0.1s (index pathfinding_benchmark_csr)
+   single_source_kernel         random_pairs pairs=1       sources=      repeat 1:    0.001s 1/4
+   single_source_kernel         random_pairs pairs=1       sources=      repeat 2:    0.001s 1/4
+   single_source_kernel         random_pairs pairs=1       sources=      repeat 3:    0.001s 1/4
+   single_source_kernel         random_pairs pairs=2       sources=      repeat 1:    0.002s 2/8
+   single_source_kernel         random_pairs pairs=2       sources=      repeat 2:    0.001s 2/8
+   single_source_kernel         random_pairs pairs=2       sources=      repeat 3:    0.001s 2/8
+   single_source_kernel         random_pairs pairs=4       sources=      repeat 1:    0.002s 2/8
+   single_source_kernel         random_pairs pairs=4       sources=      repeat 2:    0.002s 2/8
+   single_source_kernel         random_pairs pairs=4       sources=      repeat 3:    0.002s 2/8
+   single_source_kernel         random_pairs pairs=8       sources=      repeat 1:    0.004s 4/14
+   single_source_kernel         random_pairs pairs=8       sources=      repeat 2:    0.003s 4/14
+   single_source_kernel         random_pairs pairs=8       sources=      repeat 3:    0.003s 4/14
+   single_source_kernel         random_pairs pairs=16      sources=      repeat 1:    0.005s 7/23
+   single_source_kernel         random_pairs pairs=16      sources=      repeat 2:    0.004s 7/23
+   single_source_kernel         random_pairs pairs=16      sources=      repeat 3:    0.004s 7/23
+   single_source_kernel         random_pairs pairs=32      sources=      repeat 1:    0.006s 14/49
+   single_source_kernel         random_pairs pairs=32      sources=      repeat 2:    0.006s 14/49
+   single_source_kernel         random_pairs pairs=32      sources=      repeat 3:    0.006s 14/49
+   single_source_kernel         random_pairs pairs=64      sources=      repeat 1:    0.006s 28/97
+   single_source_kernel         random_pairs pairs=64      sources=      repeat 2:    0.006s 28/97
+   single_source_kernel         random_pairs pairs=64      sources=      repeat 3:    0.006s 28/97
+   single_source_kernel         random_pairs pairs=128     sources=      repeat 1:    0.007s 62/214
+   single_source_kernel         random_pairs pairs=128     sources=      repeat 2:    0.008s 62/214
+   single_source_kernel         random_pairs pairs=128     sources=      repeat 3:    0.008s 62/214
+   single_source_kernel         random_pairs pairs=256     sources=      repeat 1:    0.010s 129/454
+   single_source_kernel         random_pairs pairs=256     sources=      repeat 2:    0.010s 129/454
+   single_source_kernel         random_pairs pairs=256     sources=      repeat 3:    0.010s 129/454
+   single_source_kernel         random_pairs pairs=512     sources=      repeat 1:    0.018s 244/857
+   single_source_kernel         random_pairs pairs=512     sources=      repeat 2:    0.019s 244/857
+   single_source_kernel         random_pairs pairs=512     sources=      repeat 3:    0.017s 244/857
+   single_source_kernel         random_pairs pairs=1024    sources=      repeat 1:    0.029s 472/1655
+   single_source_kernel         random_pairs pairs=1024    sources=      repeat 2:    0.032s 472/1655
+   single_source_kernel         random_pairs pairs=1024    sources=      repeat 3:    0.033s 472/1655
+   single_source_kernel         random_pairs pairs=4096    sources=      repeat 1:    0.106s 1857/6540
+   single_source_kernel         random_pairs pairs=4096    sources=      repeat 2:    0.104s 1857/6540
+   single_source_kernel         random_pairs pairs=4096    sources=      repeat 3:    0.106s 1857/6540
+   single_source_kernel         all_pairs    pairs=200     sources=1     repeat 1:    0.004s 85/309
+   single_source_kernel         all_pairs    pairs=200     sources=1     repeat 2:    0.004s 85/309
+   single_source_kernel         all_pairs    pairs=200     sources=1     repeat 3:    0.004s 85/309
+   single_source_kernel         all_pairs    pairs=400     sources=2     repeat 1:    0.005s 212/733
+   single_source_kernel         all_pairs    pairs=400     sources=2     repeat 2:    0.005s 212/733
+   single_source_kernel         all_pairs    pairs=400     sources=2     repeat 3:    0.005s 212/733
+   single_source_kernel         all_pairs    pairs=800     sources=4     repeat 1:    0.005s 227/793
+   single_source_kernel         all_pairs    pairs=800     sources=4     repeat 2:    0.004s 227/793
+   single_source_kernel         all_pairs    pairs=800     sources=4     repeat 3:    0.004s 227/793
+   single_source_kernel         all_pairs    pairs=1600    sources=8     repeat 1:    0.006s 580/2081
+   single_source_kernel         all_pairs    pairs=1600    sources=8     repeat 2:    0.006s 580/2081
+   single_source_kernel         all_pairs    pairs=1600    sources=8     repeat 3:    0.007s 580/2081
+   single_source_kernel         all_pairs    pairs=3200    sources=16    repeat 1:    0.010s 1224/4364
+   single_source_kernel         all_pairs    pairs=3200    sources=16    repeat 2:    0.010s 1224/4364
+   single_source_kernel         all_pairs    pairs=3200    sources=16    repeat 3:    0.010s 1224/4364
+   single_source_kernel         all_pairs    pairs=6400    sources=32    repeat 1:    0.014s 2667/9480
+   single_source_kernel         all_pairs    pairs=6400    sources=32    repeat 2:    0.015s 2667/9480
+   single_source_kernel         all_pairs    pairs=6400    sources=32    repeat 3:    0.014s 2667/9480
+   single_source_kernel         all_pairs    pairs=12800   sources=64    repeat 1:    0.018s 5783/20358
+   single_source_kernel         all_pairs    pairs=12800   sources=64    repeat 2:    0.021s 5783/20358
+   single_source_kernel         all_pairs    pairs=12800   sources=64    repeat 3:    0.022s 5783/20358
+   single_source_kernel         all_pairs    pairs=25600   sources=128   repeat 1:    0.029s 12112/42690
+   single_source_kernel         all_pairs    pairs=25600   sources=128   repeat 2:    0.032s 12112/42690
+   single_source_kernel         all_pairs    pairs=25600   sources=128   repeat 3:    0.030s 12112/42690
+   single_source_kernel         all_pairs    pairs=51200   sources=256   repeat 1:    0.056s 24833/87567
+   single_source_kernel         all_pairs    pairs=51200   sources=256   repeat 2:    0.056s 24833/87567
+   single_source_kernel         all_pairs    pairs=51200   sources=256   repeat 3:    0.056s 24833/87567
+   single_source_kernel         all_pairs    pairs=102400  sources=512   repeat 1:    0.092s 49805/175549
+   single_source_kernel         all_pairs    pairs=102400  sources=512   repeat 2:    0.087s 49805/175549
+   single_source_kernel         all_pairs    pairs=102400  sources=512   repeat 3:    0.095s 49805/175549
+   single_source_kernel         all_pairs    pairs=204800  sources=1024  repeat 1:    0.053s 95951/338722
+   single_source_kernel         all_pairs    pairs=204800  sources=1024  repeat 2:    0.050s 95951/338722
+   single_source_kernel         all_pairs    pairs=204800  sources=1024  repeat 3:    0.049s 95951/338722
+   single_source_kernel         all_pairs    pairs=819200  sources=4096  repeat 1:    0.089s 375710/1331854
+   single_source_kernel         all_pairs    pairs=819200  sources=4096  repeat 2:    0.089s 375710/1331854
+   single_source_kernel         all_pairs    pairs=819200  sources=4096  repeat 3:    0.088s 375710/1331854
+== duckpgq_index [multi_source_dedup] loaded in 0.1s (index pathfinding_benchmark_csr)
+   multi_source_dedup           random_pairs pairs=1       sources=      repeat 1:    0.001s 1/4
+   multi_source_dedup           random_pairs pairs=1       sources=      repeat 2:    0.002s 1/4
+   multi_source_dedup           random_pairs pairs=1       sources=      repeat 3:    0.002s 1/4
+   multi_source_dedup           random_pairs pairs=2       sources=      repeat 1:    0.004s 2/8
+   multi_source_dedup           random_pairs pairs=2       sources=      repeat 2:    0.005s 2/8
+   multi_source_dedup           random_pairs pairs=2       sources=      repeat 3:    0.004s 2/8
+   multi_source_dedup           random_pairs pairs=4       sources=      repeat 1:    0.007s 2/8
+   multi_source_dedup           random_pairs pairs=4       sources=      repeat 2:    0.007s 2/8
+   multi_source_dedup           random_pairs pairs=4       sources=      repeat 3:    0.008s 2/8
+   multi_source_dedup           random_pairs pairs=8       sources=      repeat 1:    0.008s 4/14
+   multi_source_dedup           random_pairs pairs=8       sources=      repeat 2:    0.009s 4/14
+   multi_source_dedup           random_pairs pairs=8       sources=      repeat 3:    0.009s 4/14
+   multi_source_dedup           random_pairs pairs=16      sources=      repeat 1:    0.012s 7/23
+   multi_source_dedup           random_pairs pairs=16      sources=      repeat 2:    0.010s 7/23
+   multi_source_dedup           random_pairs pairs=16      sources=      repeat 3:    0.010s 7/23
+   multi_source_dedup           random_pairs pairs=32      sources=      repeat 1:    0.013s 14/49
+   multi_source_dedup           random_pairs pairs=32      sources=      repeat 2:    0.014s 14/49
+   multi_source_dedup           random_pairs pairs=32      sources=      repeat 3:    0.012s 14/49
+   multi_source_dedup           random_pairs pairs=64      sources=      repeat 1:    0.015s 28/97
+   multi_source_dedup           random_pairs pairs=64      sources=      repeat 2:    0.016s 28/97
+   multi_source_dedup           random_pairs pairs=64      sources=      repeat 3:    0.014s 28/97
+   multi_source_dedup           random_pairs pairs=128     sources=      repeat 1:    0.017s 62/214
+   multi_source_dedup           random_pairs pairs=128     sources=      repeat 2:    0.018s 62/214
+   multi_source_dedup           random_pairs pairs=128     sources=      repeat 3:    0.019s 62/214
+   multi_source_dedup           random_pairs pairs=256     sources=      repeat 1:    0.018s 129/454
+   multi_source_dedup           random_pairs pairs=256     sources=      repeat 2:    0.018s 129/454
+   multi_source_dedup           random_pairs pairs=256     sources=      repeat 3:    0.017s 129/454
+   multi_source_dedup           random_pairs pairs=512     sources=      repeat 1:    0.019s 244/857
+   multi_source_dedup           random_pairs pairs=512     sources=      repeat 2:    0.018s 244/857
+   multi_source_dedup           random_pairs pairs=512     sources=      repeat 3:    0.018s 244/857
+   multi_source_dedup           random_pairs pairs=1024    sources=      repeat 1:    0.021s 472/1655
+   multi_source_dedup           random_pairs pairs=1024    sources=      repeat 2:    0.022s 472/1655
+   multi_source_dedup           random_pairs pairs=1024    sources=      repeat 3:    0.020s 472/1655
+   multi_source_dedup           random_pairs pairs=4096    sources=      repeat 1:    0.051s 1857/6540
+   multi_source_dedup           random_pairs pairs=4096    sources=      repeat 2:    0.054s 1857/6540
+   multi_source_dedup           random_pairs pairs=4096    sources=      repeat 3:    0.055s 1857/6540
+   multi_source_dedup           all_pairs    pairs=200     sources=1     repeat 1:    0.004s 85/309
+   multi_source_dedup           all_pairs    pairs=200     sources=1     repeat 2:    0.004s 85/309
+   multi_source_dedup           all_pairs    pairs=200     sources=1     repeat 3:    0.004s 85/309
+   multi_source_dedup           all_pairs    pairs=400     sources=2     repeat 1:    0.007s 212/733
+   multi_source_dedup           all_pairs    pairs=400     sources=2     repeat 2:    0.008s 212/733
+   multi_source_dedup           all_pairs    pairs=400     sources=2     repeat 3:    0.007s 212/733
+   multi_source_dedup           all_pairs    pairs=800     sources=4     repeat 1:    0.008s 227/793
+   multi_source_dedup           all_pairs    pairs=800     sources=4     repeat 2:    0.009s 227/793
+   multi_source_dedup           all_pairs    pairs=800     sources=4     repeat 3:    0.008s 227/793
+   multi_source_dedup           all_pairs    pairs=1600    sources=8     repeat 1:    0.010s 580/2081
+   multi_source_dedup           all_pairs    pairs=1600    sources=8     repeat 2:    0.010s 580/2081
+   multi_source_dedup           all_pairs    pairs=1600    sources=8     repeat 3:    0.010s 580/2081
+   multi_source_dedup           all_pairs    pairs=3200    sources=16    repeat 1:    0.012s 1224/4364
+   multi_source_dedup           all_pairs    pairs=3200    sources=16    repeat 2:    0.012s 1224/4364
+   multi_source_dedup           all_pairs    pairs=3200    sources=16    repeat 3:    0.012s 1224/4364
+   multi_source_dedup           all_pairs    pairs=6400    sources=32    repeat 1:    0.017s 2667/9480
+   multi_source_dedup           all_pairs    pairs=6400    sources=32    repeat 2:    0.015s 2667/9480
+   multi_source_dedup           all_pairs    pairs=6400    sources=32    repeat 3:    0.015s 2667/9480
+   multi_source_dedup           all_pairs    pairs=12800   sources=64    repeat 1:    0.018s 5783/20358
+   multi_source_dedup           all_pairs    pairs=12800   sources=64    repeat 2:    0.017s 5783/20358
+   multi_source_dedup           all_pairs    pairs=12800   sources=64    repeat 3:    0.018s 5783/20358
+   multi_source_dedup           all_pairs    pairs=25600   sources=128   repeat 1:    0.022s 12112/42690
+   multi_source_dedup           all_pairs    pairs=25600   sources=128   repeat 2:    0.024s 12112/42690
+   multi_source_dedup           all_pairs    pairs=25600   sources=128   repeat 3:    0.022s 12112/42690
+   multi_source_dedup           all_pairs    pairs=51200   sources=256   repeat 1:    0.032s 24833/87567
+   multi_source_dedup           all_pairs    pairs=51200   sources=256   repeat 2:    0.030s 24833/87567
+   multi_source_dedup           all_pairs    pairs=51200   sources=256   repeat 3:    0.031s 24833/87567
+   multi_source_dedup           all_pairs    pairs=102400  sources=512   repeat 1:    0.038s 49805/175549
+   multi_source_dedup           all_pairs    pairs=102400  sources=512   repeat 2:    0.043s 49805/175549
+   multi_source_dedup           all_pairs    pairs=102400  sources=512   repeat 3:    0.043s 49805/175549
+   multi_source_dedup           all_pairs    pairs=204800  sources=1024  repeat 1:    0.049s 95951/338722
+   multi_source_dedup           all_pairs    pairs=204800  sources=1024  repeat 2:    0.048s 95951/338722
+   multi_source_dedup           all_pairs    pairs=204800  sources=1024  repeat 3:    0.048s 95951/338722
+   multi_source_dedup           all_pairs    pairs=819200  sources=4096  repeat 1:    0.130s 375710/1331854
+   multi_source_dedup           all_pairs    pairs=819200  sources=4096  repeat 2:    0.125s 375710/1331854
+   multi_source_dedup           all_pairs    pairs=819200  sources=4096  repeat 3:    0.133s 375710/1331854
+== duckpgq_index [lane_per_pair] loaded in 0.1s (index pathfinding_benchmark_csr)
+   lane_per_pair                random_pairs pairs=1       sources=      repeat 1:    0.011s 1/4
+   lane_per_pair                random_pairs pairs=1       sources=      repeat 2:    0.004s 1/4
+   lane_per_pair                random_pairs pairs=1       sources=      repeat 3:    0.003s 1/4
+   lane_per_pair                random_pairs pairs=2       sources=      repeat 1:    0.004s 2/8
+   lane_per_pair                random_pairs pairs=2       sources=      repeat 2:    0.004s 2/8
+   lane_per_pair                random_pairs pairs=2       sources=      repeat 3:    0.004s 2/8
+   lane_per_pair                random_pairs pairs=4       sources=      repeat 1:    0.008s 2/8
+   lane_per_pair                random_pairs pairs=4       sources=      repeat 2:    0.007s 2/8
+   lane_per_pair                random_pairs pairs=4       sources=      repeat 3:    0.006s 2/8
+   lane_per_pair                random_pairs pairs=8       sources=      repeat 1:    0.009s 4/14
+   lane_per_pair                random_pairs pairs=8       sources=      repeat 2:    0.007s 4/14
+   lane_per_pair                random_pairs pairs=8       sources=      repeat 3:    0.008s 4/14
+   lane_per_pair                random_pairs pairs=16      sources=      repeat 1:    0.009s 7/23
+   lane_per_pair                random_pairs pairs=16      sources=      repeat 2:    0.009s 7/23
+   lane_per_pair                random_pairs pairs=16      sources=      repeat 3:    0.008s 7/23
+   lane_per_pair                random_pairs pairs=32      sources=      repeat 1:    0.012s 14/49
+   lane_per_pair                random_pairs pairs=32      sources=      repeat 2:    0.014s 14/49
+   lane_per_pair                random_pairs pairs=32      sources=      repeat 3:    0.011s 14/49
+   lane_per_pair                random_pairs pairs=64      sources=      repeat 1:    0.014s 28/97
+   lane_per_pair                random_pairs pairs=64      sources=      repeat 2:    0.011s 28/97
+   lane_per_pair                random_pairs pairs=64      sources=      repeat 3:    0.013s 28/97
+   lane_per_pair                random_pairs pairs=128     sources=      repeat 1:    0.014s 62/214
+   lane_per_pair                random_pairs pairs=128     sources=      repeat 2:    0.013s 62/214
+   lane_per_pair                random_pairs pairs=128     sources=      repeat 3:    0.013s 62/214
+   lane_per_pair                random_pairs pairs=256     sources=      repeat 1:    0.014s 129/454
+   lane_per_pair                random_pairs pairs=256     sources=      repeat 2:    0.014s 129/454
+   lane_per_pair                random_pairs pairs=256     sources=      repeat 3:    0.015s 129/454
+   lane_per_pair                random_pairs pairs=512     sources=      repeat 1:    0.029s 244/857
+   lane_per_pair                random_pairs pairs=512     sources=      repeat 2:    0.027s 244/857
+   lane_per_pair                random_pairs pairs=512     sources=      repeat 3:    0.028s 244/857
+   lane_per_pair                random_pairs pairs=1024    sources=      repeat 1:    0.052s 472/1655
+   lane_per_pair                random_pairs pairs=1024    sources=      repeat 2:    0.053s 472/1655
+   lane_per_pair                random_pairs pairs=1024    sources=      repeat 3:    0.052s 472/1655
+   lane_per_pair                random_pairs pairs=4096    sources=      repeat 1:    0.113s 1857/6540
+   lane_per_pair                random_pairs pairs=4096    sources=      repeat 2:    0.111s 1857/6540
+   lane_per_pair                random_pairs pairs=4096    sources=      repeat 3:    0.112s 1857/6540
+   lane_per_pair                all_pairs    pairs=200     sources=1     repeat 1:    0.007s 85/309
+   lane_per_pair                all_pairs    pairs=200     sources=1     repeat 2:    0.007s 85/309
+   lane_per_pair                all_pairs    pairs=200     sources=1     repeat 3:    0.007s 85/309
+   lane_per_pair                all_pairs    pairs=400     sources=2     repeat 1:    0.013s 212/733
+   lane_per_pair                all_pairs    pairs=400     sources=2     repeat 2:    0.012s 212/733
+   lane_per_pair                all_pairs    pairs=400     sources=2     repeat 3:    0.012s 212/733
+   lane_per_pair                all_pairs    pairs=800     sources=4     repeat 1:    0.019s 227/793
+   lane_per_pair                all_pairs    pairs=800     sources=4     repeat 2:    0.020s 227/793
+   lane_per_pair                all_pairs    pairs=800     sources=4     repeat 3:    0.020s 227/793
+   lane_per_pair                all_pairs    pairs=1600    sources=8     repeat 1:    0.036s 580/2081
+   lane_per_pair                all_pairs    pairs=1600    sources=8     repeat 2:    0.036s 580/2081
+   lane_per_pair                all_pairs    pairs=1600    sources=8     repeat 3:    0.036s 580/2081
+   lane_per_pair                all_pairs    pairs=3200    sources=16    repeat 1:    0.059s 1224/4364
+   lane_per_pair                all_pairs    pairs=3200    sources=16    repeat 2:    0.054s 1224/4364
+   lane_per_pair                all_pairs    pairs=3200    sources=16    repeat 3:    0.054s 1224/4364
+   lane_per_pair                all_pairs    pairs=6400    sources=32    repeat 1:    0.077s 2667/9480
+   lane_per_pair                all_pairs    pairs=6400    sources=32    repeat 2:    0.078s 2667/9480
+   lane_per_pair                all_pairs    pairs=6400    sources=32    repeat 3:    0.079s 2667/9480
+   lane_per_pair                all_pairs    pairs=12800   sources=64    repeat 1:    0.124s 5783/20358
+   lane_per_pair                all_pairs    pairs=12800   sources=64    repeat 2:    0.124s 5783/20358
+   lane_per_pair                all_pairs    pairs=12800   sources=64    repeat 3:    0.127s 5783/20358
+   lane_per_pair                all_pairs    pairs=25600   sources=128   repeat 1:    0.216s 12112/42690
+   lane_per_pair                all_pairs    pairs=25600   sources=128   repeat 2:    0.214s 12112/42690
+   lane_per_pair                all_pairs    pairs=25600   sources=128   repeat 3:    0.215s 12112/42690
+   lane_per_pair                all_pairs    pairs=51200   sources=256   repeat 1:    0.592s 24833/87567
+   lane_per_pair                all_pairs    pairs=51200   sources=256   repeat 2:    0.603s 24833/87567
+   lane_per_pair                all_pairs    pairs=51200   sources=256   repeat 3:    0.594s 24833/87567
+   lane_per_pair                all_pairs    pairs=102400  sources=512   repeat 1:    0.438s 49805/175549
+   lane_per_pair                all_pairs    pairs=102400  sources=512   repeat 2:    0.448s 49805/175549
+   lane_per_pair                all_pairs    pairs=102400  sources=512   repeat 3:    0.453s 49805/175549
+   lane_per_pair                all_pairs    pairs=204800  sources=1024  repeat 1:    1.240s 95951/338722
+   lane_per_pair                all_pairs    pairs=204800  sources=1024  repeat 2:    1.242s 95951/338722
+   lane_per_pair                all_pairs    pairs=204800  sources=1024  repeat 3:    1.244s 95951/338722
+   lane_per_pair                all_pairs    pairs=819200  sources=4096  repeat 1:    4.151s 375710/1331854
+   lane_per_pair                all_pairs    pairs=819200  sources=4096  repeat 2:    4.165s 375710/1331854
+   lane_per_pair                all_pairs    pairs=819200  sources=4096  repeat 3:    4.148s 375710/1331854
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/sf10/microbench_sf10_threads32_1795359359159564110.csv
+All 24 points agree across configurations 

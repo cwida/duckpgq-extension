@@ -1,0 +1,20 @@
+Ensuring sf100 benchmark_pairs_65536 exists
+Prepared benchmark_pairs_65536 for sf100 in 1.25s
+== duckpgq_index [explore_flat_serial] loaded in 0.1s (index pathfinding_benchmark_csr)
+   explore_flat_serial          random_pairs pairs=65536   sources=      repeat 1:    3.802s 31274/118174
+   explore_flat_serial          random_pairs pairs=65536   sources=      repeat 2:    3.766s 31274/118174
+   explore_flat_serial          random_pairs pairs=65536   sources=      repeat 3:    3.747s 31274/118174
+== duckpgq_index [explore_flat_ranges] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_ranges          random_pairs pairs=65536   sources=      repeat 1:    4.088s 31274/118174
+   explore_flat_ranges          random_pairs pairs=65536   sources=      repeat 2:    4.090s 31274/118174
+   explore_flat_ranges          random_pairs pairs=65536   sources=      repeat 3:    4.024s 31274/118174
+== duckpgq_index [explore_flat_atomic] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_atomic          random_pairs pairs=65536   sources=      repeat 1:   13.024s 31274/118174
+   explore_flat_atomic          random_pairs pairs=65536   sources=      repeat 2:   13.293s 31274/118174
+   explore_flat_atomic          random_pairs pairs=65536   sources=      repeat 3:   13.361s 31274/118174
+== duckpgq_index [explore_flat_locked] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_locked          random_pairs pairs=65536   sources=      repeat 1:    9.405s 31274/118174
+   explore_flat_locked          random_pairs pairs=65536   sources=      repeat 2:    9.494s 31274/118174
+   explore_flat_locked          random_pairs pairs=65536   sources=      repeat 3:    9.223s 31274/118174
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/sf100/microbench_sf100_threads32_1795428576032103936.csv
+All 1 points agree across configurations 

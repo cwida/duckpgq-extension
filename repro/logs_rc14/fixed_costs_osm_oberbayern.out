@@ -1,0 +1,20 @@
+Exporting graphalytics_osm_oberbayern tables for the graph databases
+   duckdb           database_file                     s       24391680 B    30.27 B/edge
+   duckpgq_index    index_build_repeat1         0.086 s       21763660 B    27.01 B/edge
+   duckpgq_index    index_build_repeat2         0.085 s       21763660 B    27.01 B/edge
+   duckpgq_index    index_build_repeat3         0.088 s       21763660 B    27.01 B/edge
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for graphalytics_osm_oberbayern in 0.15s
+Ensuring graphalytics_osm_oberbayern benchmark_pairs_same_src_1024 exists
+Prepared benchmark_pairs_same_src_1024 for graphalytics_osm_oberbayern in 0.14s
+Loading graphalytics_osm_oberbayern into Kuzu at /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/kuzu/graphalytics_osm_oberbayern.kuzu
+Loaded Kuzu database with 805743 edges in 0.7s
+   kuzu             load                        1.087 s       39559168 B    49.10 B/edge
+   memgraph         load                       24.591 s     2319282339 B  2878.44 B/edge
+   falkordb         load                       37.674 s      110100480 B   136.64 B/edge
+   neo4j            load                       13.982 s       89908704 B   111.58 B/edge
+   umbra_navindex   load                        1.194 s                B          B/edge
+   umbra_navindex   index_build_repeat1         2.658 s                B          B/edge
+   umbra_navindex   index_build_repeat2         2.346 s                B          B/edge
+   umbra_navindex   index_build_repeat3         2.338 s                B          B/edge
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/graphalytics_osm_oberbayern/fixed_costs_graphalytics_osm_oberbayern_threads32_1795258520055379015.csv

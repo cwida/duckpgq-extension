@@ -1,0 +1,436 @@
+Ensuring sf100 benchmark_pairs_2048 exists
+Prepared benchmark_pairs_2048 for sf100 in 0.23s
+== duckpgq_index [explore_partitioned_t1] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_partitioned_t1       random_pairs pairs=2048    sources=      repeat 1:    1.638s 1030/3892
+   explore_partitioned_t1       random_pairs pairs=2048    sources=      repeat 2:    1.669s 1030/3892
+   explore_partitioned_t1       random_pairs pairs=2048    sources=      repeat 3:    1.636s 1030/3892
+   explore_partitioned_t1       multi_source pairs=        sources=256   repeat 1:    1.110s 49778639/190319580
+   explore_partitioned_t1       multi_source pairs=        sources=256   repeat 2:    1.132s 49778639/190319580
+   explore_partitioned_t1       multi_source pairs=        sources=256   repeat 3:    1.094s 49778639/190319580
+   explore_partitioned_t1       multi_source pairs=        sources=1024  repeat 1:    4.199s 201529578/767116632
+   explore_partitioned_t1       multi_source pairs=        sources=1024  repeat 2:    4.152s 201529578/767116632
+   explore_partitioned_t1       multi_source pairs=        sources=1024  repeat 3:    4.032s 201529578/767116632
+== duckpgq_index [explore_partitioned_t2] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_partitioned_t2       random_pairs pairs=2048    sources=      repeat 1:    1.444s 1030/3892
+   explore_partitioned_t2       random_pairs pairs=2048    sources=      repeat 2:    1.468s 1030/3892
+   explore_partitioned_t2       random_pairs pairs=2048    sources=      repeat 3:    1.420s 1030/3892
+   explore_partitioned_t2       multi_source pairs=        sources=256   repeat 1:    0.836s 49778639/190319580
+   explore_partitioned_t2       multi_source pairs=        sources=256   repeat 2:    0.849s 49778639/190319580
+   explore_partitioned_t2       multi_source pairs=        sources=256   repeat 3:    0.835s 49778639/190319580
+   explore_partitioned_t2       multi_source pairs=        sources=1024  repeat 1:    2.562s 201529578/767116632
+   explore_partitioned_t2       multi_source pairs=        sources=1024  repeat 2:    2.607s 201529578/767116632
+   explore_partitioned_t2       multi_source pairs=        sources=1024  repeat 3:    2.573s 201529578/767116632
+== duckpgq_index [explore_partitioned_t4] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_partitioned_t4       random_pairs pairs=2048    sources=      repeat 1:    0.806s 1030/3892
+   explore_partitioned_t4       random_pairs pairs=2048    sources=      repeat 2:    0.809s 1030/3892
+   explore_partitioned_t4       random_pairs pairs=2048    sources=      repeat 3:    0.831s 1030/3892
+   explore_partitioned_t4       multi_source pairs=        sources=256   repeat 1:    0.479s 49778639/190319580
+   explore_partitioned_t4       multi_source pairs=        sources=256   repeat 2:    0.523s 49778639/190319580
+   explore_partitioned_t4       multi_source pairs=        sources=256   repeat 3:    0.513s 49778639/190319580
+   explore_partitioned_t4       multi_source pairs=        sources=1024  repeat 1:    1.478s 201529578/767116632
+   explore_partitioned_t4       multi_source pairs=        sources=1024  repeat 2:    1.480s 201529578/767116632
+   explore_partitioned_t4       multi_source pairs=        sources=1024  repeat 3:    1.588s 201529578/767116632
+== duckpgq_index [explore_partitioned_t8] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_partitioned_t8       random_pairs pairs=2048    sources=      repeat 1:    0.328s 1030/3892
+   explore_partitioned_t8       random_pairs pairs=2048    sources=      repeat 2:    0.350s 1030/3892
+   explore_partitioned_t8       random_pairs pairs=2048    sources=      repeat 3:    0.350s 1030/3892
+   explore_partitioned_t8       multi_source pairs=        sources=256   repeat 1:    0.319s 49778639/190319580
+   explore_partitioned_t8       multi_source pairs=        sources=256   repeat 2:    0.324s 49778639/190319580
+   explore_partitioned_t8       multi_source pairs=        sources=256   repeat 3:    0.326s 49778639/190319580
+   explore_partitioned_t8       multi_source pairs=        sources=1024  repeat 1:    0.768s 201529578/767116632
+   explore_partitioned_t8       multi_source pairs=        sources=1024  repeat 2:    0.803s 201529578/767116632
+   explore_partitioned_t8       multi_source pairs=        sources=1024  repeat 3:    0.795s 201529578/767116632
+== duckpgq_index [explore_partitioned_t16] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_partitioned_t16      random_pairs pairs=2048    sources=      repeat 1:    0.168s 1030/3892
+   explore_partitioned_t16      random_pairs pairs=2048    sources=      repeat 2:    0.184s 1030/3892
+   explore_partitioned_t16      random_pairs pairs=2048    sources=      repeat 3:    0.183s 1030/3892
+   explore_partitioned_t16      multi_source pairs=        sources=256   repeat 1:    0.244s 49778639/190319580
+   explore_partitioned_t16      multi_source pairs=        sources=256   repeat 2:    0.248s 49778639/190319580
+   explore_partitioned_t16      multi_source pairs=        sources=256   repeat 3:    0.268s 49778639/190319580
+   explore_partitioned_t16      multi_source pairs=        sources=1024  repeat 1:    0.460s 201529578/767116632
+   explore_partitioned_t16      multi_source pairs=        sources=1024  repeat 2:    0.495s 201529578/767116632
+   explore_partitioned_t16      multi_source pairs=        sources=1024  repeat 3:    0.487s 201529578/767116632
+== duckpgq_index [baseline] loaded in 0.2s (index pathfinding_benchmark_csr)
+   baseline                     random_pairs pairs=2048    sources=      repeat 1:    0.113s 1030/3892
+   baseline                     random_pairs pairs=2048    sources=      repeat 2:    0.118s 1030/3892
+   baseline                     random_pairs pairs=2048    sources=      repeat 3:    0.125s 1030/3892
+   baseline                     multi_source pairs=        sources=256   repeat 1:    0.195s 49778639/190319580
+   baseline                     multi_source pairs=        sources=256   repeat 2:    0.196s 49778639/190319580
+   baseline                     multi_source pairs=        sources=256   repeat 3:    0.181s 49778639/190319580
+   baseline                     multi_source pairs=        sources=1024  repeat 1:    0.435s 201529578/767116632
+   baseline                     multi_source pairs=        sources=1024  repeat 2:    0.445s 201529578/767116632
+   baseline                     multi_source pairs=        sources=1024  repeat 3:    0.406s 201529578/767116632
+== duckpgq_index [explore_flat_serial_t1] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t1       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial_t1       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_serial_t2] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t2       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial_t2       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_serial_t4] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t4       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial_t4       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_serial_t8] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t8       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial_t8       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_serial_t16] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_serial_t16      random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial_t16      multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_serial] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_serial          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_serial          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges_t1] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t1       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges_t1       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges_t2] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t2       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges_t2       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges_t4] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t4       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges_t4       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges_t8] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t8       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges_t8       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges_t16] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_ranges_t16      random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges_t16      multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_ranges] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_ranges          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_ranges          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic_t1] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t1       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic_t1       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic_t2] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t2       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic_t2       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic_t4] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t4       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic_t4       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic_t8] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t8       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic_t8       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic_t16] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_atomic_t16      random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic_t16      multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_atomic] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_atomic          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_atomic          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked_t1] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t1       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked_t1       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked_t2] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t2       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked_t2       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked_t4] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t4       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked_t4       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked_t8] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t8       random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked_t8       multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked_t16] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_locked_t16      random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked_t16      multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [explore_flat_locked] loaded in 0.2s (index pathfinding_benchmark_csr)
+   explore_flat_locked          random_pairs pairs=2048    sources=      repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+   explore_flat_locked          multi_source pairs=        sources=256   repeat 1:    0.000s error: duckdb killed by signal 11 (out of memory?)
+== duckpgq_index [partitions_4096_t1] loaded in 0.2s (index pathfinding_benchmark_csr_pv4096)
+   partitions_4096_t1           random_pairs pairs=2048    sources=      repeat 1:    2.709s 1030/3892
+   partitions_4096_t1           random_pairs pairs=2048    sources=      repeat 2:    2.706s 1030/3892
+   partitions_4096_t1           random_pairs pairs=2048    sources=      repeat 3:    2.715s 1030/3892
+   partitions_4096_t1           multi_source pairs=        sources=256   repeat 1:    1.315s 49778639/190319580
+   partitions_4096_t1           multi_source pairs=        sources=256   repeat 2:    1.314s 49778639/190319580
+   partitions_4096_t1           multi_source pairs=        sources=256   repeat 3:    1.335s 49778639/190319580
+   partitions_4096_t1           multi_source pairs=        sources=1024  repeat 1:    4.661s 201529578/767116632
+   partitions_4096_t1           multi_source pairs=        sources=1024  repeat 2:    4.654s 201529578/767116632
+   partitions_4096_t1           multi_source pairs=        sources=1024  repeat 3:    4.671s 201529578/767116632
+== duckpgq_index [partitions_4096_t2] loaded in 0.2s (index pathfinding_benchmark_csr_pv4096)
+   partitions_4096_t2           random_pairs pairs=2048    sources=      repeat 1:    2.070s 1030/3892
+   partitions_4096_t2           random_pairs pairs=2048    sources=      repeat 2:    1.991s 1030/3892
+   partitions_4096_t2           random_pairs pairs=2048    sources=      repeat 3:    2.003s 1030/3892
+   partitions_4096_t2           multi_source pairs=        sources=256   repeat 1:    0.958s 49778639/190319580
+   partitions_4096_t2           multi_source pairs=        sources=256   repeat 2:    0.961s 49778639/190319580
+   partitions_4096_t2           multi_source pairs=        sources=256   repeat 3:    0.876s 49778639/190319580
+   partitions_4096_t2           multi_source pairs=        sources=1024  repeat 1:    3.071s 201529578/767116632
+   partitions_4096_t2           multi_source pairs=        sources=1024  repeat 2:    3.024s 201529578/767116632
+   partitions_4096_t2           multi_source pairs=        sources=1024  repeat 3:    2.984s 201529578/767116632
+== duckpgq_index [partitions_4096_t4] loaded in 0.2s (index pathfinding_benchmark_csr_pv4096)
+   partitions_4096_t4           random_pairs pairs=2048    sources=      repeat 1:    1.034s 1030/3892
+   partitions_4096_t4           random_pairs pairs=2048    sources=      repeat 2:    1.059s 1030/3892
+   partitions_4096_t4           random_pairs pairs=2048    sources=      repeat 3:    1.064s 1030/3892
+   partitions_4096_t4           multi_source pairs=        sources=256   repeat 1:    0.632s 49778639/190319580
+   partitions_4096_t4           multi_source pairs=        sources=256   repeat 2:    0.617s 49778639/190319580
+   partitions_4096_t4           multi_source pairs=        sources=256   repeat 3:    0.592s 49778639/190319580
+   partitions_4096_t4           multi_source pairs=        sources=1024  repeat 1:    1.774s 201529578/767116632
+   partitions_4096_t4           multi_source pairs=        sources=1024  repeat 2:    1.819s 201529578/767116632
+   partitions_4096_t4           multi_source pairs=        sources=1024  repeat 3:    1.749s 201529578/767116632
+== duckpgq_index [partitions_4096_t8] loaded in 0.2s (index pathfinding_benchmark_csr_pv4096)
+   partitions_4096_t8           random_pairs pairs=2048    sources=      repeat 1:    0.476s 1030/3892
+   partitions_4096_t8           random_pairs pairs=2048    sources=      repeat 2:    0.492s 1030/3892
+   partitions_4096_t8           random_pairs pairs=2048    sources=      repeat 3:    0.482s 1030/3892
+   partitions_4096_t8           multi_source pairs=        sources=256   repeat 1:    0.339s 49778639/190319580
+   partitions_4096_t8           multi_source pairs=        sources=256   repeat 2:    0.351s 49778639/190319580
+   partitions_4096_t8           multi_source pairs=        sources=256   repeat 3:    0.348s 49778639/190319580
+   partitions_4096_t8           multi_source pairs=        sources=1024  repeat 1:    0.944s 201529578/767116632
+   partitions_4096_t8           multi_source pairs=        sources=1024  repeat 2:    0.954s 201529578/767116632
+   partitions_4096_t8           multi_source pairs=        sources=1024  repeat 3:    0.970s 201529578/767116632
+== duckpgq_index [partitions_4096_t16] loaded in 0.2s (index pathfinding_benchmark_csr_pv4096)
+   partitions_4096_t16          random_pairs pairs=2048    sources=      repeat 1:    0.260s 1030/3892
+   partitions_4096_t16          random_pairs pairs=2048    sources=      repeat 2:    0.272s 1030/3892
+   partitions_4096_t16          random_pairs pairs=2048    sources=      repeat 3:    0.268s 1030/3892
+   partitions_4096_t16          multi_source pairs=        sources=256   repeat 1:    0.211s 49778639/190319580
+   partitions_4096_t16          multi_source pairs=        sources=256   repeat 2:    0.213s 49778639/190319580
+   partitions_4096_t16          multi_source pairs=        sources=256   repeat 3:    0.203s 49778639/190319580
+   partitions_4096_t16          multi_source pairs=        sources=1024  repeat 1:    0.494s 201529578/767116632
+   partitions_4096_t16          multi_source pairs=        sources=1024  repeat 2:    0.505s 201529578/767116632
+   partitions_4096_t16          multi_source pairs=        sources=1024  repeat 3:    0.487s 201529578/767116632
+== duckpgq_index [partitions_4096] loaded in 0.2s (index pathfinding_benchmark_csr_pv4096)
+   partitions_4096              random_pairs pairs=2048    sources=      repeat 1:    0.165s 1030/3892
+   partitions_4096              random_pairs pairs=2048    sources=      repeat 2:    0.166s 1030/3892
+   partitions_4096              random_pairs pairs=2048    sources=      repeat 3:    0.164s 1030/3892
+   partitions_4096              multi_source pairs=        sources=256   repeat 1:    0.156s 49778639/190319580
+   partitions_4096              multi_source pairs=        sources=256   repeat 2:    0.154s 49778639/190319580
+   partitions_4096              multi_source pairs=        sources=256   repeat 3:    0.168s 49778639/190319580
+   partitions_4096              multi_source pairs=        sources=1024  repeat 1:    0.315s 201529578/767116632
+   partitions_4096              multi_source pairs=        sources=1024  repeat 2:    0.314s 201529578/767116632
+   partitions_4096              multi_source pairs=        sources=1024  repeat 3:    0.307s 201529578/767116632
+== duckpgq_index [partitions_8192_t1] loaded in 0.2s (index pathfinding_benchmark_csr_pv8192)
+   partitions_8192_t1           random_pairs pairs=2048    sources=      repeat 1:    2.281s 1030/3892
+   partitions_8192_t1           random_pairs pairs=2048    sources=      repeat 2:    2.286s 1030/3892
+   partitions_8192_t1           random_pairs pairs=2048    sources=      repeat 3:    2.273s 1030/3892
+   partitions_8192_t1           multi_source pairs=        sources=256   repeat 1:    1.273s 49778639/190319580
+   partitions_8192_t1           multi_source pairs=        sources=256   repeat 2:    1.278s 49778639/190319580
+   partitions_8192_t1           multi_source pairs=        sources=256   repeat 3:    1.275s 49778639/190319580
+   partitions_8192_t1           multi_source pairs=        sources=1024  repeat 1:    4.385s 201529578/767116632
+   partitions_8192_t1           multi_source pairs=        sources=1024  repeat 2:    4.380s 201529578/767116632
+   partitions_8192_t1           multi_source pairs=        sources=1024  repeat 3:    4.386s 201529578/767116632
+== duckpgq_index [partitions_8192_t2] loaded in 0.2s (index pathfinding_benchmark_csr_pv8192)
+   partitions_8192_t2           random_pairs pairs=2048    sources=      repeat 1:    1.782s 1030/3892
+   partitions_8192_t2           random_pairs pairs=2048    sources=      repeat 2:    1.765s 1030/3892
+   partitions_8192_t2           random_pairs pairs=2048    sources=      repeat 3:    1.844s 1030/3892
+   partitions_8192_t2           multi_source pairs=        sources=256   repeat 1:    0.911s 49778639/190319580
+   partitions_8192_t2           multi_source pairs=        sources=256   repeat 2:    0.825s 49778639/190319580
+   partitions_8192_t2           multi_source pairs=        sources=256   repeat 3:    0.891s 49778639/190319580
+   partitions_8192_t2           multi_source pairs=        sources=1024  repeat 1:    2.993s 201529578/767116632
+   partitions_8192_t2           multi_source pairs=        sources=1024  repeat 2:    2.914s 201529578/767116632
+   partitions_8192_t2           multi_source pairs=        sources=1024  repeat 3:    2.837s 201529578/767116632
+== duckpgq_index [partitions_8192_t4] loaded in 0.2s (index pathfinding_benchmark_csr_pv8192)
+   partitions_8192_t4           random_pairs pairs=2048    sources=      repeat 1:    0.937s 1030/3892
+   partitions_8192_t4           random_pairs pairs=2048    sources=      repeat 2:    0.950s 1030/3892
+   partitions_8192_t4           random_pairs pairs=2048    sources=      repeat 3:    0.932s 1030/3892
+   partitions_8192_t4           multi_source pairs=        sources=256   repeat 1:    0.614s 49778639/190319580
+   partitions_8192_t4           multi_source pairs=        sources=256   repeat 2:    0.558s 49778639/190319580
+   partitions_8192_t4           multi_source pairs=        sources=256   repeat 3:    0.565s 49778639/190319580
+   partitions_8192_t4           multi_source pairs=        sources=1024  repeat 1:    1.767s 201529578/767116632
+   partitions_8192_t4           multi_source pairs=        sources=1024  repeat 2:    1.664s 201529578/767116632
+   partitions_8192_t4           multi_source pairs=        sources=1024  repeat 3:    1.674s 201529578/767116632
+== duckpgq_index [partitions_8192_t8] loaded in 0.2s (index pathfinding_benchmark_csr_pv8192)
+   partitions_8192_t8           random_pairs pairs=2048    sources=      repeat 1:    0.405s 1030/3892
+   partitions_8192_t8           random_pairs pairs=2048    sources=      repeat 2:    0.412s 1030/3892
+   partitions_8192_t8           random_pairs pairs=2048    sources=      repeat 3:    0.424s 1030/3892
+   partitions_8192_t8           multi_source pairs=        sources=256   repeat 1:    0.331s 49778639/190319580
+   partitions_8192_t8           multi_source pairs=        sources=256   repeat 2:    0.302s 49778639/190319580
+   partitions_8192_t8           multi_source pairs=        sources=256   repeat 3:    0.337s 49778639/190319580
+   partitions_8192_t8           multi_source pairs=        sources=1024  repeat 1:    0.887s 201529578/767116632
+   partitions_8192_t8           multi_source pairs=        sources=1024  repeat 2:    0.933s 201529578/767116632
+   partitions_8192_t8           multi_source pairs=        sources=1024  repeat 3:    0.875s 201529578/767116632
+== duckpgq_index [partitions_8192_t16] loaded in 0.2s (index pathfinding_benchmark_csr_pv8192)
+   partitions_8192_t16          random_pairs pairs=2048    sources=      repeat 1:    0.233s 1030/3892
+   partitions_8192_t16          random_pairs pairs=2048    sources=      repeat 2:    0.225s 1030/3892
+   partitions_8192_t16          random_pairs pairs=2048    sources=      repeat 3:    0.212s 1030/3892
+   partitions_8192_t16          multi_source pairs=        sources=256   repeat 1:    0.213s 49778639/190319580
+   partitions_8192_t16          multi_source pairs=        sources=256   repeat 2:    0.206s 49778639/190319580
+   partitions_8192_t16          multi_source pairs=        sources=256   repeat 3:    0.198s 49778639/190319580
+   partitions_8192_t16          multi_source pairs=        sources=1024  repeat 1:    0.502s 201529578/767116632
+   partitions_8192_t16          multi_source pairs=        sources=1024  repeat 2:    0.473s 201529578/767116632
+   partitions_8192_t16          multi_source pairs=        sources=1024  repeat 3:    0.482s 201529578/767116632
+== duckpgq_index [partitions_8192] loaded in 0.2s (index pathfinding_benchmark_csr_pv8192)
+   partitions_8192              random_pairs pairs=2048    sources=      repeat 1:    0.144s 1030/3892
+   partitions_8192              random_pairs pairs=2048    sources=      repeat 2:    0.140s 1030/3892
+   partitions_8192              random_pairs pairs=2048    sources=      repeat 3:    0.138s 1030/3892
+   partitions_8192              multi_source pairs=        sources=256   repeat 1:    0.164s 49778639/190319580
+   partitions_8192              multi_source pairs=        sources=256   repeat 2:    0.152s 49778639/190319580
+   partitions_8192              multi_source pairs=        sources=256   repeat 3:    0.161s 49778639/190319580
+   partitions_8192              multi_source pairs=        sources=1024  repeat 1:    0.313s 201529578/767116632
+   partitions_8192              multi_source pairs=        sources=1024  repeat 2:    0.316s 201529578/767116632
+   partitions_8192              multi_source pairs=        sources=1024  repeat 3:    0.310s 201529578/767116632
+== duckpgq_index [partitions_16384_t1] loaded in 0.2s (index pathfinding_benchmark_csr_pv16384)
+   partitions_16384_t1          random_pairs pairs=2048    sources=      repeat 1:    1.979s 1030/3892
+   partitions_16384_t1          random_pairs pairs=2048    sources=      repeat 2:    1.976s 1030/3892
+   partitions_16384_t1          random_pairs pairs=2048    sources=      repeat 3:    1.977s 1030/3892
+   partitions_16384_t1          multi_source pairs=        sources=256   repeat 1:    1.179s 49778639/190319580
+   partitions_16384_t1          multi_source pairs=        sources=256   repeat 2:    1.190s 49778639/190319580
+   partitions_16384_t1          multi_source pairs=        sources=256   repeat 3:    1.177s 49778639/190319580
+   partitions_16384_t1          multi_source pairs=        sources=1024  repeat 1:    4.185s 201529578/767116632
+   partitions_16384_t1          multi_source pairs=        sources=1024  repeat 2:    4.231s 201529578/767116632
+   partitions_16384_t1          multi_source pairs=        sources=1024  repeat 3:    4.176s 201529578/767116632
+== duckpgq_index [partitions_16384_t2] loaded in 0.2s (index pathfinding_benchmark_csr_pv16384)
+   partitions_16384_t2          random_pairs pairs=2048    sources=      repeat 1:    1.612s 1030/3892
+   partitions_16384_t2          random_pairs pairs=2048    sources=      repeat 2:    1.606s 1030/3892
+   partitions_16384_t2          random_pairs pairs=2048    sources=      repeat 3:    1.615s 1030/3892
+   partitions_16384_t2          multi_source pairs=        sources=256   repeat 1:    0.859s 49778639/190319580
+   partitions_16384_t2          multi_source pairs=        sources=256   repeat 2:    0.789s 49778639/190319580
+   partitions_16384_t2          multi_source pairs=        sources=256   repeat 3:    0.902s 49778639/190319580
+   partitions_16384_t2          multi_source pairs=        sources=1024  repeat 1:    2.812s 201529578/767116632
+   partitions_16384_t2          multi_source pairs=        sources=1024  repeat 2:    2.814s 201529578/767116632
+   partitions_16384_t2          multi_source pairs=        sources=1024  repeat 3:    2.798s 201529578/767116632
+== duckpgq_index [partitions_16384_t4] loaded in 0.2s (index pathfinding_benchmark_csr_pv16384)
+   partitions_16384_t4          random_pairs pairs=2048    sources=      repeat 1:    0.888s 1030/3892
+   partitions_16384_t4          random_pairs pairs=2048    sources=      repeat 2:    0.878s 1030/3892
+   partitions_16384_t4          random_pairs pairs=2048    sources=      repeat 3:    0.857s 1030/3892
+   partitions_16384_t4          multi_source pairs=        sources=256   repeat 1:    0.561s 49778639/190319580
+   partitions_16384_t4          multi_source pairs=        sources=256   repeat 2:    0.593s 49778639/190319580
+   partitions_16384_t4          multi_source pairs=        sources=256   repeat 3:    0.554s 49778639/190319580
+   partitions_16384_t4          multi_source pairs=        sources=1024  repeat 1:    1.622s 201529578/767116632
+   partitions_16384_t4          multi_source pairs=        sources=1024  repeat 2:    1.660s 201529578/767116632
+   partitions_16384_t4          multi_source pairs=        sources=1024  repeat 3:    1.521s 201529578/767116632
+== duckpgq_index [partitions_16384_t8] loaded in 0.2s (index pathfinding_benchmark_csr_pv16384)
+   partitions_16384_t8          random_pairs pairs=2048    sources=      repeat 1:    0.370s 1030/3892
+   partitions_16384_t8          random_pairs pairs=2048    sources=      repeat 2:    0.376s 1030/3892
+   partitions_16384_t8          random_pairs pairs=2048    sources=      repeat 3:    0.385s 1030/3892
+   partitions_16384_t8          multi_source pairs=        sources=256   repeat 1:    0.322s 49778639/190319580
+   partitions_16384_t8          multi_source pairs=        sources=256   repeat 2:    0.357s 49778639/190319580
+   partitions_16384_t8          multi_source pairs=        sources=256   repeat 3:    0.367s 49778639/190319580
+   partitions_16384_t8          multi_source pairs=        sources=1024  repeat 1:    0.847s 201529578/767116632
+   partitions_16384_t8          multi_source pairs=        sources=1024  repeat 2:    0.879s 201529578/767116632
+   partitions_16384_t8          multi_source pairs=        sources=1024  repeat 3:    0.842s 201529578/767116632
+== duckpgq_index [partitions_16384_t16] loaded in 0.2s (index pathfinding_benchmark_csr_pv16384)
+   partitions_16384_t16         random_pairs pairs=2048    sources=      repeat 1:    0.202s 1030/3892
+   partitions_16384_t16         random_pairs pairs=2048    sources=      repeat 2:    0.210s 1030/3892
+   partitions_16384_t16         random_pairs pairs=2048    sources=      repeat 3:    0.191s 1030/3892
+   partitions_16384_t16         multi_source pairs=        sources=256   repeat 1:    0.222s 49778639/190319580
+   partitions_16384_t16         multi_source pairs=        sources=256   repeat 2:    0.206s 49778639/190319580
+   partitions_16384_t16         multi_source pairs=        sources=256   repeat 3:    0.229s 49778639/190319580
+   partitions_16384_t16         multi_source pairs=        sources=1024  repeat 1:    0.462s 201529578/767116632
+   partitions_16384_t16         multi_source pairs=        sources=1024  repeat 2:    0.464s 201529578/767116632
+   partitions_16384_t16         multi_source pairs=        sources=1024  repeat 3:    0.481s 201529578/767116632
+== duckpgq_index [partitions_16384] loaded in 0.2s (index pathfinding_benchmark_csr_pv16384)
+   partitions_16384             random_pairs pairs=2048    sources=      repeat 1:    0.132s 1030/3892
+   partitions_16384             random_pairs pairs=2048    sources=      repeat 2:    0.129s 1030/3892
+   partitions_16384             random_pairs pairs=2048    sources=      repeat 3:    0.128s 1030/3892
+   partitions_16384             multi_source pairs=        sources=256   repeat 1:    0.181s 49778639/190319580
+   partitions_16384             multi_source pairs=        sources=256   repeat 2:    0.180s 49778639/190319580
+   partitions_16384             multi_source pairs=        sources=256   repeat 3:    0.174s 49778639/190319580
+   partitions_16384             multi_source pairs=        sources=1024  repeat 1:    0.320s 201529578/767116632
+   partitions_16384             multi_source pairs=        sources=1024  repeat 2:    0.319s 201529578/767116632
+   partitions_16384             multi_source pairs=        sources=1024  repeat 3:    0.316s 201529578/767116632
+== duckpgq_index [partitions_32768_t1] loaded in 0.2s (index pathfinding_benchmark_csr_pv32768)
+   partitions_32768_t1          random_pairs pairs=2048    sources=      repeat 1:    1.753s 1030/3892
+   partitions_32768_t1          random_pairs pairs=2048    sources=      repeat 2:    1.757s 1030/3892
+   partitions_32768_t1          random_pairs pairs=2048    sources=      repeat 3:    1.756s 1030/3892
+   partitions_32768_t1          multi_source pairs=        sources=256   repeat 1:    1.157s 49778639/190319580
+   partitions_32768_t1          multi_source pairs=        sources=256   repeat 2:    1.153s 49778639/190319580
+   partitions_32768_t1          multi_source pairs=        sources=256   repeat 3:    1.145s 49778639/190319580
+   partitions_32768_t1          multi_source pairs=        sources=1024  repeat 1:    4.040s 201529578/767116632
+   partitions_32768_t1          multi_source pairs=        sources=1024  repeat 2:    4.125s 201529578/767116632
+   partitions_32768_t1          multi_source pairs=        sources=1024  repeat 3:    4.093s 201529578/767116632
+== duckpgq_index [partitions_32768_t2] loaded in 0.2s (index pathfinding_benchmark_csr_pv32768)
+   partitions_32768_t2          random_pairs pairs=2048    sources=      repeat 1:    1.505s 1030/3892
+   partitions_32768_t2          random_pairs pairs=2048    sources=      repeat 2:    1.509s 1030/3892
+   partitions_32768_t2          random_pairs pairs=2048    sources=      repeat 3:    1.554s 1030/3892
+   partitions_32768_t2          multi_source pairs=        sources=256   repeat 1:    0.855s 49778639/190319580
+   partitions_32768_t2          multi_source pairs=        sources=256   repeat 2:    0.838s 49778639/190319580
+   partitions_32768_t2          multi_source pairs=        sources=256   repeat 3:    0.839s 49778639/190319580
+   partitions_32768_t2          multi_source pairs=        sources=1024  repeat 1:    2.759s 201529578/767116632
+   partitions_32768_t2          multi_source pairs=        sources=1024  repeat 2:    2.699s 201529578/767116632
+   partitions_32768_t2          multi_source pairs=        sources=1024  repeat 3:    2.568s 201529578/767116632
+== duckpgq_index [partitions_32768_t4] loaded in 0.2s (index pathfinding_benchmark_csr_pv32768)
+   partitions_32768_t4          random_pairs pairs=2048    sources=      repeat 1:    0.825s 1030/3892
+   partitions_32768_t4          random_pairs pairs=2048    sources=      repeat 2:    0.853s 1030/3892
+   partitions_32768_t4          random_pairs pairs=2048    sources=      repeat 3:    0.849s 1030/3892
+   partitions_32768_t4          multi_source pairs=        sources=256   repeat 1:    0.602s 49778639/190319580
+   partitions_32768_t4          multi_source pairs=        sources=256   repeat 2:    0.566s 49778639/190319580
+   partitions_32768_t4          multi_source pairs=        sources=256   repeat 3:    0.598s 49778639/190319580
+   partitions_32768_t4          multi_source pairs=        sources=1024  repeat 1:    1.541s 201529578/767116632
+   partitions_32768_t4          multi_source pairs=        sources=1024  repeat 2:    1.437s 201529578/767116632
+   partitions_32768_t4          multi_source pairs=        sources=1024  repeat 3:    1.597s 201529578/767116632
+== duckpgq_index [partitions_32768_t8] loaded in 0.2s (index pathfinding_benchmark_csr_pv32768)
+   partitions_32768_t8          random_pairs pairs=2048    sources=      repeat 1:    0.362s 1030/3892
+   partitions_32768_t8          random_pairs pairs=2048    sources=      repeat 2:    0.329s 1030/3892
+   partitions_32768_t8          random_pairs pairs=2048    sources=      repeat 3:    0.330s 1030/3892
+   partitions_32768_t8          multi_source pairs=        sources=256   repeat 1:    0.347s 49778639/190319580
+   partitions_32768_t8          multi_source pairs=        sources=256   repeat 2:    0.377s 49778639/190319580
+   partitions_32768_t8          multi_source pairs=        sources=256   repeat 3:    0.348s 49778639/190319580
+   partitions_32768_t8          multi_source pairs=        sources=1024  repeat 1:    0.819s 201529578/767116632
+   partitions_32768_t8          multi_source pairs=        sources=1024  repeat 2:    0.776s 201529578/767116632
+   partitions_32768_t8          multi_source pairs=        sources=1024  repeat 3:    0.854s 201529578/767116632
+== duckpgq_index [partitions_32768_t16] loaded in 0.2s (index pathfinding_benchmark_csr_pv32768)
+   partitions_32768_t16         random_pairs pairs=2048    sources=      repeat 1:    0.183s 1030/3892
+   partitions_32768_t16         random_pairs pairs=2048    sources=      repeat 2:    0.194s 1030/3892
+   partitions_32768_t16         random_pairs pairs=2048    sources=      repeat 3:    0.181s 1030/3892
+   partitions_32768_t16         multi_source pairs=        sources=256   repeat 1:    0.244s 49778639/190319580
+   partitions_32768_t16         multi_source pairs=        sources=256   repeat 2:    0.231s 49778639/190319580
+   partitions_32768_t16         multi_source pairs=        sources=256   repeat 3:    0.252s 49778639/190319580
+   partitions_32768_t16         multi_source pairs=        sources=1024  repeat 1:    0.455s 201529578/767116632
+   partitions_32768_t16         multi_source pairs=        sources=1024  repeat 2:    0.459s 201529578/767116632
+   partitions_32768_t16         multi_source pairs=        sources=1024  repeat 3:    0.444s 201529578/767116632
+== duckpgq_index [partitions_32768] loaded in 0.2s (index pathfinding_benchmark_csr_pv32768)
+   partitions_32768             random_pairs pairs=2048    sources=      repeat 1:    0.110s 1030/3892
+   partitions_32768             random_pairs pairs=2048    sources=      repeat 2:    0.111s 1030/3892
+   partitions_32768             random_pairs pairs=2048    sources=      repeat 3:    0.119s 1030/3892
+   partitions_32768             multi_source pairs=        sources=256   repeat 1:    0.188s 49778639/190319580
+   partitions_32768             multi_source pairs=        sources=256   repeat 2:    0.191s 49778639/190319580
+   partitions_32768             multi_source pairs=        sources=256   repeat 3:    0.192s 49778639/190319580
+   partitions_32768             multi_source pairs=        sources=1024  repeat 1:    0.338s 201529578/767116632
+   partitions_32768             multi_source pairs=        sources=1024  repeat 2:    0.330s 201529578/767116632
+   partitions_32768             multi_source pairs=        sources=1024  repeat 3:    0.326s 201529578/767116632
+== duckpgq_index [partitions_65535_nosub_t1] loaded in 0.2s (index pathfinding_benchmark_csr_pv65535)
+   partitions_65535_nosub_t1    random_pairs pairs=2048    sources=      repeat 1:    1.639s 1030/3892
+   partitions_65535_nosub_t1    random_pairs pairs=2048    sources=      repeat 2:    1.643s 1030/3892
+   partitions_65535_nosub_t1    random_pairs pairs=2048    sources=      repeat 3:    1.645s 1030/3892
+   partitions_65535_nosub_t1    multi_source pairs=        sources=256   repeat 1:    1.132s 49778639/190319580
+   partitions_65535_nosub_t1    multi_source pairs=        sources=256   repeat 2:    1.149s 49778639/190319580
+   partitions_65535_nosub_t1    multi_source pairs=        sources=256   repeat 3:    1.131s 49778639/190319580
+   partitions_65535_nosub_t1    multi_source pairs=        sources=1024  repeat 1:    4.022s 201529578/767116632
+   partitions_65535_nosub_t1    multi_source pairs=        sources=1024  repeat 2:    4.149s 201529578/767116632
+   partitions_65535_nosub_t1    multi_source pairs=        sources=1024  repeat 3:    4.007s 201529578/767116632
+== duckpgq_index [partitions_65535_nosub_t2] loaded in 0.2s (index pathfinding_benchmark_csr_pv65535)
+   partitions_65535_nosub_t2    random_pairs pairs=2048    sources=      repeat 1:    1.358s 1030/3892
+   partitions_65535_nosub_t2    random_pairs pairs=2048    sources=      repeat 2:    1.395s 1030/3892
+   partitions_65535_nosub_t2    random_pairs pairs=2048    sources=      repeat 3:    1.376s 1030/3892
+   partitions_65535_nosub_t2    multi_source pairs=        sources=256   repeat 1:    0.828s 49778639/190319580
+   partitions_65535_nosub_t2    multi_source pairs=        sources=256   repeat 2:    0.842s 49778639/190319580
+   partitions_65535_nosub_t2    multi_source pairs=        sources=256   repeat 3:    0.859s 49778639/190319580
+   partitions_65535_nosub_t2    multi_source pairs=        sources=1024  repeat 1:    2.615s 201529578/767116632
+   partitions_65535_nosub_t2    multi_source pairs=        sources=1024  repeat 2:    2.519s 201529578/767116632
+   partitions_65535_nosub_t2    multi_source pairs=        sources=1024  repeat 3:    2.632s 201529578/767116632
+== duckpgq_index [partitions_65535_nosub_t4] loaded in 0.2s (index pathfinding_benchmark_csr_pv65535)
+   partitions_65535_nosub_t4    random_pairs pairs=2048    sources=      repeat 1:    0.839s 1030/3892
+   partitions_65535_nosub_t4    random_pairs pairs=2048    sources=      repeat 2:    0.801s 1030/3892
+   partitions_65535_nosub_t4    random_pairs pairs=2048    sources=      repeat 3:    0.808s 1030/3892
+   partitions_65535_nosub_t4    multi_source pairs=        sources=256   repeat 1:    0.561s 49778639/190319580
+   partitions_65535_nosub_t4    multi_source pairs=        sources=256   repeat 2:    0.539s 49778639/190319580
+   partitions_65535_nosub_t4    multi_source pairs=        sources=256   repeat 3:    0.575s 49778639/190319580
+   partitions_65535_nosub_t4    multi_source pairs=        sources=1024  repeat 1:    1.509s 201529578/767116632
+   partitions_65535_nosub_t4    multi_source pairs=        sources=1024  repeat 2:    1.460s 201529578/767116632
+   partitions_65535_nosub_t4    multi_source pairs=        sources=1024  repeat 3:    1.507s 201529578/767116632
+== duckpgq_index [partitions_65535_nosub_t8] loaded in 0.2s (index pathfinding_benchmark_csr_pv65535)
+   partitions_65535_nosub_t8    random_pairs pairs=2048    sources=      repeat 1:    0.330s 1030/3892
+   partitions_65535_nosub_t8    random_pairs pairs=2048    sources=      repeat 2:    0.333s 1030/3892
+   partitions_65535_nosub_t8    random_pairs pairs=2048    sources=      repeat 3:    0.324s 1030/3892
+   partitions_65535_nosub_t8    multi_source pairs=        sources=256   repeat 1:    0.336s 49778639/190319580
+   partitions_65535_nosub_t8    multi_source pairs=        sources=256   repeat 2:    0.353s 49778639/190319580
+   partitions_65535_nosub_t8    multi_source pairs=        sources=256   repeat 3:    0.372s 49778639/190319580
+   partitions_65535_nosub_t8    multi_source pairs=        sources=1024  repeat 1:    0.795s 201529578/767116632
+   partitions_65535_nosub_t8    multi_source pairs=        sources=1024  repeat 2:    0.756s 201529578/767116632
+   partitions_65535_nosub_t8    multi_source pairs=        sources=1024  repeat 3:    0.813s 201529578/767116632
+== duckpgq_index [partitions_65535_nosub_t16] loaded in 0.2s (index pathfinding_benchmark_csr_pv65535)
+   partitions_65535_nosub_t16   random_pairs pairs=2048    sources=      repeat 1:    0.176s 1030/3892
+   partitions_65535_nosub_t16   random_pairs pairs=2048    sources=      repeat 2:    0.180s 1030/3892
+   partitions_65535_nosub_t16   random_pairs pairs=2048    sources=      repeat 3:    0.180s 1030/3892
+   partitions_65535_nosub_t16   multi_source pairs=        sources=256   repeat 1:    0.311s 49778639/190319580
+   partitions_65535_nosub_t16   multi_source pairs=        sources=256   repeat 2:    0.315s 49778639/190319580
+   partitions_65535_nosub_t16   multi_source pairs=        sources=256   repeat 3:    0.321s 49778639/190319580
+   partitions_65535_nosub_t16   multi_source pairs=        sources=1024  repeat 1:    0.480s 201529578/767116632
+   partitions_65535_nosub_t16   multi_source pairs=        sources=1024  repeat 2:    0.486s 201529578/767116632
+   partitions_65535_nosub_t16   multi_source pairs=        sources=1024  repeat 3:    0.449s 201529578/767116632
+== duckpgq_index [partitions_65535_nosub] loaded in 0.2s (index pathfinding_benchmark_csr_pv65535)
+   partitions_65535_nosub       random_pairs pairs=2048    sources=      repeat 1:    0.124s 1030/3892
+   partitions_65535_nosub       random_pairs pairs=2048    sources=      repeat 2:    0.126s 1030/3892
+   partitions_65535_nosub       random_pairs pairs=2048    sources=      repeat 3:    0.124s 1030/3892
+   partitions_65535_nosub       multi_source pairs=        sources=256   repeat 1:    0.287s 49778639/190319580
+   partitions_65535_nosub       multi_source pairs=        sources=256   repeat 2:    0.306s 49778639/190319580
+   partitions_65535_nosub       multi_source pairs=        sources=256   repeat 3:    0.323s 49778639/190319580
+   partitions_65535_nosub       multi_source pairs=        sources=1024  repeat 1:    0.425s 201529578/767116632
+   partitions_65535_nosub       multi_source pairs=        sources=1024  repeat 2:    0.427s 201529578/767116632
+   partitions_65535_nosub       multi_source pairs=        sources=1024  repeat 3:    0.411s 201529578/767116632
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/sf100/microbench_sf100_threads32_1795361466981042779.csv
+All 3 points agree across configurations 

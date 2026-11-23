@@ -1,0 +1,11 @@
+2026-11-23T09:54:41Z start
+2026-11-23T09:55:52Z suite exit=0 All tests passed (8528 assertions in 120 test cases)
+2026-11-23T09:57:21Z explore_scaling_sf10 exit=0 seconds=89
+2026-11-23T09:57:35Z explore_variants_sf10 exit=0 seconds=14
+2026-11-23T10:09:34Z explore_scaling_sf100 exit=0 seconds=719
+2026-11-23T10:12:45Z explore_variants_sf100 exit=0 seconds=191
+2026-11-23T10:46:51Z explore_scaling_sf300 exit=0 seconds=2046
+2026-11-23T10:57:58Z explore_variants_sf300 exit=0 seconds=667
+2026-11-23T11:21:01Z explore_variants_graph500_24 exit=0 seconds=1383
+2026-11-23T15:40:04Z explore_scaling_graph500_24 exit=0 seconds=15543
+2026-11-23T15:40:04Z FLAT_RERUN_DONE

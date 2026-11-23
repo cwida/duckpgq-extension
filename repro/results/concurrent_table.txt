@@ -3,47 +3,69 @@
 
 | route | readers | queries | median ms | p99 ms | max ms | commit median ms | commit p99 ms | folds | peak GiB |
 |---|---|---|---|---|---|---|---|---|---|
-| query_build | 4 | 624 | 26.4 | 37.5 | 44.4 | 25.2 | 78.8 | 0 | 1.8 |
-| query_build | 8 | 1040 | 37.8 | 63.8 | 71.0 | 71.2 | 134 | 0 |  |
-| query_index | 4 | 1292 | 20.5 | 59.9 | 149 | 60.0 | 119 | 1 | 2.3 |
-| query_index | 8 | 1040 | 37.7 | 90.6 | 205 | 71.2 | 134 | 0 |  |
+| query_build | 4 | 358 | 30.1 | 40.0 | 42.4 | 16.1 | 27.7 | 0 | 0.7 |
+| query_index | 4 | 621 | 7.6 | 36.9 | 40.1 | 13.4 | 24.1 | 99 | 0.5 |
+| query_build (fold ratio 0.1) | 4 | 624 | 26.4 | 37.5 | 44.4 | 25.2 | 78.8 | 0 | 1.8 |
+| query_build (fold ratio 0.1) | 8 | 1040 | 37.8 | 63.8 | 71.0 | 71.2 | 134 | 0 |  |
+| query_index (fold ratio 0.1) | 4 | 1292 | 20.5 | 59.9 | 149 | 60.0 | 119 | 1 | 2.3 |
+| query_index (fold ratio 0.1) | 8 | 1040 | 37.7 | 90.6 | 205 | 71.2 | 134 | 0 |  |
 
 ## readers under a writer, SF10: 2000 operations per commit, 200 ms pause, 32 threads, query latency per route (median / p99 / max), the writer's commit latency and the folds of the run
 
 | route | readers | queries | median ms | p99 ms | max ms | commit median ms | commit p99 ms | folds | peak GiB |
 |---|---|---|---|---|---|---|---|---|---|
-| query_build | 1 | 1728 | 20.4 | 23.1 | 30.6 | 22.1 | 75.9 | 0 | 1.5 |
-| query_build | 4 | 5506 | 27.2 | 35.1 | 99.7 | 27.6 | 76.1 | 0 | 1.8 |
-| query_build | 8 | 6918 | 48.8 | 69.8 | 108 | 43.9 | 110 | 0 | 2.0 |
-| query_build | 16 | 8005 | 98.3 | 157 | 218 | 83.4 | 159 | 0 | 2.2 |
-| query_index | 1 | 3423 | 8.2 | 20.6 | 120 | 31.6 | 108 | 1 | 2.2 |
-| query_index | 4 | 9191 | 13.2 | 46.6 | 143 | 53.2 | 105 | 1 | 2.2 |
-| query_index | 8 | 12645 | 20.8 | 91.5 | 148 | 88.4 | 187 | 1 | 2.4 |
-| query_index | 16 | 15973 | 42.1 | 187 | 227 | 166 | 345 | 1 | 2.6 |
+| query_build | 1 | 1590 | 21.1 | 23.5 | 28.3 | 12.1 | 19.9 | 0 | 0.6 |
+| query_build | 4 | 4727 | 30.3 | 39.1 | 80.2 | 18.3 | 29.3 | 0 | 0.8 |
+| query_build | 8 | 5721 | 55.7 | 80.7 | 127 | 32.2 | 54.1 | 0 | 1.1 |
+| query_build | 16 | 6682 | 111 | 178 | 234 | 73.4 | 117 | 0 | 1.4 |
+| query_index | 1 | 4833 | 3.7 | 31.3 | 35.2 | 12.1 | 17.6 | 207 | 0.4 |
+| query_index | 4 | 20079 | 3.7 | 9.8 | 36.7 | 12.6 | 21.0 | 250 | 0.4 |
+| query_index | 8 | 36848 | 4.2 | 13.1 | 42.0 | 14.6 | 30.7 | 274 | 0.5 |
+| query_index | 16 | 57261 | 5.8 | 26.2 | 58.6 | 26.5 | 57.4 | 316 | 0.6 |
 | query_build (fold ratio 0) | 4 | 2853 | 28.2 | 37.4 | 109 | 21.3 | 80.9 | 0 |  |
 | query_index (fold ratio 0) | 4 | 2853 | 20.7 | 75.0 | 88.5 | 21.3 | 80.9 | 0 |  |
-| query_build (fold ratio 0.01) | 4 | 4584 | 25.7 | 34.5 | 89.5 | 29.5 | 93.5 | 19 | 2.2 |
-| query_index (fold ratio 0.01) | 4 | 4584 | 6.1 | 15.8 | 94.1 | 29.5 | 93.5 | 19 | 2.2 |
+| query_build (fold ratio 0.01) | 4 | 4119 | 28.6 | 37.7 | 83.0 | 17.9 | 26.7 | 19 | 0.9 |
+| query_index (fold ratio 0.01) | 4 | 4119 | 5.1 | 13.7 | 54.4 | 17.9 | 26.7 | 19 | 0.9 |
+| query_build (fold ratio 0.1) | 1 | 1728 | 20.4 | 23.1 | 30.6 | 22.1 | 75.9 | 0 | 1.5 |
+| query_build (fold ratio 0.1) | 4 | 5506 | 27.2 | 35.1 | 99.7 | 27.6 | 76.1 | 0 | 1.8 |
+| query_build (fold ratio 0.1) | 8 | 6918 | 48.8 | 69.8 | 108 | 43.9 | 110 | 0 | 2.0 |
+| query_build (fold ratio 0.1) | 16 | 8005 | 98.3 | 157 | 218 | 83.4 | 159 | 0 | 2.2 |
+| query_index (fold ratio 0.1) | 1 | 3423 | 8.2 | 20.6 | 120 | 31.6 | 108 | 1 | 2.2 |
+| query_index (fold ratio 0.1) | 4 | 9191 | 13.2 | 46.6 | 143 | 53.2 | 105 | 1 | 2.2 |
+| query_index (fold ratio 0.1) | 8 | 12645 | 20.8 | 91.5 | 148 | 88.4 | 187 | 1 | 2.4 |
+| query_index (fold ratio 0.1) | 16 | 15973 | 42.1 | 187 | 227 | 166 | 345 | 1 | 2.6 |
 
 ## readers under a writer, SF100: 2000 operations per commit, 200 ms pause, 32 threads, query latency per route (median / p99 / max), the writer's commit latency and the folds of the run
 
 | route | readers | queries | median ms | p99 ms | max ms | commit median ms | commit p99 ms | folds | peak GiB |
 |---|---|---|---|---|---|---|---|---|---|
-| query_build | 1 | 156 | 148 | 182 | 267 | 39.1 | 76.3 | 0 | 5.9 |
-| query_build | 4 | 438 | 283 | 375 | 444 | 96.2 | 217 | 0 | 6.8 |
-| query_build | 16 | 871 | 1196 | 1679 | 2200 | 348 | 691 | 0 | 9.5 |
-| query_index | 1 | 700 | 19.0 | 36.7 | 43.4 | 39.1 | 118 | 0 | 4.5 |
-| query_index | 4 | 2437 | 24.7 | 65.3 | 850 | 63.2 | 166 | 0 | 4.6 |
-| query_index | 16 | 6095 | 63.7 | 195 | 259 | 214 | 407 | 0 | 4.9 |
+| query_build | 1 | 128 | 162 | 181 | 182 | 22.2 | 61.7 | 0 | 2.5 |
+| query_build | 4 | 347 | 302 | 375 | 406 | 73.1 | 155 | 0 | 3.3 |
+| query_build | 16 | 693 | 1297 | 1835 | 2085 | 355 | 579 | 0 | 6.2 |
+| query_index | 1 | 669 | 14.2 | 172 | 199 | 19.0 | 24.3 | 10 | 1.8 |
+| query_index | 4 | 2800 | 14.2 | 21.7 | 191 | 22.0 | 37.8 | 10 | 1.9 |
+| query_index | 16 | 8125 | 26.8 | 58.5 | 286 | 52.6 | 107 | 11 | 2.2 |
+| query_build (fold ratio 0.1) | 1 | 156 | 148 | 182 | 267 | 39.1 | 76.3 | 0 | 5.9 |
+| query_build (fold ratio 0.1) | 4 | 438 | 283 | 375 | 444 | 96.2 | 217 | 0 | 6.8 |
+| query_build (fold ratio 0.1) | 16 | 871 | 1196 | 1679 | 2200 | 348 | 691 | 0 | 9.5 |
+| query_index (fold ratio 0.1) | 1 | 700 | 19.0 | 36.7 | 43.4 | 39.1 | 118 | 0 | 4.5 |
+| query_index (fold ratio 0.1) | 4 | 2437 | 24.7 | 65.3 | 850 | 63.2 | 166 | 0 | 4.6 |
+| query_index (fold ratio 0.1) | 16 | 6095 | 63.7 | 195 | 259 | 214 | 407 | 0 | 4.9 |
 
 ## readers under a writer, SF300: 2000 operations per commit, 200 ms pause, 32 threads, query latency per route (median / p99 / max), the writer's commit latency and the folds of the run
 
 | route | readers | queries | median ms | p99 ms | max ms | commit median ms | commit p99 ms | folds | peak GiB |
 |---|---|---|---|---|---|---|---|---|---|
-| query_build | 1 | 64 | 318 | 473 | 554 | 132 | 156 | 0 | 7.6 |
-| query_build | 4 | 135 | 886 | 1340 | 1485 | 219 | 560 | 0 | 9.8 |
-| query_build | 16 | 256 | 3856 | 5916 | 7103 | 647 | 1199 | 0 | 17.8 |
-| query_index | 1 | 337 | 27.7 | 41.7 | 46.3 | 37.1 | 49.5 | 0 | 5.7 |
-| query_index | 4 | 1290 | 30.6 | 54.3 | 63.5 | 47.1 | 89.8 | 0 | 5.7 |
-| query_index | 16 | 2859 | 81.6 | 188 | 814 | 153 | 285 | 0 | 6.0 |
-| query_index (fold ratio 0.0005) | 16 | 3208 | 65.3 | 277 | 1842 | 137 | 343 | 4 | 11.0 |
+| query_build | 1 | 60 | 344 | 374 | 385 | 156 | 181 | 0 | 4.5 |
+| query_build | 4 | 110 | 963 | 1377 | 1498 | 193 | 549 | 0 | 6.9 |
+| query_build | 16 | 255 | 4186 | 5855 | 6673 | 742 | 1239 | 0 | 14.4 |
+| query_index | 1 | 320 | 24.9 | 43.6 | 330 | 33.8 | 46.0 | 2 | 4.2 |
+| query_index | 4 | 1270 | 25.9 | 54.4 | 339 | 41.5 | 56.8 | 2 | 4.4 |
+| query_index | 16 | 2658 | 72.0 | 195 | 627 | 88.1 | 315 | 2 | 5.1 |
+| query_index (fold ratio 0.0005) | 16 | 2758 | 71.3 | 261 | 508 | 95.4 | 298 | 4 | 5.2 |
+| query_build (fold ratio 0.1) | 1 | 64 | 318 | 473 | 554 | 132 | 156 | 0 | 7.6 |
+| query_build (fold ratio 0.1) | 4 | 135 | 886 | 1340 | 1485 | 219 | 560 | 0 | 9.8 |
+| query_build (fold ratio 0.1) | 16 | 256 | 3856 | 5916 | 7103 | 647 | 1199 | 0 | 17.8 |
+| query_index (fold ratio 0.1) | 1 | 337 | 27.7 | 41.7 | 46.3 | 37.1 | 49.5 | 0 | 5.7 |
+| query_index (fold ratio 0.1) | 4 | 1290 | 30.6 | 54.3 | 63.5 | 47.1 | 89.8 | 0 | 5.7 |
+| query_index (fold ratio 0.1) | 16 | 2859 | 81.6 | 188 | 814 | 153 | 285 | 0 | 6.0 |

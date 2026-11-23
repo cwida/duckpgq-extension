@@ -1710,3 +1710,18 @@ instance type and the commit hash in `--notes` (D7). Kuzu and Neo4j follow once 
   the path, so one statement over 16 sources held 20 GiB of paths (the first dry run of the step was stopped there;
   the harness now stops the Umbra process above 32 GiB, `DUCKPGQ_UMBRA_MEMORY_LIMIT_GIB`). The probes of 18 and
   19 Nov (the artifact's own 1000 queries, Umbra's reported execution time) stay as they are.
+- 23 Nov (frozen run on eval-freeze-rc14 complete; archive in repro/results, logs and notes in repro/logs_rc14,
+  figures and LaTeX tables outside the repository in ~/sweep/rc14 on the desk). The run was made on a dedicated
+  machine of the same instance type (m7a.8xlarge, kernel 6.18), 20 to 23 Nov, 95 steps, 56.7 h, all exit 0, 0
+  disagreements, 0 mismatches; the data was regenerated there and equals the desk's. The flat explore variants of
+  the CSR ablation crashed at process exit on the tag and were run again on 39181a6d (teardown fix); the author
+  counts this as the same run, and the sweep is not repeated. Against rc13 (other machine: build route and baselines
+  1 to 10% slower there, so smaller differences are noise): index route, 65,536 random pairs 0.395 -> 0.325 s (SF10),
+  3.33 -> 2.50 s (SF100), 10.0 -> 6.52 s (SF300); one pair at SF300 22 -> 3 ms, on graph500-24 207 -> 3 ms; IC13 at
+  SF300 29 -> 2 ms; single-pair throughput at 32 clients 928 -> 2,658 q/s (SF100) and 329 -> 822 q/s (SF300); 16
+  readers under the writer at SF100: reader median 63.7 -> 26.8 ms, commit median 214 -> 52.6 ms. Worse: BI19 on the
+  index route 0.83 -> 1.25 s at SF300 and 0.138 -> 0.171 s at SF100 (build route +7 to 9%; not investigated), index
+  size 11.1 -> 14.25 B/edge at SF300 (reverse side). New: OSM Oberbayern with Umbra (1024 pairs: index route 0.504 s,
+  Umbra with its navigational index 0.016 s, Umbra without a stored index 2.21 s; index creation 0.086 s against
+  2.3 to 2.7 s) and the CSR ablation (graph500-24, 2048 pairs, 32 threads: partitioned 6.14 s, flat variants 12.1 to
+  28.7 s).

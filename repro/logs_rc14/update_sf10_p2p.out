@@ -1,0 +1,12 @@
+Ensuring sf10 benchmark_pairs_1024 exists
+Prepared benchmark_pairs_1024 for sf10 in 0.09s
+== build: 190 batches of 2000, 1 point_to_point queries per batch, threads=32
+   query mean 0.0586s (min 0.0540, max 0.0790), update mean 0.0226s, index build 0.000000s, epoch changes 0, wall 18.393s
+== index_auto: 190 batches of 2000, 1 point_to_point queries per batch, threads=32
+   query mean 0.0452s (min 0.0280, max 0.0550), update mean 0.0228s, index build 0.324000s, epoch changes 1, wall 16.053s
+== index_nofold: 190 batches of 2000, 1 point_to_point queries per batch, threads=32
+   query mean 0.0482s (min 0.0280, max 0.0740), update mean 0.0230s, index build 0.328000s, epoch changes 0, wall 16.821s
+== index_per_row: 190 batches of 2000, 1 point_to_point queries per batch, threads=32
+   query mean 0.0655s (min 0.0290, max 0.1020), update mean 0.0225s, index build 0.324000s, epoch changes 0, wall 20.007s
+All 191 steps agree across build, index_auto, index_nofold, index_per_row
+Wrote /home/ec2-user/duckpgq-extension/data/ldbc-pathfinding/results/sf10/update_point_to_point_pairs1024_threads32_batch2000x190_1795367785272429275.csv
