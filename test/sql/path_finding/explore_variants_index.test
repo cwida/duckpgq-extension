@@ -1,0 +1,75 @@
+# name: test/sql/path_finding/explore_variants_index.test
+# description: the flat explore variants of the CSR ablation over a CSR index give the partitioned explore's answers. The flat CSR is derived from the index partitions and cached for the process; the cache must not keep the partitions alive, because their memory belongs to the database's buffer manager and the cache outlives the database (a process that ran a flat variant over an index crashed at exit)
+# group: [path_finding]
+
+require duckpgq
+
+statement ok
+SET experimental_path_finding_operator = true;
+
+# 1190 vertices on a ring with chords
+statement ok
+CREATE TABLE pv AS SELECT range AS id FROM range(1190);
+
+statement ok
+CREATE TABLE pe AS SELECT id AS src, (id + 1) % 1190 AS dst FROM pv UNION ALL SELECT id, (id + 13) % 1190 FROM pv UNION ALL SELECT id, (id + 211) % 1190 FROM pv
+
+statement ok
+CREATE INDEX pe_csr ON pe USING CSR (src, dst);
+
+# 600 pairs from 600 distinct sources: more than the few-sources limit, so the pairs run as lane waves and the explore
+# phase is the variant's
+statement ok
+CREATE TABLE pairs AS SELECT (range * 7) % 1190 AS src, (range * 37 + 5) % 1190 AS dst FROM range(600);
+
+statement ok
+CREATE TABLE expected AS SELECT src, dst, iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS len FROM pairs;
+
+query II
+SELECT count(len) = 600, sum(len) > 600 FROM expected;
+----
+true	true
+
+query I
+SELECT duckpgq_path_finding_strategy() LIKE '%csr=index%';
+----
+true
+
+foreach variant flat_serial flat_ranges flat_atomic flat_locked
+
+statement ok
+SET experimental_path_finding_operator_explore_variant = '${variant}';
+
+query I
+SELECT count(*) FROM (SELECT src, dst, iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS len FROM pairs) got JOIN expected USING (src, dst) WHERE got.len IS DISTINCT FROM expected.len;
+----
+0
+
+endloop
+
+statement ok
+RESET experimental_path_finding_operator_explore_variant;
+
+# The index goes while the cached flat CSR still exists; a new index over other edges must not be answered from it
+statement ok
+DROP INDEX pe_csr;
+
+statement ok
+DELETE FROM pe WHERE dst = (src + 211) % 1190;
+
+statement ok
+CREATE INDEX pe_csr ON pe USING CSR (src, dst);
+
+statement ok
+CREATE OR REPLACE TABLE expected AS SELECT src, dst, iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS len FROM pairs;
+
+statement ok
+SET experimental_path_finding_operator_explore_variant = 'flat_serial';
+
+query I
+SELECT count(*) FROM (SELECT src, dst, iterativelengthoperator(src, dst, 0::BIGINT, 0::BIGINT, 'csr-index|memory|main|pe|pe_csr') AS len FROM pairs) got JOIN expected USING (src, dst) WHERE got.len IS DISTINCT FROM expected.len;
+----
+0
+
+statement ok
+RESET experimental_path_finding_operator_explore_variant;

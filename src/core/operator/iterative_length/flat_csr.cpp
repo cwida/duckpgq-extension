@@ -105,8 +105,12 @@ shared_ptr<FlatCSR> BuildFlatCSR(const std::vector<shared_ptr<LocalCSR>> &partit
 
 struct FlatCSRCache {
 	std::mutex lock;
-	//! The partitions the cached CSR was built from, held so that their addresses identify them
-	std::vector<shared_ptr<LocalCSR>> partitions;
+	//! The partitions the cached CSR was built from, to recognise the same graph again. Weak references: the cache
+	//! is a static object and outlives the database, and a partition of a CSR index holds memory of the database's
+	//! buffer manager, so a partition this cache kept alive was released at process exit, after the buffer manager
+	//! was gone (a crash at exit, after the query had answered). An expired reference never matches, so a new
+	//! partition at a reused address is not taken for the old one
+	std::vector<weak_ptr<LocalCSR>> partitions;
 	idx_t vertex_count = 0;
 	shared_ptr<FlatCSR> flat;
 };
@@ -118,11 +122,11 @@ shared_ptr<FlatCSR> FlatCSR::Get(const std::vector<shared_ptr<LocalCSR>> &partit
 	std::lock_guard<std::mutex> guard(cache.lock);
 	bool hit = cache.flat && cache.vertex_count == vertex_count && cache.partitions.size() == partitions.size();
 	for (idx_t i = 0; hit && i < partitions.size(); i++) {
-		hit = cache.partitions[i].get() == partitions[i].get();
+		hit = cache.partitions[i].lock().get() == partitions[i].get();
 	}
 	if (!hit) {
 		cache.flat.reset();
-		cache.partitions = partitions;
+		cache.partitions.assign(partitions.begin(), partitions.end());
 		cache.vertex_count = vertex_count;
 		cache.flat = BuildFlatCSR(partitions, vertex_count);
 	}
